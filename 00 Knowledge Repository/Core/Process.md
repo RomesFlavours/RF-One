@@ -1,68 +1,67 @@
 # Process
 
-**Version:** 2.0
-**Status:** Approved
-**Module:** Core
+## Purpose
 
----
+A Process describes all the knowledge required to consistently achieve a Goal, regardless of who or what executes it.
 
-# Purpose
+A Process includes both execution and the knowledge necessary to understand, teach, verify and continuously improve that execution.
 
-A **Process** defines how a Goal is achieved.
+## Relationship with Goal
 
-A Process contains the business knowledge required to transform an initial state into the desired outcome.
+Every Process exists only to achieve a Goal.
 
-Processes belong to the business, not to the people, software or AI that execute them.
+Without a Goal, a Process does not exist.
 
----
+## Components
 
-# Definition
+A Process may contain:
 
-A Process specifies:
+- Goal
+- Inputs
+- Activities
+- Decisions
+- Rationale (why)
+- Approved Variants
+- Contextual Variants
+- Discouraged Variants
+- Quality Checks
+- Common Mistakes
+- Training Notes
+- Verification
+- Feedback
 
-- what activities must be performed;
-- the logical sequence of those activities;
-- the conditions required for execution;
-- the expected outcome.
+## Verification
 
-A Process never defines who executes it.
+Every Process must be objectively verifiable.
 
-The execution engine selects the most appropriate executor according to available capabilities and resources.
+Verification may be performed through:
 
----
+- Human observation
+- Images
+- Video
+- Sensors
+- Artificial Intelligence
 
-# Principles
+## Artificial Intelligence
 
-## 1. One Goal
-Every Process exists to achieve exactly one Goal.
+AI supports the Process by:
 
-## 2. Execution Independence
-A Process defines the work, not the executor.
+- explaining
+- teaching
+- observing
+- verifying
+- detecting deviations
+- suggesting improvements
 
-## 3. Reusability
-A Process may be executed by humans, software, AI or any future execution engine.
+AI does not define the Process.
 
-## 4. Business Knowledge
-Business knowledge is primarily expressed through Processes.
+## Design Principles
 
-## 5. Decomposition
-Complex Processes may be decomposed into subprocesses, each owning its own Goal.
-
-## 6. Adaptability
-Execution strategies may evolve without changing the Goal.
-
-## 7. No Persistent Status
-Execution status belongs to a specific execution instance, not to the Process definition.
-
-## 8. Mission Compliance
-No Process may violate the Core Principles or business rules.
-
----
-
-# Summary
-
-Goal defines **what** must be achieved.
-
-Process defines **how** it is achieved.
-
-The execution engine determines **who or what** performs the Process.
+- Every Process has a Goal.
+- Execution and knowledge are inseparable.
+- Every significant activity should explain both WHAT and WHY.
+- Variants are part of the Process.
+- Every Process must be verifiable.
+- Training is an integral part of the Process.
+- A Process is independent from its executor.
+- Humans, AI systems and robots may execute the same Process.
