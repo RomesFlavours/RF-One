@@ -52,7 +52,7 @@ May:
 
 - Upload documents
 - Correct OCR results
-- Resolve assigned validation tasks
+- Process assigned validation tasks
 
 ---
 

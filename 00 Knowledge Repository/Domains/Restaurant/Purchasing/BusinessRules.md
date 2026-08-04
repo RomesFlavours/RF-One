@@ -22,7 +22,7 @@ The acquisition method is irrelevant.
 
 # Rule 2 – The Purchase Document Is Immutable
 
-The original Purchase Document is never modified.
+The original supplier document is never modified.
 
 Corrections, interpretations and validations are stored separately.
 
@@ -38,9 +38,11 @@ Supplier terminology is always preserved.
 
 ---
 
-# Rule 4 – Every Supplier Product References One Ingredient
+# Rule 4 – Every Supplier Product Must Be Mapped to One Ingredient
 
-Every Supplier Product must be mapped to exactly one Ingredient.
+Every Supplier Product must eventually be mapped to exactly one Ingredient.
+
+A newly acquired Supplier Product may temporarily remain unmapped until validation is completed.
 
 The mapping is approved by an authorized user.
 
@@ -64,10 +66,10 @@ Supplier Products only reference existing Ingredients.
 
 An Ingredient is uniquely identified by:
 
-- Product
-- Specifications
+- one Product
+- zero or more Specifications
 
-Changing one or more Specifications creates a different Ingredient.
+Changing the Product or one or more Specifications creates a different Ingredient.
 
 ---
 
@@ -130,7 +132,7 @@ New purchases create new history.
 
 Validation records business anomalies.
 
-Validation never modifies the original Purchase Document.
+Validation never modifies the original supplier document.
 
 Every anomaly is stored inside the Validation Log.
 

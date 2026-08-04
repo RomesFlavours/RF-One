@@ -1,54 +1,76 @@
-# RF-ONE Core 1.0
-Frozen core concepts.
-# RF-ONE Core
-
-The **Core** contains the universal business concepts on which every RF-ONE Domain is built.
-
-The Core is intentionally **domain-independent**. It does not describe restaurants, hotels, retail, manufacturing or any other industry. It defines only the concepts that remain valid for any organization.
+# RF-One Core
 
 ## Purpose
 
-The Core provides:
+The Core defines the fundamental concepts, principles and architectural rules shared by every RF-One Domain and Module.
 
-- A stable business model
-- Universal entities and relationships
-- Common organizational concepts
-- A foundation shared by every Domain
+It establishes the common language of the platform and guarantees consistency across the entire system.
 
-## Contents
+The Core is independent from any specific business domain.
 
-The Core currently includes:
+---
 
-- RF-ONE Core Principles
-- Entity
-- Relationship
-- Goal
-- Process
-- Corporate
-- Brand
-- Operational Unit
-- Operational Area
+# Scope
 
-## What does NOT belong to the Core
+The Core defines:
 
-Domain knowledge such as:
+- business concepts;
+- architectural principles;
+- implementation principles;
+- domain-independent definitions;
+- external data mapping principles;
+- shared terminology.
 
-- Restaurant
-- Recipes
-- Menu
-- Kitchen
-- Warehouse operations
-- Medical procedures
-- Manufacturing workflows
+It does not define business logic for any specific Domain or Module.
 
-belongs to the appropriate Domain.
+---
 
-Knowledge about laws, geography, currencies, regulations and similar external concepts belongs to the Environment.
+# Objectives
 
-## Stability
+The Core ensures that every RF-One implementation:
 
-The Core is versioned independently from Domains.
+- uses the same business language;
+- follows the same architectural principles;
+- preserves conceptual consistency;
+- remains independent from implementation technology;
+- evolves without breaking existing knowledge.
 
-Changes to the Core should be rare because they affect every Domain built on RF-ONE.
+---
 
-**Core Status:** Frozen (Version 1.0)
+# Core Documents
+
+| Document | Purpose |
+|----------|---------|
+| ArchitecturePrinciples.md | Defines the architectural principles of RF-One. |
+| ImplementationGuidelines.md | Defines implementation guidelines shared by every module. |
+| ExternalDataMappingPrinciples.md | Defines how external systems are mapped into the RF-One Domain Model. |
+| Glossary.md | Defines the shared vocabulary used throughout RF-One. |
+| Entity.md | Defines the concept of a Business Entity. |
+| Goal.md | Defines the concept of a Goal. |
+| Process.md | Defines the concept of a Business Process. |
+| Relationship.md | Defines how business concepts relate to each other. |
+| OperationalArea.md | Defines how business capabilities are logically organized. |
+| RF-ONE Core Principles.md | Defines the fundamental principles governing the evolution of RF-One. |
+
+---
+
+# Design Philosophy
+
+RF-One is designed around business knowledge.
+
+Business concepts are defined before software implementation.
+
+Technology exists to support the Domain, never to define it.
+
+Every Domain and Module inherits the principles defined by the Core.
+
+---
+
+# Design Principles
+
+- One shared business language.
+- One definition for every core concept.
+- Domain before technology.
+- Architecture before implementation.
+- Business knowledge before data.
+- Consistency across all Domains and Modules.

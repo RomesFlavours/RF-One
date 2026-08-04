@@ -14,7 +14,7 @@ The module shall:
 
 - Produce the same logical Purchase Document regardless of the acquisition source.
 - Preserve every original supplier value.
-- Never modify supplier documents.
+- Never modify the original supplier document.
 - Normalize every purchasable Ingredient into grams.
 - Calculate normalized cost per gram.
 - Maintain complete purchasing history.
@@ -28,7 +28,7 @@ Acceptance Criteria:
 
 - Every purchase generates exactly one Purchase Document.
 - Every Purchase Document contains one or more Purchase Lines.
-- Original document information is preserved.
+- Original supplier information is preserved.
 
 ---
 
@@ -66,7 +66,7 @@ Acceptance Criteria:
 
 Acceptance Criteria:
 
-- Invalid or incomplete documents are never discarded.
+- Original supplier documents are never discarded.
 - Validation Log entries are created whenever required.
 - Every validation decision is auditable.
 
@@ -85,7 +85,7 @@ AI shall:
 
 AI shall not:
 
-- Modify supplier documents.
+- Modify the original supplier document.
 - Approve Ingredient mappings.
 - Rewrite purchasing history.
 - Perform irreversible business decisions.

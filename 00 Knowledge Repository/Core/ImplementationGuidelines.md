@@ -2,100 +2,141 @@
 
 ## Purpose
 
-This document provides implementation guidelines for developers building the Purchasing Module.
+This document provides implementation guidelines for every RF-One module.
 
-These guidelines translate the Domain Model into implementation principles without prescribing a specific technology stack.
+Its purpose is to ensure that all implementations remain consistent with the RF-One Architecture, Domain Model and Business Principles.
 
----
-
-# Domain Before Technology
-
-The Domain Model is the primary source of truth.
-
-Classes, services, APIs and database structures must reflect the business model rather than the chosen framework.
+Implementation choices must always preserve business meaning.
 
 ---
 
-# Entity Identity
+# Domain-Driven Implementation
 
-Business entities must have stable identifiers independent from supplier identifiers.
+Implementation always begins with the Domain.
 
-Internal identifiers must never depend on supplier codes.
+The software architecture must reflect the business architecture.
 
----
-
-# Preserve Original Data
-
-Always preserve:
-
-- Original Purchase Document
-- Original Supplier Product description
-- Original quantities
-- Original prices
-
-Normalization creates additional information but never replaces the original values.
+Business concepts are implemented before technical infrastructure.
 
 ---
 
-# AI Isolation
+# Respect the Domain
 
-Artificial Intelligence must be implemented as a supporting service.
+The Domain Model is the single source of business truth.
 
-Business Rules must remain valid even if AI is temporarily unavailable.
+Implementations shall never:
 
----
-
-# Validation
-
-Validation must be separated from acquisition.
-
-A document may be acquired successfully while still containing unresolved validation issues.
+- redefine business concepts;
+- duplicate business knowledge;
+- introduce alternative business interpretations.
 
 ---
 
-# Normalization
+# Layer Separation
 
-Normalization must produce deterministic results.
+Every implementation shall clearly separate:
 
-The same input must always generate the same normalized values.
+- Domain
+- Application
+- Infrastructure
+- External Systems
+
+Business logic belongs exclusively to the Domain layer.
+
+---
+
+# External Systems
+
+External systems are implementation details.
+
+Every external source must be translated into RF-One business concepts through the Mapping Layer.
+
+The Domain must never depend directly on external APIs, databases or file formats.
+
+---
+
+# Artificial Intelligence
+
+Artificial Intelligence is an implementation service.
+
+AI may:
+
+- analyze;
+- classify;
+- recognize;
+- estimate;
+- suggest.
+
+AI shall never replace Business Rules.
+
+Business decisions always remain under Domain control.
+
+---
+
+# Configuration
+
+Configuration changes system behavior.
+
+Configuration must never change business meaning.
+
+Business Rules are implemented in code, not in configuration files.
+
+---
+
+# Error Handling
+
+Implementation errors must never corrupt business knowledge.
+
+Whenever possible:
+
+- preserve original data;
+- log the error;
+- continue processing;
+- require human validation when necessary.
+
+---
+
+# Traceability
+
+Every implementation shall preserve complete traceability between:
+
+- source data;
+- business objects;
+- transformations;
+- AI processing;
+- human decisions.
+
+---
+
+# Testing
+
+Every implementation shall verify:
+
+- Business Rules;
+- Domain integrity;
+- Mapping correctness;
+- Workflow behavior;
+- historical consistency.
+
+Testing validates business behavior rather than technical implementation.
 
 ---
 
 # Extensibility
 
-New suppliers and acquisition methods must be added through extension points.
+Every implementation shall allow future extensions without modifying existing business concepts.
 
-Existing business entities should not require modification.
-
----
-
-# Audit Trail
-
-Every significant operation should be traceable, including:
-
-- Acquisition
-- Normalization
-- AI suggestions
-- Human validation
-- Business decisions
-
----
-
-# Error Recovery
-
-Unexpected failures must never cause loss of:
-
-- Purchase Documents
-- Purchase Lines
-- Validation history
-- Human decisions
+New modules and new data sources must integrate through existing architectural principles.
 
 ---
 
 # Design Principles
 
-- Preserve business meaning.
-- Preserve historical information.
-- Separate acquisition, validation and normalization.
-- Keep AI independent from business rules.
-- Favor extension over modification.
+- Implement the Domain first.
+- Keep business logic independent.
+- Separate business from infrastructure.
+- Preserve traceability.
+- Protect business knowledge.
+- AI supports the Domain.
+- Configuration never changes business meaning.
+- Simplicity has priority over technical sophistication.

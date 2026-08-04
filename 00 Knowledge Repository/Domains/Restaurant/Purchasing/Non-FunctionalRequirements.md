@@ -10,7 +10,7 @@ These requirements describe the expected quality of the system independently of 
 
 # Reliability
 
-- No Purchase Document may be lost.
+- No original supplier document may be lost.
 - Original supplier information must always be preserved.
 - Every operation must be recoverable after unexpected failures.
 

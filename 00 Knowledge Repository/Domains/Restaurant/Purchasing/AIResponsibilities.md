@@ -37,7 +37,7 @@ AI may:
 
 AI must never:
 
-- Modify the original Purchase Document.
+- Modify the original supplier document.
 - Create or approve a new Ingredient autonomously.
 - Validate a new Supplier Product mapping.
 - Rewrite purchasing history.

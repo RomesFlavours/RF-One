@@ -79,7 +79,7 @@ Entity behavior is documented elsewhere.
 | SupplierCode | Supplier product code |
 | SupplierName | Original supplier description |
 | Packaging | Commercial packaging |
-| IngredientId | Referenced Ingredient |
+| IngredientId | Referenced Ingredient (optional until validated) |
 
 ---
 
@@ -110,6 +110,7 @@ Entity behavior is documented elsewhere.
 |------------|-------------|
 | IngredientId | Unique internal identifier |
 | ProductId | Referenced Product |
+| Specifications | Set of associated Specifications |
 | Density | Used for liquid normalization |
 | EdibleYield | Percentage of usable product |
 | CookingYield | Percentage after cooking |

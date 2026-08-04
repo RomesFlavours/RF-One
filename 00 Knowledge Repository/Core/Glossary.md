@@ -2,148 +2,156 @@
 
 ## Purpose
 
-This document defines the common vocabulary used throughout the Restaurant Domain.
+This glossary defines the core concepts used throughout RF-One.
 
-Every term has one and only one business meaning.
-
----
-
-# Supplier
-
-A commercial organization that sells products to the restaurant.
+Each concept has a single business meaning and shall be interpreted consistently across every Domain, Module and implementation.
 
 ---
 
-# Supplier Product
+# Artificial Intelligence (AI)
 
-The commercial product identified and described by a specific Supplier.
+A software component that supports business activities through analysis, recognition, prediction or suggestions.
 
-Supplier terminology is always preserved.
+Artificial Intelligence assists the Domain but never owns business decisions.
 
 ---
 
-# Product
+# Business Event
 
-The generic culinary concept.
+A fact that represents something that has occurred in the business.
 
-Examples:
+Business Events are independent from the technology or external systems that generated them.
 
-- Tomato
-- Olive Oil
-- Parmesan Cheese
+---
 
-A Product is never purchased directly.
+# Business Rule
+
+A permanent rule that defines or constrains business behavior.
+
+Business Rules belong to the Domain and are independent from software implementation.
+
+---
+
+# Configuration
+
+A set of implementation parameters that influence system behavior without changing business meaning.
+
+Configuration must never modify Business Rules.
+
+---
+
+# Domain
+
+A coherent area of business knowledge represented by concepts, relationships and Business Rules.
+
+The Domain defines the meaning of the business independently from technology.
+
+---
+
+# Entity
+
+A business object with a unique identity that remains constant throughout its lifecycle.
+
+An Entity may change its attributes while preserving its identity.
+
+---
+
+# External System
+
+Any software, device or service outside RF-One that provides or consumes business information.
+
+Examples include POS systems, accounting software, suppliers, banks and OCR services.
+
+---
+
+# Goal
+
+The business objective that a Process exists to achieve.
+
+A Process has meaning only if it contributes to the achievement of a Goal.
+
+---
+
+# Knowledge
+
+Business information that has been interpreted and validated according to the Domain Model.
+
+Knowledge is more than raw data.
+
+---
+
+# Mapping Layer
+
+The architectural layer responsible for translating Source Records into RF-One business concepts.
+
+The Mapping Layer isolates the Domain from external systems.
+
+---
+
+# Module
+
+A software component responsible for implementing a specific business capability.
+
+Every Module has a single business responsibility.
+
+---
+
+# Operational Area
+
+A logical grouping of related business activities within a Domain.
+
+Operational Areas organize business capabilities without defining implementation.
+
+---
+
+# Process
+
+An ordered sequence of business activities performed to achieve a Goal.
+
+A Process defines what must be accomplished, not how it is technically implemented.
+
+---
+
+# Relationship
+
+A business association between two or more Entities.
+
+Relationships describe how business concepts interact while preserving their individual identities.
+
+---
+
+# Source Record
+
+The exact information received from an external system before any interpretation or transformation.
+
+Source Records preserve the original representation provided by the source.
 
 ---
 
 # Specification
 
-A characteristic that qualifies a Product.
+A set of characteristics that further qualifies a business concept without changing its identity.
 
-Examples:
-
-- Italian
-- DOP
-- Organic
-- 24 Months
-- San Marzano
+Specifications distinguish different variants of the same concept.
 
 ---
 
-# Ingredient
+# Traceability
 
-The canonical culinary entity.
-
-An Ingredient is uniquely identified by:
-
-Product + Specifications
+The ability to reconstruct every business object back to its original Source Record and every transformation applied during processing.
 
 ---
 
-# Purchase Order
+# Validation
 
-A request sent to a Supplier asking for products.
+The process of verifying that business information complies with the Domain Model and Business Rules.
 
----
-
-# Purchase Document
-
-The legal and commercial document issued by the Supplier that represents a purchase.
-
-It is the central entity of the Purchasing Module.
+Validation may be performed automatically, manually or through Artificial Intelligence.
 
 ---
 
-# Purchase Line
+# Workflow
 
-A single purchased item contained within a Purchase Document.
+The operational sequence through which a business Process is executed.
 
----
-
-# Purchase History
-
-The complete historical record of every purchase.
-
-Historical data is never overwritten.
-
----
-
-# Validation Log
-
-The record of every anomaly detected during acquisition, normalization or validation.
-
----
-
-# Supplier Price
-
-The commercial price requested by the Supplier before any allocation.
-
----
-
-# Real Ingredient Cost
-
-The Supplier Price plus the proportional allocation of document-level costs.
-
----
-
-# Effective Cost
-
-The Real Ingredient Cost after temporary economic adjustments such as discounts, rebates or credit notes.
-
----
-
-# Ingredient Mapping
-
-The association between a Supplier Product and an Ingredient.
-
-Mappings are validated by an authorized user.
-
----
-
-# Normalization
-
-The process of converting heterogeneous purchasing information into the Restaurant Domain standard.
-
-All quantities are normalized into grams.
-
----
-
-# Canonical Knowledge
-
-Business knowledge expressed independently from Suppliers and acquisition technologies.
-
----
-
-# Artificial Intelligence
-
-A decision-support component that assists users by extracting information, detecting anomalies and proposing actions.
-
-AI never owns business knowledge.
-
----
-
-# Human Validation
-
-The business approval process performed by an authorized user.
-
-Human validation always has priority over AI suggestions.
+A Workflow implements a Process while respecting all Business Rules.

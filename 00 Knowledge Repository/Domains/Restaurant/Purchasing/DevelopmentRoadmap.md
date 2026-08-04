@@ -39,7 +39,7 @@ Objectives:
 
 Result:
 
-Multiple acquisition channels producing the same logical Purchase Document.
+Multiple acquisition channels producing the same logical Purchase Document and the same purchasing knowledge.
 
 ---
 

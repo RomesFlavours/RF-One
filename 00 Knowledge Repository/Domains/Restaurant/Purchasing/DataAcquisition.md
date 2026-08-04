@@ -6,7 +6,7 @@ This document defines how external purchasing systems integrate with the Purchas
 
 The objective of every integration is identical:
 
-Generate a valid Purchase Document.
+Generate the same logical Purchase Document and the same purchasing knowledge.
 
 The source technology is irrelevant once the Purchase Document has been created.
 
@@ -69,7 +69,7 @@ Optional information enriches the Purchase Document but never changes its struct
 
 # Error Handling
 
-Integration failures never invalidate the Purchase Document.
+Integration failures never invalidate the original supplier document.
 
 Missing or uncertain information generates Validation Log entries for human review.
 

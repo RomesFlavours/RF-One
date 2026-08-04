@@ -12,7 +12,7 @@ Validation never modifies supplier information.
 
 # Validation Principles
 
-- The Purchase Document always remains valid.
+- The original supplier document is always preserved.
 - RF-One never edits supplier documents.
 - Validation records inconsistencies.
 - Human validation has priority over AI interpretation.
@@ -57,7 +57,7 @@ Examples:
 - Unreadable document
 - Impossible quantity conversion
 
-Errors never invalidate the Purchase Document.
+Errors never invalidate the original supplier document.
 
 They only stop automatic processing until validated.
 
@@ -128,7 +128,7 @@ Every human action is auditable.
 
 # Design Principles
 
-- Preserve reality.
+- Preserve business reality.
 - Never lose information.
 - Never overwrite history.
 - Every decision must be traceable.

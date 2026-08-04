@@ -44,7 +44,7 @@ Examples:
 - XML -> Purchase Document
 - Purchase Document -> Ingredient Mapping
 
-Every integration must generate the same logical result.
+Every integration must generate the same logical Purchase Document and the same business result.
 
 ---
 

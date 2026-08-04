@@ -10,7 +10,7 @@ The objective is to preserve information, maintain traceability and allow recove
 
 # General Principles
 
-- No Purchase Document is ever discarded.
+- No original supplier document is ever discarded.
 - No business information is silently lost.
 - Every failure is traceable.
 - Recovery is always preferred over rejection.
@@ -85,9 +85,9 @@ Behavior:
 
 # Integration Errors
 
-Failures of OCR, API or external services never invalidate an existing Purchase Document.
+Failures of OCR, API or external services never invalidate the original supplier document.
 
-The document remains pending until processing can continue.
+The Purchase Document remains pending until processing can continue.
 
 ---
 
@@ -103,7 +103,7 @@ Recovery must never:
 
 # Design Principles
 
-- Preserve reality.
+- Preserve business reality.
 - Preserve history.
 - Preserve traceability.
 - Recover whenever possible.

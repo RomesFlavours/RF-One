@@ -99,7 +99,7 @@ Configurable:
 - EDI formats
 - OCR providers
 
-Every integration must generate the same Purchase Document.
+Every integration must generate the same logical Purchase Document and the same business knowledge.
 
 ---
 

@@ -66,15 +66,17 @@ One Purchase Order may generate:
 
 ## Purpose
 
-Represents the official legal and commercial document describing a completed purchase.
+Represents the official legal and commercial representation of a completed purchase.
 
 The Purchase Document is the central business entity of the Purchasing Module.
 
 ## Identity
 
-The Purchase Document preserves the supplier's original commercial information.
+A Purchase Document preserves the commercial information extracted from the supplier's original document.
 
-It represents business reality and is never modified.
+The original supplier document is always preserved and never modified.
+
+The business representation may be completed or validated without altering the original document.
 
 ## Responsibilities
 
@@ -116,6 +118,8 @@ Represents the commercial product defined by one specific Supplier.
 Supplier Products belong exclusively to one Supplier.
 
 Different Suppliers may define different Supplier Products that represent the same Ingredient.
+
+A Supplier Product may exist before being associated with an Ingredient.
 
 ## Responsibilities
 
@@ -186,8 +190,8 @@ Represents the canonical culinary entity used throughout the Restaurant Domain.
 
 An Ingredient is uniquely identified by:
 
-- Product
-- Specifications
+- one Product;
+- zero or more Specifications.
 
 Ingredients are supplier independent.
 
@@ -221,41 +225,3 @@ Validation Logs never modify business reality.
 - Preserve traceability.
 - Record anomalies.
 - Support human validation.
-- Preserve validation history.
-
----
-
-# Entity Relationships
-
-```text
-Supplier
-│
-├── Purchase Order
-│
-└── Purchase Document
-      │
-      ├── Purchase Line
-      │      │
-      │      └── Supplier Product
-      │               │
-      │               ▼
-      │          Ingredient
-      │               ▲
-      │               │
-      │        Product + Specifications
-      │
-      └── Validation Log
-```
-
----
-
-# Entity Principles
-
-- Entities represent permanent business concepts.
-- Every Entity has a stable identity.
-- Purchase Document is the central Purchasing Entity.
-- Ingredient is the canonical Restaurant Entity.
-- Supplier terminology is always preserved.
-- Product and Specifications define Ingredient identity.
-- Validation records reality but never changes it.
-- Entity attributes are defined in **DataDictionary.md**.
