@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-top:0;">Salvato ✓</h3>
+  <p>Documento registrato con <strong>PurchaseDocumentId = {{ doc_id }}</strong>.</p>
+  <p class="hint">File Excel: <code>{{ excel_path }}</code></p>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('index') }}">Carica un'altra fattura</a>
+  </div>
+</div>
+{% endblock %}

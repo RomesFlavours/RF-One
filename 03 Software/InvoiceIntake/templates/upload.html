@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+    <label>Immagine o PDF della fattura</label>
+    <input type="file" name="invoice_file" accept=".jpg,.jpeg,.png,.pdf,.webp,.bmp,.tiff" required>
+    <p class="hint">Foto scattate al telefono vengono lette con OCR (Tesseract): aspettati di dover correggere qualche campo. I PDF con testo digitale vengono letti in modo pulito.</p>
+    <div class="actions">
+      <button type="submit">Carica e leggi</button>
+    </div>
+  </form>
+</div>
+<p class="hint" style="margin-top:1rem;">I dati salvati finiscono in: <code>{{ excel_path }}</code></p>
+{% endblock %}

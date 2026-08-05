@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="hint">File: {{ original_name }} &nbsp;·&nbsp; Metodo di lettura: {{ header.acquisition_method }}</p>
+
+<form action="{{ url_for('save') }}" method="post">
+  <input type="hidden" name="source_file" value="{{ source_file }}">
+
+  <div class="card">
+    <h3 style="margin-top:0;">Testata documento</h3>
+    <div class="row">
+      <div>
+        <label>Fornitore</label>
+        <input type="text" name="supplier_name" value="{{ header.supplier_name }}">
+      </div>
+      <div>
+        <label>Numero documento</label>
+        <input type="text" name="document_number" value="{{ header.document_number }}">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Data (come letta, correggi se serve)</label>
+        <input type="text" name="issue_date" value="{{ header.issue_date }}">
+      </div>
+      <div>
+        <label>Tipo documento</label>
+        <input type="text" name="document_type" value="Invoice">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Valuta</label>
+        <input type="text" name="currency" value="{{ header.currency }}">
+      </div>
+      <div>
+        <label>Totale documento</label>
+        <input type="text" name="total_amount" value="{{ header.total_amount }}">
+      </div>
+    </div>
+    <input type="hidden" name="acquisition_method" value="{{ header.acquisition_method }}">
+  </div>
+
+  <div class="card" style="margin-top:1rem;">
+    <h3 style="margin-top:0;">Righe (correggi, cancella o aggiungi)</h3>
+    <table id="lines-table">
+      <thead>
+        <tr>
+          <th style="width:38%;">Descrizione</th>
+          <th>Qtà</th>
+          <th>Unità</th>
+          <th>Prezzo unitario</th>
+          <th>Importo</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in lines %}
+        <tr>
+          <td><input type="text" name="line_description" value="{{ line.description }}"></td>
+          <td><input type="text" name="line_quantity" value="{{ line.quantity }}" style="width:5rem;"></td>
+          <td><input type="text" name="line_unit" value="{{ line.unit or '' }}" style="width:4.5rem;"></td>
+          <td><input type="text" name="line_unit_price" value="{{ line.unit_price }}" style="width:6rem;"></td>
+          <td><input type="text" name="line_amount" value="{{ line.line_amount }}" style="width:6rem;"></td>
+          <td><button type="button" class="secondary" onclick="this.closest('tr').remove()">✕</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <button type="button" class="secondary" style="margin-top:.8rem;" onclick="addRow()">+ Aggiungi riga</button>
+  </div>
+
+  <div class="actions">
+    <button type="submit">Salva su Excel</button>
+    <a class="btn secondary" href="{{ url_for('index') }}">Annulla</a>
+  </div>
+</form>
+
+<details style="margin-top:1.5rem;">
+  <summary class="hint">Testo grezzo letto dal documento (per controllo manuale)</summary>
+  <pre class="raw">{{ raw_text }}</pre>
+</details>
+
+<script>
+function addRow() {
+  const tbody = document.querySelector('#lines-table tbody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="text" name="line_description"></td>
+    <td><input type="text" name="line_quantity" style="width:5rem;"></td>
+    <td><input type="text" name="line_unit" style="width:4.5rem;"></td>
+    <td><input type="text" name="line_unit_price" style="width:6rem;"></td>
+    <td><input type="text" name="line_amount" style="width:6rem;"></td>
+    <td><button type="button" class="secondary" onclick="this.closest('tr').remove()">✕</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+</script>
+{% endblock %}
