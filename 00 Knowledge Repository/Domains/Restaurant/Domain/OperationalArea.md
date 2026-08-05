@@ -1,34 +1,19 @@
-# Operational Area
+# Operational Area (Restaurant)
 
-**Document Version:** 3.1
+**Document Version:** 4.0
 **Status:** Approved
 **Module:** Core Domain
-
----
-
-# Definition
-
-An **Operational Area** is the smallest operational entity within an Operational Unit capable of owning operational responsibilities.
-
-It partitions an Operational Unit into clearly defined responsibility boundaries where work is performed, resources are allocated and operational performance is measured.
-
-Operational Areas inherit the operational context of their parent Operational Unit while introducing area-specific behavior.
+**Extends:** Operational Area (Core)
 
 ---
 
 # Purpose
 
-Operational Areas organize operational execution by:
+This document defines how the Core concept of **Operational Area** is specialized within the Restaurant Domain.
 
-- Assigning responsibilities
-- Organizing workflows
-- Allocating resources
-- Measuring performance
-- Managing availability
-- Defining operational capacity
-- Coordinating activities
+Identity, operational boundary and base Business Rules are defined once in `Core/OperationalArea.md` and are fully inherited here without redefinition.
 
-Operational Areas never exist independently.
+This document adds only the behavior, attributes and examples that are specific to restaurants.
 
 ---
 
@@ -41,60 +26,29 @@ Brand
     ↓
 Operational Unit
     ↓
+Restaurant
+    ↓
 Operational Area
 ```
 
-Every Operational Area belongs to exactly one Operational Unit.
-
 ---
 
-# Operational Boundary
+# Inherited from Core
 
-An Operational Area defines the smallest operational responsibility boundary.
+A Restaurant Operational Area inherits, without change, from `Core/OperationalArea.md`:
 
-Typical resources include:
-
-- Employees
-- Equipment
-- Inventory Locations
-- Operational Tasks
-- Production Activities
-- Operational Documents
-
-Operational Areas never overlap.
-
----
-
-# Relationship with Operational Unit
-
-Every Operational Area belongs to one Operational Unit.
-
-Operational Units aggregate the operational state of all their Operational Areas.
-
----
-
-# Identity
-
-Every Operational Area has a unique immutable RF-ONE identifier.
-
-Mutable attributes include:
-
-- Name
-- Description
-- Manager
-- Capacity
-- Availability
-- Operational Configuration
+- Unique immutable identity.
+- Membership in exactly one Operational Unit (here, one Restaurant).
+- The rule that Operational Areas never exist independently.
+- Overall operational responsibility remaining with the Operational Unit.
 
 ---
 
 # Area Types
 
-Operational Areas may be:
+Restaurant Operational Areas may be:
 
 ## Physical
-
-Examples:
 
 - Kitchen
 - Bar
@@ -106,8 +60,6 @@ Examples:
 
 ## Logical
 
-Examples:
-
 - Online Orders
 - Reservations
 - Delivery Dispatch
@@ -116,18 +68,14 @@ Examples:
 
 ## Hybrid
 
-Examples:
-
 - Drive-Thru
 - Take-Out
 - Packaging Area
 - Production Line
 
-RF-ONE supports all three models.
-
 ---
 
-# Responsibilities
+# Restaurant-Specific Responsibilities
 
 Typical responsibilities include:
 
@@ -174,7 +122,7 @@ Operational Areas own capacities such as:
 - Production Capacity
 - Workstation Capacity
 
-Operational Unit capacity is derived from its Operational Areas.
+Operational Unit (Restaurant) capacity is derived from its Operational Areas.
 
 ---
 
@@ -187,7 +135,7 @@ Operational Areas determine their own availability based on:
 - Operating Hours
 - Business Rules
 
-Operational Unit availability is derived from these values.
+Restaurant availability is derived from these values.
 
 ---
 
@@ -208,33 +156,20 @@ Processes belong to the business.
 
 # Services
 
-Operational Areas support one or more Services.
+Operational Areas support one or more Services without owning them.
 
 Examples:
 
-Kitchen
+Kitchen → Dine-In, Delivery, Catering
 
-→ Dine-In
-
-→ Delivery
-
-→ Catering
-
-Bar
-
-→ Dine-In
-
-→ Events
-
-Operational Areas support Services but do not own them.
+Bar → Dine-In, Events
 
 ---
 
-# Relationships
+# Restaurant-Specific Relationships
 
-Operational Areas may relate to:
+In addition to the Operational Unit relationship inherited from Core, a Restaurant Operational Area may relate to:
 
-- Operational Unit
 - Employees
 - Equipment
 - Inventory
@@ -248,20 +183,12 @@ Relationships never define identity.
 
 ---
 
-# Business Rules
+# Restaurant-Specific Business Rules
 
-- Every Operational Area belongs to one Operational Unit.
-- Operational Areas never exist independently.
-- Every Operational Area defines an operational responsibility boundary.
-- Every operational resource belongs to one Operational Area.
+These rules add to, and never override, the Core Business Rules:
+
 - Operational Areas may be physical, logical or hybrid.
+- Every operational resource (staff, equipment, inventory) belongs to one Operational Area.
 - Capacity belongs to the Operational Area.
 - Availability belongs to the Operational Area.
 - Processes are executed by Operational Areas.
-- Operational Area identity is immutable.
-
----
-
-# Future Scalability
-
-The Operational Area model supports restaurants, retail, logistics, manufacturing, warehouses, offices and future operational models without requiring changes to the RF-ONE Core Domain.
