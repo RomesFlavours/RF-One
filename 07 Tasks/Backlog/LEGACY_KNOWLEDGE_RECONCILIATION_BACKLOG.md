@@ -2,7 +2,7 @@
 
 **Status:** Approved Product Owner backlog — binding for future work, not itself canonical architecture.
 **Created by:** TASK_CORE_005 (Canonical Repository Migration).
-**Source analysis:** `07 Tasks/TASK_CORE_004_Legacy_Knowledge_Reconciliation_Review.md` and its Legacy Knowledge Reconciliation Report.
+**Source analysis:** `90 Archive/Task History/Tasks/TASK_CORE_004_Legacy_Knowledge_Reconciliation_Review.md` and its Legacy Knowledge Reconciliation Report.
 **Purpose:** Ensure that valuable legacy concepts identified in `90 Archive/Legacy Repository/X00 Knowledge Repository/` are not forgotten now that the legacy repository has been moved into the non-authoritative archive.
 
 This file is **not** Core, Domain, Product, or Strategy documentation. It does not define any concept. It records what the Product Owner has approved as worth incorporating later, what has been explicitly rejected, and what remains genuinely open — so that a future reconciliation task can act without re-deriving this analysis from scratch.
@@ -154,3 +154,20 @@ Detailed Corporate Legal Identity / Corporate Documents are low-priority backlog
 ## Status of items not listed above
 
 Any legacy concept identified in the TASK_CORE_004 report that is not explicitly listed here (e.g. stub/empty legacy files, fully superseded Desire/Decision/Goal/Process claims already reconciled in Core Evolution history) requires no further action and may remain historical-only in `90 Archive/`.
+
+---
+
+## J. Cross-layer Shared Domain questions — resolved (TASK_CORE_009 / TASK_CORE_010)
+
+The cross-layer Shared Domain questions raised by Section G above and by TASK_CORE_008 (Personnel/Workforce, Equipment, Facilities, Marketing, Reputation, Financial Performance, Strategic Planning, Customer, Supplier, Business Profile, and Commercial Catalog's future layer) were reviewed by TASK_CORE_009 (`90 Archive/Task History/Reports/TASK_CORE_009_REPORT.md`, analysis only) and resolved as approved Product Owner decisions by TASK_CORE_010 (`90 Archive/Task History/Reports/TASK_CORE_010_REPORT.md`). This section preserves the key extraction triggers so this archived-adjacent backlog does not need to be reopened later merely to re-answer these questions.
+
+- **No new Shared Domain created.** Workforce, Marketing, Reputation, Finance/Financial Performance, Equipment, Facilities, Strategic Planning, Customer, Supplier, and Business Profile all remain unpromoted. The rule stands: **reuse must be earned** — a Shared Domain is created only when actual semantic reuse or a concrete second consumer justifies it.
+- **Commercial Catalog** stays under `01 Domains/Restaurant/Commercial Catalog/`, recorded as the highest-confidence future Shared Domain extraction candidate. Trigger: extract to `01 Domains/_Shared/Commercial Catalog/` when a second genuine Domain or Product requires the same catalog semantics; the whole coherent model moves together, not concept-by-concept.
+- **Marketing** approved future direction: `Brand (Core) → generic Marketing (future Shared Domain candidate) → Restaurant-specific marketing execution (Restaurant specialization)`. Not created now.
+- **Reputation** remains deferred; working assumption is that it folds into a future Marketing/Customer Engagement capability rather than standing alone.
+- **Workforce/Personnel**: approved sequencing is to establish reusable Workforce semantics (role, assignment, responsibility, schedule, skills, availability, performance) before designing Selection, Training, and Performance capabilities on top of them, consistent with the future direction already recorded in Section D above. No Domain name is chosen yet.
+- **Equipment and Facilities** remain deferred; if later justified, a combined `Asset & Facilities` area may be more coherent than two thin independent Domains — not decided.
+- **Financial Performance**: RF-One's own economics stay in `09 Strategy/`; customer-facing financial/performance capability should be built from real Domain data as a Product/use-case first, before any general Finance ontology.
+- **Strategic Planning**: no new Domain and no new Core primitive (e.g. no `Mission`). Customer-level strategic planning uses existing Core concepts (Desire, Goal, Reality Check, Decision, Action, Outcome, Learning, Temporal Coherence).
+- **Customer** remains Restaurant-local; **Supplier** remains Purchasing-local until a second Domain or reusable Procurement capability needs supplier semantics independently.
+- **Business Profile** does not become a Domain; it is a composition of existing Core concepts (Corporate, Brand, Operational Unit), Restaurant specialization (`OU-Restaurant.md`, `OperationalArea.md`), and future Product onboarding/configuration workflows.

@@ -1,5 +1,7 @@
 # Restaurant Domain
 
+For current canonical coverage, placeholders/scaffolding, and planned knowledge areas, see [Roadmap.md](Roadmap.md). For the full business-capability classification (including areas that belong to Strategy, Shared Domain candidates, or Software rather than this Domain), see [../../09 Strategy/04_Business_Capability_Coverage.md](../../09%20Strategy/04_Business_Capability_Coverage.md).
+
 ## Purpose
 
 The Restaurant Domain defines the business knowledge required to model, operate and continuously improve any restaurant.
@@ -32,6 +34,10 @@ It includes:
 - Customer Knowledge
 
 Each capability is implemented as an independent module sharing the same Domain Model.
+
+**Marketing** is listed here as planned business coverage, not as a settled architectural placement. The generic parts of Marketing (campaigns, channels, advertising, social media, promotions, loyalty mechanics, audience targeting) are a future Shared Domain candidate; restaurant-specific marketing execution (menu/product promotion, seasonal offers, local-store execution, guest communication tied to Restaurant Menu/Commercial Catalog) may remain a Restaurant specialization. Which parts move where is not decided by this listing — see `Roadmap.md`, "Cross-Domain candidates and extraction triggers."
+
+The **Commercial Catalog** module (see `Commercial Catalog/`) is canonical Restaurant content today and is not moved by this document. It is recorded as the highest-confidence future Shared Domain extraction candidate — see `Roadmap.md` for the approved extraction trigger.
 
 ---
 

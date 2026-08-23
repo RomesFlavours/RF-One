@@ -1,6 +1,6 @@
 # Desire, Goal and Reality Check
 
-**Version:** 1.0
+**Version:** 1.1
 **Status:** Approved (Core 2.0)
 **Module:** Core / ConceptualArchitecture
 
@@ -117,6 +117,19 @@ The transition from Desire to Goal may require consideration of Resources, Condi
 
 ---
 
-## 4. Relationship to Action
+## 4. Early Failure Recognition is a valuable outcome
+
+Recognizing — as early as reasonably possible — that a Goal is infeasible under currently known conditions, that a required Constraint cannot be satisfied, that available evidence does not support proceeding, that no known path currently exists, or that uncertainty is too high for the current authority/risk boundary, is a useful RF-One outcome. It is not a system failure.
+
+This early recognition must preserve the distinctions established in Section 1:
+
+- **infeasible now** must never collapse into **impossible**;
+- **no known path** must never collapse into **no path exists**.
+
+Recognizing infeasibility, an unsatisfied Constraint, insufficient evidence, or an unresolved authority/risk boundary early is itself valuable information. It may return a Goal to Desire status (Section 1), trigger a Reality Check (Section 2), or surface an authority/risk escalation — see [05_Epistemic_Boundary_and_Subject_Sovereignty.md](05_Epistemic_Boundary_and_Subject_Sovereignty.md) and [06_Business_Autopilot_and_Intelligence_Engine.md](06_Business_Autopilot_and_Intelligence_Engine.md) — rather than silently continuing toward an outcome current knowledge does not support.
+
+---
+
+## 5. Relationship to Action
 
 Once a Goal exists and a Process is available or selected to pursue it, RF-One moves into the operational cycle of Decision, Action, Outcome and Learning — see [03_Decision_Action_Outcome_Learning.md](03_Decision_Action_Outcome_Learning.md).

@@ -29,9 +29,26 @@ This area is intended for future documentation such as:
 - Universal Core ontology — `00 Core/`.
 - Customer business Domain knowledge — `01 Domains/`.
 - Product-level configuration — `02 Products/`.
+- Runtime implementation — `03 Software/`.
+
+Where Strategy conflicts with Core semantics, Core wins for conceptual meaning. Where Product implementation differs from Strategy, the discrepancy must be visible rather than silently redefining Strategy.
+
+---
+
+# Canonical Strategy documents
+
+| Document | Covers |
+|---|---|
+| [00_RF-One_Strategy.md](00_RF-One_Strategy.md) | Entry point: layer separation, business-first orientation, Business Autopilot as commercial direction, bounded optimization scope, operational/strategic horizons, current strategic priorities. |
+| [01_Economic_Value_and_Measurement.md](01_Economic_Value_and_Measurement.md) | Measurable economic value as a commercial (not Core) objective, value metrics by Product/Domain, Cash-Based Profit as one historical metric candidate, counterfactual value measurement and its epistemic safeguards, operational vs. strategic value horizons. |
+| [02_Service_Delivery_and_Knowledge_Advantage.md](02_Service_Delivery_and_Knowledge_Advantage.md) | Business Knowledge Platform positioning, Intelligence Engines as components, why centralized/service delivery may compound knowledge advantage, SaaS as current preference rather than immutable law. |
+| [03_Shared_Intelligence_and_Knowledge_Governance.md](03_Shared_Intelligence_and_Knowledge_Governance.md) | Knowledge levels (customer-specific → Domain → Product → platform-level → Core), promotion governance, tenant/privacy/provenance safeguards, connection to RF-One's epistemic discipline. |
+| [04_Business_Capability_Coverage.md](04_Business_Capability_Coverage.md) | Reconciliation of the legacy `Knowledge Domains` taxonomy into a business capability/coverage map — classifying each historical area as Restaurant Domain, Shared Domain candidate, Strategy capability, Product capability, or Software/Intelligence capability. |
 
 ---
 
 # Current status
 
-This README establishes the layer. No substantive strategy content has been written yet — see `07 Tasks/Backlog/LEGACY_KNOWLEDGE_RECONCILIATION_BACKLOG.md` (Section E and F) for the legacy commercial-strategy concepts approved for future incorporation here.
+Populated by `90 Archive/Task History/Tasks/TASK_CORE_007_Strategy_Legacy_Knowledge_Canonicalization.md`, implementing the legacy commercial-strategy concepts approved in `07 Tasks/Backlog/LEGACY_KNOWLEDGE_RECONCILIATION_BACKLOG.md` (Section E and F) in their bounded, non-absolute form. See `90 Archive/Task History/Reports/TASK_CORE_007_REPORT.md` for the implementation report.
+
+`90 Archive/Task History/Tasks/TASK_CORE_008_Business_Capability_and_Domain_Roadmap_Canonicalization.md` added the business capability coverage map (Section G of the same backlog), reconciling the legacy `Knowledge Domains` taxonomy without promoting it into modern Domain ontology. See `90 Archive/Task History/Reports/TASK_CORE_008_REPORT.md`.

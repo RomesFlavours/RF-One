@@ -18,6 +18,14 @@ RF-One's Core Conceptual Architecture (see [ConceptualArchitecture/07_Core_Gloss
 
 ---
 
+# Assignment
+
+A Relationship expressing that an Entity has been given operational responsibility for, or use of, another Entity or Resource, without necessarily transferring Ownership.
+
+Assignment and Ownership are distinct and must not be treated as synonyms. See [Relationship.md](Relationship.md).
+
+---
+
 # Business Event
 
 A fact that represents something that has occurred in the business.
@@ -103,6 +111,14 @@ Every Module has a single business responsibility.
 A logical grouping of related business activities within a Domain.
 
 Operational Areas organize business capabilities without defining implementation.
+
+---
+
+# Ownership
+
+A Relationship expressing legal or economic control of an Entity by a Subject or Entity.
+
+Ownership does not imply operational responsibility; operational responsibility may be delegated through Assignment without transferring Ownership. See [Relationship.md](Relationship.md).
 
 ---
 

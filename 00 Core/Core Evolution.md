@@ -111,6 +111,42 @@ Compatibility Notes:
 
 ---
 
+Version: Core 2.0 (TASK_CORE_006)
+
+Date: 2026-08-23
+
+Modified Entity:
+`ConceptualArchitecture/02_Desire_Goal_and_Reality_Check.md`, `Process.md`, `Entity.md`, `Relationship.md`, `Glossary.md`.
+
+Reason:
+TASK_CORE_006 incorporated the approved universal concepts recorded in `07 Tasks/Backlog/LEGACY_KNOWLEDGE_RECONCILIATION_BACKLOG.md` (itself produced by `TASK_CORE_004`'s legacy reconciliation review of `90 Archive/Legacy Repository/X00 Knowledge Repository/06 Business Model/`), while explicitly keeping rejected Runtime, Domain and commercial patterns out of Core: Early Failure Recognition as a valuable outcome (preserving the impossible/infeasible/no-known-path/insufficient-knowledge/uncertain/temporarily-constrained distinctions); recursive Process decomposition without a separate universal `Activity` type; an Optimization Boundaries principle replacing the rejected literal `Mission > Domain Principles > Business Rules > Goal > Execution` ordering, without introducing `Mission` as a new Core primitive; an optional Entity versioning pattern (stable identity vs. versioned definition); Entity-level Temporal Semantics (without mandating database fields); Specialization Extends Rather Than Erases Identity as a conceptual (not OOP) modeling principle; and Ownership vs Assignment as distinct, non-synonymous Relationship meanings.
+
+Concepts introduced/clarified:
+
+- Early Failure Recognition (Desire/Goal/Reality Check)
+- Recursive Process decomposition (no new `Activity` primitive)
+- Optimization Boundaries (no new `Mission` primitive)
+- Optional Entity Versioning Pattern
+- Entity-level Temporal Semantics
+- Specialization Extends Rather Than Erases Identity
+- Ownership vs Assignment (Relationship, Glossary)
+
+Impacted Domains:
+
+- None directly modified. Restaurant Domain material was not touched; these are general-purpose Core patterns available to any future Domain.
+
+Future Expected Impact:
+
+- Any future Domain that models process hierarchies, entity/version relationships, temporal validity, specialization, or ownership/assignment distinctions.
+
+Compatibility Notes:
+
+- All prior Core 2.0 content is preserved; no existing definition was reversed. Changes are additive clarifications, not redefinitions.
+- The following legacy items reviewed in this task were deliberately **not** imported into Core, per the backlog: the literal `Mission > Domain Principles > Business Rules > Goal > Execution` ordering; "Process status must never be persisted"; the Hybrid Event Model (immutable Events universally generate Entity state); Capacity/Availability/Responsibility placement generalizations; Capabilities Enable Services as a universal principle; the Operational Unit physical lifecycle; jurisdiction-specific Corporate legal fields; and all commercial-strategy items (Maximize Economic Profit, Cash-Based Profit, Unlimited Optimization Scope, SaaS-only strategy, shared-intelligence commercial model, counterfactual B2B value measurement as universal Outcome).
+- Legacy documents under `90 Archive/Legacy Repository/` were not modified.
+
+---
+
 # Design Principles
 
 - The Core Domain is extracted from real domains.

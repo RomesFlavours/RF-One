@@ -2,7 +2,7 @@
 
 # RF-ONE Core Domain
 
-**Version:** 2.0
+**Version:** 2.1
 
 ------------------------------------------------------------------------
 
@@ -134,6 +134,21 @@ using all available knowledge while continuously generating new business
 knowledge.
 
 Within explicitly delegated authority, RF-ONE may also execute and continuously correct course, not only recommend — operating as a Business Autopilot under human command. This does not remove the importance of human strategic control: the Subject retains sovereignty over direction, Goals, authority boundaries and override at all times. See [ConceptualArchitecture/06_Business_Autopilot_and_Intelligence_Engine.md](ConceptualArchitecture/06_Business_Autopilot_and_Intelligence_Engine.md) and [ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md](ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md).
+
+## 15. Ownership vs Assignment
+
+Ownership and Assignment are distinct Relationship meanings and must not be treated as synonyms.
+
+An Entity may simultaneously be:
+- owned by one Subject/Entity;
+- assigned to another;
+- operated by another;
+- responsible to another;
+- available to another;
+
+without any of those Relationships being equivalent to, or implying, another.
+
+Core does not prescribe universal cardinalities or a database model for Ownership or Assignment. Core does not assume that Ownership implies operational responsibility, nor that Assignment transfers Ownership. Where a Domain needs to give Ownership or Assignment its own attributes or lifecycle, it may model it as a Relationship Entity (see [Entity.md](Entity.md), Section 7).
 
 ------------------------------------------------------------------------
 

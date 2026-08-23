@@ -1,6 +1,6 @@
 # Entity
 
-**Version:** 2.0
+**Version:** 2.1
 **Status:** Approved
 **Module:** Core
 
@@ -95,7 +95,45 @@ Core examples:
 
 Domain-specific entities belong to their respective Domains.
 
-## 13. Relationship with the Core
+## 13. Optional Versioning Pattern
+Core allows — but never requires — a Domain to represent stable conceptual identity separately from versioned definitions or configurations, when the Domain's business meaning genuinely requires distinguishing them.
+
+Illustrative example only, not a Core concept:
+
+```text
+Recipe
+→ Recipe Version 1
+→ Recipe Version 2
+```
+
+`Recipe` above is illustrative; it does not make Recipe a Core concept.
+
+Safeguards:
+- Not every Entity must be versioned.
+- Not every version must itself be a persistent Entity.
+- Core does not prescribe version tables, schema fields, or storage mechanisms.
+- Entity identity, temporal validity (Section 14), versioned definition, and audit history are four distinct concerns and must not be merged into one.
+
+## 14. Temporal Semantics
+An Entity, its attributes, its relationships, and any versioned definition (Section 13) may have temporal validity: they may be true, applicable or in effect only during a particular period, and may change over time.
+
+Where a Domain or Runtime requires it, RF-One should be able to reason about:
+- what was true;
+- what is true;
+- what is expected or intended to become true;
+- when a given definition or relationship applied;
+- the historical trajectory of an Entity.
+
+This aligns with Temporal Coherence — see [ConceptualArchitecture/04_Temporal_Coherence_and_Evolution.md](ConceptualArchitecture/04_Temporal_Coherence_and_Evolution.md), which reasons about accumulated Decisions and Outcomes over time; this section is the Entity-level counterpart — the capacity to represent that a definition or relationship itself had a period of validity.
+
+Core does not mandate specific fields (for example `EffectiveFrom` / `EffectiveTo`) or any other database representation, and does not imply that every Entity shares the same lifecycle or temporal granularity. Temporal validity, versioned definition (Section 13), and audit history remain distinct concerns and must not be merged: a version identifies *which* definition applied; temporal validity identifies *when* it applied; audit history records *what changed and why*.
+
+## 15. Specialization Extends Rather Than Erases Identity
+A specialized concept may extend a more general concept — adding Constraints, Relationships, attributes, rules, behavior or Domain semantics — without silently replacing or erasing the general concept's meaning and identity. A specialization should not redefine its parent so aggressively that the parent ceases to mean the same thing.
+
+This is a conceptual modeling principle, not an object-oriented programming rule: it does not force inheritance as a software implementation pattern. Composition (Section 10) remains the preferred way to express business behavior; specialization is appropriate only when it represents a genuine business distinction rather than a shortcut around composition.
+
+## 16. Relationship with the Core
 Entity is the foundation of the RF-ONE Core.
 
 Entities:

@@ -2,7 +2,9 @@
 
 ## Purpose
 
-`07 Tasks/` holds approved work instructions, implementation history, Product Owner decisions, execution reports, and the legacy-reconciliation backlog.
+`07 Tasks/` holds the **active** task workspace: currently active task specifications, active execution reports awaiting Product Owner review/commit, and active backlog/planning material.
+
+Once a task's outcome has been reviewed and committed, its specification and report are moved out of this active workspace into `90 Archive/Task History/` — see below.
 
 ---
 
@@ -18,14 +20,15 @@ A historical Task may legitimately contain paths or claims that were true when i
 
 | Location | Purpose |
 |---|---|
-| `07 Tasks/*.md` | Task specifications themselves (e.g. `TASK_CORE_001_...md`), kept directly under `07 Tasks/`. |
-| `07 Tasks/Reports/` | Execution reports produced after completing a Task (e.g. `TASK_CORE_005_REPORT.md`). |
+| `07 Tasks/*.md` | Currently active task specifications (e.g. `TASK_CORE_011_...md`), kept directly under `07 Tasks/`. |
+| `07 Tasks/Reports/` | Active execution reports, produced after completing a task and awaiting Product Owner review/commit (e.g. `TASK_CORE_011_REPORT.md`). |
 | `07 Tasks/Backlog/` | Binding, Product-Owner-approved backlogs that track follow-up work without themselves being canonical architecture (e.g. `LEGACY_KNOWLEDGE_RECONCILIATION_BACKLOG.md`). |
 
 # What belongs here
 
-- Task specifications, their execution reports, and approved backlogs.
+- Currently active task specifications, their active execution reports, and approved backlogs.
 
 # What does not belong here
 
 - Canonical architecture itself — a Task may propose or record a change, but the change lives in `00 Core/`, `01 Domains/`, `02 Products/` or `09 Strategy/` once approved and implemented.
+- Completed, reviewed/committed historical task specifications and reports — those are archived under `90 Archive/Task History/` (see `90 Archive/Task History/README.md`), which is historical/non-authoritative provenance material.

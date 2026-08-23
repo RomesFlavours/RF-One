@@ -35,7 +35,17 @@ A Domain must use only the Core concepts it actually requires — a concept exis
 
 | Domain | Description |
 |---|---|
-| `Restaurant/` | Business knowledge required to model, operate and continuously improve a restaurant. See `Restaurant/README.md`. |
+| `Restaurant/` | Business knowledge required to model, operate and continuously improve a restaurant. See `Restaurant/README.md` and `Restaurant/Roadmap.md`. |
 | `_Shared/` | Domain-independent-but-not-universal shared knowledge reused across multiple Domains (currently `Environment/`). |
 
 A Domain should not automatically equal a Product. Future Domains (e.g. Workforce, Selection, Training) are anticipated by `CLAUDE.md` but are not created by this migration.
+
+---
+
+# Business capability is not automatically a Domain
+
+RF-One's commercial ambition may span many business capability areas — financial performance, sales, marketing, personnel, and more. A capability or coverage area existing in a historical planning taxonomy, in `CLAUDE.md`'s Domain examples, or in commercial strategy does **not** by itself make it a modern architectural Domain.
+
+The historical `Knowledge Domains` taxonomy inherited from the legacy repository (`90 Archive/Legacy Repository/X00 Knowledge Repository/05 Knowledge Domains/README.md`) was a business knowledge/capability/coverage planning list, not the current architectural definition of Domain. It has been reconciled and classified area-by-area in `09 Strategy/04_Business_Capability_Coverage.md`; some of its areas belong to Restaurant (see `Restaurant/Roadmap.md`), some are Shared Domain candidates (not yet created), and others are Strategy, Product, or Software capability rather than Domain knowledge at all.
+
+`_Shared/` may host reusable business/environment knowledge once a concept is shown to genuinely apply across multiple Domains, not merely because it was listed in a legacy taxonomy or seems generically useful.
