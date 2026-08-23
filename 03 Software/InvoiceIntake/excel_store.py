@@ -3,7 +3,7 @@ Persistence layer: appends reviewed Purchase Documents and Purchase Lines to
 a single Excel workbook, so the data can be opened and checked directly
 (this is a prototype -- Excel stands in for a real database for now).
 
-Column names follow 00 Knowledge Repository/Domains/Restaurant/Purchasing/DataDictionary.md
+Column names follow 01 Domains/Restaurant/Purchasing/DataDictionary.md
 for the Purchase Document and Purchase Line entities. A few practical columns
 (SourceFile, RawText) are added for traceability, consistent with the Core
 Traceability principle. Cost-normalization columns (NormalizedQuantity,

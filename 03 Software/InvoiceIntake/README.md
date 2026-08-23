@@ -2,14 +2,14 @@
 
 Piccola web app locale per validare il flusso: carichi una fattura (foto o PDF), l'app la legge, tu correggi/completi i dati in una schermata di revisione, e alla conferma vengono aggiunti a un file Excel (`data/PurchaseDocuments.xlsx`), con due fogli: `PurchaseDocuments` e `PurchaseLines`.
 
-Le colonne seguono lo schema di `Purchasing/DataDictionary.md` nella Knowledge Repository (Purchase Document / Purchase Line), con qualche colonna extra per tracciabilità (`SourceFile`, `CreatedAt`).
+Le colonne seguono lo schema di `01 Domains/Restaurant/Purchasing/DataDictionary.md` (Purchase Document / Purchase Line), con qualche colonna extra per tracciabilità (`SourceFile`, `CreatedAt`).
 
 ## Come funziona la lettura
 
 - **PDF con testo digitale** (fatture generate al computer): il testo viene estratto direttamente, in modo pulito e affidabile.
 - **Foto/scansioni** (jpg, png, PDF scansionati): viene usato OCR locale (Tesseract), gratuito e offline. Su foto storte, sbiadite o con tabelle complesse la qualità di lettura è limitata — è normale dover correggere diversi campi a mano nella schermata di revisione. Per questo la revisione è un passaggio obbligato, non opzionale: coerente con il principio "human validation always prevails" del modulo Purchasing.
 
-Testato con i due esempi nella Knowledge Repository: la fattura PDF digitale (`Invoice 6855.pdf`) viene letta quasi perfettamente (fornitore, numero, data, totale, tutte le righe); le foto scattate al telefono vengono lette solo parzialmente e richiedono correzioni manuali.
+Testato con i due esempi in `01 Domains/Restaurant/Assets/ReferenceDocuments/`: la fattura PDF digitale (`Invoice 6855.pdf`) viene letta quasi perfettamente (fornitore, numero, data, totale, tutte le righe); le foto scattate al telefono vengono lette solo parzialmente e richiedono correzioni manuali.
 
 ## Requisiti
 
@@ -44,5 +44,5 @@ Le immagini/PDF caricati restano salvati in `uploads/` per tracciabilità.
 ## Limiti noti di questo prototipo
 
 - Il parsing delle righe (descrizione/quantità/prezzo/importo) è basato su euristiche ed espressioni regolari, non su un modello AI: funziona bene su testo pulito, meno su OCR rumoroso.
-- Non fa ancora normalizzazione in grammi/costo per grammo né mapping automatico verso gli Ingredienti — è il passo successivo naturale, coerente con `Purchasing/DataDictionary.md`.
+- Non fa ancora normalizzazione in grammi/costo per grammo né mapping automatico verso gli Ingredienti — è il passo successivo naturale, coerente con `01 Domains/Restaurant/Purchasing/DataDictionary.md`.
 - Un solo utente alla volta (nessuna gestione concorrenza sul file Excel).

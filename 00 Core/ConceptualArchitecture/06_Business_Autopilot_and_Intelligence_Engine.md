@@ -128,4 +128,5 @@ RF-One's proprietary value is expected to reside primarily in:
 - autonomy logic;
 - learning across time.
 
-Use external commodity services where appropriate. Do not design RF-One around unnecessary reinvention of commodity technology (see [../../../CLAUDE.md](../../../../CLAUDE.md), "External Technology").
+Use external commodity services where appropriate. Do not design RF-One around unnecessary reinvention of commodity technology (see [../../CLAUDE.md](../../CLAUDE.md), "External Technology").
+

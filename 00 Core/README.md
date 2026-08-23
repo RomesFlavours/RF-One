@@ -10,6 +10,22 @@ The Core is independent from any specific business domain.
 
 ---
 
+# Authority
+
+`00 Core/` holds the **highest canonical authority** in the repository for universal RF-One ontology, conceptual architecture, reasoning principles, epistemic principles, and domain-independent architecture.
+
+Core must not contain Restaurant-specific (or any other single-Domain) business rules, and must not contain RF-One's own commercial strategy as a company — those belong to `01 Domains/` and `09 Strategy/` respectively.
+
+Relationship to the other layers: **Core ≠ Domain ≠ Product ≠ Runtime**.
+
+- `01 Domains/` applies and specializes Core concepts for a specific field; it does not redefine them.
+- `02 Products/` combines Core capabilities and Domains into commercial offerings; it does not redefine Core or Domain semantics.
+- `03 Software/` is authoritative for actual runtime behavior, but not for the conceptual meaning of Core/Domain concepts.
+
+A concept existing in the Core does not imply that every Domain must use it, that every implementation must collect data for it, or that every Product must expose it — see `CLAUDE.md`.
+
+---
+
 # Scope
 
 The Core defines:
@@ -49,6 +65,9 @@ The Core ensures that every RF-One implementation:
 | Goal.md | Defines the concept of a Goal. |
 | Process.md | Defines the concept of a Business Process. |
 | Relationship.md | Defines how business concepts relate to each other. |
+| Corporate.md | Defines the highest organizational Entity (governance, ownership, strategy). |
+| Brand.md | Defines the commercial identity through which a Corporate presents itself to the market. |
+| Operational Unit.md | Defines the fundamental operational Entity responsible for executing business operations. |
 | OperationalArea.md | Defines how business capabilities are logically organized. |
 | RF-ONE Core Principles.md | Defines the fundamental principles governing the evolution of RF-One. |
 | Core Evolution.md | Records the history and process of Core evolution. |
