@@ -133,6 +133,8 @@ RF-ONE exists to help entrepreneurs make the best possible decisions
 using all available knowledge while continuously generating new business
 knowledge.
 
+Within explicitly delegated authority, RF-ONE may also execute and continuously correct course, not only recommend — operating as a Business Autopilot under human command. This does not remove the importance of human strategic control: the Subject retains sovereignty over direction, Goals, authority boundaries and override at all times. See [ConceptualArchitecture/06_Business_Autopilot_and_Intelligence_Engine.md](ConceptualArchitecture/06_Business_Autopilot_and_Intelligence_Engine.md) and [ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md](ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md).
+
 ------------------------------------------------------------------------
 
 # Design Philosophy

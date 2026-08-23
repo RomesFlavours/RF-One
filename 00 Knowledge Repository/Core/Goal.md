@@ -1,8 +1,10 @@
 # Goal
 
-**Version:** 2.0
-**Status:** Approved
+**Version:** 3.0
+**Status:** Approved (Core 2.0)
 **Module:** Core
+
+> Reconciled with the RF-One Core Conceptual Architecture. See [ConceptualArchitecture/02_Desire_Goal_and_Reality_Check.md](ConceptualArchitecture/02_Desire_Goal_and_Reality_Check.md) for the full conceptual treatment of Desire, Reality Check and Goal.
 
 ---
 
@@ -20,9 +22,15 @@ It never defines **how**, **who**, or **with which resources** the outcome is ob
 
 A Goal represents a business outcome independently from its implementation.
 
-A Goal exists only when at least one Process has been defined to pursue it.
+A Goal is a sufficiently clarified and confirmed representation of a Desire — something the Subject wants — that can be treated as pursuable/actionable within understood Reality:
 
-A desired outcome without an associated Process is a **Desire**, not a Goal.
+```text
+Desire → Clarification / Reality Check → Confirmed Desire → Goal → Process
+```
+
+**A Goal does not require a Process to already exist.** A Process supports the pursuit of a Goal; it is not the ontological precondition for the Goal to exist. This supersedes the earlier rule that a Goal exists only once a Process has been defined for it.
+
+A **Desire** is something the Subject wants that has not yet been sufficiently clarified and confirmed to be treated as pursuable within understood Reality — including a Desire for which no Process is currently known. A Desire remains valid even when it cannot currently become a Goal; see [ConceptualArchitecture/02_Desire_Goal_and_Reality_Check.md](ConceptualArchitecture/02_Desire_Goal_and_Reality_Check.md).
 
 ---
 

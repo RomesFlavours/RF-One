@@ -10,9 +10,11 @@ Each concept has a single business meaning and shall be interpreted consistently
 
 # Artificial Intelligence (AI)
 
-A software component that supports business activities through analysis, recognition, prediction or suggestions.
+A software component that supports business activities through analysis, recognition, prediction, suggestions, and — within explicitly delegated authority — Decisions and Actions.
 
-Artificial Intelligence assists the Domain but never owns business decisions.
+Artificial Intelligence assists the Domain. RF-One may make and execute business decisions within delegated authority, but the Subject retains ultimate strategic sovereignty, override authority, and control over the boundaries of delegation. See [ConceptualArchitecture/06_Business_Autopilot_and_Intelligence_Engine.md](ConceptualArchitecture/06_Business_Autopilot_and_Intelligence_Engine.md).
+
+RF-One's Core Conceptual Architecture (see [ConceptualArchitecture/07_Core_Glossary.md](ConceptualArchitecture/07_Core_Glossary.md)) defines a further set of canonical terms — Subject, Reality, Desire, Goal, Decision, Action, Outcome, Learning, and others — that specialize and extend this glossary. This document remains canonical for the terms defined below; it does not duplicate those definitions.
 
 ---
 

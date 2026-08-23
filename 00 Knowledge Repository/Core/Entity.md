@@ -83,6 +83,8 @@ The following are not Entities:
 
 They are properties, results or derived concepts.
 
+`Decision` is a first-class concept of the RF-One Core (see [ConceptualArchitecture/03_Decision_Action_Outcome_Learning.md](ConceptualArchitecture/03_Decision_Action_Outcome_Learning.md)), but "first-class Core concept" does not mean "Entity." Not being modeled as an Entity here does not diminish Decision's conceptual status — it means Decision does not, by default, carry Entity identity semantics (a permanent identifier, an independent lifecycle). Whether a specific Decision instance is persisted (as a Decision Record) or related over time (through Decision Memory) is a separate, Domain/Runtime-level question, not something to be inferred automatically from Entity status.
+
 ## 12. Examples
 Core examples:
 - Corporate

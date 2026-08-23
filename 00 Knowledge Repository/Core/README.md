@@ -51,6 +51,8 @@ The Core ensures that every RF-One implementation:
 | Relationship.md | Defines how business concepts relate to each other. |
 | OperationalArea.md | Defines how business capabilities are logically organized. |
 | RF-ONE Core Principles.md | Defines the fundamental principles governing the evolution of RF-One. |
+| Core Evolution.md | Records the history and process of Core evolution. |
+| ConceptualArchitecture/ | The canonical RF-One Core Conceptual Architecture: Subject, Reality, Desire, Goal, Reality Check, Decision, Action, Outcome, Learning, Temporal Coherence, Epistemic Boundary, Subject Sovereignty, Business Autopilot and Intelligence Engine. Start at [ConceptualArchitecture/00_RF-One_Core_Vision.md](ConceptualArchitecture/00_RF-One_Core_Vision.md). |
 
 ---
 

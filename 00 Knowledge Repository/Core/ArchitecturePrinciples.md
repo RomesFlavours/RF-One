@@ -60,7 +60,9 @@ Knowledge is never duplicated.
 
 Business knowledge belongs to the organization.
 
-Artificial Intelligence supports human decision making but never owns business decisions.
+RF-One may make and execute business decisions within explicitly delegated authority. The Subject retains ultimate strategic sovereignty, override authority, and control over the boundaries of delegation. See [ConceptualArchitecture/06_Business_Autopilot_and_Intelligence_Engine.md](ConceptualArchitecture/06_Business_Autopilot_and_Intelligence_Engine.md) and [ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md](ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md).
+
+Human control does not imply continuous human operation. Within a Domain's configured authority boundaries — which may legitimately be "no delegation" for a given class of decision — RF-One may decide and act; outside those boundaries, it must escalate to the Subject.
 
 ---
 

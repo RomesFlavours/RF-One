@@ -71,6 +71,46 @@ Future Expected Impact:
 
 ---
 
+Version: Core 2.0
+
+Date: 2026-08-23
+
+Modified Entity:
+RF-ONE Core Principles, Goal, ArchitecturePrinciples (Human Authority), Glossary (Artificial Intelligence), Entity (Section 11), Relationship (Section 14) — plus a new canonical document set, `Core/ConceptualArchitecture/`.
+
+Reason:
+Approved product-direction review (TASK_CORE_001) established that RF-One models a Subject in relation to Reality, that a Subject is not assumed rational, that Desire is sovereign and distinct from Goal, that Reality Check/Clarification is continuous rather than a single stage, that Decision must be a first-class Core concept (without being automatically an Entity or automatically persisted), that RF-One reasons across time via Temporal Coherence, that RF-One must maintain an explicit Epistemic Boundary between knowledge states, that Subject Sovereignty coexists with operational autonomy, and that RF-One's commercial operating model is a Business Autopilot under human command acting within explicitly Delegated Authority via interchangeable Intelligence Engines. This superseded the prior absolute rule "AI never owns business decisions" and the prior rule that a Goal exists only once a Process has been defined.
+
+Concepts introduced:
+
+- Subject ↔ Reality
+- Desire sovereignty
+- continuous Reality Check
+- revised Desire → Goal semantics
+- Decision as first-class Core concept (Decision Record, Decision Memory)
+- Epistemic Boundary
+- Subject Sovereignty
+- Temporal Coherence
+- Business Autopilot
+- Delegated Authority
+- Intelligence Engine abstraction
+
+Impacted Domains:
+
+- Restaurant (Purchasing AI authority language reviewed; no contradiction requiring change was found — human-approval requirements there stand as legitimate Domain-level Delegated Authority = none configuration)
+
+Future Expected Impact:
+
+- Every future Domain that models Decisions, Desire/Goal formation, or AI/human authority boundaries.
+
+Compatibility Notes:
+
+- Core 1.0 documents (Entity, Process, Relationship, Goal, etc.) remain valid except where explicitly reconciled above.
+- "Decision is not an Entity" (Entity.md, Section 11) is preserved, not inverted; only the reason and cross-reference were clarified.
+- Legacy documents under `Old/X00 Knowledge Repository/` were not modified. Concepts recovered from `Old/06 Business Model/Desire.md` and `Old/06 Business Model/Decision.md` were incorporated into `Core/ConceptualArchitecture/02_Desire_Goal_and_Reality_Check.md` and `03_Decision_Action_Outcome_Learning.md` where compatible; their conflicting claims (Desire → Process → Goal ordering; Decision as pure non-persistent computation) were not carried forward.
+
+---
+
 # Design Principles
 
 - The Core Domain is extracted from real domains.

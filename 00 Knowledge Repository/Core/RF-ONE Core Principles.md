@@ -1,8 +1,10 @@
 # RF-ONE Core Principles
 
-**Document Version:** 5.0
-**Status:** Approved (Core 1.0 Freeze)
+**Document Version:** 6.0
+**Status:** Approved (Core 2.0)
 **Module:** Core
+
+> Core 2.0 extends Core 1.0 with the RF-One Core Conceptual Architecture — Subject ↔ Reality, Desire sovereignty, continuous Reality Check, Decision as a first-class Core concept, the Epistemic Boundary, Subject Sovereignty, Temporal Coherence, and the Business Autopilot / Delegated Authority / Intelligence Engine model. See [ConceptualArchitecture/00_RF-One_Core_Vision.md](ConceptualArchitecture/00_RF-One_Core_Vision.md) and [Core Evolution.md](Core%20Evolution.md). Principles 1–15 below remain in force unchanged; principles 16–19 are added by Core 2.0.
 
 # Purpose
 
@@ -35,6 +37,10 @@ Environment models contextual knowledge.
 13. Extensibility without breaking existing concepts.
 14. AI reasons about the Core but is not part of it.
 15. Facts are persisted; conclusions are inferred whenever possible.
+16. RF-One models a Subject in relation to Reality; Reality is never assumed complete, and the Subject is never assumed rational.
+17. A Desire is sovereign: it need not be rational, feasible or currently actionable to remain valid. A Goal is a clarified, confirmed Desire pursuable within understood Reality; it does not require a Process to already exist.
+18. Decision is a first-class Core concept. Core ontology is independent from Runtime persistence: a Decision is not automatically an Entity, and is not automatically persisted.
+19. RF-One may act as a Business Autopilot, deciding and acting within explicitly Delegated Authority, while the Subject retains ultimate sovereignty over direction, Goals, constraints and override. Human control does not imply continuous human operation.
 
 # Guiding Principle
 
