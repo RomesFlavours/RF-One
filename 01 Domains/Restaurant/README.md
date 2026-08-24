@@ -1,10 +1,10 @@
 # Restaurant Domain
 
-For current canonical coverage, placeholders/scaffolding, and planned knowledge areas, see [Roadmap.md](Roadmap.md). For the full business-capability classification (including areas that belong to Strategy, Shared Domain candidates, or Software rather than this Domain), see [../../09 Strategy/04_Business_Capability_Coverage.md](../../09%20Strategy/04_Business_Capability_Coverage.md).
+For current canonical coverage, placeholders/scaffolding, and planned knowledge areas, see [Roadmap.md](Roadmap.md). For the full business-capability classification (including areas that belong to Strategy, Shared Domain candidates, or Software rather than this Domain), see [../../09 Strategy/04_Business_Capability_Coverage.md](../../09%20Strategy/04_Business_Capability_Coverage.md). For how Restaurant relates to the transversal Domain Personnel Management (Workforce, Selection, Training, Performance, Personnel Decisions) and the remaining transversal Domain candidates (Customer Feedback, Review), see [../Domain Architecture.md](../Domain%20Architecture.md).
 
 ## Purpose
 
-The Restaurant Domain defines the business knowledge required to model, operate and continuously improve any restaurant.
+The Restaurant Domain defines the business knowledge required to model, operate and continuously improve any restaurant. Restaurant is primarily the **technical/operational Domain**: it owns restaurant-specific operations and technical knowledge, and it must not own a capability merely because that capability happens to be first used in a restaurant. Cross-industry (transversal) Domains consume Restaurant's technical knowledge as an input rather than duplicating it — see [../Domain Architecture.md](../Domain%20Architecture.md).
 
 Its objective is not to reproduce a traditional ERP.
 

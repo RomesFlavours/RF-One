@@ -6,6 +6,8 @@
 
 A Domain applies and, where necessary, specializes Core concepts (Subject, Reality, Desire, Goal, Decision, Entity, Relationship, Process, and others — see `00 Core/`) for a specific field, without redefining what those concepts mean.
 
+See [Domain Architecture.md](Domain%20Architecture.md) for the current cross-Domain conclusions on the Restaurant boundary, the transversal Domain **Personnel Management** (with modules Workforce, Selection, Training, Performance, Personnel Decisions), and the remaining transversal Domain candidates (Customer Feedback, Review).
+
 ---
 
 # Authority
@@ -36,9 +38,10 @@ A Domain must use only the Core concepts it actually requires — a concept exis
 | Domain | Description |
 |---|---|
 | `Restaurant/` | Business knowledge required to model, operate and continuously improve a restaurant. See `Restaurant/README.md` and `Restaurant/Roadmap.md`. |
+| `Personnel Management/` | Transversal Domain for managing people across industries, built on Core 2.0. Restaurant and other technical Domains are its application contexts, not its architectural owner. See `Personnel Management/README.md`. Its modules are Workforce, Selection, Training, Performance and Personnel Decisions; Selection is the only module documented in depth so far (`Personnel Management/Selection/README.md`, migrated from the former top-level `Selection/` Domain). |
 | `_Shared/` | Domain-independent-but-not-universal shared knowledge reused across multiple Domains (currently `Environment/`). |
 
-A Domain should not automatically equal a Product. Future Domains (e.g. Workforce, Selection, Training) are anticipated by `CLAUDE.md` but are not created by this migration.
+A Domain should not automatically equal a Product. Future transversal Domain candidates (e.g. Customer Feedback, Review) are anticipated by [Domain Architecture.md](Domain%20Architecture.md) but are not created by this migration.
 
 ---
 
