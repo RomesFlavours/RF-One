@@ -1,6 +1,6 @@
 # Restaurant Domain
 
-For current canonical coverage, placeholders/scaffolding, and planned knowledge areas, see [Roadmap.md](Roadmap.md). For the full business-capability classification (including areas that belong to Strategy, Shared Domain candidates, or Software rather than this Domain), see [../../09 Strategy/04_Business_Capability_Coverage.md](../../09%20Strategy/04_Business_Capability_Coverage.md). For how Restaurant relates to the transversal Domain Personnel Management (Workforce, Selection, Training, Performance, Personnel Decisions) and the remaining transversal Domain candidates (Customer Feedback, Review), see [../Domain Architecture.md](../Domain%20Architecture.md).
+For current canonical coverage, placeholders/scaffolding, and planned knowledge areas, see [Roadmap.md](Roadmap.md). For the full business-capability classification (including areas that belong to Strategy, Shared Domain candidates, or Software rather than this Domain), see [../../09 Strategy/04_Business_Capability_Coverage.md](../../09%20Strategy/04_Business_Capability_Coverage.md). For how Restaurant relates to the transversal Domain Personnel Management (Workforce, Selection, Training, Performance, Personnel Decisions) and the remaining transversal Domain candidates (Customer Feedback, Review), see [../Domain Architecture.md](../Domain%20Architecture.md). For the canonical, configuration-independent semantics of Restaurant/Operational Area/Physical Area/Restaurant Role/Employee Assignment — the Domain-vs-Profile-vs-Instance distinction and the Domain's semantic invariants — see [Restaurant Semantic Model.md](Restaurant%20Semantic%20Model.md).
 
 ## Purpose
 
@@ -84,6 +84,8 @@ Human validation has priority over AI assumptions.
 # Current Modules
 
 - Purchasing
+- Organization — Restaurant Profile, Operational Area, Physical Area, Restaurant Role, temporal Employee Assignment (see [Organization/README.md](Organization/README.md))
+- Tips — post-hoc Tip allocation over recorded Payment Tips (see [Tips/README.md](Tips/README.md))
 - Recipes (planned)
 - Inventory (planned)
 - Production (planned)

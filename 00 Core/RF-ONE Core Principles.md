@@ -1,10 +1,10 @@
 # RF-ONE Core Principles
 
-**Document Version:** 6.0
+**Document Version:** 6.1
 **Status:** Approved (Core 2.0)
 **Module:** Core
 
-> Core 2.0 extends Core 1.0 with the RF-One Core Conceptual Architecture — Subject ↔ Reality, Desire sovereignty, continuous Reality Check, Decision as a first-class Core concept, the Epistemic Boundary, Subject Sovereignty, Temporal Coherence, and the Business Autopilot / Delegated Authority / Intelligence Engine model. See [ConceptualArchitecture/00_RF-One_Core_Vision.md](ConceptualArchitecture/00_RF-One_Core_Vision.md) and [Core Evolution.md](Core%20Evolution.md). Principles 1–15 below remain in force unchanged; principles 16–19 are added by Core 2.0.
+> Core 2.0 extends Core 1.0 with the RF-One Core Conceptual Architecture — Subject ↔ Reality, Desire sovereignty, continuous Reality Check, Decision as a first-class Core concept, the Epistemic Boundary, Subject Sovereignty, Temporal Coherence, the Business Autopilot / Delegated Authority / Intelligence Engine model, and Net/Retained Outcome and lawful structural optimization. See [ConceptualArchitecture/00_RF-One_Core_Vision.md](ConceptualArchitecture/00_RF-One_Core_Vision.md) and [Core Evolution.md](Core%20Evolution.md). Principles 1–15 below remain in force unchanged; principles 16–19 were added by Core 2.0 (TASK_CORE_001); principle 20 was added by Core 2.0 (TASK_CORE_013).
 
 # Purpose
 
@@ -41,6 +41,7 @@ Environment models contextual knowledge.
 17. A Desire is sovereign: it need not be rational, feasible or currently actionable to remain valid. A Goal is a clarified, confirmed Desire pursuable within understood Reality; it does not require a Process to already exist.
 18. Decision is a first-class Core concept. Core ontology is independent from Runtime persistence: a Decision is not automatically an Entity, and is not automatically persisted.
 19. RF-One may act as a Business Autopilot, deciding and acting within explicitly Delegated Authority, while the Subject retains ultimate sovereignty over direction, Goals, constraints and override. Human control does not imply continuous human operation.
+20. RF-One should reason about a Subject's Net/Retained Outcome after External Obligations/Claims, not merely a nominal Gross Outcome, and may recognize that some Constraints are not immutable, surfacing lawful Constraint Shaping and Counterfactual Structural Comparison. Lawful optimization is never equivalent to evasion, fraud, misrepresentation, concealment, false reporting or sham transactions.
 
 # Guiding Principle
 

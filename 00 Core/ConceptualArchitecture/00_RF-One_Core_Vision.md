@@ -17,6 +17,7 @@ This document is the entry point of the RF-One Core Conceptual Architecture. It 
 - [05_Epistemic_Boundary_and_Subject_Sovereignty.md](05_Epistemic_Boundary_and_Subject_Sovereignty.md)
 - [06_Business_Autopilot_and_Intelligence_Engine.md](06_Business_Autopilot_and_Intelligence_Engine.md)
 - [07_Core_Glossary.md](07_Core_Glossary.md)
+- [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md)
 - See also [../RF-ONE Core Principles.md](../RF-ONE%20Core%20Principles.md) for the immutable layer principles this vision specializes.
 
 ---
@@ -60,6 +61,8 @@ RF-One helps expose what the Subject may not see, or may not want to see, about 
 
 RF-One supports Decisions, Actions, Outcomes and Learning, and maintains coherence across time. See [03_Decision_Action_Outcome_Learning.md](03_Decision_Action_Outcome_Learning.md) and [04_Temporal_Coherence_and_Evolution.md](04_Temporal_Coherence_and_Evolution.md).
 
+Because Reality may impose external obligations on an Outcome, and because a Subject may sometimes lawfully change its future relationship to Reality, RF-One also reasons about Net / Retained Outcome and lawful structural optimization. See [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md).
+
 RF-One is intended to evolve together with the Subject and the business, not to impose a fixed model of either.
 
 RF-One may use external Intelligence Engines to reason, but RF-One is architecturally distinct from any specific engine. See [06_Business_Autopilot_and_Intelligence_Engine.md](06_Business_Autopilot_and_Intelligence_Engine.md).
@@ -96,5 +99,6 @@ The Core does not encode pricing or commercial strategy — those belong to Prod
 | [05_Epistemic_Boundary_and_Subject_Sovereignty.md](05_Epistemic_Boundary_and_Subject_Sovereignty.md) | What may RF-One claim to know, and who has final authority? |
 | [06_Business_Autopilot_and_Intelligence_Engine.md](06_Business_Autopilot_and_Intelligence_Engine.md) | How autonomous may RF-One be, and what powers its reasoning? |
 | [07_Core_Glossary.md](07_Core_Glossary.md) | What does each term precisely mean? |
+| [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md) | How does RF-One reason about what a Subject actually retains, and about lawful ways to change future constraints? |
 
 This vision, and the documents that specialize it, are the canonical conceptual architecture for the concepts they define. Domain and Product documentation must remain consistent with them.

@@ -13,6 +13,7 @@
 - [02_Desire_Goal_and_Reality_Check.md](02_Desire_Goal_and_Reality_Check.md)
 - [06_Business_Autopilot_and_Intelligence_Engine.md](06_Business_Autopilot_and_Intelligence_Engine.md)
 - [07_Core_Glossary.md](07_Core_Glossary.md)
+- [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md) — applies this Epistemic Boundary to obligation and structural reasoning
 
 ---
 
@@ -43,6 +44,8 @@ RF-One must never silently convert:
 - lack of knowledge into impossibility.
 
 That last point connects directly to Reality Check (see [02_Desire_Goal_and_Reality_Check.md](02_Desire_Goal_and_Reality_Check.md)): "I do not know how" is an epistemic state (Unknown / insufficient knowledge), not a Fact that something "cannot be done."
+
+For the same reason, a legal, tax or regulatory interpretation must never be silently promoted to Fact: it is ordinarily a Belief, Inference or Hypothesis about how a rule applies to a Subject's facts and circumstances, until confirmed by a competent authority or otherwise established. See [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md), Section 7, for how this applies to obligation and structural reasoning.
 
 RF-One should represent confidence/uncertainty where appropriate, without this document requiring a specific Runtime implementation (e.g. a particular scoring scheme). How confidence is represented is a Domain/Runtime decision; that it must be represented, and that it must not collapse into false certainty, is a Core requirement.
 

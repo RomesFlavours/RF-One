@@ -147,6 +147,40 @@ Compatibility Notes:
 
 ---
 
+Version: Core 2.0 (TASK_CORE_013)
+
+Date: 2026-08-26
+
+Modified Entity:
+`RF-ONE Core Principles.md` (Principle 20), a new canonical document `ConceptualArchitecture/08_Net_Outcome_and_Structural_Optimization.md`, and cross-reference/consistency updates to `ConceptualArchitecture/00_RF-One_Core_Vision.md`, `03_Decision_Action_Outcome_Learning.md`, `04_Temporal_Coherence_and_Evolution.md`, `05_Epistemic_Boundary_and_Subject_Sovereignty.md`, `07_Core_Glossary.md`, and `README.md`.
+
+Reason:
+TASK_CORE_013 made explicit that a Subject may care about the Net/Retained Outcome of an Action, not merely its Gross Outcome, that Reality may impose External Obligations/Claims that reduce or condition what is retained, that some Constraints are not immutable and may be lawfully changed through Constraint Shaping, and that RF-One should be able to perform Counterfactual Structural Comparison between alternative structures. It established the boundary between lawful optimization and evasion/fraud/misrepresentation/concealment/false reporting/sham transactions, and integrated all of this with the existing Epistemic Boundary (legal/tax interpretations are never silently Fact) and Temporal Coherence (obligation/structural rules are jurisdiction- and date-dependent, never timeless). Taxation was explicitly kept out of Core as a domain-specific application of this general capability.
+
+Concepts introduced:
+
+- Gross Outcome vs Net / Retained Outcome
+- External Obligations / Claims
+- Constraint Shaping
+- Counterfactual Structural Comparison
+- Lawful Optimization boundary (vs evasion, fraud, misrepresentation, concealment, false reporting, sham transactions)
+
+Impacted Domains:
+
+- None modified. This capability is designed for future consumption by a transversal Taxation Domain and by any Domain reasoning about external claims on Outcome; no existing Domain was touched.
+
+Future Expected Impact:
+
+- Any future Domain reasoning about obligations, structural alternatives, or after-obligation value (e.g. a future Taxation Domain, regulatory compliance Domains, contractual obligation management).
+
+Compatibility Notes:
+
+- All prior Core 2.0 content is preserved; no existing definition was reversed. Changes are additive: a new document plus small cross-referencing additions to existing documents.
+- No tax rates, deductions, credits, depreciation rules, entity-specific tax rules, filing obligations, tax forms or a fixed tax-jurisdiction taxonomy were introduced into Core — see `ConceptualArchitecture/08_Net_Outcome_and_Structural_Optimization.md`, Section 11.
+- No Domain, Product or Software file was modified.
+
+---
+
 # Design Principles
 
 - The Core Domain is extracted from real domains.

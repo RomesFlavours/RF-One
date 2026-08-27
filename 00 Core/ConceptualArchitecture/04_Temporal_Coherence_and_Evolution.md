@@ -12,6 +12,7 @@
 - [03_Decision_Action_Outcome_Learning.md](03_Decision_Action_Outcome_Learning.md)
 - [05_Epistemic_Boundary_and_Subject_Sovereignty.md](05_Epistemic_Boundary_and_Subject_Sovereignty.md)
 - [07_Core_Glossary.md](07_Core_Glossary.md)
+- [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md) — rules governing obligations and structures are likewise temporally and contextually situated, not timeless
 
 ---
 

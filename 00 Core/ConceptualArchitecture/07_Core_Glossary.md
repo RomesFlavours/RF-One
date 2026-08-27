@@ -8,7 +8,7 @@
 
 ## Related documents
 
-- [00_RF-One_Core_Vision.md](00_RF-One_Core_Vision.md) through [06_Business_Autopilot_and_Intelligence_Engine.md](06_Business_Autopilot_and_Intelligence_Engine.md) — full definitions and context for every term below.
+- [00_RF-One_Core_Vision.md](00_RF-One_Core_Vision.md) through [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md) — full definitions and context for every term below.
 - [../Glossary.md](../Glossary.md) — canonical glossary for pre-existing Core terms (Entity, Process, Relationship, Module, Business Rule, etc.). This document does not redefine those terms; see the cross-references below.
 
 ---
@@ -80,3 +80,15 @@ This glossary provides concise canonical definitions for the concepts introduced
 **Product** — A commercial application built using one or more Domains, designed to create measurable value for its users. See [00_RF-One_Core_Vision.md](00_RF-One_Core_Vision.md).
 
 **Runtime** — Where actual data, inference, execution, recommendations and actions occur; determines how Core and Domain concepts are instantiated, observed, stored and executed. See [00_RF-One_Core_Vision.md](00_RF-One_Core_Vision.md).
+
+**Gross Outcome** — An Outcome as directly produced by an Action, before any External Obligations / Claims are applied. See [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md).
+
+**Net / Retained Outcome** — What the Subject actually retains from a Gross Outcome after relevant External Obligations / Claims. Does not imply every Goal is economic; applies only where the Outcome in question is in fact subject to such claims. See [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md).
+
+**External Obligation / Claim** — Something Reality imposes that reduces, redirects, conditions or delays value the Subject would otherwise retain from a Gross Outcome (e.g. taxes, fees, contractual payments, debt service) — illustrative, not a fixed Core taxonomy. See [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md).
+
+**Constraint Shaping** — A Subject's lawful Decisions and Actions that change its future relationship to Reality, so that different future constraints, obligations, authority, risks, opportunities or consequences apply. Distinct from violating, concealing or ignoring a Constraint. Does not imply every Constraint is mutable. See [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md).
+
+**Counterfactual Structural Comparison** — Comparing a Current Structure against alternative structures using expected Gross/Net Outcome, cost, risk, uncertainty, reversibility, option value, time horizon, flexibility and compliance burden, without collapsing the comparison into a universal scalar score. See [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md).
+
+**Lawful Optimization** — Pursuing Constraint Shaping and Counterfactual Structural Comparison within the law, as distinct from evasion, fraud, misrepresentation, concealment, false reporting or sham transactions, which misstate or conceal the Subject's actual relationship to Reality rather than genuinely changing it. See [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md).

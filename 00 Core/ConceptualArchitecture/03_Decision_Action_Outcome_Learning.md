@@ -12,6 +12,7 @@
 - [02_Desire_Goal_and_Reality_Check.md](02_Desire_Goal_and_Reality_Check.md)
 - [04_Temporal_Coherence_and_Evolution.md](04_Temporal_Coherence_and_Evolution.md)
 - [07_Core_Glossary.md](07_Core_Glossary.md)
+- [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md) — Gross vs Net/Retained Outcome and lawful structural optimization
 - See also [../Entity.md](../Entity.md) and [../Process.md](../Process.md).
 
 ---
@@ -100,6 +101,8 @@ An Action is what actually happens in Reality as a result of a Decision. Action 
 **Outcome** represents what actually happens as a result of an Action, as observed in Reality.
 
 An Outcome is not automatically the same as what was expected at the time of the Decision — the comparison between expectation and Outcome is precisely what produces Learning.
+
+An Outcome may have layers: a **Gross Outcome** as directly produced by the Action, and — where Reality imposes External Obligations / Claims on it — a **Net / Retained Outcome** that the Subject actually keeps. This does not apply to every Outcome, and does not imply every Goal is economic. See [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md) for the full treatment.
 
 ---
 

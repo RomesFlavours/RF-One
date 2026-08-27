@@ -7,6 +7,12 @@
 
 ---
 
+# Note (TASK_RESTAURANT_001)
+
+The "Physical" Area Type below (Kitchen, Bar, Dining Room, Patio, Warehouse, Office, Receiving Area) describes a physical *place*, not a functional grouping. For Restaurant configuration and runtime purposes, that dimension is now represented by the distinct **Physical Area** concept, kept separate from **Operational Area** (a functional grouping such as FOH/BOH/BAR/MANAGEMENT). See `01 Domains/Restaurant/Organization/Operational Area.md` and `01 Domains/Restaurant/Organization/Physical Area.md` for the full distinction and the implemented schema. This document's Core-inherited content and approval status are otherwise unchanged.
+
+---
+
 # Purpose
 
 This document defines how the Core concept of **Operational Area** is specialized within the Restaurant Domain.

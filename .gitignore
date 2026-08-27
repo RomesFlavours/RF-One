@@ -1,3 +1,24 @@
 __pycache__/
 *.pyc
 .env
+
+# TASK_CLOVER_001 — raw Clover exports must stay local, never committed
+03 Software/Clover Data Explorer/data/raw/
+03 Software/Clover Data Explorer/data/reference_exports/
+03 Software/Clover Data Explorer/data/generated_exports/
+
+# TASK_DATABASE_001 — local RF-One Data Store database files must stay local, never committed
+03 Software/RF-One Data Store/data/*.db
+03 Software/RF-One Data Store/data/*.sqlite
+03 Software/RF-One Data Store/data/*.sqlite3
+03 Software/RF-One Data Store/data/*.bak
+
+# TASK_DATABASE_002 — local ingestion run artifacts, never committed
+03 Software/RF-One Data Store/data/last_ingestion_result.json
+
+# TASK_PAYROLL_001 — local payroll provider exports/prototypes must never be
+# committed anywhere in the repo (employee names, partial SSNs, bank refs).
+**/PayrollDetail*.xlsx
+**/*Payroll*Detail*.xls
+**/*.xlsb
+03 Software/RF-One Data Store/data/payroll_imports/
