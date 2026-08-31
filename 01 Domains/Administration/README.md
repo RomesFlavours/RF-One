@@ -24,7 +24,7 @@ Administration
 └── Payroll
 ```
 
-Payroll is the first module. Other administrative execution capabilities (e.g. a future Accounts Payable or Benefits Administration module) may be added later as siblings — Administration is not defined narrowly around Payroll alone, but only Payroll is documented and implemented by this task.
+Payroll is the first module. Other administrative execution capabilities (e.g. a future Accounts Payable or Benefits Administration module) may be added later as siblings — Administration is not defined narrowly around Payroll alone.
 
 `Personnel Cost.md` is not a module — it is the Administration-level canonical cost concept (`Total Employee Cost`, `Unallocated Personnel Cost`, `Total Personnel Cost`) that Payroll and any future Employee-attributable cost source (vehicle, benefit, equipment) both feed. It is documented at Domain level, not inside `Payroll/`, precisely because Employee cost is not exclusively a payroll concern.
 
@@ -32,6 +32,8 @@ Payroll is the first module. Other administrative execution capabilities (e.g. a
 |---|---|---|
 | [Personnel Cost.md](Personnel%20Cost.md) | What is the causally attributable, canonical economic cost of an Employee, and of Personnel overall? | Documented — TASK_LABOR_COST_001 |
 | [Payroll/](Payroll/README.md) | How is Employee compensation administratively processed, and what did it actually cost? | Documented — TASK_PAYROLL_001; repositioned under `Personnel Cost.md` by TASK_LABOR_COST_001 |
+
+**Supplier invoice ingestion is not an Administration module.** It is canonically owned by `01 Domains/Restaurant/Purchasing/` (Purchase Document / Purchase Line, merchandise/economic classification, Effective Product Cost). Administration consumes the derived economic result (category totals, document totals, reconciliation status) once Purchasing has classified and costed a purchase — see `01 Domains/Restaurant/Purchasing/BusinessRules.md`, "Purchasing Precedes Administration and Taxation." A previous version of this Domain defined a parallel `SupplierInvoice`/`InvoiceLine` model here (`Invoice Intake.md`, TASK_INVOICE_001); it was reconciled into, and superseded by, the Restaurant/Purchasing model by TASK_PURCHASING_001 — see `07 Tasks/Reports/TASK_PURCHASING_001_REPORT.md`.
 
 ---
 
@@ -61,7 +63,9 @@ Administration is built on the RF-One Core Conceptual Architecture and reuses it
 
 - [Personnel Cost.md](Personnel%20Cost.md) — the transversal Employee/Personnel cost concept
 - [Payroll/README.md](Payroll/README.md) — the Payroll module
+- [../Restaurant/Purchasing/README.md](../Restaurant/Purchasing/README.md), [../Restaurant/Purchasing/BusinessRules.md](../Restaurant/Purchasing/BusinessRules.md) — canonical Purchase Document/Purchase Line ingestion and cost model this Domain consumes downstream
 - [../Domain Architecture.md](../Domain%20Architecture.md) — cross-Domain conclusions for other transversal Domains
 - [../README.md](../README.md) — `01 Domains/` purpose and authority
 - [../Personnel Management/README.md](../Personnel%20Management/README.md), [../Taxation/README.md](../Taxation/README.md) — sibling transversal Domains
 - `07 Tasks/TASK_PAYROLL_001_Formalize_Administration_Payroll_Data_Model_ADP_Result_Import_and_Labor_Cost.md` — task that created this Domain
+- `07 Tasks/Reports/TASK_PURCHASING_001_REPORT.md` — task that removed the duplicate `Invoice Intake.md` model from this Domain

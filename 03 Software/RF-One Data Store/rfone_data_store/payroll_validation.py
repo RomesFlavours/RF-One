@@ -11,6 +11,7 @@ parsing/idempotency/mapping/correction behavior end-to-end.
 from __future__ import annotations
 
 import inspect
+import shutil
 import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -21,8 +22,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import models as m
+from .payroll import acquisition
 from .payroll import adp_importer as adp
 from .payroll import compensation, schedule
+from .payroll import payment_execution as pe
 from .payroll.labor_cost import compute_employee_labor_cost, compute_payroll_run_labor_cost
 
 UTC = timezone.utc
@@ -423,6 +426,169 @@ def _run_all_checks(session: Session, result: ValidationResult) -> None:
         not any(token in importer_source for token in ("import requests", "oauth", "http.client", "urllib.request")),
     )
 
+    # --- 29-34: Payment Execution Provider (TASK_PAYROLL_002) ---------------
+    adp_direct_deposit_run = m.PayrollRun(
+        restaurant_id=restaurant.id, source_system_id=source_adp.id, payroll_schedule_id=None,
+        period_start=None, period_end=None, pay_date=_dt(50), run_type="SPECIAL", status="COMPLETE",
+    )
+    session.add(adp_direct_deposit_run)
+    session.flush()
+    pe.assign_payment_execution_provider(adp_direct_deposit_run, pe.ADP_DIRECT_DEPOSIT)
+    result.check(
+        "29. ADP_DIRECT_DEPOSIT is representable as an explicit, auditable Payment Execution "
+        "Provider on a PayrollRun",
+        adp_direct_deposit_run.payment_execution_provider == "ADP_DIRECT_DEPOSIT",
+    )
+
+    mercury_run = m.PayrollRun(
+        restaurant_id=restaurant.id, source_system_id=source_adp.id, payroll_schedule_id=None,
+        period_start=None, period_end=None, pay_date=_dt(51), run_type="SPECIAL", status="COMPLETE",
+    )
+    session.add(mercury_run)
+    session.flush()
+    pe.assign_payment_execution_provider(mercury_run, pe.MERCURY_ACH)
+    result.check(
+        "30. A future MERCURY_ACH Payment Execution Provider is representable on the same "
+        "canonical PayrollRun model without any Payroll redesign, with no Mercury API ever "
+        "called (no 'mercury' network/API token appears anywhere in the payment_execution "
+        "module's source)",
+        mercury_run.payment_execution_provider == "MERCURY_ACH"
+        and "requests" not in inspect.getsource(pe)
+        and "http.client" not in inspect.getsource(pe),
+    )
+
+    try:
+        pe.assign_payment_execution_provider(adp_direct_deposit_run, pe.MERCURY_ACH)
+        double_payment_rejected = False
+    except ValueError:
+        double_payment_rejected = True
+    result.check(
+        "31. Double-payment prevention: reassigning an already-ADP-assigned PayrollRun's Payment "
+        "Execution Provider to MERCURY_ACH is rejected, and the original assignment is left intact",
+        double_payment_rejected and adp_direct_deposit_run.payment_execution_provider == "ADP_DIRECT_DEPOSIT",
+    )
+
+    pe.assign_payment_execution_provider(adp_direct_deposit_run, pe.ADP_DIRECT_DEPOSIT)
+    result.check(
+        "31b. Re-asserting the same already-assigned Payment Execution Provider is a safe no-op, "
+        "never raising",
+        adp_direct_deposit_run.payment_execution_provider == "ADP_DIRECT_DEPOSIT",
+    )
+
+    try:
+        pe.assign_payment_execution_provider(mercury_run, "WIRE_TRANSFER")
+        invalid_provider_rejected = False
+    except ValueError:
+        invalid_provider_rejected = True
+    result.check(
+        "32. An unsupported Payment Execution Provider value is rejected rather than silently "
+        "stored",
+        invalid_provider_rejected,
+    )
+
+    result.check(
+        "33. Payment execution status is derived, never fabricated: a PayrollRun with an assigned "
+        "Payment Execution Provider but no PayrollPaymentFact evidence yet reports UNKNOWN, not "
+        "'paid'",
+        pe.payment_execution_status(mercury_run) == pe.UNKNOWN
+        and not pe.has_payment_execution_evidence(mercury_run),
+    )
+
+    evidenced_result = m.EmployeePayrollResult(payroll_run_id=adp_direct_deposit_run.id, employee_id=employee_a.id)
+    session.add(evidenced_result)
+    session.flush()
+    session.add(
+        m.PayrollPaymentFact(
+            employee_payroll_result_id=evidenced_result.id, pay_date=_dt(50),
+            payment_method="Direct Deposit", payment_amount_minor=100000,
+        )
+    )
+    session.flush()
+    session.expire_all()
+    result.check(
+        "34. Once PayrollPaymentFact evidence exists for a Run, payment execution status "
+        "reflects EVIDENCED — derived from the provider's own reported facts, never a stored, "
+        "independently-settable status column",
+        pe.payment_execution_status(adp_direct_deposit_run) == pe.EVIDENCED,
+    )
+
+    # --- 35-39: PayrollExecutionConfiguration (TASK_PAYROLL_003) -----------
+    config_restaurant = m.Restaurant(name="Config Test Restaurant", default_currency="USD")
+    session.add(config_restaurant)
+    session.flush()
+
+    config_adp = m.PayrollExecutionConfiguration(
+        restaurant_id=config_restaurant.id, provider=pe.ADP_DIRECT_DEPOSIT,
+        valid_from=_dt(60), valid_to=None,
+    )
+    session.add(config_adp)
+    session.flush()
+    result.check(
+        "35. approved_provider_at derives ADP_DIRECT_DEPOSIT from a PayrollExecutionConfiguration "
+        "valid at the queried instant",
+        pe.approved_provider_at(session, restaurant_id=config_restaurant.id, at=_dt(70)) == pe.ADP_DIRECT_DEPOSIT,
+    )
+    result.check(
+        "35b. approved_provider_at returns None outside any configured window — never guesses a "
+        "provider for an unconfigured instant",
+        pe.approved_provider_at(session, restaurant_id=config_restaurant.id, at=_dt(55)) is None,
+    )
+
+    configured_run = m.PayrollRun(
+        restaurant_id=config_restaurant.id, source_system_id=source_adp.id, payroll_schedule_id=None,
+        period_start=None, period_end=None, pay_date=_dt(70), run_type="SPECIAL", status="COMPLETE",
+    )
+    session.add(configured_run)
+    session.flush()
+    derived = pe.approved_provider_at(session, restaurant_id=config_restaurant.id, at=configured_run.pay_date)
+    if derived is not None:
+        pe.assign_payment_execution_provider(configured_run, derived)
+    result.check(
+        "36. A PayrollExecutionConfiguration lets a Run derive the approved provider automatically "
+        "when not explicitly selected at import/acquisition time (Option B)",
+        configured_run.payment_execution_provider == "ADP_DIRECT_DEPOSIT",
+    )
+
+    explicit_run = m.PayrollRun(
+        restaurant_id=config_restaurant.id, source_system_id=source_adp.id, payroll_schedule_id=None,
+        period_start=None, period_end=None, pay_date=_dt(70), run_type="SPECIAL", status="COMPLETE",
+    )
+    session.add(explicit_run)
+    session.flush()
+    pe.assign_payment_execution_provider(explicit_run, pe.MERCURY_ACH)
+    result.check(
+        "37. An explicit Payment Execution Provider selection (Option A) is honored regardless of "
+        "what an approved configuration would otherwise derive — explicit selection is never "
+        "overridden by configuration",
+        explicit_run.payment_execution_provider == "MERCURY_ACH",
+    )
+
+    config_adp.valid_to = _dt(80)
+    config_mercury = m.PayrollExecutionConfiguration(
+        restaurant_id=config_restaurant.id, provider=pe.MERCURY_ACH,
+        valid_from=_dt(80), valid_to=None,
+    )
+    session.add(config_mercury)
+    session.flush()
+    later_run = m.PayrollRun(
+        restaurant_id=config_restaurant.id, source_system_id=source_adp.id, payroll_schedule_id=None,
+        period_start=None, period_end=None, pay_date=_dt(85), run_type="SPECIAL", status="COMPLETE",
+    )
+    session.add(later_run)
+    session.flush()
+    later_derived = pe.approved_provider_at(session, restaurant_id=config_restaurant.id, at=later_run.pay_date)
+    if later_derived is not None:
+        pe.assign_payment_execution_provider(later_run, later_derived)
+    result.check(
+        "38. Temporal correctness: a Run whose pay_date falls after the configuration changed to "
+        "MERCURY_ACH derives MERCURY_ACH, while the earlier, already-assigned "
+        "configured_run (pay_date under the prior ADP_DIRECT_DEPOSIT window) remains untouched — "
+        "changing the approved configuration never alters an already-created historical Run's "
+        "assignment",
+        later_run.payment_execution_provider == "MERCURY_ACH"
+        and configured_run.payment_execution_provider == "ADP_DIRECT_DEPOSIT",
+    )
+
     # --- 22-24: Import idempotency / ambiguous mapping / correction --------
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir) / "synthetic_payroll_detail.xlsx"
@@ -464,6 +630,15 @@ def _run_all_checks(session: Session, result: ValidationResult) -> None:
             and count_results_after_first == count_results_before + 2,  # Alice + Bob resolved; Chris ambiguous
         )
 
+        first_run = session.get(m.PayrollRun, persist_1.payroll_run_id)
+        result.check(
+            "29b (TASK_PAYROLL_003 correction): the ADP importer does NOT default a newly created "
+            "PayrollRun's Payment Execution Provider to ADP_DIRECT_DEPOSIT merely because the "
+            "source is ADP — with no explicit selection and no PayrollExecutionConfiguration for "
+            "this Restaurant, the Run's provider is left unassigned (NULL)",
+            first_run is not None and first_run.payment_execution_provider is None,
+        )
+
         persist_2 = adp.persist_import(
             session, source_system_id=source_adp.id, restaurant_id=restaurant.id, file_path=tmp_path,
             period_start=_dt(0), period_end=_dt(14), run_type="REGULAR",
@@ -478,6 +653,23 @@ def _run_all_checks(session: Session, result: ValidationResult) -> None:
             and persist_2.import_run_id == persist_1.import_run_id
             and count_runs_after_second == count_runs_after_first
             and count_results_after_second == count_results_after_first,
+        )
+
+        renamed_path = Path(tmpdir) / "a_totally_different_filename_2026.xlsx"
+        shutil.copy(tmp_path, renamed_path)
+        persist_renamed = adp.persist_import(
+            session, source_system_id=source_adp.id, restaurant_id=restaurant.id, file_path=renamed_path,
+            period_start=_dt(0), period_end=_dt(14), run_type="REGULAR",
+        )
+        session.flush()
+        count_runs_after_renamed = session.query(m.PayrollRun).count()
+        result.check(
+            "22b. Duplicate protection is keyed by file content (SHA-256), not filename — the "
+            "identical workbook content under a completely different filename is still detected "
+            "as the same import, never a new PayrollRun",
+            persist_renamed.created is False
+            and persist_renamed.import_run_id == persist_1.import_run_id
+            and count_runs_after_renamed == count_runs_after_second,
         )
 
         tmp_path_v2 = Path(tmpdir) / "synthetic_payroll_detail_corrected.xlsx"
@@ -504,6 +696,139 @@ def _run_all_checks(session: Session, result: ValidationResult) -> None:
             and original_run is not None
             and original_run.status == "SUPERSEDED"
             and original_run.superseded_by_payroll_run_id == persist_3.payroll_run_id,
+        )
+
+        first_import_run = session.get(m.PayrollImportRun, persist_1.import_run_id)
+        result.check(
+            "40. Provenance: a file-based import records acquisition_method=ADP_XLSX_FILE",
+            first_import_run is not None and first_import_run.acquisition_method == "ADP_XLSX_FILE",
+        )
+
+        # --- 41-46: Acquisition adapters (TASK_PAYROLL_003) -----------------
+        bytes_parsed = adp.parse_payroll_detail_workbook_bytes(tmp_path.read_bytes())
+        file_parsed = adp.parse_payroll_detail_workbook(tmp_path)
+        result.check(
+            "41. parse_payroll_detail_workbook_bytes produces an identical result to the "
+            "file-based parser for the same content",
+            len(bytes_parsed.employees) == len(file_parsed.employees)
+            and bytes_parsed.header_pay_date == file_parsed.header_pay_date,
+        )
+
+        acq_source = m.SourceSystem(code="ADP_ACQ_TEST", name="ADP (acquisition test)", active=True)
+        session.add(acq_source)
+        session.flush()
+
+        local_adapter = acquisition.LocalFileAcquisitionAdapter(file_path=tmp_path)
+        acquire_results_1 = acquisition.acquire_and_import(
+            session, local_adapter,
+            source_system_id=acq_source.id, restaurant_id=restaurant.id,
+            period_start=_dt(0), period_end=_dt(14), run_type="REGULAR",
+        )
+        session.flush()
+        acquire_results_2 = acquisition.acquire_and_import(
+            session, local_adapter,
+            source_system_id=acq_source.id, restaurant_id=restaurant.id,
+            period_start=_dt(0), period_end=_dt(14), run_type="REGULAR",
+        )
+        session.flush()
+        result.check(
+            "42. acquire_and_import (LocalFileAcquisitionAdapter) persists via the same idempotent "
+            "core as persist_import — a second acquisition of the identical content is a no-op",
+            len(acquire_results_1) == 1 and acquire_results_1[0].created is True
+            and len(acquire_results_2) == 1 and acquire_results_2[0].created is False
+            and acquire_results_2[0].import_run_id == acquire_results_1[0].import_run_id,
+        )
+
+        class _FakeSftpFile:
+            def __init__(self, data: bytes) -> None:
+                self._data = data
+            def read(self) -> bytes:
+                return self._data
+            def __enter__(self):
+                return self
+            def __exit__(self, *exc) -> None:
+                return None
+
+        class _FakeSftpTransport:
+            def __init__(self, files: dict[str, bytes]) -> None:
+                self._files = files
+            def listdir(self, path: str) -> list[str]:
+                return list(self._files.keys())
+            def open(self, path: str, mode: str = "rb"):
+                filename = path.rsplit("/", 1)[-1]
+                return _FakeSftpFile(self._files[filename])
+
+        fake_transport = _FakeSftpTransport({"PayrollDetail_sftp.xlsx": tmp_path.read_bytes()})
+        sftp_adapter = acquisition.AdpSftpAcquisitionAdapter(
+            acquisition.SftpConnectionConfig(
+                host="sftp.example.invalid", username="rfone", remote_directory="/inbound", password="x",
+            ),
+            transport_factory=lambda: fake_transport,
+        )
+        acquired_via_sftp = sftp_adapter.fetch()
+        result.check(
+            "43. AdpSftpAcquisitionAdapter.fetch() lists and downloads files from the configured "
+            "remote directory via an injectable transport, tagging acquisition_method=ADP_SFTP_AES "
+            "— no real network/paramiko connection required for this to be exercised",
+            len(acquired_via_sftp) == 1
+            and acquired_via_sftp[0].acquisition_method == acquisition.ACQUISITION_METHOD_SFTP_AES
+            and acquired_via_sftp[0].source_file_name == "PayrollDetail_sftp.xlsx"
+            and acquired_via_sftp[0].file_bytes == tmp_path.read_bytes(),
+        )
+
+        sftp_import_results = acquisition.acquire_and_import(
+            session, sftp_adapter,
+            source_system_id=acq_source.id, restaurant_id=restaurant.id,
+            period_start=_dt(0), period_end=_dt(14), run_type="REGULAR",
+        )
+        session.flush()
+        result.check(
+            "44. A file acquired via the SFTP adapter is recognized as identical content already "
+            "imported via the local-file adapter earlier in this same Restaurant/source scope — "
+            "idempotency is keyed on content, never on transport or filename",
+            len(sftp_import_results) == 1 and sftp_import_results[0].created is False
+            and sftp_import_results[0].import_run_id == acquire_results_1[0].import_run_id,
+        )
+
+        try:
+            acquisition.AdpSftpAcquisitionAdapter.from_environment({})
+            sftp_unconfigured_rejected = False
+        except acquisition.AcquisitionNotConfiguredError:
+            sftp_unconfigured_rejected = True
+        result.check(
+            "45. AdpSftpAcquisitionAdapter.from_environment raises a clear "
+            "AcquisitionNotConfiguredError (naming what is missing) when required environment "
+            "variables are absent — never silently proceeds or fabricates a connection",
+            sftp_unconfigured_rejected,
+        )
+
+        try:
+            acquisition.AdpApiAcquisitionAdapter.from_environment({})
+            api_unconfigured_rejected = False
+        except acquisition.AcquisitionNotConfiguredError:
+            api_unconfigured_rejected = True
+        result.check(
+            "46a. AdpApiAcquisitionAdapter.from_environment raises AcquisitionNotConfiguredError "
+            "when ADP API credentials are absent",
+            api_unconfigured_rejected,
+        )
+
+        fake_api_env = {
+            "ADP_API_BASE_URL": "https://api.adp.com", "ADP_API_CLIENT_ID": "fake",
+            "ADP_API_CLIENT_SECRET": "fake", "ADP_API_CLIENT_CERT_PATH": "/fake/cert.pem",
+            "ADP_API_CLIENT_KEY_PATH": "/fake/key.pem",
+        }
+        api_adapter = acquisition.AdpApiAcquisitionAdapter.from_environment(fake_api_env)
+        try:
+            api_adapter.fetch()
+            api_fetch_raised = False
+        except acquisition.AdpApiNotImplementedError:
+            api_fetch_raised = True
+        result.check(
+            "46b. AdpApiAcquisitionAdapter.fetch() raises AdpApiNotImplementedError even with "
+            "credential-shaped configuration present — this task never fabricates a successful "
+            "ADP Payroll Output API response without verified endpoint/schema documentation",
+            api_fetch_raised,
         )
 
 

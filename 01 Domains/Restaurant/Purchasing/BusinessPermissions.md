@@ -56,6 +56,30 @@ May:
 
 ---
 
+## Receiving User
+
+A mobile-scoped role, narrower than general Purchasing access, limited to an assigned organizational scope/Location (`03 Software/User Interaction Architecture.md`, Section 4, "Authorization Model," Section 6, "Authorization Scope").
+
+May:
+
+- Perform Mobile Receiving for the assigned scope
+- Capture Receiving evidence (label scans, photos)
+- Record actual quantities against an Order
+- Record Extra/Unexpected Items and damaged quantities, with mandatory photo
+- Complete a Receiving session
+
+May not, by default:
+
+- Access full Purchasing Web pages
+- Configure Suppliers or Supplier Products
+- Perform cost analysis
+- Approve deviations or resolve Alerts
+- Change Configured Expectations
+
+This is an illustrative role shape, not a concrete customer-specific permission set (`BusinessRules.md`, "Receiving Authorization May Be Narrower Than Purchasing Access").
+
+---
+
 ## AI
 
 May:
@@ -74,10 +98,13 @@ AI never owns business permissions.
 The following operations require explicit authorization:
 
 - Create Ingredient
+- Approve or modify merchandise/economic classification
 - Modify Ingredient mapping
 - Close Validation Log
 - Delete business records (if allowed)
 - Configure integrations
+- Decide ACCEPT or REJECT/RETURN on a Receiving Discrepancy Alert
+- Resolve an Expected Supplier Credit
 
 ---
 

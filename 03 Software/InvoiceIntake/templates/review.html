@@ -45,7 +45,8 @@
     <table id="lines-table">
       <thead>
         <tr>
-          <th style="width:38%;">Descrizione</th>
+          <th style="width:32%;">Descrizione</th>
+          <th>Tipo riga</th>
           <th>Qtà</th>
           <th>Unità</th>
           <th>Prezzo unitario</th>
@@ -57,6 +58,13 @@
         {% for line in lines %}
         <tr>
           <td><input type="text" name="line_description" value="{{ line.description }}"></td>
+          <td>
+            <select name="line_type">
+              <option value="PRODUCT" {% if line.line_type == 'PRODUCT' or not line.line_type %}selected{% endif %}>Prodotto</option>
+              <option value="SURCHARGE" {% if line.line_type == 'SURCHARGE' %}selected{% endif %}>Supplemento</option>
+              <option value="DISCOUNT" {% if line.line_type == 'DISCOUNT' %}selected{% endif %}>Sconto</option>
+            </select>
+          </td>
           <td><input type="text" name="line_quantity" value="{{ line.quantity }}" style="width:5rem;"></td>
           <td><input type="text" name="line_unit" value="{{ line.unit or '' }}" style="width:4.5rem;"></td>
           <td><input type="text" name="line_unit_price" value="{{ line.unit_price }}" style="width:6rem;"></td>
@@ -86,6 +94,13 @@ function addRow() {
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td><input type="text" name="line_description"></td>
+    <td>
+      <select name="line_type">
+        <option value="PRODUCT" selected>Prodotto</option>
+        <option value="SURCHARGE">Supplemento</option>
+        <option value="DISCOUNT">Sconto</option>
+      </select>
+    </td>
     <td><input type="text" name="line_quantity" style="width:5rem;"></td>
     <td><input type="text" name="line_unit" style="width:4.5rem;"></td>
     <td><input type="text" name="line_unit_price" style="width:6rem;"></td>

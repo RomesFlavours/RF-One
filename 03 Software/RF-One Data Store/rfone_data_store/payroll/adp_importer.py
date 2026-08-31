@@ -6,29 +6,41 @@ ADP-specific field; every table this module writes to is provider-generic
 (`PayrollEarningFact.earning_type` etc. are free strings normalized from
 whatever label the source actually used).
 
-No network/API access of any kind is used or required — this module only
-reads a local `.xlsx` file with `openpyxl` and writes to the RF-One
-database via SQLAlchemy. `Payroll Detail` reports are treated as source
-documents: never modified, never re-saved.
+This module only reads a local `.xlsx` file with `openpyxl` and writes to
+the RF-One database via SQLAlchemy — no network/API access of any kind is
+used or required here. `Payroll Detail` reports are treated as source
+documents: never modified, never re-saved. This is the manual/local-file
+acquisition path — fully preserved as a valid acquisition adapter and
+production fallback (TASK_PAYROLL_003, `rfone_data_store/payroll/
+acquisition.py`), not the only way payroll results may reach RF-One.
 
-Two entry points:
+Entry points:
 
-- `dry_run_import(...)`  — read-only. Parses the workbook, resolves Employee
-  identity against already-confirmed mappings plus exact-unique name-key
-  matching, and returns an aggregate-only `DryRunSummary`. Writes nothing.
-- `persist_import(...)`  — writes `PayrollRun`/`EmployeePayrollResult`/fact
-  rows (and `PayrollProviderEmployeeIdentity` mapping rows) onto the given
-  Session. The caller commits or rolls back, matching this repository's
-  existing `calculate_tips.py` convention.
+- `dry_run_import(...)` / `dry_run_parsed_import(...)` — read-only. Parses
+  the workbook (from a file, or from an already-parsed result any
+  acquisition adapter produced), resolves Employee identity against
+  already-confirmed mappings plus exact-unique name-key matching, and
+  returns an aggregate-only `DryRunSummary`. Writes nothing.
+- `persist_import(...)` — the file-based entry point: parses a local file,
+  then delegates to `persist_parsed_import(...)`.
+- `persist_parsed_import(...)` — the acquisition-method-independent core:
+  writes `PayrollRun`/`EmployeePayrollResult`/fact rows (and
+  `PayrollProviderEmployeeIdentity` mapping rows) onto the given Session for
+  an already-parsed result, regardless of how it was acquired. The caller
+  commits or rolls back, matching this repository's existing
+  `calculate_tips.py` convention. Every acquisition adapter in
+  `rfone_data_store/payroll/acquisition.py` normalizes into a
+  `ParsedPayrollDetail` and calls this same function — no acquisition path
+  has its own persistence/idempotency logic.
 
-Idempotency (task §29): re-importing the exact same file (same SHA-256) for
-the same (source_system_id, restaurant_id) is detected via
-`payroll_import_runs`' unique constraint and is a safe no-op — it reuses the
-prior `PayrollImportRun`/`PayrollRun` rather than duplicating anything. A
-*different* file for the same scope is never assumed to be a correction of a
-specific prior run — that requires the caller to pass `supersedes_import_run_id`
-explicitly (task §29, "Design a clear correction/replacement/reconciliation
-behavior").
+Idempotency (task §29): re-importing the exact same content (same SHA-256,
+regardless of transport) for the same (source_system_id, restaurant_id) is
+detected via `payroll_import_runs`' unique constraint and is a safe no-op —
+it reuses the prior `PayrollImportRun`/`PayrollRun` rather than duplicating
+anything. A *different* result for the same scope is never assumed to be a
+correction of a specific prior run — that requires the caller to pass
+`supersedes_import_run_id` explicitly (task §29, "Design a clear
+correction/replacement/reconciliation behavior").
 """
 
 from __future__ import annotations
@@ -38,6 +50,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
+from io import BytesIO
 from pathlib import Path
 
 import openpyxl
@@ -45,6 +58,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models as m
+from . import payment_execution as pe
 
 UTC = timezone.utc
 
@@ -121,6 +135,10 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: fh.read(65536), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 def to_minor_units(value) -> int | None:
@@ -284,9 +302,22 @@ def _build_column_map(ws, header_row: int) -> _ColumnMap:
 
 
 def parse_payroll_detail_workbook(path: Path) -> ParsedPayrollDetail:
-    """Parse an ADP `Payroll Detail` export. Pure/read-only: the workbook
-    itself is never modified (task §36)."""
+    """Parse an ADP `Payroll Detail` export from a local file. Pure/read-only:
+    the workbook itself is never modified (task §36)."""
     wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    try:
+        return _parse_loaded_workbook(wb)
+    finally:
+        wb.close()
+
+
+def parse_payroll_detail_workbook_bytes(data: bytes) -> ParsedPayrollDetail:
+    """Parse an ADP `Payroll Detail` export already held in memory
+    (TASK_PAYROLL_003) — the same parser `parse_payroll_detail_workbook`
+    uses, for acquisition paths that never write a local file (e.g. an SFTP
+    download). Identical parsing logic either way; only the source of the
+    bytes differs."""
+    wb = openpyxl.load_workbook(BytesIO(data), data_only=True, read_only=True)
     try:
         return _parse_loaded_workbook(wb)
     finally:
@@ -637,6 +668,15 @@ def dry_run_import(
     """Read-only: parses the workbook and resolves Employee mapping against
     already-confirmed mappings plus exact-unique matching. Writes nothing."""
     parsed = parse_payroll_detail_workbook(file_path)
+    return dry_run_parsed_import(session, source_system_id=source_system_id, restaurant_id=restaurant_id, parsed=parsed)
+
+
+def dry_run_parsed_import(
+    session: Session, *, source_system_id: int, restaurant_id: int, parsed: ParsedPayrollDetail
+) -> DryRunSummary:
+    """Read-only, acquisition-method-independent (TASK_PAYROLL_003): the
+    same summary `dry_run_import` produces, for a result already parsed
+    from any acquisition adapter. Writes nothing."""
     mappings = resolve_employee_mappings(
         session, source_system_id=source_system_id, restaurant_id=restaurant_id, rows=parsed.employees
     )
@@ -671,26 +711,87 @@ def persist_import(
     payroll_schedule_id: int | None = None,
     pay_date_override: datetime | None = None,
     supersedes_import_run_id: int | None = None,
+    payment_execution_provider: str | None = None,
 ) -> PersistResult:
-    """Parse, resolve, and write. Idempotent by file hash (task §29): if a
-    `PayrollImportRun` already exists for this exact
-    (source_system_id, restaurant_id, file hash), it is reused unchanged
-    and no new PayrollRun/fact rows are created.
+    """Parse a local ADP `Payroll Detail` file and write it via
+    `persist_parsed_import` (`acquisition_method="ADP_XLSX_FILE"`) — the
+    manual/local-file acquisition path, fully preserved as a valid
+    acquisition adapter and production fallback (TASK_PAYROLL_003). See
+    `persist_parsed_import` for the shared persistence/idempotency contract
+    every acquisition path (this one, and
+    `rfone_data_store/payroll/acquisition.py`'s SFTP/API adapters) reuses
+    unchanged.
+    """
+    file_hash = sha256_file(file_path)
+    parsed = parse_payroll_detail_workbook(file_path)
+    return persist_parsed_import(
+        session,
+        source_system_id=source_system_id,
+        restaurant_id=restaurant_id,
+        parsed=parsed,
+        source_file_name=file_path.name,
+        source_file_hash=file_hash,
+        acquisition_method="ADP_XLSX_FILE",
+        period_start=period_start,
+        period_end=period_end,
+        run_type=run_type,
+        payroll_schedule_id=payroll_schedule_id,
+        pay_date_override=pay_date_override,
+        supersedes_import_run_id=supersedes_import_run_id,
+        payment_execution_provider=payment_execution_provider,
+    )
 
-    A *different* file for the same scope is a distinct import — it is
+
+def persist_parsed_import(
+    session: Session,
+    *,
+    source_system_id: int,
+    restaurant_id: int,
+    parsed: ParsedPayrollDetail,
+    source_file_name: str,
+    source_file_hash: str,
+    acquisition_method: str,
+    period_start: datetime | None,
+    period_end: datetime | None,
+    run_type: str,
+    payroll_schedule_id: int | None = None,
+    pay_date_override: datetime | None = None,
+    supersedes_import_run_id: int | None = None,
+    payment_execution_provider: str | None = None,
+) -> PersistResult:
+    """Resolve and write an already-parsed ADP `Payroll Detail` result —
+    the acquisition-method-independent core every acquisition adapter
+    shares (TASK_PAYROLL_003, `Payroll Result Acquisition.md`). Idempotent
+    by content hash (task §29): if a `PayrollImportRun` already exists for
+    this exact (source_system_id, restaurant_id, `source_file_hash`), it is
+    reused unchanged and no new PayrollRun/fact rows are created — this
+    holds regardless of how the bytes arrived (a local file, an SFTP
+    download, a future API response), because idempotency is keyed on
+    content, never on filename, path, or transport.
+
+    A *different* result for the same scope is a distinct import — it is
     never merged into a prior run's history automatically. Pass
     `supersedes_import_run_id` (an explicit operator decision) to mark that
     this import corrects a specific prior one; the prior PayrollRun's
     `status` becomes `SUPERSEDED` and its `superseded_by_payroll_run_id` is
     set, but it is never deleted or rewritten (task §29).
-    """
-    file_hash = sha256_file(file_path)
 
+    `payment_execution_provider` (TASK_PAYROLL_003 correction of
+    TASK_PAYROLL_002): defaults to `None` — it is **never** inferred merely
+    because the acquisition source is ADP. The Run's provider is resolved
+    as: (1) this explicit argument, if given; else (2) the Restaurant's
+    approved `PayrollExecutionConfiguration` valid at the Run's `pay_date`,
+    if one exists; else (3) left unassigned (`NULL`) — a Restaurant with no
+    explicit selection and no approved configuration simply has no assigned
+    executor yet, exactly like an unconfigured `TipPolicy`. This importer
+    never reassigns an already-assigned Run's provider (double-payment
+    prevention — see `rfone_data_store/payroll/payment_execution.py`).
+    """
     existing = session.scalars(
         select(m.PayrollImportRun).where(
             m.PayrollImportRun.source_system_id == source_system_id,
             m.PayrollImportRun.restaurant_id == restaurant_id,
-            m.PayrollImportRun.source_file_hash == file_hash,
+            m.PayrollImportRun.source_file_hash == source_file_hash,
         )
     ).first()
     if existing is not None:
@@ -705,7 +806,6 @@ def persist_import(
             issue_count=issue_count,
         )
 
-    parsed = parse_payroll_detail_workbook(file_path)
     mappings = resolve_employee_mappings(
         session, source_system_id=source_system_id, restaurant_id=restaurant_id, rows=parsed.employees
     )
@@ -718,6 +818,10 @@ def persist_import(
             "never guessed)."
         )
 
+    resolved_provider = payment_execution_provider
+    if resolved_provider is None:
+        resolved_provider = pe.approved_provider_at(session, restaurant_id=restaurant_id, at=pay_date)
+
     payroll_run = m.PayrollRun(
         restaurant_id=restaurant_id,
         source_system_id=source_system_id,
@@ -729,6 +833,8 @@ def persist_import(
         provider_reference=parsed.header_provider_reference,
         status="COMPLETE",
     )
+    if resolved_provider is not None:
+        pe.assign_payment_execution_provider(payroll_run, resolved_provider)
     session.add(payroll_run)
     session.flush()
 
@@ -736,8 +842,9 @@ def persist_import(
         restaurant_id=restaurant_id,
         source_system_id=source_system_id,
         payroll_run_id=payroll_run.id,
-        source_file_name=file_path.name,
-        source_file_hash=file_hash,
+        source_file_name=source_file_name,
+        source_file_hash=source_file_hash,
+        acquisition_method=acquisition_method,
         supersedes_import_run_id=supersedes_import_run_id,
         mode="PERSIST",
         status="COMPLETE",

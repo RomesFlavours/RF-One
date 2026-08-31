@@ -104,15 +104,15 @@ Recipe (Restaurant Domain)
 
 ↓
 
-Inventory (Inventory Domain)
+Inventory (Restaurant Domain)
 
 ↓
 
-Purchasing (Purchasing Domain)
+Purchasing (Restaurant Domain, Purchasing module)
 
 ↓
 
-Sales (Sales Domain)
+Sales (Restaurant Domain)
 
 ---
 

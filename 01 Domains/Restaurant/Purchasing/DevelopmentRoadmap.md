@@ -21,6 +21,9 @@ Objectives:
 - Cost normalization
 - Validation Log
 - Purchase history
+- Physical Receiving (mobile, label-based and Order-based, fallback-capable)
+- Order vs Invoice vs Receiving reconciliation and Purchasing Alerts
+- Expected Supplier Credit tracking and credit reconciliation
 
 Result:
 
@@ -40,6 +43,22 @@ Objectives:
 Result:
 
 Multiple acquisition channels producing the same logical Purchase Document and the same purchasing knowledge.
+
+---
+
+# First Operational Priority Suppliers
+
+The first real mixed-product suppliers selected for implementation/testing are:
+
+- Ben E. Keith
+- Cheney Brothers
+- Gordon Food
+
+Reason: their invoices can contain multiple economic product classifications (Food, Drink, Supplies) on the same document, so Supplier/FinancialTransaction recognition alone is insufficient to determine the correct expense allocation — Purchase Line-level classification and Effective Product Cost derivation (`BusinessRules.md`) are required.
+
+BBC Wine is not Priority 1.
+
+This is implementation/roadmap context, not ontology — it does not change any canonical entity or rule defined elsewhere in this module.
 
 ---
 

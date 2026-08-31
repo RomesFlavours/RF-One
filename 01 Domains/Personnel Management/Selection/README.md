@@ -30,7 +30,7 @@ Selection is a **universal business Domain**. It applies wherever an organizatio
 
 **Restaurant is the first concrete application context, not the architectural owner of this Domain.** Nothing in Selection may assume a restaurant, a kitchen, a dining room, or any other Restaurant-specific concept. Where this Domain uses Restaurant examples (see "Restaurant as first application" below), those examples exist to validate universality, not to define it.
 
-Any other Domain that requires evaluating and selecting candidates — Purchasing (selecting a supplier's account manager), Sales, a future professional-services Domain, or an entirely different industry — reuses the same Selection concepts, feeding them its own technical/business requirements instead of Restaurant's.
+Any other Domain that requires evaluating and selecting candidates — Restaurant/Purchasing (selecting a supplier's account manager), Sales, a future professional-services Domain, or an entirely different industry — reuses the same Selection concepts, feeding them its own technical/business requirements instead of Restaurant's.
 
 ---
 

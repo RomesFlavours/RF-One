@@ -5,19 +5,26 @@ those are POS-operational associations, not universal service-ownership
 semantics. The engine resolves service responsibility exclusively through a
 `ServiceAttributionResolver`, injected by the caller. The concrete
 resolution strategy is Restaurant/Profile/source configuration, never
-hard-coded Tips semantics — this module provides only the abstraction and
-synthetic, test-only resolvers, never a Rome's Flavours mapping.
+hard-coded Tips semantics.
+
+`OrderEmployeeServiceAttributionResolver` (TASK_TIPS_004) is the first real
+resolver: built entirely from evidence the canonical Sales model already
+contains (`Order.employee_id`, cross-checked against `Payment.employee_id`)
+— it is a generic, provider-independent resolution strategy, not a Rome's
+Flavours-specific mapping (no Rome's Flavours identifier, name, or
+percentage appears anywhere in this module). `NullServiceAttributionResolver`
+and `StaticServiceAttributionResolver` remain the safe-default and
+synthetic-test resolvers, respectively.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-if TYPE_CHECKING:
-    from .. import models as m
+from .. import models as m
 
 RESOLVED = "RESOLVED"
 UNRESOLVED = "UNRESOLVED"
@@ -82,3 +89,87 @@ class StaticServiceAttributionResolver(ServiceAttributionResolver):
                 detail=f"No configured service-attribution mapping for Order {order.id}.",
             )
         return result
+
+
+class OrderEmployeeServiceAttributionResolver(ServiceAttributionResolver):
+    """The first real, Restaurant-configurable service-attribution resolver
+    (TASK_TIPS_004), built entirely from evidence the canonical Sales model
+    already contains — no new server identity is introduced.
+
+    **Evidence source and why it is authoritative:** `Order.employee_id` is
+    the single-value field the source POS associates with an Order
+    (`Restaurant Sales Model.md` §4, "the Employee associated with an
+    Order") — for a table-service Order this is, in real operational
+    practice, the server who opened/owns the table, and it is essentially
+    always populated by ingestion (confirmed by direct inspection of the
+    real Rome's Flavours data: 100% of real Orders carry a non-null
+    `employee_id`). `TableServiceEmployee` (the M:N participation
+    relationship `Restaurant Sales Model.md` §4 documents as the
+    conceptually broader answer, and which explicitly rejects a mandatory
+    `primary_server` field) is deliberately **not** used: Table Service
+    reconstruction has never been ingested for the real Restaurant (0 rows
+    in `table_services`/`table_service_employees`, confirmed by direct
+    inspection) — building this resolver around it would resolve every real
+    Order to UNRESOLVED, defeating the SERVICE_OWNER component entirely.
+
+    **Corroboration, not blind trust:** `Order.employee` alone is never
+    automatically the service owner (`Tip Allocation.md`, "service-
+    attribution boundary"). This resolver therefore cross-checks it against
+    every `Payment.employee_id` already recorded under the same Order — a
+    second, independent POS observation:
+
+    ```text
+    Order.employee_id is NULL
+      -> UNRESOLVED (no order-level evidence at all)
+    Order.employee_id set, no disagreeing Payment.employee_id
+      -> RESOLVED, employee_ids=[order.employee_id]
+    Order.employee_id set, at least one Payment.employee_id disagrees
+      -> AMBIGUOUS (two independent POS observations conflict; never
+         guessed which is correct)
+    ```
+
+    **Location-correct by construction:** the resolved Employee always
+    comes from this specific Order's own `employee_id` — the Order itself
+    belongs to exactly one Location, so no cross-Location evidence can ever
+    leak into this resolution.
+
+    **Auditable:** every result carries a `detail` naming the exact
+    evidence (or disagreement) that produced it.
+    """
+
+    def resolve(self, session: Session, order: "m.Order") -> ServiceAttributionResult:
+        if order.employee_id is None:
+            return ServiceAttributionResult(
+                status=UNRESOLVED,
+                employee_ids=[],
+                detail=f"Order {order.id} has no employee_id recorded — no order-level "
+                "service-attribution evidence exists.",
+            )
+
+        payment_employee_ids = set(
+            session.scalars(
+                select(m.Payment.employee_id).where(
+                    m.Payment.order_id == order.id,
+                    m.Payment.employee_id.is_not(None),
+                )
+            ).all()
+        )
+        disagreeing = payment_employee_ids - {order.employee_id}
+        if disagreeing:
+            return ServiceAttributionResult(
+                status=AMBIGUOUS,
+                employee_ids=[],
+                detail=(
+                    f"Order {order.id}.employee_id={order.employee_id} disagrees with "
+                    f"Payment.employee_id value(s) {sorted(disagreeing)} recorded under the same "
+                    "Order — two independent POS observations conflict; RF-One never guesses "
+                    "which is correct."
+                ),
+            )
+
+        return ServiceAttributionResult(
+            status=RESOLVED,
+            employee_ids=[order.employee_id],
+            detail=f"Order {order.id}.employee_id={order.employee_id}, corroborated by "
+            f"{len(payment_employee_ids)} agreeing Payment employee reference(s).",
+        )

@@ -20,10 +20,10 @@ No ADP field is built into canonical Payroll semantics. RF-One reuses the existi
 **ADP input automation is explicitly not the priority.** The current workflow may remain: RF-One prepares/calculates inputs → the Product Owner enters hours/overtime/bonus/reportable Tips manually in ADP. The important automation is the opposite direction:
 
 ```text
-ADP processed payroll → Payroll Details Excel → RF-One import
+ADP processed payroll → Payroll Details result → RF-One import
 ```
 
-No ADP API credential, OAuth onboarding, or Pay Data Input API integration is required or implemented for this capability.
+No ADP API credential, OAuth onboarding, or Pay Data **Input** API integration is required or implemented for this capability (RF-One never sends payroll input data to ADP). This is unrelated to, and does not contradict, `Payroll Result Acquisition.md`'s use of ADP's **output**-side mechanisms (Automatic Export Service / Payroll Output API) to automatically retrieve the *completed* result in the direction shown above — those are output/acquisition APIs, never input APIs, and RF-One never writes payroll data to ADP through either.
 
 ---
 

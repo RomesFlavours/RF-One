@@ -67,19 +67,38 @@ Behavior:
 
 ---
 
-# Mapping Errors
+# Classification / Mapping Errors
 
 Examples:
 
 - Unknown Supplier Product
+- Unknown merchandise/economic classification
 - Multiple possible Ingredients
 - No matching Ingredient
 
 Behavior:
 
 - Create a new Supplier Product if necessary.
-- Request manual Ingredient mapping.
+- Request manual classification and/or Ingredient mapping.
+- Never guess a classification or mapping — record it in the Validation Log instead.
 - Preserve purchasing workflow.
+
+---
+
+# Receiving Capture Errors
+
+Examples:
+
+- Unreadable or missing package/case label
+- Damaged packaging preventing label capture
+- No matching Order found
+
+Behavior:
+
+- Fall back from label-based to Order-based or manual factual capture (`BusinessRules.md`, "Receiving Is Mobile-First and Fallback-Capable").
+- The Receiving session must never fail merely because a preferred capture mechanism fails.
+- When no Order/Invoice match exists, capture the item as an Extra/Unexpected Item (mandatory photo) and continue.
+- Never block Receiving completion on an unresolved discrepancy; raise a Purchasing Alert instead (`BusinessRules.md`, "Receiving Completion Is Independent of Alert Resolution").
 
 ---
 

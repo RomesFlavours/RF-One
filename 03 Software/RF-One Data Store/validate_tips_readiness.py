@@ -26,7 +26,7 @@ from sqlalchemy import func, select
 from rfone_data_store.database import create_configured_engine, create_session_factory, get_database_url, redact_database_url
 from rfone_data_store import models as m
 from rfone_data_store.tips.engine import run_tip_calculation
-from rfone_data_store.tips.resolvers import NullServiceAttributionResolver
+from rfone_data_store.tips.resolvers import OrderEmployeeServiceAttributionResolver
 
 UTC = timezone.utc
 
@@ -123,7 +123,7 @@ def _report(session) -> None:
         restaurant_id=restaurant.id,
         period_start=period_start,
         period_end=period_end,
-        resolver=NullServiceAttributionResolver(),
+        resolver=OrderEmployeeServiceAttributionResolver(),
         mode="DRY_RUN",
         calculation_version="readiness-check",
     )
@@ -137,7 +137,7 @@ def _report(session) -> None:
     print(f"  warnings:                {summary.warning_issue_count}")
     print()
 
-    print("=== Blocking issue breakdown (why Tips cannot yet be calculated) ===")
+    print("=== Blocking issue breakdown (why any Tips remain unallocated) ===")
     issue_rows = session.scalars(
         select(m.TipCalculationIssue).where(m.TipCalculationIssue.calculation_run_id == run.id)
     ).all()
@@ -145,11 +145,19 @@ def _report(session) -> None:
     for issue_type, count in by_type.most_common():
         print(f"  {issue_type}: {count}")
     print()
-    print(
-        "Because this Restaurant has no configured TipPolicy, no RestaurantRole/OperationalArea "
-        "configuration, and no service-attribution resolver, this result is EXPECTED and CORRECT — "
-        "no Tip Policy or mapping was invented to force a different outcome (task §24)."
-    )
+    tip_policy_count = session.scalar(select(func.count()).select_from(m.TipPolicy)) or 0
+    if tip_policy_count == 0:
+        print(
+            "No TipPolicy is configured for this Restaurant yet — every Tip is correctly blocked "
+            "NO_VALID_POLICY. No Tip Policy was invented to force a different outcome (TASK_TIPS_001 "
+            "§24). Run configure_rome_flavours_tip_policy.py to configure the approved policy."
+        )
+    else:
+        print(
+            f"{tip_policy_count} TipPolicy row(s) are configured. Any remaining blocking issues above "
+            "reflect real data gaps (e.g. unresolvable service attribution, no eligible Host on Shift "
+            "with no fallback configured) — never guessed or fabricated (TASK_TIPS_004)."
+        )
 
     print()
     print("(This script is read-only: the calculation above ran in DRY_RUN mode and is now rolled back.)")

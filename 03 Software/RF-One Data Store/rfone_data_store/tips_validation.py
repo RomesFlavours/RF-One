@@ -22,14 +22,17 @@ from .tips.engine import (
     ISSUE_NO_ELIGIBLE_RECIPIENT,
     ISSUE_NO_VALID_POLICY,
     ISSUE_REFUND_REVIEW_REQUIRED,
+    ISSUE_SERVICE_OWNER_AMBIGUOUS,
     ISSUE_SERVICE_OWNER_UNRESOLVED,
     ISSUE_SHIFT_ASSIGNMENT_GAP,
+    ISSUE_SHIFT_LOCATION_UNKNOWN,
     run_tip_calculation,
 )
 from .tips.resolvers import (
     AMBIGUOUS,
     RESOLVED,
     UNRESOLVED,
+    OrderEmployeeServiceAttributionResolver,
     ServiceAttributionResult,
     StaticServiceAttributionResolver,
 )
@@ -151,6 +154,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     emp_cross_component = make_employee("E18", "CrossComponentEmployee")  # Case 5
     emp_no_shift = make_employee("E19", "NoShiftEmployee")  # Case 6
     emp_wrong_role_only = make_employee("E20", "WrongRoleOnlyEmployee")  # Case 7
+    emp_double_shift = make_employee("E22", "DoubleShiftEmployee")  # Scenario 5
 
     # --- Tip Policy: MAIN (task §9-12) -------------------------------------
     main_valid_from = _dt(60)
@@ -269,10 +273,11 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         service_result: ServiceAttributionResult | None = None,
         order_employee: m.Employee | None = None,
         payment_employee: m.Employee | None = None,
+        at_location: m.Location | None = None,
     ) -> tuple[m.Order, m.Payment, m.PaymentTip | None]:
         t = _dt(days_ago)
         order = m.Order(
-            location_id=location.id,
+            location_id=(at_location or location).id,
             source_system_id=source_system.id,
             source_order_id=f"ORDER-{key}",
             employee_id=(order_employee or emp_order_employee).id,
@@ -312,15 +317,25 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         session.flush()
         return order, payment, tip_row
 
-    def make_shift(employee: m.Employee, days_ago: float, hours_span: float = 4.0) -> None:
+    def make_shift(
+        employee: m.Employee, days_ago: float, hours_span: float = 4.0, suffix: str = "",
+        shift_location: m.Location | None = None,
+    ) -> None:
+        # `shift_location=None` leaves `Shift.location_id` NULL (unknown —
+        # the historical default, TASK_TIPS_003): eligibility then falls
+        # back to `Employee.location_id`, exactly as before this task.
+        # Passing an explicit `shift_location` gives this specific Shift its
+        # own, deterministic Location evidence, which the engine then
+        # prefers over `Employee.location_id` for this Shift.
         t = _dt(days_ago)
         session.add(
             m.Shift(
                 employee_id=employee.id,
                 source_system_id=source_system.id,
-                source_shift_id=f"SHIFT-{employee.id}-{days_ago}",
+                source_shift_id=f"SHIFT-{employee.id}-{days_ago}{suffix}",
                 clock_in=t - timedelta(hours=hours_span / 2),
                 clock_out=t + timedelta(hours=hours_span / 2),
+                location_id=shift_location.id if shift_location is not None else None,
             )
         )
 
@@ -439,6 +454,16 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
             assignment_source="MANUAL",
         )
     )
+
+    # Scenario 5 (multi-location closure task) — one Employee with TWO
+    # overlapping Shift rows covering the same Payment timestamp T: must
+    # still be counted once (a `set` naturally dedupes at the Shift-presence
+    # stage, before Assignment matching even runs), never given a double
+    # headcount share.
+    make_scenario("double_shift", days_ago=48, tip_amount=1000)
+    make_shift(emp_double_shift, days_ago=48, hours_span=4.0, suffix="-a")
+    make_shift(emp_double_shift, days_ago=48, hours_span=8.0, suffix="-b")  # a second, overlapping Shift row
+    make_assignment(emp_double_shift, role_support, days_ago_center=48)
 
     # TASK_TIPS_002 §11 Case 1 — Manager + Server concurrent Assignments,
     # same Operational Area: must be eligible, no blocking conflict issue.
@@ -563,6 +588,138 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
     # No one is ever assigned to role2_other -> comp_redistribute_role always empty -> redistributes to comp_redistribute_target
 
+    # --- Multi-location Restaurant (TASK_TIPS_003; Shift-Location epistemic
+    # correction TASK_TIPS_004) — a SEPARATE, dedicated Restaurant (never
+    # sharing the main `restaurant`, which must stay genuinely single-
+    # Location so its ~30 other scenarios keep exercising single-Location
+    # fallback semantics correctly), associated with BOTH `location` (Winter
+    # Park) and a second Location (Mount Dora). A Restaurant's own Location
+    # *count* is exactly what TASK_TIPS_004 Part B's fallback-vs-UNKNOWN rule
+    # keys off — the main `restaurant` must never accidentally become
+    # multi-Location merely because this fixture also needs a genuinely
+    # multi-Location Restaurant to test against.
+    location_md = m.Location(
+        merchant_id=merchant.id,
+        source_system_id=source_system.id,
+        source_location_id="LOC-MD",
+        name="Test Location (Mount Dora)",
+        currency="USD",
+    )
+    session.add(location_md)
+    session.flush()
+
+    restaurant_multi = m.Restaurant(name="Synthetic Multi-Location Restaurant", default_currency="USD")
+    session.add(restaurant_multi)
+    session.flush()
+    session.add_all(
+        [
+            m.RestaurantLocation(restaurant_id=restaurant_multi.id, location_id=location.id, is_primary=True),
+            m.RestaurantLocation(restaurant_id=restaurant_multi.id, location_id=location_md.id, is_primary=False),
+        ]
+    )
+    area_multi = m.OperationalArea(restaurant_id=restaurant_multi.id, name="FOH")
+    session.add(area_multi)
+    session.flush()
+    role_support_multi = m.RestaurantRole(restaurant_id=restaurant_multi.id, name="Support")
+    session.add(role_support_multi)
+    session.flush()
+    session.add(m.OperationalAreaRole(operational_area_id=area_multi.id, restaurant_role_id=role_support_multi.id))
+
+    policy_multi = m.TipPolicy(
+        restaurant_id=restaurant_multi.id, name="Synthetic Multi-Location Policy",
+        status="ACTIVE", valid_from=main_valid_from,
+    )
+    session.add(policy_multi)
+    session.flush()
+    component_role_support_multi = m.TipPolicyComponent(
+        tip_policy_id=policy_multi.id, sequence=1, recipient_basis="ROLE_PRESENT_AT_PAYMENT",
+        restaurant_role_id=role_support_multi.id, share_percentage=Decimal("100.0000"),
+        split_method="EQUAL_ELIGIBLE_HEADCOUNT", no_eligible_behavior="LEAVE_UNALLOCATED",
+    )
+    session.add(component_role_support_multi)
+    session.flush()
+
+    def make_assignment_multi(employee: m.Employee, days_ago_center: float, span_days: float = 5.0) -> None:
+        t = _dt(days_ago_center)
+        session.add(
+            m.EmployeeAssignment(
+                employee_id=employee.id, restaurant_id=restaurant_multi.id,
+                operational_area_id=area_multi.id, restaurant_role_id=role_support_multi.id,
+                valid_from=t - timedelta(days=span_days / 2), valid_to=t + timedelta(days=span_days / 2),
+                assignment_source="MANUAL",
+            )
+        )
+
+    emp_other_location = m.Employee(
+        location_id=location_md.id,
+        source_system_id=source_system.id,
+        source_employee_id="E21",
+        display_name="OtherLocationEmployee",
+        system_role="EMPLOYEE",
+    )
+    session.add(emp_other_location)
+    session.flush()
+    # Explicitly tagged Mount Dora (TASK_TIPS_004 Part B: under a genuinely
+    # multi-Location Restaurant, positive eligibility must rest on confirmed
+    # Shift-Location evidence, never on Employee.location_id alone, even
+    # when the two happen to agree).
+    make_shift(emp_other_location, days_ago=51, shift_location=location_md)
+    make_assignment_multi(emp_other_location, days_ago_center=51)
+    make_scenario("cross_location", days_ago=51, tip_amount=1000)
+
+    # This same Employee, CONFIRMED via explicit Shift-Location evidence to
+    # be at Mount Dora, IS eligible for a Tip actually earned AT Mount Dora
+    # (positive complement to "cross_location" above, which only proves
+    # exclusion at Winter Park) — Scenario 2 of the
+    # minimum test list (TASK_TIPS_003).
+    make_scenario("md_home_eligible_at_md", days_ago=51, tip_amount=1000, at_location=location_md)
+
+    # --- Shift-level Location evidence (TASK_TIPS_003) ---------------------
+    # An Employee whose HOME Location (`Employee.location_id`) is Winter Park
+    # but who genuinely works both Locations, evidenced per-Shift rather than
+    # by a single fixed `Employee.location_id`.
+    emp_multi_location = m.Employee(
+        location_id=location.id,  # home = Winter Park
+        source_system_id=source_system.id,
+        source_employee_id="E23",
+        display_name="MultiLocationEmployee",
+        system_role="EMPLOYEE",
+    )
+    session.add(emp_multi_location)
+    session.flush()
+    make_assignment_multi(emp_multi_location, days_ago_center=53, span_days=10.0)
+    # Shift A: explicitly tagged Winter Park (matches home — unremarkable).
+    make_shift(emp_multi_location, days_ago=52, suffix="-wp", shift_location=location)
+    make_scenario("multi_location_wp", days_ago=52, tip_amount=1000, at_location=location)
+    # Shift B: explicitly tagged Mount Dora — CONFLICTS with home
+    # `Employee.location_id` (Winter Park). Eligibility must follow the
+    # Shift's own evidence, not the home-Location proxy (Scenario 6 of the
+    # minimum test list): eligible for a Mount Dora Tip during this Shift...
+    make_shift(emp_multi_location, days_ago=54, suffix="-md", shift_location=location_md)
+    make_scenario("multi_location_md", days_ago=54, tip_amount=1000, at_location=location_md)
+    # ...and, at that SAME instant, NOT eligible for a Winter Park Tip, even
+    # though `Employee.location_id` says Winter Park — proving the conflict
+    # is resolved in the Shift's favor, not silently defaulting to home.
+    make_scenario("multi_location_md_instant_wrong_location", days_ago=54, tip_amount=1000, at_location=location)
+
+    # --- TASK_TIPS_004 Part B: Shift-Location epistemic correction ---------
+    # A THIRD Shift for this same Employee, carrying NO Location evidence of
+    # its own (`location_id` NULL) — under a genuinely multi-Location
+    # Restaurant, this must NEVER fall back to `Employee.location_id` (which
+    # would have wrongly suggested Winter Park). Presence is UNKNOWN, not a
+    # fact: excluded from eligibility, with an explicit
+    # ISSUE_SHIFT_LOCATION_UNKNOWN warning raised — never silently guessed.
+    make_shift(emp_multi_location, days_ago=56, suffix="-unknown")
+    make_scenario("multi_location_unknown_shift", days_ago=56, tip_amount=1000, at_location=location)
+
+    session.flush()
+
+    resolver_multi = StaticServiceAttributionResolver(resolver_map)
+    multi_run, multi_summary = run_tip_calculation(
+        session, restaurant_id=restaurant_multi.id,
+        period_start=_dt(60), period_end=_dt(45),
+        resolver=resolver_multi, mode="DRY_RUN", calculation_version="test-multi",
+    )
     session.flush()
 
     resolver = StaticServiceAttributionResolver(resolver_map)
@@ -908,4 +1065,354 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     result.check(
         "the calculation run itself completes with a COMPLETE status and is fully attributable",
         run.status == "COMPLETE" and run.completed_at is not None and run.restaurant_id == restaurant.id,
+    )
+
+    # Scenario 5 — one Employee, two overlapping Shift rows
+    double_shift_allocs = [
+        a for a in allocations_for("double_shift") if a.policy_component_id == component_role_support.id
+    ]
+    result.check(
+        "Scenario 5: an Employee with TWO overlapping Shift rows covering the same Payment timestamp "
+        "is counted once (one headcount share), never given a double share",
+        len(double_shift_allocs) == 1 and double_shift_allocs[0].employee_id == emp_double_shift.id,
+    )
+
+    # Multi-location eligibility scoping (dedicated restaurant_multi run)
+    cross_location_role_ids = {
+        a.employee_id for a in allocations_for("cross_location")
+        if a.policy_component_id == component_role_support_multi.id
+    }
+    result.check(
+        "Multi-location closure: an Employee whose Shift-presence evidence (an explicit Shift.location_id "
+        "tag) is at a DIFFERENT Location (Mount Dora) than the Tip's own Order (Winter Park) is NOT "
+        "eligible for a ROLE_PRESENT_AT_PAYMENT component scoped to that Order's Location, even with an "
+        "otherwise-matching Restaurant-scoped Assignment — a Tip earned at one Location must never draw eligibility "
+        "from a different Location under the same Restaurant",
+        emp_other_location.id not in cross_location_role_ids,
+    )
+
+    # TASK_TIPS_003 minimum-test-list Scenario 2 (positive complement): the
+    # SAME Mount-Dora-home Employee IS eligible for a Tip actually earned at
+    # Mount Dora.
+    md_home_eligible_ids = {
+        a.employee_id for a in allocations_for("md_home_eligible_at_md")
+        if a.policy_component_id == component_role_support_multi.id
+    }
+    result.check(
+        "Scenario 2 (positive): an Employee whose only presence evidence is at Mount Dora IS eligible "
+        "for a ROLE_PRESENT_AT_PAYMENT component on a Tip actually earned at Mount Dora",
+        emp_other_location.id in md_home_eligible_ids,
+    )
+
+    # -----------------------------------------------------------------
+    # Shift-level Location evidence (TASK_TIPS_003)
+    # -----------------------------------------------------------------
+    multi_wp_ids = {
+        a.employee_id for a in allocations_for("multi_location_wp")
+        if a.policy_component_id == component_role_support_multi.id
+    }
+    result.check(
+        "Scenario 3a: an Employee with an explicitly Winter-Park-tagged Shift is eligible for a Winter "
+        "Park Tip during that Shift",
+        emp_multi_location.id in multi_wp_ids,
+    )
+
+    multi_md_ids = {
+        a.employee_id for a in allocations_for("multi_location_md")
+        if a.policy_component_id == component_role_support_multi.id
+    }
+    result.check(
+        "Scenario 3b/6: the SAME Employee (home Location = Winter Park) is eligible for a Mount Dora "
+        "Tip during a Shift explicitly tagged Mount Dora — eligibility follows the Shift's own Location "
+        "evidence, not Employee.location_id, when that evidence is populated",
+        emp_multi_location.id in multi_md_ids,
+    )
+
+    multi_md_wrong_location_ids = {
+        a.employee_id for a in allocations_for("multi_location_md_instant_wrong_location")
+        if a.policy_component_id == component_role_support_multi.id
+    }
+    result.check(
+        "Scenario 6 (conflict resolution): at the SAME instant as the Mount-Dora-tagged Shift, this "
+        "Employee is NOT eligible for a Winter Park Tip, even though Employee.location_id says Winter "
+        "Park — a Shift's own Location evidence, when present, overrides the home-Location proxy rather "
+        "than merely supplementing it",
+        emp_multi_location.id not in multi_md_wrong_location_ids,
+    )
+
+    # Scenario 7 (single-Location context): historical Shift with NULL
+    # Location — every pre-existing Shift fixture on the main, genuinely
+    # single-Location `restaurant` (role_single, role_pair_odd, double_shift,
+    # etc.) passes `shift_location=None` and continues to resolve via the
+    # Employee.location_id fallback, since `restaurant` itself has exactly
+    # one operational Location (TASK_TIPS_004 Part B — the fallback remains
+    # safe here specifically because it is single-Location).
+    result.check(
+        "Scenario 7/14 (single-Location context): a historical Shift with no Location evidence "
+        "(location_id IS NULL), on a Restaurant with exactly one operational Location, still resolves "
+        "eligibility via the Employee.location_id fallback — safe because there is no other Location it "
+        "could plausibly be",
+        emp_role_a.id in {
+            a.employee_id for a in allocations_for("role_single") if a.policy_component_id == component_role_support.id
+        },
+    )
+
+    # --- TASK_TIPS_004 Part B: Shift-Location epistemic correction ---------
+    unknown_shift_ids = {
+        a.employee_id for a in allocations_for("multi_location_unknown_shift")
+        if a.policy_component_id == component_role_support_multi.id
+    }
+    result.check(
+        "Scenario 15 (multi-Location context): a Shift with NO Location evidence (location_id IS NULL), "
+        "on a Restaurant with MORE THAN ONE operational Location, is NEVER inferred from "
+        "Employee.location_id (Winter Park, which would have wrongly matched) — the Employee is excluded "
+        "from eligibility, presence at this Location is UNKNOWN, not guessed",
+        emp_multi_location.id not in unknown_shift_ids,
+    )
+    unknown_shift_issues = [
+        i for i in session.scalars(
+            select(m.TipCalculationIssue).where(m.TipCalculationIssue.calculation_run_id == multi_run.id)
+        ).all()
+        if i.issue_type == ISSUE_SHIFT_LOCATION_UNKNOWN
+    ]
+    result.check(
+        "SHIFT_LOCATION_UNKNOWN is raised as an explicit, auditable warning when a Shift's Location "
+        "cannot be confirmed under a multi-Location Restaurant, rather than silently excluding with no "
+        "trace",
+        len(unknown_shift_issues) >= 1,
+    )
+
+    # --- TASK_TIPS_004 Part A: real service-attribution resolver -----------
+    real_resolver = OrderEmployeeServiceAttributionResolver()
+
+    order_resolved = m.Order(
+        location_id=location.id, source_system_id=source_system.id, source_order_id="ORDER-resolver-resolved",
+        employee_id=emp_service_owner.id, order_type_id=order_type.id, created_at=_dt(42),
+        payment_state="PAID", currency="USD", total=6000,
+    )
+    session.add(order_resolved)
+    session.flush()
+    payment_resolved_a = m.Payment(
+        order_id=order_resolved.id, source_system_id=source_system.id, source_payment_id="PAY-resolver-resolved-a",
+        employee_id=emp_service_owner.id, created_at=_dt(42), amount=3000, result="SUCCESS",
+    )
+    payment_resolved_b = m.Payment(
+        order_id=order_resolved.id, source_system_id=source_system.id, source_payment_id="PAY-resolver-resolved-b",
+        employee_id=emp_service_owner.id, created_at=_dt(42), amount=3000, result="SUCCESS",
+    )
+    session.add_all([payment_resolved_a, payment_resolved_b])
+    session.flush()
+    resolved_result = real_resolver.resolve(session, order_resolved)
+    result.check(
+        "Real resolver (RESOLVED): Order.employee_id agrees with every Payment.employee_id recorded "
+        "under it — resolves to that Employee, corroborated by two independent POS observations",
+        resolved_result.status == RESOLVED and resolved_result.employee_ids == [emp_service_owner.id],
+    )
+
+    order_unresolved = m.Order(
+        location_id=location.id, source_system_id=source_system.id, source_order_id="ORDER-resolver-unresolved",
+        employee_id=None, order_type_id=order_type.id, created_at=_dt(42),
+        payment_state="PAID", currency="USD", total=4000,
+    )
+    session.add(order_unresolved)
+    session.flush()
+    unresolved_result = real_resolver.resolve(session, order_unresolved)
+    result.check(
+        "Real resolver (UNRESOLVED): Order.employee_id is NULL — no order-level evidence at all, never "
+        "guessed from anything else",
+        unresolved_result.status == UNRESOLVED and unresolved_result.employee_ids == [],
+    )
+
+    order_ambiguous = m.Order(
+        location_id=location.id, source_system_id=source_system.id, source_order_id="ORDER-resolver-ambiguous",
+        employee_id=emp_service_owner.id, order_type_id=order_type.id, created_at=_dt(42),
+        payment_state="PAID", currency="USD", total=5000,
+    )
+    session.add(order_ambiguous)
+    session.flush()
+    payment_ambiguous = m.Payment(
+        order_id=order_ambiguous.id, source_system_id=source_system.id, source_payment_id="PAY-resolver-ambiguous",
+        employee_id=emp_payment_employee.id, created_at=_dt(42), amount=5000, result="SUCCESS",
+    )
+    session.add(payment_ambiguous)
+    session.flush()
+    ambiguous_result = real_resolver.resolve(session, order_ambiguous)
+    result.check(
+        "Real resolver (AMBIGUOUS): Order.employee_id disagrees with a Payment.employee_id recorded "
+        "under the same Order — two independent POS observations conflict; never guessed which is "
+        "correct, never silently defaults to Order.employee",
+        ambiguous_result.status == AMBIGUOUS and ambiguous_result.employee_ids == [],
+    )
+
+    # End-to-end through the real engine: a SERVICE_OWNER component resolved
+    # via the real resolver (not the synthetic Static/Null resolvers used by
+    # every other check in this file) actually allocates correctly, and an
+    # unresolvable Order correctly raises SERVICE_OWNER_UNRESOLVED.
+    resolver_restaurant = m.Restaurant(name="Synthetic Real-Resolver Restaurant", default_currency="USD")
+    session.add(resolver_restaurant)
+    session.flush()
+    session.add(m.RestaurantLocation(restaurant_id=resolver_restaurant.id, location_id=location.id, is_primary=True))
+    session.flush()
+    policy_resolver = m.TipPolicy(
+        restaurant_id=resolver_restaurant.id, name="Synthetic Real-Resolver Policy",
+        status="ACTIVE", valid_from=main_valid_from,
+    )
+    session.add(policy_resolver)
+    session.flush()
+    component_resolver_owner = m.TipPolicyComponent(
+        tip_policy_id=policy_resolver.id, sequence=1, recipient_basis="SERVICE_OWNER",
+        share_percentage=Decimal("100.0000"), split_method="EQUAL_ELIGIBLE_HEADCOUNT",
+        no_eligible_behavior="LEAVE_UNALLOCATED",
+    )
+    session.add(component_resolver_owner)
+    session.flush()
+
+    order_real_resolved = m.Order(
+        location_id=location.id, source_system_id=source_system.id, source_order_id="ORDER-real-e2e-resolved",
+        employee_id=emp_service_owner.id, order_type_id=order_type.id, created_at=_dt(42),
+        payment_state="PAID", currency="USD", total=1000,
+    )
+    session.add(order_real_resolved)
+    session.flush()
+    payment_real_resolved = m.Payment(
+        order_id=order_real_resolved.id, source_system_id=source_system.id, source_payment_id="PAY-real-e2e-resolved",
+        employee_id=emp_service_owner.id, created_at=_dt(42), amount=1000, result="SUCCESS",
+    )
+    session.add(payment_real_resolved)
+    session.flush()
+    session.add(m.PaymentTip(payment_id=payment_real_resolved.id, amount=1000, source_present=True))
+    session.flush()
+
+    order_real_unresolved = m.Order(
+        location_id=location.id, source_system_id=source_system.id, source_order_id="ORDER-real-e2e-unresolved",
+        employee_id=None, order_type_id=order_type.id, created_at=_dt(42),
+        payment_state="PAID", currency="USD", total=1000,
+    )
+    session.add(order_real_unresolved)
+    session.flush()
+    payment_real_unresolved = m.Payment(
+        order_id=order_real_unresolved.id, source_system_id=source_system.id, source_payment_id="PAY-real-e2e-unresolved",
+        employee_id=None, created_at=_dt(42), amount=1000, result="SUCCESS",
+    )
+    session.add(payment_real_unresolved)
+    session.flush()
+    session.add(m.PaymentTip(payment_id=payment_real_unresolved.id, amount=1000, source_present=True))
+    session.flush()
+
+    real_resolver_run, real_resolver_summary = run_tip_calculation(
+        session, restaurant_id=resolver_restaurant.id,
+        period_start=_dt(43), period_end=_dt(41),
+        resolver=real_resolver, mode="DRY_RUN", calculation_version="test-real-resolver",
+    )
+    session.flush()
+    real_resolved_allocs = session.scalars(
+        select(m.TipAllocation).where(
+            m.TipAllocation.calculation_run_id == real_resolver_run.id,
+            m.TipAllocation.payment_id == payment_real_resolved.id,
+        )
+    ).all()
+    result.check(
+        "End-to-end: the real OrderEmployeeServiceAttributionResolver correctly drives a live "
+        "SERVICE_OWNER allocation through the actual engine (not a synthetic test resolver)",
+        len(real_resolved_allocs) == 1 and real_resolved_allocs[0].employee_id == emp_service_owner.id,
+    )
+    real_unresolved_issues = [
+        i for i in session.scalars(
+            select(m.TipCalculationIssue).where(m.TipCalculationIssue.calculation_run_id == real_resolver_run.id)
+        ).all()
+        if i.issue_type == ISSUE_SERVICE_OWNER_UNRESOLVED and i.payment_id == payment_real_unresolved.id
+    ]
+    real_unresolved_allocs = session.scalars(
+        select(m.TipAllocation).where(
+            m.TipAllocation.calculation_run_id == real_resolver_run.id,
+            m.TipAllocation.payment_id == payment_real_unresolved.id,
+        )
+    ).all()
+    result.check(
+        "End-to-end: an Order with no employee_id drives the real resolver to UNRESOLVED, correctly "
+        "raising SERVICE_OWNER_UNRESOLVED through the actual engine and leaving that Tip unallocated",
+        len(real_unresolved_issues) == 1 and len(real_unresolved_allocs) == 0,
+    )
+
+    # -----------------------------------------------------------------
+    # Idempotency / double-payment safeguard
+    # -----------------------------------------------------------------
+    idempotency_period_start = _dt(2)
+    idempotency_period_end = datetime.now(UTC) + timedelta(days=1)
+
+    first_persist_run, first_persist_summary = run_tip_calculation(
+        session,
+        restaurant_id=restaurant.id,
+        period_start=idempotency_period_start,
+        period_end=idempotency_period_end,
+        resolver=resolver,
+        mode="PERSIST",
+        calculation_version="idempotency-test-1",
+    )
+    session.flush()
+    result.check(
+        "Idempotency: a first PERSIST run over a fresh period completes normally",
+        first_persist_run.status == "COMPLETE",
+    )
+
+    duplicate_run, duplicate_summary = run_tip_calculation(
+        session,
+        restaurant_id=restaurant.id,
+        period_start=idempotency_period_start,
+        period_end=idempotency_period_end,
+        resolver=resolver,
+        mode="PERSIST",
+        calculation_version="idempotency-test-2-accidental-rerun",
+    )
+    session.flush()
+    duplicate_issues = session.scalars(
+        select(m.TipCalculationIssue).where(m.TipCalculationIssue.calculation_run_id == duplicate_run.id)
+    ).all()
+    result.check(
+        "Idempotency: a second PERSIST run over the SAME overlapping period (an accidental re-run) is "
+        "refused — FAILED status, a blocking DUPLICATE_CALCULATION_RUN issue, and zero TipAllocation rows "
+        "— never a second independently payable allocation set for the same Tips",
+        duplicate_run.status == "FAILED"
+        and duplicate_summary.allocations_produced == 0
+        and any(i.issue_type == "DUPLICATE_CALCULATION_RUN" and i.severity == "BLOCKING" for i in duplicate_issues),
+    )
+
+    superseding_run, superseding_summary = run_tip_calculation(
+        session,
+        restaurant_id=restaurant.id,
+        period_start=idempotency_period_start,
+        period_end=idempotency_period_end,
+        resolver=resolver,
+        mode="PERSIST",
+        calculation_version="idempotency-test-3-explicit-supersession",
+        supersedes_run_id=first_persist_run.id,
+    )
+    session.flush()
+    session.refresh(first_persist_run)
+    result.check(
+        "Idempotency: an explicit supersession (supersedes_run_id) of the first run is allowed, "
+        "completes normally, and marks the first run as superseded — a deliberate correction/redo, "
+        "never a silent duplicate",
+        superseding_run.status == "COMPLETE"
+        and first_persist_run.superseded_by_calculation_run_id == superseding_run.id,
+    )
+
+    third_run, third_summary = run_tip_calculation(
+        session,
+        restaurant_id=restaurant.id,
+        period_start=idempotency_period_start,
+        period_end=idempotency_period_end,
+        resolver=resolver,
+        mode="PERSIST",
+        calculation_version="idempotency-test-4-conflicts-with-superseding-run",
+    )
+    session.flush()
+    third_issues = session.scalars(
+        select(m.TipCalculationIssue).where(m.TipCalculationIssue.calculation_run_id == third_run.id)
+    ).all()
+    result.check(
+        "Idempotency: after supersession, the SUPERSEDING run (not the original) is the current "
+        "unsuperseded answer — a further un-superseding PERSIST over the same period is refused against it",
+        third_run.status == "FAILED"
+        and any(i.issue_type == "DUPLICATE_CALCULATION_RUN" for i in third_issues),
     )

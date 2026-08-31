@@ -15,8 +15,9 @@
 RF-One operational facts/configuration
 → payroll inputs can be prepared manually today
 → ADP RUN processes payroll
-→ Product Owner exports Payroll Details Excel
-→ RF-One imports the provider-generated payroll facts
+→ RF-One acquires the provider-generated payroll facts — automatically where
+  configured (Payroll Result Acquisition.md), or via manual Payroll Details
+  Excel export as a fallback
 → RF-One reconstructs actual payroll cost by Employee and Payroll Run
 ```
 
@@ -65,6 +66,8 @@ Payroll Provider (ADP)            → tax/compliance/direct-deposit processing
 | [Compensation Terms.md](Compensation%20Terms.md) | Employee-specific, temporal compensation; multiple concurrent functions/rates; HOURLY/SALARIED |
 | [Payroll Processing.md](Payroll%20Processing.md) | PayrollRun (REGULAR/SPECIAL), Bonus boundary, Tips boundary, jurisdiction/labor-rule boundary |
 | [Payroll Provider Result.md](Payroll%20Provider%20Result.md) | The provider (ADP) boundary and the atomic provider-result facts imported from Payroll Details Excel |
+| [Payroll Result Acquisition.md](Payroll%20Result%20Acquisition.md) | Genuinely automatic vs. manual-fallback acquisition; the adapter abstraction (local file / ADP SFTP AES / ADP Payroll Output API); verified ADP mechanisms |
+| [Payment Execution.md](Payment%20Execution.md) | Payroll calculation ≠ Payroll result acquisition ≠ Payment execution; the `payment_execution_provider` field (`ADP_DIRECT_DEPOSIT` today, `MERCURY_ACH` future), `PayrollExecutionConfiguration`, and double-payment prevention |
 | [Labor Cost.md](Labor%20Cost.md) | `Payroll Employer Cost` — the Payroll-sourced component of the Administration-level `Total Employee Cost` (see [../Personnel Cost.md](../Personnel%20Cost.md)) |
 
 ---
@@ -111,3 +114,5 @@ Payroll consumes Restaurant facts (worked time via Shift, Employee identity, opt
 - [../../Taxation/README.md](../../Taxation/README.md) — jurisdiction/tax boundary
 - `03 Software/RF-One Data Store/PAYROLL.md` — runtime/database implementation of this Domain
 - `07 Tasks/Reports/TASK_PAYROLL_001_REPORT.md` — implementation history
+- `07 Tasks/Reports/TASK_PAYROLL_002_REPORT.md` — Payment Execution Provider introduction and production-readiness review
+- `07 Tasks/Reports/TASK_PAYROLL_003_REPORT.md` — genuine automatic ADP acquisition, explicit payment-executor configuration

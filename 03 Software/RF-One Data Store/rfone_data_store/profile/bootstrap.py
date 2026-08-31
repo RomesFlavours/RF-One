@@ -499,6 +499,14 @@ def bootstrap_restaurant_profile(
                     restaurant_id=restaurant_id,
                     operational_area_id=root_area.id,
                     restaurant_role_id=role_id,
+                    # Deterministic, not guessed (TASK_ORGANIZATION_002):
+                    # `employee` was itself selected via
+                    # `Employee.location_id.in_(location_ids)` above, so this
+                    # is the one real Location this Employee's current source
+                    # evidence (SourceRole membership) is scoped to — never
+                    # inferred from name, never backfilled onto a prior/
+                    # existing Assignment row.
+                    location_id=employee.location_id,
                     valid_from=assignment_valid_from,
                     valid_to=None,
                     assignment_source=ASSIGNMENT_SOURCE_SOURCE_ROLE_MAPPING,

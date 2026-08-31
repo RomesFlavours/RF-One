@@ -58,9 +58,17 @@ Examples:
 - New Supplier Product
 - Existing Supplier Product
 - Missing Product
+- Unknown merchandise/economic classification
 - Unknown Ingredient
-- Fuel surcharge allocation
+- Mixed-type invoice (Food + Drink + Supplies on the same Purchase Document, e.g. Ben E. Keith, Cheney Brothers, Gordon Food)
+- Fuel surcharge allocation across eligible PRODUCT lines
+- Discount allocation across eligible PRODUCT lines
 - Credit note processing
+- Order-based Receiving with shortage
+- Label-based Receiving with an Extra/Unexpected Item
+- Damaged item Receiving, partial ACCEPT/REJECT decision, and Expected Supplier Credit
+- Partial and full Supplier credit reconciliation against an open Expected Supplier Credit
+- Receiving completion with an open Purchasing Alert
 
 ---
 

@@ -35,7 +35,7 @@ This document establishes the overall conceptual vision of the RF-One Core: what
 RF-One is built around a **domain-independent Core**. The Core is not a restaurant product and is not itself a commercial application. It defines generic concepts, their meaning, and their relationships (Subject, Reality, Desire, Goal, Decision, Action, Outcome, Learning, and others).
 
 - **Core** defines what concepts mean and how they may relate. It is definition, not implementation.
-- **Domain** applies and, where necessary, specializes Core concepts for a specific field (e.g. Restaurant, Purchasing, Sales, Workforce).
+- **Domain** applies and, where necessary, specializes Core concepts for a specific field (e.g. Restaurant, Sales, Workforce). A Domain may in turn have modules (e.g. Restaurant's Purchasing module); a module is not itself a peer Domain.
 - **Product** is a commercial application built using one or more Domains, designed to create measurable value for its users.
 - **Runtime** is where actual data, inference, execution, recommendations and actions occur.
 

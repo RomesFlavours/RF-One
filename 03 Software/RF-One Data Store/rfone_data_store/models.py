@@ -23,7 +23,7 @@ Conventions (see DATABASE_SCHEMA.md for full rationale):
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -37,8 +37,10 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    Time,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -170,8 +172,20 @@ class Location(Base):
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     # Not source-confirmed for the current Clover merchant (TASK_CLOVER_003 §A) —
-    # nullable, never defaulted, never invented.
+    # nullable, never defaulted, never invented. IANA timezone identifier
+    # (e.g. "America/New_York"), never a raw GMT offset — DST/historical
+    # timezone rules must remain interpretable (TASK_ORGANIZATION_002).
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Location Business Day Rule (TASK_SALES_002 / TASK_ORGANIZATION_002):
+    # the smallest adequate Business Day Rule — a time-of-day, evaluated in
+    # this Location's own `timezone`, below which an event's calendar day is
+    # its own Business Date, and at or above which the event's Business Date
+    # is the previous calendar day. Nullable: a Location may exist before
+    # this configuration is known; never fabricated from geography or any
+    # other inference. The resulting `business_date` fact itself is owned
+    # and persisted by Sales on `Order` (Restaurant Sales Model §6a) — this
+    # column is only the Location-level configuration input.
+    operating_day_cutoff_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
@@ -406,6 +420,22 @@ class Shift(Base):
 
     server_banking: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
+    # The canonical Location where this specific Shift actually occurred
+    # (TASK_TIPS_003), when deterministically known — distinct from
+    # `Employee.location_id` (that Employee's source-ingestion/current-home
+    # Location, used only as a presence-proxy fallback when a Shift itself
+    # carries no Location evidence — see `rfone_data_store/tips/engine.py`,
+    # `_shift_active_employee_ids`). NULL means unknown. RF-One never
+    # backfills or infers this value from `Employee.location_id`, from
+    # another Shift, or from any other source — it is populated only when a
+    # future ingestion/configuration source provides genuine per-Shift
+    # Location evidence. An Employee who legitimately works more than one
+    # Location can therefore have some Shifts explicitly at one Location and
+    # some at another, without ever changing `Employee.location_id`.
+    location_id: Mapped[int | None] = mapped_column(
+        ForeignKey("locations.id"), nullable=True, index=True
+    )
+
     source_created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -467,9 +497,27 @@ class RestaurantLocation(Base):
     change. No uniqueness constraint on (restaurant_id, location_id) alone —
     a Restaurant could legitimately re-associate with the same Location again
     after a gap (e.g. `valid_to` closed, then reopened); overlap validation
-    is an application/business-rule concern, not a blanket DB constraint."""
+    is an application/business-rule concern, not a blanket DB constraint.
+
+    Primary Location integrity (TASK_ORGANIZATION_002): a Restaurant may have
+    zero currently-active (`valid_to IS NULL`) primary (`is_primary = true`)
+    Locations, or exactly one, but never more than one. This is enforced
+    structurally below by a partial unique index scoped to open, primary
+    rows only — historical rows (closed `valid_to`, or `is_primary` false/
+    unset) are never constrained by it, so changing the primary Location
+    over time (close the old row, open/insert the new one) remains fully
+    representable without rewriting history."""
 
     __tablename__ = "restaurant_locations"
+    __table_args__ = (
+        Index(
+            "ux_restaurant_locations_one_open_primary",
+            "restaurant_id",
+            unique=True,
+            sqlite_where=text("is_primary = 1 AND valid_to IS NULL"),
+            postgresql_where=text("is_primary = true AND valid_to IS NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     restaurant_id: Mapped[int] = mapped_column(
@@ -588,12 +636,30 @@ class EmployeeAssignment(Base):
     valid in both FOH and Management at the same time) — no constraint forces
     one Employee to have only one Role/Area globally or at a given instant.
     The unique constraint below only rejects an exact duplicate row (same
-    Employee, Area, Role and start instant), not legitimate concurrency."""
+    Employee, Area, Role, Location and start instant), not legitimate
+    concurrency — a Location difference (e.g. Manager at Winter Park vs.
+    Manager at Mount Dora, same Area/Role/instant) is never treated as a
+    duplicate (TASK_ORGANIZATION_002).
+
+    `location_id` participates in the uniqueness rule below, but ordinary SQL
+    UNIQUE semantics treat every NULL as distinct from every other NULL, so a
+    plain `UniqueConstraint` including a nullable `location_id` would not by
+    itself catch an exact duplicate *Restaurant-wide* Assignment (both rows
+    `location_id IS NULL`). The second, partial unique index below closes
+    that gap for the `location_id IS NULL` case specifically, without
+    constraining the location-specific rows a second time."""
 
     __tablename__ = "employee_assignments"
     __table_args__ = (
         UniqueConstraint(
-            "employee_id", "operational_area_id", "restaurant_role_id", "valid_from"
+            "employee_id", "operational_area_id", "restaurant_role_id", "location_id", "valid_from"
+        ),
+        Index(
+            "ux_employee_assignments_dup_no_location",
+            "employee_id", "operational_area_id", "restaurant_role_id", "valid_from",
+            unique=True,
+            sqlite_where=text("location_id IS NULL"),
+            postgresql_where=text("location_id IS NULL"),
         ),
         Index("ix_employee_assignments_employee_valid_from", "employee_id", "valid_from"),
     )
@@ -610,6 +676,19 @@ class EmployeeAssignment(Base):
     )
     restaurant_role_id: Mapped[int] = mapped_column(
         ForeignKey("restaurant_roles.id"), nullable=False, index=True
+    )
+    # Optional (TASK_ORGANIZATION_002): which canonical Location this
+    # specific Assignment applies to, when Location-specific assignment is
+    # operationally meaningful (e.g. "Server at Winter Park"). NULL means the
+    # Assignment applies Restaurant-wide across every Location associated
+    # with the Restaurant (e.g. a CEO/corporate-wide Role) — never forced.
+    # This is the Assignment's own fact, distinct from `Employee.location_id`
+    # (that Employee's source-ingestion/current-home Location; see
+    # Employee Assignment.md) — a temporal Location change here (e.g. an
+    # Employee moving from one Location to another) closes the prior
+    # Assignment row and opens a new one, exactly like a Role/Area change.
+    location_id: Mapped[int | None] = mapped_column(
+        ForeignKey("locations.id"), nullable=True, index=True
     )
     # Optional (task §17): only if a stable physical-area assignment is
     # meaningful — NOT forced when physical working location varies shift by
@@ -791,6 +870,19 @@ class TipCalculationRun(Base):
     # substitute for the FK-traceable detail on each TipAllocation/Issue row.
     calculation_version: Mapped[str] = mapped_column(String(64), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Idempotency / double-payment safeguard (multi-location closure task,
+    # mirroring the existing `PayrollRun.superseded_by_payroll_run_id`
+    # pattern — application-set, never DB-enforced, same convention this
+    # schema already uses for "a later run explicitly corrects an earlier
+    # one" rather than inventing a new mechanism). NULL means this run's
+    # allocations are the current, unsuperseded answer for its period. A
+    # second PERSIST run over an overlapping period is refused by the engine
+    # unless it explicitly names the run it supersedes (see
+    # `tips/engine.py`, `run_tip_calculation(supersedes_run_id=...)`).
+    superseded_by_calculation_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tip_calculation_runs.id"), nullable=True
+    )
 
     allocations: Mapped[list["TipAllocation"]] = relationship(back_populates="calculation_run")
     issues: Mapped[list["TipCalculationIssue"]] = relationship(back_populates="calculation_run")
@@ -1841,6 +1933,13 @@ class PayrollRun(Base):
     inferred from `pay_date` (Payroll Schedule and Period.md)."""
 
     __tablename__ = "payroll_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "payment_execution_provider IS NULL OR payment_execution_provider IN "
+            "('ADP_DIRECT_DEPOSIT', 'MERCURY_ACH')",
+            name="ck_payroll_runs_payment_execution_provider",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     restaurant_id: Mapped[int] = mapped_column(
@@ -1871,6 +1970,20 @@ class PayrollRun(Base):
         ForeignKey("payroll_runs.id"), nullable=True
     )
 
+    # Explicit, auditable Payment Execution Provider (Payment Execution.md).
+    # NULL = not yet assigned (never guessed for historical rows). Once set
+    # to a non-null value it is never reassigned to a *different* value by
+    # any RF-One code path (double-payment prevention) — see
+    # `rfone_data_store/payroll/payment_execution.py`,
+    # `assign_payment_execution_provider`. Conceptual values:
+    # ADP_DIRECT_DEPOSIT (current production; ADP moves the funds, RF-One
+    # never initiates a second payment) and MERCURY_ACH (future; not
+    # implemented — no RF-One code calls a Mercury API or sends an ACH
+    # instruction). Whether payment was actually *executed* is never stored
+    # here — it is always derived from `PayrollPaymentFact` evidence
+    # (Payment Execution.md, "Payment evidence vs. payment execution status").
+    payment_execution_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -1879,6 +1992,50 @@ class PayrollRun(Base):
     )
 
     employee_results: Mapped[list["EmployeePayrollResult"]] = relationship(back_populates="payroll_run")
+
+
+class PayrollExecutionConfiguration(Base):
+    """Restaurant-scoped, temporally valid statement of which Payment
+    Execution Provider is APPROVED for new PayrollRuns during a window
+    (TASK_PAYROLL_003, `Payment Execution.md`). Distinct from
+    `PayrollRun.payment_execution_provider` itself — this is the standing
+    business configuration a new Run's provider may be DERIVED from when
+    not explicitly selected at import/acquisition time. Mirrors the
+    existing `EmployeeCompensationTerm`/`TipPolicy` temporal-configuration
+    pattern: a change closes the prior row's `valid_to` and opens a new
+    row — history is never overwritten in place, so a future transition
+    from `ADP_DIRECT_DEPOSIT` to `MERCURY_ACH` never alters which provider
+    an already-created historical PayrollRun was assigned (that assignment
+    is separately immutable — see
+    `rfone_data_store/payroll/payment_execution.py`,
+    `assign_payment_execution_provider`)."""
+
+    __tablename__ = "payroll_execution_configurations"
+    __table_args__ = (
+        CheckConstraint(
+            "provider IN ('ADP_DIRECT_DEPOSIT', 'MERCURY_ACH')",
+            name="ck_payroll_execution_configurations_provider",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=False, index=True
+    )
+
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    source_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class PayrollProviderEmployeeIdentity(Base):
@@ -2105,9 +2262,23 @@ class PayrollImportRun(Base):
     payroll_run_id: Mapped[int | None] = mapped_column(ForeignKey("payroll_runs.id"), nullable=True)
 
     # File name only (never a full local filesystem path, which could leak
-    # local directory structure) plus its content hash for idempotency.
+    # local directory structure) plus its content hash for idempotency. For
+    # a non-file acquisition (e.g. SFTP, a future API), this holds a
+    # descriptive source identifier (e.g. the remote filename) — the content
+    # hash still governs idempotency, never the identifier string.
     source_file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     source_file_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    # How this import's bytes actually reached RF-One (TASK_PAYROLL_003,
+    # Payroll Result Acquisition.md) — free string, matching this schema's
+    # existing convention for evolving classification fields (e.g.
+    # `EmployeeAssignment.assignment_source`). Conceptual values today:
+    # ADP_XLSX_FILE (manual/local file — the existing, fully supported
+    # fallback path), ADP_SFTP_AES (ADP's Automatic Export Service delivering
+    # a report to a customer-controlled SFTP endpoint). Nullable only because
+    # historical rows created before this column existed never had a value
+    # to record — never guessed for those.
+    acquisition_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # Explicitly confirmed correction chain — never inferred automatically
     # (Payroll Provider Result.md). NULL unless the operator passed
@@ -2160,6 +2331,634 @@ class PayrollImportIssue(Base):
     )
 
     import_run: Mapped[PayrollImportRun] = relationship(back_populates="issues")
+
+
+# ---------------------------------------------------------------------------
+# Purchasing — Restaurant Domain, Purchasing module (TASK_PURCHASING_004)
+#
+# Implements the canonical model already approved, documentation-only, by
+# TASK_PURCHASING_001-003 (`01 Domains/Restaurant/Purchasing/`). This section
+# adds the first persistent schema for it; it does not redefine any Domain
+# concept. Money follows this schema's existing minor-units convention;
+# quantity follows the existing `Numeric(12, 4)` convention (see "Numeric
+# conventions" in README.md). Status/decision/trigger fields that the Domain
+# documents as a small closed vocabulary (e.g. Purchase Line `line_type`,
+# Alert `trigger`) get a `CheckConstraint` — the same structural-enforcement
+# choice TASK_PAYROLL_001 made for `employee_compensation_terms` — while
+# fields the Domain leaves open-ended (e.g. `status` on Supplier/Purchase
+# Order) stay free strings, matching every other evolving classification
+# field in this schema (e.g. `EmployeeAssignment.assignment_source`).
+#
+# Historical integrity (Purchasing/DataDictionary.md, "Persist Facts —
+# Derive Calculations"; Purchasing/BusinessRules.md, Rules 2, 11, 23, 36) is
+# enforced at the repository layer (`rfone_data_store/purchasing/
+# repository.py` exposes no function that updates a persisted Purchase
+# Line, Purchase Document header fact, or Receiving Line once inserted) and,
+# where a single-row condition makes it possible, structurally here via
+# CheckConstraint — see `PurchaseLine` (Supplier Product Relationship, Rule
+# 3) and `ReceivingLine` (mandatory photo evidence, Rules 29-30).
+#
+# `Effective Product Cost`, allocation shares, category totals,
+# `ReconciliationOutcome`, and Expected Supplier Credit's
+# `RecognizedAmount`/`OutstandingAmount` are documented as derived, never
+# persisted as canonical truth — none of them is a column anywhere below;
+# see `rfone_data_store/purchasing/reconciliation.py` and `repository.py`
+# for the on-demand derivation.
+#
+# No `Ingredient`/`Product`/`Specification` table exists yet anywhere in
+# this schema (Recipe/Food Cost/Inventory are out of this task's scope, per
+# TASK_PURCHASING_004, "Software boundary") — `SupplierProduct.ingredient_id`
+# is therefore an un-constrained placeholder integer, not a real FK, so it
+# never blocks Purchasing on a module this task does not build. See
+# PURCHASING.md, "Remaining gaps."
+# ---------------------------------------------------------------------------
+
+
+class Supplier(Base):
+    """A commercial organization that supplies products to the Restaurant
+    (Purchasing/EntityDefinitions.md, "Supplier"). Restaurant-scoped, like
+    every other Restaurant-configured entity in this schema (e.g.
+    `RestaurantRole`, `TipPolicy`) — a Supplier is this Restaurant's own
+    purchasing configuration, never a cross-Restaurant catalog row."""
+
+    __tablename__ = "suppliers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=False, index=True
+    )
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Free string (ACTIVE/INACTIVE illustrative), matching this schema's
+    # convention for evolving classification fields.
+    status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    acquisition_methods: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class PurchaseOrder(Base):
+    """The Restaurant's purchasing request to a Supplier
+    (Purchasing/EntityDefinitions.md, "Purchase Order"). Deliberately
+    minimal: the Order/Purchase Support module that would create/manage
+    these is explicitly not designed by TASK_PURCHASING_001-004 — this table
+    exists only so Purchase Recording has an "Order" side to reconcile
+    against (Purchasing/BusinessRules.md, Rule 26)."""
+
+    __tablename__ = "purchase_orders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    supplier_id: Mapped[int] = mapped_column(
+        ForeignKey("suppliers.id"), nullable=False, index=True
+    )
+
+    order_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class PurchaseOrderLine(Base):
+    """One requested item on a Purchase Order — the minimum information
+    Purchase Recording needs for reconciliation (Purchasing/
+    EntityDefinitions.md, "Purchase Order Line"): Supplier Product (when
+    resolved) or a recognizable free-text description, plus the requested
+    quantity. Never itself the Order/Purchase Support module."""
+
+    __tablename__ = "purchase_order_lines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    purchase_order_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_orders.id"), nullable=False, index=True
+    )
+    supplier_product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplier_products.id"), nullable=True
+    )
+
+    item_description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class SupplierProduct(Base):
+    """The commercial product as defined by one specific Supplier
+    (Purchasing/EntityDefinitions.md, "Supplier Product"). `(supplier_id,
+    supplier_code)` is the "Supplier Product memory" key (Purchasing/
+    EntityDefinitions.md: "the pair (Supplier, Supplier Item Code)
+    identifies a Supplier Product across purchases over time") — enforced
+    here as a unique constraint so the repository's get-or-create lookup is
+    race-safe, not merely an application convention. `economic_classification`
+    is the CURRENT confirmed value, reused for future Purchase Lines; a
+    later correction updates this row only — it never rewrites a
+    `PurchaseLine.economic_classification` already recorded under the prior
+    value (Purchasing/DataDictionary.md, "Attribute Principles")."""
+
+    __tablename__ = "supplier_products"
+    __table_args__ = (UniqueConstraint("supplier_id", "supplier_code"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    supplier_id: Mapped[int] = mapped_column(
+        ForeignKey("suppliers.id"), nullable=False, index=True
+    )
+
+    supplier_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    supplier_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    packaging: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # FOOD / DRINK / SUPPLIES / OTHER (Purchasing/EntityDefinitions.md,
+    # "Merchandise / Economic Classification") — free string: the Domain
+    # explicitly anticipates "future categories as required by reality."
+    economic_classification: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Un-constrained placeholder — see the module-level note above; no
+    # `ingredients` table exists yet anywhere in this schema.
+    ingredient_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class PurchaseDocument(Base):
+    """The source commercial document of a purchase — Invoice, Receipt,
+    Credit Note, API purchase record, or other real document
+    (Purchasing/EntityDefinitions.md, "Purchase Document"); the central
+    entity of the Purchasing module. Immutable by convention (Purchasing/
+    BusinessRules.md, Rule 2): the repository never updates a row here
+    except `status` (business processing status, not a source fact).
+    `destination_location` is stored as the Supplier's own disclosed text,
+    not resolved against the canonical `locations` table — the source may
+    name a ship-to address this Restaurant's own Location catalog does not
+    contain, and Purchasing must not invent that resolution (Purchasing/
+    EntityDefinitions.md: "extract what the source knows")."""
+
+    __tablename__ = "purchase_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    supplier_id: Mapped[int] = mapped_column(
+        ForeignKey("suppliers.id"), nullable=False, index=True
+    )
+    purchase_order_id: Mapped[int | None] = mapped_column(
+        ForeignKey("purchase_orders.id"), nullable=True
+    )
+
+    document_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Invoice / Receipt / Credit Note / API / Other — free string per
+    # Purchasing/EntityDefinitions.md ("or other real document").
+    document_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    issue_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    destination_location: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    customer_account_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # OCR / PDF / API / XML / EDI / Manual (Purchasing/DataAcquisition.md).
+    acquisition_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    total_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    payment_terms: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    # Reference to the preserved original document (e.g. a path under
+    # InvoiceIntake's `uploads/`), never the document content itself — same
+    # "reference, not a duplicate blob store" choice as `SourceRecord.raw_path`.
+    source_reference: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    source_provenance: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    lines: Mapped[list["PurchaseLine"]] = relationship(back_populates="purchase_document")
+
+
+class PurchaseLine(Base):
+    """One real line of a Purchase Document (Purchasing/EntityDefinitions.md,
+    "Purchase Line") — a purchased product, a document-level surcharge, or a
+    document-level discount. Immutable by convention (Rule 2, Rule 11): the
+    repository never updates a row here once inserted.
+
+    Both CheckConstraints below make Purchasing/BusinessRules.md Rule 3
+    ("Supplier Product Relationship Depends on Line Type" — only a `PRODUCT`
+    line may reference a Supplier Product or carry an economic
+    classification) a structural database guarantee, not merely an
+    application convention that could be bypassed by a future caller."""
+
+    __tablename__ = "purchase_lines"
+    __table_args__ = (
+        CheckConstraint("line_type IN ('PRODUCT', 'SURCHARGE', 'DISCOUNT')", name="ck_purchase_lines_line_type"),
+        CheckConstraint(
+            "line_type = 'PRODUCT' OR supplier_product_id IS NULL",
+            name="ck_purchase_lines_supplier_product_requires_product_type",
+        ),
+        CheckConstraint(
+            "line_type = 'PRODUCT' OR economic_classification IS NULL",
+            name="ck_purchase_lines_classification_requires_product_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    purchase_document_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_documents.id"), nullable=False, index=True
+    )
+
+    line_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_line_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    raw_description: Mapped[str] = mapped_column(String(1000), nullable=False)
+    # Minor units; sign preserved exactly as disclosed (a DISCOUNT line's
+    # sign/semantics are a source fact, Purchasing/DataDictionary.md).
+    source_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # PRODUCT-only attributes (Purchasing/DataDictionary.md) — nullable for
+    # every row; the CheckConstraints above enforce the two that also carry
+    # Domain-relationship meaning (SupplierProductId, EconomicClassification).
+    supplier_product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplier_products.id"), nullable=True
+    )
+    supplier_item_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    supplier_category_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source_section: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    manufacturer_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    brand: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    purchase_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    pack_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Preserved as disclosed (e.g. "500 g") rather than split into a
+    # separate value/unit pair — Purchasing/DataDictionary.md documents
+    # PackSize as one disclosed source fact, and splitting it would invent
+    # structure the source does not necessarily provide.
+    pack_size: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    product_variant: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    grade: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    unit_price_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # FOOD / DRINK / SUPPLIES / OTHER, once known and human-confirmed — a
+    # persisted fact per Purchase Line (Purchasing/DataDictionary.md), not
+    # merely inherited live from SupplierProduct.economic_classification.
+    economic_classification: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    purchase_document: Mapped[PurchaseDocument] = relationship(back_populates="lines")
+
+
+class ConfiguredExpectation(Base):
+    """Approved operational knowledge about the normal/acceptable commercial
+    configuration(s) for a Supplier Product (Purchasing/EntityDefinitions.md,
+    "Configured Expectation"). Changes only prospectively (Rule 23): the
+    repository never updates a row's `acceptable_configurations` in place —
+    a change inserts a new row with `status = ACTIVE` and marks the prior
+    Active row (if any) `status = SUPERSEDED`, so the full approval history
+    is preserved rather than overwritten (mirrors `EmployeeAssignment`'s
+    close-and-open pattern for a temporal fact elsewhere in this schema)."""
+
+    __tablename__ = "configured_expectations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    supplier_product_id: Mapped[int] = mapped_column(
+        ForeignKey("supplier_products.id"), nullable=False, index=True
+    )
+
+    # List of accepted configuration dicts (e.g. [{"pack_count": 20,
+    # "pack_size": "500 g"}, {"pack_count": 10, "pack_size": "1 kg"}]) — the
+    # Domain deliberately leaves this schema-free ("do not define a DB
+    # schema now," TASK_PURCHASING_002 §6/T.3); JSON preserves that.
+    acceptable_configurations: Mapped[list] = mapped_column(JSON, nullable=False)
+    # ACTIVE / SUPERSEDED.
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    approved_by_employee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("employees.id"), nullable=True
+    )
+
+    last_updated: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class ReceivingRecord(Base):
+    """The Restaurant's own observation of what physically arrived
+    (Purchasing/EntityDefinitions.md, "Receiving Record") — evidence, not a
+    Purchasing Decision. `location_id` reuses the canonical POS `locations`
+    table (the same "where" every other physical-presence fact in this
+    schema resolves to, e.g. `Employee.location_id`) rather than inventing a
+    second Location concept; nullable because Receiving Is Mobile-First and
+    Fallback-Capable can begin before a Location is confirmed."""
+
+    __tablename__ = "receiving_records"
+    __table_args__ = (
+        CheckConstraint(
+            "capture_method IN ('LABEL_BASED', 'ORDER_BASED', 'MANUAL')",
+            name="ck_receiving_records_capture_method",
+        ),
+        CheckConstraint("status IN ('IN_PROGRESS', 'COMPLETED')", name="ck_receiving_records_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    supplier_id: Mapped[int] = mapped_column(
+        ForeignKey("suppliers.id"), nullable=False, index=True
+    )
+    purchase_order_id: Mapped[int | None] = mapped_column(
+        ForeignKey("purchase_orders.id"), nullable=True
+    )
+    purchase_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("purchase_documents.id"), nullable=True
+    )
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), nullable=True)
+    receiving_user_employee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("employees.id"), nullable=True
+    )
+
+    receiving_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    capture_method: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_provenance: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # IN_PROGRESS / COMPLETED — independent of related Alert status (Rule 32).
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    lines: Mapped[list["ReceivingLine"]] = relationship(back_populates="receiving_record")
+
+
+class ReceivingLine(Base):
+    """One observed item on a Receiving Record (Purchasing/
+    EntityDefinitions.md, "Receiving Line"). No `purchase_order_line_id` ⇒
+    Extra/Unexpected Item, by definition — never a separate entity/flag
+    (same document, same "do not overmodel" instruction TASK_PURCHASING_003
+    §6 gave the Domain). The two CheckConstraints below make Rules 29-30's
+    mandatory-photo requirement a structural guarantee rather than an
+    application convention: an Extra/Unexpected Item (no Purchase Order
+    Line) or a damaged quantity cannot be inserted without photo evidence."""
+
+    __tablename__ = "receiving_lines"
+    __table_args__ = (
+        CheckConstraint(
+            "purchase_order_line_id IS NOT NULL OR photo_evidence IS NOT NULL",
+            name="ck_receiving_lines_extra_item_requires_photo",
+        ),
+        CheckConstraint(
+            "damaged_quantity IS NULL OR damaged_quantity = 0 OR photo_evidence IS NOT NULL",
+            name="ck_receiving_lines_damaged_requires_photo",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    receiving_record_id: Mapped[int] = mapped_column(
+        ForeignKey("receiving_records.id"), nullable=False, index=True
+    )
+    purchase_order_line_id: Mapped[int | None] = mapped_column(
+        ForeignKey("purchase_order_lines.id"), nullable=True
+    )
+    purchase_line_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_lines.id"), nullable=True)
+    supplier_product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplier_products.id"), nullable=True
+    )
+
+    raw_description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    observed_quantity: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    observed_pack_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    observed_pack_size: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    observed_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    observed_brand: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    observed_variant: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    observed_grade: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    damaged_quantity: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    # Reference (e.g. an uploaded file path), never the image blob itself —
+    # same convention as `PurchaseDocument.source_reference`.
+    photo_evidence: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    capture_method: Mapped[str | None] = mapped_column(String(24), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    receiving_record: Mapped[ReceivingRecord] = relationship(back_populates="lines")
+
+
+class PurchasingAlert(Base):
+    """A case where RF-One knows what happened but observed Reality
+    deviates from an operational expectation and requires human attention
+    (Purchasing/EntityDefinitions.md, "Alert"). Named `PurchasingAlert`
+    (table `purchasing_alerts`), not the bare `Alert`, since Alert is a
+    cross-cutting Interaction Architecture concept (`03 Software/User
+    Interaction Architecture.md` §7.1) that this task implements only for
+    Purchasing — a future cross-module Alert table should not collide with
+    this name. `reconciliation_context` is a human-readable snapshot only
+    (e.g. "SHORT: ordered 4, invoiced 4, received 3") — Purchasing/
+    DataDictionary.md documents `ReconciliationOutcome` as derived, never
+    persisted as canonical truth, so no column here is ever treated as
+    authoritative; a discrepancy is always resolved by recomputing from
+    Order/Invoice/Receiving facts (`rfone_data_store/purchasing/
+    reconciliation.py`), never by reading this note back."""
+
+    __tablename__ = "purchasing_alerts"
+    __table_args__ = (
+        CheckConstraint(
+            "trigger IN ('CONFIGURATION_DEVIATION', 'RECEIVING_DISCREPANCY')",
+            name="ck_purchasing_alerts_trigger",
+        ),
+        CheckConstraint(
+            "comparison_basis IS NULL OR comparison_basis IN ('CONFIGURED_EXPECTATION', 'PREVIOUS_PURCHASE')",
+            name="ck_purchasing_alerts_comparison_basis",
+        ),
+        CheckConstraint(
+            "status IN ('OPEN', 'ACKNOWLEDGED', 'DECIDED', 'CLOSED')",
+            name="ck_purchasing_alerts_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Named "trigger" per Purchasing/EntityDefinitions.md, "Alert Trigger" —
+    # quoted in the CheckConstraint text above since it is a SQL reserved
+    # word in some dialects; SQLAlchemy quotes the identifier automatically.
+    trigger: Mapped[str] = mapped_column(String(24), nullable=False)
+
+    purchase_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("purchase_documents.id"), nullable=True, index=True
+    )
+    purchase_line_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_lines.id"), nullable=True)
+    supplier_product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplier_products.id"), nullable=True
+    )
+    purchase_order_line_id: Mapped[int | None] = mapped_column(
+        ForeignKey("purchase_order_lines.id"), nullable=True
+    )
+    receiving_record_id: Mapped[int | None] = mapped_column(
+        ForeignKey("receiving_records.id"), nullable=True
+    )
+    receiving_line_id: Mapped[int | None] = mapped_column(ForeignKey("receiving_lines.id"), nullable=True)
+
+    # Applicable when trigger = CONFIGURATION_DEVIATION.
+    comparison_basis: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    expected_configuration: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    observed_configuration: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Applicable when trigger = RECEIVING_DISCREPANCY — descriptive only,
+    # see the class docstring.
+    reconciliation_context: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    responsible_user_employee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("employees.id"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    # CONFIGURATION_DEVIATION vocabulary: ACCEPT_THIS_PURCHASE_ONLY /
+    # ACCEPT_AS_ALTERNATIVE / CHANGE_EXPECTATION / MODULE_CAPABILITY_GAP.
+    # RECEIVING_DISCREPANCY vocabulary: ACCEPT / REJECT_RETURN. Free string
+    # (not a single combined CheckConstraint) since the valid set depends on
+    # `trigger`, matching this schema's existing convention of leaving a
+    # trigger-dependent vocabulary unconstrained at the DB level.
+    human_decision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    decided_by_employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ExpectedSupplierCredit(Base):
+    """The operational expectation that a Supplier owes an economic
+    correction, created only when a REJECT/RETURN decision applies to
+    already-invoiced merchandise (Purchasing/EntityDefinitions.md, "Expected
+    Supplier Credit"). `RecognizedAmount`/`OutstandingAmount` are documented
+    as derived (Purchasing/DataDictionary.md) — no column for either exists
+    here; `rfone_data_store/purchasing/repository.py` computes them on
+    demand from `SupplierCreditReference` rows. No arbitrary expiration
+    (Rule 40) is enforced anywhere — nothing in this schema or the
+    repository ever auto-closes a row here."""
+
+    __tablename__ = "expected_supplier_credits"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('OPEN', 'PARTIALLY_RESOLVED', 'RESOLVED')",
+            name="ck_expected_supplier_credits_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    alert_id: Mapped[int] = mapped_column(
+        ForeignKey("purchasing_alerts.id"), nullable=False, index=True
+    )
+    purchase_document_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_documents.id"), nullable=False
+    )
+    purchase_line_id: Mapped[int] = mapped_column(ForeignKey("purchase_lines.id"), nullable=False)
+
+    rejected_quantity: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    expected_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    credit_references: Mapped[list["SupplierCreditReference"]] = relationship(
+        back_populates="expected_supplier_credit"
+    )
+
+
+class SupplierCreditReference(Base):
+    """One later Supplier Purchase Document/credit-adjustment line
+    recognized as satisfying an Expected Supplier Credit in whole or in
+    part (Purchasing/DataDictionary.md, `LinkedCreditReferences`) — the
+    join/detail table `ExpectedSupplierCredit` needs so
+    `RecognizedAmount`/`OutstandingAmount` can be derived rather than
+    persisted (Rule 38). Credit Note remains the sole canonical
+    credit-document type (`PurchaseDocument.document_type`); no second
+    credit-document ontology is introduced here (Rule 37)."""
+
+    __tablename__ = "supplier_credit_references"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    expected_supplier_credit_id: Mapped[int] = mapped_column(
+        ForeignKey("expected_supplier_credits.id"), nullable=False, index=True
+    )
+    # The crediting Purchase Document (typically a Credit Note) and/or its
+    # specific line — independently nullable since a Supplier's credit
+    # evidence is not always line-itemized (Rule 39).
+    purchase_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("purchase_documents.id"), nullable=True
+    )
+    purchase_line_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_lines.id"), nullable=True)
+
+    applied_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    expected_supplier_credit: Mapped[ExpectedSupplierCredit] = relationship(
+        back_populates="credit_references"
+    )
+
+
+class PurchasingValidationLogEntry(Base):
+    """One recorded anomaly detected during acquisition, normalization,
+    classification, mapping or validation (Purchasing/EntityDefinitions.md,
+    "Validation Log"). Named with a `Purchasing` prefix (table
+    `purchasing_validation_log_entries`) since Validation Log is a Core-level
+    pattern this task implements only for Purchasing — see the
+    `PurchasingAlert` docstring for the same naming rationale. Rows are
+    never deleted; `status` moves OPEN → APPROVED/REJECTED → CLOSED without
+    ever modifying `message`/`suggested_action` (Rule 13)."""
+
+    __tablename__ = "purchasing_validation_log_entries"
+    __table_args__ = (
+        CheckConstraint(
+            "severity IN ('INFORMATION', 'WARNING', 'ERROR')",
+            name="ck_purchasing_validation_log_entries_severity",
+        ),
+        CheckConstraint(
+            "status IN ('OPEN', 'APPROVED', 'REJECTED', 'CLOSED')",
+            name="ck_purchasing_validation_log_entries_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    purchase_document_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_documents.id"), nullable=False, index=True
+    )
+    purchase_line_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_lines.id"), nullable=True)
+
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    suggested_action: Mapped[str | None] = mapped_column(Text, nullable=True)
+    human_decision: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 ALL_MODELS: tuple[type[Base], ...] = (
@@ -2220,4 +3019,17 @@ ALL_MODELS: tuple[type[Base], ...] = (
     PayrollPaymentFact,
     PayrollImportRun,
     PayrollImportIssue,
+    Supplier,
+    PurchaseOrder,
+    PurchaseOrderLine,
+    SupplierProduct,
+    PurchaseDocument,
+    PurchaseLine,
+    ConfiguredExpectation,
+    ReceivingRecord,
+    ReceivingLine,
+    PurchasingAlert,
+    ExpectedSupplierCredit,
+    SupplierCreditReference,
+    PurchasingValidationLogEntry,
 )

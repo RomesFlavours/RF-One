@@ -99,7 +99,7 @@ Clover Gratuity / order-fee Service Charge   ≠ Payment Tip
 
 ## Relationship to Personnel Management
 
-Tips is Restaurant-specific operational calculation; it does not belong to, and does not redefine, Personnel Management's Workforce/Selection/Training/Performance/Personnel Decisions modules (`01 Domains/Personnel Management/README.md`). A future Performance module may consume realized Tip allocations as one input among others, but Tips itself makes no Performance judgment.
+Tips is Restaurant-specific operational calculation; it does not belong to, and does not redefine, Personnel Management's Workforce/Selection/Training/Performance/Personnel Decisions modules (`01 Domains/Personnel Management/README.md`). Realized Tip Allocation is documented Service Quality evidence for the Restaurant Domain's own `Server Performance` module (`01 Domains/Restaurant/Server Performance/Perceived Service Quality.md`, TASK_SERVER_PERFORMANCE_001) — Tips itself still makes no Performance judgment, and Server Performance does not redefine Tip allocation.
 
 ---
 

@@ -138,6 +138,8 @@ Performance does not canonize permanent KPIs for any role. Which [Performance Me
 
 Restaurant examples (Server, Restaurant Manager) are used throughout these documents to validate that Performance concepts are genuinely reusable — not to define Performance around Restaurant. No Restaurant-specific Performance file is created by this module, and none of this knowledge is moved into `01 Domains/Restaurant/`.
 
+**Update (TASK_SERVER_PERFORMANCE_001):** the Restaurant Domain now has a genuine, populated specialization for the Server role — `01 Domains/Restaurant/Server Performance/` (with the closely related `Service Copilot/` and `Dining Intelligence/` sibling modules). It supplies Restaurant-specific technical content (Quality of Sale, Opportunity Capture, Concurrent Service Load, KPI families) into this module's reasoning structure (Evidence/Measure/Indicator/Context) — it does not redefine or duplicate any concept documented here. See `Server Performance/README.md`, "Naming and boundary," for the exact relationship.
+
 ---
 
 ## Distinction from Product/Runtime

@@ -2,8 +2,12 @@
 {% block content %}
 <div class="card">
   <h3 style="margin-top:0;">Salvato ✓</h3>
-  <p>Documento registrato con <strong>PurchaseDocumentId = {{ doc_id }}</strong>.</p>
-  <p class="hint">File Excel: <code>{{ excel_path }}</code></p>
+  <p>Documento registrato nel RF-One Data Store con <strong>PurchaseDocumentId = {{ doc_id }}</strong>.</p>
+  {% if excel_ok %}
+  <p class="hint">Copia di debug anche su Excel: <code>{{ excel_path }}</code></p>
+  {% else %}
+  <p class="hint">Nota: il salvataggio canonico è andato a buon fine; la copia di debug su Excel non è riuscita (es. file aperto in Excel) — non è un problema, i dati sono comunque salvati.</p>
+  {% endif %}
   <div class="actions">
     <a class="btn" href="{{ url_for('index') }}">Carica un'altra fattura</a>
   </div>

@@ -1,9 +1,9 @@
 # Tip Policy
 
-**Version:** 1.0
+**Version:** 1.1
 **Status:** Approved
 **Module:** Restaurant Domain / Tips
-**Origin:** TASK_TIPS_001
+**Origin:** TASK_TIPS_001; TASK_TIPS_004 (real Rome's Flavours configuration — see `07 Tasks/Reports/TASK_TIPS_004_REPORT.md`)
 
 ---
 
@@ -11,7 +11,9 @@
 
 A **Tip Policy** is a Restaurant-configured, temporally valid set of rules describing how a recorded Tip is shared among Employees.
 
-A Tip Policy is Restaurant configuration, never Domain ontology — no percentage, role name, or component structure in this document or in `03 Software/RF-One Data Store/rfone_data_store/models.py` is a default, a universal rule, or a Rome's Flavours value. A Restaurant with no configured Tip Policy simply has no way to calculate Tips yet; RF-One never invents one to make a calculation succeed (see `03 Software/RF-One Data Store/validate_tips_readiness.py`'s explicit read-only-and-honest behavior).
+A Tip Policy is Restaurant configuration, never Domain ontology — no percentage, role name, or component structure in this document or in `03 Software/RF-One Data Store/rfone_data_store/models.py` is a default, a universal rule, or a Rome's Flavours value. A Restaurant with no configured Tip Policy simply has no way to calculate Tips yet; RF-One never invents one to make a calculation succeed (see `03 Software/RF-One Data Store/validate_tips_readiness.py`'s explicit read-only-and-honest behavior). Rome's Flavours' actual approved values (once entered by `configure_rome_flavours_tip_policy.py`, `03 Software/RF-One Data Store/rfone_data_store/tips/policy_bootstrap.py`) live only in that Restaurant's own database rows and in `07 Tasks/Reports/TASK_TIPS_004_REPORT.md` — never in this document or in `rfone_data_store/tips/engine.py`.
+
+**Tip Policies are Location-specific (TASK_TIPS_004).** A Restaurant-wide policy (`location_id IS NULL`) remains structurally supported (see "Temporal scope" below), but the approved operating practice is one independent `TipPolicy` row per Location — even when two Locations share identical values — so a future policy change at one Location never implicitly changes another.
 
 ---
 
@@ -48,6 +50,8 @@ Allocates the component's share to Employees who, at the Payment's timestamp:
 3. match the component's configured Restaurant Role and Restaurant scope.
 
 No role name here is universal — a Restaurant configures whichever `RestaurantRole` values it actually uses (see `01 Domains/Restaurant/Organization/Restaurant Role.md`).
+
+Where a Restaurant operates more than one Location, eligibility is further scoped to the Payment's own Order Location: a Restaurant-wide Employee Assignment (`Employee Assignment.md`, "Location-specific Assignment" — `location_id IS NULL`) matches at any of the Restaurant's Locations, while a Location-specific Assignment matches only its own. A Tip earned at one Location never draws `ROLE_PRESENT_AT_PAYMENT` eligibility from an Employee whose presence/assignment evidence belongs to a different Location under the same Restaurant. Presence itself (the Shift half of eligibility) is resolved from `Shift.location_id` when a Shift carries its own Location evidence (TASK_TIPS_003); when it does not, resolution depends on whether the Restaurant currently has one Location (safe fallback to `Employee.location_id`) or more than one (presence is UNKNOWN, never inferred from `Employee.location_id` — TASK_TIPS_004) — see `Tip Allocation.md`, "Post-hoc temporal eligibility."
 
 Concurrent Employee Assignments may be legitimate (`01 Domains/Restaurant/Restaurant Semantic Model.md` §9; `01 Domains/Restaurant/Organization/Employee Assignment.md`, "Multi-role / multi-area capability" — e.g. an Employee holding both a `Manager` and a `Server` Assignment at once, in the same or different Operational Areas). Tip eligibility is evaluated against the specific policy component being calculated — the presence of another, concurrent, matching-a-different-Role Assignment does not by itself invalidate eligibility for this component.
 

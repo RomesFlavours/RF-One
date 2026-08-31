@@ -22,3 +22,11 @@ __pycache__/
 **/*Payroll*Detail*.xls
 **/*.xlsb
 03 Software/RF-One Data Store/data/payroll_imports/
+
+# TASK_PURCHASING_004 — InvoiceIntake's uploaded supplier documents (real
+# invoices/photos) and its legacy Excel export are operational/private data,
+# never committed. Excel is a debugging capability only now — see
+# 03 Software/InvoiceIntake/README.md.
+03 Software/InvoiceIntake/uploads/*
+!03 Software/InvoiceIntake/uploads/.gitkeep
+03 Software/InvoiceIntake/data/*.xlsx

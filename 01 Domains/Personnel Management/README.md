@@ -16,7 +16,7 @@ Personnel Management does not belong to Restaurant or to any other technical Dom
 
 ## Transversal scope
 
-Personnel Management is a **universal business Domain**. It applies wherever an organization has people occupying roles, regardless of industry. Its modules reason about people using the same structure whether the role is a Restaurant Kitchen Manager, a Purchasing account manager, or a role in an entirely different industry; only the technical/behavioral content supplied by the target Domain changes.
+Personnel Management is a **universal business Domain**. It applies wherever an organization has people occupying roles, regardless of industry. Its modules reason about people using the same structure whether the role is a Restaurant Kitchen Manager, a Restaurant/Purchasing account manager, or a role in an entirely different industry; only the technical/behavioral content supplied by the target Domain changes.
 
 ---
 

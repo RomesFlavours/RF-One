@@ -14,11 +14,14 @@ Defaults to safe, read-only dry-run behavior: the calculation always runs
 and its results are computed and printed, but nothing is committed to the
 database unless `--persist` is explicitly passed.
 
-Service attribution: this task does not configure a real Restaurant service-
-attribution resolver (task §22 restriction). By default this CLI uses
-`NullServiceAttributionResolver`, which always reports UNRESOLVED — the
-correct, honest behavior until a Restaurant/Product-Owner-specific resolver
-is configured and wired in by a future task.
+Service attribution (TASK_TIPS_004): this CLI now defaults to
+`OrderEmployeeServiceAttributionResolver` — the first real, Restaurant-
+configurable resolver, built entirely from canonical Sales evidence
+(`Order.employee_id`, cross-checked against `Payment.employee_id`; see
+`rfone_data_store/tips/resolvers.py`). Pass `--resolver null` to fall back to
+the always-UNRESOLVED `NullServiceAttributionResolver` (e.g. to preview a
+run's ROLE_PRESENT_AT_PAYMENT-only behavior without any SERVICE_OWNER
+allocation).
 """
 
 from __future__ import annotations
@@ -29,7 +32,7 @@ from datetime import datetime, timezone
 
 from rfone_data_store.database import create_configured_engine, create_session_factory
 from rfone_data_store.tips.engine import MODE_DRY_RUN, MODE_PERSIST, run_tip_calculation
-from rfone_data_store.tips.resolvers import NullServiceAttributionResolver
+from rfone_data_store.tips.resolvers import NullServiceAttributionResolver, OrderEmployeeServiceAttributionResolver
 
 UTC = timezone.utc
 
@@ -56,12 +59,28 @@ def main() -> int:
         default="1",
         help="Free-form label recorded on the run for reproducibility (task §28).",
     )
+    parser.add_argument(
+        "--supersedes-run-id",
+        type=int,
+        default=None,
+        help=(
+            "Explicitly supersede a prior COMPLETE PERSIST run for this Restaurant/period "
+            "(a deliberate correction/redo). Without this, --persist over a period an existing, "
+            "unsuperseded PERSIST run already covers is refused (idempotency safeguard) — see "
+            "run_tip_calculation() in rfone_data_store/tips/engine.py."
+        ),
+    )
+    parser.add_argument(
+        "--resolver", choices=["order_employee", "null"], default="order_employee",
+        help="Service-attribution resolver to use (TASK_TIPS_004). 'order_employee' (default) is the "
+        "real resolver; 'null' always reports UNRESOLVED (no SERVICE_OWNER allocation).",
+    )
     args = parser.parse_args()
 
     engine = create_configured_engine()
     session_factory = create_session_factory(engine)
 
-    resolver = NullServiceAttributionResolver()
+    resolver = NullServiceAttributionResolver() if args.resolver == "null" else OrderEmployeeServiceAttributionResolver()
 
     with session_factory() as session:
         run, summary = run_tip_calculation(
@@ -72,6 +91,7 @@ def main() -> int:
             resolver=resolver,
             mode=MODE_PERSIST if args.persist else MODE_DRY_RUN,
             calculation_version=args.calculation_version,
+            supersedes_run_id=args.supersedes_run_id,
         )
 
         print(f"Calculation run id: {run.id} (mode={run.mode}, status={run.status})")
@@ -84,6 +104,14 @@ def main() -> int:
         print(f"  warnings:                {summary.warning_issue_count}")
 
         if args.persist:
+            if run.status == "FAILED":
+                session.rollback()
+                print(
+                    "Refused: this PERSIST run failed (see blocking issues above) and nothing was "
+                    "persisted. If this is a deliberate correction/redo of an existing run, re-run "
+                    "with --supersedes-run-id=<that run's id>."
+                )
+                return 1
             session.commit()
             print("Persisted.")
         else:

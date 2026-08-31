@@ -107,7 +107,7 @@ A server generating repeated positive named mentions may be producing business
 value (repeat visits, reputation) that raw sales alone do not show.
 ```
 
-Neither the margin difference nor the named-mention pattern is canonized here as a universal indicator of "good Performance" — see [PerformanceIndicator.md](PerformanceIndicator.md). The example exists only to show why Performance must retain multiple distinct observations rather than collapse them into a single score, and why the same reasoning structure applies to a Restaurant Manager, a Purchasing role, or a role in a different industry entirely — only the technical content of what is observed changes.
+Neither the margin difference nor the named-mention pattern is canonized here as a universal indicator of "good Performance" — see [PerformanceIndicator.md](PerformanceIndicator.md). The example exists only to show why Performance must retain multiple distinct observations rather than collapse them into a single score, and why the same reasoning structure applies to a Restaurant Manager, a Restaurant/Purchasing role, or a role in a different industry entirely — only the technical content of what is observed changes.
 
 ---
 

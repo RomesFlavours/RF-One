@@ -86,6 +86,9 @@ Human validation has priority over AI assumptions.
 - Purchasing
 - Organization — Restaurant Profile, Operational Area, Physical Area, Restaurant Role, temporal Employee Assignment (see [Organization/README.md](Organization/README.md))
 - Tips — post-hoc Tip allocation over recorded Payment Tips (see [Tips/README.md](Tips/README.md))
+- Server Performance — Restaurant-specific specialization of Personnel Management/Performance for the Server role: Quality of Sale, Opportunity Capture, Concurrent Service Load, coaching model, KPI framework (see [Server Performance/README.md](Server%20Performance/README.md), TASK_SERVER_PERFORMANCE_001)
+- Service Copilot — real-time in-service assistance fed by Server Performance (see [Service Copilot/README.md](Service%20Copilot/README.md), TASK_SERVER_PERFORMANCE_001)
+- Dining Intelligence — shared consumption-understanding module (Dining Session Profile, Customer Consumption Profile, food/drink correlations) consumed by Server Performance, Service Copilot and future Menu/Marketing capabilities (see [Dining Intelligence/README.md](Dining%20Intelligence/README.md), TASK_SERVER_PERFORMANCE_001)
 - Recipes (planned)
 - Inventory (planned)
 - Production (planned)

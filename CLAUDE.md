@@ -36,12 +36,13 @@ Application Domains use only the Core concepts they require.
 Examples:
 
 - Restaurant
-- Purchasing
 - Sales
 - Workforce
 - Selection
 - Training
 - Personal Decision
+
+Purchasing is not a Domain in its own right — it is a module of the Restaurant Domain (`Restaurant Domain └── Purchasing module`, canonically `01 Domains/Restaurant/Purchasing/`).
 
 Commercial Products may combine one or more Domains.
 

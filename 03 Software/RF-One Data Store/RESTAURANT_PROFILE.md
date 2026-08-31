@@ -32,7 +32,8 @@ physical_areas              Restaurant-configured physical zone (Dining Room/Pat
 restaurant_roles            Restaurant-configured canonical operational role
 operational_area_roles      M:N — which Role/Area combinations this Restaurant allows
 employee_assignments        temporal Employee ↔ Restaurant ↔ Operational Area ↔
-                             Restaurant Role fact (+ optional Physical Area)
+                             Restaurant Role fact (+ optional Location, TASK_ORGANIZATION_002;
+                             + optional Physical Area)
 physical_tables.physical_area_id   optional link from an existing PhysicalTable
                                     to a canonical PhysicalArea
 ```
@@ -164,7 +165,9 @@ employee_assignments:              24 rows (one per current Employee — none ha
                                              concurrent second current SourceRole)
 ```
 
-No `TipPolicy`, service-attribution resolver, or Rome's Flavours Tip percentage was configured by this task — see `01 Domains/Restaurant/Tips/` and `07 Tasks/Reports/TASK_RESTAURANT_003_REPORT.md` § O.
+No `TipPolicy`, service-attribution resolver, or Rome's Flavours Tip percentage was configured by this task — see `01 Domains/Restaurant/Tips/` and `07 Tasks/Reports/TASK_RESTAURANT_003_REPORT.md` § O. **Update (TASK_TIPS_004):** the real Winter Park `TipPolicy` (Service Owner 90% / Host tip-out 10%) and a real `OrderEmployeeServiceAttributionResolver` are now configured/implemented — see `07 Tasks/Reports/TASK_TIPS_004_REPORT.md`.
+
+**TASK_ORGANIZATION_002 update:** all 24 real `employee_assignments` rows have `location_id = NULL` after the additive migration adding that column — this Restaurant has only ever had one Location, so no existing row's Location was guessed or backfilled (per that task's explicit prohibition on inferring historical Assignment Location from `employees.location_id`). New Assignments created by a future bootstrap run for a current Employee will have `location_id` populated deterministically from that Employee's own `location_id` — see `01 Domains/Restaurant/Organization/Employee Assignment.md`, "`Employee.location_id` is a different fact," and `07 Tasks/Reports/TASK_ORGANIZATION_002_REPORT.md`.
 
 ---
 

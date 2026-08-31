@@ -40,6 +40,13 @@ ISSUE_SERVICE_OWNER_UNRESOLVED = "SERVICE_OWNER_UNRESOLVED"
 ISSUE_SERVICE_OWNER_AMBIGUOUS = "SERVICE_OWNER_AMBIGUOUS"
 ISSUE_NO_ELIGIBLE_RECIPIENT = "NO_ELIGIBLE_RECIPIENT"
 ISSUE_SHIFT_ASSIGNMENT_GAP = "SHIFT_ASSIGNMENT_GAP"
+# TASK_TIPS_004: a Shift active at the payment timestamp has no location_id
+# of its own, and this Restaurant has more than one operational Location —
+# that Employee's presence at the Tip's own Order Location is genuinely
+# UNKNOWN (never inferred from Employee.location_id — "UNKNOWN IS NOT A
+# FACT"), so they are excluded from eligibility rather than guessed. See
+# `_shift_active_employee_ids`.
+ISSUE_SHIFT_LOCATION_UNKNOWN = "SHIFT_LOCATION_UNKNOWN"
 # Reserved (TASK_TIPS_002): no longer raised by _resolve_role_present. A
 # concurrent EmployeeAssignment under a different RestaurantRole is not, by
 # itself, a conflict (Manager + Server is legitimate — see Restaurant
@@ -51,6 +58,7 @@ ISSUE_CONFLICTING_ASSIGNMENTS = "CONFLICTING_ASSIGNMENTS"
 ISSUE_FAILED_PAYMENT_WITH_TIP = "FAILED_PAYMENT_WITH_TIP"
 ISSUE_REFUND_REVIEW_REQUIRED = "REFUND_REVIEW_REQUIRED"
 ISSUE_ALLOCATION_RECONCILIATION_FAILURE = "ALLOCATION_RECONCILIATION_FAILURE"
+ISSUE_DUPLICATE_CALCULATION_RUN = "DUPLICATE_CALCULATION_RUN"
 
 BASIS_SERVICE_OWNER = "SERVICE_OWNER"
 BASIS_ROLE_PRESENT_AT_PAYMENT = "ROLE_PRESENT_AT_PAYMENT"
@@ -80,6 +88,7 @@ class _ComponentOutcome:
     target_amount: int
     eligible_ids: list[int]
     gap_detected: bool = False
+    location_unknown: bool = False
     resolved_via: str = ""  # human-readable, for the audit `reason` trail
 
 
@@ -113,21 +122,77 @@ def _valid_policy_at(
 
 
 def _shift_active_employee_ids(
-    session: Session, location_ids: set[int], at: datetime
-) -> set[int]:
-    if not location_ids:
-        return set()
-    rows = session.scalars(
+    session: Session, restaurant_id: int, order_location_id: int, at: datetime
+) -> tuple[set[int], set[int]]:
+    """Shift-present Employees at `at`, scoped to the Tip's own Order
+    Location (task §6 / TASK_TIPS_001-multi-location: a Tip earned at one
+    Location must never draw eligibility from Employees whose only presence
+    evidence is at a different Location under the same Restaurant).
+
+    Returns `(confirmed_ids, location_unknown_ids)`:
+
+    - `confirmed_ids` — Employees whose presence at `order_location_id` at
+      `at` is actually evidenced: a `Shift.location_id` (TASK_TIPS_003)
+      matching `order_location_id` directly, or — **only when this
+      Restaurant currently has at most one operational Location** — a Shift
+      with no `location_id` of its own, falling back to
+      `Employee.location_id` as a safe proxy (there is no other Location it
+      could plausibly be).
+    - `location_unknown_ids` — **only when this Restaurant has more than one
+      operational Location**: Employees with a Shift active at `at` whose
+      `location_id` is NULL and whose `Employee.location_id` happens to
+      equal `order_location_id` — i.e., exactly the Employees the old,
+      single-Location-only fallback would have silently included. They are
+      never added to `confirmed_ids`: once a Restaurant is multi-location,
+      `Employee.location_id` (a single, fixed home Location) is not
+      evidence of where any *particular* Shift occurred (TASK_TIPS_004,
+      "UNKNOWN IS NOT A FACT") — their presence at `order_location_id` is
+      genuinely unknown, surfaced as an explicit epistemic gap
+      (`ISSUE_SHIFT_LOCATION_UNKNOWN`) rather than guessed.
+
+    This lets one Employee who genuinely works more than one Location be
+    correctly eligible per-Shift (a Winter Park-tagged Shift is never
+    eligible for a Mount Dora Tip, and vice versa) without requiring every
+    historical Shift to carry Location evidence it never had, while never
+    silently reusing a stale single-Location heuristic once a second
+    Location exists.
+    """
+    active_shift_conditions = (
+        m.Shift.clock_in.is_not(None),
+        m.Shift.clock_in <= at,
+        (m.Shift.clock_out.is_(None)) | (m.Shift.clock_out >= at),
+    )
+
+    confirmed_rows = session.scalars(
+        select(m.Shift.employee_id).where(
+            m.Shift.location_id == order_location_id, *active_shift_conditions
+        )
+    ).all()
+    confirmed = set(confirmed_rows)
+
+    restaurant_location_count = len(_restaurant_location_ids(session, restaurant_id))
+    location_unknown: set[int] = set()
+
+    null_location_home_match_rows = session.scalars(
         select(m.Shift.employee_id)
         .join(m.Employee, m.Employee.id == m.Shift.employee_id)
         .where(
-            m.Employee.location_id.in_(location_ids),
-            m.Shift.clock_in.is_not(None),
-            m.Shift.clock_in <= at,
-            (m.Shift.clock_out.is_(None)) | (m.Shift.clock_out >= at),
+            m.Shift.location_id.is_(None),
+            m.Employee.location_id == order_location_id,
+            *active_shift_conditions,
         )
     ).all()
-    return set(rows)
+
+    if restaurant_location_count <= 1:
+        # Single-Location Restaurant: Employee.location_id is a safe
+        # fallback — there is no other Location a NULL Shift could mean.
+        confirmed |= set(null_location_home_match_rows)
+    else:
+        # Multi-Location Restaurant: never infer Shift Location from
+        # Employee.location_id — surface as unknown instead.
+        location_unknown = set(null_location_home_match_rows)
+
+    return confirmed, location_unknown
 
 
 def _assignment_employee_ids(
@@ -148,17 +213,24 @@ def _resolve_role_present(
     session: Session,
     restaurant_id: int,
     restaurant_role_id: int,
-    location_ids: set[int],
+    order_location_id: int,
     at: datetime,
-) -> tuple[list[int], bool]:
+) -> tuple[list[int], bool, bool]:
     """Employees with a Shift active at `at` AND at least one valid
     EmployeeAssignment at `at` matching `restaurant_role_id`/`restaurant_id`
-    (task §7-8 of TASK_TIPS_001; corrected by TASK_TIPS_002 §3-5).
+    (task §7-8 of TASK_TIPS_001; corrected by TASK_TIPS_002 §3-5; Location-
+    scoped by the multi-location closure task; TASK_TIPS_004's Shift-
+    Location epistemic correction).
 
-    Returns (eligible_employee_ids_sorted, gap_detected). `gap_detected`: at
-    least one Shift-present employee has zero valid Assignment at `at` at
-    all (an epistemic gap — SHIFT_ASSIGNMENT_GAP — not the same fact as
-    "confirmed nobody in this role").
+    Returns (eligible_employee_ids_sorted, gap_detected, location_unknown).
+    `gap_detected`: at least one confirmed Shift-present employee has zero
+    valid Assignment at `at` at all (an epistemic gap — SHIFT_ASSIGNMENT_GAP
+    — not the same fact as "confirmed nobody in this role").
+    `location_unknown` (TASK_TIPS_004): at least one Employee's Shift at
+    `at` has no Location evidence of its own, and this Restaurant has more
+    than one operational Location — that Employee's presence at
+    `order_location_id` could not be confirmed and was excluded rather than
+    inferred from `Employee.location_id` (see `_shift_active_employee_ids`).
 
     Concurrent Employee Assignments are not automatically a conflict
     (Restaurant Semantic Model.md §9, Organization/Employee Assignment.md
@@ -168,10 +240,20 @@ def _resolve_role_present(
     disqualify them here. Eligibility for this component depends only on
     whether a matching Assignment exists; other concurrent Assignments are
     irrelevant to that determination (TASK_TIPS_002).
+
+    Location scope: both the Shift-presence check and the Assignment match
+    are scoped to `order_location_id` — the specific Location that earned
+    this Tip (task §6: "a Tip earned at Winter Park must not accidentally
+    enter a Mount Dora allocation pool"). A Restaurant-wide Assignment
+    (`EmployeeAssignment.location_id IS NULL`) still matches at any of the
+    Restaurant's Locations; a Location-specific Assignment matches only its
+    own Location.
     """
-    shift_ids = _shift_active_employee_ids(session, location_ids, at)
+    shift_ids, location_unknown_ids = _shift_active_employee_ids(
+        session, restaurant_id, order_location_id, at
+    )
     if not shift_ids:
-        return [], False
+        return [], False, bool(location_unknown_ids)
 
     role_assignment_employee_ids = session.scalars(
         select(m.EmployeeAssignment.employee_id).where(
@@ -180,6 +262,8 @@ def _resolve_role_present(
             m.EmployeeAssignment.employee_id.in_(shift_ids),
             m.EmployeeAssignment.valid_from <= at,
             (m.EmployeeAssignment.valid_to.is_(None)) | (m.EmployeeAssignment.valid_to > at),
+            (m.EmployeeAssignment.location_id.is_(None))
+            | (m.EmployeeAssignment.location_id == order_location_id),
         )
     ).all()
     # A set naturally deduplicates an Employee who holds more than one
@@ -190,7 +274,7 @@ def _resolve_role_present(
 
     any_assignment_ids = _assignment_employee_ids(session, restaurant_id, at)
     gap_detected = bool(shift_ids - any_assignment_ids)
-    return eligible, gap_detected
+    return eligible, gap_detected, bool(location_unknown_ids)
 
 
 def _add_issue(
@@ -238,6 +322,34 @@ def _candidate_payment_tips(
     )
 
 
+def _unsuperseded_persist_conflict(
+    session: Session,
+    restaurant_id: int,
+    period_start: datetime,
+    period_end: datetime,
+    exclude_run_id: int,
+) -> "m.TipCalculationRun | None":
+    """The existing COMPLETE, unsuperseded PERSIST run (if any) whose period
+    overlaps [`period_start`, `period_end`) for this Restaurant — task
+    §"Idempotency": a second PERSIST run must never silently create a second
+    independently-payable set of allocations for Tips another run already
+    covers.
+    """
+    return session.scalars(
+        select(m.TipCalculationRun)
+        .where(
+            m.TipCalculationRun.restaurant_id == restaurant_id,
+            m.TipCalculationRun.id != exclude_run_id,
+            m.TipCalculationRun.mode == MODE_PERSIST,
+            m.TipCalculationRun.status == STATUS_COMPLETE,
+            m.TipCalculationRun.superseded_by_calculation_run_id.is_(None),
+            m.TipCalculationRun.period_start < period_end,
+            m.TipCalculationRun.period_end > period_start,
+        )
+        .limit(1)
+    ).first()
+
+
 def run_tip_calculation(
     session: Session,
     *,
@@ -247,6 +359,7 @@ def run_tip_calculation(
     resolver: ServiceAttributionResolver,
     mode: str = MODE_DRY_RUN,
     calculation_version: str = "1",
+    supersedes_run_id: int | None = None,
 ) -> tuple["m.TipCalculationRun", CalculationSummary]:
     """Run the post-hoc Tip calculation for `restaurant_id` over
     [`period_start`, `period_end`) using the Payment's own canonical
@@ -257,6 +370,16 @@ def run_tip_calculation(
     `TipCalculationIssue` rows in `session` (added, not yet committed). The
     caller decides whether to commit (`mode=PERSIST`) or roll back
     (`mode=DRY_RUN`, the safe default) — this function never commits.
+
+    Idempotency (multi-location/production-readiness closure task): a
+    `mode=PERSIST` call whose period overlaps an existing COMPLETE,
+    unsuperseded PERSIST run for the same Restaurant is refused — it
+    produces a FAILED run with a single blocking `DUPLICATE_CALCULATION_RUN`
+    issue and creates zero `TipAllocation` rows — unless the caller passes
+    `supersedes_run_id` explicitly naming the run being corrected/redone, in
+    which case that prior run's `superseded_by_calculation_run_id` is set to
+    this run's id and calculation proceeds normally. `DRY_RUN` calls are
+    never subject to this check (nothing is ever committed from a dry run).
     """
     run = m.TipCalculationRun(
         restaurant_id=restaurant_id,
@@ -270,6 +393,40 @@ def run_tip_calculation(
     session.flush()
 
     summary = CalculationSummary()
+
+    if mode == MODE_PERSIST:
+        conflict = _unsuperseded_persist_conflict(
+            session, restaurant_id, period_start, period_end, exclude_run_id=run.id
+        )
+        if conflict is not None and conflict.id != supersedes_run_id:
+            _add_issue(
+                session,
+                run,
+                issue_type=ISSUE_DUPLICATE_CALCULATION_RUN,
+                severity=SEVERITY_BLOCKING,
+                details=(
+                    f"Existing PERSIST/COMPLETE TipCalculationRun {conflict.id} "
+                    f"(period {conflict.period_start.isoformat()}..{conflict.period_end.isoformat()}) "
+                    "already covers an overlapping period for this Restaurant and has not been "
+                    "superseded. Refusing to create a second independently payable allocation set "
+                    f"for the same Tips. Pass supersedes_run_id={conflict.id} to this function to "
+                    "explicitly supersede it (a deliberate correction/redo), never to silently retry."
+                ),
+            )
+            summary.blocking_issue_count += 1
+            run.status = STATUS_FAILED
+            run.completed_at = datetime.now(period_start.tzinfo)
+            return run, summary
+
+        if supersedes_run_id is not None:
+            superseded_run = session.get(m.TipCalculationRun, supersedes_run_id)
+            if superseded_run is None or superseded_run.restaurant_id != restaurant_id:
+                raise ValueError(
+                    f"supersedes_run_id={supersedes_run_id} is not a valid TipCalculationRun for "
+                    f"restaurant_id={restaurant_id}."
+                )
+            superseded_run.superseded_by_calculation_run_id = run.id
+
     location_ids = _restaurant_location_ids(session, restaurant_id)
 
     if not location_ids:
@@ -433,11 +590,11 @@ def run_tip_calculation(
                 else:
                     outcomes[component.id] = _ComponentOutcome(component, target, [])
             elif component.recipient_basis == BASIS_ROLE_PRESENT_AT_PAYMENT:
-                eligible, gap = _resolve_role_present(
-                    session, restaurant_id, component.restaurant_role_id, location_ids, t
+                eligible, gap, location_unknown = _resolve_role_present(
+                    session, restaurant_id, component.restaurant_role_id, order.location_id, t
                 )
                 outcomes[component.id] = _ComponentOutcome(
-                    component, target, eligible, gap_detected=gap,
+                    component, target, eligible, gap_detected=gap, location_unknown=location_unknown,
                     resolved_via="role_present_at_payment",
                 )
             else:
@@ -515,6 +672,26 @@ def run_tip_calculation(
                         "at least one Employee present via Shift at the payment timestamp has no "
                         "EmployeeAssignment at all for this Restaurant at that time — role "
                         "eligibility could not be fully verified for them."
+                    ),
+                    payment_tip_id=tip.payment_id,
+                    payment_id=payment.id,
+                    order_id=order.id,
+                )
+                summary.warning_issue_count += 1
+
+            if outcome.location_unknown:
+                _add_issue(
+                    session,
+                    run,
+                    issue_type=ISSUE_SHIFT_LOCATION_UNKNOWN,
+                    severity=SEVERITY_WARNING,
+                    details=(
+                        f"Component #{component.sequence} (role {component.restaurant_role_id}): "
+                        "at least one Employee's Shift at the payment timestamp has no location_id "
+                        "recorded, and this Restaurant has more than one operational Location — "
+                        "that Employee's presence at this Order's Location could not be confirmed "
+                        "and was excluded from eligibility rather than inferred from their home "
+                        "Location (Employee.location_id)."
                     ),
                     payment_tip_id=tip.payment_id,
                     payment_id=payment.id,

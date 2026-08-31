@@ -6,6 +6,11 @@ valuable direction: ADP processed payroll -> Payroll Details Excel -> RF-One
 import, so employee-level payroll detail survives past ADP's own UI even
 though the bank only ever shows one aggregate direct-deposit debit.
 
+This is the manual/local-file acquisition path (TASK_PAYROLL_001) — a valid
+production fallback, but not automatic acquisition (a human still supplies
+`--file` each run). For genuinely automatic acquisition (no per-run human
+action) see `acquire_payroll_results.py` (TASK_PAYROLL_003).
+
 Usage:
     python import_payroll_results.py --file "C:\\path\\PayrollDetail.xlsx" \\
         --restaurant-id 1 \\
@@ -34,6 +39,7 @@ from pathlib import Path
 from rfone_data_store.database import create_configured_engine, create_session_factory
 from rfone_data_store import models as m
 from rfone_data_store.payroll import adp_importer as adp
+from rfone_data_store.payroll import payment_execution as pe
 
 UTC = timezone.utc
 
@@ -72,6 +78,17 @@ def main() -> int:
     )
     parser.add_argument("--supersedes-run", type=int, default=None, dest="supersedes_run",
                          help="PayrollImportRun id this corrected import explicitly supersedes.")
+    parser.add_argument(
+        "--payment-execution-provider", choices=list(pe.PAYMENT_EXECUTION_PROVIDERS),
+        default=None, dest="payment_execution_provider",
+        help="Who executes payment for the Run this import creates (Payment Execution.md). "
+        "Defaults to unset (TASK_PAYROLL_003): the source of the payroll result (ADP) never "
+        "implies who pays it. If omitted, the Run's provider is derived from the Restaurant's "
+        "approved PayrollExecutionConfiguration valid at the Run's pay_date, if one exists; "
+        "otherwise it is left unassigned. Pass this explicitly to select a provider for this "
+        "Run regardless of configuration. MERCURY_ACH is a structural placeholder only; no "
+        "Mercury integration exists.",
+    )
     parser.add_argument("--persist", action="store_true", help="Write to the database. Default is dry-run.")
     args = parser.parse_args()
 
@@ -126,6 +143,7 @@ def main() -> int:
             payroll_schedule_id=args.payroll_schedule_id,
             pay_date_override=args.pay_date_override,
             supersedes_import_run_id=args.supersedes_run,
+            payment_execution_provider=args.payment_execution_provider,
         )
         session.commit()
         print(f"Import run id: {result.import_run_id} (created={result.created})")
@@ -134,6 +152,9 @@ def main() -> int:
         print(f"  Unresolved Employee count:  {result.unresolved_employee_count}")
         print(f"  Ambiguous Employee count:   {result.ambiguous_employee_count}")
         print(f"  Issues raised:              {result.issue_count}")
+        if result.payroll_run_id is not None:
+            run = session.get(m.PayrollRun, result.payroll_run_id)
+            print(f"  Payment execution provider: {run.payment_execution_provider}")
         print("Persisted." if result.created else "Idempotent — this exact file was already imported.")
 
     return 0

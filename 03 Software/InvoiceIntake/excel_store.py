@@ -1,7 +1,10 @@
 """
-Persistence layer: appends reviewed Purchase Documents and Purchase Lines to
-a single Excel workbook, so the data can be opened and checked directly
-(this is a prototype -- Excel stands in for a real database for now).
+Secondary export/debugging copy only (TASK_PURCHASING_004): appends reviewed
+Purchase Documents and Purchase Lines to a single Excel workbook so the data
+can be opened and checked directly. The canonical store is now the RF-One
+Data Store (`03 Software/RF-One Data Store/`, via `purchasing_bridge.py`) --
+this module is called only after that canonical save succeeds, and a
+failure here (e.g. the workbook open in Excel) never blocks or loses it.
 
 Column names follow 01 Domains/Restaurant/Purchasing/DataDictionary.md
 for the Purchase Document and Purchase Line entities. A few practical columns

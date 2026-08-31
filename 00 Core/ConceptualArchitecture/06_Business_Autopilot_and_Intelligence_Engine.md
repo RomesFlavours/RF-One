@@ -83,7 +83,7 @@ A Domain may legitimately choose:
 Delegated Authority = none
 ```
 
-for a particular class of Decision. The Core does not force every Domain to automate everything — a Domain requiring human approval for a specific Decision class is exercising deliberate configuration within this model, not violating it. See, for example, the human-approval requirements retained in the Restaurant Purchasing Domain (`Domains/Restaurant/Purchasing/AIResponsibilities.md`, `BusinessPermissions.md`), which remain valid as Domain-level authority configuration.
+for a particular class of Decision. The Core does not force every Domain to automate everything — a Domain requiring human approval for a specific Decision class is exercising deliberate configuration within this model, not violating it. See, for example, the human-approval requirements retained in the Restaurant Domain's Purchasing module (`Domains/Restaurant/Purchasing/AIResponsibilities.md`, `BusinessPermissions.md`), which remain valid as Domain-level authority configuration.
 
 ---
 

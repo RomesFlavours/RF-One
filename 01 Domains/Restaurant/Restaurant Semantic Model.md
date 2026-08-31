@@ -220,6 +220,8 @@ valid_from
 valid_to (nullable — open-ended)
 ```
 
+Optionally, an Assignment may also reference a **Location** (`location_id`, TASK_ORGANIZATION_002) — the Location this specific Assignment applies to, when Location-specific organizational responsibility genuinely exists (e.g. "Server at Winter Park" vs. "Manager at Mount Dora", held concurrently by different or the same Employee). `location_id` is nullable: `NULL` means the Assignment applies Restaurant-wide, across every Location associated with the Restaurant (e.g. a Restaurant-wide/corporate Role). The Location relationship belongs to the Assignment, never to the Employee's identity — RF-One never creates a second Employee merely because one person works at two Locations. See `Organization/Employee Assignment.md`, "Location-specific Assignment," for the full rule, including why this is a different fact from `Employee.location_id` (source-ingestion/current-home Location).
+
 Employee Assignment is **not**:
 
 ```text
@@ -314,8 +316,12 @@ Restaurant Role ≠ Employee
 Restaurant Role ≠ SourceRole
 Employee Assignment ≠ Shift
 Employee Assignment ≠ active/inactive
+Employee Assignment.location_id ≠ Employee.location_id (Assignment-scoped Location fact vs. source-ingestion/current-home Location)
 Area ↔ Role is M:N
 Assignment is temporally situated
+Assignment Location is optional — NULL means Restaurant-wide, never a forced/guessed Location
+a Restaurant may have zero or one currently-open primary Location, never more than one
+Location, not Restaurant, is authoritative for the timezone of events occurring at it
 configuration names are not ontology
 configuration granularity is Restaurant-specific
 historical assignments must not be silently overwritten

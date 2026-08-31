@@ -55,8 +55,8 @@ This document is about the **physical schema**, not restaurant business meaning 
 
 **Purpose:** a physical/operational location of a Merchant — modeled as its own entity even though the current Clover source is single-merchant/single-location, because the schema must support future multiple locations (task §6).
 **PK:** `id`. **FK:** `merchant_id` → `merchants` (required).
-**Direct fields:** `name` (required), `timezone`, `currency`, `active`.
-**Nullable and why:** `timezone` — TASK_CLOVER_003 confirmed **no timezone field exists anywhere on the current Clover Merchant object**; this database must never pretend it received a timezone from Clover, so the column stays null until a genuinely source-confirmed or operator-confirmed value exists. `currency` is nullable for the same reason of caution, even though the current Clover Order data is 100% `USD`.
+**Direct fields:** `name` (required), `timezone`, `operating_day_cutoff_time` (TASK_ORGANIZATION_002), `currency`, `active`.
+**Nullable and why:** `timezone` — TASK_CLOVER_003 confirmed **no timezone field exists anywhere on the current Clover Merchant object**; this database must never pretend it received a timezone from Clover, so the column stays null until a genuinely source-confirmed or operator-confirmed value exists. When populated, it is a standard IANA timezone identifier (e.g. `America/New_York`), never a raw GMT offset (DST/historical timezone-rule changes must remain interpretable). `currency` is nullable for the same reason of caution, even though the current Clover Order data is 100% `USD`. `operating_day_cutoff_time` (`Time`, TASK_ORGANIZATION_002) is the Location's Business Day Rule — a time-of-day, evaluated in this Location's own `timezone`, below which an event's calendar day is its own Business Date and at/above which it is the previous calendar day; nullable for the same reason as `timezone` (never fabricated), and meaningless without a `timezone` value. **Location is authoritative for both fields** — `Restaurant.default_timezone` (§4a) is a convenience/default only and never overrides a Location's own `timezone` for that Location's events. See `01 Domains/Restaurant/Organization/Restaurant Profile.md`, "Location timezone authority" / "Location Business Day Rule," and `01 Domains/Restaurant/Sales/Restaurant Sales Model.md` §6a for the resulting `business_date` fact (owned by Sales, on `Order` — not yet implemented in this schema as of TASK_ORGANIZATION_002, see §4a below).
 **Provenance addition:** same rationale as Merchant — `source_system_id`/`source_location_id`, unique together.
 
 ---
@@ -119,7 +119,7 @@ Composite PK `(table_service_id, employee_id)`. Distinct from the source-level s
 ### `shifts`
 
 **Purpose:** atomic clock in/out facts only.
-**PK:** `id`. **FK:** `employee_id` → `employees` (required, indexed).
+**PK:** `id`. **FK:** `employee_id` → `employees` (required, indexed); `location_id` → `locations` (**nullable, indexed** — TASK_TIPS_003: the Location where this specific Shift actually occurred, when deterministically known; distinct from `Employee.location_id`. `NULL` = unknown, never guessed/backfilled — every pre-existing row and every row without a genuine per-Shift source remains `NULL`. `rfone_data_store/tips/engine.py`'s `_shift_active_employee_ids` prefers this column over `Employee.location_id` whenever it is populated).
 **Direct fields:** `clock_in`, `clock_out`, `override_in_employee_id`/`override_in_time`, `override_out_employee_id`/`override_out_time` (the two override-employee columns are themselves FKs to `employees`), `server_banking` — all nullable, matching real Clover coverage (~99% clock in/out; ~4-5% overrides; `server_banking` present-with-value on only ~1.3% of records, per TASK_CLOVER_003).
 **Explicitly NOT stored (derived, not atomic):** `elapsed_hours`, `employee_week_total` — task §12 forbids storing these as primary facts.
 
@@ -149,7 +149,8 @@ RF-One Physical Area (physical_areas)          — canonical physical zone
 
 **Purpose:** Restaurant ↔ Location (task §12), normalized rather than a direct FK on `restaurants` so one Restaurant can have one primary Location now and multiple Locations over time later without a schema change.
 **PK:** `id`. **FKs:** `restaurant_id` → `restaurants` (required, indexed), `location_id` → `locations` (required, indexed).
-**Direct fields:** `valid_from`, `valid_to`, `is_primary` — all nullable. No `UniqueConstraint(restaurant_id, location_id)`: a Restaurant could legitimately re-associate with the same Location again after a gap; overlap/primary-uniqueness validation is an application concern, not a blanket DB constraint (mirrors the reasoning already applied to `order_discounts`/`order_item_discounts` source ids, § 12 below).
+**Direct fields:** `valid_from`, `valid_to`, `is_primary` — all nullable. No `UniqueConstraint(restaurant_id, location_id)`: a Restaurant could legitimately re-associate with the same Location again after a gap; general overlap validation beyond the specific rule below is an application concern, not a blanket DB constraint (mirrors the reasoning already applied to `order_discounts`/`order_item_discounts` source ids, § 12 below).
+**Primary Location integrity (TASK_ORGANIZATION_002):** a partial unique index, `ux_restaurant_locations_one_open_primary` on `(restaurant_id)` scoped to rows where `is_primary = true AND valid_to IS NULL` (SQLite: `sqlite_where`; Postgres: `postgresql_where` — same predicate), enforces that a Restaurant may have **zero or one**, but never more than one, currently-open primary Location. Historical (closed, `valid_to` set) `is_primary=true` rows are outside the index's scope and are never constrained by it, so changing a Restaurant's primary Location over time (close the old row, insert/open the new one) remains fully representable.
 
 ### `operational_areas`
 
@@ -177,9 +178,9 @@ RF-One Physical Area (physical_areas)          — canonical physical zone
 ### `employee_assignments`
 
 **Purpose:** a temporally bounded fact describing how an Employee participates in a Restaurant (task §17) — the structure future Tips/Payroll/Scheduling/Performance/Training must resolve through. See `01 Domains/Restaurant/Organization/Employee Assignment.md` for the full Domain-level rule, including the explicit Tips/Payroll resolution path (period → Shifts intersecting the period → Employees actually present → valid Employee Assignment → Operational Area + Restaurant Role → applicable rule) and the explicit prohibition on using `Employee.active` to determine period participation.
-**PK:** `id`. **FKs:** `employee_id` → `employees` (required, indexed), `restaurant_id` → `restaurants` (required, indexed), `operational_area_id` → `operational_areas` (required, indexed), `restaurant_role_id` → `restaurant_roles` (required, indexed), `physical_area_id` → `physical_areas` (**nullable** — only populated where a stable physical-area assignment is genuinely meaningful; never forced when physical working location varies shift by shift, task §17).
+**PK:** `id`. **FKs:** `employee_id` → `employees` (required, indexed), `restaurant_id` → `restaurants` (required, indexed), `operational_area_id` → `operational_areas` (required, indexed), `restaurant_role_id` → `restaurant_roles` (required, indexed), `location_id` → `locations` (**nullable**, indexed — TASK_ORGANIZATION_002: `NULL` means the Assignment applies Restaurant-wide, across every Location associated with the Restaurant; populated only when the Assignment genuinely applies to one specific Location. Distinct from, and never backfilled from, `employees.location_id` — see `01 Domains/Restaurant/Organization/Employee Assignment.md`, "`Employee.location_id` is a different fact"), `physical_area_id` → `physical_areas` (**nullable** — only populated where a stable physical-area assignment is genuinely meaningful; never forced when physical working location varies shift by shift, task §17).
 **Direct fields:** `valid_from` (required), `valid_to` (nullable — `NULL` represents an open-ended/current assignment, task §4), `assignment_source` (required string; conceptual values `MANUAL`/`SOURCE_ROLE_MAPPING`/`IMPORT`/`OTHER`, task §18 — not a DB enum, matching this schema's existing convention of leaving evolving classification fields as unconstrained strings, e.g. `TableService.reconstruction_status`), `source_note` (nullable), `created_at`/`updated_at` (RF-One record-lifecycle timestamps).
-**Cardinality:** deliberately **not** constrained to one Role/Area per Employee, globally or at a given instant (task §5-6) — multiple concurrent Assignments are legitimate (e.g. a Manager valid in both `FOH` and `MANAGEMENT` at once). `UniqueConstraint(employee_id, operational_area_id, restaurant_role_id, valid_from)` rejects only an exact duplicate row (same Employee, Area, Role and start instant); it does not forbid legitimate concurrency (a different Area/Role or a different `valid_from` is still permitted). A Role/Area change is represented as a new row with its own `valid_from`, never as an in-place update of the prior row — history is never rewritten.
+**Cardinality:** deliberately **not** constrained to one Role/Area/Location per Employee, globally or at a given instant (task §5-6) — multiple concurrent Assignments are legitimate (e.g. a Manager valid in both `FOH` and `MANAGEMENT` at once, or the same Role held concurrently at two different Locations, TASK_ORGANIZATION_002). `UniqueConstraint(employee_id, operational_area_id, restaurant_role_id, location_id, valid_from)` rejects only an exact duplicate row (same Employee, Area, Role, Location and start instant); it does not forbid legitimate concurrency (a different Area/Role/Location or a different `valid_from` is still permitted) — a Location difference alone is never a false duplicate. Because ordinary SQL UNIQUE semantics treat every `NULL` as distinct from every other `NULL`, that constraint alone would not catch an exact duplicate **Restaurant-wide** Assignment (`location_id IS NULL` on both rows); a second, partial unique index, `ux_employee_assignments_dup_no_location` on `(employee_id, operational_area_id, restaurant_role_id, valid_from)` scoped to `location_id IS NULL`, closes that gap. A Role/Area/Location change is represented as a new row with its own `valid_from`, never as an in-place update of the prior row — history is never rewritten.
 
 ### `physical_tables.physical_area_id` (schema correction, task §14)
 
@@ -206,7 +207,7 @@ The canonical Tip fact itself is **not** redefined here — it remains `PaymentT
 
 **Purpose:** one execution of the post-hoc calculation engine over a requested period (task §17, §20, §27-28).
 **PK:** `id`. **FK:** `restaurant_id` → `restaurants` (required, indexed).
-**Direct fields:** `period_start`/`period_end` (required — the Payment-timestamp-selected period, never a Tip-entry-time selector), `started_at`/`completed_at`, `status` (`RUNNING`/`COMPLETE`/`FAILED`), `mode` (`DRY_RUN`/`PERSIST` — task §27's safe-by-default dry-run behavior), `calculation_version` (free string, for reproducibility), `notes` (nullable summary).
+**Direct fields:** `period_start`/`period_end` (required — the Payment-timestamp-selected period, never a Tip-entry-time selector), `started_at`/`completed_at`, `status` (`RUNNING`/`COMPLETE`/`FAILED`), `mode` (`DRY_RUN`/`PERSIST` — task §27's safe-by-default dry-run behavior), `calculation_version` (free string, for reproducibility), `notes` (nullable summary), `superseded_by_calculation_run_id` (nullable, self-referential FK — idempotency/double-payment safeguard, mirroring `payroll_runs.superseded_by_payroll_run_id`; application-set, never DB-enforced. `run_tip_calculation(mode=PERSIST)` refuses to create a second payable allocation set for a period an existing, unsuperseded `PERSIST`/`COMPLETE` run already covers, unless the caller explicitly passes `supersedes_run_id` naming the run being corrected/redone — see `rfone_data_store/tips/engine.py`).
 
 ### `tip_allocations`
 
@@ -219,15 +220,17 @@ The canonical Tip fact itself is **not** redefined here — it remains `PaymentT
 
 **Purpose:** a blocking or warning condition raised while calculating Tips (task §18) — the engine's explicit alternative to guessing.
 **PK:** `id`. **FK:** `calculation_run_id` → `tip_calculation_runs` (required, indexed). **Nullable FKs:** `payment_tip_id`/`payment_id`/`order_id` (some issues, e.g. a Restaurant with no associated Location at all, are run-scoped rather than tied to one PaymentTip).
-**Direct fields:** `issue_type` (required free string — `NO_VALID_POLICY`, `SERVICE_OWNER_UNRESOLVED`, `SERVICE_OWNER_AMBIGUOUS`, `NO_ELIGIBLE_RECIPIENT`, `SHIFT_ASSIGNMENT_GAP`, `CONFLICTING_ASSIGNMENTS` (reserved, not currently raised — see below), `FAILED_PAYMENT_WITH_TIP`, `REFUND_REVIEW_REQUIRED`, `ALLOCATION_RECONCILIATION_FAILURE` — only the subset actually produced by real engine logic is ever written), `severity` (`BLOCKING`/`WARNING`), `details` (required text), `status` (nullable — reserved for a future review workflow, always left `NULL`/"unreviewed" by this task's engine), `created_at`.
+**Direct fields:** `issue_type` (required free string — `NO_VALID_POLICY`, `SERVICE_OWNER_UNRESOLVED`, `SERVICE_OWNER_AMBIGUOUS`, `NO_ELIGIBLE_RECIPIENT`, `SHIFT_ASSIGNMENT_GAP`, `SHIFT_LOCATION_UNKNOWN` (TASK_TIPS_004 — see below), `CONFLICTING_ASSIGNMENTS` (reserved, not currently raised — see below), `FAILED_PAYMENT_WITH_TIP`, `REFUND_REVIEW_REQUIRED`, `ALLOCATION_RECONCILIATION_FAILURE` — only the subset actually produced by real engine logic is ever written), `severity` (`BLOCKING`/`WARNING`), `details` (required text), `status` (nullable — reserved for a future review workflow, always left `NULL`/"unreviewed" by this task's engine), `created_at`.
 
 ### Eligibility resolution (not a stored table)
 
 `ROLE_PRESENT_AT_PAYMENT` eligibility (Shift active at `T` ∩ Employee Assignment valid at `T`, matching the component's Restaurant Role/Restaurant scope) is **always recomputed live** from `shifts` and `employee_assignments` — task §7 explicitly forbids persisting an "employees present at payment time" snapshot. An Employee is eligible whenever at least one matching Assignment exists at `T`; a **concurrent** `EmployeeAssignment` under a **different** `restaurant_role_id` — in the same or a different `operational_area_id` (e.g. Manager + Server at once) — does **not** disqualify them (TASK_TIPS_002, correcting TASK_TIPS_001's over-restrictive same-Area conflict check — see `07 Tasks/Reports/TASK_TIPS_002_REPORT.md`). An Employee holding more than one matching Assignment at `T` (e.g. the same Role valid in two Areas) is still counted **once** — deduplicated by Employee identity, never given two headcount shares. `CONFLICTING_ASSIGNMENTS` remains a reserved `issue_type` value for a genuine future ambiguity the engine cannot resolve (e.g. a policy that explicitly requires mutually exclusive role resolution); it is not raised by current engine logic. `SHIFT_ASSIGNMENT_GAP` is raised when a Shift-active Employee has **zero** valid Assignment at `T` at all (an epistemic gap, distinct from "confirmed nobody in this role").
 
+**Location scope (multi-location closure task, post-TASK_ORGANIZATION_002; corrected TASK_TIPS_004):** both halves of this resolution are scoped to the specific `Order.location_id` that earned the Tip being calculated, never the Restaurant's full multi-Location set. The Assignment-match half requires `EmployeeAssignment.location_id IS NULL` (Restaurant-wide) or `= Order.location_id`. The Shift-presence half prefers `Shift.location_id` (TASK_TIPS_003) when populated, comparing it directly against the Order's Location. When a Shift's own `location_id` is `NULL`, the fallback depends on the Restaurant's *current* operational Location count (`restaurant_locations` row count for that `restaurant_id`, unfiltered by `valid_to` — matching `_restaurant_location_ids`'s existing convention): **exactly one** Location → safe fallback to `Employee.location_id`; **more than one** Location → presence is UNKNOWN, never inferred from `Employee.location_id`, and the Employee is excluded from eligibility with an explicit `SHIFT_LOCATION_UNKNOWN` warning raised (TASK_TIPS_004 — "UNKNOWN IS NOT A FACT"). Before TASK_TIPS_003, both queries were scoped to *every* Location associated with the Restaurant, meaning an Employee present only at a different Location under the same Restaurant could be wrongly counted eligible for a Tip earned elsewhere. Before TASK_TIPS_004, a `NULL` `Shift.location_id` always fell back to `Employee.location_id` regardless of Location count, which stopped being safe once a Restaurant genuinely operates more than one Location. Both fixed directly in `rfone_data_store/tips/engine.py` (`_shift_active_employee_ids`, `_resolve_role_present`); covered by `tips_validation.py`'s "Multi-location closure" and "TASK_TIPS_004 Part B" checks.
+
 ### Managed-history boundary (task §21)
 
-No new schema field was introduced for this. A `TipPolicy`'s own `valid_from` already delimits when a Restaurant's Tips configuration reliably begins (`NO_VALID_POLICY` before that point), and an Employee Assignment gap is already surfaced structurally (`SHIFT_ASSIGNMENT_GAP`/empty eligibility) — together these make a separate "managed history start" column unnecessary. As of TASK_RESTAURANT_003, `employee_assignments` is populated (24 rows, prospective from its own `T0` — see § 4c) but `tip_policies` remains empty, so every historical Payment still falls outside managed Tips history for the independent reason that no `TipPolicy` has been configured yet — see `validate_tips_readiness.py`.
+No new schema field was introduced for this. A `TipPolicy`'s own `valid_from` already delimits when a Restaurant's Tips configuration reliably begins (`NO_VALID_POLICY` before that point), and an Employee Assignment gap is already surfaced structurally (`SHIFT_ASSIGNMENT_GAP`/empty eligibility) — together these make a separate "managed history start" column unnecessary. As of TASK_RESTAURANT_003, `employee_assignments` is populated (24 rows, prospective from its own `T0` = 2026-08-26 — see § 4c). As of TASK_TIPS_004, the real Rome's Flavours Winter Park `TipPolicy` is configured with `valid_from` = the earliest real `PaymentTip`-bearing `Payment` (2026-05-27) — well before the `EmployeeAssignment` `T0`, deliberately: `ROLE_PRESENT_AT_PAYMENT` (Host) eligibility safely finds zero eligible Hosts for any Payment before `T0` (no Assignment data exists yet to confirm one), correctly falling through to the approved `RETURN_TO_SERVICE_OWNER` behavior rather than blocking the whole Tip — this is not a gap to be worked around, it is the policy's own designed-safe behavior operating exactly as configured. See `07 Tasks/Reports/TASK_TIPS_004_REPORT.md`.
 
 ---
 
@@ -286,7 +289,11 @@ Administration Domain, transversal — independent from Restaurant, Personnel Ma
 
 ### `payroll_runs`
 
-**Purpose:** one actual administrative payroll processing event (task §18). **PK:** `id`. **FKs:** `restaurant_id` → `restaurants`, `source_system_id` → `source_systems` (both required, indexed); `payroll_schedule_id` → `payroll_schedules` (**nullable** — null for `SPECIAL` runs); `superseded_by_payroll_run_id` → `payroll_runs.id` (self-referential, nullable — populated only when an explicitly confirmed corrected import supersedes this run). **Direct fields:** `period_start`/`period_end` (nullable only for `SPECIAL` runs — never inferred from `pay_date`), `pay_date` (required), `run_type` (required — `REGULAR`/`SPECIAL`), `provider_reference`/`status` (free strings — conceptual `status` values `OPEN`/`COMPLETE`/`SUPERSEDED`), `created_at`/`updated_at`.
+**Purpose:** one actual administrative payroll processing event (task §18). **PK:** `id`. **FKs:** `restaurant_id` → `restaurants`, `source_system_id` → `source_systems` (both required, indexed); `payroll_schedule_id` → `payroll_schedules` (**nullable** — null for `SPECIAL` runs); `superseded_by_payroll_run_id` → `payroll_runs.id` (self-referential, nullable — populated only when an explicitly confirmed corrected import supersedes this run). **Direct fields:** `period_start`/`period_end` (nullable only for `SPECIAL` runs — never inferred from `pay_date`), `pay_date` (required), `run_type` (required — `REGULAR`/`SPECIAL`), `provider_reference`/`status` (free strings — conceptual `status` values `OPEN`/`COMPLETE`/`SUPERSEDED`), `payment_execution_provider` (nullable — `ADP_DIRECT_DEPOSIT`/`MERCURY_ACH`, `CheckConstraint`-enforced, TASK_PAYROLL_002; `NULL` = not yet assigned, never guessed for historical rows and **never defaulted merely because the source is ADP** (TASK_PAYROLL_003 correction) — resolved from an explicit selection or a `payroll_execution_configurations` row valid at `pay_date`, or left `NULL`; immutable once assigned to a non-null value — see `01 Domains/Administration/Payroll/Payment Execution.md` and `rfone_data_store/payroll/payment_execution.py`), `created_at`/`updated_at`.
+
+### `payroll_execution_configurations`
+
+**Purpose:** Restaurant-scoped, temporally valid statement of which Payment Execution Provider is approved for new `payroll_runs` during a window (TASK_PAYROLL_003, `01 Domains/Administration/Payroll/Payment Execution.md`) — the source `payroll_runs.payment_execution_provider` may be derived from when not explicitly selected. **PK:** `id`. **FK:** `restaurant_id` → `restaurants` (required, indexed). **Direct fields:** `provider` (required — `ADP_DIRECT_DEPOSIT`/`MERCURY_ACH`, `CheckConstraint`-enforced), `valid_from` (required), `valid_to` (nullable — open-ended), `source_note`, `created_at`/`updated_at`. Mirrors the existing `employee_compensation_terms`/`tip_policies` temporal-configuration pattern: a change closes the prior row's `valid_to` and opens a new row — never overwritten in place, so an already-assigned `PayrollRun` is never retroactively affected by a later configuration change (its own `payment_execution_provider` is separately immutable once set).
 
 ### `payroll_provider_employee_identities`
 
@@ -310,7 +317,7 @@ Administration Domain, transversal — independent from Restaurant, Personnel Ma
 
 ### `payroll_import_runs`
 
-**Purpose:** one execution of the ADP `Payroll Detail` Excel importer (task §29) — auditability and idempotency by file hash, mirroring `tip_calculation_runs`' dry-run/persist pattern. **PK:** `id`. **FKs:** `restaurant_id` → `restaurants`, `source_system_id` → `source_systems` (both required, indexed); `payroll_run_id` → `payroll_runs` (nullable); `supersedes_import_run_id` → `payroll_import_runs.id` (self-referential, nullable — populated only when the operator explicitly passes `--supersedes-run`, never inferred). **Direct fields:** `source_file_name` (required — file name only, never a full local filesystem path), `source_file_hash` (required, SHA-256), `imported_at`, `mode` (`DRY_RUN`/`PERSIST`), `status` (`COMPLETE`/`PARTIAL`/`FAILED`), `employees_represented_count`/`unresolved_employee_count` (nullable), `notes`. **Unique:** `(source_system_id, restaurant_id, source_file_hash)` — re-importing the identical file is detected and reused, never duplicated.
+**Purpose:** one execution of the ADP `Payroll Detail` result importer (task §29) — auditability and idempotency by content hash, mirroring `tip_calculation_runs`' dry-run/persist pattern. **PK:** `id`. **FKs:** `restaurant_id` → `restaurants`, `source_system_id` → `source_systems` (both required, indexed); `payroll_run_id` → `payroll_runs` (nullable); `supersedes_import_run_id` → `payroll_import_runs.id` (self-referential, nullable — populated only when the operator explicitly passes `--supersedes-run`, never inferred). **Direct fields:** `source_file_name` (required — file/descriptive name only, never a full local filesystem path), `source_file_hash` (required, SHA-256 of the content regardless of acquisition method), `acquisition_method` (nullable free string, TASK_PAYROLL_003 — `ADP_XLSX_FILE`/`ADP_SFTP_AES`/future `ADP_API`; `NULL` for historical rows predating this column, never guessed), `imported_at`, `mode` (`DRY_RUN`/`PERSIST`), `status` (`COMPLETE`/`PARTIAL`/`FAILED`), `employees_represented_count`/`unresolved_employee_count` (nullable), `notes`. **Unique:** `(source_system_id, restaurant_id, source_file_hash)` — re-importing identical content is detected and reused, never duplicated, regardless of how it was acquired.
 
 ### `payroll_import_issues`
 
@@ -491,13 +498,24 @@ The five explicitly required, plus catalog/reference entities where TASK_CLOVER_
 **Restaurant Organization tables (TASK_RESTAURANT_001) — RF-One-configuration uniqueness, not source uniqueness:**
 
 ```text
-(restaurant_id, name)                                             operational_areas
-(restaurant_id, name)                                             physical_areas
-(restaurant_id, name)                                             restaurant_roles
-(employee_id, operational_area_id, restaurant_role_id, valid_from) employee_assignments
+(restaurant_id, name)                                                          operational_areas
+(restaurant_id, name)                                                          physical_areas
+(restaurant_id, name)                                                          restaurant_roles
+(employee_id, operational_area_id, restaurant_role_id, location_id, valid_from) employee_assignments
 ```
 
 No uniqueness constraint exists on `restaurant_locations(restaurant_id, location_id)` — a Restaurant may legitimately re-associate with the same Location after a gap (§ 4a).
+
+**Partial unique indexes (TASK_ORGANIZATION_002 — see § 4a for full rationale):**
+
+```text
+ux_restaurant_locations_one_open_primary   restaurant_locations(restaurant_id)
+                                            WHERE is_primary = true AND valid_to IS NULL
+
+ux_employee_assignments_dup_no_location    employee_assignments(employee_id, operational_area_id,
+                                            restaurant_role_id, valid_from)
+                                            WHERE location_id IS NULL
+```
 
 **Tips tables (TASK_TIPS_001):**
 
@@ -506,6 +524,8 @@ No uniqueness constraint exists on `restaurant_locations(restaurant_id, location
 ```
 
 No uniqueness constraint exists on `tip_policies`/`tip_policy_components` names/codes — a Restaurant may configure overlapping-looking policies across different periods; `TipPolicy.valid_from`/`valid_to` (application-resolved, not DB-enforced non-overlap) determine which one actually applies at a given timestamp (§ 4b).
+
+No uniqueness constraint exists on `tip_calculation_runs` (restaurant_id, period_start, period_end) either — mirroring `payroll_runs` (below), `superseded_by_calculation_run_id` (application-set, never DB-enforced) is what distinguishes a corrected/redone run's history from an accidental duplicate; `run_tip_calculation()` itself (not the schema) is what refuses a second unsuperseded `PERSIST` run over an overlapping period (§ 4b).
 
 **Payroll tables (TASK_PAYROLL_001):**
 
@@ -534,6 +554,7 @@ source_records(source_system_id, entity_type, source_id)
 
 employee_assignments.employee_id, employee_assignments.restaurant_id,
 employee_assignments.operational_area_id, employee_assignments.restaurant_role_id,
+employee_assignments.location_id                  -- TASK_ORGANIZATION_002
 employee_assignments(employee_id, valid_from)     -- TASK_RESTAURANT_001
 restaurant_locations.restaurant_id, restaurant_locations.location_id
 operational_areas.restaurant_id, physical_areas.restaurant_id, restaurant_roles.restaurant_id
@@ -595,7 +616,9 @@ Cardinalities not explicit above but confirmed in the module documentation: `Ord
 **Restaurant Profile / Organization (TASK_RESTAURANT_001), § 4a:**
 
 ```text
-restaurants ──< restaurant_locations >── locations   (temporal, valid_from/valid_to, is_primary)
+restaurants ──< restaurant_locations >── locations   (temporal, valid_from/valid_to, is_primary;
+                                                       at most one currently-open is_primary=true
+                                                       row per Restaurant, TASK_ORGANIZATION_002)
      │
      ├─< operational_areas ──< operational_area_roles >── restaurant_roles ─┐
      │                                                                      │
@@ -607,6 +630,7 @@ restaurants ──< restaurant_locations >── locations   (temporal, valid_fr
 employees ──< employee_assignments >── restaurants
                        ├──(N:1)→ operational_areas
                        ├──(N:1)→ restaurant_roles
+                       ├──(N:1, nullable)→ locations       -- TASK_ORGANIZATION_002
                        └──(N:1, nullable)→ physical_areas
 
 employee_assignments is temporal (valid_from required, valid_to nullable/open-ended)
