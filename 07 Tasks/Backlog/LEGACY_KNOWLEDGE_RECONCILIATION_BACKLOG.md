@@ -7,79 +7,83 @@
 
 This file is **not** Core, Domain, Product, or Strategy documentation. It does not define any concept. It records what the Product Owner has approved as worth incorporating later, what has been explicitly rejected, and what remains genuinely open — so that a future reconciliation task can act without re-deriving this analysis from scratch.
 
+**Audit (TASK_REPOSITORY_STABILIZATION_001):** every item below has been re-checked against current repository evidence and marked `[RESOLVED]`, `[PARTIALLY RESOLVED]`, `[OBSOLETE/SUPERSEDED]`, or left unmarked where it is genuinely still `[OPEN]`. See §K of `07 Tasks/Reports/TASK_REPOSITORY_STABILIZATION_001_REPORT.md` for the consolidated table. Nothing below was deleted or rewritten — only status markers were added.
+
 ---
 
 ## A. Core items approved for future incorporation/strengthening
 
-### Early Failure Recognition
+**[RESOLVED, except where noted]** Early Failure Recognition, Recursive Process, Optimization hierarchy (as "Optimization Boundaries"), Entity versioning, Temporal semantics, Ownership vs Assignment, and Specialization were all incorporated into `00 Core/` by TASK_CORE_006 — see `90 Archive/Task History/Reports/TASK_CORE_006_REPORT.md` and `PROJECT_STATE.md`. Per-item detail below.
+
+### Early Failure Recognition — `[RESOLVED — TASK_CORE_006]`
 **Approved.** Future canonical intent: recognizing early that a Goal is infeasible under known conditions, or that no known path currently exists, is a valuable RF-One outcome rather than a system failure. Must preserve the Core 2.0 distinction between demonstrated impossibility, current infeasibility, no known path, insufficient knowledge, and uncertainty.
 Likely target: `00 Core/ConceptualArchitecture/02_Desire_Goal_and_Reality_Check.md`.
 Not implemented in this migration.
 
-### Optimization hierarchy
+### Optimization hierarchy — `[RESOLVED — TASK_CORE_006, as "Optimization Boundaries"]`
 The old literal rule `Mission > Domain Principles > Business Rules > Goal > Execution` is **not approved as-is**.
 Approved future principle: optimization and execution must remain subordinate to consciously confirmed Subject direction, active Goals, Constraints, Subject Sovereignty, Delegated Authority, applicable law/policy, and known risk limits.
 Do not introduce `Mission` as a new Core primitive from legacy material without a separate architectural decision.
 Likely targets: `00 Core/Process.md`, `00 Core/ConceptualArchitecture/06_Business_Autopilot_and_Intelligence_Engine.md`.
 
-### Recursive Process
+### Recursive Process — `[RESOLVED — TASK_CORE_006]`
 **Approved for future incorporation.** A Process may be recursively decomposed without requiring a separate universal ontology for `Activity`. Granularity does not automatically create a different class of thing.
 Likely target: `00 Core/Process.md`.
 
-### Process persistent status
+### Process persistent status — `[RESOLVED — decision final]`
 The old rule "Process status must never be persisted; it must always be inferred" is **not approved as a universal Core rule**. Persistence vs derivation is a Runtime/Domain concern unless a specific semantic distinction is independently justified.
-**Recorded as REJECTED AS UNIVERSAL CORE** / possible implementation pattern only.
+**Recorded as REJECTED AS UNIVERSAL CORE** / possible implementation pattern only. The rejection itself is the resolution; no further Core action is pending.
 
-### Entity versioning
+### Entity versioning — `[RESOLVED — TASK_CORE_006]`
 **Approved as an optional Core pattern**, not as a requirement that every Entity must have a Version Entity. Future intent: RF-One Core should be able to represent stable conceptual identity separately from versioned definitions where a Domain requires it.
 Likely target: `00 Core/Entity.md`.
 
-### Temporal semantics
+### Temporal semantics — `[RESOLVED — TASK_CORE_006, and pervasively applied in practice]`
 **Approved as a Core capability/pattern.** Do not mandate specific database fields such as `EffectiveFrom` / `EffectiveTo` at ontology level. Future intent: Core must allow temporal validity and historical reconstruction where a Domain/Runtime requires it.
 Likely target: `00 Core/Entity.md`.
 
-### Hybrid Event Model
+### Hybrid Event Model — `[RESOLVED — decision final, not incorporated]`
 **Not** approved for promotion into universal Core ontology. The claim that immutable Events must universally generate Entity state is an implementation/runtime architectural pattern.
 Recorded as: MOVE TO SOFTWARE/RUNTIME / future architecture pattern, unless a later architectural task establishes stronger universal semantics.
 
-### Ownership vs Assignment
+### Ownership vs Assignment — `[RESOLVED — TASK_CORE_006; applied in practice, e.g. Restaurant Employee Assignment]`
 **Approved for future clarification** as a generic modeling distinction where useful. Ownership and Assignment must not be treated as synonyms. Do not yet prescribe a universal cardinality or data model.
 Likely targets: `00 Core/Relationship.md`, `00 Core/Glossary.md`.
 
-### Specialization extends rather than erases identity
+### Specialization extends rather than erases identity — `[RESOLVED — TASK_CORE_006]`
 **Approved for future strengthening** as a generic Core modeling pattern: a specialization may extend a more general concept without silently replacing the identity/meaning of the general concept.
 Likely target: `00 Core/Entity.md`.
 
-### Capacity / Availability / Responsibility placement
-Do **not** generalize the historical rules (Capacity belongs to physical provider; Availability belongs to smallest responsible Entity; Responsibility belongs to smallest responsible Entity) into universal Core principles yet. Keep existing valid specific rules where they currently live (`00 Core/Operational Unit.md`).
+### Capacity / Availability / Responsibility placement — `[OPEN]`
+No repository evidence of generalization work; not incorporated by TASK_CORE_006. RF-One now has four Domains (Restaurant, Personnel Management, Taxation, Administration) but no concrete cross-Domain evidence yet forces this generalization. Do **not** generalize the historical rules (Capacity belongs to physical provider; Availability belongs to smallest responsible Entity; Responsibility belongs to smallest responsible Entity) into universal Core principles yet. Keep existing valid specific rules where they currently live (`00 Core/Operational Unit.md`).
 Recorded for future review when multiple Domains provide enough evidence to generalize.
 
-### Capabilities Enable Services
-Do not elevate into a new universal Core principle yet. Recorded for later review as a possible Relationship/Domain modeling pattern.
+### Capabilities Enable Services — `[OPEN]`
+No repository evidence of this being elevated into a Core/Domain modeling pattern. Do not elevate into a new universal Core principle yet. Recorded for later review as a possible Relationship/Domain modeling pattern.
 
-### Simplicity Before Generalization
-Treat as an architecture/development principle, not ontology. If later incorporated, likely target: `CLAUDE.md`, `00 Core/ImplementationGuidelines.md`. Not implemented now.
+### Simplicity Before Generalization — `[RESOLVED — already present in CLAUDE.md]`
+Treat as an architecture/development principle, not ontology. If later incorporated, likely target: `CLAUDE.md`, `00 Core/ImplementationGuidelines.md`. CLAUDE.md's own `# Simplicity` section ("Prefer simple, understandable and maintainable solutions... Avoid unnecessary complexity, premature optimization, speculative abstractions...") already satisfies this intent at its intended target, whether or not that section was written with this backlog item in mind.
 
 ---
 
-## B. Operational Unit legacy items
+## B. Operational Unit legacy items — `[OPEN]`
 
-Do not import the historical physical-business lifecycle (`Planning → Legal Creation → Site Acquisition → Construction/Setup → Licensing → Operational → Closed...`) as a universal Core lifecycle — it is too specific to certain physical/business Operational Units.
+No `_Shared/` or specific-Domain physical-business lifecycle model has been created. Do not import the historical physical-business lifecycle (`Planning → Legal Creation → Site Acquisition → Construction/Setup → Licensing → Operational → Closed...`) as a universal Core lifecycle — it is too specific to certain physical/business Operational Units.
 Recorded as a candidate for `01 Domains/_Shared/` or a relevant specific Domain. The generic Core Entity lifecycle remains separate and unchanged.
 
 ---
 
 ## C. Corporate legacy items
 
-- **Legal identity fields:** do not expand Core now with detailed jurisdiction-specific legal fields. Recorded for Shared Domain / future Legal-Governance Domain review.
-- **Corporate Documents:** keep out of Core. Candidate for future Domain/Runtime data model.
-- **AI Governance:** approved distinction — universal Delegated Authority / Subject Sovereignty principles remain Core; RF-One company governance policy belongs under `09 Strategy/`; the production workflow for AI-proposed knowledge evolution belongs to Product/Software Runtime. Do not duplicate these layers.
+- **Legal identity fields** `[OPEN]`: do not expand Core now with detailed jurisdiction-specific legal fields. Recorded for Shared Domain / future Legal-Governance Domain review — no such Domain exists yet.
+- **Corporate Documents** `[OPEN]`: keep out of Core. Candidate for future Domain/Runtime data model — not created yet.
+- **AI Governance** `[RESOLVED — the approved distinction is the resolution; 09 Strategy/ now exists and carries the company-governance layer, TASK_CORE_007]`: approved distinction — universal Delegated Authority / Subject Sovereignty principles remain Core; RF-One company governance policy belongs under `09 Strategy/`; the production workflow for AI-proposed knowledge evolution belongs to Product/Software Runtime. Do not duplicate these layers.
 
 ---
 
-## D. Brand legacy items
+## D. Brand legacy items — `[PARTIALLY RESOLVED]`
 
-Marketing execution details are not Core Brand ontology. Recorded as Shared Domain / future Marketing capability knowledge.
+Marketing execution details are not Core Brand ontology. Recorded as Shared Domain / future Marketing capability knowledge — Marketing itself remains deferred (`Restaurant/Roadmap.md` §3), still `[OPEN]`.
 
 The broader approved future direction remains:
 
@@ -91,11 +95,11 @@ Goals
 → Selection / Training / Performance
 ```
 
-but this relationship is a **future architectural/domain task** and must not be silently implemented during repository migration. Future Domains such as Workforce, Selection, and Training remain valid planned directions (already listed as examples in `CLAUDE.md`), not yet created.
+but this relationship is a **future architectural/domain task** and must not be silently implemented during repository migration. **`[RESOLVED]` as of TASK_DOMAINS_002 / TASK_PERSONNEL_001 / TASK_SERVER_PERFORMANCE_001:** this direction has since been implemented — Personnel Management now exists as the canonical transversal Domain (not "Workforce, Selection, and Training" as three independent Domains, which is now known-stale phrasing, corrected by TASK_REPOSITORY_STABILIZATION_001's CLAUDE.md fix); Selection and Performance are documented in depth as its modules; Server Performance/Service Copilot/Dining Intelligence are Restaurant's technical specialization of the Performance module (`01 Domains/Restaurant/Server Performance/README.md`). Training and Personnel Decisions remain placeholder modules — see `01 Domains/Personnel Management/README.md`.
 
 ---
 
-## E. Commercial strategy items
+## E. Commercial strategy items — `[RESOLVED — TASK_CORE_007, see 09 Strategy/README.md "Current status"]`
 
 Approved for future review/canonicalization under `09 Strategy/`, not Core:
 
@@ -117,7 +121,7 @@ Approved for future review/canonicalization under `09 Strategy/`, not Core:
 
 ---
 
-## F. Service / SaaS / shared intelligence legacy material
+## F. Service / SaaS / shared intelligence legacy material — `[RESOLVED — TASK_CORE_007, see 09 Strategy/02_Service_Delivery_and_Knowledge_Advantage.md and 03_Shared_Intelligence_and_Knowledge_Governance.md]`
 
 Preserve the strategic insight that RF-One's proprietary value is primarily accumulated knowledge, ontology, orchestration, decision/outcome learning, and Domain intelligence rather than commodity software primitives.
 
@@ -127,7 +131,7 @@ Do **not** retain the absolute historical claim "RF-One can never be sold as sof
 
 ---
 
-## G. Knowledge Domains taxonomy
+## G. Knowledge Domains taxonomy — `[RESOLVED — TASK_CORE_008, see 09 Strategy/04_Business_Capability_Coverage.md and Restaurant/Roadmap.md]`
 
 The historical `Knowledge Domains` list (`90 Archive/Legacy Repository/X00 Knowledge Repository/05 Knowledge Domains/README.md`) is approved for preservation as a capability/coverage map, **not** as modern RF-One architectural `Domain` ontology.
 
@@ -139,13 +143,13 @@ Future action:
 
 ---
 
-## H. Interview-driven Knowledge Engineering
+## H. Interview-driven Knowledge Engineering — `[OPEN]`
 
-Preserve as an optional knowledge-acquisition method, not a mandatory RF-One architecture. The historical interview template remains in Archive for now. A future Research/Methods task may create a modern interview methodology under `05 Research/Methods/` if needed.
+Preserve as an optional knowledge-acquisition method, not a mandatory RF-One architecture. The historical interview template remains in Archive for now. A future Research/Methods task may create a modern interview methodology under `05 Research/Methods/` if needed. Confirmed still not created — `05 Research/` currently contains only its own `README.md`.
 
 ---
 
-## I. Corporate legal detail priority
+## I. Corporate legal detail priority — `[OPEN — low priority, same theme as §C]`
 
 Detailed Corporate Legal Identity / Corporate Documents are low-priority backlog. Do not expand Core or Domain now solely to preserve those fields. The legacy source remains available in `90 Archive/Legacy Repository/X00 Knowledge Repository/06 Business Model/Corporate.md`.
 
@@ -157,7 +161,7 @@ Any legacy concept identified in the TASK_CORE_004 report that is not explicitly
 
 ---
 
-## J. Cross-layer Shared Domain questions — resolved (TASK_CORE_009 / TASK_CORE_010)
+## J. Cross-layer Shared Domain questions — `[RESOLVED — TASK_CORE_009 / TASK_CORE_010, except the Workforce/Personnel sub-bullet below, now superseded]`
 
 The cross-layer Shared Domain questions raised by Section G above and by TASK_CORE_008 (Personnel/Workforce, Equipment, Facilities, Marketing, Reputation, Financial Performance, Strategic Planning, Customer, Supplier, Business Profile, and Commercial Catalog's future layer) were reviewed by TASK_CORE_009 (`90 Archive/Task History/Reports/TASK_CORE_009_REPORT.md`, analysis only) and resolved as approved Product Owner decisions by TASK_CORE_010 (`90 Archive/Task History/Reports/TASK_CORE_010_REPORT.md`). This section preserves the key extraction triggers so this archived-adjacent backlog does not need to be reopened later merely to re-answer these questions.
 
@@ -165,7 +169,7 @@ The cross-layer Shared Domain questions raised by Section G above and by TASK_CO
 - **Commercial Catalog** stays under `01 Domains/Restaurant/Commercial Catalog/`, recorded as the highest-confidence future Shared Domain extraction candidate. Trigger: extract to `01 Domains/_Shared/Commercial Catalog/` when a second genuine Domain or Product requires the same catalog semantics; the whole coherent model moves together, not concept-by-concept.
 - **Marketing** approved future direction: `Brand (Core) → generic Marketing (future Shared Domain candidate) → Restaurant-specific marketing execution (Restaurant specialization)`. Not created now.
 - **Reputation** remains deferred; working assumption is that it folds into a future Marketing/Customer Engagement capability rather than standing alone.
-- **Workforce/Personnel**: approved sequencing is to establish reusable Workforce semantics (role, assignment, responsibility, schedule, skills, availability, performance) before designing Selection, Training, and Performance capabilities on top of them, consistent with the future direction already recorded in Section D above. No Domain name is chosen yet.
+- **Workforce/Personnel** `[OBSOLETE/SUPERSEDED — TASK_DOMAINS_002, TASK_PERSONNEL_001]`: approved sequencing is to establish reusable Workforce semantics (role, assignment, responsibility, schedule, skills, availability, performance) before designing Selection, Training, and Performance capabilities on top of them, consistent with the future direction already recorded in Section D above. No Domain name is chosen yet. — Superseded on both counts: the Domain name **is** chosen (Personnel Management, TASK_DOMAINS_002), and the sequencing itself was explicitly, knowingly deviated from — Selection was modeled in depth first (TASK_SELECTION_002, "explicitly authorized"), then Performance (TASK_PERSONNEL_001); Workforce itself remains only a placeholder. This exact deviation is already self-acknowledged as an open question in `01 Domains/Domain Architecture.md` §9, item 1 ("Sequencing") — that document, not this bullet, is now the authoritative record of this question.
 - **Equipment and Facilities** remain deferred; if later justified, a combined `Asset & Facilities` area may be more coherent than two thin independent Domains — not decided.
 - **Financial Performance**: RF-One's own economics stay in `09 Strategy/`; customer-facing financial/performance capability should be built from real Domain data as a Product/use-case first, before any general Finance ontology.
 - **Strategic Planning**: no new Domain and no new Core primitive (e.g. no `Mission`). Customer-level strategic planning uses existing Core concepts (Desire, Goal, Reality Check, Decision, Action, Outcome, Learning, Temporal Coherence).

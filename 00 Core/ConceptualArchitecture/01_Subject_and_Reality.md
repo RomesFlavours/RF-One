@@ -101,4 +101,4 @@ This relationship is the basis for every other capability described in this arch
 
 ## 4. Domain independence
 
-Nothing in this document assumes a restaurant, a business, or any specific commercial context. `Subject` and `Reality` are deliberately generic so that any Domain — Restaurant, Workforce, Personal Decision, or a future Domain — can express its own concrete meaning of "who the Subject is" and "what Reality includes" without altering the Core definition.
+Nothing in this document assumes a restaurant, a business, or any specific commercial context. `Subject` and `Reality` are deliberately generic so that any Domain — Restaurant, Personnel Management, Taxation, or a future Domain — can express its own concrete meaning of "who the Subject is" and "what Reality includes" without altering the Core definition.

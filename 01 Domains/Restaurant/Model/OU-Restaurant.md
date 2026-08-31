@@ -45,6 +45,8 @@ Restaurant
 
 Restaurant inherits every capability of Operational Unit and extends it with restaurant-specific behavior.
 
+**Note (TASK_RESTAURANT_STRUCTURE_001):** "Restaurant" here names a *type* of Operational Unit (an OU whose business is preparing/serving food), a different sense from the Runtime `Restaurant` entity in `03 Software/RF-One Data Store/rfone_data_store/models.py`, which already plays the **Brand**-level role in this hierarchy (one `Restaurant` row associated with one or more `Location` rows) — see `Restaurant Semantic Model.md` § 3 for the full reconciliation between this document's Core-hierarchy axis and the actual Runtime schema.
+
 ---
 
 # Inherited Capabilities

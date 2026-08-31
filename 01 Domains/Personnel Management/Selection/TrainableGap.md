@@ -47,7 +47,7 @@ This reasoning feeds directly into a [Fit Assessment](FitAssessment.md)'s "Train
 
 ## What this document does not do
 
-- It does not define a Training Domain. No Training Domain is created by this task — see [README.md](README.md), "Relationship to future Training and Performance."
+- It does not define the Training module (`../Training/`, a module of the Personnel Management Domain, not a Domain of its own). No Training module content is created by this task — see [README.md](README.md), "Relationship to future Training and Performance."
 - It does not prescribe universal training durations, curricula, or methods. "Estimated time to standard" is a case-by-case judgment informed by the specific gap and role, not a fixed table.
 - It does not define how training is delivered, tracked, or verified — that is future Training/Product/Runtime scope.
 

@@ -6,6 +6,22 @@ For the conceptual definitions (Restaurant, Operational Area, Physical Area, Res
 
 ---
 
+## 0. Corporate / Brand / Location mapping (TASK_RESTAURANT_STRUCTURE_001)
+
+The runtime `restaurants` table already plays the **Brand** role in Core's `Corporate → Brand → Operational Unit` hierarchy (`00 Core/Corporate.md`, `00 Core/Brand.md`), not merely "one physical restaurant." `restaurant_locations` already associates one `Restaurant`(=Brand) row with one or more `locations` rows (the physical/operational site level) — this was built for exactly this purpose by TASK_ORGANIZATION_002. `Corporate` itself has no runtime table: exactly one Corporate has ever existed, so leaving it unmodeled/implicit creates no ambiguity (see `Restaurant Semantic Model.md` § 3 for the full reconciliation). Concretely:
+
+```text
+Corporate     (implicit — not a runtime table; exactly one)
+  Brand       = restaurants row ("Rome's Flavours")
+    Location  = locations row, via restaurant_locations ("Winter Park", "Mount Dora")
+```
+
+A future, genuinely different Brand under the same Corporate would be a *second* `restaurants` row — fully independent by construction, since `TipPolicy`, `EmployeeAssignment`, `OperationalArea` etc. are all scoped by `restaurant_id`. No schema change was required or made for this — see `07 Tasks/Reports/TASK_RESTAURANT_STRUCTURE_001_REPORT.md` § G.
+
+**Known naming inaccuracy, not corrected here:** the real production `restaurants.name` value is `"Rome's Flavours - WP"`, baking the Location suffix into the Brand-level name. This conflates Brand and Location identity and should be corrected to `"Rome's Flavours"` — recommended as part of Mount Dora onboarding (`01 Domains/Restaurant/Roadmap.md` § 5), with explicit Product Owner authorization before any production write, not executed by this task.
+
+---
+
 ## 1. Layer separation
 
 ```text
@@ -148,6 +164,12 @@ Idempotent by construction: rerunning with unchanged Clover configuration reuses
 ### Minimal root Operational Area
 
 Clover does not expose reliable structured Operational Area evidence. Rather than inferring `FOH`/`BOH`/`Bar`/`Kitchen`/`Management` from Restaurant Role names (explicitly forbidden, task §7), the bootstrap creates exactly **one** root `OperationalArea` (`code = ROOT`, `name = "Restaurant Operations"`) representing the whole Restaurant operational context, and associates every bootstrapped `RestaurantRole` with it. This is documented as minimal profile granularity, not a claim that Rome's Flavours has no internal functional areas — it can be refined into a more granular, explicitly Product-Owner-configured Area structure later without invalidating any Assignment created against the root Area now.
+
+**Future Area-split precondition (TASK_REPOSITORY_STABILIZATION_001).** This is not currently an error — the single ROOT Area is a deliberate minimal choice, not a defect requiring action. It is recorded as a precondition on *future* work, not a new feature to build now:
+
+- All current `EmployeeAssignment`/Role-eligibility behavior (including the Tips `ROLE_PRESENT_AT_PAYMENT` component — `Tips/Tip Policy.md`, "Policy components") is validated only under the existing single-ROOT-Area configuration. No test or production evidence currently exercises a multi-Area Restaurant.
+- Introducing a second `OperationalArea` in the future requires explicit re-validation of `EmployeeAssignment` semantics and `ROLE_PRESENT_AT_PAYMENT` eligibility scoping (`OperationalAreaRole`, "which Role/Area combinations this Restaurant allows") before it is relied on in production — the current single-Area behavior must not be assumed to generalize automatically.
+- A future Area split must never silently change historical or current Tip eligibility: every `EmployeeAssignment` created against the root Area today must remain valid and interpretable exactly as it is now, even after additional Areas are introduced.
 
 ### Congruence checking
 

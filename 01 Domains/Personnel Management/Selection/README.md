@@ -1,14 +1,14 @@
-# Selection Domain
+# Selection Module
 
-**Version:** 0.1
-**Status:** Draft (initial canonical foundation)
-**Module:** Domain / Selection
+**Version:** 0.2
+**Status:** Draft (initial canonical foundation; terminology reconciled by TASK_REPOSITORY_STABILIZATION_001 — Selection is a module of the Personnel Management Domain, not a Domain in its own right, per `../../Domain Architecture.md` §4-5)
+**Module:** Domain / Personnel Management / Selection
 
 ---
 
 ## Purpose
 
-The Selection Domain provides the reusable knowledge and reasoning structure that allows RF-One to make or support a **Selection Decision**: determining which candidate is the best decision for a given role/context, in a given organization, under its Goals, Brand expectations, operational requirements, technical requirements, Constraints, available Evidence, uncertainty and risk.
+The Selection module provides the reusable knowledge and reasoning structure that allows RF-One to make or support a **Selection Decision**: determining which candidate is the best decision for a given role/context, in a given organization, under its Goals, Brand expectations, operational requirements, technical requirements, Constraints, available Evidence, uncertainty and risk.
 
 Selection is **not** primarily:
 
@@ -20,17 +20,17 @@ Selection is **not** primarily:
 - an interview UI;
 - a recruiting workflow product.
 
-Those may become Product/Runtime capabilities built around this Domain. This Domain defines the underlying business knowledge, independently of any software that implements it.
+Those may become Product/Runtime capabilities built around this module. This module defines the underlying business knowledge, independently of any software that implements it.
 
 ---
 
 ## Universal scope
 
-Selection is a **universal business Domain**. It applies wherever an organization must evaluate candidates against role/context requirements and decide whom to select — regardless of industry, role, or the specific technical knowledge involved.
+Selection is a **universal, cross-industry module** of the transversal Personnel Management Domain (see [../README.md](../README.md) and [../../Domain Architecture.md](../../Domain%20Architecture.md)). It applies wherever an organization must evaluate candidates against role/context requirements and decide whom to select — regardless of industry, role, or the specific technical knowledge involved.
 
-**Restaurant is the first concrete application context, not the architectural owner of this Domain.** Nothing in Selection may assume a restaurant, a kitchen, a dining room, or any other Restaurant-specific concept. Where this Domain uses Restaurant examples (see "Restaurant as first application" below), those examples exist to validate universality, not to define it.
+**Restaurant is the first concrete application context, not the architectural owner of this module.** Nothing in Selection may assume a restaurant, a kitchen, a dining room, or any other Restaurant-specific concept. Where this module uses Restaurant examples (see "Restaurant as first application" below), those examples exist to validate universality, not to define it.
 
-Any other Domain that requires evaluating and selecting candidates — Restaurant/Purchasing (selecting a supplier's account manager), Sales, a future professional-services Domain, or an entirely different industry — reuses the same Selection concepts, feeding them its own technical/business requirements instead of Restaurant's.
+Any other technical Domain/module that requires evaluating and selecting candidates — Restaurant/Purchasing (selecting a supplier's account manager), Restaurant/Sales, a future professional-services Domain, or an entirely different industry — reuses the same Selection concepts, feeding them its own technical/business requirements instead of Restaurant's.
 
 ---
 
@@ -45,7 +45,7 @@ Selection is built on the RF-One Core Conceptual Architecture (Core 2.0) and reu
 - **Epistemic Boundary** (Fact, Observation, Evidence, Belief, Assumption, Inference, Hypothesis, Unknown) and **Subject Sovereignty** — govern how Candidate Evidence and Fit Assessment must be handled, and who retains final Decision authority. See [../../../00 Core/ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md](../../../00%20Core/ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md).
 - **Constraint, Relationship, Ownership, Assignment** — see [../../../00 Core/Relationship.md](../../../00%20Core/Relationship.md) and [../../../00 Core/Glossary.md](../../../00%20Core/Glossary.md).
 
-This Domain does not redefine any of these concepts. It specializes them into the Selection-specific documents listed below only where a genuine Selection-specific meaning is required.
+This module does not redefine any of these concepts. It specializes them into the Selection-specific documents listed below only where a genuine Selection-specific meaning is required.
 
 ---
 
@@ -81,7 +81,7 @@ Restaurant Domain
   → technical requirements for Kitchen Manager
       (food cost discipline, kitchen process, service sequence — see 01 Domains/Restaurant/)
 
-Selection Domain
+Selection module (Personnel Management)
   → evaluates whether a candidate satisfies those requirements
 ```
 
@@ -91,15 +91,15 @@ Selection must not redefine Restaurant knowledge such as food cost, kitchen proc
 
 ## Future Workforce dependency
 
-Selection will likely depend on future reusable Workforce/People semantics that do not yet exist as a canonical Domain — for example Person/Worker, Role, Position, Assignment, Responsibility, Availability, Schedule, Skill, Capability, Employment Relationship. See [../../Restaurant/Roadmap.md](../../Restaurant/Roadmap.md), section 3, "Workforce / Personnel," for the currently approved sequencing note.
+Selection will likely depend on future reusable Workforce/People semantics that do not yet exist in depth — the Workforce module (`../Workforce/`, a module of Personnel Management, not a Domain of its own) is currently only a placeholder — for example Person/Worker, Role, Position, Assignment, Responsibility, Availability, Schedule, Skill, Capability, Employment Relationship. See [../../Restaurant/Roadmap.md](../../Restaurant/Roadmap.md), section 3, "Workforce / Personnel," for the currently approved sequencing note.
 
-**No Workforce Domain is created by this task.** Where a Selection document needs one of these concepts, it references it as an external dependency and defines only the Selection-specific relationship to it, without defining the concept itself.
+**No detailed Workforce module content is created by this task.** Where a Selection document needs one of these concepts, it references it as an external dependency and defines only the Selection-specific relationship to it, without defining the concept itself.
 
 ---
 
 ## Distinction from Product/Runtime
 
-This Domain defines business knowledge only. It does not define, and this task does not create:
+This module defines business knowledge only. It does not define, and this task does not create:
 
 - an ATS or recruiting workflow;
 - an interview or evaluation UI;
@@ -107,14 +107,14 @@ This Domain defines business knowledge only. It does not define, and this task d
 - integrations with Indeed, LinkedIn, ZipRecruiter, or any other candidate-source or ATS platform;
 - persistence schemas, database fields, or automation logic.
 
-Those are Product/Runtime concerns, to be designed later on top of this Domain if and when a commercial capability requires them.
+Those are Product/Runtime concerns, to be designed later on top of this module if and when a commercial capability requires them.
 
 > **Selection does not own the candidate source.**
 > Candidates may come from ATSs, job boards, referrals, internal talent pools, direct applications, external recruiting systems, or other authorized sources. Selection only needs to know that each piece of Candidate Evidence has a source and provenance — see [CandidateEvidence.md](CandidateEvidence.md).
 
 ---
 
-## Canonical documents in this Domain
+## Canonical documents in this module
 
 | Document | Defines |
 |---|---|
@@ -147,13 +147,13 @@ Selection assumptions / predictions
             → better future Selection
 ```
 
-**No Training or Performance Domain is created by this task.** Selection's definitions only need to remain compatible with this future feedback loop — see [TrainableGap.md](TrainableGap.md) for where the Selection/Training boundary is drawn today.
+**No Training module content is created by this task.** (The Performance module is now documented in depth by a later task, TASK_PERSONNEL_001 — see [../Performance/README.md](../Performance/README.md); it was still undocumented when this Selection module was first written.) Selection's definitions only need to remain compatible with this future feedback loop — see [TrainableGap.md](TrainableGap.md) for where the Selection/Training boundary is drawn today.
 
 ---
 
 ## Legal / fairness / governance safeguards
 
-At minimum, every document in this Domain preserves:
+At minimum, every document in this module preserves:
 
 - only job-relevant criteria may influence Selection;
 - sensitive/protected attributes must not be inferred or used improperly;
@@ -161,7 +161,7 @@ At minimum, every document in this Domain preserves:
 - Inference must not be silently promoted to Fact;
 - uncertainty must remain explicit;
 - the authority behind a Selection Decision must be known;
-- jurisdiction-specific legal/policy rules are external Constraints, not something this Domain defines;
+- jurisdiction-specific legal/policy rules are external Constraints, not something this module defines;
 - retention/privacy mechanisms belong to future Product/Runtime governance.
 
-This Domain does not attempt to define employment law.
+This module does not attempt to define employment law.

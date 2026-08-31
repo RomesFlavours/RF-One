@@ -115,18 +115,31 @@ class OrderEmployeeServiceAttributionResolver(ServiceAttributionResolver):
     **Corroboration, not blind trust:** `Order.employee` alone is never
     automatically the service owner (`Tip Allocation.md`, "service-
     attribution boundary"). This resolver therefore cross-checks it against
-    every `Payment.employee_id` already recorded under the same Order — a
-    second, independent POS observation:
+    every **economically valid** `Payment.employee_id` already recorded
+    under the same Order — a second, independent POS observation:
 
     ```text
     Order.employee_id is NULL
       -> UNRESOLVED (no order-level evidence at all)
-    Order.employee_id set, no disagreeing Payment.employee_id
+    Order.employee_id set, no disagreeing SUCCESS Payment.employee_id
       -> RESOLVED, employee_ids=[order.employee_id]
-    Order.employee_id set, at least one Payment.employee_id disagrees
+    Order.employee_id set, at least one SUCCESS Payment.employee_id disagrees
       -> AMBIGUOUS (two independent POS observations conflict; never
          guessed which is correct)
     ```
+
+    **FAILED Payments are not attribution evidence (Product Owner decision,
+    TASK_RESTAURANT_STRUCTURE_001).** A failed payment attempt is evidence
+    that a payment was *attempted*, not authoritative evidence of who
+    actually served the table — `Order.employee_id` remains the primary
+    Sales evidence, and only a Payment whose `result` is the canonical
+    economically-valid value `"SUCCESS"` (the same value `tips/engine.py`
+    already treats as the sole economically valid Payment state, see
+    `ISSUE_FAILED_PAYMENT_WITH_TIP`) may corroborate or contradict it. A
+    `Payment.result` of `"FAIL"`, any other non-`"SUCCESS"` value, or `NULL`
+    (result unknown) is excluded from the query below entirely — it can
+    neither confirm the Service Owner, create `AMBIGUOUS`, override a valid
+    resolution, nor turn an otherwise-RESOLVED Order into `UNRESOLVED`.
 
     **Location-correct by construction:** the resolved Employee always
     comes from this specific Order's own `employee_id` — the Order itself
@@ -151,6 +164,12 @@ class OrderEmployeeServiceAttributionResolver(ServiceAttributionResolver):
                 select(m.Payment.employee_id).where(
                     m.Payment.order_id == order.id,
                     m.Payment.employee_id.is_not(None),
+                    # Only economically valid Payments participate in
+                    # SERVICE_OWNER evidence — a FAILED (or otherwise
+                    # non-SUCCESS/unknown-result) payment attempt is not
+                    # authoritative evidence of who served the table
+                    # (Product Owner decision, TASK_RESTAURANT_STRUCTURE_001).
+                    m.Payment.result == "SUCCESS",
                 )
             ).all()
         )
@@ -161,9 +180,9 @@ class OrderEmployeeServiceAttributionResolver(ServiceAttributionResolver):
                 employee_ids=[],
                 detail=(
                     f"Order {order.id}.employee_id={order.employee_id} disagrees with "
-                    f"Payment.employee_id value(s) {sorted(disagreeing)} recorded under the same "
-                    "Order — two independent POS observations conflict; RF-One never guesses "
-                    "which is correct."
+                    f"SUCCESS Payment.employee_id value(s) {sorted(disagreeing)} recorded under "
+                    "the same Order — two independent POS observations conflict; RF-One never "
+                    "guesses which is correct."
                 ),
             )
 
@@ -171,5 +190,5 @@ class OrderEmployeeServiceAttributionResolver(ServiceAttributionResolver):
             status=RESOLVED,
             employee_ids=[order.employee_id],
             detail=f"Order {order.id}.employee_id={order.employee_id}, corroborated by "
-            f"{len(payment_employee_ids)} agreeing Payment employee reference(s).",
+            f"{len(payment_employee_ids)} agreeing SUCCESS Payment employee reference(s).",
         )

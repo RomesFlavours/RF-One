@@ -59,7 +59,7 @@ A Server can have strong Quality of Sale (their sold mix aligns well with Brand 
 
 ## Epistemic status
 
-- The items actually appearing on an `Order Item` are **Observed** (Sales Domain fact).
+- The items actually appearing on an `Order Item` are **Observed** (Sales module fact).
 - A ratio such as "dessert attach rate = desserts sold ÷ qualifying checks" is **Derived**.
 - "This Server is weak at introducing dessert to this table archetype" is **Inferred** and must never be presented with Observed-grade confidence (see [Evidence Sources.md](Evidence%20Sources.md)).
 

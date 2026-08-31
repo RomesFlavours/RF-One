@@ -44,6 +44,24 @@ For Florida restaurant purchases specifically, resale/exemption treatment must b
 
 This question is expected to be resolved once the Taxation Domain (`01 Domains/Taxation/README.md`) or a jurisdiction rule pack establishes the applicable treatment for these suppliers/purchase categories. Restaurant/Purchasing comes before fiscal treatment — see `01 Domains/Restaurant/Purchasing/BusinessRules.md`, "Purchasing Precedes Administration and Taxation."
 
+### Architectural boundary (TASK_REPOSITORY_STABILIZATION_001)
+
+The Taxation Domain (`01 Domains/Taxation/README.md`, TASK_TAXATION_001) now exists and is canonical, but nothing has yet connected it to this open question — the boundary below makes the intended integration explicit so it is not forgotten, without deciding it:
+
+```text
+Restaurant/Purchasing
+  → records economic purchasing facts and source evidence
+    (Purchase Document, Purchase Line, tax amount/label/jurisdiction as disclosed, task §above)
+
+Taxation
+  → interprets the tax consequences of those facts under a TaxJurisdiction
+    (TaxJurisdiction.md, TaxObligation.md, TaxTreatment.md) and applicable tax rules
+```
+
+Restaurant/Purchasing does not decide tax treatment; Taxation does not own or duplicate the underlying purchasing facts — consistent with Taxation's own stated boundary ("Taxation reasons about the tax consequences of facts that are owned by many other Domains — it does not own those facts," `Taxation/README.md` §Purpose).
+
+**Backlog item — Taxation integration with Restaurant/Purchasing:** apply an approved jurisdiction/rule set (Florida is the currently relevant known business jurisdiction — Rome's Flavours operates there — but no Florida sales/use-tax rule, rate, or taxable/non-taxable classification is encoded anywhere in the repository, and none should be invented without a dedicated approved task) to the canonical Purchase Document/Purchase Line facts already recorded by Restaurant/Purchasing, and close this OPEN question. Not scheduled; requires a dedicated task once the Product Owner approves the applicable jurisdiction rules.
+
 ---
 
 ## Resolved
@@ -53,6 +71,8 @@ This question is expected to be resolved once the Taxation Domain (`01 Domains/T
 Source: TASK_TIPS_003 (raised), TASK_TIPS_004 (resolved).
 
 The Product Owner supplied the approved policy: Location-specific policies (Winter Park configured; Mount Dora not yet canonical — see `07 Tasks/Reports/TASK_TIPS_004_REPORT.md`), Component 1 SERVICE_OWNER 90%, Component 2 ROLE_PRESENT_AT_PAYMENT (Host) 10% with `no_eligible_behavior=RETURN_TO_SERVICE_OWNER`, `valid_from` = each Location's own earliest real `PaymentTip` evidence. Configured reproducibly via `configure_rome_flavours_tip_policy.py` and now live in the real `data/rfone.db`. Full detail: `07 Tasks/Reports/TASK_TIPS_004_REPORT.md`.
+
+The Mount Dora gap itself (no canonical production Location exists yet at all — confirmed by TASK_REPOSITORY_STABILIZATION_001) is tracked explicitly, with its own onboarding checklist, at `01 Domains/Restaurant/Roadmap.md` §5, "Mount Dora Location — not yet onboarded." That tracked item, not this note, is the authoritative place to check Mount Dora status going forward.
 
 ### 1. Whether generic Personnel cost may be allocated to Employees — RESOLVED (TASK_LABOR_COST_001)
 

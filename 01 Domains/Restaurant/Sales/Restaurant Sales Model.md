@@ -335,7 +335,7 @@ Discounts and Modifiers are related facts and should not be destructively flatte
 - is never silently defaulted to a provider convention — if the source does not state a quantity, RF-One preserves that as missing/unknown, not as an assumed `1`;
 - remains independent from historical unit price — `quantity` and unit price are two separate atomic facts, never combined into one figure.
 
-The Sales Domain does not require duplicating Order Item rows merely to represent quantity. One Order Item fact may carry `quantity = 1`, `quantity = 3`, `quantity = 0.5`, or any other valid observed decimal quantity, depending on actual restaurant reality.
+The Sales module does not require duplicating Order Item rows merely to represent quantity. One Order Item fact may carry `quantity = 1`, `quantity = 3`, `quantity = 0.5`, or any other valid observed decimal quantity, depending on actual restaurant reality.
 
 ## Quantity is not aggregation
 

@@ -1,9 +1,9 @@
 # Tip Allocation
 
-**Version:** 1.2
+**Version:** 1.3
 **Status:** Approved
 **Module:** Restaurant Domain / Tips
-**Origin:** TASK_TIPS_001; Shift-Location evidence TASK_TIPS_003; real resolver and Shift-Location epistemic correction TASK_TIPS_004
+**Origin:** TASK_TIPS_001; Shift-Location evidence TASK_TIPS_003; real resolver and Shift-Location epistemic correction TASK_TIPS_004; FAILED Payment evidence exclusion TASK_RESTAURANT_STRUCTURE_001
 
 ---
 
@@ -45,7 +45,9 @@ service-attribution resolver: Order -> RESOLVED | UNRESOLVED | AMBIGUOUS
 
 The concrete resolution strategy (which fields, which business rule, which external configuration) belongs to Restaurant/Profile/source configuration — it is never hard-coded as universal Tips semantics. When a resolver cannot confidently resolve an Order, the engine surfaces the unresolved/ambiguous state as an explicit calculation issue rather than guessing from `Order.employee`/`Payment.employee`.
 
-**First real resolver (TASK_TIPS_004):** `OrderEmployeeServiceAttributionResolver` (`rfone_data_store/tips/resolvers.py`) is a generic, provider-independent resolution strategy — not a Rome's Flavours-specific mapping — built entirely from evidence the canonical Sales model already contains. It reads `Order.employee_id` (the single-value field the source POS associates with an Order) and cross-checks it against every `Payment.employee_id` already recorded under that same Order: agreement resolves to that Employee (corroborated by two independent POS observations); a NULL `Order.employee_id` is UNRESOLVED; a disagreement between `Order.employee_id` and any `Payment.employee_id` is AMBIGUOUS. The `TableServiceEmployee` participation relationship (this document's original, broader intended answer) remains structurally supported but is not the basis for this resolver, since no Restaurant using this Domain has ever ingested Table Service reconstruction data — a resolver built on it would resolve every real Order to UNRESOLVED.
+**First real resolver (TASK_TIPS_004):** `OrderEmployeeServiceAttributionResolver` (`rfone_data_store/tips/resolvers.py`) is a generic, provider-independent resolution strategy — not a Rome's Flavours-specific mapping — built entirely from evidence the canonical Sales model already contains. It reads `Order.employee_id` (the single-value field the source POS associates with an Order) and cross-checks it against every **economically valid** `Payment.employee_id` already recorded under that same Order: agreement resolves to that Employee (corroborated by one or more independent POS observations); a NULL `Order.employee_id` is UNRESOLVED; a disagreement between `Order.employee_id` and any qualifying `Payment.employee_id` is AMBIGUOUS. The `TableServiceEmployee` participation relationship (this document's original, broader intended answer) remains structurally supported but is not the basis for this resolver, since no Restaurant using this Domain has ever ingested Table Service reconstruction data — a resolver built on it would resolve every real Order to UNRESOLVED.
+
+**FAILED Payments are excluded from evidence (Product Owner decision, TASK_RESTAURANT_STRUCTURE_001).** A Payment only "corroborates or contradicts" `Order.employee_id` when its `result` is the canonical economically-valid value `SUCCESS` — the same value `rfone_data_store/tips/engine.py` already treats as the sole economically valid Payment state for a Tip to be allocated at all (`ISSUE_FAILED_PAYMENT_WITH_TIP`). A failed payment attempt (`Payment.result = FAIL`, the canonical failure value used throughout ingestion/reconciliation — see `03 Software/RF-One Data Store/rfone_data_store/ingestion/clover/reconciliation.py`) or a Payment whose `result` is otherwise unknown is evidence that a payment was *attempted*, never authoritative evidence of who actually served the table — reason: it is not authoritative service-attribution evidence, only settlement evidence. Concretely, a FAILED Payment can never: confirm the Service Owner, create AMBIGUOUS, override an otherwise-RESOLVED Order, or turn a RESOLVED Order into UNRESOLVED.
 
 ---
 

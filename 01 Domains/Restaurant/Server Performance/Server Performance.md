@@ -82,7 +82,7 @@ How much economic activity the Server produces relative to the time/opportunity 
 
 ### Operational Discipline
 
-Performance must consider operational signals where evidence exists: discounts, voids, refunds, payment problems, unusual adjustments, errors, other operational anomalies (Sales Domain concepts — `Sales/Restaurant Sales Model.md` §14a "Refund," §14b "Void / Cancellation," §18 "Discounts"). High Sales combined with excessive mistakes or uncontrolled discounting is not automatically high Performance.
+Performance must consider operational signals where evidence exists: discounts, voids, refunds, payment problems, unusual adjustments, errors, other operational anomalies (Sales module concepts — `Sales/Restaurant Sales Model.md` §14a "Refund," §14b "Void / Cancellation," §18 "Discounts"). High Sales combined with excessive mistakes or uncontrolled discounting is not automatically high Performance.
 
 RF-One does **not** assume causation from these signals — a void may reflect a genuine kitchen error, a guest change of mind, or a Server correcting their own mistake, and RF-One cannot reliably distinguish these without further evidence. These signals are evidence requiring interpretation ([Derived](Evidence%20Sources.md), sometimes [Inferred](Evidence%20Sources.md)), never an automatic penalty.
 

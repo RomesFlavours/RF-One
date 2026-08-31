@@ -33,16 +33,19 @@ Examples may include:
 
 Application Domains use only the Core concepts they require.
 
-Examples:
+Current canonical top-level Domains (verify against `01 Domains/README.md` and `01 Domains/Domain Architecture.md` before assuming this list is complete — those files are authoritative, this is a pointer to them):
 
 - Restaurant
-- Sales
-- Workforce
-- Selection
-- Training
-- Personal Decision
+- Personnel Management
+- Taxation
+- Administration
 
-Purchasing is not a Domain in its own right — it is a module of the Restaurant Domain (`Restaurant Domain └── Purchasing module`, canonically `01 Domains/Restaurant/Purchasing/`).
+`_Shared/` holds domain-independent-but-not-universal knowledge reused across multiple Domains (e.g. `_Shared/Environment/`) — it is not itself a Domain.
+
+Several familiar business-capability names are **modules of an existing Domain**, not Domains in their own right. Do not create a new top-level `01 Domains/<name>/` folder for any of these — extend the owning Domain instead:
+
+- Purchasing and Sales are modules of the Restaurant Domain (`Restaurant Domain └── Purchasing module`, `Restaurant Domain └── Sales module`, canonically `01 Domains/Restaurant/Purchasing/` and `01 Domains/Restaurant/Sales/`).
+- Workforce, Selection, Training, Performance and Personnel Decisions are modules of the Personnel Management Domain (`Personnel Management Domain └── <module>`, canonically `01 Domains/Personnel Management/<module>/`). Note the canonical module name is **Personnel Decisions**, not "Personal Decision."
 
 Commercial Products may combine one or more Domains.
 

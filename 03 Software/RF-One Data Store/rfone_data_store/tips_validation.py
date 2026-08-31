@@ -1244,6 +1244,31 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         ambiguous_result.status == AMBIGUOUS and ambiguous_result.employee_ids == [],
     )
 
+    # --- TASK_RESTAURANT_STRUCTURE_001: FAILED Payments never participate
+    # in SERVICE_OWNER evidence (Product Owner decision) ---------------------
+    order_failed_disagree = m.Order(
+        location_id=location.id, source_system_id=source_system.id,
+        source_order_id="ORDER-resolver-failed-disagree", employee_id=emp_service_owner.id,
+        order_type_id=order_type.id, created_at=_dt(42), payment_state="PAID", currency="USD", total=5000,
+    )
+    session.add(order_failed_disagree)
+    session.flush()
+    payment_failed_disagree = m.Payment(
+        order_id=order_failed_disagree.id, source_system_id=source_system.id,
+        source_payment_id="PAY-resolver-failed-disagree", employee_id=emp_payment_employee.id,
+        created_at=_dt(42), amount=5000, result="FAIL",
+    )
+    session.add(payment_failed_disagree)
+    session.flush()
+    failed_disagree_result = real_resolver.resolve(session, order_failed_disagree)
+    result.check(
+        "Real resolver (RESOLVED, not AMBIGUOUS despite a disagreeing FAILED Payment): a FAILED "
+        "Payment.employee_id that disagrees with Order.employee_id must never create AMBIGUOUS — a "
+        "failed payment attempt is not authoritative service-attribution evidence",
+        failed_disagree_result.status == RESOLVED
+        and failed_disagree_result.employee_ids == [emp_service_owner.id],
+    )
+
     # End-to-end through the real engine: a SERVICE_OWNER component resolved
     # via the real resolver (not the synthetic Static/Null resolvers used by
     # every other check in this file) actually allocates correctly, and an

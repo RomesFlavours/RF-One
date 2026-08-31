@@ -84,7 +84,7 @@ RF-One does not collapse these states into each other anywhere in this module �
 ```text
 Source Evidence          Clover Order Item: "1x Chianti, Table 12, 7:42pm, Server: Maria"
 
-Canonical Interpretation  Sales Domain fact: an Order Item exists, attributed to this Order/Employee
+Canonical Interpretation  Sales module fact: an Order Item exists, attributed to this Order/Employee
                           per Sales' own attribution rules (not automatically "Maria's sale" —
                           see Tips' existing caution that Order.employee ≠ Service Employee)
 

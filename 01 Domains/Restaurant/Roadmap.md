@@ -122,3 +122,55 @@ Do not duplicate this knowledge inside Restaurant if a Shared Domain is created 
 - Does not redesign Purchasing or Commercial Catalog.
 - Does not create Workforce, Equipment, Marketing, Facilities, or Reputation Domains.
 - Does not specify Product packaging or Software implementation for any listed area.
+
+---
+
+## 5. Production onboarding tracking
+
+Unlike Sections 1-4 (Domain knowledge coverage), this section tracks a **production data/configuration gap**, not a modeling gap — the Domain/Software work is already done; only real-world onboarding remains. Added by TASK_REPOSITORY_STABILIZATION_001.
+
+### Mount Dora Location — not yet onboarded
+
+The real business operates a second location, Mount Dora, but repository evidence (`data/rfone.db`, read-only inspection, 2026) confirms exactly one canonical production `Location`/`Restaurant` row exists today: Rome's Flavours - WP (Winter Park). This is **not** a Tips engine defect, an Organization defect, or a Sales defect — the multi-location architecture (`Organization/Restaurant Profile.md`, `Organization/Employee Assignment.md`, `Shift.location_id`) and the Tips engine's strict multi-location eligibility rules (`Tips/Tip Allocation.md`, "Post-hoc temporal eligibility") were already built and validated *for* a second Location (see `07 Tasks/Reports/TASK_TIPS_004_REPORT.md`, `07 Tasks/Reports/TASK_ORGANIZATION_002_REPORT.md`); the second Location itself simply does not exist in production yet. See also `OpenQuestions.md`, "Rome's Flavours Tip Policy values — RESOLVED (TASK_TIPS_004)," which records the same Winter-Park-only current state.
+
+**Approved structure (TASK_RESTAURANT_STRUCTURE_001):** Mount Dora is a second `Location` of the *same* Rome's Flavours Brand/restaurant-concept as Winter Park — the same `Restaurant` row, a second `RestaurantLocation` row. It is explicitly **not** a separate Restaurant/Brand merely because it is a separate physical site. This closes step 2 below, previously an open Product Owner confirmation. See `Restaurant Semantic Model.md` § 3 for the full Corporate/Brand/Location reconciliation this decision is built on — the owning Corporate structure may operate other, genuinely different Brands in the future (not decided or scheduled now); that would be a *different* Restaurant row, never a shortcut where Corporate/Restaurant/Brand collapse into one concept.
+
+Tracked onboarding steps, to be executed only once real Mount Dora production data/values are available and confirmed by the Product Owner (none may be fabricated ahead of that):
+
+1. Create/ingest the canonical Mount Dora `Location` when production data is available.
+2. Attach it to the *same* `Restaurant` row Winter Park already belongs to, via a second `RestaurantLocation` row (approved structure above — no longer an open question).
+3. Confirm Shift Location ingestion actually populates `Shift.location_id` for Mount Dora shifts, so the strict multi-location eligibility rule in `Tips/Tip Allocation.md` has real evidence to resolve against instead of raising `SHIFT_LOCATION_UNKNOWN`.
+4. Configure a Mount-Dora-specific `TipPolicy` via the same reproducible mechanism used for Winter Park (`configure_rome_flavours_tip_policy.py` / `rfone_data_store/tips/policy_bootstrap.py`), using values the Product Owner explicitly approves for Mount Dora.
+5. If Mount Dora's approved values equal Winter Park's, still store them as an independent `TipPolicy` row scoped to Mount Dora's `location_id` — never an implicit Restaurant-wide (`location_id IS NULL`) policy shared across both Locations (`Tips/Tip Policy.md`, "Tip Policies are Location-specific").
+6. Validate Sales / Organization / Tips / Payroll / Performance behavior end-to-end against real Mount Dora production data once ingested (not synthetic fixtures) before treating Mount Dora as production-ready.
+7. Recommended, not required for the above: correct the real `Restaurant.name` value from `"Rome's Flavours - WP"` to `"Rome's Flavours"` (it currently conflates Brand identity with Winter Park's Location identity — `RESTAURANT_PROFILE.md` § 0), with explicit Product Owner authorization before the write.
+
+No TASK_TIPS_005 or other new task file is created by this entry — this tracked item is the deliberately smallest unit; a dedicated task should be opened only once real Mount Dora data is actually available to act on.
+
+### Future multi-Brand compatibility — backlog item, not scheduled
+
+The Corporate → Brand → Location hierarchy (`Restaurant Semantic Model.md` § 3) already lets a future, genuinely different Brand under the same Corporate owner become a second, fully independent `Restaurant` row without any schema change — nothing today couples one Restaurant's `TipPolicy`/`EmployeeAssignment`/`OperationalArea`/etc. to another's. What is **not** decided or built: a runtime `Corporate`/`Brand` table above `Restaurant` (needed only once a second real Brand actually exists — "reuse must be earned," the same principle already applied to Commercial Catalog extraction, § 3 above), and whether/how a second Brand would share any administrative or corporate-level resource. **Trigger to revisit:** a second real Brand is confirmed by the Product Owner. Not triggered by Mount Dora, which is a Location, not a Brand.
+
+### Future intelligence boundary — Brand vs. Location (document only, TASK_RESTAURANT_STRUCTURE_001)
+
+Not implemented by this task — a boundary recorded for future intelligence work to respect once Mount Dora (or any second Location) carries real data:
+
+```text
+Brand Playbook          belongs to the Brand/concept (Restaurant row) — e.g. "how the Restaurant
+                         wants service and selling to occur" (Server Performance/Coaching Model.md
+                         § "Personalized coaching," already scoped at Restaurant/Brand level, not
+                         Corporate)
+Location                supplies local operational context (traffic patterns, staffing, physical
+                         layout) distinct from, and never a substitute for, Brand-level expectations
+Customer Intelligence   may distinguish Brand-level preference from Location-level behavior once it
+                         is built (Dining Intelligence/, conceptual-only today)
+Server Performance      must apply the correct Brand's expectations/benchmarks together with the
+                         correct Location's operational context — never one Location's benchmark
+                         leaking into another Location of the same Brand, and never a benchmark
+                         collapsed to Corporate level
+Service Copilot         must give guidance scoped to the Brand and Location actually being served,
+                         not merely "the Corporate owner" — consistent with `Tips/Tip Allocation.md`'s
+                         existing "Location-correct by construction" principle for the Tips resolver
+```
+
+Today, with exactly one Location, this distinction is not observable — Brand-level and Location-level context coincide. It becomes load-bearing only once Mount Dora (or any second Location) exists with real data; no Server Performance, Customer Intelligence, or Service Copilot code exists yet to apply it (all three remain conceptual-only — see `PROJECT_STATE.md`).

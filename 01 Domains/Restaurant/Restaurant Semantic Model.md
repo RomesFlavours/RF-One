@@ -1,9 +1,9 @@
 # Restaurant Semantic Model
 
-**Version:** 1.0
+**Version:** 1.1
 **Status:** Approved
 **Module:** Restaurant Domain
-**Origin:** TASK_RESTAURANT_002
+**Origin:** TASK_RESTAURANT_002; Corporate/Brand/Location resolution TASK_RESTAURANT_STRUCTURE_001
 
 ---
 
@@ -77,7 +77,28 @@ Restaurant operational reality
 
 A Restaurant's *identity* can exist before its *configuration* is defined (a newly onboarded Restaurant with no Areas/Roles configured yet is still a valid Restaurant identity), and its configuration can exist before *operational reality* accumulates against it. None of the three is inferable from either of the others.
 
-**Note on `Model/OU-Restaurant.md`:** that document places Restaurant within Core's `Corporate → Brand → Operational Unit` hierarchy for governance/ownership purposes — a different axis from the one this document addresses. This document does not require every Restaurant instance to carry a populated Brand/Corporate relationship to be semantically valid; per CLAUDE.md's Core/Domain/Runtime separation, a Core-inherited relationship existing conceptually does not imply every Runtime instance must populate it. The current single-Restaurant RF-One deployment (`03 Software/RF-One Data Store/`) has no `Corporate`/`Brand` runtime tables at all, and that is not a contradiction — it is an unimplemented, not-yet-needed axis. See § O of `07 Tasks/Reports/TASK_RESTAURANT_002_REPORT.md` for this noted as an open question, not a defect.
+**Note on `Model/OU-Restaurant.md`:** that document places Restaurant within Core's `Corporate → Brand → Operational Unit` hierarchy for governance/ownership purposes — a different axis from the one this document addresses. This document does not require every Restaurant instance to carry a populated Brand/Corporate relationship to be semantically valid; per CLAUDE.md's Core/Domain/Runtime separation, a Core-inherited relationship existing conceptually does not imply every Runtime instance must populate it. The current single-Restaurant RF-One deployment (`03 Software/RF-One Data Store/`) has no `Corporate`/`Brand` runtime tables at all, and that is not a contradiction — it is an unimplemented, not-yet-needed axis.
+
+**Resolved (TASK_RESTAURANT_STRUCTURE_001):** the Product Owner has now confirmed the concrete business structure this axis must express — one owning Corporate may operate multiple Brands/restaurant concepts in the future; Rome's Flavours is one such Brand; Winter Park and Mount Dora are two Locations of that *same* Brand, not two separate Brands. This maps onto the existing Runtime schema without any new table, by recognizing which existing entity already plays which Core-hierarchy role:
+
+```text
+Core hierarchy            Runtime entity (03 Software/RF-One Data Store/rfone_data_store/models.py)
+--------------             ------------------------------------------------------------------------
+Corporate                  not yet a runtime table — exactly one, implicit (Core/Corporate.md
+                            §Business Rules: "Every RF-ONE installation contains exactly one
+                            Corporate"); no ambiguity is created by leaving it unmodeled while
+                            only one Corporate has ever existed
+Brand                      `Restaurant` (already the "one or more Locations" level — see § 3
+                            above, "A Restaurant may be associated with one or more Locations
+                            over time"; NOT the runtime entity `Location`)
+Operational Unit / site    `Location`, associated to its Brand via `RestaurantLocation`
+```
+
+This is not a new interpretation invented by this task — `Restaurant`'s own docstring in `models.py` already calls it "canonical business identity," and `RestaurantLocation` was already built (TASK_ORGANIZATION_002) specifically so one `Restaurant` row can hold many `Location` rows over time. Mount Dora onboarding therefore requires no new `Restaurant`/Brand row — Mount Dora becomes a second `RestaurantLocation` under the *same* `Restaurant` row Winter Park already belongs to (see `Restaurant/Roadmap.md` § 5). A future, genuinely different Brand under the same Corporate (not decided or scheduled now) would become a *second* `Restaurant` row, entirely independent of the first by construction — nothing in the schema today couples one `Restaurant`'s configuration (`TipPolicy`, `EmployeeAssignment`, `OperationalArea`, etc., all scoped by `restaurant_id`) to another's.
+
+**One genuinely misleading fact found and documented, not silently fixed:** the real production `Restaurant.name` value is currently `"Rome's Flavours - WP"` — it bakes the Winter Park Location suffix into the Brand-level name field, conflating Brand identity with Location identity (exactly the confusion this section now formally prohibits). This was reasonable when only one Location ever existed, but is no longer accurate now that the schema is confirmed to already support, and Mount Dora onboarding will exercise, one Brand with multiple Locations. **Not corrected by this task** (mutating the real production database is out of this task's scope) — recorded as a recommended follow-up: rename the real `Restaurant.name` row to `"Rome's Flavours"` (without the Location suffix), ideally as part of Mount Dora onboarding itself (`Restaurant/Roadmap.md` § 5), with explicit Product Owner authorization first (the same discipline used for every other real-database write in this repository's history, e.g. TASK_TIPS_004).
+
+The prior open question recorded at `07 Tasks/Reports/TASK_RESTAURANT_002_REPORT.md` § O (a file that, on inspection, does not currently exist in this repository — its content is preserved only via this document's own summary of it) is answered by the above; it is not reopened.
 
 ---
 
