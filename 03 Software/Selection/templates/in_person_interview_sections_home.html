@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Client</div>
+      <div class="value">{{ client_name }}</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.82rem;">
+    Sections are this restaurant's own In-Person Interview structure — RF-One supplies the framework, never one
+    universal sequence. Sections can be created, edited, activated/deactivated, and reordered by role/context;
+    each holds its own Assessment Items (Questions, Observations, Practical Tests, Role-Plays, Courtesy prompts).
+    Phone Interview carry-forward items are generated automatically and are not configured here.
+  </p>
+</div>
+
+{% for section, items in sections_with_items %}
+<div class="card {{ '' if section.is_active else 'inactive' }}">
+  <div class="req-title">
+    {{ section.name }}
+    <span class="badge">{{ section.section_kind|replace('_',' ')|title }}</span>
+    {% if section.target_role %}<span class="badge">{{ section.target_role }}</span>{% endif %}
+    {% if not section.is_active %}<span class="badge status-failed">INACTIVE</span>{% endif %}
+    <span class="muted" style="font-size:.72rem;">order {{ section.display_order }} &middot; v{{ section.version }}</span>
+  </div>
+  {% if section.description %}<p style="font-size:.85rem; margin:.3rem 0;">{{ section.description }}</p>{% endif %}
+
+  <form method="post" action="{{ url_for('in_person_interview_section_toggle_active', section_id=section.id) }}" class="inline-form">
+    <button type="submit" class="btn secondary" style="margin-top:.5rem; font-size:.78rem; padding:.35rem .8rem;">
+      {{ 'Deactivate' if section.is_active else 'Reactivate' }}
+    </button>
+  </form>
+
+  <details class="edit-toggle">
+    <summary>Edit this Section</summary>
+    <form method="post" action="{{ url_for('in_person_interview_section_update', section_id=section.id) }}" class="req-form">
+      <label>Name</label>
+      <input type="text" name="name" value="{{ section.name }}" required>
+      <label>Section kind</label>
+      <select name="section_kind">
+        {% for k in section_kinds %}<option value="{{ k }}" {{ 'selected' if section.section_kind == k else '' }}>{{ k|replace('_',' ')|title }}</option>{% endfor %}
+      </select>
+      <label>Target role (leave blank to apply to every role)</label>
+      <input type="text" name="target_role" value="{{ section.target_role or '' }}">
+      <label>Description</label>
+      <textarea name="description">{{ section.description or '' }}</textarea>
+      <button type="submit" class="btn" style="margin-top:.6rem;">Save Section</button>
+    </form>
+  </details>
+
+  <h3 style="font-size:.9rem; margin:1rem 0 .4rem;">Assessment Items ({{ items|length }})</h3>
+  {% for item in items %}
+  <div class="question-card {{ '' if item.is_active else 'inactive' }}">
+    <div class="req-title">
+      <span class="badge">{{ item.item_type|replace('_',' ') }}</span>
+      {{ item.title_or_question }}
+      <span class="badge importance-{{ item.importance|lower }}">{{ item.importance }}</span>
+      {% if item.mandatory_within_selection_process %}<span class="badge">Mandatory within process</span>{% endif %}
+      {% if not item.is_active %}<span class="badge status-failed">INACTIVE</span>{% endif %}
+    </div>
+    {% if item.objective %}<p style="font-size:.82rem; margin:.3rem 0;"><strong>Objective:</strong> {{ item.objective }}</p>{% endif %}
+    {% if item.scenario %}<p style="font-size:.8rem;"><strong>Scenario:</strong> {{ item.scenario }}</p>{% endif %}
+    {% if item.selezionatore_instructions %}<p class="context-note" style="font-size:.78rem;">{{ item.selezionatore_instructions }}</p>{% endif %}
+
+    <form method="post" action="{{ url_for('in_person_interview_item_toggle_active', section_id=section.id, item_id=item.id) }}" class="inline-form">
+      <button type="submit" class="btn secondary" style="margin-top:.4rem; font-size:.76rem; padding:.3rem .7rem;">
+        {{ 'Deactivate' if item.is_active else 'Reactivate' }}
+      </button>
+    </form>
+
+    <details class="edit-toggle">
+      <summary>Edit this Item</summary>
+      <form method="post" action="{{ url_for('in_person_interview_item_update', section_id=section.id, item_id=item.id) }}" class="req-form">
+        <label>Title / question</label>
+        <textarea name="title_or_question" required>{{ item.title_or_question }}</textarea>
+        <label>Item type</label>
+        <select name="item_type">
+          {% for t in item_types %}<option value="{{ t }}" {{ 'selected' if item.item_type == t else '' }}>{{ t|replace('_',' ') }}</option>{% endfor %}
+        </select>
+        <label>Instruction to candidate (optional)</label>
+        <textarea name="instruction">{{ item.instruction or '' }}</textarea>
+        <label>Scenario (Practical Test / Role-Play, optional)</label>
+        <textarea name="scenario">{{ item.scenario or '' }}</textarea>
+        <label>Objective</label>
+        <textarea name="objective">{{ item.objective or '' }}</textarea>
+        <label>Importance</label>
+        <select name="importance">
+          {% for i in importance_levels %}<option value="{{ i }}" {{ 'selected' if item.importance == i else '' }}>{{ i }}</option>{% endfor %}
+        </select>
+        <div class="checkbox-row" style="margin-top:.4rem;">
+          <label><input type="checkbox" name="mandatory_within_selection_process" {{ 'checked' if item.mandatory_within_selection_process else '' }}> Mandatory within selection process</label>
+        </div>
+        <label>Expected evidence guidance</label>
+        <textarea name="evidence_expected">{{ item.evidence_expected or '' }}</textarea>
+        <label>Positive evidence guidance</label>
+        <textarea name="evidence_positive">{{ item.evidence_positive or '' }}</textarea>
+        <label>Contrary evidence guidance</label>
+        <textarea name="evidence_contrary">{{ item.evidence_contrary or '' }}</textarea>
+        <label>Insufficient evidence guidance</label>
+        <textarea name="evidence_insufficient">{{ item.evidence_insufficient or '' }}</textarea>
+        <label>Selezionatore instructions (what to observe / how to run it)</label>
+        <textarea name="selezionatore_instructions">{{ item.selezionatore_instructions or '' }}</textarea>
+        <button type="submit" class="btn" style="margin-top:.6rem;">Save Item</button>
+      </form>
+    </details>
+  </div>
+  {% else %}
+  <p class="empty">No Assessment Items in this Section yet.</p>
+  {% endfor %}
+
+  <details class="edit-toggle">
+    <summary>Add an Assessment Item to this Section</summary>
+    <form method="post" action="{{ url_for('in_person_interview_item_create', section_id=section.id) }}" class="req-form">
+      <label>Title / question</label>
+      <textarea name="title_or_question" placeholder="e.g. Describe a dish as if speaking to a guest." required></textarea>
+      <label>Item type</label>
+      <select name="item_type" required>
+        {% for t in item_types %}<option value="{{ t }}">{{ t|replace('_',' ') }}</option>{% endfor %}
+      </select>
+      <label>Instruction to candidate (optional)</label>
+      <textarea name="instruction"></textarea>
+      <label>Scenario (Practical Test / Role-Play, optional)</label>
+      <textarea name="scenario"></textarea>
+      <label>Objective</label>
+      <textarea name="objective"></textarea>
+      <label>Importance</label>
+      <select name="importance">
+        {% for i in importance_levels %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+      </select>
+      <div class="checkbox-row" style="margin-top:.4rem;">
+        <label><input type="checkbox" name="mandatory_within_selection_process"> Mandatory within selection process</label>
+      </div>
+      <label>Expected evidence guidance</label>
+      <textarea name="evidence_expected"></textarea>
+      <label>Positive evidence guidance</label>
+      <textarea name="evidence_positive"></textarea>
+      <label>Contrary evidence guidance</label>
+      <textarea name="evidence_contrary"></textarea>
+      <label>Insufficient evidence guidance</label>
+      <textarea name="evidence_insufficient"></textarea>
+      <label>Selezionatore instructions (what to observe / how to run it)</label>
+      <textarea name="selezionatore_instructions"></textarea>
+      <button type="submit" class="btn" style="margin-top:.6rem;">Add Item</button>
+    </form>
+  </details>
+</div>
+{% else %}
+<p class="empty">No Sections configured yet.</p>
+{% endfor %}
+
+<div class="card">
+  <h2>Create a Section</h2>
+  <form method="post" action="{{ url_for('in_person_interview_section_create') }}" class="req-form">
+    <label>Name</label>
+    <input type="text" name="name" placeholder="e.g. Work Personality" required>
+    <label>Section kind</label>
+    <select name="section_kind">
+      {% for k in section_kinds %}<option value="{{ k }}">{{ k|replace('_',' ')|title }}</option>{% endfor %}
+    </select>
+    <label>Target role (leave blank to apply to every role)</label>
+    <input type="text" name="target_role">
+    <label>Description</label>
+    <textarea name="description"></textarea>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Create Section</button>
+  </form>
+</div>
+
+{% endblock %}

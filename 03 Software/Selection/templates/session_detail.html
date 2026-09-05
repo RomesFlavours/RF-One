@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('sessions_home') }}">&larr; Back to Sessions</a>
+
+<div class="card">
+  <div class="dossier-section-head">
+    <h1 style="margin-bottom:0;">{{ selection_session.name }}</h1>
+    <span class="badge sstatus-{{ selection_session.status|lower }}">{{ selection_session.status|replace('_',' ') }}</span>
+  </div>
+  <div class="meta-row">
+    <div class="meta-item"><div class="label">Role</div><div class="value">{{ selection_session.target_role }}</div></div>
+    <div class="meta-item"><div class="label">Branch / Location</div><div class="value">{{ selection_session.location_label or '-' }}</div></div>
+    <div class="meta-item"><div class="label">Start date</div><div class="value" style="font-size:.95rem;">{{ selection_session.start_date.strftime('%Y-%m-%d') if selection_session.start_date else '-' }}</div></div>
+    <div class="meta-item"><div class="label">Rule Set</div><div class="value">{{ 'v' ~ current_version.version if current_version else '(none)' }} {% if is_confirmed %}<span class="badge status-completed">Confirmed</span>{% else %}<span class="badge status-waiting">Not confirmed</span>{% endif %}</div></div>
+  </div>
+  {% if not is_confirmed %}
+  <div class="context-note" style="font-size:.85rem;">
+    This Session is NOT yet operational. Candidate operational work (Take In Charge, Outcome/Stage changes, Screening/Trainable Gap edits) is blocked until the Rule Set below is explicitly reviewed and confirmed.
+  </div>
+  {% endif %}
+
+  <details class="edit-toggle">
+    <summary>Change Session status</summary>
+    <form method="post" action="{{ url_for('session_set_status', session_id=selection_session.id) }}" class="req-form">
+      <select name="new_status">
+        {% for s in session_statuses %}<option value="{{ s }}" {{ 'selected' if s == selection_session.status else '' }}>{{ s|replace('_',' ') }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save status</button>
+    </form>
+  </details>
+</div>
+
+<!-- ================= Job Postings (Task 5E) ================= -->
+<div class="card">
+  <h2>Job Postings</h2>
+  {% if job_postings %}
+    {% for jp in job_postings %}
+    <div class="signal-card">
+      <div class="req-title">
+        Job Posting #{{ jp.id }}
+        <span class="badge">{{ jp.status }}</span>
+      </div>
+      <p><a href="{{ url_for('job_posting_detail', job_posting_id=jp.id) }}">Open &rarr;</a></p>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No Job Posting generated yet for this Session.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('job_posting_generate', session_id=selection_session.id) }}" class="req-form">
+    <label>Generate a base Job Posting draft from this Session's own context (never auto-published)</label>
+    <input type="text" name="created_by" placeholder="Your name">
+    <button type="submit" class="btn secondary" style="margin-top:.6rem;">Generate Draft</button>
+  </form>
+</div>
+
+<!-- ================= Selezionatori / authority ================= -->
+<div class="card">
+  <h2>Assigned Selezionatori</h2>
+  {% if assignments %}
+  {% for a in assignments %}
+  <div class="assignment-row">
+    <div>
+      {{ a.selezionatore_name }}
+      {% if not a.is_active %}<span class="badge">Inactive</span>{% endif %}
+      {% if a.authority_level %}<span class="badge">{{ a.authority_level.label or a.authority_level.level_key }} (order {{ a.authority_level.level_order }})</span>{% else %}<span class="badge">Peer (no configured level)</span>{% endif %}
+    </div>
+    {% if a.is_active %}
+    <form method="post" action="{{ url_for('session_deactivate_assignment', session_id=selection_session.id, assignment_id=a.id) }}" class="inline-form">
+      <button type="submit" class="btn secondary" style="font-size:.76rem; padding:.3rem .7rem;">Deactivate</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="empty">No Selezionatori assigned yet.</p>
+  {% endif %}
+  <p class="quick-read">With no configured authority level, assigned Selezionatori are peers — none may reassign another's owned Application.</p>
+
+  <details class="edit-toggle">
+    <summary>Assign a Selezionatore</summary>
+    <form method="post" action="{{ url_for('session_assign_selezionatore', session_id=selection_session.id) }}" class="req-form">
+      <label>Selezionatore name</label>
+      <input type="text" name="selezionatore_name" required>
+      <label>Authority level (optional — leave blank for peer)</label>
+      <select name="authority_level_id">
+        <option value="">(peer — no configured level)</option>
+        {% for lvl in authority_levels %}<option value="{{ lvl.id }}">{{ lvl.label or lvl.level_key }} (order {{ lvl.level_order }})</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Assign</button>
+    </form>
+  </details>
+</div>
+
+<!-- ================= Rule Review / Confirmation ================= -->
+<div class="card">
+  <h2>Rule Set — Review{% if current_version %} (v{{ current_version.version }}){% endif %}</h2>
+  {% if rule_set_summary %}
+  <div class="section-grid">
+    <div>
+      <h3 style="font-size:.85rem;">Requirements{% if rule_set_summary.requirement_set %} — {{ rule_set_summary.requirement_set.name }}{% endif %}</h3>
+      {% if rule_set_summary.requirement_items %}
+      {% for item in rule_set_summary.requirement_items %}
+      <div class="requirement-card">
+        <div class="req-title">{{ item.name }} <span class="badge crit-{{ item.criticality|lower|replace('_','-') }}">{{ item.criticality|replace('_',' ')|title }}</span> <span class="badge">{{ item.trainability|replace('_',' ')|title }}</span></div>
+      </div>
+      {% endfor %}
+      {% else %}<p class="empty" style="font-size:.82rem;">No Requirement Set selected yet.</p>{% endif %}
+
+      <h3 style="font-size:.85rem; margin-top:.8rem;">Selection Signals</h3>
+      {% if rule_set_summary.signals %}<ul class="reason-list">{% for s in rule_set_summary.signals %}<li>{{ s.name }}</li>{% endfor %}</ul>{% else %}<p class="empty" style="font-size:.82rem;">None referenced.</p>{% endif %}
+    </div>
+    <div>
+      <h3 style="font-size:.85rem;">Primary Screening Criteria</h3>
+      {% if rule_set_summary.criteria %}
+      {% for c in rule_set_summary.criteria %}
+      <div class="requirement-card">
+        <div class="req-title">
+          {{ c.name }}
+          <span class="badge">{{ c.direction|title }}</span>
+          <span class="badge">Coefficient {{ c.coefficient }}</span>
+          {% if c.is_hard_disqualifier %}<span class="badge status-failed">Hard Disqualifier</span>{% endif %}
+        </div>
+        {% if c.level_descriptions %}
+        <p class="muted" style="font-size:.78rem; margin:.3rem 0 0;">
+          {% for lvl, desc in c.level_descriptions.items() %}L{{ lvl }}: {{ desc }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
+        </p>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% else %}<p class="empty" style="font-size:.82rem;">No Screening Criteria referenced yet.</p>{% endif %}
+
+      <h3 style="font-size:.85rem; margin-top:.8rem;">Outcome Definitions referenced</h3>
+      {% if rule_set_summary.outcomes %}<ul class="reason-list">{% for o in rule_set_summary.outcomes %}<li>{{ o.name }} &rarr; {{ o.lifecycle_effect }}</li>{% endfor %}</ul>{% else %}<p class="empty" style="font-size:.82rem;">None referenced.</p>{% endif %}
+    </div>
+  </div>
+  {% else %}
+  <p class="empty">No Rule Set version exists yet.</p>
+  {% endif %}
+
+  {% if not is_confirmed %}
+  <details class="edit-toggle" style="margin-top:.8rem;">
+    <summary>Edit Rule Set (before confirmation)</summary>
+    <form method="post" action="{{ url_for('session_rule_set_update', session_id=selection_session.id) }}" class="req-form">
+      <label>Requirement Set</label>
+      <select name="requirement_set_id">
+        <option value="">(none)</option>
+        {% for rset in requirement_sets %}<option value="{{ rset.id }}" {{ 'selected' if current_version and current_version.requirement_set_id == rset.id else '' }}>{{ rset.name }}</option>{% endfor %}
+      </select>
+      <label>Primary Screening Criteria</label>
+      <select name="criterion_ids" multiple size="6">
+        {% for c in criteria %}<option value="{{ c.id }}">{{ c.name }} ({{ c.direction }})</option>{% endfor %}
+      </select>
+      <label>Selection Signals</label>
+      <select name="signal_ids" multiple size="4">
+        {% for s in signal_definitions %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+      </select>
+      <label>Outcome Definitions</label>
+      <select name="outcome_ids" multiple size="4">
+        {% for o in outcome_definitions %}<option value="{{ o.id }}">{{ o.name }}</option>{% endfor %}
+      </select>
+      <label>What changed / notes (optional)</label>
+      <textarea name="change_summary"></textarea>
+      <label>Your name</label>
+      <input type="text" name="created_by">
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save Rule Set (new version)</button>
+    </form>
+  </details>
+
+  <details class="edit-toggle" style="margin-top:.6rem;">
+    <summary><strong>Confirm Rule Set</strong></summary>
+    <form method="post" action="{{ url_for('session_confirm_rule_set', session_id=selection_session.id) }}" class="req-form">
+      <label>Confirmed by</label>
+      <input type="text" name="confirmed_by" required>
+      <label>Note (optional)</label>
+      <textarea name="note"></textarea>
+      <button type="submit" class="btn" style="margin-top:.6rem;">Confirm Rule Set &amp; Activate Session</button>
+    </form>
+  </details>
+  {% else %}
+  <p class="muted" style="font-size:.8rem; margin-top:.6rem;">
+    Confirmed by {{ current_version.confirmed_by }} on {{ current_version.confirmed_at.strftime('%Y-%m-%d %H:%M') if current_version.confirmed_at else '' }}.
+    {% if current_version.confirmation_note %}{{ current_version.confirmation_note }}{% endif %}
+  </p>
+  {% endif %}
+</div>
+
+<!-- ================= Rule Change (only while ACTIVE) ================= -->
+{% if selection_session.status == 'ACTIVE' %}
+<div class="card">
+  <h2>Propose a Rule Change</h2>
+  <p class="quick-read">Creates a new Rule Set version. Choose scope explicitly — it is never assumed.</p>
+  <form method="post" action="{{ url_for('session_propose_rule_change', session_id=selection_session.id) }}" class="req-form">
+    <label>What rule(s) changed (summary)</label>
+    <input type="text" name="rules_changed_summary" required>
+    <label>Reason (mandatory)</label>
+    <textarea name="reason" required></textarea>
+    <label>Scope</label>
+    <select name="scope">
+      <option value="SUBSEQUENT_ONLY">Subsequent Applications Only</option>
+      <option value="ENTIRE_SESSION">Entire Session (identifies &amp; recalculates already-processed Applications)</option>
+    </select>
+    <label>Requirement Set (leave as-is to carry forward unchanged)</label>
+    <select name="requirement_set_id">
+      <option value="">(carry forward unchanged)</option>
+      {% for rset in requirement_sets %}<option value="{{ rset.id }}">{{ rset.name }}</option>{% endfor %}
+    </select>
+    <label>Primary Screening Criteria (leave empty to carry forward unchanged)</label>
+    <select name="criterion_ids" multiple size="6">
+      {% for c in criteria %}<option value="{{ c.id }}">{{ c.name }} ({{ c.direction }})</option>{% endfor %}
+    </select>
+    <label>Your name</label>
+    <input type="text" name="performed_by">
+    <button type="submit" class="btn" style="margin-top:.6rem;">Propose Rule Change</button>
+  </form>
+</div>
+{% endif %}
+
+{% if impacts_needing_review %}
+<div class="card">
+  <h2>Applications needing review after a Rule Change ({{ impacts_needing_review|length }})</h2>
+  {% for impact in impacts_needing_review %}
+  <div class="dossier-concern-card">
+    <div class="dossier-section-head">
+      <div>
+        <a href="{{ url_for('application_dossier', application_id=impact.application_id) }}">Application #{{ impact.application_id }}</a>
+        <span class="badge rcstatus-{{ impact.recalculation_status|lower }}">{{ impact.recalculation_status|replace('_',' ')|title }}</span>
+        <span class="badge rstatus-{{ impact.review_status|lower }}">{{ impact.review_status|replace('_',' ')|title }}</span>
+      </div>
+      <form method="post" action="{{ url_for('rule_change_impact_mark_reviewed', impact_id=impact.id) }}" class="inline-form">
+        <input type="hidden" name="next" value="{{ url_for('session_detail', session_id=selection_session.id) }}">
+        <button type="submit" class="btn secondary" style="font-size:.76rem; padding:.3rem .7rem;">Mark reviewed</button>
+      </form>
+    </div>
+    {% if impact.notes %}<p class="muted" style="font-size:.78rem;">{{ impact.notes }}</p>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if rule_changes %}
+<div class="card">
+  <h2>Rule Change History</h2>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>When</th><th>Summary</th><th>Scope</th><th>Reason</th><th>Versions</th></tr></thead>
+    <tbody>
+      {% for rc in rule_changes|reverse %}
+      <tr>
+        <td>{{ rc.created_at.strftime('%Y-%m-%d %H:%M') if rc.created_at else '-' }}</td>
+        <td>{{ rc.rules_changed_summary }}</td>
+        <td><span class="badge scope-{{ rc.scope|lower }}">{{ rc.scope|replace('_',' ')|title }}</span></td>
+        <td>{{ rc.reason }}</td>
+        <td>{{ rc.previous_version.version if rc.previous_version else '-' }} &rarr; {{ rc.new_version.version }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- ================= Applications / Ownership ================= -->
+<div class="card">
+  <h2>Applications ({{ application_rows|length }})</h2>
+  {% if application_rows %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Candidate</th><th>Applied</th><th>Owner</th><th>Rule Set version</th><th></th></tr></thead>
+    <tbody>
+      {% for row in application_rows %}
+      <tr id="ownership-{{ row.application.id }}">
+        <td>{{ row.application.candidate.full_name or '(name not extracted)' }}</td>
+        <td>{{ row.application.applied_at.strftime('%Y-%m-%d') if row.application.applied_at else '-' }}</td>
+        <td>{{ row.owner.owner_name if row.owner else '(unclaimed)' }}</td>
+        <td>{{ 'v' ~ row.application.rule_set_version_id if row.application.rule_set_version_id else '-' }}</td>
+        <td><a href="{{ url_for('application_dossier', application_id=row.application.id) }}">Open Dossier &rarr;</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Applications linked to this Session yet.</p>
+  {% endif %}
+
+  <details class="edit-toggle">
+    <summary>Link an existing Application to this Session</summary>
+    <form method="post" action="{{ url_for('session_link_application', session_id=selection_session.id) }}" class="req-form">
+      <label>Application</label>
+      <select name="application_id">
+        {% for a in linkable_applications %}<option value="{{ a.id }}">{{ a.candidate.full_name or ('Application #' ~ a.id) }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Link to Session</button>
+    </form>
+  </details>
+</div>
+
+<!-- ================= Interview Scheduling Windows (Task 5D-MICRO-FIX) ================= -->
+<div class="card">
+  <h2>Interview Scheduling Windows</h2>
+  <p class="muted" style="font-size:.82rem;">
+    Offered once per Session/stage and shared by every eligible Application here — the Selezionatore never
+    recreates identical windows per candidate. Capacity is shared: once a slot is fully booked by any
+    Application in this Session, it is no longer offered to any other.
+  </p>
+  {% if scheduling_windows %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Stage</th><th>Date</th><th>Time</th><th>Slot length</th><th>Capacity/slot</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for w in scheduling_windows %}
+      <tr>
+        <td><span class="badge stage-{{ w.interview_stage|lower }}">{{ w.interview_stage|replace('_',' ') }}</span></td>
+        <td>{{ w.window_date.strftime('%Y-%m-%d') }}</td>
+        <td>{{ w.start_time.strftime('%H:%M') }}–{{ w.end_time.strftime('%H:%M') }}</td>
+        <td>{{ w.slot_duration_minutes }} min</td>
+        <td>{{ w.capacity_per_slot }}</td>
+        <td>{% if not w.is_active %}<span class="badge status-failed">INACTIVE</span>{% else %}Active{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty">No scheduling windows offered yet for this Session.</p>
+  {% endif %}
+
+  <details class="edit-toggle">
+    <summary>Offer a new scheduling window</summary>
+    <form method="post" action="{{ url_for('session_scheduling_window_create', session_id=selection_session.id) }}" class="req-form">
+      <label>Interview stage</label>
+      <select name="interview_stage">
+        {% for s in schedulable_stages %}<option value="{{ s }}">{{ s|replace('_',' ') }}</option>{% endfor %}
+      </select>
+      <label>Date</label>
+      <input type="date" name="window_date" required>
+      <label>Start time</label>
+      <input type="time" name="start_time" required>
+      <label>End time</label>
+      <input type="time" name="end_time" required>
+      <label>Slot duration (minutes)</label>
+      <input type="text" name="slot_duration_minutes" value="30">
+      <label>Capacity per slot</label>
+      <input type="text" name="capacity_per_slot" value="1">
+      <label>Created by</label>
+      <input type="text" name="created_by" placeholder="Your name">
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Add Scheduling Window</button>
+    </form>
+  </details>
+</div>
+
+<!-- ================= Session Notes ================= -->
+<div class="card">
+  <h2>Session Notes</h2>
+  <form method="post" action="{{ url_for('session_add_note', session_id=selection_session.id) }}" class="req-form">
+    <textarea name="note_text" placeholder="General Session note"></textarea>
+    <button type="submit" class="btn secondary" style="margin-top:.6rem;">Add Note</button>
+  </form>
+  {% if session_notes %}
+  {% for note in session_notes %}
+  <div class="notes-history-entry">
+    <div class="nh-meta">{{ note.created_at.strftime('%Y-%m-%d %H:%M') if note.created_at else '' }}{% if note.context_type %} &middot; {{ note.context_type|replace('_',' ')|title }}{% endif %}</div>
+    <div>{{ note.note_text }}</div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="empty">No Session notes yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

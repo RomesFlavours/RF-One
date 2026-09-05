@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Configure the approved Rome's Flavours Tip Policy (TASK_TIPS_004).
 
-Product-Owner-approved policy structure (`01 Domains/Restaurant/Tips/Tip
+Product-Owner-approved policy structure (`01 Domains/Business Domain/Restaurant/Tips/Tip
 Policy.md` remains the generic Domain definition; the actual values below
 are Rome's Flavours' own configuration — never hard-coded into
 `rfone_data_store/tips/engine.py`):

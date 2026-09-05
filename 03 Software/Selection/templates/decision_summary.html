@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('application_detail', application_id=application.id) }}">&larr; Back to Application</a>
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Candidate</div>
+      <div class="value">{{ application.candidate.full_name or '(name not extracted)' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Target Role</div>
+      <div class="value">{{ application.target_role or '-' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Current Stage</div>
+      <div class="value"><span class="badge stage-{{ summary.current_stage|lower }}">{{ summary.current_stage|replace('_',' ') }}</span></div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Current Outcome</div>
+      <div class="value">
+        {% if summary.current_outcome_decision %}
+        {{ summary.current_outcome_decision.outcome_definition_snapshot.name }}
+        {% else %}
+        <span class="muted">(none applied yet)</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Application Lifecycle</div>
+      <div class="value"><span class="badge lifecycle-{{ summary.lifecycle_state|lower }}">{{ summary.lifecycle_state }}</span></div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Current Queue</div>
+      <div class="value">{{ summary.current_queue.name if summary.current_queue else '(none assigned)' }}</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.8rem;">
+    {% if original_cv_available %}
+    <a class="cv-link" href="{{ url_for('candidate_original_cv', candidate_id=application.candidate_id) }}" target="_blank" rel="noopener">Open Original CV &#8599;</a>
+    {% else %}
+    <span class="muted">Original CV unavailable</span>
+    {% endif %}
+    &middot; <a href="{{ url_for('application_detail', application_id=application.id) }}">View full Application</a>
+  </p>
+  <div class="context-note" style="font-size:.85rem;">{{ summary_text }}</div>
+  <p class="muted" style="font-size:.76rem; margin-top:.4rem;">
+    This is a current-state summary, not a recommendation — a decision remains entirely the Selezionatore's own.
+  </p>
+</div>
+
+<div class="card decision-section">
+  <h2>Move Stage</h2>
+  <p class="muted" style="font-size:.8rem;">The Selezionatore has total freedom to move forward, backward, repeat, or skip Stages.</p>
+  <form method="post" action="{{ url_for('application_set_stage', application_id=application.id) }}" class="req-form">
+    <input type="hidden" name="next" value="{{ url_for('application_decision', application_id=application.id) }}">
+    <label>New Stage</label>
+    <select name="new_stage">
+      {% for s in stages %}<option value="{{ s }}" {{ 'selected' if s == summary.current_stage else '' }}>{{ s|replace('_',' ') }}</option>{% endfor %}
+    </select>
+    <label>Acting Selezionatore (required if this Application belongs to a Session with a claimed owner)</label>
+    <input type="text" name="actor" placeholder="Your name">
+    <label>Note (optional)</label>
+    <textarea name="note_text"></textarea>
+    <button type="submit" class="btn secondary" style="margin-top:.6rem;">Move Stage</button>
+  </form>
+</div>
+
+<div class="card decision-section">
+  <h2>Apply an Outcome</h2>
+  <p class="muted" style="font-size:.8rem;">May be applied at any moment — no Stage or evidence completion is required.</p>
+  <form method="post" action="{{ url_for('application_apply_outcome', application_id=application.id) }}" class="req-form">
+    <input type="hidden" name="next" value="{{ url_for('application_decision', application_id=application.id) }}">
+    <label>Outcome</label>
+    <select name="outcome_definition_id">
+      {% for d in outcome_definitions %}<option value="{{ d.id }}">{{ d.name }} &rarr; {{ d.lifecycle_effect }}</option>{% endfor %}
+    </select>
+    <label>Reason (required by some Outcomes)</label>
+    <input type="text" name="reason">
+    <label>Acting Selezionatore (required if this Application belongs to a Session with a claimed owner)</label>
+    <input type="text" name="actor" placeholder="Your name">
+    <label>Note (required by some Outcomes)</label>
+    <textarea name="note_text"></textarea>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Apply Outcome</button>
+  </form>
+  {% if summary.lifecycle_state == 'CLOSED' or summary.lifecycle_state == 'SUSPENDED' %}
+  <details class="edit-toggle">
+    <summary>Reopen this Application</summary>
+    <form method="post" action="{{ url_for('application_reopen', application_id=application.id) }}" class="req-form">
+      <input type="hidden" name="next" value="{{ url_for('application_decision', application_id=application.id) }}">
+      <label>Reopen with which (ACTIVE) Outcome?</label>
+      <select name="outcome_definition_id">
+        {% for d in outcome_definitions %}{% if d.lifecycle_effect == 'ACTIVE' %}<option value="{{ d.id }}">{{ d.name }}</option>{% endif %}{% endfor %}
+      </select>
+      <label>Acting Selezionatore</label>
+      <input type="text" name="actor" placeholder="Your name">
+      <label>Note</label>
+      <textarea name="note_text" placeholder="Why is this Application being reopened?"></textarea>
+      <button type="submit" class="btn" style="margin-top:.6rem;">Reopen Application</button>
+    </form>
+  </details>
+  {% endif %}
+</div>
+
+<div class="card decision-section">
+  <h2>Record Information / Event</h2>
+  <p class="muted" style="font-size:.8rem;">
+    A factual report from staff — e.g. "a server received a phone call from the candidate saying they are
+    withdrawing." This is NOT a decision: recording it here never changes Stage, Outcome, or anything else about
+    the Application. The Selezionatore decides separately, above, what (if anything) to do about it.
+  </p>
+  <form method="post" action="{{ url_for('application_record_information_event', application_id=application.id) }}" class="req-form">
+    <input type="hidden" name="next" value="{{ url_for('application_decision', application_id=application.id) }}">
+    <label>What happened? (raw description)</label>
+    <textarea name="description" placeholder="Candidate called the restaurant and stated they are withdrawing." required></textarea>
+    <label>Event/information type (optional)</label>
+    <input type="text" name="event_type" placeholder="e.g. CANDIDATE_WITHDRAWAL_CLAIM">
+    <label>Reported by (who entered this into Selection)</label>
+    <input type="text" name="reported_by" placeholder="e.g. Server: Alex">
+    <label>Original source (optional — where the information actually came from)</label>
+    <input type="text" name="original_source" placeholder="e.g. Phone call from the candidate">
+    <button type="submit" class="btn secondary" style="margin-top:.6rem;">Record Information / Event</button>
+  </form>
+</div>
+
+<div class="card decision-section">
+  <h2>Move Queue</h2>
+  <p class="muted" style="font-size:.8rem;">
+    A purely organizational move — independent of Stage and Outcome; neither changes as a result of this.
+  </p>
+  <form method="post" action="{{ url_for('application_move_queue', application_id=application.id) }}" class="req-form">
+    <input type="hidden" name="next" value="{{ url_for('application_decision', application_id=application.id) }}">
+    <label>Move to queue</label>
+    <select name="queue_id">
+      {% for q in queues %}<option value="{{ q.id }}" {{ 'selected' if summary.current_queue and summary.current_queue.id == q.id else '' }}>{{ q.name }}</option>{% endfor %}
+    </select>
+    <label>Note (optional)</label>
+    <textarea name="note_text"></textarea>
+    <button type="submit" class="btn secondary" style="margin-top:.6rem;">Move Queue</button>
+  </form>
+</div>
+
+{% if summary.reminders %}
+<div class="card decision-section">
+  <h2>Open Follow-ups</h2>
+  {% for r in summary.reminders %}
+  <div class="flag-card">
+    <div>{{ r.note_text }}</div>
+    {% if r.due_date %}<div class="muted" style="font-size:.76rem;">Due {{ r.due_date.strftime('%Y-%m-%d') }}</div>{% endif %}
+    <form method="post" action="{{ url_for('application_resolve_reminder', application_id=application.id, reminder_id=r.id) }}" class="inline-form">
+      <button type="submit" class="btn secondary" style="font-size:.76rem; padding:.3rem .7rem; margin-top:.3rem;">Mark resolved</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card decision-section">
+  <h2>Primary Screening</h2>
+  {% if summary.primary_screening_run %}
+  <p style="font-size:.85rem;">
+    {% if summary.primary_screening_run.has_active_hard_disqualifier %}<span class="badge status-failed">HARD DISQUALIFIER</span>{% endif %}
+    <a href="{{ url_for('primary_screening_detail', run_id=summary.primary_screening_run.id) }}">Open Primary Screening &rarr;</a>
+  </p>
+  <p class="muted" style="font-size:.8rem;">{{ summary.primary_screening_run.explanation or '' }}</p>
+  {% else %}
+  <p class="muted" style="font-size:.82rem;">No Primary Screening run yet.</p>
+  {% endif %}
+  {% if summary.active_hard_disqualifiers %}
+  <p style="font-size:.82rem;"><strong>Active Hard Disqualifier(s):</strong> {{ summary.active_hard_disqualifiers|map(attribute='criterion_snapshot')|map(attribute='name')|join(', ') }}</p>
+  {% endif %}
+</div>
+
+<div class="card decision-section">
+  <h2>Evidence Overview</h2>
+  <div class="section-grid">
+    <div>
+      <h3 style="font-size:.85rem;">Strongest evidence</h3>
+      {% if summary.strongest_evidence %}<ul class="reason-list" style="font-size:.82rem;">{% for r in summary.strongest_evidence %}<li>{{ r.name }}</li>{% endfor %}</ul>{% else %}<p class="empty" style="font-size:.8rem;">None yet.</p>{% endif %}
+      <h3 style="font-size:.85rem;">Weaker / partial evidence</h3>
+      {% if summary.weaker_evidence %}<ul class="reason-list" style="font-size:.82rem;">{% for r in summary.weaker_evidence %}<li>{{ r.name }}</li>{% endfor %}</ul>{% else %}<p class="empty" style="font-size:.8rem;">None.</p>{% endif %}
+    </div>
+    <div>
+      <h3 style="font-size:.85rem;">Conflicting evidence</h3>
+      {% if summary.conflicting_evidence %}<ul class="reason-list" style="font-size:.82rem;">{% for r in summary.conflicting_evidence %}<li>{{ r.name }}</li>{% endfor %}</ul>{% else %}<p class="empty" style="font-size:.8rem;">None.</p>{% endif %}
+      <h3 style="font-size:.85rem;">Unresolved</h3>
+      {% if summary.unresolved_evidence %}<ul class="reason-list" style="font-size:.82rem;">{% for r in summary.unresolved_evidence %}<li>{{ r.name }}</li>{% endfor %}</ul>{% else %}<p class="empty" style="font-size:.8rem;">None.</p>{% endif %}
+    </div>
+  </div>
+  {% if summary.trainable_gaps %}
+  <h3 style="font-size:.85rem; margin-top:.6rem;">Gaps that appear trainable</h3>
+  <ul class="reason-list" style="font-size:.82rem;">{% for g in summary.trainable_gaps %}<li>{{ g.name }} ({{ g.trainability|replace('_',' ')|title }})</li>{% endfor %}</ul>
+  {% endif %}
+  {% if summary.important_signals %}
+  <h3 style="font-size:.85rem; margin-top:.6rem;">Important Selection Signals</h3>
+  <ul class="reason-list" style="font-size:.82rem;">
+    {% for o in summary.important_signals %}<li>{{ o.signal_definition.name }} — <span class="badge signal-{{ o.status|lower }}">{{ o.status|replace('_',' ') }}</span></li>{% endfor %}
+  </ul>
+  {% endif %}
+</div>
+
+<div class="card decision-section">
+  <h2>Candidate Flags ({{ summary.active_flags|length }} active)</h2>
+  {% if summary.active_flags %}
+    {% for flag in summary.active_flags %}
+    <div class="flag-card">
+      <div class="req-title">
+        {{ flag.name }}
+        <span class="badge flag-{{ flag.operational_effect|lower }}">{{ flag.operational_effect|replace('_',' ')|title }}</span>
+        <span class="badge">{{ flag.scope|replace('_',' ')|title }}</span>
+      </div>
+      {% if flag.description %}<p style="font-size:.82rem; margin:.3rem 0;">{{ flag.description }}</p>{% endif %}
+      {% if flag.reason %}<p class="muted" style="font-size:.78rem;">Reason: {{ flag.reason }}</p>{% endif %}
+      {% if flag.expires_at %}<p class="muted" style="font-size:.76rem;">Expires {{ flag.expires_at.strftime('%Y-%m-%d') }}</p>{% endif %}
+      <form method="post" action="{{ url_for('application_deactivate_flag', application_id=application.id, flag_id=flag.id) }}" class="inline-form">
+        <input type="hidden" name="next" value="{{ url_for('application_decision', application_id=application.id) }}">
+        <button type="submit" class="btn secondary" style="font-size:.76rem; padding:.3rem .7rem;">Deactivate</button>
+      </form>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No active Candidate Flags for this person.</p>
+  {% endif %}
+
+  <details class="edit-toggle">
+    <summary>Create a Candidate Flag</summary>
+    <form method="post" action="{{ url_for('application_create_flag', application_id=application.id) }}" class="req-form">
+      <input type="hidden" name="next" value="{{ url_for('application_decision', application_id=application.id) }}">
+      <label>Flag name</label>
+      <input type="text" name="name" placeholder="e.g. DO NOT REHIRE, RECONSIDER AFTER 6 MONTHS" required>
+      <label>Description</label>
+      <textarea name="description"></textarea>
+      <label>Reason</label>
+      <textarea name="reason"></textarea>
+      <label>Scope</label>
+      <select name="scope">
+        <option value="INFORMATIONAL">Informational</option>
+        <option value="ROLE_SPECIFIC">Role specific</option>
+        <option value="LOCATION_SPECIFIC">Location specific</option>
+        <option value="TEMPORARY">Temporary</option>
+        <option value="GLOBAL_WITHIN_RESTAURANT">Global within this restaurant</option>
+      </select>
+      <label>Role scope (if role specific)</label>
+      <input type="text" name="role_scope">
+      <label>Location scope (if location specific)</label>
+      <input type="text" name="location_scope">
+      <label>Operational effect</label>
+      <select name="operational_effect">
+        <option value="INFORMATION_ONLY">Informational only</option>
+        <option value="WARNING">Show a prominent warning</option>
+        <option value="OPERATIONAL_ACTION">Requires Selezionatore attention</option>
+      </select>
+      <label>Note</label>
+      <textarea name="note"></textarea>
+      <label>Expires after how many days? (optional)</label>
+      <input type="text" name="expires_after_days">
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Create Flag</button>
+    </form>
+  </details>
+</div>
+
+<div class="card decision-section">
+  <h2>Outcome History</h2>
+  {% if summary.outcome_history %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>When</th><th>Outcome</th><th>Lifecycle</th><th>Reason</th><th></th></tr></thead>
+    <tbody>
+      {% for dec in summary.outcome_history|reverse %}
+      <tr>
+        <td>{{ dec.created_at.strftime('%Y-%m-%d %H:%M') if dec.created_at else '-' }}</td>
+        <td>{{ dec.outcome_definition_snapshot.name }}</td>
+        <td><span class="badge lifecycle-{{ dec.outcome_definition_snapshot.lifecycle_effect|lower }}">{{ dec.outcome_definition_snapshot.lifecycle_effect }}</span></td>
+        <td>{{ dec.reason or '-' }}</td>
+        <td>{% if dec.is_reopen_event %}<span class="badge">Reopened</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Outcome has been applied yet.</p>
+  {% endif %}
+</div>
+
+<div class="card decision-section">
+  <h2>Stage History</h2>
+  {% if summary.stage_history %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>When</th><th>From</th><th>To</th></tr></thead>
+    <tbody>
+      {% for t in summary.stage_history|reverse %}
+      <tr>
+        <td>{{ t.created_at.strftime('%Y-%m-%d %H:%M') if t.created_at else '-' }}</td>
+        <td>{{ (t.previous_stage|replace('_',' ')) if t.previous_stage else '(initial)' }}</td>
+        <td>{{ t.new_stage|replace('_',' ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No explicit Stage movement recorded yet — this Application is at its default Stage.</p>
+  {% endif %}
+</div>
+
+<div class="card decision-section">
+  <h2>Queue Movement History</h2>
+  {% if summary.queue_history %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>When</th><th>From</th><th>To</th><th>Source</th><th>Reason</th></tr></thead>
+    <tbody>
+      {% for mv in summary.queue_history|reverse %}
+      <tr>
+        <td>{{ mv.created_at.strftime('%Y-%m-%d %H:%M') if mv.created_at else '-' }}</td>
+        <td>{{ mv.previous_queue.name if mv.previous_queue else '(none)' }}</td>
+        <td>{{ mv.new_queue.name if mv.new_queue else '(none)' }}</td>
+        <td><span class="badge">{{ mv.source|replace('_',' ')|title }}</span></td>
+        <td>{{ mv.reason or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No queue movement recorded yet.</p>
+  {% endif %}
+</div>
+
+<div class="card decision-section">
+  <h2>Selection Notes History</h2>
+  <p class="muted" style="font-size:.8rem;">Every Note entered anywhere in this Application's Selection journey, chronologically.</p>
+  {% if notes_history %}
+    {% for entry in notes_history %}
+    <div class="notes-history-entry">
+      <div class="nh-meta">
+        {{ entry.created_at.strftime('%Y-%m-%d %H:%M') if entry.created_at else '(undated)' }}
+        &middot; {{ entry.context_label }}
+        {% if entry.stage %}&middot; {{ entry.stage|replace('_',' ') }}{% endif %}
+        {% if entry.author %}&middot; {{ entry.author }}{% endif %}
+      </div>
+      <div>{{ entry.note_text }}</div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No notes recorded yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

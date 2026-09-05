@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <p class="muted" style="font-size:.82rem;">
+    High-visibility inbound-communication alerts requiring Selezionatore attention — a late response after an
+    automatic NO RESPONSE Stop, a reschedule request, an availability conflict, an ambiguous message, and similar.
+    Acknowledging an alert here never itself changes any Outcome — the Selezionatore decides separately, from the
+    Application's own Dossier/Communication History.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Open Alerts</h2>
+  {% if alerts %}
+    {% for a in alerts %}
+    <div class="signal-card">
+      <div class="req-title">
+        {{ a.alert_reason|replace('_',' ')|title }}
+        <span class="badge">Application #{{ a.application_id }}</span>
+      </div>
+      <p style="font-size:.85rem; margin:.3rem 0;">"{{ a.raw_text }}"</p>
+      <p class="muted" style="font-size:.76rem;">Received {{ a.received_at.strftime('%Y-%m-%d %H:%M') }}</p>
+      <a href="{{ url_for('application_communication_history', application_id=a.application_id) }}">View Communication History &rarr;</a>
+      <form method="post" action="{{ url_for('inbound_acknowledge_alert', inbound_id=a.id) }}" class="inline-form">
+        <input type="text" name="acknowledged_by" placeholder="Your name" style="max-width:12rem;">
+        <button type="submit" class="btn secondary" style="margin-top:.4rem; font-size:.78rem; padding:.35rem .8rem;">Acknowledge</button>
+      </form>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No open alerts.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

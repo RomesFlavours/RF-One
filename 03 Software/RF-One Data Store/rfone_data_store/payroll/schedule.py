@@ -1,7 +1,7 @@
 """Payroll Schedule / Payroll Period / Workweek helpers (TASK_PAYROLL_001).
 
 `PayrollSchedule`, `PayrollPeriod` and `Workweek` are structurally independent
-concepts — see `01 Domains/Administration/Payroll/Payroll Schedule and
+concepts — see `01 Domains/Cross Domain/Administration/Payroll/Payroll Schedule and
 Period.md`. This module holds only the pure helpers that demonstrate/exercise
 that independence.
 

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Client</div>
+      <div class="value">{{ client_name }}</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.82rem;">
+    Operational queues/lists are a purely organizational tool — e.g. "Active Review," "Call Later," "Hold,"
+    "Reconsider," "Hired," "Closed." They are NOT a hiring decision: an Application's queue changes only when the
+    Selezionatore moves it directly, or when an Outcome they chose was configured to do so. RF-One seeds a few
+    examples below; rename, deactivate, or add your own freely.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Configured Queues</h2>
+  {% if queues %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Order</th><th>Name</th><th>Description</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for q in queues %}
+      <tr>
+        <td>{{ q.display_order }}</td>
+        <td>{{ q.name }}</td>
+        <td>{{ q.description or '-' }}</td>
+        <td>{% if q.is_active %}<span class="badge status-completed">ACTIVE</span>{% else %}<span class="badge status-failed">INACTIVE</span>{% endif %}</td>
+        <td>
+          <form method="post" action="{{ url_for('selection_queue_toggle_active', queue_id=q.id) }}" class="inline-form">
+            <button type="submit" class="btn secondary" style="font-size:.78rem; padding:.35rem .8rem;">{{ 'Deactivate' if q.is_active else 'Reactivate' }}</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No queues configured yet.</p>
+  {% endif %}
+
+  {% for q in queues %}
+  <details class="edit-toggle">
+    <summary>Edit "{{ q.name }}"</summary>
+    <form method="post" action="{{ url_for('selection_queue_update', queue_id=q.id) }}" class="req-form">
+      <label>Name</label>
+      <input type="text" name="name" value="{{ q.name }}" required>
+      <label>Description</label>
+      <textarea name="description">{{ q.description or '' }}</textarea>
+      <label>Display order</label>
+      <input type="text" name="display_order" value="{{ q.display_order }}">
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save changes</button>
+    </form>
+  </details>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>Create a new Queue</h2>
+  <form method="post" action="{{ url_for('selection_queue_create') }}" class="req-form">
+    <label>Name</label>
+    <input type="text" name="name" placeholder="e.g. Call Later" required>
+    <label>Description</label>
+    <textarea name="description" placeholder="What does this queue mean operationally?"></textarea>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Create Queue</button>
+  </form>
+</div>
+
+{% endblock %}

@@ -97,7 +97,7 @@ The migration scripts live in `migrations/versions/`. `migrations/env.py` resolv
 | `create_database.py` | Entry point: create schema + validate. |
 | `inspect_database.py` | Entry point: read-only schema/row-count inventory. |
 | `rfone_data_store/ingestion/` | The Clover source adapter (TASK_DATABASE_002) — see `CLOVER_INGESTION.md`. |
-| `rfone_data_store/tips/` | Post-hoc Tip calculation engine — `engine.py` (calculation), `resolvers.py` (service-attribution boundary), `rounding.py` (deterministic largest-remainder apportionment). TASK_TIPS_001 — see `RESTAURANT_PROFILE.md` §3 and `01 Domains/Restaurant/Tips/`. |
+| `rfone_data_store/tips/` | Post-hoc Tip calculation engine — `engine.py` (calculation), `resolvers.py` (service-attribution boundary), `rounding.py` (deterministic largest-remainder apportionment). TASK_TIPS_001 — see `RESTAURANT_PROFILE.md` §3 and `01 Domains/Business Domain/Restaurant/Tips/`. |
 | `rfone_data_store/tips_validation.py` | Synthetic-fixture Tips engine tests, same pattern as `schema_validation.py`. Always rolled back. |
 | `calculate_tips.py` | Entry point: post-hoc Tip calculation for a Restaurant/period, dry-run by default. |
 | `validate_tips_readiness.py` | Entry point: read-only Tips readiness report against the configured database. |
@@ -106,11 +106,11 @@ The migration scripts live in `migrations/versions/`. `migrations/env.py` resolv
 | `rfone_data_store/profile_validation.py` | Synthetic-fixture bootstrap engine tests, same pattern as `schema_validation.py`. Always rolled back. |
 | `bootstrap_restaurant_profile.py` | Entry point: Restaurant Profile bootstrap/sync from Clover source configuration, dry-run by default. |
 | `test_restaurant_profile_bootstrap.py` | Entry point: run the bootstrap engine synthetic-fixture tests. |
-| `rfone_data_store/payroll/` | Administration/Payroll — `schedule.py` (PayrollSchedule/Workweek helpers, no overtime logic), `compensation.py` (Compensation Terms temporal/conflict helpers), `adp_importer.py` (ADP Payroll Detail Excel parsing, Employee mapping, idempotent import), `labor_cost.py` (Payroll Employer Cost query). TASK_PAYROLL_001 — see `PAYROLL.md` and `01 Domains/Administration/Payroll/`. |
+| `rfone_data_store/payroll/` | Administration/Payroll — `schedule.py` (PayrollSchedule/Workweek helpers, no overtime logic), `compensation.py` (Compensation Terms temporal/conflict helpers), `adp_importer.py` (ADP Payroll Detail Excel parsing, Employee mapping, idempotent import), `labor_cost.py` (Payroll Employer Cost query). TASK_PAYROLL_001 — see `PAYROLL.md` and `01 Domains/Cross Domain/Administration/Payroll/`. |
 | `rfone_data_store/payroll_validation.py` | Synthetic-fixture Payroll tests, same pattern as `schema_validation.py`. Always rolled back. |
 | `import_payroll_results.py` | Entry point: ADP Payroll Detail Excel import, dry-run by default. |
 | `test_payroll_engine.py` | Entry point: run the Payroll synthetic-fixture tests. |
-| `rfone_data_store/purchasing/` | Restaurant/Purchasing persistence — `repository.py` (the only supported way to write Purchasing data; enforces historical-integrity invariants Alembic/SQL CheckConstraints cannot express alone), `reconciliation.py` (deterministic Order vs Invoice vs Receiving atomic-difference comparison). TASK_PURCHASING_004 — see `PURCHASING.md` and `01 Domains/Restaurant/Purchasing/`. |
+| `rfone_data_store/purchasing/` | Restaurant/Purchasing persistence — `repository.py` (the only supported way to write Purchasing data; enforces historical-integrity invariants Alembic/SQL CheckConstraints cannot express alone), `reconciliation.py` (deterministic Order vs Invoice vs Receiving atomic-difference comparison). TASK_PURCHASING_004 — see `PURCHASING.md` and `01 Domains/Business Domain/Restaurant/Purchasing/`. |
 | `rfone_data_store/purchasing_validation.py` | Synthetic-fixture Purchasing structural/repository tests, same rolled-back pattern as `schema_validation.py`. |
 | `test_purchasing_engine.py` | Entry point: run the Purchasing structural tests plus the 7 canonical business scenarios, including the persistence-survives-restart check (see "Usage" above). |
 | `alembic.ini`, `migrations/` | Schema migrations — see "Schema migrations (Alembic)" above. |

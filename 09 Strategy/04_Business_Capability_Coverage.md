@@ -12,7 +12,7 @@
 - [01_Economic_Value_and_Measurement.md](01_Economic_Value_and_Measurement.md)
 - [README.md](README.md) — layer authority and scope
 - [../01 Domains/README.md](../01%20Domains/README.md)
-- [../01 Domains/Restaurant/Roadmap.md](../01%20Domains/Restaurant/Roadmap.md)
+- [../01 Domains/Business Domain/Restaurant/Roadmap.md](../01%20Domains/Business%20Domain/Restaurant/Roadmap.md)
 - Source taxonomy: [../90 Archive/Legacy Repository/X00 Knowledge Repository/05 Knowledge Domains/README.md](../90%20Archive/Legacy%20Repository/X00%20Knowledge%20Repository/05%20Knowledge%20Domains/README.md)
 - Backlog authorizing this reconciliation: [../07 Tasks/Backlog/LEGACY_KNOWLEDGE_RECONCILIATION_BACKLOG.md](../07%20Tasks/Backlog/LEGACY_KNOWLEDGE_RECONCILIATION_BACKLOG.md), Section G.
 
@@ -26,7 +26,7 @@ This document is the canonical breadth/coverage map of the areas RF-One may even
 
 > **Core ≠ Domain ≠ Product ≠ Runtime ≠ Strategy**
 
-It does not itself define Domain ontology, Product configuration, or Software behavior. Where a row's future direction is Domain work, the detail belongs to a Domain roadmap (e.g. [../01 Domains/Restaurant/Roadmap.md](../01%20Domains/Restaurant/Roadmap.md)), not to this document.
+It does not itself define Domain ontology, Product configuration, or Software behavior. Where a row's future direction is Domain work, the detail belongs to a Domain roadmap (e.g. [../01 Domains/Business Domain/Restaurant/Roadmap.md](../01%20Domains/Business%20Domain/Restaurant/Roadmap.md)), not to this document.
 
 ---
 
@@ -74,7 +74,7 @@ The Archive is non-authoritative. This table is the canonical reinterpretation; 
 
 ## Reading the table
 
-- **Restaurant Domain** rows point to `01 Domains/Restaurant/Roadmap.md` for the detailed current-coverage/planned breakdown; this table only records the classification and headline evidence.
+- **Restaurant Domain** rows point to `01 Domains/Business Domain/Restaurant/Roadmap.md` for the detailed current-coverage/planned breakdown; this table only records the classification and headline evidence.
 - **Shared Domain candidate** rows are not created as Domains here. They are recorded so a future Domain task does not have to re-derive this analysis.
 - **Strategy / business capability** rows are covered (or to be covered) by the other `09 Strategy/` documents, not by a Domain.
 - **Software / Intelligence capability** (KD-018 only) is explicitly excluded from Domain ontology per `CLAUDE.md` and the approved architectural safeguards.
@@ -87,6 +87,6 @@ No row in this table was used to create a new modern Domain, a Product specifica
 
 Every "Shared Domain candidate" row in this table (KD-012 Personnel, KD-013 Equipment, KD-014 Facilities generic part, KD-015 Marketing, KD-016 Reputation) is a **future candidate only** — none is **approved to create now**. This distinction was confirmed by TASK_CORE_009 (analysis) and canonicalized as a Product Owner decision by TASK_CORE_010: no new Shared Domain (Workforce, Marketing, Reputation, Finance/Financial Performance, Equipment, Facilities, Strategic Planning, Customer, Supplier, or Business Profile) is created in this task or implied to exist by any row above. Reuse must be earned before any of these rows is promoted.
 
-Commercial Catalog is a special case: although it physically sits under `01 Domains/Restaurant/` today (see KD-009 note above), it is recorded as the **highest-confidence future Shared Domain extraction candidate**, distinct from the other, thinner candidates in this table. Its extraction remains trigger-gated, not approved for execution.
+Commercial Catalog is a special case: although it physically sits under `01 Domains/Business Domain/Restaurant/` today (see KD-009 note above), it is recorded as the **highest-confidence future Shared Domain extraction candidate**, distinct from the other, thinner candidates in this table. Its extraction remains trigger-gated, not approved for execution.
 
-See `01 Domains/Restaurant/Roadmap.md`, "Cross-Domain candidates and extraction triggers," for the full set of approved decisions on Financial Performance (Product/use-case first), Strategic Planning (no new Domain or Core primitive), Customer and Supplier (remain local for now), and Workforce/Selection/Training sequencing.
+See `01 Domains/Business Domain/Restaurant/Roadmap.md`, "Cross-Domain candidates and extraction triggers," for the full set of approved decisions on Financial Performance (Product/use-case first), Strategic Planning (no new Domain or Core primitive), Customer and Supplier (remain local for now), and Workforce/Selection/Training sequencing.

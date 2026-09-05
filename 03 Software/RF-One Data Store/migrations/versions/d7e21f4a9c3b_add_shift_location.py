@@ -5,8 +5,8 @@ Revises: b4f3c8a1d6e2
 Create Date: 2026-08-30 00:00:00.000000
 
 One additive, non-destructive change: a nullable `location_id` FK on
-`shifts` (`01 Domains/Restaurant/Organization/Employee Assignment.md`,
-`01 Domains/Restaurant/Tips/Tip Allocation.md`).
+`shifts` (`01 Domains/Business Domain/Restaurant/Organization/Employee Assignment.md`,
+`01 Domains/Business Domain/Restaurant/Tips/Tip Allocation.md`).
 
 Closes the residual half of TASK_TIPS_001 Scenario 9 (documented as a Future
 Enhancement, not a blocker, in `07 Tasks/Reports/TASK_TIPS_001_REPORT.md`

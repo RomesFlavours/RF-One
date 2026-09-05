@@ -1,29 +1,29 @@
 # Domain Architecture — Cross-Domain Conclusions
 
-**Version:** 1.1
-**Status:** Approved (canonicalizes TASK_DOMAINS_001; updated by TASK_DOMAINS_002)
+**Version:** 1.2
+**Status:** Approved (canonicalizes TASK_DOMAINS_001; updated by TASK_DOMAINS_002; Selection re-elevated by TASK_DOMAINS_003; Cross Domain / Business Domain taxonomy and Training/Performance extraction documented by the post-reorganization documentation alignment task)
 **Module:** Domain / Cross-Domain Architecture
 
 ---
 
 ## Related documents
 
-- [README.md](README.md) — `01 Domains/` purpose and authority
-- [Restaurant/README.md](Restaurant/README.md), [Restaurant/Roadmap.md](Restaurant/Roadmap.md) — Restaurant Domain boundary and roadmap
-- [Personnel Management/README.md](Personnel%20Management/README.md) — the transversal Domain canonicalized by §5 below (Workforce, Selection, Training, Performance, Personnel Decisions)
-- [Personnel Management/Selection/README.md](Personnel%20Management/Selection/README.md) — the first module documented in depth, migrated from the former top-level `Selection/` Domain by TASK_DOMAINS_002
-- [Personnel Management/Performance/README.md](Personnel%20Management/Performance/README.md) — the second module documented in depth, by TASK_PERSONNEL_001
+- [README.md](README.md) — `01 Domains/` purpose and authority, and the Cross Domain / Business Domain folder taxonomy
+- [Restaurant/README.md](Business%20Domain/Restaurant/README.md), [Restaurant/Roadmap.md](Business%20Domain/Restaurant/Roadmap.md) — Restaurant Domain boundary and roadmap (the current Business Domain)
+- [Personnel Management/README.md](Cross%20Domain/Personnel%20Management/README.md) — the transversal Domain canonicalized by §5 below; its remaining modules are Workforce and Personnel Decisions (Training and Performance were extracted — see §4)
+- [Selection/README.md](Cross%20Domain/Selection/README.md) — a Cross Domain: originally the former top-level `Selection/` Domain, folded into Personnel Management by TASK_DOMAINS_002, then re-elevated to top-level by TASK_DOMAINS_003
+- [Training/README.md](Cross%20Domain/Training/README.md), [Performance/README.md](Cross%20Domain/Performance/README.md) — Cross Domains extracted from Personnel Management (see §4); Performance is documented in depth by TASK_PERSONNEL_001
 - [../00 Core/ConceptualArchitecture/](../00%20Core/ConceptualArchitecture/) — Core 2.0 concepts reused below (Subject, Reality, Goal, Decision/Action/Outcome/Learning, Epistemic Boundary)
 - [../07 Tasks/TASK_DOMAINS_001_Document_Cross_Domain_Architecture_Conclusions.md](../07%20Tasks/TASK_DOMAINS_001_Document_Cross_Domain_Architecture_Conclusions.md) — task that produced this document
-- [../07 Tasks/TASK_DOMAINS_002_Canonicalize_Personnel_Management_and_Move_Selection.md](../07%20Tasks/TASK_DOMAINS_002_Canonicalize_Personnel_Management_and_Move_Selection.md) — task that canonicalized Personnel Management and moved Selection under it
+- [../07 Tasks/TASK_DOMAINS_002_Canonicalize_Personnel_Management_and_Move_Selection.md](../07%20Tasks/TASK_DOMAINS_002_Canonicalize_Personnel_Management_and_Move_Selection.md) — task that canonicalized Personnel Management and moved Selection under it (superseded for Selection by TASK_DOMAINS_003, `07 Tasks/Reports/TASK_DOMAINS_003_REPORT.md`)
 
 ---
 
 ## 1. Purpose
 
-This document canonicalizes architectural conclusions reached about how Restaurant relates to a set of **transversal (cross-industry) Domains and Domain candidates**: **Personnel Management** (the transversal Domain that owns the Workforce, Selection, Training, Performance and Personnel Decisions modules), and the still-separate transversal Domain candidates Customer Feedback and Review.
+This document canonicalizes architectural conclusions reached about how Restaurant relates to a set of **transversal (cross-industry) Domains and Domain candidates**: **Personnel Management** (the transversal Domain whose remaining modules are Workforce and Personnel Decisions — see §4 for why Selection, Training and Performance are no longer among them), and the still-separate transversal Domain candidates Customer Feedback and Review.
 
-TASK_DOMAINS_002 created `01 Domains/Personnel Management/` and moved the pre-existing `Selection/` Domain under it as a module; Customer Feedback and Review remain candidates only — this document does not create those two. It records the boundaries and distinctions that must hold once Workforce, Training, Performance and Personnel Decisions are modeled in depth, and once Customer Feedback/Review are created, so future modeling work is consistent from the start.
+TASK_DOMAINS_002 created `01 Domains/Cross Domain/Personnel Management/` and moved the pre-existing `Selection/` Domain under it as a module; Customer Feedback and Review remain candidates only — this document does not create those two. It records the boundaries and distinctions that must hold once Workforce and Personnel Decisions are modeled in depth, and once Customer Feedback/Review are created, so future modeling work is consistent from the start. A later reorganization (§4) re-elevated Selection to top-level and extracted Training and Performance from Personnel Management into their own Cross Domain entries.
 
 This document does not redefine Core. It does not introduce Product or Runtime design.
 
@@ -44,7 +44,7 @@ Restaurant knows restaurant-specific operations and technical knowledge, such as
 
 > Restaurant must not own a capability merely because that capability is first used in a restaurant.
 
-Where a capability is genuinely cross-industry (evaluating candidates, managing an employment relationship, training people, collecting customer feedback, publishing reviews), Restaurant supplies its own technical content as an input to the transversal Domain that owns that capability — it does not own the capability itself. This is consistent with the existing Selection precedent: Restaurant supplies technical requirements for a Kitchen Manager; Selection evaluates candidates against them (see [Personnel Management/Selection/README.md](Personnel%20Management/Selection/README.md), "Relationship to target technical Domains").
+Where a capability is genuinely cross-industry (evaluating candidates, managing an employment relationship, training people, collecting customer feedback, publishing reviews), Restaurant supplies its own technical content as an input to the transversal Domain that owns that capability — it does not own the capability itself. This is consistent with the existing Selection precedent: Restaurant supplies technical requirements for a Kitchen Manager; Selection evaluates candidates against them (see [Selection/README.md](Cross%20Domain/Selection/README.md), "Relationship to target technical Domains").
 
 ---
 
@@ -56,29 +56,50 @@ Restaurant is currently the first concrete application context for these Domains
 
 ---
 
-## 4. Current transversal Domains and candidates
+## 4. Cross Domain / Business Domain taxonomy, and the current transversal Domains
+
+Every Domain under `01 Domains/` belongs to exactly one of two families, physically expressed as the two folders directly under `01 Domains/`:
+
+- **Cross Domain** (`01 Domains/Cross Domain/`) — a Domain whose concepts, ontology and reasoning structure are genuinely industry-independent: it must remain usable by any business/industry, not just the one that happens to be RF-One's first application. A Cross Domain may consume industry-specific content supplied by a Business Domain (as data, configuration or evidence), but must never structurally depend on one specific Business Domain to function or to be defined.
+- **Business Domain** (`01 Domains/Business Domain/`) — a Domain whose ontology, integrations, metrics and operational semantics are specific to one industry/business context. A Business Domain may consume Cross Domain capabilities (e.g. Restaurant using Selection to evaluate a candidate, or Personnel Management to reason about its people), and may supply its own technical content into a Cross Domain's reasoning as an input — but it does not own or redefine the Cross Domain capability itself.
+
+This is the same **transversal Domain principle** already established in §3, now given an explicit physical home so the distinction is visible in the folder structure, not only in prose.
 
 ```text
-Personnel Management        (transversal Domain — created by TASK_DOMAINS_002)
-├── Workforce                 (module — placeholder)
-├── Selection                 (module — documented; migrated from the former top-level Selection/ Domain)
-├── Training                  (module — placeholder)
-├── Performance                (module — documented; TASK_PERSONNEL_001)
-└── Personnel Decisions        (module — placeholder)
+01 Domains/
+├── Cross Domain/
+│   ├── Selection             (top-level, transversal Domain — re-elevated by TASK_DOMAINS_003;
+│   │                          was a Personnel Management module, TASK_DOMAINS_002, before that)
+│   ├── Training               (top-level, transversal Domain — extracted from Personnel Management;
+│   │                          placeholder content)
+│   ├── Performance            (top-level, transversal Domain — extracted from Personnel Management;
+│   │                          documented; TASK_PERSONNEL_001)
+│   ├── Personnel Management   (transversal Domain — created by TASK_DOMAINS_002)
+│   │   ├── Workforce            (module — placeholder)
+│   │   └── Personnel Decisions  (module — placeholder)
+│   ├── Taxation               (transversal Domain)
+│   └── Administration         (transversal Domain, with its Payroll module)
+│
+└── Business Domain/
+    └── Restaurant              (the current, and so far only, Business Domain)
 
-Customer Feedback            (transversal Domain candidate — not yet created)
-Review                        (transversal Domain candidate — not yet created)
+Customer Feedback            (transversal Domain candidate — not yet created; would be a Cross Domain)
+Review                        (transversal Domain candidate — not yet created; would be a Cross Domain)
 ```
 
-**Workforce, Selection, Training, Performance and Personnel Decisions are modules of one transversal Domain, Personnel Management — not independent top-level Domains.** This supersedes the earlier framing (TASK_DOMAINS_001) that treated Selection, Workforce, Personnel Management, Performance and Training as five separate transversal Domain candidates of equal standing; Personnel Management is the transversal Domain, and the other four are its modules.
+**Training and Performance are no longer modules of Personnel Management.** They were extracted into their own top-level Cross Domain entries by explicit Product Owner direction, on the same grounds as Selection's re-elevation (§4 below and TASK_DOMAINS_003): both are genuinely industry-independent capabilities, not exclusively a people-management concern, and neither should depend structurally on Personnel Management as a parent Domain any more than Selection should. **Personnel Management's remaining modules are Workforce and Personnel Decisions.** This supersedes every earlier statement in this document (and elsewhere) that listed Training and/or Performance as Personnel Management modules.
 
-Customer Feedback and Review remain separate transversal Domain candidates, outside Personnel Management. Neither folder is created by this document. See [Personnel Management/README.md](Personnel%20Management/README.md) for the module map, and the task that performed this reorganization: [../07 Tasks/TASK_DOMAINS_002_Canonicalize_Personnel_Management_and_Move_Selection.md](../07%20Tasks/TASK_DOMAINS_002_Canonicalize_Personnel_Management_and_Move_Selection.md).
+**Workforce and Personnel Decisions remain modules of one transversal Domain, Personnel Management — not independent top-level Domains.** This supersedes the earlier framing (TASK_DOMAINS_001) that treated Selection, Workforce, Personnel Management, Performance and Training as five separate transversal Domain candidates of equal standing; Personnel Management is the transversal Domain, and these two are its modules today.
+
+**Selection, Training and Performance are each a top-level, transversal Cross Domain in their own right — siblings of Personnel Management, not modules of it.** TASK_DOMAINS_002 originally folded all three into Personnel Management alongside Workforce/Personnel Decisions; a later Product Owner direction re-elevated Selection first (TASK_DOMAINS_003), then extracted Training and Performance the same way when the Cross Domain / Business Domain taxonomy was introduced. All three remain closely related to Personnel Management's modules — in particular Personnel Decisions, which consumes Selection's output and draws on Performance evidence — without being owned by it; see §5 below.
+
+Customer Feedback and Review remain separate transversal Domain candidates (would be Cross Domains if created), outside Personnel Management. Neither folder is created by this document. See [Personnel Management/README.md](Cross%20Domain/Personnel%20Management/README.md) for Personnel Management's module map, [Selection/README.md](Cross%20Domain/Selection/README.md), [Training/README.md](Cross%20Domain/Training/README.md) and [Performance/README.md](Cross%20Domain/Performance/README.md) for the three extracted Cross Domains, and the tasks that performed these reorganizations: [../07 Tasks/TASK_DOMAINS_002_Canonicalize_Personnel_Management_and_Move_Selection.md](../07%20Tasks/TASK_DOMAINS_002_Canonicalize_Personnel_Management_and_Move_Selection.md), `07 Tasks/Reports/TASK_DOMAINS_003_REPORT.md`, and `07 Tasks/Reports/DOMAIN_REORGANIZATION_CROSS_VS_BUSINESS_REPORT.md`.
 
 ---
 
 ## 5. Workforce / Selection / Training / Performance / Personnel Decisions distinctions
 
-These five are Personnel Management's modules. They are related but must not be collapsed into one another: Workforce answers "who," Selection answers "who else is viable," Personnel Decisions answers "what do we do about the person who is there," Performance answers "what actually happened," and Training answers "how do we close an evidenced gap."
+Two of these five (Workforce, Personnel Decisions) are Personnel Management's modules; Selection, Training and Performance are each a sibling top-level Cross Domain, described in §4. They are closely related but must not be collapsed into one another: Workforce answers "who," Selection answers "who else is viable," Personnel Decisions answers "what do we do about the person who is there," Performance answers "what actually happened," and Training answers "how do we close an evidenced gap."
 
 ### 5.1 Selection is continuously active
 
@@ -94,7 +115,7 @@ Workforce represents the organization's current human structure: who currently o
 
 > Workforce describes who currently occupies or can occupy organizational roles.
 
-Possible future concepts include Person/Worker, Role, Position, Assignment, Responsibility, Availability, Schedule, Employment Relationship. These are not defined here (see [Restaurant/Roadmap.md](Restaurant/Roadmap.md) §3 for the previously approved sequencing note, and [Personnel Management/Selection/README.md](Personnel%20Management/Selection/README.md), "Future Workforce dependency").
+Possible future concepts include Person/Worker, Role, Position, Assignment, Responsibility, Availability, Schedule, Employment Relationship. These are not defined here (see [Restaurant/Roadmap.md](Business%20Domain/Restaurant/Roadmap.md) §3 for the previously approved sequencing note, and [Selection/README.md](Cross%20Domain/Selection/README.md), "Future Workforce dependency").
 
 ### 5.3 Personnel Decisions decides what happens to the current person
 
@@ -120,14 +141,14 @@ Performance is distinct from Selection, Workforce and Personnel Decisions. It re
 
 Restaurant examples may include sales, items sold, margin, service time, throughput, customer reactions, product mix, and other observed outcomes (Core `Outcome` — see [../00 Core/ConceptualArchitecture/03_Decision_Action_Outcome_Learning.md](../00%20Core/ConceptualArchitecture/03_Decision_Action_Outcome_Learning.md)).
 
-No universal performance score is defined here, and none should be assumed to exist. See also §8, KPI discovery, and [Personnel Management/Performance/README.md](Personnel%20Management/Performance/README.md) for the module now documented in depth by TASK_PERSONNEL_001.
+No universal performance score is defined here, and none should be assumed to exist. See also §8, KPI discovery, and [Performance/README.md](Cross%20Domain/Performance/README.md) — the Cross Domain (not a Personnel Management module, see §4) documented in depth by TASK_PERSONNEL_001.
 
 ### 5.5 Training is transversal
 
 Training consumes:
 
 - the required standard from the target Domain;
-- the observed/assessed gap (see [Personnel Management/Selection/TrainableGap.md](Personnel%20Management/Selection/TrainableGap.md) for the currently drawn Selection/Training boundary);
+- the observed/assessed gap (see [Selection/TrainableGap.md](Cross%20Domain/Selection/TrainableGap.md) for the currently drawn Selection/Training boundary);
 - role/context;
 - learning methods;
 - later performance evidence.
@@ -144,7 +165,7 @@ Performance          → what is actually produced (grounded in Reality/Outcome)
 Training             → closes an evidenced, trainable gap against a target Domain's standard
 ```
 
-All five are modules of Personnel Management (see §4). They must not be collapsed into one another: Workforce answers "who," Selection answers "who else is viable," Personnel Decisions answers "what do we do about the person who is there," Performance answers "what actually happened," and Training answers "how do we close an evidenced gap."
+Workforce and Personnel Decisions are modules of Personnel Management; Selection, Performance and Training are each a sibling top-level Cross Domain (see §4). They must not be collapsed into one another: Workforce answers "who," Selection answers "who else is viable," Personnel Decisions answers "what do we do about the person who is there," Performance answers "what actually happened," and Training answers "how do we close an evidenced gap."
 
 ---
 
@@ -202,5 +223,5 @@ No KPI algorithm, scoring formula, or derivation mechanism is designed by this d
 1. **Sequencing.** `Restaurant/Roadmap.md` §3 previously recorded that Workforce semantics should be established before Selection/Training/Performance are designed, yet Selection was created first (TASK_SELECTION_002, explicitly authorized) and now sits inside Personnel Management (TASK_DOMAINS_002). Confirm whether Workforce, Performance, Training, or Personnel Decisions should be modeled in depth next, and in what order.
 2. **Personnel Decisions vs. Workforce boundary in practice.** Both concern "the person in the role," but from different angles (structural occupancy vs. ongoing relationship/performance management). Confirm this boundary holds once concrete entities (e.g. Assignment, Employment Relationship) are modeled, or whether some concepts naturally belong to both.
 3. **Customer Feedback ↔ Review linkage.** How and whether these two Domains share an underlying evidence/entity model (e.g. a Review as one possible representation of Feedback) is not decided here.
-4. **Performance and KPI ownership.** Whether "Performance" is the module that hosts KPI-discovery logic, or whether KPI discovery is a cross-module capability that reads from Performance among other modules, is not decided here.
-5. **Naming.** "Personnel Management" and its five modules (Workforce, Selection, Training, Performance, Personnel Decisions) are now the fixed canonical names (TASK_DOMAINS_002). No final names are fixed for the remaining candidates, Customer Feedback and Review.
+4. **Performance and KPI ownership.** Whether Performance is the (Cross Domain) capability that hosts KPI-discovery logic, or whether KPI discovery reads from Performance among other sources, is not decided here.
+5. **Naming.** "Personnel Management" and its two remaining modules (Workforce, Personnel Decisions) are the fixed canonical names (TASK_DOMAINS_002). Selection, Training and Performance are each a fixed canonical name too, each now a sibling top-level Cross Domain rather than a Personnel Management module (TASK_DOMAINS_003 for Selection; the Cross Domain / Business Domain reorganization for Training and Performance). No final names are fixed for the remaining candidates, Customer Feedback and Review.

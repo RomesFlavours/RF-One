@@ -1,6 +1,6 @@
 # Invoice Intake (prototipo)
 
-**Nota canonica (TASK_PURCHASING_004):** a partire da questo task, il salvataggio finale avviene nel **RF-One Data Store** (`03 Software/RF-One Data Store/`), che implementa persistentemente il modello canonico `01 Domains/Restaurant/Purchasing/` (Purchase Document / Purchase Line, con `line_type` PRODUCT/SURCHARGE/DISCOUNT e Merchandise/Economic Classification). Il file Excel (`data/PurchaseDocuments.xlsx`) resta disponibile solo come copia di debug/esportazione secondaria — non è più lo store canonico. Vedi `03 Software/RF-One Data Store/PURCHASING.md` per i dettagli implementativi.
+**Nota canonica (TASK_PURCHASING_004):** a partire da questo task, il salvataggio finale avviene nel **RF-One Data Store** (`03 Software/RF-One Data Store/`), che implementa persistentemente il modello canonico `01 Domains/Business Domain/Restaurant/Purchasing/` (Purchase Document / Purchase Line, con `line_type` PRODUCT/SURCHARGE/DISCOUNT e Merchandise/Economic Classification). Il file Excel (`data/PurchaseDocuments.xlsx`) resta disponibile solo come copia di debug/esportazione secondaria — non è più lo store canonico. Vedi `03 Software/RF-One Data Store/PURCHASING.md` per i dettagli implementativi.
 
 Piccola web app locale per validare il flusso: carichi una fattura (foto o PDF), l'app la legge, tu correggi/completi i dati (incluso il tipo di riga: Prodotto/Supplemento/Sconto) in una schermata di revisione, e alla conferma il documento viene registrato nel RF-One Data Store come Purchase Document/Purchase Line canonici.
 
@@ -9,7 +9,7 @@ Piccola web app locale per validare il flusso: carichi una fattura (foto o PDF),
 - **PDF con testo digitale** (fatture generate al computer): il testo viene estratto direttamente, in modo pulito e affidabile.
 - **Foto/scansioni** (jpg, png, PDF scansionati): viene usato OCR locale (Tesseract), gratuito e offline. Su foto storte, sbiadite o con tabelle complesse la qualità di lettura è limitata — è normale dover correggere diversi campi a mano nella schermata di revisione. Per questo la revisione è un passaggio obbligato, non opzionale: coerente con il principio "human validation always prevails" del modulo Purchasing.
 
-Testato con i due esempi in `01 Domains/Restaurant/Assets/ReferenceDocuments/`: la fattura PDF digitale (`Invoice 6855.pdf`) viene letta quasi perfettamente (fornitore, numero, data, totale, tutte le righe); le foto scattate al telefono vengono lette solo parzialmente e richiedono correzioni manuali.
+Testato con i due esempi in `01 Domains/Business Domain/Restaurant/Assets/ReferenceDocuments/`: la fattura PDF digitale (`Invoice 6855.pdf`) viene letta quasi perfettamente (fornitore, numero, data, totale, tutte le righe); le foto scattate al telefono vengono lette solo parzialmente e richiedono correzioni manuali.
 
 ## Requisiti
 
@@ -50,6 +50,6 @@ Le immagini/PDF caricati restano salvati in `uploads/` per tracciabilità. **Not
 - Il parsing delle righe (descrizione/quantità/prezzo/importo) è basato su euristiche ed espressioni regolari, non su un modello AI: funziona bene su testo pulito, meno su OCR rumoroso.
 - Il `line_type` (Prodotto/Supplemento/Sconto) viene proposto con un'euristica su parole chiave nella descrizione (es. "surcharge", "fee" → Supplemento; "discount", "credit" → Sconto) ma è sempre correggibile dall'utente prima del salvataggio.
 - L'OCR/parser non estrae ancora un codice articolo fornitore strutturato, quindi le righe PRODUCT create da qui non alimentano ancora la "Supplier Product memory" (riconoscimento automatico dello stesso Supplier Product a fatture successive) — il modello e il repository lo supportano già pienamente quando un codice è disponibile (es. da Physical Receiving); vedi `03 Software/RF-One Data Store/PURCHASING.md`, "Remaining gaps".
-- Non fa ancora normalizzazione in grammi/costo per grammo né mapping automatico verso gli Ingredienti — è il passo successivo naturale, coerente con `01 Domains/Restaurant/Purchasing/DataDictionary.md`.
+- Non fa ancora normalizzazione in grammi/costo per grammo né mapping automatico verso gli Ingredienti — è il passo successivo naturale, coerente con `01 Domains/Business Domain/Restaurant/Purchasing/DataDictionary.md`.
 - Non offre ancora una selezione del Restaurant/organizzazione (multi-tenant); riusa l'unico Restaurant esistente nello store o ne crea uno placeholder.
 - Un solo utente alla volta (nessuna gestione concorrenza sul salvataggio).

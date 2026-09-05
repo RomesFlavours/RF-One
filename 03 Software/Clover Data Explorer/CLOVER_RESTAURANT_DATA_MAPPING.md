@@ -9,7 +9,7 @@ This document is vendor-specific.
 Canonical restaurant semantics belong in:
 
 ```text
-01 Domains/Restaurant/Sales/Restaurant Sales Model.md
+01 Domains/Business Domain/Restaurant/Sales/Restaurant Sales Model.md
 ```
 
 This mapping records what Clover actually exposes, how RF-One can reconstruct canonical facts, and where Clover's representation is incomplete or semantically inconsistent.

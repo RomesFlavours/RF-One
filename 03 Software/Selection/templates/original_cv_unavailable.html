@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h2>Original CV unavailable</h2>
+  <p class="muted" style="font-size:.85rem;">
+    {% if candidate %}
+    The original uploaded résumé file for {{ candidate.full_name or 'this candidate' }} could not be found on this
+    server (it may have been removed, or this Candidate predates local file retention). RF-One's extracted/
+    interpreted information for this candidate is still available.
+    {% else %}
+    No such candidate.
+    {% endif %}
+  </p>
+  {% if candidate %}
+  <a class="back-link" href="{{ url_for('candidate_detail', candidate_id=candidate.id) }}">&larr; Back to candidate</a>
+  {% else %}
+  <a class="back-link" href="{{ url_for('home') }}">&larr; Back to Candidates</a>
+  {% endif %}
+</div>
+
+{% endblock %}

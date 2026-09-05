@@ -1,7 +1,7 @@
 """Payroll Result Acquisition adapters (TASK_PAYROLL_003).
 
 Payroll calculation != Payroll result acquisition != Payment execution
-(`01 Domains/Administration/Payroll/Payroll Result Acquisition.md`). This
+(`01 Domains/Cross Domain/Administration/Payroll/Payroll Result Acquisition.md`). This
 module is the acquisition layer: it is responsible only for getting an ADP
 `Payroll Detail` result's bytes into RF-One's process, normalized into the
 same `ParsedPayrollDetail` structure regardless of how those bytes arrived,

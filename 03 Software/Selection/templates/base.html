@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RF-One · Selection</title>
+<style>
+  :root {
+    --ink: #1c1c1c;
+    --paper: #faf9f7;
+    --line: #ddd8d0;
+    --accent: #8a3b2e;
+    --muted: #7a756c;
+    --ok: #3b6e4a;
+    --warn: #a9761f;
+    --bad: #a33b2e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    margin: 0;
+    padding: 2rem;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: .25rem; }
+  h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; }
+  .subtitle { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; font-size: .9rem; }
+  .card {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .meta-row { display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .meta-item .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .meta-item .value { font-size: 1.1rem; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: .72rem; color: var(--muted); text-transform: uppercase;
+       letter-spacing: .02em; padding: .5rem .4rem; border-bottom: 1px solid var(--line); }
+  td { padding: .55rem .4rem; border-bottom: 1px solid var(--line); font-size: .88rem; }
+  tr:last-child td { border-bottom: none; }
+  tr.clickable:hover { background: #f5f2ee; cursor: pointer; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  button, .btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: .6rem 1.2rem;
+    border-radius: 6px;
+    font-size: .9rem;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .btn.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  input[type=file] {
+    padding: .4rem; border: 1px solid var(--line); border-radius: 6px; font-size: .85rem;
+  }
+  .error { background: #fbeaea; border: 1px solid #e2a8a0; color: #7a2b21; padding: .6rem 1rem;
+           border-radius: 6px; margin-bottom: 1rem; }
+  .badge {
+    display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .72rem;
+    font-weight: 600; border: 1px solid var(--line);
+  }
+  .badge.mode-demo { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.mode-real { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .badge.mode-rule { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .badge.state-strong, .badge.state-high, .badge.state-observed { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .badge.state-moderate { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.state-weak, .badge.state-low { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+  .badge.state-unknown, .badge.state-not-observed { background: #f1efeb; color: var(--muted); }
+  .section-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  @media (max-width: 800px) { .section-grid { grid-template-columns: 1fr; } }
+  .indicator-list .indicator-row { display: flex; justify-content: space-between; padding: .4rem 0;
+                                     border-bottom: 1px solid var(--line); font-size: .88rem; }
+  .indicator-list .indicator-row:last-child { border-bottom: none; }
+  .flag-card { border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem; margin-bottom: .7rem; }
+  .flag-card .flag-type { font-weight: 600; font-size: .85rem; }
+  .flag-card .flag-evidence { font-size: .82rem; color: var(--muted); margin: .3rem 0; }
+  .flag-card .flag-question { font-size: .82rem; background: #f5f2ee; padding: .5rem .7rem; border-radius: 6px;
+                                margin-top: .4rem; }
+  .work-entry { border-left: 3px solid var(--accent); padding-left: 1rem; margin-bottom: 1.2rem; }
+  .work-entry .title { font-weight: 600; }
+  .work-entry .employer { color: var(--muted); font-size: .85rem; }
+  .work-entry .snippet { font-size: .8rem; color: var(--muted); font-style: italic; margin-top: .3rem; }
+  .muted { color: var(--muted); }
+  .empty { color: var(--muted); font-size: .9rem; padding: 1rem 0; }
+  .back-link { display: inline-block; margin-bottom: 1rem; font-size: .85rem; }
+  .context-note { font-size: .78rem; color: var(--muted); background: #f5f2ee; padding: .6rem .8rem;
+                    border-radius: 6px; margin-top: .5rem; }
+  .table-scroll { overflow-x: auto; }
+
+  .dropzone {
+    border: 2px dashed var(--line); border-radius: 8px; padding: 1.4rem 1rem;
+    text-align: center; color: var(--muted); font-size: .85rem; cursor: pointer;
+    margin: .6rem 0 .8rem; transition: border-color .15s, background .15s;
+  }
+  .dropzone.dragover { border-color: var(--accent); background: #f8efec; color: var(--accent); }
+  .dropzone .hint { font-size: .74rem; margin-top: .25rem; }
+
+  #batch-progress { margin-top: 1rem; }
+  #batch-summary { font-size: .85rem; font-weight: 600; margin-bottom: .5rem; }
+  .file-row {
+    display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+    padding: .45rem .2rem; border-bottom: 1px solid var(--line); font-size: .85rem;
+  }
+  .file-row:last-child { border-bottom: none; }
+  .file-row .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-row .file-detail { color: var(--muted); font-size: .78rem; }
+  .badge.status-waiting { background: #f1efeb; color: var(--muted); }
+  .badge.status-processing { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.status-completed { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .badge.status-partial { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.status-failed { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+  .badge.status-duplicate { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .nav-tabs { display: flex; gap: 1.2rem; margin-bottom: 1rem; border-bottom: 1px solid var(--line); }
+  .nav-tabs a { padding: .5rem 0; font-size: .9rem; color: var(--muted); border-bottom: 2px solid transparent; }
+  .nav-tabs a.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .nav-tabs a:hover { text-decoration: none; color: var(--accent); }
+  form.inline-form { display: inline; }
+  .req-form label { display: block; font-size: .78rem; color: var(--muted); margin: .6rem 0 .2rem; }
+  .req-form input[type=text], .req-form textarea, .req-form select {
+    width: 100%; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 6px; font-size: .85rem;
+    font-family: inherit; box-sizing: border-box;
+  }
+  .req-form textarea { min-height: 3.5rem; resize: vertical; }
+  .checkbox-row { display: flex; flex-wrap: wrap; gap: .4rem 1rem; font-size: .82rem; }
+  .checkbox-row label { display: flex; align-items: center; gap: .3rem; font-size: .82rem; color: var(--ink); }
+  .requirement-card { border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem; margin-bottom: .8rem; }
+  .requirement-card.inactive { opacity: .55; background: #f7f5f2; }
+  .requirement-card .req-title { font-weight: 600; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  .badge.crit-must-have { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+  .badge.crit-disqualifier { background: #2a1414; color: #f3c9c2; border-color: #6e2c22; }
+  .badge.crit-preferred { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.crit-optional { background: #f1efeb; color: var(--muted); }
+  details.edit-toggle summary { cursor: pointer; font-size: .8rem; color: var(--accent); margin-top: .5rem; }
+  .badge.fit-evidenced { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .badge.fit-partially_evidenced { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.fit-not_evidenced { background: #f1efeb; color: var(--muted); }
+  .badge.fit-conflicting_evidence { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+  .badge.fit-not_assessed_at_this_stage { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .badge.origin-system_generated { background: #f1efeb; color: var(--muted); }
+  .badge.origin-human_entered, .badge.origin-human_confirmed { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .badge.origin-human_overridden { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .evidence-row { border-left: 3px solid var(--line); padding: .3rem .6rem; margin: .35rem 0; font-size: .82rem; }
+  .evidence-row.supports { border-left-color: var(--ok); }
+  .evidence-row.contradicts { border-left-color: var(--bad); }
+  .evidence-row.neutral { border-left-color: var(--muted); }
+  .requirement-assessment-card { border: 1px solid var(--line); border-radius: 8px; padding: .9rem 1.1rem; margin-bottom: 1rem; }
+  .badge.priority-high_priority { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; font-weight: 700; }
+  .badge.priority-interesting { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.priority-standard { background: #f1efeb; color: var(--muted); }
+  .badge.priority-low_priority { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .badge.signal-detected { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .badge.signal-possible { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.signal-conflicting { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+  .badge.signal-not_detected { background: #f1efeb; color: var(--muted); }
+  .badge.signal-not_assessed { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .signal-card { border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem; margin-bottom: .8rem; }
+  .badge.workflow-new { background: #f1efeb; color: var(--muted); }
+  .badge.workflow-in_review { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .badge.workflow-advance_to_phone { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .badge.workflow-hold { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.workflow-stop { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+  .badge.confidence-very_strong { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .badge.confidence-strong { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.confidence-possible { background: #f1efeb; color: var(--muted); }
+  .cv-link { font-size: .78rem; font-weight: 600; }
+  .filter-bar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: end; margin-bottom: 1rem; font-size: .82rem; }
+  .filter-bar label { display: block; font-size: .72rem; color: var(--muted); margin-bottom: .2rem; }
+  .filter-bar select { padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 6px; font-size: .82rem; }
+  .reason-list { font-size: .76rem; color: var(--muted); margin: .2rem 0 0; padding-left: 1rem; }
+  .note-entry { border-left: 3px solid var(--line); padding: .3rem .6rem; margin: .4rem 0; font-size: .82rem; }
+  .note-entry .note-time { font-size: .72rem; color: var(--muted); }
+  .match-card { border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem; margin-bottom: .8rem; }
+  .badge.importance-critical { background: #2a1414; color: #f3c9c2; border-color: #6e2c22; }
+  .badge.importance-high { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+  .badge.importance-medium { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.importance-low { background: #f1efeb; color: var(--muted); }
+  .badge.gate-passed { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .badge.gate-failed { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+  .badge.gate-unclear { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.gate-not_asked { background: #f1efeb; color: var(--muted); }
+  .badge.qstatus-answered { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .badge.qstatus-partially_answered { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.qstatus-unresolved, .badge.qstatus-carried_forward { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+  .badge.qstatus-not_asked, .badge.qstatus-asked { background: #f1efeb; color: var(--muted); }
+  .badge.qstatus-skipped { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .badge.sine-qua-non { background: #2a1414; color: #f3c9c2; border-color: #6e2c22; font-weight: 700; }
+  .question-card { border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem; margin-bottom: .8rem; }
+  .question-card.gate { border-left: 4px solid var(--bad); }
+  .badge.istatus-done { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .badge.istatus-partial { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.istatus-unresolved { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+  .badge.istatus-not_done { background: #f1efeb; color: var(--muted); }
+  .badge.istatus-skipped { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .badge.cstatus-consistent { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .badge.cstatus-minor_variation { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.cstatus-material_inconsistency { background: #2a1414; color: #f3c9c2; border-color: #6e2c22; font-weight: 700; }
+  .badge.cstatus-unresolved { background: #f1efeb; color: var(--muted); }
+  .badge.cstatus-explained_difference { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .badge.cstatus-new_information { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .thread-card { border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem; margin-bottom: .8rem; }
+  .statement-row { border-left: 3px solid var(--line); padding: .3rem .6rem; margin: .35rem 0; font-size: .82rem; }
+  .badge.stage-application_received { background: #f1efeb; color: var(--muted); }
+  .badge.stage-primary_screening { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .badge.stage-phone_interview { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.stage-in_person_practical { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .badge.lifecycle-active { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; font-weight: 700; }
+  .badge.lifecycle-suspended { background: #fdf1de; color: var(--warn); border-color: #eccf9c; font-weight: 700; }
+  .badge.lifecycle-closed { background: #2a1414; color: #f3c9c2; border-color: #6e2c22; font-weight: 700; }
+  .badge.flag-information_only { background: #f1efeb; color: var(--muted); }
+  .badge.flag-warning { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.flag-operational_action { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+  .flag-card { border: 1px solid var(--line); border-radius: 8px; padding: .7rem .9rem; margin-bottom: .6rem; }
+  .decision-section { margin-bottom: 1.6rem; }
+  .notes-history-entry { border-left: 3px solid var(--accent); padding: .35rem .7rem; margin: .4rem 0; font-size: .84rem; }
+  .notes-history-entry .nh-meta { font-size: .72rem; color: var(--muted); }
+
+  /* Task 5B — Operational Candidate Dossier: section-level Edit/Pencil
+     controls opening a native <dialog> modal. No JS framework — showModal()/
+     close() are the only script calls this needs. */
+  .dossier-section-head { display: flex; justify-content: space-between; align-items: center; gap: .6rem; }
+  .pencil-btn {
+    background: none; border: 1px solid var(--line); border-radius: 6px; padding: .2rem .55rem;
+    font-size: .76rem; cursor: pointer; color: var(--accent); white-space: nowrap;
+  }
+  .pencil-btn:hover { background: #f5f2ee; }
+  dialog.edit-modal {
+    border: 1px solid var(--line); border-radius: 10px; padding: 1.4rem; max-width: 520px; width: 92vw;
+    color: var(--ink); background: white;
+  }
+  dialog.edit-modal::backdrop { background: rgba(28,28,28,.45); }
+  dialog.edit-modal h3 { margin-top: 0; font-size: 1rem; }
+  .modal-actions { display: flex; gap: .6rem; justify-content: flex-end; margin-top: 1rem; }
+  .dossier-tgap-card { border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem; margin-bottom: .8rem; }
+  .dossier-tgap-card .level-row { display: flex; gap: 1.2rem; flex-wrap: wrap; font-size: .82rem; margin: .3rem 0; }
+  .dossier-tgap-card .level-row .level-item .label { font-size: .7rem; color: var(--muted); text-transform: uppercase; }
+  .badge.level-0 { background: #f1efeb; color: var(--muted); }
+  .badge.level-1 { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+  .badge.level-2 { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.level-3 { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .badge.level-4 { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .dossier-concern-card { border-left: 3px solid var(--bad); padding: .5rem .8rem; margin-bottom: .6rem; font-size: .84rem; background: #fbeaea11; }
+  .quick-read { font-size: .82rem; color: var(--muted); margin: -.3rem 0 .8rem; }
+
+  /* Task 5C — Selection Session / Rule Governance */
+  .badge.sstatus-draft { background: #f1efeb; color: var(--muted); }
+  .badge.sstatus-rules_review { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+  .badge.sstatus-active { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; font-weight: 700; }
+  .badge.sstatus-paused { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .badge.sstatus-closed { background: #2a1414; color: #f3c9c2; border-color: #6e2c22; }
+  .badge.scope-subsequent_only { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .badge.scope-entire_session { background: #fdf1de; color: var(--warn); border-color: #eccf9c; font-weight: 700; }
+  .badge.rstatus-needs_review { background: #fdf1de; color: var(--warn); border-color: #eccf9c; font-weight: 700; }
+  .badge.rstatus-reviewed { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .badge.rstatus-not_required { background: #f1efeb; color: var(--muted); }
+  .badge.rcstatus-recalculated { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
+  .badge.rcstatus-pending { background: #eef1fb; color: #3b4f8a; border-color: #c3cbef; }
+  .badge.rcstatus-not_applicable { background: #f1efeb; color: var(--muted); }
+  .badge.rcstatus-recalculation_failed { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+  .session-card { border: 1px solid var(--line); border-radius: 8px; padding: .9rem 1.1rem; margin-bottom: .9rem; }
+  .assignment-row { display: flex; justify-content: space-between; align-items: center; padding: .4rem 0; border-bottom: 1px solid var(--line); font-size: .85rem; }
+  .assignment-row:last-child { border-bottom: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>RF-One · Selection</h1>
+  <p class="subtitle">Resume screening — structured evidence to support the human evaluator, never a hiring decision.</p>
+  <div class="nav-tabs">
+    <a href="{{ url_for('home') }}" class="{{ 'active' if active_nav == 'candidates' else '' }}">Candidates</a>
+    <a href="{{ url_for('requirements_home') }}" class="{{ 'active' if active_nav == 'requirements' else '' }}">Requirement Sets</a>
+    <a href="{{ url_for('primary_screening_queue') }}" class="{{ 'active' if active_nav == 'primary-screening-queue' else '' }}">Primary Screening</a>
+    <a href="{{ url_for('applications_home') }}" class="{{ 'active' if active_nav == 'applications' else '' }}">Applications</a>
+    <a href="{{ url_for('sessions_home') }}" class="{{ 'active' if active_nav == 'sessions' else '' }}">Sessions</a>
+    <a href="{{ url_for('signals_home') }}" class="{{ 'active' if active_nav == 'signals' else '' }}">Signals</a>
+    <a href="{{ url_for('priority_policies_home') }}" class="{{ 'active' if active_nav == 'priority-policies' else '' }}">Priority Policies</a>
+    <a href="{{ url_for('identity_matches_home') }}" class="{{ 'active' if active_nav == 'identity-matches' else '' }}">Identity Matches</a>
+    <a href="{{ url_for('phone_interview_questions_home') }}" class="{{ 'active' if active_nav == 'phone-interview-questions' else '' }}">Phone Interview Questions</a>
+    <a href="{{ url_for('in_person_interview_sections_home') }}" class="{{ 'active' if active_nav == 'in-person-interview-sections' else '' }}">In-Person Interview Sections</a>
+    <a href="{{ url_for('primary_screening_criteria_home') }}" class="{{ 'active' if active_nav == 'primary-screening-criteria' else '' }}">Primary Screening Criteria</a>
+    <a href="{{ url_for('selection_outcomes_home') }}" class="{{ 'active' if active_nav == 'selection-outcomes' else '' }}">Selection Outcomes</a>
+    <a href="{{ url_for('selection_queues_home') }}" class="{{ 'active' if active_nav == 'selection-queues' else '' }}">Selection Queues</a>
+    <a href="{{ url_for('acquisition_sources_home') }}" class="{{ 'active' if active_nav == 'acquisition-sources' else '' }}">Acquisition Sources</a>
+    <a href="{{ url_for('communication_templates_home') }}" class="{{ 'active' if active_nav == 'communication-templates' else '' }}">Communication Templates</a>
+    <a href="{{ url_for('reminder_policies_home') }}" class="{{ 'active' if active_nav == 'reminder-policies' else '' }}">Reminder Policies</a>
+    <a href="{{ url_for('alerts_home') }}" class="{{ 'active' if active_nav == 'alerts' else '' }}">Alerts</a>
+    <a href="{{ url_for('channels_home') }}" class="{{ 'active' if active_nav == 'channels' else '' }}">Channels</a>
+    <a href="{{ url_for('application_questions_home') }}" class="{{ 'active' if active_nav == 'application-questions' else '' }}">Application Questions</a>
+    <a href="{{ url_for('channel_analytics_home') }}" class="{{ 'active' if active_nav == 'channel-analytics' else '' }}">Channel Analytics</a>
+    <a href="{{ url_for('compliance_reviews_home') }}" class="{{ 'active' if active_nav == 'compliance' else '' }}">Compliance Reviews</a>
+  </div>
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

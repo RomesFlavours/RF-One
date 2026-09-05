@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% macro item_card(q) %}
+<div class="question-card">
+  <div class="req-title">
+    <span class="badge">{{ q.section_name }}</span>
+    <span class="badge">{{ q.source_type|replace('_',' ') }}</span>
+    <span class="badge importance-{{ q.importance|lower }}">{{ q.importance }}</span>
+    {% if q.mandatory_within_selection_process %}<span class="badge">Mandatory within process</span>{% endif %}
+    <span class="badge istatus-{{ q.status|lower }}">{{ q.status|replace('_',' ') }}</span>
+  </div>
+  <p style="font-size:.92rem; font-weight:600; margin:.4rem 0;">{{ q.title_or_question }}</p>
+  {% if q.instruction %}<p class="muted" style="font-size:.8rem;"><strong>Instruction:</strong> {{ q.instruction }}</p>{% endif %}
+  {% if q.scenario %}<p class="muted" style="font-size:.8rem;"><strong>Scenario:</strong> {{ q.scenario }}</p>{% endif %}
+  {% if q.objective %}<p class="muted" style="font-size:.8rem;"><strong>Objective:</strong> {{ q.objective }}</p>{% endif %}
+  {% if q.selezionatore_instructions %}<p class="context-note" style="font-size:.78rem;">{{ q.selezionatore_instructions }}</p>{% endif %}
+  {% if q.reason_for_inclusion %}<p class="context-note" style="font-size:.78rem;">{{ q.reason_for_inclusion }}</p>{% endif %}
+
+  {% if q.linked_requirement_ids or q.linked_signal_definition_ids %}
+  <p class="muted" style="font-size:.76rem;">
+    {% for rid in q.linked_requirement_ids %}
+      {% set item = snapshot_items_by_id.get(rid) %}
+      {% if item %}<span class="badge">Requirement: {{ item.name }}</span>{% endif %}
+    {% endfor %}
+    {% for sid in q.linked_signal_definition_ids %}
+      {% set sdef = signal_definitions_by_id.get(sid) %}
+      {% if sdef %}<span class="badge">Signal: {{ sdef.name }}</span>{% endif %}
+    {% endfor %}
+  </p>
+  {% endif %}
+
+  {% if q.raw_response %}
+  <div class="evidence-row neutral"><strong>Raw response:</strong> {{ q.raw_response }}</div>
+  {% endif %}
+  {% if q.selezionatore_note %}
+  <p class="muted" style="font-size:.8rem;"><strong>Selezionatore note:</strong> {{ q.selezionatore_note }}</p>
+  {% endif %}
+
+  <details class="edit-toggle">
+    <summary>Record response</summary>
+    <form method="post" action="{{ url_for('in_person_interview_record_response', plan_id=plan.id, item_instance_id=q.id) }}" class="req-form">
+      <label>Status</label>
+      <select name="status">
+        {% for s in item_statuses %}<option value="{{ s }}" {{ 'selected' if s == q.status else '' }}>{{ s|replace('_',' ') }}</option>{% endfor %}
+      </select>
+      <label>Raw response (candidate answer / observation / practical result — exact, never rewritten)</label>
+      <textarea name="raw_response">{{ q.raw_response or '' }}</textarea>
+      <label>Selezionatore note (interpretation — kept separate from the raw response)</label>
+      <textarea name="selezionatore_note">{{ q.selezionatore_note or '' }}</textarea>
+      <label>Confidence (optional)</label>
+      <select name="confidence">
+        <option value="">(unspecified)</option>
+        {% for c in confidence_levels %}<option value="{{ c }}" {{ 'selected' if c == q.confidence else '' }}>{{ c }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn" style="margin-top:.6rem;">Save response</button>
+    </form>
+  </details>
+
+  <details class="edit-toggle">
+    <summary>Suggest a follow-up item</summary>
+    <form method="post" action="{{ url_for('in_person_interview_add_follow_up', plan_id=plan.id, item_instance_id=q.id) }}" class="req-form">
+      <label>Follow-up question text</label>
+      <textarea name="title_or_question"></textarea>
+      <label>Objective (optional)</label>
+      <textarea name="objective"></textarea>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Add follow-up</button>
+    </form>
+  </details>
+
+  {% if q.raw_response and q.linked_requirement_ids %}
+  <details class="edit-toggle">
+    <summary>Record this response as Fit Assessment evidence</summary>
+    <form method="post" action="{{ url_for('in_person_interview_add_fit_evidence', plan_id=plan.id, item_instance_id=q.id) }}" class="req-form">
+      <label>Requirement</label>
+      <select name="requirement_snapshot_item_id">
+        {% for rid in q.linked_requirement_ids %}
+          {% set item = snapshot_items_by_id.get(rid) %}
+          {% if item %}<option value="{{ item.id }}">{{ item.name }}</option>{% endif %}
+        {% endfor %}
+      </select>
+      <label>Relationship to this Requirement</label>
+      <select name="evidence_relationship">
+        {% for r in evidence_relationships %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+      </select>
+      <label>Classification</label>
+      <select name="evidence_classification">
+        {% for c in evidence_classifications %}<option value="{{ c }}">{{ c|replace('_',' ') }}</option>{% endfor %}
+      </select>
+      <label>Confidence</label>
+      <select name="confidence">
+        {% for c in confidence_levels %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Add as Fit Assessment evidence</button>
+    </form>
+  </details>
+  {% endif %}
+
+  {% if q.raw_response and q.linked_signal_definition_ids %}
+  <details class="edit-toggle">
+    <summary>Record this response as Selection Signal evidence</summary>
+    <form method="post" action="{{ url_for('in_person_interview_add_signal_evidence', plan_id=plan.id, item_instance_id=q.id) }}" class="req-form">
+      <label>Signal</label>
+      <select name="signal_definition_id">
+        {% for sid in q.linked_signal_definition_ids %}
+          {% set sdef = signal_definitions_by_id.get(sid) %}
+          {% if sdef %}<option value="{{ sdef.id }}">{{ sdef.name }}</option>{% endif %}
+        {% endfor %}
+      </select>
+      <label>Relationship to this Signal</label>
+      <select name="evidence_relationship">
+        {% for r in evidence_relationships %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+      </select>
+      <label>Classification</label>
+      <select name="evidence_classification">
+        {% for c in evidence_classifications %}<option value="{{ c }}">{{ c|replace('_',' ') }}</option>{% endfor %}
+      </select>
+      <label>Confidence</label>
+      <select name="confidence">
+        {% for c in confidence_levels %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Add as Signal evidence</button>
+    </form>
+  </details>
+  {% endif %}
+</div>
+{% endmacro %}
+
+<a class="back-link" href="{{ url_for('application_detail', application_id=application.id) }}">&larr; Back to Application</a>
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Candidate</div>
+      <div class="value">{{ application.candidate.full_name or '(name not extracted)' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Target Role</div>
+      <div class="value">{{ application.target_role or '-' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Review Priority</div>
+      <div class="value"><span class="badge priority-{{ (application.review_priority_effective or 'STANDARD')|lower }}">{{ (application.review_priority_effective or 'STANDARD')|replace('_',' ') }}</span></div>
+    </div>
+    <div class="meta-item">
+      <div class="label">In-Person Interview Status</div>
+      <div class="value"><span class="badge">{{ plan.status|replace('_',' ') }}</span></div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.8rem;">
+    {% if original_cv_available %}
+    <a class="cv-link" href="{{ url_for('candidate_original_cv', candidate_id=application.candidate_id) }}" target="_blank" rel="noopener">Open Original CV &#8599;</a>
+    {% else %}
+    <span class="muted">Original CV unavailable</span>
+    {% endif %}
+    &middot;
+    <a href="{{ url_for('fit_assessment_detail', fit_assessment_id=plan.fit_assessment_id) }}">View full Fit Assessment</a>
+    &middot;
+    {% if plan.phone_interview_plan_id %}
+    <a href="{{ url_for('phone_interview_detail', plan_id=plan.phone_interview_plan_id) }}">View Phone Interview</a>
+    &middot;
+    {% endif %}
+    <a href="{{ url_for('application_detail', application_id=application.id) }}">View full Application</a>
+  </p>
+
+  {% if fit_summary %}
+  <p class="muted" style="font-size:.8rem;">
+    Fit Assessment summary ({{ fit_summary.total }} Requirement(s)):
+    {% for status, count in fit_summary.counts.items() %}
+      {% if count %}<span class="badge fit-{{ status|lower }}">{{ status|replace('_',' ') }}: {{ count }}</span>{% endif %}
+    {% endfor %}
+  </p>
+  {% endif %}
+
+  {% if observations %}
+  <p class="muted" style="font-size:.8rem;">
+    Key Selection Signals:
+    {% for o in observations %}
+      <span class="badge signal-{{ o.status|lower }}">{{ o.signal_definition.name }}: {{ o.status|replace('_',' ') }}</span>
+    {% endfor %}
+  </p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('in_person_interview_refresh', plan_id=plan.id) }}" class="inline-form">
+    <button type="submit" class="btn secondary">Refresh plan (new evidence)</button>
+  </form>
+  {% if plan.status == 'NOT_STARTED' %}
+  <form method="post" action="{{ url_for('in_person_interview_start', plan_id=plan.id) }}" class="inline-form">
+    <button type="submit" class="btn">Start Interview</button>
+  </form>
+  {% endif %}
+
+  <details class="edit-toggle">
+    <summary>Selezionatore notes</summary>
+    <form method="post" action="{{ url_for('in_person_interview_set_notes', plan_id=plan.id) }}" class="req-form">
+      <textarea name="notes" placeholder="Free-form notes about this In-Person Interview">{{ plan.notes or '' }}</textarea>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save notes</button>
+    </form>
+  </details>
+</div>
+
+<div class="card">
+  <h2>Consistency Items to Verify ({{ items_to_verify|length }})</h2>
+  <p class="muted" style="font-size:.82rem;">
+    The most important still-open discrepancies across CV/Application, Phone Interview, In-Person Interview and
+    prior Applications — a contradiction is evidence, never automatic proof of dishonesty.
+  </p>
+  {% if items_to_verify %}
+    {% for t in items_to_verify %}
+    <div class="thread-card">
+      <div class="req-title">
+        {{ t.topic }}
+        <span class="badge importance-{{ t.importance|lower }}">{{ t.importance }}</span>
+        <span class="badge cstatus-{{ t.comparison_status|lower }}">{{ t.comparison_status|replace('_',' ') }}</span>
+      </div>
+      {% if t.explanation %}<p style="font-size:.85rem; margin:.3rem 0;">{{ t.explanation }}</p>{% endif %}
+      <form method="post" action="{{ url_for('consistency_thread_generate_clarification', plan_id=plan.id, thread_id=t.id) }}" class="inline-form">
+        <button type="submit" class="btn secondary" style="font-size:.78rem; padding:.35rem .8rem;">Generate clarification question</button>
+      </form>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No unresolved Consistency Items to verify.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('consistency_thread_generate_cross_application', application_id=application.id) }}" class="inline-form">
+    <input type="hidden" name="next" value="{{ url_for('in_person_interview_detail', plan_id=plan.id) }}">
+    <button type="submit" class="btn secondary">Generate cross-Application Consistency Threads</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Consistency Threads ({{ threads|length }})</h2>
+  {% if threads %}
+    {% for t in threads %}
+    <div class="thread-card">
+      <div class="req-title">
+        {{ t.topic }}
+        <span class="badge importance-{{ t.importance|lower }}">{{ t.importance }}</span>
+        <span class="badge cstatus-{{ t.comparison_status|lower }}">{{ t.comparison_status|replace('_',' ') }}</span>
+      </div>
+      {% if t.explanation %}<p style="font-size:.85rem; margin:.3rem 0;">{{ t.explanation }}</p>{% endif %}
+      {% if t.selezionatore_resolution %}<p class="muted" style="font-size:.8rem;"><strong>Resolution:</strong> {{ t.selezionatore_resolution }}</p>{% endif %}
+      <h4 style="font-size:.82rem; margin:.6rem 0 .3rem;">Source statements ({{ t.statements|length }})</h4>
+      {% for s in t.statements %}
+      <div class="statement-row">
+        <strong>{{ s.source_stage|replace('_',' ')|title }}</strong>
+        {% if s.source_date %} &middot; {{ s.source_date.strftime('%Y-%m-%d') }}{% endif %}
+        {% if s.source_reference %} &middot; {{ s.source_reference }}{% endif %}
+        <div>{{ s.raw_statement }}</div>
+      </div>
+      {% endfor %}
+
+      <details class="edit-toggle">
+        <summary>Add a statement</summary>
+        <form method="post" action="{{ url_for('consistency_thread_add_statement', thread_id=t.id) }}" class="req-form">
+          <input type="hidden" name="next" value="{{ url_for('in_person_interview_detail', plan_id=plan.id) }}">
+          <label>Source stage</label>
+          <select name="source_stage">
+            {% for s in consistency_source_stages %}<option value="{{ s }}">{{ s|replace('_',' ')|title }}</option>{% endfor %}
+          </select>
+          <label>Raw statement (exact wording)</label>
+          <textarea name="raw_statement"></textarea>
+          <button type="submit" class="btn secondary" style="margin-top:.6rem;">Add statement</button>
+        </form>
+      </details>
+
+      <details class="edit-toggle">
+        <summary>Set comparison status</summary>
+        <form method="post" action="{{ url_for('consistency_thread_set_status', thread_id=t.id) }}" class="req-form">
+          <input type="hidden" name="next" value="{{ url_for('in_person_interview_detail', plan_id=plan.id) }}">
+          <label>Status</label>
+          <select name="status">
+            {% for s in consistency_statuses %}<option value="{{ s }}" {{ 'selected' if s == t.comparison_status else '' }}>{{ s|replace('_',' ') }}</option>{% endfor %}
+          </select>
+          <label>Explanation (plain factual description — never a dishonesty conclusion)</label>
+          <textarea name="explanation">{{ t.explanation or '' }}</textarea>
+          <label>Selezionatore resolution (optional)</label>
+          <textarea name="resolution">{{ t.selezionatore_resolution or '' }}</textarea>
+          <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save status</button>
+        </form>
+      </details>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No Consistency Threads yet.</p>
+  {% endif %}
+
+  <details class="edit-toggle">
+    <summary>Create a Consistency Thread</summary>
+    <form method="post" action="{{ url_for('consistency_thread_create', application_id=application.id) }}" class="req-form">
+      <input type="hidden" name="next" value="{{ url_for('in_person_interview_detail', plan_id=plan.id) }}">
+      <label>Topic</label>
+      <input type="text" name="topic" list="starter-topics" placeholder="e.g. Reason for leaving">
+      <datalist id="starter-topics">
+        {% for topic in starter_consistency_topics %}<option value="{{ topic }}">{% endfor %}
+      </datalist>
+      <label>Importance</label>
+      <select name="importance">
+        {% for i in importance_levels %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Create thread</button>
+    </form>
+  </details>
+</div>
+
+<div class="card">
+  <h2>Remaining Assessment Items ({{ remaining_items|length }})</h2>
+  <p class="muted" style="font-size:.8rem;">
+    Ordered by this restaurant's own configured Section order, then importance within a Section. The
+    Selezionatore may stop at any point.
+  </p>
+  {% if remaining_items %}
+    {% for q in remaining_items %}{{ item_card(q) }}{% endfor %}
+  {% else %}
+    <p class="empty">No remaining Assessment Items.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Completed / History ({{ history_items|length }})</h2>
+  {% if history_items %}
+    {% for q in history_items %}{{ item_card(q) }}{% endfor %}
+  {% else %}
+    <p class="empty">No Assessment Items recorded yet.</p>
+  {% endif %}
+</div>
+
+{% if incomplete_items %}
+<div class="card">
+  <h2>Unresolved / Incomplete Items ({{ incomplete_items|length }})</h2>
+  <p class="muted" style="font-size:.82rem;">
+    Visible before any future Final Selection Decision — nothing important silently disappears.
+  </p>
+  {% for q in incomplete_items %}
+  <div class="question-card">
+    <span class="badge">{{ q.section_name }}</span>
+    <span class="badge istatus-{{ q.status|lower }}">{{ q.status|replace('_',' ') }}</span>
+    {{ q.title_or_question }}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Stop Interview</h2>
+  <p class="muted" style="font-size:.82rem;">
+    The Selezionatore controls how long the In-Person Interview lasts. Stopping only records the interview's
+    own process status — it never produces a hiring decision (not yet implemented).
+  </p>
+  <form method="post" action="{{ url_for('in_person_interview_stop', plan_id=plan.id) }}" class="req-form">
+    <label>Interview status</label>
+    <select name="plan_status">
+      {% for s in plan_statuses %}<option value="{{ s }}" {{ 'selected' if s == plan.status else '' }}>{{ s|replace('_',' ') }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Save interview status</button>
+  </form>
+</div>
+
+{% endblock %}

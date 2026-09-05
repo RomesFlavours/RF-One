@@ -6,7 +6,32 @@
 
 A Domain applies and, where necessary, specializes Core concepts (Subject, Reality, Desire, Goal, Decision, Entity, Relationship, Process, and others — see `00 Core/`) for a specific field, without redefining what those concepts mean.
 
-See [Domain Architecture.md](Domain%20Architecture.md) for the current cross-Domain conclusions on the Restaurant boundary, the transversal Domain **Personnel Management** (with modules Workforce, Selection, Training, Performance, Personnel Decisions), and the remaining transversal Domain candidates (Customer Feedback, Review).
+See [Domain Architecture.md](Domain%20Architecture.md) for the current cross-Domain conclusions on the Restaurant boundary, the Cross Domain / Business Domain taxonomy (§4), and the remaining transversal Domain candidates (Customer Feedback, Review).
+
+---
+
+# Cross Domain vs. Business Domain
+
+Every Domain below lives under exactly one of two folders directly inside `01 Domains/`:
+
+- **`Cross Domain/`** — Domains whose concepts are genuinely industry-independent and must remain reusable by any business, not just Restaurant. A Cross Domain may consume industry-specific content a Business Domain supplies, but must not structurally depend on one.
+- **`Business Domain/`** — Domains whose ontology, integrations and operational semantics are specific to one industry. Restaurant is currently the only one.
+
+```text
+01 Domains/
+├── Cross Domain/
+│   ├── Selection/            transversal Domain — evaluating/choosing among candidates
+│   ├── Training/             transversal Domain (placeholder content)
+│   ├── Performance/          transversal Domain — what people actually produce
+│   ├── Personnel Management/ transversal Domain — Workforce and Personnel Decisions modules
+│   ├── Taxation/             transversal Domain
+│   └── Administration/       transversal Domain, with its Payroll module
+├── Business Domain/
+│   └── Restaurant/           the current, and so far only, Business Domain
+└── _Shared/                  NOT a Domain — see "Current Domains" below
+```
+
+**Training and Performance are not modules of Personnel Management** — both were extracted into their own top-level Cross Domain entries; Personnel Management's remaining modules are Workforce and Personnel Decisions. See [Domain Architecture.md](Domain%20Architecture.md) §4 for the full reasoning.
 
 ---
 
@@ -35,15 +60,18 @@ A Domain must use only the Core concepts it actually requires — a concept exis
 
 # Current Domains
 
-| Domain | Description |
-|---|---|
-| `Restaurant/` | Business knowledge required to model, operate and continuously improve a restaurant. See `Restaurant/README.md` and `Restaurant/Roadmap.md`. |
-| `Personnel Management/` | Transversal Domain for managing people across industries, built on Core 2.0. Restaurant and other technical Domains are its application contexts, not its architectural owner. See `Personnel Management/README.md`. Its modules are Workforce, Selection, Training, Performance and Personnel Decisions; Selection is the only module documented in depth so far (`Personnel Management/Selection/README.md`, migrated from the former top-level `Selection/` Domain). |
-| `Taxation/` | Transversal Domain for tax obligations, positions, treatments, scenarios and lawful tax optimization, built on Core 2.0's Net/Retained Outcome and Constraint Shaping. It reasons about the tax consequences of facts owned by other Domains; it does not own those facts, and is explicitly distinct from Accounting, Finance and Legal Entity Management. See `Taxation/README.md`. |
-| `Administration/` | Transversal Domain for administrative execution of obligations arising from operating a business, and for the canonical `Total Employee Cost`/`Total Personnel Cost` model (`Personnel Cost.md`) — the causally attributable Employee cost, with no artificial overhead allocation. Its Payroll module (PayrollSchedule/PayrollPeriod/Workweek, Compensation Terms, PayrollRun, Payroll Provider Result/ADP import, Payroll Employer Cost) supplies one component/source of that broader cost model. Administration consumes, but does not own, the derived economic category allocation (Food/Drink/Supplies) produced by `Restaurant/Purchasing`'s Purchase Document/Purchase Line/Effective Product Cost model — supplier invoice ingestion is not an Administration module. Independent from Restaurant, Personnel Management, ADP, and jurisdiction-specific labor law. See `Administration/README.md`, `Administration/Personnel Cost.md`, `Administration/Payroll/README.md`. |
-| `_Shared/` | Domain-independent-but-not-universal shared knowledge reused across multiple Domains (currently `Environment/`). |
+| Domain | Family | Description |
+|---|---|---|
+| `Cross Domain/Selection/` | Cross Domain | Transversal Domain for evaluating and choosing among candidates for a role/context, usable by any industry — not owned by Restaurant or by Personnel Management, though closely related to Personnel Management's Personnel Decisions module. See `Cross Domain/Selection/README.md`. Restaurant's Industry Extension of Selection (role catalog, Rome's Flavours Server Role Configuration) lives at `Business Domain/Restaurant/Selection/`, depending on and extending Selection Core, never the reverse. |
+| `Cross Domain/Training/` | Cross Domain | Transversal Domain for closing an evidenced, trainable gap against a target Domain's standard — usable by any industry. Extracted from Personnel Management (see [Domain Architecture.md](Domain%20Architecture.md) §4); placeholder content only so far. See `Cross Domain/Training/README.md`. |
+| `Cross Domain/Performance/` | Cross Domain | Transversal Domain for what a person actually produces in Reality — usable by any industry. Extracted from Personnel Management (see [Domain Architecture.md](Domain%20Architecture.md) §4); documented in depth (Performance, PerformanceEvidence, PerformanceMeasure, PerformanceIndicator, PerformanceContext — TASK_PERSONNEL_001). See `Cross Domain/Performance/README.md`. |
+| `Cross Domain/Personnel Management/` | Cross Domain | Transversal Domain for managing people across industries, built on Core 2.0. Restaurant and other technical Domains are its application contexts, not its architectural owner. See `Cross Domain/Personnel Management/README.md`. **Its remaining modules are Workforce and Personnel Decisions** — Selection, Training and Performance were formerly modules here and are now sibling top-level Cross Domains (above). |
+| `Cross Domain/Taxation/` | Cross Domain | Transversal Domain for tax obligations, positions, treatments, scenarios and lawful tax optimization, built on Core 2.0's Net/Retained Outcome and Constraint Shaping. It reasons about the tax consequences of facts owned by other Domains; it does not own those facts, and is explicitly distinct from Accounting, Finance and Legal Entity Management. See `Cross Domain/Taxation/README.md`. |
+| `Cross Domain/Administration/` | Cross Domain | Transversal Domain for administrative execution of obligations arising from operating a business, and for the canonical `Total Employee Cost`/`Total Personnel Cost` model (`Personnel Cost.md`) — the causally attributable Employee cost, with no artificial overhead allocation. Its Payroll module (PayrollSchedule/PayrollPeriod/Workweek, Compensation Terms, PayrollRun, Payroll Provider Result/ADP import, Payroll Employer Cost) supplies one component/source of that broader cost model. Administration consumes, but does not own, the derived economic category allocation (Food/Drink/Supplies) produced by `Restaurant/Purchasing`'s Purchase Document/Purchase Line/Effective Product Cost model — supplier invoice ingestion is not an Administration module. Independent from Restaurant, Personnel Management, ADP, and jurisdiction-specific labor law. See `Cross Domain/Administration/README.md`, `Cross Domain/Administration/Personnel Cost.md`, `Cross Domain/Administration/Payroll/README.md`. |
+| `Business Domain/Restaurant/` | Business Domain | Business knowledge required to model, operate and continuously improve a restaurant — the current, and so far only, Business Domain. See `Business Domain/Restaurant/README.md` and `Business Domain/Restaurant/Roadmap.md`. |
+| `_Shared/` | *(not a Domain)* | Domain-independent-but-not-universal shared knowledge reused across multiple Domains (currently `Environment/`). Deliberately outside both `Cross Domain/` and `Business Domain/` — see "Cross Domain vs. Business Domain" above. |
 
-A Domain should not automatically equal a Product. Future transversal Domain candidates (e.g. Customer Feedback, Review) are anticipated by [Domain Architecture.md](Domain%20Architecture.md) but are not created by this migration.
+A Domain should not automatically equal a Product. Future transversal Domain candidates (e.g. Customer Feedback, Review) are anticipated by [Domain Architecture.md](Domain%20Architecture.md) but are not created by this migration; if created, they would join `Cross Domain/`.
 
 ---
 

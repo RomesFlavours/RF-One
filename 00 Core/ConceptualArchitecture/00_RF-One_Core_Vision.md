@@ -18,6 +18,7 @@ This document is the entry point of the RF-One Core Conceptual Architecture. It 
 - [06_Business_Autopilot_and_Intelligence_Engine.md](06_Business_Autopilot_and_Intelligence_Engine.md)
 - [07_Core_Glossary.md](07_Core_Glossary.md)
 - [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md)
+- [09_Identity_Authority_and_Accountability.md](09_Identity_Authority_and_Accountability.md)
 - See also [../RF-ONE Core Principles.md](../RF-ONE%20Core%20Principles.md) for the immutable layer principles this vision specializes.
 
 ---
@@ -100,5 +101,6 @@ The Core does not encode pricing or commercial strategy — those belong to Prod
 | [06_Business_Autopilot_and_Intelligence_Engine.md](06_Business_Autopilot_and_Intelligence_Engine.md) | How autonomous may RF-One be, and what powers its reasoning? |
 | [07_Core_Glossary.md](07_Core_Glossary.md) | What does each term precisely mean? |
 | [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md) | How does RF-One reason about what a Subject actually retains, and about lawful ways to change future constraints? |
+| [09_Identity_Authority_and_Accountability.md](09_Identity_Authority_and_Accountability.md) | Who acts, under what authority, and how is that provable afterward? |
 
 This vision, and the documents that specialize it, are the canonical conceptual architecture for the concepts they define. Domain and Product documentation must remain consistent with them.

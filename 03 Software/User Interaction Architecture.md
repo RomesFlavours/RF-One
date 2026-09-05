@@ -1,7 +1,7 @@
 # RF-One User Interaction Architecture
 
-**Version:** 1.0
-**Status:** Approved (initial foundation — TASK_INTERACTION_001)
+**Version:** 1.1
+**Status:** Approved (initial foundation — TASK_INTERACTION_001; extended — CORE_IDENTITY_AUTHORITY_SECURITY_ARCHITECTURE, §18–§19)
 **Module:** Software / Cross-cutting Runtime Architecture
 
 ---
@@ -179,7 +179,7 @@ The mobile architecture may later expand if actual module requirements justify i
 
 ### 7.1 Alert vs Notification
 
-"Alerts" and "notifications" above are not synonyms — this document establishes the general distinction; the operational meaning of any specific Alert is always defined by the owning Domain/Module (e.g. `01 Domains/Restaurant/Purchasing/EntityDefinitions.md`, "Alert," is the canonical example as of this writing).
+"Alerts" and "notifications" above are not synonyms — this document establishes the general distinction; the operational meaning of any specific Alert is always defined by the owning Domain/Module (e.g. `01 Domains/Business Domain/Restaurant/Purchasing/EntityDefinitions.md`, "Alert," is the canonical example as of this writing).
 
 ```text
 Notification  = informs the User; no response is required to close it.
@@ -222,10 +222,10 @@ Photo / document
 → Purchasing acquisition
 → Purchase Document
 → Purchase Lines
-→ normal Purchasing workflow (see 01 Domains/Restaurant/Purchasing/DataAcquisition.md)
+→ normal Purchasing workflow (see 01 Domains/Business Domain/Restaurant/Purchasing/DataAcquisition.md)
 ```
 
-A closely related illustrative case is mobile Receiving — capturing what physically arrived from a Supplier, as distinct from capturing the Invoice itself (`01 Domains/Restaurant/Purchasing/EntityDefinitions.md`, "Receiving Record," "Receiving Line"). Receiving capture may scan package/case labels or confirm quantities against an Order, always with the option to fall back to simple manual entry, and it can complete even while a discrepancy it revealed remains an open Alert for a desktop User to resolve (`01 Domains/Restaurant/Purchasing/BusinessRules.md`, "Receiving Is Mobile-First and Fallback-Capable," "Receiving Completion Is Independent of Alert Resolution"). This document does not define the capture screens themselves — only that Receiving is a further concrete example of the general Capture → Evidence → Routing → Domain flow above.
+A closely related illustrative case is mobile Receiving — capturing what physically arrived from a Supplier, as distinct from capturing the Invoice itself (`01 Domains/Business Domain/Restaurant/Purchasing/EntityDefinitions.md`, "Receiving Record," "Receiving Line"). Receiving capture may scan package/case labels or confirm quantities against an Order, always with the option to fall back to simple manual entry, and it can complete even while a discrepancy it revealed remains an open Alert for a desktop User to resolve (`01 Domains/Business Domain/Restaurant/Purchasing/BusinessRules.md`, "Receiving Is Mobile-First and Fallback-Capable," "Receiving Completion Is Independent of Alert Resolution"). This document does not define the capture screens themselves — only that Receiving is a further concrete example of the general Capture → Evidence → Routing → Domain flow above.
 
 ---
 
@@ -256,7 +256,7 @@ Domain processing:       Restaurant / Purchasing, Personnel, Maintenance, Operat
 
 ## 10. Source Preservation
 
-Captured material from mobile must respect RF-One's Reality/Evidence principles (`00 Core/ConceptualArchitecture/01_Subject_and_Reality.md`). The original captured source must be preservable as evidence/provenance. Derived interpretation must remain distinguishable from the source — the same "persist facts, derive/interpret separately" discipline already canonical in `01 Domains/Restaurant/Purchasing/DataDictionary.md`.
+Captured material from mobile must respect RF-One's Reality/Evidence principles (`00 Core/ConceptualArchitecture/01_Subject_and_Reality.md`). The original captured source must be preservable as evidence/provenance. Derived interpretation must remain distinguishable from the source — the same "persist facts, derive/interpret separately" discipline already canonical in `01 Domains/Business Domain/Restaurant/Purchasing/DataDictionary.md`.
 
 **Conceptually:**
 
@@ -364,7 +364,7 @@ This document does not move Domain semantics into the UI architecture.
 **Example:**
 
 ```text
-Purchasing (Domain, 01 Domains/Restaurant/Purchasing/) defines:
+Purchasing (Domain, 01 Domains/Business Domain/Restaurant/Purchasing/) defines:
   Purchase Document, Purchase Line, Supplier Product, classification, etc.
 
 Interaction Architecture (this document) defines only HOW a User interacts
@@ -385,7 +385,7 @@ This document does **not** define:
 - visual design system
 - CSS/frontend framework
 - React/Vue/Angular (or other framework) choice
-- native mobile app vs. PWA
+- the specific PWA implementation (offline behavior, install prompts, service-worker strategy) — see Section 18 for the higher-level decision that RF-One 1.0 is one responsive web application
 - authentication provider
 - OAuth implementation
 - database schema
@@ -397,6 +397,30 @@ This document does **not** define:
 - deployment infrastructure
 
 These are later implementation decisions, made when a concrete module or Product requires them — informed by, but not decided within, this architecture.
+
+---
+
+## 18. Web Application Architecture Decision — Responsive, Not Native
+
+RF-One 1.0 is **one responsive Web Application**, usable from desktop, tablet and smartphone. This does not replace the Desktop/Mobile distinction in Sections 1–2 and 7 — the *type of interaction* naturally offered on each device still differs — but it decides that RF-One is delivered as a single responsive codebase, not a separate native iOS/Android application built and maintained independently from the web application.
+
+A separate native application is **not required** for RF-One 1.0. The architecture may support PWA/installable-web-app behavior where useful (e.g. for the mobile Capture use cases in Sections 7–9), without native app development becoming a requirement.
+
+**Not decided by this section:** the specific PWA implementation, offline behavior, or service-worker strategy (Section 17) — those remain later implementation decisions.
+
+---
+
+## 19. Attention-Driven Operational Home
+
+RF-One's interface should not force a User to navigate the conceptual Company/Branch/Domain/Module hierarchy (`00 Core/Corporate.md`, `Operational Unit.md`) for every task. That hierarchy remains conceptually important and available, but it is not the mandatory entry point.
+
+The operational Home/Workspace should instead prioritize:
+
+> **"What requires my attention now?"**
+
+Illustrative examples: pending decisions, queues, alerts (Section 7.1), exceptions, approvals, reminders, AI recommendations, operational anomalies.
+
+Visibility and available actions on this Home surface remain governed by the same Authorization model already established in Sections 4–6 — a User's Home is composed from what that User is authorized to see and do, exactly as the rest of the interface is (Section 5, Visibility Principle).
 
 ---
 
@@ -425,9 +449,12 @@ MODULE INTERACTION READINESS
 
 - `CLAUDE.md` — Core ≠ Domain ≠ Product ≠ Runtime; the layer boundaries this document respects.
 - `00 Core/ConceptualArchitecture/01_Subject_and_Reality.md` — the Reality/Evidence principle Source Preservation (Section 10) builds on.
-- `01 Domains/Restaurant/Purchasing/DataAcquisition.md`, `EntityDefinitions.md`, `DataDictionary.md` — the concrete Domain example used illustratively in Sections 8–9 for Capture routing and the persist-facts/derive-interpretation discipline; Purchasing remains one consumer of Capture, not its owner.
-- `01 Domains/Restaurant/Purchasing/EntityDefinitions.md`, "Alert"; `BusinessRules.md`, Rules 20–24 — the concrete Domain example used illustratively in Section 7.1 for the Alert vs Notification distinction; the Domain remains authoritative for what a specific Alert means.
-- `01 Domains/Restaurant/Purchasing/EntityDefinitions.md`, "Receiving Record," "Receiving Line"; `BusinessRules.md`, Rules 25–42 — the concrete Domain example used illustratively in Section 8 for mobile Receiving capture; the Domain remains authoritative for Receiving semantics.
+- `01 Domains/Business Domain/Restaurant/Purchasing/DataAcquisition.md`, `EntityDefinitions.md`, `DataDictionary.md` — the concrete Domain example used illustratively in Sections 8–9 for Capture routing and the persist-facts/derive-interpretation discipline; Purchasing remains one consumer of Capture, not its owner.
+- `01 Domains/Business Domain/Restaurant/Purchasing/EntityDefinitions.md`, "Alert"; `BusinessRules.md`, Rules 20–24 — the concrete Domain example used illustratively in Section 7.1 for the Alert vs Notification distinction; the Domain remains authoritative for what a specific Alert means.
+- `01 Domains/Business Domain/Restaurant/Purchasing/EntityDefinitions.md`, "Receiving Record," "Receiving Line"; `BusinessRules.md`, Rules 25–42 — the concrete Domain example used illustratively in Section 8 for mobile Receiving capture; the Domain remains authoritative for Receiving semantics.
 - `03 Software/README.md` — Software layer authority and current runtime modules.
+- `03 Software/Identity Authority and Security Architecture.md` — the deeper technical Identity/Authentication/Authorization/Security layer this document's Sections 3–6 and 12 connect to; that document does not duplicate this one's interaction-shape content.
+- `00 Core/ConceptualArchitecture/09_Identity_Authority_and_Accountability.md` — the Core conceptual definitions (Acting Identity, Authority, Delegation, Accountability, Auditability) underlying Sections 3–6.
 - `07 Tasks/TASK_INTERACTION_001_Define_User_Interaction_Architecture.md` — task that created this document.
 - `07 Tasks/Reports/TASK_INTERACTION_001_REPORT.md` — task report.
+- `07 Tasks/Reports/CORE_IDENTITY_AUTHORITY_SECURITY_ARCHITECTURE_REPORT.md` — task report for the Section 18–19 extension.

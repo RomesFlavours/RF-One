@@ -1,8 +1,8 @@
 # RF-One Data Store — Restaurant Profile
 
-TASK_RESTAURANT_001 — the runtime/database implementation of the Restaurant Profile documented conceptually at `01 Domains/Restaurant/Organization/`. This document is the Software-layer counterpart to that Domain documentation: it explains how the schema in `DATABASE_SCHEMA.md` §4a is populated and used, and states — without implementing — the algorithmic contract future Tips/Payroll work must follow.
+TASK_RESTAURANT_001 — the runtime/database implementation of the Restaurant Profile documented conceptually at `01 Domains/Business Domain/Restaurant/Organization/`. This document is the Software-layer counterpart to that Domain documentation: it explains how the schema in `DATABASE_SCHEMA.md` §4a is populated and used, and states — without implementing — the algorithmic contract future Tips/Payroll work must follow.
 
-For the conceptual definitions (Restaurant, Operational Area, Physical Area, Restaurant Role, Employee Assignment) and their business rules, see `01 Domains/Restaurant/Organization/README.md` and its sibling files. This document does not repeat those definitions. For the Domain-level semantics that make those definitions coherent across arbitrarily different Restaurant configurations (Domain vs. Profile vs. Instance, Area hierarchy semantics, the consolidated invariant list), see `01 Domains/Restaurant/Restaurant Semantic Model.md` (TASK_RESTAURANT_002).
+For the conceptual definitions (Restaurant, Operational Area, Physical Area, Restaurant Role, Employee Assignment) and their business rules, see `01 Domains/Business Domain/Restaurant/Organization/README.md` and its sibling files. This document does not repeat those definitions. For the Domain-level semantics that make those definitions coherent across arbitrarily different Restaurant configurations (Domain vs. Profile vs. Instance, Area hierarchy semantics, the consolidated invariant list), see `01 Domains/Business Domain/Restaurant/Restaurant Semantic Model.md` (TASK_RESTAURANT_002).
 
 ---
 
@@ -18,14 +18,14 @@ Corporate     (implicit — not a runtime table; exactly one)
 
 A future, genuinely different Brand under the same Corporate would be a *second* `restaurants` row — fully independent by construction, since `TipPolicy`, `EmployeeAssignment`, `OperationalArea` etc. are all scoped by `restaurant_id`. No schema change was required or made for this — see `07 Tasks/Reports/TASK_RESTAURANT_STRUCTURE_001_REPORT.md` § G.
 
-**Known naming inaccuracy, not corrected here:** the real production `restaurants.name` value is `"Rome's Flavours - WP"`, baking the Location suffix into the Brand-level name. This conflates Brand and Location identity and should be corrected to `"Rome's Flavours"` — recommended as part of Mount Dora onboarding (`01 Domains/Restaurant/Roadmap.md` § 5), with explicit Product Owner authorization before any production write, not executed by this task.
+**Known naming inaccuracy, not corrected here:** the real production `restaurants.name` value is `"Rome's Flavours - WP"`, baking the Location suffix into the Brand-level name. This conflates Brand and Location identity and should be corrected to `"Rome's Flavours"` — recommended as part of Mount Dora onboarding (`01 Domains/Business Domain/Restaurant/Roadmap.md` § 5), with explicit Product Owner authorization before any production write, not executed by this task.
 
 ---
 
 ## 1. Layer separation
 
 ```text
-Restaurant Domain semantics        (01 Domains/Restaurant/Organization/)
+Restaurant Domain semantics        (01 Domains/Business Domain/Restaurant/Organization/)
         ≠
 Clover source semantics            (SourceRole, Employee.system_role)
         ≠
@@ -60,7 +60,7 @@ None of these tables (other than the single bootstrap `restaurants` row — § 4
 
 ## 3. Tips / Payroll future contract
 
-**Not implemented by this task (TASK_RESTAURANT_001).** Documented here so future Tips/Payroll work has a single, unambiguous algorithmic contract to follow, per the Restaurant/Personnel integration principle. **Update (TASK_TIPS_001):** the Tips half of this contract is now implemented — see `01 Domains/Restaurant/Tips/`, `DATABASE_SCHEMA.md` §4b, and `rfone_data_store/tips/engine.py`. Payroll remains not implemented. The algorithmic contract below is preserved unchanged as the statement this implementation follows, not superseded by it.
+**Not implemented by this task (TASK_RESTAURANT_001).** Documented here so future Tips/Payroll work has a single, unambiguous algorithmic contract to follow, per the Restaurant/Personnel integration principle. **Update (TASK_TIPS_001):** the Tips half of this contract is now implemented — see `01 Domains/Business Domain/Restaurant/Tips/`, `DATABASE_SCHEMA.md` §4b, and `rfone_data_store/tips/engine.py`. Payroll remains not implemented. The algorithmic contract below is preserved unchanged as the statement this implementation follows, not superseded by it.
 
 ```text
 requested period
@@ -187,9 +187,9 @@ employee_assignments:              24 rows (one per current Employee — none ha
                                              concurrent second current SourceRole)
 ```
 
-No `TipPolicy`, service-attribution resolver, or Rome's Flavours Tip percentage was configured by this task — see `01 Domains/Restaurant/Tips/` and `07 Tasks/Reports/TASK_RESTAURANT_003_REPORT.md` § O. **Update (TASK_TIPS_004):** the real Winter Park `TipPolicy` (Service Owner 90% / Host tip-out 10%) and a real `OrderEmployeeServiceAttributionResolver` are now configured/implemented — see `07 Tasks/Reports/TASK_TIPS_004_REPORT.md`.
+No `TipPolicy`, service-attribution resolver, or Rome's Flavours Tip percentage was configured by this task — see `01 Domains/Business Domain/Restaurant/Tips/` and `07 Tasks/Reports/TASK_RESTAURANT_003_REPORT.md` § O. **Update (TASK_TIPS_004):** the real Winter Park `TipPolicy` (Service Owner 90% / Host tip-out 10%) and a real `OrderEmployeeServiceAttributionResolver` are now configured/implemented — see `07 Tasks/Reports/TASK_TIPS_004_REPORT.md`.
 
-**TASK_ORGANIZATION_002 update:** all 24 real `employee_assignments` rows have `location_id = NULL` after the additive migration adding that column — this Restaurant has only ever had one Location, so no existing row's Location was guessed or backfilled (per that task's explicit prohibition on inferring historical Assignment Location from `employees.location_id`). New Assignments created by a future bootstrap run for a current Employee will have `location_id` populated deterministically from that Employee's own `location_id` — see `01 Domains/Restaurant/Organization/Employee Assignment.md`, "`Employee.location_id` is a different fact," and `07 Tasks/Reports/TASK_ORGANIZATION_002_REPORT.md`.
+**TASK_ORGANIZATION_002 update:** all 24 real `employee_assignments` rows have `location_id = NULL` after the additive migration adding that column — this Restaurant has only ever had one Location, so no existing row's Location was guessed or backfilled (per that task's explicit prohibition on inferring historical Assignment Location from `employees.location_id`). New Assignments created by a future bootstrap run for a current Employee will have `location_id` populated deterministically from that Employee's own `location_id` — see `01 Domains/Business Domain/Restaurant/Organization/Employee Assignment.md`, "`Employee.location_id` is a different fact," and `07 Tasks/Reports/TASK_ORGANIZATION_002_REPORT.md`.
 
 ---
 

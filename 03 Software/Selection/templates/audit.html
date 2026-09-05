@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('application_dossier', application_id=report.application.id) }}">&larr; Back to Dossier</a>
+
+<div class="card">
+  <h1 style="margin-bottom:0;">Selection Audit / Explainability — Application #{{ report.application.id }}</h1>
+  <p class="muted" style="font-size:.8rem;"><strong>{{ report.disclaimer }}</strong></p>
+  <p style="font-size:.85rem;"><a href="{{ url_for('application_audit_json', application_id=report.application.id) }}">View as structured JSON &rarr;</a> (printable: use your browser's Print/Save-as-PDF on this page)</p>
+</div>
+
+<!-- A. Application Context -->
+<div class="card">
+  <h2>A. Application Context</h2>
+  <div class="meta-row">
+    <div class="meta-item"><div class="label">Candidate</div><div class="value">{{ report.person.full_name or '(name not extracted)' }}</div></div>
+    <div class="meta-item"><div class="label">Role</div><div class="value">{{ report.application.target_role or '-' }}</div></div>
+    <div class="meta-item"><div class="label">Selection Session</div><div class="value">{{ report.selection_session.name if report.selection_session else '(none)' }}</div></div>
+    <div class="meta-item"><div class="label">Branch/Location</div><div class="value">{{ report.selection_session.location_label if report.selection_session else '-' }}</div></div>
+    <div class="meta-item"><div class="label">Current Owner</div><div class="value">{{ report.current_owner.owner_name if report.current_owner else '-' }}</div></div>
+    <div class="meta-item"><div class="label">Applied</div><div class="value">{{ report.application.applied_at.strftime('%Y-%m-%d %H:%M') if report.application.applied_at else '-' }}</div></div>
+  </div>
+</div>
+
+<!-- B. Acquisition -->
+<div class="card">
+  <h2>B. Acquisition</h2>
+  <p style="font-size:.85rem;">
+    Acquisition Source: <strong>{{ report.acquisition_source.name if report.acquisition_source else '(unknown)' }}</strong>
+    {% if report.channel_publication %}
+    &middot; Channel: <strong>{{ report.channel_publication.channel.name }}</strong>
+    &middot; Placement: <strong>{{ report.channel_publication.placement_label }}</strong>
+    &middot; Posting Variant Version: <strong>v{{ report.channel_publication.variant_version.version }}</strong>
+    {% endif %}
+  </p>
+</div>
+
+<!-- C. Applicable Rules -->
+<div class="card">
+  <h2>C. Applicable Rules</h2>
+  {% if report.rule_set_version %}
+  <p style="font-size:.85rem;">Rule Set version <strong>v{{ report.rule_set_version.version }}</strong>, confirmed by {{ report.rule_set_version.confirmed_by or '(not confirmed)' }}{% if report.rule_set_version.confirmed_at %} on {{ report.rule_set_version.confirmed_at.strftime('%Y-%m-%d') }}{% endif %}.</p>
+  {% if report.rule_set_summary %}<p class="muted" style="font-size:.78rem;">{{ report.rule_set_summary }}</p>{% endif %}
+  {% else %}
+  <p class="empty">This Application is not linked to a Session Rule Set version.</p>
+  {% endif %}
+</div>
+
+<!-- D/E. Primary Screening + internal Priority Index + Evidence -->
+<div class="card">
+  <h2>D. Primary Screening &amp; E. Evidence</h2>
+  <p class="muted" style="font-size:.78rem;">The internal Priority Index below is shown ONLY in this Audit context — it is never shown in the ordinary Selezionatore operational UI.</p>
+  {% for ra in report.screening_runs %}
+  <h3 style="font-size:.85rem;">Run #{{ ra.run.id }} ({{ ra.run.created_at.strftime('%Y-%m-%d %H:%M') if ra.run.created_at else '' }}) — internal Priority Index: {{ '%.2f'|format(ra.resulting_priority_index) }} {% if ra.has_active_hard_disqualifier %}<span class="badge status-failed">Active Hard Disqualifier</span>{% endif %}</h3>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Criterion (rule v)</th><th>Coefficient</th><th>Direction</th><th>Status</th><th>Level</th><th>Contribution</th><th>Evidence source</th><th>Confidence</th><th>Origin</th></tr></thead>
+    <tbody>
+      {% for row in ra.rows %}
+      <tr>
+        <td>{{ row.criterion_name }} (v{{ row.rule_version }})</td>
+        <td>{{ row.coefficient }}</td>
+        <td>{{ row.direction }}</td>
+        <td>{{ row.status }}</td>
+        <td>{{ row.effective_level if row.effective_level is not none else 'INSUFFICIENT EVIDENCE' }}</td>
+        <td>{{ '%.2f'|format(row.contribution) }}</td>
+        <td>{{ row.evidence_source or '-' }}</td>
+        <td>{{ row.confidence or '-' }}</td>
+        <td>{{ row.origin }}{% if row.hard_disqualifier_overridden %} (Hard Disqualifier overridden: {{ row.hard_disqualifier_override_reason }}){% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Primary Screening Run exists yet.</p>
+  {% endfor %}
+
+  {% if report.application_answers %}
+  <h3 style="font-size:.85rem; margin-top:.8rem;">First-Screening Application Answers (candidate self-reported)</h3>
+  <ul style="font-size:.82rem;">
+    {% for a in report.application_answers %}<li>{{ a.question_definition.question_text }} (v{{ a.question_version }}) &mdash; <strong>{{ a.raw_answer }}</strong> ({{ a.answered_at.strftime('%Y-%m-%d %H:%M') }})</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if report.missing_evidence_questionnaires %}
+  <h3 style="font-size:.85rem; margin-top:.8rem;">Missing-Evidence Questionnaires</h3>
+  {% for q in report.missing_evidence_questionnaires %}
+  <p style="font-size:.82rem;">Questionnaire #{{ q.id }} — {{ q.status }} (created {{ q.created_at.strftime('%Y-%m-%d %H:%M') }}{% if q.completed_at %}, completed {{ q.completed_at.strftime('%Y-%m-%d %H:%M') }}{% endif %})</p>
+  {% endfor %}
+  {% endif %}
+</div>
+
+<!-- F. Interviews / Practical -->
+<div class="card">
+  <h2>F. Interviews / Practical</h2>
+  <p style="font-size:.85rem;">Phone Interview Plan: {{ 'present (' ~ report.phone_plan.question_instances|length ~ ' questions)' if report.phone_plan else 'none' }}</p>
+  <p style="font-size:.85rem;">In-Person/Practical Plan: {{ 'present (' ~ report.in_person_plan.item_instances|length ~ ' items)' if report.in_person_plan else 'none' }}</p>
+</div>
+
+<!-- G. Consistency -->
+<div class="card">
+  <h2>G. Consistency</h2>
+  {% if report.consistency_threads %}
+  <ul style="font-size:.82rem;">
+    {% for t in report.consistency_threads %}<li>{{ t.topic }} — {{ t.comparison_status }}</li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">No Consistency Threads.</p>
+  {% endif %}
+</div>
+
+<!-- H. Trainable Gaps -->
+<div class="card">
+  <h2>H. Trainable Gaps</h2>
+  {% if report.trainable_gaps %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Capability</th><th>RF-One initial level</th><th>Selezionatore level</th><th>Effective</th><th>Override reason</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for g in report.trainable_gaps %}
+      <tr>
+        <td>{{ g.missing_capability }}</td>
+        <td>{{ g.rf_one_initial_level }}</td>
+        <td>{{ g.selezionatore_initial_level if g.selezionatore_initial_level is not none else '-' }}</td>
+        <td>{{ g.effective_initial_level }}</td>
+        <td>{{ g.override_reason or '-' }}</td>
+        <td>{{ g.status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Trainable Gaps identified.</p>
+  {% endif %}
+</div>
+
+<!-- I. Decisions / Outcomes -->
+<div class="card">
+  <h2>I. Decisions / Outcomes</h2>
+  <h3 style="font-size:.85rem;">Outcome History</h3>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>When</th><th>Outcome</th><th>Reopen?</th><th>Reason</th><th>By</th></tr></thead>
+    <tbody>
+      {% for d in report.outcome_history %}
+      <tr><td>{{ d.created_at.strftime('%Y-%m-%d %H:%M') }}</td><td>{{ d.outcome_definition_snapshot.name }}</td><td>{{ 'Yes' if d.is_reopen_event else '' }}</td><td>{{ d.reason or '-' }}</td><td>{{ d.performed_by or '-' }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <h3 style="font-size:.85rem; margin-top:.6rem;">Stage History</h3>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>When</th><th>Stage</th><th>By</th></tr></thead>
+    <tbody>
+      {% for t in report.stage_history %}
+      <tr><td>{{ t.created_at.strftime('%Y-%m-%d %H:%M') }}</td><td>{{ t.new_stage }}</td><td>{{ t.performed_by or '-' }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<!-- J. Events / Communication -->
+<div class="card">
+  <h2>J. Events / Communication</h2>
+  <p class="muted" style="font-size:.78rem;">An Event/Communication is preserved exactly as received — it never itself becomes a Decision unless a separate, explicit Outcome/Stage action was also recorded above.</p>
+  <h3 style="font-size:.85rem;">Candidate Events (factual reports, never decisions)</h3>
+  {% if report.information_events %}
+  <ul style="font-size:.82rem;">{% for e in report.information_events %}<li>{{ e.created_at.strftime('%Y-%m-%d %H:%M') }} — {{ e.note_text }}</li>{% endfor %}</ul>
+  {% else %}<p class="empty">None.</p>{% endif %}
+  <h3 style="font-size:.85rem; margin-top:.6rem;">Outbound Communications</h3>
+  <ul style="font-size:.82rem;">
+    {% for c in report.outbound_communications %}<li>{{ c.created_at.strftime('%Y-%m-%d %H:%M') }} — {{ c.trigger_event }}{% if c.is_reminder %} (reminder #{{ c.reminder_sequence_number }}){% endif %}{% if c.no_response_stop_applied %} <span class="badge status-failed">Automatic NO RESPONSE STOP</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  <h3 style="font-size:.85rem; margin-top:.6rem;">Inbound Communications</h3>
+  <ul style="font-size:.82rem;">
+    {% for i in report.inbound_communications %}<li>{{ i.received_at.strftime('%Y-%m-%d %H:%M') }} — "{{ i.raw_text }}" &rarr; system: {{ i.classification_system }}, effective: {{ i.classification_effective }}{% if i.classification_corrected_by %} (corrected by {{ i.classification_corrected_by }}){% endif %}</li>
+    {% endfor %}
+  </ul>
+  <h3 style="font-size:.85rem; margin-top:.6rem;">Scheduling History</h3>
+  <ul style="font-size:.82rem;">
+    {% for a in report.scheduling_history %}<li>{{ a.interview_stage }} — {{ a.slot_start_at.strftime('%Y-%m-%d %H:%M') }} — {{ a.status }}{% if a.previous_appointment_id %} (rescheduled from #{{ a.previous_appointment_id }}){% endif %}</li>{% endfor %}
+  </ul>
+</div>
+
+<!-- K. Rule / Ownership Changes -->
+<div class="card">
+  <h2>K. Rule / Ownership Changes</h2>
+  <h3 style="font-size:.85rem;">Ownership History</h3>
+  <ul style="font-size:.82rem;">
+    {% for o in report.ownership_history %}<li>{{ o.started_at.strftime('%Y-%m-%d %H:%M') }} — {{ o.owner_name }}{% if o.reason %} ({{ o.reason }}){% endif %}</li>{% endfor %}
+  </ul>
+  <h3 style="font-size:.85rem; margin-top:.6rem;">Rule Changes During This Session</h3>
+  {% if report.rule_changes %}
+  <ul style="font-size:.82rem;">
+    {% for rc in report.rule_changes %}
+    <li>
+      v{{ rc.rule_change.previous_version.version if rc.rule_change.previous_version else '?' }} &rarr; v{{ rc.rule_change.new_version.version }}
+      — scope: {{ rc.rule_change.scope }} — {{ rc.rule_change.reason }}
+      {% if rc.impact_on_this_application %} — this Application was impacted: {{ rc.impact_on_this_application.review_status }}{% else %} — this Application was not impacted{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="empty">No Rule Changes recorded for this Session.</p>{% endif %}
+</div>
+
+<!-- L. Compliance Context -->
+<div class="card">
+  <h2>L. Compliance Context</h2>
+  {% if report.compliance_context %}
+  {% for c in report.compliance_context %}
+  <div class="context-note" style="font-size:.82rem; margin-bottom:.4rem;">
+    <strong>{{ c.criterion_name }}</strong>:
+    {% for w in c.warnings %}{{ w.severity|replace('_',' ') }} — {{ w.explanation }}<br>{% endfor %}
+    {% if c.latest_disposition %}Human decision: {{ c.latest_disposition.action|replace('_',' ')|title }}{% if c.latest_disposition.reason %} ({{ c.latest_disposition.reason }}){% endif %}{% endif %}
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="empty">No Compliance warnings affect any Criterion used in this Application's Primary Screening.</p>
+  {% endif %}
+</div>
+
+<!-- M. Complete Notes -->
+<div class="card">
+  <h2>M. Complete Notes (chronological)</h2>
+  {% if report.notes_history %}
+  <ul style="font-size:.82rem;">
+    {% for n in report.notes_history %}<li>{{ n.created_at.strftime('%Y-%m-%d %H:%M') if n.created_at else '' }} [{{ n.context_label }}]{% if n.author %} ({{ n.author }}){% endif %} — {{ n.note_text }}</li>{% endfor %}
+  </ul>
+  {% else %}<p class="empty">No notes.</p>{% endif %}
+</div>
+
+<!-- Repeated Applicant History -->
+<div class="card">
+  <h2>Repeated-Applicant History</h2>
+  <p style="font-size:.85rem;">{{ report.prior_applications|length }} prior Application(s) by this CandidatePerson.</p>
+  {% if report.prior_applications %}
+  <ul style="font-size:.82rem;">
+    {% for p in report.prior_applications %}<li>Application #{{ p.id }} — {{ p.target_role }} — applied {{ p.applied_at.strftime('%Y-%m-%d') }} — lifecycle: {{ p.lifecycle_state }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% if report.training_check_flags %}<p style="font-size:.85rem;">Training Check history: {{ report.training_check_flags|length }} flag(s) on record.</p>{% endif %}
+</div>
+
+<!-- N. Chronological Timeline -->
+<div class="card">
+  <h2>N. Chronological Timeline</h2>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>When</th><th>Kind</th><th>What</th></tr></thead>
+    <tbody>
+      {% for e in report.timeline %}
+      <tr><td>{{ e.at.strftime('%Y-%m-%d %H:%M') if e.at else '-' }}</td><td>{{ e.kind|replace('_',' ')|title }}</td><td>{{ e.description }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+{% endblock %}

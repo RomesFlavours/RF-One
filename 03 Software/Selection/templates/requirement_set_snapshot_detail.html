@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('requirement_set_detail', requirement_set_id=requirement_set_id) }}">&larr; Back to Requirement Set</a>
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Snapshot of</div>
+      <div class="value">{{ snapshot.name }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Version captured</div>
+      <div class="value">v{{ snapshot.version }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Target Role</div>
+      <div class="value">{{ snapshot.target_role or '-' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Created</div>
+      <div class="value" style="font-size:.9rem;">{{ snapshot.created_at.strftime('%Y-%m-%d %H:%M') if snapshot.created_at else '-' }}</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.8rem;">
+    Read-only, immutable historical record — this snapshot cannot be edited. It reflects exactly what this
+    Requirement Set contained at version {{ snapshot.version }}, regardless of any changes made to the live
+    Requirement Set since.
+    {% if snapshot.location_label %}Location: {{ snapshot.location_label }}.{% endif %}
+    Was {{ 'active' if snapshot.was_active else 'inactive' }} at capture time.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Requirements captured ({{ snapshot.items|length }})</h2>
+  {% if snapshot.items %}
+    {% for r in snapshot.items %}
+    <div class="requirement-card {{ '' if r.was_active else 'inactive' }}">
+      <div class="req-title">
+        {{ r.name }}
+        <span class="badge crit-{{ r.criticality|lower|replace('_','-') }}">{{ r.criticality|replace('_',' ') }}</span>
+        <span class="badge">{{ r.trainability|replace('_',' ') }}</span>
+        {% if r.category %}<span class="badge">{{ r.category }}</span>{% endif %}
+        {% if not r.was_active %}<span class="badge status-failed">WAS INACTIVE</span>{% endif %}
+      </div>
+      <p class="muted" style="font-size:.8rem; margin:.3rem 0;">
+        Assessed at: {{ r.assessment_stages|join(', ')|replace('_',' ') if r.assessment_stages else '(none set)' }}
+      </p>
+      {% if r.description %}<p style="font-size:.85rem; margin:.3rem 0;">{{ r.description }}</p>{% endif %}
+      {% if r.evidence_positive or r.evidence_contrary or r.evidence_insufficient or r.guidance_notes %}
+      <div class="indicator-list" style="font-size:.8rem;">
+        {% if r.evidence_positive %}<div class="indicator-row"><span>Positive evidence</span><span>{{ r.evidence_positive }}</span></div>{% endif %}
+        {% if r.evidence_contrary %}<div class="indicator-row"><span>Contrary evidence</span><span>{{ r.evidence_contrary }}</span></div>{% endif %}
+        {% if r.evidence_insufficient %}<div class="indicator-row"><span>Insufficient evidence</span><span>{{ r.evidence_insufficient }}</span></div>{% endif %}
+        {% if r.guidance_notes %}<div class="indicator-row"><span>Guidance</span><span>{{ r.guidance_notes }}</span></div>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">This snapshot captured no requirements.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

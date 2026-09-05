@@ -1,0 +1,425 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('applications_home') }}">&larr; Back to Applications</a>
+
+<div class="card">
+  <div class="dossier-section-head">
+    <div></div>
+    <a class="btn" href="{{ url_for('application_dossier', application_id=application.id) }}">Open Candidate Dossier &rarr;</a>
+  </div>
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Candidate</div>
+      <div class="value">{{ application.candidate.full_name or '(name not extracted)' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Target Role</div>
+      <div class="value">{{ application.target_role or '-' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Applied</div>
+      <div class="value" style="font-size:.95rem;">{{ application.applied_at.strftime('%Y-%m-%d %H:%M') if application.applied_at else '-' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Workflow Status</div>
+      <div class="value"><span class="badge workflow-{{ application.workflow_status|lower }}">{{ application.workflow_status|replace('_',' ') }}</span></div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Review Priority (effective)</div>
+      <div class="value">
+        <span class="badge priority-{{ (application.review_priority_effective or 'STANDARD')|lower }}">
+          {{ (application.review_priority_effective or 'STANDARD')|replace('_',' ') }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <p class="muted" style="font-size:.8rem;">
+    <a href="{{ url_for('candidate_detail', candidate_id=application.candidate_id) }}">View full résumé / candidate evidence</a>
+    &middot;
+    {% if original_cv_available %}
+    <a class="cv-link" href="{{ url_for('candidate_original_cv', candidate_id=application.candidate_id) }}" target="_blank" rel="noopener">Open Original CV &#8599;</a>
+    {% else %}
+    <span class="muted">Original CV unavailable</span>
+    {% endif %}
+  </p>
+
+  <p class="muted" style="font-size:.8rem;">
+    System-proposed priority: <span class="badge priority-{{ (application.review_priority_system or 'STANDARD')|lower }}">{{ (application.review_priority_system or 'STANDARD')|replace('_',' ') }}</span>
+    &middot; Origin: <span class="badge origin-{{ application.review_priority_origin|lower }}">{{ application.review_priority_origin|replace('_',' ') }}</span>
+    {% if application.review_priority_origin == 'HUMAN_OVERRIDDEN' %}
+      &middot; Overridden {{ application.review_priority_overridden_at.strftime('%Y-%m-%d %H:%M') if application.review_priority_overridden_at else '' }}
+      {% if application.review_priority_override_reason %} — Reason: {{ application.review_priority_override_reason }}{% endif %}
+    {% endif %}
+  </p>
+  {% if application.review_priority_reasons %}
+  <div class="context-note" style="font-size:.8rem;">
+    <strong>Why:</strong>
+    <ul class="reason-list" style="font-size:.8rem;">
+      {% for reason in application.review_priority_reasons %}<li>{{ reason }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('application_refresh_signals', application_id=application.id) }}" class="inline-form">
+    <button type="submit" class="btn secondary">Refresh résumé-stage Signals</button>
+  </form>
+  <form method="post" action="{{ url_for('application_priority_confirm', application_id=application.id) }}" class="inline-form">
+    <button type="submit" class="btn secondary">Confirm current priority</button>
+  </form>
+
+  <details class="edit-toggle">
+    <summary>Override Review Priority</summary>
+    <form method="post" action="{{ url_for('application_priority_override', application_id=application.id) }}" class="req-form">
+      <label>New priority</label>
+      <select name="new_priority">
+        {% for p in priority_categories %}<option value="{{ p }}" {{ 'selected' if p == application.review_priority_effective else '' }}>{{ p|replace('_',' ') }}</option>{% endfor %}
+      </select>
+      <label>Reason</label>
+      <textarea name="reason" placeholder="Selezionatore's reason for this override"></textarea>
+      <button type="submit" class="btn" style="margin-top:.6rem;">Override priority</button>
+    </form>
+  </details>
+
+  <details class="edit-toggle">
+    <summary>Target role / Outcome</summary>
+    <form method="post" action="{{ url_for('application_set_target_role', application_id=application.id) }}" class="req-form">
+      <label>Target role for THIS Application (e.g. LINE_COOK, SERVER — may differ from a prior Application by the same person)</label>
+      <input type="text" name="target_role" value="{{ application.target_role or '' }}">
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save target role</button>
+    </form>
+    <form method="post" action="{{ url_for('application_set_outcome', application_id=application.id) }}" class="req-form">
+      <label>Historical outcome</label>
+      <select name="outcome">
+        <option value="">(none yet)</option>
+        {% for o in outcome_options %}<option value="{{ o }}" {{ 'selected' if o == application.outcome else '' }}>{{ o|replace('_',' ')|title }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save outcome</button>
+    </form>
+  </details>
+</div>
+
+<div class="card">
+  <h2>Workflow Status</h2>
+  <p class="muted" style="font-size:.8rem;">
+    A separate operational decision from Review Priority — Review Priority NEVER sets this; only the Selezionatore does.
+  </p>
+  <form method="post" action="{{ url_for('application_set_workflow_status', application_id=application.id) }}" class="req-form">
+    <label>New status</label>
+    <select name="new_status">
+      {% for s in workflow_statuses %}<option value="{{ s }}" {{ 'selected' if s == application.workflow_status else '' }}>{{ s|replace('_',' ') }}</option>{% endfor %}
+    </select>
+    <label>Reason (recorded alongside ADVANCE TO PHONE / HOLD / STOP)</label>
+    <textarea name="reason" placeholder="e.g. Relevant recent experience and strong apparent fit.">{{ application.workflow_status_reason or '' }}</textarea>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Save workflow status</button>
+  </form>
+  {% if application.workflow_status_updated_at %}
+  <p class="muted" style="font-size:.76rem; margin-top:.4rem;">
+    Last changed {{ application.workflow_status_updated_at.strftime('%Y-%m-%d %H:%M') }}.
+    {% if application.workflow_status_reason %}Reason: {{ application.workflow_status_reason }}{% endif %}
+  </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Stage &amp; Outcome</h2>
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Current Stage</div>
+      <div class="value"><span class="badge stage-{{ application.current_stage|lower }}">{{ application.current_stage|replace('_',' ') }}</span></div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Current Outcome</div>
+      <div class="value">{{ current_outcome_decision.outcome_definition_snapshot.name if current_outcome_decision else '(none applied yet)' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Lifecycle</div>
+      <div class="value"><span class="badge lifecycle-{{ application.lifecycle_state|lower }}">{{ application.lifecycle_state }}</span></div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Current Queue</div>
+      <div class="value">{{ current_queue.name if current_queue else '(none assigned)' }}</div>
+    </div>
+  </div>
+  {% if active_flags %}
+  <p style="font-size:.82rem;">
+    <strong>Active Candidate Flags:</strong>
+    {% for flag in active_flags %}<span class="badge flag-{{ flag.operational_effect|lower }}">{{ flag.name }}</span>{% endfor %}
+  </p>
+  {% endif %}
+  <p class="muted" style="font-size:.8rem;">
+    <a href="{{ url_for('application_decision', application_id=application.id) }}">Open full Decision Summary &rarr;</a>
+    — Stage movement, Outcome application, Queue movement, Candidate Flags, evidence overview, and the complete Selection Notes History.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Primary Screening</h2>
+  {% if primary_screening_run %}
+  <p style="font-size:.85rem;">
+    {% if primary_screening_run.has_active_hard_disqualifier %}<span class="badge status-failed">HARD DISQUALIFIER</span>{% endif %}
+    <a href="{{ url_for('primary_screening_detail', run_id=primary_screening_run.id) }}">Open Primary Screening &rarr;</a>
+  </p>
+  <p class="muted" style="font-size:.8rem;">{{ primary_screening_run.explanation or '' }}</p>
+  {% else %}
+  <p class="muted" style="font-size:.82rem;">No Primary Screening run yet for this Application.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('primary_screening_run_create', application_id=application.id) }}" class="inline-form">
+    <button type="submit" class="btn secondary">{{ 'Re-run Primary Screening' if primary_screening_run else 'Run Primary Screening' }}</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Phone Interview</h2>
+  {% if phone_interview_plan %}
+  <p style="font-size:.85rem;">
+    Status: <span class="badge">{{ phone_interview_plan.status|replace('_',' ') }}</span>
+    &middot; <a href="{{ url_for('phone_interview_detail', plan_id=phone_interview_plan.id) }}">Open Phone Interview Plan &rarr;</a>
+  </p>
+  {% elif has_fit_assessment %}
+  <p class="muted" style="font-size:.82rem;">No Phone Interview Plan yet for this Application.</p>
+  <form method="post" action="{{ url_for('phone_interview_create', application_id=application.id) }}" class="inline-form">
+    <button type="submit" class="btn">Create Phone Interview Plan</button>
+  </form>
+  {% else %}
+  <p class="empty">A Fit Assessment must exist for this candidate before a Phone Interview Plan can be created.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>In-Person Interview</h2>
+  {% if in_person_interview_plan %}
+  <p style="font-size:.85rem;">
+    Status: <span class="badge">{{ in_person_interview_plan.status|replace('_',' ') }}</span>
+    &middot; <a href="{{ url_for('in_person_interview_detail', plan_id=in_person_interview_plan.id) }}">Open In-Person Interview Plan &rarr;</a>
+  </p>
+  {% elif has_fit_assessment %}
+  <p class="muted" style="font-size:.82rem;">No In-Person Interview Plan yet for this Application.</p>
+  <form method="post" action="{{ url_for('in_person_interview_create', application_id=application.id) }}" class="inline-form">
+    <button type="submit" class="btn">Create In-Person Interview Plan</button>
+  </form>
+  {% else %}
+  <p class="empty">A Fit Assessment must exist for this candidate before an In-Person Interview Plan can be created.</p>
+  {% endif %}
+</div>
+
+{% if pending_matches %}
+<div class="card">
+  <h2>Possible Existing CandidatePerson</h2>
+  <p class="muted" style="font-size:.8rem;">
+    Identity resolution found a name-based match that is NOT confirmed by an exact email/phone match — it is never
+    merged automatically. Confirm only if you recognize this as genuinely the same person; otherwise reject to keep
+    the records separate.
+  </p>
+  {% for match in pending_matches %}
+  <div class="match-card">
+    <div class="req-title">
+      Possible match: {{ match.suggested_person.full_name or '(name not extracted)' }}
+      <span class="badge confidence-{{ match.confidence|lower }}">{{ match.confidence|replace('_',' ') }}</span>
+    </div>
+    <p style="font-size:.82rem; margin:.3rem 0;">{{ match.match_basis }}</p>
+    <p class="muted" style="font-size:.76rem;">
+      Suggested person contact: {{ match.suggested_person.primary_email or '(no email on file)' }}
+      {% if match.suggested_person.primary_phone %} &middot; {{ match.suggested_person.primary_phone }}{% endif %}
+    </p>
+    <form method="post" action="{{ url_for('identity_match_confirm', match_id=match.id) }}" class="req-form">
+      <input type="hidden" name="next" value="{{ url_for('application_detail', application_id=application.id) }}">
+      <label>Note (optional)</label>
+      <textarea name="note" placeholder="Why this is confirmed to be the same person"></textarea>
+      <button type="submit" class="btn" style="margin-top:.6rem;">Confirm — same person</button>
+    </form>
+    <form method="post" action="{{ url_for('identity_match_reject', match_id=match.id) }}" class="req-form">
+      <input type="hidden" name="next" value="{{ url_for('application_detail', application_id=application.id) }}">
+      <label>Note (optional)</label>
+      <textarea name="note" placeholder="Why these are different people"></textarea>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Reject — keep separate</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<details class="edit-toggle">
+  <summary>Manually reassign this Application to a different CandidatePerson</summary>
+  <div class="card">
+    <p class="muted" style="font-size:.8rem;">
+      Only the Application moves — its CV, Fit Assessment, Signal Observations and notes stay exactly as they are.
+    </p>
+    <form method="post" action="{{ url_for('application_reassign_person', application_id=application.id) }}" class="req-form">
+      <label>Correct CandidatePerson</label>
+      <select name="target_person_id">
+        {% for p in other_persons %}<option value="{{ p.id }}">{{ p.full_name or '(name not extracted)' }} — {{ p.primary_email or p.primary_phone or 'no contact on file' }}</option>{% endfor %}
+      </select>
+      <label>Note (optional)</label>
+      <textarea name="note"></textarea>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Reassign</button>
+    </form>
+  </div>
+</details>
+
+<div class="card">
+  <h2>Application History (this person) — {{ prior_applications|length }} prior application(s)</h2>
+  {% if prior_applications %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Applied</th><th>Target Role</th><th>Outcome</th><th>Notes at the time</th><th></th></tr></thead>
+    <tbody>
+      {% for p in prior_applications %}
+      <tr>
+        <td>{{ p.applied_at.strftime('%Y-%m-%d') if p.applied_at else '-' }}</td>
+        <td>{{ p.target_role or '-' }}</td>
+        <td>{{ p.outcome or '-' }}</td>
+        <td>{{ p.note_entries|length }} note(s)</td>
+        <td><a href="{{ url_for('application_detail', application_id=p.id) }}">View</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if change_summary %}
+  <div class="context-note" style="font-size:.82rem; margin-top:.8rem;">
+    <strong>What changed since the most recent prior application:</strong>
+    <ul class="reason-list" style="font-size:.8rem;">
+      {% for line in change_summary.changes %}<li>{{ line }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="empty">No prior Applications found for this person.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Selezionatore Notes ({{ notes|length }})</h2>
+  <p class="muted" style="font-size:.8rem;">
+    Free-form notes, kept separate from evidence — they never change a Fit Assessment or Signal Observation on their own.
+  </p>
+  <form method="post" action="{{ url_for('application_add_note_entry', application_id=application.id) }}" class="req-form">
+    <label>Add a note</label>
+    <textarea name="note_text" placeholder="e.g. Fourth application with no meaningful change since prior review."></textarea>
+    <button type="submit" class="btn secondary" style="margin-top:.6rem;">Add note</button>
+  </form>
+  {% if notes %}
+  {% for note in notes %}
+  <div class="note-entry">
+    <div class="note-time">{{ note.created_at.strftime('%Y-%m-%d %H:%M') if note.created_at else '' }}</div>
+    <div>{{ note.note_text }}</div>
+  </div>
+  {% endfor %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Selection Signals ({{ observations|length }})</h2>
+  {% if observations %}
+    {% for o in observations %}
+    {% set d = o.signal_definition %}
+    <div class="signal-card">
+      <div class="req-title">
+        {{ d.name }}
+        <span class="badge">{{ d.signal_family|replace('_',' ')|title }}</span>
+        <span class="badge signal-{{ o.status|lower }}">{{ o.status|replace('_',' ') }}</span>
+        {% if o.confidence %}<span class="muted" style="font-size:.72rem;">confidence: {{ o.confidence }}</span>{% endif %}
+        <span class="badge origin-{{ o.origin|lower }}">{{ o.origin|replace('_',' ') }}</span>
+      </div>
+      {% if d.description %}<p style="font-size:.85rem; margin:.3rem 0;">{{ d.description }}</p>{% endif %}
+      <p class="muted" style="font-size:.78rem; margin:.3rem 0;">
+        Assessable at: {{ d.assessment_stages|join(', ')|replace('_',' ') if d.assessment_stages else '(none set)' }}
+      </p>
+
+      {% if o.status == 'NOT_ASSESSED' %}
+      <p class="context-note" style="font-size:.8rem;">
+        Not legitimately assessable with evidence available now — this is NOT the same as "not detected."
+        No inference was attempted for this Signal.
+      </p>
+      {% endif %}
+
+      {% if o.detected_pattern %}
+      <p style="font-size:.82rem; margin:.3rem 0;"><strong>Detected pattern:</strong> {{ o.detected_pattern }}</p>
+      {% endif %}
+
+      <h3 style="font-size:.85rem; margin:.6rem 0 .3rem;">Evidence ({{ o.evidence_items|length }})</h3>
+      {% if o.evidence_items %}
+        {% for e in o.evidence_items %}
+        <div class="evidence-row {{ e.evidence_relationship|lower }}">
+          <strong>{{ e.evidence_relationship }}</strong> &middot; {{ e.source_type|replace('_',' ') }}
+          &middot; {{ e.evidence_classification }} &middot; confidence {{ e.confidence }}
+          {% if not e.is_system_generated %}<span class="badge">human-added</span>{% endif %}
+          {% if e.evidence_text %}<div>{{ e.evidence_text }}</div>{% endif %}
+          {% if e.explanation %}<div class="muted" style="font-size:.76rem;">{{ e.explanation }}</div>{% endif %}
+          {% if e.source_reference %}<div class="muted" style="font-size:.72rem;">Source: {{ e.source_reference }}{% if e.source_stage %} ({{ e.source_stage }}){% endif %}</div>{% endif %}
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="empty" style="font-size:.82rem;">No evidence recorded.</p>
+      {% endif %}
+
+      {% if o.rationale %}<p class="muted" style="font-size:.8rem; margin-top:.4rem;"><strong>Rationale:</strong> {{ o.rationale }}</p>{% endif %}
+
+      <div style="margin-top:.6rem;">
+        <form method="post" action="{{ url_for('signal_observation_confirm', application_id=application.id, observation_id=o.id) }}" class="inline-form">
+          <button type="submit" class="btn secondary" style="font-size:.78rem; padding:.35rem .8rem;">Confirm current status</button>
+        </form>
+      </div>
+
+      <details class="edit-toggle">
+        <summary>Add evidence</summary>
+        <form method="post" action="{{ url_for('signal_observation_add_evidence', application_id=application.id, observation_id=o.id) }}" class="req-form">
+          <label>Source type</label>
+          <select name="source_type" required>
+            {% for s in evidence_source_types %}<option value="{{ s }}">{{ s|replace('_',' ') }}</option>{% endfor %}
+          </select>
+          <label>Source stage</label>
+          <select name="source_stage">
+            <option value="">(unspecified)</option>
+            {% for s in assessment_stages %}<option value="{{ s }}">{{ s|replace('_',' ') }}</option>{% endfor %}
+          </select>
+          <label>Evidence text</label>
+          <textarea name="evidence_text"></textarea>
+          <label>Classification</label>
+          <select name="evidence_classification" required>
+            {% for c in evidence_classifications %}<option value="{{ c }}">{{ c|replace('_',' ') }}</option>{% endfor %}
+          </select>
+          <label>Relationship to this Signal</label>
+          <select name="evidence_relationship" required>
+            {% for r in evidence_relationships %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+          </select>
+          <label>Confidence</label>
+          <select name="confidence">
+            {% for c in confidence_levels %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+          </select>
+          <label>Source reference (optional)</label>
+          <input type="text" name="source_reference">
+          <label>Explanation (optional)</label>
+          <textarea name="explanation"></textarea>
+          <button type="submit" class="btn" style="margin-top:.6rem;">Add evidence</button>
+        </form>
+      </details>
+
+      <details class="edit-toggle">
+        <summary>Override status</summary>
+        <form method="post" action="{{ url_for('signal_observation_override', application_id=application.id, observation_id=o.id) }}" class="req-form">
+          <label>New status</label>
+          <select name="new_status">
+            {% for s in signal_statuses %}<option value="{{ s }}" {{ 'selected' if s == o.status else '' }}>{{ s|replace('_',' ') }}</option>{% endfor %}
+          </select>
+          <label>Reason</label>
+          <textarea name="reason"></textarea>
+          <button type="submit" class="btn" style="margin-top:.6rem;">Override</button>
+        </form>
+        {% if o.origin == 'HUMAN_OVERRIDDEN' %}
+        <p class="muted" style="font-size:.76rem; margin-top:.4rem;">
+          Overridden {{ o.overridden_at.strftime('%Y-%m-%d %H:%M') if o.overridden_at else '' }}.
+          {% if o.override_reason %}Reason: {{ o.override_reason }}{% endif %}
+        </p>
+        {% endif %}
+      </details>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No Signal Observations yet — click "Refresh résumé-stage Signals" above.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

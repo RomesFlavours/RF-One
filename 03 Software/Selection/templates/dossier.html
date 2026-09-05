@@ -1,0 +1,639 @@
+{% extends "base.html" %}
+{% block content %}
+{% set summary = dossier.decision_summary %}
+
+<a class="back-link" href="{{ url_for('application_detail', application_id=application.id) }}">&larr; Back to Application</a>
+
+<div class="card">
+  <div class="dossier-section-head">
+    <h1 style="margin-bottom:0;">Candidate Dossier</h1>
+    <span>
+      <a class="btn secondary" href="{{ url_for('application_decision', application_id=application.id) }}" style="font-size:.8rem;">Full Decision Summary &rarr;</a>
+      <a class="btn secondary" href="{{ url_for('application_audit', application_id=application.id) }}" style="font-size:.8rem;">Selection Audit / Explainability &rarr;</a>
+    </span>
+  </div>
+  <p class="quick-read">A ~2-3 minute read of this Application's entire Selection journey. Never a hiring recommendation.</p>
+
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Candidate</div>
+      <div class="value">{{ application.candidate.full_name or '(name not extracted)' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Target Role</div>
+      <div class="value">{{ application.target_role or '-' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Applied</div>
+      <div class="value" style="font-size:.95rem;">{{ application.applied_at.strftime('%Y-%m-%d %H:%M') if application.applied_at else '-' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Current Stage</div>
+      <div class="value"><span class="badge stage-{{ summary.current_stage|lower }}">{{ summary.current_stage|replace('_',' ') }}</span></div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Current Outcome</div>
+      <div class="value">{{ summary.current_outcome_decision.outcome_definition_snapshot.name if summary.current_outcome_decision else '(none applied yet)' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Lifecycle</div>
+      <div class="value"><span class="badge lifecycle-{{ summary.lifecycle_state|lower }}">{{ summary.lifecycle_state }}</span></div>
+    </div>
+  </div>
+
+  <p class="muted" style="font-size:.8rem;">
+    {% if original_cv_available %}
+    <a class="cv-link" href="{{ url_for('candidate_original_cv', candidate_id=application.candidate_id) }}" target="_blank" rel="noopener">Open Original CV &#8599;</a>
+    {% else %}
+    <span class="muted">Original CV unavailable</span>
+    {% endif %}
+    &middot; <a href="{{ url_for('candidate_detail', candidate_id=application.candidate_id) }}">View résumé / candidate evidence</a>
+    {% if dossier.prior_applications %}
+    &middot; <span class="badge">Repeated applicant &mdash; {{ dossier.prior_applications|length }} prior application(s)</span>
+    {% endif %}
+  </p>
+
+  {% if summary.reminders %}
+  <div class="context-note" style="font-size:.82rem;">
+    <strong>Open follow-up(s):</strong>
+    {% for r in summary.reminders %}{{ r.note_text }}{% if r.due_date %} (due {{ r.due_date.strftime('%Y-%m-%d') }}){% endif %}{% if not loop.last %}; {% endif %}{% endfor %}
+  </div>
+  {% endif %}
+  {% if dossier.training_check_flags %}
+  <div class="context-note" style="font-size:.82rem; border-color:#e2a8a0;">
+    <strong>Candidate history:</strong> Training Check Not Passed is on record for this person.
+    {% for f in dossier.training_check_flags %}{% if not f.is_active %}(historical, no longer active){% endif %}{% endfor %}
+    This is historical information only — it does not automatically reject this Application.
+  </div>
+  {% endif %}
+</div>
+
+<!-- ==================================================================
+     Selection Session / Ownership (Task 5C §27/§31) — minimal addition,
+     never a redesign of the Dossier.
+     ================================================================== -->
+{% set sc = dossier.session_context %}
+{% if sc.session %}
+<div class="card">
+  <div class="dossier-section-head"><h2 style="margin:0;">Selection Session</h2></div>
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Session</div>
+      <div class="value" style="font-size:.95rem;"><a href="{{ url_for('session_detail', session_id=sc.session.id) }}">{{ sc.session.name }}</a></div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Role</div>
+      <div class="value" style="font-size:.95rem;">{{ sc.session.target_role }}</div>
+    </div>
+    {% if sc.session.location_label %}
+    <div class="meta-item">
+      <div class="label">Branch / Location</div>
+      <div class="value" style="font-size:.95rem;">{{ sc.session.location_label }}</div>
+    </div>
+    {% endif %}
+    <div class="meta-item">
+      <div class="label">Applicable Rule Set</div>
+      <div class="value" style="font-size:.95rem;">{{ 'v' ~ sc.applicable_rule_set_version.version if sc.applicable_rule_set_version else '(none)' }}</div>
+    </div>
+    {% if sc.was_affected_by_rule_change %}
+    <div class="meta-item">
+      <div class="label">Rule Change</div>
+      <div class="value"><span class="badge status-partial">Affected — review recommended</span></div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="dossier-section-head">
+    <div style="font-size:.85rem;">
+      Owner: <strong>{{ sc.current_owner.owner_name if sc.current_owner else '(unclaimed)' }}</strong>
+      {% if sc.ownership_history_count %}&middot; <a href="{{ url_for('session_detail', session_id=sc.session.id) }}#ownership-{{ application.id }}">Ownership history ({{ sc.ownership_history_count }}) &rarr;</a>{% endif %}
+    </div>
+    {% if not sc.current_owner %}
+    <button type="button" class="pencil-btn" onclick="document.getElementById('modal-take-in-charge').showModal()">Take In Charge</button>
+    {% else %}
+    <button type="button" class="pencil-btn" onclick="document.getElementById('modal-reassign').showModal()">&#9998; Reassign</button>
+    {% endif %}
+  </div>
+
+  <dialog id="modal-take-in-charge" class="edit-modal">
+    <h3>Take Application In Charge</h3>
+    <form method="post" action="{{ url_for('application_take_in_charge', application_id=application.id) }}" class="req-form">
+      <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
+      <label>Your name (Selezionatore)</label>
+      <input type="text" name="owner_name" required>
+      <div class="modal-actions">
+        <button type="button" class="btn secondary" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn">Take In Charge</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="modal-reassign" class="edit-modal">
+    <h3>Reassign Application Ownership</h3>
+    <form method="post" action="{{ url_for('application_reassign', application_id=application.id) }}" class="req-form">
+      <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
+      <label>Acting Selezionatore (current owner, or a Selezionatore with configured superior authority)</label>
+      <input type="text" name="performed_by" required>
+      <label>New owner</label>
+      <input type="text" name="new_owner" required>
+      <label>Reason (mandatory)</label>
+      <textarea name="reason" required></textarea>
+      <div class="modal-actions">
+        <button type="button" class="btn secondary" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn">Reassign</button>
+      </div>
+    </form>
+  </dialog>
+</div>
+{% endif %}
+
+<!-- ==================================================================
+     Primary Screening (task §11) — qualitative factors only; the internal
+     ranking figure computed elsewhere is never rendered on this page.
+     ================================================================== -->
+<div class="card">
+  <div class="dossier-section-head"><h2 style="margin:0;">Primary Screening</h2></div>
+  {% if summary.primary_screening_run %}
+    <p style="font-size:.85rem;">
+      {% if summary.primary_screening_run.has_active_hard_disqualifier %}<span class="badge status-failed">HARD DISQUALIFIER</span>{% endif %}
+      <a href="{{ url_for('primary_screening_detail', run_id=summary.primary_screening_run.id) }}">Open Primary Screening detail &rarr;</a>
+    </p>
+    <div class="section-grid">
+      <div>
+        <h3 style="font-size:.85rem;">Strongest positive factors</h3>
+        {% if dossier.primary_screening_positive %}
+        <ul class="reason-list" style="font-size:.82rem;">
+          {% for e in dossier.primary_screening_positive %}<li>{{ e.criterion_snapshot.name }}{% if e.explanation %} — {{ e.explanation }}{% endif %}</li>{% endfor %}
+        </ul>
+        {% else %}<p class="empty" style="font-size:.8rem;">None yet.</p>{% endif %}
+      </div>
+      <div>
+        <h3 style="font-size:.85rem;">Strongest negative factors</h3>
+        {% if dossier.primary_screening_negative %}
+        <ul class="reason-list" style="font-size:.82rem;">
+          {% for e in dossier.primary_screening_negative %}<li>{{ e.criterion_snapshot.name }}{% if e.explanation %} — {{ e.explanation }}{% endif %}</li>{% endfor %}
+        </ul>
+        {% else %}<p class="empty" style="font-size:.8rem;">None.</p>{% endif %}
+      </div>
+    </div>
+    {% if summary.active_hard_disqualifiers %}
+    <h3 style="font-size:.85rem; margin-top:.6rem;">Active Hard Disqualifier(s)</h3>
+    {% for e in summary.active_hard_disqualifiers %}
+    <div class="dossier-concern-card">
+      <strong>{{ e.criterion_snapshot.name }}</strong> — {{ e.explanation or 'No explanation recorded.' }}
+      <div class="dossier-section-head" style="margin-top:.4rem;">
+        <span class="muted" style="font-size:.76rem;">Not yet overridden.</span>
+        <button type="button" class="pencil-btn" onclick="document.getElementById('modal-hd-{{ e.id }}').showModal()">&#9998; Override</button>
+      </div>
+    </div>
+    <dialog id="modal-hd-{{ e.id }}" class="edit-modal">
+      <h3>Override Hard Disqualifier — {{ e.criterion_snapshot.name }}</h3>
+      <form method="post" action="{{ url_for('primary_screening_override_hard_disqualifier', run_id=summary.primary_screening_run.id, evaluation_id=e.id) }}" class="req-form">
+        <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
+        <label>Acting Selezionatore</label>
+        <input type="text" name="actor" placeholder="Your name" value="{{ dossier.session_context.current_owner.owner_name if dossier.session_context.current_owner else '' }}">
+        <label>Reason (mandatory — the system-detected disqualifier remains visible in history either way)</label>
+        <textarea name="reason" required></textarea>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" onclick="this.closest('dialog').close()">Cancel</button>
+          <button type="submit" class="btn">Override</button>
+        </div>
+      </form>
+    </dialog>
+    {% endfor %}
+    {% endif %}
+    {% if dossier.primary_screening_unresolved %}
+    <h3 style="font-size:.85rem; margin-top:.6rem;">Unresolved / insufficient evidence</h3>
+    <ul class="reason-list" style="font-size:.82rem;">
+      {% for e in dossier.primary_screening_unresolved %}<li>{{ e.criterion_snapshot.name }} — <span class="badge">{{ e.status|replace('_',' ')|title }}</span></li>{% endfor %}
+    </ul>
+    {% endif %}
+  {% else %}
+    <p class="empty">No Primary Screening run yet.</p>
+  {% endif %}
+</div>
+
+<!-- ==================================================================
+     Evidence Summary (task §12) — strong / weak / conflicting / unresolved.
+     ================================================================== -->
+<div class="card">
+  <h2>Evidence Summary</h2>
+  <div class="section-grid">
+    <div>
+      <h3 style="font-size:.85rem;">Strong evidence</h3>
+      {% if summary.strongest_evidence %}<ul class="reason-list" style="font-size:.82rem;">{% for r in summary.strongest_evidence %}<li>{{ r.name }}</li>{% endfor %}</ul>{% else %}<p class="empty" style="font-size:.8rem;">None yet.</p>{% endif %}
+      <h3 style="font-size:.85rem;">Weak evidence</h3>
+      {% if summary.weaker_evidence %}<ul class="reason-list" style="font-size:.82rem;">{% for r in summary.weaker_evidence %}<li>{{ r.name }}</li>{% endfor %}</ul>{% else %}<p class="empty" style="font-size:.8rem;">None.</p>{% endif %}
+    </div>
+    <div>
+      <h3 style="font-size:.85rem;">Conflicting evidence</h3>
+      {% if summary.conflicting_evidence %}<ul class="reason-list" style="font-size:.82rem;">{% for r in summary.conflicting_evidence %}<li>{{ r.name }}</li>{% endfor %}</ul>{% else %}<p class="empty" style="font-size:.8rem;">None.</p>{% endif %}
+      <h3 style="font-size:.85rem;">Unresolved</h3>
+      {% if summary.unresolved_evidence %}<ul class="reason-list" style="font-size:.82rem;">{% for r in summary.unresolved_evidence %}<li>{{ r.name }}</li>{% endfor %}</ul>{% else %}<p class="empty" style="font-size:.8rem;">None.</p>{% endif %}
+    </div>
+  </div>
+  {% if summary.important_signals %}
+  <h3 style="font-size:.85rem; margin-top:.6rem;">Important Selection Signals</h3>
+  <ul class="reason-list" style="font-size:.82rem;">
+    {% for o in summary.important_signals %}<li>{{ o.signal_definition.name }} — <span class="badge signal-{{ o.status|lower }}">{{ o.status|replace('_',' ') }}</span></li>{% endfor %}
+  </ul>
+  {% endif %}
+  <a href="{{ url_for('candidate_detail', candidate_id=application.candidate_id) }}" style="font-size:.8rem;">Open full résumé / Fit Assessment detail &rarr;</a>
+</div>
+
+<!-- ==================================================================
+     Trainable Gap (task §13 / Part A) — RF-One vs Selezionatore level.
+     ================================================================== -->
+<div class="card">
+  <h2>Trainable Gaps ({{ dossier.trainable_gaps|length }} active)</h2>
+  <p class="quick-read">Informational evidence only — never an automatic decision, Training target, or curriculum.</p>
+  {% if dossier.trainable_gaps %}
+    {% for gap in dossier.trainable_gaps %}
+    <div class="dossier-tgap-card">
+      <div class="dossier-section-head">
+        <div>
+          <strong>{{ gap.missing_capability }}</strong>
+          <span class="badge">{{ gap.trainability|replace('_',' ')|title }}</span>
+          <span class="badge fit-{{ gap.source_fit_status|lower }}">{{ gap.source_fit_status|replace('_',' ') }}</span>
+          {% if gap.importance %}<span class="badge">{{ gap.importance|replace('_',' ')|title }}</span>{% endif %}
+        </div>
+        <button type="button" class="pencil-btn" onclick="document.getElementById('modal-tg-{{ gap.id }}').showModal()">&#9998; Edit</button>
+      </div>
+      <div class="level-row">
+        <div class="level-item"><div class="label">RF-One Initial Level</div><span class="badge level-{{ gap.rf_one_initial_level }}">{{ gap.rf_one_initial_level }} &mdash; {{ level_descriptions[gap.rf_one_initial_level] }}</span></div>
+        {% if gap.selezionatore_initial_level is not none %}
+        <div class="level-item"><div class="label">Selezionatore Initial Level</div><span class="badge level-{{ gap.selezionatore_initial_level }}">{{ gap.selezionatore_initial_level }} &mdash; {{ level_descriptions[gap.selezionatore_initial_level] }}</span></div>
+        {% endif %}
+        <div class="level-item"><div class="label">Effective Level</div><span class="badge level-{{ gap.effective_initial_level }}">{{ gap.effective_initial_level }} &mdash; {{ level_descriptions[gap.effective_initial_level] }}</span></div>
+        {% if gap.confidence %}<div class="level-item"><div class="label">Confidence</div><span class="badge confidence-{{ gap.confidence|lower }}">{{ gap.confidence|title }}</span></div>{% endif %}
+        <div class="level-item"><div class="label">Origin</div><span class="badge origin-{{ gap.origin|lower }}">{{ gap.origin|replace('_',' ')|title }}</span></div>
+      </div>
+      {% if gap.override_reason %}<p class="muted" style="font-size:.78rem;">Reason for divergence: {{ gap.override_reason }}</p>{% endif %}
+    </div>
+    <dialog id="modal-tg-{{ gap.id }}" class="edit-modal">
+      <h3>{{ gap.missing_capability }}</h3>
+      <form method="post" action="{{ url_for('trainable_gap_review', gap_id=gap.id) }}" class="req-form">
+        <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
+        <label>Acting Selezionatore</label>
+        <input type="text" name="actor" placeholder="Your name" value="{{ dossier.session_context.current_owner.owner_name if dossier.session_context.current_owner else '' }}">
+        <label>Selezionatore's initial level (0-4) — select RF-One's own level ({{ gap.rf_one_initial_level }}) to agree without a reason</label>
+        <select name="level">
+          {% for lvl in initial_levels %}<option value="{{ lvl }}" {{ 'selected' if lvl == gap.effective_initial_level else '' }}>{{ lvl }} — {{ level_descriptions[lvl] }}</option>{% endfor %}
+        </select>
+        <label>Reason (mandatory only when the chosen level differs from RF-One's {{ gap.rf_one_initial_level }})</label>
+        <textarea name="reason">{{ gap.override_reason or '' }}</textarea>
+        <label>Note (optional)</label>
+        <textarea name="note_text"></textarea>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" onclick="this.closest('dialog').close()">Cancel</button>
+          <button type="submit" class="btn">Save</button>
+        </div>
+      </form>
+    </dialog>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No active Trainable Gaps identified.</p>
+  {% endif %}
+
+  {% if dossier.non_trainable_concerns %}
+  <h3 style="font-size:.85rem; margin-top:1rem;">Non-trainable concerns</h3>
+  <p class="quick-read" style="margin-bottom:.5rem;">Important gaps whose Requirement is NOT considered trainable — kept separate, never converted into a Trainable Gap.</p>
+  {% for c in dossier.non_trainable_concerns %}
+  <div class="dossier-concern-card">
+    <strong>{{ c.requirement_name }}</strong>
+    <span class="badge fit-{{ c.status|lower }}">{{ c.status|replace('_',' ') }}</span>
+    {% if c.criticality %}<span class="badge">{{ c.criticality|replace('_',' ')|title }}</span>{% endif %}
+    {% if c.notes %}<div class="muted" style="font-size:.78rem;">{{ c.notes }}</div>{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+</div>
+
+<!-- ==================================================================
+     Interview Journey (task §14) — summary only, links to full detail.
+     ================================================================== -->
+<div class="card">
+  <h2>Interview Journey</h2>
+  <div class="section-grid">
+    <div>
+      <h3 style="font-size:.85rem;">Phone Interview</h3>
+      {% if dossier.interview_journey.phone_plan %}
+      <p style="font-size:.84rem;">
+        Status: <span class="badge">{{ dossier.interview_journey.phone_plan.status|replace('_',' ')|title }}</span>
+        {% if dossier.interview_journey.phone_incomplete_count %}&middot; {{ dossier.interview_journey.phone_incomplete_count }} item(s) not yet resolved{% endif %}
+      </p>
+      <a href="{{ url_for('phone_interview_detail', plan_id=dossier.interview_journey.phone_plan.id) }}" style="font-size:.8rem;">Open Phone Interview &rarr;</a>
+      {% else %}<p class="empty" style="font-size:.82rem;">Not started.</p>{% endif %}
+    </div>
+    <div>
+      <h3 style="font-size:.85rem;">In-Person / Practical</h3>
+      {% if dossier.interview_journey.in_person_plan %}
+      <p style="font-size:.84rem;">
+        Status: <span class="badge">{{ dossier.interview_journey.in_person_plan.status|replace('_',' ')|title }}</span>
+        {% if dossier.interview_journey.in_person_incomplete_count %}&middot; {{ dossier.interview_journey.in_person_incomplete_count }} item(s) not yet resolved{% endif %}
+      </p>
+      <a href="{{ url_for('in_person_interview_detail', plan_id=dossier.interview_journey.in_person_plan.id) }}" style="font-size:.8rem;">Open In-Person Interview &rarr;</a>
+      {% else %}<p class="empty" style="font-size:.82rem;">Not started.</p>{% endif %}
+    </div>
+  </div>
+  <h3 style="font-size:.85rem; margin-top:.8rem;">Consistency — items to verify</h3>
+  {% if dossier.interview_journey.consistency_items_to_verify %}
+  <ul class="reason-list" style="font-size:.82rem;">
+    {% for t in dossier.interview_journey.consistency_items_to_verify %}
+    <li>{{ t.topic }} — <span class="badge cstatus-{{ t.comparison_status|lower }}">{{ t.comparison_status|replace('_',' ')|title }}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty" style="font-size:.82rem;">No unresolved/material inconsistencies on record.</p>
+  {% endif %}
+</div>
+
+<!-- ==================================================================
+     Decision / Outcome (task §15/§25) — act at any stage from here.
+     ================================================================== -->
+<div class="card">
+  <div class="dossier-section-head">
+    <h2 style="margin:0;">Decision &amp; Outcome</h2>
+    <button type="button" class="pencil-btn" onclick="document.getElementById('modal-outcome').showModal()">&#9998; Apply Outcome</button>
+  </div>
+  <p style="font-size:.85rem;">
+    Current Outcome: <strong>{{ summary.current_outcome_decision.outcome_definition_snapshot.name if summary.current_outcome_decision else '(none applied yet)' }}</strong>
+    &middot; Stage: <span class="badge stage-{{ summary.current_stage|lower }}">{{ summary.current_stage|replace('_',' ') }}</span>
+  </p>
+  <dialog id="modal-outcome" class="edit-modal">
+    <h3>Apply an Outcome</h3>
+    <p class="quick-read">May be applied at any moment — no Stage or evidence completion is required.</p>
+    <form method="post" action="{{ url_for('application_apply_outcome', application_id=application.id) }}" class="req-form">
+      <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
+      <label>Outcome</label>
+      <select name="outcome_definition_id">
+        {% for d in outcome_definitions %}<option value="{{ d.id }}">{{ d.name }} &rarr; {{ d.lifecycle_effect }}</option>{% endfor %}
+      </select>
+      <label>Reason (required when this changes an existing decision to a different Outcome)</label>
+      <input type="text" name="reason">
+      <label>Acting Selezionatore</label>
+      <input type="text" name="actor" placeholder="Your name" value="{{ dossier.session_context.current_owner.owner_name if dossier.session_context.current_owner else '' }}">
+      <label>Note (required by some Outcomes)</label>
+      <textarea name="note_text"></textarea>
+      <div class="modal-actions">
+        <button type="button" class="btn secondary" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn">Apply Outcome</button>
+      </div>
+    </form>
+    {% if summary.lifecycle_state in ('CLOSED', 'SUSPENDED') %}
+    <details class="edit-toggle" style="margin-top:.8rem;">
+      <summary>Reopen this Application</summary>
+      <form method="post" action="{{ url_for('application_reopen', application_id=application.id) }}" class="req-form">
+        <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
+        <label>Reopen with which (ACTIVE) Outcome?</label>
+        <select name="outcome_definition_id">
+          {% for d in outcome_definitions %}{% if d.lifecycle_effect == 'ACTIVE' %}<option value="{{ d.id }}">{{ d.name }}</option>{% endif %}{% endfor %}
+        </select>
+        <label>Acting Selezionatore</label>
+        <input type="text" name="actor" placeholder="Your name">
+        <label>Note</label>
+        <textarea name="note_text"></textarea>
+        <button type="submit" class="btn" style="margin-top:.6rem;">Reopen Application</button>
+      </form>
+    </details>
+    {% endif %}
+  </dialog>
+
+  <details class="edit-toggle">
+    <summary>Move Stage</summary>
+    <form method="post" action="{{ url_for('application_set_stage', application_id=application.id) }}" class="req-form">
+      <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
+      <label>New Stage</label>
+      <select name="new_stage">
+        {% for s in stages %}<option value="{{ s }}" {{ 'selected' if s == summary.current_stage else '' }}>{{ s|replace('_',' ') }}</option>{% endfor %}
+      </select>
+      <label>If advancing to PHONE INTERVIEW — communication mode (Task 5D §7)</label>
+      <select name="communication_mode">
+        <option value="">(no automatic communication)</option>
+        <option value="SCHEDULING">Scheduling — send a link to the candidate scheduling page</option>
+        <option value="CONTACT">Contact — send a standard "you'll be contacted" message</option>
+      </select>
+      <label>Acting Selezionatore</label>
+      <input type="text" name="actor" placeholder="Your name" value="{{ dossier.session_context.current_owner.owner_name if dossier.session_context.current_owner else '' }}">
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Move Stage</button>
+    </form>
+  </details>
+
+  <h3 style="font-size:.85rem; margin-top:1rem;">Candidate Communication (Task 5D)</h3>
+  <p style="font-size:.85rem;">
+    Latest: <strong>{{ dossier.communication_context.latest_communication.trigger_event if dossier.communication_context.latest_communication else '(none yet)' }}</strong>
+    {% if dossier.communication_context.latest_communication %}({{ dossier.communication_context.latest_communication.created_at.strftime('%Y-%m-%d %H:%M') }}){% endif %}
+    &middot; Total sent: {{ dossier.communication_context.communication_count }}
+  </p>
+  {% if dossier.communication_context.pending_response %}
+  <p style="font-size:.85rem;">
+    <span class="badge">Awaiting candidate response</span>
+    since {{ dossier.communication_context.pending_response.created_at.strftime('%Y-%m-%d %H:%M') }}
+    {% if dossier.communication_context.pending_response.final_deadline_at %}(deadline {{ dossier.communication_context.pending_response.final_deadline_at.strftime('%Y-%m-%d %H:%M') }}){% endif %}
+    &middot; reminders sent: {{ dossier.communication_context.pending_response.reminders_sent_count }}
+  </p>
+  {% endif %}
+  {% if dossier.communication_context.current_phone_appointment %}
+  <p style="font-size:.85rem;">Phone Interview appointment: <strong>{{ dossier.communication_context.current_phone_appointment.slot_start_at.strftime('%Y-%m-%d %H:%M') }}</strong></p>
+  {% endif %}
+  {% if dossier.communication_context.current_in_person_appointment %}
+  <p style="font-size:.85rem;">In-Person appointment: <strong>{{ dossier.communication_context.current_in_person_appointment.slot_start_at.strftime('%Y-%m-%d %H:%M') }}</strong></p>
+  {% endif %}
+  {% if dossier.communication_context.open_alerts %}
+  <p style="font-size:.85rem;"><span class="badge">{{ dossier.communication_context.open_alerts|length }} open alert(s)</span></p>
+  {% endif %}
+  <p style="font-size:.85rem;"><a href="{{ url_for('application_communication_history', application_id=application.id) }}">View full Communication History &rarr;</a></p>
+
+  <h3 style="font-size:.85rem; margin-top:1rem;">Application Intake (Task 5E)</h3>
+  <p style="font-size:.85rem;">
+    Acquisition Source: <strong>{{ dossier.intake_context.acquisition_source.name if dossier.intake_context.acquisition_source else '(unknown)' }}</strong>
+    {% if dossier.intake_context.channel_publication %}
+    &middot; Channel: <strong>{{ dossier.intake_context.channel_publication.channel.name }}</strong>
+    &middot; Placement: <strong>{{ dossier.intake_context.channel_publication.placement_label }}</strong>
+    {% endif %}
+  </p>
+  {% if dossier.intake_context.question_answers %}
+  <p style="font-size:.85rem;">Application Question answers:</p>
+  <ul style="font-size:.8rem;">
+    {% for a in dossier.intake_context.question_answers %}
+    <li>{{ a.question_definition.question_text }} &mdash; <strong>{{ a.raw_answer }}</strong></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if dossier.intake_context.pending_questionnaire %}
+  <p style="font-size:.85rem;"><span class="badge">Missing-Evidence Questionnaire pending</span> (sent {{ dossier.intake_context.pending_questionnaire.created_at.strftime('%Y-%m-%d %H:%M') }})</p>
+  {% elif dossier.intake_context.questionnaire_history %}
+  <p style="font-size:.85rem;"><span class="badge status-completed">Missing-Evidence Questionnaire answered</span></p>
+  {% endif %}
+  {% if dossier.intake_context.is_ready_for_phone_review %}
+  <p style="font-size:.85rem;"><span class="badge status-completed">READY FOR PHONE REVIEW</span> — enough early-stage evidence exists; ADVANCE_TO_PHONE still requires an explicit Selezionatore decision.</p>
+  {% endif %}
+
+  {% if dossier.session_context.session %}
+  <p style="font-size:.85rem;"><a href="{{ url_for('session_detail', session_id=dossier.session_context.session.id) }}">Manage shared Interview Scheduling Windows on this Application's Selection Session &rarr;</a></p>
+  {% endif %}
+
+  <details class="edit-toggle">
+    <summary>Application-specific scheduling override (exceptional — normal windows belong on the Selection Session page)</summary>
+    <p class="muted" style="font-size:.78rem;">
+      Scheduling windows normally belong to the Selection Session/stage (shared by every eligible candidate) — see
+      the Session page. Only use this if this ONE Application genuinely needs its own separate window.
+    </p>
+    <form method="post" action="{{ url_for('application_scheduling_window_create', application_id=application.id) }}" class="req-form">
+      <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
+      <label>Interview stage</label>
+      <select name="interview_stage">
+        <option value="PHONE_INTERVIEW">Phone Interview</option>
+        <option value="IN_PERSON_PRACTICAL">In-Person Practical</option>
+      </select>
+      <label>Date</label>
+      <input type="date" name="window_date" required>
+      <label>Start time</label>
+      <input type="time" name="start_time" required>
+      <label>End time</label>
+      <input type="time" name="end_time" required>
+      <label>Slot duration (minutes)</label>
+      <input type="text" name="slot_duration_minutes" value="30">
+      <label>Capacity per slot</label>
+      <input type="text" name="capacity_per_slot" value="1">
+      <label>Created by</label>
+      <input type="text" name="created_by" placeholder="Your name">
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Add Scheduling Window</button>
+    </form>
+  </details>
+
+  <h3 style="font-size:.85rem; margin-top:1rem;">Outcome History</h3>
+  {% if summary.outcome_history %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>When</th><th>Outcome</th><th>Reason</th></tr></thead>
+    <tbody>
+      {% for dec in summary.outcome_history|reverse %}
+      <tr>
+        <td>{{ dec.created_at.strftime('%Y-%m-%d %H:%M') if dec.created_at else '-' }}</td>
+        <td>{{ dec.outcome_definition_snapshot.name }} {% if dec.is_reopen_event %}<span class="badge">Reopened</span>{% endif %}</td>
+        <td>{{ dec.reason or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Outcome has been applied yet.</p>
+  {% endif %}
+</div>
+
+<!-- ==================================================================
+     Information / Events (task §16) — factual reports, never decisions.
+     ================================================================== -->
+<div class="card">
+  <div class="dossier-section-head">
+    <h2 style="margin:0;">Information / Events</h2>
+    <button type="button" class="pencil-btn" onclick="document.getElementById('modal-event').showModal()">&#9998; Record</button>
+  </div>
+  <p class="quick-read">Factual reports — e.g. "candidate called and stated they were withdrawing." Never a Selezionatore decision by itself; shown chronologically in Notes below.</p>
+  <dialog id="modal-event" class="edit-modal">
+    <h3>Record Information / Event</h3>
+    <form method="post" action="{{ url_for('application_record_information_event', application_id=application.id) }}" class="req-form">
+      <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
+      <label>What happened? (raw description)</label>
+      <textarea name="description" required></textarea>
+      <label>Event/information type (optional)</label>
+      <input type="text" name="event_type">
+      <label>Reported by</label>
+      <input type="text" name="reported_by">
+      <label>Original source (optional)</label>
+      <input type="text" name="original_source">
+      <div class="modal-actions">
+        <button type="button" class="btn secondary" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn">Record</button>
+      </div>
+    </form>
+  </dialog>
+</div>
+
+<!-- ==================================================================
+     Candidate / Application History (task §17) — this person's prior
+     Applications, clearly separate from the CURRENT Application above.
+     ================================================================== -->
+<div class="card">
+  <h2>Candidate History ({{ dossier.prior_applications|length }} prior application(s))</h2>
+  {% if dossier.prior_applications %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Applied</th><th>Role</th><th>Outcome (historical)</th><th></th></tr></thead>
+    <tbody>
+      {% for p in dossier.prior_applications %}
+      <tr>
+        <td>{{ p.applied_at.strftime('%Y-%m-%d') if p.applied_at else '-' }}</td>
+        <td>{{ p.target_role or '-' }}</td>
+        <td>{{ p.outcome|replace('_',' ')|title if p.outcome else '-' }}</td>
+        <td><a href="{{ url_for('application_dossier', application_id=p.id) }}" style="font-size:.8rem;">Open Dossier &rarr;</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">First-time applicant — no prior Applications on record.</p>
+  {% endif %}
+
+  {% if dossier.training_check_flags %}
+  <h3 style="font-size:.85rem; margin-top:.8rem;">Training Check history</h3>
+  {% for f in dossier.training_check_flags %}
+  <div class="flag-card">
+    <div class="req-title">{{ f.name }} <span class="badge {{ 'flag-warning' if f.is_active else '' }}">{{ 'Active' if f.is_active else 'Historical' }}</span></div>
+    {% if f.reason %}<p class="muted" style="font-size:.78rem;">{{ f.reason }}</p>{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if summary.active_flags %}
+  <h3 style="font-size:.85rem; margin-top:.8rem;">Other active Candidate Flags</h3>
+  {% for flag in summary.active_flags %}
+  <div class="flag-card">
+    <div class="req-title">{{ flag.name }} <span class="badge flag-{{ flag.operational_effect|lower }}">{{ flag.operational_effect|replace('_',' ')|title }}</span></div>
+    {% if flag.description %}<p style="font-size:.82rem; margin:.3rem 0;">{{ flag.description }}</p>{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+</div>
+
+<!-- ==================================================================
+     All Notes (task §18) — unified, chronological, append-only.
+     ================================================================== -->
+<div class="card">
+  <div class="dossier-section-head">
+    <h2 style="margin:0;">All Notes</h2>
+    <button type="button" class="pencil-btn" onclick="document.getElementById('modal-note').showModal()">&#9998; Add Note</button>
+  </div>
+  <p class="quick-read">Every Note entered anywhere in this Application's Selection journey, chronologically.</p>
+  <dialog id="modal-note" class="edit-modal">
+    <h3>Add Application Note</h3>
+    <form method="post" action="{{ url_for('application_add_note_entry', application_id=application.id) }}" class="req-form">
+      <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
+      <label>Note</label>
+      <textarea name="note_text" required></textarea>
+      <div class="modal-actions">
+        <button type="button" class="btn secondary" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn">Save Note</button>
+      </div>
+    </form>
+  </dialog>
+  {% if dossier.notes_history %}
+    {% for entry in dossier.notes_history %}
+    <div class="notes-history-entry">
+      <div class="nh-meta">
+        {{ entry.created_at.strftime('%Y-%m-%d %H:%M') if entry.created_at else '(undated)' }}
+        &middot; {{ entry.context_label }}
+        {% if entry.stage %}&middot; {{ entry.stage|replace('_',' ') }}{% endif %}
+        {% if entry.author %}&middot; {{ entry.author }}{% endif %}
+      </div>
+      <div>{{ entry.note_text }}</div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No notes recorded yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

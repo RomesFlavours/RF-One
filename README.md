@@ -31,6 +31,6 @@ Each top-level directory has its own `README.md` explaining its purpose, authori
 ## Where to start
 
 - Canonical architecture: `00 Core/ConceptualArchitecture/00_RF-One_Core_Vision.md`
-- Current Domain example: `01 Domains/Restaurant/README.md`
+- Current Domain example: `01 Domains/Business Domain/Restaurant/README.md`
 - Project instructions: `CLAUDE.md`
 - Current repository state: `PROJECT_STATE.md`

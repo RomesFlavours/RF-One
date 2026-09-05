@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Client</div>
+      <div class="value">{{ client_name }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Active Role</div>
+      <div class="value">{{ active_role }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Candidates</div>
+      <div class="value">{{ candidate_count }}</div>
+    </div>
+  </div>
+
+  <form id="upload-form" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+    <label for="resume_files" class="muted" style="font-size:.85rem;">Import Résumés (PDF, DOCX, TXT — select or drop multiple files at once)</label>
+    <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-controls="resume_files">
+      Drag &amp; drop résumés here (PDF, DOCX, TXT)
+      <div class="hint">Each résumé is processed independently — one failed file will not stop the rest.</div>
+    </div>
+    <input type="file" id="resume_files" name="resume_file" accept=".pdf,.docx,.txt" multiple required>
+    <button type="submit" id="upload-btn">Import Résumés</button>
+  </form>
+
+  {% if batch_results %}
+  <div class="context-note" style="margin-top:1rem;">
+    <strong>Last batch (no-JavaScript fallback):</strong>
+    {% set completed = batch_results | selectattr('status', 'equalto', 'COMPLETED') | list %}
+    {% set partial = batch_results | selectattr('status', 'equalto', 'PARTIAL') | list %}
+    {% set failed = batch_results | selectattr('status', 'equalto', 'FAILED') | list %}
+    {% set duplicate = batch_results | selectattr('status', 'equalto', 'DUPLICATE') | list %}
+    {{ completed|length }} imported, {{ partial|length }} partially parsed, {{ duplicate|length }} duplicate(s)
+    skipped, {{ failed|length }} failed (of {{ batch_results|length }}).
+    <ul style="margin:.5rem 0 0; padding-left:1.2rem;">
+      {% for r in batch_results %}
+      <li>
+        {{ r.filename }} —
+        <span class="badge status-{{ r.status|lower }}">{{ r.status }}</span>
+        {% if r.status in ('COMPLETED', 'PARTIAL') %}<a href="{{ url_for('candidate_detail', candidate_id=r.candidate_id) }}">{{ r.full_name or '(name not extracted)' }}</a>{% endif %}
+        {% if r.status in ('FAILED', 'PARTIAL') %}<span class="muted">{{ r.error }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div id="batch-progress" hidden>
+    <div id="batch-summary"></div>
+    <div id="batch-file-list"></div>
+    <a href="{{ url_for('home') }}" id="batch-refresh-link" class="btn secondary" style="margin-top:.6rem; display:none;">Refresh candidate list</a>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Candidates</h2>
+  {% if candidates %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Location</th>
+        <th>Source</th>
+        <th>Current / Latest Role</th>
+        <th>Employment Records</th>
+        <th>Target Role</th>
+        <th>Direct Exp.</th>
+        <th>Stability</th>
+        <th>Flags</th>
+        <th>Info. Confidence</th>
+        <th>Status</th>
+        <th>Mode</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in candidates %}
+      <tr class="clickable" onclick="window.location='{{ url_for('candidate_detail', candidate_id=c.id) }}'">
+        <td><a href="{{ url_for('candidate_detail', candidate_id=c.id) }}">{{ c.full_name }}</a></td>
+        <td>{{ c.location }}</td>
+        <td>{{ c.source }}{% if c.source_provider and c.source_provider != '-' %} <span class="muted">({{ c.source_provider }})</span>{% endif %}</td>
+        <td>{{ c.current_role }}</td>
+        <td>{{ c.employment_count }}</td>
+        <td>{{ c.target_role }}</td>
+        <td>{{ c.direct_months }} mo</td>
+        <td><span class="badge state-{{ c.stability|lower|replace(' ', '-') }}">{{ c.stability }}</span></td>
+        <td>{{ c.flag_count }}</td>
+        <td>{{ c.confidence_pct }}%</td>
+        <td>{{ c.status }}</td>
+        <td><span class="badge mode-{{ 'real' if c.parsing_mode == 'REAL_AI' else ('rule' if c.parsing_mode == 'RULE_BASED' else 'demo') }}">
+          {{ 'REAL AI' if c.parsing_mode == 'REAL_AI' else ('RULE-BASED' if c.parsing_mode == 'RULE_BASED' else 'DEMO / MOCK') }}
+        </span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No candidates yet. Import one or more résumés (PDF, DOCX, TXT) above to get started.</p>
+  {% endif %}
+</div>
+
+<p class="muted" style="font-size:.75rem;">Database: {{ db_url }} — no universal CV score is shown here by design; see indicators and flags on each candidate's detail page.</p>
+
+<script>
+(function () {
+  "use strict";
+  var form = document.getElementById("upload-form");
+  var input = document.getElementById("resume_files");
+  var dropzone = document.getElementById("dropzone");
+  var progressWrap = document.getElementById("batch-progress");
+  var summaryEl = document.getElementById("batch-summary");
+  var listEl = document.getElementById("batch-file-list");
+  var refreshLink = document.getElementById("batch-refresh-link");
+  var uploadBtn = document.getElementById("upload-btn");
+
+  if (!window.fetch || !window.FormData) {
+    // No fetch/FormData support: fall back entirely to the native multi-file
+    // form POST to /upload (server renders the batch result inline).
+    return;
+  }
+
+  dropzone.addEventListener("click", function () { input.click(); });
+  dropzone.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
+  });
+  ["dragenter", "dragover"].forEach(function (evt) {
+    dropzone.addEventListener(evt, function (e) {
+      e.preventDefault(); e.stopPropagation();
+      dropzone.classList.add("dragover");
+    });
+  });
+  ["dragleave", "drop"].forEach(function (evt) {
+    dropzone.addEventListener(evt, function (e) {
+      e.preventDefault(); e.stopPropagation();
+      dropzone.classList.remove("dragover");
+    });
+  });
+  dropzone.addEventListener("drop", function (e) {
+    var files = e.dataTransfer && e.dataTransfer.files;
+    if (files && files.length) { input.files = files; }
+  });
+
+  function statusBadge(status) {
+    return '<span class="badge status-' + status.toLowerCase() + '">' + status + '</span>';
+  }
+
+  function rowHtml(i, filename) {
+    return (
+      '<div class="file-row" id="file-row-' + i + '">' +
+        '<span class="file-name" title="' + filename + '">' + filename + '</span>' +
+        '<span class="file-detail" id="file-detail-' + i + '"></span>' +
+        '<span id="file-status-' + i + '">' + statusBadge("WAITING") + '</span>' +
+      '</div>'
+    );
+  }
+
+  function setRow(i, status, detailHtml) {
+    var statusEl = document.getElementById("file-status-" + i);
+    var detailEl = document.getElementById("file-detail-" + i);
+    if (statusEl) { statusEl.innerHTML = statusBadge(status); }
+    if (detailEl) { detailEl.innerHTML = detailHtml || ""; }
+  }
+
+  function updateSummary(done, total) {
+    summaryEl.textContent = done + " / " + total + " processed";
+  }
+
+  function uploadOne(file) {
+    var data = new FormData();
+    data.append("resume_file", file);
+    return fetch("{{ url_for('api_upload') }}", { method: "POST", body: data })
+      .then(function (resp) { return resp.json().catch(function () { return { status: "FAILED", error: "Invalid server response." }; }); })
+      .catch(function () { return { status: "FAILED", error: "Network error while uploading." }; });
+  }
+
+  function runBatch(files) {
+    progressWrap.hidden = false;
+    listEl.innerHTML = "";
+    refreshLink.style.display = "none";
+    uploadBtn.disabled = true;
+
+    for (var i = 0; i < files.length; i++) {
+      listEl.insertAdjacentHTML("beforeend", rowHtml(i, files[i].name));
+    }
+    updateSummary(0, files.length);
+
+    var done = 0;
+    var chain = Promise.resolve();
+    files.forEach(function (file, i) {
+      chain = chain.then(function () {
+        setRow(i, "PROCESSING");
+        return uploadOne(file).then(function (result) {
+          var status = result.status || "FAILED";
+          var detail = "";
+          if (status === "COMPLETED") {
+            detail = result.full_name ? "&rarr; " + result.full_name : "";
+            if (result.parsing_mode === "RULE_BASED") { detail += " (rule-based)"; }
+            else if (result.parsing_mode && result.parsing_mode !== "REAL_AI") { detail += " (DEMO/MOCK)"; }
+          } else if (status === "PARTIAL") {
+            detail = (result.full_name ? "&rarr; " + result.full_name + " — " : "") + (result.error || "partially parsed");
+          } else if (status === "DUPLICATE") {
+            detail = "already imported";
+          } else if (status === "FAILED") {
+            detail = result.error || "could not process this file";
+          }
+          setRow(i, status, detail);
+          done += 1;
+          updateSummary(done, files.length);
+        });
+      });
+    });
+
+    chain.then(function () {
+      uploadBtn.disabled = false;
+      refreshLink.style.display = "inline-block";
+      setTimeout(function () { window.location = "{{ url_for('home') }}"; }, 1200);
+    });
+  }
+
+  form.addEventListener("submit", function (e) {
+    if (!input.files || !input.files.length) { return; }
+    e.preventDefault();
+    runBatch(Array.prototype.slice.call(input.files));
+  });
+})();
+</script>
+
+{% endblock %}

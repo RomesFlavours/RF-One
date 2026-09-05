@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Client</div>
+      <div class="value">{{ client_name }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Applications</div>
+      <div class="value">{{ applications|length }}</div>
+    </div>
+    {% if pending_identity_matches %}
+    <div class="meta-item">
+      <div class="label">Pending identity matches</div>
+      <div class="value"><a href="{{ url_for('identity_matches_home') }}">{{ pending_identity_matches }} awaiting review</a></div>
+    </div>
+    {% endif %}
+  </div>
+  <p class="muted" style="font-size:.82rem;">
+    Review Priority is a starting point for where to look first — never a ranking, never an automatic discard.
+    Lower-priority Applications remain fully available for review below. Workflow status (NEW / IN REVIEW /
+    ADVANCE TO PHONE / HOLD / STOP) is set only by the Selezionatore — Review Priority never changes it.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Filter &amp; sort</h2>
+  <form method="get" class="filter-bar">
+    <div>
+      <label>Review Priority</label>
+      <select name="priority">
+        <option value="">(any)</option>
+        {% for p in priority_categories %}<option value="{{ p }}" {{ 'selected' if filters.priority == p else '' }}>{{ p|replace('_',' ') }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Workflow status</label>
+      <select name="status">
+        <option value="">(any)</option>
+        {% for s in workflow_statuses %}<option value="{{ s }}" {{ 'selected' if filters.status == s else '' }}>{{ s|replace('_',' ') }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Target role</label>
+      <select name="role">
+        <option value="">(any)</option>
+        {% for r in target_roles %}<option value="{{ r }}" {{ 'selected' if filters.role == r else '' }}>{{ r }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Sort by</label>
+      <select name="sort">
+        <option value="applied_at" {{ 'selected' if filters.sort == 'applied_at' else '' }}>Application date</option>
+        <option value="priority" {{ 'selected' if filters.sort == 'priority' else '' }}>Review Priority</option>
+        <option value="status" {{ 'selected' if filters.sort == 'status' else '' }}>Workflow status</option>
+        <option value="target_role" {{ 'selected' if filters.sort == 'target_role' else '' }}>Target role</option>
+      </select>
+    </div>
+    <div>
+      <label><input type="checkbox" name="repeated" value="1" {{ 'checked' if filters.repeated else '' }}> Repeated applicants only</label>
+    </div>
+    <button type="submit" class="btn secondary">Apply</button>
+    <a href="{{ url_for('applications_home') }}" class="btn secondary">Clear</a>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Review Queue</h2>
+  {% if applications %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Candidate</th>
+        <th>Target Role</th>
+        <th>Location</th>
+        <th>Applied</th>
+        <th>Source</th>
+        <th>Review Priority</th>
+        <th>Workflow</th>
+        <th>History</th>
+        <th>CV</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in applications %}
+      <tr>
+        <td><a href="{{ url_for('application_detail', application_id=a.id) }}">{{ a.full_name }}</a></td>
+        <td>{{ a.target_role }}</td>
+        <td>{{ a.location }}</td>
+        <td>{{ a.applied_at.strftime('%Y-%m-%d') if a.applied_at else '-' }}</td>
+        <td>{{ a.source }}</td>
+        <td>
+          <span class="badge priority-{{ a.priority|lower }}">{{ a.priority|replace('_',' ') }}</span>
+          {% if a.priority_origin != 'SYSTEM_GENERATED' %}<span class="badge origin-{{ a.priority_origin|lower }}">{{ a.priority_origin|replace('_',' ') }}</span>{% endif %}
+          {% if a.priority_reasons %}
+          <ul class="reason-list">
+            {% for reason in a.priority_reasons[:2] %}<li>{{ reason }}</li>{% endfor %}
+          </ul>
+          {% endif %}
+        </td>
+        <td><span class="badge workflow-{{ a.workflow_status|lower }}">{{ a.workflow_status|replace('_',' ') }}</span></td>
+        <td>{% if a.prior_count %}<span class="badge">{{ a.prior_count }} prior</span>{% else %}-{% endif %}</td>
+        <td>
+          {% if a.original_cv_available %}
+          <a class="cv-link" href="{{ url_for('candidate_original_cv', candidate_id=a.candidate_id) }}" target="_blank" rel="noopener">Open Original CV &#8599;</a>
+          {% else %}
+          <span class="muted" style="font-size:.76rem;">unavailable</span>
+          {% endif %}
+        </td>
+        <td><a href="{{ url_for('application_detail', application_id=a.id) }}">Review &rarr;</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Applications match these filters.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -116,7 +116,7 @@ def save():
     doc_id = purchasing_bridge.save_purchase_document(header, lines, source_file)
 
     # Excel remains available only as a secondary export/debugging capability
-    # (01 Domains/Restaurant/Purchasing/README.md is unaffected by this —
+    # (01 Domains/Business Domain/Restaurant/Purchasing/README.md is unaffected by this —
     # Excel was never canonical there; it was only ever this prototype's
     # storage). A failure here must never lose the canonical save above.
     excel_ok = True

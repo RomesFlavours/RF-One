@@ -8,7 +8,7 @@
 
 ## Related documents
 
-- [00_RF-One_Core_Vision.md](00_RF-One_Core_Vision.md) through [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md) — full definitions and context for every term below.
+- [00_RF-One_Core_Vision.md](00_RF-One_Core_Vision.md) through [09_Identity_Authority_and_Accountability.md](09_Identity_Authority_and_Accountability.md) — full definitions and context for every term below.
 - [../Glossary.md](../Glossary.md) — canonical glossary for pre-existing Core terms (Entity, Process, Relationship, Module, Business Rule, etc.). This document does not redefine those terms; see the cross-references below.
 
 ---
@@ -92,3 +92,13 @@ This glossary provides concise canonical definitions for the concepts introduced
 **Counterfactual Structural Comparison** — Comparing a Current Structure against alternative structures using expected Gross/Net Outcome, cost, risk, uncertainty, reversibility, option value, time horizon, flexibility and compliance burden, without collapsing the comparison into a universal scalar score. See [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md).
 
 **Lawful Optimization** — Pursuing Constraint Shaping and Counterfactual Structural Comparison within the law, as distinct from evasion, fraud, misrepresentation, concealment, false reporting or sham transactions, which misstate or conceal the Subject's actual relationship to Reality rather than genuinely changing it. See [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md).
+
+**Acting Identity** — An Entity assuming the Actor role in relation to a Decision or Action (Human User, RF-One/System, AI Agent, or External Service/Connector). Carries a permanent identifier independent of visible role/title labels. See [09_Identity_Authority_and_Accountability.md](09_Identity_Authority_and_Accountability.md).
+
+**Authority** — The bounded scope of Decisions and Actions an Acting Identity may perform, evaluated in the context of Corporate/Operational Unit/Domain/Module/resource. Not a page-visibility flag; a scoped, contextual relationship. See [09_Identity_Authority_and_Accountability.md](09_Identity_Authority_and_Accountability.md).
+
+**Delegation** — The general Core relationship by which one authorized Acting Identity or system confers bounded Authority on another, with an explicit Grantor, Grantee, scope and revocability. Delegated Authority (Pilot → RF-One, see [06_Business_Autopilot_and_Intelligence_Engine.md](06_Business_Autopilot_and_Intelligence_Engine.md)) is its most important specific instance. See [09_Identity_Authority_and_Accountability.md](09_Identity_Authority_and_Accountability.md).
+
+**Accountability** — The ability to attribute a specific Decision or Action to the Acting Identity responsible for it and the Authority under which it was performed, including the AI Recommendation vs. AI-Authorized Execution distinction. See [09_Identity_Authority_and_Accountability.md](09_Identity_Authority_and_Accountability.md).
+
+**Auditability** — The ability to reconstruct who did what, when, in what context, under what Authority, against which object, and with what before/after state — consistent with Historical Integrity and Temporal Coherence. A capability, not a mandate to persist every Decision. See [09_Identity_Authority_and_Accountability.md](09_Identity_Authority_and_Accountability.md).

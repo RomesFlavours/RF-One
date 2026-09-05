@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Client</div>
+      <div class="value">{{ client_name }}</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.82rem;">
+    Selection Signals are restaurant-configurable — the same universal framework works for any restaurant's own
+    Signal Definitions. Signal detection is always kept separate from how much a detected Signal affects Review
+    Priority (configure that under Priority Policies, not here).
+  </p>
+</div>
+
+{% for family in signal_families %}
+<div class="card">
+  <h2>{{ family|replace('_',' ')|title }}</h2>
+  {% if by_family.get(family) %}
+    {% for d in by_family[family] %}
+    <div class="signal-card {{ '' if d.is_active else 'inactive' }}">
+      <div class="req-title">
+        {{ d.name }}
+        {% if d.signal_subtype %}<span class="badge">{{ d.signal_subtype }}</span>{% endif %}
+        {% if not d.is_active %}<span class="badge status-failed">INACTIVE</span>{% endif %}
+        <span class="muted" style="font-size:.72rem;">v{{ d.version }}</span>
+      </div>
+      {% if d.description %}<p style="font-size:.85rem; margin:.3rem 0;">{{ d.description }}</p>{% endif %}
+      <p class="muted" style="font-size:.78rem;">
+        Assessable at: {{ d.assessment_stages|join(', ')|replace('_',' ') if d.assessment_stages else '(none set)' }}
+        &middot; Evidence sources allowed: {{ d.evidence_sources_allowed|join(', ')|replace('_',' ') if d.evidence_sources_allowed else '(none set)' }}
+      </p>
+      {% if d.detection_guidance %}<p style="font-size:.8rem;"><strong>Detection guidance:</strong> {{ d.detection_guidance }}</p>{% endif %}
+      {% if d.evidence_positive or d.evidence_contrary or d.evidence_insufficient %}
+      <div class="indicator-list" style="font-size:.8rem;">
+        {% if d.evidence_positive %}<div class="indicator-row"><span>Supporting evidence</span><span>{{ d.evidence_positive }}</span></div>{% endif %}
+        {% if d.evidence_contrary %}<div class="indicator-row"><span>Contrary evidence</span><span>{{ d.evidence_contrary }}</span></div>{% endif %}
+        {% if d.evidence_insufficient %}<div class="indicator-row"><span>Insufficient evidence</span><span>{{ d.evidence_insufficient }}</span></div>{% endif %}
+      </div>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('signal_definition_toggle_active', signal_definition_id=d.id) }}" class="inline-form">
+        <button type="submit" class="btn secondary" style="margin-top:.5rem; font-size:.78rem; padding:.35rem .8rem;">
+          {{ 'Deactivate' if d.is_active else 'Reactivate' }}
+        </button>
+      </form>
+
+      <details class="edit-toggle">
+        <summary>Edit this Signal Definition</summary>
+        <form method="post" action="{{ url_for('signal_definition_update', signal_definition_id=d.id) }}" class="req-form">
+          <label>Name</label>
+          <input type="text" name="name" value="{{ d.name }}" required>
+          <label>Signal family</label>
+          <select name="signal_family">
+            {% for f in signal_families %}<option value="{{ f }}" {{ 'selected' if d.signal_family == f else '' }}>{{ f|replace('_',' ')|title }}</option>{% endfor %}
+          </select>
+          <label>Subtype (optional — matches a detector in signal_detector.py, or leave blank if only manually assessed)</label>
+          <input type="text" name="signal_subtype" value="{{ d.signal_subtype or '' }}">
+          <label>Description</label>
+          <textarea name="description">{{ d.description or '' }}</textarea>
+          <label>Applicable assessment stage(s)</label>
+          <div class="checkbox-row">
+            {% for stage in assessment_stages %}
+            <label><input type="checkbox" name="assessment_stages" value="{{ stage }}" {{ 'checked' if stage in d.assessment_stages else '' }}> {{ stage|replace('_',' ') }}</label>
+            {% endfor %}
+          </div>
+          <label>Allowed evidence source(s)</label>
+          <div class="checkbox-row">
+            {% for src in evidence_source_types %}
+            <label><input type="checkbox" name="evidence_sources_allowed" value="{{ src }}" {{ 'checked' if src in d.evidence_sources_allowed else '' }}> {{ src|replace('_',' ') }}</label>
+            {% endfor %}
+          </div>
+          <label>Detection guidance</label>
+          <textarea name="detection_guidance">{{ d.detection_guidance or '' }}</textarea>
+          <label>Supporting evidence guidance</label>
+          <textarea name="evidence_positive">{{ d.evidence_positive or '' }}</textarea>
+          <label>Contrary evidence guidance</label>
+          <textarea name="evidence_contrary">{{ d.evidence_contrary or '' }}</textarea>
+          <label>Insufficient evidence guidance</label>
+          <textarea name="evidence_insufficient">{{ d.evidence_insufficient or '' }}</textarea>
+          <button type="submit" class="btn" style="margin-top:.6rem;">Save Signal Definition</button>
+        </form>
+      </details>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No Signal Definitions in this family yet.</p>
+  {% endif %}
+</div>
+{% endfor %}
+
+<div class="card">
+  <h2>Create a Signal Definition</h2>
+  <form method="post" action="{{ url_for('signal_definition_create') }}" class="req-form">
+    <label>Name</label>
+    <input type="text" name="name" placeholder="e.g. Recent relevant experience" required>
+    <label>Signal family</label>
+    <select name="signal_family" required>
+      {% for f in signal_families %}<option value="{{ f }}">{{ f|replace('_',' ')|title }}</option>{% endfor %}
+    </select>
+    <label>Subtype (optional — matches a detector in signal_detector.py, or leave blank if only manually assessed)</label>
+    <input type="text" name="signal_subtype">
+    <label>Description</label>
+    <textarea name="description" placeholder="What does this Signal mean, and why does it matter to this restaurant?"></textarea>
+    <label>Applicable assessment stage(s)</label>
+    <div class="checkbox-row">
+      {% for stage in assessment_stages %}
+      <label><input type="checkbox" name="assessment_stages" value="{{ stage }}"> {{ stage|replace('_',' ') }}</label>
+      {% endfor %}
+    </div>
+    <label>Allowed evidence source(s)</label>
+    <div class="checkbox-row">
+      {% for src in evidence_source_types %}
+      <label><input type="checkbox" name="evidence_sources_allowed" value="{{ src }}"> {{ src|replace('_',' ') }}</label>
+      {% endfor %}
+    </div>
+    <label>Detection guidance</label>
+    <textarea name="detection_guidance" placeholder="How should this Signal be recognized?"></textarea>
+    <label>Supporting evidence guidance</label>
+    <textarea name="evidence_positive" placeholder="What would count as evidence this Signal is present?"></textarea>
+    <label>Contrary evidence guidance</label>
+    <textarea name="evidence_contrary" placeholder="What would count as evidence against it?"></textarea>
+    <label>Insufficient evidence guidance</label>
+    <textarea name="evidence_insufficient" placeholder="What would NOT be enough to conclude either way?"></textarea>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Create Signal Definition</button>
+  </form>
+</div>
+
+{% endblock %}

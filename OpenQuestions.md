@@ -8,7 +8,7 @@ Items listed here are **not canonical rules** until explicitly resolved.
 
 ## Invoice Tax Treatment — OPEN
 
-Source: originally TASK_INVOICE_001; canonical terminology updated by TASK_PURCHASING_001, which reconciled the Administration `Invoice Intake.md` model into `01 Domains/Restaurant/Purchasing/` and removed the former as a duplicate (see `01 Domains/Restaurant/Purchasing/BusinessRules.md`, Rule 12, and `07 Tasks/Reports/TASK_PURCHASING_001_REPORT.md`).
+Source: originally TASK_INVOICE_001; canonical terminology updated by TASK_PURCHASING_001, which reconciled the Administration `Invoice Intake.md` model into `01 Domains/Business Domain/Restaurant/Purchasing/` and removed the former as a duplicate (see `01 Domains/Business Domain/Restaurant/Purchasing/BusinessRules.md`, Rule 12, and `07 Tasks/Reports/TASK_PURCHASING_001_REPORT.md`).
 
 Current principle:
 
@@ -42,11 +42,11 @@ establishes that it is economically borne by the business.
 
 For Florida restaurant purchases specifically, resale/exemption treatment must be verified before any automatic inclusion or exclusion of tax in Effective Product Cost.
 
-This question is expected to be resolved once the Taxation Domain (`01 Domains/Taxation/README.md`) or a jurisdiction rule pack establishes the applicable treatment for these suppliers/purchase categories. Restaurant/Purchasing comes before fiscal treatment — see `01 Domains/Restaurant/Purchasing/BusinessRules.md`, "Purchasing Precedes Administration and Taxation."
+This question is expected to be resolved once the Taxation Domain (`01 Domains/Cross Domain/Taxation/README.md`) or a jurisdiction rule pack establishes the applicable treatment for these suppliers/purchase categories. Restaurant/Purchasing comes before fiscal treatment — see `01 Domains/Business Domain/Restaurant/Purchasing/BusinessRules.md`, "Purchasing Precedes Administration and Taxation."
 
 ### Architectural boundary (TASK_REPOSITORY_STABILIZATION_001)
 
-The Taxation Domain (`01 Domains/Taxation/README.md`, TASK_TAXATION_001) now exists and is canonical, but nothing has yet connected it to this open question — the boundary below makes the intended integration explicit so it is not forgotten, without deciding it:
+The Taxation Domain (`01 Domains/Cross Domain/Taxation/README.md`, TASK_TAXATION_001) now exists and is canonical, but nothing has yet connected it to this open question — the boundary below makes the intended integration explicit so it is not forgotten, without deciding it:
 
 ```text
 Restaurant/Purchasing
@@ -72,7 +72,7 @@ Source: TASK_TIPS_003 (raised), TASK_TIPS_004 (resolved).
 
 The Product Owner supplied the approved policy: Location-specific policies (Winter Park configured; Mount Dora not yet canonical — see `07 Tasks/Reports/TASK_TIPS_004_REPORT.md`), Component 1 SERVICE_OWNER 90%, Component 2 ROLE_PRESENT_AT_PAYMENT (Host) 10% with `no_eligible_behavior=RETURN_TO_SERVICE_OWNER`, `valid_from` = each Location's own earliest real `PaymentTip` evidence. Configured reproducibly via `configure_rome_flavours_tip_policy.py` and now live in the real `data/rfone.db`. Full detail: `07 Tasks/Reports/TASK_TIPS_004_REPORT.md`.
 
-The Mount Dora gap itself (no canonical production Location exists yet at all — confirmed by TASK_REPOSITORY_STABILIZATION_001) is tracked explicitly, with its own onboarding checklist, at `01 Domains/Restaurant/Roadmap.md` §5, "Mount Dora Location — not yet onboarded." That tracked item, not this note, is the authoritative place to check Mount Dora status going forward.
+The Mount Dora gap itself (no canonical production Location exists yet at all — confirmed by TASK_REPOSITORY_STABILIZATION_001) is tracked explicitly, with its own onboarding checklist, at `01 Domains/Business Domain/Restaurant/Roadmap.md` §5, "Mount Dora Location — not yet onboarded." That tracked item, not this note, is the authoritative place to check Mount Dora status going forward.
 
 ### 1. Whether generic Personnel cost may be allocated to Employees — RESOLVED (TASK_LABOR_COST_001)
 
@@ -88,7 +88,7 @@ If it is not causally attributable
 No artificial Employee allocation.
 ```
 
-Canonical definition: `01 Domains/Administration/Personnel Cost.md` (`Total Employee Cost`, `Unallocated Personnel Cost`, `Total Personnel Cost = Σ Total Employee Cost + Unallocated Personnel Cost`). The earlier provisional `Direct Employee Labor Cost + Allocated Labor Overhead` framing, and the `Allocated Labor Overhead` concept itself, are rejected — RF-One never distributes a generic/shared personnel cost across Employees merely to make per-Employee totals add up, because doing so would create false comparative evidence for Personnel Management (`Personnel Cost.md` §11).
+Canonical definition: `01 Domains/Cross Domain/Administration/Personnel Cost.md` (`Total Employee Cost`, `Unallocated Personnel Cost`, `Total Personnel Cost = Σ Total Employee Cost + Unallocated Personnel Cost`). The earlier provisional `Direct Employee Labor Cost + Allocated Labor Overhead` framing, and the `Allocated Labor Overhead` concept itself, are rejected — RF-One never distributes a generic/shared personnel cost across Employees merely to make per-Employee totals add up, because doing so would create false comparative evidence for Personnel Management (`Personnel Cost.md` §11).
 
 ---
 

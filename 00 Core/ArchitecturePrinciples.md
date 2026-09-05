@@ -66,6 +66,18 @@ Human control does not imply continuous human operation. Within a Domain's confi
 
 ---
 
+# Shared Identity, Authority and Security Infrastructure
+
+No Domain or Module implements its own independent authentication, authorization, identity management, authority mechanism, operational signature mechanism, or audit mechanism.
+
+Every Domain consumes shared RF-One Identity / Authority / Security infrastructure.
+
+A Domain determines **what** authority a given class of Decision or Action requires. The common RF-One infrastructure determines **who** the Acting Identity is, **what** it is authorized to do, **in what context**, **whether stronger authentication is required**, and **how** the action is recorded and proven historically.
+
+See [ConceptualArchitecture/09_Identity_Authority_and_Accountability.md](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md) for the conceptual definitions of Identity, Authority, Delegation, Accountability and Auditability this rule relies on, and `03 Software/Identity Authority and Security Architecture.md` for the corresponding technical architecture.
+
+---
+
 # Traceability
 
 Every business decision must be traceable.
@@ -115,4 +127,5 @@ The architecture evolves only when business concepts evolve.
 - AI supports people.
 - Business history is immutable.
 - Every decision is traceable.
+- Identity, Authority and Audit are shared infrastructure, never Domain-specific.
 - Preserve simplicity.

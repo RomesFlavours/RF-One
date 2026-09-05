@@ -33,19 +33,19 @@ Examples may include:
 
 Application Domains use only the Core concepts they require.
 
-Current canonical top-level Domains (verify against `01 Domains/README.md` and `01 Domains/Domain Architecture.md` before assuming this list is complete — those files are authoritative, this is a pointer to them):
+Every Domain lives under one of two families, physically expressed as the two folders directly inside `01 Domains/` (verify against `01 Domains/README.md` and `01 Domains/Domain Architecture.md` §4 before assuming this list is complete — those files are authoritative, this is a pointer to them):
 
-- Restaurant
-- Personnel Management
-- Taxation
-- Administration
+- **Cross Domain** (`01 Domains/Cross Domain/`) — industry-independent, reusable by any business: Selection, Training, Performance, Personnel Management, Taxation, Administration.
+- **Business Domain** (`01 Domains/Business Domain/`) — industry-specific: Restaurant (currently the only one).
 
-`_Shared/` holds domain-independent-but-not-universal knowledge reused across multiple Domains (e.g. `_Shared/Environment/`) — it is not itself a Domain.
+A Cross Domain may consume industry-specific content a Business Domain supplies, but must never structurally depend on one specific Business Domain. `_Shared/` holds domain-independent-but-not-universal knowledge reused across multiple Domains (e.g. `_Shared/Environment/`) — it is not itself a Domain, and lives outside both families, directly under `01 Domains/`.
+
+**Selection, Training and Performance are each their own top-level Cross Domain** (`01 Domains/Cross Domain/Selection/`, `.../Training/`, `.../Performance/` — TASK_DOMAINS_003 for Selection; the Cross Domain/Business Domain reorganization for Training and Performance), not modules of Personnel Management or of Restaurant — usable by any industry, closely related to but not owned by Personnel Management's Personnel Decisions module. Do not nest any of the three under either. Restaurant's Industry Extension of Selection (role catalog, client/role configurations) lives at `01 Domains/Business Domain/Restaurant/Selection/`, depending on Selection Core, never the reverse.
 
 Several familiar business-capability names are **modules of an existing Domain**, not Domains in their own right. Do not create a new top-level `01 Domains/<name>/` folder for any of these — extend the owning Domain instead:
 
-- Purchasing and Sales are modules of the Restaurant Domain (`Restaurant Domain └── Purchasing module`, `Restaurant Domain └── Sales module`, canonically `01 Domains/Restaurant/Purchasing/` and `01 Domains/Restaurant/Sales/`).
-- Workforce, Selection, Training, Performance and Personnel Decisions are modules of the Personnel Management Domain (`Personnel Management Domain └── <module>`, canonically `01 Domains/Personnel Management/<module>/`). Note the canonical module name is **Personnel Decisions**, not "Personal Decision."
+- Purchasing and Sales are modules of the Restaurant Domain (`Restaurant Domain └── Purchasing module`, `Restaurant Domain └── Sales module`, canonically `01 Domains/Business Domain/Restaurant/Purchasing/` and `01 Domains/Business Domain/Restaurant/Sales/`).
+- Workforce and Personnel Decisions are modules of the Personnel Management Domain (`Personnel Management Domain └── <module>`, canonically `01 Domains/Cross Domain/Personnel Management/<module>/`). Note the canonical module name is **Personnel Decisions**, not "Personal Decision." **Training and Performance are NOT modules of Personnel Management** — despite the similar naming pattern, both are independent top-level Cross Domains (see above); do not re-nest them under Personnel Management.
 
 Commercial Products may combine one or more Domains.
 

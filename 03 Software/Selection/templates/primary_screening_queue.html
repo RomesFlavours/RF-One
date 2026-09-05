@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Client</div>
+      <div class="value">{{ client_name }}</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.82rem;">
+    Applications are ordered operationally — this is an internal ordering mechanism to help the Selezionatore
+    concentrate first on the most promising Applications, never an objective ranking of people. Work from the top
+    of the queue; there is no fixed cutoff.
+  </p>
+  <div class="filter-bar">
+    <div>
+      <label>Show</label>
+      <select onchange="window.location.href='{{ url_for('primary_screening_queue') }}?show='+this.value">
+        {% for opt in ['10','20','50','all'] %}<option value="{{ opt }}" {{ 'selected' if show == opt else '' }}>{{ 'First ' + opt if opt != 'all' else 'All' }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <form method="post" action="{{ url_for('primary_screening_run_all') }}" class="inline-form">
+    <button type="submit" class="btn secondary">Run Primary Screening for all un-screened Applications</button>
+  </form>
+</div>
+
+{% if due_reminders %}
+<div class="card">
+  <h2>Reminders Due ({{ due_reminders|length }})</h2>
+  <p class="muted" style="font-size:.8rem;">
+    Time-based HOLDs whose follow-up date has been reached — brought back to your attention; RF-One never acts on
+    these by itself.
+  </p>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Candidate</th><th>Due</th><th>Note</th><th></th></tr></thead>
+    <tbody>
+      {% for entry in due_reminders %}
+      <tr>
+        <td>{{ entry.application.candidate.full_name or '(name not extracted)' if entry.application else '-' }}</td>
+        <td>{{ entry.reminder.due_date.strftime('%Y-%m-%d') if entry.reminder.due_date else '-' }}</td>
+        <td style="font-size:.82rem;">{{ entry.reminder.note_text or '-' }}</td>
+        <td>{% if entry.application %}<a href="{{ url_for('application_decision', application_id=entry.application.id) }}">Review &rarr;</a>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Normal Pool ({{ normal_rows|length }})</h2>
+  {% if normal_rows %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Candidate</th><th>Role</th><th>Applied</th><th>Findings</th><th></th><th></th></tr></thead>
+    <tbody>
+      {% for row in normal_rows %}
+      <tr>
+        <td>
+          {{ row.full_name }}
+          {% if row.prior_count %}<span class="badge">Repeat applicant ({{ row.prior_count }})</span>{% endif %}
+          {% if row.unresolved_count %}<span class="badge status-partial">{{ row.unresolved_count }} unresolved</span>{% endif %}
+          {% for flag_name in row.active_flag_names %}<span class="badge status-failed">Flag: {{ flag_name }}</span>{% endfor %}
+        </td>
+        <td>{{ row.target_role }}</td>
+        <td>{{ row.applied_at.strftime('%Y-%m-%d') if row.applied_at else '-' }}</td>
+        <td style="font-size:.82rem; max-width:26rem;">{{ row.explanation }}</td>
+        <td>
+          {% if row.original_cv_available %}<a class="cv-link" href="{{ url_for('candidate_original_cv', candidate_id=row.candidate_id) }}" target="_blank" rel="noopener">CV &#8599;</a>{% endif %}
+        </td>
+        <td>
+          <a href="{{ url_for('primary_screening_detail', run_id=row.run_id) }}">Screen</a>
+          &middot;
+          <a href="{{ url_for('application_detail', application_id=row.application_id) }}">Application</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Applications in the normal Primary Screening pool yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Hard Disqualifier Pool ({{ hard_rows|length }})</h2>
+  <p class="muted" style="font-size:.82rem;">
+    These Applications are never deleted and remain fully searchable/reviewable — a Hard Disqualifier only removes
+    them from the normal operational queue until the Selezionatore explicitly overrides it.
+  </p>
+  {% if hard_rows %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Candidate</th><th>Role</th><th>Hard Disqualifier(s)</th><th>Explanation</th><th></th><th></th></tr></thead>
+    <tbody>
+      {% for row in hard_rows %}
+      <tr>
+        <td>
+          {{ row.full_name }}
+          {% for flag_name in row.active_flag_names %}<span class="badge status-failed">Flag: {{ flag_name }}</span>{% endfor %}
+        </td>
+        <td>{{ row.target_role }}</td>
+        <td>{% for name in row.hard_disqualifier_names %}<span class="badge status-failed">{{ name }}</span>{% endfor %}</td>
+        <td style="font-size:.82rem; max-width:24rem;">{{ row.explanation }}</td>
+        <td>
+          {% if row.original_cv_available %}<a class="cv-link" href="{{ url_for('candidate_original_cv', candidate_id=row.candidate_id) }}" target="_blank" rel="noopener">CV &#8599;</a>{% endif %}
+        </td>
+        <td>
+          <a href="{{ url_for('primary_screening_detail', run_id=row.run_id) }}">Review / Override</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Applications currently in the Hard Disqualifier pool.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -23,14 +23,16 @@ Conventions (see DATABASE_SCHEMA.md for full rationale):
 
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -47,6 +49,68 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase):
     pass
+
+
+# ---------------------------------------------------------------------------
+# Shared Identity & Authority substrate (GLOBAL_INTEGRITY_FIX_002 / C-1, I-4)
+#
+# Per `00 Core/ConceptualArchitecture/09_Identity_Authority_and_Accountability.md`
+# and Core Principle 21 ("No Domain or Module may define its own independent
+# identity, authority or audit mechanism"), ActingIdentity is the ONE stable
+# "who is acting" concept every Domain consumes — never redefined per-Domain.
+# It deliberately does not implement Authentication (no password/session/MFA
+# here): `authentication_provider`/`external_subject_id` are only the seam a
+# future real Authentication provider (e.g. Cognito) attaches through. Until
+# that exists, `acting_identity_service.get_current_acting_identity()` is the
+# ONE place that resolves "who is currently acting" from a trusted
+# server-side mechanism — never from client-supplied HTTP input — see that
+# module's own docstring for the explicit temporary/pre-production scope.
+# ---------------------------------------------------------------------------
+
+HUMAN_USER = "HUMAN_USER"
+SYSTEM = "SYSTEM"
+AI_AGENT = "AI_AGENT"
+EXTERNAL_SERVICE = "EXTERNAL_SERVICE"
+ACTING_IDENTITY_KINDS = (HUMAN_USER, SYSTEM, AI_AGENT, EXTERNAL_SERVICE)
+
+
+class ActingIdentity(Base):
+    """The stable, permanent-identifier "who" behind a Decision or Action
+    (Core doc §2 "Acting Identity" — Entity assuming the Actor role).
+    `display_name` is a configurable Attribute, never the identity itself
+    (Core doc §2.1: "changing a label must never be capable of silently
+    changing what the identity is accountable for") — every FK reference to
+    this table is what carries authority/ownership meaning, not the name.
+    `authentication_provider`/`external_subject_id` are nullable and unused
+    until a real Authentication provider is connected; a `HUMAN_USER`
+    identity created by today's pre-auth development resolver simply leaves
+    both `None`."""
+
+    __tablename__ = "acting_identities"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('HUMAN_USER', 'SYSTEM', 'AI_AGENT', 'EXTERNAL_SERVICE')",
+            name="ck_acting_identity_kind",
+        ),
+        UniqueConstraint(
+            "authentication_provider", "external_subject_id", name="uq_acting_identity_external_subject"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    authentication_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    external_subject_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1793,7 +1857,7 @@ class Device(Base):
 # ---------------------------------------------------------------------------
 # Payroll (TASK_PAYROLL_001) — Administration Domain, transversal, independent
 # from Restaurant / Personnel Management / ADP / jurisdiction labor law. See
-# `01 Domains/Administration/Payroll/` for the Domain-level definitions this
+# `01 Domains/Cross Domain/Administration/Payroll/` for the Domain-level definitions this
 # schema implements without redefining. Money is minor units (cents), never
 # floating point, matching the rest of this schema; every total (Payroll
 # Employer Cost, run totals) is computed from the atomic fact tables below,
@@ -2337,7 +2401,7 @@ class PayrollImportIssue(Base):
 # Purchasing — Restaurant Domain, Purchasing module (TASK_PURCHASING_004)
 #
 # Implements the canonical model already approved, documentation-only, by
-# TASK_PURCHASING_001-003 (`01 Domains/Restaurant/Purchasing/`). This section
+# TASK_PURCHASING_001-003 (`01 Domains/Business Domain/Restaurant/Purchasing/`). This section
 # adds the first persistent schema for it; it does not redefine any Domain
 # concept. Money follows this schema's existing minor-units convention;
 # quantity follows the existing `Numeric(12, 4)` convention (see "Numeric
@@ -2961,7 +3025,4245 @@ class PurchasingValidationLogEntry(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+# ---------------------------------------------------------------------------
+# Selection module — Resume Screening (TASK_SELECTION_001)
+#
+# Persists only Facts (01 Domains/Cross Domain/Selection/
+# ResumeScreening/EvidenceModel.md): the candidate's declared/résumé-stated
+# information and the raw résumé it came from. Derived Information, Flags
+# and Indicators are never persisted here — they are recomputed on every
+# read by `rfone_data_store/selection/analysis.py` from these Facts, so a
+# revisit is always internally consistent and never stale relative to
+# whatever the analysis engine currently computes.
+# ---------------------------------------------------------------------------
+
+
+class RawResume(Base):
+    """A résumé as acquired from its ResumeSource, before parsing
+    (ResumeScreening/CandidateCVProfile.md, "Resume Source architecture":
+    ResumeSource -> RawResume -> ResumeParser -> CandidateCVProfile).
+    `source_type` keeps this open to a future non-file ResumeSource (e.g. an
+    API feed) without any schema change — `storage_path` is nullable and is
+    only ever populated for a file-based source such as local upload."""
+
+    __tablename__ = "raw_resumes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
+    )
+
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    storage_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Best-effort duplicate-detection signal (TASK_SELECTION_002) — a hash of
+    # the extracted raw text, or of the filename when no text could be
+    # extracted (see `selection/parsing/dedup.py`). Nullable because it is
+    # only ever computed by the batch-import path; never used to identify a
+    # candidate on its own, only to flag a likely re-upload of the same file.
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class Candidate(Base):
+    """A candidate's CV Profile (ResumeScreening/CandidateCVProfile.md,
+    "CANDIDATE"). `restaurant_id` is nullable — Selection Core is
+    client-agnostic by design (ResumeScreening/README.md, "Domain
+    architecture") — but is populated here for the current single-client
+    Runtime deployment, the same scoping convention every other
+    Restaurant-configured entity in this schema already uses."""
+
+    __tablename__ = "candidates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
+    )
+    raw_resume_id: Mapped[int | None] = mapped_column(
+        ForeignKey("raw_resumes.id"), nullable=True, index=True
+    )
+
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    languages: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_role: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    declared_availability: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Who/what acquired the résumé within `source` (e.g. "manual" for today's
+    # LOCAL_UPLOAD; a future API integration would set its provider name
+    # here without any schema change — TASK_SELECTION_002 §3).
+    source_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # "REAL_AI", "RULE_BASED" or "DEMO" — never disguised (task §18; Task 2A
+    # §11 removed the fabricated-fixture DEMO fallback from the production
+    # import path — DEMO now only appears on synthetic test fixtures).
+    # Always shown in the UI.
+    parsing_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="DEMO")
+    parser_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Task 2A additions — Facts only, extracted as stated, never invented.
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    linkedin_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    other_profile_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    other_sections_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Contextual age/career information (ResumeScreening/ExperienceAndTrajectory.md,
+    # "Contextual career / age information") — Facts/derived-context only,
+    # deliberately outside every Indicator; never read by analysis.py's
+    # indicator calculations.
+    declared_age_context: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    derived_age_context_range: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    derived_age_context_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    derived_age_context_confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="NEW")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    education: Mapped[list["CandidateEducation"]] = relationship(
+        back_populates="candidate", cascade="all, delete-orphan",
+        order_by="CandidateEducation.start_date",
+    )
+    work_history: Mapped[list["CandidateWorkHistory"]] = relationship(
+        back_populates="candidate", cascade="all, delete-orphan",
+        order_by="CandidateWorkHistory.start_date",
+    )
+    skills: Mapped[list["CandidateSkill"]] = relationship(
+        back_populates="candidate", cascade="all, delete-orphan", order_by="CandidateSkill.id",
+    )
+    certifications: Mapped[list["CandidateCertification"]] = relationship(
+        back_populates="candidate", cascade="all, delete-orphan", order_by="CandidateCertification.id",
+    )
+    language_records: Mapped[list["CandidateLanguage"]] = relationship(
+        back_populates="candidate", cascade="all, delete-orphan", order_by="CandidateLanguage.id",
+    )
+
+
+class CandidateEducation(Base):
+    """One education record (ResumeScreening/CandidateCVProfile.md,
+    "EDUCATION"). Every field is a Fact; nothing here is derived — INCLUDING
+    `start_date`/`end_date`, which (Task 2B) are the NORMALIZED dates,
+    always re-derived from `start_date_text`/`end_date_text` (the résumé's
+    own text, untouched) by `selection/normalization.py`. They are stored
+    facts of normalization, not Derived Information recomputed on every
+    read — the same convention Task 2A already established for
+    `CandidateWorkHistory.normalized_role` below."""
+
+    __tablename__ = "candidate_education"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(
+        ForeignKey("candidates.id"), nullable=False, index=True
+    )
+
+    institution: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    program: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    qualification: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    field: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    start_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completion_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    certifications: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Task 2B — date normalization (see WorkHistoryRecord's matching Task 2B
+    # columns below for the full rationale).
+    start_date_text: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    end_date_text: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    start_date_precision: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    end_date_precision: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    date_normalization_confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    candidate: Mapped["Candidate"] = relationship(back_populates="education")
+
+
+class CandidateWorkHistory(Base):
+    """One employment record (ResumeScreening/CandidateCVProfile.md, "WORK
+    HISTORY"). `normalized_role`/`start_date`/`end_date`/`is_current` and
+    every Task 2B column below are Derived-but-stored, always re-derived
+    from a Fact column on this same row (`original_job_title` for role
+    fields; `start_date_text`/`end_date_text` for date fields) by
+    `selection/normalization.py` — never overwriting the Fact they came
+    from, and safe to recompute at any time via
+    `normalization.reprocess_candidate()` (task "REPROCESSING EXISTING
+    CANDIDATES"). `duration in months` is the one exception kept OUT of this
+    table — it is always recomputed on read by `selection/core/
+    experience_analysis.py.work_entry_duration_months()`, never stored,
+    since date precision only ever gets more accurate over time (a future
+    reprocess), never the reverse."""
+
+    __tablename__ = "candidate_work_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(
+        ForeignKey("candidates.id"), nullable=False, index=True
+    )
+
+    employer: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    original_job_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    normalized_role: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    start_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    responsibilities: Mapped[str | None] = mapped_column(Text, nullable=True)
+    achievements: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason_for_leaving: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_snippet: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Task 2B — date normalization. `start_date_text`/`end_date_text` are
+    # the résumé's own text, exactly as extracted (e.g. "Jan 2021",
+    # "Present"); `start_date`/`end_date`/`is_current` above are always
+    # re-derived from these two, never hand-set elsewhere.
+    start_date_text: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    end_date_text: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    start_date_precision: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    end_date_precision: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    date_normalization_confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    # Task 2B — role/title normalization. Always re-derived from
+    # `original_job_title` above, never from each other.
+    normalized_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role_family: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    seniority_level: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    multi_role: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    title_normalization_confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    candidate: Mapped["Candidate"] = relationship(back_populates="work_history")
+
+
+class CandidateSkill(Base):
+    """One stated skill (ResumeScreening/CandidateCVProfile.md, "SKILLS").
+    Task 2A: extracted exactly as stated — no inferred, normalized, or rated
+    skills."""
+
+    __tablename__ = "candidate_skills"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(
+        ForeignKey("candidates.id"), nullable=False, index=True
+    )
+    skill: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    candidate: Mapped["Candidate"] = relationship(back_populates="skills")
+
+
+class CandidateCertification(Base):
+    """One certification/license (ResumeScreening/CandidateCVProfile.md,
+    "CERTIFICATIONS / LICENSES"). Kept separate from
+    `CandidateEducation.certifications` (free text tied to an education
+    record) so a standalone certification is not lost."""
+
+    __tablename__ = "candidate_certifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(
+        ForeignKey("candidates.id"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    issuer: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    date_text: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    candidate: Mapped["Candidate"] = relationship(back_populates="certifications")
+
+
+class CandidateLanguage(Base):
+    """One language record (ResumeScreening/CandidateCVProfile.md,
+    "LANGUAGES") — distinct from the coarser `Candidate.languages` free-text
+    Fact, which remains a single-string summary a parser may also
+    populate."""
+
+    __tablename__ = "candidate_languages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(
+        ForeignKey("candidates.id"), nullable=False, index=True
+    )
+    language: Mapped[str] = mapped_column(String(64), nullable=False)
+    proficiency: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    candidate: Mapped["Candidate"] = relationship(back_populates="language_records")
+
+
+# ---------------------------------------------------------------------------
+# Selection module — Requirement Framework (TASK 3A)
+#
+# Defines WHAT a restaurant is looking for — never what a candidate is, and
+# never whether a candidate fits (01 Domains/Cross Domain/Selection/SelectionRequirement.md).
+# `RequirementTemplate`/`RequirementTemplateItem` are RF-One-provided,
+# reusable starting points; `RequirementSet`/`Requirement` are the
+# restaurant-owned, independently editable result of instantiating (cloning)
+# a template — editing one never touches the other (`source_template_id` is
+# traceability only, not a live link). No candidate/Fit-Assessment table
+# exists here; this framework is completely separable from Candidate
+# evidence, exactly as the task requires.
+# ---------------------------------------------------------------------------
+
+
+class RequirementTemplate(Base):
+    """An RF-One-provided starting point (task §8) — e.g. "High-Volume
+    Server". Never restaurant-specific data itself; a restaurant clones one
+    into its own `RequirementSet` (`instantiate_requirement_set_from_template`
+    in `selection/requirements_service.py`) and edits the clone freely.
+    `intended_role` is a free-text/normalized-role hint for filtering the
+    template list (task §9: multiple templates may target the same nominal
+    role), not a hard constraint."""
+
+    __tablename__ = "requirement_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    intended_role: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    items: Mapped[list["RequirementTemplateItem"]] = relationship(
+        back_populates="template", cascade="all, delete-orphan", order_by="RequirementTemplateItem.display_order",
+    )
+
+
+class RequirementTemplateItem(Base):
+    """One requirement inside a `RequirementTemplate` — the default shape a
+    cloned `Requirement` starts from (task §8's "default criticality/
+    trainability/assessment stages/evaluation guidance"). See `Requirement`
+    below for what each field means; kept as a near-identical parallel
+    structure deliberately, so cloning is a straightforward field-by-field
+    copy (`selection/requirements_service.py`)."""
+
+    __tablename__ = "requirement_template_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    template_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_templates.id"), nullable=False, index=True
+    )
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    criticality: Mapped[str] = mapped_column(String(16), nullable=False)
+    trainability: Mapped[str] = mapped_column(String(24), nullable=False)
+    # List of assessment-stage codes (task §5: "a requirement may be
+    # assessable at more than one stage") — JSON, same convention already
+    # used elsewhere in this schema for a small string-list column (e.g.
+    # `PurchasingAcceptableConfiguration.acceptable_configurations`).
+    assessment_stages: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    evidence_positive: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_contrary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_insufficient: Mapped[str | None] = mapped_column(Text, nullable=True)
+    guidance_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    template: Mapped["RequirementTemplate"] = relationship(back_populates="items")
+
+
+class RequirementSet(Base):
+    """"What are we looking for for this specific hiring need?" (task §1) —
+    restaurant-owned, independently editable once created, whether it came
+    from a template or was built from scratch. `restaurant_id` mirrors the
+    same nullable-FK convention `Candidate`/`RawResume` already use (Selection
+    Core stays client-agnostic; populated for the current single-client
+    Runtime deployment). `location_label` is a free-text hint (e.g. "Mount
+    Dora"), not a FK to `locations` — a Requirement Set is a hiring-need
+    concept, not tied to Restaurant's own location schema.
+
+    `version` is incremented by `selection/requirements_service.py`
+    whenever this set or its requirements are structurally edited (Task 3A
+    §12). Since Task 3A-FIX, a version additionally identifies an immutable
+    `RequirementSetSnapshot` — call `requirements_service.
+    create_requirement_set_snapshot()` to capture the set's exact current
+    state (and every Requirement's) before it changes further; a later Fit
+    Assessment binds to that snapshot, not to these live, still-editable
+    rows."""
+
+    __tablename__ = "requirement_sets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
+    )
+    source_template_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requirement_templates.id"), nullable=True, index=True
+    )
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    location_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    target_role: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    source_template: Mapped["RequirementTemplate | None"] = relationship()
+    requirements: Mapped[list["Requirement"]] = relationship(
+        back_populates="requirement_set", cascade="all, delete-orphan", order_by="Requirement.display_order",
+    )
+
+
+class Requirement(Base):
+    """One individual Requirement inside a restaurant's `RequirementSet`
+    (task §2) — e.g. "Ability to work effectively in a team." Defines WHAT
+    the restaurant wants and HOW it may eventually be recognized
+    (`evidence_*`/`guidance_notes`, task §6); it does not itself hold or
+    reference any candidate evidence. `is_active=False` is Task 3A's
+    deactivation mechanism (task §12/test L) — a requirement is never
+    hard-deleted, so historical structure (what this set once required) is
+    never silently lost."""
+
+    __tablename__ = "requirements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    requirement_set_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_sets.id"), nullable=False, index=True
+    )
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    criticality: Mapped[str] = mapped_column(String(16), nullable=False)
+    trainability: Mapped[str] = mapped_column(String(24), nullable=False)
+    assessment_stages: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    evidence_positive: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_contrary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_insufficient: Mapped[str | None] = mapped_column(Text, nullable=True)
+    guidance_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    requirement_set: Mapped["RequirementSet"] = relationship(back_populates="requirements")
+
+
+class RequirementSetSnapshot(Base):
+    """An IMMUTABLE, point-in-time copy of a `RequirementSet` and every
+    `Requirement` it held at the moment of capture (TASK 3A-FIX). Exists so
+    a later Fit Assessment (Task 3B) can stay bound to the exact Requirement
+    definitions used, even after the live `RequirementSet` keeps evolving —
+    "LIVE REQUIREMENT SET may continue changing; HISTORICAL REQUIREMENT
+    VERSION/SNAPSHOT must remain immutable once created."
+
+    Every field here is a copy by value, captured once by
+    `requirements_service.create_requirement_set_snapshot()` — never
+    recomputed, never re-synced from the live `RequirementSet`/`Requirement`
+    rows. `requirements_service.py` intentionally exposes no update
+    operation for a snapshot or its items: once a row exists here, nothing
+    in this codebase is allowed to write to it again.
+
+    `(requirement_set_id, version)` is unique — `version` is the live
+    `RequirementSet.version` AT CAPTURE TIME, so a snapshot is always
+    addressable by "this Requirement Set, as of version N," and requesting
+    a snapshot for a version that already has one returns the existing row
+    instead of an unnecessary duplicate (task §3)."""
+
+    __tablename__ = "requirement_set_snapshots"
+    __table_args__ = (
+        UniqueConstraint("requirement_set_id", "version", name="uq_requirement_set_snapshots_set_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    requirement_set_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_sets.id"), nullable=False, index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Requirement Set-level fields, copied by value at capture time — never
+    # re-read from the live `RequirementSet` row afterward.
+    restaurant_id: Mapped[int | None] = mapped_column(nullable=True)
+    source_template_id: Mapped[int | None] = mapped_column(nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    location_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    target_role: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    was_active: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    items: Mapped[list["RequirementSnapshotItem"]] = relationship(
+        back_populates="snapshot", cascade="all, delete-orphan", order_by="RequirementSnapshotItem.display_order",
+    )
+
+
+class RequirementSnapshotItem(Base):
+    """One `Requirement`'s state, copied by value into a
+    `RequirementSetSnapshot` (TASK 3A-FIX). `source_requirement_id` is
+    deliberately NOT a foreign key (unlike every other `*_id` column in this
+    schema) — a snapshot must stay completely valid and unaffected even if
+    the live `Requirement` row it was copied from is later changed,
+    deactivated, or (were hard deletion ever added) removed entirely; a real
+    FK would risk exactly the coupling this table exists to avoid."""
+
+    __tablename__ = "requirement_snapshot_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_set_snapshots.id"), nullable=False, index=True
+    )
+    source_requirement_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    criticality: Mapped[str] = mapped_column(String(16), nullable=False)
+    trainability: Mapped[str] = mapped_column(String(24), nullable=False)
+    assessment_stages: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    evidence_positive: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_contrary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_insufficient: Mapped[str | None] = mapped_column(Text, nullable=True)
+    guidance_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    was_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    snapshot: Mapped["RequirementSetSnapshot"] = relationship(back_populates="items")
+
+
+# ---------------------------------------------------------------------------
+# Selection module — Fit Assessment (TASK 3B)
+#
+# Answers "for this candidate, against this exact immutable Requirement Set
+# snapshot, what evidence do we have regarding each Requirement?" — never a
+# hiring decision, never a score. Assessment always reads Requirement
+# definitions from `RequirementSnapshotItem` (immutable, TASK 3A-FIX), never
+# from live `Requirement` rows, so a Fit Assessment's meaning cannot be
+# silently rewritten by later edits to the restaurant's live Requirement Set
+# (01 Domains/Cross Domain/Selection/FitAssessment.md).
+# ---------------------------------------------------------------------------
+
+
+class FitAssessment(Base):
+    """One evaluation run of one candidate against one immutable
+    `RequirementSetSnapshot`. `requirement_set_id` is a denormalized copy of
+    `snapshot.requirement_set_id`, kept only for convenient navigation back
+    to the live Requirement Set (task §3) — it is never used to resolve
+    Requirement definitions; `requirement_set_snapshot_id` alone is
+    authoritative for that. Assessing the same candidate against a NEWER
+    live version is always a NEW `FitAssessment` row bound to a NEW
+    snapshot (task §21) — this row is never repointed to a different
+    snapshot after creation."""
+
+    __tablename__ = "fit_assessments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"), nullable=False, index=True)
+    requirement_set_snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_set_snapshots.id"), nullable=False, index=True
+    )
+    requirement_set_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requirement_sets.id"), nullable=True, index=True
+    )
+
+    # The most advanced assessment stage this Fit Assessment currently
+    # reflects (task §3) — "RESUME" after Task 3B's own generation; a later
+    # (not-yet-built) stage advances this only when evidence for that stage
+    # is actually added, never speculatively.
+    current_stage: Mapped[str] = mapped_column(String(24), nullable=False, default="RESUME")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Free-form human note — NEVER evidence.
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    candidate: Mapped["Candidate"] = relationship()
+    requirement_set_snapshot: Mapped["RequirementSetSnapshot"] = relationship()
+    requirement_assessments: Mapped[list["RequirementAssessment"]] = relationship(
+        back_populates="fit_assessment", cascade="all, delete-orphan",
+        order_by="RequirementAssessment.display_order",
+    )
+
+
+class RequirementAssessment(Base):
+    """The fundamental unit (task §4): Candidate x RequirementSnapshotItem.
+    Exactly one row per (fit_assessment, requirement_snapshot_item) — later
+    evidence enriches this SAME row (via new `EvidenceItem` rows) rather
+    than creating a duplicate, so reassessment never destroys prior-stage
+    evidence (task §19).
+
+    `system_status` is always what `core.fit_assessment_model.
+    compute_status_from_evidence()` currently computes from this row's
+    evidence — recalculated on every evidence change. `effective_status`
+    starts equal to it, but a human override (task §17) can set
+    `effective_status` independently; once `origin` is any HUMAN_* value,
+    automatic recomputation stops touching `effective_status` (it keeps
+    updating `system_status` for transparency, but never overwrites a
+    human's recorded conclusion) — see `fit_assessment_service.py`."""
+
+    __tablename__ = "requirement_assessments"
+    __table_args__ = (
+        UniqueConstraint(
+            "fit_assessment_id", "requirement_snapshot_item_id", name="uq_requirement_assessment_fit_item"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fit_assessment_id: Mapped[int] = mapped_column(
+        ForeignKey("fit_assessments.id"), nullable=False, index=True
+    )
+    requirement_snapshot_item_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_snapshot_items.id"), nullable=False, index=True
+    )
+
+    stage: Mapped[str] = mapped_column(String(24), nullable=False, default="RESUME")
+    system_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    effective_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Free-form human note — NEVER evidence.
+    origin: Mapped[str] = mapped_column(String(24), nullable=False, default="SYSTEM_GENERATED")
+
+    override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    overridden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    fit_assessment: Mapped["FitAssessment"] = relationship(back_populates="requirement_assessments")
+    requirement_snapshot_item: Mapped["RequirementSnapshotItem"] = relationship()
+    evidence_items: Mapped[list["EvidenceItem"]] = relationship(
+        back_populates="requirement_assessment", cascade="all, delete-orphan", order_by="EvidenceItem.id",
+    )
+
+
+class EvidenceItem(Base):
+    """One piece of evidence for one `RequirementAssessment` (task §7).
+    Append-only by design — evidence is never edited or deleted once
+    created (no `updated_at`), so multiple, even conflicting, evidence
+    items always coexist (task §14) and later-stage evidence never
+    destroys earlier evidence (task §19). `is_system_generated`
+    distinguishes automatically produced evidence (safe to regenerate on
+    refresh, task §21) from human-added evidence (never touched by an
+    automatic refresh)."""
+
+    __tablename__ = "evidence_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    requirement_assessment_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_assessments.id"), nullable=False, index=True
+    )
+
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_stage: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    source_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    evidence_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_classification: Mapped[str] = mapped_column(String(24), nullable=False)
+    evidence_relationship: Mapped[str] = mapped_column(String(16), nullable=False)
+    confidence: Mapped[str] = mapped_column(String(16), nullable=False, default="UNKNOWN")
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_system_generated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    requirement_assessment: Mapped["RequirementAssessment"] = relationship(back_populates="evidence_items")
+
+
+# ---------------------------------------------------------------------------
+# Selection module — Selection Signals + Review Priority (TASK 3C)
+#
+# Concept note §1: CANDIDATE (the person) is distinct from APPLICATION (one
+# specific application by that person for a specific role/context/date).
+# `CandidatePerson` is the person-level identity Task 3C introduces;
+# `Candidate` (above, Task 2A) keeps its existing meaning UNCHANGED — one
+# parsed résumé/CV dataset — and now plays the role of "one Application's
+# CV snapshot." `Application` links the two, plus the context (target role,
+# Requirement Set, Review Priority) the concept note asks for. This naming
+# is a deliberate, documented compromise: renaming the existing `Candidate`
+# table (used throughout Task 2A/2B/3A/3B) was judged riskier than adding
+# `CandidatePerson` alongside it — see `selection/application_service.py`'s
+# own module docstring.
+#
+# Selection Signals mirror the Requirement Framework's architecture exactly
+# (`SignalDefinition` ~ `Requirement`, restaurant-configurable, never
+# hard-coded universal rules) and Signal Observations mirror Fit
+# Assessment's evidence model (`SignalObservation` ~ `RequirementAssessment`,
+# `SignalEvidenceItem` ~ `EvidenceItem`) — reusing the same vocabulary
+# (`core/fit_assessment_model.py`'s evidence source/classification/
+# relationship/confidence constants) rather than inventing a parallel one.
+# `SignalEvidenceItem` is a structurally separate table from `EvidenceItem`
+# (not a shared/polymorphic one) so Task 3B's tested, working table and its
+# NOT NULL `requirement_assessment_id` never need to be loosened.
+# ---------------------------------------------------------------------------
+
+
+class CandidatePerson(Base):
+    """The PERSON, across every Application they have ever submitted
+    (concept note §1) — as distinct from `Candidate` above, which remains
+    one résumé/CV dataset for one Application. `restaurant_id` mirrors the
+    same nullable-FK, client-scoping convention every other Selection
+    entity uses. Identity resolution (deciding whether a newly-imported
+    résumé belongs to an already-known person) is a best-effort match on
+    email — see `application_service.py` — never claimed to be perfect,
+    the same honest caveat Task 2A's content-hash duplicate detection
+    already carries for a related, but different, problem."""
+
+    __tablename__ = "candidate_persons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
+    )
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    primary_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    primary_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Task 3C-FIX — identity-resolution improvements. `primary_phone` above
+    # keeps the phone exactly as captured (display); this is the digits-only
+    # form `identity_service.py` actually matches on. `normalized_name` is
+    # used only for STRONG/POSSIBLE name-based match SUGGESTIONS — it is
+    # never, on its own, grounds to auto-attach an Application to a person
+    # (see identity_service.py's own docstring).
+    primary_phone_normalized: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    normalized_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    applications: Mapped[list["Application"]] = relationship(
+        back_populates="person", order_by="Application.applied_at",
+    )
+    # Task 5A — Candidate Flags are PERSON-level (they follow the person
+    # across every Application, not just one), unlike everything else in
+    # this file's Selection section, which is Application-scoped.
+    flags: Mapped[list["CandidateFlag"]] = relationship(
+        back_populates="person", cascade="all, delete-orphan", order_by="CandidateFlag.id",
+    )
+
+
+class Application(Base):
+    """One specific application by one `CandidatePerson`, for a specific
+    role/context/date (concept note §1) — the primary unit Review Priority
+    and Selection Signals attach to, never the person directly and never
+    the raw CV data directly. `candidate_id` is the résumé/CV snapshot this
+    Application was submitted with (Task 2A's `Candidate` row) — one
+    Application per `Candidate` row.
+
+    `review_priority_system`/`review_priority_effective`/
+    `review_priority_origin` mirror Task 3B's `RequirementAssessment`
+    system/effective/origin pattern exactly (concept note §10: "System
+    priority and Selezionatore override must remain distinguishable.")."""
+
+    __tablename__ = "applications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("candidate_persons.id"), nullable=False, index=True)
+    candidate_id: Mapped[int] = mapped_column(
+        ForeignKey("candidates.id"), nullable=False, unique=True, index=True
+    )
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
+    )
+    requirement_set_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requirement_sets.id"), nullable=True, index=True
+    )
+    target_role: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    applied_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    # Historical outcome (concept note §11) — a record only; Task 3C
+    # implements no learning/correlation logic from this field.
+    outcome: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    review_priority_system: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    review_priority_effective: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    review_priority_origin: Mapped[str] = mapped_column(String(24), nullable=False, default="SYSTEM_GENERATED")
+    review_priority_override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_priority_overridden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Task 3C-FIX — the concise reasons behind `review_priority_system`,
+    # exactly as `core.signal_model.compute_review_priority()` returned them
+    # (never a score), so the Review Queue can show WHY without recomputing.
+    review_priority_reasons: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Selezionatore note — never evidence.
+
+    # Task 3C-FIX §7 — operational workflow status, entirely separate from
+    # Review Priority above. Only ever set by an explicit Selezionatore
+    # action (`application_service.set_workflow_status`) — nothing in this
+    # codebase sets it automatically from a Signal or a priority category.
+    workflow_status: Mapped[str] = mapped_column(String(24), nullable=False, default="NEW")
+    workflow_status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    workflow_status_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Task 3C-FIX §1/§2 — identity-resolution provenance. SYSTEM_RESOLVED
+    # covers both an automatic VERY_STRONG contact match and a brand-new
+    # person; HUMAN_CONFIRMED records that a Selezionatore explicitly
+    # confirmed/corrected which CandidatePerson this Application belongs to.
+    identity_origin: Mapped[str] = mapped_column(String(24), nullable=False, default="SYSTEM_RESOLVED")
+    identity_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Task 5A — STAGE (where the Application currently is in the Selection
+    # process) and OUTCOME's Application-lifecycle effect, deliberately
+    # separate concepts from `workflow_status` above (kept, unchanged, for
+    # backward compatibility — see `core/stage_model.py`/
+    # `core/outcome_model.py` and `selection_validation.py`'s Task 5A
+    # checks for exactly how the two coexist). Both are convenience fields
+    # only — `current_stage` mirrors the latest `ApplicationStageTransition`
+    # (task §3's own "the Application may expose one current Stage for
+    # convenience, but the historical transitions remain permanent");
+    # `lifecycle_state` mirrors the latest `SelectionOutcomeDecision`'s
+    # snapshot `lifecycle_effect`. Neither is ever the sole record of truth
+    # — full history always lives in the two append-only tables below.
+    current_stage: Mapped[str] = mapped_column(String(32), nullable=False, default="APPLICATION_RECEIVED")
+    lifecycle_state: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
+    # Task 5A-FIX §8 — convenience pointer to the current operational
+    # queue/list, mirroring `current_stage`/`lifecycle_state` exactly:
+    # never the sole record of truth, always derivable from the most
+    # recent `ApplicationQueueMovement`. `None` means "no queue assigned"
+    # (task §11 — never invent one when an applied Outcome configures none).
+    current_queue_id: Mapped[int | None] = mapped_column(ForeignKey("selection_queues.id"), nullable=True, index=True)
+
+    # Task 5C §26/§22 — the operational Session this Application belongs to
+    # (nullable: an Application never HAS to belong to a Session — every
+    # pre-5C Application, and any Application processed outside Session
+    # governance, remains valid with `session_id=None`). `rule_set_version_id`
+    # is stamped ONCE, when the Application is linked to its Session
+    # (`session_service.link_application_to_session`), to the Session's
+    # THEN-current Rule Set version — and is NEVER rewritten afterward, even
+    # by a later Rule Change (task §18/§22: "already-processed Applications
+    # remain tied to the Rule Set version under which they were evaluated" /
+    # "do NOT retroactively rewrite prior results"). Whether this Application
+    # was later affected by a retroactive Rule Change is answered by
+    # `SelectionRuleChangeImpact`, never by mutating this column.
+    session_id: Mapped[int | None] = mapped_column(ForeignKey("selection_sessions.id"), nullable=True, index=True)
+    rule_set_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_rule_set_versions.id"), nullable=True, index=True
+    )
+
+    # Task 5D §1 — WHERE the candidate found out about this role (Indeed,
+    # Referral, Walk-In...), deliberately distinct from Communication
+    # Channel (how RF-One later contacts them) and from `Candidate.source`
+    # (Task 2A's résumé-ACQUISITION-mechanism field, e.g. LOCAL_UPLOAD).
+    # Nullable — "where known" (task's own qualifier); `..._other_text` only
+    # ever holds a value when the chosen source is the catch-all "Other."
+    acquisition_source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acquisition_source_definitions.id"), nullable=True, index=True
+    )
+    acquisition_source_other_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Task 5E §10/§14/§31 — the exact tracking-link-resolved placement this
+    # Application arrived through, when known (nullable — most Applications
+    # still arrive by direct upload, unrelated to any Job Posting). This is
+    # the precise join key channel/publication/placement analytics reads;
+    # `acquisition_source_id` above remains the coarser, always-present
+    # attribution.
+    channel_publication_id: Mapped[int | None] = mapped_column(
+        ForeignKey("channel_publications.id"), nullable=True, index=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    person: Mapped["CandidatePerson"] = relationship(back_populates="applications")
+    acquisition_source: Mapped["AcquisitionSourceDefinition | None"] = relationship()
+    channel_publication: Mapped["ChannelPublication | None"] = relationship()
+    candidate: Mapped["Candidate"] = relationship()
+    requirement_set: Mapped["RequirementSet | None"] = relationship()
+    signal_observations: Mapped[list["SignalObservation"]] = relationship(
+        back_populates="application", cascade="all, delete-orphan", order_by="SignalObservation.id",
+    )
+    note_entries: Mapped[list["ApplicationNote"]] = relationship(
+        back_populates="application", cascade="all, delete-orphan", order_by="ApplicationNote.id",
+    )
+    stage_transitions: Mapped[list["ApplicationStageTransition"]] = relationship(
+        back_populates="application", cascade="all, delete-orphan", order_by="ApplicationStageTransition.id",
+    )
+    outcome_decisions: Mapped[list["SelectionOutcomeDecision"]] = relationship(
+        back_populates="application", cascade="all, delete-orphan", order_by="SelectionOutcomeDecision.id",
+    )
+    queue_movements: Mapped[list["ApplicationQueueMovement"]] = relationship(
+        back_populates="application", cascade="all, delete-orphan", order_by="ApplicationQueueMovement.id",
+        foreign_keys="ApplicationQueueMovement.application_id",
+    )
+    current_queue: Mapped["SelectionQueue | None"] = relationship(foreign_keys=[current_queue_id])
+
+
+class SignalDefinition(Base):
+    """A restaurant-configurable Selection Signal definition (concept note
+    §5) — mirrors `Requirement`'s shape closely (restaurant/client,
+    assessment stage(s), evidence guidance, active/version) since a Signal
+    is structurally the same kind of "what to look for, and how" object,
+    just feeding Review Priority instead of a Fit Assessment. Never
+    restaurant-specific logic hard-coded elsewhere — restaurants create
+    their own rows here (concept note: "Do not hard-code Rome's Flavours
+    Signals as universal RF-One rules.")."""
+
+    __tablename__ = "signal_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signal_family: Mapped[str] = mapped_column(String(24), nullable=False)
+    signal_subtype: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    assessment_stages: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    evidence_sources_allowed: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    detection_guidance: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_positive: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_contrary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_insufficient: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    policy_rules: Mapped[list["ReviewPriorityPolicyRule"]] = relationship(back_populates="signal_definition")
+
+
+class SignalObservation(Base):
+    """One (Application, SignalDefinition) unit (concept note §6) — the
+    Signal-framework equivalent of Task 3B's `RequirementAssessment`.
+    Exactly one row per pair; later evidence enriches this SAME row rather
+    than creating a duplicate, exactly like `RequirementAssessment` does."""
+
+    __tablename__ = "signal_observations"
+    __table_args__ = (
+        UniqueConstraint("application_id", "signal_definition_id", name="uq_signal_observation_app_def"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    signal_definition_id: Mapped[int] = mapped_column(
+        ForeignKey("signal_definitions.id"), nullable=False, index=True
+    )
+
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="NOT_ASSESSED")
+    confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detected_pattern: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin: Mapped[str] = mapped_column(String(24), nullable=False, default="SYSTEM_GENERATED")
+    override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    overridden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    application: Mapped["Application"] = relationship(back_populates="signal_observations")
+    signal_definition: Mapped["SignalDefinition"] = relationship()
+    evidence_items: Mapped[list["SignalEvidenceItem"]] = relationship(
+        back_populates="signal_observation", cascade="all, delete-orphan", order_by="SignalEvidenceItem.id",
+    )
+
+
+class SignalEvidenceItem(Base):
+    """One piece of evidence for one `SignalObservation` — structurally
+    identical to Task 3B's `EvidenceItem` (append-only, same source/
+    classification/relationship/confidence vocabulary from
+    `core/fit_assessment_model.py`), kept as its own table rather than a
+    shared/polymorphic one so `EvidenceItem`'s existing NOT NULL
+    `requirement_assessment_id` never has to be loosened."""
+
+    __tablename__ = "signal_evidence_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    signal_observation_id: Mapped[int] = mapped_column(
+        ForeignKey("signal_observations.id"), nullable=False, index=True
+    )
+
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_stage: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    source_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    evidence_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_classification: Mapped[str] = mapped_column(String(24), nullable=False)
+    evidence_relationship: Mapped[str] = mapped_column(String(16), nullable=False)
+    confidence: Mapped[str] = mapped_column(String(16), nullable=False, default="UNKNOWN")
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_system_generated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    signal_observation: Mapped["SignalObservation"] = relationship(back_populates="evidence_items")
+
+
+class ReviewPriorityPolicy(Base):
+    """A named, restaurant-owned policy (concept note §9) that decides HOW
+    MUCH a detected Signal affects Review Priority — kept structurally
+    separate from `SignalDefinition` (WHAT is detected) so two restaurants
+    can use the identical Signal Definition but weigh it differently, and
+    so a restaurant can change its own priorities without touching Signal
+    detection logic at all."""
+
+    __tablename__ = "review_priority_policies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    rules: Mapped[list["ReviewPriorityPolicyRule"]] = relationship(
+        back_populates="policy", cascade="all, delete-orphan", order_by="ReviewPriorityPolicyRule.id",
+    )
+
+
+class ReviewPriorityPolicyRule(Base):
+    """One rule: for this `SignalDefinition`, observed at this status,
+    contribute this QUALITATIVE tier toward Review Priority (concept note
+    §9 — never a raw number). Unique per (policy, signal_definition,
+    observed_status) so a policy cannot contradict itself for the same
+    Signal/status pair."""
+
+    __tablename__ = "review_priority_policy_rules"
+    __table_args__ = (
+        UniqueConstraint(
+            "policy_id", "signal_definition_id", "observed_status", name="uq_priority_rule_policy_def_status"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    policy_id: Mapped[int] = mapped_column(ForeignKey("review_priority_policies.id"), nullable=False, index=True)
+    signal_definition_id: Mapped[int] = mapped_column(
+        ForeignKey("signal_definitions.id"), nullable=False, index=True
+    )
+    observed_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    contribution: Mapped[str] = mapped_column(String(24), nullable=False)
+    # Task 3C-FIX §4 — a deactivated rule is kept (audit trail) but no
+    # longer contributes; `signal_service.compute_and_apply_review_priority`
+    # only reads active rules.
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    policy: Mapped["ReviewPriorityPolicy"] = relationship(back_populates="rules")
+    signal_definition: Mapped["SignalDefinition"] = relationship(back_populates="policy_rules")
+
+
+class PersonMatchCandidate(Base):
+    """A system-suggested POSSIBLE match between a brand-new `CandidatePerson`
+    (just created for one incoming Application) and an already-existing
+    `CandidatePerson`, produced when identity resolution finds supporting-
+    but-inconclusive evidence — a name match without an exact email/phone
+    match (Task 3C-FIX §1/§2). Never auto-merged: a Selezionatore must
+    explicitly confirm or reject it. Confirming reassigns the Application to
+    `suggested_person_id` (see `identity_service.confirm_match`); rejecting
+    simply leaves the Application on `source_person_id` — both people stay
+    intact either way."""
+
+    __tablename__ = "person_match_candidates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    source_person_id: Mapped[int] = mapped_column(ForeignKey("candidate_persons.id"), nullable=False, index=True)
+    suggested_person_id: Mapped[int] = mapped_column(ForeignKey("candidate_persons.id"), nullable=False, index=True)
+
+    confidence: Mapped[str] = mapped_column(String(16), nullable=False)  # STRONG | POSSIBLE
+    match_basis: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="PENDING")
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship()
+    source_person: Mapped["CandidatePerson"] = relationship(foreign_keys=[source_person_id])
+    suggested_person: Mapped["CandidatePerson"] = relationship(foreign_keys=[suggested_person_id])
+
+
+class ApplicationNote(Base):
+    """One free-form Selezionatore note on an Application (Task 3C-FIX
+    §11) — append-only, so notes keep their history instead of overwriting
+    each other (unlike the legacy `Application.notes` single-value field
+    Task 3C introduced). Deliberately separate from `EvidenceItem`/
+    `SignalEvidenceItem`: a note never becomes evidence and never changes a
+    Fit Assessment or a Signal Observation on its own.
+
+    Task 5C §33 — `application_id` was widened to nullable and `session_id`
+    added so the SAME unified, append-only notes table can also carry a
+    Session-level note (Rule Set confirmation, a Rule Change, general
+    Session notes) rather than introducing a second notes table (task's own
+    "do not create separate note tables unless absolutely necessary").
+    Exactly one of `application_id`/`session_id` is set on any given row —
+    enforced in the service layer (`session_service.add_session_note`),
+    never here. Every pre-5C row keeps `application_id` set exactly as
+    before; this widening changes nothing about existing behavior."""
+
+    __tablename__ = "application_notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int | None] = mapped_column(ForeignKey("applications.id"), nullable=True, index=True)
+    session_id: Mapped[int | None] = mapped_column(ForeignKey("selection_sessions.id"), nullable=True, index=True)
+    note_text: Mapped[str] = mapped_column(Text, nullable=False)
+    # Task 3D-FIX §16 — optional source/context tag so notes stay queryable
+    # by WHERE in the Selection journey they were entered (e.g. one specific
+    # Primary Screening Run or Criterion Evaluation), not just by
+    # Application. `None`/`None` (both unset) means a general Application-
+    # level note — Task 3C-FIX's original, still-supported behavior. A
+    # future Final Selection Decision screen aggregating notes from the
+    # whole journey can filter on these two columns directly.
+    context_type: Mapped[str | None] = mapped_column(String(48), nullable=True, index=True)
+    context_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+
+    # Task 5A-ALIGN §3/§15 — an INFORMATION/EVENT LOG entry (context_type
+    # ="INFORMATION_EVENT") reuses this same append-only table rather than
+    # a parallel one, but carries its own extra fields so a factual report
+    # from staff stays clearly distinguishable from a Selezionatore note or
+    # decision: `event_type` (free text — e.g. "CANDIDATE_WITHDRAWAL_CLAIM"),
+    # `reported_by` (who entered/reported it into Selection — may differ
+    # from who the information came FROM), `original_source` (where the
+    # information actually came from — e.g. "phone call from the
+    # candidate"), and `stage_at_time` (the Application's Stage when the
+    # event was recorded, captured as a plain value since Stage itself is
+    # freely mutable and this is a point-in-time fact). All four are
+    # nullable and unused by an ordinary note — recording an event NEVER
+    # writes to `Application.current_stage`/`lifecycle_state` itself
+    # (task's own "information must not automatically change Application
+    # state").
+    event_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reported_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    original_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stage_at_time: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application | None"] = relationship(back_populates="note_entries")
+    session: Mapped["SelectionSession | None"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Selection module — Phone Interview framework (TASK 4A)
+#
+# Begins when an Application reaches ADVANCE_TO_PHONE (Task 3C-FIX §7).
+# `PhoneInterviewQuestionDefinition` mirrors `Requirement`/`SignalDefinition`
+# exactly (restaurant-configurable Core/Courtesy Questions, never a fixed
+# universal script — task §3/§18). `PhoneInterviewPlan` mirrors
+# `FitAssessment`'s snapshot-binding discipline: it pins the SAME
+# `RequirementSetSnapshot`/`FitAssessment` already used at résumé stage and
+# never silently repoints to a newer live Requirement Set (task §1).
+# `PhoneInterviewQuestionInstance` mirrors `RequirementAssessment`/
+# `SignalObservation`'s "one persisted row per unit, evidence/answer
+# enriches it" shape, but a raw interview answer is a live, Selezionatore-
+# editable transcript (not append-only evidence) — evidence proper is
+# still only ever added via `fit_assessment_service.add_evidence()`/
+# `signal_service.add_evidence()` (task §14/§15 — no parallel evidence
+# system). Post-Phone-Interview decisions reuse `Application.workflow_status`
+# (`core/application_model.ADVANCE_TO_IN_PERSON`/HOLD/STOP, task §22) rather
+# than a second, parallel decision field.
+# ---------------------------------------------------------------------------
+
+
+class PhoneInterviewQuestionDefinition(Base):
+    """One restaurant-configured Core (or Courtesy) Question (task §3) —
+    mirrors `Requirement`'s shape closely (restaurant/role scoping, active/
+    version, display order). `is_courtesy=True` marks a short, professional-
+    closing question a restaurant has prepared for the Escape Route (task
+    §7) rather than an ordinary Core Question; both live in the same table
+    since they are structurally identical configuration data, distinguished
+    only by how `phone_interview_service.py` uses them. `linked_requirement_ids`/
+    `linked_signal_definition_ids` reference LIVE `Requirement`/
+    `SignalDefinition` rows (this Definition is authored once and reused
+    across many Requirement Set versions over time, unlike a Question
+    INSTANCE below, which is always resolved against one immutable
+    snapshot)."""
+
+    __tablename__ = "phone_interview_question_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
+    )
+    target_role: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    objective: Mapped[str | None] = mapped_column(Text, nullable=True)
+    linked_requirement_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    linked_signal_definition_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    importance: Mapped[str] = mapped_column(String(16), nullable=False, default="MEDIUM")
+    is_sine_qua_non: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    mandatory_within_selection_process: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    assessment_stages: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    follow_up_guidance: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_courtesy: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+
+class PhoneInterviewPlan(Base):
+    """One Application's Phone Interview (task §1) — pinned to the SAME
+    immutable `RequirementSetSnapshot`/`FitAssessment` already used at
+    résumé stage; never silently repointed to a newer live Requirement Set.
+    `person_id`/`candidate_id`/`restaurant_id` are denormalized copies of
+    `application.person_id`/`.candidate_id`/`.restaurant_id`, kept only for
+    convenient navigation/scoping (same convention `FitAssessment.
+    requirement_set_id` already uses) — `application_id` alone is
+    authoritative. `status` is the INTERVIEW PROCESS status only
+    (`core/phone_interview_model.py` — NOT_STARTED/IN_PROGRESS/
+    ESCAPE_ROUTE/COMPLETED/STOPPED_EARLY); the post-interview
+    ADVANCE_TO_IN_PERSON/HOLD/STOP DECISION is recorded on `Application.
+    workflow_status` instead (task §21's own "do not confuse this with
+    Application workflow status")."""
+
+    __tablename__ = "phone_interview_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id"), nullable=False, unique=True, index=True
+    )
+    person_id: Mapped[int] = mapped_column(ForeignKey("candidate_persons.id"), nullable=False, index=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"), nullable=False, index=True)
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
+    )
+    requirement_set_snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_set_snapshots.id"), nullable=False, index=True
+    )
+    fit_assessment_id: Mapped[int] = mapped_column(ForeignKey("fit_assessments.id"), nullable=False, index=True)
+
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="NOT_STARTED")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Selezionatore note — never evidence.
+
+    escape_route_activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    escape_route_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    application: Mapped["Application"] = relationship()
+    person: Mapped["CandidatePerson"] = relationship()
+    candidate: Mapped["Candidate"] = relationship()
+    requirement_set_snapshot: Mapped["RequirementSetSnapshot"] = relationship()
+    fit_assessment: Mapped["FitAssessment"] = relationship()
+    question_instances: Mapped[list["PhoneInterviewQuestionInstance"]] = relationship(
+        back_populates="plan", cascade="all, delete-orphan", order_by="PhoneInterviewQuestionInstance.display_order",
+    )
+
+
+class PhoneInterviewQuestionInstance(Base):
+    """One question actually placed into one `PhoneInterviewPlan` (task
+    §9) — CORE/DYNAMIC/COURTESY/FOLLOW_UP, always a copy-by-value of its
+    text/objective/importance at the moment it entered the plan (so a later
+    edit to a live `PhoneInterviewQuestionDefinition` never rewrites
+    history — the same immutability discipline `RequirementSnapshotItem`
+    established for Requirements). `source_question_definition_id` is
+    deliberately NOT a foreign key, exactly like `RequirementSnapshotItem.
+    source_requirement_id` — this row must stay completely valid even if the
+    live Definition it came from is later edited or deactivated.
+    `linked_requirement_ids` here point to `RequirementSnapshotItem` rows
+    (this plan's own pinned snapshot), not live `Requirement` rows.
+
+    The raw `answer_text`/`selezionatore_note` are a live, Selezionatore-
+    editable transcript — NOT append-only evidence (task §13: "keep raw
+    response and interpretation separate"). Turning an answer into Fit
+    Assessment/Signal evidence is a separate, explicit action
+    (`phone_interview_service.record_answer_as_evidence`) that calls
+    `fit_assessment_service.add_evidence()`/`signal_service.add_evidence()`
+    directly — no parallel evidence table is introduced here."""
+
+    __tablename__ = "phone_interview_question_instances"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("phone_interview_plans.id"), nullable=False, index=True)
+    source_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_question_definition_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    parent_question_instance_id: Mapped[int | None] = mapped_column(
+        ForeignKey("phone_interview_question_instances.id"), nullable=True, index=True
+    )
+
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    objective: Mapped[str | None] = mapped_column(Text, nullable=True)
+    linked_requirement_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    linked_signal_definition_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    importance: Mapped[str] = mapped_column(String(16), nullable=False, default="MEDIUM")
+    is_sine_qua_non: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    mandatory_within_selection_process: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reason_for_inclusion: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="NOT_ASKED")
+    gate_evaluation: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    selezionatore_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    carried_forward_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    asked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    plan: Mapped["PhoneInterviewPlan"] = relationship(back_populates="question_instances")
+    follow_ups: Mapped[list["PhoneInterviewQuestionInstance"]] = relationship(
+        back_populates="parent_question", cascade="all, delete-orphan",
+    )
+    parent_question: Mapped["PhoneInterviewQuestionInstance | None"] = relationship(
+        remote_side=[id], back_populates="follow_ups",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Selection module — In-Person Interview + Practical Assessment +
+# Consistency Engine (TASK 4B)
+#
+# `InPersonInterviewSectionDefinition`/`AssessmentItemDefinition` mirror
+# `PhoneInterviewQuestionDefinition` exactly (restaurant-configurable,
+# never a fixed universal sequence — task §2/§24). `InPersonInterviewPlan`
+# mirrors `PhoneInterviewPlan`'s snapshot-binding discipline, additionally
+# linking the Phone Interview Plan where one exists (task §1).
+# `AssessmentItemInstance` is ONE unified, copy-by-value table serving
+# every item type (QUESTION/OBSERVATION/PRACTICAL_TEST/ROLE_PLAY/
+# CONSISTENCY_CHECK/CARRY_FORWARD/COURTESY) — the same "one instance table
+# per plan, not one per item type" simplification
+# `PhoneInterviewQuestionInstance` already established, since a Practical
+# Test's "response/performance notes" and a Question's "answer" are the
+# same RAW INPUT concept the task's own §16 groups together.
+# `ConsistencyThread`/`ConsistencyStatement` are new: a thread compares one
+# topic across multiple SOURCES (never rewriting an original statement —
+# task §10/§16), and never carries an automatic dishonesty label (task
+# §12) — only a neutral comparison status plus explanation text.
+# ---------------------------------------------------------------------------
+
+
+class InPersonInterviewSectionDefinition(Base):
+    """One restaurant-configured In-Person Interview section (task §2) —
+    e.g. "Work Personality." Mirrors `RequirementSet`'s restaurant-owned,
+    independently reorderable shape; `section_kind` is an optional tag
+    (`core/in_person_interview_model.SECTION_KINDS`) used only to trigger
+    the two behaviorally special sections (automatic Phone carry-forward
+    population into a CARRY_FORWARD-kind section; the Final Observation
+    phase's "never automatic evidence" rule) — RF-One never assumes a
+    section exists just because its kind is referenced."""
+
+    __tablename__ = "in_person_interview_section_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
+    )
+    target_role: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    section_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="OTHER")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    items: Mapped[list["AssessmentItemDefinition"]] = relationship(
+        back_populates="section", cascade="all, delete-orphan", order_by="AssessmentItemDefinition.display_order",
+    )
+
+
+class AssessmentItemDefinition(Base):
+    """One restaurant-configured Assessment Item inside a Section (task
+    §3/§24) — a Question, Observation, Practical Test, Role-Play, or
+    Courtesy prompt. `linked_requirement_ids`/`linked_signal_definition_ids`
+    reference LIVE `Requirement`/`SignalDefinition` rows, exactly like
+    `PhoneInterviewQuestionDefinition` — resolved against a specific plan's
+    own immutable snapshot only when copied into an `AssessmentItemInstance`."""
+
+    __tablename__ = "assessment_item_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    section_id: Mapped[int] = mapped_column(
+        ForeignKey("in_person_interview_section_definitions.id"), nullable=False, index=True
+    )
+
+    item_type: Mapped[str] = mapped_column(String(24), nullable=False)
+    title_or_question: Mapped[str] = mapped_column(Text, nullable=False)
+    instruction: Mapped[str | None] = mapped_column(Text, nullable=True)  # e.g. instructions TO the candidate.
+    scenario: Mapped[str | None] = mapped_column(Text, nullable=True)  # Practical Test / Role-Play scenario text.
+    objective: Mapped[str | None] = mapped_column(Text, nullable=True)
+    linked_requirement_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    linked_signal_definition_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    importance: Mapped[str] = mapped_column(String(16), nullable=False, default="MEDIUM")
+    mandatory_within_selection_process: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    evidence_expected: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_positive: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_contrary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_insufficient: Mapped[str | None] = mapped_column(Text, nullable=True)
+    selezionatore_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)  # What to observe/how to run it.
+
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    section: Mapped["InPersonInterviewSectionDefinition"] = relationship(back_populates="items")
+
+
+class InPersonInterviewPlan(Base):
+    """One Application's In-Person Interview (task §1) — pinned to the SAME
+    immutable `RequirementSetSnapshot`/`FitAssessment` the existing Fit
+    Assessment (and, where one exists, the Phone Interview Plan) already
+    use; never repointed to a newer live Requirement Set.
+    `phone_interview_plan_id` is nullable — an In-Person Interview is not
+    required to follow a Phone Interview in every deployment, but where one
+    exists its unresolved items are carried forward automatically (task
+    §4)."""
+
+    __tablename__ = "in_person_interview_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id"), nullable=False, unique=True, index=True
+    )
+    person_id: Mapped[int] = mapped_column(ForeignKey("candidate_persons.id"), nullable=False, index=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"), nullable=False, index=True)
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
+    )
+    requirement_set_snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_set_snapshots.id"), nullable=False, index=True
+    )
+    fit_assessment_id: Mapped[int] = mapped_column(ForeignKey("fit_assessments.id"), nullable=False, index=True)
+    phone_interview_plan_id: Mapped[int | None] = mapped_column(
+        ForeignKey("phone_interview_plans.id"), nullable=True, index=True
+    )
+
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="NOT_STARTED")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Selezionatore note — never evidence.
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    application: Mapped["Application"] = relationship()
+    person: Mapped["CandidatePerson"] = relationship()
+    candidate: Mapped["Candidate"] = relationship()
+    requirement_set_snapshot: Mapped["RequirementSetSnapshot"] = relationship()
+    fit_assessment: Mapped["FitAssessment"] = relationship()
+    phone_interview_plan: Mapped["PhoneInterviewPlan | None"] = relationship()
+    item_instances: Mapped[list["AssessmentItemInstance"]] = relationship(
+        back_populates="plan", cascade="all, delete-orphan", order_by="AssessmentItemInstance.display_order",
+    )
+
+
+class AssessmentItemInstance(Base):
+    """One Assessment Item actually placed into one `InPersonInterviewPlan`
+    (task §3/§9) — a single, unified table serving every item type,
+    mirroring `PhoneInterviewQuestionInstance`'s own "one instance shape for
+    every source type" simplification. Copy-by-value of its text/objective/
+    importance at the moment it entered the plan (so a later edit to a live
+    `AssessmentItemDefinition` never rewrites history).
+    `source_item_definition_id` is deliberately NOT a foreign key, exactly
+    like `PhoneInterviewQuestionInstance.source_question_definition_id`.
+
+    `raw_response` is the RAW INPUT (task §16) — a candidate's answer, a
+    Selezionatore's direct observation, or a practical-test performance
+    note, depending on `source_type`; never rewritten once entered.
+    `selezionatore_note` is the separate INTERPRETATION layer. Turning
+    either into Fit Assessment/Signal evidence is a distinct, explicit
+    action (`in_person_interview_service.record_response_as_*_evidence`)."""
+
+    __tablename__ = "assessment_item_instances"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("in_person_interview_plans.id"), nullable=False, index=True)
+    source_type: Mapped[str] = mapped_column(String(24), nullable=False)
+    source_item_definition_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_phone_question_instance_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    consistency_thread_id: Mapped[int | None] = mapped_column(
+        ForeignKey("consistency_threads.id"), nullable=True, index=True
+    )
+
+    section_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    section_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="OTHER")
+    section_display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    title_or_question: Mapped[str] = mapped_column(Text, nullable=False)
+    instruction: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scenario: Mapped[str | None] = mapped_column(Text, nullable=True)
+    objective: Mapped[str | None] = mapped_column(Text, nullable=True)
+    linked_requirement_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    linked_signal_definition_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    importance: Mapped[str] = mapped_column(String(16), nullable=False, default="MEDIUM")
+    mandatory_within_selection_process: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    selezionatore_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reason_for_inclusion: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="NOT_DONE")
+    raw_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    selezionatore_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    plan: Mapped["InPersonInterviewPlan"] = relationship(back_populates="item_instances")
+    consistency_thread: Mapped["ConsistencyThread | None"] = relationship()
+
+
+class ConsistencyThread(Base):
+    """One topic compared across multiple sources for one Application
+    (task §8/§9) — CV/Application, prior Applications, Phone Interview,
+    In-Person Interview, Practical Assessment, or Selezionatore-entered
+    evidence. Scoped to the Application (not to one specific interview
+    plan) since consistency spans the whole selection process. A
+    contradiction found here is EVIDENCE, never automatic proof of
+    dishonesty (task §12) — `comparison_status` is always one of the
+    neutral `core/in_person_interview_model.CONSISTENCY_STATUSES`, and
+    `explanation` must always be a plain factual description (task's own
+    example: "Material inconsistency detected between Phone Interview and
+    In-Person response regarding reason for leaving previous employment.") —
+    never a psychological or legal conclusion."""
+
+    __tablename__ = "consistency_threads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+
+    topic: Mapped[str] = mapped_column(String(255), nullable=False)
+    importance: Mapped[str] = mapped_column(String(16), nullable=False, default="MEDIUM")
+    comparison_status: Mapped[str] = mapped_column(String(24), nullable=False, default="UNRESOLVED")
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    selezionatore_resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    application: Mapped["Application"] = relationship()
+    statements: Mapped[list["ConsistencyStatement"]] = relationship(
+        back_populates="thread", cascade="all, delete-orphan", order_by="ConsistencyStatement.id",
+    )
+
+
+class ConsistencyStatement(Base):
+    """One source statement/evidence item feeding a `ConsistencyThread`
+    (task §10) — append-only (no `updated_at`), so an original statement is
+    never destroyed or rewritten (task's own explicit requirement) even
+    after the thread's `comparison_status` changes (e.g. to
+    EXPLAINED_DIFFERENCE)."""
+
+    __tablename__ = "consistency_statements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    thread_id: Mapped[int] = mapped_column(ForeignKey("consistency_threads.id"), nullable=False, index=True)
+
+    source_stage: Mapped[str] = mapped_column(String(24), nullable=False)
+    source_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    raw_statement: Mapped[str] = mapped_column(Text, nullable=False)
+    normalized_interpretation: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    thread: Mapped["ConsistencyThread"] = relationship(back_populates="statements")
+
+
+# ---------------------------------------------------------------------------
+# Selection module — Primary Screening Engine (TASK 3D)
+#
+# A much stronger, restaurant-configurable early-stage filter sitting
+# BEFORE Phone Interview (concept: 200 Applications -> aggressive Primary
+# Screening -> ~15-20 worth deeper attention -> Phone -> In-Person ->
+# Final Selection Decision). `PrimaryScreeningCriterion` mirrors
+# `Requirement`/`SignalDefinition` exactly (restaurant-configurable, never
+# a fixed universal list — task §1/§10). `PrimaryScreeningCriterionSnapshot`
+# mirrors `RequirementSnapshotItem`'s immutability discipline at the single-
+# Criterion granularity (there is no natural "Set" grouping here, unlike
+# Requirements). `PrimaryScreeningRun` + `PrimaryScreeningCriterionEvaluation`
+# mirror `FitAssessment`/`RequirementAssessment`'s "one persisted row per
+# unit, evidence enriches it, system vs effective, never silently level 0"
+# shape — multiple runs may exist per Application over time (never unique,
+# unlike the 1:1 Phone/In-Person Plans), each pinned to its own exact
+# Criterion configuration snapshot, so a later restaurant edit never
+# silently rewrites a historical screening result (task §16).
+# ---------------------------------------------------------------------------
+
+
+class PrimaryScreeningCriterion(Base):
+    """One restaurant-configured Primary Screening Criterion (task §1) —
+    RF-One supplies the structure (0-4 level scale, direction, coefficient,
+    Hard Disqualifier mechanics); the restaurant supplies WHAT the
+    Criterion is, WHAT each level 0-4 means for it, and HOW important it
+    is. Never a fixed universal list (task §10) and never seeded with a
+    protected personal characteristic (task §27). `level_descriptions` is
+    a JSON object keyed by level string ("0".."4") -> restaurant-authored
+    meaning text (task §2) — RF-One never invents a universal meaning for
+    any level. `auto_evaluation_signal_definition_id`/
+    `auto_evaluation_level_map` are an OPTIONAL, fully restaurant-configured
+    deterministic shortcut (task §12/§18's "aggressive screening" need):
+    when set, a Criterion Evaluation can be auto-populated straight from an
+    existing Selection Signal Observation's status through the
+    restaurant's OWN status->level mapping — mirroring
+    `ReviewPriorityPolicyRule`'s exact "restaurant maps a known status to a
+    restaurant-chosen outcome" pattern; RF-One still never invents what a
+    level means or which status deserves it."""
+
+    __tablename__ = "primary_screening_criteria"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    target_role: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    location_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    coefficient: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    direction: Mapped[str] = mapped_column(String(16), nullable=False, default="POSITIVE")
+    is_hard_disqualifier: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    hard_disqualifier_trigger_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    level_descriptions: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    evidence_sources_allowed: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    evaluation_guidance: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_positive: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_contrary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_insufficient: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    auto_evaluation_signal_definition_id: Mapped[int | None] = mapped_column(
+        ForeignKey("signal_definitions.id"), nullable=True
+    )
+    auto_evaluation_level_map: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    # Task 5E §21/§22/§28 — three minimal, additive fields (never a
+    # redesign of the existing Criticality/coefficient/evidence_sources_
+    # allowed shape above, which already carries Importance and Stage-
+    # Reliability respectively). `required_for_phone_review` marks WHICH
+    # Criteria's resolution is required before an Application may reach
+    # READY_FOR_PHONE_REVIEW (task §28) — never every Criterion, only the
+    # ones this restaurant flags. `missing_evidence_question_text`/
+    # `missing_evidence_answer_level_map` are the OPTIONAL restaurant-
+    # authored question/answer-mapping `missing_evidence_service.py` uses
+    # when this Criterion is the reason a Missing-Evidence Questionnaire is
+    # generated — mirrors `auto_evaluation_signal_definition_id`/
+    # `auto_evaluation_level_map`'s own "restaurant maps a known input to a
+    # restaurant-chosen level" pattern exactly, never an RF-One-invented
+    # meaning.
+    required_for_phone_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    missing_evidence_question_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    missing_evidence_answer_level_map: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    auto_evaluation_signal_definition: Mapped["SignalDefinition | None"] = relationship()
+
+
+class PrimaryScreeningCriterionSnapshot(Base):
+    """An IMMUTABLE, point-in-time copy of one `PrimaryScreeningCriterion`
+    (task §16) — mirrors `RequirementSnapshotItem`'s own immutability
+    discipline. `(criterion_id, version)` is unique — capturing again
+    before the live Criterion's version has advanced returns the existing
+    snapshot rather than an unnecessary duplicate (same idempotent-per-
+    version rule `requirements_service.create_requirement_set_snapshot()`
+    already established)."""
+
+    __tablename__ = "primary_screening_criterion_snapshots"
+    __table_args__ = (
+        UniqueConstraint("criterion_id", "version", name="uq_primary_screening_criterion_snapshot_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    criterion_id: Mapped[int] = mapped_column(
+        ForeignKey("primary_screening_criteria.id"), nullable=False, index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    restaurant_id: Mapped[int | None] = mapped_column(nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    target_role: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    location_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    coefficient: Mapped[float] = mapped_column(Float, nullable=False)
+    direction: Mapped[str] = mapped_column(String(16), nullable=False)
+    is_hard_disqualifier: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    hard_disqualifier_trigger_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    level_descriptions: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    evidence_sources_allowed: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    evaluation_guidance: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_positive: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_contrary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_insufficient: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    auto_evaluation_signal_definition_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    auto_evaluation_level_map: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    required_for_phone_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    missing_evidence_question_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    missing_evidence_answer_level_map: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    was_active: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    criterion: Mapped["PrimaryScreeningCriterion"] = relationship()
+
+
+class PrimaryScreeningRun(Base):
+    """One Primary Screening pass over one Application (task §17) —
+    binds a snapshot-frozen set of Criterion Evaluations together with the
+    resulting INTERNAL `priority_index` (never exposed to the
+    Selezionatore — task §5/§17), whether an active, un-overridden Hard
+    Disqualifier is present, and a plain-language `explanation`. Multiple
+    runs may exist for the same Application over time (never unique,
+    unlike the 1:1 Phone/In-Person Interview Plans) — each stays tied to
+    the exact Criterion configuration used (task §16); the most recent one
+    is what the Primary Screening Queue displays."""
+
+    __tablename__ = "primary_screening_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
+    )
+
+    priority_index: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    has_active_hard_disqualifier: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    application: Mapped["Application"] = relationship()
+    evaluations: Mapped[list["PrimaryScreeningCriterionEvaluation"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="PrimaryScreeningCriterionEvaluation.id",
+    )
+
+
+class PrimaryScreeningCriterionEvaluation(Base):
+    """One (Run, Criterion Snapshot) unit (task §13) — the Primary
+    Screening counterpart of `RequirementAssessment`. `system_level` is
+    whatever the (optional, restaurant-configured) automatic Signal-based
+    evaluation last computed; `effective_level` is what actually feeds the
+    Priority Index — a human override never silently gets recalculated
+    away, mirroring `RequirementAssessment.system_status`/
+    `.effective_status` exactly. An unresolved/uncertain Criterion is
+    NEVER silently coerced to level 0 (task §14) — `status` says so
+    explicitly, and `NON_CONTRIBUTING_STATUSES` are excluded from the
+    Priority Index."""
+
+    __tablename__ = "primary_screening_criterion_evaluations"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id", "criterion_snapshot_id", name="uq_primary_screening_evaluation_run_snapshot"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("primary_screening_runs.id"), nullable=False, index=True)
+    criterion_snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("primary_screening_criterion_snapshots.id"), nullable=False, index=True
+    )
+
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="NOT_EVALUATED")
+    system_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    effective_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    evidence_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    evidence_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Task 3D-FIX §3/§4/§7 — the structured evidence list a generic/AI-
+    # assisted evaluation is grounded in: `[{"source_type", "source_reference",
+    # "evidence_text", "interpretation"}, ...]`. `evidence_source`/
+    # `evidence_text` above stay populated too (a single-source summary) for
+    # backward compatibility with Task 3D's deterministic Signal-mapping
+    # path, which never populates this list.
+    evidence_items: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin: Mapped[str] = mapped_column(String(24), nullable=False, default="SYSTEM_GENERATED")
+    override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    overridden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    contribution: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+    is_active_hard_disqualifier: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    hard_disqualifier_overridden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    hard_disqualifier_override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hard_disqualifier_overridden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    run: Mapped["PrimaryScreeningRun"] = relationship(back_populates="evaluations")
+    criterion_snapshot: Mapped["PrimaryScreeningCriterionSnapshot"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Selection module — Outcome + Stage + Decision History Engine (TASK 5A)
+#
+# Deliberately separates three concepts the pre-5A codebase only partly
+# distinguished: STAGE (`ApplicationStageTransition` + `Application.
+# current_stage` — where the Application currently is, no enforced order),
+# OUTCOME (`SelectionOutcomeDefinition`/`.Snapshot`/`SelectionOutcomeDecision`
+# — the restaurant-configured operational decision, applicable at any time,
+# never technically irreversible), and CANDIDATE FLAG (`CandidateFlag` — a
+# person-level, never-auto-rejecting marker an Outcome may create). Mirrors
+# established patterns throughout this file: `PrimaryScreeningCriterion`/
+# `.Snapshot`'s restaurant-configurable/immutable-snapshot split, and
+# `SignalObservation`'s append-only-history-with-one-current-pointer shape.
+#
+# `Application.workflow_status` (Task 3C-FIX/4A) is UNCHANGED and remains
+# fully functional — see `selection_validation.py`'s Task 5A checks and the
+# Task 5A report for exactly how the two coexist (workflow_status is not
+# migrated into this new model; it continues to work exactly as before).
+# ---------------------------------------------------------------------------
+
+
+class ApplicationStageTransition(Base):
+    """One Stage movement (task §3) — append-only; a Stage change NEVER
+    overwrites a prior transition. `previous_stage` is `None` only for the
+    very first transition a brand-new Application would get if one is ever
+    recorded (most Applications simply start at `Application.
+    current_stage`'s default without an explicit first transition row —
+    this table records CHANGES, not the initial state). No "allowed next
+    Stage" validation exists here or in `stage_service.py` — the
+    Selezionatore has total freedom to move forward, backward, repeat, or
+    skip (task §2)."""
+
+    __tablename__ = "application_stage_transitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    previous_stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    new_stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    # No user/auth system exists in Selection (task §15 — Selection actions
+    # belong to authorized Selection users, but no RBAC redesign is in
+    # scope) — this is an honest, optional free-text field ready for a
+    # future auth integration, never a fabricated user identity.
+    performed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship(back_populates="stage_transitions")
+
+
+class SelectionOutcomeDefinition(Base):
+    """A restaurant-configurable Selection Outcome (task §4/§5) — mirrors
+    `PrimaryScreeningCriterion`'s shape closely (restaurant-owned,
+    active/version, immutable snapshot below) since an Outcome Definition
+    is structurally the same kind of "restaurant configures what this
+    means and what it does" object. RF-One seeds a few examples (ACTIVE,
+    HIRE, HOLD, STOP, WITHDRAWN — `industry/restaurant_templates.py`) but
+    these are ordinary rows a restaurant can edit or ignore, never a fixed
+    universal set (task §4's own "templates/default configuration, not the
+    complete universal set").
+
+    Fields correspond directly to the task §5/§6/§11 wizard questions —
+    see `outcome_service.py`'s docstring for how each one is EXECUTED when
+    the Outcome is applied to an Application."""
+
+    __tablename__ = "selection_outcome_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)  # conversational, task §5
+
+    lifecycle_effect: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")  # task §6
+    is_reopenable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)  # task §5/§7
+
+    requires_note: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    requires_reason: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reason_choices: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    # Task 5A-FIX §7/§10/§15 — `target_queue_label` (above) is now LEGACY
+    # display-only text, kept for backward compatibility with any Outcome
+    # authored before this fix. `target_queue_id` is the OPERATIONAL
+    # reference: when set, applying this Outcome actually moves the
+    # Application into that configured queue (see `outcome_service.
+    # apply_outcome`/`queue_service.move_to_queue`) — mirrors
+    # `auto_evaluation_signal_definition_id`'s live-FK pattern on
+    # `PrimaryScreeningCriterion`.
+    target_queue_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    target_queue_id: Mapped[int | None] = mapped_column(ForeignKey("selection_queues.id"), nullable=True, index=True)
+
+    creates_reminder: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reminder_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    future_contact_policy: Mapped[str] = mapped_column(String(16), nullable=False, default="ALLOWED")
+
+    creates_candidate_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    candidate_flag_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    candidate_flag_scope: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    candidate_flag_operational_effect: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    candidate_flag_default_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    candidate_flag_expires_after_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Task 5A-ALIGN §14 — two informational, unenforced wizard fields (no
+    # RBAC/authentication system exists in Selection to enforce either one
+    # — same honest-placeholder rationale as `performed_by` throughout this
+    # module): `authority_label` names WHO is expected to apply this
+    # Outcome (e.g. "Selezionatore", "Trainer" — task §11's "the Trainer,
+    # not the Selezionatore, is the authority for the Training Check
+    # result"); `driven_by` records whether the Outcome is normally
+    # RESTAURANT-initiated, CANDIDATE-initiated, or EITHER.
+    authority_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    driven_by: Mapped[str | None] = mapped_column(String(24), nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    target_queue: Mapped["SelectionQueue | None"] = relationship()
+
+
+class SelectionOutcomeDefinitionSnapshot(Base):
+    """Immutable, point-in-time copy of an Outcome Definition (task §28) —
+    mirrors `PrimaryScreeningCriterionSnapshot`'s exact idempotent-per-
+    version discipline (`outcome_service.get_or_create_outcome_definition_
+    snapshot`). Every `SelectionOutcomeDecision` pins to one of these, never
+    to the live, still-editable `SelectionOutcomeDefinition` row — a later
+    edit to the live Outcome never rewrites what a historical decision
+    meant at the moment it was made."""
+
+    __tablename__ = "selection_outcome_definition_snapshots"
+    __table_args__ = (
+        UniqueConstraint("definition_id", "version", name="uq_outcome_definition_snapshot_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    definition_id: Mapped[int] = mapped_column(ForeignKey("selection_outcome_definitions.id"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    restaurant_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lifecycle_effect: Mapped[str] = mapped_column(String(16), nullable=False)
+    is_reopenable: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    requires_note: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    requires_reason: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reason_choices: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    target_queue_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Deliberately NOT a foreign key (mirrors `auto_evaluation_signal_
+    # definition_id` on `PrimaryScreeningCriterionSnapshot`) — this row
+    # must stay completely valid even if the live Queue it referenced is
+    # later renamed or deactivated (task §Y: a later Outcome Definition
+    # edit must never rewrite a historical queue movement's meaning).
+    target_queue_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    creates_reminder: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reminder_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    future_contact_policy: Mapped[str] = mapped_column(String(16), nullable=False)
+    creates_candidate_flag: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    candidate_flag_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    candidate_flag_scope: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    candidate_flag_operational_effect: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    candidate_flag_default_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    candidate_flag_expires_after_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    authority_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    driven_by: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    was_active: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    definition: Mapped["SelectionOutcomeDefinition"] = relationship()
+
+
+class SelectionOutcomeDecision(Base):
+    """One Outcome application to one Application (task §8/§9) — the
+    append-only Decision History. `Application.lifecycle_state` mirrors
+    this row's snapshot `lifecycle_effect` for convenience only; the
+    CURRENT effective Outcome is always derivable as the most recent
+    (highest-`id`) decision for an Application (mirrors `PrimaryScreeningRun`'s
+    own "most recent by id, no stored pointer needed" convention). A
+    decision is never edited or deleted — reopening or changing the Outcome
+    again always APPENDS a new decision (task §26)."""
+
+    __tablename__ = "selection_outcome_decisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    outcome_definition_snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("selection_outcome_definition_snapshots.id"), nullable=False, index=True
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # True when this decision reopens an Application that was CLOSED/
+    # SUSPENDED immediately beforehand (task §7 — "reopening creates NEW
+    # history," never erasing the prior closure).
+    is_reopen_event: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    performed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship(back_populates="outcome_decisions")
+    outcome_definition_snapshot: Mapped["SelectionOutcomeDefinitionSnapshot"] = relationship()
+
+
+class SelectionReminder(Base):
+    """A lightweight follow-up record an Outcome's `creates_reminder`
+    configuration may generate (task §5/§11) — deliberately minimal (no
+    notification/scheduling engine, task §14's "no separate Event Engine"
+    spirit applied here too): a due date and a note, visible on the
+    Decision Summary, that a Selezionatore can mark resolved."""
+
+    __tablename__ = "selection_reminders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    outcome_decision_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_outcome_decisions.id"), nullable=True, index=True
+    )
+    due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    note_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship()
+    outcome_decision: Mapped["SelectionOutcomeDecision | None"] = relationship()
+
+
+class CandidateFlag(Base):
+    """A persistent, person-level marker (task §16) — e.g. "DO NOT REHIRE,"
+    "RECONSIDER AFTER 6 MONTHS," "NOT FOR SERVER ROLE," "PREVIOUS STRONG
+    CANDIDATE." Follows the `CandidatePerson`, not one Application, since
+    its whole purpose is surfacing on a LATER Application by the same
+    person (task §19). Never causes an automatic rejection (task §18/§28)
+    — `operational_effect` caps out at OPERATIONAL_ACTION, defined as
+    "requires Selezionatore attention," never "reject automatically."
+    History is preserved by never deleting a flag row — `is_active`/
+    `expires_at` describe CURRENT state; the row's existence, its original
+    `reason`/`note`/`created_at`, are the permanent historical fact that it
+    was created (task §29)."""
+
+    __tablename__ = "candidate_flags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("candidate_persons.id"), nullable=False, index=True)
+    restaurant_id: Mapped[int | None] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    originating_application_id: Mapped[int | None] = mapped_column(
+        ForeignKey("applications.id"), nullable=True, index=True
+    )
+    originating_outcome_decision_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_outcome_decisions.id"), nullable=True, index=True
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    scope: Mapped[str] = mapped_column(String(32), nullable=False, default="INFORMATIONAL")
+    role_scope: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    location_scope: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    operational_effect: Mapped[str] = mapped_column(String(24), nullable=False, default="INFORMATION_ONLY")
+
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    start_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    person: Mapped["CandidatePerson"] = relationship(back_populates="flags")
+    originating_application: Mapped["Application | None"] = relationship()
+    originating_outcome_decision: Mapped["SelectionOutcomeDecision | None"] = relationship()
+
+
+class SelectionQueue(Base):
+    """A restaurant-configurable, PURELY ORGANIZATIONAL operational
+    queue/list (Task 5A-FIX §7/§8) — e.g. "Active Review," "Call Later,"
+    "Hold," "Reconsider," "Hired," "Closed." These are EXAMPLES only, never
+    a fixed universal set — a restaurant creates and names its own.
+    Deliberately minimal (name/description/active/display_order only) —
+    this is NOT a general-purpose workflow engine, and queue placement is
+    never itself a hiring decision (task §14): it only ever changes because
+    the Selezionatore moved the Application there directly, or because an
+    Outcome they chose was configured to do so."""
+
+    __tablename__ = "selection_queues"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+
+class ApplicationQueueMovement(Base):
+    """One actual queue/list move (Task 5A-FIX §9) — append-only, exactly
+    like `ApplicationStageTransition`; a move never overwrites a prior one.
+    `source` (`core/queue_model.py` — MANUAL/OUTCOME_ACTION) distinguishes
+    a direct Selezionatore move from one an applied Outcome triggered;
+    `originating_outcome_decision_id` is set only for the latter, so the
+    Outcome that caused a move stays traceable without making queue
+    placement itself a decision source (task §14)."""
+
+    __tablename__ = "application_queue_movements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    previous_queue_id: Mapped[int | None] = mapped_column(ForeignKey("selection_queues.id"), nullable=True)
+    new_queue_id: Mapped[int | None] = mapped_column(ForeignKey("selection_queues.id"), nullable=True, index=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="MANUAL")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    originating_outcome_decision_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_outcome_decisions.id"), nullable=True, index=True
+    )
+    performed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship(back_populates="queue_movements")
+    previous_queue: Mapped["SelectionQueue | None"] = relationship(foreign_keys=[previous_queue_id])
+    new_queue: Mapped["SelectionQueue | None"] = relationship(foreign_keys=[new_queue_id])
+    originating_outcome_decision: Mapped["SelectionOutcomeDecision | None"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Selection module — Selection Feedback Intelligence Foundation
+#
+# THE PAST IS IMMUTABLE. Every table below either (a) is append-only (a row,
+# once created, is never UPDATEd or DELETEd by any service function — a
+# later fact is always a NEW row, linked to the old one, never a rewrite of
+# it), or (b) is an explicit live/immutable-snapshot pair mirroring
+# `SelectionOutcomeDefinition`/`SelectionOutcomeDefinitionSnapshot`'s own
+# exact discipline: a live, restaurant-editable row plus a `version`
+# counter, and a separate, never-edited Snapshot row per version that
+# everything downstream pins to by ID — so a later edit to the live
+# Definition never rewrites what a historical Observation/Snapshot/Case
+# Memory meant at the moment it was created.
+#
+# This is the MEMORY FOUNDATION only (task's own framing): no autonomous
+# Pattern/Rule discovery, no automatic EMERGING->ESTABLISHED promotion, no
+# automatic rule creation, no Training/Performance integration, and no
+# similarity-search/predictive engine exist anywhere in this section — see
+# `rfone_data_store/selection/pattern_service.py` and `case_memory_service.
+# py`'s own module docstrings for exactly what IS and is NOT implemented.
+# ---------------------------------------------------------------------------
+
+
+class SelectionPatternDefinition(Base):
+    """A reusable professional pattern RF-One knows how to recognize (task
+    §3) — restaurant/organization-authored DATA, never a hard-coded
+    universal vocabulary (mirrors `SelectionOutcomeDefinition`'s own "RF-One
+    seeds examples, the Organization owns and edits them" convention).
+    `scope` follows the GENERAL/BUSINESS_DOMAIN/ORGANIZATION/
+    ROLE_OR_JOB_FAMILY hierarchy (task §3) — more specific knowledge may
+    coexist with broader knowledge; no automatic conflict resolution exists
+    (task's own explicit exclusion).
+
+    `maturity` (EMERGING/ESTABLISHED) and `persistence_type` (STRUCTURAL/
+    CONTEXT_SENSITIVE) are two INDEPENDENT dimensions from `status`
+    (PROPOSED/ACTIVE/RETIRED) and from each other — never collapsed into
+    one flag (task §4/§5). No automatic EMERGING->ESTABLISHED promotion and
+    no decay logic exist anywhere in this codebase (task §4/§5/§29).
+
+    `signature` is the Pattern Signature (task §6): a structured, JSON
+    dimension list (see `core/pattern_model.SUGGESTED_SIGNATURE_DIMENSIONS`
+    for the open, non-exhaustive seed vocabulary) describing WHICH
+    dimensions make cases comparable for THIS pattern specifically — never
+    generic candidate-to-candidate similarity. Deliberately versioned
+    TOGETHER with the rest of the Definition (one `version` counter, not a
+    separate one) — the smallest coherent representation that still lets a
+    future task inspect exactly what Signature was in effect for any
+    historical Observation/Comparison, via the immutable Snapshot below.
+
+    `required_authority_level_id` is the governance-foundation hook (task
+    §22/§23): which configured Authority Level, if any, a future Rule/
+    Memory Governance workflow would require to modify this Definition.
+    Nothing in this task enforces it — no approval workflow exists yet —
+    this only prepares the reference so a later task can."""
+
+    __tablename__ = "selection_pattern_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    scope: Mapped[str] = mapped_column(String(24), nullable=False, default="GENERAL")
+    applicability_context: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="PROPOSED")
+    maturity: Mapped[str] = mapped_column(String(16), nullable=False, default="EMERGING")
+    persistence_type: Mapped[str] = mapped_column(String(24), nullable=False, default="STRUCTURAL")
+
+    signature: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    creation_provenance: Mapped[str] = mapped_column(String(32), nullable=False, default="HUMAN_AUTHORED")
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    required_authority_level_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_authority_levels.id"), nullable=True, index=True
+    )
+
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    required_authority_level: Mapped["SelectionAuthorityLevel | None"] = relationship()
+    examples: Mapped[list["SelectionPatternExample"]] = relationship(
+        back_populates="pattern_definition", cascade="all, delete-orphan", order_by="SelectionPatternExample.id",
+    )
+
+
+class SelectionPatternDefinitionSnapshot(Base):
+    """Immutable, point-in-time copy of a Pattern Definition (including its
+    Signature) — mirrors `SelectionOutcomeDefinitionSnapshot`'s exact
+    idempotent-per-version discipline (`pattern_service.
+    get_or_create_pattern_definition_snapshot`). Every Pattern Observation
+    pins to one of these, never to the live, still-editable Definition row
+    — a later edit to the live Definition never rewrites what a historical
+    Observation/Comparison meant at the moment it was made."""
+
+    __tablename__ = "selection_pattern_definition_snapshots"
+    __table_args__ = (
+        UniqueConstraint("definition_id", "version", name="uq_pattern_definition_snapshot_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    definition_id: Mapped[int] = mapped_column(
+        ForeignKey("selection_pattern_definitions.id"), nullable=False, index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    restaurant_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scope: Mapped[str] = mapped_column(String(24), nullable=False)
+    applicability_context: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    maturity: Mapped[str] = mapped_column(String(16), nullable=False)
+    persistence_type: Mapped[str] = mapped_column(String(24), nullable=False)
+    signature: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    creation_provenance: Mapped[str] = mapped_column(String(32), nullable=False)
+    was_active: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    definition: Mapped["SelectionPatternDefinition"] = relationship()
+
+
+class SelectionPatternExample(Base):
+    """A permanent knowledge asset attached to a Pattern Definition (task
+    §20) — original examples, later examples, confirming examples,
+    counterexamples, exceptions, and the reasons the pattern exists.
+    Append-only (never edited/deleted) and linked to the LIVE
+    `pattern_definition_id` (not one specific snapshot) so examples survive
+    every later Definition version and remain inspectable regardless of
+    which version is currently active — `definition_version_at_capture`
+    preserves exactly which version was current when each example was
+    added, so history stays honest even as the live Definition evolves."""
+
+    __tablename__ = "selection_pattern_examples"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pattern_definition_id: Mapped[int] = mapped_column(
+        ForeignKey("selection_pattern_definitions.id"), nullable=False, index=True
+    )
+    definition_version_at_capture: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    example_type: Mapped[str] = mapped_column(String(24), nullable=False, default="ORIGINAL")
+    case_reference: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provenance: Mapped[str] = mapped_column(String(32), nullable=False, default="HUMAN_AUTHORED")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    pattern_definition: Mapped["SelectionPatternDefinition"] = relationship(back_populates="examples")
+
+
+class SelectionPatternCaseComparison(Base):
+    """The classification of ONE historical case relative to ONE Pattern
+    Definition (task §7 and §24's "historical stress-test foundation") —
+    distinct from `SelectionPatternExample` (§20's curated, permanent
+    knowledge asset): a Comparison is the raw, append-only OUTCOME of one
+    comparison/stress-test act (system or human), while an Example is
+    something a human has chosen to keep as a permanent reference. A future
+    stress-test component (task §24, explicitly NOT built here) would
+    create many `SelectionPatternCaseComparison` rows against a proposed
+    Signature and summarize them; a human may then promote a particularly
+    illustrative one to a permanent `SelectionPatternExample`.
+
+    Deliberately NOT an artificial universal numeric similarity score
+    (task §7) — `classification` (CONFIRMING_CASE/COUNTEREXAMPLE/
+    PARTIAL_MATCH/NOT_COMPARABLE) plus `dimensions_compared`/`explanation`
+    are authoritative. `internal_numeric_value` MAY hold an engineering-
+    convenience number (e.g. a raw similarity metric an algorithm computed
+    on its way to the classification above) but is never itself exposed as
+    the authoritative result — no UI/service in this task treats it as
+    such."""
+
+    __tablename__ = "selection_pattern_case_comparisons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pattern_definition_id: Mapped[int] = mapped_column(
+        ForeignKey("selection_pattern_definitions.id"), nullable=False, index=True
+    )
+    pattern_definition_snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("selection_pattern_definition_snapshots.id"), nullable=False, index=True
+    )
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+
+    classification: Mapped[str] = mapped_column(String(24), nullable=False)
+    dimensions_compared: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    supporting_evidence_references: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    internal_numeric_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    provenance: Mapped[str] = mapped_column(String(32), nullable=False, default="SYSTEM_GENERATED")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    pattern_definition: Mapped["SelectionPatternDefinition"] = relationship()
+    pattern_definition_snapshot: Mapped["SelectionPatternDefinitionSnapshot"] = relationship()
+    application: Mapped["Application"] = relationship()
+
+
+class SelectionPatternObservation(Base):
+    """The statement that a Pattern Definition is observed in THIS
+    candidate/Application at THIS point in Selection (task §8) — distinct
+    from the reusable Pattern Definition concept itself. Pins the EXACT
+    `pattern_definition_snapshot_id` used (task §7's own requirement,
+    reused here) so a later Definition edit never rewrites what this
+    Observation meant. `role` (POSITIVE/NEGATIVE/MODIFIER/NEUTRALIZER, task
+    §8) means a pattern is never forced to be only positive or negative.
+
+    Append-only: once created, an Observation's facts are never edited.
+    While a Stage remains open, new evidence may make an Observation stale
+    — `pattern_service.supersede_observation()` marks the OLD row
+    `observation_status=SUPERSEDED` and creates a brand-new ACTIVE row,
+    never mutates the old one in place (THE PAST IS IMMUTABLE, applied at
+    the smallest possible grain). The WORKING Pattern Profile (task §10) is
+    always just "every ACTIVE Observation for this Application at its
+    current Stage" — computed on read by `pattern_service.
+    compute_working_pattern_profile()`, never itself a separate stored,
+    mutable row (avoids a second, possibly-diverging copy of the same
+    live-and-changing truth)."""
+
+    __tablename__ = "selection_pattern_observations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pattern_definition_id: Mapped[int] = mapped_column(
+        ForeignKey("selection_pattern_definitions.id"), nullable=False, index=True
+    )
+    pattern_definition_snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("selection_pattern_definition_snapshots.id"), nullable=False, index=True
+    )
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    person_id: Mapped[int | None] = mapped_column(ForeignKey("candidate_persons.id"), nullable=True, index=True)
+
+    stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    stage_occurrence_index: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    observation_status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
+    superseded_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_pattern_observations.id"), nullable=True
+    )
+
+    role: Mapped[str] = mapped_column(String(16), nullable=False)  # POSITIVE/NEGATIVE/MODIFIER/NEUTRALIZER
+    relevance: Mapped[str] = mapped_column(String(16), nullable=False, default="MEDIUM")
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    evidence_references: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    rule_references: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    provenance: Mapped[str] = mapped_column(String(32), nullable=False, default="SYSTEM_GENERATED")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship()
+    person: Mapped["CandidatePerson | None"] = relationship()
+    pattern_definition: Mapped["SelectionPatternDefinition"] = relationship()
+    pattern_definition_snapshot: Mapped["SelectionPatternDefinitionSnapshot"] = relationship()
+
+
+class SelectionStagePatternSnapshot(Base):
+    """The IMMUTABLE freeze of the Working Pattern Profile at the moment a
+    Selection Stage is completed/closed (task §11) — created ONLY for
+    Stages actually traversed (never for a skipped Stage — the caller,
+    never this table, decides when to freeze one). `stage_occurrence_index`
+    supports a Stage that repeats (task §11's own requirement). Once
+    created, never altered — `observation_ids` freezes exactly which
+    `SelectionPatternObservation` rows were ACTIVE at that moment (by ID
+    reference, never a duplicated copy of their content — the Observation
+    rows themselves are already immutable per-row, so referencing them by
+    ID is sufficient and never goes stale).
+
+    `rf_one_judgment`/`selector_action`/`divergence_*`/`selector_note`
+    together are the Selezionatore Note / Divergence representation (task
+    §13) — normally optional (`selector_note` nullable), but
+    `note_required` records whether this specific snapshot's divergence
+    made a note mandatory (the architecture supports that; no sophisticated
+    divergence DETECTOR exists yet — `case_memory_service.
+    freeze_stage_pattern_snapshot()`'s caller supplies `divergence_occurred`
+    explicitly, task's own "do not build a sophisticated divergence
+    detector yet"). A case-level override recorded here never automatically
+    modifies a Pattern Definition or any rule (task §13's own explicit
+    boundary) — it becomes a Learning Trace instead (`case_memory_service.
+    freeze_stage_pattern_snapshot()` always appends one when divergence
+    occurred)."""
+
+    __tablename__ = "selection_stage_pattern_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    stage_occurrence_index: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    observation_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    pattern_definition_versions: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    rule_versions: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    evidence_references: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    resulting_priority_interpretation: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    rf_one_judgment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    selector_action: Mapped[str | None] = mapped_column(Text, nullable=True)
+    divergence_occurred: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    divergence_category: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    note_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    selector_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    previous_snapshot_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_stage_pattern_snapshots.id"), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship()
+    previous_snapshot: Mapped["SelectionStagePatternSnapshot | None"] = relationship(remote_side=[id])
+    deltas: Mapped[list["SelectionStagePatternDelta"]] = relationship(
+        back_populates="stage_snapshot", cascade="all, delete-orphan", order_by="SelectionStagePatternDelta.id",
+    )
+
+
+class SelectionStagePatternDelta(Base):
+    """What changed for ONE Pattern Definition between a Stage Pattern
+    Snapshot and its immediate previous one (task §12) — NEW_PATTERN/
+    CONFIRMED/STRENGTHENED/WEAKENED/NEUTRALIZED/NO_LONGER_SUPPORTED/
+    IMPORTANCE_INCREASED/IMPORTANCE_DECREASED, always with an explanation.
+    Never derived from an opaque score (task's own explicit instruction) —
+    `case_memory_service.compute_stage_delta()` derives each delta from the
+    explicit `role`/`relevance` fields on the two Snapshots' Observations,
+    never a numeric similarity computation."""
+
+    __tablename__ = "selection_stage_pattern_deltas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    stage_snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("selection_stage_pattern_snapshots.id"), nullable=False, index=True
+    )
+    pattern_definition_id: Mapped[int] = mapped_column(
+        ForeignKey("selection_pattern_definitions.id"), nullable=False, index=True
+    )
+    delta_type: Mapped[str] = mapped_column(String(24), nullable=False)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    stage_snapshot: Mapped["SelectionStagePatternSnapshot"] = relationship(back_populates="deltas")
+    pattern_definition: Mapped["SelectionPatternDefinition"] = relationship()
+
+
+class SelectionLearningTrace(Base):
+    """Raw evidence of something potentially useful for future learning
+    (task §14) — NOT automatically a rule. Append-only: no service function
+    in this codebase ever updates or deletes a Learning Trace row.
+    `event_type` is a plain, OPEN string (see `core/pattern_model.
+    SUGGESTED_LEARNING_TRACE_TYPES` for seed spelling only) so a genuinely
+    new kind of learning-relevant event never requires a schema change
+    (task's own explicit instruction). `event_data` carries whatever
+    structured payload that event type needs; `source_reference` points
+    back at the record that caused this trace (e.g. an Outcome Decision, a
+    Stage transition, a Note) without duplicating its content."""
+
+    __tablename__ = "selection_learning_traces"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int | None] = mapped_column(ForeignKey("applications.id"), nullable=True, index=True)
+    person_id: Mapped[int | None] = mapped_column(ForeignKey("candidate_persons.id"), nullable=True, index=True)
+    stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    event_data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    source_reference: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provenance: Mapped[str] = mapped_column(String(32), nullable=False, default="SYSTEM_GENERATED")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application | None"] = relationship()
+    person: Mapped["CandidatePerson | None"] = relationship()
+
+
+class SelectionEffort(Base):
+    """How much Selection effort was consumed to reach an Application's
+    Outcome (task §15) — computed at Case Memory closure time
+    (`case_memory_service.compute_selection_effort()`), from whatever is
+    actually observable (Stage/Queue history, Notes) plus optional
+    manually-supplied fields (`interviewer_time_minutes`,
+    `preparation_notes`) that are never fabricated when unavailable —
+    unobserved numeric fields stay `None`, never defaulted to 0 (task's own
+    "do not invent unavailable time values").
+
+    Deliberately APPEND-ONLY, one row per computation, NOT one row per
+    Application (no unique constraint on `application_id`): if this were a
+    single row reused/updated across a reopen-and-reclose cycle, computing
+    fresh effort for Case Memory V2 would silently rewrite what V1's own
+    `selection_effort_id` already points to — violating THE PAST IS
+    IMMUTABLE. Each Case Memory version pins its OWN Effort row instead."""
+
+    __tablename__ = "selection_efforts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id"), nullable=False, index=True
+    )
+
+    stages_traversed_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    repeated_stages_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    interviewer_time_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tests_administered_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    followups_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    preparation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    interactions_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    point_of_exit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    final_outcome: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    effort_elements: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship()
+
+
+class SelectionCaseMemory(Base):
+    """The synthesized professional memory of one Application, created when
+    it closes (task §16). References authoritative source records wherever
+    appropriate (`final_stage_snapshot_id`, `selection_effort_id`,
+    `outcome_decision_id`, plus JSON ID lists for Notes/Learning
+    Traces/Stage Snapshots) rather than duplicating their content.
+    `rf_one_final_judgment` and `selezionatore_final_decision` are
+    DISTINCT fields (task's own explicit "RF-One evaluates. The
+    Selezionatore decides.") — never merged into one.
+
+    THE PAST IS IMMUTABLE (task §17): once created, a Case Memory row is
+    never updated (no `updated_at`, no service function edits one).
+    Reopening an Application never touches a prior Case Memory —
+    `case_memory_service.close_case_memory()` always INSERTs a new row,
+    linking `previous_case_memory_id` and incrementing `version`, and
+    flips the OLD row's `is_current` to False in the same transaction
+    (the only field-level change ever made to a prior Case Memory row, and
+    it changes NOTHING about what that row records — only which one is
+    currently authoritative for "what does RF-One currently believe about
+    this Application")."""
+
+    __tablename__ = "selection_case_memories"
+    __table_args__ = (
+        UniqueConstraint("application_id", "version", name="uq_case_memory_application_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("candidate_persons.id"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    previous_case_memory_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_case_memories.id"), nullable=True
+    )
+    reopening_event_reference: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    closed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    outcome_decision_id: Mapped[int] = mapped_column(
+        ForeignKey("selection_outcome_decisions.id"), nullable=False, index=True
+    )
+    lifecycle_state_at_closure: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    essential_facts: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    selection_signals_summary: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    final_stage_snapshot_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_stage_pattern_snapshots.id"), nullable=True
+    )
+    stage_snapshot_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    materially_impactful_pattern_versions: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    materially_impactful_rules: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    rf_one_final_judgment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    selezionatore_final_decision: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    skill_findings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    training_burden_estimate: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    trainable_gaps: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    selection_effort_id: Mapped[int | None] = mapped_column(ForeignKey("selection_efforts.id"), nullable=True)
+    notes_reference: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    learning_trace_reference: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    evidence_reference: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship()
+    person: Mapped["CandidatePerson"] = relationship()
+    previous_case_memory: Mapped["SelectionCaseMemory | None"] = relationship(remote_side=[id])
+    outcome_decision: Mapped["SelectionOutcomeDecision"] = relationship()
+    final_stage_snapshot: Mapped["SelectionStagePatternSnapshot | None"] = relationship()
+    selection_effort: Mapped["SelectionEffort | None"] = relationship()
+
+
+class SelectionDownstreamOutcomeFeedback(Base):
+    """Foundation ONLY for future append-only downstream Outcome Feedback
+    (task §18) — no Training/Performance integration is implemented here;
+    this table only provides the generic structure so a LATER task can
+    append evidence from Training, Performance, another Cross Domain, or a
+    Business Domain to a closed Selection case WITHOUT altering the
+    historical Case Memory. `case_memory_id` is nullable (a feedback record
+    may reference the Application generally rather than one specific
+    closure version) but when set, it is never used to rewrite that Case
+    Memory row — this table is structurally separate and append-only."""
+
+    __tablename__ = "selection_downstream_outcome_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    case_memory_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_case_memories.id"), nullable=True, index=True
+    )
+
+    source_domain: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_record_reference: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    feedback_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    observed_fact: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_reference: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    classification: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    provenance: Mapped[str] = mapped_column(String(32), nullable=False, default="SYSTEM_GENERATED")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship()
+    case_memory: Mapped["SelectionCaseMemory | None"] = relationship()
+
+
+class SelectionAuthorityLevel(Base):
+    """One configured Selection governance authority level (task §22) —
+    e.g. SELECTOR/SENIOR_SELECTOR/SELECTION_OWNER, but these labels are
+    entirely restaurant-configured examples, never fixed or required.
+    `level_order` (1 = lowest) is the only thing that matters structurally
+    — an Organization may configure exactly 1, 2, or 3 (or more) levels;
+    RF-One never invents or requires a missing level (task's own explicit
+    instruction). `assigned_holders` is a plain JSON list of names/labels —
+    no authentication/RBAC system exists in Selection (same honest-
+    placeholder rationale as `performed_by` throughout this codebase)."""
+
+    __tablename__ = "selection_authority_levels"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+    level_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    level_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    assigned_holders: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class SelectionGovernanceRequirement(Base):
+    """Which Selection Organization-Memory action types require which
+    configured Authority Level (task §22/§23) — e.g. "approving a Pattern
+    Definition for ACTIVE status requires SENIOR_SELECTOR." Deliberately
+    just the configuration foundation: no approval-workflow UI/enforcement
+    engine exists in this task (task §22's own "do not implement a complex
+    approval UI... create the correct domain/configuration foundation").
+    `action_type` is an open string (mirrors every other extensible-
+    vocabulary field in this section) so a new governed action type never
+    requires a schema change."""
+
+    __tablename__ = "selection_governance_requirements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+    action_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    required_authority_level_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_authority_levels.id"), nullable=True, index=True
+    )
+    requires_higher_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    required_authority_level: Mapped["SelectionAuthorityLevel | None"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Selection module — Trainable Gap (TASK 5B)
+#
+# A Trainable Gap is a specific, persisted, evidence-linked record that one
+# RequirementAssessment's gap (NOT_EVIDENCED/PARTIALLY_EVIDENCED, against a
+# Requirement the restaurant marked TRAINABLE/PARTIALLY_TRAINABLE) is being
+# tracked with an RF-One-proposed 0-4 initial level and, optionally, a
+# Selezionatore's own corrected level. Mirrors the system/effective/origin/
+# override_reason/overridden_at quadruple already used by
+# `RequirementAssessment`, `Application.review_priority_*`,
+# `PrimaryScreeningCriterionEvaluation`, and `SignalObservation` — see
+# `01 Domains/Cross Domain/Selection/TrainableGap.md`.
+#
+# Exactly one row per RequirementAssessment (unique constraint) — the same
+# discipline RequirementAssessment itself uses against (fit_assessment_id,
+# requirement_snapshot_item_id): a later evidence/assessment refresh updates
+# THIS row's lifecycle `status` (never its level fields) rather than
+# creating a duplicate. `rf_one_initial_level` is set once at creation and
+# NEVER modified by any later system or human write (task §5), mirroring
+# `RequirementAssessment.system_status` never being touched by a human
+# override.
+#
+# Deliberately NOT persisted here: a Training target level, curriculum,
+# Training Step/Check, or Autonomy Level — those belong to a future Training
+# Domain (task's own explicit "do not implement Training Domain").
+# ---------------------------------------------------------------------------
+
+
+class TrainableGap(Base):
+    """One Trainable Gap (task §3/§4/§5) — a candidate gap against one
+    `RequirementAssessment`, already evidenced as NOT_EVIDENCED or
+    PARTIALLY_EVIDENCED, whose Requirement the restaurant considers
+    TRAINABLE or PARTIALLY_TRAINABLE. `application_id`/`candidate_id`/
+    `fit_assessment_id` are denormalized for direct querying (mirrors
+    `PhoneInterviewPlan`/`InPersonInterviewPlan` denormalizing
+    `person_id`/`candidate_id` alongside their own FK chain) — the
+    authoritative link is always `requirement_assessment_id`, which in turn
+    reaches the exact `RequirementSnapshotItem`/`RequirementSetSnapshot`
+    this gap was identified against.
+
+    `rf_one_initial_level` is proposed once at creation and NEVER modified
+    afterward, by anything — the immutable RF-One value (task §5: "Never
+    overwrite the RF-One original level"). `selezionatore_initial_level` is
+    `None` until a Selezionatore records a level that DIFFERS from RF-One's
+    (task §5: "If the Selezionatore agrees... no duplicate manual value is
+    required"); `effective_initial_level` is always
+    `selezionatore_initial_level if not None else rf_one_initial_level` —
+    kept as its own column (mirrors `RequirementAssessment.effective_status`)
+    so display never needs to recompute the fallback. `override_reason` is
+    mandatory (enforced in `trainable_gap_service.py`, not here) whenever
+    `selezionatore_initial_level` is set to a value different from
+    `rf_one_initial_level`."""
+
+    __tablename__ = "trainable_gaps"
+    __table_args__ = (
+        UniqueConstraint("requirement_assessment_id", name="uq_trainable_gap_requirement_assessment"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"), nullable=False, index=True)
+    fit_assessment_id: Mapped[int] = mapped_column(ForeignKey("fit_assessments.id"), nullable=False, index=True)
+    requirement_assessment_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_assessments.id"), nullable=False, index=True
+    )
+
+    # Denormalized, immutable copies of the state at the moment this gap was
+    # identified (task §3's "preserve... linked Requirement, Requirement
+    # trainability, source Fit status") — never re-read live off the
+    # Requirement/RequirementAssessment after creation, so a later edit to
+    # the live Requirement's trainability can never silently rewrite what
+    # this Trainable Gap originally meant.
+    missing_capability: Mapped[str] = mapped_column(Text, nullable=False)
+    trainability: Mapped[str] = mapped_column(String(24), nullable=False)
+    source_fit_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    importance: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    rf_one_initial_level: Mapped[int] = mapped_column(Integer, nullable=False)
+    selezionatore_initial_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    effective_initial_level: Mapped[int] = mapped_column(Integer, nullable=False)
+    confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    origin: Mapped[str] = mapped_column(String(24), nullable=False, default="SYSTEM_GENERATED")
+    override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    overridden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    overridden_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Lifecycle only (task §3's "preserve... status") — never a Training-
+    # progress status. ACTIVE is the default; a later evidence refresh may
+    # move a gap to WITHDRAWN (see `trainable_gap_service.
+    # generate_trainable_gaps_for_fit_assessment`) when its underlying
+    # RequirementAssessment is no longer evidenced as a gap at all — this
+    # never touches the level fields above.
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    application: Mapped["Application"] = relationship()
+    candidate: Mapped["Candidate"] = relationship()
+    fit_assessment: Mapped["FitAssessment"] = relationship()
+    requirement_assessment: Mapped["RequirementAssessment"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Selection module — Selection Session + Application Ownership + Rule
+# Governance (TASK 5C)
+#
+# SelectionSession is the operational container for ONE role (task §1/§2) —
+# never itself a Fit Assessment, Decision, or ranking mechanism. It adds a
+# governance/organizational layer ON TOP of the existing Application/
+# CandidatePerson/FitAssessment/Outcome architecture; nothing below
+# redefines or duplicates that architecture. `Application.session_id` is
+# nullable specifically so every Application that predates this task, or
+# that is processed outside Session governance, remains valid unchanged.
+#
+# Authority/dependency (task §5) deliberately reuses `SelectionAuthorityLevel`
+# (Selection Feedback Intelligence Foundation task, `governance_service.py`)
+# rather than inventing a parallel hierarchy concept — `SelectionSessionAssignment.
+# authority_level_id` simply points a Session-scoped assignment at an
+# existing, restaurant-configured level. Two assignments with no configured
+# level (`authority_level_id is None`) are peers (task §5's own "If NO
+# dependency is defined... all Selezionatori... are considered peers").
+# ---------------------------------------------------------------------------
+
+
+class SelectionSession(Base):
+    """The operational container for selecting candidates for ONE role
+    (task §1/§2) — e.g. "Server — Winter Park — September 2026". Never
+    multi-role (task's own explicit prohibition); a hiring campaign needing
+    several roles creates several Sessions. `current_rule_set_version_id`
+    is a convenience pointer (mirrors `Application.current_stage`/
+    `current_queue_id`'s own "never the sole record of truth" discipline)
+    — the full version history always lives in `SelectionRuleSetVersion`,
+    never only here. A Session is NOT "operationally active" merely because
+    `status == ACTIVE`; `session_service.assert_operational()` additionally
+    requires the current Rule Set version to carry a recorded confirmation
+    (task §13) — status and confirmation are kept as two independently
+    inspectable facts rather than collapsed into one flag."""
+
+    __tablename__ = "selection_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    restaurant_id: Mapped[int | None] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+    location_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    target_role: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+
+    start_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    planned_end_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    actual_close_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="DRAFT")
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Legacy single-value convenience only — see ApplicationNote(session_id=...) for the real, append-only Session notes history.
+
+    current_rule_set_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_rule_set_versions.id"), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    assignments: Mapped[list["SelectionSessionAssignment"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan", order_by="SelectionSessionAssignment.id",
+    )
+    rule_set_versions: Mapped[list["SelectionRuleSetVersion"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan", order_by="SelectionRuleSetVersion.version",
+        foreign_keys="SelectionRuleSetVersion.session_id",
+    )
+    current_rule_set_version: Mapped["SelectionRuleSetVersion | None"] = relationship(
+        foreign_keys=[current_rule_set_version_id], post_update=True,
+    )
+
+
+class SelectionSessionAssignment(Base):
+    """One Selezionatore assigned to a Session (task §4) — never a single
+    forced "primary selector." `selezionatore_name` is kept as the display
+    text (originally a plain honest-placeholder string; as of
+    GLOBAL_INTEGRITY_FIX_002 it is always set FROM `acting_identity.
+    display_name` for new assignments, never independently typed) —
+    `acting_identity_id` is the authoritative reference used for authority
+    comparisons (`authority_service.get_authority_order_for_identity_in_
+    session`), never the name. Nullable for historical rows created before
+    this task (C-1/I-4 — additive migration, no fabricated identity
+    mapping). `authority_level_id` is optional (task §5 — undefined
+    dependency means peers); `is_active=False` deactivates an assignment
+    without deleting its history (mirrors `CandidateFlag.is_active`'s own
+    discipline)."""
+
+    __tablename__ = "selection_session_assignments"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id", "selezionatore_name", name="uq_session_assignment_session_selezionatore"
+        ),
+        UniqueConstraint(
+            "session_id", "acting_identity_id", name="uq_session_assignment_session_identity"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("selection_sessions.id"), nullable=False, index=True)
+    selezionatore_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    acting_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True, index=True
+    )
+    authority_level_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_authority_levels.id"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    session: Mapped["SelectionSession"] = relationship(back_populates="assignments")
+    authority_level: Mapped["SelectionAuthorityLevel | None"] = relationship()
+    acting_identity: Mapped["ActingIdentity | None"] = relationship()
+
+
+class ApplicationOwnership(Base):
+    """One period of operational "take in charge" ownership of an
+    Application by one Selezionatore (task §6/§7/§10) — append-only
+    history, exactly one `is_active=True` row per Application at a time
+    (enforced in `ownership_service.py`, not by a DB constraint — the same
+    "current = latest/only active row" discipline `SelectionOutcomeDecision`
+    already established). Reassignment (task §9/§10) closes the previous
+    active row (`is_active=False`, `ended_at` set) and creates a new one
+    referencing it via `previous_ownership_id` — never overwrites or
+    deletes the prior row.
+
+    `owner_name`/`assigned_by` are display text, preserved verbatim for
+    historical rows; `acting_identity_id`/`assigned_by_identity_id`
+    (GLOBAL_INTEGRITY_FIX_002 / C-1, the highest-priority part of that fix)
+    are the AUTHORITATIVE references every ownership/authority comparison
+    (`ownership_service.can_write`/`can_reassign`) now uses — never the
+    name. Nullable for rows created before this task; never backfilled by
+    guessing an identity from old text (Historical Integrity — honest
+    uncertainty, no fabricated mapping)."""
+
+    __tablename__ = "application_ownerships"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    # Denormalized convenience copy of `Application.session_id` at claim time.
+    session_id: Mapped[int | None] = mapped_column(ForeignKey("selection_sessions.id"), nullable=True, index=True)
+    owner_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    acting_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True, index=True
+    )
+    assigned_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    assigned_by_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True, index=True
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stage_at_time: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    previous_ownership_id: Mapped[int | None] = mapped_column(
+        ForeignKey("application_ownerships.id"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    application: Mapped["Application"] = relationship()
+    session: Mapped["SelectionSession | None"] = relationship()
+    previous_ownership: Mapped["ApplicationOwnership | None"] = relationship(remote_side=[id])
+    acting_identity: Mapped["ActingIdentity | None"] = relationship(foreign_keys=[acting_identity_id])
+    assigned_by_identity: Mapped["ActingIdentity | None"] = relationship(foreign_keys=[assigned_by_identity_id])
+
+
+class SelectionRuleSetVersion(Base):
+    """One immutable, versioned Rule Set envelope for a Session/role (task
+    §11/§12) — references existing immutable snapshots and live
+    configuration ids rather than duplicating their data (task's own "Do
+    NOT duplicate all data if existing immutable snapshots can be
+    referenced safely"). `requirement_set_snapshot_id` and each id inside
+    `primary_screening_criterion_snapshot_ids` are captured as immutable
+    snapshots AT THE MOMENT this version is built (`rule_set_service.
+    build_rule_set_version`), so the envelope can never silently drift even
+    if the live Requirement Set/Criteria are edited afterward.
+    `signal_definition_ids`/`review_priority_policy_id`/
+    `outcome_definition_ids`/`phone_interview_question_definition_ids`/
+    `in_person_interview_section_definition_ids` reference LIVE
+    configuration rows — no immutable snapshot mechanism exists yet for
+    those (task §12's own "reference... where applicable"; an honestly-
+    scoped limitation, see the Task 5C report). Confirmation fields (task
+    §15) are folded directly onto this row rather than a separate table: a
+    version is confirmed at most once, by one person, at one time."""
+
+    __tablename__ = "selection_rule_set_versions"
+    __table_args__ = (
+        UniqueConstraint("session_id", "version", name="uq_rule_set_version_session_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("selection_sessions.id"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    requirement_set_id: Mapped[int | None] = mapped_column(ForeignKey("requirement_sets.id"), nullable=True)
+    requirement_set_snapshot_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requirement_set_snapshots.id"), nullable=True
+    )
+    primary_screening_criterion_snapshot_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    signal_definition_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    review_priority_policy_id: Mapped[int | None] = mapped_column(
+        ForeignKey("review_priority_policies.id"), nullable=True
+    )
+    outcome_definition_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    phone_interview_question_definition_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    in_person_interview_section_definition_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    change_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_from_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_rule_set_versions.id"), nullable=True
+    )
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    confirmed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # GLOBAL_INTEGRITY_FIX_002 / C-1: `confirmed_by` remains display text
+    # (and the only field historical rows carry); `confirmed_by_identity_id`
+    # is the authoritative reference for new confirmations, resolved
+    # server-side (`acting_identity_service`), never client-supplied text.
+    confirmed_by_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True, index=True
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    confirmation_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    session: Mapped["SelectionSession"] = relationship(
+        back_populates="rule_set_versions", foreign_keys=[session_id],
+    )
+    requirement_set: Mapped["RequirementSet | None"] = relationship()
+    requirement_set_snapshot: Mapped["RequirementSetSnapshot | None"] = relationship()
+    review_priority_policy: Mapped["ReviewPriorityPolicy | None"] = relationship()
+    created_from_version: Mapped["SelectionRuleSetVersion | None"] = relationship(remote_side=[id])
+    confirmed_by_identity: Mapped["ActingIdentity | None"] = relationship(foreign_keys=[confirmed_by_identity_id])
+
+
+class SelectionRuleChange(Base):
+    """One Rule Change EVENT during an ACTIVE Session (task §16-§21) —
+    distinct from `SelectionRuleSetVersion` itself: this row records WHY
+    and under what SCOPE a new version was created, never overwritten.
+    `scope` is `core.rule_set_model.SUBSEQUENT_ONLY` or `ENTIRE_SESSION`
+    (task §17 — never silently defaulted; `rule_change_service.py` rejects
+    a missing/invalid scope). For `ENTIRE_SESSION`, one
+    `SelectionRuleChangeImpact` row is created per Application already
+    linked under an older Rule Set version (task §19/§21)."""
+
+    __tablename__ = "selection_rule_changes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("selection_sessions.id"), nullable=False, index=True)
+    previous_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_rule_set_versions.id"), nullable=True
+    )
+    new_version_id: Mapped[int] = mapped_column(ForeignKey("selection_rule_set_versions.id"), nullable=False)
+
+    rules_changed_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    scope: Mapped[str] = mapped_column(String(24), nullable=False)
+    performed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # GLOBAL_INTEGRITY_FIX_002 / C-1: authoritative actor reference for new
+    # Rule Changes, resolved server-side; `performed_by` stays as display
+    # text / historical fallback.
+    performed_by_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True, index=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    session: Mapped["SelectionSession"] = relationship()
+    previous_version: Mapped["SelectionRuleSetVersion | None"] = relationship(foreign_keys=[previous_version_id])
+    new_version: Mapped["SelectionRuleSetVersion"] = relationship(foreign_keys=[new_version_id])
+    performed_by_identity: Mapped["ActingIdentity | None"] = relationship(foreign_keys=[performed_by_identity_id])
+    impacts: Mapped[list["SelectionRuleChangeImpact"]] = relationship(
+        back_populates="rule_change", cascade="all, delete-orphan", order_by="SelectionRuleChangeImpact.id",
+    )
+
+
+class SelectionRuleChangeImpact(Base):
+    """One Application affected by an ENTIRE_SESSION-scope Rule Change
+    (task §19/§20/§21) — never created for SUBSEQUENT_ONLY (task §18: prior
+    Applications are explicitly NOT touched). `recalculation_status`/
+    `review_status` are deliberately separate: a retroactive Rule Change
+    may safely re-run a deterministic component (e.g. refreshing
+    résumé-stage evidence via the existing, idempotent
+    `fit_assessment_service.generate_resume_stage_assessment`, which
+    already never overwrites a human-touched `effective_status` — task
+    §20's own "must NOT... change an existing substantive Selezionatore
+    decision") without that ever meaning the Application's human review is
+    considered DONE — `review_status` starts at NEEDS_REVIEW and is only
+    ever advanced by an explicit Selezionatore action."""
+
+    __tablename__ = "selection_rule_change_impacts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rule_change_id: Mapped[int] = mapped_column(ForeignKey("selection_rule_changes.id"), nullable=False, index=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+
+    recalculation_status: Mapped[str] = mapped_column(String(24), nullable=False, default="PENDING")
+    review_status: Mapped[str] = mapped_column(String(24), nullable=False, default="NEEDS_REVIEW")
+    recalculated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    rule_change: Mapped["SelectionRuleChange"] = relationship(back_populates="impacts")
+    application: Mapped["Application"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Task 5D — Candidate Communication + Interview Scheduling. Acquisition
+# Source (how the candidate found the role) is deliberately separate from
+# Communication Channel (how RF-One contacts them) — see
+# `core/communication_model.py`'s module docstring.
+# ---------------------------------------------------------------------------
+
+class AcquisitionSourceDefinition(Base):
+    """A restaurant-configurable Acquisition Source (task §1) — e.g.
+    Indeed, LinkedIn, Referral, Walk-In. Deliberately a restaurant-editable
+    lookup table, not a hard-coded enum (task's own "do NOT make this a
+    rigid universal enum if the current architecture supports configurable
+    source definitions more cleanly") — mirrors `SignalDefinition`'s minimal
+    "restaurant defines a small list" shape. NOT the same concept as
+    `Candidate.source` (Task 2A's ResumeSource-acquisition-mechanism field,
+    e.g. LOCAL_UPLOAD) and NOT a Communication Channel."""
+
+    __tablename__ = "acquisition_source_definitions"
+    __table_args__ = (
+        UniqueConstraint("restaurant_id", "name", name="uq_acquisition_source_restaurant_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class CommunicationTemplate(Base):
+    """A restaurant-configurable, versioned Communication Template (task
+    §3/§4) — the Selezionatore never rewrites the standard message per
+    candidate. `stage`/`trigger_event`/`outcome_definition_id` together
+    identify WHEN this template fires (see `core/communication_model.py`'s
+    `TRIGGER_EVENTS` docstring for exactly which service-layer call reads
+    which combination); `outcome_definition_id` is a live reference (used
+    only for OUTCOME-triggered events, where the restaurant names which of
+    ITS OWN Outcome Definitions — e.g. its "Stop," its "Hold" — this
+    template answers) and is left `None` for stage-advance/reminder/
+    confirmation events. `restaurant_id`/`location_label`/`role` narrow
+    which Application this template applies to; any of the three may be
+    `None` to mean "any." Matching among several active candidates picks the
+    most specific (see `communication_service.find_best_template`)."""
+
+    __tablename__ = "communication_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+    location_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    trigger_event: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    outcome_definition_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_outcome_definitions.id"), nullable=True
+    )
+
+    purpose: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    language: Mapped[str] = mapped_column(String(16), nullable=False, default="en")
+
+    sms_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    email_subject: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    email_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    outcome_definition: Mapped["SelectionOutcomeDefinition | None"] = relationship()
+
+
+class CommunicationTemplateSnapshot(Base):
+    """Immutable, point-in-time copy of a Communication Template (task §4)
+    — mirrors `SelectionOutcomeDefinitionSnapshot`'s exact idempotent-per-
+    version discipline. Every `CandidateCommunication` pins to one of these,
+    never to the live, still-editable `CommunicationTemplate` row — a later
+    edit to the live template never rewrites what was actually sent to a
+    candidate in the past (task's own "never reconstruct old communication
+    from the current template")."""
+
+    __tablename__ = "communication_template_snapshots"
+    __table_args__ = (
+        UniqueConstraint("template_id", "version", name="uq_communication_template_snapshot_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("communication_templates.id"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    restaurant_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    location_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    trigger_event: Mapped[str] = mapped_column(String(48), nullable=False)
+    # Deliberately NOT a foreign key (mirrors `SelectionOutcomeDefinitionSnapshot.
+    # target_queue_id`) — stays valid even if the live Outcome Definition it
+    # named is later renamed/deactivated.
+    outcome_definition_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    purpose: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    language: Mapped[str] = mapped_column(String(16), nullable=False)
+    sms_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    email_subject: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    email_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    was_active: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    template: Mapped["CommunicationTemplate"] = relationship()
+
+
+class CommunicationReminderPolicy(Base):
+    """Configurable no-response follow-up (task §16-§18), scoped by
+    restaurant/branch/role/stage/`trigger_event` exactly like a Template.
+    Reminder communications themselves are rendered through the ordinary
+    Template lookup (`trigger_event=REMINDER`, same scoping fields) rather
+    than a direct FK here — one restaurant-configurable Reminder Policy may
+    legitimately use different Reminder templates per language/role without
+    this table needing to know about each one individually.
+
+    `auto_stop_enabled` is an explicit, restaurant-configured opt-in (task
+    §18 — "this is not an AI judgment... execution of an explicit configured
+    rule"); `auto_stop_outcome_definition_id` names exactly which of the
+    restaurant's own Outcome Definitions is applied (through the existing
+    authoritative `outcome_service.apply_outcome`) when the deadline is
+    reached with no response."""
+
+    __tablename__ = "communication_reminder_policies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+    location_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    trigger_event: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+
+    reminder_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    first_reminder_delay_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reminder_interval_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    final_deadline_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    auto_stop_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    auto_stop_outcome_definition_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_outcome_definitions.id"), nullable=True
+    )
+
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    auto_stop_outcome_definition: Mapped["SelectionOutcomeDefinition | None"] = relationship()
+
+
+class CandidateCommunication(Base):
+    """One outbound communication event, fully linked to its Application
+    (task §complete history requirement) — an "event" may render as SMS,
+    Email, or both simultaneously (task §2), always recorded as ONE row so
+    the two channels of the same message stay visibly one event. Preserves
+    the EXACT rendered text actually sent (task §4), independent of any
+    later Template edit, by pinning to a `CommunicationTemplateSnapshot`.
+
+    `awaiting_response`/`response_received_at`/`reminder_policy_id`/
+    `final_deadline_at`/`reminders_sent_count`/`no_response_stop_applied`
+    together track ONE response-tracking cycle (task §16-§20); reminder
+    communications are themselves ordinary rows with `is_reminder=True` and
+    `parent_communication_id` pointing back to this row."""
+
+    __tablename__ = "candidate_communications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    template_snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("communication_template_snapshots.id"), nullable=False, index=True
+    )
+    trigger_event: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+
+    channel_sms_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    channel_email_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    recipient_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    recipient_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    rendered_sms_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rendered_email_subject: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    rendered_email_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    language_used: Mapped[str] = mapped_column(String(16), nullable=False, default="en")
+
+    sms_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sms_provider_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    email_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    email_provider_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    is_reminder: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reminder_sequence_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    parent_communication_id: Mapped[int | None] = mapped_column(
+        ForeignKey("candidate_communications.id"), nullable=True, index=True
+    )
+
+    awaiting_response: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    response_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    response_inbound_id: Mapped[int | None] = mapped_column(
+        ForeignKey("inbound_communications.id"), nullable=True
+    )
+    reminder_policy_id: Mapped[int | None] = mapped_column(
+        ForeignKey("communication_reminder_policies.id"), nullable=True
+    )
+    final_deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reminders_sent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    no_response_stop_applied: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    no_response_stop_outcome_decision_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_outcome_decisions.id"), nullable=True
+    )
+
+    related_outcome_decision_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_outcome_decisions.id"), nullable=True
+    )
+    related_stage_transition_id: Mapped[int | None] = mapped_column(
+        ForeignKey("application_stage_transitions.id"), nullable=True
+    )
+    performed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship()
+    template_snapshot: Mapped["CommunicationTemplateSnapshot"] = relationship()
+    parent_communication: Mapped["CandidateCommunication | None"] = relationship(remote_side=[id])
+    response_inbound: Mapped["InboundCommunication | None"] = relationship(foreign_keys=[response_inbound_id])
+
+
+class InterviewSchedulingWindow(Base):
+    """One offered scheduling window (task §11) — e.g. "Monday 2-6pm." Task
+    5D-MICRO-FIX §1/§3: the NORMAL/default scope is a Selection Session +
+    Interview Stage (`session_id` set, `application_id` NULL) — offered ONCE
+    and shared by every eligible Application in that Session, never
+    recreated per candidate. `application_id` (set, `session_id` typically
+    left `None`) is the optional, genuinely-exceptional per-Application
+    override (task §3's own "may remain possible as an optional override").
+    Exactly one of the two scoping dimensions is required — enforced by the
+    `ck_scheduling_window_session_or_application` check constraint below,
+    never both left unset. `scheduling_service._window_applies_to_application`
+    is the one place that resolves which windows apply to a given
+    Application, whichever scope they use."""
+
+    __tablename__ = "interview_scheduling_windows"
+    __table_args__ = (
+        CheckConstraint(
+            "session_id IS NOT NULL OR application_id IS NOT NULL",
+            name="ck_scheduling_window_session_or_application",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Task 5D-MICRO-FIX §1 — widened from NOT NULL (Task 5D's original,
+    # too-narrow Application-only scope) to nullable: a Session-scoped
+    # shared window (the normal case) has no single owning Application.
+    application_id: Mapped[int | None] = mapped_column(ForeignKey("applications.id"), nullable=True, index=True)
+    session_id: Mapped[int | None] = mapped_column(ForeignKey("selection_sessions.id"), nullable=True, index=True)
+    interview_stage: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    window_date: Mapped[date] = mapped_column(Date, nullable=False)
+    start_time: Mapped[time] = mapped_column(Time, nullable=False)
+    end_time: Mapped[time] = mapped_column(Time, nullable=False)
+    slot_duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    capacity_per_slot: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="America/New_York")
+
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application | None"] = relationship()
+    session: Mapped["SelectionSession | None"] = relationship()
+
+
+class InterviewAppointment(Base):
+    """One booked interview appointment (task §13/§14) — created and
+    CONFIRMED automatically the moment a candidate selects an available
+    slot (task §13: "No Selezionatore approval is required"). Rescheduling
+    (task §15) never deletes/overwrites the prior row: it is marked
+    `RESCHEDULED` and a new row is created referencing it via
+    `previous_appointment_id`, exactly like `ApplicationOwnership`'s own
+    append-only reassignment chain.
+
+    Task 5D-MICRO-FIX §5/§9 — `slot_ordinal` (0-indexed, `< scheduling_
+    window.capacity_per_slot`) is the DB-enforced concurrency guard: the
+    partial unique index below allows at most one CONFIRMED row per
+    (window, slot start time, ordinal) — i.e. exactly `capacity_per_slot`
+    CONFIRMED appointments per slot, shared across every Application that
+    books against that window, never a per-Application capacity pool. The
+    index is scoped to `status = 'CONFIRMED'` only, so a RESCHEDULED/
+    CANCELLED row's ordinal is immediately free for reuse — the minimum
+    clean database-level protection compatible with the existing
+    check-then-insert service logic (`scheduling_service.book_slot`), not a
+    broader concurrency-control redesign."""
+
+    __tablename__ = "interview_appointments"
+    __table_args__ = (
+        Index(
+            "ux_interview_appointment_slot_ordinal_confirmed",
+            "scheduling_window_id", "slot_start_at", "slot_ordinal",
+            unique=True,
+            sqlite_where=text("status = 'CONFIRMED'"),
+            postgresql_where=text("status = 'CONFIRMED'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    interview_stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    scheduling_window_id: Mapped[int] = mapped_column(
+        ForeignKey("interview_scheduling_windows.id"), nullable=False, index=True
+    )
+
+    slot_start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    slot_end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    slot_ordinal: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="CONFIRMED")
+
+    candidate_selected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    previous_appointment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("interview_appointments.id"), nullable=True
+    )
+    cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship()
+    scheduling_window: Mapped["InterviewSchedulingWindow"] = relationship()
+    previous_appointment: Mapped["InterviewAppointment | None"] = relationship(remote_side=[id])
+
+
+class CandidateSchedulingToken(Base):
+    """A secure, opaque token for the candidate-facing scheduling page
+    (task §31) — the SMS/Email link carries this token, never the internal
+    `application_id` directly. Not single-use (a candidate may revisit the
+    page to reschedule, task §15); `is_active=False` revokes it without
+    losing history."""
+
+    __tablename__ = "candidate_scheduling_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    interview_stage: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship()
+
+
+class InboundCommunication(Base):
+    """One inbound candidate message, preserved verbatim (task §21 — "never
+    replace the raw message with a summary"). `classification_system` is
+    what the deterministic classifier produced; `classification_effective`
+    starts equal to it and is the ONLY field a Selezionatore correction
+    changes (task §23 — the system classification is never overwritten/
+    lost). `alert_required`/`alert_reason` implement the high-visibility
+    alert (task §20/§25); acknowledging an alert never itself changes any
+    Outcome (task §24)."""
+
+    __tablename__ = "inbound_communications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    classification_system: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    classification_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    classification_effective: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    classification_corrected_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    classification_corrected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    classification_correction_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    related_outgoing_communication_id: Mapped[int | None] = mapped_column(
+        ForeignKey("candidate_communications.id"), nullable=True
+    )
+
+    alert_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    alert_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    alert_acknowledged_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    alert_acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    application: Mapped["Application"] = relationship()
+    related_outgoing_communication: Mapped["CandidateCommunication | None"] = relationship(
+        foreign_keys=[related_outgoing_communication_id],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Task 5E — Job Posting + Application Intake + Missing-Evidence
+# Pre-Screening. Job Posting content and internal Screening Criteria are
+# deliberately separate concepts (task §2's own "do NOT expose every
+# internal Selection Rule") — nothing here references a
+# PrimaryScreeningCriterion directly except through the small, additive
+# fields already appended to that model above.
+# ---------------------------------------------------------------------------
+
+class JobPosting(Base):
+    """One Job Posting generated for a Selection Session/Role (task §1) —
+    the base, channel-neutral content. Always starts as a `DRAFT` RF-One
+    auto-generates from existing structured Selection data (Session/Role/
+    Rule Set) and is never auto-published (task's own "Do NOT publish the
+    initial draft automatically"). `current_version`/`approved_version_id`
+    are convenience pointers only — full editable/approved history always
+    lives in `JobPostingVersion` (mirrors `SelectionRuleSetVersion`'s own
+    "never the sole record of truth" discipline)."""
+
+    __tablename__ = "job_postings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("selection_sessions.id"), nullable=False, index=True)
+    restaurant_id: Mapped[int | None] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+    location_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[str] = mapped_column(String(64), nullable=False)
+    rule_set_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("selection_rule_set_versions.id"), nullable=True
+    )
+
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="DRAFT")
+    current_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    approved_version_id: Mapped[int | None] = mapped_column(ForeignKey("job_posting_versions.id"), nullable=True)
+
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    session: Mapped["SelectionSession"] = relationship()
+    rule_set_version: Mapped["SelectionRuleSetVersion | None"] = relationship()
+    versions: Mapped[list["JobPostingVersion"]] = relationship(
+        back_populates="job_posting", cascade="all, delete-orphan", order_by="JobPostingVersion.version",
+        foreign_keys="JobPostingVersion.job_posting_id",
+    )
+    approved_version: Mapped["JobPostingVersion | None"] = relationship(
+        foreign_keys=[approved_version_id], post_update=True,
+    )
+
+
+class JobPostingVersion(Base):
+    """One editable/approvable content snapshot of a base Job Posting (task
+    §4) — every edit (system-generated draft, human edit, or a later
+    change) creates a NEW row; nothing here is ever overwritten. Content is
+    deliberately public-facing/descriptive only (task §2's own field list)
+    — compensation/benefits/schedule are free text, never a numeric Rule."""
+
+    __tablename__ = "job_posting_versions"
+    __table_args__ = (
+        UniqueConstraint("job_posting_id", "version", name="uq_job_posting_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_posting_id: Mapped[int] = mapped_column(ForeignKey("job_postings.id"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    branch_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    role_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    responsibilities: Mapped[str | None] = mapped_column(Text, nullable=True)
+    minimum_requirements: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preferred_experience: Mapped[str | None] = mapped_column(Text, nullable=True)
+    availability_expectations: Mapped[str | None] = mapped_column(Text, nullable=True)
+    schedule_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    compensation_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    benefits_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    location_context: Mapped[str | None] = mapped_column(Text, nullable=True)
+    application_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    other_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="SYSTEM_GENERATED")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    author: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    job_posting: Mapped["JobPosting"] = relationship(back_populates="versions", foreign_keys=[job_posting_id])
+
+
+class ChannelDefinition(Base):
+    """A generic, restaurant-configurable publication Channel container
+    (task §5/§8) — Indeed/LinkedIn/Facebook/Company Website/... are
+    EXAMPLES a restaurant may create, never a hard-coded closed set. Every
+    capability flag is descriptive only in this task (task's own "do NOT
+    implement actual provider APIs") — no code branches on `is_connected`
+    to call a real provider; a future connector owns that. `is_connected`
+    distinguishes CONNECTED (a future connector may publish/update
+    directly) from MANUAL (task §9) — both are supported identically at
+    this generic-container stage. `default_acquisition_source_id` is the
+    one live link to Task 5D's Acquisition Source: when set, an Application
+    arriving through this Channel's tracking link is attributed
+    automatically (task §10)."""
+
+    __tablename__ = "channel_definitions"
+    __table_args__ = (
+        UniqueConstraint("restaurant_id", "name", name="uq_channel_definition_restaurant_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_connected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    supports_publish: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    supports_update: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    supports_pause: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    supports_stop: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    supports_metrics: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    supports_cost_tracking: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_paid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    default_acquisition_source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acquisition_source_definitions.id"), nullable=True
+    )
+
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    default_acquisition_source: Mapped["AcquisitionSourceDefinition | None"] = relationship()
+
+
+class JobPostingChannelVariant(Base):
+    """One channel-specific variant of a Job Posting (task §5/§6) — created
+    only after the base posting is approved. More than one variant MAY
+    exist for the same Channel (task §34's own A/B-testing structure —
+    comparing two distinct variant texts on the same Channel), never
+    constrained to exactly one. `current_version`/`approved_version_id`
+    mirror `JobPosting`'s own convenience-pointer discipline."""
+
+    __tablename__ = "job_posting_channel_variants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_posting_id: Mapped[int] = mapped_column(ForeignKey("job_postings.id"), nullable=False, index=True)
+    channel_id: Mapped[int] = mapped_column(ForeignKey("channel_definitions.id"), nullable=False, index=True)
+
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="DRAFT")
+    current_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    approved_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("job_posting_channel_variant_versions.id"), nullable=True
+    )
+
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    job_posting: Mapped["JobPosting"] = relationship()
+    channel: Mapped["ChannelDefinition"] = relationship()
+    versions: Mapped[list["JobPostingChannelVariantVersion"]] = relationship(
+        back_populates="variant", cascade="all, delete-orphan", order_by="JobPostingChannelVariantVersion.version",
+        foreign_keys="JobPostingChannelVariantVersion.variant_id",
+    )
+    approved_version: Mapped["JobPostingChannelVariantVersion | None"] = relationship(
+        foreign_keys=[approved_version_id], post_update=True,
+    )
+
+
+class JobPostingChannelVariantVersion(Base):
+    """One version of one channel variant's content (task §6/§7) — a
+    post-publication edit ALWAYS creates a new row here (task's own "do not
+    overwrite prior versions") and, when the variant was already
+    `APPROVED`/published, requires a preserved `reason` (validated in
+    `job_posting_service.py`, mirroring `SelectionOutcomeDecision`'s own
+    "changing an existing decision requires a reason" discipline)."""
+
+    __tablename__ = "job_posting_channel_variant_versions"
+    __table_args__ = (
+        UniqueConstraint("variant_id", "version", name="uq_job_posting_channel_variant_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    variant_id: Mapped[int] = mapped_column(ForeignKey("job_posting_channel_variants.id"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    title_override: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    variant_text: Mapped[str] = mapped_column(Text, nullable=False)
+
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="SYSTEM_GENERATED")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    author: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    variant: Mapped["JobPostingChannelVariant"] = relationship(back_populates="versions", foreign_keys=[variant_id])
+
+
+class ChannelPublication(Base):
+    """One specific placement of one approved channel-variant version
+    (task §9/§10/§11) — e.g. "Facebook Group A" and "Facebook Group B" are
+    two SEPARATE `ChannelPublication` rows for the same Facebook variant,
+    each with its own tracking link, so traffic is never collapsed into one
+    generic source when placement-level data is available (task §11).
+    `is_connected` is copied from the Channel at creation time so a later
+    Channel edit never rewrites what a historical publication actually
+    was. Cost fields are integer minor-unit cents (this codebase's
+    universal money convention) and stay `None` when unknown — never
+    fabricated (task §32)."""
+
+    __tablename__ = "channel_publications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    variant_version_id: Mapped[int] = mapped_column(
+        ForeignKey("job_posting_channel_variant_versions.id"), nullable=False, index=True
+    )
+    channel_id: Mapped[int] = mapped_column(ForeignKey("channel_definitions.id"), nullable=False, index=True)
+    placement_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_connected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="DRAFT")
+    publish_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    external_link: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+
+    cost_amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    variant_version: Mapped["JobPostingChannelVariantVersion"] = relationship()
+    channel: Mapped["ChannelDefinition"] = relationship()
+    tracking_links: Mapped[list["ChannelTrackingLink"]] = relationship(
+        back_populates="channel_publication", order_by="ChannelTrackingLink.id",
+    )
+
+
+class ChannelTrackingLink(Base):
+    """A unique, opaque RF-One tracking link for exactly one
+    `ChannelPublication` (task §10) — resolving it identifies Channel,
+    specific publication/placement, Job Posting, variant/version, and
+    Selection Session all at once (via `channel_publication`), and drives
+    automatic Acquisition Source attribution on Application creation. Not
+    single-use — a candidate may revisit it, mirrors
+    `CandidateSchedulingToken`'s own discipline."""
+
+    __tablename__ = "channel_tracking_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    channel_publication_id: Mapped[int] = mapped_column(
+        ForeignKey("channel_publications.id"), nullable=False, index=True
+    )
+    token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    channel_publication: Mapped["ChannelPublication"] = relationship(back_populates="tracking_links")
+
+
+class ApplicationQuestionDefinition(Base):
+    """One restaurant-configured, Session/Role-scoped first-screening
+    question shown on the public Web Application Form (task §16/§37) —
+    deliberately a DIFFERENT concept from Phone/In-Person Interview
+    questions (task §17: never the same table, never the same UI). Either
+    `session_id` or `target_role` (or both, or neither = applies broadly)
+    may narrow which Application Form this appears on — mirrors
+    `CommunicationTemplate`'s own "any scoping field may be `None` to mean
+    any" convention. `related_criterion_id`/`answer_level_map` are OPTIONAL
+    (task's own "linked to relevant Screening Criteria... where
+    appropriate") — mirrors `PrimaryScreeningCriterion.
+    auto_evaluation_level_map`'s exact restaurant-configured-mapping
+    pattern, applied here to a candidate's own Application answer instead
+    of a Signal."""
+
+    __tablename__ = "application_question_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+    session_id: Mapped[int | None] = mapped_column(ForeignKey("selection_sessions.id"), nullable=True, index=True)
+    target_role: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    response_type: Mapped[str] = mapped_column(String(16), nullable=False, default="TEXT")
+    is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    related_criterion_id: Mapped[int | None] = mapped_column(
+        ForeignKey("primary_screening_criteria.id"), nullable=True
+    )
+    answer_level_map: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    related_criterion: Mapped["PrimaryScreeningCriterion | None"] = relationship()
+
+
+class ApplicationQuestionAnswer(Base):
+    """One candidate answer to one first-screening Application Question
+    (task §18) — preserved as CANDIDATE SELF-REPORTED evidence, never
+    independently verified fact (task's own explicit warning).
+    `question_version` freezes which version of the question was actually
+    asked, without needing a full immutable-snapshot table for this
+    simpler, single-field concept (task §37's own "keep it simple")."""
+
+    __tablename__ = "application_question_answers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    question_definition_id: Mapped[int] = mapped_column(
+        ForeignKey("application_question_definitions.id"), nullable=False, index=True
+    )
+    question_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    raw_answer: Mapped[str] = mapped_column(Text, nullable=False)
+    answered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship()
+    question_definition: Mapped["ApplicationQuestionDefinition"] = relationship()
+
+
+class MissingEvidenceQuestionnaire(Base):
+    """One candidate-SPECIFIC Missing-Evidence Questionnaire (task Part E)
+    — never a standard/universal questionnaire (task §22's own explicit
+    distinction). Generated automatically, at most one PENDING at a time
+    per Application (`missing_evidence_service.py` enforces this), naming
+    exactly which Primary Screening Run identified the gaps. `token` is the
+    secure opaque candidate-facing link (task §26/§31 — "consistent with
+    Task 5D scheduling links")."""
+
+    __tablename__ = "missing_evidence_questionnaires"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False, index=True)
+    primary_screening_run_id: Mapped[int] = mapped_column(
+        ForeignKey("primary_screening_runs.id"), nullable=False, index=True
+    )
+    token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="PENDING")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    application: Mapped["Application"] = relationship()
+    primary_screening_run: Mapped["PrimaryScreeningRun"] = relationship()
+    questions: Mapped[list["MissingEvidenceQuestion"]] = relationship(
+        back_populates="questionnaire", cascade="all, delete-orphan", order_by="MissingEvidenceQuestion.display_order",
+    )
+
+
+class MissingEvidenceQuestion(Base):
+    """One question generated for one Missing-Evidence Questionnaire (task
+    §23) — always tied to exactly the live Criterion whose evidence was
+    missing; RF-One generates ONLY these, never a fixed standard list
+    (task's own "do NOT ask 10 standard questions when only 2 pieces of
+    information are missing")."""
+
+    __tablename__ = "missing_evidence_questions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    questionnaire_id: Mapped[int] = mapped_column(
+        ForeignKey("missing_evidence_questionnaires.id"), nullable=False, index=True
+    )
+    criterion_id: Mapped[int] = mapped_column(ForeignKey("primary_screening_criteria.id"), nullable=False, index=True)
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    questionnaire: Mapped["MissingEvidenceQuestionnaire"] = relationship(back_populates="questions")
+    criterion: Mapped["PrimaryScreeningCriterion"] = relationship()
+
+
+class MissingEvidenceAnswer(Base):
+    """One candidate answer to one Missing-Evidence Question (task §27) —
+    preserved exactly as given; converting it into Primary Screening
+    evidence (`missing_evidence_service.submit_answers`) never overwrites
+    any evidence already on record."""
+
+    __tablename__ = "missing_evidence_answers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("missing_evidence_questions.id"), nullable=False, index=True)
+    raw_answer: Mapped[str] = mapped_column(Text, nullable=False)
+    answered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    question: Mapped["MissingEvidenceQuestion"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Task 5F — Compliance / Rule Review + Explainability. Deliberately
+# object-type-generic (task §1's own "do NOT hard-code the service only to
+# one existing model") — `object_type`/`object_id`/`object_version` identify
+# WHICH configured Selection object was reviewed without a dedicated FK per
+# type, mirroring `ApplicationNote.context_type`/`context_id`'s own generic-
+# reference pattern already established in this codebase.
+# ---------------------------------------------------------------------------
+
+class ComplianceReview(Base):
+    """One immutable review pass over one Selection configuration object at
+    one specific version (task §6) — never edited or overwritten; a later
+    edit to the live object is reviewed by creating a brand NEW
+    `ComplianceReview` row (task's own "do not overwrite prior Compliance
+    Reviews"). `reviewed_text` freezes the EXACT text/configuration that was
+    actually reviewed, independent of any later edit to the live object."""
+
+    __tablename__ = "compliance_reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    object_type: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    object_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    object_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    reviewed_text: Mapped[str] = mapped_column(Text, nullable=False)
+    engine_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    warnings: Mapped[list["ComplianceWarning"]] = relationship(
+        back_populates="review", cascade="all, delete-orphan", order_by="ComplianceWarning.id",
+    )
+    dispositions: Mapped[list["ComplianceDisposition"]] = relationship(
+        back_populates="review", cascade="all, delete-orphan", order_by="ComplianceDisposition.id",
+    )
+
+
+class ComplianceWarning(Base):
+    """One identified concern within a `ComplianceReview` (task §2/§6) —
+    immutable, append-only alongside its parent Review. `explanation` is
+    always conversational, never a bare category code (task §7); `severity`
+    is always one of the three understandable levels; `suggested_rewrite`
+    is a safer-framing SUGGESTION only — nothing ever applies it
+    automatically (task §5)."""
+
+    __tablename__ = "compliance_warnings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    review_id: Mapped[int] = mapped_column(ForeignKey("compliance_reviews.id"), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(48), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    explanation: Mapped[str] = mapped_column(Text, nullable=False)
+    suggested_rewrite: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    review: Mapped["ComplianceReview"] = relationship(back_populates="warnings")
+
+
+class ComplianceDisposition(Base):
+    """One human decision made in response to a `ComplianceReview` (task
+    §5/§6/§8) — append-only; a rule may accumulate more than one over time
+    (e.g. KEEP_ORIGINAL now, ACKNOWLEDGE_HIGH_CONCERN later when activation
+    is actually attempted). `final_text` records what the object's
+    reviewable text became as a RESULT of this human decision (for
+    `ACCEPT_REWRITE`/`EDIT_MANUALLY`); for `KEEP_ORIGINAL`/`DEACTIVATE`/
+    `ACKNOWLEDGE_HIGH_CONCERN` it stays `None` — the object's text is
+    unchanged, only the disposition itself is new information. `reason` is
+    required (enforced in `compliance_service.py`) for `KEEP_ORIGINAL`
+    against a HIGH_CONCERN warning and always for `ACKNOWLEDGE_HIGH_CONCERN`
+    (task §8's own "preserve... reason")."""
+
+    __tablename__ = "compliance_dispositions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    review_id: Mapped[int] = mapped_column(ForeignKey("compliance_reviews.id"), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    final_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    performed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # GLOBAL_INTEGRITY_FIX_002 / C-1: authoritative actor reference for new
+    # dispositions, resolved server-side; `performed_by` stays as display
+    # text / historical fallback.
+    performed_by_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True, index=True
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    review: Mapped["ComplianceReview"] = relationship(back_populates="dispositions")
+    performed_by_identity: Mapped["ActingIdentity | None"] = relationship()
+
+
 ALL_MODELS: tuple[type[Base], ...] = (
+    ActingIdentity,
     SourceSystem,
     IngestionRun,
     SourceRecord,
@@ -3032,4 +7334,94 @@ ALL_MODELS: tuple[type[Base], ...] = (
     ExpectedSupplierCredit,
     SupplierCreditReference,
     PurchasingValidationLogEntry,
+    RawResume,
+    Candidate,
+    CandidateEducation,
+    CandidateWorkHistory,
+    CandidateSkill,
+    CandidateCertification,
+    CandidateLanguage,
+    RequirementTemplate,
+    RequirementTemplateItem,
+    RequirementSet,
+    Requirement,
+    RequirementSetSnapshot,
+    RequirementSnapshotItem,
+    FitAssessment,
+    RequirementAssessment,
+    EvidenceItem,
+    CandidatePerson,
+    Application,
+    SignalDefinition,
+    SignalObservation,
+    SignalEvidenceItem,
+    ReviewPriorityPolicy,
+    ReviewPriorityPolicyRule,
+    PersonMatchCandidate,
+    ApplicationNote,
+    PhoneInterviewQuestionDefinition,
+    PhoneInterviewPlan,
+    PhoneInterviewQuestionInstance,
+    InPersonInterviewSectionDefinition,
+    AssessmentItemDefinition,
+    InPersonInterviewPlan,
+    AssessmentItemInstance,
+    ConsistencyThread,
+    ConsistencyStatement,
+    PrimaryScreeningCriterion,
+    PrimaryScreeningCriterionSnapshot,
+    PrimaryScreeningRun,
+    PrimaryScreeningCriterionEvaluation,
+    ApplicationStageTransition,
+    SelectionOutcomeDefinition,
+    SelectionOutcomeDefinitionSnapshot,
+    SelectionOutcomeDecision,
+    SelectionReminder,
+    CandidateFlag,
+    SelectionQueue,
+    ApplicationQueueMovement,
+    SelectionPatternDefinition,
+    SelectionPatternDefinitionSnapshot,
+    SelectionPatternExample,
+    SelectionPatternCaseComparison,
+    SelectionPatternObservation,
+    SelectionStagePatternSnapshot,
+    SelectionStagePatternDelta,
+    SelectionLearningTrace,
+    SelectionEffort,
+    SelectionCaseMemory,
+    SelectionDownstreamOutcomeFeedback,
+    SelectionAuthorityLevel,
+    SelectionGovernanceRequirement,
+    TrainableGap,
+    SelectionSession,
+    SelectionSessionAssignment,
+    ApplicationOwnership,
+    SelectionRuleSetVersion,
+    SelectionRuleChange,
+    SelectionRuleChangeImpact,
+    AcquisitionSourceDefinition,
+    CommunicationTemplate,
+    CommunicationTemplateSnapshot,
+    CommunicationReminderPolicy,
+    CandidateCommunication,
+    InterviewSchedulingWindow,
+    InterviewAppointment,
+    CandidateSchedulingToken,
+    InboundCommunication,
+    JobPosting,
+    JobPostingVersion,
+    ChannelDefinition,
+    JobPostingChannelVariant,
+    JobPostingChannelVariantVersion,
+    ChannelPublication,
+    ChannelTrackingLink,
+    ApplicationQuestionDefinition,
+    ApplicationQuestionAnswer,
+    MissingEvidenceQuestionnaire,
+    MissingEvidenceQuestion,
+    MissingEvidenceAnswer,
+    ComplianceReview,
+    ComplianceWarning,
+    ComplianceDisposition,
 )

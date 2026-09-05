@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('application_detail', application_id=application.id) }}">&larr; Back to Application</a>
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Candidate</div>
+      <div class="value">{{ application.candidate.full_name or '(name not extracted)' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Target Role</div>
+      <div class="value">{{ application.target_role or '-' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Primary Screening</div>
+      <div class="value">{% if run.has_active_hard_disqualifier %}<span class="badge status-failed">HARD DISQUALIFIER</span>{% else %}<span class="badge mode-real">Normal pool</span>{% endif %}</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.8rem;">
+    {% if original_cv_available %}
+    <a class="cv-link" href="{{ url_for('candidate_original_cv', candidate_id=application.candidate_id) }}" target="_blank" rel="noopener">Open Original CV &#8599;</a>
+    {% else %}
+    <span class="muted">Original CV unavailable</span>
+    {% endif %}
+    &middot;
+    <a href="{{ url_for('application_detail', application_id=application.id) }}">View full Application</a>
+    &middot;
+    <a href="{{ url_for('primary_screening_queue') }}">Back to Queue</a>
+  </p>
+  <div class="context-note" style="font-size:.85rem;">{{ run.explanation or 'Not yet evaluated.' }}</div>
+  {% if active_flags %}
+  <p style="font-size:.82rem; margin-top:.5rem;">
+    <strong>Candidate Flags:</strong>
+    {% for flag in active_flags %}<span class="badge status-failed">{{ flag.name }}</span>{% endfor %}
+    — a strong historical fact from a previous Application by this same person; use it as a configurable
+    Screening Criterion if this restaurant chooses to, never an automatic rejection.
+  </p>
+  {% endif %}
+  {% if prior_runs|length > 1 %}
+  <p class="muted" style="font-size:.76rem; margin-top:.4rem;">
+    {{ prior_runs|length }} Primary Screening run(s) exist for this Application — this is the most recent one;
+    earlier runs remain tied to the Screening Criteria configuration in effect when they were created.
+  </p>
+  {% endif %}
+  <form method="post" action="{{ url_for('primary_screening_run_create', application_id=application.id) }}" class="inline-form">
+    <button type="submit" class="btn secondary">Re-run Primary Screening (uses current Criteria configuration)</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Notes on this Screening Run ({{ run_notes|length }})</h2>
+  <form method="post" action="{{ url_for('primary_screening_run_add_note', run_id=run.id) }}" class="req-form">
+    <label>Add a note</label>
+    <textarea name="note_text" placeholder="A note about this overall screening run"></textarea>
+    <button type="submit" class="btn secondary" style="margin-top:.6rem;">Add note</button>
+  </form>
+  {% for note in run_notes %}
+  <div class="note-entry">
+    <div class="note-time">{{ note.created_at.strftime('%Y-%m-%d %H:%M') if note.created_at else '' }}</div>
+    <div>{{ note.note_text }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>Criterion Evaluations ({{ evaluations|length }})</h2>
+  {% for e in evaluations %}
+  {% set c = e.criterion_snapshot %}
+  <div class="question-card {{ 'gate' if e.is_active_hard_disqualifier and not e.hard_disqualifier_overridden else '' }}">
+    <div class="req-title">
+      {{ c.name }}
+      <span class="badge">{{ c.direction }}</span>
+      <span class="badge qstatus-{{ e.status|lower }}">{{ e.status|replace('_',' ') }}</span>
+      <span class="badge origin-{{ e.origin|lower }}">{{ e.origin|replace('_',' ') }}</span>
+      {% if e.is_active_hard_disqualifier %}
+        {% if e.hard_disqualifier_overridden %}
+        <span class="badge">Hard Disqualifier — overridden</span>
+        {% else %}
+        <span class="badge status-failed">HARD DISQUALIFIER</span>
+        {% endif %}
+      {% endif %}
+    </div>
+    {% if c.description %}<p style="font-size:.82rem; margin:.3rem 0;">{{ c.description }}</p>{% endif %}
+    {% if e.status == 'EVALUATED' and e.effective_level is not none %}
+    <p style="font-size:.85rem;">
+      <strong>Level {{ e.effective_level }}:</strong> {{ c.level_descriptions.get(e.effective_level|string, '') }}
+      {% if e.system_level is not none and e.system_level != e.effective_level %}
+      <span class="muted" style="font-size:.76rem;">(system-proposed level was {{ e.system_level }})</span>
+      {% endif %}
+    </p>
+    {% endif %}
+    {% if e.confidence %}<p class="muted" style="font-size:.76rem;">Confidence: {{ e.confidence }}</p>{% endif %}
+    {% if e.evidence_items %}
+      <h3 style="font-size:.8rem; margin:.5rem 0 .3rem;">Evidence used ({{ e.evidence_items|length }})</h3>
+      {% for item in e.evidence_items %}
+      <div class="evidence-row neutral">
+        <strong>{{ item.source_type|replace('_',' ') }}</strong>
+        {% if item.source_reference %}&middot; {{ item.source_reference }}{% endif %}
+        <div>{{ item.evidence_text }}</div>
+        {% if item.interpretation %}<div class="muted" style="font-size:.76rem;">Interpretation: {{ item.interpretation }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    {% elif e.evidence_text %}<div class="evidence-row neutral">{{ e.evidence_text }}</div>{% endif %}
+    {% if e.explanation %}<p class="muted" style="font-size:.8rem;">{{ e.explanation }}</p>{% endif %}
+    {% if e.override_reason %}<p class="muted" style="font-size:.78rem;"><strong>Override reason:</strong> {{ e.override_reason }}</p>{% endif %}
+    {% if e.hard_disqualifier_override_reason %}<p class="muted" style="font-size:.78rem;"><strong>Hard Disqualifier override reason:</strong> {{ e.hard_disqualifier_override_reason }}</p>{% endif %}
+
+    <details class="edit-toggle">
+      <summary>Enter / change level</summary>
+      <form method="post" action="{{ url_for('primary_screening_evaluation_enter', run_id=run.id, evaluation_id=e.id) }}" class="req-form">
+        <label>Level</label>
+        <select name="level">
+          {% for level in level_scale %}<option value="{{ level }}" {{ 'selected' if e.effective_level == level else '' }}>{{ level }} — {{ c.level_descriptions.get(level|string, '') }}</option>{% endfor %}
+        </select>
+        <label>Confidence</label>
+        <select name="confidence">
+          <option value="">(unspecified)</option>
+          {% for conf in confidence_levels %}<option value="{{ conf }}">{{ conf }}</option>{% endfor %}
+        </select>
+        <label>Evidence source</label>
+        <select name="evidence_source">
+          <option value="">(unspecified)</option>
+          {% for s in evidence_sources %}<option value="{{ s }}">{{ s|replace('_',' ') }}</option>{% endfor %}
+        </select>
+        <label>Evidence text</label>
+        <textarea name="evidence_text">{{ e.evidence_text or '' }}</textarea>
+        <label>Explanation / rationale</label>
+        <textarea name="explanation">{{ e.explanation or '' }}</textarea>
+        <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save (entered by Selezionatore)</button>
+      </form>
+    </details>
+
+    {% if e.status == 'EVALUATED' %}
+    <details class="edit-toggle">
+      <summary>Override level</summary>
+      <form method="post" action="{{ url_for('primary_screening_evaluation_override', run_id=run.id, evaluation_id=e.id) }}" class="req-form">
+        <label>New level</label>
+        <select name="level">
+          {% for level in level_scale %}<option value="{{ level }}">{{ level }} — {{ c.level_descriptions.get(level|string, '') }}</option>{% endfor %}
+        </select>
+        <label>Reason</label>
+        <textarea name="reason"></textarea>
+        <button type="submit" class="btn secondary" style="margin-top:.6rem;">Override</button>
+      </form>
+    </details>
+    <form method="post" action="{{ url_for('primary_screening_evaluation_confirm', run_id=run.id, evaluation_id=e.id) }}" class="inline-form">
+      <button type="submit" class="btn secondary" style="font-size:.78rem; padding:.35rem .8rem;">Confirm current level</button>
+    </form>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('primary_screening_evaluation_not_applicable', run_id=run.id, evaluation_id=e.id) }}" class="inline-form">
+      <button type="submit" class="btn secondary" style="font-size:.78rem; padding:.35rem .8rem;">Mark Not Applicable</button>
+    </form>
+    <form method="post" action="{{ url_for('primary_screening_evaluation_insufficient', run_id=run.id, evaluation_id=e.id) }}" class="inline-form">
+      <button type="submit" class="btn secondary" style="font-size:.78rem; padding:.35rem .8rem;">Mark Insufficient Evidence</button>
+    </form>
+
+    {% if e.is_active_hard_disqualifier and not e.hard_disqualifier_overridden %}
+    <details class="edit-toggle">
+      <summary>Override this Hard Disqualifier</summary>
+      <form method="post" action="{{ url_for('primary_screening_override_hard_disqualifier', run_id=run.id, evaluation_id=e.id) }}" class="req-form">
+        <label>Acting Selezionatore (required if this Application belongs to a Session with a claimed owner)</label>
+        <input type="text" name="actor" placeholder="Your name">
+        <label>Reason (mandatory)</label>
+        <textarea name="reason" placeholder="Why this Hard Disqualifier should be overridden" required></textarea>
+        <button type="submit" class="btn" style="margin-top:.6rem;">Override Hard Disqualifier</button>
+      </form>
+    </details>
+    {% endif %}
+
+    <details class="edit-toggle">
+      <summary>Notes on this Criterion Evaluation ({{ evaluation_notes.get(e.id, [])|length }})</summary>
+      <form method="post" action="{{ url_for('primary_screening_evaluation_add_note', run_id=run.id, evaluation_id=e.id) }}" class="req-form">
+        <label>Add a note</label>
+        <textarea name="note_text" placeholder="A note specific to this Criterion Evaluation"></textarea>
+        <button type="submit" class="btn secondary" style="margin-top:.6rem;">Add note</button>
+      </form>
+      {% for note in evaluation_notes.get(e.id, []) %}
+      <div class="note-entry">
+        <div class="note-time">{{ note.created_at.strftime('%Y-%m-%d %H:%M') if note.created_at else '' }}</div>
+        <div>{{ note.note_text }}</div>
+      </div>
+      {% endfor %}
+    </details>
+  </div>
+  {% else %}
+  <p class="empty">No Criterion Evaluations on this run.</p>
+  {% endfor %}
+</div>
+
+{% endblock %}

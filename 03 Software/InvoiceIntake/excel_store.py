@@ -6,7 +6,7 @@ Data Store (`03 Software/RF-One Data Store/`, via `purchasing_bridge.py`) --
 this module is called only after that canonical save succeeds, and a
 failure here (e.g. the workbook open in Excel) never blocks or loses it.
 
-Column names follow 01 Domains/Restaurant/Purchasing/DataDictionary.md
+Column names follow 01 Domains/Business Domain/Restaurant/Purchasing/DataDictionary.md
 for the Purchase Document and Purchase Line entities. A few practical columns
 (SourceFile, RawText) are added for traceability, consistent with the Core
 Traceability principle. Cost-normalization columns (NormalizedQuantity,

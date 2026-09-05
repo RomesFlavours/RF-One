@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('home') }}">&larr; Back to candidate list</a>
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Candidate</div>
+      <div class="value">{{ candidate.full_name or '(name not extracted)' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Target Role</div>
+      <div class="value">{{ candidate.target_role or '-' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Status</div>
+      <div class="value">{{ candidate.status }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Parsing</div>
+      <div class="value">
+        <span class="badge mode-{{ 'real' if candidate.parsing_mode == 'REAL_AI' else ('rule' if candidate.parsing_mode == 'RULE_BASED' else 'demo') }}">
+          {{ 'REAL AI' if candidate.parsing_mode == 'REAL_AI' else ('RULE-BASED' if candidate.parsing_mode == 'RULE_BASED' else 'DEMO / MOCK') }}
+        </span>
+        {% if candidate.parser_provider %}<span class="muted" style="font-size:.75rem;"> ({{ candidate.parser_provider }})</span>{% endif %}
+      </div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.8rem;">
+    No universal CV score is computed or shown — see separate Indicators below.
+    {% if candidate.parsing_mode == 'RULE_BASED' %}This candidate was produced by the real, rule-based text parser (no AI provider credentials configured) — every field below is read directly from this file's own extracted text; a field is left blank rather than guessed whenever it could not be confidently identified.{% elif candidate.parsing_mode not in ('REAL_AI', 'RULE_BASED') %}This candidate was produced by the DEMO/MOCK fixture parser (synthetic test data) — the structured data below is a realistic fixture, not a real extraction of this specific file.{% endif %}
+  </p>
+  <p class="muted" style="font-size:.8rem;">
+    {% if original_cv_available %}
+    <a class="cv-link" href="{{ url_for('candidate_original_cv', candidate_id=candidate.id) }}" target="_blank" rel="noopener">Open Original CV &#8599;</a>
+    — always compare RF-One's interpretation below against the source document.
+    {% else %}
+    Original CV unavailable — the source file could not be found.
+    {% endif %}
+  </p>
+  {% if application %}
+  <p class="muted" style="font-size:.8rem;">
+    Application: <a href="{{ url_for('application_detail', application_id=application.id) }}">view Review Priority &amp; Selection Signals</a>
+    <span class="badge priority-{{ (application.review_priority_effective or 'STANDARD')|lower }}">{{ (application.review_priority_effective or 'STANDARD')|replace('_',' ') }}</span>
+  </p>
+  {% endif %}
+  {% if active_flags %}
+  <p style="font-size:.82rem;">
+    <strong>Candidate Flags:</strong>
+    {% for flag in active_flags %}<span class="badge status-failed">{{ flag.name }}</span>{% endfor %}
+    — a strong historical fact from a previous Application by this same person; never an automatic rejection.
+  </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Fit Assessments</h2>
+  <p class="muted" style="font-size:.8rem;">
+    Organizes AVAILABLE EVIDENCE against a Requirement Set's requirements — never a hiring decision, never a score.
+  </p>
+  {% if fit_assessments %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Requirement Set</th><th>Snapshot Version</th><th>Stage</th><th>Created</th><th></th></tr></thead>
+    <tbody>
+      {% for fa in fit_assessments %}
+      <tr class="clickable" onclick="window.location='{{ url_for('fit_assessment_detail', fit_assessment_id=fa.id) }}'">
+        <td>{{ fa.requirement_set_snapshot.name }}</td>
+        <td>v{{ fa.requirement_set_snapshot.version }}</td>
+        <td>{{ fa.current_stage }}</td>
+        <td>{{ fa.created_at.strftime('%Y-%m-%d %H:%M') if fa.created_at else '-' }}</td>
+        <td><a href="{{ url_for('fit_assessment_detail', fit_assessment_id=fa.id) }}">View</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Fit Assessments yet for this candidate.</p>
+  {% endif %}
+
+  {% if available_requirement_sets %}
+  <form method="post" action="{{ url_for('fit_assessment_create', candidate_id=candidate.id) }}" class="req-form" style="margin-top:.8rem;">
+    <label>Assess against Requirement Set</label>
+    <select name="requirement_set_id" required>
+      {% for rs in available_requirement_sets %}
+      <option value="{{ rs.id }}">{{ rs.name }}{% if rs.target_role %} ({{ rs.target_role }}){% endif %} — v{{ rs.version }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Create Fit Assessment</button>
+  </form>
+  {% else %}
+  <p class="empty" style="margin-top:.6rem;">No active Requirement Sets available — create one under <a href="{{ url_for('requirements_home') }}">Requirement Sets</a> first.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Source &amp; Extraction Information</h2>
+  <div class="indicator-list">
+    <div class="indicator-row"><span>Source type</span><span>{{ candidate.source or 'UNKNOWN' }}</span></div>
+    <div class="indicator-row"><span>Source provider</span><span>{{ candidate.source_provider or 'UNKNOWN' }}</span></div>
+    <div class="indicator-row"><span>Source file</span><span>{{ candidate.source_file or '-' }}</span></div>
+    <div class="indicator-row"><span>Imported at</span><span>{{ candidate.created_at.strftime('%Y-%m-%d %H:%M') if candidate.created_at else '-' }}</span></div>
+    <div class="indicator-row"><span>Parser</span>
+      <span>
+        <span class="badge mode-{{ 'real' if candidate.parsing_mode == 'REAL_AI' else ('rule' if candidate.parsing_mode == 'RULE_BASED' else 'demo') }}">
+          {{ 'REAL AI' if candidate.parsing_mode == 'REAL_AI' else ('RULE-BASED' if candidate.parsing_mode == 'RULE_BASED' else 'DEMO / MOCK') }}
+        </span>
+        {% if candidate.parser_provider %} {{ candidate.parser_provider }}{% endif %}
+      </span>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.78rem; margin-top:.5rem;">
+    Local upload (PDF/DOCX/TXT) is only one ResumeSource — the schema already carries this metadata so a future
+    source (e.g. an API integration) can be added without changing CandidateCVProfile or this page.
+  </p>
+</div>
+
+<div class="section-grid">
+
+  <div class="card">
+    <h2>1. Facts</h2>
+    <p><strong>Contact:</strong> {{ profile.email or '(no email found)' }} &middot; {{ profile.phone or '(no phone found)' }} &middot; {{ profile.location or '(no location found)' }}</p>
+    {% if profile.linkedin_url or profile.other_profile_url %}
+    <p><strong>Profiles:</strong>
+      {% if profile.linkedin_url %}<a href="{{ profile.linkedin_url }}" target="_blank" rel="noopener">LinkedIn</a>{% endif %}
+      {% if profile.linkedin_url and profile.other_profile_url %} &middot; {% endif %}
+      {% if profile.other_profile_url %}<a href="{{ profile.other_profile_url }}" target="_blank" rel="noopener">{{ profile.other_profile_url }}</a>{% endif %}
+    </p>
+    {% endif %}
+    <p><strong>Languages:</strong> {{ profile.languages or '(not stated)' }}</p>
+    <p><strong>Availability:</strong> {{ profile.declared_availability or '(not stated)' }}</p>
+
+    {% if profile.summary %}
+    <h2 style="font-size:.95rem;">Summary</h2>
+    <p style="font-size:.85rem; white-space:pre-wrap;">{{ profile.summary }}</p>
+    {% endif %}
+
+    <h2 style="font-size:.95rem;">Skills</h2>
+    {% if profile.skills %}
+      <p style="font-size:.85rem;">{{ profile.skills | join(', ') }}</p>
+    {% else %}
+      <p class="empty">No skills stated.</p>
+    {% endif %}
+
+    <h2 style="font-size:.95rem;">Languages (detail)</h2>
+    {% if profile.languages_detail %}
+      <ul style="margin:.3rem 0; padding-left:1.2rem; font-size:.85rem;">
+        {% for l in profile.languages_detail %}
+        <li>{{ l.language }}{% if l.proficiency %} — {{ l.proficiency }}{% endif %}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">No individual languages stated.</p>
+    {% endif %}
+
+    <h2 style="font-size:.95rem;">Education</h2>
+    {% if profile.education %}
+      {% for e in profile.education %}
+      <div class="work-entry">
+        <div class="title">{{ e.qualification or '(qualification not stated)' }}{% if e.field %} — {{ e.field }}{% endif %}</div>
+        <div class="employer">{{ e.institution or '(institution not stated)' }}
+          {% if e.start_date or e.end_date %} &middot;
+            {{ e.start_date.strftime('%b %Y') if e.start_date else '?' }} – {{ e.end_date.strftime('%b %Y') if e.end_date else 'present/unknown' }}
+          {% endif %}
+        </div>
+        {% if e.completion_status %}<div class="muted" style="font-size:.8rem;">Status: {{ e.completion_status }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty">No education records found.</p>
+    {% endif %}
+
+    <h2 style="font-size:.95rem;">Certifications</h2>
+    {% set edu_certs = profile.education | selectattr('certifications') | list %}
+    {% if profile.certifications or edu_certs %}
+      <ul style="margin:.3rem 0; padding-left:1.2rem; font-size:.85rem;">
+        {% for c in profile.certifications %}
+        <li>{{ c.name }}{% if c.issuer %} <span class="muted">({{ c.issuer }})</span>{% endif %}{% if c.date_text %} — {{ c.date_text }}{% endif %}</li>
+        {% endfor %}
+        {% for e in edu_certs %}
+        <li>{{ e.certifications }}{% if e.institution %} <span class="muted">({{ e.institution }})</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">No certifications stated.</p>
+    {% endif %}
+
+    <h2 style="font-size:.95rem;">Declared Skills / Information</h2>
+    <div class="indicator-list">
+      <div class="indicator-row"><span>Languages</span><span>{{ profile.languages or 'UNKNOWN' }}</span></div>
+      <div class="indicator-row"><span>Declared availability</span><span>{{ profile.declared_availability or 'UNKNOWN' }}</span></div>
+    </div>
+
+    <h2 style="font-size:.95rem;">Work History (normalized roles, months per role)</h2>
+    {% if work_entries %}
+      {% for entry in work_entries %}
+      <div class="work-entry">
+        <div class="title">{{ entry.record.original_job_title or '(title not stated)' }}
+          {% if entry.record.normalized_role %}<span class="badge">{{ entry.record.normalized_role }}</span>{% endif %}
+          <span class="badge">{{ entry.category }}</span>
+          {% if entry.record.multi_role %}<span class="badge" title="Multiple roles identified in this title">multi-role</span>{% endif %}
+          {% if entry.record.seniority_level %}<span class="badge">{{ entry.record.seniority_level }}</span>{% endif %}
+        </div>
+        {% if entry.record.normalized_title or entry.record.role_family %}
+        <div class="muted" style="font-size:.78rem;">
+          {% if entry.record.normalized_title %}Normalized: {{ entry.record.normalized_title }}{% endif %}
+          {% if entry.record.role_family %}{% if entry.record.normalized_title %} &middot; {% endif %}Family: {{ entry.record.role_family }}{% endif %}
+        </div>
+        {% endif %}
+        <div class="employer">{{ entry.record.employer or '(employer not stated)' }}
+          &middot;
+          {{ entry.record.start_date.strftime('%b %Y') if entry.record.start_date else '?' }} –
+          {{ 'Present' if entry.record.is_current else (entry.record.end_date.strftime('%b %Y') if entry.record.end_date else 'unknown') }}
+          {% if entry.months is not none %} &middot; {{ entry.months }} mo{% endif %}
+          {% if entry.record.start_date_precision and entry.record.start_date_precision != 'MONTH' %}
+            <span class="muted" style="font-size:.72rem;">(start precision: {{ entry.record.start_date_precision|lower }})</span>
+          {% endif %}
+        </div>
+        {% if entry.record.responsibilities %}<p style="font-size:.85rem; margin:.3rem 0;">{{ entry.record.responsibilities }}</p>{% endif %}
+        {% if entry.record.achievements %}<p style="font-size:.85rem; margin:.3rem 0;"><strong>Achievements:</strong> {{ entry.record.achievements }}</p>{% endif %}
+        {% if entry.record.reason_for_leaving %}<p class="muted" style="font-size:.8rem;">Reason for leaving (stated): {{ entry.record.reason_for_leaving }}</p>{% endif %}
+        {% if entry.record.evidence_snippet %}<div class="snippet">&ldquo;{{ entry.record.evidence_snippet }}&rdquo;</div>{% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty">No work history records found.</p>
+    {% endif %}
+
+    {% if profile.other_sections_text %}
+    <h2 style="font-size:.95rem;">Other Sections</h2>
+    <pre style="max-height:200px; overflow:auto; background:#f2f0ec; padding:.7rem; border-radius:6px; font-size:.78rem; white-space:pre-wrap; font-family:inherit;">{{ profile.other_sections_text }}</pre>
+    {% endif %}
+
+    {% if raw_resume_text %}
+    <h2 style="font-size:.95rem;">Raw résumé text (source evidence)</h2>
+    <pre style="max-height:200px; overflow:auto; background:#f2f0ec; padding:.7rem; border-radius:6px; font-size:.72rem; white-space:pre-wrap;">{{ raw_resume_text }}</pre>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>2. Derived Information</h2>
+    <p class="muted" style="font-size:.8rem;">Calculated from the Facts above — never itself explicitly stated on the résumé.</p>
+
+    <h2 style="font-size:.95rem;">Experience breakdown</h2>
+    <div class="indicator-list">
+      <div class="indicator-row"><span>Target role experience</span><span>{{ view.breakdown.target_months }} mo</span></div>
+      <div class="indicator-row"><span>Equivalent role experience</span><span>{{ view.breakdown.equivalent_months }} mo</span></div>
+      <div class="indicator-row"><span>Propedeutic experience</span><span>{{ view.breakdown.propedeutic_months }} mo</span></div>
+      <div class="indicator-row"><span>Adjacent experience</span><span>{{ view.breakdown.adjacent_months }} mo</span></div>
+      <div class="indicator-row"><span>Other / unclassified experience</span><span>{{ view.breakdown.other_months }} mo</span></div>
+      <div class="indicator-row"><span>Industry experience</span><span>{{ view.breakdown.industry_months }} mo</span></div>
+      <div class="indicator-row"><span><strong>Total career span (overlap-safe)</strong></span><span><strong>{{ view.breakdown.total_span_months }} mo</strong></span></div>
+    </div>
+
+    <h2 style="font-size:.95rem;">Tenure</h2>
+    <div class="indicator-list">
+      <div class="indicator-row"><span>Employers</span><span>{{ view.tenure.employer_count }}</span></div>
+      <div class="indicator-row"><span>Average tenure</span><span>{{ view.tenure.average_tenure_months }} mo</span></div>
+      <div class="indicator-row"><span>Median tenure</span><span>{{ view.tenure.median_tenure_months }} mo</span></div>
+      <div class="indicator-row"><span>Longest tenure</span><span>{{ view.tenure.longest_tenure_months }} mo</span></div>
+      <div class="indicator-row"><span>Most recent role tenure</span><span>{{ view.tenure.most_recent_tenure_months }} mo</span></div>
+      <div class="indicator-row"><span>Jobs &lt; 6 months</span><span>{{ view.tenure.jobs_under_6_months }}</span></div>
+      <div class="indicator-row"><span>Jobs &gt; 24 months</span><span>{{ view.tenure.jobs_over_24_months }}</span></div>
+    </div>
+
+    <h2 style="font-size:.95rem;">Career trajectory</h2>
+    {% if view.trajectory_events %}
+      {% for e in view.trajectory_events %}
+      <p style="font-size:.85rem; margin:.4rem 0;"><span class="badge">{{ e.type|replace('_',' ') }}</span> {{ e.detail }}</p>
+      {% endfor %}
+    {% else %}
+      <p class="empty">No trajectory events detected (insufficient ranked role history).</p>
+    {% endif %}
+
+    {% if view.derived_age_context or profile.declared_age_context %}
+    <h2 style="font-size:.95rem;">Contextual career / age information</h2>
+    <div class="context-note">
+      {% if profile.declared_age_context %}<strong>Declared:</strong> {{ profile.declared_age_context }}<br>{% endif %}
+      {% if view.derived_age_context %}
+        <strong>Derived (context only — excluded from all Indicators/ranking):</strong> {{ view.derived_age_context.range }}<br>
+        {{ view.derived_age_context.rationale }} (confidence: {{ view.derived_age_context.confidence }})
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <h2 style="font-size:.95rem;">Information Quality</h2>
+    <div class="indicator-list">
+      <div class="indicator-row"><span>Completeness</span><span>{{ view.information_quality.completeness_pct }}% ({{ view.information_quality.completeness_state }})</span></div>
+      <div class="indicator-row"><span>Date precision</span><span>{{ view.information_quality.date_precision_pct }}%</span></div>
+      <div class="indicator-row"><span>Evidence density</span><span>{{ view.information_quality.evidence_density_pct }}%</span></div>
+      <div class="indicator-row"><span><strong>Overall confidence</strong></span><span><strong>{{ view.information_quality.overall_confidence_pct }}% ({{ view.information_quality.overall_state }})</strong></span></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="section-grid">
+
+  <div class="card">
+    <h2>3. Flags &amp; Suggested Questions</h2>
+    <p class="muted" style="font-size:.8rem;">A flag is never automatically negative — it marks something worth asking about.</p>
+    {% if view.flags %}
+      {% for f in view.flags %}
+      <div class="flag-card">
+        <div class="flag-type">{{ f.type|replace('_',' ') }} <span class="badge">{{ f.attention_level }}</span> <span class="muted" style="font-size:.72rem;">confidence: {{ f.confidence }}</span></div>
+        <div class="flag-evidence">{{ f.evidence }}</div>
+        <div style="font-size:.85rem;">{{ f.explanation }}</div>
+        {% if f.suggested_question %}<div class="flag-question">Suggested question: &ldquo;{{ f.suggested_question }}&rdquo;</div>{% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty">No flags raised for this candidate.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>4. Indicators</h2>
+    <p class="muted" style="font-size:.8rem;">Separate dimensions — no combined score. Relative importance is a future Client/Role Configuration decision, not made here.</p>
+    <div class="indicator-list">
+      {% for i in view.indicators %}
+      <div class="indicator-row">
+        <span>{{ i.name }}</span>
+        <span>
+          {{ i.raw_value }}
+          {% if i.state %}<span class="badge state-{{ i.state|lower|replace(' ', '-') }}">{{ i.state }}</span>{% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

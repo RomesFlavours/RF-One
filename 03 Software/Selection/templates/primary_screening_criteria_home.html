@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Client</div>
+      <div class="value">{{ client_name }}</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.82rem;">
+    Every Criterion uses the same fixed 0-4 level scale, but what each level MEANS, how important it is
+    (coefficient), whether it counts positively or negatively, and whether it is a Hard Disqualifier are entirely
+    this restaurant's own choices — RF-One never defines universal criteria or meanings.
+  </p>
+</div>
+
+{% for c in criteria %}
+<div class="question-card {{ '' if c.is_active else 'inactive' }}">
+  <div class="req-title">
+    {{ c.name }}
+    <span class="badge">{{ c.direction }}</span>
+    <span class="badge">coefficient {{ c.coefficient }}</span>
+    {% if c.is_hard_disqualifier %}<span class="badge sine-qua-non">HARD DISQUALIFIER @ level {{ c.hard_disqualifier_trigger_level }}</span>{% endif %}
+    {% if c.target_role %}<span class="badge">{{ c.target_role }}</span>{% endif %}
+    {% if not c.is_active %}<span class="badge status-failed">INACTIVE</span>{% endif %}
+    <span class="muted" style="font-size:.72rem;">v{{ c.version }}</span>
+  </div>
+  {% if c.description %}<p style="font-size:.85rem; margin:.3rem 0;">{{ c.description }}</p>{% endif %}
+  {% if c.level_descriptions %}
+  <ul class="reason-list" style="font-size:.8rem;">
+    {% for level in level_scale %}
+      {% if c.level_descriptions.get(level|string) %}<li><strong>{{ level }}:</strong> {{ c.level_descriptions[level|string] }}</li>{% endif %}
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if c.auto_evaluation_signal_definition_id %}
+  <p class="context-note" style="font-size:.78rem;">
+    Auto-evaluated from Signal: {{ (signal_definitions|selectattr('id','equalto',c.auto_evaluation_signal_definition_id)|list|first).name if signal_definitions else '' }}
+    &middot; mapping: {{ c.auto_evaluation_level_map }}
+  </p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('primary_screening_criterion_toggle_active', criterion_id=c.id) }}" class="inline-form">
+    <button type="submit" class="btn secondary" style="margin-top:.5rem; font-size:.78rem; padding:.35rem .8rem;">
+      {{ 'Deactivate' if c.is_active else 'Reactivate' }}
+    </button>
+  </form>
+
+  {% set cs = compliance_status[c.id] %}
+  <details class="edit-toggle">
+    <summary>
+      Compliance Review
+      {% if cs.status == 'NOT_YET_REVIEWED' %}<span class="badge">NOT YET REVIEWED</span>
+      {% elif cs.blocks_activation %}<span class="badge status-failed">HIGH CONCERN — blocks activation</span>
+      {% elif cs.warnings %}<span class="badge">{{ cs.warnings|length }} warning(s)</span>
+      {% else %}<span class="badge status-completed">No concerns found</span>{% endif %}
+    </summary>
+    <p class="muted" style="font-size:.74rem;">{{ compliance_disclaimer }}</p>
+    {% for w in cs.warnings %}
+    <div class="context-note" style="font-size:.8rem; margin-top:.4rem;">
+      <strong>{{ w.severity|replace('_',' ') }}</strong> ({{ w.category|replace('_',' ')|title }}): {{ w.explanation }}
+      {% if w.suggested_rewrite %}<br><em>Suggested rewrite:</em> {{ w.suggested_rewrite }}{% endif %}
+    </div>
+    {% endfor %}
+    {% if cs.review %}
+    <form method="post" action="{{ url_for('compliance_disposition_create', review_id=cs.review.id) }}" class="req-form" style="margin-top:.5rem;">
+      <input type="hidden" name="next" value="{{ url_for('primary_screening_criteria_home') }}">
+      <label>Your decision</label>
+      <select name="action">
+        {% for a in disposition_actions %}<option value="{{ a }}">{{ a|replace('_',' ')|title }}</option>{% endfor %}
+      </select>
+      <label>Final text (only used for Accept Rewrite / Edit Manually)</label>
+      <textarea name="final_text"></textarea>
+      <label>Reason (required for Acknowledge High Concern, and for Keep Original against a High Concern warning)</label>
+      <input type="text" name="reason">
+      <label>Your name</label>
+      <input type="text" name="performed_by">
+      <button type="submit" class="btn secondary" style="margin-top:.5rem; font-size:.78rem; padding:.35rem .8rem;">Record Decision</button>
+    </form>
+    {% endif %}
+    <form method="post" action="{{ url_for('compliance_review_create') }}" class="inline-form" style="margin-top:.5rem;">
+      <input type="hidden" name="object_type" value="{{ compliance_object_type }}">
+      <input type="hidden" name="object_id" value="{{ c.id }}">
+      <input type="hidden" name="next" value="{{ url_for('primary_screening_criteria_home') }}">
+      <button type="submit" class="btn secondary" style="font-size:.78rem; padding:.35rem .8rem;">Run Compliance Review</button>
+    </form>
+  </details>
+
+  <details class="edit-toggle">
+    <summary>Edit this Criterion</summary>
+    <form method="post" action="{{ url_for('primary_screening_criterion_update', criterion_id=c.id) }}" class="req-form">
+      <label>Name</label>
+      <input type="text" name="name" value="{{ c.name }}" required>
+      <label>Description</label>
+      <textarea name="description">{{ c.description or '' }}</textarea>
+      <label>Category (free text)</label>
+      <input type="text" name="category" value="{{ c.category or '' }}">
+      <label>Target role (leave blank to apply to every role)</label>
+      <input type="text" name="target_role" value="{{ c.target_role or '' }}">
+      <label>Location/context (optional)</label>
+      <input type="text" name="location_label" value="{{ c.location_label or '' }}">
+      <label>Coefficient</label>
+      <input type="number" step="0.1" name="coefficient" value="{{ c.coefficient }}">
+      <label>Direction</label>
+      <select name="direction">
+        {% for d in directions %}<option value="{{ d }}" {{ 'selected' if c.direction == d else '' }}>{{ d }}</option>{% endfor %}
+      </select>
+      <div class="checkbox-row" style="margin-top:.4rem;">
+        <label><input type="checkbox" name="is_hard_disqualifier" {{ 'checked' if c.is_hard_disqualifier else '' }}> Hard Disqualifier</label>
+      </div>
+      <label>Hard Disqualifier trigger level (0-4, only used if Hard Disqualifier is checked)</label>
+      <select name="hard_disqualifier_trigger_level">
+        <option value="">(none)</option>
+        {% for level in level_scale %}<option value="{{ level }}" {{ 'selected' if c.hard_disqualifier_trigger_level == level else '' }}>{{ level }}</option>{% endfor %}
+      </select>
+      <label>Level meanings (0-4) — what THIS Criterion's level means, in this restaurant's own words</label>
+      {% for level in level_scale %}
+      <input type="text" name="level_description_{{ level }}" placeholder="Level {{ level }} meaning" value="{{ c.level_descriptions.get(level|string, '') }}" style="margin-bottom:.3rem;">
+      {% endfor %}
+      <label>Allowed evidence sources</label>
+      <div class="checkbox-row">
+        {% for s in evidence_sources %}
+        <label><input type="checkbox" name="evidence_sources_allowed" value="{{ s }}" {{ 'checked' if s in c.evidence_sources_allowed else '' }}> {{ s|replace('_',' ') }}</label>
+        {% endfor %}
+      </div>
+      <label>Evaluation guidance</label>
+      <textarea name="evaluation_guidance">{{ c.evaluation_guidance or '' }}</textarea>
+      <label>Positive evidence guidance</label>
+      <textarea name="evidence_positive">{{ c.evidence_positive or '' }}</textarea>
+      <label>Contrary evidence guidance</label>
+      <textarea name="evidence_contrary">{{ c.evidence_contrary or '' }}</textarea>
+      <label>Insufficient evidence guidance</label>
+      <textarea name="evidence_insufficient">{{ c.evidence_insufficient or '' }}</textarea>
+      <label>Optional: auto-evaluate from an existing Selection Signal</label>
+      <select name="auto_evaluation_signal_definition_id">
+        <option value="">(manual entry only)</option>
+        {% for sdef in signal_definitions %}<option value="{{ sdef.id }}" {{ 'selected' if c.auto_evaluation_signal_definition_id == sdef.id else '' }}>{{ sdef.name }}</option>{% endfor %}
+      </select>
+      <label>Signal status &rarr; level mapping (leave blank to skip a status)</label>
+      {% for status in signal_statuses %}
+      <div class="meta-row" style="gap:.5rem; margin-bottom:.2rem;">
+        <span class="muted" style="font-size:.78rem; min-width:8rem;">{{ status }}</span>
+        <select name="auto_level_{{ status }}">
+          <option value="">(no mapping)</option>
+          {% for level in level_scale %}<option value="{{ level }}" {{ 'selected' if c.auto_evaluation_level_map.get(status) == level else '' }}>{{ level }}</option>{% endfor %}
+        </select>
+      </div>
+      {% endfor %}
+      <button type="submit" class="btn" style="margin-top:.6rem;">Save Criterion</button>
+    </form>
+  </details>
+</div>
+{% else %}
+<p class="empty">No Screening Criteria configured yet.</p>
+{% endfor %}
+
+<div class="card">
+  <h2>Create a Screening Criterion</h2>
+  <form method="post" action="{{ url_for('primary_screening_criterion_create') }}" class="req-form">
+    <label>Name</label>
+    <input type="text" name="name" placeholder="e.g. Relevant experience" required>
+    <label>Description</label>
+    <textarea name="description"></textarea>
+    <label>Category (free text)</label>
+    <input type="text" name="category">
+    <label>Target role (leave blank to apply to every role)</label>
+    <input type="text" name="target_role">
+    <label>Location/context (optional)</label>
+    <input type="text" name="location_label">
+    <label>Coefficient</label>
+    <input type="number" step="0.1" name="coefficient" value="1.0">
+    <label>Direction</label>
+    <select name="direction">
+      {% for d in directions %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+    </select>
+    <div class="checkbox-row" style="margin-top:.4rem;">
+      <label><input type="checkbox" name="is_hard_disqualifier"> Hard Disqualifier</label>
+    </div>
+    <label>Hard Disqualifier trigger level (0-4, only used if Hard Disqualifier is checked)</label>
+    <select name="hard_disqualifier_trigger_level">
+      <option value="">(none)</option>
+      {% for level in level_scale %}<option value="{{ level }}">{{ level }}</option>{% endfor %}
+    </select>
+    <label>Level meanings (0-4)</label>
+    {% for level in level_scale %}
+    <input type="text" name="level_description_{{ level }}" placeholder="Level {{ level }} meaning" style="margin-bottom:.3rem;">
+    {% endfor %}
+    <label>Allowed evidence sources</label>
+    <div class="checkbox-row">
+      {% for s in evidence_sources %}
+      <label><input type="checkbox" name="evidence_sources_allowed" value="{{ s }}"> {{ s|replace('_',' ') }}</label>
+      {% endfor %}
+    </div>
+    <label>Evaluation guidance</label>
+    <textarea name="evaluation_guidance"></textarea>
+    <label>Positive evidence guidance</label>
+    <textarea name="evidence_positive"></textarea>
+    <label>Contrary evidence guidance</label>
+    <textarea name="evidence_contrary"></textarea>
+    <label>Insufficient evidence guidance</label>
+    <textarea name="evidence_insufficient"></textarea>
+    <label>Optional: auto-evaluate from an existing Selection Signal</label>
+    <select name="auto_evaluation_signal_definition_id">
+      <option value="">(manual entry only)</option>
+      {% for sdef in signal_definitions %}<option value="{{ sdef.id }}">{{ sdef.name }}</option>{% endfor %}
+    </select>
+    <label>Signal status &rarr; level mapping (leave blank to skip a status)</label>
+    {% for status in signal_statuses %}
+    <div class="meta-row" style="gap:.5rem; margin-bottom:.2rem;">
+      <span class="muted" style="font-size:.78rem; min-width:8rem;">{{ status }}</span>
+      <select name="auto_level_{{ status }}">
+        <option value="">(no mapping)</option>
+        {% for level in level_scale %}<option value="{{ level }}">{{ level }}</option>{% endfor %}
+      </select>
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn" style="margin-top:.6rem;">Create Criterion</button>
+  </form>
+</div>
+
+{% endblock %}

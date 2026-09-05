@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Application received</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body { font-family: system-ui, sans-serif; max-width: 640px; margin: 3rem auto; padding: 0 1rem; color: #222; }</style>
+</head>
+<body>
+<h1>Thank you — your application has been received.</h1>
+<p>We'll review your application and be in touch. If we need anything else from you, we'll reach out by text or email.</p>
+{% if is_repeated_applicant %}<p>Thanks again for your continued interest!</p>{% endif %}
+</body>
+</html>

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <p class="muted" style="font-size:.82rem;"><strong>{{ disclaimer }}</strong></p>
+  <p class="muted" style="font-size:.8rem;">
+    Run a Compliance Review from the Primary Screening Criteria or Application Questions pages. This page shows
+    the complete, immutable history of every review and human decision made in response to one.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Review History</h2>
+  {% if rows %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>When</th><th>Object</th><th>Warnings</th><th>Latest Decision</th></tr></thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.review.reviewed_at.strftime('%Y-%m-%d %H:%M') if row.review.reviewed_at else '-' }}</td>
+        <td>{{ row.review.object_type|replace('_',' ')|title }} #{{ row.review.object_id }} (v{{ row.review.object_version }})
+          {% if row.obj %} — {{ row.obj.name if row.obj.name is defined else (row.obj.question_text if row.obj.question_text is defined else '') }}{% endif %}
+        </td>
+        <td>
+          {% for w in row.review.warnings %}
+          <div style="font-size:.78rem; margin-bottom:.2rem;">
+            <span class="badge {{ 'status-failed' if w.severity == 'HIGH_CONCERN' else '' }}">{{ w.severity|replace('_',' ') }}</span>
+            {{ w.category|replace('_',' ')|title }}: {{ w.explanation }}
+          </div>
+          {% else %}
+          <span class="muted">No concerns found.</span>
+          {% endfor %}
+        </td>
+        <td>
+          {% if row.dispositions %}
+          {% set d = row.dispositions[-1] %}
+          <span class="badge">{{ d.action|replace('_',' ')|title }}</span> by {{ d.performed_by or '(unspecified)' }}
+          {% if d.reason %}<br><span class="muted" style="font-size:.74rem;">{{ d.reason }}</span>{% endif %}
+          {% else %}
+          <span class="muted">No human decision recorded yet.</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty">No Compliance Reviews have been run yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

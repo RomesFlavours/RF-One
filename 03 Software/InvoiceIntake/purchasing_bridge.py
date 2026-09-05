@@ -2,7 +2,7 @@
 Purchasing persistence layer (TASK_PURCHASING_004).
 
 Before this task, `excel_store.py` was the only persistence InvoiceIntake
-had — a reduced, ad hoc subset of `01 Domains/Restaurant/Purchasing/
+had — a reduced, ad hoc subset of `01 Domains/Business Domain/Restaurant/Purchasing/
 DataDictionary.md` written straight to an Excel workbook. This module
 replaces that role: the reviewed header/lines the user confirms in
 `review.html` are mapped onto the canonical `PurchaseDocument`/`PurchaseLine`
@@ -52,7 +52,7 @@ _DISCOUNT_KEYWORDS = ("discount", "credit", "rebate", "bonus")
 def guess_line_type(description: str) -> str:
     """Best-effort default only — the review screen lets the user correct
     it before anything is saved, consistent with "human validation always
-    prevails" (`01 Domains/Restaurant/Purchasing/BusinessRules.md`,
+    prevails" (`01 Domains/Business Domain/Restaurant/Purchasing/BusinessRules.md`,
     Design Principles)."""
 
     lowered = (description or "").lower()

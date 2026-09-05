@@ -1,6 +1,6 @@
 """Sales module synthetic regression suite (TASK_REPOSITORY_STABILIZATION_001).
 
-Sales (`01 Domains/Restaurant/Sales/Restaurant Sales Model.md`) previously had
+Sales (`01 Domains/Business Domain/Restaurant/Sales/Restaurant Sales Model.md`) previously had
 no dedicated validation suite comparable to Tips, Payroll, Organization and
 Purchasing, despite being load-bearing evidence for the production Tips
 `OrderEmployeeServiceAttributionResolver` (`tips/resolvers.py`). This module

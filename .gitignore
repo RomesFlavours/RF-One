@@ -30,3 +30,16 @@ __pycache__/
 03 Software/InvoiceIntake/uploads/*
 !03 Software/InvoiceIntake/uploads/.gitkeep
 03 Software/InvoiceIntake/data/*.xlsx
+
+# TASK_SELECTION_001 — Selection's uploaded résumés (real candidate PII) and
+# its own local development database must never be committed.
+03 Software/Selection/uploads/*
+!03 Software/Selection/uploads/.gitkeep
+03 Software/Selection/data/*.db
+03 Software/Selection/data/*.sqlite
+03 Software/Selection/data/*.sqlite3
+
+# Disposable ad-hoc smoke-test databases created directly in
+# 03 Software/Selection/ (not under data/) during manual verification —
+# narrow pattern so it never hides a legitimately named database.
+03 Software/Selection/smoke_*.db

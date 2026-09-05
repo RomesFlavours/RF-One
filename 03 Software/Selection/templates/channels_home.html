@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <p class="muted" style="font-size:.82rem;">
+    A generic, restaurant-configurable publication Channel container — Indeed/LinkedIn/Facebook/Company Website/...
+    are examples RF-One seeds, never a hard-coded closed set. No provider API is implemented here (that belongs to
+    a future connector) — only the capability description (connected vs. manual, publish/update/pause/stop/metrics
+    support, paid vs. organic, cost tracking).
+  </p>
+</div>
+
+<div class="card">
+  <h2>Configured Channels</h2>
+  {% if channels %}
+    {% for c in channels %}
+    <div class="signal-card {{ '' if c.is_active else 'inactive' }}">
+      <div class="req-title">
+        {{ c.name }}
+        <span class="badge">{{ 'Connected' if c.is_connected else 'Manual' }}</span>
+        {% if c.is_paid %}<span class="badge">Paid</span>{% else %}<span class="badge">Organic</span>{% endif %}
+        {% if not c.is_active %}<span class="badge status-failed">INACTIVE</span>{% endif %}
+      </div>
+      <p class="muted" style="font-size:.78rem;">
+        {% if c.supports_metrics %}Metrics supported.{% endif %}
+        {% if c.supports_cost_tracking %}Cost tracking supported.{% endif %}
+        {% if c.default_acquisition_source %}Default Acquisition Source: {{ c.default_acquisition_source.name }}.{% endif %}
+      </p>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No Channels configured yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Add a Channel</h2>
+  <form method="post" action="{{ url_for('channel_create') }}" class="req-form">
+    <label>Name</label>
+    <input type="text" name="name" placeholder="e.g. Indeed, Facebook, Branch Website" required>
+    <label class="checkbox-row"><input type="checkbox" name="is_connected"> Connected (a future connector may publish/update directly)</label>
+    <label class="checkbox-row"><input type="checkbox" name="is_paid"> Paid channel</label>
+    <label class="checkbox-row"><input type="checkbox" name="supports_metrics"> Supports metrics</label>
+    <label class="checkbox-row"><input type="checkbox" name="supports_cost_tracking"> Supports cost tracking</label>
+    <label>Default Acquisition Source for Applications arriving through this Channel</label>
+    <select name="default_acquisition_source_id">
+      <option value="">(none)</option>
+      {% for s in acquisition_sources %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Add Channel</button>
+  </form>
+</div>
+
+{% endblock %}

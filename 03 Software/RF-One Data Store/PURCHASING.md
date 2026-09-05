@@ -1,6 +1,6 @@
 # RF-One Data Store — Purchasing
 
-The first persistent implementation of `01 Domains/Restaurant/Purchasing/` (TASK_PURCHASING_001-003, documentation only) — TASK_PURCHASING_004. Software must adapt to that Domain model; nothing here redefines it. Section references below (e.g. "Rule 26") are to `01 Domains/Restaurant/Purchasing/BusinessRules.md` unless stated otherwise.
+The first persistent implementation of `01 Domains/Business Domain/Restaurant/Purchasing/` (TASK_PURCHASING_001-003, documentation only) — TASK_PURCHASING_004. Software must adapt to that Domain model; nothing here redefines it. Section references below (e.g. "Rule 26") are to `01 Domains/Business Domain/Restaurant/Purchasing/BusinessRules.md` unless stated otherwise.
 
 ---
 
@@ -29,7 +29,7 @@ No `Ingredient`/`Product`/`Specification` table exists anywhere in this schema y
 | `expected_supplier_credits` / `supplier_credit_references` | Expected Supplier Credit / its linked credit evidence | `RecognizedAmount`/`OutstandingAmount` are not columns — always queried on demand from `supplier_credit_references` (Rule 38). |
 | `purchasing_validation_log_entries` | Validation Log | Named with a `Purchasing` prefix for the same cross-cutting-naming reason as `PurchasingAlert`. |
 
-Money: integer minor units (cents), matching this schema's existing convention. Quantity: `Numeric(12, 4)`, matching `OrderItem.quantity`. Timestamps: `DateTime(timezone=True)`. Full column-level detail is in `models.py`'s docstrings and `01 Domains/Restaurant/Purchasing/DataDictionary.md`.
+Money: integer minor units (cents), matching this schema's existing convention. Quantity: `Numeric(12, 4)`, matching `OrderItem.quantity`. Timestamps: `DateTime(timezone=True)`. Full column-level detail is in `models.py`'s docstrings and `01 Domains/Business Domain/Restaurant/Purchasing/DataDictionary.md`.
 
 **Derived, never a column anywhere in this schema:** Effective Product Cost, surcharge/discount allocation shares, category totals, Reconciliation Outcome, Expected Supplier Credit's Recognized/Outstanding Amount (`Purchasing/DataDictionary.md`, "Persist Facts — Derive Calculations"). `PurchasingAlert.reconciliation_context` is a descriptive text snapshot only, explicitly never read back as authoritative — see its docstring in `models.py`.
 
@@ -43,7 +43,7 @@ Key functions: `get_or_create_supplier`, `get_or_create_supplier_product` (Suppl
 
 ## 4. Reconciliation (`rfone_data_store/purchasing/reconciliation.py`)
 
-Deterministic quantity/identity comparison only — `MATCH`, `SHORT`, `EXTRA`, `SUBSTITUTED`, `DAMAGED`, `INVOICE_MISMATCH`, `ORDER_MISMATCH`, `QUANTITY_DEVIATION` (Rule 33's illustrative list; `PACKAGING_DEVIATION` is not currently produced — see "Remaining gaps"). No probabilistic or fuzzy matching, per the task's explicit "do not build a sophisticated reconciliation engine" instruction. Verified against Rule 26's four worked examples and the canonical Examples 6-8 (`01 Domains/Restaurant/Purchasing/Examples.md`) in `test_purchasing_engine.py`.
+Deterministic quantity/identity comparison only — `MATCH`, `SHORT`, `EXTRA`, `SUBSTITUTED`, `DAMAGED`, `INVOICE_MISMATCH`, `ORDER_MISMATCH`, `QUANTITY_DEVIATION` (Rule 33's illustrative list; `PACKAGING_DEVIATION` is not currently produced — see "Remaining gaps"). No probabilistic or fuzzy matching, per the task's explicit "do not build a sophisticated reconciliation engine" instruction. Verified against Rule 26's four worked examples and the canonical Examples 6-8 (`01 Domains/Business Domain/Restaurant/Purchasing/Examples.md`) in `test_purchasing_engine.py`.
 
 ---
 

@@ -7,7 +7,7 @@ Create Date: 2026-08-30 00:00:00.000000
 One additive, non-destructive change: a new table,
 `payroll_execution_configurations` — a Restaurant-scoped, temporally valid
 statement of which Payment Execution Provider is approved for new
-PayrollRuns during a window (`01 Domains/Administration/Payroll/Payment
+PayrollRuns during a window (`01 Domains/Cross Domain/Administration/Payroll/Payment
 Execution.md`).
 
 Closes a real production gap identified by TASK_PAYROLL_003: TASK_PAYROLL_002
