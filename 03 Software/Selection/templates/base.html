@@ -265,10 +265,17 @@
   .session-card { border: 1px solid var(--line); border-radius: 8px; padding: .9rem 1.1rem; margin-bottom: .9rem; }
   .assignment-row { display: flex; justify-content: space-between; align-items: center; padding: .4rem 0; border-bottom: 1px solid var(--line); font-size: .85rem; }
   .assignment-row:last-child { border-bottom: none; }
+  .identity-banner { display: flex; justify-content: flex-end; align-items: center; gap: .4rem; font-size: .78rem; color: var(--muted); margin-bottom: .6rem; }
 </style>
 </head>
 <body>
 <div class="wrap">
+  {% if current_identity is defined and current_identity %}
+  <div class="identity-banner">
+    Acting as <strong>{{ current_identity.display_name }}</strong>
+    <a href="{{ url_for('identity_switch') }}">(switch)</a>
+  </div>
+  {% endif %}
   <h1>RF-One · Selection</h1>
   <p class="subtitle">Resume screening — structured evidence to support the human evaluator, never a hiring decision.</p>
   <div class="nav-tabs">
@@ -293,6 +300,7 @@
     <a href="{{ url_for('application_questions_home') }}" class="{{ 'active' if active_nav == 'application-questions' else '' }}">Application Questions</a>
     <a href="{{ url_for('channel_analytics_home') }}" class="{{ 'active' if active_nav == 'channel-analytics' else '' }}">Channel Analytics</a>
     <a href="{{ url_for('compliance_reviews_home') }}" class="{{ 'active' if active_nav == 'compliance' else '' }}">Compliance Reviews</a>
+    <a href="{{ url_for('identity_switch') }}" class="{{ 'active' if active_nav == 'identity' else '' }}">Acting Identity</a>
   </div>
   {% block content %}{% endblock %}
 </div>

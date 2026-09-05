@@ -80,8 +80,11 @@
   <details class="edit-toggle">
     <summary>Assign a Selezionatore</summary>
     <form method="post" action="{{ url_for('session_assign_selezionatore', session_id=selection_session.id) }}" class="req-form">
-      <label>Selezionatore name</label>
-      <input type="text" name="selezionatore_name" required>
+      <label>Selezionatore (an existing, registered Acting Identity — never a typed name)</label>
+      <select name="acting_identity_id" required>
+        <option value="">— select a registered Selezionatore —</option>
+        {% for i in registered_identities %}<option value="{{ i.id }}">{{ i.display_name }}</option>{% endfor %}
+      </select>
       <label>Authority level (optional — leave blank for peer)</label>
       <select name="authority_level_id">
         <option value="">(peer — no configured level)</option>
@@ -89,6 +92,7 @@
       </select>
       <button type="submit" class="btn secondary" style="margin-top:.6rem;">Assign</button>
     </form>
+    <p class="quick-read" style="margin-top:.4rem;">Not listed yet? <a href="{{ url_for('identity_switch', next=url_for('session_detail', session_id=selection_session.id)) }}">Register a new Acting Identity</a> first (dev-only roster management — not Authentication).</p>
   </details>
 </div>
 
@@ -170,8 +174,7 @@
   <details class="edit-toggle" style="margin-top:.6rem;">
     <summary><strong>Confirm Rule Set</strong></summary>
     <form method="post" action="{{ url_for('session_confirm_rule_set', session_id=selection_session.id) }}" class="req-form">
-      <label>Confirmed by</label>
-      <input type="text" name="confirmed_by" required>
+      <p class="quick-read">Confirming as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('session_detail', session_id=selection_session.id)) }}">not you?</a></p>
       <label>Note (optional)</label>
       <textarea name="note"></textarea>
       <button type="submit" class="btn" style="margin-top:.6rem;">Confirm Rule Set &amp; Activate Session</button>
@@ -209,8 +212,7 @@
     <select name="criterion_ids" multiple size="6">
       {% for c in criteria %}<option value="{{ c.id }}">{{ c.name }} ({{ c.direction }})</option>{% endfor %}
     </select>
-    <label>Your name</label>
-    <input type="text" name="performed_by">
+    <p class="quick-read">Proposing as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('session_detail', session_id=selection_session.id)) }}">not you?</a></p>
     <button type="submit" class="btn" style="margin-top:.6rem;">Propose Rule Change</button>
   </form>
 </div>

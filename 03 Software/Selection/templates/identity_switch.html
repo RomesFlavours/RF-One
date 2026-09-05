@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h1 style="margin-top:0;">Acting Identity</h1>
+  <p class="quick-read">
+    GLOBAL_INTEGRITY_FIX_002 — this is <strong>not</strong> a login screen. It never verifies a password or issues
+    any proof of identity. It only lets you pick which already-registered Acting Identity this browser acts as,
+    standing in for real Authentication until one is connected (see
+    <code>acting_identity_service</code>'s module docstring). Every consequential Selection action records the
+    identity selected here — never a name typed into that action's own form.
+  </p>
+  <p style="font-size:.9rem;">Currently acting as <strong>{{ current.display_name }}</strong> ({{ current.kind|replace('_',' ')|title }}).</p>
+</div>
+
+<div class="card">
+  <h2>Switch to a registered identity</h2>
+  {% if identities %}
+  <form method="post" action="{{ url_for('identity_switch') }}" class="req-form">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <select name="identity_id" required>
+      {% for i in identities %}<option value="{{ i.id }}" {{ 'selected' if current and i.id == current.id else '' }}>{{ i.display_name }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Switch</button>
+  </form>
+  {% else %}
+  <p class="empty">No Acting Identity registered yet — register one below.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Register a new Acting Identity</h2>
+  <p class="quick-read">Dev-only roster management (task §5) — creating this row is configuration, not proof that you are this person.</p>
+  <form method="post" action="{{ url_for('identity_register') }}" class="req-form">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <label>Display name</label>
+    <input type="text" name="display_name" required>
+    <button type="submit" class="btn secondary" style="margin-top:.6rem;">Register &amp; switch to it</button>
+  </form>
+</div>
+
+{% endblock %}

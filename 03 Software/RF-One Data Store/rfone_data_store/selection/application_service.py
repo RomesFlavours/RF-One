@@ -176,6 +176,16 @@ def list_prior_applications(session: Session, application_id: int) -> list[m.App
 
 
 def set_outcome(session: Session, application_id: int, outcome: str) -> m.Application:
+    """GLOBAL_INTEGRITY_FIX_003 / C-2 §3/§4 — LEGACY, COMPATIBILITY-ONLY.
+    No live route calls this anymore (the ungoverned `/applications/<id>/
+    outcome` HTTP mutation path was retired — see `Selection/app.py`'s own
+    comment at that route's former location); it is kept only so a
+    pre-existing Task 3C-era structural regression check
+    (`selection_validation.py`'s "3C-O") and any other non-HTTP caller can
+    still exercise/set this historical field directly. This is NEVER the
+    authoritative Outcome — see `outcome_service.apply_outcome`/
+    `outcome_service.get_effective_application_outcome` for that."""
+
     if outcome not in sm.APPLICATION_OUTCOMES:
         raise ValueError(f"Unknown outcome {outcome!r}; expected one of {sm.APPLICATION_OUTCOMES}")
     application = session.get(m.Application, application_id)

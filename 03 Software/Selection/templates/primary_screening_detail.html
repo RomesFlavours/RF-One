@@ -161,8 +161,7 @@
     <details class="edit-toggle">
       <summary>Override this Hard Disqualifier</summary>
       <form method="post" action="{{ url_for('primary_screening_override_hard_disqualifier', run_id=run.id, evaluation_id=e.id) }}" class="req-form">
-        <label>Acting Selezionatore (required if this Application belongs to a Session with a claimed owner)</label>
-        <input type="text" name="actor" placeholder="Your name">
+        <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('primary_screening_detail', run_id=run.id)) }}">not you?</a></p>
         <label>Reason (mandatory)</label>
         <textarea name="reason" placeholder="Why this Hard Disqualifier should be overridden" required></textarea>
         <button type="submit" class="btn" style="margin-top:.6rem;">Override Hard Disqualifier</button>

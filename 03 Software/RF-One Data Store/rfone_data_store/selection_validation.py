@@ -15,11 +15,13 @@ from sqlalchemy.orm import Session, sessionmaker
 import inspect
 import re
 
+from . import acting_identity_service as acting_id_svc
 from . import models as m
 from .selection import (
     acquisition_source_service as acq_svc,
     application_intake_service as intake_svc, application_question_service as aq_svc,
-    application_service as app_svc, audit_service as audit_svc, candidate_flag_service as flag_svc,
+    application_service as app_svc, audit_service as audit_svc, authority_service as auth_svc,
+    candidate_flag_service as flag_svc,
     case_memory_service as cm_svc,
     channel_analytics_service as analytics_svc, channel_service as chan_svc,
     communication_service as comm_svc, communication_template_service as tmpl_svc,
@@ -109,6 +111,7 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
     _assert_5d_micro_fix_session_scheduling(session_factory, result)
     _assert_job_posting_application_intake_pre_screening(session_factory, result)
     _assert_compliance_audit_domain_closure(session_factory, result)
+    _assert_outcome_workflow_unification(session_factory, result)
     with session_factory() as session:
         try:
             _assert(session, result)
@@ -6116,10 +6119,20 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
     session = session_factory()
     restaurant: m.Restaurant | None = None
     session_ids: list[int] = []
+    identity_ids: list[int] = []
     try:
         restaurant = m.Restaurant(name="Synthetic 5C Session Test Restaurant", default_currency="USD")
         session.add(restaurant)
         session.commit()
+
+        # GLOBAL_INTEGRITY_FIX_002 / C-1 — every actor in this suite is now a
+        # stable ActingIdentity, never a bare name string, matching how
+        # ownership/authority comparisons actually work post-fix.
+        alex = acting_id_svc.create_identity(session, kind=m.HUMAN_USER, display_name="Alex")
+        jordan = acting_id_svc.create_identity(session, kind=m.HUMAN_USER, display_name="Jordan")
+        morgan = acting_id_svc.create_identity(session, kind=m.HUMAN_USER, display_name="Morgan")
+        session.commit()
+        identity_ids.extend([alex.id, jordan.id, morgan.id])
 
         req_set = req_svc.create_requirement_set(session, restaurant_id=restaurant.id, name="5C Server Requirements")
         req_svc.add_requirement(
@@ -6159,8 +6172,8 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         # =====================================================================
         # 5C-C/5C-D: multiple Selezionatori assigned; no hierarchy -> peers.
         # =====================================================================
-        sess_svc.assign_selezionatore(session, sc_session.id, selezionatore_name="Alex")
-        sess_svc.assign_selezionatore(session, sc_session.id, selezionatore_name="Jordan")
+        sess_svc.assign_selezionatore(session, sc_session.id, acting_identity_id=alex.id)
+        sess_svc.assign_selezionatore(session, sc_session.id, acting_identity_id=jordan.id)
         session.commit()
         result.check(
             "5C-C: multiple Selezionatori may be assigned to one Session",
@@ -6178,7 +6191,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         # =====================================================================
         blocked_before_confirmation = False
         try:
-            own_svc.take_in_charge(session, app1.id, owner_name="Alex")
+            own_svc.take_in_charge(session, app1.id, acting_identity_id=alex.id)
         except ValueError:
             blocked_before_confirmation = True
             session.rollback()
@@ -6192,7 +6205,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         # Session/role-specific, not personal to a Selezionatore.
         # =====================================================================
         version1_id = sc_session.current_rule_set_version_id
-        rs_svc.confirm_rule_set_version(session, sc_session.id, confirmed_by="Alex", note="Reviewed for the validation suite.")
+        rs_svc.confirm_rule_set_version(session, sc_session.id, acting_identity_id=alex.id, note="Reviewed for the validation suite.")
         session.commit()
         session.expire_all()
         sc_session_reloaded = sess_svc.get_session(session, sc_session.id)
@@ -6206,7 +6219,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
 
         double_confirm_rejected = False
         try:
-            rs_svc.confirm_rule_set_version(session, sc_session.id, confirmed_by="Jordan")
+            rs_svc.confirm_rule_set_version(session, sc_session.id, acting_identity_id=jordan.id)
         except ValueError:
             double_confirm_rejected = True
             session.rollback()
@@ -6216,22 +6229,26 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         # 5C-G/5C-H/5C-I/5C-J: take in charge; one active owner; non-owner
         # read-only; owner may operate.
         # =====================================================================
-        ownership1 = own_svc.take_in_charge(session, app1.id, owner_name="Alex")
+        ownership1 = own_svc.take_in_charge(session, app1.id, acting_identity_id=alex.id)
         session.commit()
-        result.check("5C-G: an Application may be explicitly taken in charge", ownership1.owner_name == "Alex")
+        result.check("5C-G: an Application may be explicitly taken in charge", ownership1.owner_name == "Alex" and ownership1.acting_identity_id == alex.id)
         result.check(
             "5C-H: exactly one active owner exists at a time",
             own_svc.get_current_owner(session, app1.id).id == ownership1.id,
         )
-        result.check("5C-I: a non-owner Session Selezionatore is read-only", not own_svc.can_write(session, app1.id, "Jordan"))
-        result.check("5C-J: the owner can perform allowed Application operations", own_svc.can_write(session, app1.id, "Alex"))
+        result.check("5C-I: a non-owner Session Selezionatore is read-only", not own_svc.can_write(session, app1.id, jordan.id))
+        result.check("5C-J: the owner can perform allowed Application operations", own_svc.can_write(session, app1.id, alex.id))
+        result.check(
+            "GLOBAL_INTEGRITY_FIX_002 / C-1 check G: an arbitrary submitted identity id cannot impersonate the owner",
+            not own_svc.can_write(session, app1.id, morgan.id),
+        )
 
         # =====================================================================
         # 5C-D/5C-M: no hierarchy defined -> peers -> a peer may not reassign.
         # =====================================================================
         peer_reassign_rejected = False
         try:
-            own_svc.reassign(session, app1.id, new_owner="Jordan", performed_by="Jordan", reason="Peer attempt")
+            own_svc.reassign(session, app1.id, new_owner_identity_id=jordan.id, performed_by_identity_id=jordan.id, reason="Peer attempt")
         except ValueError:
             peer_reassign_rejected = True
             session.rollback()
@@ -6246,7 +6263,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         # =====================================================================
         reason_required = False
         try:
-            own_svc.reassign(session, app1.id, new_owner="Jordan", performed_by="Alex", reason="")
+            own_svc.reassign(session, app1.id, new_owner_identity_id=jordan.id, performed_by_identity_id=alex.id, reason="")
         except ValueError:
             reason_required = True
             session.rollback()
@@ -6255,7 +6272,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         # =====================================================================
         # 5C-K/5C-O: the current owner can reassign; history is preserved.
         # =====================================================================
-        ownership2 = own_svc.reassign(session, app1.id, new_owner="Jordan", performed_by="Alex", reason="Handing off before end of shift.")
+        ownership2 = own_svc.reassign(session, app1.id, new_owner_identity_id=jordan.id, performed_by_identity_id=alex.id, reason="Handing off before end of shift.")
         session.commit()
         result.check("5C-K: the current owner can reassign", ownership2.owner_name == "Jordan")
         history = own_svc.list_ownership_history(session, app1.id)
@@ -6271,20 +6288,20 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         senior_level = gov_svc.create_authority_level(session, restaurant_id=restaurant.id, level_key="5C_SENIOR", level_order=2, label="Senior")
         junior_level = gov_svc.create_authority_level(session, restaurant_id=restaurant.id, level_key="5C_JUNIOR", level_order=1, label="Junior")
         session.commit()
-        sess_svc.assign_selezionatore(session, sc_session.id, selezionatore_name="Jordan", authority_level_id=junior_level.id)
-        sess_svc.assign_selezionatore(session, sc_session.id, selezionatore_name="Morgan", authority_level_id=senior_level.id)
+        sess_svc.assign_selezionatore(session, sc_session.id, acting_identity_id=jordan.id, authority_level_id=junior_level.id)
+        sess_svc.assign_selezionatore(session, sc_session.id, acting_identity_id=morgan.id, authority_level_id=senior_level.id)
         session.commit()
         result.check(
             "5C-E: authority/dependency hierarchy may be configured (reusing SelectionAuthorityLevel)",
-            sess_svc.get_assignment_for_selezionatore(session, sc_session.id, "Morgan").authority_level_id == senior_level.id,
+            sess_svc.get_assignment_for_identity(session, sc_session.id, morgan.id).authority_level_id == senior_level.id,
         )
-        ownership3 = own_svc.reassign(session, app1.id, new_owner="Morgan", performed_by="Morgan", reason="Escalating per configured seniority.")
+        ownership3 = own_svc.reassign(session, app1.id, new_owner_identity_id=morgan.id, performed_by_identity_id=morgan.id, reason="Escalating per configured seniority.")
         session.commit()
         result.check("5C-L: a Selezionatore with configured superior authority can reassign", ownership3.owner_name == "Morgan")
 
         inferior_rejected = False
         try:
-            own_svc.reassign(session, app1.id, new_owner="Jordan", performed_by="Jordan", reason="Trying anyway")
+            own_svc.reassign(session, app1.id, new_owner_identity_id=jordan.id, performed_by_identity_id=jordan.id, reason="Trying anyway")
         except ValueError:
             inferior_rejected = True
             session.rollback()
@@ -6315,7 +6332,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         rule_change_1 = rc_svc.propose_rule_change(
             session, sc_session.id, rules_changed_summary="Clarified cash-handling evidence guidance.",
             reason="Identified ambiguity while reviewing an interview.", scope=rsm.SUBSEQUENT_ONLY,
-            performed_by="Alex",
+            acting_identity_id=alex.id,
         )
         session.commit()
         session.expire_all()
@@ -6357,7 +6374,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         rule_change_2 = rc_svc.propose_rule_change(
             session, sc_session.id, rules_changed_summary="Added Hard Disqualifier evidence guidance.",
             reason="A material behavioral screening gap was identified mid-Session.", scope=rsm.ENTIRE_SESSION,
-            performed_by="Alex",
+            acting_identity_id=alex.id,
         )
         session.commit()
         session.expire_all()
@@ -6422,6 +6439,109 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         result.check(
             "Session notes use the SAME unified, append-only notes table — no second notes system",
             len(sess_svc.list_session_notes(session, sc_session.id)) >= 1,
+        )
+
+        # =====================================================================
+        # GLOBAL_INTEGRITY_FIX_002 / C-1/I-4/I-12 — direct regression checks
+        # for the ActingIdentity substrate itself and the newly-wired
+        # governance enforcement (task §22 checks A/B/C/F/Q/T).
+        # =====================================================================
+        system_identity_1 = acting_id_svc.get_or_create_system_identity(session)
+        system_identity_2 = acting_id_svc.get_or_create_system_identity(session)
+        session.commit()
+        result.check(
+            "GLOBAL_INTEGRITY_FIX_002 check C: SYSTEM identity bootstrap is deterministic/idempotent",
+            system_identity_1.id == system_identity_2.id and system_identity_1.kind == m.SYSTEM,
+        )
+        result.check(
+            "GLOBAL_INTEGRITY_FIX_002 check B: a HUMAN_USER identity works and has a stable id independent of "
+            "display name",
+            alex.kind == m.HUMAN_USER and isinstance(alex.id, int),
+        )
+
+        # The Rule Changes proposed earlier each created a new, as-yet-
+        # unconfirmed Rule Set version — re-confirm so `sc_session` is
+        # operational again before exercising ownership on a new Application.
+        rs_svc.confirm_rule_set_version(
+            session, sc_session.id, acting_identity_id=alex.id,
+            note="Re-confirmed after Rule Changes for GLOBAL_INTEGRITY_FIX_002 checks.",
+        )
+        session.commit()
+
+        app3 = _upload(
+            "Taylor FiveCSuite", "taylor.5c-suite@example.com", "555-660-0003",
+            "Cashier, Bistro 5C Suite Three\nJan 2024 - Present\nGreeted guests.",
+        )
+        sess_svc.link_application_to_session(session, app3.id, sc_session.id)
+        session.commit()
+        own_svc.take_in_charge(session, app3.id, acting_identity_id=alex.id)
+        session.commit()
+        result.check(
+            "GLOBAL_INTEGRITY_FIX_002 check A: ActingIdentity id — not display_name — is what ownership actually "
+            "keys on",
+            own_svc.can_write(session, app3.id, alex.id) is True,
+        )
+        alex.display_name = "Alexandra (renamed)"
+        session.commit()
+        result.check(
+            "GLOBAL_INTEGRITY_FIX_002 check F: changing a display name does not break ownership/authority "
+            "(same stable id)",
+            own_svc.can_write(session, app3.id, alex.id) is True,
+        )
+        alex.display_name = "Alex"
+        session.commit()
+
+        # T: a historical row with no acting_identity_id (pre-fix data)
+        # remains readable and is never fabricated into a guessed identity.
+        legacy_ownership = m.ApplicationOwnership(
+            application_id=app3.id, session_id=sc_session.id, owner_name="Legacy Text-Only Owner",
+            assigned_by="Legacy Text-Only Owner", is_active=False, stage_at_time=None,
+        )
+        session.add(legacy_ownership)
+        session.commit()
+        result.check(
+            "GLOBAL_INTEGRITY_FIX_002 check T: a historical no-identity ownership row remains readable with no "
+            "fabricated identity",
+            legacy_ownership.acting_identity_id is None
+            and any(h.id == legacy_ownership.id for h in own_svc.list_ownership_history(session, app3.id)),
+        )
+
+        # Q: a restaurant-configured Governance Requirement is actually
+        # enforced (I-4 — `governance_service` was previously configured but
+        # never called by anything).
+        gov_level = gov_svc.create_authority_level(
+            session, restaurant_id=restaurant.id, level_key="5C_GOV_REQUIRED", level_order=5, label="Gov Required",
+        )
+        session.commit()
+        gov_svc.create_governance_requirement(
+            session, restaurant_id=restaurant.id, action_type=auth_svc.ACTION_CONFIRM_RULE_SET,
+            required_authority_level_id=gov_level.id,
+        )
+        session.commit()
+        gov_session = sess_svc.create_session(
+            session, restaurant_id=restaurant.id, name="5C Governance Enforcement Test", target_role="SERVER",
+        )
+        session.commit()
+        session_ids.append(gov_session.id)
+
+        unqualified_rejected = False
+        try:
+            rs_svc.confirm_rule_set_version(session, gov_session.id, acting_identity_id=jordan.id)
+        except ValueError:
+            unqualified_rejected = True
+            session.rollback()
+        result.check(
+            "GLOBAL_INTEGRITY_FIX_002 check Q: a configured Governance Requirement is enforced (I-4 wiring) — an "
+            "identity without the required authority level is rejected",
+            unqualified_rejected,
+        )
+        sess_svc.assign_selezionatore(session, gov_session.id, acting_identity_id=jordan.id, authority_level_id=gov_level.id)
+        session.commit()
+        rs_svc.confirm_rule_set_version(session, gov_session.id, acting_identity_id=jordan.id)
+        session.commit()
+        result.check(
+            "GLOBAL_INTEGRITY_FIX_002 check Q2: an identity holding the required authority level is permitted",
+            sess_svc.is_confirmed(session, gov_session.id),
         )
 
         # =====================================================================
@@ -6493,6 +6613,9 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
                 if sc is not None:
                     session.delete(sc)
             session.flush()
+            for gov_req_row in session.query(m.SelectionGovernanceRequirement).filter_by(restaurant_id=restaurant.id):
+                session.delete(gov_req_row)
+            session.flush()
             for level_row in session.query(m.SelectionAuthorityLevel).filter_by(restaurant_id=restaurant.id):
                 session.delete(level_row)
             session.flush()
@@ -6519,6 +6642,15 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
             for req_set_row in session.query(m.RequirementSet).filter_by(restaurant_id=restaurant.id):
                 session.delete(req_set_row)  # cascades live Requirements
             session.flush()
+        # GLOBAL_INTEGRITY_FIX_002 / C-1 — the three synthetic ActingIdentity
+        # rows this suite created; every row that referenced them (ownership,
+        # session assignments, rule set confirmation, rule changes) has
+        # already been deleted above.
+        for identity_id in identity_ids:
+            identity_row = session.get(m.ActingIdentity, identity_id)
+            if identity_row is not None:
+                session.delete(identity_row)
+        session.flush()
         still_attached = session.get(m.Restaurant, restaurant.id) if restaurant is not None else None
         if still_attached is not None:
             session.delete(still_attached)
@@ -8208,10 +8340,18 @@ def _assert_compliance_audit_domain_closure(session_factory: sessionmaker[Sessio
     session = session_factory()
     restaurant: m.Restaurant | None = None
     session_ids: list[int] = []
+    identity_ids: list[int] = []
     try:
         restaurant = m.Restaurant(name="Synthetic 5F Compliance Audit Test Restaurant", default_currency="USD")
         session.add(restaurant)
         session.commit()
+
+        # GLOBAL_INTEGRITY_FIX_002 / C-1 — stable ActingIdentity for every
+        # actor this suite exercises.
+        alex = acting_id_svc.create_identity(session, kind=m.HUMAN_USER, display_name="Alex")
+        jordan = acting_id_svc.create_identity(session, kind=m.HUMAN_USER, display_name="Jordan")
+        session.commit()
+        identity_ids.extend([alex.id, jordan.id])
 
         def _upload(name: str, email: str, phone: str, role_line: str) -> m.Application:
             text = f"{name}\n{email}\n{phone}\n\nEXPERIENCE\n{role_line}\n"
@@ -8231,7 +8371,7 @@ def _assert_compliance_audit_domain_closure(session_factory: sessionmaker[Sessio
         )
         session.commit()
         session_ids.append(selection_session.id)
-        rs_svc.confirm_rule_set_version(session, selection_session.id, confirmed_by="Alex", note="5F closure suite")
+        rs_svc.confirm_rule_set_version(session, selection_session.id, acting_identity_id=alex.id, note="5F closure suite")
         session.commit()
 
         stop_def = outcome_svc.create_outcome_definition(session, restaurant_id=restaurant.id, name="5F Stop", lifecycle_effect=om.CLOSED, requires_reason=True)
@@ -8396,8 +8536,8 @@ def _assert_compliance_audit_domain_closure(session_factory: sessionmaker[Sessio
         app_rich = _upload("Riley Rich", "riley.rich.5f@example.com", "555-660-1000", "Server, Bistro 5F\nJan 2022 - Present\nServed guests.")
         sess_svc.link_application_to_session(session, app_rich.id, selection_session.id)
         session.commit()
-        own_svc.take_in_charge(session, app_rich.id, owner_name="Alex")
-        own_svc.reassign(session, app_rich.id, new_owner="Jordan", performed_by="Alex", reason="Handing off before end of shift.")
+        own_svc.take_in_charge(session, app_rich.id, acting_identity_id=alex.id)
+        own_svc.reassign(session, app_rich.id, new_owner_identity_id=jordan.id, performed_by_identity_id=alex.id, reason="Handing off before end of shift.")
         session.commit()
 
         # Rule change happens EARLY (before any Fit Assessment exists for
@@ -8410,7 +8550,7 @@ def _assert_compliance_audit_domain_closure(session_factory: sessionmaker[Sessio
         rule_change = rc_svc.propose_rule_change(
             session, selection_session.id, rules_changed_summary="Adjusted coefficients for two Criteria.",
             reason="Restaurant leadership requested a re-weighting after a hiring review.", scope=rsm.ENTIRE_SESSION,
-            performed_by="Alex", primary_screening_criterion_ids=[hard_disqualifier_criterion.id],
+            acting_identity_id=alex.id, primary_screening_criterion_ids=[hard_disqualifier_criterion.id],
         )
         session.commit()
 
@@ -8946,6 +9086,14 @@ def _assert_compliance_audit_domain_closure(session_factory: sessionmaker[Sessio
             session.flush()
             for raw in list(session.query(m.RawResume).filter_by(restaurant_id=restaurant.id)):
                 session.delete(raw)
+            session.flush()
+
+            # GLOBAL_INTEGRITY_FIX_002 / C-1 — the ActingIdentity rows this
+            # suite created; every row that referenced them is already gone.
+            for identity_id in identity_ids:
+                identity_row = session.get(m.ActingIdentity, identity_id)
+                if identity_row is not None:
+                    session.delete(identity_row)
             session.flush()
 
             still_attached = session.get(m.Restaurant, restaurant.id)
@@ -9825,6 +9973,340 @@ def _assert_selection_pattern_intelligence_foundation(
             session.flush()
             session.delete(session.get(m.Restaurant, restaurant.id))
             session.commit()
+        session.close()
+
+
+def _assert_outcome_workflow_unification(session_factory: sessionmaker[Session], result: ValidationResult) -> None:
+    """GLOBAL_INTEGRITY_FIX_003 / C-2 checks (task §19) — the legacy
+    `workflow_projection_service.apply_legacy_workflow_action` bridge (used
+    by the Review Queue's Workflow Status control and by
+    `phone_interview_service.record_post_interview_decision`) now carries
+    the same stable ActingIdentity attribution and fires the same Candidate
+    Communication consequence as the modern Stage/Outcome routes, changing
+    an existing governed decision through the bridge still requires a
+    reason, and `outcome_service.get_effective_application_outcome`/the AI
+    evaluator prefer the authoritative decision over the stale legacy
+    `Application.outcome` scalar. Own dedicated restaurant, real commits,
+    real cleanup (same reasoning as `_assert_session_ownership_rule_
+    governance` above)."""
+
+    session = session_factory()
+    restaurant: m.Restaurant | None = None
+    identity_ids: list[int] = []
+    try:
+        restaurant = m.Restaurant(name="Synthetic FIX003 Outcome/Workflow Test Restaurant", default_currency="USD")
+        session.add(restaurant)
+        session.commit()
+
+        alex = acting_id_svc.create_identity(session, kind=m.HUMAN_USER, display_name="Alex Fix003")
+        session.commit()
+        identity_ids.append(alex.id)
+
+        def _upload(email: str, name: str) -> m.Application:
+            text = f"{name}\n{email}\n555-700-0000\n\nEXPERIENCE\nServer, Test Bistro\nJan 2022 - Present\nServed guests.\n"
+            imported = import_pipeline.import_one_resume(
+                session, restaurant_id=restaurant.id, source_type=LOCAL_UPLOAD, original_filename=f"{email}.txt",
+                storage_path=None, raw_text=text, content_hash=compute_content_hash(text, email),
+            )
+            application = app_svc.create_application(
+                session, candidate_id=imported.candidate_id, restaurant_id=restaurant.id, target_role="SERVER",
+            )
+            session.commit()
+            return application
+
+        hold_def = outcome_svc.create_outcome_definition(
+            session, restaurant_id=restaurant.id, name="Hold", lifecycle_effect=om.SUSPENDED, requires_reason=False,
+        )
+        stop_def = outcome_svc.create_outcome_definition(
+            session, restaurant_id=restaurant.id, name="Stop", lifecycle_effect=om.CLOSED, requires_reason=False,
+        )
+        session.commit()
+
+        stage_tmpl = tmpl_svc.create_template(
+            session, restaurant_id=restaurant.id, trigger_event=ccm.TRIGGER_ADVANCE_TO_IN_PERSON,
+            sms_text="You're invited to an in-person interview.",
+        )
+        stop_tmpl = tmpl_svc.create_template(
+            session, restaurant_id=restaurant.id, trigger_event=ccm.TRIGGER_PRIMARY_SCREENING_STOP,
+            outcome_definition_id=stop_def.id, sms_text="Thank you for your interest.",
+        )
+        session.commit()
+
+        # =====================================================================
+        # A/C/D/V: the legacy bridge, Stage-mapped (ADVANCE_TO_IN_PERSON),
+        # creates a real ApplicationStageTransition (never a direct
+        # workflow_status write), carries the stable ActingIdentity, and
+        # fires the SAME Candidate Communication the modern Stage route does.
+        # =====================================================================
+        app1 = _upload("fix003.stage@example.com", "Robin Fix003Stage")
+        wf_svc.apply_legacy_workflow_action(
+            session, app1.id, apm.ADVANCE_TO_IN_PERSON, performed_by="Alex Fix003", performed_by_identity_id=alex.id,
+        )
+        session.commit()
+        session.expire_all()
+        transitions1 = stage_svc.list_stage_history(session, app1.id)
+        result.check(
+            "FIX003-A: the legacy workflow-status bridge, mapped to a Stage change, creates a real "
+            "ApplicationStageTransition rather than a direct workflow_status write",
+            len(transitions1) == 1 and transitions1[0].new_stage == stgm.IN_PERSON_PRACTICAL,
+        )
+        result.check(
+            "FIX003-C/D: the Stage transition created via the legacy bridge carries the stable ActingIdentity",
+            transitions1[0].performed_by_identity_id == alex.id,
+        )
+        comms1 = comm_svc.list_communications_for_application(session, app1.id)
+        result.check(
+            "FIX003-G/V: the legacy bridge fires the SAME Candidate Communication consequence the modern Stage "
+            "route fires for the same transition (ADVANCE_TO_IN_PERSON)",
+            len(comms1) == 1 and comms1[0].trigger_event == ccm.TRIGGER_ADVANCE_TO_IN_PERSON,
+        )
+
+        # =====================================================================
+        # A/C/D/G/V: the legacy bridge, Outcome-mapped (STOP), creates a real
+        # governed SelectionOutcomeDecision, carries the ActingIdentity, and
+        # fires the same Outcome communication the modern route fires.
+        # =====================================================================
+        app2 = _upload("fix003.outcome@example.com", "Robin Fix003Outcome")
+        wf_svc.apply_legacy_workflow_action(
+            session, app2.id, apm.STOP, performed_by="Alex Fix003", performed_by_identity_id=alex.id,
+        )
+        session.commit()
+        session.expire_all()
+        decision2 = outcome_svc.get_current_outcome_decision(session, app2.id)
+        result.check(
+            "FIX003-A: the legacy workflow-status bridge, mapped to an Outcome (STOP), creates a real, "
+            "governed SelectionOutcomeDecision rather than a direct Application.outcome/workflow_status write",
+            decision2 is not None and decision2.outcome_definition_snapshot.definition_id == stop_def.id,
+        )
+        result.check(
+            "FIX003-C/D: the Outcome decision created via the legacy bridge carries the stable ActingIdentity",
+            decision2.performed_by_identity_id == alex.id,
+        )
+        comms2 = comm_svc.list_communications_for_application(session, app2.id)
+        result.check(
+            "FIX003-G/V: the legacy bridge fires the SAME Candidate Communication consequence the modern "
+            "Outcome route fires for the same Outcome decision (STOP)",
+            len(comms2) == 1 and comms2[0].trigger_event == ccm.TRIGGER_PRIMARY_SCREENING_STOP,
+        )
+
+        # =====================================================================
+        # F: changing an EXISTING governed decision through the legacy
+        # bridge still requires a reason — the SAME rule
+        # `outcome_service.apply_outcome` enforces for the modern route,
+        # applied here because the bridge funnels through that same
+        # function rather than writing around it.
+        # =====================================================================
+        blocked_without_reason = False
+        try:
+            wf_svc.apply_legacy_workflow_action(
+                session, app2.id, apm.HOLD, performed_by="Alex Fix003", performed_by_identity_id=alex.id,
+            )
+        except ValueError:
+            blocked_without_reason = True
+            session.rollback()
+        result.check(
+            "FIX003-F: changing an existing governed Outcome decision (STOP -> HOLD) via the legacy bridge "
+            "still requires a reason, regardless of route",
+            blocked_without_reason,
+        )
+        wf_svc.apply_legacy_workflow_action(
+            session, app2.id, apm.HOLD, reason="Reconsidering after new information.", performed_by="Alex Fix003",
+            performed_by_identity_id=alex.id,
+        )
+        session.commit()
+        session.expire_all()
+        decision2b = outcome_svc.get_current_outcome_decision(session, app2.id)
+        result.check(
+            "FIX003-F: the SAME change succeeds once a reason is supplied",
+            decision2b is not None and decision2b.outcome_definition_snapshot.definition_id == hold_def.id,
+        )
+
+        # =====================================================================
+        # H/I/K: get_effective_application_outcome prefers the authoritative
+        # decision, falls back to the legacy scalar ONLY when no decision
+        # exists, and makes the source explicit.
+        # =====================================================================
+        app3 = _upload("fix003.effective@example.com", "Robin Fix003Effective")
+        effective_none = outcome_svc.get_effective_application_outcome(session, app3.id)
+        result.check(
+            "FIX003-effective-none: with neither a governed decision nor a legacy value, the effective "
+            "Outcome is (None, NONE)",
+            effective_none.label is None and effective_none.source == outcome_svc.SOURCE_NONE,
+        )
+        app_svc.set_outcome(session, app3.id, "HIRED")
+        session.commit()
+        session.expire_all()
+        effective_legacy = outcome_svc.get_effective_application_outcome(session, app3.id)
+        result.check(
+            "FIX003-H/K: with ONLY a legacy Application.outcome value (no governed decision), the effective "
+            "Outcome falls back to it and marks the source LEGACY_FIELD",
+            effective_legacy.label == "HIRED" and effective_legacy.source == outcome_svc.SOURCE_LEGACY_FIELD,
+        )
+        outcome_svc.apply_outcome(session, app3.id, stop_def.id, performed_by_identity_id=alex.id)
+        session.commit()
+        session.expire_all()
+        effective_governed = outcome_svc.get_effective_application_outcome(session, app3.id)
+        result.check(
+            "FIX003-I: once a governed SelectionOutcomeDecision exists, it takes precedence over the stale "
+            "legacy Application.outcome value ('HIRED') — the effective Outcome is the governed one ('Stop')",
+            effective_governed.label == "Stop" and effective_governed.source == outcome_svc.SOURCE_GOVERNED_DECISION,
+        )
+        result.check(
+            "FIX003-H: the legacy Application.outcome value itself remains unchanged/readable underneath "
+            "(historical compatibility — never overwritten by the governed decision)",
+            app_svc.get_application(session, app3.id).outcome == "HIRED",
+        )
+
+        # =====================================================================
+        # J: the AI evaluator's prior-application evidence reads the
+        # authoritative Outcome, not the stale legacy scalar — before AND
+        # after a governed decision exists for the same prior Application.
+        # =====================================================================
+        app4 = _upload("fix003.effective@example.com", "Robin Fix003EffectiveB")  # same email -> same person as app3
+        session.expire_all()
+        result.check(
+            "FIX003-J-setup: app4 and app3 resolved to the same CandidatePerson (same contact identity)",
+            app4.person_id == app3.person_id,
+        )
+        history_text_governed = ai_eval._application_history_evidence(session, app4)[0].evidence_text
+        result.check(
+            "FIX003-J: the AI evaluator's prior-application evidence reflects the AUTHORITATIVE Outcome "
+            "decision ('Stop'), never the stale legacy scalar ('HIRED')",
+            "Stop" in history_text_governed and "HIRED" not in history_text_governed,
+        )
+
+        app5 = _upload("fix003.legacyonly@example.com", "Robin Fix003LegacyOnly")
+        app_svc.set_outcome(session, app5.id, "RETAINED")
+        session.commit()
+        app6 = _upload("fix003.legacyonly@example.com", "Robin Fix003LegacyOnlyB")  # same email -> same person as app5
+        session.expire_all()
+        history_text_legacy = ai_eval._application_history_evidence(session, app6)[0].evidence_text
+        result.check(
+            "FIX003-K/J: a historical Application with ONLY a legacy outcome (no governed decision) still "
+            "surfaces it to the AI evaluator as evidence, explicitly labeled legacy",
+            "RETAINED" in history_text_legacy and "legacy" in history_text_legacy,
+        )
+
+        # =====================================================================
+        # L/M/D: phone_interview_service.record_post_interview_decision maps
+        # its decision through the SAME legacy bridge, carrying the same
+        # ActingIdentity.
+        # =====================================================================
+        req_set = req_svc.create_requirement_set(session, restaurant_id=restaurant.id, name="FIX003 Server Requirements")
+        req_svc.add_requirement(
+            session, req_set.id, name="Teamwork", criticality=rm.MUST_HAVE, trainability=rm.NOT_TRAINABLE,
+            assessment_stages=[rm.RESUME],
+        )
+        session.commit()
+        app7 = _upload("fix003.phone@example.com", "Robin Fix003Phone")
+        app7.requirement_set_id = req_set.id
+        session.commit()
+        fit_assessment = fa_svc.create_fit_assessment(session, candidate_id=app7.candidate_id, requirement_set_id=req_set.id)
+        session.commit()
+        plan = pi_svc.create_plan(session, app7.id)
+        session.commit()
+
+        pi_svc.record_post_interview_decision(
+            session, plan.id, plan_status=pim.COMPLETED, application_decision=apm.ADVANCE_TO_IN_PERSON,
+            reason="Strong phone interview.", performed_by="Alex Fix003", performed_by_identity_id=alex.id,
+        )
+        session.commit()
+        session.expire_all()
+        transitions7 = stage_svc.list_stage_history(session, app7.id)
+        result.check(
+            "FIX003-L: phone_interview_service.record_post_interview_decision maps its Stage-like decision "
+            "through the same authoritative Stage service the modern route uses",
+            len(transitions7) == 1 and transitions7[0].new_stage == stgm.IN_PERSON_PRACTICAL,
+        )
+        result.check(
+            "FIX003-D: the post-Phone-Interview decision carries the stable ActingIdentity, not just a typed name",
+            transitions7[0].performed_by_identity_id == alex.id,
+        )
+
+        # =====================================================================
+        # Y (partial, structural): application_service.set_outcome is no
+        # longer reachable from any live HTTP route (retired per task §4
+        # option A) — confirmed by static/HTTP-level checks in
+        # `Selection/test_outcome_workflow_http.py`, not repeated here.
+        # =====================================================================
+
+    finally:
+        session.rollback()
+        if restaurant is not None and restaurant.id is not None:
+            for c in session.query(m.CandidateCommunication).join(
+                m.Application, m.CandidateCommunication.application_id == m.Application.id
+            ).filter(m.Application.restaurant_id == restaurant.id):
+                c.response_inbound_id = None
+                c.parent_communication_id = None
+            session.flush()
+            for c in list(session.query(m.CandidateCommunication).join(
+                m.Application, m.CandidateCommunication.application_id == m.Application.id
+            ).filter(m.Application.restaurant_id == restaurant.id)):
+                session.delete(c)
+            session.flush()
+            for s in list(session.query(m.CommunicationTemplateSnapshot).join(
+                m.CommunicationTemplate, m.CommunicationTemplateSnapshot.template_id == m.CommunicationTemplate.id
+            ).filter(m.CommunicationTemplate.restaurant_id == restaurant.id)):
+                session.delete(s)
+            session.flush()
+            for t in list(session.query(m.CommunicationTemplate).filter_by(restaurant_id=restaurant.id)):
+                session.delete(t)
+            session.flush()
+            for gap_row in session.query(m.TrainableGap).join(
+                m.Application, m.TrainableGap.application_id == m.Application.id
+            ).filter(m.Application.restaurant_id == restaurant.id):
+                session.delete(gap_row)
+            session.flush()
+            for plan_row in session.query(m.PhoneInterviewPlan).join(
+                m.Application, m.PhoneInterviewPlan.application_id == m.Application.id
+            ).filter(m.Application.restaurant_id == restaurant.id):
+                session.delete(plan_row)
+            session.flush()
+            for match_row in session.query(m.PersonMatchCandidate).join(
+                m.Application, m.PersonMatchCandidate.application_id == m.Application.id
+            ).filter(m.Application.restaurant_id == restaurant.id):
+                session.delete(match_row)
+            session.flush()
+            for application_row in app_svc.list_applications(session, restaurant_id=restaurant.id):
+                for fa_row in fa_svc.list_fit_assessments_for_candidate(session, application_row.candidate_id):
+                    session.delete(fa_row)
+                session.flush()
+                session.delete(application_row)  # cascades Notes/StageTransitions/OutcomeDecisions/Signals
+            session.flush()
+            for def_snapshot_row in session.query(m.SelectionOutcomeDefinitionSnapshot).join(
+                m.SelectionOutcomeDefinition, m.SelectionOutcomeDefinitionSnapshot.definition_id == m.SelectionOutcomeDefinition.id
+            ).filter(m.SelectionOutcomeDefinition.restaurant_id == restaurant.id):
+                session.delete(def_snapshot_row)
+            session.flush()
+            for definition_row in session.query(m.SelectionOutcomeDefinition).filter_by(restaurant_id=restaurant.id):
+                session.delete(definition_row)
+            session.flush()
+            for req_snap_row in session.query(m.RequirementSetSnapshot).join(
+                m.RequirementSet, m.RequirementSetSnapshot.requirement_set_id == m.RequirementSet.id
+            ).filter(m.RequirementSet.restaurant_id == restaurant.id):
+                session.delete(req_snap_row)
+            session.flush()
+            for req_set_row in session.query(m.RequirementSet).filter_by(restaurant_id=restaurant.id):
+                session.delete(req_set_row)  # cascades live Requirements
+            session.flush()
+            for person_row in session.query(m.CandidatePerson).filter_by(restaurant_id=restaurant.id):
+                session.delete(person_row)
+            session.flush()
+            for candidate_row in persistence.list_candidates(session, restaurant_id=restaurant.id):
+                session.delete(candidate_row)
+            session.flush()
+            for raw_row in session.query(m.RawResume).filter_by(restaurant_id=restaurant.id):
+                session.delete(raw_row)
+            session.flush()
+            still_attached = session.get(m.Restaurant, restaurant.id)
+            if still_attached is not None:
+                session.delete(still_attached)
+            session.commit()
+        for identity_id in identity_ids:
+            identity_row = session.get(m.ActingIdentity, identity_id)
+            if identity_row is not None:
+                session.delete(identity_row)
+        session.commit()
         session.close()
 
 

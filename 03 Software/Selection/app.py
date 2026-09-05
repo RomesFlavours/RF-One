@@ -54,7 +54,9 @@ os.makedirs(DATA_DIR, exist_ok=True)
 os.environ.setdefault("RFONE_DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH.replace(os.sep, '/')}")
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for  # noqa: E402
+from flask import session as flask_session  # noqa: E402
 
+from rfone_data_store import acting_identity_service as acting_id_svc  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.database import (  # noqa: E402
     create_configured_engine, create_session_factory, get_database_url,
@@ -132,6 +134,74 @@ _engine = create_configured_engine(_DB_URL)
 SessionFactory = create_session_factory(_engine)
 
 app = Flask(__name__)
+
+# GLOBAL_INTEGRITY_FIX_002 / C-1 — needed only to sign the pre-Authentication
+# identity-selection cookie set by `/identity/switch` below (which ActingIdentity
+# id is "current" for this browser). A fresh random key per process is
+# deliberate and correct for this pre-Authentication prototype: it is NOT a
+# production Authentication secret, carries no login/password state, and its
+# only effect on restart is that any open browser's identity selection reverts
+# to the server-side default (see `acting_identity_service.
+# get_current_acting_identity`) — never a security regression. Set
+# `RFONE_FLASK_SECRET_KEY` explicitly for a deployment that wants the
+# selection to survive an app restart.
+app.secret_key = os.environ.get("RFONE_FLASK_SECRET_KEY") or os.urandom(24)
+
+
+def _current_identity(session) -> "m.ActingIdentity":
+    """GLOBAL_INTEGRITY_FIX_002 / C-1 — the ONE place this app resolves "who
+    is currently acting," per `acting_identity_service.
+    get_current_acting_identity`'s own docstring. `flask_session` is a
+    signed, server-controlled cookie set only by `/identity/switch` after
+    validating the id against an existing, active `ActingIdentity` row —
+    never a raw name read directly from a request form field."""
+
+    return acting_id_svc.get_current_acting_identity(
+        session, requested_identity_id=flask_session.get("acting_identity_id"),
+    )
+
+
+@app.route("/identity/switch", methods=["GET", "POST"])
+def identity_switch():
+    """GLOBAL_INTEGRITY_FIX_002 / C-1/§5 — the ONE trusted server-side
+    mechanism for choosing which already-existing Acting Identity is
+    "current" for this browser, standing in for real Authentication until
+    one exists (see `acting_identity_service`'s module docstring — this is
+    explicitly NOT login: it never verifies a password or issues a proof of
+    identity, it only lets an operator pick among identities a
+    HUMAN_USER has already registered via `/identity/register`)."""
+
+    with SessionFactory() as session:
+        if request.method == "POST":
+            identity_id = request.form.get("identity_id", type=int)
+            identity = acting_id_svc.get_identity(session, identity_id) if identity_id else None
+            if identity is not None and identity.is_active:
+                flask_session["acting_identity_id"] = identity.id
+            return redirect(request.form.get("next") or url_for("identity_switch"))
+
+        identities = acting_id_svc.list_identities(session, kind=m.HUMAN_USER, active_only=True)
+        current = _current_identity(session)
+        return render_template(
+            "identity_switch.html", identities=identities, current=current,
+            next_url=request.args.get("next") or url_for("home"), active_nav="identity",
+        )
+
+
+@app.route("/identity/register", methods=["POST"])
+def identity_register():
+    """Dev-only roster registration (task §5's "trusted server-side
+    development configuration") — creates a new HUMAN_USER Acting Identity.
+    This is configuration, NOT Authentication: creating this row is not, by
+    itself, proof of who is making any given request; it only makes the
+    identity selectable via `/identity/switch` above."""
+
+    with SessionFactory() as session:
+        display_name = (request.form.get("display_name") or "").strip()
+        if display_name:
+            identity = acting_id_svc.create_identity(session, kind=m.HUMAN_USER, display_name=display_name)
+            session.commit()
+            flask_session["acting_identity_id"] = identity.id
+        return redirect(request.form.get("next") or url_for("identity_switch"))
 
 
 def _bootstrap_restaurant(session) -> "m.Restaurant":
@@ -760,7 +830,6 @@ def applications_home():
                 "priority_origin": a.review_priority_origin,
                 "priority_reasons": a.review_priority_reasons or [],
                 "workflow_status": a.workflow_status,
-                "outcome": a.outcome or "-",
                 "prior_count": len(app_svc.list_prior_applications(session, a.id)),
                 "original_cv_available": _original_cv_available(session, a.candidate),
             }
@@ -788,6 +857,13 @@ def application_detail(application_id: int):
 
         observations = sig_svc.list_observations(session, application_id)
         prior_applications = app_svc.list_prior_applications(session, application_id)
+        # GLOBAL_INTEGRITY_FIX_003 / C-2 §11/§12 — the same effective-outcome
+        # read model the AI evaluator now uses, so a human reviewing this
+        # Application's history sees the authoritative decision rather than
+        # a stale/blank legacy `Application.outcome` scalar.
+        prior_effective_outcomes = {
+            p.id: outcome_svc.get_effective_application_outcome(session, p.id) for p in prior_applications
+        }
         change_summary = app_svc.get_application_change_summary(session, application_id)
         notes = app_svc.list_notes(session, application_id)
         pending_matches = [
@@ -817,12 +893,13 @@ def application_detail(application_id: int):
             primary_screening_run=primary_screening_run, has_fit_assessment=has_fit_assessment,
             profile=persistence.to_profile(application.candidate),
             signal_statuses=sigm.SIGNAL_STATUSES, priority_categories=sigm.REVIEW_PRIORITY_CATEGORIES,
-            outcome_options=sigm.APPLICATION_OUTCOMES, workflow_statuses=apm.WORKFLOW_STATUSES,
+            workflow_statuses=apm.WORKFLOW_STATUSES,
             decision_statuses=apm.DECISION_STATUSES,
             evidence_source_types=fam.EVIDENCE_SOURCE_TYPES, evidence_classifications=fam.EVIDENCE_CLASSIFICATIONS,
             evidence_relationships=fam.EVIDENCE_RELATIONSHIPS, confidence_levels=fam.CONFIDENCE_LEVELS,
             assessment_stages=rm.ASSESSMENT_STAGES,
             change_summary=change_summary, notes=notes, pending_matches=pending_matches,
+            prior_effective_outcomes=prior_effective_outcomes,
             other_persons=other_persons, original_cv_available=_original_cv_available(session, application.candidate),
             stages=stgm.STAGES, current_outcome_decision=current_outcome_decision,
             outcome_definitions=outcome_svc.list_outcome_definitions(session, restaurant_id=application.restaurant_id),
@@ -854,11 +931,19 @@ def application_dossier(application_id: int):
         seed_default_selection_outcomes(session, restaurant_id=application.restaurant_id)  # idempotent
         outcome_definitions = outcome_svc.list_outcome_definitions(session, restaurant_id=application.restaurant_id)
 
+        # GLOBAL_INTEGRITY_FIX_002 / C-1/§9 — reassignment selects a TARGET
+        # Acting Identity from this Session's own roster, never a typed name.
+        session_assignments = (
+            sess_svc.list_assignments(session, dossier.session_context.session.id, active_only=True)
+            if dossier.session_context.session else []
+        )
+
         return render_template(
             "dossier.html", dossier=dossier, application=application,
             original_cv_available=_original_cv_available(session, application.candidate),
             initial_levels=tgm.INITIAL_LEVELS, level_descriptions=tgm.LEVEL_DESCRIPTIONS,
             outcome_definitions=outcome_definitions, stages=stgm.STAGES,
+            session_assignments=session_assignments, current_identity=_current_identity(session),
             active_nav="applications",
         )
 
@@ -876,15 +961,15 @@ def trainable_gap_review(gap_id: int):
             return redirect(url_for("applications_home"))
         application_id = gap.application_id
 
-        actor = (request.form.get("actor") or "").strip() or None
+        actor = _current_identity(session)
         level = request.form.get("level", type=int)
         if level is not None:
             try:
-                own_svc.assert_can_operate(session, application_id, actor)
+                own_svc.assert_can_operate(session, application_id, actor.id)
                 tg_svc.set_selezionatore_level(
                     session, gap_id, level=level,
                     reason=(request.form.get("reason") or "").strip() or None,
-                    performed_by=actor,
+                    performed_by=actor.display_name,
                 )
                 session.commit()
             except ValueError:
@@ -904,28 +989,34 @@ def application_take_in_charge(application_id: int):
     never implied merely by viewing an Application read-only."""
 
     with SessionFactory() as session:
-        owner_name = (request.form.get("owner_name") or "").strip()
-        if owner_name:
-            try:
-                own_svc.take_in_charge(session, application_id, owner_name=owner_name)
-                session.commit()
-            except ValueError:
-                session.rollback()
+        actor = _current_identity(session)
+        try:
+            own_svc.take_in_charge(session, application_id, acting_identity_id=actor.id)
+            session.commit()
+        except ValueError:
+            session.rollback()
         return redirect(request.form.get("next") or url_for("application_dossier", application_id=application_id))
 
 
 @app.route("/applications/<int:application_id>/reassign", methods=["POST"])
 def application_reassign(application_id: int):
     """Task 5C §9 — reassignment by the current owner or a Selezionatore
-    with configured superior authority; always requires a reason."""
+    with configured superior authority; always requires a reason.
+    GLOBAL_INTEGRITY_FIX_002 / C-1: the performer is resolved server-side
+    (never client-supplied text); only the TARGET (new owner) is selected
+    by the form, and only by stable Acting Identity id — never a typed
+    name (task §9's "do not confuse actor identity with action target")."""
 
     with SessionFactory() as session:
-        new_owner = (request.form.get("new_owner") or "").strip()
-        performed_by = (request.form.get("performed_by") or "").strip()
+        new_owner_identity_id = request.form.get("new_owner_identity_id", type=int)
         reason = (request.form.get("reason") or "").strip()
-        if new_owner and performed_by:
+        if new_owner_identity_id:
+            actor = _current_identity(session)
             try:
-                own_svc.reassign(session, application_id, new_owner=new_owner, performed_by=performed_by, reason=reason)
+                own_svc.reassign(
+                    session, application_id, new_owner_identity_id=new_owner_identity_id,
+                    performed_by_identity_id=actor.id, reason=reason,
+                )
                 session.commit()
             except ValueError:
                 session.rollback()
@@ -939,15 +1030,23 @@ def application_set_workflow_status(application_id: int):
     transition and/or Outcome application via `workflow_projection_
     service.apply_legacy_workflow_action`; `workflow_status` itself is
     only ever refreshed as the resulting projection, never written
-    directly here anymore (Task 3C-FIX §7's original behavior)."""
+    directly here anymore (Task 3C-FIX §7's original behavior).
+
+    GLOBAL_INTEGRITY_FIX_003 / C-2 §7/§8 — the actor is resolved server-
+    side and the SAME ownership/authority guard the modern Stage/Outcome
+    routes use (`own_svc.assert_can_operate`) is enforced here too, so
+    authority no longer depends on which control was used."""
 
     with SessionFactory() as session:
         new_status = request.form.get("new_status")
         if new_status:
+            actor = _current_identity(session)
             try:
+                own_svc.assert_can_operate(session, application_id, actor.id)
                 wf_svc.apply_legacy_workflow_action(
                     session, application_id, new_status,
                     reason=(request.form.get("reason") or "").strip() or None,
+                    performed_by=actor.display_name, performed_by_identity_id=actor.id,
                 )
                 session.commit()
             except ValueError:
@@ -974,19 +1073,21 @@ def application_set_stage(application_id: int):
     with SessionFactory() as session:
         new_stage = request.form.get("new_stage")
         if new_stage:
-            actor = (request.form.get("actor") or "").strip() or None
+            actor = _current_identity(session)
             communication_mode = (request.form.get("communication_mode") or "").strip() or None
             try:
-                own_svc.assert_can_operate(session, application_id, actor)
+                own_svc.assert_can_operate(session, application_id, actor.id)
                 transition = stage_svc.set_stage(
-                    session, application_id, new_stage, performed_by=actor,
+                    session, application_id, new_stage, performed_by=actor.display_name,
+                    performed_by_identity_id=actor.id,
                     note_text=(request.form.get("note_text") or "").strip() or None,
                 )
                 # Task 5D §7/§9 — communication is a CONSEQUENCE of the Stage
                 # transition just recorded above, never itself the decision.
                 application = app_svc.get_application(session, application_id)
                 comm_svc.on_stage_transition(
-                    session, application, transition, communication_mode=communication_mode, performed_by=actor,
+                    session, application, transition, communication_mode=communication_mode,
+                    performed_by=actor.display_name,
                 )
                 session.commit()
             except ValueError:
@@ -1002,14 +1103,14 @@ def application_apply_outcome(application_id: int):
     with SessionFactory() as session:
         outcome_definition_id = request.form.get("outcome_definition_id", type=int)
         if outcome_definition_id:
-            actor = (request.form.get("actor") or "").strip() or None
+            actor = _current_identity(session)
             try:
-                own_svc.assert_can_operate(session, application_id, actor)
+                own_svc.assert_can_operate(session, application_id, actor.id)
                 decision = outcome_svc.apply_outcome(
                     session, application_id, outcome_definition_id,
                     reason=(request.form.get("reason") or "").strip() or None,
                     note_text=(request.form.get("note_text") or "").strip() or None,
-                    performed_by=actor,
+                    performed_by=actor.display_name, performed_by_identity_id=actor.id,
                 )
                 # Task 5D §6/§8/§9 — communication is a CONSEQUENCE of the
                 # Outcome decision just recorded above, never itself the
@@ -1030,14 +1131,14 @@ def application_reopen(application_id: int):
     with SessionFactory() as session:
         outcome_definition_id = request.form.get("outcome_definition_id", type=int)
         if outcome_definition_id:
-            actor = (request.form.get("actor") or "").strip() or None
+            actor = _current_identity(session)
             try:
-                own_svc.assert_can_operate(session, application_id, actor)
+                own_svc.assert_can_operate(session, application_id, actor.id)
                 outcome_svc.reopen_application(
                     session, application_id, outcome_definition_id,
                     reason=(request.form.get("reason") or "").strip() or None,
                     note_text=(request.form.get("note_text") or "").strip() or None,
-                    performed_by=actor,
+                    performed_by=actor.display_name, performed_by_identity_id=actor.id,
                 )
                 session.commit()
             except ValueError:
@@ -1126,6 +1227,7 @@ def application_decision(application_id: int):
             lifecycle_states=om.LIFECYCLE_STATES,
             queues=queue_svc.list_queues(session, restaurant_id=application.restaurant_id),
             original_cv_available=_original_cv_available(session, application.candidate),
+            current_identity=_current_identity(session),
             active_nav="applications",
         )
 
@@ -1169,14 +1271,18 @@ def application_set_target_role(application_id: int):
         return redirect(url_for("application_detail", application_id=application_id))
 
 
-@app.route("/applications/<int:application_id>/outcome", methods=["POST"])
-def application_set_outcome(application_id: int):
-    with SessionFactory() as session:
-        outcome = request.form.get("outcome")
-        if outcome:
-            app_svc.set_outcome(session, application_id, outcome)
-            session.commit()
-        return redirect(url_for("application_detail", application_id=application_id))
+# GLOBAL_INTEGRITY_FIX_003 / C-2 §4 — the legacy `/applications/<id>/outcome`
+# mutation route (a direct, ungoverned `Application.outcome` overwrite: no
+# ActingIdentity, no authority check, no history, no reason, no
+# communication) has been retired (task §4 option A). Its vocabulary
+# (`sm.APPLICATION_OUTCOMES` — REVIEWED/ADVANCED/HELD/.../RETAINED) does not
+# map cleanly onto restaurant-configured `SelectionOutcomeDefinition` names
+# (task §5's "if a legacy value cannot map cleanly, fail honestly rather
+# than guessing"), so routing it through the Outcome Engine (option B) would
+# require fabricating a mapping. The `Application.outcome` column and its
+# historical values are unchanged and remain readable — see
+# `application_service.set_outcome`'s own docstring and
+# `outcome_service.get_effective_application_outcome`.
 
 
 @app.route("/applications/<int:application_id>/priority/confirm", methods=["POST"])
@@ -1714,15 +1820,31 @@ def phone_interview_escape_route(plan_id: int):
 
 @app.route("/phone-interviews/<int:plan_id>/decision", methods=["POST"])
 def phone_interview_decision(plan_id: int):
+    """GLOBAL_INTEGRITY_FIX_003 / C-2 §5/§7/§8 — this decision maps directly
+    onto a Stage transition and/or Outcome application (via
+    `workflow_projection_service.apply_legacy_workflow_action`); it must
+    therefore carry the SAME ActingIdentity/ownership-authority guard as
+    the modern Dossier Stage/Outcome controls, not a lesser one."""
+
     with SessionFactory() as session:
+        plan = pi_svc.get_plan(session, plan_id)
+        if plan is None:
+            return redirect(url_for("applications_home"))
+
         plan_status = request.form.get("plan_status")
         application_decision = request.form.get("application_decision")
         if plan_status and application_decision:
-            pi_svc.record_post_interview_decision(
-                session, plan_id, plan_status=plan_status, application_decision=application_decision,
-                reason=(request.form.get("reason") or "").strip() or None,
-            )
-            session.commit()
+            actor = _current_identity(session)
+            try:
+                own_svc.assert_can_operate(session, plan.application_id, actor.id)
+                pi_svc.record_post_interview_decision(
+                    session, plan_id, plan_status=plan_status, application_decision=application_decision,
+                    reason=(request.form.get("reason") or "").strip() or None,
+                    performed_by=actor.display_name, performed_by_identity_id=actor.id,
+                )
+                session.commit()
+            except ValueError:
+                session.rollback()
         return redirect(url_for("phone_interview_detail", plan_id=plan_id))
 
 
@@ -2270,6 +2392,7 @@ def primary_screening_detail(run_id: int):
             prior_runs=ps_svc.list_runs_for_application(session, application.id),
             run_notes=ps_svc.list_run_notes(session, run.id), evaluation_notes=evaluation_notes,
             active_flags=flag_svc.list_active_flags_for_application(session, application.id),
+            current_identity=_current_identity(session),
             active_nav="primary-screening-queue",
         )
 
@@ -2312,13 +2435,32 @@ def primary_screening_evaluation_enter(run_id: int, evaluation_id: int):
 
 @app.route("/primary-screening/<int:run_id>/evaluations/<int:evaluation_id>/override", methods=["POST"])
 def primary_screening_evaluation_override(run_id: int, evaluation_id: int):
+    """GLOBAL_INTEGRITY_FIX_003 / C-2 §14 — this substantive override (a
+    mandatory-reason change away from the system-computed level) now
+    enforces the same ownership/authority guard as `override-hard-
+    disqualifier` below, closing the "same category of action [override],
+    different route, different governance" inconsistency the review
+    flagged. `enter`/`confirm`/`not-applicable`/`insufficient-evidence`
+    above remain ungated deliberately — they are evidentiary/procedural
+    (entering or acknowledging evidence), not a substantive override of a
+    Decision, so forcing this same governance onto them would not match
+    task §14's own "if purely evidentiary... document the distinction
+    rather than forcing inappropriate governance"."""
+
     with SessionFactory() as session:
         level = request.form.get("level", type=int)
         if level is not None:
-            ps_svc.human_override_evaluation(
-                session, evaluation_id, level=level, reason=(request.form.get("reason") or "").strip() or None,
-            )
-            session.commit()
+            actor = _current_identity(session)
+            try:
+                run = ps_svc.get_run(session, run_id)
+                if run is not None:
+                    own_svc.assert_can_operate(session, run.application_id, actor.id)
+                ps_svc.human_override_evaluation(
+                    session, evaluation_id, level=level, reason=(request.form.get("reason") or "").strip() or None,
+                )
+                session.commit()
+            except ValueError:
+                session.rollback()
         return redirect(url_for("primary_screening_detail", run_id=run_id))
 
 
@@ -2350,11 +2492,11 @@ def primary_screening_evaluation_insufficient(run_id: int, evaluation_id: int):
 def primary_screening_override_hard_disqualifier(run_id: int, evaluation_id: int):
     with SessionFactory() as session:
         reason = (request.form.get("reason") or "").strip()
-        actor = (request.form.get("actor") or "").strip() or None
+        actor = _current_identity(session)
         try:
             run = ps_svc.get_run(session, run_id)
             if run is not None:
-                own_svc.assert_can_operate(session, run.application_id, actor)
+                own_svc.assert_can_operate(session, run.application_id, actor.id)
             ps_svc.override_hard_disqualifier(session, evaluation_id, reason=reason)
             session.commit()
         except ValueError:
@@ -2630,20 +2772,33 @@ def session_detail(session_id: int):
             scheduling_windows=sched_svc.list_windows_for_session(session, session_id, active_only=False),
             schedulable_stages=cm.SCHEDULABLE_STAGES,
             job_postings=jp_svc.list_job_postings_for_session(session, session_id),
+            # GLOBAL_INTEGRITY_FIX_002 / C-1 — assigning a Selezionatore and
+            # confirming the Rule Set both select/resolve a stable Acting
+            # Identity, never a typed name.
+            registered_identities=acting_id_svc.list_identities(session, kind=m.HUMAN_USER, active_only=True),
+            current_identity=_current_identity(session),
             active_nav="sessions",
         )
 
 
 @app.route("/sessions/<int:session_id>/assign", methods=["POST"])
 def session_assign_selezionatore(session_id: int):
+    """GLOBAL_INTEGRITY_FIX_002 / C-1: the form selects an EXISTING,
+    already-registered Acting Identity by stable id (see
+    `/identity/register`) — never a freely-typed name (task §9: a name field
+    here would be an identity SELECTOR, not merely descriptive)."""
+
     with SessionFactory() as session:
-        name = (request.form.get("selezionatore_name") or "").strip()
-        if name:
-            sess_svc.assign_selezionatore(
-                session, session_id, selezionatore_name=name,
-                authority_level_id=request.form.get("authority_level_id", type=int),
-            )
-            session.commit()
+        identity_id = request.form.get("acting_identity_id", type=int)
+        if identity_id:
+            try:
+                sess_svc.assign_selezionatore(
+                    session, session_id, acting_identity_id=identity_id,
+                    authority_level_id=request.form.get("authority_level_id", type=int),
+                )
+                session.commit()
+            except ValueError:
+                session.rollback()
         return redirect(url_for("session_detail", session_id=session_id))
 
 
@@ -2719,23 +2874,26 @@ def session_rule_set_update(session_id: int):
 
 @app.route("/sessions/<int:session_id>/rule-set/confirm", methods=["POST"])
 def session_confirm_rule_set(session_id: int):
+    """GLOBAL_INTEGRITY_FIX_002 / C-1: who confirmed is resolved server-side
+    — no `confirmed_by` text field is trusted (task §15)."""
+
     with SessionFactory() as session:
-        confirmed_by = (request.form.get("confirmed_by") or "").strip()
-        if confirmed_by:
-            try:
-                rs_svc.confirm_rule_set_version(
-                    session, session_id, confirmed_by=confirmed_by,
-                    note=(request.form.get("note") or "").strip() or None,
-                )
-                session.commit()
-            except ValueError:
-                session.rollback()
+        actor = _current_identity(session)
+        try:
+            rs_svc.confirm_rule_set_version(
+                session, session_id, acting_identity_id=actor.id,
+                note=(request.form.get("note") or "").strip() or None,
+            )
+            session.commit()
+        except ValueError:
+            session.rollback()
         return redirect(url_for("session_detail", session_id=session_id))
 
 
 @app.route("/sessions/<int:session_id>/rule-changes/new", methods=["POST"])
 def session_propose_rule_change(session_id: int):
     with SessionFactory() as session:
+        actor = _current_identity(session)
         criterion_ids = [int(v) for v in request.form.getlist("criterion_ids") if v]
         try:
             rc_svc.propose_rule_change(
@@ -2743,7 +2901,7 @@ def session_propose_rule_change(session_id: int):
                 rules_changed_summary=(request.form.get("rules_changed_summary") or "").strip(),
                 reason=(request.form.get("reason") or "").strip(),
                 scope=request.form.get("scope") or "",
-                performed_by=(request.form.get("performed_by") or "").strip() or None,
+                acting_identity_id=actor.id,
                 requirement_set_id=request.form.get("requirement_set_id", type=int),
                 primary_screening_criterion_ids=criterion_ids or None,
             )
@@ -3029,11 +3187,12 @@ def application_record_inbound(application_id: int):
 def inbound_correct_classification(inbound_id: int):
     with SessionFactory() as session:
         new_classification = request.form.get("new_classification")
-        corrected_by = (request.form.get("corrected_by") or "").strip()
-        if new_classification and corrected_by:
+        if new_classification:
+            actor = _current_identity(session)
             try:
                 inbound = inbound_svc.correct_classification(
-                    session, inbound_id, new_classification=new_classification, corrected_by=corrected_by,
+                    session, inbound_id, new_classification=new_classification,
+                    corrected_by=actor.display_name,
                     reason=(request.form.get("reason") or "").strip() or None,
                 )
                 application_id = inbound.application_id
@@ -3049,8 +3208,8 @@ def inbound_correct_classification(inbound_id: int):
 @app.route("/inbound/<int:inbound_id>/acknowledge", methods=["POST"])
 def inbound_acknowledge_alert(inbound_id: int):
     with SessionFactory() as session:
-        acknowledged_by = (request.form.get("acknowledged_by") or "").strip() or "Selezionatore"
-        inbound = inbound_svc.acknowledge_alert(session, inbound_id, acknowledged_by=acknowledged_by)
+        actor = _current_identity(session)
+        inbound = inbound_svc.acknowledge_alert(session, inbound_id, acknowledged_by=actor.display_name)
         application_id = inbound.application_id
         session.commit()
         return redirect(request.form.get("next") or url_for("application_communication_history", application_id=application_id))
@@ -3544,10 +3703,11 @@ def compliance_review_create():
 @app.route("/compliance/reviews/<int:review_id>/disposition", methods=["POST"])
 def compliance_disposition_create(review_id: int):
     with SessionFactory() as session:
+        actor = _current_identity(session)
         try:
             compliance_svc.record_disposition(
                 session, review_id, action=request.form.get("action"),
-                performed_by=(request.form.get("performed_by") or "").strip() or None,
+                performed_by=actor.display_name, performed_by_identity_id=actor.id,
                 final_text=(request.form.get("final_text") or "").strip() or None,
                 reason=(request.form.get("reason") or "").strip() or None,
             )

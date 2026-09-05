@@ -119,8 +119,7 @@
     <h3>Take Application In Charge</h3>
     <form method="post" action="{{ url_for('application_take_in_charge', application_id=application.id) }}" class="req-form">
       <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
-      <label>Your name (Selezionatore)</label>
-      <input type="text" name="owner_name" required>
+      <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a></p>
       <div class="modal-actions">
         <button type="button" class="btn secondary" onclick="this.closest('dialog').close()">Cancel</button>
         <button type="submit" class="btn">Take In Charge</button>
@@ -131,10 +130,14 @@
     <h3>Reassign Application Ownership</h3>
     <form method="post" action="{{ url_for('application_reassign', application_id=application.id) }}" class="req-form">
       <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
-      <label>Acting Selezionatore (current owner, or a Selezionatore with configured superior authority)</label>
-      <input type="text" name="performed_by" required>
+      <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a></p>
       <label>New owner</label>
-      <input type="text" name="new_owner" required>
+      <select name="new_owner_identity_id" required>
+        <option value="">— select a Selezionatore assigned to this Session —</option>
+        {% for a in session_assignments %}
+        <option value="{{ a.acting_identity_id }}" {% if not a.acting_identity_id %}disabled{% endif %}>{{ a.selezionatore_name }}{% if not a.acting_identity_id %} (no Acting Identity on record — cannot be selected){% endif %}</option>
+        {% endfor %}
+      </select>
       <label>Reason (mandatory)</label>
       <textarea name="reason" required></textarea>
       <div class="modal-actions">
@@ -189,8 +192,7 @@
       <h3>Override Hard Disqualifier — {{ e.criterion_snapshot.name }}</h3>
       <form method="post" action="{{ url_for('primary_screening_override_hard_disqualifier', run_id=summary.primary_screening_run.id, evaluation_id=e.id) }}" class="req-form">
         <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
-        <label>Acting Selezionatore</label>
-        <input type="text" name="actor" placeholder="Your name" value="{{ dossier.session_context.current_owner.owner_name if dossier.session_context.current_owner else '' }}">
+        <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a></p>
         <label>Reason (mandatory — the system-detected disqualifier remains visible in history either way)</label>
         <textarea name="reason" required></textarea>
         <div class="modal-actions">
@@ -273,8 +275,7 @@
       <h3>{{ gap.missing_capability }}</h3>
       <form method="post" action="{{ url_for('trainable_gap_review', gap_id=gap.id) }}" class="req-form">
         <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
-        <label>Acting Selezionatore</label>
-        <input type="text" name="actor" placeholder="Your name" value="{{ dossier.session_context.current_owner.owner_name if dossier.session_context.current_owner else '' }}">
+        <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a></p>
         <label>Selezionatore's initial level (0-4) — select RF-One's own level ({{ gap.rf_one_initial_level }}) to agree without a reason</label>
         <select name="level">
           {% for lvl in initial_levels %}<option value="{{ lvl }}" {{ 'selected' if lvl == gap.effective_initial_level else '' }}>{{ lvl }} — {{ level_descriptions[lvl] }}</option>{% endfor %}
@@ -370,8 +371,7 @@
       </select>
       <label>Reason (required when this changes an existing decision to a different Outcome)</label>
       <input type="text" name="reason">
-      <label>Acting Selezionatore</label>
-      <input type="text" name="actor" placeholder="Your name" value="{{ dossier.session_context.current_owner.owner_name if dossier.session_context.current_owner else '' }}">
+      <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a></p>
       <label>Note (required by some Outcomes)</label>
       <textarea name="note_text"></textarea>
       <div class="modal-actions">
@@ -388,8 +388,7 @@
         <select name="outcome_definition_id">
           {% for d in outcome_definitions %}{% if d.lifecycle_effect == 'ACTIVE' %}<option value="{{ d.id }}">{{ d.name }}</option>{% endif %}{% endfor %}
         </select>
-        <label>Acting Selezionatore</label>
-        <input type="text" name="actor" placeholder="Your name">
+        <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a></p>
         <label>Note</label>
         <textarea name="note_text"></textarea>
         <button type="submit" class="btn" style="margin-top:.6rem;">Reopen Application</button>
@@ -412,8 +411,7 @@
         <option value="SCHEDULING">Scheduling — send a link to the candidate scheduling page</option>
         <option value="CONTACT">Contact — send a standard "you'll be contacted" message</option>
       </select>
-      <label>Acting Selezionatore</label>
-      <input type="text" name="actor" placeholder="Your name" value="{{ dossier.session_context.current_owner.owner_name if dossier.session_context.current_owner else '' }}">
+      <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a></p>
       <button type="submit" class="btn secondary" style="margin-top:.6rem;">Move Stage</button>
     </form>
   </details>

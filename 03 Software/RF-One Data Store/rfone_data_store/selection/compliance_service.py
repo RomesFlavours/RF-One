@@ -256,7 +256,7 @@ def _has_high_concern(review: m.ComplianceReview) -> bool:
 
 def record_disposition(
     session: Session, review_id: int, *, action: str, performed_by: str | None, final_text: str | None = None,
-    reason: str | None = None,
+    reason: str | None = None, performed_by_identity_id: int | None = None,
 ) -> m.ComplianceDisposition:
     """Task §5 — the human's own choice: ACCEPT_REWRITE/EDIT_MANUALLY/
     KEEP_ORIGINAL/DEACTIVATE/ACKNOWLEDGE_HIGH_CONCERN. A `reason` is
@@ -276,6 +276,7 @@ def record_disposition(
 
     disposition = m.ComplianceDisposition(
         review_id=review_id, action=action, final_text=final_text, performed_by=performed_by, reason=reason,
+        performed_by_identity_id=performed_by_identity_id,
     )
     session.add(disposition)
     session.flush()

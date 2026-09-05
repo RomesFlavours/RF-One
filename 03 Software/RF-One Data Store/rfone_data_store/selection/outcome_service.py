@@ -24,6 +24,7 @@ contact-blocking mechanism (no such infrastructure exists in Selection).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -215,6 +216,7 @@ def get_snapshot(session: Session, snapshot_id: int) -> m.SelectionOutcomeDefini
 def apply_outcome(
     session: Session, application_id: int, outcome_definition_id: int, *,
     reason: str | None = None, note_text: str | None = None, performed_by: str | None = None,
+    performed_by_identity_id: int | None = None,
 ) -> m.SelectionOutcomeDecision:
     """Applies a restaurant-configured Outcome to an Application (task §9:
     at ANY time, regardless of Stage/completion state). Enforces the
@@ -266,6 +268,7 @@ def apply_outcome(
     decision = m.SelectionOutcomeDecision(
         application_id=application_id, outcome_definition_snapshot_id=snapshot.id, reason=reason,
         is_reopen_event=is_reopen_event, performed_by=performed_by,
+        performed_by_identity_id=performed_by_identity_id,
     )
     session.add(decision)
     application.lifecycle_state = snapshot.lifecycle_effect
@@ -321,6 +324,7 @@ def apply_outcome(
 def reopen_application(
     session: Session, application_id: int, outcome_definition_id: int, *,
     reason: str | None = None, note_text: str | None = None, performed_by: str | None = None,
+    performed_by_identity_id: int | None = None,
 ) -> m.SelectionOutcomeDecision:
     """Task §7/§10 — a deliberate Selezionatore action that always remains
     possible, even for a CLOSED Application; no Outcome configuration can
@@ -336,6 +340,7 @@ def reopen_application(
         )
     return apply_outcome(
         session, application_id, outcome_definition_id, reason=reason, note_text=note_text, performed_by=performed_by,
+        performed_by_identity_id=performed_by_identity_id,
     )
 
 
@@ -361,6 +366,54 @@ def list_outcome_history(session: Session, application_id: int) -> list[m.Select
         .order_by(m.SelectionOutcomeDecision.id)
     )
     return list(session.scalars(stmt).all())
+
+
+# ---------------------------------------------------------------------------
+# Effective Outcome read model (GLOBAL_INTEGRITY_FIX_003 / C-2 §12) — the ONE
+# place any consumer (AI evaluator, Dossier/Application display) asks "what
+# is/was this Application's Outcome", so no code path reads the stale legacy
+# `Application.outcome` scalar directly and mistakes it for current truth.
+# ---------------------------------------------------------------------------
+
+SOURCE_GOVERNED_DECISION = "GOVERNED_DECISION"
+SOURCE_LEGACY_FIELD = "LEGACY_FIELD"
+SOURCE_NONE = "NONE"
+
+
+@dataclass(frozen=True)
+class EffectiveOutcome:
+    """`label` is always a display string (or `None` if there is nothing to
+    show). `source` makes explicit which record it came from (task §12's
+    own "make the source explicit where relevant") — a caller that cares
+    about the distinction (e.g. the AI evaluator marking historical
+    evidence as legacy) can branch on it; one that doesn't can just render
+    `label`."""
+
+    label: str | None
+    source: str
+    decision: m.SelectionOutcomeDecision | None = None
+    legacy_value: str | None = None
+
+
+def get_effective_application_outcome(session: Session, application_id: int) -> EffectiveOutcome:
+    """1. prefer the latest authoritative `SelectionOutcomeDecision`; 2. fall
+    back to the historical legacy `Application.outcome` scalar ONLY when no
+    governed decision exists at all (task §12/§15 — never fabricate a
+    governed decision from the legacy value, never let the legacy value
+    outrank a real one)."""
+
+    decision = get_current_outcome_decision(session, application_id)
+    if decision is not None:
+        return EffectiveOutcome(
+            label=decision.outcome_definition_snapshot.name, source=SOURCE_GOVERNED_DECISION, decision=decision,
+        )
+
+    application = session.get(m.Application, application_id)
+    legacy_value = application.outcome if application is not None else None
+    if legacy_value:
+        return EffectiveOutcome(label=legacy_value, source=SOURCE_LEGACY_FIELD, legacy_value=legacy_value)
+
+    return EffectiveOutcome(label=None, source=SOURCE_NONE)
 
 
 def list_reminders_for_application(session: Session, application_id: int, *, unresolved_only: bool = False) -> list[m.SelectionReminder]:

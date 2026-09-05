@@ -4969,12 +4969,20 @@ class ApplicationStageTransition(Base):
     # scope) — this is an honest, optional free-text field ready for a
     # future auth integration, never a fabricated user identity.
     performed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # GLOBAL_INTEGRITY_FIX_002 / C-1: authoritative actor reference for new
+    # Stage transitions (explicitly a priority record per that fix's task
+    # §10), resolved server-side; `performed_by` stays as display text /
+    # historical fallback for rows created before this task.
+    performed_by_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True, index=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     application: Mapped["Application"] = relationship(back_populates="stage_transitions")
+    performed_by_identity: Mapped["ActingIdentity | None"] = relationship()
 
 
 class SelectionOutcomeDefinition(Base):
@@ -5130,6 +5138,13 @@ class SelectionOutcomeDecision(Base):
     # history," never erasing the prior closure).
     is_reopen_event: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     performed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # GLOBAL_INTEGRITY_FIX_002 / C-1: authoritative actor reference for new
+    # Outcome Decisions (explicitly a priority record per that fix's task
+    # §10), resolved server-side; `performed_by` stays as display text /
+    # historical fallback for rows created before this task.
+    performed_by_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True, index=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -5137,6 +5152,7 @@ class SelectionOutcomeDecision(Base):
 
     application: Mapped["Application"] = relationship(back_populates="outcome_decisions")
     outcome_definition_snapshot: Mapped["SelectionOutcomeDefinitionSnapshot"] = relationship()
+    performed_by_identity: Mapped["ActingIdentity | None"] = relationship()
 
 
 class SelectionReminder(Base):

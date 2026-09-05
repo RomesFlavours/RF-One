@@ -839,6 +839,7 @@ def _carry_forward_unresolved(session: Session, plan: m.PhoneInterviewPlan) -> l
 
 def record_post_interview_decision(
     session: Session, plan_id: int, *, plan_status: str, application_decision: str, reason: str | None = None,
+    performed_by: str | None = None, performed_by_identity_id: int | None = None,
 ) -> m.PhoneInterviewPlan:
     """The Selezionatore's explicit post-Phone-Interview decision (task
     §22) — never automatic. Closes out the Phone Interview Plan's own
@@ -851,7 +852,17 @@ def record_post_interview_decision(
     resulting projection, never written independently here), and carries
     every still-unresolved substantive question forward (task §16) so
     nothing important silently disappears. No numeric interview score is
-    ever computed or stored (task §25)."""
+    ever computed or stored (task §25).
+
+    GLOBAL_INTEGRITY_FIX_003 / C-2 §5/§7 — `performed_by_identity_id` is
+    forwarded to `apply_legacy_workflow_action` unchanged, so this
+    substantive Stage/Outcome-mapped decision carries the same stable
+    Acting Identity and triggers the same Candidate Communication
+    consequence as the modern Dossier Stage/Outcome controls. The caller
+    (`Selection/app.py`'s `phone_interview_decision` route) is responsible
+    for resolving the actor and enforcing ownership/authority BEFORE
+    calling this function — the same convention every other consequential
+    Selection route already follows."""
 
     if plan_status not in pim.PLAN_STATUSES:
         raise ValueError(f"Unknown Phone Interview Plan status {plan_status!r}; expected one of {pim.PLAN_STATUSES}")
@@ -868,6 +879,9 @@ def record_post_interview_decision(
     plan.status = plan_status
     session.flush()
     _carry_forward_unresolved(session, plan)
-    wf_svc.apply_legacy_workflow_action(session, plan.application_id, application_decision, reason=reason)
+    wf_svc.apply_legacy_workflow_action(
+        session, plan.application_id, application_decision, reason=reason, performed_by=performed_by,
+        performed_by_identity_id=performed_by_identity_id,
+    )
     session.flush()
     return plan

@@ -59,8 +59,7 @@
     <select name="new_stage">
       {% for s in stages %}<option value="{{ s }}" {{ 'selected' if s == summary.current_stage else '' }}>{{ s|replace('_',' ') }}</option>{% endfor %}
     </select>
-    <label>Acting Selezionatore (required if this Application belongs to a Session with a claimed owner)</label>
-    <input type="text" name="actor" placeholder="Your name">
+    <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_decision', application_id=application.id)) }}">not you?</a></p>
     <label>Note (optional)</label>
     <textarea name="note_text"></textarea>
     <button type="submit" class="btn secondary" style="margin-top:.6rem;">Move Stage</button>
@@ -78,8 +77,7 @@
     </select>
     <label>Reason (required by some Outcomes)</label>
     <input type="text" name="reason">
-    <label>Acting Selezionatore (required if this Application belongs to a Session with a claimed owner)</label>
-    <input type="text" name="actor" placeholder="Your name">
+    <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_decision', application_id=application.id)) }}">not you?</a></p>
     <label>Note (required by some Outcomes)</label>
     <textarea name="note_text"></textarea>
     <button type="submit" class="btn" style="margin-top:.6rem;">Apply Outcome</button>
@@ -93,8 +91,7 @@
       <select name="outcome_definition_id">
         {% for d in outcome_definitions %}{% if d.lifecycle_effect == 'ACTIVE' %}<option value="{{ d.id }}">{{ d.name }}</option>{% endif %}{% endfor %}
       </select>
-      <label>Acting Selezionatore</label>
-      <input type="text" name="actor" placeholder="Your name">
+      <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_decision', application_id=application.id)) }}">not you?</a></p>
       <label>Note</label>
       <textarea name="note_text" placeholder="Why is this Application being reopened?"></textarea>
       <button type="submit" class="btn" style="margin-top:.6rem;">Reopen Application</button>

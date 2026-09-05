@@ -36,6 +36,7 @@ from sqlalchemy.orm import Session
 from .. import models as m
 from . import application_service as app_svc
 from . import fit_assessment_service as fa_svc
+from . import outcome_service as outcome_svc
 from . import persistence
 from . import signal_service as sig_svc
 from .core import fit_assessment_model as fam
@@ -149,6 +150,23 @@ def _application_evidence(application: m.Application) -> list[EvidenceRef]:
     return [EvidenceRef(source_type=psm.APPLICATION, evidence_text=text, source_reference="application")]
 
 
+def _prior_outcome_evidence_text(session: Session, prior_application_id: int) -> str:
+    """GLOBAL_INTEGRITY_FIX_003 / C-2 §11 — the prior Application's outcome
+    as evidence must come from the authoritative decision history, never
+    the stale `Application.outcome` scalar. A historical Application that
+    predates the Outcome Engine and only has a legacy value is still
+    surfaced (task's own "legacy fallback may be used explicitly as
+    historical compatibility evidence"), but explicitly labeled as legacy
+    rather than presented as if it were a governed decision."""
+
+    effective = outcome_svc.get_effective_application_outcome(session, prior_application_id)
+    if effective.source == outcome_svc.SOURCE_GOVERNED_DECISION:
+        return effective.label
+    if effective.source == outcome_svc.SOURCE_LEGACY_FIELD:
+        return f"{effective.label} (legacy pre-Outcome-Engine record, not a governed decision)"
+    return "(none recorded)"
+
+
 def _application_history_evidence(session: Session, application: m.Application) -> list[EvidenceRef]:
     prior = app_svc.list_prior_applications(session, application.id)
     if not prior:
@@ -157,7 +175,8 @@ def _application_history_evidence(session: Session, application: m.Application) 
         source_type=psm.APPLICATION_HISTORY,
         evidence_text=(
             f"{len(prior)} prior application(s) by this person. Most recent prior target role: "
-            f"{prior[-1].target_role or '(unspecified)'}; recorded outcome: {prior[-1].outcome or '(none recorded)'}."
+            f"{prior[-1].target_role or '(unspecified)'}; "
+            f"recorded outcome: {_prior_outcome_evidence_text(session, prior[-1].id)}."
         ),
         source_reference="application_history",
     )]

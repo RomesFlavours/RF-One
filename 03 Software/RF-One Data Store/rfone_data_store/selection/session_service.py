@@ -180,28 +180,37 @@ def assert_operational(session: Session, session_id: int) -> m.SelectionSession:
 # ---------------------------------------------------------------------------
 
 def assign_selezionatore(
-    session: Session, session_id: int, *, selezionatore_name: str, authority_level_id: int | None = None,
+    session: Session, session_id: int, *, acting_identity_id: int, authority_level_id: int | None = None,
 ) -> m.SelectionSessionAssignment:
     """Assigns (or reactivates/re-configures) one Selezionatore on a
-    Session. Never forces a single "primary selector" (task §4) — a
-    Session may have any number of peer or hierarchically-related
-    assignments."""
+    Session, identified by a stable `ActingIdentity` (GLOBAL_INTEGRITY_FIX_002
+    / C-1 — never a freely-typed name). `selezionatore_name` is still stored,
+    but only ever DERIVED from `acting_identity.display_name` — it is display
+    text, never independently authoritative. Never forces a single "primary
+    selector" (task §4) — a Session may have any number of peer or
+    hierarchically-related assignments."""
+
+    identity = session.get(m.ActingIdentity, acting_identity_id)
+    if identity is None or not identity.is_active:
+        raise ValueError("Assigning a Selezionatore requires a valid, active Acting Identity.")
 
     existing = session.scalars(
         select(m.SelectionSessionAssignment).where(
             m.SelectionSessionAssignment.session_id == session_id,
-            m.SelectionSessionAssignment.selezionatore_name == selezionatore_name,
+            m.SelectionSessionAssignment.acting_identity_id == acting_identity_id,
         )
     ).first()
     if existing is not None:
         existing.is_active = True
         existing.deactivated_at = None
         existing.authority_level_id = authority_level_id
+        existing.selezionatore_name = identity.display_name
         session.flush()
         return existing
 
     assignment = m.SelectionSessionAssignment(
-        session_id=session_id, selezionatore_name=selezionatore_name, authority_level_id=authority_level_id,
+        session_id=session_id, selezionatore_name=identity.display_name, acting_identity_id=identity.id,
+        authority_level_id=authority_level_id,
     )
     session.add(assignment)
     session.flush()
@@ -231,9 +240,34 @@ def list_assignments(
 def get_assignment_for_selezionatore(
     session: Session, session_id: int, selezionatore_name: str,
 ) -> m.SelectionSessionAssignment | None:
+    """Legacy, display-text-only lookup — kept for historical rows created
+    before GLOBAL_INTEGRITY_FIX_002 that never received an
+    `acting_identity_id`. Never used for an authority/authorization
+    comparison (see `get_assignment_for_identity` for that) — a name is
+    ambiguous (two different identities could share a display name) in a
+    way an id is not."""
+
     stmt = select(m.SelectionSessionAssignment).where(
         m.SelectionSessionAssignment.session_id == session_id,
         m.SelectionSessionAssignment.selezionatore_name == selezionatore_name,
+        m.SelectionSessionAssignment.is_active.is_(True),
+    )
+    return session.scalars(stmt).first()
+
+
+def get_assignment_for_identity(
+    session: Session, session_id: int, acting_identity_id: int | None,
+) -> m.SelectionSessionAssignment | None:
+    """GLOBAL_INTEGRITY_FIX_002 / C-1/I-4 — the authoritative, identity-based
+    lookup `authority_service`'s authority-order comparison uses; the ONLY
+    correct way to find "this Acting Identity's assignment in this Session"
+    once an assignment carries an `acting_identity_id`."""
+
+    if acting_identity_id is None:
+        return None
+    stmt = select(m.SelectionSessionAssignment).where(
+        m.SelectionSessionAssignment.session_id == session_id,
+        m.SelectionSessionAssignment.acting_identity_id == acting_identity_id,
         m.SelectionSessionAssignment.is_active.is_(True),
     )
     return session.scalars(stmt).first()

@@ -23,7 +23,6 @@
       <p class="muted" style="font-size:.76rem;">Received {{ a.received_at.strftime('%Y-%m-%d %H:%M') }}</p>
       <a href="{{ url_for('application_communication_history', application_id=a.application_id) }}">View Communication History &rarr;</a>
       <form method="post" action="{{ url_for('inbound_acknowledge_alert', inbound_id=a.id) }}" class="inline-form">
-        <input type="text" name="acknowledged_by" placeholder="Your name" style="max-width:12rem;">
         <button type="submit" class="btn secondary" style="margin-top:.4rem; font-size:.78rem; padding:.35rem .8rem;">Acknowledge</button>
       </form>
     </div>

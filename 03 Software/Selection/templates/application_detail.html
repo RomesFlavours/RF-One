@@ -89,14 +89,12 @@
       <input type="text" name="target_role" value="{{ application.target_role or '' }}">
       <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save target role</button>
     </form>
-    <form method="post" action="{{ url_for('application_set_outcome', application_id=application.id) }}" class="req-form">
-      <label>Historical outcome</label>
-      <select name="outcome">
-        <option value="">(none yet)</option>
-        {% for o in outcome_options %}<option value="{{ o }}" {{ 'selected' if o == application.outcome else '' }}>{{ o|replace('_',' ')|title }}</option>{% endfor %}
-      </select>
-      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save outcome</button>
-    </form>
+    {% if application.outcome %}
+    <p class="muted" style="font-size:.8rem; margin-top:.6rem;">
+      Legacy historical outcome (pre-Outcome-Engine record, read-only): {{ application.outcome|replace('_',' ')|title }}.
+      See "Stage &amp; Outcome" below for the current, authoritative Outcome.
+    </p>
+    {% endif %}
   </details>
 </div>
 
@@ -269,7 +267,10 @@
       <tr>
         <td>{{ p.applied_at.strftime('%Y-%m-%d') if p.applied_at else '-' }}</td>
         <td>{{ p.target_role or '-' }}</td>
-        <td>{{ p.outcome or '-' }}</td>
+        <td>
+          {% set eff = prior_effective_outcomes.get(p.id) %}
+          {% if eff and eff.label %}{{ eff.label }}{% if eff.source == 'LEGACY_FIELD' %} <span class="muted">(legacy)</span>{% endif %}{% else %}-{% endif %}
+        </td>
         <td>{{ p.note_entries|length }} note(s)</td>
         <td><a href="{{ url_for('application_detail', application_id=p.id) }}">View</a></td>
       </tr>

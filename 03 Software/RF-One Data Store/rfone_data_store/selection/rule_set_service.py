@@ -131,7 +131,8 @@ def list_versions_for_session(session: Session, session_id: int) -> list[m.Selec
 
 
 def confirm_rule_set_version(
-    session: Session, session_id: int, *, confirmed_by: str, note: str | None = None, version_id: int | None = None,
+    session: Session, session_id: int, *, acting_identity_id: int, note: str | None = None,
+    version_id: int | None = None,
 ) -> m.SelectionRuleSetVersion:
     """Task §13/§15 — explicit, mandatory confirmation of the Session's
     CURRENT Rule Set version. Never personal to a Selezionatore (task §14):
@@ -139,10 +140,21 @@ def confirm_rule_set_version(
     a side effect (task §13's own SESSION CREATED -> RULES REVIEW ->
     EXPLICIT CONFIRMATION -> ACTIVE flow) — mirrors
     `outcome_service.apply_outcome` setting `lifecycle_state` as a
-    documented side effect of its own governed action."""
+    documented side effect of its own governed action.
 
-    if not confirmed_by or not confirmed_by.strip():
-        raise ValueError("Confirming a Rule Set requires identifying who confirmed it.")
+    GLOBAL_INTEGRITY_FIX_002 / C-1: no longer accepts arbitrary free-text
+    `confirmed_by` as proof of who confirmed — requires a stable, active
+    `ActingIdentity` id, resolved server-side by the caller (never a
+    client-supplied name). `confirmed_by` is still stored, but only ever
+    DERIVED from the identity's display name. Also enforces any
+    restaurant-configured governance requirement for this action
+    (GLOBAL_INTEGRITY_FIX_002 / I-4 — wires the previously-unused
+    `governance_service.get_governance_requirement_for_action` via
+    `authority_service`)."""
+
+    identity = session.get(m.ActingIdentity, acting_identity_id)
+    if identity is None or not identity.is_active:
+        raise ValueError("Confirming a Rule Set requires a valid, active Acting Identity.")
 
     selection_session = session.get(m.SelectionSession, session_id)
     if selection_session is None:
@@ -162,7 +174,15 @@ def confirm_rule_set_version(
             f"{version.confirmed_at}. Propose a Rule Change to create a new version if something must change."
         )
 
-    version.confirmed_by = confirmed_by
+    from . import authority_service as auth_svc
+
+    auth_svc.check_authority_for_action(
+        session, restaurant_id=selection_session.restaurant_id, action_type=auth_svc.ACTION_CONFIRM_RULE_SET,
+        identity_id=identity.id, session_id=session_id,
+    )
+
+    version.confirmed_by = identity.display_name
+    version.confirmed_by_identity_id = identity.id
     version.confirmed_at = datetime.utcnow()
     version.confirmation_note = note
     selection_session.status = sesm.ACTIVE
@@ -170,7 +190,7 @@ def confirm_rule_set_version(
 
     sess_svc.add_session_note(
         session, session_id,
-        f"Rule Set version {version.version} confirmed by {confirmed_by}." + (f" {note}" if note else ""),
+        f"Rule Set version {version.version} confirmed by {identity.display_name}." + (f" {note}" if note else ""),
         context_type=sess_svc.NOTE_CONTEXT_RULE_SET_CONFIRMATION, context_id=version.id,
     )
     return version

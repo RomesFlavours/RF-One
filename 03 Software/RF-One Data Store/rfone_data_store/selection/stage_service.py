@@ -27,7 +27,7 @@ NOTE_CONTEXT_STAGE_TRANSITION = "STAGE_TRANSITION"
 
 def set_stage(
     session: Session, application_id: int, new_stage: str, *,
-    performed_by: str | None = None, note_text: str | None = None,
+    performed_by: str | None = None, note_text: str | None = None, performed_by_identity_id: int | None = None,
 ) -> m.ApplicationStageTransition:
     """Records a Stage movement (task §3) and updates the Application's
     convenience `current_stage` pointer. Always creates a NEW transition
@@ -44,7 +44,7 @@ def set_stage(
 
     transition = m.ApplicationStageTransition(
         application_id=application_id, previous_stage=application.current_stage, new_stage=new_stage,
-        performed_by=performed_by,
+        performed_by=performed_by, performed_by_identity_id=performed_by_identity_id,
     )
     session.add(transition)
     application.current_stage = new_stage

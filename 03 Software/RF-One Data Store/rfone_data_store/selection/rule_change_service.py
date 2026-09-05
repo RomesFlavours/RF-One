@@ -24,7 +24,7 @@ from .core import rule_set_model as rsm
 
 def propose_rule_change(
     session: Session, session_id: int, *, rules_changed_summary: str, reason: str, scope: str,
-    performed_by: str | None = None, requirement_set_id: int | None = None,
+    acting_identity_id: int | None = None, performed_by: str | None = None, requirement_set_id: int | None = None,
     primary_screening_criterion_ids: list[int] | None = None, signal_definition_ids: list[int] | None = None,
     review_priority_policy_id: int | None = None, outcome_definition_ids: list[int] | None = None,
     phone_interview_question_definition_ids: list[int] | None = None,
@@ -36,7 +36,18 @@ def propose_rule_change(
     Fields not passed default to CARRYING FORWARD the previous version's
     own references unchanged — a Rule Change normally touches one or two
     things, not the whole envelope; pass an explicit (possibly empty) value
-    only for what actually changed."""
+    only for what actually changed.
+
+    GLOBAL_INTEGRITY_FIX_002 / C-1/I-4: `acting_identity_id`, when given, is
+    the authoritative actor reference — `performed_by` is then DERIVED from
+    it (a caller-supplied `performed_by` is ignored in that case) and any
+    restaurant-configured governance requirement for proposing a Rule
+    Change is enforced. `performed_by` alone (no identity) remains accepted
+    as plain descriptive text for callers that have no Acting Identity to
+    resolve (e.g. a system-triggered or historical-equivalent call) — Rule
+    Change proposals are gated by the Session being ACTIVE, not by a
+    per-actor ownership check, so this is not the load-bearing C-1 path
+    `ownership_service`/`rule_set_service` are."""
 
     if not rules_changed_summary or not rules_changed_summary.strip():
         raise ValueError("A Rule Change requires a summary of what rule(s) changed.")
@@ -44,11 +55,26 @@ def propose_rule_change(
         raise ValueError("A Rule Change requires a reason.")
     rsm.validate_rule_change_scope(scope)
 
+    identity = None
+    if acting_identity_id is not None:
+        identity = session.get(m.ActingIdentity, acting_identity_id)
+        if identity is None or not identity.is_active:
+            raise ValueError("Proposing a Rule Change requires a valid, active Acting Identity.")
+        performed_by = identity.display_name
+
     selection_session = session.get(m.SelectionSession, session_id)
     if selection_session is None:
         raise ValueError(f"No SelectionSession with id {session_id}")
     if selection_session.status != "ACTIVE":
         raise ValueError("A Rule Change can only be proposed for an ACTIVE Session.")
+
+    if identity is not None:
+        from . import authority_service as auth_svc
+
+        auth_svc.check_authority_for_action(
+            session, restaurant_id=selection_session.restaurant_id, action_type=auth_svc.ACTION_PROPOSE_RULE_CHANGE,
+            identity_id=identity.id, session_id=session_id,
+        )
 
     previous_version_id = selection_session.current_rule_set_version_id
     previous_version = session.get(m.SelectionRuleSetVersion, previous_version_id) if previous_version_id else None
@@ -86,6 +112,7 @@ def propose_rule_change(
     rule_change = m.SelectionRuleChange(
         session_id=session_id, previous_version_id=previous_version_id, new_version_id=new_version.id,
         rules_changed_summary=rules_changed_summary, reason=reason, scope=scope, performed_by=performed_by,
+        performed_by_identity_id=identity.id if identity is not None else None,
     )
     session.add(rule_change)
     session.flush()

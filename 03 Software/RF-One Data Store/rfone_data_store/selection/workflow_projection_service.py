@@ -24,7 +24,22 @@ Phone Interview's post-interview decision (task §18). Each legacy choice
 is translated into the equivalent Stage transition and/or Outcome
 application using the Task 5A services, never into a direct `workflow_
 status` write of its own.
-"""
+
+GLOBAL_INTEGRITY_FIX_003 / C-2 — this bridge is now held to the SAME
+governance as the modern Stage/Outcome routes (`Selection/app.py`'s
+`application_set_stage`/`application_apply_outcome`), not a lesser one:
+it accepts and forwards `performed_by_identity_id` to whichever
+authoritative service it calls, and fires the identical Candidate
+Communication consequence (`communication_service.on_stage_transition`/
+`on_outcome_decision`) the modern routes fire — done ONCE here, in the
+one bridge every legacy caller (the Review Queue route AND
+`phone_interview_service.record_post_interview_decision`) already funnels
+through, rather than duplicated in each controller (task §10's own "do
+not duplicate communication logic in legacy controllers"). Authority
+(ownership/`assert_can_operate`) is still the CALLER's responsibility —
+exactly like the modern routes — since this module is not itself
+Session/Application-authority-aware; every caller of this function now
+performs that check first (see `Selection/app.py`)."""
 
 from __future__ import annotations
 
@@ -145,7 +160,8 @@ def _find_outcome_definition_for_legacy(
 
 def apply_legacy_workflow_action(
     session: Session, application_id: int, new_status: str, *, reason: str | None = None,
-    performed_by: str | None = None,
+    performed_by: str | None = None, performed_by_identity_id: int | None = None,
+    communication_mode: str | None = None,
 ) -> m.Application:
     """Task 5A-FIX §5/§18/§19 — the ONE compatibility bridge translating a
     legacy `workflow_status` choice into the equivalent authoritative
@@ -156,6 +172,13 @@ def apply_legacy_workflow_action(
     function's own final refresh call is a belt-and-suspenders
     confirmation, not a second source of truth.
 
+    GLOBAL_INTEGRITY_FIX_003 / C-2 §5/§7/§10 — `performed_by_identity_id`
+    is forwarded to whichever authoritative service is called (never
+    trusted from this function itself; the caller resolves it), and the
+    same Candidate Communication consequence the modern routes trigger
+    fires here too, exactly once, so it can never be missed or duplicated
+    by an individual legacy controller.
+
     A HOLD/STOP choice for a restaurant with NO active SUSPENDED/CLOSED
     Outcome Definition configured yet (e.g. one that has never opened the
     Selection Outcomes page) falls back to the pre-5A-FIX direct
@@ -164,7 +187,10 @@ def apply_legacy_workflow_action(
     tests/code may still depend on it"), never a crash. Once that
     restaurant has ANY matching Outcome configured (every restaurant that
     has visited the Selection UI does, via idempotent seeding), this
-    fallback is never reached again."""
+    fallback is never reached again. This fallback has no governed
+    decision to attach an Acting Identity to (there is no FK for it on the
+    legacy `workflow_status` write itself) — an explicit, documented
+    residual compatibility boundary, not a silent gap."""
 
     if new_status not in apm.WORKFLOW_STATUSES:
         raise ValueError(f"Unknown workflow status {new_status!r}; expected one of {apm.WORKFLOW_STATUSES}")
@@ -173,11 +199,15 @@ def apply_legacy_workflow_action(
         raise ValueError(f"No Application with id {application_id}")
 
     if new_status in _LEGACY_TO_STAGE:
+        from . import communication_service as comm_svc
         from . import stage_service as stage_svc
 
-        stage_svc.set_stage(
+        transition = stage_svc.set_stage(
             session, application_id, _LEGACY_TO_STAGE[new_status], performed_by=performed_by,
-            note_text=reason,
+            performed_by_identity_id=performed_by_identity_id, note_text=reason,
+        )
+        comm_svc.on_stage_transition(
+            session, application, transition, communication_mode=communication_mode, performed_by=performed_by,
         )
     elif new_status in _LEGACY_TO_OUTCOME_LIFECYCLE:
         from . import outcome_service as outcome_svc
@@ -188,9 +218,13 @@ def apply_legacy_workflow_action(
             # the pre-5A-FIX direct write rather than blocking a
             # Selezionatore action outright (see docstring above).
             return app_svc.set_workflow_status(session, application_id, new_status, reason=reason)
-        outcome_svc.apply_outcome(
+        from . import communication_service as comm_svc
+
+        decision = outcome_svc.apply_outcome(
             session, application_id, definition.id, reason=reason, note_text=reason, performed_by=performed_by,
+            performed_by_identity_id=performed_by_identity_id,
         )
+        comm_svc.on_outcome_decision(session, application, decision)
     else:
         raise ValueError(f"Unsupported legacy workflow status {new_status!r}")
 
