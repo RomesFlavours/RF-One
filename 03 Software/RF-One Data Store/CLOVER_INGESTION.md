@@ -20,23 +20,28 @@ future analytics / KPI / Performance / Training / Decisions
 
 ```text
 03 Software/RF-One Data Store/
-├── ingest_clover.py                    CLI entry point (task §45)
+├── ingest_clover.py                    CLI entry point (task §45) — the bulk pipeline below
 ├── enrich_clover_cache.py              standalone resumable enrichment entry point
 ├── validate_ingestion.py               post-promotion validation (task §48)
 └── rfone_data_store/
     ├── ingestion/
-    │   ├── common.py                   source-independent helpers (epoch→UTC, payload hashing)
-    │   └── clover/
-    │       ├── reader.py               disk-only reads of Clover's raw/cache evidence
-    │       ├── enrichment.py           resumable dedicated-endpoint GET calls
-    │       ├── parser.py               pure parsing rules (guest_number, discount shape, tax rate)
-    │       ├── mapping.py              Clover raw dict → canonical column-kwargs dict
-    │       ├── ingest.py               orchestration: upserts into a (staging) session
-    │       └── reconciliation.py       post-ingestion counts/checks/monetary/weekly confidence
-    └── models.py                       the canonical schema (TASK_DATABASE_001, corrected §3 below)
+    │   └── common.py                   source-independent helpers (epoch→UTC, payload hashing)
+    └── technical/connectors/clover/     relocated here by TECHNICAL_CONNECTORS_STRUCTURE_001
+        ├── reader.py                   disk-only reads of Clover's raw/cache evidence
+        ├── enrichment.py               resumable dedicated-endpoint GET calls
+        ├── parser.py                   pure parsing rules (guest_number, discount shape, tax rate)
+        ├── mapping.py                  Clover raw dict → canonical column-kwargs dict
+        ├── ingest.py                   orchestration: upserts into a (staging) session
+        ├── reconciliation.py           post-ingestion counts/checks/monetary/weekly confidence
+        ├── acquisition.py              Historical Backfill + Live Sync entry point (see note below)
+        ├── historical_backfill_detail.py  catalog/order-detail helpers `acquisition.py` calls
+        └── live_sync.py                near-real-time polling loop
+    (models.py — the canonical schema, TASK_DATABASE_001, corrected §3 below)
 ```
 
-This mirrors the task's suggested structure exactly. Nothing in `rfone_data_store.models` imports from `ingestion/` — the dependency runs one way (ingestion → canonical schema), so the schema stays usable by a future non-Clover source without carrying any Clover-specific code.
+This mirrors the task's suggested structure, since relocated. Nothing in `rfone_data_store.models` imports from the connector — the dependency runs one way (ingestion → canonical schema), so the schema stays usable by a future non-Clover source without carrying any Clover-specific code.
+
+**Note — this is not the only ingestion path.** This document describes `ingest_clover.py`'s bulk pipeline (`ingest.py`/`reader.py`, reading a locally cached, on-disk `CloverSourceBundle`) — a separate, occasional, manually-triggered tool, not part of RF-One's live/automated runtime. The live runtime path is `acquisition.py`'s `import_clover_period()`, called by both **Historical Backfill** (an operator-chosen date range, full extraction — every operational entity plus the full catalog/reference set: Items, Categories, Modifier Groups/Modifiers, Tax Rates, Discount Definitions, Order Types, Tenders, Devices, Source Roles, plus Order Item Tax and Order-level Discounts) and **Live Sync** (a short-interval, checkpoint-advancing poll, reduced operational scope only: Orders, Order Items, Order Item Modifiers, Payments, Payment Tips, Refunds, Order Fees, Shifts, Employees — no continuous catalog/reference refresh; FKs into that catalog resolve against whatever Historical Backfill has already made canonical). Both fetch live from the Clover API — neither reads the on-disk bundle this document describes — and both mirror every raw record they fetch, unmapped, into the append-only `SourceRecord` (Provider Mirror) table. See `acquisition.py`'s and `historical_backfill_detail.py`'s own module docstrings for the authoritative, detailed design (endpoints, idempotency, concurrency guard, catalog-refresh scope).
 
 **Reuse boundary:** the adapter reuses the Clover Data Explorer's already-reviewed, read-only HTTP primitives — `clover_explorer.client.CloverClient`, `.config.load_config`, `.pagination.paginate`, `.api_cache.ApiCache` — for the enrichment GET calls only (`enrichment.py`). It does **not** import any of that module's dashboard-CSV reconstruction logic (`export_orders.py`, `export_payments.py`, etc.) — canonical mapping is written fresh in `mapping.py`, shaped for the canonical schema, not a CSV column layout.
 

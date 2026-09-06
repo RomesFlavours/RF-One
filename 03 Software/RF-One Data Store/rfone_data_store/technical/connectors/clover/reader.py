@@ -18,9 +18,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-# 03 Software/RF-One Data Store/rfone_data_store/ingestion/clover/reader.py
-#   .parents[4] == "03 Software/"
-_SOFTWARE_DIR = Path(__file__).resolve().parents[4]
+# 03 Software/RF-One Data Store/rfone_data_store/technical/connectors/clover/reader.py
+#   .parents[5] == "03 Software/"
+_SOFTWARE_DIR = Path(__file__).resolve().parents[5]
 CLOVER_EXPLORER_DATA_DIR = _SOFTWARE_DIR / "Clover Data Explorer" / "data"
 RAW_DIR = CLOVER_EXPLORER_DATA_DIR / "raw"
 SUPPLEMENTARY_CACHE_DIR = CLOVER_EXPLORER_DATA_DIR / "generated_exports" / "_api_cache" / "supplementary"

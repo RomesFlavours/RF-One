@@ -29,7 +29,7 @@ from rfone_data_store.database import (
     redact_database_url,
     run_migrations_to_head,
 )
-from rfone_data_store.ingestion.clover import enrichment, ingest, reader, reconciliation
+from rfone_data_store.technical.connectors.clover import enrichment, ingest, reader, reconciliation
 from rfone_data_store.ingestion.common import utc_now
 from rfone_data_store.models import IngestionRun, SourceSystem
 
@@ -207,7 +207,7 @@ def _write_documentation_artifacts(bundle, dedicated_complete, stats, report, st
     without re-deriving them by hand."""
     import json
 
-    from rfone_data_store.ingestion.clover import reader as _reader
+    from rfone_data_store.technical.connectors.clover import reader as _reader
 
     out = {
         "status": status,

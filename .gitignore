@@ -7,6 +7,11 @@ __pycache__/
 03 Software/Clover Data Explorer/data/reference_exports/
 03 Software/Clover Data Explorer/data/generated_exports/
 
+# CLOVER_BACKFILL_REAL_DATA_VALIDATION — Product-Owner-provided real Clover
+# dashboard exports (customer names, card brand/entry data, employee names)
+# must stay local, never committed.
+03 Software/Clover Data Explorer/Download/
+
 # TASK_DATABASE_001 — local RF-One Data Store database files must stay local, never committed
 03 Software/RF-One Data Store/data/*.db
 03 Software/RF-One Data Store/data/*.sqlite

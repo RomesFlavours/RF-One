@@ -17,7 +17,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from rfone_data_store.ingestion.clover import enrichment, reader
+from rfone_data_store.technical.connectors.clover import enrichment, reader
 
 
 def _progress(done: int, total: int) -> None:

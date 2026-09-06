@@ -15,7 +15,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from ..common import epoch_ms_to_utc
+from ....ingestion.common import epoch_ms_to_utc
 from . import parser
 
 
@@ -283,9 +283,15 @@ def map_order_fee(fee_line_item_raw: dict[str, Any]) -> dict[str, Any]:
         # Only the one confirmed real-world combination (note == "Service
         # Charge") is classified; anything else is left NULL rather than
         # guessed (task §31: "do not classify arbitrary fee-like Item names
-        # automatically").
+        # automatically"). CLOVER_TIPS_INGESTION_001 §5 refers to this same
+        # real-world value under the synonym "AUTOMATIC_GRATUITY" — Clover's
+        # own `note` text for this merchant has only ever been "Service
+        # Charge" (never a distinct "Gratuity" note), so a second, separate
+        # classification value is not fabricated here; "note_raw" preserves
+        # the exact source text regardless.
         "fee_type": "SERVICE_CHARGE" if note == "Service Charge" else None,
         "name_raw": fee_line_item_raw.get("name"),
+        "note_raw": note,
         "amount": fee_line_item_raw.get("price"),
         "percentage": (
             Decimal(str(fee_line_item_raw.get("percentage")))

@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    {% if category == "error" %}
+      <div class="error">{{ message }}</div>
+    {% endif %}
+  {% endfor %}
+
+  <div class="card">
+    <h2>Historical Backfill</h2>
+    <p class="muted" style="font-size:.78rem;">
+      Manual re-import / gap-recovery only — <strong>not</strong> the normal way Clover data reaches
+      RF-One. Live Sync runs independently and continuously, keeping Payments/Orders/Shifts/Refunds
+      current within seconds. Use this only to fill a known gap or recover a specific period.
+    </p>
+    {% if restaurant %}
+    <p class="muted" style="font-size:.85rem;">Restaurant: <strong>{{ restaurant.name }}</strong></p>
+    {% else %}
+    <p class="error">No Restaurant exists in this database yet.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('run_historical_backfill') }}" id="import-form" onsubmit="return guardImportSubmit()">
+      <div class="form-row">
+        <div>
+          <label for="from_date">From date</label>
+          <input type="date" id="from_date" name="from_date" value="{{ from_date }}" required>
+        </div>
+        <div>
+          <label for="through_date">Through date</label>
+          <input type="date" id="through_date" name="through_date" value="{{ through_date }}" required>
+        </div>
+        <div>
+          <button type="submit" id="import-submit-btn" {{ 'disabled' if not restaurant else '' }}>Run Historical Backfill</button>
+        </div>
+      </div>
+    </form>
+    <script>
+      // UI guard only; the authoritative guard is server-side
+      // (ingestion.clover.acquisition.ImportAlreadyRunningError), shared
+      // with Live Sync. This just stops a fast double-click from firing a
+      // second POST from this page at all.
+      function guardImportSubmit() {
+        var btn = document.getElementById('import-submit-btn');
+        if (btn.dataset.submitting === '1') {
+          return false;
+        }
+        btn.dataset.submitting = '1';
+        btn.disabled = true;
+        btn.textContent = 'Importing...';
+        return true;
+      }
+    </script>
+    <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
+      Read-only against Clover — nothing is ever written back. Re-importing the same period refreshes
+      Payments/Orders/Tips/Refunds from Clover's current values rather than creating duplicates.
+    </p>
+  </div>
+
+  {% for category, summary in messages %}
+    {% if category == "summary" %}
+    <div class="card">
+      <h2>Import Summary</h2>
+      <p class="muted" style="font-size:.82rem;">
+        Period: {{ summary.period_start[:10] }} &rarr; {{ summary.period_end[:10] }}
+      </p>
+      <div class="meta-row">
+        <div class="meta-item"><div class="label">Payments imported</div><div class="value">{{ summary.payments_imported }}</div></div>
+        <div class="meta-item"><div class="label">Payments updated</div><div class="value">{{ summary.payments_updated }}</div></div>
+        <div class="meta-item"><div class="label">Orders imported</div><div class="value">{{ summary.orders_imported }}</div></div>
+        <div class="meta-item"><div class="label">Orders updated</div><div class="value">{{ summary.orders_updated }}</div></div>
+      </div>
+      <div class="meta-row">
+        <div class="meta-item"><div class="label">Voluntary tips</div><div class="value">{{ summary.voluntary_tips_count }} (${{ "%.2f"|format(summary.voluntary_tips_total_minor / 100) }})</div></div>
+        <div class="meta-item"><div class="label">Automatic gratuity</div><div class="value">{{ summary.automatic_gratuity_count }} (${{ "%.2f"|format(summary.automatic_gratuity_total_minor / 100) }})</div></div>
+        <div class="meta-item"><div class="label">Zero-tip payments</div><div class="value">{{ summary.zero_tip_payments_count }}</div></div>
+        <div class="meta-item"><div class="label">Missing-tip payments</div><div class="value">{{ summary.missing_tip_amount_payments_count }}</div></div>
+      </div>
+      <div class="meta-row">
+        <div class="meta-item"><div class="label">Split-payment orders</div><div class="value">{{ summary.split_payment_orders_count }}</div></div>
+        <div class="meta-item"><div class="label">Refunds found</div><div class="value">{{ summary.refunds_found }}</div></div>
+        <div class="meta-item"><div class="label">Employee mismatches</div><div class="value">{{ summary.employee_mismatches|length }}</div></div>
+      </div>
+      <div class="meta-row">
+        <div class="meta-item"><div class="label">Employees resolved</div><div class="value">{{ summary.employees_resolved }}</div></div>
+        <div class="meta-item"><div class="label">Shifts/time entries imported</div><div class="value">{{ summary.shifts_imported }}</div></div>
+      </div>
+
+      {% if summary.employee_mismatches %}
+      <h2>Employee mismatches (review)</h2>
+      <div class="table-scroll">
+      <table>
+        <thead><tr><th>Order</th><th>Order Employee</th><th>Payment</th><th>Payment Employee</th></tr></thead>
+        <tbody>
+        {% for mm in summary.employee_mismatches %}
+          <tr>
+            <td>{{ mm.order_source_id }}</td>
+            <td>{{ mm.order_employee_source_id }}</td>
+            <td>{{ mm.payment_source_id }}</td>
+            <td>{{ mm.payment_employee_source_id }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% endif %}
+
+      {% if summary.errors %}
+      <h2>Errors / anomalies</h2>
+      <ul>
+        {% for err in summary.errors %}<li class="muted" style="font-size:.85rem;">{{ err }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endif %}
+  {% endfor %}
+{% endwith %}
+
+{% if recent_runs %}
+<div class="card">
+  <h2>Recent Clover acquisition runs (Historical Backfill + Live Sync)</h2>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Started</th><th>Status</th><th>Window</th><th>Notes</th></tr></thead>
+    <tbody>
+    {% for run in recent_runs %}
+      <tr>
+        <td>{{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '-' }}</td>
+        <td><span class="badge {{ 'ok' if run.status == 'COMPLETE' else 'warn' }}">{{ run.status }}</span></td>
+        <td>{{ run.source_window_start.strftime('%Y-%m-%d') if run.source_window_start else '-' }} &rarr;
+            {{ run.source_window_end.strftime('%Y-%m-%d') if run.source_window_end else '-' }}</td>
+        <td class="muted" style="font-size:.78rem;">{{ run.notes }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Imported Orders (the business unit — spec §3)</h2>
+  {% if from_date and through_date %}
+    {% if orders_rows %}
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Order ID</th><th>Order Employee</th><th>Total</th><th>Payments</th><th>Gratuity</th><th>Settlement Time</th><th>State</th><th>Payment State</th></tr></thead>
+      <tbody>
+      {% for row in orders_rows %}
+        <tr>
+          <td>{{ row.source_order_id }}</td>
+          <td>{{ row.employee_id or '-' }}</td>
+          <td>${{ "%.2f"|format(row.total / 100) if row.total is not none else '-' }}</td>
+          <td>{{ row.num_payments }}{% if row.num_payments > 1 %} <span class="badge warn">split</span>{% endif %}</td>
+          <td>{% if row.gratuity_total %}${{ "%.2f"|format(row.gratuity_total / 100) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+          <td>{{ row.settlement_time.strftime('%Y-%m-%d %H:%M') if row.settlement_time else '(no successful Payment yet)' }}</td>
+          <td>{{ row.state or '-' }}</td>
+          <td>{{ row.payment_state or '-' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty">No Orders recorded for this Restaurant in the selected period yet.</p>
+    {% endif %}
+  {% else %}
+    <p class="empty">Select a From/Through date above to view already-imported Orders for that period.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Imported source rows (Payments — audit view)</h2>
+  <p class="muted" style="font-size:.78rem;">Payment.employee is preserved here for audit/anomaly detection only — it does not determine tip ownership (Order.employee does; see the Orders table above).</p>
+  {% if from_date and through_date %}
+    {% if payments_rows %}
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Payment ID</th><th>Payment Employee</th><th>Amount</th><th>Tip</th><th>Result</th><th>Created</th></tr></thead>
+      <tbody>
+      {% for row in payments_rows %}
+        <tr>
+          <td>{{ row.source_payment_id }}</td>
+          <td>{{ row.employee_id or '-' }}</td>
+          <td>${{ "%.2f"|format(row.amount / 100) }}</td>
+          <td>
+            {% if row.tip_present %}${{ "%.2f"|format(row.tip_amount / 100) }}{% else %}<span class="muted">(absent)</span>{% endif %}
+          </td>
+          <td>{{ row.result }}</td>
+          <td>{{ row.created_at.strftime('%Y-%m-%d %H:%M') if row.created_at else '-' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty">No Payments recorded for this Restaurant in the selected period yet.</p>
+    {% endif %}
+  {% else %}
+    <p class="empty">Select a From/Through date above to view already-imported source rows for that period.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Imported Shifts (clock-in / clock-out source facts)</h2>
+  <p class="muted" style="font-size:.78rem;">Not yet used for any eligibility or distribution decision — made available for the future Tip Distribution Engine only.</p>
+  {% if from_date and through_date %}
+    {% if shifts_rows %}
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Employee ID</th><th>Clock-in</th><th>Clock-out</th><th>Source Shift ID</th></tr></thead>
+      <tbody>
+      {% for row in shifts_rows %}
+        <tr>
+          <td>{{ row.employee_id or '-' }}</td>
+          <td>{{ row.clock_in.strftime('%Y-%m-%d %H:%M') if row.clock_in else '-' }}</td>
+          <td>{% if row.clock_out %}{{ row.clock_out.strftime('%Y-%m-%d %H:%M') }}{% else %}<span class="muted">(still clocked in)</span>{% endif %}</td>
+          <td class="muted" style="font-size:.78rem;">{{ row.source_shift_id }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty">No Shifts recorded for this Restaurant in the selected period yet.</p>
+    {% endif %}
+  {% else %}
+    <p class="empty">Select a From/Through date above to view already-imported Shifts for that period.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

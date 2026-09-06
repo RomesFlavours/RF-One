@@ -34,7 +34,7 @@ from . import reader
 # code importable, without pulling any Clover Data Explorer *business logic*
 # (dashboard CSV reconstruction, discovery reports) into the canonical
 # ingestion path — only the low-level GET/pagination/cache primitives.
-_CLOVER_EXPLORER_DIR = Path(__file__).resolve().parents[4] / "Clover Data Explorer"
+_CLOVER_EXPLORER_DIR = Path(__file__).resolve().parents[5] / "Clover Data Explorer"
 if str(_CLOVER_EXPLORER_DIR) not in sys.path:
     sys.path.insert(0, str(_CLOVER_EXPLORER_DIR))
 

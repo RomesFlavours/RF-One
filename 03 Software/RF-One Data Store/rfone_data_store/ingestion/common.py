@@ -1,7 +1,8 @@
 """Shared, source-independent ingestion helpers.
 
 Nothing in this module knows about Clover specifically — Clover-specific
-transformation lives in `ingestion/clover/`.
+transformation lives in the Clover Technical Connector,
+`technical/connectors/clover/` (TECHNICAL_CONNECTORS_STRUCTURE_001).
 """
 
 from __future__ import annotations

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    {% if category == "error" %}<div class="error">{{ message }}</div>{% endif %}
+  {% endfor %}
+{% endwith %}
+
+<div class="card">
+  <h2>Tip Distribution Rules</h2>
+  {% if restaurant %}
+  <p class="muted" style="font-size:.85rem;">Restaurant: <strong>{{ restaurant.name }}</strong></p>
+  {% else %}
+  <p class="error">No Restaurant exists in this database yet.</p>
+  {% endif %}
+
+  {% if rules_rows %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Source Role</th><th>Recipient Role</th><th>Calculation Base</th><th>Rate</th><th>Effective From</th><th>Effective To</th><th>State</th><th>Versions</th><th></th></tr></thead>
+    <tbody>
+    {% for row in rules_rows %}
+      <tr>
+        <td>{{ row.source_role_name }}</td>
+        <td>{{ row.recipient_role_name }}</td>
+        <td>{{ row.current.calculation_base if row.current else '-' }}</td>
+        <td>{{ row.current.rate if row.current else '-' }}%</td>
+        <td>{{ row.current.effective_from.strftime('%Y-%m-%d') if row.current and row.current.effective_from else '-' }}</td>
+        <td>{{ row.current.effective_to.strftime('%Y-%m-%d') if row.current and row.current.effective_to else '(open-ended)' }}</td>
+        <td><span class="badge {{ 'ok' if row.is_active else 'bad' }}">{{ 'ACTIVE' if row.is_active else 'INACTIVE' }}</span></td>
+        <td>{{ row.version_count }}</td>
+        <td>
+          <a href="{{ url_for('distribution_rule_detail', rule_id=row.id) }}">View / Edit / History</a>
+          &middot;
+          <form method="post" action="{{ url_for('distribution_rule_toggle_active', rule_id=row.id) }}" style="display:inline;">
+            <button type="submit" class="btn">{{ 'Deactivate' if row.is_active else 'Activate' }}</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Tip Distribution Rules configured yet for this Restaurant.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Create a new Rule</h2>
+  <form method="post" action="{{ url_for('distribution_rule_create') }}">
+    <div class="form-row">
+      <div>
+        <label for="source_role_id">Source Role</label>
+        <select id="source_role_id" name="source_role_id" required>
+          {% for role in roles %}<option value="{{ role.id }}">{{ role.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="recipient_role_id">Recipient Role</label>
+        <select id="recipient_role_id" name="recipient_role_id" required>
+          {% for role in roles %}<option value="{{ role.id }}">{{ role.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="calculation_base">Calculation Base</label>
+        <select id="calculation_base" name="calculation_base" required>
+          {% for base in calculation_bases %}<option value="{{ base }}">{{ base }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="rate">Rate (%)</label>
+        <input type="text" id="rate" name="rate" placeholder="10.0000" required>
+      </div>
+      <div>
+        <label for="effective_from">Effective From</label>
+        <input type="date" id="effective_from" name="effective_from" required>
+      </div>
+      <div>
+        <label for="created_by">Created by</label>
+        <input type="text" id="created_by" name="created_by" placeholder="optional">
+      </div>
+      <div>
+        <button type="submit" {{ 'disabled' if not restaurant else '' }}>Create Rule</button>
+      </div>
+    </div>
+  </form>
+  <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
+    A Restaurant may have multiple Rules, and the same Source Role may have more than one Recipient Rule.
+  </p>
+</div>
+
+{% endblock %}

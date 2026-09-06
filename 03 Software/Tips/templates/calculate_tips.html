@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    {% if category == "error" %}
+      <div class="error">{{ message }}</div>
+    {% endif %}
+  {% endfor %}
+
+  <div class="card">
+    <h2>Calculate Tips</h2>
+    {% if restaurant %}
+    <p class="muted" style="font-size:.85rem;">Restaurant: <strong>{{ restaurant.name }}</strong></p>
+    {% else %}
+    <p class="error">No Restaurant exists in this database yet.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('calculate_tips_run') }}">
+      <div class="form-row">
+        <div>
+          <label for="from_date">From date</label>
+          <input type="date" id="from_date" name="from_date" value="{{ from_date }}" required>
+        </div>
+        <div>
+          <label for="through_date">Through date</label>
+          <input type="date" id="through_date" name="through_date" value="{{ through_date }}" required>
+        </div>
+        <div>
+          <button type="submit" {{ 'disabled' if not restaurant else '' }}>Calculate Tips</button>
+        </div>
+      </div>
+    </form>
+    <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
+      Calculates only from already-imported RF-One facts — never contacts Clover. Recalculating the SAME
+      From/Through supersedes the prior calculation (its results are kept, never deleted, just marked
+      superseded); a different, overlapping period is refused rather than silently guessed at.
+    </p>
+  </div>
+
+  {% for category, summary in messages %}
+    {% if category == "summary" %}
+    <div class="card"><p>{{ summary }}</p></div>
+    {% endif %}
+  {% endfor %}
+{% endwith %}
+
+<div class="card">
+  <h2>Employee Review{% if run %} — run #{{ run.id }} ({{ run.status }}){% endif %}</h2>
+  {% if not from_date or not through_date %}
+    <p class="empty">Select a From/Through date above to view or run a calculation for that period.</p>
+  {% elif not run %}
+    <p class="empty">No calculation exists yet for this exact period — click "Calculate Tips" above.</p>
+  {% elif not review_rows %}
+    <p class="empty">The calculation completed with no Employee activity to review for this period.</p>
+  {% else %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Employee</th><th>Gross Earned Tips</th><th>Outbound Tip-Out</th><th>Inbound Tip-Out</th>
+        <th>Net (before adjustments)</th><th>Orders</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in review_rows %}
+      <tr>
+        <td>
+          {{ row.display_name or ('Employee #' ~ row.employee_id) }}
+          {% if row.has_warning %}<span class="badge warn" title="{{ row.warning_notes|join(' | ') }}">warning</span>{% endif %}
+        </td>
+        <td>${{ "%.2f"|format(row.gross_earned_tips_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(row.outbound_tip_out_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(row.inbound_tip_out_minor / 100) }}</td>
+        <td><strong>${{ "%.2f"|format(row.net_before_adjustments_minor / 100) }}</strong></td>
+        <td class="muted" style="font-size:.78rem;">
+          {% for order_id in row.order_ids %}<a href="{{ url_for('calculate_tips_order_drilldown', order_id=order_id, from_date=from_date, through_date=through_date) }}">#{{ order_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+          {% if row.has_warning %}
+            {% for note in row.warning_notes %}<div class="error" style="margin-top:.3rem; padding:.3rem .5rem;">{{ note }}</div>{% endfor %}
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
+    No manual adjustments are reflected above (out of scope for this version). Click an Order's number to
+    see the atomic detail (Settlement Time, Gross Tip, applied Rule, generated pool, and each recipient's
+    allocation) behind any figure above.
+  </p>
+  {% endif %}
+</div>
+
+{% endblock %}

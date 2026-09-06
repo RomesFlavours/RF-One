@@ -25,8 +25,7 @@ from .profile.bootstrap import (
     ROOT_AREA_CODE,
     bootstrap_restaurant_profile,
 )
-from .tips.engine import ISSUE_NO_VALID_POLICY, MODE_DRY_RUN as TIPS_MODE_DRY_RUN, run_tip_calculation
-from .tips.resolvers import NullServiceAttributionResolver
+from .tips import distribution_engine
 
 UTC = timezone.utc
 
@@ -388,8 +387,11 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
 
     # =====================================================================
-    # Case 15: real Tips engine still does not invent service ownership or
-    # policy, even though EmployeeAssignments now exist for this Restaurant.
+    # Case 15: the canonical Tip Distribution Engine still does not invent a
+    # Rule, even though EmployeeAssignments now exist for this Restaurant
+    # (TIPS_LEGACY_ENGINE_RETIREMENT_001 replaced the legacy `tips/engine.py`
+    # call this check used to make with an equivalent call to the canonical
+    # `tips/distribution_engine.py`).
     # =====================================================================
     order_type = m.OrderType(
         location_id=location.id, source_system_id=source_system.id, source_order_type_id="OT1", name="Table"
@@ -412,25 +414,30 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     session.add(m.PaymentTip(payment_id=tip_payment.id, amount=1000, source_present=True))
     session.flush()
 
-    tips_run, tips_summary = run_tip_calculation(
+    tips_run, tips_summary = distribution_engine.run_tip_distribution_calculation(
         session,
         restaurant_id=restaurant.id,
-        period_start=_dt(365),
+        # `distribution_engine` always compares its period bounds against a
+        # timezone-aware Settlement Time (see its own `_aware_utc` helper) —
+        # unlike this file's own naive-UTC `_dt()` convention, so these two
+        # bounds are made explicitly aware here (only for this call).
+        period_start=_dt(365).replace(tzinfo=UTC),
         period_end=datetime.now(UTC) + timedelta(days=1),
-        resolver=NullServiceAttributionResolver(),
-        mode=TIPS_MODE_DRY_RUN,
-        calculation_version="profile-bootstrap-test",
     )
     session.flush()
-    tips_issues = session.scalars(
-        select(m.TipCalculationIssue).where(m.TipCalculationIssue.calculation_run_id == tips_run.id)
+    tip_order_allocations = session.scalars(
+        select(m.TipDistributionAllocation).where(
+            m.TipDistributionAllocation.calculation_run_id == tips_run.id,
+            m.TipDistributionAllocation.order_id == tip_order.id,
+        )
     ).all()
     result.check(
-        "Case 15: after bootstrapping real EmployeeAssignments, the Tips engine still allocates "
-        "nothing and still reports NO_VALID_POLICY (no service owner or policy was invented "
-        "merely because Assignments now exist)",
-        tips_summary.allocations_produced == 0
-        and any(i.issue_type == ISSUE_NO_VALID_POLICY for i in tips_issues),
+        "Case 15: after bootstrapping real EmployeeAssignments, the canonical Tip Distribution Engine "
+        "still allocates nothing for this Order — an active Tip Distribution Rule is restaurant-"
+        "configured data, never invented merely because EmployeeAssignments now exist",
+        tips_run.status == distribution_engine.STATUS_COMPLETE
+        and tips_summary.rules_applied == 0
+        and len(tip_order_allocations) == 0,
     )
 
     result.check(

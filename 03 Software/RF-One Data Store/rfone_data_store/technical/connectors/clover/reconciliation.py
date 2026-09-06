@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ... import models as m
+from .... import models as m
 from . import parser, reader
 
 # Used ONLY for the weekly confidence check window (task §43), reproducing

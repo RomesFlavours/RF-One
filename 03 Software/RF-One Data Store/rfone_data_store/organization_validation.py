@@ -21,8 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import models as m
-from .tips.engine import MODE_DRY_RUN as TIPS_MODE_DRY_RUN, run_tip_calculation
-from .tips.resolvers import NullServiceAttributionResolver
+from .tips import distribution_engine, distribution_rule_service
 
 UTC = timezone.utc
 
@@ -439,11 +438,14 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
 
     # =====================================================================
-    # Cross-domain check — Tips engine eligibility resolution must not
-    # exclude a Location-scoped EmployeeAssignment (task §"Cross-domain
-    # implications"): it does not filter EmployeeAssignment by location_id
-    # at all, so a Location-specific Assignment remains just as eligible as
-    # a Restaurant-wide one.
+    # Cross-domain check — the canonical Tip Distribution Engine's recipient-
+    # role eligibility resolution must not exclude a Location-scoped
+    # EmployeeAssignment (task §"Cross-domain implications"; TIPS_LEGACY_
+    # ENGINE_RETIREMENT_001 replaced the legacy `tips/engine.py` call this
+    # check used to make with an equivalent call to the canonical
+    # `tips/distribution_engine.py`): it does not filter EmployeeAssignment
+    # by location_id at all, so a Location-specific Assignment remains just
+    # as eligible as a Restaurant-wide one.
     # =====================================================================
     order_type = m.OrderType(
         location_id=location_wp.id, source_system_id=source_system.id, source_order_type_id="OT1", name="Table",
@@ -475,53 +477,62 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
     session.flush()
 
-    tip_policy = m.TipPolicy(
-        restaurant_id=restaurant.id, name="Location-scoped eligibility test policy",
-        status="ACTIVE", valid_from=_dt(60),
-    )
-    session.add(tip_policy)
-    session.flush()
+    # A dedicated Source-role Employee/Assignment, separate from
+    # `emp_location_scoped` (the RECIPIENT under test) — the canonical
+    # engine's Order.employee (task's "tip owner") must hold the rule's
+    # SOURCE role, a distinct concept from the Location-scoped RECIPIENT
+    # role this check is actually about.
+    emp_locscoped_source = make_employee("E-LOCSCOPED-SRC", "LocationScopedCrossDomainSourceEmployee")
     session.add(
-        m.TipPolicyComponent(
-            tip_policy_id=tip_policy.id, sequence=1, recipient_basis="ROLE_PRESENT_AT_PAYMENT",
-            restaurant_role_id=role_server.id, share_percentage=Decimal("100.0000"),
-            split_method="EQUAL_ELIGIBLE_HEADCOUNT", no_eligible_behavior="LEAVE_UNALLOCATED",
+        m.EmployeeAssignment(
+            employee_id=emp_locscoped_source.id, restaurant_id=restaurant.id, operational_area_id=area_root.id,
+            restaurant_role_id=role_manager.id, location_id=location_wp.id,
+            valid_from=_dt(400), valid_to=None, assignment_source="MANUAL",
         )
     )
     session.flush()
+    distribution_rule_service.create_rule(
+        session, restaurant_id=restaurant.id, source_role_id=role_manager.id, recipient_role_id=role_server.id,
+        calculation_base=m.CALC_BASE_VOLUNTARY_TIP, rate=Decimal("100.0000"), effective_from=_dt(400),
+        created_by="organization_validation.py cross-domain check",
+    )
 
     cross_domain_order = m.Order(
         location_id=location_wp.id, source_system_id=source_system.id, source_order_id="ORDER-locscoped",
-        employee_id=emp_location_scoped.id, order_type_id=order_type.id, created_at=_dt(2),
+        employee_id=emp_locscoped_source.id, order_type_id=order_type.id, created_at=_dt(2),
         payment_state="PAID", currency="USD", total=6000,
     )
     session.add(cross_domain_order)
     session.flush()
     cross_domain_payment = m.Payment(
         order_id=cross_domain_order.id, source_system_id=source_system.id, source_payment_id="PAY-locscoped",
-        employee_id=emp_location_scoped.id, created_at=_dt(2), amount=6000, result="SUCCESS",
+        employee_id=emp_locscoped_source.id, created_at=_dt(2), amount=6000, result="SUCCESS",
     )
     session.add(cross_domain_payment)
     session.flush()
     session.add(m.PaymentTip(payment_id=cross_domain_payment.id, amount=1000, source_present=True))
     session.flush()
 
-    tips_run, tips_summary = run_tip_calculation(
-        session, restaurant_id=restaurant.id, period_start=_dt(365),
+    tips_run, tips_summary = distribution_engine.run_tip_distribution_calculation(
+        # `distribution_engine` always compares its period bounds against a
+        # timezone-aware Settlement Time (see its own `_aware_utc` helper) —
+        # unlike this file's own naive-UTC `_dt()` convention, so these two
+        # bounds are made explicitly aware here (only for this call).
+        session, restaurant_id=restaurant.id, period_start=_dt(365).replace(tzinfo=UTC),
         period_end=datetime.now(UTC) + timedelta(days=1),
-        resolver=NullServiceAttributionResolver(), mode=TIPS_MODE_DRY_RUN,
-        calculation_version="organization-002-cross-domain-test",
     )
     session.flush()
     location_scoped_allocations = session.scalars(
-        select(m.TipAllocation).where(
-            m.TipAllocation.calculation_run_id == tips_run.id,
-            m.TipAllocation.employee_id == emp_location_scoped.id,
+        select(m.TipDistributionAllocation).where(
+            m.TipDistributionAllocation.calculation_run_id == tips_run.id,
+            m.TipDistributionAllocation.recipient_employee_id == emp_location_scoped.id,
         )
     ).all()
     result.check(
-        "Cross-domain: the Tips engine allocates to an Employee whose only matching Assignment is "
-        "Location-scoped (location_id set) exactly as it would for a Restaurant-wide Assignment — "
-        "adding Location to EmployeeAssignment does not silently exclude anyone",
-        tips_summary.allocations_produced >= 1 and len(location_scoped_allocations) >= 1,
+        "Cross-domain: the canonical Tip Distribution Engine allocates to an Employee whose only "
+        "matching Recipient-Role Assignment is Location-scoped (location_id set) exactly as it would "
+        "for a Restaurant-wide Assignment — adding Location to EmployeeAssignment does not silently "
+        "exclude anyone",
+        tips_run.status == distribution_engine.STATUS_COMPLETE
+        and any(a.allocated_amount_minor >= 1 for a in location_scoped_allocations),
     )

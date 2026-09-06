@@ -340,7 +340,7 @@ Always computed at query time by `rfone_data_store/payroll/labor_cost.py`: `sum(
 
 **Purpose:** a commercial/POS grouping of sold units and settlements — **not** assumed to be 1:1 with Table Service, Payment, or a single physical unit per line (Restaurant Sales Model §5, §13; TASK_CLOVER_003).
 **PK:** `id`. **FKs:** `location_id` (required), `table_service_id` → `table_services` (**nullable** — Table Service reconstruction is not implemented by this task, task §14/§45), `employee_id` → `employees` (nullable), `order_type_id` → `order_types` (nullable), `device_id` → `devices` (nullable).
-**Required source fields:** `source_system_id`, `source_order_id` (`UniqueConstraint` together), `created_at`.
+**Source fields:** `source_system_id`, `source_order_id` (`UniqueConstraint` together) — **nullable**, per modeling principle F, since RFONE_OPERATIONAL_DATA_MODEL_001 relaxed this (previously required): a canonical Order must remain creatable without any external source at all, so a future RF-One POS (or any other native origination) is never structurally forced to invent a fake external id. Every Order sourced from Clover today still always carries both. `created_at` remains required.
 **`source_employee_id` (nullable string) alongside `employee_id` (nullable FK):** the raw source employee reference is preserved even if/before it is resolved to a canonical `Employee` row.
 **`device_id` (nullable FK, added by TASK_DATABASE_002's pre-ingestion schema review) alongside `device_source_id` (nullable string):** TASK_DATABASE_001 originally left Device linkage as a raw string only, reasoning it mirrored `source_employee_id`'s pattern. TASK_DATABASE_002 revisited this before real ingestion: since `Device` is already a canonical catalog entity resolvable from Clover's small, stable `/devices` collection, a resolved FK materially improves queryability (e.g. joining Orders to Device without an application-level lookup) at negligible cost. Both columns are retained — `device_id` is populated only when the source device can actually be resolved to a canonical `Device` row; `device_source_id` always preserves the raw source reference regardless of resolution.
 **Money fields** (`subtotal`, `discount_total`, `tax_total`, `total`) are all nullable integer minor units — Clover's own `Order.total` is 100% present but the others are frequently derived/absent depending on source completeness.
@@ -354,19 +354,19 @@ Always computed at query time by `rfone_data_store/payroll/labor_cost.py`: `sum(
 ### `items`
 
 **Purpose:** anything sellable — explicitly **not** "current menu item" (Restaurant Sales Model §8; TASK_CLOVER_003 § I confirmed Clover's real catalog mixes food/beverage, technical, and fee-adjacent Items).
-**PK:** `id`. **FK:** `location_id` (required). **Required:** `source_system_id`, `source_item_id` (unique together), `name`.
+**PK:** `id`. **FK:** `location_id` (required). Canonical identity is `id`; `source_system_id`+`source_item_id` (unique together) are **nullable** since CANONICAL_OPERATIONAL_DB_FINALIZATION_001 (previously required) — modeling principle F, same rationale as `orders`: a canonical Item must remain creatable without an external source (e.g. a future RF-One POS). Every Clover-sourced row still always carries both. `name` remains required.
 **Why `sku`/`code` are nullable despite sitting next to `name` in the task's suggested field grouping:** TASK_CLOVER_003 measured real coverage at 98.1%/99.8%, not 100% — forcing `NOT NULL` would directly contradict the empirical evidence and violate the "missing ≠ zero/absent-as-default" principle (task §4C).
 **`item_nature`** is an explicit RF-One classification field, nullable, **never auto-derived from the Item name** (task §15) — it exists so a future classification pass has somewhere to write its conclusion without needing a migration.
 
 ### `categories` / `item_categories`
 
-`categories`: `id` PK, `location_id` FK, `source_system_id`+`source_category_id` (required, unique together), `name` (required).
+`categories`: `id` PK (canonical identity), `location_id` FK, `source_system_id`+`source_category_id` (**nullable**, unique together, since CANONICAL_OPERATIONAL_DB_FINALIZATION_001 — external identity is optional provenance, not required), `name` (required).
 `item_categories`: composite PK `(item_id, category_id)` — **M:N is required, not optional**, because TASK_CLOVER_003 empirically found real Items with 0, 1, 2, and even 15 Categories (task §16).
 
 ### `modifier_groups` / `modifiers` / `item_modifiers`
 
-`modifier_groups`: `id` PK, `location_id` FK, `source_system_id`+`source_modifier_group_id` (required, unique together), `name` (required).
-`modifiers`: `id` PK, `location_id` FK, `modifier_group_id` → `modifier_groups` (**nullable** — a Modifier need not belong to a group), `source_system_id`+`source_modifier_id` (required, unique together), `name` (required), `alternate_name`/`price_delta`/`active` (nullable).
+`modifier_groups`: `id` PK (canonical identity), `location_id` FK, `source_system_id`+`source_modifier_group_id` (**nullable**, unique together, since CANONICAL_OPERATIONAL_DB_FINALIZATION_001), `name` (required).
+`modifiers`: `id` PK (canonical identity), `location_id` FK, `modifier_group_id` → `modifier_groups` (**nullable** — a Modifier need not belong to a group), `source_system_id`+`source_modifier_id` (**nullable**, unique together, since CANONICAL_OPERATIONAL_DB_FINALIZATION_001), `name` (required), `alternate_name`/`price_delta`/`active` (nullable).
 **Semantic nature deliberately not encoded:** no `PRODUCT_VARIANT` vs. `SERVICE_INSTRUCTION` column exists — TASK_CLOVER_003 confirmed this distinction remains unresolved from Clover data alone (task §17).
 `item_modifiers`: composite PK `(item_id, modifier_id)` — catalog **availability** (Modifiers associated with an Item), explicitly distinct from a Modifier actually **selected** on a sale (`order_item_modifiers`, § 7 below) — task §18.
 
@@ -378,7 +378,7 @@ Always computed at query time by `rfone_data_store/payroll/labor_cost.py`: `sum(
 
 **Purpose:** the most granular source sales line available.
 **PK:** `id`. **FKs:** `order_id` → `orders` (required, indexed), `item_id` → `items` (**nullable, indexed** — fee/technical lines carry no catalog Item, matching Clover's own ~1.6-1.9% Item-absent rate on fee lines).
-**Required:** `source_system_id`, `source_line_item_id` (unique together).
+**Source fields:** `source_system_id`, `source_line_item_id` (unique together) — **nullable** since RFONE_OPERATIONAL_DATA_MODEL_001 (previously required), for the same modeling-principle-F reason as `orders` above: a canonical Order Item must remain creatable without an external source. Every Clover-sourced row still always carries both.
 **Quantity — the task's central correction:** `quantity` is `Numeric(12, 4)`, **nullable, never defaulted to 1**. TASK_CLOVER_003 found Clover Order Items are **not** guaranteed to represent exactly one physical unit — 308 real revenue line items carried a fractional `unitQty` (halves, thirds, quarters). Forcing an integer or defaulting a missing value to `1` would silently misrepresent real sales.
 **Guest evidence:** `guest_number` (nullable, **indexed**) is the atomic per-item guest/seat assignment; `guest_label_raw` preserves the original free-text POS evidence (e.g. Clover's `binName`) it was parsed from. **The Clover field name `binName` itself does not appear anywhere in this canonical schema** — only in raw source metadata (`SourceRecord.raw_json`) if ever persisted there — per task §21.
 **`created_at` is nullable here** (unlike `orders.created_at`), matching the task's own §19 field list — an individual line's own timestamp may not always be resolvable independently of its parent Order's.
@@ -388,7 +388,8 @@ Always computed at query time by `rfone_data_store/payroll/labor_cost.py`: `sum(
 ### `order_item_modifiers`
 
 **Purpose:** a Modifier actually selected on a historical Order Item.
-**PK:** `id`. **FK:** `order_item_id` → `order_items` (required, indexed); `modifier_id` → `modifiers` (**nullable**) — preserves enough source identity (`name_raw`, `amount`, `source_modification_id`) to audit a modification even where the catalog Modifier cannot be resolved (task §20).
+**PK:** `id` (canonical identity). **FK:** `order_item_id` → `order_items` (required, indexed); `modifier_id` → `modifiers` (**nullable**) — preserves enough source identity (`name_raw`, `amount`, `source_modification_id`) to audit a modification even where the catalog Modifier cannot be resolved (task §20).
+**`source_system_id` is nullable** (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — external identity is optional provenance, not required. **`UniqueConstraint(order_item_id, source_modification_id)`** (added by the same task — previously missing entirely; idempotency for this table had relied solely on application-level upsert logic) matches the exact composite key `ingest.py`'s own lookup already used.
 
 ---
 
@@ -396,12 +397,13 @@ Always computed at query time by `rfone_data_store/payroll/labor_cost.py`: `sum(
 
 ### `discount_definitions`
 
-**Purpose:** optional catalog discount definition. **PK:** `id`. **FK:** `location_id` (required). Required: `source_system_id`+`source_discount_id` (unique together), `name`. `percentage`/`amount`/`active` nullable — a catalog definition is typically one or the other, never both, but neither is forced.
+**Purpose:** optional catalog discount definition. **PK:** `id` (canonical identity). **FK:** `location_id` (required). `source_system_id`+`source_discount_id` (unique together) are **nullable** since CANONICAL_OPERATIONAL_DB_FINALIZATION_001 (previously required) — external identity is optional provenance. `name` remains required. `percentage`/`amount`/`active` nullable — a catalog definition is typically one or the other, never both, but neither is forced.
 
 ### `order_discounts` / `order_item_discounts`
 
 **Purpose:** Order-level and Order-Item-level applied discounts — **structurally distinct tables, never collapsed** (task §18/§24 of the Restaurant Sales Model and this task's §24).
-**PK:** `id` each. **FK:** `discount_definition_id` (**nullable** — TASK_CLOVER_003 confirmed real ad hoc/manual discounts exist with no catalog reference at all).
+**PK:** `id` each (canonical identity). **FK:** `discount_definition_id` (**nullable** — TASK_CLOVER_003 confirmed real ad hoc/manual discounts exist with no catalog reference at all).
+**`source_system_id` is nullable on both tables** (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — external identity is optional provenance. **`UniqueConstraint(order_id, source_discount_id)`** on `order_discounts` and **`UniqueConstraint(order_item_id, source_discount_id)`** on `order_item_discounts` (both added by the same task — previously missing entirely). `order_item_discounts` remains empty in every real dataset observed to date — no evidence of item-level applied discounts has ever been found in this merchant's Clover data (CLOVER_INGESTION.md §12), not a sign the table or its constraint don't work.
 **`percentage` and `amount` are both independently nullable — this is the schema's direct answer to a TASK_CLOVER_003 finding:** real applied discounts come in (at least) three shapes — catalog-referenced percentage, ad hoc percentage, and **ad hoc fixed amount** (one confirmed real example: `"$50.00 Off"` → `amount: -5000` cents). A schema that only had a `percentage` column would silently be unable to represent the amount-shaped case, exactly the gap TASK_CLOVER_003 flagged in the existing Clover export-reconstruction logic.
 **`raw_shape_json`** preserves the exact applied-discount element as observed, so a future reviewer can audit which shape actually produced a given row without re-deriving it from `percentage`/`amount` alone.
 **`source_discount_id` is nullable**, interpreted as "the source system's own id for this applied-discount element" (present on every Clover example seen, but not assumed to exist for every future source).
@@ -412,19 +414,20 @@ Always computed at query time by `rfone_data_store/payroll/labor_cost.py`: `sum(
 
 ### `tax_rates`
 
-**PK:** `id`. **FK:** `location_id` (required). Required: `source_system_id`+`source_tax_rate_id` (unique together), `name`, `rate` (canonical decimal fraction, `NOT NULL` — a Tax Rate catalog entry without a rate is not meaningful). `active` nullable.
+**PK:** `id` (canonical identity). **FK:** `location_id` (required). `source_system_id`+`source_tax_rate_id` (unique together) are **nullable** since CANONICAL_OPERATIONAL_DB_FINALIZATION_001 (previously required) — external identity is optional provenance. `name` and `rate` (canonical decimal fraction, `NOT NULL` — a Tax Rate catalog entry without a rate is not meaningful) remain required. `active` nullable.
 
 ### `order_item_taxes`
 
 **Purpose:** line-item tax detail, preserved for reconciliation/analysis. **`Order.tax_total` remains the order-level tax total** — this table does not replace it (task §26).
-**PK:** `id`. **FK:** `order_item_id` → `order_items` (required, indexed); `tax_rate_id` → `tax_rates` (nullable — the applicable rate may not always be resolvable to a catalog row, e.g. an untaxed item with an empty per-item override, per TASK_CLOVER_003's confirmed "empty list means 0%, not fallback to default" rule). `amount`/`rate_applied` nullable.
+**PK:** `id` (canonical identity). **FK:** `order_item_id` → `order_items` (required, indexed); `tax_rate_id` → `tax_rates` (nullable — the applicable rate may not always be resolvable to a catalog row, e.g. an untaxed item with an empty per-item override, per TASK_CLOVER_003's confirmed "empty list means 0%, not fallback to default" rule). `amount`/`rate_applied` nullable.
+**`source_system_id` is nullable** (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — external identity is optional provenance. **`UniqueConstraint(order_item_id, source_tax_reference)`** (added by the same task — previously missing entirely).
 **Tax ownership principle preserved:** Payment-level tax is never treated as conceptual tax ownership — see `payments.tax_amount_source` below, deliberately named to make clear it is a **settlement-side observation**, not the source of truth for Order tax.
 
 ### `order_fees`
 
 **Purpose:** supports native fee mechanisms (e.g. Clover's synthetic "Gratuity"/Service Charge line item) while preserving provenance to the source line that produced it.
 **PK:** `id`. **FK:** `order_id` → `orders` (required). `source_line_item_id` is a **raw string reference**, not a hard FK to `order_items` — the synthetic fee line is also separately ingested as its own `OrderItem` row (with `is_order_fee=true`); this column is provenance-only, linking the two representations for audit without forcing a rigid 1:1 assumption (task §27).
-**`amount` is required** (a Fee without an amount is not a fee); `fee_type`, `name_raw`, `percentage`, `source_fee_id` nullable. Ordinary Items are never auto-classified as fees by name — that remains an RF-One classification decision made elsewhere, if ever.
+**`amount` is required** (a Fee without an amount is not a fee); `source_system_id` (nullable since RFONE_OPERATIONAL_DATA_MODEL_001 — canonical identity is `id`, external identity is optional provenance), `fee_type`, `name_raw`, `percentage`, `source_fee_id` all nullable. **`UniqueConstraint(order_id, source_line_item_id)`** (added by CANONICAL_OPERATIONAL_DB_FINALIZATION_001 — previously missing entirely; matches the exact composite key both ingestion paths already use as their own lookup). Ordinary Items are never auto-classified as fees by name — that remains an RF-One classification decision made elsewhere, if ever.
 
 ---
 
@@ -432,12 +435,12 @@ Always computed at query time by `rfone_data_store/payroll/labor_cost.py`: `sum(
 
 ### `tenders`
 
-**PK:** `id`. **FK:** `location_id` (required). Required: `source_system_id`+`source_tender_id` (unique together), `label`. `source_type` is preserved as-is but is **explicitly not used as a cash/card classification** — TASK_CLOVER_003 disproved `opensCashDrawer` as a reliable structural signal for the current merchant (it was `False` on every tender including `Cash`); the free-text `label` remains the practical source of truth, and this schema does not pretend otherwise (task §28).
+**PK:** `id` (canonical identity). **FK:** `location_id` (required). `source_system_id`+`source_tender_id` (unique together) are **nullable** since CANONICAL_OPERATIONAL_DB_FINALIZATION_001 (previously required) — external identity is optional provenance. `label` remains required. `source_type` is preserved as-is but is **explicitly not used as a cash/card classification** — TASK_CLOVER_003 disproved `opensCashDrawer` as a reliable structural signal for the current merchant (it was `False` on every tender including `Cash`); the free-text `label` remains the practical source of truth, and this schema does not pretend otherwise (task §28).
 
 ### `payments`
 
 **Purpose:** an independent atomic settlement entity. **One Order may have many Payments — including FAILED ones.**
-**PK:** `id`. **FK:** `order_id` → `orders` (required, indexed). Required: `source_system_id`+`source_payment_id` (unique together), `created_at`, `amount`.
+**PK:** `id`. **FK:** `order_id` → `orders` (required, indexed). `source_system_id`+`source_payment_id` (unique together) are **nullable** since RFONE_OPERATIONAL_DATA_MODEL_001 (previously required) — a canonical Payment must remain creatable without an external source; `created_at` and `amount` remain required.
 **Why this matters structurally:** TASK_CLOVER_003 confirmed Clover's own nested `Order.payments` collection **silently excludes failed payment attempts** (a precisely reconciled finding: the 36-payment gap between nested and top-level Payments equals exactly the `FAIL`-result count). This schema does not replicate that gap — `payments` is designed to be populated from the complete top-level Payments collection by a future ingestion pipeline, not the nested one, so failed Payments remain representable. No ingestion code is implemented here; this is a schema-level readiness note.
 **`tax_amount_source`** (not `tax_amount`) is deliberately named to signal it is the payment's own reported figure, distinct from — and not authoritative over — `orders.tax_total`/`order_item_taxes` (task §26/§38).
 **`device_id`** (nullable FK → `devices`, added by TASK_DATABASE_002) alongside **`device_source_id`** (nullable raw string) — see § 5's Order entry for the rationale; identical pattern here.
@@ -453,7 +456,7 @@ Always computed at query time by `rfone_data_store/payroll/labor_cost.py`: `sum(
 **Purpose:** a **mandatory, first-class entity** — not optional, not inferable.
 **PK:** `id`. **FKs:** `order_id`/`payment_id`/`employee_id` — all **nullable**, because TASK_CLOVER_003's real confirmed examples show a Refund is reachable and meaningful even before/without full resolution to every related canonical entity. **One Payment may have multiple Refunds** — `payment_id` is a plain FK (not unique), matching the task's explicit "allow multiple Refunds per Payment" instruction (§31), even though only full-amount refunds were observed in the current evidence.
 **Why this table must never be inferred from other tables:** TASK_CLOVER_003's single most important finding — two real refunds exist that are **completely invisible** in `orders.payment_state` (stays `"PAID"`), `payments.result` (stays `"SUCCESS"`), and `order_items.refunded_flag` (stays `false`), confirmed by exact ID cross-reference. This table exists precisely because those other fields cannot be trusted to reveal a refund.
-**Required:** `source_system_id`+`source_refund_id` (unique together), `created_at`, `amount`. `tax_amount`, `tip_amount`, `status`, `voided`, `device_id` (FK → `devices`, added by TASK_DATABASE_002), `device_source_id` all nullable.
+`source_system_id`+`source_refund_id` (unique together) are **nullable** since RFONE_OPERATIONAL_DATA_MODEL_001 (previously required) — same modeling-principle-F reasoning as `orders`/`payments` above. `created_at` and `amount` remain required. `tax_amount`, `tip_amount`, `status`, `voided`, `device_id` (FK → `devices`, added by TASK_DATABASE_002), `device_source_id` all nullable.
 
 ---
 
@@ -461,7 +464,7 @@ Always computed at query time by `rfone_data_store/payroll/labor_cost.py`: `sum(
 
 ### `devices`
 
-**PK:** `id`. **FK:** `location_id` (required). Required: `source_system_id`+`source_device_id` (unique together). `name`/`model`/`device_type` nullable. **Hardware configuration fields are deliberately not stored** (e.g. Clover's `pinDisabled`, `offlinePayments*`, `secureId`) — task §32 asks for a lightweight entity only, and TASK_CLOVER_003 classified this detail as vendor configuration noise, not business data.
+**PK:** `id` (canonical identity). **FK:** `location_id` (required). `source_system_id`+`source_device_id` (unique together) are **nullable** since CANONICAL_OPERATIONAL_DB_FINALIZATION_001 (previously required) — external identity is optional provenance. `name`/`model`/`device_type` nullable. **Hardware configuration fields are deliberately not stored** (e.g. Clover's `pinDisabled`, `offlinePayments*`, `secureId`) — task §32 asks for a lightweight entity only, and TASK_CLOVER_003 classified this detail as vendor configuration noise, not business data.
 
 ---
 
@@ -492,6 +495,20 @@ The five explicitly required, plus catalog/reference entities where TASK_CLOVER_
 (source_system_id, source_tender_id)         tenders
 (source_system_id, source_device_id)         devices
 ```
+
+Five further composite constraints (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) key off their **parent** row rather than `source_system_id` directly — each was previously missing entirely, so idempotency for these tables had relied solely on application-level upsert logic, not the database:
+
+```text
+(order_item_id, source_modification_id)      order_item_modifiers
+(order_id, source_line_item_id)              order_fees
+(order_item_id, source_tax_reference)        order_item_taxes
+(order_id, source_discount_id)               order_discounts
+(order_item_id, source_discount_id)          order_item_discounts
+```
+
+**Identity/nullability note:** for every table in both lists above, **RF-One's own `id` is the canonical identity** — `source_system_id`/the paired external id column are optional provenance, not a requirement to exist at all. `orders`, `order_items`, `order_fees`, `payments`, and `refunds` were relaxed from `NOT NULL` to nullable by RFONE_OPERATIONAL_DATA_MODEL_001; `items`, `categories`, `modifier_groups`, `modifiers`, `discount_definitions`, `tax_rates`, `tenders`, `devices`, `order_item_modifiers`, `order_item_taxes`, `order_discounts`, and `order_item_discounts` were relaxed the same way by CANONICAL_OPERATIONAL_DB_FINALIZATION_001. `merchants`, `locations`, `employees`, and `shifts` were already nullable before either task (the original modeling-principle-F rows). The only remaining `NOT NULL source_system_id` in the schema is `source_roles`/`employee_source_roles` — deliberately unchanged: both are the source system's own named-Role catalog/membership snapshot, not a provider-agnostic canonical entity in their own right (the canonical, provider-agnostic Role/assignment concept is `RestaurantRole`/`EmployeeAssignment`, which carries no source coupling at all).
+
+In every case the constraints themselves are unchanged: SQL/SQLite treats `NULL` as distinct from any other value (including another `NULL`), so natively-created rows with no source at all coexist safely, while a genuine duplicate external id pair is still rejected exactly as before.
 
 **No uniqueness constraint exists on `order_discounts.source_discount_id`, `order_item_discounts.source_discount_id`, or `order_item_modifiers.source_modification_id`** — these are applied-instance records, not catalog rows, and the source evidence does not establish a uniqueness guarantee for them (task §36's explicit caution against "false uniqueness").
 

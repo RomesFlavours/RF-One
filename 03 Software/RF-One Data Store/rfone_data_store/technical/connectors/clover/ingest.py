@@ -17,8 +17,8 @@ from typing import Any, TypeVar
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ... import models as m
-from ..common import payload_hash, utc_now
+from .... import models as m
+from ....ingestion.common import payload_hash, utc_now
 from . import mapping, parser, reader
 
 T = TypeVar("T")

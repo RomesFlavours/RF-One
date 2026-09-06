@@ -135,6 +135,9 @@ class IngestionRun(Base):
     incremental imports and auditability; no ingestion logic lives here."""
 
     __tablename__ = "ingestion_runs"
+    __table_args__ = (
+        Index("ix_ingestion_runs_lock_key", "lock_key", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source_system_id: Mapped[int] = mapped_column(
@@ -154,6 +157,15 @@ class IngestionRun(Base):
     )
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # TIPS_IMPORT_CONCURRENCY_GUARD_001 §5 — the execution token. Non-NULL
+    # only while status == "RUNNING"; a UNIQUE index (see migration) makes
+    # "another same-scope import is already RUNNING" a DB-enforced
+    # constraint rather than an application-level check-then-act race — two
+    # concurrent inserts for the same key can never both succeed, even
+    # against SQLite's single-writer file lock. Set back to NULL the moment
+    # the run reaches COMPLETE/PARTIAL/FAILED, releasing the guard.
+    lock_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     source_system: Mapped[SourceSystem] = relationship()
     source_records: Mapped[list["SourceRecord"]] = relationship(back_populates="ingestion_run")
@@ -786,20 +798,33 @@ class EmployeeAssignment(Base):
 
 
 # ---------------------------------------------------------------------------
-# Tips (TASK_TIPS_001)
+# Tips — LEGACY, NON-CANONICAL, READ-ONLY (TASK_TIPS_001, retired by
+# TIPS_LEGACY_ENGINE_RETIREMENT_001)
 #
-# The canonical Tip fact itself is NOT redefined here — it remains
-# `PaymentTip`, attached to `Payment` (task §3). This section adds only the
-# post-hoc *calculation* apparatus: a temporally-scoped, Restaurant-configured
-# Tip Policy, and the atomic, auditable results of running that policy over
-# already-recorded PaymentTips. No new Tip timestamp is introduced anywhere
-# below — every table that needs "when" reaches it through the parent
-# Payment (`payments.created_at`), never its own column.
+# `TipPolicy`/`TipPolicyComponent` were the ORIGINAL Payment-level tip
+# calculation configuration, read by the now-DELETED `tips/engine.py`. That
+# engine has been fully retired in favor of the canonical, Order-level Tip
+# Distribution Engine (`tips/distribution_engine.py`, reading
+# `TipDistributionRule`/`TipDistributionRuleVersion` below).
+#
+# These two classes are kept ONLY because their tables hold real historical
+# configuration data (Rome's Flavours / Winter Park's actual approved Tip
+# Policy, `configure_rome_flavours_tip_policy.py`'s output — 1 `tip_policies`
+# row + 2 `tip_policy_components` rows, confirmed non-empty in the
+# operational database at the time of retirement). No runtime code writes to
+# or reads from these tables anymore, and no new write path may be added
+# against them — they exist purely as inspectable historical record. The
+# sibling `TipCalculationRun`/`TipAllocation`/`TipCalculationIssue` tables
+# (the legacy engine's own *results*) were confirmed EMPTY at retirement time
+# and were dropped outright (see migration
+# `e2c7b4a9f1d6_drop_legacy_tip_calculation_tables.py`) — their model classes
+# no longer exist.
 # ---------------------------------------------------------------------------
 
 
 class TipPolicy(Base):
-    """A Restaurant-configured, temporally valid Tip allocation policy
+    """LEGACY / NON-CANONICAL / READ-ONLY — see the module-section comment
+    above. A Restaurant-configured, temporally valid Tip allocation policy
     (task §9). Never defaults to a universal percentage/role split — a
     Restaurant with no configured TipPolicy simply has no valid policy for
     any timestamp, which the calculation engine surfaces as an explicit
@@ -845,13 +870,8 @@ class TipPolicy(Base):
 
 
 class TipPolicyComponent(Base):
-    """One share of a `TipPolicy` (task §9-12). `recipient_basis` is never
-    reduced to a hard-coded role/name — `SERVICE_OWNER` routes to whatever
-    the service-attribution resolver returns for the Order (never
-    `Order.employee`/`Payment.employee` directly, task §5-6);
-    `ROLE_PRESENT_AT_PAYMENT` routes to whichever Employees the Restaurant's
-    own `RestaurantRole`/`EmployeeAssignment` data say were both present
-    (Shift) and assigned to that Role at the Payment timestamp (task §7)."""
+    """LEGACY / NON-CANONICAL / READ-ONLY — see the module-section comment
+    above `TipPolicy`. One share of a `TipPolicy` (task §9-12)."""
 
     __tablename__ = "tip_policy_components"
     __table_args__ = (
@@ -901,17 +921,182 @@ class TipPolicyComponent(Base):
     tip_policy: Mapped[TipPolicy] = relationship(back_populates="components")
 
 
-class TipCalculationRun(Base):
-    """One execution of the post-hoc Tip calculation engine over a requested
-    period (task §17, §20, §27) — supports reproducibility/auditability
-    (task §28) and safe dry-run-by-default operation (task §27)."""
+# ---------------------------------------------------------------------------
+# Tip Distribution Rule (TIPS_DISTRIBUTION_RULES_001) — restaurant-
+# configurable Source-Role -> Recipient-Role tip-OUT configuration, per
+# `01 Domains/Business Domain/Restaurant/Functional Specifications/
+# TIP_DISTRIBUTION_ENGINE_FUNCTIONAL_SPEC_001.md` §7-§9/§16 ("Host -> 10% of
+# Tip + Gratuity", etc.). Deliberately a SEPARATE concept from
+# `TipPolicy`/`TipPolicyComponent` above (which allocates a single Payment's
+# own tip among SERVICE_OWNER/ROLE_PRESENT_AT_PAYMENT recipients) — this
+# task does not reconcile, merge, or build on top of that engine.
+#
+# No calculation, eligibility, or allocation logic is implemented anywhere
+# near these two tables (task's own explicit boundary) — they are pure
+# restaurant-configurable DATA the universal engine will read once it
+# exists. The universal engine itself must never hard-code Rome's Flavours'
+# SERVER -> HOST 10% rule; that exists only as a seeded data row.
+# ---------------------------------------------------------------------------
 
-    __tablename__ = "tip_calculation_runs"
+CALC_BASE_VOLUNTARY_TIP = "VOLUNTARY_TIP"
+CALC_BASE_GRATUITY = "GRATUITY"
+CALC_BASE_TIP_PLUS_GRATUITY = "TIP_PLUS_GRATUITY"
+CALC_BASE_TOTAL_SALES = "TOTAL_SALES"
+CALC_BASE_FOOD_SALES = "FOOD_SALES"
+CALC_BASE_BEVERAGE_SALES = "BEVERAGE_SALES"
+# The exact, closed vocabulary the functional spec §8 gives — not extended
+# by this task ("do not invent additional Calculation Base types unless the
+# specification explicitly requires them").
+TIP_DISTRIBUTION_CALCULATION_BASES = (
+    CALC_BASE_VOLUNTARY_TIP, CALC_BASE_GRATUITY, CALC_BASE_TIP_PLUS_GRATUITY,
+    CALC_BASE_TOTAL_SALES, CALC_BASE_FOOD_SALES, CALC_BASE_BEVERAGE_SALES,
+)
+# TIP_DISTRIBUTION_ENGINE_001 §6/§8 — of the closed vocabulary above, only
+# these three are actually computable by `tips/distribution_engine.py` today
+# (TOTAL_SALES/FOOD_SALES/BEVERAGE_SALES remain valid, storable rule
+# configuration — the schema must not prevent them — but the engine reports
+# a clear NOT_IMPLEMENTED anomaly rather than guessing if one is ever used).
+TIP_DISTRIBUTION_ENGINE_IMPLEMENTED_CALCULATION_BASES = (
+    CALC_BASE_VOLUNTARY_TIP, CALC_BASE_GRATUITY, CALC_BASE_TIP_PLUS_GRATUITY,
+)
+
+# TIP_DISTRIBUTION_ENGINE_001 §6/§9/§12/§14 — the only Eligibility Mode /
+# Distribution Method / No-Eligible-Recipient Behavior the engine implements
+# yet. Free-string columns (not DB CheckConstraints), matching this schema's
+# existing convention for evolving classification fields (e.g.
+# `TipPolicyComponent.no_eligible_behavior`) — so a future Eligibility Mode
+# (spec §12's PERIOD_HOURS) or Distribution Method (spec §13's
+# HOURS_PROPORTIONAL/WEIGHTED_HOURS) can be added without a migration; the
+# engine itself is what currently only recognizes the one value below.
+ELIGIBILITY_MODE_ACTIVE_AT_SETTLEMENT = "ACTIVE_AT_SETTLEMENT"
+DISTRIBUTION_METHOD_EQUAL = "EQUAL"
+NO_ELIGIBLE_RECIPIENT_SOURCE_RETAINS = "SOURCE_RETAINS"
+TRANSACTION_SCOPE_ALL = "ALL"
+
+
+class TipDistributionRule(Base):
+    """The stable identity of one restaurant-configured tip-out rule (spec
+    §7) — e.g. "Server -> Host". `is_active` is a simple, non-versioned
+    on/off switch (task item #10), deliberately separate from the versioned
+    configuration in `TipDistributionRuleVersion` below (task item #9):
+    deactivating a rule never itself creates a new version, and editing the
+    rule's configuration never touches this flag."""
+
+    __tablename__ = "tip_distribution_rules"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), nullable=False, index=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+    versions: Mapped[list["TipDistributionRuleVersion"]] = relationship(
+        back_populates="rule", order_by="TipDistributionRuleVersion.version_number"
+    )
+
+
+class TipDistributionRuleVersion(Base):
+    """One effective-dated, complete configuration snapshot of a
+    `TipDistributionRule` (spec §16) — append-only. NEVER updated or deleted
+    once created (task's own explicit "never rewrite historical rule
+    versions"); editing a rule creates a new version here and closes the
+    PREVIOUS version's own `effective_to` only — no other column on a prior
+    version row is ever touched. Historical periods remain reconstructable
+    by selecting whichever version's `[effective_from, effective_to)` window
+    contains the timestamp in question."""
+
+    __tablename__ = "tip_distribution_rule_versions"
+    __table_args__ = (
+        UniqueConstraint("rule_id", "version_number", name="uq_tip_distribution_rule_version_number"),
+        CheckConstraint(
+            "calculation_base IN ('VOLUNTARY_TIP','GRATUITY','TIP_PLUS_GRATUITY','TOTAL_SALES','FOOD_SALES',"
+            "'BEVERAGE_SALES')",
+            name="ck_tip_distribution_rule_version_calculation_base",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rule_id: Mapped[int] = mapped_column(ForeignKey("tip_distribution_rules.id"), nullable=False, index=True)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Restaurant-configured operational roles (task items #3/#4) — reuses
+    # the existing `RestaurantRole` catalog (already restaurant-scoped,
+    # already populated for Rome's Flavours) rather than a parallel
+    # free-text role concept.
+    source_role_id: Mapped[int] = mapped_column(ForeignKey("restaurant_roles.id"), nullable=False)
+    recipient_role_id: Mapped[int] = mapped_column(ForeignKey("restaurant_roles.id"), nullable=False)
+
+    calculation_base: Mapped[str] = mapped_column(String(32), nullable=False)
+    # Canonical decimal PERCENT value (e.g. 10.0000 = 10%), same convention
+    # as `TipPolicyComponent.share_percentage`/`DiscountDefinition.percentage`
+    # — never a binary float (task's own explicit "do not introduce
+    # floating-point business logic").
+    rate: Mapped[Decimal] = mapped_column(Numeric(7, 4), nullable=False)
+
+    # TIP_DISTRIBUTION_ENGINE_001 §6-§9/§11/§21 — how the engine determines
+    # recipients, splits the pool among them, what happens with zero eligible
+    # recipients, and which transactions this rule applies to. Conceptual
+    # values today: eligibility_mode=ACTIVE_AT_SETTLEMENT (spec §12),
+    # distribution_method=EQUAL (spec §13), no_eligible_recipient_behavior=
+    # SOURCE_RETAINS (spec §14), transaction_scope=ALL (spec §11) — see the
+    # `*_validate_*` functions in `distribution_rule_service.py` for what is
+    # actually accepted today.
+    eligibility_mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    distribution_method: Mapped[str] = mapped_column(String(32), nullable=False)
+    no_eligible_recipient_behavior: Mapped[str] = mapped_column(String(32), nullable=False)
+    transaction_scope: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Free text, matching this schema's pre-ActingIdentity convention for
+    # this kind of provenance field (e.g. legacy `SelectionRuleSetVersion.
+    # confirmed_by`) — this task does not integrate ActingIdentity, which
+    # was not requested here.
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    rule: Mapped[TipDistributionRule] = relationship(back_populates="versions")
+    source_role: Mapped["RestaurantRole"] = relationship(foreign_keys=[source_role_id])
+    recipient_role: Mapped["RestaurantRole"] = relationship(foreign_keys=[recipient_role_id])
+
+
+# ---------------------------------------------------------------------------
+# Tip Distribution Engine (TIP_DISTRIBUTION_ENGINE_001) — the atomic
+# calculation/allocation apparatus that READS `TipDistributionRule`/
+# `TipDistributionRuleVersion` above (never hard-codes Rome's Flavours'
+# SERVER -> HOST 10% rule) and Order-level source facts, and WRITES the
+# results below. Deliberately named/tabled distinctly from the legacy
+# `TipCalculationRun`/`TipAllocation`/`TipCalculationIssue` above, which
+# belong to a different, still-operational engine
+# (`tips/engine.py`/`TipPolicy`) with a different primary unit (Payment, not
+# Order), a different temporal anchor (`Payment.created_at`, not Settlement
+# Time) and a different role-resolution model — that engine is untouched by
+# this task (task §22 "existing operational data" / §1 "do not create a
+# parallel distribution-rule implementation" refers to `TipDistributionRule`/
+# `distribution_rule_service.py`, reused as-is below, not to the legacy
+# TipPolicy engine, which this task does not reconcile, merge, or build on).
+# ---------------------------------------------------------------------------
+
+
+class TipDistributionCalculationRun(Base):
+    """One execution of the Tip Distribution Engine over a requested
+    Restaurant/period (task §15) — the minimum calculation-run/period
+    structure needed to choose From/Through, calculate, group atomic
+    results, and distinguish one run from another. Stops at a clean
+    CALCULATED/REVIEWABLE state (`status` reaches COMPLETE or FAILED) —
+    the later OPEN -> CALCULATED -> REVIEWED -> APPROVED/LOCKED workflow
+    (spec §20) is explicitly out of scope for this task."""
+
+    __tablename__ = "tip_distribution_calculation_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), nullable=False, index=True)
 
     period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -923,131 +1108,102 @@ class TipCalculationRun(Base):
 
     # Conceptual values: RUNNING, COMPLETE, FAILED.
     status: Mapped[str] = mapped_column(String(32), nullable=False)
-    # DRY_RUN (default/safe) or PERSIST (task §27) — a DRY_RUN run's
-    # TipAllocation/TipCalculationIssue rows, if any are materialized at all,
-    # are still real rows tagged to this run for inspection, but the CLI
-    # never asks the caller to treat a DRY_RUN run's numbers as final.
-    mode: Mapped[str] = mapped_column(String(16), nullable=False)
-
-    # Human-readable summary of what this run actually used — e.g. which
-    # TipPolicy id/version applied, for reproducibility (task §28). Never a
-    # substitute for the FK-traceable detail on each TipAllocation/Issue row.
-    calculation_version: Mapped[str] = mapped_column(String(64), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Idempotency / double-payment safeguard (multi-location closure task,
-    # mirroring the existing `PayrollRun.superseded_by_payroll_run_id`
-    # pattern — application-set, never DB-enforced, same convention this
-    # schema already uses for "a later run explicitly corrects an earlier
-    # one" rather than inventing a new mechanism). NULL means this run's
-    # allocations are the current, unsuperseded answer for its period. A
-    # second PERSIST run over an overlapping period is refused by the engine
-    # unless it explicitly names the run it supersedes (see
-    # `tips/engine.py`, `run_tip_calculation(supersedes_run_id=...)`).
+    # Task §16 "recalculation safety": an explicit, auditable replacement
+    # strategy — a recalculation creates a NEW run and sets the PRIOR run's
+    # own `superseded_by_calculation_run_id` to it; the prior run's
+    # allocations are never deleted or rewritten. Mirrors the existing
+    # `TipCalculationRun.superseded_by_calculation_run_id` convention
+    # (legacy engine), application-set rather than DB-enforced, so a future
+    # LOCKED status can refuse superseding without a schema change.
     superseded_by_calculation_run_id: Mapped[int | None] = mapped_column(
-        ForeignKey("tip_calculation_runs.id"), nullable=True
+        ForeignKey("tip_distribution_calculation_runs.id"), nullable=True
     )
 
-    allocations: Mapped[list["TipAllocation"]] = relationship(back_populates="calculation_run")
-    issues: Mapped[list["TipCalculationIssue"]] = relationship(back_populates="calculation_run")
+    allocations: Mapped[list["TipDistributionAllocation"]] = relationship(back_populates="calculation_run")
 
 
-class TipAllocation(Base):
-    """One atomic, auditable unit of allocated Tip money (task §17, §28) —
-    "Employee X received $Y from PaymentTip Z because <policy component,
-    recipient basis, eligible set, split method, rounding>." Never an opaque
-    total: every row traces to exactly one `TipPolicyComponent` and one
-    `PaymentTip`/`Payment`/`Order`."""
+class TipDistributionAllocation(Base):
+    """One atomic, auditable unit of the Tip Distribution Engine's output
+    (task §14) — "Order X's Rule Version Y produced a pool of Z, of which
+    Employee W received/would-have-received this amount, because
+    <eligibility basis>." Never an opaque per-employee total: every row
+    traces to exactly one Order and one `TipDistributionRuleVersion`.
 
-    __tablename__ = "tip_allocations"
+    Exactly one row per (calculation run, Order, Rule Version, recipient) —
+    including the SOURCE_RETAINS case, represented as a single row with
+    `recipient_employee_id IS NULL`, `no_eligible_recipient = True`, and
+    `allocated_amount_minor = 0` (task §11's "result must explicitly record
+    that no recipient was eligible" — never silently omitted)."""
+
+    __tablename__ = "tip_distribution_allocations"
     __table_args__ = (
         UniqueConstraint(
-            "calculation_run_id", "payment_tip_id", "policy_component_id", "employee_id"
+            "calculation_run_id", "order_id", "rule_version_id", "recipient_employee_id",
+            name="uq_tip_distribution_allocation_recipient",
         ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     calculation_run_id: Mapped[int] = mapped_column(
-        ForeignKey("tip_calculation_runs.id"), nullable=False, index=True
+        ForeignKey("tip_distribution_calculation_runs.id"), nullable=False, index=True
     )
-
-    # PaymentTip's own PK IS `payment_id` (1:0..1 with Payment) — referencing
-    # it here does not duplicate anything; `payment_id`/`order_id` are also
-    # stored directly (denormalized) purely so an allocation can be traced
-    # and reported without a join, per task §17's explicit field list.
-    payment_tip_id: Mapped[int] = mapped_column(
-        ForeignKey("payment_tips.payment_id"), nullable=False, index=True
-    )
-    payment_id: Mapped[int] = mapped_column(ForeignKey("payments.id"), nullable=False, index=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False, index=True)
+    # Order.employee_id at calculation time (task §4's tip owner) — snapshot
+    # here rather than re-joined through Order every time, and nullable
+    # because Order.employee_id itself is nullable (an unresolved source
+    # owner is a real, if rare, source-data state, not one this engine
+    # invents a value for).
+    source_employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
 
-    policy_component_id: Mapped[int] = mapped_column(
-        ForeignKey("tip_policy_components.id"), nullable=False, index=True
+    rule_version_id: Mapped[int] = mapped_column(
+        ForeignKey("tip_distribution_rule_versions.id"), nullable=False, index=True
     )
-    employee_id: Mapped[int] = mapped_column(
-        ForeignKey("employees.id"), nullable=False, index=True
-    )
+    # Snapshot of the Rule Version's own configuration at calculation time
+    # (task §14's explicit field list) — never re-derived by joining back to
+    # a rule version that could, in principle, be a different row shape in
+    # the future; `TipDistributionRuleVersion` rows are themselves already
+    # immutable once created, so this is redundant-but-explicit, matching
+    # the task's own explainability requirement.
+    calculation_base: Mapped[str] = mapped_column(String(32), nullable=False)
+    rate: Mapped[Decimal] = mapped_column(Numeric(7, 4), nullable=False)
 
-    # Minor units (cents) — same money convention as every other amount in
-    # this schema. Never floating point.
+    # Minor units (cents) throughout — same money convention as every other
+    # amount in this schema. Never floating point.
+    base_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    pool_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # NULL exactly when `no_eligible_recipient` is True (SOURCE_RETAINS).
+    recipient_employee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("employees.id"), nullable=True, index=True
+    )
+    recipient_eligibility_basis: Mapped[str] = mapped_column(Text, nullable=False)
+    no_eligible_recipient: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     allocated_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    # Human-readable derivation trail (task §28) — e.g. "component #2
-    # ROLE_PRESENT_AT_PAYMENT role=<id>, 2 eligible, EQUAL_ELIGIBLE_HEADCOUNT,
-    # base=333 +1 remainder cent". Supplementary to, never a replacement for,
-    # the FK trail itself.
-    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-
+    # The Order's Settlement Time used for this calculation (task §5/§14) —
+    # snapshot, since eligibility/rule-version selection both derived from
+    # it at the moment this row was created.
+    settlement_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
-    calculation_run: Mapped[TipCalculationRun] = relationship(back_populates="allocations")
+    calculation_run: Mapped[TipDistributionCalculationRun] = relationship(back_populates="allocations")
+    order: Mapped["Order"] = relationship()
+    source_employee: Mapped["Employee | None"] = relationship(foreign_keys=[source_employee_id])
+    recipient_employee: Mapped["Employee | None"] = relationship(foreign_keys=[recipient_employee_id])
+    rule_version: Mapped[TipDistributionRuleVersion] = relationship()
 
 
-class TipCalculationIssue(Base):
-    """A blocking or warning condition raised while calculating Tips for one
-    calculation run (task §18) — the engine's explicit alternative to
-    guessing. `payment_tip_id`/`payment_id`/`order_id` are nullable because
-    some issues are run-scoped (e.g. `NO_VALID_POLICY` for the whole
-    restaurant/period) rather than tied to one specific PaymentTip."""
-
-    __tablename__ = "tip_calculation_issues"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    calculation_run_id: Mapped[int] = mapped_column(
-        ForeignKey("tip_calculation_runs.id"), nullable=False, index=True
-    )
-
-    payment_tip_id: Mapped[int | None] = mapped_column(
-        ForeignKey("payment_tips.payment_id"), nullable=True, index=True
-    )
-    payment_id: Mapped[int | None] = mapped_column(
-        ForeignKey("payments.id"), nullable=True, index=True
-    )
-    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"), nullable=True, index=True)
-
-    # Conceptual values (task §18): NO_VALID_POLICY, SERVICE_OWNER_UNRESOLVED,
-    # SERVICE_OWNER_AMBIGUOUS, NO_ELIGIBLE_RECIPIENT, SHIFT_ASSIGNMENT_GAP,
-    # CONFLICTING_ASSIGNMENTS (reserved — not currently raised; concurrent
-    # Assignments under a different Role are not a conflict, TASK_TIPS_002),
-    # FAILED_PAYMENT_WITH_TIP, REFUND_REVIEW_REQUIRED,
-    # ALLOCATION_RECONCILIATION_FAILURE. Free string, not a DB enum — only
-    # the subset actually produced by real engine logic is ever written.
-    issue_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    # Conceptual values: BLOCKING, WARNING (task §18).
-    severity: Mapped[str] = mapped_column(String(16), nullable=False)
-    details: Mapped[str] = mapped_column(Text, nullable=False)
-    # Reserved for a future review workflow (task §17's suggested field
-    # list) — nullable, unused by this task's engine logic beyond being
-    # left NULL ("unreviewed") on every issue it creates.
-    status: Mapped[str | None] = mapped_column(String(32), nullable=True)
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-
-    calculation_run: Mapped[TipCalculationRun] = relationship(back_populates="issues")
+# `TipCalculationRun`/`TipAllocation`/`TipCalculationIssue` — the legacy
+# engine's own RESULT tables — were removed entirely (models + tables) by
+# TIPS_LEGACY_ENGINE_RETIREMENT_001: confirmed empty (0 rows each) in the
+# operational database at retirement time, so unlike `TipPolicy`/
+# `TipPolicyComponent` above there was no historical data to preserve. See
+# migration `e2c7b4a9f1d6_drop_legacy_tip_calculation_tables.py`.
 
 
 # ---------------------------------------------------------------------------
@@ -1297,8 +1453,17 @@ class Order(Base):
         ForeignKey("table_services.id"), nullable=True, index=True
     )
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
-    source_order_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Nullable (RFONE_OPERATIONAL_DATA_MODEL_001) — modeling principle F
+    # ("every canonical entity should have an RF-One primary key and
+    # optional source references"), already applied to Merchant/Location/
+    # Employee/Shift; Order previously required a source system/external id
+    # for every row, which would have structurally prevented a future
+    # natively-created RF-One Order (e.g. from an RF-One POS) from ever
+    # existing without inventing a fake external identity. An
+    # externally-sourced Order (the only kind that exists today) still
+    # always carries both.
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
+    source_order_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     source_employee_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     employee_id: Mapped[int | None] = mapped_column(
@@ -1362,8 +1527,10 @@ class Item(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
-    source_item_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Nullable (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — modeling
+    # principle F, same rationale as Order's own comment.
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
+    source_item_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     # Nullable despite appearing alongside `name` in the task's suggested
@@ -1398,8 +1565,10 @@ class Category(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
-    source_category_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Nullable (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — modeling
+    # principle F, same rationale as Order's own comment.
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
+    source_category_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 
@@ -1421,8 +1590,10 @@ class ModifierGroup(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
-    source_modifier_group_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Nullable (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — modeling
+    # principle F, same rationale as Order's own comment.
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
+    source_modifier_group_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 
@@ -1443,8 +1614,10 @@ class Modifier(Base):
         ForeignKey("modifier_groups.id"), nullable=True
     )
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
-    source_modifier_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Nullable (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — modeling
+    # principle F, same rationale as Order's own comment.
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
+    source_modifier_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     alternate_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -1485,8 +1658,10 @@ class OrderItem(Base):
         ForeignKey("items.id"), nullable=True, index=True
     )
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
-    source_line_item_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Nullable — see Order's own comment (RFONE_OPERATIONAL_DATA_MODEL_001 /
+    # modeling principle F).
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
+    source_line_item_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
@@ -1528,6 +1703,7 @@ class OrderItemModifier(Base):
     Modifier cannot be resolved (`modifier_id` nullable) — task §20."""
 
     __tablename__ = "order_item_modifiers"
+    __table_args__ = (UniqueConstraint("order_item_id", "source_modification_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     order_item_id: Mapped[int] = mapped_column(
@@ -1535,7 +1711,10 @@ class OrderItemModifier(Base):
     )
     modifier_id: Mapped[int | None] = mapped_column(ForeignKey("modifiers.id"), nullable=True)
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
+    # Nullable (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — modeling
+    # principle F, same rationale as Order's own comment: a native (non-
+    # externally-sourced) OrderItemModifier must remain creatable.
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
     source_modification_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     name_raw: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -1559,8 +1738,10 @@ class DiscountDefinition(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
-    source_discount_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Nullable (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — modeling
+    # principle F, same rationale as Order's own comment.
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
+    source_discount_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     # Canonical decimal percent value (e.g. 50.0000 = 50%), independent of
@@ -1576,6 +1757,7 @@ class OrderDiscount(Base):
     ad hoc percentage, AND ad hoc fixed-amount shapes, all real (task §23)."""
 
     __tablename__ = "order_discounts"
+    __table_args__ = (UniqueConstraint("order_id", "source_discount_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False)
@@ -1583,7 +1765,9 @@ class OrderDiscount(Base):
         ForeignKey("discount_definitions.id"), nullable=True
     )
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
+    # Nullable (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — modeling
+    # principle F, same rationale as Order's own comment.
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
     # The source's own id for this applied-discount element (present on every
     # Clover example observed, but kept nullable for sources that may not
     # supply one).
@@ -1606,6 +1790,7 @@ class OrderItemDiscount(Base):
     from `OrderDiscount` — never collapsed together (task §24)."""
 
     __tablename__ = "order_item_discounts"
+    __table_args__ = (UniqueConstraint("order_item_id", "source_discount_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     order_item_id: Mapped[int] = mapped_column(
@@ -1615,7 +1800,9 @@ class OrderItemDiscount(Base):
         ForeignKey("discount_definitions.id"), nullable=True
     )
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
+    # Nullable (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — modeling
+    # principle F, same rationale as Order's own comment.
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
     source_discount_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     name_raw: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -1638,8 +1825,10 @@ class TaxRate(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
-    source_tax_rate_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Nullable (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — modeling
+    # principle F, same rationale as Order's own comment.
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
+    source_tax_rate_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     # Canonical decimal fraction (e.g. 0.065000 = 6.5%), not Clover's own
@@ -1654,6 +1843,7 @@ class OrderItemTax(Base):
     treating Payment-level tax as conceptual ownership (task §26)."""
 
     __tablename__ = "order_item_taxes"
+    __table_args__ = (UniqueConstraint("order_item_id", "source_tax_reference"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     order_item_id: Mapped[int] = mapped_column(
@@ -1664,7 +1854,9 @@ class OrderItemTax(Base):
     amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rate_applied: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
+    # Nullable (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — modeling
+    # principle F, same rationale as Order's own comment.
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
     source_tax_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     order_item: Mapped[OrderItem] = relationship(back_populates="taxes")
@@ -1676,11 +1868,17 @@ class OrderFee(Base):
     task §27. Ordinary Items are never auto-classified as fees by name."""
 
     __tablename__ = "order_fees"
+    # CANONICAL_OPERATIONAL_DB_FINALIZATION_001 — matches the exact composite
+    # key both ingestion paths (acquisition.py's `_ingest_fee_line_items` and
+    # ingest.py's bulk pipeline) already use to look up an existing row.
+    __table_args__ = (UniqueConstraint("order_id", "source_line_item_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False)
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
+    # Nullable — see Order's own comment (RFONE_OPERATIONAL_DATA_MODEL_001 /
+    # modeling principle F). `source_fee_id` was already nullable.
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
     source_fee_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # Raw reference to the synthetic OrderItem-shaped source line this fee
     # was reconstructed from, if any — provenance only, not a hard FK.
@@ -1688,6 +1886,13 @@ class OrderFee(Base):
 
     fee_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     name_raw: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # CLOVER_TIPS_INGESTION_001 — the raw Clover `note` string the line item
+    # carried (e.g. "Service Charge"), preserved verbatim alongside the
+    # derived `fee_type` classification. `fee_type` answers "what RF-One
+    # classified this as"; `note_raw` answers "what did the source actually
+    # say", so a future reviewer can audit the classification rule itself
+    # without needing to re-fetch Clover.
+    note_raw: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
     percentage: Mapped[Decimal | None] = mapped_column(Numeric(7, 4), nullable=True)
@@ -1712,8 +1917,10 @@ class Tender(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
-    source_tender_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Nullable (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — modeling
+    # principle F, same rationale as Order's own comment.
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
+    source_tender_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     source_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -1734,8 +1941,10 @@ class Payment(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False, index=True)
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
-    source_payment_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Nullable — see Order's own comment (RFONE_OPERATIONAL_DATA_MODEL_001 /
+    # modeling principle F).
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
+    source_payment_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     employee_id: Mapped[int | None] = mapped_column(
         ForeignKey("employees.id"), nullable=True, index=True
@@ -1801,8 +2010,10 @@ class Refund(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
-    source_refund_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Nullable — see Order's own comment (RFONE_OPERATIONAL_DATA_MODEL_001 /
+    # modeling principle F).
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
+    source_refund_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     order_id: Mapped[int | None] = mapped_column(
         ForeignKey("orders.id"), nullable=True, index=True
@@ -1846,8 +2057,10 @@ class Device(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
 
-    source_system_id: Mapped[int] = mapped_column(ForeignKey("source_systems.id"), nullable=False)
-    source_device_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Nullable (CANONICAL_OPERATIONAL_DB_FINALIZATION_001) — modeling
+    # principle F, same rationale as Order's own comment.
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
+    source_device_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     model: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -7302,9 +7515,6 @@ ALL_MODELS: tuple[type[Base], ...] = (
     EmployeeAssignment,
     TipPolicy,
     TipPolicyComponent,
-    TipCalculationRun,
-    TipAllocation,
-    TipCalculationIssue,
     OrderType,
     Order,
     Item,
