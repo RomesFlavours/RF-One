@@ -42,7 +42,7 @@ These three responsibilities are kept distinct. Dining Intelligence's output —
 ```text
 Server Performance          → Opportunity Capture's "Available Opportunity" input
 Service Copilot              → Next Best Action / Next Best Moment context
-Personnel Management/Training → what consumption patterns a Server should be trained to recognize
+Continuous Productivity Development → what consumption patterns a Server should be trained to recognize
 Menu                          → which combinations/items are underperforming or over-performing
 Marketing                     → guest segmentation, campaign targeting
 Sales analytics                → aggregate consumption trend reporting

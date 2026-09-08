@@ -113,6 +113,185 @@ class ActingIdentity(Base):
     )
 
 
+# Authority scope kinds — the Core organizational context chain
+# (00 Core/Corporate.md, Operational Unit.md, OperationalArea.md, Brand.md):
+# Corporate -> Brand -> Operational Unit -> Operational Area. Only Restaurant
+# (a Domain-level entity, not this chain) and Restaurant's own, narrower
+# `OperationalArea` (kitchen/dining zones — a Domain specialization, NOT this
+# Core concept) are persisted anywhere in RF-One today; Corporate/Brand/
+# Operational Unit have no table of their own yet (00 Core defines them;
+# nothing has implemented them — see CLAUDE.md "Core ≠ Domain ≠ Product").
+# `AuthorityGrant.scope_id` is therefore a plain integer with NO foreign key
+# to any of these — a grant is already scoped generically by whichever
+# concrete table eventually backs each `scope_type`, with zero redesign of
+# this table when that happens. GLOBAL is the one scope with no `scope_id`.
+SCOPE_CORPORATE = "CORPORATE"
+SCOPE_BRAND = "BRAND"
+SCOPE_OPERATIONAL_UNIT = "OPERATIONAL_UNIT"
+SCOPE_OPERATIONAL_AREA = "OPERATIONAL_AREA"
+SCOPE_GLOBAL = "GLOBAL"
+AUTHORITY_SCOPE_KINDS = (SCOPE_CORPORATE, SCOPE_BRAND, SCOPE_OPERATIONAL_UNIT, SCOPE_OPERATIONAL_AREA, SCOPE_GLOBAL)
+
+# The one wildcard `authority_service.authorize()` understands for `module`/
+# `action` — never for `domain` or `scope_type`/`scope_id` (Authority is
+# always evaluated in an explicit context, never globally-guessed; task
+# requirement "never infer tenant from a global singleton").
+AUTHORITY_WILDCARD = "*"
+
+
+class AuthorityGrant(Base):
+    """One bounded grant of Authority (00 Core/ConceptualArchitecture/
+    09_Identity_Authority_and_Accountability.md §3) to an `ActingIdentity`,
+    over an explicit `domain`/`module`/`action`/scope context — never a flat
+    global permission. Evaluated exclusively by `authority_service.
+    authorize()`; no Domain queries this table directly (Core Principle 21 /
+    Architecture doc §1: shared infrastructure, never a Domain-owned
+    mechanism).
+
+    `module`/`action` may be the literal wildcard `'*'` (a grant over every
+    Module within a Domain, or every Action within a Module/Domain) —
+    `domain` and `scope_type`/`scope_id` may NOT: this keeps every grant
+    explicitly tenant/context-scoped by construction, never globally
+    inferred. A grant is revoked by setting `revoked_at` — never deleted and
+    never reused for a different Acting Identity/scope (Historical
+    Integrity: a revoked grant remains provable as having once existed).
+
+    `granted_by_identity_id` and `granted_at` are this table's own minimal
+    Delegation record (Core doc §4: "who granted it, when" — Delegation
+    revocation beyond this is deliberately out of scope for this
+    foundation)."""
+
+    __tablename__ = "authority_grants"
+    __table_args__ = (
+        CheckConstraint(
+            "scope_type IN ('CORPORATE', 'BRAND', 'OPERATIONAL_UNIT', 'OPERATIONAL_AREA', 'GLOBAL')",
+            name="ck_authority_grant_scope_type",
+        ),
+        CheckConstraint(
+            "scope_type = 'GLOBAL' OR scope_id IS NOT NULL", name="ck_authority_grant_scope_id_required",
+        ),
+        Index("ix_authority_grants_lookup", "acting_identity_id", "domain", "action"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    acting_identity_id: Mapped[int] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=False, index=True
+    )
+
+    domain: Mapped[str] = mapped_column(String(64), nullable=False)
+    module: Mapped[str] = mapped_column(String(64), nullable=False, default=AUTHORITY_WILDCARD)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    scope_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    scope_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    granted_by_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True
+    )
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    acting_identity: Mapped["ActingIdentity"] = relationship(foreign_keys=[acting_identity_id])
+    granted_by_identity: Mapped["ActingIdentity | None"] = relationship(foreign_keys=[granted_by_identity_id])
+
+
+# The three documented RF-One Operational Signature assurance levels
+# (03 Software/Identity Authority and Security Architecture.md §10) — a
+# risk-based, layered model, never a uniform one.
+NORMAL_AUTHENTICATED_ACTION = "NORMAL_AUTHENTICATED_ACTION"
+EXPLICIT_CONFIRMATION = "EXPLICIT_CONFIRMATION"
+STEP_UP_AUTHENTICATION = "STEP_UP_AUTHENTICATION"
+OPERATIONAL_SIGNATURE_ASSURANCE_LEVELS = (
+    NORMAL_AUTHENTICATED_ACTION, EXPLICIT_CONFIRMATION, STEP_UP_AUTHENTICATION,
+)
+
+
+class OperationalSignature(Base):
+    """The RF-One Operational Signature (Identity Authority and Security
+    Architecture.md §9-10) — the append-only evidence record that makes an
+    authenticated, authorized action itself stand in for a handwritten
+    signature on ordinary operational Decisions. Written exclusively through
+    `operational_signature_service.record_operational_signature()`; no
+    Domain writes this table directly.
+
+    Append-only by construction: no code anywhere in this codebase updates
+    an existing row's evidentiary columns after insert (Historical
+    Integrity, 00 Core/ArchitecturePrinciples.md — exactly the same
+    discipline `TipDistributionCalculationRun`/`IngestionRun` already follow
+    elsewhere in this schema). A correction is a NEW row whose own
+    `corrects_signature_id` points back at the row it corrects; the original
+    row's columns are never touched.
+
+    `actor_kind` is a deliberate denormalized copy of `ActingIdentity.kind`
+    AT THE TIME of signing (Core doc §5.1 / Architecture doc §6: every
+    AI-touched Action must record whether the actor was Human/System/AI
+    Agent/External Service) — the evidence must remain readable exactly as
+    captured even if the identity row were ever altered later.
+
+    `object_type`/`object_id` are plain strings, deliberately with no
+    foreign key: the objects Domains sign over vary in table and key shape,
+    and this shared table must not depend on every future Domain's schema."""
+
+    __tablename__ = "operational_signatures"
+    __table_args__ = (
+        CheckConstraint(
+            "assurance_level IN ('NORMAL_AUTHENTICATED_ACTION', 'EXPLICIT_CONFIRMATION', 'STEP_UP_AUTHENTICATION')",
+            name="ck_operational_signature_assurance_level",
+        ),
+        CheckConstraint(
+            "actor_kind IN ('HUMAN_USER', 'SYSTEM', 'AI_AGENT', 'EXTERNAL_SERVICE')",
+            name="ck_operational_signature_actor_kind",
+        ),
+        Index("ix_operational_signatures_lookup", "domain", "object_type", "object_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    acting_identity_id: Mapped[int] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=False, index=True
+    )
+    actor_kind: Mapped[str] = mapped_column(String(24), nullable=False)
+
+    action: Mapped[str] = mapped_column(String(128), nullable=False)
+    domain: Mapped[str] = mapped_column(String(64), nullable=False)
+    module: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    scope_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    scope_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    object_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    object_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    before_state: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
+    after_state: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
+
+    applicable_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    authority_used: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    assurance_level: Mapped[str] = mapped_column(String(40), nullable=False)
+
+    # The Decision/Action's own moment in time vs. when this evidence was
+    # durably persisted — kept as two separate columns from day one (even
+    # though identical today) so persistence can later become asynchronous
+    # (task requirement "audit scalability") without changing either this
+    # table's shape or any Domain caller's own signature.
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    corrects_signature_id: Mapped[int | None] = mapped_column(
+        ForeignKey("operational_signatures.id"), nullable=True
+    )
+
+    acting_identity: Mapped["ActingIdentity"] = relationship(foreign_keys=[acting_identity_id])
+
+
 # ---------------------------------------------------------------------------
 # Source-system provenance (task §33-35)
 # ---------------------------------------------------------------------------
@@ -7493,6 +7672,8 @@ class ComplianceDisposition(Base):
 
 ALL_MODELS: tuple[type[Base], ...] = (
     ActingIdentity,
+    AuthorityGrant,
+    OperationalSignature,
     SourceSystem,
     IngestionRun,
     SourceRecord,

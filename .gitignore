@@ -1,6 +1,10 @@
 __pycache__/
 *.pyc
+*.pyo
 .env
+.env.*
+!.env.example
+!.env.*.example
 
 # TASK_CLOVER_001 — raw Clover exports must stay local, never committed
 03 Software/Clover Data Explorer/data/raw/
@@ -36,6 +40,15 @@ __pycache__/
 !03 Software/InvoiceIntake/uploads/.gitkeep
 03 Software/InvoiceIntake/data/*.xlsx
 
+# GIT_RELEASE_PREP_002 — real Rome's Flavours invoice/receipt source
+# documents (Domain-level reference copies, distinct from the Software
+# prototype's uploads/ above) are runtime/reference business data, never
+# committed. Only the directory placeholder is tracked; TestCases/ (below)
+# is the sanctioned location for committed fixtures, and only synthetic/
+# sanitized ones.
+01 Domains/Cross Domain/Administration/Invoice Intake/Invoices/Raw/*
+!01 Domains/Cross Domain/Administration/Invoice Intake/Invoices/Raw/.gitkeep
+
 # TASK_SELECTION_001 — Selection's uploaded résumés (real candidate PII) and
 # its own local development database must never be committed.
 03 Software/Selection/uploads/*
@@ -48,3 +61,81 @@ __pycache__/
 # 03 Software/Selection/ (not under data/) during manual verification —
 # narrow pattern so it never hides a legitimately named database.
 03 Software/Selection/smoke_*.db
+
+# ---------------------------------------------------------------------------
+# GIT_REPOSITORY_PREPARATION_001 — generic, repo-wide safety net. These rules
+# apply everywhere (no path prefix) so a secret/credential/local-only file
+# never becomes trackable no matter where it is created. They are additive
+# to, and do not replace, the domain-specific rules above.
+# ---------------------------------------------------------------------------
+
+# --- Secrets / credentials -------------------------------------------------
+# .env / .env.* already covered above.
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*credentials*.json
+*credentials*.csv
+.aws/
+**/.aws/
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+*.ppk
+
+# --- Python virtual environments -------------------------------------------
+venv/
+.venv/
+env/
+ENV/
+*/venv/
+*/.venv/
+
+# --- Node (defensive; not currently used, kept for future-proofing) --------
+node_modules/
+
+# --- Local build/cache directories ------------------------------------------
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.cache/
+*.egg-info/
+build/
+dist/
+
+# --- Temporary files ---------------------------------------------------------
+*.tmp
+*.temp
+*~
+*.bak.tmp
+
+# --- IDE-specific files -------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Local database dumps/backups (repo-wide, in addition to the
+#     data/-scoped rules above) ------------------------------------------------
+*.sql.gz
+*.dump
+*.db-journal
+*.sqlite-journal
+
+# --- Logs ----------------------------------------------------------------------
+*.log
+logs/
+
+# --- OS-generated files ----------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Deployment-generated files (e.g. ad-hoc build/deploy zips assembled
+#     locally when preparing a container image; never the Dockerfile/
+#     buildspec/IaC definitions themselves, which are legitimate source) ----
+*.deploy.zip
+deploy_build/

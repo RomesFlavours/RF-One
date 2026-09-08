@@ -135,6 +135,32 @@ def get_or_create_system_identity(session: Session) -> m.ActingIdentity:
     )
 
 
+COGNITO_PROVIDER = "cognito"
+
+
+def get_or_create_identity_for_verified_subject(
+    session: Session, *, provider: str, subject: str, display_name: str, kind: str = m.HUMAN_USER,
+) -> m.ActingIdentity:
+    """The authentication-boundary hook: called ONLY after a token/subject
+    has already been cryptographically verified elsewhere (e.g.
+    `technical.cognito_jwt.verify_cognito_jwt()`), never with an
+    unverified, client-asserted subject. Just-in-time-provisions the
+    `ActingIdentity` row for that (provider, subject) pair on first sight,
+    idempotently — a returning subject always resolves to the SAME row
+    (its permanent RF-One identifier), never a duplicate.
+
+    This is a thin public wrapper over the same `_get_or_create_by_subject`
+    primitive `get_or_create_system_identity`/`get_or_create_default_dev_
+    identity` already use — one bootstrap mechanism, not a second one added
+    for Cognito specifically. Adding this function does NOT change
+    `get_current_acting_identity()`'s own resolution order above — no
+    Domain is switched over to it by this change (foundation only)."""
+
+    return _get_or_create_by_subject(
+        session, kind=kind, provider=provider, subject=subject, display_name=display_name,
+    )
+
+
 def get_or_create_default_dev_identity(session: Session) -> m.ActingIdentity:
     """The pre-Authentication fallback `HUMAN_USER` identity used when
     nothing more specific has been resolved (task §5) — a single,

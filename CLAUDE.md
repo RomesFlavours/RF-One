@@ -35,17 +35,17 @@ Application Domains use only the Core concepts they require.
 
 Every Domain lives under one of two families, physically expressed as the two folders directly inside `01 Domains/` (verify against `01 Domains/README.md` and `01 Domains/Domain Architecture.md` §4 before assuming this list is complete — those files are authoritative, this is a pointer to them):
 
-- **Cross Domain** (`01 Domains/Cross Domain/`) — industry-independent, reusable by any business: Selection, Training, Performance, Personnel Management, Taxation, Administration.
+- **Cross Domain** (`01 Domains/Cross Domain/`) — industry-independent, reusable by any business: Selection, Operational Knowledge, Continuous Productivity Development, Performance, Personnel Management, Taxation, Administration.
 - **Business Domain** (`01 Domains/Business Domain/`) — industry-specific: Restaurant (currently the only one).
 
 A Cross Domain may consume industry-specific content a Business Domain supplies, but must never structurally depend on one specific Business Domain. `_Shared/` holds domain-independent-but-not-universal knowledge reused across multiple Domains (e.g. `_Shared/Environment/`) — it is not itself a Domain, and lives outside both families, directly under `01 Domains/`.
 
-**Selection, Training and Performance are each their own top-level Cross Domain** (`01 Domains/Cross Domain/Selection/`, `.../Training/`, `.../Performance/` — TASK_DOMAINS_003 for Selection; the Cross Domain/Business Domain reorganization for Training and Performance), not modules of Personnel Management or of Restaurant — usable by any industry, closely related to but not owned by Personnel Management's Personnel Decisions module. Do not nest any of the three under either. Restaurant's Industry Extension of Selection (role catalog, client/role configurations) lives at `01 Domains/Business Domain/Restaurant/Selection/`, depending on Selection Core, never the reverse.
+**Selection, Operational Knowledge, Continuous Productivity Development and Performance are each their own top-level Cross Domain** (`01 Domains/Cross Domain/Selection/`, `.../Operational Knowledge/`, `.../Continuous Productivity Development/`, `.../Performance/` — TASK_DOMAINS_003 for Selection; the Cross Domain/Business Domain reorganization for the former Training (now Operational Knowledge) and Performance; a later reorganization for Continuous Productivity Development), not modules of Personnel Management or of Restaurant — usable by any industry, closely related to but not owned by Personnel Management's Personnel Decisions module. Do not nest any of them under either. **Operational Knowledge is the shared repository of retrievable operational information (Operational Knowledge Pills) that Copilot and other RF-One functions may retrieve — it does not train, test, assess, or certify.** It is independent of, and must not be confused with, Continuous Productivity Development, which identifies gaps/opportunities, decides interventions (of which actual human training is only one candidate), measures outcomes, and learns from results. Restaurant's Industry Extension of Selection (role catalog, client/role configurations) lives at `01 Domains/Business Domain/Restaurant/Selection/`, depending on Selection Core, never the reverse.
 
 Several familiar business-capability names are **modules of an existing Domain**, not Domains in their own right. Do not create a new top-level `01 Domains/<name>/` folder for any of these — extend the owning Domain instead:
 
 - Purchasing and Sales are modules of the Restaurant Domain (`Restaurant Domain └── Purchasing module`, `Restaurant Domain └── Sales module`, canonically `01 Domains/Business Domain/Restaurant/Purchasing/` and `01 Domains/Business Domain/Restaurant/Sales/`).
-- Workforce and Personnel Decisions are modules of the Personnel Management Domain (`Personnel Management Domain └── <module>`, canonically `01 Domains/Cross Domain/Personnel Management/<module>/`). Note the canonical module name is **Personnel Decisions**, not "Personal Decision." **Training and Performance are NOT modules of Personnel Management** — despite the similar naming pattern, both are independent top-level Cross Domains (see above); do not re-nest them under Personnel Management.
+- Workforce and Personnel Decisions are modules of the Personnel Management Domain (`Personnel Management Domain └── <module>`, canonically `01 Domains/Cross Domain/Personnel Management/<module>/`). Note the canonical module name is **Personnel Decisions**, not "Personal Decision." **Operational Knowledge, Continuous Productivity Development and Performance are NOT modules of Personnel Management** — despite the similar naming pattern, all three are independent top-level Cross Domains (see above); do not re-nest them under Personnel Management.
 
 Commercial Products may combine one or more Domains.
 
@@ -144,6 +144,7 @@ The canonical top-level structure (established by TASK_CORE_005) is:
 07 Tasks/                   task specs, reports, backlog — historical record
 08 External/                external/reference material only, not RF-One authority
 09 Strategy/                canonical for RF-One's own company/product strategy
+10 System/                  system-level capabilities spanning the whole platform (not a Domain, not a Product)
 90 Archive/                 never current authority, regardless of status text inside
 ```
 

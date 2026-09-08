@@ -74,7 +74,7 @@ Every Domain consumes shared RF-One Identity / Authority / Security infrastructu
 
 A Domain determines **what** authority a given class of Decision or Action requires. The common RF-One infrastructure determines **who** the Acting Identity is, **what** it is authorized to do, **in what context**, **whether stronger authentication is required**, and **how** the action is recorded and proven historically.
 
-See [ConceptualArchitecture/09_Identity_Authority_and_Accountability.md](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md) for the conceptual definitions of Identity, Authority, Delegation, Accountability and Auditability this rule relies on, and `03 Software/Identity Authority and Security Architecture.md` for the corresponding technical architecture.
+See [ConceptualArchitecture/09_Identity_Authority_and_Accountability.md](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md) for the conceptual definitions of Identity, Authority, Delegation, Accountability and Auditability this rule relies on, and `10 System/Identity & Access/Identity Authority and Security Architecture.md` for the corresponding technical architecture (a system-level capability, not a Domain or Product — see `10 System/README.md`).
 
 ---
 

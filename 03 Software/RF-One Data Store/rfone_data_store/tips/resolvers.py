@@ -7,10 +7,13 @@ semantics. The engine resolves service responsibility exclusively through a
 resolution strategy is Restaurant/Profile/source configuration, never
 hard-coded Tips semantics.
 
-`OrderEmployeeServiceAttributionResolver` (TASK_TIPS_004) is the first real
-resolver: built entirely from evidence the canonical Sales model already
-contains (`Order.employee_id`, cross-checked against `Payment.employee_id`)
-— it is a generic, provider-independent resolution strategy, not a Rome's
+`OrderEmployeeServiceAttributionResolver` (TASK_TIPS_004; Tips service-owner
+rule confirmed by the Product Owner) is the first real resolver: for Tips,
+the service owner is always `Order.employee_id` — the single-value field
+the source POS associates with an Order. `Payment.employee_id` remains
+available on the same Order for audit/debugging only; it is never used to
+determine, confirm, contradict, or invalidate the Tips service owner. This
+is a generic, provider-independent resolution strategy, not a Rome's
 Flavours-specific mapping (no Rome's Flavours identifier, name, or
 percentage appears anywhere in this module). `NullServiceAttributionResolver`
 and `StaticServiceAttributionResolver` remain the safe-default and
@@ -112,34 +115,23 @@ class OrderEmployeeServiceAttributionResolver(ServiceAttributionResolver):
     inspection) — building this resolver around it would resolve every real
     Order to UNRESOLVED, defeating the SERVICE_OWNER component entirely.
 
-    **Corroboration, not blind trust:** `Order.employee` alone is never
-    automatically the service owner (`Tip Allocation.md`, "service-
-    attribution boundary"). This resolver therefore cross-checks it against
-    every **economically valid** `Payment.employee_id` already recorded
-    under the same Order — a second, independent POS observation:
+    **`Order.employee_id` is authoritative for Tips service ownership
+    (Product Owner decision).** For Tips, the service owner is always the
+    Employee the Clover Order itself is assigned to. `Payment.employee_id`
+    is a separate, POS-operational association and is never used to
+    determine, confirm, contradict, or invalidate the Tips service owner —
+    it may still be read for audit/debugging purposes, but it plays no role
+    in this resolver's status or `employee_ids`:
 
     ```text
     Order.employee_id is NULL
       -> UNRESOLVED (no order-level evidence at all)
-    Order.employee_id set, no disagreeing SUCCESS Payment.employee_id
+    Order.employee_id set
       -> RESOLVED, employee_ids=[order.employee_id]
-    Order.employee_id set, at least one SUCCESS Payment.employee_id disagrees
-      -> AMBIGUOUS (two independent POS observations conflict; never
-         guessed which is correct)
+         (regardless of any Payment.employee_id recorded under the same
+         Order — a disagreement is never AMBIGUOUS and never blocks
+         resolution)
     ```
-
-    **FAILED Payments are not attribution evidence (Product Owner decision,
-    TASK_RESTAURANT_STRUCTURE_001).** A failed payment attempt is evidence
-    that a payment was *attempted*, not authoritative evidence of who
-    actually served the table — `Order.employee_id` remains the primary
-    Sales evidence, and only a Payment whose `result` is the canonical
-    economically-valid value `"SUCCESS"` (the same value `tips/engine.py`
-    already treats as the sole economically valid Payment state, see
-    `ISSUE_FAILED_PAYMENT_WITH_TIP`) may corroborate or contradict it. A
-    `Payment.result` of `"FAIL"`, any other non-`"SUCCESS"` value, or `NULL`
-    (result unknown) is excluded from the query below entirely — it can
-    neither confirm the Service Owner, create `AMBIGUOUS`, override a valid
-    resolution, nor turn an otherwise-RESOLVED Order into `UNRESOLVED`.
 
     **Location-correct by construction:** the resolved Employee always
     comes from this specific Order's own `employee_id` — the Order itself
@@ -147,7 +139,8 @@ class OrderEmployeeServiceAttributionResolver(ServiceAttributionResolver):
     leak into this resolution.
 
     **Auditable:** every result carries a `detail` naming the exact
-    evidence (or disagreement) that produced it.
+    evidence used, and noting (without acting on) any Payment-level
+    disagreement found.
     """
 
     def resolve(self, session: Session, order: "m.Order") -> ServiceAttributionResult:
@@ -159,36 +152,37 @@ class OrderEmployeeServiceAttributionResolver(ServiceAttributionResolver):
                 "service-attribution evidence exists.",
             )
 
+        # Payment.employee_id is read here only for the audit trail in
+        # `detail` — it never affects `status`/`employee_ids`. The Tips
+        # service owner is always Order.employee_id (Product Owner
+        # decision): a disagreeing Payment.employee_id is not authoritative
+        # evidence of who served the table and must not produce AMBIGUOUS.
         payment_employee_ids = set(
             session.scalars(
                 select(m.Payment.employee_id).where(
                     m.Payment.order_id == order.id,
                     m.Payment.employee_id.is_not(None),
-                    # Only economically valid Payments participate in
-                    # SERVICE_OWNER evidence — a FAILED (or otherwise
-                    # non-SUCCESS/unknown-result) payment attempt is not
-                    # authoritative evidence of who served the table
-                    # (Product Owner decision, TASK_RESTAURANT_STRUCTURE_001).
                     m.Payment.result == "SUCCESS",
                 )
             ).all()
         )
         disagreeing = payment_employee_ids - {order.employee_id}
         if disagreeing:
-            return ServiceAttributionResult(
-                status=AMBIGUOUS,
-                employee_ids=[],
-                detail=(
-                    f"Order {order.id}.employee_id={order.employee_id} disagrees with "
-                    f"SUCCESS Payment.employee_id value(s) {sorted(disagreeing)} recorded under "
-                    "the same Order — two independent POS observations conflict; RF-One never "
-                    "guesses which is correct."
-                ),
+            detail = (
+                f"Order {order.id}.employee_id={order.employee_id} is the Tips service owner "
+                f"(authoritative). SUCCESS Payment.employee_id value(s) {sorted(disagreeing)} "
+                "recorded under the same Order disagree but do not affect this resolution — "
+                "Payment employee data is not used to determine, confirm, contradict, or "
+                "invalidate the Tips service owner (audit-only)."
+            )
+        else:
+            detail = (
+                f"Order {order.id}.employee_id={order.employee_id}, corroborated by "
+                f"{len(payment_employee_ids)} agreeing SUCCESS Payment employee reference(s)."
             )
 
         return ServiceAttributionResult(
             status=RESOLVED,
             employee_ids=[order.employee_id],
-            detail=f"Order {order.id}.employee_id={order.employee_id}, corroborated by "
-            f"{len(payment_employee_ids)} agreeing SUCCESS Payment employee reference(s).",
+            detail=detail,
         )

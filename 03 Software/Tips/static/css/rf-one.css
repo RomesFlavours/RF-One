@@ -1,0 +1,206 @@
+/* RF-One · Tips — shared visual identity (Rome's Flavours branding).
+   One stylesheet for every Tips page (base.html + all extending templates).
+   Palette: the logo's olive/green family only, white content areas, quiet
+   restaurant/business feel. No gradients, no dark theme, no animation. */
+
+:root {
+  /* Olive/green family — the one accent palette, lighter/darker only. */
+  --olive-900: #2f3a1f;   /* headings, strongest accent text */
+  --olive-700: #55642f;   /* primary accent — buttons, links, active nav */
+  --olive-600: #64753a;   /* button hover */
+  --olive-500: #7c8f52;   /* secondary accents */
+  --olive-300: #c7d1a8;   /* frames / card / table borders */
+  --olive-150: #e8edd8;   /* table header fill, selected states */
+  --olive-050: #f6f8ef;   /* very light olive tint — subtle backgrounds */
+
+  --paper: #ffffff;       /* page background */
+  --surface: #ffffff;     /* card/content background */
+  --ink: #24271c;         /* neutral dark text */
+  --muted: #6e735e;       /* secondary/muted text (olive-gray) */
+  --line: var(--olive-300);
+
+  --ok: #2e7d4f;
+  --warn: #a9761f;
+  --bad: #a33b2e;
+
+  --radius: 10px;
+  --shadow-card: 0 1px 2px rgba(47, 58, 31, 0.06);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  margin: 0;
+  padding: 0 2rem 3rem;
+}
+
+.wrap { max-width: 1080px; margin: 0 auto; }
+
+/* ---------------------------------------------------------------------
+   Header / branding
+   --------------------------------------------------------------------- */
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1.5rem 0 1.1rem;
+  border-bottom: 1px solid var(--olive-300);
+  margin-bottom: 1.5rem;
+}
+
+.brand { display: flex; align-items: center; gap: .7rem; text-decoration: none; }
+
+.brand-wordmark {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--olive-900);
+  letter-spacing: .01em;
+}
+
+.brand-name-group { display: flex; flex-direction: column; line-height: 1.15; }
+
+.brand-suffix {
+  font-size: .72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-top: .15rem;
+}
+
+/* RF-One product logo — top right of .site-header (flex + space-between
+   already pushes it there since it's the second flex child). Height-capped,
+   width auto so aspect ratio is always preserved regardless of the actual
+   asset's proportions. */
+.brand-logo {
+  height: 36px;
+  width: auto;
+  max-width: 160px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .brand-logo { height: 26px; max-width: 110px; }
+}
+
+.subtitle { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; font-size: .9rem; }
+
+/* ---------------------------------------------------------------------
+   Navigation
+   --------------------------------------------------------------------- */
+
+.nav-tabs { display: flex; gap: 1.4rem; flex-wrap: wrap; margin-bottom: 1.5rem; border-bottom: 1px solid var(--olive-300); }
+.nav-tabs a { padding: .55rem .1rem; font-size: .9rem; color: var(--muted); border-bottom: 2px solid transparent; text-decoration: none; }
+.nav-tabs a:hover { color: var(--olive-900); text-decoration: none; }
+.nav-tabs a.active { color: var(--olive-700); border-bottom-color: var(--olive-700); font-weight: 600; }
+
+/* ---------------------------------------------------------------------
+   Headings / links
+   --------------------------------------------------------------------- */
+
+h1 { font-size: 1.4rem; margin-bottom: .25rem; color: var(--olive-900); }
+h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; color: var(--olive-900); }
+a { color: var(--olive-700); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---------------------------------------------------------------------
+   Content containers — cards / panels / frames
+   --------------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--olive-300);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-card);
+}
+
+/* Result summary blocks (e.g. Import Summary, Calculate Tips totals). */
+.meta-row { display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.meta-item .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.meta-item .value { font-size: 1.15rem; font-weight: 600; color: var(--olive-900); }
+
+/* ---------------------------------------------------------------------
+   Forms
+   --------------------------------------------------------------------- */
+
+.form-row { display: flex; gap: 1.2rem; align-items: end; flex-wrap: wrap; }
+label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: .25rem; }
+
+input[type=date], input[type=text], input[type=number], select {
+  padding: .45rem .6rem;
+  border: 1px solid var(--olive-300);
+  border-radius: 6px;
+  font-size: .85rem;
+  background: var(--surface);
+  color: var(--ink);
+}
+input:focus, select:focus, button:focus, .btn:focus {
+  outline: 2px solid var(--olive-500);
+  outline-offset: 1px;
+}
+
+/* ---------------------------------------------------------------------
+   Action buttons
+   --------------------------------------------------------------------- */
+
+button, .btn {
+  background: var(--olive-700);
+  color: white;
+  border: none;
+  padding: .6rem 1.2rem;
+  border-radius: 6px;
+  font-size: .9rem;
+  cursor: pointer;
+}
+button:hover, .btn:hover { background: var(--olive-600); }
+button:disabled, .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------------
+   Tables
+   --------------------------------------------------------------------- */
+
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left;
+  font-size: .72rem;
+  color: var(--olive-900);
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  padding: .55rem .5rem;
+  background: var(--olive-150);
+  border-bottom: 1px solid var(--olive-300);
+}
+th:first-child { border-top-left-radius: 6px; }
+th:last-child { border-top-right-radius: 6px; }
+td { padding: .55rem .5rem; border-bottom: 1px solid var(--olive-150); font-size: .85rem; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--olive-050); }
+
+/* ---------------------------------------------------------------------
+   Status / error / info messages
+   --------------------------------------------------------------------- */
+
+.muted { color: var(--muted); }
+.empty { color: var(--muted); font-size: .9rem; padding: 1rem 0; }
+
+.error {
+  background: #fbeaea; border: 1px solid #e2a8a0; color: #7a2b21;
+  padding: .6rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: .88rem;
+}
+.info {
+  background: var(--olive-050); border: 1px solid var(--olive-300); color: var(--olive-900);
+  padding: .6rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: .88rem;
+}
+
+.badge { display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .72rem; font-weight: 600; border: 1px solid var(--olive-300); }
+.badge.ok { background: #e7f3ea; color: var(--ok); border-color: #bcdcc6; }
+.badge.warn { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+.badge.bad { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }

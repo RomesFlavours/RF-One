@@ -30,7 +30,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import models as m
-from .tips.resolvers import AMBIGUOUS, RESOLVED, UNRESOLVED, OrderEmployeeServiceAttributionResolver
+from .tips.resolvers import RESOLVED, UNRESOLVED, OrderEmployeeServiceAttributionResolver
 
 UTC = timezone.utc
 
@@ -531,7 +531,10 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         and "0 agreeing" in (resolution_c.detail or ""),
     )
 
-    # D. Order.employee_id = A, SUCCESS Payment.employee_id = B -> AMBIGUOUS
+    # D. Order.employee_id = A, SUCCESS Payment.employee_id = B -> RESOLVED A, NOT AMBIGUOUS
+    # (Product Owner decision: for Tips, the service owner is ALWAYS the
+    # Employee assigned to the Order; Payment.employee_id never determines,
+    # confirms, contradicts, or invalidates the Tips service owner.)
     order_d = make_order(
         location=location_wp, order_type=order_type_wp, source_order_id="ORD-CRIT-D",
         employee=emp_wp_a, total=4800, created_at=_dt(10),
@@ -540,8 +543,9 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     resolution_d = resolver.resolve(session, order_d)
     result.check(
         "CRITICAL D: Order.employee_id=A + a SUCCESS (disagreeing) Payment.employee_id=B -> "
-        "AMBIGUOUS — a genuinely completed, disagreeing observation is never ignored",
-        resolution_d.status == AMBIGUOUS and resolution_d.employee_ids == [],
+        "RESOLVED A, never AMBIGUOUS — Order.employee_id is authoritative for the Tips service "
+        "owner and Payment.employee_id disagreement does not affect it",
+        resolution_d.status == RESOLVED and resolution_d.employee_ids == [emp_wp_a.id],
     )
 
     # E. one FAILED Payment from B + one SUCCESS Payment from A -> RESOLVED A
@@ -578,7 +582,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         and sum(p.amount for p in order_f.payments) == order_f.total,
     )
 
-    # G. Multiple SUCCESS Payments with conflicting Employees -> AMBIGUOUS
+    # G. Multiple SUCCESS Payments with conflicting Employees -> RESOLVED A, NOT AMBIGUOUS
     order_g = make_order(
         location=location_wp, order_type=order_type_wp, source_order_id="ORD-CRIT-G",
         employee=emp_wp_a, total=9000, created_at=_dt(10),
@@ -588,8 +592,8 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     resolution_g = resolver.resolve(session, order_g)
     result.check(
         "CRITICAL G: multiple SUCCESS Payments that conflict with each other (one agrees with A, "
-        "one does not) -> AMBIGUOUS",
-        resolution_g.status == AMBIGUOUS and resolution_g.employee_ids == [],
+        "one does not) -> RESOLVED A, never AMBIGUOUS — Order.employee_id remains authoritative",
+        resolution_g.status == RESOLVED and resolution_g.employee_ids == [emp_wp_a.id],
     )
 
     # H. No Order.employee_id, only a FAILED Payment.employee_id present -> UNRESOLVED

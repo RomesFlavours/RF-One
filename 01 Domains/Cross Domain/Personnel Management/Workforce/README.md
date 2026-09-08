@@ -16,10 +16,10 @@ Workforce represents the organization's current human structure: who currently o
 
 ## Module boundary
 
-Workforce answers **"who"** — the structural question of current occupancy. It is distinct from Personnel Management's other module and from the sibling Selection/Training/Performance Cross Domains:
+Workforce answers **"who"** — the structural question of current occupancy. It is distinct from Personnel Management's other module and from the sibling Selection/Continuous Productivity Development/Performance Cross Domains:
 
 - [Selection](../../Selection/README.md) (sibling Cross Domain) answers "who else is a credible alternative";
-- [Training](../../Training/README.md) (sibling Cross Domain) answers "how do we close an evidenced gap";
+- [Continuous Productivity Development](../../Continuous%20Productivity%20Development/README.md) (sibling Cross Domain) answers "how do we close an evidenced gap or capture an opportunity";
 - [Performance](../../Performance/README.md) (sibling Cross Domain) answers "what did the person actually produce";
 - [Personnel Decisions](../Personnel%20Decisions/README.md) (the other Personnel Management module) answers "what should be done about the person currently in the role."
 
@@ -27,9 +27,9 @@ Potential future concepts include Person/Worker, Role, Position, Assignment, Res
 
 ---
 
-## Relationship to Personnel Decisions, Selection, Training and Performance
+## Relationship to Personnel Decisions, Selection, Continuous Productivity Development and Performance
 
-Personnel Decisions (the other Personnel Management module) and the sibling Selection, Training and Performance Cross Domains each depend on Workforce concepts (e.g. Role, Assignment) as external dependencies without this module defining them yet — the same dependency already recorded in [../Selection/README.md](../../Selection/README.md), "Future Workforce dependency."
+Personnel Decisions (the other Personnel Management module) and the sibling Selection, Continuous Productivity Development and Performance Cross Domains each depend on Workforce concepts (e.g. Role, Assignment) as external dependencies without this module defining them yet — the same dependency already recorded in [../Selection/README.md](../../Selection/README.md), "Future Workforce dependency."
 
 ---
 

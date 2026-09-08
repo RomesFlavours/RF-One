@@ -1,8 +1,8 @@
 # RF-One Identity, Authority and Security Architecture
 
 **Version:** 1.0
-**Status:** Approved (initial foundation — CORE_IDENTITY_AUTHORITY_SECURITY_ARCHITECTURE)
-**Module:** Software / Cross-cutting Runtime Architecture
+**Status:** Approved (initial foundation — CORE_IDENTITY_AUTHORITY_SECURITY_ARCHITECTURE). Moved from `03 Software/` to `10 System/Identity & Access/` when the System top-level area was introduced (this is the same document, unchanged in substance by the move). **Current development status: FROZEN** — see [README.md](README.md).
+**Module:** System / Identity & Access — Cross-cutting Architecture
 
 ---
 
@@ -14,14 +14,15 @@ This document establishes RF-One's technical architecture for Identity, Authorit
 
 ---
 
-## Relationship to Core, Domain, Product and Software
+## Relationship to Core, Domain, Product, System and Software
 
-Per `CLAUDE.md`: **Core ≠ Domain ≠ Product ≠ Runtime.**
+Per `CLAUDE.md`: **Core ≠ Domain ≠ Product ≠ Runtime**, with `10 System/` now holding system-level cross-cutting capabilities (like this one) that are neither a Domain nor a Product.
 
 - **Core** (`00 Core/ConceptualArchitecture/09_Identity_Authority_and_Accountability.md`) defines what Identity, Authority, Delegation, Accountability and Auditability *mean* — domain-independent, technology-independent. This document does not redefine those meanings; it defines how they are *implemented*.
 - **Domain** (`01 Domains/`) defines what Authority a specific class of business Decision requires (e.g. who may approve a Purchase Order) — Domains remain authoritative for that business meaning. This document never redefines Domain semantics.
 - **Product** (`02 Products/`) will define concrete Company/Branch configuration and which Users hold which Authority for a given commercial deployment. This document does not configure any Product.
-- **Software** (`03 Software/`) is authoritative for actual runtime behavior. This document sits here, alongside `User Interaction Architecture.md`, because it is cross-cutting runtime architecture — how *any* future Domain/Module authenticates its Users, enforces Authority, and proves what happened — not a business concept and not tied to one runtime module.
+- **System** (`10 System/Identity & Access/`, this document's current location) is the architectural home for this cross-cutting capability itself — how *any* future Domain/Module/Product authenticates its Users, enforces Authority, and proves what happened — not a business concept, not tied to one Product, and not implementation code.
+- **Software** (`03 Software/`) remains authoritative for actual runtime behavior. The existing software foundation implementing part of this architecture (Acting Identity, Authority, Operational Signature persistence and services) lives in `03 Software/RF-One Data Store/` and is not moved by the relocation of this document — see [README.md](README.md), "Current implementation references."
 
 This document is a **foundation, not an immutable constraint** — technical choices recorded here (e.g. Cognito as the current preferred candidate) are subject to final implementation validation and may be revisited through the same architecture-review discipline `User Interaction Architecture.md` §14–15 already establishes for interaction architecture.
 

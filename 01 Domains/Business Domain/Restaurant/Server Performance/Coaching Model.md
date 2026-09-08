@@ -107,4 +107,4 @@ This may help management determine whether continued employment makes business s
 - [Opportunity Capture.md](Opportunity%20Capture.md), [Perceived Service Quality.md](Perceived%20Service%20Quality.md)
 - [../Service Copilot/Service Copilot.md](../Service%20Copilot/Service%20Copilot.md)
 - [../../Personnel Management/Personnel Decisions/README.md](../../../Cross%20Domain/Personnel%20Management/Personnel%20Decisions/README.md)
-- [../../Personnel Management/Training/README.md](../../../Cross%20Domain/Training/README.md)
+- [../../Continuous Productivity Development/README.md](../../../Cross%20Domain/Continuous%20Productivity%20Development/README.md) — sibling Cross Domain that conceptually superseded the former Training placeholder

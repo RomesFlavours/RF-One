@@ -18,11 +18,11 @@ Performance is not a fixed score and is not a predefined KPI dashboard. It groun
 
 ## Domain boundary
 
-Performance answers **"what did the person actually produce"**. It is distinct from Selection, Training (sibling Cross Domains) and from Personnel Management's own modules:
+Performance answers **"what did the person actually produce"**. It is distinct from Selection, Continuous Productivity Development (sibling Cross Domains) and from Personnel Management's own modules:
 
 - [Workforce](../Personnel%20Management/Workforce/README.md) (Personnel Management module) answers "who currently occupies the role";
 - [Selection](../Selection/README.md) (sibling Cross Domain) answers "who else is a credible alternative," and predicts rather than observes — see "Relationship to Selection" below;
-- [Training](../Training/README.md) (sibling Cross Domain) answers "how do we close an evidenced gap" — Performance is what evidences the gap, and later shows whether it closed;
+- [Continuous Productivity Development](../Continuous%20Productivity%20Development/README.md) (sibling Cross Domain) answers "how do we close an evidenced gap or capture an opportunity" — Performance is what evidences the gap, and later shows whether the chosen intervention worked;
 - [Personnel Decisions](../Personnel%20Management/Personnel%20Decisions/README.md) (Personnel Management module) answers "what should be done about the person currently in the role," using Performance as one input among others, without Performance itself making that Decision.
 
 **No universal performance score is defined here, and none should be assumed to exist. No fixed KPI list is hard-coded by this Domain.**
@@ -68,19 +68,19 @@ Performance must therefore preserve enough meaning and provenance (see [Performa
 
 ---
 
-## Relationship to Training
+## Relationship to Continuous Productivity Development
 
-Training may consume Performance Evidence to identify an evidenced gap, and later Performance Evidence may show whether Training changed the result:
+Continuous Productivity Development may consume Performance Evidence to identify an evidenced gap/opportunity, and later Performance Evidence may show whether the intervention it selected changed the result (formal training/development is only one possible intervention among several — see [Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md)):
 
 ```text
 Observed Performance
-  → Gap
-    → Training
+  → Gap / Opportunity
+    → Continuous Productivity Development (best available intervention)
       → later Performance
         → Learning
 ```
 
-See also [Selection/TrainableGap.md](../Selection/TrainableGap.md) for the currently drawn Selection/Training boundary on what counts as a trainable gap. **This Domain does not model Training in depth.**
+See also [Selection/TrainableGap.md](../Selection/TrainableGap.md) for the currently drawn Selection/Continuous Productivity Development boundary on what counts as a trainable gap. **This Domain does not model Continuous Productivity Development in depth.**
 
 ---
 
@@ -157,4 +157,4 @@ Those are Product/Runtime concerns, to be designed later on top of this Domain i
 
 ## Deferred
 
-Detailed modeling of Workforce and Personnel Decisions (Personnel Management's own modules) and of Training (a sibling Cross Domain) remains deferred to future tasks (see their own READMEs). Within Performance itself, deferred items include: how Performance Evidence is actually captured or ingested from a specific technical Domain or integration; any concrete normalization method for cross-context comparison; and any KPI-discovery mechanism. See `07 Tasks/Reports/TASK_PERSONNEL_001_REPORT.md` for the full list of open questions.
+Detailed modeling of Workforce and Personnel Decisions (Personnel Management's own modules) and of Continuous Productivity Development (a sibling Cross Domain) remains deferred to future tasks (see their own READMEs). Within Performance itself, deferred items include: how Performance Evidence is actually captured or ingested from a specific technical Domain or integration; any concrete normalization method for cross-context comparison; and any KPI-discovery mechanism. See `07 Tasks/Reports/TASK_PERSONNEL_001_REPORT.md` for the full list of open questions.

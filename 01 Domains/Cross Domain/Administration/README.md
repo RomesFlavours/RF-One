@@ -21,7 +21,8 @@ Administration is transversal in the same sense already established for Personne
 ```text
 Administration
 ├── Personnel Cost      (transversal concept — spans Payroll and future cost sources)
-└── Payroll
+├── Payroll
+└── Invoice Intake      (document acquisition/OCR/normalization only — never the canonical cost model)
 ```
 
 Payroll is the first module. Other administrative execution capabilities (e.g. a future Accounts Payable or Benefits Administration module) may be added later as siblings — Administration is not defined narrowly around Payroll alone.
@@ -32,8 +33,9 @@ Payroll is the first module. Other administrative execution capabilities (e.g. a
 |---|---|---|
 | [Personnel Cost.md](Personnel%20Cost.md) | What is the causally attributable, canonical economic cost of an Employee, and of Personnel overall? | Documented — TASK_LABOR_COST_001 |
 | [Payroll/](Payroll/README.md) | How is Employee compensation administratively processed, and what did it actually cost? | Documented — TASK_PAYROLL_001; repositioned under `Personnel Cost.md` by TASK_LABOR_COST_001 |
+| [Invoice Intake/](Invoice%20Intake/README.md) | How are supplier documents acquired, OCR'd/parsed, normalized, and routed to the Business Domain that owns their cost model? | Structure created — see note below; canonical cost model remains Restaurant/Purchasing |
 
-**Supplier invoice ingestion is not an Administration module.** It is canonically owned by `01 Domains/Business Domain/Restaurant/Purchasing/` (Purchase Document / Purchase Line, merchandise/economic classification, Effective Product Cost). Administration consumes the derived economic result (category totals, document totals, reconciliation status) once Purchasing has classified and costed a purchase — see `01 Domains/Business Domain/Restaurant/Purchasing/BusinessRules.md`, "Purchasing Precedes Administration and Taxation." A previous version of this Domain defined a parallel `SupplierInvoice`/`InvoiceLine` model here (`Invoice Intake.md`, TASK_INVOICE_001); it was reconciled into, and superseded by, the Restaurant/Purchasing model by TASK_PURCHASING_001 — see `07 Tasks/Reports/TASK_PURCHASING_001_REPORT.md`.
+**The canonical supplier-invoice business/cost model is not an Administration concept.** It is canonically owned by `01 Domains/Business Domain/Restaurant/Purchasing/` (Purchase Document / Purchase Line, merchandise/economic classification, Effective Product Cost). Administration consumes the derived economic result (category totals, document totals, reconciliation status) once Purchasing has classified and costed a purchase — see `01 Domains/Business Domain/Restaurant/Purchasing/BusinessRules.md`, "Purchasing Precedes Administration and Taxation." A previous version of this Domain defined a parallel `SupplierInvoice`/`InvoiceLine` **business model** here (`Invoice Intake.md`, TASK_INVOICE_001); it was reconciled into, and superseded by, the Restaurant/Purchasing model by TASK_PURCHASING_001 — see `07 Tasks/Reports/TASK_PURCHASING_001_REPORT.md`. That reconciliation is unaffected by, and must not be confused with, [`Invoice Intake/`](Invoice%20Intake/README.md) below: a same-named but narrower Cross Domain module reintroduced later, owning only document **acquisition** (OCR/parsing/normalization/review/routing), never the canonical business/cost model — Purchasing still owns that, unchanged.
 
 ---
 

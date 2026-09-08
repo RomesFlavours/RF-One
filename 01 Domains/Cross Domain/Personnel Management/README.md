@@ -12,7 +12,7 @@
 
 Personnel Management does not belong to Restaurant or to any other technical Domain. Restaurant is one application context that supplies technical content Personnel Management consumes — it is not the architectural owner of Personnel Management (see [../Domain Architecture.md](../../Domain%20Architecture.md)).
 
-**Selection, Training and Performance were previously documented as modules of Personnel Management; each is now its own top-level Cross Domain**, a sibling of Personnel Management — see [../Selection/README.md](../Selection/README.md), [../Training/README.md](../Training/README.md), [../Performance/README.md](../Performance/README.md) and `../../Domain%20Architecture.md` §4-5. Personnel Management's Personnel Decisions module consumes Selection's and Performance's output without owning or duplicating either, the same relationship Personnel Management has with any other Domain it consumes from.
+**Selection, the former Training, and Performance were previously documented as modules of Personnel Management; each is now its own top-level Cross Domain**, a sibling of Personnel Management — see [../Selection/README.md](../Selection/README.md), [../Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md), [../Operational Knowledge/README.md](../Operational%20Knowledge/README.md), [../Performance/README.md](../Performance/README.md) and `../../Domain%20Architecture.md` §4-5. Personnel Management's Personnel Decisions module consumes Selection's and Performance's output without owning or duplicating either, the same relationship Personnel Management has with any other Domain it consumes from.
 
 ---
 
@@ -24,7 +24,7 @@ Personnel Management is a **universal business Domain**. It applies wherever an 
 
 ## Module map
 
-Personnel Management's **remaining modules are Workforce and Personnel Decisions**. Selection, Training and Performance were formerly modules here too; all three are now sibling top-level Cross Domains, not modules of this Domain — do not re-nest them:
+Personnel Management's **remaining modules are Workforce and Personnel Decisions**. Selection, the former Training (now Operational Knowledge) and Performance were formerly modules here too; all three, plus the later-added Continuous Productivity Development, are now sibling top-level Cross Domains, not modules of this Domain — do not re-nest them:
 
 ```text
 Cross Domain/
@@ -32,7 +32,8 @@ Cross Domain/
 │   ├── Workforce
 │   └── Personnel Decisions
 ├── Selection
-├── Training
+├── Continuous Productivity Development
+├── Operational Knowledge
 └── Performance
 ```
 
@@ -41,7 +42,7 @@ Cross Domain/
 | [Workforce/](Workforce/README.md) | Who currently occupies or can occupy organizational roles? | Placeholder — see `Workforce/README.md` |
 | [Personnel Decisions/](Personnel%20Decisions/README.md) | What should be done about the person currently in the role? | Placeholder — see `Personnel Decisions/README.md` |
 
-Selection, Training and Performance — each its own Cross Domain, not listed in this table — are documented at [../Selection/README.md](../Selection/README.md), [../Training/README.md](../Training/README.md) and [../Performance/README.md](../Performance/README.md) respectively.
+Selection, Continuous Productivity Development, Operational Knowledge and Performance — each its own Cross Domain, not listed in this table — are documented at [../Selection/README.md](../Selection/README.md), [../Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md), [../Operational Knowledge/README.md](../Operational%20Knowledge/README.md) and [../Performance/README.md](../Performance/README.md) respectively.
 
 ---
 
@@ -73,7 +74,7 @@ Personnel Management
     reasoning on top of that content, consuming Selection's and Performance's output where relevant
 ```
 
-Restaurant remains primarily the technical/operational Domain (see [../Restaurant/README.md](../../Business%20Domain/Restaurant/README.md)). Restaurant does not own Workforce, Personnel Decisions, Selection, Training, or Performance.
+Restaurant remains primarily the technical/operational Domain (see [../Restaurant/README.md](../../Business%20Domain/Restaurant/README.md)). Restaurant does not own Workforce, Personnel Decisions, Selection, Continuous Productivity Development, Operational Knowledge, or Performance.
 
 ---
 
@@ -85,12 +86,12 @@ Customer Feedback and Review remain separate transversal Domain candidates — t
 
 ## Continuous operating loop
 
-Personnel Management's modules (Workforce, Personnel Decisions) relate through the following guiding loop, which also draws on the sibling Selection, Training and Performance Cross Domains' output, even though none of the three is a Personnel Management module. This is descriptive of how they interact, not a rigid or mandatory formula, and no step is automatic:
+Personnel Management's modules (Workforce, Personnel Decisions) relate through the following guiding loop, which also draws on the sibling Selection, Continuous Productivity Development and Performance Cross Domains' output, even though none of them is a Personnel Management module. This is descriptive of how they interact, not a rigid or mandatory formula, and no step is automatic:
 
 ```text
 Observed Performance
 → communicate / correct / opportunity to improve
-→ Training where economically justified
+→ Continuous Productivity Development intervention where economically justified
 → observe again
 
 in parallel (Selection Domain, external to Personnel Management):
@@ -139,7 +140,8 @@ Sibling Cross Domains, not documented here (own top-level Domains — see "Modul
 
 - **Selection** — documented in depth; see `../Selection/README.md`.
 - **Performance** — documented in depth (Performance, PerformanceEvidence, PerformanceMeasure, PerformanceIndicator, PerformanceContext; TASK_PERSONNEL_001); see `../Performance/README.md`.
-- **Training** — minimal placeholder `README.md` only; see `../Training/README.md`.
+- **Continuous Productivity Development** — draft concept specification; see `../Continuous Productivity Development/README.md`.
+- **Operational Knowledge** — Domain boundary and core concept (formerly the Training placeholder); see `../Operational Knowledge/README.md`.
 
 ---
 
@@ -148,4 +150,4 @@ Sibling Cross Domains, not documented here (own top-level Domains — see "Modul
 - [../Domain Architecture.md](../../Domain%20Architecture.md) — cross-Domain conclusions this structure canonicalizes, including the Cross Domain / Business Domain taxonomy (§4)
 - [../README.md](../../README.md) — `01 Domains/` purpose and authority
 - [../Restaurant/README.md](../../Business%20Domain/Restaurant/README.md), [../Restaurant/Roadmap.md](../../Business%20Domain/Restaurant/Roadmap.md) — Restaurant's technical/operational boundary
-- [../Selection/README.md](../Selection/README.md), [../Training/README.md](../Training/README.md), [../Performance/README.md](../Performance/README.md) — sibling Cross Domains (not modules) of Personnel Management
+- [../Selection/README.md](../Selection/README.md), [../Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md), [../Operational Knowledge/README.md](../Operational%20Knowledge/README.md), [../Performance/README.md](../Performance/README.md) — sibling Cross Domains (not modules) of Personnel Management

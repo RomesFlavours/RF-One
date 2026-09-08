@@ -15,7 +15,7 @@
 - [06_Business_Autopilot_and_Intelligence_Engine.md](06_Business_Autopilot_and_Intelligence_Engine.md) — Delegated Authority (Pilot → RF-One), the specific case this document generalizes into Delegation
 - [07_Core_Glossary.md](07_Core_Glossary.md)
 - See also [../Entity.md](../Entity.md) (Identity, Roles), [../ArchitecturePrinciples.md](../ArchitecturePrinciples.md) (Human Authority, Traceability, Historical Integrity), [../Corporate.md](../Corporate.md), [../Operational Unit.md](../Operational%20Unit.md) and [../OperationalArea.md](../OperationalArea.md) (organizational context scope).
-- Technical implementation of these concepts (authentication mechanism, authorization enforcement, RF-One Operational Signature, audit trail storage, security infrastructure) is Runtime/Software concern — see `03 Software/Identity Authority and Security Architecture.md`. This document defines meaning; that document defines mechanism.
+- Technical implementation of these concepts (authentication mechanism, authorization enforcement, RF-One Operational Signature, audit trail storage, security infrastructure) is a system-level capability, not a Domain or Product — see `10 System/Identity & Access/Identity Authority and Security Architecture.md` (and `10 System/README.md` for the System layer's own boundary). This document defines meaning; that document defines mechanism.
 
 ---
 
@@ -176,4 +176,4 @@ Consistent with Core's definition-not-implementation nature (see [00_RF-One_Core
 - no concrete Company/Branch configuration for any specific Product or customer;
 - no fixed enumeration of Authority classes or Delegation workflows.
 
-These are Runtime and Software concerns — see `03 Software/Identity Authority and Security Architecture.md` — or Product-level configuration — see `02 Products/`.
+These are System-level and Software concerns — see `10 System/Identity & Access/Identity Authority and Security Architecture.md` — or Product-level configuration — see `02 Products/`.

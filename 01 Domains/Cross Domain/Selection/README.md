@@ -32,7 +32,7 @@ Selection is a **universal, cross-industry, transversal Domain** (see [../README
 
 Any other Domain/module that requires evaluating and selecting candidates — Restaurant/Purchasing (selecting a supplier's account manager), Restaurant/Sales, a future professional-services Domain, or an entirely different industry — reuses the same Selection concepts, feeding them its own technical/business requirements instead of Restaurant's.
 
-Selection is closely related to Personnel Management (whose remaining modules are Workforce and Personnel Decisions — see `../Personnel%20Management/README.md`) and to the sibling Training and Performance Cross Domains, without being subordinate to any of them: it is Personnel Management's most natural collaborator, not its subordinate. See `../../Domain%20Architecture.md` §4-5 for how Selection, Training and Performance relate to Personnel Management now that all three stand on their own.
+Selection is closely related to Personnel Management (whose remaining modules are Workforce and Personnel Decisions — see `../Personnel%20Management/README.md`) and to the sibling Continuous Productivity Development and Performance Cross Domains, without being subordinate to any of them: it is Personnel Management's most natural collaborator, not its subordinate. See `../../Domain%20Architecture.md` §4-5 for how Selection, Continuous Productivity Development and Performance relate to Personnel Management now that all three stand on their own.
 
 ---
 
@@ -65,7 +65,7 @@ Goals
             → Candidate Evidence
               → Fit Assessment
                 → Selection Decision
-                  → Training / Performance feedback
+                  → Continuous Productivity Development / Performance feedback
 ```
 
 Brand (see [../../00 Core/Brand.md](../../../00%20Core/Brand.md)) contributes expectations about customer experience, service standards and product philosophy that may shape which behaviors a role requires. It does **not** by itself determine who is hired, and it must never be converted into a personality test. Selection must integrate Brand expectations together with technical requirements, role responsibilities, Constraints, law/policy, available Evidence, trainable gaps, risk and expected Outcomes — see [Selection.md](Selection.md).
@@ -141,21 +141,21 @@ Restaurant examples (Restaurant Manager, General Manager, Kitchen Manager, Serve
 
 ---
 
-## Relationship to future Training and Performance
+## Relationship to Continuous Productivity Development and Performance
 
 Selection is designed so that it can later learn from what happens after a Decision:
 
 ```text
 Selection assumptions / predictions
   → hire or assignment
-    → Training
+    → Continuous Productivity Development (intervention, where economically justified)
       → observed Performance
         → Outcome
           → Learning
             → better future Selection
 ```
 
-**No Training content is created by this task.** (Performance — a sibling Cross Domain, not a Personnel Management module — is now documented in depth by a later task, TASK_PERSONNEL_001; see [../Performance/README.md](../Performance/README.md); it was still undocumented when this Selection Domain was first written.) Selection's definitions only need to remain compatible with this future feedback loop — see [TrainableGap.md](TrainableGap.md) for where the Selection/Training boundary is drawn today.
+**No Continuous Productivity Development content is created by this task.** (Performance — a sibling Cross Domain, not a Personnel Management module — is now documented in depth by a later task, TASK_PERSONNEL_001; see [../Performance/README.md](../Performance/README.md); it was still undocumented when this Selection Domain was first written. Continuous Productivity Development itself — which conceptually superseded the former Training placeholder's scope — now has its own draft concept specification; see [../Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md).) Selection's definitions only need to remain compatible with this feedback loop — see [TrainableGap.md](TrainableGap.md) for where the Selection/Continuous Productivity Development boundary is drawn today.
 
 ---
 

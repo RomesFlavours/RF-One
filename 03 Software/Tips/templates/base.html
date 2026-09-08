@@ -3,60 +3,36 @@
 <head>
 <meta charset="utf-8">
 <title>RF-One · Tips</title>
-<style>
-  :root {
-    --ink: #1c1c1c; --paper: #faf9f7; --line: #ddd8d0; --accent: #8a3b2e;
-    --muted: #7a756c; --ok: #3b6e4a; --warn: #a9761f; --bad: #a33b2e;
-  }
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-         background: var(--paper); color: var(--ink); margin: 0; padding: 2rem; }
-  .wrap { max-width: 1000px; margin: 0 auto; }
-  h1 { font-size: 1.4rem; margin-bottom: .25rem; }
-  h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; }
-  .subtitle { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; font-size: .9rem; }
-  .card { background: white; border: 1px solid var(--line); border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; }
-  .meta-row { display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 1rem; }
-  .meta-item .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
-  .meta-item .value { font-size: 1.15rem; font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; font-size: .72rem; color: var(--muted); text-transform: uppercase;
-       letter-spacing: .02em; padding: .5rem .4rem; border-bottom: 1px solid var(--line); }
-  td { padding: .5rem .4rem; border-bottom: 1px solid var(--line); font-size: .85rem; }
-  tr:last-child td { border-bottom: none; }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  button, .btn { background: var(--accent); color: white; border: none; padding: .6rem 1.2rem;
-                 border-radius: 6px; font-size: .9rem; cursor: pointer; }
-  button:disabled, .btn:disabled { opacity: .55; cursor: not-allowed; }
-  input[type=date] { padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 6px; font-size: .85rem; }
-  label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: .25rem; }
-  .form-row { display: flex; gap: 1.2rem; align-items: end; flex-wrap: wrap; }
-  .error { background: #fbeaea; border: 1px solid #e2a8a0; color: #7a2b21; padding: .6rem 1rem;
-           border-radius: 6px; margin-bottom: 1rem; font-size: .88rem; }
-  .muted { color: var(--muted); }
-  .empty { color: var(--muted); font-size: .9rem; padding: 1rem 0; }
-  .badge { display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .72rem;
-           font-weight: 600; border: 1px solid var(--line); }
-  .badge.ok { background: #e9f3ec; color: var(--ok); border-color: #b9d9c2; }
-  .badge.warn { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
-  .badge.bad { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
-  .table-scroll { overflow-x: auto; }
-  .nav-tabs { display: flex; gap: 1.2rem; margin-bottom: 1.2rem; border-bottom: 1px solid var(--line); }
-  .nav-tabs a { padding: .5rem 0; font-size: .9rem; color: var(--muted); border-bottom: 2px solid transparent; }
-  .nav-tabs a.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
-  select { padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 6px; font-size: .85rem; }
-  input[type=text], input[type=number] { padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 6px; font-size: .85rem; }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}">
 </head>
 <body>
 <div class="wrap">
-  <h1>RF-One · Tips</h1>
+  <header class="site-header">
+    <!-- Branding is system-level, not Tips-specific: `brand_name` is
+         injected into every template by app.py's `inject_brand_context()`
+         context processor, which reads the RF-One `Restaurant.name` already
+         resolved elsewhere in this app — never hardcoded here. -->
+    <a href="{{ url_for('home') }}" class="brand">
+      <span class="brand-name-group">
+        <span class="brand-wordmark">{{ brand_name }}</span>
+        <span class="brand-suffix">RF-One · Tips</span>
+      </span>
+    </a>
+    <!-- The RF-One product logo — owned by RF-One, not Tips. Served from
+         the shared, Tips-independent `Shared UI/brand/logos/` directory via
+         app.py's `shared_brand_logo` route (see `_brand_logo_filename()`).
+         Renders nothing until an official asset is actually placed there;
+         never a placeholder/invented logo. -->
+    {% if brand_logo_filename %}
+      <img class="brand-logo" src="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}" alt="RF-One">
+    {% endif %}
+  </header>
   <p class="subtitle">Clover source-fact ingestion and Tip Distribution Rule configuration — no employee payout is calculated here.</p>
   <div class="nav-tabs">
     <a href="{{ url_for('home') }}" class="{{ 'active' if active_nav == 'historical-backfill' else '' }}">Historical Backfill</a>
     <a href="{{ url_for('distribution_rules_home') }}" class="{{ 'active' if active_nav == 'distribution-rules' else '' }}">Distribution Rules</a>
     <a href="{{ url_for('calculate_tips_home') }}" class="{{ 'active' if active_nav == 'calculate-tips' else '' }}">Calculate Tips</a>
+    <a href="{{ url_for('calculate_tips_history') }}" class="{{ 'active' if active_nav == 'calculate-tips-history' else '' }}">History</a>
   </div>
   {% block content %}{% endblock %}
 </div>

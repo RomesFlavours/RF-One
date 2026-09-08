@@ -22,6 +22,7 @@ RF-One Core 2.0 (Subject ↔ Reality, Desire sovereignty, continuous Reality Che
 | `07 Tasks/` | Task specifications, execution reports, backlog | Historical record, not live specification |
 | `08 External/` | External collaborator material (e.g. `Shelbi/`) | Reference/input only |
 | `09 Strategy/` | RF-One's own company/product strategy | Canonical for company strategy once populated |
+| `10 System/` | System-level capabilities spanning the whole platform (e.g. Identity & Access) — not a Domain, not a Product | Canonical for system-level architecture/boundary; implementation code stays in `03 Software/` |
 | `90 Archive/` | Historical/superseded repository material | **Never** current authority, regardless of status text inside |
 
 Each top-level directory has its own `README.md` explaining its purpose, authority level, and what does/does not belong there.

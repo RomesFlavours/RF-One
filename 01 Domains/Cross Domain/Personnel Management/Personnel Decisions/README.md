@@ -16,11 +16,11 @@ Personnel Decisions applies Core `Decision` semantics (see [../../../00 Core/Con
 
 ## Module boundary
 
-Personnel Decisions answers **"what should be done about the person currently in the role"**. It is distinct from Personnel Management's other module and from the sibling Selection/Training/Performance Cross Domains:
+Personnel Decisions answers **"what should be done about the person currently in the role"**. It is distinct from Personnel Management's other module and from the sibling Selection/Continuous Productivity Development/Performance Cross Domains:
 
 - [Workforce](../Workforce/README.md) (the other Personnel Management module) answers "who currently occupies the role";
 - [Selection](../../Selection/README.md) (sibling Cross Domain) answers "who else is a credible alternative," and its output is one input to a Personnel Decision;
-- [Training](../../Training/README.md) (sibling Cross Domain) answers "how do we close an evidenced gap" — a possible conclusion of a Personnel Decision;
+- [Continuous Productivity Development](../../Continuous%20Productivity%20Development/README.md) (sibling Cross Domain) answers "how do we close an evidenced gap or capture an opportunity" — a possible conclusion of a Personnel Decision;
 - [Performance](../../Performance/README.md) (sibling Cross Domain) answers "what did the person actually produce" — one input to a Personnel Decision.
 
 Possible conclusions include retain, continue observing, correct, train, develop, move/reassign, change responsibilities, replace. This list is illustrative, not exhaustive or mandatory.
@@ -43,9 +43,9 @@ This is a guiding comparison, not a rigid formula or an automatic threshold. **N
 
 ---
 
-## Relationship to Selection, Training and Performance
+## Relationship to Selection, Continuous Productivity Development and Performance
 
-Personnel Decisions draws on Performance evidence (what actually happened), Selection's identified alternatives (who else is viable), and Training's cost/outcome (what closing a gap would take or achieved) — three sibling Cross Domains, not Personnel Management modules — without owning or redefining any of their reasoning.
+Personnel Decisions draws on Performance evidence (what actually happened), Selection's identified alternatives (who else is viable), and Continuous Productivity Development's intervention cost/outcome (what closing a gap or capturing an opportunity would take or achieved) — three sibling Cross Domains, not Personnel Management modules — without owning or redefining any of their reasoning.
 
 ---
 

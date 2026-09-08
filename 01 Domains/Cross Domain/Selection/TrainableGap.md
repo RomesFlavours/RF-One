@@ -47,9 +47,9 @@ This reasoning feeds directly into a [Fit Assessment](FitAssessment.md)'s "Train
 
 ## What this document does not do
 
-- It does not define the Training Domain (`../Training/`, a sibling top-level Cross Domain, like Selection itself — not a module of Personnel Management, see [README.md](README.md)). No Training content is created by this task — see [README.md](README.md), "Relationship to future Training and Performance."
+- It does not define the Continuous Productivity Development Domain (`../Continuous Productivity Development/`, a sibling top-level Cross Domain, like Selection itself — not a module of Personnel Management, see [README.md](README.md)), which conceptually superseded the former Training placeholder's "closes an evidenced gap" scope. No Continuous Productivity Development content is created by this task — see [README.md](README.md), "Relationship to Continuous Productivity Development and Performance."
 - It does not prescribe universal training durations, curricula, or methods. "Estimated time to standard" is a case-by-case judgment informed by the specific gap and role, not a fixed table.
-- It does not define how training is delivered, tracked, or verified — that is future Training/Product/Runtime scope.
+- It does not define how training is delivered, tracked, or verified — that is future Continuous Productivity Development/Product/Runtime scope.
 
 ---
 

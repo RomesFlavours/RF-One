@@ -48,7 +48,7 @@ _DATA_STORE_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "RF-One Data Sto
 if _DATA_STORE_DIR not in sys.path:
     sys.path.insert(0, _DATA_STORE_DIR)
 
-from flask import Flask, flash, redirect, render_template, request, url_for  # noqa: E402
+from flask import Flask, flash, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
 from rfone_data_store import models as m  # noqa: E402
@@ -84,6 +84,73 @@ def _default_restaurant(session) -> "m.Restaurant | None":
     app runs against the shared operational store, where the real
     Restaurant/Location/Clover onboarding already exists."""
     return session.scalars(select(m.Restaurant).order_by(m.Restaurant.id)).first()
+
+
+# RF-One branding is application-wide, not Tips-owned: the canonical asset
+# location is the shared, module-independent `03 Software/Shared UI/brand/`
+# area (branding-ownership correction task) — a sibling of Tips, never
+# copied into `Tips/static/`. `SHARED_UI_DIR` intentionally mirrors
+# `_DATA_STORE_DIR`'s own "sibling Software module" pattern above.
+_SHARED_UI_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "Shared UI"))
+_SHARED_BRAND_LOGOS_DIR = os.path.join(_SHARED_UI_DIR, "brand", "logos")
+
+
+def _brand_logo_filename() -> str | None:
+    """The RF-One product logo — distinct from `Restaurant.name`/the Core
+    `Brand` concept (`00 Core/Brand.md`), which is a tenant's OWN business
+    identity (e.g. Rome's Flavours'), not RF-One-the-product's own mark.
+    `03 Software/Shared UI/brand/logos/` is the one canonical location for
+    it, owned by RF-One, not by Tips; this returns the first real file
+    found there (`.gitkeep` aside), or `None` if no official asset has been
+    placed yet — never a fabricated/placeholder logo."""
+    if not os.path.isdir(_SHARED_BRAND_LOGOS_DIR):
+        return None
+    for name in sorted(os.listdir(_SHARED_BRAND_LOGOS_DIR)):
+        if name == ".gitkeep":
+            continue
+        if os.path.isfile(os.path.join(_SHARED_BRAND_LOGOS_DIR, name)):
+            return name
+    return None
+
+
+@app.route("/shared-brand/logos/<path:filename>")
+def shared_brand_logo(filename: str):
+    """Serves a file directly from the shared, Tips-independent
+    `Shared UI/brand/logos/` directory — the smallest mechanism that lets
+    Tips consume RF-One's branding without copying/duplicating the asset
+    into `Tips/static/`. Only this one directory is exposed (never an
+    arbitrary path), and only for reading an existing file — no upload/
+    write capability is introduced."""
+    return send_from_directory(_SHARED_BRAND_LOGOS_DIR, filename)
+
+
+@app.context_processor
+def inject_brand_context() -> dict:
+    """Page-header branding, sourced from RF-One's own canonical business
+    identity — never a Tips-specific brand asset/config. `Restaurant.name`
+    is the one canonical business-identity field that already exists
+    (`Restaurant`'s own docstring: "canonical business identity/context");
+    reusing it here (the same row `_default_restaurant()` resolves
+    everywhere else in this app) is the smallest correct way to make the
+    header data-driven instead of a hardcoded string.
+
+    `brand_logo_filename` is the separate, static RF-One PRODUCT logo (see
+    `_brand_logo_filename()`) — orthogonal to the Core `Brand` concept
+    (tenant business identity), which still has no persisted model and is
+    NOT what this renders. No Tips-local branding store is invented here:
+    this only reads whatever file (if any) already exists at the one
+    canonical static path.
+
+    A `@app.context_processor` (rather than passing `restaurant=` from every
+    `render_template` call) guarantees every Tips page gets the same brand
+    name/logo even where a route does not otherwise need the Restaurant row
+    (e.g. `distribution_rule_detail`)."""
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        return {
+            "brand_name": restaurant.name if restaurant is not None else "RF-One",
+            "brand_logo_filename": _brand_logo_filename(),
+        }
 
 
 def _resolve_clover_location_id(session, restaurant_id: int) -> int | None:
@@ -387,6 +454,43 @@ def calculate_tips_order_drilldown(order_id: int):
         return render_template(
             "order_drilldown.html", restaurant=restaurant, from_date=from_date, through_date=through_date,
             drilldown=drilldown, active_nav="calculate-tips",
+        )
+
+
+@app.route("/calculate-tips/history")
+def calculate_tips_history():
+    """Read-only list of past Tip Distribution Calculation runs — no new
+    calculation logic, just a listing over the existing
+    `TipDistributionCalculationRun` rows so a period already calculated can
+    be found and re-opened (via the existing Employee Review page) without
+    guessing dates. Mirrors `home()`'s own "recent runs" query style."""
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        run_rows = []
+        if restaurant is not None:
+            runs = session.scalars(
+                select(m.TipDistributionCalculationRun)
+                .where(m.TipDistributionCalculationRun.restaurant_id == restaurant.id)
+                .order_by(m.TipDistributionCalculationRun.started_at.desc())
+                .limit(50)
+            )
+            for run in runs:
+                # Inverse of `_calculation_period`'s "Through day's end is the
+                # following day's midnight" convention, for display/re-open only.
+                run_rows.append(
+                    {
+                        "id": run.id,
+                        "status": run.status,
+                        "from_date": run.period_start.strftime("%Y-%m-%d"),
+                        "through_date": (run.period_end - timedelta(days=1)).strftime("%Y-%m-%d"),
+                        "started_at": run.started_at,
+                        "completed_at": run.completed_at,
+                        "superseded": run.superseded_by_calculation_run_id is not None,
+                    }
+                )
+        return render_template(
+            "calculate_tips_history.html", restaurant=restaurant, run_rows=run_rows,
+            active_nav="calculate-tips-history",
         )
 
 

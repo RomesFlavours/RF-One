@@ -49,7 +49,7 @@ Guest QR Survey                   → future direct Perceived Service Quality ev
 Server smartwatch inputs          → future micro-input evidence (`../Service%20Copilot/Smartwatch
 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20Interaction.md`) — micro-input only, never data entry
 
-Training history                  → Personnel Management/Training intervention record
+Training history                  → Continuous Productivity Development intervention record
 
 Management configuration          → Brand Expectation, intrusiveness level, gamification settings
                                     (Brand-configurable, never hard-coded)

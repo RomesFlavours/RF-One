@@ -453,7 +453,7 @@ MODULE INTERACTION READINESS
 - `01 Domains/Business Domain/Restaurant/Purchasing/EntityDefinitions.md`, "Alert"; `BusinessRules.md`, Rules 20–24 — the concrete Domain example used illustratively in Section 7.1 for the Alert vs Notification distinction; the Domain remains authoritative for what a specific Alert means.
 - `01 Domains/Business Domain/Restaurant/Purchasing/EntityDefinitions.md`, "Receiving Record," "Receiving Line"; `BusinessRules.md`, Rules 25–42 — the concrete Domain example used illustratively in Section 8 for mobile Receiving capture; the Domain remains authoritative for Receiving semantics.
 - `03 Software/README.md` — Software layer authority and current runtime modules.
-- `03 Software/Identity Authority and Security Architecture.md` — the deeper technical Identity/Authentication/Authorization/Security layer this document's Sections 3–6 and 12 connect to; that document does not duplicate this one's interaction-shape content.
+- `10 System/Identity & Access/Identity Authority and Security Architecture.md` — the deeper technical Identity/Authentication/Authorization/Security layer this document's Sections 3–6 and 12 connect to (moved from `03 Software/` to the System top-level area — a system-level capability, not Software-owned architecture); that document does not duplicate this one's interaction-shape content.
 - `00 Core/ConceptualArchitecture/09_Identity_Authority_and_Accountability.md` — the Core conceptual definitions (Acting Identity, Authority, Delegation, Accountability, Auditability) underlying Sections 3–6.
 - `07 Tasks/TASK_INTERACTION_001_Define_User_Interaction_Architecture.md` — task that created this document.
 - `07 Tasks/Reports/TASK_INTERACTION_001_REPORT.md` — task report.

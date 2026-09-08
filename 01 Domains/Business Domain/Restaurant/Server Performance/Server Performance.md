@@ -46,7 +46,7 @@ Each stage reuses Core concepts already established for the rest of RF-One rathe
 - **Observation** — [Performance Evidence](../../../Cross%20Domain/Performance/PerformanceEvidence.md), atomic and provenance-preserving, sourced per [Evidence Sources.md](Evidence%20Sources.md).
 - **Individual Performance Profile** — the accumulated, multidimensional record RF-One keeps about one Server (see [Individual Performance Profile.md](Individual%20Performance%20Profile.md)).
 - **Gap / Opportunity** — the Core `Reality Check` between expected and observed (`00 Core/ConceptualArchitecture/02_Desire_Goal_and_Reality_Check.md`), evaluated against both Brand Expectation and Personal Baseline simultaneously.
-- **Coaching / Training Intervention** — Core `Decision`/`Action` (see [Coaching Model.md](Coaching%20Model.md)); delivered in real time by [Service Copilot](../Service%20Copilot/README.md) and/or structurally by Personnel Management's [Training](../../../Cross%20Domain/Training/README.md).
+- **Coaching / Training Intervention** — Core `Decision`/`Action` (see [Coaching Model.md](Coaching%20Model.md)); delivered in real time by [Service Copilot](../Service%20Copilot/README.md) and/or structurally as an intervention selected by the sibling [Continuous Productivity Development](../../../Cross%20Domain/Continuous%20Productivity%20Development/README.md) Cross Domain (which conceptually superseded the former Training placeholder).
 - **New Observation → Outcome → Learning** — Core `Outcome`/`Learning` (`00 Core/ConceptualArchitecture/03_Decision_Action_Outcome_Learning.md`), reused without redefinition, closing the loop back into the Individual Performance Profile.
 
 ---
@@ -133,15 +133,15 @@ Service Copilot       → what should help this Server next, and when?
 
 Server Performance consumes Dining Session Profile and Customer Consumption Profile from [Dining Intelligence](../Dining%20Intelligence/README.md); it does not compute consumption patterns or correlations itself.
 
-## Relationship to Training
+## Relationship to Continuous Productivity Development
 
 ```text
 Server Performance   → identifies development need (a Gap against Brand Expectation or a decline from Personal Baseline)
-Service Copilot and/or Personnel Management/Training → intervention
+Service Copilot and/or Continuous Productivity Development → intervention
 Server Performance   → observes outcome, closing the loop
 ```
 
-Server Performance, Service Copilot and Training remain three distinct modules and are never merged (see [Personnel Management/Performance/README.md](../../../Cross%20Domain/Performance/README.md), "Relationship to Training," which this specializes for the Server role).
+Server Performance, Service Copilot and Continuous Productivity Development (the sibling Cross Domain that conceptually superseded the former Training placeholder) remain three distinct modules and are never merged (see [Performance/README.md](../../../Cross%20Domain/Performance/README.md), "Relationship to Continuous Productivity Development," which this specializes for the Server role).
 
 ## Relationship to Sales
 
