@@ -433,13 +433,23 @@ class Location(Base):
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Location Business Day Rule (TASK_SALES_002 / TASK_ORGANIZATION_002):
     # the smallest adequate Business Day Rule — a time-of-day, evaluated in
-    # this Location's own `timezone`, below which an event's calendar day is
-    # its own Business Date, and at or above which the event's Business Date
-    # is the previous calendar day. Nullable: a Location may exist before
-    # this configuration is known; never fabricated from geography or any
-    # other inference. The resulting `business_date` fact itself is owned
-    # and persisted by Sales on `Order` (Restaurant Sales Model §6a) — this
-    # column is only the Location-level configuration input.
+    # this Location's own `timezone`, AT OR ABOVE which an event's calendar
+    # day is its own Business Date, and BELOW which the event's Business
+    # Date is the previous calendar day (e.g. cutoff 04:00: a 23:45 event is
+    # attributed to that same calendar day; a 00:30 event on the following
+    # calendar day is attributed to the PRIOR calendar day — the Restaurant
+    # Sales Model §6a worked example). Corrected wording (Business Date
+    # Foundation task) — an earlier version of this comment, and of Sales
+    # Model §6a's prose (not its worked example), stated the cutoff
+    # direction inverted, which would have attributed nearly an entire
+    # operating day to the wrong Business Date; the worked example and
+    # ordinary "late-night operating day" semantics were used to resolve
+    # this, not a new Product Owner decision. Nullable: a Location may exist
+    # before this configuration is known; never fabricated from geography or
+    # any other inference. The resulting `business_date` fact itself is
+    # owned and persisted by Sales on `Order` (Restaurant Sales Model §6a;
+    # `rfone_data_store/business_date.py`) — this column is only the
+    # Location-level configuration input.
     operating_day_cutoff_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -718,15 +728,73 @@ class Shift(Base):
 # ---------------------------------------------------------------------------
 
 
+class LegalEntity(Base):
+    """The canonical juridical/employing/payroll entity (Product Owner
+    decision, correcting the earlier `Restaurant`-as-Legal-Entity mapping —
+    read-only verification confirmed `Restaurant` is formally an Operational
+    Unit, per the approved `01 Domains/Business Domain/Restaurant/Model/
+    OU-Restaurant.md`, "Extends: Operational Unit", never the juridical
+    entity itself).
+
+    Conceptually: `Corporate -> LegalEntity -> Restaurant (Operational Unit)
+    -> Location`. No Corporate table is persisted anywhere in this schema —
+    this MVP does not invent one merely to satisfy that conceptual chain,
+    and `LegalEntity` exists independently here without requiring it. Brand
+    (a separate, commercial/identity concept — `00 Core/Corporate.md`) is
+    never repurposed as Legal Entity either.
+
+    One `LegalEntity` may own many `Restaurant`s (`Restaurant.legal_entity_id`
+    below); a Restaurant belongs to exactly one `LegalEntity` at a time in
+    this MVP (no historical entity-change tracking yet). Compensation / Income
+    Composition (`CompensationPreparationRun`, `EmployeeCompensationTerm`) is
+    scoped by `legal_entity_id`, never by `restaurant_id` — an Employee
+    working across several Restaurants owned by the same LegalEntity can
+    therefore eventually be paid under one combined Compensation Preparation
+    Run (not implemented by this MVP — see `rfone_data_store/payroll_calculation`
+    module docstring).
+
+    No tax ID/EIN, payroll-provider, or ownership/governance field is added
+    here — this task establishes canonical identity and relationships only."""
+
+    __tablename__ = "legal_entities"
+    __table_args__ = (
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_legal_entities_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    legal_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Restaurant(Base):
     """The canonical business/operational restaurant RF-One models — NOT
     merely a Clover Merchant object (task §11). Deliberately narrow: this is
     canonical business identity/context, not a duplicate of every Merchant/
-    Location field."""
+    Location field.
+
+    `Restaurant` is an Operational Unit, never the Legal Entity itself
+    (`01 Domains/Business Domain/Restaurant/Model/OU-Restaurant.md`,
+    "Extends: Operational Unit") — `legal_entity_id` records which
+    `LegalEntity` actually employs/pays people at this Restaurant.
+    `legal_name` above remains this Restaurant's own business/context
+    field (e.g. a local DBA name) and is never reinterpreted as the
+    canonical `LegalEntity.legal_name`. Nullable only because existing
+    Restaurant rows predate this column — never guessed for those."""
 
     __tablename__ = "restaurants"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    legal_entity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("legal_entities.id"), nullable=True, index=True
+    )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     legal_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -1662,6 +1730,26 @@ class Order(Base):
     )
     modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # The canonical Business Date (operating day) this Order is attributed
+    # to — owned by Sales/Order, per `01 Domains/Business Domain/Restaurant/
+    # Sales/Restaurant Sales Model.md` §6a. Computed ONCE, from this Order's
+    # Settlement Time (`rfone_data_store.business_date.
+    # get_order_settlement_time` — reused, not redefined) and the Location's
+    # Business Day Rule (`Location.timezone` + `Location.
+    # operating_day_cutoff_time`) in effect at that time, then persisted here
+    # — never recomputed at read time, and never retroactively rewritten by
+    # a later change to the Location's own cutoff configuration (Sales
+    # Model §6a, "Historical immutability"). Tips, Compensation, Performance,
+    # and any other Domain MUST reuse this field for "which operating day does
+    # this Order belong to" — none of them may independently compute or
+    # redefine a competing business-date rule (Sales Model §6a, "Cross-
+    # domain use"). Nullable: existing/historical Orders predate this
+    # capability, and a Business Date is never invented when the required
+    # inputs (Settlement Time, Location, Location timezone, Location
+    # operating_day_cutoff_time) are not all resolvable — see
+    # `rfone_data_store/business_date.py`.
+    business_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
     state: Mapped[str | None] = mapped_column(String(32), nullable=True)
     payment_state: Mapped[str | None] = mapped_column(String(32), nullable=True)
     pay_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -2328,11 +2416,37 @@ class EmployeeCompensationTerm(Base):
     applicable term (different `function_label`) — multiple functions are
     never treated as a conflict. History is never overwritten: a
     compensation change closes the prior row's `valid_to` and opens a new
-    row with its own `valid_from`."""
+    row with its own `valid_from`.
+
+    `legal_entity_id` is the Legal Entity dimension required by the
+    Compensation & Income Composition functional specification (`01 Domains/
+    Cross Domain/Personnel Management/Compensation/
+    COMPENSATION_AND_INCOME_COMPOSITION_001.md` §5) — the same Employee
+    may legitimately hold concurrently-effective terms for different Legal
+    Entities (e.g. Server at $12/hour for Legal Entity A and Server at
+    $15/hour for Legal Entity B, same effective dates) and this is never a
+    conflict, the same way multiple `function_label`s are never a conflict.
+    Product Owner correction: an earlier version of this column was named
+    `restaurant_id` and pointed at `restaurants.id` — read-only verification
+    then confirmed `Restaurant` is formally an Operational Unit, never the
+    Legal Entity, so it has been replaced with `legal_entity_id` pointing at
+    the canonical `LegalEntity` model instead; `restaurant_id` never shipped
+    (this table's own change was itself still uncommitted). Nullable only
+    because historical rows created before this column existed never had a
+    value to record — never guessed for those (same convention as
+    `PayrollImportRun.acquisition_method`); the Payroll Calculation Engine's
+    validation requires it to be set and to match the calculation run's
+    Legal Entity before using a term — a NULL `legal_entity_id` is always
+    rejected, since it cannot prove which Legal Entity the term belongs to
+    (a data-readiness/backfill condition, not a model contradiction).
+    Distinct from `restaurant_role_id` below, which remains optional
+    provenance-only and carries no Legal Entity meaning; Restaurant/
+    Operational Unit is deliberately NOT part of this canonical compensation
+    identity."""
 
     __tablename__ = "employee_compensation_terms"
     __table_args__ = (
-        UniqueConstraint("employee_id", "function_label", "valid_from"),
+        UniqueConstraint("employee_id", "legal_entity_id", "function_label", "valid_from"),
         CheckConstraint(
             "(compensation_basis = 'HOURLY' AND hourly_rate_minor IS NOT NULL "
             "AND salaried_period_amount_minor IS NULL) "
@@ -2344,6 +2458,9 @@ class EmployeeCompensationTerm(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+    legal_entity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("legal_entities.id"), nullable=True, index=True
+    )
 
     # Smallest provider-independent way to distinguish concurrent terms for
     # one Employee (Compensation Terms.md, "Multiple functions / multiple
@@ -2787,6 +2904,360 @@ class PayrollImportIssue(Base):
     )
 
     import_run: Mapped[PayrollImportRun] = relationship(back_populates="issues")
+
+
+# ---------------------------------------------------------------------------
+# Compensation Preparation (formerly "Payroll Calculation Engine") — RF-One's
+# internal EXPECTED payroll (Product Owner decision, corrected Option C;
+# `PayrollCalculationRun` renamed to `CompensationPreparationRun` by a later
+# Product Owner decision — RF-One does not perform Payroll).
+#
+# Distinct from the Administration/Payroll domain/schema above, which
+# continues to mean exactly what it always meant: what the external payroll
+# provider (ADP) actually processed (`payroll_runs`, `employee_payroll_results`,
+# and their fact tables). Nothing in that section is redefined, renamed, or
+# reused for a different meaning here.
+#
+# Conceptual relationship:
+#
+#   RF-One Expected Compensation (this section)
+#   -> External Payroll Provider / ADP
+#   -> Payroll Actual Result (`payroll_runs` / `employee_payroll_results`)
+#   -> Variance / reconciliation (not implemented yet)
+#
+# Reuses the existing canonical `Employee` identity and the existing
+# `EmployeeCompensationTerm` effective-dated compensation records — no second
+# Employee or compensation master is created. Bonus is out of scope here: no
+# bonus formula is computed by this engine, matching the same "externally
+# supplied amount" boundary the Administration/Payroll domain already applies
+# (`Payroll Processing.md`, "Bonus boundary") — `bonus_amount` is always an
+# input fact, acceptable as zero for this MVP.
+# ---------------------------------------------------------------------------
+
+
+class CompensationPreparationRun(Base):
+    """One RF-One internal compensation-preparation cycle — the period over
+    which `EmployeePayrollCalculation` rows are produced. Formerly named
+    `PayrollCalculationRun`; renamed by explicit Product Owner decision
+    (nomenclature/ownership resolution only — no lifecycle/behavior change):
+    RF-One does not perform Payroll, so this internal preparation cycle must
+    not carry "Payroll" in its name. Named distinctly from the
+    Administration/Payroll domain's own Payroll Period/`PayrollRun.period_start`/
+    `period_end` concept (`Payroll Schedule and Period.md`) to avoid
+    colliding with it: this run represents RF-One's own expected Compensation
+    preparation, never the actual provider-processed payroll. Physical table
+    name (`payroll_calculation_runs`) is intentionally left unchanged — see
+    the Data Store's DB-naming caution; this rename is Python/domain-side
+    only.
+
+    `legal_entity_id` is the Legal Entity dimension required by the
+    Compensation & Income Composition functional specification (`01 Domains/
+    Cross Domain/Personnel Management/Compensation/
+    COMPENSATION_AND_INCOME_COMPOSITION_001.md` §3). Product Owner
+    correction: an earlier version of this column was named `restaurant_id`
+    and pointed at `restaurants.id` — read-only verification then confirmed
+    `Restaurant` is formally an Operational Unit, never the Legal Entity
+    (`01 Domains/Business Domain/Restaurant/Model/OU-Restaurant.md`,
+    "Extends: Operational Unit"), so a `Restaurant`-owning `LegalEntity`
+    could legitimately span several Restaurants — scoping by `restaurant_id`
+    would have incorrectly split one Legal Entity's compensation across its
+    Restaurants. `legal_entity_id` now points at the canonical `LegalEntity`
+    model instead. Required (never nullable) — every preparation run belongs
+    to exactly one Legal Entity, and results for different Legal Entities
+    are never combined into one run."""
+
+    __tablename__ = "payroll_calculation_runs"
+    __table_args__ = (
+        CheckConstraint("period_end >= period_start", name="ck_payroll_calculation_runs_period"),
+        # Conceptual values: OPEN (created, not yet calculated), CALCULATED
+        # (employee results have been produced for this run). Kept
+        # deliberately small for MVP — no approval/export/close workflow yet.
+        CheckConstraint(
+            "status IN ('OPEN', 'CALCULATED')", name="ck_payroll_calculation_runs_status"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    legal_entity_id: Mapped[int] = mapped_column(
+        ForeignKey("legal_entities.id"), nullable=False, index=True
+    )
+
+    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    employee_calculations: Mapped[list["EmployeePayrollCalculation"]] = relationship(
+        back_populates="calculation_run"
+    )
+
+
+class EmployeePayrollCalculation(Base):
+    """One Employee's RF-One-calculated EXPECTED payroll SUMMARY for a
+    `CompensationPreparationRun` — the aggregate of that employee's
+    `EmployeePayrollCalculationEarningLine` rows (Product Owner correction:
+    an Employee may legitimately work at more than one hourly rate within
+    the same calculation run, e.g. Server hours and Manager hours, so no
+    single `hourly_rate_used`/rate-bearing field lives on this summary
+    anymore — only the aggregated totals). Later changes to compensation or
+    bonus rules never alter an already-persisted row here (Product Owner
+    decision, rule 9).
+
+    Named distinctly from the Administration/Payroll domain's `EmployeePayrollResult`
+    (provider-reported facts, no stored total) — this table is the opposite:
+    an RF-One-computed total, not an externally reported one. The two must
+    never be merged or treated as interchangeable.
+
+    `tips_amount` and `bonus_amount` are input facts to this engine, not
+    computed here, and are never split into earning lines — Tips
+    calculation logic and Bonus formulas both remain entirely outside this
+    table (Product Owner decision, rules 3 and 8).
+
+    Legal Entity is never duplicated here — it is inherited through
+    `calculation_run_id` -> `CompensationPreparationRun.legal_entity_id`. The
+    `uq_employee_payroll_calculation` constraint below is therefore already
+    Legal-Entity-scoped: one employee has only one summary per calculation
+    run, and a run belongs to exactly one Legal Entity."""
+
+    __tablename__ = "employee_payroll_calculations"
+    __table_args__ = (
+        UniqueConstraint(
+            "calculation_run_id", "employee_id", name="uq_employee_payroll_calculation"
+        ),
+        CheckConstraint("regular_hours >= 0", name="ck_employee_payroll_calc_regular_hours"),
+        CheckConstraint("regular_pay >= 0", name="ck_employee_payroll_calc_regular_pay"),
+        CheckConstraint("tips_amount >= 0", name="ck_employee_payroll_calc_tips_amount"),
+        CheckConstraint("bonus_amount >= 0", name="ck_employee_payroll_calc_bonus_amount"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    calculation_run_id: Mapped[int] = mapped_column(
+        ForeignKey("payroll_calculation_runs.id"), nullable=False, index=True
+    )
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+
+    # SUM(earning_lines.regular_hours) / SUM(earning_lines.regular_pay) —
+    # hours follow this schema's existing fractional-quantity convention
+    # (`Numeric(12, 4)` — see module docstring, "Quantity").
+    regular_hours: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    regular_pay: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    tips_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    bonus_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    gross_pay: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    calculation_run: Mapped[CompensationPreparationRun] = relationship(
+        back_populates="employee_calculations"
+    )
+    employee: Mapped["Employee"] = relationship()
+    earning_lines: Mapped[list["EmployeePayrollCalculationEarningLine"]] = relationship(
+        back_populates="employee_calculation"
+    )
+
+
+class EmployeePayrollCalculationEarningLine(Base):
+    """One homogeneous block of hours paid at one specific hourly rate,
+    within one `EmployeePayrollCalculation` summary (Product Owner
+    correction — an Employee may work, e.g., 20 Server hours at $12/hour and
+    15 Manager hours at $22/hour within the same calculation run; each
+    combination is its own line, never averaged/blended into the summary).
+
+    `compensation_term_id` records exactly which `EmployeeCompensationTerm`
+    produced `hourly_rate_used` — a historical calculation snapshot: if that
+    term later changes (or is superseded by a new temporal row, per the
+    existing compensation-history convention), this line's own
+    `hourly_rate_used`/`regular_pay` never change (Product Owner decision,
+    rule 5)."""
+
+    __tablename__ = "employee_payroll_calculation_earning_lines"
+    __table_args__ = (
+        CheckConstraint("regular_hours >= 0", name="ck_employee_payroll_calc_line_regular_hours"),
+        CheckConstraint("hourly_rate_used >= 0", name="ck_employee_payroll_calc_line_hourly_rate"),
+        CheckConstraint("regular_pay >= 0", name="ck_employee_payroll_calc_line_regular_pay"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_payroll_calculation_id: Mapped[int] = mapped_column(
+        ForeignKey("employee_payroll_calculations.id"), nullable=False, index=True
+    )
+    # Nullable for now (Product Owner decision, rule 2) — this MVP's input
+    # may be period-level (no day-by-day breakdown) rather than day-level; a
+    # future caller that does have day-level worked-time facts can populate
+    # it without a schema change.
+    work_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    compensation_term_id: Mapped[int] = mapped_column(
+        ForeignKey("employee_compensation_terms.id"), nullable=False, index=True
+    )
+
+    regular_hours: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    # Snapshot of the selected EmployeeCompensationTerm's
+    # `hourly_rate_minor`, converted to decimal currency, at calculation
+    # time — never re-derived later from a possibly-changed term.
+    hourly_rate_used: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    regular_pay: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    employee_calculation: Mapped[EmployeePayrollCalculation] = relationship(
+        back_populates="earning_lines"
+    )
+    compensation_term: Mapped["EmployeeCompensationTerm"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Overtime Rule Matrix foundation (Product Owner decision) — schema +
+# metadata only. NO overtime is calculated anywhere in this schema or by
+# any code in this repository; see `OvertimeRule`'s own docstring below and
+# `01 Domains/Cross Domain/Personnel Management/Compensation/
+# OVERTIME_RULE_MATRIX_001.md` for the full functional boundary.
+# ---------------------------------------------------------------------------
+
+
+class OvertimeRule(Base):
+    """One canonical, effective-dated legal/statutory overtime rule fact —
+    WHAT the rule is, never a calculation. RF-One does not calculate
+    statutory Overtime compensation: the Payroll Provider determines which
+    rule(s) apply to actual worked time, which hours trigger them, the
+    applicable regular rate, and the incremental premium owed. This table
+    stores none of that — it stores only the legal rule metadata RF-One
+    preserves and supplies (with the required worked-time/compensation
+    context) so the Payroll Provider can apply it.
+
+    Deliberately NOT attached to `LegalEntity` — the applicable overtime
+    law depends on the jurisdiction where work is performed, not on
+    employer identity, so `LegalEntity` and `OvertimeRule` jurisdiction
+    remain separate dimensions. A future Worked Time fact may supply the
+    jurisdiction/location needed to select applicable rules; that linkage
+    is not implemented here.
+
+    `total_rate_multiplier` is the TOTAL statutory pay-rate multiplier
+    (e.g. `1.5`, `2.0`) — never an incremental "premium owed on top of
+    straight time already paid" figure. The Payroll Provider may derive an
+    incremental premium (e.g. `0.5 x regular_rate` when straight time is
+    already included in regular earnings and the total multiplier is
+    `1.5`); that derivation is not performed or stored here, and RF-One
+    does not perform it.
+
+    `regular_rate_method` and `overlap_method` name legal METHODS the
+    Payroll Provider applies — no regular rate is calculated and no overlap
+    is resolved by this table or by any code in this repository.
+
+    Historical rule versions are represented as distinct rows with distinct
+    `rule_code`s (e.g. a version/year suffix) rather than a separate
+    version column — the smallest design able to preserve legal history
+    without overwriting an old rule when law changes, mirroring this
+    schema's existing temporal-configuration pattern (`EmployeeCompensationTerm`,
+    `TipDistributionRuleVersion`): a change never overwrites a prior rule
+    in place, it closes the prior row's `effective_to` and adds a new row
+    under its own `rule_code`.
+
+    IMPORTANT — Worked Time dependency: `WORKDAY`, `CONSECUTIVE_HOURS` and
+    `CONSECUTIVE_DAY` rule scopes cannot be evaluated reliably from
+    aggregate payroll-period hours alone (`EmployeePayrollCalculationEarningLine`
+    is not modified by this task to solve this). `CONSECUTIVE_HOURS` in
+    particular may require actual time boundaries (clock-in/clock-out
+    instants), not merely a `work_date`. Worked Time ownership remains
+    entirely outside Payroll Calculation; Payroll Calculation only ever
+    consumes already-validated Worked Time facts, and RF-One only ever
+    supplies them onward to the Payroll Provider for statutory evaluation.
+
+    IMPORTANT — regular-rate numerator boundary: the Payroll Provider must
+    distinguish which compensation components belong in the statutory
+    regular-rate numerator (e.g. hourly straight-time earnings, shift
+    differentials, nondiscretionary incentives/bonuses, discretionary
+    bonuses, commissions, customer tips, service charges, other statutory
+    inclusions/exclusions). No such classification is implemented here, and
+    neither Tips nor Incentive structures are changed by this task."""
+
+    __tablename__ = "overtime_rules"
+    __table_args__ = (
+        UniqueConstraint("rule_code"),
+        CheckConstraint(
+            "jurisdiction_level IN ('FEDERAL', 'STATE', 'LOCAL')",
+            name="ck_overtime_rules_jurisdiction_level",
+        ),
+        CheckConstraint(
+            "rule_scope IN ('WORKWEEK', 'WORKDAY', 'CONSECUTIVE_HOURS', 'CONSECUTIVE_DAY')",
+            name="ck_overtime_rules_rule_scope",
+        ),
+        CheckConstraint(
+            "regular_rate_method IN ('WEIGHTED_REGULAR_RATE', 'RATE_IN_EFFECT', 'NOT_APPLICABLE')",
+            name="ck_overtime_rules_regular_rate_method",
+        ),
+        CheckConstraint(
+            "overlap_method IN ('NON_STACKING_MAXIMUM', 'STACKING', 'INDEPENDENT')",
+            name="ck_overtime_rules_overlap_method",
+        ),
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_overtime_rules_status"),
+        CheckConstraint(
+            "threshold_hours IS NULL OR threshold_hours >= 0", name="ck_overtime_rules_threshold_hours"
+        ),
+        CheckConstraint(
+            "threshold_day_number IS NULL OR threshold_day_number > 0",
+            name="ck_overtime_rules_threshold_day_number",
+        ),
+        CheckConstraint("total_rate_multiplier >= 1", name="ck_overtime_rules_total_rate_multiplier"),
+        CheckConstraint(
+            "effective_to IS NULL OR effective_to >= effective_from",
+            name="ck_overtime_rules_effective_range",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    rule_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    jurisdiction_level: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Compact canonical string (e.g. "US", "CA", "FL") — never a full
+    # Jurisdiction table; no state/local rule set is exhaustively populated
+    # by this task.
+    jurisdiction_code: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    rule_scope: Mapped[str] = mapped_column(String(32), nullable=False)
+    # Hours follow this schema's existing fractional-quantity convention
+    # (`Numeric(12, 4)` — see module docstring, "Quantity").
+    threshold_hours: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    threshold_day_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_rate_multiplier: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    regular_rate_method: Mapped[str] = mapped_column(String(32), nullable=False)
+    overlap_method: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    # Future filtering metadata only — no exemption engine, no employee
+    # classification taxonomy, no industry/occupation taxonomy is built by
+    # this task. Free strings, matching this schema's existing convention
+    # for evolving classification fields not yet backed by a canonical list.
+    employee_classification: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    industry_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
 
 # ---------------------------------------------------------------------------

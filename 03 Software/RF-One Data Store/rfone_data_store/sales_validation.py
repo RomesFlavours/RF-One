@@ -22,7 +22,7 @@ abort the whole validation transaction.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -364,14 +364,21 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
 
     # =====================================================================
-    # 17. Business Date semantics — DOCUMENTED GAP, not fabricated
+    # 17. Business Date is a persisted Sales/Order fact (Business Date
+    # Foundation task) — presence/persistence only; the derivation rule
+    # (cutoff direction, timezone conversion, missing-input handling) is
+    # covered in depth by test_business_date.py and is not duplicated here.
     # =====================================================================
+    order_wp.business_date = date(2026, 8, 30)
+    session.flush()
+    session.expire(order_wp)
+    reloaded_business_date_order = session.get(m.Order, order_wp.id)
     result.check(
-        "17: GAP confirmed, not fabricated as implemented — Order.business_date is conceptually "
-        "defined (Restaurant Sales Model.md §6a) but not yet a persisted column (TASK_SALES_002 "
-        "§L). If a future task adds this column, this check will start failing and must be updated "
-        "to assert the real persisted business_date semantics instead of the gap's absence",
-        not hasattr(m.Order, "business_date"),
+        "17: Order.business_date exists as a persisted column, owned by Sales/Order "
+        "(Restaurant Sales Model.md §6a), and survives a flush/expire/reload — see "
+        "test_business_date.py for the derivation rule itself",
+        "business_date" in m.Order.__table__.columns
+        and reloaded_business_date_order.business_date == date(2026, 8, 30),
     )
 
     # =====================================================================

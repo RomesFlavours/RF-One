@@ -274,7 +274,7 @@ A Role or Area change is a **new** Assignment row with its own `valid_from`; the
 Employee Assignment ≠ Employee worked during a period
 ```
 
-For any operational calculation that needs to know who was actually present and in what capacity during a period — Tips and Payroll are the two named future consumers, but the principle is general — the resolution path is always:
+For any operational calculation that needs to know who was actually present and in what capacity during a period — Tips and Compensation are the two named future consumers, but the principle is general — the resolution path is always:
 
 ```text
 requested period
@@ -285,7 +285,7 @@ requested period
 → applicable rule
 ```
 
-**The current Employee list, and `Employee.active`, must never determine period participation.** An Employee may remain in the registry — and may even hold a current Employee Assignment — while having no Shift in a given period, and must be excluded from that period's resolution on that basis alone. Conversely, a Shift with no Employee Assignment valid at that time must surface as an unresolved classification, never a silent guess. This principle is shared by, and must not be reimplemented differently by, every future consumer (Tips, Payroll, Scheduling, Performance).
+**The current Employee list, and `Employee.active`, must never determine period participation.** An Employee may remain in the registry — and may even hold a current Employee Assignment — while having no Shift in a given period, and must be excluded from that period's resolution on that basis alone. Conversely, a Shift with no Employee Assignment valid at that time must surface as an unresolved classification, never a silent guess. This principle is shared by, and must not be reimplemented differently by, every future consumer (Tips, Compensation, Scheduling, Performance).
 
 ---
 
@@ -389,7 +389,7 @@ Operational Areas:                    Operational Areas:
                                        - Administration
 ```
 
-Both are valid: each configured Operational Area satisfies the canonical meaning ("a functional partition of Restaurant operations") regardless of how many there are or what they are called. The same freedom applies to Restaurant Roles and Physical Areas. No canonical value list is required, expected, or enforced by this Domain, this Data Store schema, or any future Tips/Payroll/Scheduling consumer of Employee Assignment.
+Both are valid: each configured Operational Area satisfies the canonical meaning ("a functional partition of Restaurant operations") regardless of how many there are or what they are called. The same freedom applies to Restaurant Roles and Physical Areas. No canonical value list is required, expected, or enforced by this Domain, this Data Store schema, or any future Tips/Compensation/Scheduling consumer of Employee Assignment.
 
 ---
 

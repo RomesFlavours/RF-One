@@ -1,9 +1,17 @@
-"""Compensation Terms helpers (TASK_PAYROLL_001).
+"""Compensation Terms helpers (TASK_PAYROLL_001; relocated from
+`rfone_data_store/payroll/compensation.py` by explicit Product Owner
+decision — this module is Compensation-owned/shared, not Administration/
+Payroll-owned, so it must not live physically under the `payroll` package.
+Behavior, fields and public API are unchanged by the move; only its import
+path changed (`rfone_data_store.payroll_calculation.compensation` instead of
+`rfone_data_store.payroll.compensation`). The Administration/Payroll package
+(`rfone_data_store/payroll/`) continues to consume this module — it does not
+own it.
 
 No formula computes a Bonus amount anywhere in this module — Bonus is
 always an externally supplied earning fact (`Payroll Processing.md`,
 "Bonus boundary"). No formula computes overtime here either (see
-`schedule.py`'s module docstring).
+`rfone_data_store/payroll/schedule.py`'s module docstring).
 """
 
 from __future__ import annotations

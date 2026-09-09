@@ -24,7 +24,7 @@ valid_to (nullable — open-ended/current)
 
 Optionally, an Assignment may also carry a **Location** (`location_id`, TASK_ORGANIZATION_002) — see "Location-specific Assignment" below.
 
-This is the structure future Tips, Payroll, Scheduling, Performance and Training reasoning must resolve through when they need to know "what Role/Area applied to this Employee at this moment" — see the Tips/Payroll contract below and `03 Software/RF-One Data Store/RESTAURANT_PROFILE.md`.
+This is the structure future Tips, Compensation, Scheduling, Performance and Training reasoning must resolve through when they need to know "what Role/Area applied to this Employee at this moment" — see the Tips/Compensation contract below and `03 Software/RF-One Data Store/RESTAURANT_PROFILE.md` (whose own "Tips / Payroll future contract" section title is unchanged software terminology).
 
 ---
 
@@ -110,7 +110,7 @@ No uniqueness constraint assumes an Employee can only have one Role globally or 
 
 ---
 
-## The critical rule for Tips and Payroll
+## The critical rule for Tips and Compensation
 
 **Employee Assignment is never used to decide who was operationally present in a period, and `Employee.active` is never used for that purpose either.**
 
@@ -122,12 +122,12 @@ requested period
 → Employees actually present (from Shift evidence, not from a registry filter)
 → Employee Assignment valid for the relevant time
 → Operational Area + Restaurant Role
-→ applicable Tips / Payroll rule
+→ applicable Tips / Compensation rule
 ```
 
-An Employee may remain in the registry — and may even hold a current Employee Assignment — while having no Shift in a given period; that Employee is correctly excluded from that period's Tips/Payroll resolution, not because of any Assignment or `active` flag, but because no Shift evidence places them in the period. Conversely, an Employee with a Shift in the period but no Employee Assignment valid at that time must surface as an **unresolved classification** — never silently guessed (task §23).
+An Employee may remain in the registry — and may even hold a current Employee Assignment — while having no Shift in a given period; that Employee is correctly excluded from that period's Tips/Compensation resolution, not because of any Assignment or `active` flag, but because no Shift evidence places them in the period. Conversely, an Employee with a Shift in the period but no Employee Assignment valid at that time must surface as an **unresolved classification** — never silently guessed (task §23).
 
-This is documented as the explicit Restaurant/Personnel integration principle. See `03 Software/RF-One Data Store/RESTAURANT_PROFILE.md`, "Tips / Payroll future contract," for the full algorithmic statement. **Tips and Payroll calculations themselves are not implemented by this task.**
+This is documented as the explicit Restaurant/Personnel integration principle. See `03 Software/RF-One Data Store/RESTAURANT_PROFILE.md`, "Tips / Payroll future contract," for the full algorithmic statement (that software section's title is unchanged). **Tips and Compensation calculations themselves are not implemented by this task.**
 
 ---
 
@@ -160,6 +160,6 @@ Employee Assignment
 - A Role/Area/Location change is represented as a new Employee Assignment row with its own `valid_from`, closing the prior row's `valid_to` — never as an in-place update that erases the prior value.
 - Multiple concurrent Employee Assignments for one Employee are permitted, including the same Role held concurrently at two different Locations.
 - `assignment_source` must be present and must distinguish manually confirmed assignments from source-derived ones.
-- Employee Assignment is never used, alone, to determine who was operationally active in a period — see "The critical rule for Tips and Payroll" above.
+- Employee Assignment is never used, alone, to determine who was operationally active in a period — see "The critical rule for Tips and Compensation" above.
 - `Employee.active` is never used to determine who was operationally active in a period.
 - `Employee.location_id` is a different fact from `EmployeeAssignment.location_id` (source-ingestion/current-home Location vs. canonical Assignment-scoped Location) and is never treated as equivalent to it — see "Location-specific Assignment" above.

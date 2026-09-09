@@ -79,7 +79,7 @@ The activity/presence invariant this Domain relies on most heavily is `Restauran
 
 > `Employee Assignment ≠ Employee worked during a period`
 
-Tips is the first concrete consumer of the resolution path that invariant describes: `period → Shifts intersecting the period → Employees actually present → Employee Assignment valid at the relevant time → Operational Area + Restaurant Role → applicable rule`. Payroll and Scheduling are expected future consumers of the identical path — Tips does not invent a parallel one.
+Tips is the first concrete consumer of the resolution path that invariant describes: `period → Shifts intersecting the period → Employees actually present → Employee Assignment valid at the relevant time → Operational Area + Restaurant Role → applicable rule`. Compensation and Scheduling are expected future consumers of the identical path — Tips does not invent a parallel one.
 
 ---
 

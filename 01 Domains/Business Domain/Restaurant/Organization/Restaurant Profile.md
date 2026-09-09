@@ -79,7 +79,7 @@ The resulting `business_date` fact itself is defined and owned by the Restaurant
 
 A Location's `operating_day_cutoff_time` may change over time. This must never retroactively change a `business_date` already persisted on a historical Order — see `Sales/Restaurant Sales Model.md` § 6a, "Historical immutability."
 
-Once defined here and in Sales, `business_date` is the single canonical concept other transactional Domains (Tips, Payroll, Performance) should reuse rather than duplicating an independent business-date rule of their own — see `Sales/Restaurant Sales Model.md` § 6a, "Cross-domain use."
+Once defined here and in Sales, `business_date` is the single canonical concept other transactional Domains (Tips, Compensation, Performance) should reuse rather than duplicating an independent business-date rule of their own — see `Sales/Restaurant Sales Model.md` § 6a, "Cross-domain use."
 
 ---
 

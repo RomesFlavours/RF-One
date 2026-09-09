@@ -24,13 +24,14 @@ Personnel Management is a **universal business Domain**. It applies wherever an 
 
 ## Module map
 
-Personnel Management's **remaining modules are Workforce and Personnel Decisions**. Selection, the former Training (now Operational Knowledge) and Performance were formerly modules here too; all three, plus the later-added Continuous Productivity Development, are now sibling top-level Cross Domains, not modules of this Domain — do not re-nest them:
+Personnel Management's **modules are Workforce, Personnel Decisions and Compensation**. Selection, the former Training (now Operational Knowledge) and Performance were formerly modules here too; all three, plus the later-added Continuous Productivity Development, are now sibling top-level Cross Domains, not modules of this Domain — do not re-nest them:
 
 ```text
 Cross Domain/
 ├── Personnel Management
 │   ├── Workforce
-│   └── Personnel Decisions
+│   ├── Personnel Decisions
+│   └── Compensation
 ├── Selection
 ├── Continuous Productivity Development
 ├── Operational Knowledge
@@ -41,6 +42,7 @@ Cross Domain/
 |---|---|---|
 | [Workforce/](Workforce/README.md) | Who currently occupies or can occupy organizational roles? | Placeholder — see `Workforce/README.md` |
 | [Personnel Decisions/](Personnel%20Decisions/README.md) | What should be done about the person currently in the role? | Placeholder — see `Personnel Decisions/README.md` |
+| [Compensation/](Compensation/README.md) | How much compensation has an Employee economically earned for a Pay Period, why, which Legal Entity owes it, and what Approved Pay Data must be sent to the Payroll Provider? RF-One does not perform Payroll — see "Why this module is not called Payroll" in `Compensation/README.md`. | Draft — first functional specification; see `Compensation/README.md`. Distinct from [Administration/Payroll](../Administration/Payroll/README.md), which records what the external Payroll Provider actually processed. Formerly named Payroll. |
 
 Selection, Continuous Productivity Development, Operational Knowledge and Performance — each its own Cross Domain, not listed in this table — are documented at [../Selection/README.md](../Selection/README.md), [../Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md), [../Operational Knowledge/README.md](../Operational%20Knowledge/README.md) and [../Performance/README.md](../Performance/README.md) respectively.
 
@@ -135,6 +137,7 @@ Personnel Management does not canonize a fixed KPI list. Performance indicators 
 This Domain's own modules:
 
 - **Workforce, Personnel Decisions** — minimal placeholder `README.md` only. Purpose and module boundary are recorded; detailed concept modeling (entities, business rules, data requirements) is deferred to future tasks.
+- **Compensation** (formerly named Payroll — RF-One determines, composes and approves compensation but does not itself perform Payroll, an external Payroll Provider's responsibility) — first V1 functional specification documented (Compensation & Income Composition); see `Compensation/README.md` and `Compensation/COMPENSATION_AND_INCOME_COMPOSITION_001.md`. Database, API, UI and Payroll Provider data-contract specifications are deferred to future tasks.
 
 Sibling Cross Domains, not documented here (own top-level Domains — see "Module map" above):
 

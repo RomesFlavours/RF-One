@@ -63,7 +63,7 @@ Shifts active at T
   (matching the component's Restaurant Role and Restaurant scope)
 ```
 
-This is never a stored "employees present at payment time" snapshot — it is recomputed from source facts (Shift, Employee Assignment) whenever a calculation runs, so it always reflects the current state of that source data. `Employee.active` and the current Employee roster play no role in this determination — see `01 Domains/Business Domain/Restaurant/Organization/Employee Assignment.md`, "The critical rule for Tips and Payroll."
+This is never a stored "employees present at payment time" snapshot — it is recomputed from source facts (Shift, Employee Assignment) whenever a calculation runs, so it always reflects the current state of that source data. `Employee.active` and the current Employee roster play no role in this determination — see `01 Domains/Business Domain/Restaurant/Organization/Employee Assignment.md`, "The critical rule for Tips and Compensation."
 
 Where a Restaurant operates more than one Location, this resolution is also scoped to the specific Location of the Tip's own Order — never the Restaurant's full multi-Location set (`Tip Policy.md`, "Policy components"). `Shift.location_id` (TASK_TIPS_003), when populated, is the authoritative evidence of where that specific Shift occurred, and is compared directly against the Order's Location. This lets one Employee who genuinely works more than one Location be correctly eligible per-Shift — a Winter Park-tagged Shift is never eligible for a Mount Dora Tip, and vice versa.
 

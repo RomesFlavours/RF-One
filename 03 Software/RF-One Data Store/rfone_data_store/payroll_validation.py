@@ -24,9 +24,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from . import models as m
 from .payroll import acquisition
 from .payroll import adp_importer as adp
-from .payroll import compensation, schedule
+from .payroll import schedule
 from .payroll import payment_execution as pe
 from .payroll.labor_cost import compute_employee_labor_cost, compute_payroll_run_labor_cost
+from .payroll_calculation import compensation, workweek
 
 UTC = timezone.utc
 
@@ -180,7 +181,7 @@ def _run_all_checks(session: Session, result: ValidationResult) -> None:
     )
 
     # --- 5: Workweek distinct from Payroll Period ---------------------------
-    workweeks = schedule.workweeks_within_period(period_start, period_end, start_weekday=0)
+    workweeks = workweek.workweeks_within_period(period_start, period_end, start_weekday=0)
     result.check(
         "5. One BIWEEKLY PayrollPeriod contains exactly two Monday-anchored Workweeks, "
         "each 7 days, none equal to the full Period",
@@ -192,8 +193,10 @@ def _run_all_checks(session: Session, result: ValidationResult) -> None:
     # --- 6: No hardcoded 80-hour biweekly overtime logic --------------------
     result.check(
         "6. No compute_overtime (or similarly-named) function exists in the generic "
-        "schedule/compensation modules — overtime is never computed from a Payroll-Period total",
-        not hasattr(schedule, "compute_overtime") and not hasattr(compensation, "compute_overtime"),
+        "schedule/workweek/compensation modules — overtime is never computed from a Payroll-Period total",
+        not hasattr(schedule, "compute_overtime")
+        and not hasattr(workweek, "compute_overtime")
+        and not hasattr(compensation, "compute_overtime"),
     )
 
     # --- 7-13: Compensation Terms -------------------------------------------

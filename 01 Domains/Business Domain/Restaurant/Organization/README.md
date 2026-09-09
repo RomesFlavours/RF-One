@@ -11,7 +11,7 @@
 
 This section defines the canonical **Restaurant Profile**: the organizational context a Restaurant configures for itself — its identity, its functional Operational Areas, its Physical Areas, the Restaurant Roles it recognizes, and how Employees are temporally assigned into that structure.
 
-It exists because future capabilities — Tips, Payroll, Scheduling, Performance, Training, Sales analysis — all need to answer the same underlying question, and none of them should answer it independently or infer it from POS source data:
+It exists because future capabilities — Tips, Compensation, Scheduling, Performance, Training, Sales analysis — all need to answer the same underlying question, and none of them should answer it independently or infer it from POS source data:
 
 > For a given Employee, at a given moment, which functional part of the restaurant were they working in, and in what capacity?
 

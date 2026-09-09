@@ -176,7 +176,7 @@ Training              curriculum/eligibility rules, once Training is modeled
 Performance            Indicator relevance rules, once formalized
 Purchasing            approval thresholds, supplier rules
 Tips                  allocation rules
-Payroll               calculation/eligibility rules
+Compensation           calculation/eligibility rules
 Scheduling             availability/assignment rules
 Service Copilot        intervention/threshold configuration (e.g. Management
                       Intrusiveness levels)

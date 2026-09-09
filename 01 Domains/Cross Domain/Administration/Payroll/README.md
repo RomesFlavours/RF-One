@@ -101,7 +101,7 @@ Payroll does not replicate a payroll tax engine or a jurisdiction's legal rules.
 
 ## Relationship to Restaurant
 
-Payroll consumes Restaurant facts (worked time via Shift, Employee identity, optionally Employee Assignment for provenance) but does not depend on Restaurant semantics to be internally valid — a non-Restaurant business could use the same Payroll model. See `01 Domains/Business Domain/Restaurant/Organization/Employee Assignment.md` for the existing Tips/Payroll resolution contract this Domain reuses without redefining.
+Payroll consumes Restaurant facts (worked time via Shift, Employee identity, optionally Employee Assignment for provenance) but does not depend on Restaurant semantics to be internally valid — a non-Restaurant business could use the same Payroll model. See `01 Domains/Business Domain/Restaurant/Organization/Employee Assignment.md` for the existing Tips/Compensation resolution contract this Domain reuses without redefining.
 
 ---
 

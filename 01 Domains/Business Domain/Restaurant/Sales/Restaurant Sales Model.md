@@ -235,13 +235,13 @@ LOCATION
 - operating_day_cutoff_time
 ```
 
-`operating_day_cutoff_time` — a time-of-day, evaluated in the Location's own `timezone` — is the smallest adequate Business Day Rule: an event timestamped before this cutoff on a given calendar day is attributed to that calendar day; an event timestamped at or after this cutoff is attributed to the previous calendar day, until the next occurrence of the cutoff. This is deliberately minimal — RF-One does not build a general restaurant-scheduling/calendar engine here.
+`operating_day_cutoff_time` — a time-of-day, evaluated in the Location's own `timezone` — is the smallest adequate Business Day Rule: an event timestamped **at or after** this cutoff on a given calendar day is attributed to **that same** calendar day; an event timestamped **before** this cutoff is attributed to the **previous** calendar day (the still-open "night before"), until the next occurrence of the cutoff. (Corrected wording — Business Date Foundation task: an earlier version of this sentence stated the direction inverted, which contradicted the worked example immediately above and would have attributed nearly an entire operating day to the wrong Business Date; this is the reading consistent with that example and with ordinary late-night "operating day" semantics, not a new Product Owner decision.) This is deliberately minimal — RF-One does not build a general restaurant-scheduling/calendar engine here.
 
 `timezone` comes from Location; the cutoff is meaningless without it, since "midnight" is only defined relative to a timezone. See `Organization/Restaurant Profile.md`, "Location Business Day Rule (Business Date)," for where this configuration is owned at the Organization level.
 
 ## Order carries its own Business Date
 
-`ORDER.business_date` (§ 6) is the canonical, minimum-required Business Date fact in this model. It is:
+`ORDER.business_date` (§ 6) is the canonical, minimum-required Business Date fact in this model, implemented by `03 Software/RF-One Data Store/rfone_data_store/business_date.py` (the single canonical derivation/persistence code, reused by every consuming Domain — never duplicated). It is:
 
 - computed once, from the Order's own timestamp and the Location's Business Day Rule in effect at that time;
 - persisted on the Order itself, not recomputed on every read;
@@ -267,7 +267,7 @@ Table Service does not persist an independent Business Date. Where one is needed
 
 ## Cross-domain use
 
-`business_date`, as defined here, is the single canonical concept `Tips`, `Payroll`, and `Performance` should reuse for "which operating day does this belong to," rather than each Domain independently inventing its own business-date rule. Those Domains are not modified by this task beyond this cross-reference; they may adopt `business_date` where operationally appropriate. Purchasing may use it later if operationally appropriate, but Purchasing is not expanded by this document.
+`business_date`, as defined here, is the single canonical concept `Tips`, `Compensation`, and `Performance` should reuse for "which operating day does this belong to," rather than each Domain independently inventing its own business-date rule. Those Domains are not modified by this task beyond this cross-reference; they may adopt `business_date` where operationally appropriate. Purchasing may use it later if operationally appropriate, but Purchasing is not expanded by this document.
 
 ## Provider independence
 
