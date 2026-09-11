@@ -41,6 +41,7 @@ from auth import (  # noqa: E402
 from db import SessionFactory  # noqa: E402
 from domain_registry import DOMAINS  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
+from rfone_data_store import legal_entity_service  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store import rfone_recovery_service as recovery_service  # noqa: E402
 from rfone_data_store.technical import ses_email  # noqa: E402
@@ -254,12 +255,8 @@ def home():
         access_rows = account_service.list_domain_access_for_account(db, account.id)
         enabled_codes = {row.domain_code for row in access_rows if row.enabled}
         domains_view = [d for d in DOMAINS if d.code in enabled_codes]
-        training_access = next((r for r in access_rows if r.domain_code == "TRAINING" and r.enabled), None)
-        is_training_trainer = training_access is not None and training_access.role_code == "trainer"
 
-        return render_template(
-            "home.html", account=account, domains_view=domains_view, is_training_trainer=is_training_trainer,
-        )
+        return render_template("home.html", account=account, domains_view=domains_view)
 
 
 def require_domain_access(domain_code: str):
@@ -459,6 +456,73 @@ def admin_account_access(account_id: int):
         access_by_code = {row.domain_code: row for row in account_service.list_domain_access_for_account(db, account.id)}
         domains_view = [{"domain": d, "access": access_by_code.get(d.code)} for d in DOMAINS]
         return render_template("admin_account_access.html", account=account, domains_view=domains_view)
+
+
+# ---------------------------------------------------------------------------
+# Admin — Legal Entities (standalone, separate from Compensation — task:
+# "La gestione Legal Entity resta separata da Compensation e richiamabile
+# in futuro dalle impostazioni del dominio"). Compensation only ever reads
+# these rows (`legal_entity_service.list_legal_entities`/`get_legal_entity`
+# — see `compensation_routes.py`); this is the one place they are created
+# or edited.
+# ---------------------------------------------------------------------------
+
+
+@app.route("/admin/legal-entities")
+@require_admin
+def admin_legal_entities():
+    with SessionFactory() as db:
+        entities = legal_entity_service.list_legal_entities(db)
+        return render_template("admin_legal_entities.html", entities=entities)
+
+
+@app.route("/admin/legal-entities/new", methods=["GET", "POST"])
+@require_admin
+def admin_legal_entity_new():
+    if request.method == "POST":
+        require_csrf()
+        legal_name = request.form.get("legal_name", "").strip()
+        status = request.form.get("status") or "ACTIVE"
+
+        with SessionFactory() as db:
+            try:
+                legal_entity_service.create_legal_entity(db, legal_name=legal_name, status=status)
+                db.commit()
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+                return render_template("admin_legal_entity_form.html", mode="create", entity=None), 400
+
+        flash(f"Legal Entity {legal_name!r} created.", "info")
+        return redirect(url_for("admin_legal_entities"))
+
+    return render_template("admin_legal_entity_form.html", mode="create", entity=None)
+
+
+@app.route("/admin/legal-entities/<int:entity_id>/edit", methods=["GET", "POST"])
+@require_admin
+def admin_legal_entity_edit(entity_id: int):
+    with SessionFactory() as db:
+        entity = legal_entity_service.get_legal_entity(db, entity_id)
+        if entity is None:
+            abort(404)
+
+        if request.method == "POST":
+            require_csrf()
+            legal_name = request.form.get("legal_name", "").strip()
+            status = request.form.get("status") or "ACTIVE"
+            try:
+                legal_entity_service.update_legal_entity(db, entity, legal_name=legal_name, status=status)
+                db.commit()
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+                return render_template("admin_legal_entity_form.html", mode="edit", entity=entity), 400
+
+            flash("Legal Entity updated.", "info")
+            return redirect(url_for("admin_legal_entities"))
+
+        return render_template("admin_legal_entity_form.html", mode="edit", entity=entity)
 
 
 # ---------------------------------------------------------------------------

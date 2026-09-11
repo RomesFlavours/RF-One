@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block page_title %}Legal Entities · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+<h1>Legal Entities</h1>
+
+<div class="btn-row">
+  <a class="btn" href="{{ url_for('admin_legal_entity_new') }}">New Legal Entity</a>
+</div>
+
+<div class="card">
+  {% if entities %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Legal Name</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entity in entities %}
+            <tr>
+              <td>{{ entity.legal_name }}</td>
+              <td>
+                <span class="badge {{ 'ok' if entity.status == 'ACTIVE' else 'bad' }}">{{ entity.status }}</span>
+              </td>
+              <td>
+                <a href="{{ url_for('admin_legal_entity_edit', entity_id=entity.id) }}">Edit</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No Legal Entity on file yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

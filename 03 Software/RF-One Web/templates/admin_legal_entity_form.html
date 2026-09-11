@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block page_title %}{{ "New Legal Entity" if mode == "create" else "Edit Legal Entity" }} · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_legal_entities') }}">&larr; Legal Entities</a></p>
+<h1>{{ "New Legal Entity" if mode == "create" else "Edit Legal Entity" }}</h1>
+
+<div class="card">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="field-row">
+      <label for="legal_name">Legal name</label>
+      <input type="text" id="legal_name" name="legal_name"
+             value="{{ entity.legal_name if entity else '' }}" required autofocus>
+    </div>
+
+    <div class="field-row">
+      <label for="status">Status</label>
+      <select id="status" name="status">
+        <option value="ACTIVE" {{ "selected" if not entity or entity.status == "ACTIVE" }}>Active</option>
+        <option value="INACTIVE" {{ "selected" if entity and entity.status == "INACTIVE" }}>Inactive</option>
+      </select>
+    </div>
+
+    <button type="submit">{{ "Create Legal Entity" if mode == "create" else "Save changes" }}</button>
+  </form>
+</div>
+{% endblock %}
