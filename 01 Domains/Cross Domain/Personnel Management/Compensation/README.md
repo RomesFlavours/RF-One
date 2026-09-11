@@ -96,6 +96,7 @@ This is a **functional** specification only — not a database specification, no
 - **Authorized Adjustments remain out of scope** (conceptual/documented only) — not part of this task.
 - The operational UI is `03 Software/RF-One Web/compensation_routes.py` (replacing the former "Work in progress" page), calling the service layer above directly with no duplicated business logic.
 - **Deployed** to the existing AWS App Runner service (`rfone-web`) on 2026-09-11, migration `f7174fa37e93` applied to the real RDS PostgreSQL database (`03 Software/Infrastructure/README.md` has the exact deploy procedure and verification). SALARIED compensation terms and any Employee missing required data are shown explicitly and excluded from calculation — never a computed zero.
+- **Approval re-validates completeness itself** (`approval.approve_compensation_preparation`, `CompensationPreparationIncompleteDataError`) — an included Employee with no earning lines, or with an earning line referencing a non-HOURLY (e.g. SALARIED) or missing Compensation Term, blocks approval of the whole run and names every affected Employee, even if the calculation rows were written directly rather than through `payroll_calculation.engine`.
 
 This closes the previous "optional Connector return / manual recording" framing in `PAYROLL_HANDOFF_CONNECTOR.md` for V1 — the manual return path is no longer deferred.
 

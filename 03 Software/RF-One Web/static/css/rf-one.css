@@ -72,7 +72,11 @@ body {
   margin-top: .15rem;
 }
 
-.brand-logo { height: 34px; width: auto; }
+.brand-logo { height: 68px; width: auto; max-width: 200px; flex-shrink: 0; }
+
+@media (max-width: 480px) {
+  .brand-logo { height: 52px; max-width: 140px; }
+}
 
 .subtitle { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; font-size: .9rem; }
 .subtitle:empty { display: none; }

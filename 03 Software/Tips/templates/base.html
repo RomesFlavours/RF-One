@@ -2,8 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>RF-One · Tips</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}">
+<title>{% block page_title %}RF-One · Tips{% endblock %}</title>
+{% if brand_logo_filename %}
+  <link rel="icon" type="image/png" href="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}?v=2">
+{% endif %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=2">
 </head>
 <body>
 <div class="wrap">
@@ -27,12 +30,13 @@
       <img class="brand-logo" src="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}" alt="RF-One">
     {% endif %}
   </header>
-  <p class="subtitle">Clover source-fact ingestion and Tip Distribution Rule configuration — no employee payout is calculated here.</p>
+  <p class="subtitle">{% block page_subtitle %}Clover source-fact ingestion and Tip Distribution Rule configuration — no employee payout is calculated here.{% endblock %}</p>
   <div class="nav-tabs">
     <a href="{{ url_for('home') }}" class="{{ 'active' if active_nav == 'historical-backfill' else '' }}">Historical Backfill</a>
     <a href="{{ url_for('distribution_rules_home') }}" class="{{ 'active' if active_nav == 'distribution-rules' else '' }}">Distribution Rules</a>
     <a href="{{ url_for('calculate_tips_home') }}" class="{{ 'active' if active_nav == 'calculate-tips' else '' }}">Calculate Tips</a>
     <a href="{{ url_for('calculate_tips_history') }}" class="{{ 'active' if active_nav == 'calculate-tips-history' else '' }}">History</a>
+    <a href="{{ url_for('training_menu') }}">Training</a>
   </div>
   {% block content %}{% endblock %}
 </div>

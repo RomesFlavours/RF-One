@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <title>{% block page_title %}RF-One{% endblock %}</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}">
+{% if brand_logo_filename %}
+  <link rel="icon" type="image/png" href="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}?v=2">
+{% endif %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=2">
 </head>
 <body>
 <div class="wrap">

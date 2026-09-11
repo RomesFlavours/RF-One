@@ -48,6 +48,8 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
             _test_incentive_contribution_locked_after_approval(session, result)
             _test_recalculation_replaces_prior_summary(session, result)
             _test_recalculation_blocked_after_approval(session, result)
+            _test_approval_blocks_calculation_with_no_earning_lines(session, result)
+            _test_approval_blocks_salaried_earning_line(session, result)
             _test_approval_copies_incentive_detail_lines(session, result)
             _test_tip_credit_makeup_stays_null_unless_supplied(session, result)
             _test_manual_export_confirmation_flow(session, result)
@@ -321,6 +323,101 @@ def _test_recalculation_blocked_after_approval(session: Session, result: Validat
     result.check(
         "recalculating an already-APPROVED run's employee is rejected",
         rejected,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Approval re-validates completeness even when the backend is called
+# directly, bypassing payroll_calculation.engine's own validation (task:
+# "impedisci ... nemmeno chiamando direttamente il backend").
+# ---------------------------------------------------------------------------
+
+
+def _test_approval_blocks_calculation_with_no_earning_lines(
+    session: Session, result: ValidationResult,
+) -> None:
+    employee = _make_employee(session, "No Earning Lines")
+    legal_entity = _make_legal_entity(session, "No Earning Lines LLC")
+    run = engine.create_calculation_run(
+        session, legal_entity_id=legal_entity.id,
+        period_start=datetime(2026, 9, 1, tzinfo=UTC), period_end=datetime(2026, 9, 14, tzinfo=UTC),
+    )
+    # Bypasses engine.calculate_employee_payroll entirely (which refuses an
+    # empty earning_lines list) — simulates a direct backend/ORM write.
+    session.add(m.EmployeePayrollCalculation(
+        calculation_run_id=run.id, employee_id=employee.id,
+        regular_hours=Decimal("0"), regular_pay=Decimal("0.00"), gross_pay=Decimal("0.00"),
+    ))
+    run.status = approval.STATUS_CALCULATED
+    session.flush()
+
+    rejected = False
+    message = ""
+    try:
+        approval.approve_compensation_preparation(
+            session, calculation_run_id=run.id, approved_by="approver@romesflavours.com",
+        )
+    except approval.CompensationPreparationIncompleteDataError as exc:
+        rejected = True
+        message = str(exc)
+    result.check(
+        "approving a run with an included Employee that has NO earning lines (never calculated, "
+        "e.g. written directly to the backend) is rejected, naming that Employee",
+        rejected and "No Earning Lines" in message and str(employee.id) in message,
+    )
+    result.check(
+        "no ApprovedCompensationSnapshot is created for the rejected run",
+        approval.get_approved_snapshot_by_run(session, run.id) is None,
+    )
+
+
+def _test_approval_blocks_salaried_earning_line(session: Session, result: ValidationResult) -> None:
+    employee = _make_employee(session, "Direct Salaried Line")
+    legal_entity = _make_legal_entity(session, "Direct Salaried Line LLC")
+    salaried_term = m.EmployeeCompensationTerm(
+        employee_id=employee.id, legal_entity_id=legal_entity.id, function_label="Manager",
+        compensation_basis="SALARIED", salaried_period_amount_minor=150000,
+        valid_from=datetime(2026, 9, 1, tzinfo=UTC),
+    )
+    session.add(salaried_term)
+    session.flush()
+
+    run = engine.create_calculation_run(
+        session, legal_entity_id=legal_entity.id,
+        period_start=datetime(2026, 9, 1, tzinfo=UTC), period_end=datetime(2026, 9, 14, tzinfo=UTC),
+    )
+    # Bypasses engine.py's own HOURLY-only validation entirely — simulates
+    # a direct backend/ORM write referencing a SALARIED term.
+    calc = m.EmployeePayrollCalculation(
+        calculation_run_id=run.id, employee_id=employee.id,
+        regular_hours=Decimal("0"), regular_pay=Decimal("1500.00"), gross_pay=Decimal("1500.00"),
+    )
+    session.add(calc)
+    session.flush()
+    session.add(m.EmployeePayrollCalculationEarningLine(
+        employee_payroll_calculation_id=calc.id, compensation_term_id=salaried_term.id,
+        regular_hours=Decimal("0"), hourly_rate_used=Decimal("0.00"), regular_pay=Decimal("1500.00"),
+    ))
+    run.status = approval.STATUS_CALCULATED
+    session.flush()
+
+    rejected = False
+    message = ""
+    try:
+        approval.approve_compensation_preparation(
+            session, calculation_run_id=run.id, approved_by="approver@romesflavours.com",
+        )
+    except approval.CompensationPreparationIncompleteDataError as exc:
+        rejected = True
+        message = str(exc)
+    result.check(
+        "approving a run whose earning line references a SALARIED Compensation Term is rejected "
+        "(V1 HOURLY-only boundary), never silently approved as a computed component",
+        rejected and "SALARIED" in message and "Direct Salaried Line" in message,
+    )
+    result.check(
+        "no ApprovedCompensationSnapshot is created when a SALARIED line is present",
+        approval.get_approved_snapshot_by_run(session, run.id) is None,
     )
 
 

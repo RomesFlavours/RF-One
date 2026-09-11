@@ -78,14 +78,14 @@ body {
    width auto so aspect ratio is always preserved regardless of the actual
    asset's proportions. */
 .brand-logo {
-  height: 36px;
+  height: 72px;
   width: auto;
-  max-width: 160px;
+  max-width: 320px;
   flex-shrink: 0;
 }
 
 @media (max-width: 640px) {
-  .brand-logo { height: 26px; max-width: 110px; }
+  .brand-logo { height: 52px; max-width: 220px; }
 }
 
 .subtitle { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; font-size: .9rem; }

@@ -61,6 +61,64 @@ class CompensationPreparationNotReadyError(ValueError):
     `EmployeePayrollCalculation` results at all."""
 
 
+class CompensationPreparationIncompleteDataError(CompensationPreparationNotReadyError):
+    """Raised when the run has `EmployeePayrollCalculation` rows, but at
+    least one of them is incomplete — no earning line at all (nothing was
+    actually computed for that Employee), or an earning line referencing a
+    Compensation Term that is not HOURLY or no longer exists. RF-One V1
+    only calculates HOURLY compensation (SALARIED is explicitly
+    unsupported — functional spec, Compensation V1 manual Payroll Handoff
+    task) — this is the approval-time re-check that enforces that boundary
+    even if a caller bypassed `payroll_calculation.engine.
+    calculate_employee_payroll`'s own validation by writing
+    `EmployeePayrollCalculation`/`EmployeePayrollCalculationEarningLine`
+    rows directly. Never approved with a zero or fabricated value for the
+    affected Employee — the whole run is refused until the data is
+    completed or the Employee is removed from this run's calculations."""
+
+
+def _reject_if_any_calculation_incomplete(
+    session: Session, employee_calculations: list[m.EmployeePayrollCalculation],
+) -> None:
+    """Re-validates every included Employee's calculation at approval time
+    — never trusts that `payroll_calculation.engine.calculate_employee_payroll`
+    was the only path that ever wrote these rows. Raises
+    `CompensationPreparationIncompleteDataError` naming every affected
+    Employee and exactly what is missing, without persisting anything, if
+    any is found incomplete."""
+
+    problems: list[str] = []
+    for calc in employee_calculations:
+        employee = session.get(m.Employee, calc.employee_id)
+        who = f"{employee.display_name} (employee_id={calc.employee_id})" if employee else (
+            f"employee_id={calc.employee_id}"
+        )
+
+        if not calc.earning_lines:
+            problems.append(f"{who}: no earning lines recorded — hours/rate were never calculated")
+            continue
+
+        for line in calc.earning_lines:
+            term = session.get(m.EmployeeCompensationTerm, line.compensation_term_id)
+            if term is None:
+                problems.append(
+                    f"{who}: earning line references Compensation Term "
+                    f"{line.compensation_term_id}, which no longer exists"
+                )
+            elif term.compensation_basis != "HOURLY":
+                problems.append(
+                    f"{who}: earning line uses a {term.compensation_basis} Compensation Term "
+                    f"(id={term.id}) — RF-One V1 only calculates HOURLY compensation; SALARIED is "
+                    "not supported and must be completed outside RF-One, never approved here"
+                )
+
+    if problems:
+        raise CompensationPreparationIncompleteDataError(
+            "Cannot approve — the following Employees have missing or incomplete data: "
+            + "; ".join(problems)
+        )
+
+
 def approve_compensation_preparation(
     session: Session, *, calculation_run_id: int, approved_by: str,
 ) -> m.ApprovedCompensationSnapshot:
@@ -88,7 +146,13 @@ def approve_compensation_preparation(
       `APPROVED` run with an existing snapshot never reaches this check);
     - the run must have at least one persisted `EmployeePayrollCalculation`
       row (`CompensationPreparationNotReadyError`) — nothing to approve
-      otherwise.
+      otherwise;
+    - every persisted `EmployeePayrollCalculation` for the run must be
+      complete — at least one earning line, every earning line's
+      Compensation Term must exist and be HOURLY
+      (`CompensationPreparationIncompleteDataError`, naming every affected
+      Employee) — re-checked here regardless of whether the caller went
+      through `payroll_calculation.engine.calculate_employee_payroll`.
 
     Copies, per `EmployeePayrollCalculation` currently persisted for the
     run, exactly the aggregate values that model already produces today
@@ -140,6 +204,8 @@ def approve_compensation_preparation(
             f"CompensationPreparationRun {calculation_run_id} has no persisted "
             "EmployeePayrollCalculation results to approve"
         )
+
+    _reject_if_any_calculation_incomplete(session, employee_calculations)
 
     approved_at = datetime.now(UTC)
 
