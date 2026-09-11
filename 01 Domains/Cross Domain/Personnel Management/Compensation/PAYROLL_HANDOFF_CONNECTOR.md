@@ -29,9 +29,11 @@ PAYROLL PROCESSING
         ↓
 PAYROLL RESULT
         ↓
-optional Connector return / manual recording
+Connector return / manual recording (V1: implemented — see
+"Implementation status" below; no longer treated as optional/deferred)
         ↓
-RF-One RECONCILIATION
+RF-One RECONCILIATION (V1: implemented — semantically comparable
+components only, never Provider net pay against a Compensation total)
 ```
 
 RF-One owns everything only through **Approved Compensation Data**. RF-One does **not** own the statutory Payroll process.
@@ -45,7 +47,7 @@ The Payroll Handoff Connector is the boundary object/role responsible for:
 - receiving Approved Compensation Data from RF-One;
 - mapping/presenting/transporting those approved values in the form required by the selected Payroll Provider;
 - delivering those values to the Payroll Provider;
-- optionally receiving or recording the Payroll Provider's result, for RF-One's own reconciliation.
+- receiving or recording the Payroll Provider's result, for RF-One's own reconciliation — for V1, part of the manual Connector's job, not an optional afterthought (see "Implementation status" below).
 
 ## What the Connector is NOT
 
@@ -143,6 +145,19 @@ RF-One supplies the correct approved **values**. The Provider applies Payroll **
 ## Relationship to `Administration/Payroll`
 
 `01 Domains/Cross Domain/Administration/Payroll/` records what the external Payroll Provider actually did — the administrative execution/recording boundary, downstream of the Connector. The Connector itself (the handoff mechanism) and the Provider's result (what `Administration/Payroll` records) are distinct: the Connector transports Approved Compensation Data outward; `Administration/Payroll` records what came back. Neither the Connector nor `Administration/Payroll` decides compensation amounts.
+
+---
+
+## Implementation status (V1 — manual Payroll Handoff task)
+
+The manual Connector described above (§"The Connector may be automated OR manual") is implemented end to end for V1:
+
+- **Outbound (RF-One → operator → Provider):** `rfone_data_store/payroll_calculation/export.py` builds the per-Employee manual export view from an `ApprovedCompensationSnapshot` (flagging a missing Payroll Provider employee-ID mapping rather than inventing one) and lets the operator record a communication confirmation (`CompensationExportConfirmation` — date, author, optional reference), which transitions the Compensation state to `EXPORTED`. Recording a confirmation is never itself evidence that payroll was processed or paid.
+- **Inbound (Provider result → operator → RF-One):** `rfone_data_store/payroll_calculation/reconciliation.py`'s `record_manual_provider_result` is the manual-entry equivalent of the automated ADP import (`rfone_data_store/payroll/adp_importer.py`) — it writes into the SAME `PayrollRun`/`EmployeePayrollResult`/`PayrollEarningFact` model (Administration/Payroll), so a manually keyed-in result and a future automated import are indistinguishable to every downstream reader.
+- **Reconciliation:** compares only semantically comparable components between the Snapshot and the recorded `PayrollRun` (Regular Pay, Tips, Recognized Incentive) — never the Provider's net pay against a Compensation total — and refuses to reconcile across Legal Entities. Differences, missing components, and Provider-added components are all surfaced explicitly; a human can annotate each one (note + OPEN/EXPLAINED/ACCEPTED resolution) without the Provider's result ever overwriting the originally approved values.
+- **UI:** `03 Software/RF-One Web/compensation_routes.py` exposes this whole cycle, calling the same service functions a future automated Connector would call — no business logic is duplicated in the interface.
+
+No API integration, scheduled job, or generic connector framework was built — per this task's own scope, that remains future work.
 
 ---
 

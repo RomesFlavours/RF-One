@@ -2970,10 +2970,17 @@ class CompensationPreparationRun(Base):
     __table_args__ = (
         CheckConstraint("period_end >= period_start", name="ck_payroll_calculation_runs_period"),
         # Conceptual values: OPEN (created, not yet calculated), CALCULATED
-        # (employee results have been produced for this run). Kept
-        # deliberately small for MVP — no approval/export/close workflow yet.
+        # (employee results have been produced for this run — the software
+        # state equivalent to the functional spec's "PREPARED"; not renamed,
+        # per Product Owner decision, Compensation V1 Task 1 — this is
+        # documented terminology, not behavior, debt), APPROVED (Compensation
+        # V1 Task 1 — an authorized actor approved this run and an
+        # `ApprovedCompensationSnapshot` now exists for it; see
+        # `rfone_data_store/payroll_calculation/approval.py`). EXPORTED/CLOSED
+        # (functional spec §19) are not implemented yet — deliberately out of
+        # scope for this task.
         CheckConstraint(
-            "status IN ('OPEN', 'CALCULATED')", name="ck_payroll_calculation_runs_status"
+            "status IN ('OPEN', 'CALCULATED', 'APPROVED')", name="ck_payroll_calculation_runs_status"
         ),
     )
 
@@ -3019,6 +3026,18 @@ class EmployeePayrollCalculation(Base):
     calculation logic and Bonus formulas both remain entirely outside this
     table (Product Owner decision, rules 3 and 8).
 
+    `incentive_recognized_amount` (Compensation V1 manual handoff) is
+    MAX(0, SUM(`IncentiveContribution.amount`)) for this Employee/run —
+    computed by `rfone_data_store.payroll_calculation.incentives.
+    calculate_recognized_incentive` from the persisted positive/negative
+    Contributions, never a separate "Disincentive" value (functional spec
+    §14). `tip_credit_makeup_amount` stays NULL until a value is explicitly
+    supplied — NULL means "to be completed by the Payroll Provider", never a
+    false zero (functional spec §22, Payroll Provider boundary). Neither
+    field is included in `gross_pay` automatically beyond
+    `incentive_recognized_amount` (see below) — Tip Credit Make-Up is
+    preserved for handoff, never composed into an RF-One-computed total.
+
     Legal Entity is never duplicated here — it is inherited through
     `calculation_run_id` -> `CompensationPreparationRun.legal_entity_id`. The
     `uq_employee_payroll_calculation` constraint below is therefore already
@@ -3034,6 +3053,14 @@ class EmployeePayrollCalculation(Base):
         CheckConstraint("regular_pay >= 0", name="ck_employee_payroll_calc_regular_pay"),
         CheckConstraint("tips_amount >= 0", name="ck_employee_payroll_calc_tips_amount"),
         CheckConstraint("bonus_amount >= 0", name="ck_employee_payroll_calc_bonus_amount"),
+        CheckConstraint(
+            "incentive_recognized_amount >= 0",
+            name="ck_employee_payroll_calc_incentive_recognized_amount",
+        ),
+        CheckConstraint(
+            "tip_credit_makeup_amount IS NULL OR tip_credit_makeup_amount >= 0",
+            name="ck_employee_payroll_calc_tip_credit_makeup_amount",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -3049,6 +3076,8 @@ class EmployeePayrollCalculation(Base):
     regular_pay: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     tips_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
     bonus_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    incentive_recognized_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    tip_credit_makeup_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     gross_pay: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -3119,6 +3148,421 @@ class EmployeePayrollCalculationEarningLine(Base):
         back_populates="earning_lines"
     )
     compensation_term: Mapped["EmployeeCompensationTerm"] = relationship()
+
+
+class IncentiveContribution(Base):
+    """One positive or negative Incentive Contribution entered for an
+    Employee within a `CompensationPreparationRun` (functional spec §14 —
+    "an Incentive is variable compensation produced by one or more
+    measurable positive or negative contributions"). Compensation V1 has no
+    Event Log / Incentive Rule engine (spec §10-13 remain conceptual/
+    documented only) — a human enters each Contribution directly, exactly as
+    the manual Payroll Provider communication this task completes requires.
+
+    `amount` may be negative. The Recognized Incentive is always
+    `MAX(0, SUM(amount))` for one Employee/run — computed by
+    `rfone_data_store.payroll_calculation.incentives.
+    calculate_recognized_incentive`, never stored as a separate
+    "Disincentive" concept (spec §14: "There is no separate economic concept
+    called Disincentive"). A negative Contribution here can only ever reduce
+    the Incentive being evaluated — nothing in this schema or in
+    `payroll_calculation.engine` ever lets it reduce `regular_pay`,
+    `tips_amount`, or any other owed compensation.
+
+    Legal Entity is never duplicated here — it is inherited through
+    `calculation_run_id` -> `CompensationPreparationRun.legal_entity_id`, the
+    same convention `EmployeePayrollCalculation` already uses. Editable only
+    while the run is `OPEN`/`CALCULATED` — once a run is `APPROVED`, its
+    Incentive detail is immutable (see `ApprovedIncentiveContributionLine`,
+    copied once at approval time by `payroll_calculation.approval`)."""
+
+    __tablename__ = "incentive_contributions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    calculation_run_id: Mapped[int] = mapped_column(
+        ForeignKey("payroll_calculation_runs.id"), nullable=False, index=True
+    )
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    source_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    calculation_run: Mapped[CompensationPreparationRun] = relationship()
+    employee: Mapped["Employee"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Approved Compensation Snapshot foundation (Compensation V1 Task 1, Product
+# Owner decision; extended by the Compensation V1 manual Payroll Handoff
+# task with Recognized Incentive/Tip Credit Make-Up detail, export
+# confirmation and reconciliation — see below). Immutable-by-convention,
+# mirroring this schema's existing "no update path exposed" pattern (e.g.
+# Purchasing's `repository.py`): no service function anywhere updates or
+# deletes a row in these tables once created — see
+# `rfone_data_store/payroll_calculation/approval.py`, the ONLY code that
+# ever writes them. RF-One does not process Payroll — the snapshot preserves
+# what RF-One approved for later handoff to the Payroll Provider (`01
+# Domains/Cross Domain/Personnel Management/Compensation/
+# COMPENSATION_AND_INCOME_COMPOSITION_001.md` §19-20); it never contains a
+# calculated statutory Regular Rate, Overtime premium, tax, withholding,
+# deduction, employer liability, or net pay — those belong to the Payroll
+# Provider. Authorized Adjustments remain out of scope (conceptual/
+# documented only) — this task did not extend the snapshot for them.
+# ---------------------------------------------------------------------------
+
+
+class ApprovedCompensationSnapshot(Base):
+    """The immutable header of one APPROVED `CompensationPreparationRun` —
+    created exactly once per run (Product Owner decision: "one canonical
+    Approved Compensation Snapshot per approved Compensation Preparation").
+    `legal_entity_id`/`period_start`/`period_end` are copied from the run at
+    approval time rather than joined at read time — the snapshot must remain
+    reconstructable even if a future change ever touched the source run row.
+
+    Never updated or deleted by any code once created — a later recalculation
+    of the source `CompensationPreparationRun`/`EmployeeCompensationTerm`/
+    worked-time inputs/Tips source data never alters an already-created
+    snapshot (functional spec §20, "Later rule changes must never alter the
+    snapshot")."""
+
+    __tablename__ = "approved_compensation_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "compensation_preparation_run_id", name="uq_approved_compensation_snapshot_run"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    compensation_preparation_run_id: Mapped[int] = mapped_column(
+        ForeignKey("payroll_calculation_runs.id"), nullable=False, index=True
+    )
+    legal_entity_id: Mapped[int] = mapped_column(ForeignKey("legal_entities.id"), nullable=False)
+
+    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    # The authorized actor/reference supplied to the approval operation
+    # (Product Owner decision: no Identity & Access authorization rules are
+    # built by this task — the approval service receives this as a plain
+    # input, never resolves or validates it against an identity table).
+    approved_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    compensation_preparation_run: Mapped[CompensationPreparationRun] = relationship()
+    employee_results: Mapped[list["ApprovedEmployeeCompensationResult"]] = relationship(
+        back_populates="snapshot"
+    )
+
+
+class ApprovedEmployeeCompensationResult(Base):
+    """One Employee's immutable, approved compensation totals within an
+    `ApprovedCompensationSnapshot` — a VALUE copy of the corresponding
+    `EmployeePayrollCalculation` row at approval time, not a pointer to it.
+    `source_employee_calculation_id` is kept only for audit traceability
+    ("which source row was this copied from") — the snapshot's own columns,
+    never that source row, are the values later handoff/consumption must
+    read; the source row remains free to be recalculated/changed afterward
+    without affecting this one."""
+
+    __tablename__ = "approved_employee_compensation_results"
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_id", "employee_id", name="uq_approved_employee_compensation_result"
+        ),
+        CheckConstraint(
+            "regular_hours >= 0", name="ck_approved_employee_compensation_result_regular_hours"
+        ),
+        CheckConstraint(
+            "regular_pay >= 0", name="ck_approved_employee_compensation_result_regular_pay"
+        ),
+        CheckConstraint(
+            "tips_amount >= 0", name="ck_approved_employee_compensation_result_tips_amount"
+        ),
+        CheckConstraint(
+            "bonus_amount >= 0", name="ck_approved_employee_compensation_result_bonus_amount"
+        ),
+        # Note: prefixed "ck_approved_emp_comp_result_..." rather than the
+        # fuller "ck_approved_employee_compensation_result_..." used above —
+        # PostgreSQL truncates/rejects identifiers over 63 bytes
+        # (NAMEDATALEN), and the fuller prefix combined with either suffix
+        # below exceeds that (verified against real RDS PostgreSQL).
+        CheckConstraint(
+            "incentive_recognized_amount >= 0",
+            name="ck_approved_emp_comp_result_incentive_recognized_amt",
+        ),
+        CheckConstraint(
+            "tip_credit_makeup_amount IS NULL OR tip_credit_makeup_amount >= 0",
+            name="ck_approved_emp_comp_result_tip_credit_makeup_amt",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("approved_compensation_snapshots.id"), nullable=False, index=True
+    )
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+    source_employee_calculation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("employee_payroll_calculations.id"), nullable=True
+    )
+
+    regular_hours: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    regular_pay: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    tips_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    bonus_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    # Value-copied at approval time from `EmployeePayrollCalculation`, same
+    # as every other column here — see that model's own docstring for what
+    # each means (Compensation V1 manual Payroll Handoff task).
+    incentive_recognized_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    tip_credit_makeup_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    gross_pay: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    snapshot: Mapped[ApprovedCompensationSnapshot] = relationship(back_populates="employee_results")
+    employee: Mapped["Employee"] = relationship()
+    earning_lines: Mapped[list["ApprovedEmployeeEarningLine"]] = relationship(
+        back_populates="employee_result"
+    )
+    incentive_contribution_lines: Mapped[list["ApprovedIncentiveContributionLine"]] = relationship(
+        back_populates="employee_result"
+    )
+
+
+class ApprovedEmployeeEarningLine(Base):
+    """One immutable, approved earning-line fact within an
+    `ApprovedEmployeeCompensationResult` — a VALUE copy of the corresponding
+    `EmployeePayrollCalculationEarningLine` at approval time.
+    `compensation_term_id` is preserved as a reference (which
+    `EmployeeCompensationTerm` produced the rate), matching the source
+    line's own convention — but the snapshot's own `hourly_rate_used`/
+    `regular_pay` are what must be trusted going forward, never a re-join
+    through that reference, since the term itself may later change."""
+
+    __tablename__ = "approved_employee_earning_lines"
+    __table_args__ = (
+        CheckConstraint("hours >= 0", name="ck_approved_employee_earning_line_hours"),
+        CheckConstraint(
+            "hourly_rate_used >= 0", name="ck_approved_employee_earning_line_hourly_rate"
+        ),
+        CheckConstraint("regular_pay >= 0", name="ck_approved_employee_earning_line_regular_pay"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    approved_employee_result_id: Mapped[int] = mapped_column(
+        ForeignKey("approved_employee_compensation_results.id"), nullable=False, index=True
+    )
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+    source_earning_line_id: Mapped[int | None] = mapped_column(
+        ForeignKey("employee_payroll_calculation_earning_lines.id"), nullable=True
+    )
+
+    work_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    compensation_term_id: Mapped[int] = mapped_column(
+        ForeignKey("employee_compensation_terms.id"), nullable=False, index=True
+    )
+
+    hours: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    hourly_rate_used: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    regular_pay: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    employee_result: Mapped[ApprovedEmployeeCompensationResult] = relationship(
+        back_populates="earning_lines"
+    )
+
+
+class ApprovedIncentiveContributionLine(Base):
+    """One immutable, approved Incentive Contribution detail line within an
+    `ApprovedEmployeeCompensationResult` — a VALUE copy of the corresponding
+    `IncentiveContribution` at approval time (mirrors
+    `ApprovedEmployeeEarningLine`'s existing convention). Preserving
+    positive AND negative Contribution detail, never only the Recognized
+    Incentive total, is required by functional spec §20 ("Incentive detail
+    (positive/negative Contributions and the Recognized Incentive)")."""
+
+    __tablename__ = "approved_incentive_contribution_lines"
+    __table_args__ = (
+        # Explicit short index name — the table+column-derived default
+        # ("ix_approved_incentive_contribution_lines_approved_employee_result_id")
+        # exceeds PostgreSQL's 63-byte identifier limit (verified against
+        # real RDS PostgreSQL).
+        Index("ix_approved_incentive_lines_result_id", "approved_employee_result_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    approved_employee_result_id: Mapped[int] = mapped_column(
+        ForeignKey("approved_employee_compensation_results.id"), nullable=False
+    )
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+    source_contribution_id: Mapped[int | None] = mapped_column(
+        ForeignKey("incentive_contributions.id"), nullable=True
+    )
+
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    employee_result: Mapped[ApprovedEmployeeCompensationResult] = relationship(
+        back_populates="incentive_contribution_lines"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Compensation V1 manual Payroll Handoff Connector (`01 Domains/Cross
+# Domain/Personnel Management/Compensation/PAYROLL_HANDOFF_CONNECTOR.md`):
+# a human operator communicates one `ApprovedCompensationSnapshot`'s data to
+# the Payroll Provider and records that this happened
+# (`CompensationExportConfirmation`) — never itself evidence that payroll
+# was processed or paid. `CompensationReconciliation`/
+# `CompensationReconciliationLine` compare that Snapshot against the
+# Provider's actual result, once manually recorded into the EXISTING
+# Administration/Payroll return model (`PayrollRun`/`EmployeePayrollResult`/
+# `PayrollEarningFact` — see `rfone_data_store/payroll_calculation/
+# reconciliation.py`), restricted to semantically comparable components —
+# never Provider net pay against a Compensation total (Compensation
+# README.md, "Provider Reconciliation"; `Administration/Payroll/Payment
+# Execution.md`).
+# ---------------------------------------------------------------------------
+
+
+class CompensationExportConfirmation(Base):
+    """One human confirmation that an `ApprovedCompensationSnapshot`'s data
+    was actually communicated to the Payroll Provider (manual Payroll
+    Handoff Connector — `PAYROLL_HANDOFF_CONNECTOR.md`, "A human operator
+    entering RF-One's approved values into ADP or another Payroll Provider
+    is a valid Connector implementation"). Recording this confirmation is
+    never itself evidence that payroll was processed or paid — see
+    `PayrollRun`/`PayrollEarningFact` (Administration/Payroll) for what the
+    Provider actually returned, and `CompensationReconciliation` for
+    comparing the two. More than one confirmation may exist for the same
+    snapshot (e.g. a re-communication after a correction) — never
+    overwritten, always appended."""
+
+    __tablename__ = "compensation_export_confirmations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("approved_compensation_snapshots.id"), nullable=False, index=True
+    )
+
+    communicated_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    communicated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    snapshot: Mapped[ApprovedCompensationSnapshot] = relationship()
+
+
+class CompensationReconciliation(Base):
+    """One comparison pass between an `ApprovedCompensationSnapshot` (what
+    RF-One approved) and a `PayrollRun` (what the Payroll Provider actually
+    processed, manually recorded — see
+    `rfone_data_store.payroll_calculation.reconciliation.
+    record_manual_provider_result`). Never compares Provider net pay to a
+    Compensation total — only semantically matching components (Regular Pay
+    to Regular Pay, Tips to Tips, Recognized Incentive to a Provider-
+    reported bonus/incentive line — see `CompensationReconciliationLine`).
+    Neither the Snapshot nor the PayrollRun is ever modified by creating a
+    reconciliation — differences are recorded as
+    `CompensationReconciliationLine` rows, never merged back into either
+    source. Idempotent per (snapshot, run) pair (`uq_compensation_reconciliation`)
+    — re-reconciling the same pair returns the existing pass rather than
+    creating a duplicate one with possibly-reopened lines."""
+
+    __tablename__ = "compensation_reconciliations"
+    __table_args__ = (
+        UniqueConstraint("snapshot_id", "payroll_run_id", name="uq_compensation_reconciliation"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("approved_compensation_snapshots.id"), nullable=False, index=True
+    )
+    payroll_run_id: Mapped[int] = mapped_column(ForeignKey("payroll_runs.id"), nullable=False, index=True)
+
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    snapshot: Mapped[ApprovedCompensationSnapshot] = relationship()
+    payroll_run: Mapped["PayrollRun"] = relationship()
+    lines: Mapped[list["CompensationReconciliationLine"]] = relationship(back_populates="reconciliation")
+
+
+class CompensationReconciliationLine(Base):
+    """One semantically-comparable component's comparison result for one
+    Employee within a `CompensationReconciliation`. `rfone_value`/
+    `provider_value` are independently nullable — a component present only
+    on one side is a MISSING_IN_PROVIDER/MISSING_IN_RFONE line, never a
+    fabricated zero on the missing side (MISSING_IN_RFONE also covers a
+    Provider-reported component RF-One has no matching component for at
+    all — "voci aggiunte... dal provider"). `status` is derived once, at
+    creation time, from comparing the two values — never recomputed
+    automatically afterward, so an explained/accepted difference is never
+    silently reopened by re-running reconciliation; a new reconciliation
+    pass against a different Provider result creates a new
+    `CompensationReconciliation` (and new lines) instead."""
+
+    __tablename__ = "compensation_reconciliation_lines"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('MATCH','DIFFERENT','MISSING_IN_PROVIDER','MISSING_IN_RFONE')",
+            name="ck_compensation_reconciliation_line_status",
+        ),
+        CheckConstraint(
+            "resolution_status IN ('OPEN','EXPLAINED','ACCEPTED')",
+            name="ck_compensation_reconciliation_line_resolution_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    reconciliation_id: Mapped[int] = mapped_column(
+        ForeignKey("compensation_reconciliations.id"), nullable=False, index=True
+    )
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+
+    component_label: Mapped[str] = mapped_column(String(64), nullable=False)
+    rfone_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    provider_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolution_status: Mapped[str] = mapped_column(String(16), nullable=False, default="OPEN")
+    resolved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    reconciliation: Mapped[CompensationReconciliation] = relationship(back_populates="lines")
+    employee: Mapped["Employee"] = relationship()
 
 
 # ---------------------------------------------------------------------------
@@ -8141,6 +8585,411 @@ class ComplianceDisposition(Base):
     performed_by_identity: Mapped["ActingIdentity | None"] = relationship()
 
 
+# ---------------------------------------------------------------------------
+# Cross Domain / Training (staff dish/wine "pill" learning — first operational
+# version, 03 Software/Training/).
+#
+# `TrainingAccount` is Training's own login/authentication record (username,
+# password hash, trainer/student role) — it is NOT RF-One's shared Authority
+# engine. `AuthorityGrant`/`authority_service.authorize()` are the documented
+# "one permission engine every Domain calls" (Core Principle 21), but Identity
+# & Access development is explicitly FROZEN (`10 System/Identity & Access/
+# README.md`: "Do not continue implementation against this area... until
+# explicitly unfrozen") and `authorize()` currently has zero real Domain
+# consumers ("No Domain is integrated by this module" — authority_service.py's
+# own docstring); Training does not make itself the first live integration of
+# a frozen substrate on its own initiative. `role` below is therefore a
+# narrow, Training-local attribute for Training's own two areas, not a new
+# generic authority mechanism.
+#
+# `acting_identity_id`, by contrast, DOES reuse the shared, already
+# actively-consumed `ActingIdentity` roster (Selection's `/identity/register`
+# already creates rows the same way via `acting_identity_service.create_
+# identity()`) — that is Core Principle 21's "the ONE stable 'who is acting'
+# concept every Domain consumes", and reusing it here (rather than a second,
+# Training-only person table) is exactly what the principle asks for.
+#
+# Pill *content* (dish description, ingredients, sell phrases, wine pairings,
+# allergens) is never duplicated into these tables — it stays the single
+# canonical copy already living in `03 Software/Training/RF-One-Training.html`
+# (read live by the Training web app's `dish_data.py` loader). `TrainingPill`
+# only carries the metadata Training itself needs to assign/version/quiz
+# against that content (slug matches the dish `id` in that JSON, so the two
+# stay associated without a database foreign key across a Software-layer
+# static file).
+# ---------------------------------------------------------------------------
+
+
+class TrainingAccount(Base):
+    """Training's own login record for one person (trainer or student).
+    `username`/`display_name` are never used as foreign keys elsewhere
+    (`display_name` lives on the linked `ActingIdentity`, per that model's
+    own "changing a label must never change what the identity is
+    accountable for") — every other Training table references
+    `TrainingAccount.id`. `password_hash` is produced by Werkzeug's
+    `generate_password_hash` (already a Flask dependency — no new library
+    added); the plaintext password is never persisted or logged anywhere.
+    `failed_login_attempts`/`locked_until` implement a simple, self-
+    contained login-attempt lockout (no new dependency for this either)."""
+
+    __tablename__ = "training_accounts"
+    __table_args__ = (
+        CheckConstraint("role IN ('trainer', 'student')", name="ck_training_account_role"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    acting_identity_id: Mapped[int] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=False, unique=True
+    )
+    username: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("training_accounts.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    acting_identity: Mapped["ActingIdentity"] = relationship()
+
+
+class TrainingPill(Base):
+    """One assignable unit of study (a "pill"). `slug` is the stable
+    identifier matching the dish `id` in `RF-One-Training.html`'s
+    `dish-data` JSON — the single source of the actual study content, never
+    copied here. `content_version` is bumped by hand whenever that JSON's
+    substantive content changes for this dish; quiz attempts snapshot the
+    version that was current when the attempt was taken, so a later content
+    edit never rewrites the meaning of a historical result."""
+
+    __tablename__ = "training_pills"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    learning_objectives: Mapped[str] = mapped_column(Text, nullable=False)
+    content_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+
+class TrainingQuestion(Base):
+    """One static question in a pill's question bank. `kind` distinguishes
+    the three separate, never-overlapping question sets a pill has —
+    `self_check` (practice, ungraded — see `TrainingAccount`/attempt tables:
+    deliberately no table records a self-check attempt at all), `final_quiz`
+    (this pill's own graded quiz) and `overall_quiz` (this pill's 3
+    questions when it contributes to the whole-path quiz). `category`
+    records which of the three required angles the question tests
+    (ingredients/characteristics, sales/pairing, allergen warnings).
+    `correct_index` and `explanation` are never sent to the client for
+    `final_quiz`/`overall_quiz` kinds before a submission exists for that
+    quiz; `self_check` questions are sent to the client up front by design
+    (an ungraded, immediate-feedback practice tool, never persisted as a
+    result — see module docstring above)."""
+
+    __tablename__ = "training_questions"
+    __table_args__ = (
+        UniqueConstraint("pill_id", "kind", "position", name="uq_training_question_pill_kind_position"),
+        CheckConstraint(
+            "kind IN ('self_check', 'final_quiz', 'overall_quiz')", name="ck_training_question_kind"
+        ),
+        CheckConstraint(
+            "category IN ('ingredients', 'sales_pairing', 'allergen_warning')",
+            name="ck_training_question_category",
+        ),
+        CheckConstraint("correct_index IN (0, 1, 2)", name="ck_training_question_correct_index"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    category: Mapped[str] = mapped_column(String(24), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    options_json: Mapped[str] = mapped_column(Text, nullable=False)
+    correct_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    explanation: Mapped[str] = mapped_column(Text, nullable=False)
+
+    pill: Mapped["TrainingPill"] = relationship()
+
+
+class TrainingNeed(Base):
+    """A short, trainer-authored training need for one student (spec §2 —
+    "inserire un bisogno formativo come breve testo"). `origin` is an
+    optional free-form category of where the need came from; it is never
+    used to automatically pull data from Selection or any other Domain
+    (spec explicitly excludes that for this version)."""
+
+    __tablename__ = "training_needs"
+    __table_args__ = (
+        CheckConstraint(
+            "origin IS NULL OR origin IN ('selection', 'observation', 'sales', 'other')",
+            name="ck_training_need_origin",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    student_account_id: Mapped[int] = mapped_column(
+        ForeignKey("training_accounts.id"), nullable=False, index=True
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    origin: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    created_by_account_id: Mapped[int] = mapped_column(ForeignKey("training_accounts.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    student_account: Mapped["TrainingAccount"] = relationship(foreign_keys=[student_account_id])
+
+
+class TrainingAssignment(Base):
+    """One pill assigned to satisfy one need. The `(need_id, pill_id)`
+    unique constraint is the actual guarantee against an unintended
+    duplicate assignment of the same pill to the same need (spec §2); the
+    same pill CAN still be assigned again under a *different* need for the
+    same student — each such row tracks its own independent progress
+    (spec §4, "stati della singola assegnazione"). `first_opened_at` is set
+    the first time the assigned student opens this specific assignment's
+    pill page — never inferred from time spent on the page."""
+
+    __tablename__ = "training_assignments"
+    __table_args__ = (
+        UniqueConstraint("need_id", "pill_id", name="uq_training_assignment_need_pill"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    need_id: Mapped[int] = mapped_column(ForeignKey("training_needs.id"), nullable=False, index=True)
+    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), nullable=False, index=True)
+    assigned_by_account_id: Mapped[int] = mapped_column(ForeignKey("training_accounts.id"), nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    first_opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    need: Mapped["TrainingNeed"] = relationship()
+    pill: Mapped["TrainingPill"] = relationship()
+
+
+class TrainingAttempt(Base):
+    """One submitted attempt at one assignment's final (graded) quiz.
+    Deliberately denormalizes `student_account_id`/`pill_id`/
+    `pill_content_version` directly onto the row (rather than requiring a
+    join through `assignment` -> `need`) so a later change to the
+    assignment/need never alters what a historical attempt is provable to
+    have been (spec §7's historical-integrity rule, applied consistently
+    here too). `questions_json`/`answers_json` snapshot exactly what was
+    presented and answered — never recomputed from the live question bank
+    later. `submission_token` is a single-use, per-page-load value; its
+    UNIQUE constraint is what actually stops a double form submission (e.g.
+    a double click or resubmit) from ever creating two rows for what was
+    really one submission — see `training.service.record_final_attempt`."""
+
+    __tablename__ = "training_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(
+        ForeignKey("training_assignments.id"), nullable=False, index=True
+    )
+    student_account_id: Mapped[int] = mapped_column(
+        ForeignKey("training_accounts.id"), nullable=False, index=True
+    )
+    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), nullable=False)
+    pill_content_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    quiz_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    questions_json: Mapped[str] = mapped_column(Text, nullable=False)
+    answers_json: Mapped[str] = mapped_column(Text, nullable=False)
+    points_earned: Mapped[int] = mapped_column(Integer, nullable=False)
+    points_possible: Mapped[int] = mapped_column(Integer, nullable=False)
+    submission_token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    assignment: Mapped["TrainingAssignment"] = relationship()
+
+
+class TrainingOverallAttempt(Base):
+    """One submitted attempt at a student's whole-path quiz (spec §7) —
+    three questions per distinct pill assigned to the student at the time
+    of the attempt. `pills_json` snapshots exactly which pills (id, slug,
+    content_version) were included, so a later change to the student's
+    assignments never alters what a historical attempt covered."""
+
+    __tablename__ = "training_overall_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    student_account_id: Mapped[int] = mapped_column(
+        ForeignKey("training_accounts.id"), nullable=False, index=True
+    )
+    pills_json: Mapped[str] = mapped_column(Text, nullable=False)
+    questions_json: Mapped[str] = mapped_column(Text, nullable=False)
+    answers_json: Mapped[str] = mapped_column(Text, nullable=False)
+    points_earned: Mapped[int] = mapped_column(Integer, nullable=False)
+    points_possible: Mapped[int] = mapped_column(Integer, nullable=False)
+    submission_token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class RFOneAccount(Base):
+    """The general RF-One login account — the ONE identity an operator uses
+    to enter the RF-One shell (`03 Software/RF-One Web/`) itself,
+    deliberately independent of any Domain-specific account (e.g.
+    `TrainingAccount`) — see that model's own docstring for why Training
+    keeps its own separate login instead of reusing this one.
+    `RFOneAccountDomainAccess` rows (below) determine which Domains this
+    account may enter; this table itself knows nothing about any Domain.
+    `password_hash` is produced by Werkzeug's `generate_password_hash` —
+    the plaintext password is never persisted or logged anywhere.
+
+    `email`/`email_verified_at` back the ONE general password-recovery
+    mechanism every RF-One-login Domain shares (never a per-Domain
+    recovery) — see `rfone_recovery_service.py`. `email` may be non-NULL
+    while `email_verified_at` is still NULL: that is the normal "on file,
+    pending confirmation" state for a freshly created account or a
+    profile email not yet confirmed, distinct from "no email at all"
+    (both NULL). Self-service recovery requires `email_verified_at` to be
+    set; an unverified or absent email falls back to the existing admin
+    reset. `session_version` is the minimal mechanism this stateless,
+    signed-cookie session needs to support remote revocation (task: "una
+    versione di sessione verificata lato server") — bumped by
+    `rfone_account_service.set_password` on every password change (self-
+    service reset AND the existing admin/trainer reset alike), so a
+    session cookie issued before the change stops matching on its very
+    next request and is treated as logged out."""
+
+    __tablename__ = "rfone_accounts"
+    __table_args__ = (
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_rfone_account_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="ACTIVE")
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+
+class RFOneAccountDomainAccess(Base):
+    """Grants one `RFOneAccount` entry into one RF-One Domain (`domain_code`,
+    matching `RF-One Web/domain_registry.py`'s canonical codes — never
+    validated against a DB-side enum here, since that registry is the single
+    source of truth for which Domains currently exist). `role_code` is
+    optional, free-form, and meaningless to this table — only the Domain
+    itself, once entered, interprets it (e.g. Training's own
+    'TRAINER'/'STUDENT'). This table only stores and enforces WHETHER an
+    account may enter a Domain; it implements no Domain-specific
+    authorization of its own."""
+
+    __tablename__ = "rfone_account_domain_access"
+    __table_args__ = (
+        UniqueConstraint("account_id", "domain_code", name="uq_rfone_account_domain_access_account_domain"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=False, index=True)
+    domain_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    role_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+    account: Mapped["RFOneAccount"] = relationship()
+
+
+class RFOneTrainingIdentityLink(Base):
+    """The one persistent, univocal bridge between a general `RFOneAccount`
+    and an existing `TrainingAccount` (RF-One Web / Training single-login
+    integration). Both sides are UNIQUE — an `RFOneAccount` links to at most
+    one `TrainingAccount` and vice versa — so this can never express a
+    duplicate or silently-replaced link; creating a second link for either
+    side must go through an explicit unlink first (not implemented in this
+    first integration — task scope is additive only).
+
+    Deliberately its own table, not a column on either `rfone_accounts` or
+    `training_accounts`: it lives in the canonical RF-One Data Store because
+    it is schema that references both, but the ORCHESTRATION logic that
+    creates/uses it (`RF-One Web/training_integration.py`) stays local to
+    the RF-One Web ↔ Training integration point — neither `RFOneAccount`
+    nor `TrainingAccount`/Training's own service module is coupled to the
+    other by this table's mere existence (Core Principle: a general
+    account must not be coupled to any one Domain)."""
+
+    __tablename__ = "rfone_training_identity_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rfone_account_id: Mapped[int] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=False, unique=True
+    )
+    training_account_id: Mapped[int] = mapped_column(
+        ForeignKey("training_accounts.id"), nullable=False, unique=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    rfone_account: Mapped["RFOneAccount"] = relationship()
+    training_account: Mapped["TrainingAccount"] = relationship()
+
+
+class RFOneAccountVerificationCode(Base):
+    """One issued 6-digit code for one `RFOneAccount`, scoped to exactly one
+    `purpose` — the single mechanism behind BOTH email verification and
+    password recovery (`rfone_recovery_service.py`), never a per-Domain or
+    per-purpose duplicate table. A code issued for one purpose is never
+    valid for the other (every lookup filters on `purpose` too).
+
+    `code_hmac` is never the raw code nor a bare hash of it — it is an
+    HMAC-SHA256 keyed with a value derived from the server's own
+    `RFONE_FLASK_SECRET_KEY` (see `rfone_recovery_service._hash_code`), so
+    a database-only compromise cannot brute-force this small (6-digit)
+    space offline; the code's short life (`expires_at`, 10 minutes) and
+    `attempts_used` cap (5) bound the ONLINE guessing surface. `target_email`
+    is the address the code was actually sent to, denormalized here rather
+    than read from `RFOneAccount.email` at verification time — so a
+    profile email change started after a code was issued can never make an
+    older, already-sent code silently apply to a different address.
+
+    `consumed_at` and `invalidated_at` are separate and mutually exclusive
+    in practice: `consumed_at` marks a code actually used to complete its
+    purpose (set exactly once, inside a row lock, so two concurrent
+    submissions of the same code can never both succeed);
+    `invalidated_at` marks a code superseded before use (a resend,
+    expiry, exhausted attempts, or an unrelated successful password reset/
+    email change clearing out anything else still pending for the
+    account)."""
+
+    __tablename__ = "rfone_account_verification_codes"
+    __table_args__ = (
+        CheckConstraint(
+            "purpose IN ('EMAIL_VERIFICATION', 'PASSWORD_RESET')", name="ck_rfone_verification_code_purpose",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=False, index=True)
+    purpose: Mapped[str] = mapped_column(String(24), nullable=False)
+    target_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    code_hmac: Mapped[str] = mapped_column(String(64), nullable=False)
+    attempts_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    request_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    account: Mapped["RFOneAccount"] = relationship()
+
+
 ALL_MODELS: tuple[type[Base], ...] = (
     ActingIdentity,
     AuthorityGrant,
@@ -8192,6 +9041,7 @@ ALL_MODELS: tuple[type[Base], ...] = (
     WorkweekDefinition,
     EmployeeCompensationTerm,
     PayrollRun,
+    PayrollExecutionConfiguration,
     PayrollProviderEmployeeIdentity,
     EmployeePayrollResult,
     PayrollEarningFact,
@@ -8199,6 +9049,18 @@ ALL_MODELS: tuple[type[Base], ...] = (
     PayrollPaymentFact,
     PayrollImportRun,
     PayrollImportIssue,
+    CompensationPreparationRun,
+    EmployeePayrollCalculation,
+    EmployeePayrollCalculationEarningLine,
+    IncentiveContribution,
+    ApprovedCompensationSnapshot,
+    ApprovedEmployeeCompensationResult,
+    ApprovedEmployeeEarningLine,
+    ApprovedIncentiveContributionLine,
+    CompensationExportConfirmation,
+    CompensationReconciliation,
+    CompensationReconciliationLine,
+    OvertimeRule,
     Supplier,
     PurchaseOrder,
     PurchaseOrderLine,
@@ -8302,4 +9164,15 @@ ALL_MODELS: tuple[type[Base], ...] = (
     ComplianceReview,
     ComplianceWarning,
     ComplianceDisposition,
+    TrainingAccount,
+    TrainingPill,
+    TrainingQuestion,
+    TrainingNeed,
+    TrainingAssignment,
+    TrainingAttempt,
+    TrainingOverallAttempt,
+    RFOneAccount,
+    RFOneAccountDomainAccess,
+    RFOneTrainingIdentityLink,
+    RFOneAccountVerificationCode,
 )

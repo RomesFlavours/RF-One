@@ -137,7 +137,7 @@ Personnel Management does not canonize a fixed KPI list. Performance indicators 
 This Domain's own modules:
 
 - **Workforce, Personnel Decisions** — minimal placeholder `README.md` only. Purpose and module boundary are recorded; detailed concept modeling (entities, business rules, data requirements) is deferred to future tasks.
-- **Compensation** (formerly named Payroll — RF-One determines, composes and approves compensation but does not itself perform Payroll, an external Payroll Provider's responsibility) — first V1 functional specification documented (Compensation & Income Composition); see `Compensation/README.md` and `Compensation/COMPENSATION_AND_INCOME_COMPOSITION_001.md`. Database, API, UI and Payroll Provider data-contract specifications are deferred to future tasks.
+- **Compensation** (formerly named Payroll — RF-One determines, composes and approves compensation but does not itself perform Payroll, an external Payroll Provider's responsibility) — V1 functional specification documented (Compensation & Income Composition); see `Compensation/README.md` and `Compensation/COMPENSATION_AND_INCOME_COMPOSITION_001.md`. An operational V1 is implemented with manual, bidirectional Payroll Provider communication (`03 Software/RF-One Web/compensation_routes.py`, gated by `RFOneAccountDomainAccess`) — see `Compensation/README.md`, "Implementation status". A formal Payroll Provider data-contract specification is still deferred to a future task, once a specific provider is selected.
 
 Sibling Cross Domains, not documented here (own top-level Domains — see "Module map" above):
 

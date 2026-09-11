@@ -27,6 +27,19 @@ never split into earning lines — and Tips calculation logic
 (`rfone_data_store.tips`) and Bonus rules (future Performance Cross Domain
 capability) are never invoked or reimplemented by this module.
 
+Compensation V1 manual Payroll Handoff task: `calculate_employee_payroll`
+also resolves this Employee/run's persisted `IncentiveContribution` rows
+(`rfone_data_store.payroll_calculation.incentives`) and sets
+`incentive_recognized_amount = MAX(0, SUM(contribution.amount))` — never a
+separate "Disincentive" value (functional spec §14). `tip_credit_makeup_amount`
+is an optional caller-supplied input, left `None` ("to be completed by the
+Payroll Provider") when not supplied — never defaulted to zero. Re-calling
+this function for the same (run, employee) replaces the prior summary and
+its earning lines (delete-then-insert) — never leaves two summaries for one
+employee in one run — but only while the run is still OPEN/CALCULATED;
+recalculating an already-APPROVED run's employee is rejected, since its
+values were already copied into an immutable `ApprovedCompensationSnapshot`.
+
 Compensation is resolved exclusively from the existing
 `EmployeeCompensationTerm` rows. This engine does not auto-pick "the" rate
 for an Employee — the caller selects which `compensation_term_id` applies to
@@ -65,13 +78,16 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Sequence
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models as m
 from . import compensation as compensation_helpers
+from . import incentives as incentive_helpers
 
 _MINOR_UNIT = Decimal(100)
 _CENTS = Decimal("0.01")
+_EDITABLE_STATUSES = ("OPEN", "CALCULATED")
 
 
 def _minor_to_decimal(amount_minor: int) -> Decimal:
@@ -122,6 +138,14 @@ class InvalidCompensationTermError(ValueError):
     for an earning line — wrong Employee, wrong Legal Entity, not HOURLY, or
     not effective for the line's `work_date`/the run's period. RF-One never
     silently substitutes a different term."""
+
+
+class CalculationRunNotEditableError(ValueError):
+    """Raised when `calculate_employee_payroll` is called against a
+    `CompensationPreparationRun` that is no longer OPEN/CALCULATED (already
+    APPROVED/EXPORTED/CLOSED) — its values were already copied into an
+    immutable `ApprovedCompensationSnapshot` and must never be silently
+    replaced."""
 
 
 def _validate_hourly_term_effective(
@@ -225,12 +249,33 @@ def calculate_employee_payroll(
     earning_lines: Sequence[EarningLineInput],
     tips_amount: Decimal = Decimal("0"),
     bonus_amount: Decimal = Decimal("0"),
+    tip_credit_makeup_amount: Decimal | None = None,
 ) -> m.EmployeePayrollCalculation:
     """Validates each requested earning line's selected compensation term,
     persists one `EmployeePayrollCalculationEarningLine` per line, and
     persists the aggregated `EmployeePayrollCalculation` summary.
     `tips_amount`/`bonus_amount` are caller-supplied employee-summary input
     facts (default zero) — never computed here, never split into lines.
+    `tip_credit_makeup_amount` is an optional caller-supplied input; left
+    `None` ("to be completed by the Payroll Provider") when not given —
+    never defaulted to zero.
+
+    `incentive_recognized_amount` is never a caller-supplied argument — it
+    is always resolved from this Employee/run's already-persisted
+    `IncentiveContribution` rows (`incentives.calculate_recognized_incentive`),
+    so it always reflects whatever Contributions exist at calculation time.
+    `gross_pay = regular_pay + tips_amount + bonus_amount +
+    incentive_recognized_amount` — `tip_credit_makeup_amount` is preserved
+    for handoff but never composed into an RF-One-computed total (its
+    calculation belongs to the Payroll Provider).
+
+    Re-calling this for the same (run, employee) replaces the prior summary
+    and its earning lines (delete-then-insert), so an operator correcting
+    entries before approval never ends up with two summaries for one
+    employee in one run. Raises `CalculationRunNotEditableError` if the run
+    is no longer OPEN/CALCULATED (already APPROVED/EXPORTED/CLOSED) —
+    recalculating an approved run's employee is never allowed; its values
+    were already copied into an immutable `ApprovedCompensationSnapshot`.
 
     Raises `InvalidCompensationTermError` (a `ValueError`) if any requested
     line's `compensation_term_id` does not belong to this Employee, belongs
@@ -241,6 +286,11 @@ def calculate_employee_payroll(
 
     if not earning_lines:
         raise ValueError("calculate_employee_payroll requires at least one earning line")
+    if calculation_run.status not in _EDITABLE_STATUSES:
+        raise CalculationRunNotEditableError(
+            f"CompensationPreparationRun {calculation_run.id} is not editable "
+            f"(status={calculation_run.status!r})"
+        )
 
     resolved_lines: list[tuple[EarningLineInput, m.EmployeeCompensationTerm, Decimal, Decimal]] = []
     for line_input in earning_lines:
@@ -259,7 +309,29 @@ def calculate_employee_payroll(
 
     total_regular_hours = sum((li.hours for li, _t, _r, _p in resolved_lines), Decimal("0"))
     total_regular_pay = sum((line_pay for _li, _t, _r, line_pay in resolved_lines), Decimal("0"))
-    gross_pay = total_regular_pay + tips_amount + bonus_amount
+
+    contributions = incentive_helpers.list_incentive_contributions(
+        session, calculation_run_id=calculation_run.id, employee_id=employee_id,
+    )
+    incentive_recognized_amount = incentive_helpers.calculate_recognized_incentive(contributions)
+
+    gross_pay = total_regular_pay + tips_amount + bonus_amount + incentive_recognized_amount
+
+    existing = session.scalars(
+        select(m.EmployeePayrollCalculation).where(
+            m.EmployeePayrollCalculation.calculation_run_id == calculation_run.id,
+            m.EmployeePayrollCalculation.employee_id == employee_id,
+        )
+    ).first()
+    if existing is not None:
+        # Delete the child earning lines explicitly first — the
+        # relationship carries no delete-orphan cascade (this schema's own
+        # convention elsewhere), so deleting only the parent would try to
+        # null out the children's NOT NULL FK instead of removing them.
+        for existing_line in existing.earning_lines:
+            session.delete(existing_line)
+        session.delete(existing)
+        session.flush()
 
     summary = m.EmployeePayrollCalculation(
         calculation_run_id=calculation_run.id,
@@ -268,6 +340,8 @@ def calculate_employee_payroll(
         regular_pay=total_regular_pay,
         tips_amount=tips_amount,
         bonus_amount=bonus_amount,
+        incentive_recognized_amount=incentive_recognized_amount,
+        tip_credit_makeup_amount=tip_credit_makeup_amount,
         gross_pay=gross_pay,
     )
     session.add(summary)

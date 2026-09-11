@@ -59,6 +59,24 @@ to preserve any real data regardless.
 
 No other table, and no other column of `employee_compensation_terms`, is
 changed.
+
+PostgreSQL correction (2026-09-10): the table-rebuild approach above is
+SQLite-only motivated (SQLite cannot `ALTER`/`DROP CONSTRAINT` an unnamed
+unique constraint). On PostgreSQL it is actively wrong: `DROP TABLE
+employee_compensation_terms` fails once any other table holds an inbound FK
+to it (`employee_payroll_results.compensation_term_id`, and — within this
+same migration chain — `employee_payroll_calculation_earning_lines.
+compensation_term_id` added by the immediately preceding revision,
+`6ab2b01f7172`), and dropping/recreating it would in any case discard those
+FKs and any real data. PostgreSQL *can* address the existing unnamed unique
+constraint directly, because it auto-named it on creation
+(`employee_compensation_terms_employee_id_function_label_vali_key`,
+confirmed via `pg_constraint` against the live `rfone-dev` database) — so
+this migration now branches on dialect: SQLite keeps the original
+table-rebuild exactly as written above; PostgreSQL instead adds the column,
+foreign key and index in place with plain `ALTER TABLE`-style operations,
+and swaps the unique constraint for a same-shaped one covering
+`legal_entity_id`, without ever dropping the table itself.
 """
 from typing import Sequence, Union
 
@@ -98,6 +116,13 @@ _BASIS_CHECK = (
 
 def upgrade() -> None:
     """Upgrade schema."""
+    if op.get_bind().dialect.name == "sqlite":
+        _upgrade_sqlite()
+    else:
+        _upgrade_postgresql()
+
+
+def _upgrade_sqlite() -> None:
     op.create_table(
         '_employee_compensation_terms_new',
         sa.Column('id', sa.Integer(), primary_key=True),
@@ -141,8 +166,46 @@ def upgrade() -> None:
     )
 
 
+def _upgrade_postgresql() -> None:
+    op.add_column(
+        'employee_compensation_terms',
+        sa.Column('legal_entity_id', sa.Integer(), nullable=True),
+    )
+    op.create_foreign_key(
+        'fk_employee_compensation_terms_legal_entity_id',
+        'employee_compensation_terms',
+        'legal_entities',
+        ['legal_entity_id'],
+        ['id'],
+    )
+    op.create_index(
+        op.f('ix_employee_compensation_terms_legal_entity_id'), 'employee_compensation_terms',
+        ['legal_entity_id'], unique=False,
+    )
+    # ix_employee_compensation_terms_employee_id already exists (created by
+    # 47b3d9bb8108) — the table is never dropped on this path, so it is left
+    # untouched rather than recreated.
+    op.drop_constraint(
+        'employee_compensation_terms_employee_id_function_label_vali_key',
+        'employee_compensation_terms',
+        type_='unique',
+    )
+    op.create_unique_constraint(
+        'uq_ect_employee_legal_entity_function_valid_from',
+        'employee_compensation_terms',
+        ['employee_id', 'legal_entity_id', 'function_label', 'valid_from'],
+    )
+
+
 def downgrade() -> None:
     """Downgrade schema."""
+    if op.get_bind().dialect.name == "sqlite":
+        _downgrade_sqlite()
+    else:
+        _downgrade_postgresql()
+
+
+def _downgrade_sqlite() -> None:
     op.create_table(
         '_employee_compensation_terms_old',
         sa.Column('id', sa.Integer(), primary_key=True),
@@ -179,3 +242,26 @@ def downgrade() -> None:
         op.f('ix_employee_compensation_terms_employee_id'), 'employee_compensation_terms',
         ['employee_id'], unique=False,
     )
+
+
+def _downgrade_postgresql() -> None:
+    op.drop_constraint(
+        'uq_ect_employee_legal_entity_function_valid_from',
+        'employee_compensation_terms',
+        type_='unique',
+    )
+    op.create_unique_constraint(
+        'employee_compensation_terms_employee_id_function_label_vali_key',
+        'employee_compensation_terms',
+        ['employee_id', 'function_label', 'valid_from'],
+    )
+    op.drop_index(
+        op.f('ix_employee_compensation_terms_legal_entity_id'),
+        table_name='employee_compensation_terms',
+    )
+    op.drop_constraint(
+        'fk_employee_compensation_terms_legal_entity_id',
+        'employee_compensation_terms',
+        type_='foreignkey',
+    )
+    op.drop_column('employee_compensation_terms', 'legal_entity_id')

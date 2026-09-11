@@ -56,10 +56,16 @@ RF-One is the source of the **economic composition and its approval**, never of 
 ```text
 This module (Compensation / Income Composition)  →  Approved Compensation Snapshot / Approved Pay Data
                                                     →  Payroll Handoff Connector (automated OR manual — see
-                                                        PAYROLL_HANDOFF_CONNECTOR.md)
+                                                        PAYROLL_HANDOFF_CONNECTOR.md; V1 manual implementation
+                                                        now built, see "Implementation status" below)
                                                     →  External Payroll Provider
-                                                    →  Administration/Payroll (what the provider actually did)
-                                                    →  Provider Reconciliation (not defined here)
+                                                    →  Administration/Payroll (what the provider actually did,
+                                                        recorded manually or by import into the SAME
+                                                        PayrollRun/EmployeePayrollResult/PayrollEarningFact
+                                                        model this module always deferred to)
+                                                    →  Compensation Reconciliation (V1: semantically comparable
+                                                        components only — never Provider net pay against a
+                                                        Compensation total; see "Implementation status")
 ```
 
 Neither module redefines or duplicates the other. `Administration/Payroll` never composes or approves an economic amount; this module never records or reconciles what a provider actually paid. The **Payroll Handoff Connector** — see [PAYROLL_HANDOFF_CONNECTOR.md](PAYROLL_HANDOFF_CONNECTOR.md) — is the canonical boundary in between: it transports/maps Approved Compensation Data to whatever the Payroll Provider requires, automated or a human operator alike, and never decides or changes the approved values.
@@ -73,6 +79,24 @@ Neither module redefines or duplicates the other. `Administration/Payroll` never
 - [PAYROLL_HANDOFF_CONNECTOR.md](PAYROLL_HANDOFF_CONNECTOR.md) — the canonical boundary between Approved Compensation Data and the external Payroll Provider, valid whether automated or a manual human handoff.
 
 This is a **functional** specification only — not a database specification, not an API specification, not a UI specification, not a Payroll Provider integration specification, not a payroll-tax engine specification.
+
+---
+
+## Implementation status
+
+**The Approval + Approved Compensation Snapshot foundation (§19-20) is implemented** (Compensation V1 Task 1) — `CompensationPreparationRun` can be approved by an authorized actor reference, producing an immutable `ApprovedCompensationSnapshot`/`ApprovedEmployeeCompensationResult`/`ApprovedEmployeeEarningLine` set of rows (`03 Software/RF-One Data Store/rfone_data_store/payroll_calculation/approval.py`).
+
+**Operational V1 with manual, bidirectional Payroll Provider communication is now implemented** (Compensation V1 — manual Payroll Handoff task):
+
+- **Incentive Contributions and the Recognized Incentive (§14)** are implemented as a manual-entry capability — no Event Log/Incentive Rule engine exists yet (§10-13 remain conceptual/documented only), but a human can enter positive/negative Incentive Contributions per Employee per run, and `incentive_recognized_amount = MAX(0, SUM(contributions))` flows into the calculation, the approved snapshot (with full positive/negative detail preserved, never only the total), and the export view (`rfone_data_store/payroll_calculation/incentives.py`).
+- **`tip_credit_makeup_amount`** is now a preservable field (nullable — `NULL` means "to be completed by the Payroll Provider", never a false zero); its calculation still belongs entirely to the Payroll Provider (§22) and is never computed by RF-One.
+- **Compensation states now include `EXPORTED`/`CLOSED`** in the `payroll_calculation_runs.status` constraint (`EXPORTED` is reached automatically on the first recorded communication; nothing transitions a run to `CLOSED` yet — that remains a future operational decision).
+- **The manual Payroll Handoff Connector (`PAYROLL_HANDOFF_CONNECTOR.md`)** is implemented: `rfone_data_store/payroll_calculation/export.py` builds a per-Employee manual export view (flagging, never inventing, a missing Payroll Provider employee-ID mapping) and records a human operator's confirmation that communication to the Provider actually happened (`CompensationExportConfirmation`) — never itself evidence that payroll was processed or paid.
+- **The manual return of the Payroll Provider's result, and reconciliation, are implemented** (`rfone_data_store/payroll_calculation/reconciliation.py`) — reusing the EXISTING Administration/Payroll return model (`PayrollRun`/`EmployeePayrollResult`/`PayrollEarningFact`) rather than a new one. Reconciliation compares only semantically comparable components (Regular Pay to Regular Pay, Tips to Tips, Recognized Incentive to a Provider-reported bonus/incentive line) and refuses to compare across Legal Entities; it never compares the Provider's net pay to a Compensation total. Differences, missing components and Provider-added components are all surfaced explicitly and can be annotated (note + OPEN/EXPLAINED/ACCEPTED resolution) without ever overwriting the originally approved values.
+- **Authorized Adjustments remain out of scope** (conceptual/documented only) — not part of this task.
+- The operational UI is `03 Software/RF-One Web/compensation_routes.py` (replacing the former "Work in progress" page), calling the service layer above directly with no duplicated business logic.
+
+This closes the previous "optional Connector return / manual recording" framing in `PAYROLL_HANDOFF_CONNECTOR.md` for V1 — the manual return path is no longer deferred.
 
 ---
 
