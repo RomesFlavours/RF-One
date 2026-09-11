@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block page_title %}RF-One · Training — Trainer area{% endblock %}
+{% block page_subtitle %}Trainer area — create students, assign pills, review results.{% endblock %}
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    <div class="{{ 'error' if category == 'error' else 'info' }}">{{ message }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
+  <div>
+    <h2 style="margin:0;">Trainer: {{ account.acting_identity.display_name }}</h2>
+  </div>
+  <form method="post" action="{{ url_for('training.logout') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit">Log out</button>
+  </form>
+</div>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h2 style="margin:0;">Students</h2>
+    <a class="btn" href="{{ url_for('training.trainer_new_student') }}">Add student</a>
+  </div>
+  {% if not students %}
+    <p class="empty">No students yet.</p>
+  {% else %}
+  <table>
+    <thead><tr><th>Name</th><th>Username</th><th>Needs</th><th></th></tr></thead>
+    <tbody>
+      {% for row in students %}
+      <tr>
+        <td>{{ row.account.acting_identity.display_name }}</td>
+        <td>{{ row.account.username }}</td>
+        <td>{{ row.need_count }}</td>
+        <td><a href="{{ url_for('training.trainer_student_detail', account_id=row.account.id) }}">Open</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block page_title %}RF-One · Training — {{ pill.title }}{% endblock %}
+{% block page_subtitle %}Pill · {{ pill.title }}{% endblock %}
+{% block content %}
+
+<p><a href="{{ url_for('training.home') }}">&larr; Your training path</a></p>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:1rem;">
+    <h2 style="margin-top:0;">{{ pill.title }}</h2>
+    {% if status == 'completed' %}<span class="badge ok">{{ status_label }}</span>
+    {% elif status == 'in_progress' %}<span class="badge warn">{{ status_label }}</span>
+    {% else %}<span class="badge">{{ status_label }}</span>{% endif %}
+  </div>
+  <p class="muted"><strong>Learning objectives:</strong> {{ pill.learning_objectives }}</p>
+</div>
+
+{% if dish %}
+<div class="card">
+  {% if dish.image %}<img src="{{ dish.image }}" alt="{{ dish.name }}" style="max-width:320px;border-radius:8px;display:block;margin-bottom:1rem;">
+  {% else %}<div class="muted" style="max-width:320px;padding:2rem;border:1px dashed var(--olive-300);border-radius:8px;margin-bottom:1rem;text-align:center;">Photo not available for this dish.</div>{% endif %}
+  <h2 style="margin-top:0;">{{ dish.name }}</h2>
+  <p class="muted">{{ dish.category }} · {{ dish.lead }}</p>
+  <p>{{ dish.description }}</p>
+
+  <h2>Ingredients</h2>
+  <ul>{% for i in dish.ingredients %}<li>{{ i }}</li>{% endfor %}</ul>
+
+  <h2>Preparation notes</h2>
+  <p>{{ dish.preparation }}</p>
+
+  <h2>How to sell it</h2>
+  <p>{{ dish.sell }}</p>
+  {% for phrase in dish.phrases %}<p class="muted" style="font-style:italic;">“{{ phrase }}”</p>{% endfor %}
+
+  <h2>Current wine list pairings</h2>
+  <table>
+    <thead><tr><th>Wine</th><th>Why</th></tr></thead>
+    <tbody>
+      {% for wine in dish.wines %}<tr><td>{{ wine[0] }}</td><td>{{ wine[1] }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Allergens &amp; dietary warnings</h2>
+  <p><strong>Allergens noted:</strong> {{ dish.allergens | join(", ") }}</p>
+  <p>{{ dish.checks }}</p>
+  <p>{{ dish.restrictions }}</p>
+</div>
+{% else %}
+<div class="card"><p class="error">Dish content could not be loaded for this pill.</p></div>
+{% endif %}
+
+<div class="card" id="self-check">
+  <h2 style="margin-top:0;">Practice check</h2>
+  <p class="muted">Practice check — This is not a formal assessment. Use it to see what you’ve learned and what to review.</p>
+  <div id="self-check-questions"></div>
+  <button type="button" id="self-check-reset" class="btn" style="margin-top:.8rem;">Try again</button>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">Final quiz</h2>
+  <p class="muted">Graded — 3 questions, 1 point each. Answers and explanations are shown only after you submit.</p>
+  <a class="btn" href="{{ url_for('training.final_quiz', assignment_id=assignment.id) }}">
+    {% if attempts %}Take the final quiz again{% else %}Take the final quiz{% endif %}
+  </a>
+  {% if attempts %}
+  <h2>Your attempts</h2>
+  <table>
+    <thead><tr><th>Date</th><th>Score</th></tr></thead>
+    <tbody>
+      {% for a in attempts %}
+      <tr>
+        <td><a href="{{ url_for('training.attempt_result', attempt_id=a.id) }}">{{ a.submitted_at.strftime('%Y-%m-%d %H:%M') }} UTC</a></td>
+        <td>{{ a.points_earned }} / {{ a.points_possible }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+<script id="self-check-data" type="application/json">{{ self_check_questions | tojson }}</script>
+<script>
+(function () {
+  var questions = JSON.parse(document.getElementById('self-check-data').textContent);
+  var container = document.getElementById('self-check-questions');
+  var letters = ['A', 'B', 'C'];
+
+  function render() {
+    container.innerHTML = '';
+    questions.forEach(function (q, qi) {
+      var block = document.createElement('div');
+      block.style.marginBottom = '1.2rem';
+      var title = document.createElement('p');
+      title.innerHTML = '<strong>' + (qi + 1) + '. ' + q.prompt + '</strong>';
+      block.appendChild(title);
+      var feedback = document.createElement('p');
+      feedback.style.display = 'none';
+      feedback.className = 'muted';
+      q.options.forEach(function (opt, oi) {
+        var label = document.createElement('label');
+        label.style.display = 'block';
+        label.style.fontWeight = 'normal';
+        label.style.marginBottom = '.3rem';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = letters[oi] + '. ' + opt;
+        btn.style.marginBottom = '.3rem';
+        btn.style.background = '#fff';
+        btn.style.color = 'var(--ink)';
+        btn.style.border = '1px solid var(--olive-300)';
+        btn.addEventListener('click', function () {
+          var correct = oi === q.correct_index;
+          feedback.style.display = 'block';
+          feedback.textContent = (correct ? 'Correct. ' : 'Not quite. ') + q.explanation;
+          feedback.style.color = correct ? 'var(--ok)' : 'var(--bad)';
+        });
+        label.appendChild(btn);
+        block.appendChild(label);
+      });
+      block.appendChild(feedback);
+      container.appendChild(block);
+    });
+  }
+
+  document.getElementById('self-check-reset').addEventListener('click', render);
+  render();
+})();
+</script>
+{% endblock %}

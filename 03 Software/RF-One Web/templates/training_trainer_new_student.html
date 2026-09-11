@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block page_title %}Add Training student · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+<h1>Add Training student</h1>
+<p class="muted">
+  Creates an RF-One account with access to Training only (student role) — the password set here is
+  the student's real, sole RF-One login password.
+</p>
+
+<div class="card">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" required autofocus>
+    </div>
+    <div class="field-row">
+      <label for="display_name">Display name</label>
+      <input type="text" id="display_name" name="display_name" required>
+    </div>
+    <div class="field-row">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" required>
+      <p class="muted">A verification code will be emailed here — the student confirms it from their own Profile page.</p>
+    </div>
+    <div class="field-row">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="new-password" required>
+    </div>
+    <div class="field-row">
+      <label for="password_confirm">Confirm password</label>
+      <input type="password" id="password_confirm" name="password_confirm" autocomplete="new-password" required>
+    </div>
+    <button type="submit">Create student</button>
+  </form>
+</div>
+{% endblock %}

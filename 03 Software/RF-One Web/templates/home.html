@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block page_title %}RF-One{% endblock %}
+{% block content %}
+<div class="btn-row" style="justify-content: flex-end;">
+  <a href="{{ url_for('profile') }}" class="btn btn-secondary">Profile</a>
+  <form method="post" action="{{ url_for('logout') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-secondary">Log out</button>
+  </form>
+</div>
+
+<h1>Welcome, {{ account.display_name }}</h1>
+
+<h2>Your Domains</h2>
+{% if domains_view %}
+  <div class="domain-grid">
+    {% for domain in domains_view %}
+      {% if domain.link %}
+        <a class="domain-card" href="{{ domain.link }}">
+          <div class="domain-name">{{ domain.display_name }}</div>
+          <div class="domain-description">{{ domain.description }}</div>
+        </a>
+      {% else %}
+        <div class="domain-card domain-card-unavailable" aria-disabled="true">
+          <div class="domain-name">{{ domain.display_name }}</div>
+          <div class="domain-description">{{ domain.description }}</div>
+          <div class="domain-unavailable-label">Non ancora disponibile</div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="empty">No RF-One Domains are currently assigned to this account.</p>
+{% endif %}
+
+{% if is_training_trainer %}
+  <p><a href="{{ url_for('training_trainer_students') }}">Manage Training students</a></p>
+{% endif %}
+
+{% if account.is_admin %}
+  <h2>Administration</h2>
+  <div class="domain-grid">
+    <a class="domain-card" href="{{ url_for('admin_accounts') }}">
+      <div class="domain-name">Accounts</div>
+      <div class="domain-description">Create and manage RF-One accounts and their Domain access.</div>
+    </a>
+  </div>
+{% endif %}
+{% endblock %}

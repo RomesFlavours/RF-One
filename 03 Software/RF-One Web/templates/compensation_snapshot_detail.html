@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block page_title %}Approved Snapshot {{ snapshot.id }} · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('compensation_run_detail', run_id=run.id) }}">&larr; Run #{{ run.id }}</a></p>
+<h1>Approved Compensation Snapshot #{{ snapshot.id }}</h1>
+<p class="muted">
+  {{ legal_entity.legal_name if legal_entity else snapshot.legal_entity_id }} &middot;
+  {{ snapshot.period_start.date() }} &ndash; {{ snapshot.period_end.date() }} &middot;
+  Approved by {{ snapshot.approved_by }} on {{ snapshot.approved_at.date() }} &middot;
+  Run status <span class="badge {{ 'ok' if run.status in ('EXPORTED', 'CLOSED') else 'warn' }}">{{ run.status }}</span>
+</p>
+
+<div class="card">
+  <h2>Manual export view (for transcription into the Payroll Provider)</h2>
+  <div class="btn-row">
+    <a class="btn" href="{{ url_for('compensation_snapshot_export_csv', snapshot_id=snapshot.id) }}">Download CSV</a>
+  </div>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Employee</th><th>Provider ID</th><th>Regular Hours</th><th>Regular Pay</th>
+          <th>Tips</th><th>Recognized Incentive</th><th>Tip Credit Make-Up</th><th>Bonus</th><th>Gross Pay</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td>{{ row.employee_display_name }}</td>
+            <td>
+              {% if row.provider_mapping_status == 'RESOLVED' %}
+                {{ row.provider_external_employee_key }}
+              {% else %}
+                <span class="badge warn">MISSING</span>
+              {% endif %}
+            </td>
+            <td>{{ row.regular_hours }}</td>
+            <td>${{ row.regular_pay }}</td>
+            <td>${{ row.tips_amount }}</td>
+            <td>${{ row.incentive_recognized_amount }}</td>
+            <td>{{ ('$' ~ row.tip_credit_makeup_amount) if row.tip_credit_makeup_amount is not none else 'To complete (Payroll Provider)' }}</td>
+            <td>${{ row.bonus_amount }}</td>
+            <td>${{ row.gross_pay }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Communication to the Payroll Provider</h2>
+  {% if confirmations %}
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Communicated by</th><th>Communicated at</th><th>Reference</th><th>Note</th></tr></thead>
+        <tbody>
+          {% for confirmation in confirmations %}
+            <tr>
+              <td>{{ confirmation.communicated_by }}</td>
+              <td>{{ confirmation.communicated_at }}</td>
+              <td>{{ confirmation.reference or '' }}</td>
+              <td class="muted">{{ confirmation.note or '' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No communication has been recorded yet.</p>
+  {% endif %}
+  <p class="muted">Recording a confirmation does not mean payroll was processed or paid — it only records that the approved data was handed to the Payroll Provider.</p>
+
+  <form method="post" action="{{ url_for('compensation_confirm_communication', snapshot_id=snapshot.id) }}" class="compact-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="line-slot-grid">
+      <div><label>Communicated on</label><input type="date" name="communicated_at"></div>
+      <div><label>Reference</label><input type="text" name="reference" placeholder="e.g. ADP batch #42"></div>
+      <div><label>Note</label><input type="text" name="note"></div>
+    </div>
+    <button type="submit">Confirm communication</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Payroll Provider result &amp; reconciliation</h2>
+  {% if reconciliations %}
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Reconciliation</th><th>Created by</th><th>Created at</th><th></th></tr></thead>
+        <tbody>
+          {% for recon in reconciliations %}
+            <tr>
+              <td>#{{ recon.id }}</td>
+              <td>{{ recon.created_by }}</td>
+              <td>{{ recon.created_at }}</td>
+              <td><a href="{{ url_for('compensation_reconciliation_detail', reconciliation_id=recon.id) }}">View</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No Provider result has been recorded yet.</p>
+  {% endif %}
+
+  <h2>Record the Payroll Provider's result</h2>
+  {% if not restaurants %}
+    <p class="muted">No Restaurant is on file for this Legal Entity yet — a Restaurant is required to record a Provider result.</p>
+  {% elif not source_systems %}
+    <p class="muted">No source system is on file yet.</p>
+  {% else %}
+    <form method="post" action="{{ url_for('compensation_record_provider_result', snapshot_id=snapshot.id) }}" class="compact-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="line-slot-grid">
+        <div>
+          <label>Restaurant</label>
+          <select name="restaurant_id" required>
+            {% for restaurant in restaurants %}
+              <option value="{{ restaurant.id }}">{{ restaurant.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Source system</label>
+          <select name="source_system_id" required>
+            {% for source_system in source_systems %}
+              <option value="{{ source_system.id }}">{{ source_system.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div><label>Run type</label>
+          <select name="run_type"><option value="REGULAR">Regular</option><option value="SPECIAL">Special</option></select>
+        </div>
+      </div>
+      <div class="line-slot-grid">
+        <div><label>Period start</label><input type="date" name="period_start" value="{{ snapshot.period_start.date() }}"></div>
+        <div><label>Period end</label><input type="date" name="period_end" value="{{ snapshot.period_end.date() }}"></div>
+        <div><label>Pay date</label><input type="date" name="pay_date" required></div>
+        <div><label>Provider reference</label><input type="text" name="provider_reference"></div>
+      </div>
+
+      <h2>Reported values per Employee</h2>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Employee</th><th>Regular Pay</th><th>Tips</th><th>Bonus/Incentive</th><th>Other label</th><th>Other amount</th></tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td>{{ row.employee_display_name }}</td>
+                <td><input type="number" step="0.01" name="regular_pay_{{ row.employee_id }}"></td>
+                <td><input type="number" step="0.01" name="tips_{{ row.employee_id }}"></td>
+                <td><input type="number" step="0.01" name="incentive_{{ row.employee_id }}"></td>
+                <td><input type="text" name="other_label_{{ row.employee_id }}"></td>
+                <td><input type="number" step="0.01" name="other_amount_{{ row.employee_id }}"></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="muted">Leave fields blank for values not reported by the Provider. Reconciliation compares only matching components — never the Provider's net pay against a Compensation total.</p>
+      <button type="submit">Record result and reconcile</button>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

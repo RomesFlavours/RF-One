@@ -1,0 +1,259 @@
+/* RF-One Web — the general RF-One shell's visual identity. Same palette
+   and conventions as Tips/Training's own `rf-one.css` (olive/green family,
+   white content areas, no gradients, no dark theme, no animation) — kept
+   as its own file per-application, not a shared stylesheet, consistent
+   with how Tips and Training each already keep their own copy. */
+
+:root {
+  --olive-900: #2f3a1f;
+  --olive-700: #55642f;
+  --olive-600: #64753a;
+  --olive-500: #7c8f52;
+  --olive-300: #c7d1a8;
+  --olive-150: #e8edd8;
+  --olive-050: #f6f8ef;
+
+  --paper: #ffffff;
+  --surface: #ffffff;
+  --ink: #24271c;
+  --muted: #6e735e;
+  --line: var(--olive-300);
+
+  --ok: #2e7d4f;
+  --bad: #a33b2e;
+
+  --radius: 10px;
+  --shadow-card: 0 1px 2px rgba(47, 58, 31, 0.06);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  margin: 0;
+  padding: 0 2rem 3rem;
+}
+
+.wrap { max-width: 780px; margin: 0 auto; }
+
+/* ---------------------------------------------------------------------
+   Header / branding
+   --------------------------------------------------------------------- */
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1.5rem 0 1.1rem;
+  border-bottom: 1px solid var(--olive-300);
+  margin-bottom: 1.5rem;
+}
+
+.brand { display: flex; align-items: center; gap: .7rem; text-decoration: none; }
+
+.brand-wordmark {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--olive-900);
+  letter-spacing: .01em;
+}
+
+.brand-name-group { display: flex; flex-direction: column; line-height: 1.15; }
+
+.brand-suffix {
+  font-size: .72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-top: .15rem;
+}
+
+.brand-logo { height: 34px; width: auto; }
+
+.subtitle { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; font-size: .9rem; }
+.subtitle:empty { display: none; }
+
+/* ---------------------------------------------------------------------
+   Headings / links
+   --------------------------------------------------------------------- */
+
+h1 { font-size: 1.4rem; margin-bottom: .25rem; color: var(--olive-900); }
+h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; color: var(--olive-900); }
+a { color: var(--olive-700); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---------------------------------------------------------------------
+   Content containers
+   --------------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--olive-300);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-card);
+}
+
+/* ---------------------------------------------------------------------
+   Domain cards (Home page)
+   --------------------------------------------------------------------- */
+
+.domain-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.domain-card {
+  display: block;
+  min-width: 180px;
+  flex: 1 1 180px;
+  border: 1px solid var(--olive-300);
+  border-radius: var(--radius);
+  padding: 1rem 1.2rem;
+  background: var(--olive-050);
+  color: var(--olive-900);
+  text-decoration: none;
+}
+.domain-card:hover { background: var(--olive-150); text-decoration: none; }
+.domain-card .domain-name { font-weight: 700; font-size: 1rem; }
+.domain-card .domain-description { font-size: .8rem; color: var(--muted); margin-top: .3rem; }
+
+.domain-card-unavailable {
+  background: var(--surface);
+  color: var(--muted);
+  cursor: default;
+}
+.domain-card-unavailable:hover { background: var(--surface); }
+.domain-card-unavailable .domain-name { color: var(--muted); }
+.domain-unavailable-label {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  margin-top: .5rem;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------
+   Forms
+   --------------------------------------------------------------------- */
+
+label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: .25rem; }
+
+input[type=text], input[type=password], input[type=number], input[type=date],
+input[type=email], select, textarea {
+  width: 100%;
+  max-width: 360px;
+  padding: .45rem .6rem;
+  border: 1px solid var(--olive-300);
+  border-radius: 6px;
+  font-size: .85rem;
+  background: var(--surface);
+  color: var(--ink);
+  margin-bottom: 1rem;
+  font-family: inherit;
+}
+textarea { max-width: 100%; min-height: 3.5rem; resize: vertical; }
+input:focus, select:focus, textarea:focus, button:focus, .btn:focus {
+  outline: 2px solid var(--olive-500);
+  outline-offset: 1px;
+}
+
+.field-row { margin-bottom: 1rem; }
+
+/* ---------------------------------------------------------------------
+   Compact inline forms (table cells / grouped rows) — narrower inputs,
+   no bottom margin, used by Compensation's calculation/reconciliation rows.
+   --------------------------------------------------------------------- */
+
+.compact-form input, .compact-form select { max-width: 140px; margin-bottom: .4rem; }
+.compact-form label { margin-bottom: .15rem; }
+.line-slot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: .6rem; align-items: end; }
+.badge.warn { background: #fdf3e2; color: #8a5a10; border-color: #ecd6a5; }
+.subsection { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--olive-150); }
+
+/* ---------------------------------------------------------------------
+   Action buttons
+   --------------------------------------------------------------------- */
+
+button, .btn {
+  background: var(--olive-700);
+  color: white;
+  border: none;
+  padding: .6rem 1.2rem;
+  border-radius: 6px;
+  font-size: .9rem;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+button:hover, .btn:hover { background: var(--olive-600); color: white; text-decoration: none; }
+button:disabled, .btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-row { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: 1rem; }
+.btn-secondary { background: var(--olive-150); color: var(--olive-900); }
+.btn-secondary:hover { background: var(--olive-300); color: var(--olive-900); }
+
+/* ---------------------------------------------------------------------
+   Tables
+   --------------------------------------------------------------------- */
+
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left;
+  font-size: .72rem;
+  color: var(--olive-900);
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  padding: .55rem .5rem;
+  background: var(--olive-150);
+  border-bottom: 1px solid var(--olive-300);
+}
+th:first-child { border-top-left-radius: 6px; }
+th:last-child { border-top-right-radius: 6px; }
+td { padding: .55rem .5rem; border-bottom: 1px solid var(--olive-150); font-size: .85rem; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--olive-050); }
+
+/* ---------------------------------------------------------------------
+   Domain access checklist
+   --------------------------------------------------------------------- */
+
+.access-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: .8rem 0;
+  border-bottom: 1px solid var(--olive-150);
+}
+.access-row:last-child { border-bottom: none; }
+.access-row .access-name { font-weight: 600; min-width: 140px; }
+.access-row input[type=checkbox] { margin-right: .4rem; }
+.access-row input[type=text] { display: inline-block; width: auto; margin-bottom: 0; }
+
+/* ---------------------------------------------------------------------
+   Status / error / info messages
+   --------------------------------------------------------------------- */
+
+.muted { color: var(--muted); }
+.empty { color: var(--muted); font-size: .9rem; padding: 1rem 0; }
+
+.error {
+  background: #fbeaea; border: 1px solid #e2a8a0; color: #7a2b21;
+  padding: .6rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: .88rem;
+}
+.info {
+  background: var(--olive-050); border: 1px solid var(--olive-300); color: var(--olive-900);
+  padding: .6rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: .88rem;
+}
+
+.badge { display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .72rem; font-weight: 600; border: 1px solid var(--olive-300); }
+.badge.ok { background: #e7f3ea; color: var(--ok); border-color: #bcdcc6; }
+.badge.bad { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }

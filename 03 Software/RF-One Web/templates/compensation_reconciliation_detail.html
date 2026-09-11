@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block page_title %}Reconciliation {{ recon.id }} · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('compensation_snapshot_detail', snapshot_id=snapshot.id) }}">&larr; Approved Snapshot #{{ snapshot.id }}</a></p>
+<h1>Reconciliation #{{ recon.id }}</h1>
+<p class="muted">
+  Approved Snapshot #{{ snapshot.id }} vs. Payroll Provider result (PayrollRun #{{ payroll_run.id }}, pay date {{ payroll_run.pay_date.date() }})
+  &middot; Created by {{ recon.created_by }} on {{ recon.created_at }}
+</p>
+
+<div class="card">
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Employee</th><th>Component</th><th>RF-One (approved)</th><th>Provider (reported)</th>
+          <th>Status</th><th>Resolution</th><th>Note</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in recon.lines %}
+          <tr>
+            <td>{{ employees.get(line.employee_id).display_name if employees.get(line.employee_id) else line.employee_id }}</td>
+            <td>{{ line.component_label }}</td>
+            <td>{{ ('$' ~ line.rfone_value) if line.rfone_value is not none else '&mdash;' }}</td>
+            <td>{{ ('$' ~ line.provider_value) if line.provider_value is not none else '&mdash;' }}</td>
+            <td>
+              <span class="badge {{ 'ok' if line.status == 'MATCH' else 'warn' }}">{{ line.status }}</span>
+            </td>
+            <td>
+              <span class="badge {{ 'ok' if line.resolution_status == 'ACCEPTED' else ('warn' if line.resolution_status == 'EXPLAINED' else 'bad') }}">{{ line.resolution_status }}</span>
+              {% if line.resolved_by %}<div class="muted">by {{ line.resolved_by }}</div>{% endif %}
+            </td>
+            <td class="muted">{{ line.note or '' }}</td>
+            <td>
+              <form method="post" action="{{ url_for('compensation_annotate_reconciliation_line', reconciliation_id=recon.id, line_id=line.id) }}" class="compact-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="text" name="note" placeholder="Explanation" value="{{ line.note or '' }}">
+                <select name="resolution_status">
+                  <option value="">Leave as {{ line.resolution_status }}</option>
+                  <option value="OPEN">OPEN</option>
+                  <option value="EXPLAINED">EXPLAINED</option>
+                  <option value="ACCEPTED">ACCEPTED</option>
+                </select>
+                <button type="submit" class="btn-secondary">Save</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not recon.lines %}
+    <p class="empty">No comparable components on either side.</p>
+  {% endif %}
+</div>
+{% endblock %}

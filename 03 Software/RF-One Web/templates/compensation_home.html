@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block page_title %}Compensation · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+<h1>Compensation</h1>
+<p class="muted">Prepare, review and approve compensation, then communicate it to the Payroll Provider and record its result — manual handoff in both directions (V1).</p>
+
+<div class="btn-row">
+  <a class="btn" href="{{ url_for('compensation_run_new') }}">New preparation run</a>
+</div>
+
+<div class="card">
+  {% if runs %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Legal Entity</th>
+            <th>Period</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in runs %}
+            <tr>
+              <td>{{ legal_entities.get(run.legal_entity_id).legal_name if legal_entities.get(run.legal_entity_id) else run.legal_entity_id }}</td>
+              <td>{{ run.period_start.date() }} &ndash; {{ run.period_end.date() }}</td>
+              <td>
+                <span class="badge {{ 'ok' if run.status in ('APPROVED', 'EXPORTED', 'CLOSED') else ('warn' if run.status == 'CALCULATED' else 'bad') }}">{{ run.status }}</span>
+              </td>
+              <td>
+                <a href="{{ url_for('compensation_run_detail', run_id=run.id) }}">Open</a>
+                {% set snapshot = snapshot_by_run.get(run.id) %}
+                {% if snapshot %}
+                  &middot; <a href="{{ url_for('compensation_snapshot_detail', snapshot_id=snapshot.id) }}">Approved snapshot</a>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No compensation preparation runs yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

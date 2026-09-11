@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{% block page_title %}RF-One{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}">
+</head>
+<body>
+<div class="wrap">
+  <header class="site-header">
+    <!-- The general shell's own header: "Rome's Flavours · WP" identifies
+         RF-One's web presence generally, never a single Domain's own brand
+         (that appears only once a Domain is actually entered — see the
+         task's own "NOT: RF-ONE · TIPS"). -->
+    <a href="{{ url_for('home') }}" class="brand">
+      <span class="brand-name-group">
+        <span class="brand-wordmark">Rome's Flavours · WP</span>
+        <span class="brand-suffix">RF-ONE</span>
+      </span>
+    </a>
+    {% if brand_logo_filename %}
+      <img class="brand-logo" src="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}" alt="RF-One">
+    {% endif %}
+  </header>
+
+  <p class="subtitle">{% block page_subtitle %}{% endblock %}</p>
+
+  {% with messages = get_flashed_messages(with_categories=True) %}
+    {% for category, message in messages %}
+      <div class="{{ 'error' if category == 'error' else 'info' }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block page_title %}New Compensation Run · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('compensation_home') }}">&larr; Compensation</a></p>
+<h1>New compensation preparation run</h1>
+
+<div class="card">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="field-row">
+      <label for="legal_entity_id">Legal Entity</label>
+      <select id="legal_entity_id" name="legal_entity_id" required>
+        <option value="">Select a Legal Entity&hellip;</option>
+        {% for legal_entity in legal_entities %}
+          <option value="{{ legal_entity.id }}">{{ legal_entity.legal_name }}</option>
+        {% endfor %}
+      </select>
+      {% if not legal_entities %}
+        <p class="muted">No active Legal Entity is on file yet.</p>
+      {% endif %}
+    </div>
+
+    <div class="field-row">
+      <label for="period_start">Period start</label>
+      <input type="date" id="period_start" name="period_start" required>
+    </div>
+
+    <div class="field-row">
+      <label for="period_end">Period end</label>
+      <input type="date" id="period_end" name="period_end" required>
+    </div>
+
+    <button type="submit">Create run</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block page_title %}Log in · RF-One{% endblock %}
+{% block content %}
+<div class="card" style="max-width: 360px; margin: 2rem auto;">
+  <h1>Log in</h1>
+  <form method="post" action="{{ url_for('login') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+    </div>
+    <div class="field-row">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit">Log in</button>
+  </form>
+  <p class="muted"><a href="{{ url_for('forgot_password') }}">Forgot your password?</a></p>
+</div>
+{% endblock %}

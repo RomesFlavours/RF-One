@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block page_title %}Domain Access · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_accounts') }}">&larr; Accounts</a></p>
+<h1>Domain Access</h1>
+<p class="muted">{{ account.display_name }} ({{ account.username }})</p>
+
+<div class="card">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for row in domains_view %}
+      <div class="access-row">
+        <span class="access-name">{{ row.domain.display_name }}</span>
+        <label style="display: inline-flex; align-items: center; margin: 0;">
+          <input type="checkbox" name="enabled_{{ row.domain.code }}"
+                 {{ "checked" if row.access and row.access.enabled }}>
+          Enabled
+        </label>
+        <label style="display: inline-flex; align-items: center; gap: .4rem; margin: 0;">
+          Role:
+          <input type="text" name="role_{{ row.domain.code }}"
+                 value="{{ row.access.role_code if row.access and row.access.role_code else '' }}"
+                 placeholder="optional">
+        </label>
+      </div>
+    {% endfor %}
+    <div class="btn-row">
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

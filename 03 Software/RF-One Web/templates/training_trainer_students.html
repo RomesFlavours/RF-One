@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block page_title %}Students · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+<h1>Students</h1>
+<p><a href="{{ url_for('training_trainer_new_student') }}">+ Add Training student</a></p>
+
+<div class="card">
+  {% if students %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Display name</th><th>Username</th><th>Reset password</th></tr>
+        </thead>
+        <tbody>
+          {% for student in students %}
+            <tr>
+              <td>{{ student.display_name }}</td>
+              <td>{{ student.username }}</td>
+              <td>
+                <form method="post" action="{{ url_for('training_trainer_reset_student_password', account_id=student.id) }}"
+                      style="display:flex; gap:.4rem; align-items:center;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="password" name="password" placeholder="New password" required style="margin-bottom:0;">
+                  <input type="password" name="password_confirm" placeholder="Confirm" required style="margin-bottom:0;">
+                  <button type="submit">Reset</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No students yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

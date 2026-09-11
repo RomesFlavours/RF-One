@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block page_title %}RF-One · Training — Add student{% endblock %}
+{% block page_subtitle %}Trainer area — add a new student{% endblock %}
+{% block content %}
+
+<p><a href="{{ url_for('training.trainer_home') }}">&larr; Trainer area</a></p>
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    <div class="{{ 'error' if category == 'error' else 'info' }}">{{ message }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="card" style="max-width:420px;">
+  <h2 style="margin-top:0;">Add student</h2>
+  <form method="post" action="{{ url_for('training.trainer_new_student') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="margin-bottom:.9rem;">
+      <label for="display_name">Display name</label>
+      <input type="text" id="display_name" name="display_name" required style="width:100%;">
+    </div>
+    <div style="margin-bottom:.9rem;">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" required style="width:100%;">
+    </div>
+    <div style="margin-bottom:1.1rem;">
+      <label for="password">Initial password</label>
+      <input type="text" id="password" name="password" required style="width:100%;">
+      <p class="muted" style="font-size:.76rem;margin:.3rem 0 0;">Share this with the student directly (in person or by voice) — there is no email/SMS delivery.</p>
+    </div>
+    <button type="submit">Create student</button>
+  </form>
+</div>
+{% endblock %}

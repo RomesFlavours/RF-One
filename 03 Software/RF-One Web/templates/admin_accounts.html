@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block page_title %}Accounts · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+<h1>Accounts</h1>
+
+<div class="btn-row">
+  <a class="btn" href="{{ url_for('admin_account_new') }}">Create account</a>
+</div>
+
+<div class="card">
+  {% if accounts %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Display name</th>
+            <th>Username</th>
+            <th>Status</th>
+            <th>Admin</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for account in accounts %}
+            <tr>
+              <td>{{ account.display_name }}</td>
+              <td>{{ account.username }}</td>
+              <td>
+                <span class="badge {{ 'ok' if account.status == 'ACTIVE' else 'bad' }}">{{ account.status }}</span>
+              </td>
+              <td>{{ "Yes" if account.is_admin else "" }}</td>
+              <td>
+                <a href="{{ url_for('admin_account_edit', account_id=account.id) }}">Edit</a>
+                &middot;
+                <a href="{{ url_for('admin_account_access', account_id=account.id) }}">Domain Access</a>
+                &middot;
+                <a href="{{ url_for('admin_account_edit', account_id=account.id) }}#reset-password">Reset Password</a>
+                &middot;
+                <a href="{{ url_for('admin_account_training_link', account_id=account.id) }}">Training Identity</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No accounts yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

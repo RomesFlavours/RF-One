@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block page_title %}{{ title }} · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+<div class="card" style="max-width: 480px; margin: 2rem auto; text-align: center;">
+  <h1 style="margin-top:0;">{{ title }} — Work in progress</h1>
+  <p class="muted">This module is being prepared and its operational features are not available yet.</p>
+  <p><a href="{{ url_for('home') }}">Back to Home</a></p>
+</div>
+{% endblock %}

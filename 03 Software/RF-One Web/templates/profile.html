@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block page_title %}Profile · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+<h1>Profile</h1>
+
+<div class="card">
+  <p><strong>Username:</strong> {{ account.username }}</p>
+  <p><strong>Display name:</strong> {{ account.display_name }}</p>
+  {% if account.email and account.email_verified_at %}
+    <p><strong>Verified email:</strong> {{ account.email }}</p>
+  {% elif account.email %}
+    <p><strong>Email on file (not yet verified):</strong> {{ account.email }}</p>
+  {% else %}
+    <p class="muted"><strong>Email:</strong> none on file yet.</p>
+  {% endif %}
+</div>
+
+{% if pending_email %}
+<div class="card">
+  <h2>Confirm your email</h2>
+  <p>A verification code was sent to <strong>{{ pending_email }}</strong>. It expires in 10 minutes.</p>
+  <form method="post" action="{{ url_for('profile_email_verify') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <label for="code">Verification code</label>
+      <input type="text" id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+             autocomplete="one-time-code" required autofocus>
+    </div>
+    <div class="btn-row">
+      <button type="submit">Confirm code</button>
+    </div>
+  </form>
+  <form method="post" action="{{ url_for('profile_email_resend') }}" style="margin-top: .5rem;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-secondary">Resend code</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>{{ "Change email" if account.email else "Add email" }}</h2>
+  {% if account.email %}
+    <p class="muted">Your current verified email stays active until you confirm the new one.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('profile_email') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <label for="email">New email</label>
+      <input type="email" id="email" name="email" required>
+    </div>
+    <div class="field-row">
+      <label for="current_password">Current password</label>
+      <input type="password" id="current_password" name="current_password" autocomplete="current-password" required>
+    </div>
+    <button type="submit">{{ "Request change" if account.email else "Add email" }}</button>
+  </form>
+</div>
+{% endblock %}

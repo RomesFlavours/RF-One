@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block page_title %}{{ "Create account" if mode == "create" else "Edit account" }} · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_accounts') }}">&larr; Accounts</a></p>
+<h1>{{ "Create account" if mode == "create" else "Edit account" }}</h1>
+
+<div class="card">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="field-row">
+      <label for="username">Username</label>
+      {% if mode == "create" %}
+        <input type="text" id="username" name="username" required autofocus>
+      {% else %}
+        <input type="text" id="username" value="{{ account.username }}" disabled>
+      {% endif %}
+    </div>
+
+    <div class="field-row">
+      <label for="display_name">Display name</label>
+      <input type="text" id="display_name" name="display_name"
+             value="{{ account.display_name if account else '' }}" required>
+    </div>
+
+    {% if mode == "create" %}
+      <div class="field-row">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required>
+        <p class="muted">A verification code will be emailed here — the account holder confirms it from their own Profile page.</p>
+      </div>
+      <div class="field-row">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="new-password" required>
+      </div>
+      <div class="field-row">
+        <label for="password_confirm">Confirm password</label>
+        <input type="password" id="password_confirm" name="password_confirm" autocomplete="new-password" required>
+      </div>
+    {% endif %}
+
+    <div class="field-row">
+      <label for="status">Status</label>
+      <select id="status" name="status">
+        <option value="ACTIVE" {{ "selected" if not account or account.status == "ACTIVE" }}>Active</option>
+        <option value="INACTIVE" {{ "selected" if account and account.status == "INACTIVE" }}>Inactive</option>
+      </select>
+    </div>
+
+    <button type="submit">{{ "Create account" if mode == "create" else "Save changes" }}</button>
+  </form>
+</div>
+
+{% if mode == "edit" %}
+  <div class="card" id="reset-password">
+    <h2>Reset password</h2>
+    <form method="post" action="{{ url_for('admin_account_reset_password', account_id=account.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field-row">
+        <label for="new_password">New password</label>
+        <input type="password" id="new_password" name="password" autocomplete="new-password" required>
+      </div>
+      <div class="field-row">
+        <label for="new_password_confirm">Confirm new password</label>
+        <input type="password" id="new_password_confirm" name="password_confirm" autocomplete="new-password" required>
+      </div>
+      <button type="submit">Reset password</button>
+    </form>
+  </div>
+{% endif %}
+{% endblock %}

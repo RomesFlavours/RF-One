@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block page_title %}RF-One · Training{% endblock %}
+{% block page_subtitle %}Staff training — your personal path.{% endblock %}
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    <div class="{{ 'error' if category == 'error' else 'info' }}">{{ message }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
+  <div>
+    <h2 style="margin:0;">Welcome, {{ account.acting_identity.display_name }}</h2>
+    <p class="muted" style="margin:.2rem 0 0;">Username: {{ account.username }}</p>
+  </div>
+  <div style="display:flex;gap:.8rem;align-items:center;">
+    <a href="{{ url_for('training_menu') }}" class="btn">Browse the dish guide</a>
+    <form method="post" action="{{ url_for('training.logout') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit">Log out</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">Whole-path quiz</h2>
+  {% if not has_assignments %}
+    <p class="empty">No pills have been assigned to you yet — ask your trainer.</p>
+  {% elif overall_available %}
+    <p>Every pill assigned to you has been completed at least once — the whole-path quiz is ready.</p>
+    <a class="btn" href="{{ url_for('training.overall_quiz') }}">Take the whole-path quiz</a>
+  {% else %}
+    <p class="muted">Available once every pill assigned to you below has been completed at least once.</p>
+  {% endif %}
+  {% if overall_history %}
+    <h2>Your whole-path quiz history</h2>
+    <table>
+      <thead><tr><th>Date</th><th>Score</th></tr></thead>
+      <tbody>
+        {% for a in overall_history %}
+        <tr>
+          <td><a href="{{ url_for('training.overall_attempt_result', attempt_id=a.id) }}">{{ a.submitted_at.strftime('%Y-%m-%d %H:%M') }} UTC</a></td>
+          <td>{{ a.points_earned }} / {{ a.points_possible }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+
+{% for entry in needs_view %}
+<div class="card">
+  <h2 style="margin-top:0;">{{ entry.need.text }}</h2>
+  {% if entry.need.origin %}<p class="muted" style="margin-top:-.6rem;">Origin: {{ entry.need.origin }}</p>{% endif %}
+  {% if not entry.assignments %}
+    <p class="empty">No pills assigned to this need yet.</p>
+  {% else %}
+  <table>
+    <thead><tr><th>Pill</th><th>Status</th><th>Last score</th><th></th></tr></thead>
+    <tbody>
+      {% for row in entry.assignments %}
+      <tr>
+        <td>{{ row.pill.title }}</td>
+        <td>
+          {% if row.status == 'completed' %}<span class="badge ok">{{ row.status_label }}</span>
+          {% elif row.status == 'in_progress' %}<span class="badge warn">{{ row.status_label }}</span>
+          {% else %}<span class="badge">{{ row.status_label }}</span>{% endif %}
+        </td>
+        <td>{% if row.latest_attempt %}{{ row.latest_attempt.points_earned }} / {{ row.latest_attempt.points_possible }}{% else %}—{% endif %}</td>
+        <td><a href="{{ url_for('training.assignment_detail', assignment_id=row.assignment.id) }}">Open</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% else %}
+<div class="card"><p class="empty">No training needs have been recorded for you yet — ask your trainer.</p></div>
+{% endfor %}
+{% endblock %}

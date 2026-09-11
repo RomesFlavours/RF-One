@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block page_title %}Training Identity · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_accounts') }}">&larr; Accounts</a></p>
+<h1>Training Identity</h1>
+<p class="muted">{{ account.display_name }} ({{ account.username }})</p>
+
+<div class="card">
+  {% if existing_link %}
+    <p>
+      Linked to Training identity
+      <strong>{{ linked_training_account.username }}</strong>
+      (role: {{ linked_training_account.role }}).
+    </p>
+    <p class="muted">Unlinking/re-linking is not supported in this first integration.</p>
+  {% else %}
+    <p class="empty">No Training identity linked yet.</p>
+
+    <h2>Link an existing Training identity</h2>
+    {% if unlinked_accounts %}
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="link_existing">
+        <div class="field-row">
+          <label for="training_account_id">Existing Training account</label>
+          <select id="training_account_id" name="training_account_id" required>
+            <option value="" disabled selected>Select an account&hellip;</option>
+            {% for ta in unlinked_accounts %}
+              <option value="{{ ta.id }}">{{ ta.username }} ({{ ta.role }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit">Link selected identity</button>
+      </form>
+    {% else %}
+      <p class="empty">No unlinked Training identities are available.</p>
+    {% endif %}
+
+    <h2>Or create a new Training identity</h2>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="create_new">
+      <div class="field-row">
+        <label for="role_code">Training role</label>
+        <select id="role_code" name="role_code" required>
+          <option value="student">Student</option>
+          <option value="trainer">Trainer</option>
+        </select>
+      </div>
+      <button type="submit">Create Training identity</button>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

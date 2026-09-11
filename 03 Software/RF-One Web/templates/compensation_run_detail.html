@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block page_title %}Compensation Run {{ run.id }} · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('compensation_home') }}">&larr; Compensation</a></p>
+<h1>Compensation run #{{ run.id }} &mdash; {{ legal_entity.legal_name if legal_entity else run.legal_entity_id }}</h1>
+<p class="muted">
+  Period {{ run.period_start.date() }} &ndash; {{ run.period_end.date() }} &middot;
+  Status <span class="badge {{ 'ok' if run.status in ('APPROVED', 'EXPORTED', 'CLOSED') else ('warn' if run.status == 'CALCULATED' else 'bad') }}">{{ run.status }}</span>
+</p>
+
+{% if snapshot %}
+  <div class="info">
+    This run was approved. See the
+    <a href="{{ url_for('compensation_snapshot_detail', snapshot_id=snapshot.id) }}">Approved Compensation Snapshot</a>
+    for the manual export/communication and reconciliation flow.
+  </div>
+{% endif %}
+
+{% if editable and (not_yet_calculated_count > 0 or salaried_rows) %}
+  <div class="info">
+    <strong>To complete before approving:</strong>
+    {% if not_yet_calculated_count > 0 %}
+      {{ not_yet_calculated_count }} Employee{{ "s" if not_yet_calculated_count != 1 }} below still need{{ "s" if not_yet_calculated_count == 1 }} to be calculated —
+    {% endif %}
+    {% if salaried_rows %}
+      {{ salaried_rows|length }} SALARIED Employee{{ "s" if salaried_rows|length != 1 }} cannot be calculated in V1 (see below) —
+    {% endif %}
+    approving now creates an immutable snapshot that includes <strong>only</strong> the Employees already calculated; anyone left incomplete is silently excluded from that snapshot, never included with a zero or placeholder value.
+  </div>
+{% endif %}
+
+<div class="btn-row">
+  {% if run.status == 'OPEN' %}
+    <form method="post" action="{{ url_for('compensation_mark_calculated', run_id=run.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit">Mark as Calculated</button>
+    </form>
+  {% elif run.status == 'CALCULATED' %}
+    <form method="post" action="{{ url_for('compensation_approve_run', run_id=run.id) }}"
+          onsubmit="return confirm('Approve this compensation? An immutable Approved Compensation Snapshot will be created.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit">Approve</button>
+    </form>
+  {% endif %}
+</div>
+
+{% if not employee_rows %}
+  <div class="card">
+    <p class="empty">No Employee holds an HOURLY Compensation Term for this Legal Entity effective during this period yet{{ " (SALARIED Employees are listed separately below, and are not calculable in V1)" if salaried_rows else "" }}.</p>
+  </div>
+{% endif %}
+
+{% for row in employee_rows %}
+  <div class="card" id="employee-{{ row.employee_id }}">
+    <h2>{{ row.employee.display_name if row.employee else ('Employee ' ~ row.employee_id) }}</h2>
+
+    {% set calc = row.calculation %}
+    {% if calc %}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Hours</th><th>Regular Pay</th><th>Tips</th><th>Bonus</th>
+              <th>Recognized Incentive</th><th>Tip Credit Make-Up</th><th>Gross Pay</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>{{ calc.regular_hours }}</td>
+              <td>${{ calc.regular_pay }}</td>
+              <td>${{ calc.tips_amount }}</td>
+              <td>${{ calc.bonus_amount }}</td>
+              <td>${{ calc.incentive_recognized_amount }}</td>
+              <td>{{ ('$' ~ calc.tip_credit_makeup_amount) if calc.tip_credit_makeup_amount is not none else 'To complete (Payroll Provider)' }}</td>
+              <td>${{ calc.gross_pay }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted">Not yet calculated.</p>
+    {% endif %}
+
+    <div class="subsection">
+      <h2>Incentive Contributions</h2>
+      {% if row.incentive_contributions %}
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Label</th><th>Amount</th><th>Note</th><th>Entered by</th><th></th></tr></thead>
+            <tbody>
+              {% for contribution in row.incentive_contributions %}
+                <tr>
+                  <td>{{ contribution.label }}</td>
+                  <td>${{ contribution.amount }}</td>
+                  <td class="muted">{{ contribution.source_note or '' }}</td>
+                  <td class="muted">{{ contribution.created_by }}</td>
+                  <td>
+                    {% if editable %}
+                      <form method="post" action="{{ url_for('compensation_delete_incentive', run_id=run.id, contribution_id=contribution.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn-secondary">Remove</button>
+                      </form>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="muted">Recognized Incentive preview (MAX of 0 and the sum above): ${{ row.recognized_incentive_preview }} &mdash; recalculate below to apply it.</p>
+      {% else %}
+        <p class="empty">No Incentive Contributions entered yet.</p>
+      {% endif %}
+
+      {% if editable %}
+        <form method="post" action="{{ url_for('compensation_add_incentive', run_id=run.id, employee_id=row.employee_id) }}" class="compact-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="line-slot-grid">
+            <div><label>Label</label><input type="text" name="label" placeholder="e.g. Wine Sales Contribution" required></div>
+            <div><label>Amount (+/&ndash;)</label><input type="number" step="0.01" name="amount" required></div>
+            <div><label>Note</label><input type="text" name="source_note"></div>
+          </div>
+          <button type="submit">Add Contribution</button>
+        </form>
+      {% endif %}
+    </div>
+
+    {% if editable %}
+      <div class="subsection">
+        <h2>Calculate / Recalculate</h2>
+        <form method="post" action="{{ url_for('compensation_calculate_employee', run_id=run.id, employee_id=row.employee_id) }}" class="compact-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          {% for slot in earning_line_slots %}
+            <div class="line-slot-grid">
+              <div>
+                <label>Compensation Term (slot {{ slot + 1 }})</label>
+                <select name="term_{{ slot }}">
+                  <option value="">&mdash;</option>
+                  {% for term in row.terms %}
+                    <option value="{{ term.id }}">{{ term.function_label }} (${{ '%.2f'|format(term.hourly_rate_minor / 100) }}/hr)</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div><label>Hours</label><input type="number" step="0.01" name="hours_{{ slot }}"></div>
+              <div><label>Work date (optional)</label><input type="date" name="work_date_{{ slot }}"></div>
+            </div>
+          {% endfor %}
+
+          <div class="line-slot-grid">
+            <div><label>Tips</label><input type="number" step="0.01" name="tips_amount" value="{{ calc.tips_amount if calc else '' }}"></div>
+            <div><label>Bonus</label><input type="number" step="0.01" name="bonus_amount" value="{{ calc.bonus_amount if calc else '' }}"></div>
+            <div><label>Tip Credit Make-Up (leave blank if unknown)</label><input type="number" step="0.01" name="tip_credit_makeup_amount" value="{{ calc.tip_credit_makeup_amount if calc and calc.tip_credit_makeup_amount is not none else '' }}"></div>
+          </div>
+
+          <button type="submit">{{ "Recalculate" if calc else "Calculate" }}</button>
+        </form>
+      </div>
+    {% endif %}
+  </div>
+{% endfor %}
+
+{% if salaried_rows %}
+  <div class="card">
+    <h2>SALARIED Employees &mdash; not supported in V1</h2>
+    <p class="muted">
+      RF-One Compensation V1 only calculates HOURLY compensation. These Employees hold a SALARIED
+      Compensation Term for this Legal Entity/period — their compensation must be prepared and
+      communicated to the Payroll Provider entirely outside RF-One for now. They are never
+      calculated, never approved, and never shown with a zero or placeholder amount here.
+    </p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Employee</th><th>Function</th><th>Salaried amount / period</th></tr></thead>
+        <tbody>
+          {% for row in salaried_rows %}
+            {% for term in row.terms %}
+              <tr>
+                <td>{{ row.employee.display_name if row.employee else ('Employee ' ~ row.employee_id) }}</td>
+                <td>{{ term.function_label }}</td>
+                <td>${{ '%.2f'|format(term.salaried_period_amount_minor / 100) }} <span class="badge warn">TO COMPLETE OUTSIDE RF-ONE</span></td>
+              </tr>
+            {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block page_title %}RF-One · Training — {{ pill.title }} final quiz{% endblock %}
+{% block page_subtitle %}Final quiz · {{ pill.title }}{% endblock %}
+{% block content %}
+
+<p><a href="{{ url_for('training.assignment_detail', assignment_id=assignment.id) }}">&larr; Back to the pill</a></p>
+
+<div class="card">
+  <h2 style="margin-top:0;">Final quiz — {{ pill.title }}</h2>
+  <p class="muted">3 questions, 1 point each. Correct answers and explanations are shown after you submit. You can retake this quiz — every attempt is kept.</p>
+
+  <form method="post" action="{{ url_for('training.final_quiz', assignment_id=assignment.id) }}" id="quiz-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="submission_token" value="{{ submission_token }}">
+    {% for q in questions %}
+    <div style="margin-bottom:1.4rem;padding-bottom:1.1rem;border-bottom:1px solid var(--olive-150);">
+      <p><strong>{{ loop.index }}. {{ q.prompt }}</strong></p>
+      {% for opt in q.options %}
+      <label style="display:block;font-weight:normal;margin-bottom:.35rem;">
+        <input type="radio" name="answer_{{ q.id }}" value="{{ loop.index0 }}"> {{ opt }}
+      </label>
+      {% endfor %}
+    </div>
+    {% endfor %}
+    <button type="submit" id="submit-btn">Submit final quiz</button>
+  </form>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('quiz-form');
+  var submitBtn = document.getElementById('submit-btn');
+  var totalQuestions = {{ questions | length }};
+  form.addEventListener('submit', function (evt) {
+    submitBtn.disabled = true;
+    var answered = new Set();
+    Array.prototype.forEach.call(form.querySelectorAll('input[type=radio]:checked'), function (el) {
+      answered.add(el.name);
+    });
+    if (answered.size < totalQuestions) {
+      var proceed = window.confirm('You have unanswered questions. Submit anyway?');
+      if (!proceed) {
+        submitBtn.disabled = false;
+        evt.preventDefault();
+      }
+    }
+  });
+})();
+</script>
+{% endblock %}

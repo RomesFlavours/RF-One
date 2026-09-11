@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block page_title %}RF-One · Training — Quiz result{% endblock %}
+{% block page_subtitle %}Final quiz result{% endblock %}
+{% block content %}
+
+<p><a href="{{ back_url }}">&larr; Back</a></p>
+
+<div class="card">
+  <h2 style="margin-top:0;">Score: {{ attempt.points_earned }} / {{ attempt.points_possible }} ({{ percentage }}%)</h2>
+  <p class="muted">Submitted {{ attempt.submitted_at.strftime('%Y-%m-%d %H:%M') }} UTC. Completing this quiz records the activity — it is not a certification of competence.</p>
+</div>
+
+{% for row in rows %}
+<div class="card">
+  <p><strong>{{ loop.index }}. {{ row.prompt }}</strong></p>
+  {% for opt in row.options %}
+  <p style="margin:.3rem 0;">
+    {% if loop.index0 == row.correct_index %}
+      <span class="badge ok">Correct answer</span>
+    {% elif loop.index0 == row.given_index %}
+      <span class="badge bad">Your answer</span>
+    {% endif %}
+    {{ opt }}
+  </p>
+  {% endfor %}
+  {% if row.given_index is none %}<p class="muted">You did not answer this question.</p>{% endif %}
+  <p class="muted">{{ row.explanation }}</p>
+</div>
+{% endfor %}
+{% endblock %}
