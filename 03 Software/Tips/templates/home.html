@@ -25,6 +25,11 @@
         <div>
           <label for="from_date">From date</label>
           <input type="date" id="from_date" name="from_date" value="{{ from_date }}" required>
+          {% if no_business_date_data %}
+            <p class="muted" style="font-size:.72rem; margin-top:.25rem;">
+              No Clover Business Date on file yet for this Restaurant — enter a date to start.
+            </p>
+          {% endif %}
         </div>
         <div>
           <label for="through_date">Through date</label>

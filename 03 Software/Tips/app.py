@@ -49,7 +49,7 @@ if _DATA_STORE_DIR not in sys.path:
     sys.path.insert(0, _DATA_STORE_DIR)
 
 from flask import Flask, flash, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import func, select  # noqa: E402
 
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.database import (  # noqa: E402
@@ -84,6 +84,24 @@ def _default_restaurant(session) -> "m.Restaurant | None":
     app runs against the shared operational store, where the real
     Restaurant/Location/Clover onboarding already exists."""
     return session.scalars(select(m.Restaurant).order_by(m.Restaurant.id)).first()
+
+
+def _max_order_business_date(session, restaurant_id: int):
+    """The latest operational Business Date (`Order.business_date` —
+    the canonical operating-day attribution owned by Sales/Order, per
+    `01 Domains/Business Domain/Restaurant/Sales/Restaurant Sales
+    Model.md` §6a) already on file for this Restaurant's Clover
+    Location(s) — deliberately NOT `Order.created_at`/`modified_at`
+    (ingestion/sync timestamps), which say when RF-One recorded the row,
+    not which operating day it belongs to. Returns `None` when this
+    Restaurant has no Order with a resolved Business Date yet — never
+    guessed/invented."""
+    location_ids_subq = select(m.RestaurantLocation.location_id).where(
+        m.RestaurantLocation.restaurant_id == restaurant_id
+    )
+    return session.scalars(
+        select(func.max(m.Order.business_date)).where(m.Order.location_id.in_(location_ids_subq))
+    ).first()
 
 
 # RF-One branding is application-wide, not Tips-owned: the canonical asset
@@ -209,8 +227,27 @@ def _parse_date(value: str | None) -> datetime | None:
 def home():
     with SessionFactory() as session:
         restaurant = _default_restaurant(session)
-        from_date = request.args.get("from_date") or ""
         through_date = request.args.get("through_date") or ""
+
+        # Prefill "From date" with the latest operational Business Date
+        # already on file, so an operator does not have to guess where a
+        # gap starts — but only on a fresh page load (no explicit
+        # `from_date` in the URL, e.g. right after submitting a Backfill,
+        # which redirects here with both dates set): an explicit value is
+        # never overridden. Left as a normal, editable value — never
+        # advanced by a day, never read-only.
+        from_date_param = request.args.get("from_date")
+        no_business_date_data = False
+        if from_date_param is not None:
+            from_date = from_date_param
+        else:
+            from_date = ""
+            if restaurant is not None:
+                max_business_date = _max_order_business_date(session, restaurant.id)
+                if max_business_date is not None:
+                    from_date = max_business_date.isoformat()
+                else:
+                    no_business_date_data = True
 
         recent_runs = []
         payments_rows = []
@@ -314,6 +351,7 @@ def home():
 
         return render_template(
             "home.html", restaurant=restaurant, from_date=from_date, through_date=through_date,
+            no_business_date_data=no_business_date_data,
             recent_runs=recent_runs, payments_rows=payments_rows, orders_rows=orders_rows, shifts_rows=shifts_rows,
             active_nav="historical-backfill",
         )
