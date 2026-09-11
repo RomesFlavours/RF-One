@@ -48,6 +48,8 @@ def create_rule(
     _validate_distribution_method(distribution_method)
     _validate_no_eligible_recipient_behavior(no_eligible_recipient_behavior)
     _validate_transaction_scope(transaction_scope)
+    _validate_role_belongs_to_restaurant(session, role_id=source_role_id, restaurant_id=restaurant_id, label="Source Role")
+    _validate_role_belongs_to_restaurant(session, role_id=recipient_role_id, restaurant_id=restaurant_id, label="Recipient Role")
 
     rule = m.TipDistributionRule(restaurant_id=restaurant_id, is_active=True)
     session.add(rule)
@@ -88,6 +90,12 @@ def create_new_version(
     _validate_distribution_method(distribution_method)
     _validate_no_eligible_recipient_behavior(no_eligible_recipient_behavior)
     _validate_transaction_scope(transaction_scope)
+    _validate_role_belongs_to_restaurant(
+        session, role_id=source_role_id, restaurant_id=rule.restaurant_id, label="Source Role",
+    )
+    _validate_role_belongs_to_restaurant(
+        session, role_id=recipient_role_id, restaurant_id=rule.restaurant_id, label="Recipient Role",
+    )
 
     existing_versions = list_versions(session, rule_id)
     next_version_number = (existing_versions[-1].version_number + 1) if existing_versions else 1
@@ -163,6 +171,21 @@ def set_active(session: Session, rule_id: int, is_active: bool) -> m.TipDistribu
     rule.is_active = is_active
     session.flush()
     return rule
+
+
+def _validate_role_belongs_to_restaurant(
+    session: Session, *, role_id: int, restaurant_id: int, label: str,
+) -> None:
+    """Refuses to save a Rule/version referencing a Role that does not
+    exist, or that belongs to a DIFFERENT Restaurant — re-checked here
+    regardless of what the caller (the Tips web UI, or any other future
+    caller) already filtered client-side, so a rule can never be saved
+    with an invalid Role even by calling this service directly."""
+    role = session.get(m.RestaurantRole, role_id)
+    if role is None:
+        raise ValueError(f"{label} {role_id} does not exist.")
+    if role.restaurant_id != restaurant_id:
+        raise ValueError(f"{label} {role_id} does not belong to this Restaurant.")
 
 
 def _validate_calculation_base(calculation_base: str) -> None:

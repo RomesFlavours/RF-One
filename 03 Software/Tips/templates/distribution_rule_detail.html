@@ -52,17 +52,23 @@
     Saving here never modifies any existing version above — it closes the current open version's Effective To
     at the new version's Effective From, and appends a brand-new version row.
   </p>
+  {% if not roles %}
+  <p class="error">
+    No Roles are defined yet for this Restaurant. <a href="{{ url_for('restaurant_roles_home') }}">Manage Roles</a>
+    first, then come back here.
+  </p>
+  {% endif %}
   <form method="post" action="{{ url_for('distribution_rule_new_version', rule_id=rule.id) }}">
     <div class="form-row">
       <div>
         <label for="source_role_id">Source Role</label>
-        <select id="source_role_id" name="source_role_id" required>
+        <select id="source_role_id" name="source_role_id" required {{ 'disabled' if not roles else '' }}>
           {% for role in roles %}<option value="{{ role.id }}" {{ 'selected' if versions and role.id == versions[-1].source_role_id else '' }}>{{ role.name }}</option>{% endfor %}
         </select>
       </div>
       <div>
         <label for="recipient_role_id">Recipient Role</label>
-        <select id="recipient_role_id" name="recipient_role_id" required>
+        <select id="recipient_role_id" name="recipient_role_id" required {{ 'disabled' if not roles else '' }}>
           {% for role in roles %}<option value="{{ role.id }}" {{ 'selected' if versions and role.id == versions[-1].recipient_role_id else '' }}>{{ role.name }}</option>{% endfor %}
         </select>
       </div>
@@ -85,7 +91,7 @@
         <input type="text" id="created_by" name="created_by" placeholder="optional">
       </div>
       <div>
-        <button type="submit">Save New Version</button>
+        <button type="submit" {{ 'disabled' if not roles else '' }}>Save New Version</button>
       </div>
     </div>
   </form>

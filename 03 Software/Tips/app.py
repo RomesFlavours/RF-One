@@ -53,18 +53,18 @@ from sqlalchemy import select  # noqa: E402
 
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.database import (  # noqa: E402
-    create_configured_engine, create_session_factory, get_database_url, run_migrations_to_head,
+    create_configured_engine, create_session_factory, get_database_url,
 )
 from rfone_data_store.technical.connectors.clover.acquisition import (  # noqa: E402
     ImportAlreadyRunningError, MODE_BACKFILL, get_order_settlement_time, import_clover_period,
 )
 from rfone_data_store.tips import distribution_engine as engine_svc  # noqa: E402
 from rfone_data_store.tips import distribution_rule_service as rule_svc  # noqa: E402
+from rfone_data_store import restaurant_role_service as role_svc  # noqa: E402
 
 UTC = timezone.utc
 
 _DB_URL = get_database_url()
-run_migrations_to_head(_DB_URL)
 _engine = create_configured_engine(_DB_URL)
 SessionFactory = create_session_factory(_engine)
 
@@ -122,6 +122,38 @@ def shared_brand_logo(filename: str):
     arbitrary path), and only for reading an existing file — no upload/
     write capability is introduced."""
     return send_from_directory(_SHARED_BRAND_LOGOS_DIR, filename)
+
+
+# The staff dish/wine training guide is a self-contained prototype with no
+# Domain/business logic of its own. It lives in its own sibling Software
+# module (`03 Software/Training/`), following the same "sibling module,
+# served via send_from_directory" pattern as `_SHARED_BRAND_LOGOS_DIR`/
+# `shared_brand_logo` above — this route only serves the existing static
+# file; it introduces no new data model, API, or admin surface.
+_TRAINING_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "Training"))
+
+
+@app.route("/training/menu")
+def training_menu():
+    return send_from_directory(_TRAINING_DIR, "RF-One-Training.html")
+
+
+# Training's own operational area (login, student path, trainer area, pill
+# quizzes — first version). `03 Software/Training/` is not a Python package
+# (matching the "sibling module" placement above, not a Tips-owned concern),
+# so its own directory is added to sys.path and its Blueprint imported like
+# any other local module — the one and only place Tips references Training
+# beyond the static-file route above. Everything the blueprint needs (its
+# own database wiring, auth/session helpers, templates) lives in that
+# directory; Training never imports anything from this file. It reuses this
+# same Flask app's `secret_key` (already set above) for its session cookie —
+# not a new session mechanism, and Tips's own routes remain exactly as
+# unauthenticated as before this addition.
+if _TRAINING_DIR not in sys.path:
+    sys.path.insert(0, _TRAINING_DIR)
+from routes import training_bp  # noqa: E402
+
+app.register_blueprint(training_bp)
 
 
 @app.context_processor
@@ -628,6 +660,82 @@ def distribution_rule_toggle_active(rule_id: int):
             rule_svc.set_active(session, rule_id, not rule.is_active)
             session.commit()
         return redirect(request.form.get("next") or url_for("distribution_rules_home"))
+
+
+# ---------------------------------------------------------------------------
+# Restaurant Roles — the role DEFINITION registry (`rfone_data_store.
+# restaurant_role_service`), standalone from Tip Distribution Rules and
+# reusable elsewhere. Distribution Rules only ever READS this list (for
+# both "Source Role" and "Recipient Role" — one registry, two uses); this
+# is the one place roles are created/edited. Deliberately never touches
+# `EmployeeAssignment` (which Employee holds a role, when) — that stays a
+# separate concern.
+# ---------------------------------------------------------------------------
+
+
+@app.route("/roles")
+def restaurant_roles_home():
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        roles = role_svc.list_roles(session, restaurant.id) if restaurant is not None else []
+        return render_template(
+            "restaurant_roles_home.html", restaurant=restaurant, roles=roles, active_nav="distribution-rules",
+        )
+
+
+@app.route("/roles/new", methods=["GET", "POST"])
+def restaurant_role_new():
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        if restaurant is None:
+            flash("No Restaurant exists in this database yet.", "error")
+            return redirect(url_for("restaurant_roles_home"))
+
+        if request.method == "POST":
+            name = request.form.get("name", "")
+            code = request.form.get("code", "")
+            description = request.form.get("description", "")
+            active = request.form.get("active") == "on"
+            try:
+                role_svc.create_role(
+                    session, restaurant_id=restaurant.id, name=name, code=code,
+                    description=description, active=active,
+                )
+                session.commit()
+            except ValueError as exc:
+                session.rollback()
+                flash(str(exc), "error")
+                return render_template("restaurant_role_form.html", mode="create", role=None, restaurant=restaurant), 400
+            flash(f"Role {name!r} created.", "info")
+            return redirect(url_for("restaurant_roles_home"))
+
+        return render_template("restaurant_role_form.html", mode="create", role=None, restaurant=restaurant)
+
+
+@app.route("/roles/<int:role_id>/edit", methods=["GET", "POST"])
+def restaurant_role_edit(role_id: int):
+    with SessionFactory() as session:
+        role = role_svc.get_role(session, role_id)
+        if role is None:
+            flash("Role not found.", "error")
+            return redirect(url_for("restaurant_roles_home"))
+
+        if request.method == "POST":
+            name = request.form.get("name", "")
+            code = request.form.get("code", "")
+            description = request.form.get("description", "")
+            active = request.form.get("active") == "on"
+            try:
+                role_svc.update_role(session, role, name=name, code=code, description=description, active=active)
+                session.commit()
+            except ValueError as exc:
+                session.rollback()
+                flash(str(exc), "error")
+                return render_template("restaurant_role_form.html", mode="edit", role=role, restaurant=None), 400
+            flash("Role updated.", "info")
+            return redirect(url_for("restaurant_roles_home"))
+
+        return render_template("restaurant_role_form.html", mode="edit", role=role, restaurant=None)
 
 
 if __name__ == "__main__":

@@ -255,6 +255,60 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     session.expire_all()
 
     # =====================================================================
+    # M: a Rule/version can never be saved with an invalid Role — the
+    # backend re-validates this itself, regardless of what a caller (e.g.
+    # the Tips web UI) already filtered client-side.
+    # =====================================================================
+    rejected_nonexistent_role = False
+    try:
+        rule_svc.create_rule(
+            session, restaurant_id=restaurant_a.id, source_role_id=999999, recipient_role_id=host_a.id,
+            calculation_base=m.CALC_BASE_TIP_PLUS_GRATUITY, rate=Decimal("5.0000"), effective_from=effective_from,
+        )
+    except ValueError:
+        rejected_nonexistent_role = True
+        session.rollback()
+    result.check(
+        "M: creating a Rule with a Source Role id that does not exist is rejected by the backend, "
+        "never silently saved",
+        rejected_nonexistent_role,
+    )
+    session.expire_all()
+
+    rejected_cross_restaurant_role = False
+    try:
+        rule_svc.create_rule(
+            session, restaurant_id=restaurant_a.id, source_role_id=server_a.id, recipient_role_id=host_b.id,
+            calculation_base=m.CALC_BASE_TIP_PLUS_GRATUITY, rate=Decimal("5.0000"), effective_from=effective_from,
+        )
+    except ValueError:
+        rejected_cross_restaurant_role = True
+        session.rollback()
+    result.check(
+        "M: creating a Rule for Restaurant A using a Recipient Role that belongs to Restaurant B is "
+        "rejected by the backend",
+        rejected_cross_restaurant_role,
+    )
+    session.expire_all()
+
+    rejected_invalid_role_on_new_version = False
+    try:
+        rule_svc.create_new_version(
+            session, rule_a1.id, source_role_id=server_a.id, recipient_role_id=999999,
+            calculation_base=m.CALC_BASE_TIP_PLUS_GRATUITY, rate=Decimal("5.0000"),
+            effective_from=effective_from + timedelta(days=20),
+        )
+    except ValueError:
+        rejected_invalid_role_on_new_version = True
+        session.rollback()
+    result.check(
+        "M: adding a new version to an existing Rule with an invalid Recipient Role id is also "
+        "rejected by the backend",
+        rejected_invalid_role_on_new_version,
+    )
+    session.expire_all()
+
+    # =====================================================================
     # L: Rome's Flavours SERVER -> HOST 10% seed exists as restaurant DATA
     # only — the universal engine/service module has no knowledge of it.
     # =====================================================================

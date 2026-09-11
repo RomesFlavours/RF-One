@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    {% if category == "error" %}<div class="error">{{ message }}</div>{% endif %}
+  {% endfor %}
+{% endwith %}
+
+<p><a href="{{ url_for('distribution_rules_home') }}">&larr; Back to Distribution Rules</a></p>
+
+<div class="card">
+  <h2>Roles</h2>
+  {% if restaurant %}
+  <p class="muted" style="font-size:.85rem;">Restaurant: <strong>{{ restaurant.name }}</strong></p>
+  {% else %}
+  <p class="error">No Restaurant exists in this database yet.</p>
+  {% endif %}
+
+  <p class="muted" style="font-size:.78rem;">
+    Role DEFINITIONS only — the same list is used for both Source Role and Recipient Role in a Tip
+    Distribution Rule. This never assigns a role to an Employee (that remains a separate concern).
+  </p>
+
+  {% if roles %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Name</th><th>Code</th><th>Description</th><th>Active</th><th></th></tr></thead>
+    <tbody>
+    {% for role in roles %}
+      <tr>
+        <td>{{ role.name }}</td>
+        <td>{{ role.code or '-' }}</td>
+        <td>{{ role.description or '-' }}</td>
+        <td><span class="badge {{ 'ok' if role.active else 'bad' }}">{{ 'ACTIVE' if role.active else 'INACTIVE' }}</span></td>
+        <td><a href="{{ url_for('restaurant_role_edit', role_id=role.id) }}">Edit</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Roles defined yet for this Restaurant.</p>
+  {% endif %}
+
+  <div style="margin-top:1rem;">
+    <a class="btn" href="{{ url_for('restaurant_role_new') }}" {{ 'aria-disabled="true"' if not restaurant else '' }}>New Role</a>
+  </div>
+</div>
+
+{% endblock %}
