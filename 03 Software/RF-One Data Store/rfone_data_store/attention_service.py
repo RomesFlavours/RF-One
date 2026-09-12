@@ -81,6 +81,7 @@ def route_attention(session: Session, *, item: "m.AttentionItem", now: datetime 
         item.routing_unresolved_reason = "This Attention Item names no source_process_name to route against."
         item.resolved_process_owner_position_id = None
         item.resolved_recipient_acting_identity_id = None
+        item.resolution_path = None
         session.flush()
         return item
 
@@ -96,6 +97,7 @@ def route_attention(session: Session, *, item: "m.AttentionItem", now: datetime 
     item.resolved_recipient_acting_identity_id = (
         resolution.acting_identity.id if resolution.acting_identity else None
     )
+    item.resolution_path = resolution.resolution_path
     item.routing_unresolved_reason = resolution.unresolved_reason
     session.flush()
     return item

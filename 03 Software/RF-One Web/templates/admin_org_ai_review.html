@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block page_title %}AI Consistency Review · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_organization') }}">&larr; Organization</a></p>
+<h1>AI Consistency Review</h1>
+<p class="empty"><span class="badge">ADMIN / TEST ONLY — NOT YET IMPLEMENTED</span></p>
+
+<div class="card">
+  <p>
+    No shared, cross-Domain AI infrastructure exists yet for this Foundation to call — the one existing LLM
+    abstraction in this repository is Selection-Domain-owned code, not promoted to shared status (task §16's own
+    "NON fingere che Cognito esista già"). Calling the actual review raises:
+  </p>
+  <p class="error">{{ not_available_message }}</p>
+  <p class="empty">
+    What IS ready: the exact structured payload a future Cognito/AI consistency-review capability would receive,
+    assembled entirely from the Organizational Coverage Check — so that capability, once it exists, only needs to
+    consume this data, never re-derive it.
+  </p>
+  <h2>Structured request payload (preview)</h2>
+  <pre style="white-space:pre-wrap; font-size:.78rem; background:var(--olive-050); padding:.8rem; border-radius:var(--radius);">{{ request_payload }}</pre>
+</div>
+{% endblock %}

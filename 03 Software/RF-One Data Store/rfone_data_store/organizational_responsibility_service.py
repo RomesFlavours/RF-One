@@ -318,12 +318,44 @@ def resolve_process_owner(
 # ---------------------------------------------------------------------------
 
 
+RESOLUTION_PATH_DIRECT_OCCUPANT = "DIRECT_OCCUPANT"
+RESOLUTION_PATH_TEMPORARY_COVERAGE = "TEMPORARY_COVERAGE"
+RESOLUTION_PATH_BACKUP_POSITION = "BACKUP_POSITION"
+RESOLUTION_PATH_ORGANIZATIONAL_FALLBACK = "ORGANIZATIONAL_FALLBACK"
+
+
 @dataclass(frozen=True)
 class EffectiveRecipientResolution:
     acting_identity: "m.ActingIdentity | None"
     owner_position: "m.Position | None"
     coverage_applied: "m.PositionTemporaryCoverage | None"
+    resolution_path: str | None = None
+    used_backup_position: "m.Position | None" = None
+    used_fallback_position: "m.Position | None" = None
     unresolved_reason: str | None = None
+
+
+def _resolve_via_coverage_or_occupant(
+    session: Session, *, position: "m.Position", now: datetime,
+) -> tuple["m.ActingIdentity | None", str | None, "m.PositionTemporaryCoverage | None"]:
+    """`position`'s own resolution, ONE position at a time: its active
+    Temporary Coverage takes precedence over its own Occupant (task §9);
+    falls back to its Occupant otherwise. Returns `(identity, path, coverage)`
+    — `identity is None` means this one Position could not resolve on its
+    own (vacant, no coverage) — never recurses into anything beyond this
+    single Position."""
+    coverage = resolve_active_coverage(session, position=position, now=now)
+    if coverage is not None:
+        if coverage.delegate_acting_identity_id is not None:
+            return coverage.delegate_acting_identity, RESOLUTION_PATH_TEMPORARY_COVERAGE, coverage
+        delegate_occupant = resolve_current_occupant(session, position=coverage.delegate_position, now=now)
+        if delegate_occupant is not None:
+            return delegate_occupant, RESOLUTION_PATH_TEMPORARY_COVERAGE, coverage
+        return None, None, coverage
+    occupant = resolve_current_occupant(session, position=position, now=now)
+    if occupant is not None:
+        return occupant, RESOLUTION_PATH_DIRECT_OCCUPANT, None
+    return None, None, None
 
 
 def resolve_effective_recipient(
@@ -331,49 +363,170 @@ def resolve_effective_recipient(
     context: ScopeContext | None = None, now: datetime | None = None,
 ) -> EffectiveRecipientResolution:
     """Process/Phase -> Position owner -> applicable Scope -> current
-    Occupant -> temporary Coverage/Delegation -> effective recipient (task
-    §9's full chain). Only ONE hop of coverage is followed (a covering
-    Position's own occupant, or a directly-named covering Acting Identity)
-    — a covering Position that is itself vacant or itself covered by yet
-    another Position is reported unresolved rather than recursed
-    indefinitely; this is a deliberate, documented simplification, not a
-    Core limitation."""
+    Occupant -> Temporary Coverage -> Backup Position chain ->
+    Organizational Fallback Policy -> effective recipient (task §9/§13's
+    full chain — TASK_ORG_CHART_ADMIN_PAGE extends the original chain with
+    Backup Position and Organizational Fallback).
+
+    Only ONE hop is followed at each step (a covering/backup/fallback
+    Position's own Occupant or Temporary Coverage — never that Position's
+    OWN backup chain, task §8's "NON inventare escalation automatica
+    verticale universale"). The owning Position's ordered Backup Position
+    list (`PositionBackup`, active rows, by `sequence`) is walked in order
+    until one resolves; if none does, the Organizational Fallback Policy
+    matching `context` (or GLOBAL) is tried; if that also cannot resolve,
+    the item is reported unresolved, never assigned arbitrarily."""
     now = now or datetime.now(UTC)
     owner_resolution = resolve_process_owner(
         session, domain=domain, process_name=process_name, module=module, phase=phase, context=context,
     )
-    if owner_resolution.position is None:
-        return EffectiveRecipientResolution(
-            acting_identity=None, owner_position=None, coverage_applied=None,
-            unresolved_reason=owner_resolution.unresolved_reason,
-        )
     owner_position = owner_resolution.position
+    base_unresolved_reason = owner_resolution.unresolved_reason
 
-    coverage = resolve_active_coverage(session, position=owner_position, now=now)
-    if coverage is not None:
-        if coverage.delegate_acting_identity_id is not None:
+    if owner_position is not None:
+        identity, path, coverage = _resolve_via_coverage_or_occupant(session, position=owner_position, now=now)
+        if identity is not None:
             return EffectiveRecipientResolution(
-                acting_identity=coverage.delegate_acting_identity, owner_position=owner_position,
-                coverage_applied=coverage,
+                acting_identity=identity, owner_position=owner_position, coverage_applied=coverage,
+                resolution_path=path,
             )
-        delegate_position = coverage.delegate_position
-        delegate_occupant = resolve_current_occupant(session, position=delegate_position, now=now)
-        if delegate_occupant is None:
-            return EffectiveRecipientResolution(
-                acting_identity=None, owner_position=owner_position, coverage_applied=coverage,
-                unresolved_reason=(
-                    f"Position {owner_position.id} is covered by Position {delegate_position.id}, "
-                    "which is itself vacant."
-                ),
+        if coverage is not None:
+            base_unresolved_reason = f"Position {owner_position.id}'s active Temporary Coverage delegate is itself vacant."
+
+        for backup in list_position_backups(session, position=owner_position):
+            backup_identity, _, backup_coverage = _resolve_via_coverage_or_occupant(
+                session, position=backup.backup_position, now=now,
             )
-        return EffectiveRecipientResolution(
-            acting_identity=delegate_occupant, owner_position=owner_position, coverage_applied=coverage,
+            if backup_identity is not None:
+                return EffectiveRecipientResolution(
+                    acting_identity=backup_identity, owner_position=owner_position, coverage_applied=backup_coverage,
+                    resolution_path=RESOLUTION_PATH_BACKUP_POSITION, used_backup_position=backup.backup_position,
+                )
+        if base_unresolved_reason is None:
+            base_unresolved_reason = (
+                f"Position {owner_position.id} ({owner_position.name!r}) is vacant, no active coverage, and its "
+                "Backup Position chain (if any) did not resolve."
+            )
+
+    # Task §14: the Organizational Fallback Policy is the last resort
+    # whenever NO responsible Position could be resolved AT ALL (no owner
+    # found, ambiguous ownership) OR the owner was found but its own
+    # Occupant/Coverage/Backup chain was exhausted — never only for the
+    # "vacant owner" case. Still never a Core-level universal rule: only
+    # applied if an organization has actually configured one (task §14).
+    fallback_position = resolve_fallback_position(session, context=context)
+    if fallback_position is not None:
+        fallback_identity, _, fallback_coverage = _resolve_via_coverage_or_occupant(
+            session, position=fallback_position, now=now,
         )
-
-    occupant = resolve_current_occupant(session, position=owner_position, now=now)
-    if occupant is None:
+        if fallback_identity is not None:
+            return EffectiveRecipientResolution(
+                acting_identity=fallback_identity, owner_position=owner_position, coverage_applied=fallback_coverage,
+                resolution_path=RESOLUTION_PATH_ORGANIZATIONAL_FALLBACK, used_fallback_position=fallback_position,
+            )
         return EffectiveRecipientResolution(
             acting_identity=None, owner_position=owner_position, coverage_applied=None,
-            unresolved_reason=f"Position {owner_position.id} ({owner_position.name!r}) is vacant, no active coverage.",
+            used_fallback_position=fallback_position,
+            unresolved_reason=(
+                f"{base_unresolved_reason} The configured Organizational Fallback Position "
+                f"{fallback_position.id} ({fallback_position.name!r}) is itself vacant."
+            ),
         )
-    return EffectiveRecipientResolution(acting_identity=occupant, owner_position=owner_position, coverage_applied=None)
+
+    return EffectiveRecipientResolution(
+        acting_identity=None, owner_position=owner_position, coverage_applied=None,
+        unresolved_reason=f"{base_unresolved_reason} No Organizational Fallback Policy applies either.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Backup Position (TASK_ORG_CHART_ADMIN_PAGE §8) — distinct from Temporary Coverage.
+# ---------------------------------------------------------------------------
+
+
+def add_position_backup(
+    session: Session, *, covered_position: "m.Position", backup_position: "m.Position", sequence: int | None = None,
+) -> "m.PositionBackup":
+    if covered_position.id == backup_position.id:
+        raise OrganizationalResponsibilityError("A Position cannot be its own Backup Position.")
+    if sequence is None:
+        existing = list_position_backups(session, position=covered_position, include_inactive=True)
+        sequence = (max((b.sequence for b in existing), default=0)) + 1
+    backup = m.PositionBackup(
+        covered_position_id=covered_position.id, backup_position_id=backup_position.id, sequence=sequence,
+    )
+    session.add(backup)
+    session.flush()
+    return backup
+
+
+def list_position_backups(
+    session: Session, *, position: "m.Position", include_inactive: bool = False,
+) -> list["m.PositionBackup"]:
+    stmt = select(m.PositionBackup).where(m.PositionBackup.covered_position_id == position.id)
+    if not include_inactive:
+        stmt = stmt.where(m.PositionBackup.is_active.is_(True))
+    return list(session.scalars(stmt.order_by(m.PositionBackup.sequence)))
+
+
+def deactivate_position_backup(session: Session, *, backup: "m.PositionBackup") -> "m.PositionBackup":
+    backup.is_active = False
+    session.flush()
+    return backup
+
+
+# ---------------------------------------------------------------------------
+# Organizational Fallback Policy (TASK_ORG_CHART_ADMIN_PAGE §14) — company
+# configuration, never a Core rule.
+# ---------------------------------------------------------------------------
+
+
+def set_organizational_fallback_policy(
+    session: Session, *, fallback_position: "m.Position", scope_type: str = m.POSITION_SCOPE_GLOBAL,
+    scope_id: int | None = None, scope_key: str | None = None,
+) -> "m.OrganizationalFallbackPolicy":
+    validate_scope_value(scope_type=scope_type, scope_id=scope_id, scope_key=scope_key)
+    policy = m.OrganizationalFallbackPolicy(
+        scope_type=scope_type, scope_id=scope_id, scope_key=scope_key, fallback_position_id=fallback_position.id,
+    )
+    session.add(policy)
+    session.flush()
+    return policy
+
+
+def deactivate_organizational_fallback_policy(
+    session: Session, *, policy: "m.OrganizationalFallbackPolicy",
+) -> "m.OrganizationalFallbackPolicy":
+    policy.is_active = False
+    session.flush()
+    return policy
+
+
+def resolve_fallback_position(session: Session, *, context: ScopeContext | None) -> "m.Position | None":
+    """The Organizational Fallback Position applicable to `context`, if any
+    is configured — a scope-specific policy wins over a GLOBAL one; if
+    several equally-specific policies exist, the most recently created one
+    wins deterministically (same tie-break convention as `payroll/
+    payment_execution.py`'s `approved_provider_at`). Returns `None`
+    (never a guess) when nothing is configured — task §14's explicit "NON
+    rendere universale Unowned Attention -> CEO"."""
+    policies = list(
+        session.scalars(select(m.OrganizationalFallbackPolicy).where(m.OrganizationalFallbackPolicy.is_active.is_(True)))
+    )
+    if not policies:
+        return None
+    specific = [p for p in policies if p.scope_type != m.POSITION_SCOPE_GLOBAL and _policy_matches(p, context)]
+    global_policies = [p for p in policies if p.scope_type == m.POSITION_SCOPE_GLOBAL]
+    candidates = specific or global_policies
+    if not candidates:
+        return None
+    candidates.sort(key=lambda p: (p.created_at, p.id), reverse=True)
+    return session.get(m.Position, candidates[0].fallback_position_id)
+
+
+def _policy_matches(policy: "m.OrganizationalFallbackPolicy", context: ScopeContext | None) -> bool:
+    if context is None or policy.scope_type != context.scope_type:
+        return False
+    if policy.scope_type in m.POSITION_SCOPE_ID_KINDS:
+        return policy.scope_id == context.scope_id
+    return policy.scope_key == context.scope_key

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% import "_org_macros.html" as org_macros %}
+{% block page_title %}Organizational Fallback Policy · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_organization') }}">&larr; Organization</a></p>
+<h1>Organizational Fallback Policy</h1>
+<p class="empty">
+  Company configuration, never a Core rule (Core does not fix "Unowned Attention → CEO" universally).
+  For Rome's Flavours: set the fallback Position to your CEO Position with scope GLOBAL.
+  Used only when no Position/Backup Position can be resolved.
+</p>
+
+<div class="card">
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Scope</th><th>Fallback Position</th><th>Active</th><th></th></tr></thead>
+      <tbody>
+        {% for p in policies %}
+          <tr>
+            <td>{{ scope_display(p) }}</td>
+            <td><a href="{{ url_for('admin_org_position_detail', position_id=p.fallback_position_id) }}">{{ p.fallback_position.name }}</a></td>
+            <td>{{ "yes" if p.is_active else "no" }}</td>
+            <td>
+              {% if p.is_active %}
+              <form method="post" action="{{ url_for('admin_org_fallback_policy_deactivate', policy_id=p.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" style="font-size:.78rem;">Deactivate</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="empty">No Organizational Fallback Policy configured yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>New Fallback Policy</h2>
+  <form method="post" action="{{ url_for('admin_org_fallback_policy_new') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <label for="fallback_position_id">Fallback Position</label>
+      <select id="fallback_position_id" name="fallback_position_id" required>
+        {% for p in positions %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+      </select>
+    </div>
+    {{ org_macros.scope_field(scope_kinds, [], [], []) }}
+    <button type="submit">Set Fallback Policy</button>
+  </form>
+</div>
+{% endblock %}

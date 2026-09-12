@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block page_title %}Organization · RF-One{% endblock %}
+{% block content %}
+<div class="org-chart-wrap">
+<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+<h1>Organization</h1>
+<p class="empty">
+  <span class="badge">SYSTEM / ORGANIZATION CONFIGURATION</span>
+  — configuration, administration, inspection and test only. Normal operation will run through Cognito, not this page.
+</p>
+
+<div class="btn-row">
+  <a class="btn" href="{{ url_for('admin_org_positions') }}">Positions (list)</a>
+  <a class="btn" href="{{ url_for('admin_org_process_ownerships') }}">Process Ownerships</a>
+  <a class="btn" href="{{ url_for('admin_org_fallback_policies') }}">Organizational Fallback Policy</a>
+  <a class="btn" href="{{ url_for('admin_org_coverage_check') }}">Full Coverage Check</a>
+  <a class="btn" href="{{ url_for('admin_org_attention') }}">Attention Items</a>
+  <a class="btn" href="{{ url_for('admin_org_ai_review') }}">AI Consistency Review (boundary)</a>
+</div>
+
+<h2>Organizational Coverage</h2>
+<div class="coverage-tiles">
+  <div class="coverage-tile"><div class="coverage-tile-value">{{ counts.processes_known }}</div><div class="coverage-tile-label">Processes known</div></div>
+  <div class="coverage-tile"><div class="coverage-tile-value">{{ counts.FULLY_COVERED }}</div><div class="coverage-tile-label">Fully covered</div></div>
+  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.partial_coverage }}</div><div class="coverage-tile-label">Partial coverage (Backup/Fallback)</div></div>
+  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.unowned_responsibilities }}</div><div class="coverage-tile-label">Unowned / gap</div></div>
+  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.fallback_to_organizational_fallback }}</div><div class="coverage-tile-label">Fallback used</div></div>
+  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.positions_missing_required_backup }}</div><div class="coverage-tile-label">Missing required Backup</div></div>
+  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.unresolved_attention_items }}</div><div class="coverage-tile-label">Unresolved Attention Items</div></div>
+</div>
+<p class="empty">Counts are computed live from the database — <a href="{{ url_for('admin_org_coverage_check') }}">click through for per-Process detail</a>.</p>
+
+<h2>Organization Chart</h2>
+<p class="empty">Click a Position to view/edit. Click the ⊖/⊕ button to expand/collapse its subordinate Positions. Derived live from the database — never a static diagram.</p>
+<div id="org-tree-root"><p class="empty">Loading…</p></div>
+</div>
+
+<div id="org-modal" class="org-modal-overlay" hidden>
+  <div class="org-modal-panel">
+    <button id="org-modal-close" class="org-modal-close" type="button" aria-label="Close">&times;</button>
+    <div id="org-modal-body"></div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/org-chart.js') }}"></script>
+{% endblock %}

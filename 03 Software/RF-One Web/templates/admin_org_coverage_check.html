@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block page_title %}Organizational Coverage Check · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_organization') }}">&larr; Organization</a></p>
+<h1>Organizational Coverage Check</h1>
+<p class="empty">
+  "If this Process/Phase raised Attention right now, is there a Position that can actually receive it?"
+  Computed live from Process Ownership evidence, Attention Item history, Occupant/Coverage/Backup/Fallback resolution.
+  Never invents a Business Rule — where semantics are insufficient, the underlying reason is shown as-is.
+</p>
+
+<div class="coverage-tiles">
+  <div class="coverage-tile"><div class="coverage-tile-value">{{ counts.processes_known }}</div><div class="coverage-tile-label">Processes known</div></div>
+  <div class="coverage-tile"><div class="coverage-tile-value">{{ counts.FULLY_COVERED }}</div><div class="coverage-tile-label">Fully covered</div></div>
+  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.COVERED_VIA_BACKUP }}</div><div class="coverage-tile-label">Covered via Backup</div></div>
+  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.COVERED_VIA_FALLBACK }}</div><div class="coverage-tile-label">Covered via Organizational Fallback</div></div>
+  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.GAP }}</div><div class="coverage-tile-label">Gap</div></div>
+  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.NO_OWNER }}</div><div class="coverage-tile-label">No owner</div></div>
+  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.AMBIGUOUS_OWNER }}</div><div class="coverage-tile-label">Ambiguous owner</div></div>
+</div>
+
+<div class="card">
+  <h2>Per-Process detail</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Domain</th><th>Module</th><th>Process</th><th>Phase</th><th>Status</th><th>Owner</th><th>Detail</th></tr></thead>
+      <tbody>
+        {% for e in result.entries %}
+          <tr>
+            <td>{{ e.domain }}</td><td>{{ e.module or "-" }}</td><td>{{ e.process_name }}</td><td>{{ e.phase or "(whole process)" }}</td>
+            <td><span class="badge {{ 'ok' if e.status == 'FULLY_COVERED' else 'warn' if e.status in ('COVERED_VIA_BACKUP','COVERED_VIA_FALLBACK') else 'bad' }}">{{ e.status }}</span></td>
+            <td>{% if e.owner_position %}<a href="{{ url_for('admin_org_position_detail', position_id=e.owner_position.id) }}">{{ e.owner_position.name }}</a>{% else %}-{% endif %}</td>
+            <td class="muted" style="font-size:.78rem;">{{ e.detail }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="empty">No Process known yet (no Process Ownership configured, no Attention Item raised).</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Positions requiring a Backup but missing one</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Position</th></tr></thead>
+      <tbody>
+        {% for p in result.positions_missing_required_backup %}
+          <tr><td><a href="{{ url_for('admin_org_position_detail', position_id=p.id) }}">{{ p.name }}</a></td></tr>
+        {% else %}
+          <tr><td class="empty">None.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Unresolved Attention Items (routing could not determine a recipient)</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Priority</th><th>Source</th><th>Reason</th></tr></thead>
+      <tbody>
+        {% for a in result.unresolved_attention_items %}
+          <tr>
+            <td><span class="badge {{ 'bad' if a.priority == 'CRITICAL' else '' }}">{{ a.priority }}</span></td>
+            <td>{{ a.source_domain }}/{{ a.source_process_name or "-" }}</td>
+            <td class="muted" style="font-size:.78rem;"><a href="{{ url_for('admin_org_attention_detail', item_id=a.id) }}">{{ a.routing_unresolved_reason }}</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="empty">None.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

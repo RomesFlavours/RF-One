@@ -106,13 +106,17 @@ def main() -> int:
         anon_client = web_app.app.test_client()
 
         check(
-            "admin sees the Organizational Responsibility link on Home",
-            b"Organizational Responsibility" in admin_client.get("/").data,
+            # Relabeled to "Manage Organization" by TASK_ORG_CHART_ADMIN_PAGE,
+            # pointing at /admin/organization instead of the plain Positions
+            # list — see test_organization_chart_http.py for full coverage
+            # of that page.
+            "admin sees the 'Manage Organization' link on Home",
+            b"Manage Organization" in admin_client.get("/").data,
         )
 
         for path in (
             "/admin/org/positions", "/admin/org/positions/new", f"/admin/org/positions/{position_id}",
-            "/admin/org/process-ownerships", "/admin/org/chart", "/admin/org/attention", f"/admin/org/attention/{item_id}",
+            "/admin/org/process-ownerships", "/admin/org/attention", f"/admin/org/attention/{item_id}",
         ):
             resp = admin_client.get(path)
             check(f"admin GET {path} renders (200)", resp.status_code == 200, f"got {resp.status_code}")

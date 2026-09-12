@@ -1,6 +1,6 @@
 # Organizational Responsibility and Attention Management
 
-**Status:** Active — minimum shared runtime implemented (TASK_ATTENTION_ORG_RUNTIME). Not frozen; open items below remain for future work.
+**Status:** Active — minimum shared runtime implemented (TASK_ATTENTION_ORG_RUNTIME), extended with Backup Position, Organizational Fallback Policy, the Organizational Coverage Check, and an interactive Organizational Chart admin page (TASK_ORG_CHART_ADMIN_PAGE). Not frozen; open items below remain for future work.
 
 ---
 
@@ -34,8 +34,13 @@ This document does not move or duplicate genuine Core conceptual definitions —
 - **Temporary Coverage** (`models.PositionTemporaryCoverage`) — the same Delegation concept `AuthorityGrant` already implements for Authority, applied to Position occupancy: explicit Grantor, bounded duration, revocable.
 - **Process Ownership** (`models.ProcessOwnership`) — Process/Phase (named by plain `domain`/`module`/`process_name`/`phase` strings, like `OperationalSignature` already does — no competing Process registry) -> responsible Position, with an optional scope override.
 - **Attention Item** (`models.AttentionItem`) — a cross-Domain "requires human attention" record: priority (CRITICAL/HIGH/MEDIUM/LOW, always supplied by the caller, never computed from a fixed table here), status (OPEN/ACKNOWLEDGED/RESOLVED/CANCELLED), and the recorded routing outcome.
-- **Two services**, both flat at the top level of `rfone_data_store/` (same placement as `authority_service.py`): `organizational_responsibility_service.py` (`resolve_process_owner`, `resolve_current_occupant`, `resolve_active_coverage`, `resolve_effective_recipient`) and `attention_service.py` (`create_attention`, `route_attention`, `acknowledge_attention`, `resolve_attention`, `cancel_attention`, `reprioritize_attention`, `list_attention_for_identity`, `list_unresolved_routing`).
-- **ADMIN/CONFIGURATION/TEST HARNESS web screens** (`03 Software/RF-One Web/organizational_responsibility_routes.py`, `/admin/org/*`) — configure Positions/Scope/Occupants/Coverage/Process Ownership, inspect Attention Items and routing results. Explicitly labeled as such in every template; not an operational interface.
+- **Backup Position** (`models.PositionBackup`) — a STANDING, ordered escalation chain per Position, explicitly distinct from Temporary Coverage: never date-bounded, never required to be the parent Position or a manager. `resolve_effective_recipient` walks it (by `sequence`) only after a Position's own Occupant/Coverage fails to resolve — never recursing into a backup's own backup chain.
+- **Organizational Fallback Policy** (`models.OrganizationalFallbackPolicy`) — explicit, opt-in COMPANY configuration ("Unowned Attention → CEO" for Rome's Flavours), never a Core or Foundation-level universal rule. Applied only as the last resort, whenever no Position/Backup Position resolves at all — including when NO Process Ownership exists, not only when an owner is merely vacant.
+- **Organizational Coverage Check** (`organizational_coverage_check_service.py`) — an on-demand, evidence-based report ("if this Process/Phase raised Attention right now, is there a Position that can actually receive it?") over every Process known from configured `ProcessOwnership` OR actually-raised `AttentionItem` history — never an invented, exhaustive Process registry. Classifies each as FULLY_COVERED / COVERED_VIA_BACKUP / COVERED_VIA_FALLBACK / GAP / NO_OWNER / AMBIGUOUS_OWNER, and separately flags Positions marked `backup_required` with none configured.
+- **AI Consistency Review boundary** (`organizational_ai_review_service.py`) — a structured request payload built from the Coverage Check, ready for a future Cognito/AI reviewer; `run_ai_consistency_review()` always raises `AIConsistencyReviewNotAvailable` today (no shared, cross-Domain AI infrastructure exists yet to call — see that module's own docstring for why the one existing Selection-Domain LLM client was not reused).
+- **Three services**, all flat at the top level of `rfone_data_store/` (same placement as `authority_service.py`): `organizational_responsibility_service.py` (`resolve_process_owner`, `resolve_current_occupant`, `resolve_active_coverage`, `resolve_effective_recipient`, plus Backup Position/Fallback Policy management), `attention_service.py` (`create_attention`, `route_attention`, `acknowledge_attention`, `resolve_attention`, `cancel_attention`, `reprioritize_attention`, `list_attention_for_identity`, `list_unresolved_routing`), and `organizational_coverage_check_service.py`.
+- **Interactive Organizational Chart admin page** (`/admin/organization`) — a DB-derived, click-to-expand/collapse graph with click-to-edit (a modal fragment, never losing the chart view), plus dedicated pages for Fallback Policy, the full Coverage Check, and a Scope Interview harness. All labeled **SYSTEM / ORGANIZATION CONFIGURATION**, never an operational interface — see `03 Software/RF-One Web/organizational_responsibility_routes.py`.
+- **Scope Interview harness** (`/admin/org/positions/<id>/interview`, explicitly labeled **ADMIN / TEST ONLY**) — stands in for a future Cognito-led interview: the same structured service functions are called on submit; no interview prose is ever saved as canonical Scope.
 
 ---
 
@@ -45,19 +50,23 @@ This document does not move or duplicate genuine Core conceptual definitions —
 - **Business-specific escalation policy.** Core itself does not fix a universal escalation rule (`Organizational Responsibility.md` §5; `12_Attention_Management.md` §9) — this runtime resolves the current PRIMARY recipient (owner's occupant, or active coverage) and reports "unresolved" otherwise; it never guesses a fallback (e.g. "escalate to the superior").
 - **Domain integration.** No Domain (Tips included) has been wired to create real `ProcessOwnership`/`AttentionItem` rows by this task. `03 Software/Tips/`'s existing `TipPaymentInstruction.priority`/`failure_class` fields (from the earlier Tips Core 2.0 pilot) remain plain Domain data, not yet connected to this Foundation — that connection is future integration work, not built here.
 - **Real organizational data.** No Rome's Flavours Position/Person is created (task §14) — every row this task's own tests/demo create is `TEST/DEMO`-labeled synthetic data, rolled back at the end of each test run.
-- **Aggregation logic for MEDIUM/LOW Attention Items**, priority-history audit trail, and multi-hop temporary-coverage chains (only one hop of coverage is followed by `resolve_effective_recipient` — see that function's own docstring).
+- **Aggregation logic for MEDIUM/LOW Attention Items**, priority-history audit trail, and multi-hop temporary-coverage/backup chains (only one hop of coverage or backup is followed by `resolve_effective_recipient` — see that function's own docstring).
+- **Mobile/Android/native app** — verified not to exist anywhere in this repository; the admin UI is a server-rendered web page only.
+- **A real AI Consistency Review** — see "AI Consistency Review boundary" above; only the structured data and service boundary exist.
 
 ---
 
 ## Current implementation references (`03 Software/`)
 
-- `03 Software/RF-One Data Store/rfone_data_store/models.py` — `Position`, `PositionScope`, `PositionAssignment`, `PositionTemporaryCoverage`, `ProcessOwnership`, `AttentionItem`, and their scope/phase/priority/status constants
-- `03 Software/RF-One Data Store/rfone_data_store/organizational_responsibility_service.py` — Position/Scope/Occupant/Coverage/Process Ownership resolution
+- `03 Software/RF-One Data Store/rfone_data_store/models.py` — `Position` (incl. `backup_required`), `PositionScope`, `PositionAssignment`, `PositionTemporaryCoverage`, `ProcessOwnership`, `AttentionItem` (incl. `resolution_path`), `PositionBackup`, `OrganizationalFallbackPolicy`, and their scope/phase/priority/status constants
+- `03 Software/RF-One Data Store/rfone_data_store/organizational_responsibility_service.py` — Position/Scope/Occupant/Coverage/Backup/Fallback/Process Ownership resolution
 - `03 Software/RF-One Data Store/rfone_data_store/attention_service.py` — Attention Item creation, routing, lifecycle
-- `03 Software/RF-One Data Store/migrations/versions/a6aed1d9d2ed_add_organizational_responsibility_and_attention.py` — the schema migration for the six tables above
-- `03 Software/RF-One Data Store/rfone_data_store/attention_org_runtime_validation.py`, `test_attention_org_runtime.py` — the service-layer test suite (22 checks, no Domain package imported)
-- `03 Software/RF-One Web/organizational_responsibility_routes.py`, `templates/admin_org_*.html` — the ADMIN/CONFIGURATION/TEST HARNESS UI
-- `03 Software/RF-One Web/tests/test_org_attention_admin_http.py` — the HTTP-layer smoke test (16 checks)
+- `03 Software/RF-One Data Store/rfone_data_store/organizational_coverage_check_service.py` — the Organizational/Trigger Coverage Check
+- `03 Software/RF-One Data Store/rfone_data_store/organizational_ai_review_service.py` — the AI Consistency Review boundary (raises `AIConsistencyReviewNotAvailable`)
+- `03 Software/RF-One Data Store/migrations/versions/a6aed1d9d2ed_...py`, `4afdc598f407_...py` — the schema migrations
+- `03 Software/RF-One Data Store/rfone_data_store/attention_org_runtime_validation.py` + `test_attention_org_runtime.py` (22 checks), `organizational_coverage_validation.py` + `test_organizational_coverage.py` (14 checks) — service-layer test suites, no Domain package imported
+- `03 Software/RF-One Web/organizational_responsibility_routes.py`, `templates/admin_org*.html`, `templates/admin_organization.html`, `static/js/org-chart.js`, `static/js/org-scope-field.js` — the ADMIN/CONFIGURATION/TEST HARNESS UI, including the interactive Organizational Chart
+- `03 Software/RF-One Web/tests/test_org_attention_admin_http.py` (15 checks), `test_organization_chart_http.py` (45 checks) — HTTP-layer tests
 
 No Domain currently consumes this foundation — by design, per this task's own scope.
 
@@ -84,4 +93,4 @@ Recorded as open, not designed further here:
 - `01 Domains/Business Domain/Restaurant/Tips/Tips Payment Execution.md` — the earlier Tips Core 2.0 pilot whose own blocker report (§5 of that document) is what this task resolves as shared Foundation, not as a Tips-specific shortcut
 - `10 System/README.md` — the System top-level area's own purpose and boundary
 - `03 Software/README.md` — where the corresponding implementation code lives
-- `07 Tasks/Reports/TASK_ATTENTION_ORG_RUNTIME_REPORT.md` — this task's implementation report
+- `07 Tasks/Reports/TASK_ATTENTION_ORG_RUNTIME_REPORT.md`, `07 Tasks/Reports/TASK_ORG_CHART_ADMIN_PAGE_REPORT.md` — this Foundation's implementation reports
