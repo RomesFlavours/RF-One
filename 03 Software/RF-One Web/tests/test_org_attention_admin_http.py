@@ -148,6 +148,38 @@ def main() -> int:
         resp = admin_client.get(f"/admin/org/positions/{position_id}")
         check("the new Scope now appears on the Position detail page", b"RESTAURANT" in resp.data)
 
+        # OPERATIONAL_UNIT scope (TASK_ORG_RUNTIME_CONSISTENCY_FIXES §1): its
+        # own dropdown/UI presents it against `Location`, independently from
+        # RESTAURANT — never sharing RESTAURANT's id space or a raw numeric field.
+        resp = admin_client.get(f"/admin/org/positions/{position_id}")
+        check("Position editor exposes a dedicated OPERATIONAL_UNIT scope field", b'data-scope-value-for="OPERATIONAL_UNIT"' in resp.data)
+        csrf = extract_csrf(resp.data)
+        resp = admin_client.post(
+            f"/admin/org/positions/{position_id}/scopes/new",
+            data={"scope_type": "OPERATIONAL_UNIT", "scope_id": "3", "csrf_token": csrf},
+        )
+        check("admin adds an OPERATIONAL_UNIT Scope via the form (redirects)", resp.status_code in (302, 303))
+        resp = admin_client.get(f"/admin/org/positions/{position_id}")
+        check("the new OPERATIONAL_UNIT Scope now appears on the Position detail page", b"OPERATIONAL_UNIT" in resp.data)
+
+        # Routing audit trail (TASK_ORG_RUNTIME_CONSISTENCY_FIXES §5): the
+        # detail page shows the history table, and "Re-evaluate routing now"
+        # appends a new row rather than replacing the existing one.
+        resp = admin_client.get(f"/admin/org/attention/{item_id}")
+        check("Attention Item detail page shows the routing history table", b"Routing history" in resp.data)
+        csrf = extract_csrf(resp.data)
+        resp = admin_client.post(
+            f"/admin/org/attention/{item_id}/route", data={"csrf_token": csrf},
+        )
+        check("admin re-evaluates routing via the form (redirects)", resp.status_code in (302, 303))
+        with SessionFactory() as s:
+            item_after_reroute = s.get(m.AttentionItem, item_id)
+            history = att_svc.list_routing_history(s, item=item_after_reroute)
+        check(
+            "Re-evaluating routing appends a new audit-trail row rather than replacing the original one",
+            len(history) == 2,
+        )
+
         # Acknowledge then resolve the Attention Item.
         resp = admin_client.get(f"/admin/org/attention/{item_id}")
         csrf = extract_csrf(resp.data)

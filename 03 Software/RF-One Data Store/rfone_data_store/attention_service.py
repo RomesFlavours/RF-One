@@ -69,19 +69,54 @@ def create_attention(
     return item
 
 
+def _append_routing_history(
+    session: Session, *, item: "m.AttentionItem", owner_position_id: int | None,
+    resolved_recipient_acting_identity_id: int | None, resolution_path: str | None, unresolved_reason: str | None,
+) -> "m.AttentionRoutingResolution":
+    """Inserts ONE immutable history row (TASK_ORG_RUNTIME_CONSISTENCY_FIXES
+    §5) — never updates a prior row. Called on every `route_attention()`
+    evaluation, whether it resolves or not, so "was this ever re-routed,
+    and what did each attempt find" stays reconstructable — the same
+    append-only discipline `OperationalSignature`/`operational_signature_
+    service.record_operational_signature()` already establishes elsewhere
+    in this schema, applied here to routing evaluations."""
+    record = m.AttentionRoutingResolution(
+        attention_item_id=item.id, owner_position_id=owner_position_id,
+        resolved_recipient_acting_identity_id=resolved_recipient_acting_identity_id,
+        resolution_path=resolution_path, unresolved_reason=unresolved_reason,
+    )
+    session.add(record)
+    session.flush()
+    return record
+
+
 def route_attention(session: Session, *, item: "m.AttentionItem", now: datetime | None = None) -> "m.AttentionItem":
     """Resolves Process/Phase -> Position owner -> Scope -> Occupant ->
-    Coverage -> effective recipient for `item`'s own source_domain/module/
-    process_name/phase/scope, and records the outcome on the item itself.
-    `item.status` is left exactly as it was (task §9: unresolved routing
-    stays OPEN, never assigned arbitrarily and never silently escalated to
-    a guessed target) — this function only ever fills in `resolved_*`/
-    `routing_unresolved_reason`, never changes `status`."""
+    Coverage -> Backup Position -> Organizational Fallback -> effective
+    recipient for `item`'s own source_domain/module/process_name/phase/
+    scope. `item.status` is left exactly as it was (task §9: unresolved
+    routing stays OPEN, never assigned arbitrarily and never silently
+    escalated to a guessed target) — this function only ever fills in
+    `resolved_*`/`resolution_path`/`routing_unresolved_reason`, never
+    changes `status`.
+
+    Every call — resolved or not — ALSO appends one immutable
+    `AttentionRoutingResolution` row (task §5: a re-evaluation must never
+    erase the record of a prior one). `item`'s own `resolved_*` columns are
+    updated to the LATEST outcome only, as a convenience snapshot; the full
+    history is `list_routing_history(item)`. Nothing here is triggered
+    automatically by a Position/Occupant/Coverage change elsewhere — only an
+    explicit call to this function ever creates a new resolution, historical
+    or current."""
     if item.source_process_name is None:
         item.routing_unresolved_reason = "This Attention Item names no source_process_name to route against."
         item.resolved_process_owner_position_id = None
         item.resolved_recipient_acting_identity_id = None
         item.resolution_path = None
+        _append_routing_history(
+            session, item=item, owner_position_id=None, resolved_recipient_acting_identity_id=None,
+            resolution_path=None, unresolved_reason=item.routing_unresolved_reason,
+        )
         session.flush()
         return item
 
@@ -93,14 +128,34 @@ def route_attention(session: Session, *, item: "m.AttentionItem", now: datetime 
         session, domain=item.source_domain, process_name=item.source_process_name, module=item.source_module,
         phase=item.source_phase, context=context, now=now,
     )
-    item.resolved_process_owner_position_id = resolution.owner_position.id if resolution.owner_position else None
-    item.resolved_recipient_acting_identity_id = (
-        resolution.acting_identity.id if resolution.acting_identity else None
-    )
+    owner_position_id = resolution.owner_position.id if resolution.owner_position else None
+    resolved_recipient_id = resolution.acting_identity.id if resolution.acting_identity else None
+
+    item.resolved_process_owner_position_id = owner_position_id
+    item.resolved_recipient_acting_identity_id = resolved_recipient_id
     item.resolution_path = resolution.resolution_path
     item.routing_unresolved_reason = resolution.unresolved_reason
+    _append_routing_history(
+        session, item=item, owner_position_id=owner_position_id,
+        resolved_recipient_acting_identity_id=resolved_recipient_id, resolution_path=resolution.resolution_path,
+        unresolved_reason=resolution.unresolved_reason,
+    )
     session.flush()
     return item
+
+
+def list_routing_history(session: Session, *, item: "m.AttentionItem") -> list["m.AttentionRoutingResolution"]:
+    """Every past `route_attention()` evaluation for `item`, oldest first —
+    the audit trail task §5/§21 requires: when routing happened, the
+    recipient resolved, the resolution path, the reason, and any subsequent
+    re-routing. Never mutated once inserted."""
+    return list(
+        session.scalars(
+            select(m.AttentionRoutingResolution)
+            .where(m.AttentionRoutingResolution.attention_item_id == item.id)
+            .order_by(m.AttentionRoutingResolution.resolved_at, m.AttentionRoutingResolution.id)
+        )
+    )
 
 
 def acknowledge_attention(

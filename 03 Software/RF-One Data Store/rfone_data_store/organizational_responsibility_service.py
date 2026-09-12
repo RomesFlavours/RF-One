@@ -14,13 +14,23 @@ Selection, ...), not owned by whichever Domain integrates it first. THIS
 MODULE INTEGRATES NO DOMAIN — foundation, not integration; no Tips (or any
 other Domain) code is imported or referenced here.
 
-Escalation policy (Core doc 12 §9: "Core does not fix a universal
-escalation rule") is deliberately NOT implemented here: `resolve_effective_
-recipient` determines the current PRIMARY recipient only (owning Position's
-occupant, or its active temporary coverage) — if that is unresolved (a
-vacant Position with no active coverage), this module reports exactly that,
-it never falls back to a hardcoded "escalate to the superior" or any other
-guessed target.
+Full resolution order implemented by `resolve_effective_recipient` (task
+§6 of TASK_ORG_RUNTIME_CONSISTENCY_FIXES restates this precisely, no logic
+changed by that restatement):
+
+    Primary Position -> Temporary Coverage, if active
+    -> otherwise the Position's current Occupant
+    -> otherwise its ordered Backup Position chain
+    -> otherwise the Organizational Fallback Policy applicable to context
+
+Business-specific escalation POLICY (Core doc 12 §9: "Core does not fix a
+universal escalation rule") is still deliberately NOT implemented here —
+Backup Position and Organizational Fallback are themselves organizational
+CONFIGURATION an administrator sets explicitly (never inferred, never a
+hardcoded "escalate to the superior"); when NONE of the steps above
+resolves (no Backup configured/all vacant, no Fallback Policy configured or
+it is itself vacant), this module reports exactly that — it never guesses a
+target beyond what has actually been configured.
 """
 
 from __future__ import annotations
@@ -245,9 +255,19 @@ def set_process_ownership(
     return ownership
 
 
+# Structured classification codes for `ProcessOwnerResolution.unresolved_code`
+# (TASK_ORG_RUNTIME_CONSISTENCY_FIXES §3) — a caller (the Organizational
+# Coverage Check included) must classify by this CODE, never by matching
+# substrings inside `unresolved_reason`'s free-text sentence. The text
+# remains presentation/detail only.
+PROCESS_OWNER_NOT_FOUND = "NOT_FOUND"
+PROCESS_OWNER_AMBIGUOUS = "AMBIGUOUS"
+
+
 @dataclass(frozen=True)
 class ProcessOwnerResolution:
     position: "m.Position | None"
+    unresolved_code: str | None = None
     unresolved_reason: str | None = None
 
 
@@ -295,7 +315,7 @@ def resolve_process_owner(
 
     if not matching:
         return ProcessOwnerResolution(
-            position=None,
+            position=None, unresolved_code=PROCESS_OWNER_NOT_FOUND,
             unresolved_reason=(
                 f"No Process Ownership found for domain={domain!r} process_name={process_name!r} "
                 f"phase={phase!r} matching the given scope."
@@ -304,7 +324,7 @@ def resolve_process_owner(
     distinct_positions = {row.position_id for row in matching}
     if len(distinct_positions) > 1:
         return ProcessOwnerResolution(
-            position=None,
+            position=None, unresolved_code=PROCESS_OWNER_AMBIGUOUS,
             unresolved_reason=(
                 f"Ambiguous Process Ownership: {len(distinct_positions)} different Positions match "
                 f"domain={domain!r} process_name={process_name!r} phase={phase!r} for the given scope."

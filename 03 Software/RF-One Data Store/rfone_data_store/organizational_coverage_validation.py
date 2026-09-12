@@ -195,6 +195,78 @@ def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
         resolution5.acting_identity is ceo_occupant,
     )
 
+    # === RESTAURANT vs OPERATIONAL_UNIT: independently scoped, never
+    # cross-matching even at the same numeric id (TASK_ORG_RUNTIME_
+    # CONSISTENCY_FIXES §1 — a genuine, documented Restaurant-Domain
+    # distinction, deliberately NOT merged). ===
+    position_restaurant_scoped = org_svc.create_position(session, name="TEST/DEMO RESTAURANT-scoped Position")
+    org_svc.add_position_scope(
+        session, position=position_restaurant_scoped, scope_type=m.POSITION_SCOPE_RESTAURANT, scope_id=777,
+    )
+    position_ou_scoped = org_svc.create_position(session, name="TEST/DEMO OPERATIONAL_UNIT-scoped Position")
+    org_svc.add_position_scope(
+        session, position=position_ou_scoped, scope_type=m.POSITION_SCOPE_OPERATIONAL_UNIT, scope_id=777,
+    )
+    session.commit()
+    result.check(
+        "RESTAURANT and OPERATIONAL_UNIT scope kinds do not cross-match at the same numeric id "
+        "(RESTAURANT-scoped Position does not match an OPERATIONAL_UNIT context)",
+        not org_svc.position_matches_scope(
+            session, position=position_restaurant_scoped,
+            context=org_svc.ScopeContext(scope_type=m.POSITION_SCOPE_OPERATIONAL_UNIT, scope_id=777),
+        ),
+    )
+    result.check(
+        "RESTAURANT and OPERATIONAL_UNIT scope kinds do not cross-match at the same numeric id "
+        "(OPERATIONAL_UNIT-scoped Position does not match a RESTAURANT context)",
+        not org_svc.position_matches_scope(
+            session, position=position_ou_scoped,
+            context=org_svc.ScopeContext(scope_type=m.POSITION_SCOPE_RESTAURANT, scope_id=777),
+        ),
+    )
+    result.check(
+        "OPERATIONAL_UNIT context correctly matches its own OPERATIONAL_UNIT-scoped Position",
+        org_svc.position_matches_scope(
+            session, position=position_ou_scoped,
+            context=org_svc.ScopeContext(scope_type=m.POSITION_SCOPE_OPERATIONAL_UNIT, scope_id=777),
+        ),
+    )
+
+    # === Fallback delivers the Attention but must NOT hide the underlying
+    # organizational health gap (TASK_ORG_RUNTIME_CONSISTENCY_FIXES §2). ===
+    result.check(
+        "Fallback/health separation: ProcNeverOwned is delivered via COVERED_VIA_FALLBACK (delivery dimension) "
+        "while its ownership_health still reports NO_OWNER (health dimension) — one never hides the other",
+        any(
+            e.process_name == "ProcNeverOwned" and e.status == coverage_svc.STATUS_COVERED_VIA_FALLBACK
+            and e.ownership_health == coverage_svc.OWNERSHIP_NO_OWNER
+            for e in check_result.entries
+        ),
+    )
+    result.check(
+        "Coverage Check counts: unowned_responsibilities counts NO_OWNER/AMBIGUOUS_OWNER regardless of "
+        "whether the Process is nonetheless delivered via fallback",
+        check_result.counts["unowned_responsibilities"] >= 1 and check_result.counts["NO_OWNER"] >= 1,
+    )
+
+    # === AMBIGUOUS_OWNER: classified via structured `ownership_health`, and
+    # visible in the coverage check even when delivery still succeeds. ===
+    domain_amb = "TESTCOVERAGE_AMBIGUOUS"
+    position_amb_a = org_svc.create_position(session, name="TEST/DEMO Coverage Ambiguous Candidate A")
+    position_amb_b = org_svc.create_position(session, name="TEST/DEMO Coverage Ambiguous Candidate B")
+    org_svc.set_process_ownership(session, domain=domain_amb, process_name="ProcAmbiguous", position=position_amb_a)
+    org_svc.set_process_ownership(session, domain=domain_amb, process_name="ProcAmbiguous", position=position_amb_b)
+    session.commit()
+    check_result_amb = coverage_svc.run_organizational_coverage_check(session, now=T0)
+    result.check(
+        "Coverage Check: a Process with two conflicting Process Ownership rows is classified "
+        "ownership_health=AMBIGUOUS_OWNER (structural, via org_svc.PROCESS_OWNER_AMBIGUOUS)",
+        any(
+            e.process_name == "ProcAmbiguous" and e.ownership_health == coverage_svc.OWNERSHIP_AMBIGUOUS
+            for e in check_result_amb.entries
+        ),
+    )
+
     # === AI Consistency Review boundary (task §16) — structured data only, no AI call. ===
     request = ai_svc.build_ai_consistency_review_request(session)
     result.check(

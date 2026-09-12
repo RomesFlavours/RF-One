@@ -49,7 +49,10 @@ def _scope_display(db, scope) -> str:
         return "GLOBAL"
     if scope.scope_type == m.POSITION_SCOPE_RESTAURANT and scope.scope_id:
         restaurant = db.get(m.Restaurant, scope.scope_id)
-        return f"Restaurant: {restaurant.name}" if restaurant else f"RESTAURANT={scope.scope_id} (not found)"
+        return f"Restaurant (Brand): {restaurant.name}" if restaurant else f"RESTAURANT={scope.scope_id} (not found)"
+    if scope.scope_type == m.POSITION_SCOPE_OPERATIONAL_UNIT and scope.scope_id:
+        location = db.get(m.Location, scope.scope_id)
+        return f"Operational Unit (Location): {location.name}" if location else f"OPERATIONAL_UNIT={scope.scope_id} (not found)"
     if scope.scope_type == m.POSITION_SCOPE_LEGAL_ENTITY and scope.scope_id:
         entity = db.get(m.LegalEntity, scope.scope_id)
         return f"Legal Entity: {entity.legal_name}" if entity else f"LEGAL_ENTITY={scope.scope_id} (not found)"
@@ -142,13 +145,14 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
             positions = list(db.scalars(select(m.Position).where(m.Position.id != position_id).order_by(m.Position.name)))
             restaurants = list(db.scalars(select(m.Restaurant).order_by(m.Restaurant.name)))
             legal_entities = list(db.scalars(select(m.LegalEntity).order_by(m.LegalEntity.legal_name)))
+            locations = list(db.scalars(select(m.Location).order_by(m.Location.name)))
             current_occupant = org_svc.resolve_current_occupant(db, position=position)
             active_coverage = org_svc.resolve_active_coverage(db, position=position)
             return render_template(
                 "admin_org_position_detail.html", position=position, scopes=scopes, assignments=assignments,
                 coverages=coverages, backups=backups, subordinates=subordinates, ownerships=ownerships,
                 identities=identities, positions=positions, restaurants=restaurants, legal_entities=legal_entities,
-                current_occupant=current_occupant, active_coverage=active_coverage,
+                locations=locations, current_occupant=current_occupant, active_coverage=active_coverage,
                 scope_kinds=m.POSITION_SCOPE_KINDS, scope_id_kinds=m.POSITION_SCOPE_ID_KINDS,
                 scope_key_kinds=m.POSITION_SCOPE_KEY_KINDS, phases=m.PROCESS_PHASES,
                 scope_display=lambda s: _scope_display(db, s),
@@ -280,7 +284,26 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
 
         with SessionFactory() as db:
             check_result = coverage_svc.run_organizational_coverage_check(db)
-            gap_position_ids = {e.owner_position.id for e in check_result.entries if e.owner_position and e.status != coverage_svc.STATUS_FULLY_COVERED}
+            # Per-Position DELIVERY badge (TASK_ORG_RUNTIME_CONSISTENCY_FIXES
+            # §4): a Position that owns several Processes can have entries at
+            # different delivery statuses — pick the single WORST one to
+            # badge the node with, worst-first so a real gap is never masked
+            # by another, better-covered Process the same Position also owns.
+            # Backup/Fallback coverage is deliberately NOT labelled "gap" —
+            # the Attention is actually routable; only genuine GAP is.
+            _DELIVERY_BADGE_PRIORITY = (
+                coverage_svc.STATUS_GAP, coverage_svc.STATUS_COVERED_VIA_FALLBACK, coverage_svc.STATUS_COVERED_VIA_BACKUP,
+            )
+            position_delivery_status: dict[int, str] = {}
+            for e in check_result.entries:
+                if e.owner_position is None or e.status == coverage_svc.STATUS_FULLY_COVERED:
+                    continue
+                current = position_delivery_status.get(e.owner_position.id)
+                if current is None or _DELIVERY_BADGE_PRIORITY.index(e.status) < _DELIVERY_BADGE_PRIORITY.index(current):
+                    position_delivery_status[e.owner_position.id] = e.status
+            gap_position_ids = {pid for pid, status in position_delivery_status.items() if status == coverage_svc.STATUS_GAP}
+            backup_covered_position_ids = {pid for pid, status in position_delivery_status.items() if status == coverage_svc.STATUS_COVERED_VIA_BACKUP}
+            fallback_covered_position_ids = {pid for pid, status in position_delivery_status.items() if status == coverage_svc.STATUS_COVERED_VIA_FALLBACK}
             backup_required_gap_ids = {p.id for p in check_result.positions_missing_required_backup}
 
             positions = list(db.scalars(select(m.Position).order_by(m.Position.name)))
@@ -301,6 +324,8 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
                          else coverage.delegate_position.name) + (f" until {coverage.valid_to}" if coverage.valid_to else "")
                     ) if coverage else None,
                     "gap_warning": p.id in gap_position_ids,
+                    "covered_via_backup": p.id in backup_covered_position_ids,
+                    "covered_via_fallback": p.id in fallback_covered_position_ids,
                     "missing_required_backup": p.id in backup_required_gap_ids,
                 })
             return jsonify({"positions": nodes, "coverage_counts": check_result.counts})
@@ -336,13 +361,14 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
             positions = list(db.scalars(select(m.Position).where(m.Position.id != position_id).order_by(m.Position.name)))
             restaurants = list(db.scalars(select(m.Restaurant).order_by(m.Restaurant.name)))
             legal_entities = list(db.scalars(select(m.LegalEntity).order_by(m.LegalEntity.legal_name)))
+            locations = list(db.scalars(select(m.Location).order_by(m.Location.name)))
             current_occupant = org_svc.resolve_current_occupant(db, position=position)
             active_coverage = org_svc.resolve_active_coverage(db, position=position)
             return render_template(
                 "admin_org_position_editor_fragment.html", position=position, scopes=scopes, assignments=assignments,
                 coverages=coverages, backups=backups, ownerships=ownerships, subordinates=subordinates,
                 identities=identities, positions=positions, restaurants=restaurants, legal_entities=legal_entities,
-                current_occupant=current_occupant, active_coverage=active_coverage,
+                locations=locations, current_occupant=current_occupant, active_coverage=active_coverage,
                 scope_kinds=m.POSITION_SCOPE_KINDS, scope_id_kinds=m.POSITION_SCOPE_ID_KINDS,
                 scope_key_kinds=m.POSITION_SCOPE_KEY_KINDS, phases=m.PROCESS_PHASES,
                 scope_display=lambda s: _scope_display(db, s), in_modal=True,
@@ -539,7 +565,10 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
             if item is None:
                 abort(404)
             identities = list(db.scalars(select(m.ActingIdentity).order_by(m.ActingIdentity.display_name)))
-            return render_template("admin_org_attention_detail.html", item=item, identities=identities)
+            routing_history = att_svc.list_routing_history(db, item=item)
+            return render_template(
+                "admin_org_attention_detail.html", item=item, identities=identities, routing_history=routing_history,
+            )
 
     @app.route("/admin/org/attention/<int:item_id>/route", methods=["POST"])
     @require_admin
