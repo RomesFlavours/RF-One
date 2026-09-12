@@ -39,6 +39,7 @@ This is Restaurant-independent and POS-independent at the Domain level. Nothing 
 | [Tip.md](Tip.md) | The observable Tip fact itself, attached to Payment |
 | [Tip Policy.md](Tip%20Policy.md) | Restaurant-configured, temporally valid allocation rules |
 | [Tip Allocation.md](Tip%20Allocation.md) | The atomic, auditable result of applying a Tip Policy |
+| [Tips Payment Execution.md](Tips%20Payment%20Execution.md) | Core 2.0 Process-First pilot: paying a finalized Tip Allocation out through an external Payment Executor (Mercury, sandbox only), Payment Instruction identity, funding check, and Outcome Verification — status PILOT, for technical review |
 
 ---
 

@@ -72,8 +72,9 @@ __pycache__/
 # --- Secrets / credentials -------------------------------------------------
 # .env / .env.* already covered above.
 # Secrets/ found untracked and unignored in the repo root (contains a
-# Mercury sandbox token file) — added defensively so it can never be
-# accidentally staged by a broad `git add`.
+# Mercury sandbox token file) — independently flagged by both
+# TASK_ATTENTION_ORG_RUNTIME and TASK_TIPS_CORE2_PILOT; added here
+# defensively so it can never be accidentally staged by a broad `git add`.
 Secrets/
 *.pem
 *.key

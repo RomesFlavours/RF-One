@@ -1970,6 +1970,164 @@ class TipDistributionAllocation(Base):
     rule_version: Mapped[TipDistributionRuleVersion] = relationship()
 
 
+# ---------------------------------------------------------------------------
+# Tip Payment Execution (TASK_TIPS_CORE2_PILOT) — Core 2.0 Process-First pilot
+#
+# Payment Instruction identity and outcome tracking for paying out a
+# TipDistributionCalculationRun's finalized per-Employee net amount through
+# an external Payment Executor (Mercury — `rfone_data_store.technical.
+# connectors.mercury`). RF-One's own idempotency (`uq_tip_payment_instruction_
+# run_employee` below) is the PRIMARY duplicate-payment guard — Mercury's own
+# duplicate protection is a safety net only, never relied upon for
+# correctness (`01 Domains/Business Domain/Restaurant/Tips/Tips Payment
+# Execution.md`, "Idempotency").
+#
+# `EmployeeExternalPaymentAccount` is the stable Employee <-> external-
+# provider-recipient reference (task §7): RF-One never stores routing/account
+# numbers here or anywhere else — only the provider's own opaque recipient
+# id, which the provider (Mercury) resolves to real bank details on its own
+# side. Scoped to Tips ownership for this pilot; a second Domain needing the
+# same pattern (e.g. a future Payroll Mercury path) would promote this to a
+# shared location rather than duplicate it — not done here since Tips is the
+# only consumer today.
+# ---------------------------------------------------------------------------
+
+
+class EmployeeExternalPaymentAccount(Base):
+    """One stable reference from an Employee to their payment destination at
+    an external Payment Executor. `provider_recipient_id` is Mercury's own
+    opaque recipient id (a UUID) — never a routing/account number, which
+    stays exclusively on Mercury's side (task §7, §6 "Sensitive Data").
+
+    An Employee may have at most one ACTIVE reference per provider at a
+    time — `is_active` is a soft toggle (never deleted) so history of which
+    external recipient an Employee's payouts went to over time is
+    preserved, consistent with Historical Integrity."""
+
+    __tablename__ = "employee_external_payment_accounts"
+    __table_args__ = (
+        CheckConstraint("provider IN ('MERCURY')", name="ck_employee_external_payment_accounts_provider"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    provider_recipient_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    employee: Mapped["Employee"] = relationship()
+
+
+class TipPaymentInstruction(Base):
+    """One Payment Instruction: "pay this Employee this amount for this
+    finalized TipDistributionCalculationRun" — RF-One's own canonical
+    identity for a Tip payout, independent of Mercury's own Transaction
+    identity (`provider_transaction_id` below is evidence of what Mercury
+    did with this instruction, never the instruction's own identity).
+
+    `uq_tip_payment_instruction_run_employee` is the primary double-payment
+    guard (task §5): at most one Payment Instruction ever exists for a given
+    (calculation_run_id, employee_id) pair — created once
+    (`payment_instruction.get_or_create_payment_instructions_for_run`) and
+    never duplicated, regardless of how many times a Process Activation
+    re-evaluates a Business Date's readiness.
+
+    Conceptual status values (task §3 — concepts preserved, exact strings
+    chosen to fit this codebase's existing UPPER_SNAKE convention):
+
+        READY            -> instruction exists, not yet submitted to Mercury
+        SUBMITTED        -> POST accepted by Mercury; Transaction id known
+        SENT             -> observed Mercury status `sent`/`pending` with no
+                             failure yet (Outcome not yet fully verified —
+                             see `postedAt`/`provider_status` for detail)
+        OUTCOME_VERIFIED -> `provider_status == 'sent'` AND `posted_at` is
+                             set (task §10) — the strongest state this pilot
+                             asserts; still re-checkable, never immutable
+        NEEDS_ATTENTION  -> a failure class (task §11 A/B/C/E) or a REVERSED
+                             transition (task §10's "Outcome Reopened") —
+                             `failure_class`/`reason_for_failure`/`priority`
+                             describe why
+        CANCELLED        -> Mercury reported `cancelled`/`blocked` for this
+                             Transaction
+    """
+
+    __tablename__ = "tip_payment_instructions"
+    __table_args__ = (
+        UniqueConstraint(
+            "calculation_run_id", "employee_id", name="uq_tip_payment_instruction_run_employee",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    calculation_run_id: Mapped[int] = mapped_column(
+        ForeignKey("tip_distribution_calculation_runs.id"), nullable=False, index=True
+    )
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+
+    amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Deterministically derived from (calculation_run_id, employee_id,
+    # ACTIVE recipient reference id) — `payment_instruction.
+    # build_idempotency_key` — computed and persisted at first submit
+    # attempt, not at instruction creation (NULL until then, since no
+    # recipient reference may exist yet). Reused unchanged on every retry
+    # against the SAME resolved recipient (a transient-failure retry must
+    # stay deduplicated); a NEW key is derived only when the active
+    # reference itself changes (a genuine correction, e.g. a wrong
+    # recipient was linked and then fixed). This split was forced by
+    # empirical Mercury sandbox behavior (TASK_TIPS_CORE2_PILOT): resending
+    # the SAME idempotencyKey after the underlying payload's `recipientId`
+    # changed returns HTTP 409, not a safe idempotent replay — reusing the
+    # instruction's original key across a recipient correction would
+    # therefore have permanently wedged that instruction. Unique once set,
+    # as a second, independent structural guard against ever submitting two
+    # different instructions under the same key.
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
+
+    # Conceptual values: READY, SUBMITTED, SENT, OUTCOME_VERIFIED,
+    # NEEDS_ATTENTION, CANCELLED — see class docstring.
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="READY")
+
+    provider: Mapped[str] = mapped_column(String(16), nullable=False, default="MERCURY")
+    provider_account_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    provider_recipient_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    provider_transaction_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Mercury's OWN transaction status verbatim (pending/sent/cancelled/
+    # failed/reversed/blocked) — never remapped/renamed, so a human
+    # inspecting this row can cross-check it directly against Mercury's own
+    # dashboard (`Tips Payment Execution.md`, "Use Mercury's real states").
+    provider_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Task §11 — WHY `status` became NEEDS_ATTENTION/CANCELLED. Conceptual
+    # values: SYNCHRONOUS_VALIDATION, DUPLICATE_PROTECTION, PROVIDER_STATUS_
+    # FAILURE, PROVIDER_UNAVAILABLE, OUTCOME_REOPENED, RECIPIENT_NOT_
+    # CONFIGURED — set by `payment_instruction.py`, never guessed from
+    # `reason_for_failure` text by any OTHER module (task §11's "isola la
+    # provider-specific interpretation nel connector").
+    failure_class: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    reason_for_failure: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Conceptual values: CRITICAL, HIGH, MEDIUM, LOW (Core 2.0, `12_Attention_
+    # Management.md` §3) — set contextually by `payment_instruction.py`
+    # (task §13), never a fixed event->priority table. NULL until this
+    # instruction first needs attention.
+    priority: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    calculation_run: Mapped[TipDistributionCalculationRun] = relationship()
+    employee: Mapped["Employee"] = relationship()
+
+
 # `TipCalculationRun`/`TipAllocation`/`TipCalculationIssue` — the legacy
 # engine's own RESULT tables — were removed entirely (models + tables) by
 # TIPS_LEGACY_ENGINE_RETIREMENT_001: confirmed empty (0 rows each) in the
