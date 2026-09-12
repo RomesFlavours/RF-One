@@ -293,6 +293,377 @@ class OperationalSignature(Base):
 
 
 # ---------------------------------------------------------------------------
+# Organizational Responsibility + Attention Management shared runtime
+# (TASK_ATTENTION_ORG_RUNTIME; 00 Core/Organizational Responsibility.md,
+# 00 Core/ConceptualArchitecture/12_Attention_Management.md).
+#
+# Same placement rationale as ActingIdentity/AuthorityGrant/
+# OperationalSignature immediately above: this is shared, cross-Domain
+# infrastructure, not owned by whichever Domain integrates it first
+# (Tips included) — see `organizational_responsibility_service.py` and
+# `attention_service.py`'s own "foundation, not integration" module
+# docstrings.
+#
+# Position's Scope reuses AuthorityGrant's own established pattern —
+# `scope_type` + a generic, non-foreign-keyed `scope_id` for dimensions with
+# no table of their own yet (CORPORATE/BRAND/OPERATIONAL_UNIT), a REAL
+# `scope_id` for dimensions that do have one today (RESTAURANT, LEGAL_
+# ENTITY, OPERATIONAL_AREA — deliberately still no DB-level ForeignKey, for
+# the identical reason AuthorityGrant's own docstring already gives: one
+# generic column must keep working unchanged as more scope kinds gain real
+# tables) — plus a string-keyed `scope_key` for the dimensions Core defines
+# without any canonical numeric-id registry existing anywhere in this
+# schema (DOMAIN/MODULE/PROCESS/PROCESS_PHASE), mirroring exactly how
+# `OperationalSignature.domain`/`module`/`object_type` above are already
+# plain strings with no FK for the identical reason.
+# ---------------------------------------------------------------------------
+
+POSITION_SCOPE_CORPORATE = "CORPORATE"
+POSITION_SCOPE_BRAND = "BRAND"
+POSITION_SCOPE_LEGAL_ENTITY = "LEGAL_ENTITY"
+POSITION_SCOPE_OPERATIONAL_UNIT = "OPERATIONAL_UNIT"
+POSITION_SCOPE_RESTAURANT = "RESTAURANT"
+POSITION_SCOPE_OPERATIONAL_AREA = "OPERATIONAL_AREA"
+POSITION_SCOPE_DOMAIN = "DOMAIN"
+POSITION_SCOPE_MODULE = "MODULE"
+POSITION_SCOPE_PROCESS = "PROCESS"
+POSITION_SCOPE_PROCESS_PHASE = "PROCESS_PHASE"
+POSITION_SCOPE_GLOBAL = "GLOBAL"
+POSITION_SCOPE_KINDS = (
+    POSITION_SCOPE_CORPORATE, POSITION_SCOPE_BRAND, POSITION_SCOPE_LEGAL_ENTITY, POSITION_SCOPE_OPERATIONAL_UNIT,
+    POSITION_SCOPE_RESTAURANT, POSITION_SCOPE_OPERATIONAL_AREA, POSITION_SCOPE_DOMAIN, POSITION_SCOPE_MODULE,
+    POSITION_SCOPE_PROCESS, POSITION_SCOPE_PROCESS_PHASE, POSITION_SCOPE_GLOBAL,
+)
+# Which kinds carry their value in `scope_id` (an integer — real or, today,
+# generic/tableless) vs. `scope_key` (a string) — `GLOBAL` carries neither.
+POSITION_SCOPE_ID_KINDS = (
+    POSITION_SCOPE_CORPORATE, POSITION_SCOPE_BRAND, POSITION_SCOPE_LEGAL_ENTITY, POSITION_SCOPE_OPERATIONAL_UNIT,
+    POSITION_SCOPE_RESTAURANT, POSITION_SCOPE_OPERATIONAL_AREA,
+)
+POSITION_SCOPE_KEY_KINDS = (
+    POSITION_SCOPE_DOMAIN, POSITION_SCOPE_MODULE, POSITION_SCOPE_PROCESS, POSITION_SCOPE_PROCESS_PHASE,
+)
+
+# Process.md, "Phases of Execution" — a chronological decomposition of
+# Process execution, never a mandatory subdivision (a Process need not name
+# a phase at all; `ProcessOwnership.phase IS NULL` means "owns the whole
+# Process, not one specific phase").
+PROCESS_PHASE_PLANNING = "PLANNING"
+PROCESS_PHASE_SCHEDULING_PROGRAMMING = "SCHEDULING_PROGRAMMING"
+PROCESS_PHASE_MANAGEMENT = "MANAGEMENT"
+PROCESS_PHASE_OPERATIONS = "OPERATIONS"
+PROCESS_PHASES = (
+    PROCESS_PHASE_PLANNING, PROCESS_PHASE_SCHEDULING_PROGRAMMING, PROCESS_PHASE_MANAGEMENT, PROCESS_PHASE_OPERATIONS,
+)
+
+ATTENTION_PRIORITY_CRITICAL = "CRITICAL"
+ATTENTION_PRIORITY_HIGH = "HIGH"
+ATTENTION_PRIORITY_MEDIUM = "MEDIUM"
+ATTENTION_PRIORITY_LOW = "LOW"
+ATTENTION_PRIORITIES = (
+    ATTENTION_PRIORITY_CRITICAL, ATTENTION_PRIORITY_HIGH, ATTENTION_PRIORITY_MEDIUM, ATTENTION_PRIORITY_LOW,
+)
+
+ATTENTION_STATUS_OPEN = "OPEN"
+ATTENTION_STATUS_ACKNOWLEDGED = "ACKNOWLEDGED"
+ATTENTION_STATUS_RESOLVED = "RESOLVED"
+ATTENTION_STATUS_CANCELLED = "CANCELLED"
+ATTENTION_STATUSES = (
+    ATTENTION_STATUS_OPEN, ATTENTION_STATUS_ACKNOWLEDGED, ATTENTION_STATUS_RESOLVED, ATTENTION_STATUS_CANCELLED,
+)
+
+
+class Position(Base):
+    """A stable organizational responsibility, independent of who currently
+    occupies it (`Organizational Responsibility.md` §2) — NEVER derived
+    automatically from a job title, a Clover/Tips Role, Domain Access, or an
+    Employee's function (task §3): those are different concepts a Product
+    Owner may choose to relate to a Position later, never a source this
+    Foundation infers one from.
+
+    No effective-dating on Position itself — `is_active` is a simple current-
+    state toggle, matching `ActingIdentity.is_active`'s own pattern. The
+    TEMPORAL dimension Core actually asks for (`Organizational Responsibility.
+    md` §3: "a person occupies a Position for a period of time") lives on
+    `PositionAssignment`/`PositionTemporaryCoverage` below, not here — a
+    Position's own identity does not start/stop, only who occupies it does.
+
+    Seed/demo Positions are a Product Owner configuration act, never
+    auto-generated by this Foundation (task §14) — no row here names a real
+    Rome's Flavours person or role unless the Product Owner creates it."""
+
+    __tablename__ = "positions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parent_position_id: Mapped[int | None] = mapped_column(ForeignKey("positions.id"), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    parent_position: Mapped["Position | None"] = relationship(remote_side=[id])
+    scopes: Mapped[list["PositionScope"]] = relationship(back_populates="position")
+
+
+class PositionScope(Base):
+    """One scope STATEMENT for a Position (`Organizational Responsibility.
+    md` §2: "the Corporate/Brand/Operational Unit/Operational Area/Domain/
+    Module/Process context within which its responsibility applies"). A
+    Position may carry zero, one, or several of these (task §4: "NON è
+    obbligatorio che ogni Position usi tutte queste dimensioni") — the
+    Position's overall operating perimeter is the SET of its own
+    `PositionScope` rows, never a single wide multi-column row (which would
+    not compose cleanly when a Position spans e.g. two Restaurants)."""
+
+    __tablename__ = "position_scopes"
+    __table_args__ = (
+        CheckConstraint(f"scope_type IN {POSITION_SCOPE_KINDS!r}", name="ck_position_scope_type"),
+        CheckConstraint(
+            "scope_type = 'GLOBAL' OR scope_id IS NOT NULL OR scope_key IS NOT NULL",
+            name="ck_position_scope_value_required",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    position_id: Mapped[int] = mapped_column(ForeignKey("positions.id"), nullable=False, index=True)
+    scope_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    scope_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scope_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    position: Mapped["Position"] = relationship(back_populates="scopes")
+
+
+class PositionAssignment(Base):
+    """Position -> Occupant (Acting Identity), effective-dated
+    (`Organizational Responsibility.md` §3). `valid_to IS NULL` means
+    currently occupying. A Position with no row here at all — or none
+    currently active — is VACANT (task §5), never silently treated as
+    unowned or as an error. The same Acting Identity may occupy more than
+    one Position (no uniqueness constraint on `acting_identity_id` alone);
+    a Position may be reassigned over time (multiple rows, non-overlapping
+    by convention of the service layer, never enforced by deleting or
+    overwriting a prior row — Historical Integrity)."""
+
+    __tablename__ = "position_assignments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    position_id: Mapped[int] = mapped_column(ForeignKey("positions.id"), nullable=False, index=True)
+    acting_identity_id: Mapped[int] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=False, index=True
+    )
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    position: Mapped["Position"] = relationship()
+    acting_identity: Mapped["ActingIdentity"] = relationship()
+
+
+class PositionTemporaryCoverage(Base):
+    """Temporary coverage of one Position's responsibility by another
+    Position OR directly by an Acting Identity (`Organizational
+    Responsibility.md` §3: "a form of Delegation... explicit Grantor, a
+    bounded scope and duration, auditable"). Exactly one of
+    `delegate_position_id`/`delegate_acting_identity_id` is set — Core
+    itself leaves open which shape a coverage takes (task §6); this
+    Foundation supports both without preferring one.
+
+    This is the SAME Delegation concept `AuthorityGrant` above already
+    implements for Authority specifically (explicit Grantor via
+    `granted_by_identity_id`, bounded duration, revocable via `revoked_at`
+    rather than deleted) — never a second, parallel Delegation semantics
+    (task §6). It is a distinct TABLE because what is being delegated here
+    (occupancy of a Position) is shaped differently from what
+    `AuthorityGrant` delegates (a domain/module/action permission), not
+    because the underlying concept differs."""
+
+    __tablename__ = "position_temporary_coverages"
+    __table_args__ = (
+        CheckConstraint(
+            "(delegate_position_id IS NOT NULL) != (delegate_acting_identity_id IS NOT NULL)",
+            name="ck_position_temporary_coverage_delegate_xor",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    covered_position_id: Mapped[int] = mapped_column(ForeignKey("positions.id"), nullable=False, index=True)
+    delegate_position_id: Mapped[int | None] = mapped_column(ForeignKey("positions.id"), nullable=True)
+    delegate_acting_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True
+    )
+
+    granted_by_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True
+    )
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    covered_position: Mapped["Position"] = relationship(foreign_keys=[covered_position_id])
+    delegate_position: Mapped["Position | None"] = relationship(foreign_keys=[delegate_position_id])
+    delegate_acting_identity: Mapped["ActingIdentity | None"] = relationship(
+        foreign_keys=[delegate_acting_identity_id]
+    )
+    granted_by_identity: Mapped["ActingIdentity | None"] = relationship(foreign_keys=[granted_by_identity_id])
+
+
+class ProcessOwnership(Base):
+    """Process (or Process Phase) -> responsible Position
+    (`Organizational Responsibility.md` §4). `domain`/`module`/
+    `process_name` are plain strings with no foreign key — deliberately:
+    there is no canonical, cross-Domain Process registry table anywhere in
+    this schema today (each Domain names its own Run/Process concept
+    independently, e.g. `TipDistributionCalculationRun`), so this mirrors
+    `OperationalSignature.domain`/`module`/`object_type`'s own, identical,
+    already-established choice rather than inventing a competing Process
+    registry (task §7: "NON creare Business Process definitions duplicati").
+
+    `phase IS NULL` means this Position owns the Process as a whole; a
+    different row per phase is legitimate but never mandatory (task §7 —
+    "NON obbligare ogni Process ad avere quattro owner distinti").
+
+    `scope_type`/`scope_id`/`scope_key` are an OPTIONAL override, same
+    shape as `PositionScope` — when set, this specific ownership applies
+    only within that scope (e.g. "Position A owns this Process, but only
+    for Restaurant Y"); when NULL, the owning Position's own general
+    `PositionScope` rows govern applicability instead. No uniqueness
+    constraint is enforced across (domain, module, process_name, phase,
+    scope): more than one candidate row is a normal, resolvable situation
+    (`organizational_responsibility_service.resolve_process_owner` picks
+    the one whose scope actually matches the caller's context) — an
+    unresolvable ambiguity is surfaced as such, never guessed (task §9)."""
+
+    __tablename__ = "process_ownerships"
+    __table_args__ = (
+        CheckConstraint(
+            f"scope_type IS NULL OR scope_type IN {POSITION_SCOPE_KINDS!r}", name="ck_process_ownership_scope_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    domain: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    module: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    process_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    phase: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    position_id: Mapped[int] = mapped_column(ForeignKey("positions.id"), nullable=False, index=True)
+
+    scope_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    scope_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scope_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    position: Mapped["Position"] = relationship()
+
+
+class AttentionItem(Base):
+    """A cross-Domain "something requires human attention" record (Core
+    `12_Attention_Management.md`) — NEVER a general report/dashboard row
+    (task §8): it exists only for decisions required, authorizations
+    required, exceptions, and problems to resolve.
+
+    `source_domain`/`source_module`/`source_process_name`/`source_phase`
+    identify what raised it, in the SAME plain-string shape `ProcessOwnership`
+    uses to identify a Process (no competing identifier shape). `source_
+    reference` is a free-form pointer to the originating Domain row (e.g.
+    `"TipPaymentInstruction:123"`) — deliberately untyped, since the objects
+    that can raise Attention vary by Domain and this shared table must not
+    depend on every Domain's own schema (same rationale as `OperationalSignature.
+    object_type`/`object_id` above).
+
+    `reason` is the concise synthetic message (Core doc 12 §7's "I
+    interrupted you for X. I would do Y."); `detail`/`proposed_action` carry
+    the fuller technical context separately, so a consumer can show the
+    short form first (task §8's "technical detail separato dal messaggio
+    sintetico").
+
+    Routing outcome is recorded, never silently discarded: `resolved_*`
+    columns are populated when `attention_service.route_attention` succeeds;
+    `routing_unresolved_reason` is populated instead when it cannot
+    determine an effective recipient — the item stays OPEN either way (task
+    §9: never assigned arbitrarily)."""
+
+    __tablename__ = "attention_items"
+    __table_args__ = (
+        CheckConstraint(f"priority IN {ATTENTION_PRIORITIES!r}", name="ck_attention_item_priority"),
+        CheckConstraint(f"status IN {ATTENTION_STATUSES!r}", name="ck_attention_item_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    source_domain: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    source_module: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_process_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source_phase: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proposed_action: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    priority: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default=ATTENTION_STATUS_OPEN)
+
+    # The context `attention_service.route_attention` resolves against —
+    # same optional-override shape as `ProcessOwnership.scope_*` (e.g. which
+    # Restaurant this specific Attention concerns), so routing can pick the
+    # right Process Ownership candidate among several.
+    scope_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    scope_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scope_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    resolved_process_owner_position_id: Mapped[int | None] = mapped_column(
+        ForeignKey("positions.id"), nullable=True
+    )
+    resolved_recipient_acting_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True
+    )
+    routing_unresolved_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_by_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by_identity_id: Mapped[int | None] = mapped_column(ForeignKey("acting_identities.id"), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    resolved_process_owner_position: Mapped["Position | None"] = relationship(
+        foreign_keys=[resolved_process_owner_position_id]
+    )
+    resolved_recipient_acting_identity: Mapped["ActingIdentity | None"] = relationship(
+        foreign_keys=[resolved_recipient_acting_identity_id]
+    )
+    acknowledged_by_identity: Mapped["ActingIdentity | None"] = relationship(
+        foreign_keys=[acknowledged_by_identity_id]
+    )
+    resolved_by_identity: Mapped["ActingIdentity | None"] = relationship(foreign_keys=[resolved_by_identity_id])
+
+
+# ---------------------------------------------------------------------------
 # Source-system provenance (task §33-35)
 # ---------------------------------------------------------------------------
 

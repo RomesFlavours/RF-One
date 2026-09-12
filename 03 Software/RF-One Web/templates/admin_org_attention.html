@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block page_title %}Attention Items · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_org_positions') }}">&larr; Positions</a></p>
+<h1>Attention Items — ADMIN / CONFIGURATION / TEST HARNESS</h1>
+<p class="empty">Inspection only. This is NOT the operational Attention Inbox — no delivery happens from this screen.</p>
+
+<div class="btn-row">
+  <a class="btn" href="{{ url_for('admin_org_attention') }}">All</a>
+  {% for s in statuses %}
+    <a class="btn" href="{{ url_for('admin_org_attention', status=s) }}">{{ s }}</a>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Priority</th><th>Status</th><th>Source</th><th>Reason</th><th>Resolved recipient</th><th>Routing</th></tr></thead>
+      <tbody>
+        {% for item in items %}
+          <tr>
+            <td><span class="badge {{ 'bad' if item.priority == 'CRITICAL' else '' }}">{{ item.priority }}</span></td>
+            <td>{{ item.status }}</td>
+            <td>{{ item.source_domain }}{% if item.source_process_name %}/{{ item.source_process_name }}{% endif %}{% if item.source_phase %} ({{ item.source_phase }}){% endif %}</td>
+            <td><a href="{{ url_for('admin_org_attention_detail', item_id=item.id) }}">{{ item.reason[:80] }}</a></td>
+            <td>{{ item.resolved_recipient_acting_identity.display_name if item.resolved_recipient_acting_identity else "-" }}</td>
+            <td>{% if item.id in unresolved_ids %}<span class="badge warn">UNRESOLVED</span>{% elif item.resolved_recipient_acting_identity_id %}<span class="badge ok">resolved</span>{% else %}not routed{% endif %}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="empty">No Attention Item on file.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

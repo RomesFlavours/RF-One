@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block page_title %}Attention Item #{{ item.id }} · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_org_attention') }}">&larr; Attention Items</a></p>
+<h1>Attention Item #{{ item.id }}</h1>
+
+<div class="card">
+  <p>Priority: <span class="badge {{ 'bad' if item.priority == 'CRITICAL' else '' }}">{{ item.priority }}</span> — Status: <strong>{{ item.status }}</strong></p>
+  <p>Source: {{ item.source_domain }}{% if item.source_module %}/{{ item.source_module }}{% endif %}/{{ item.source_process_name or "-" }}{% if item.source_phase %} ({{ item.source_phase }}){% endif %}
+    {% if item.source_reference %} — {{ item.source_reference }}{% endif %}</p>
+  <p><strong>Reason:</strong> {{ item.reason }}</p>
+  {% if item.proposed_action %}<p><strong>Proposed action:</strong> {{ item.proposed_action }}</p>{% endif %}
+  {% if item.detail %}<p class="empty"><strong>Detail:</strong> {{ item.detail }}</p>{% endif %}
+
+  <h3>Routing</h3>
+  {% if item.resolved_recipient_acting_identity %}
+    <p>Resolved recipient: <strong>{{ item.resolved_recipient_acting_identity.display_name }}</strong>
+      (owning Position: {{ item.resolved_process_owner_position.name if item.resolved_process_owner_position else "-" }})</p>
+  {% elif item.routing_unresolved_reason %}
+    <p class="error">UNRESOLVED: {{ item.routing_unresolved_reason }}</p>
+  {% else %}
+    <p class="empty">Not yet routed.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('admin_org_attention_route', item_id=item.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit">Re-evaluate routing now</button>
+  </form>
+
+  {% if item.status in ("OPEN", "ACKNOWLEDGED") %}
+  <h3>Actions</h3>
+  <form method="post" action="{{ url_for('admin_org_attention_acknowledge', item_id=item.id) }}" class="field-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <select name="by_acting_identity_id" required>{% for i in identities %}<option value="{{ i.id }}">{{ i.display_name }}</option>{% endfor %}</select>
+    <button type="submit" {{ "disabled" if item.status != "OPEN" }}>Acknowledge</button>
+  </form>
+  <form method="post" action="{{ url_for('admin_org_attention_resolve', item_id=item.id) }}" class="field-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <select name="by_acting_identity_id" required>{% for i in identities %}<option value="{{ i.id }}">{{ i.display_name }}</option>{% endfor %}</select>
+    <button type="submit">Resolve</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

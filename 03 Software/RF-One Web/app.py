@@ -46,6 +46,7 @@ from rfone_data_store import rfone_account_service as account_service  # noqa: E
 from rfone_data_store import rfone_recovery_service as recovery_service  # noqa: E402
 from rfone_data_store.technical import ses_email  # noqa: E402
 from compensation_routes import register_compensation_routes  # noqa: E402
+from organizational_responsibility_routes import register_organizational_responsibility_routes  # noqa: E402
 import training_integration  # noqa: E402
 
 app = Flask(__name__)
@@ -313,6 +314,18 @@ def selection_work_in_progress():
 register_compensation_routes(
     app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
     load_current_account=load_current_account, require_csrf=require_csrf,
+)
+
+# ---------------------------------------------------------------------------
+# Admin — Organizational Responsibility + Attention Management (TASK_
+# ATTENTION_ORG_RUNTIME §12). ADMIN / CONFIGURATION / TEST HARNESS only —
+# never the eventual end-user Attention Inbox (task explicitly forbids
+# building that here; see `organizational_responsibility_routes.py`'s own
+# module docstring for the full boundary statement).
+# ---------------------------------------------------------------------------
+
+register_organizational_responsibility_routes(
+    app, require_admin=require_admin, SessionFactory=SessionFactory, require_csrf=require_csrf,
 )
 
 
