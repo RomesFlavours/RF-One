@@ -306,16 +306,36 @@ class OperationalSignature(Base):
 #
 # Position's Scope reuses AuthorityGrant's own established pattern —
 # `scope_type` + a generic, non-foreign-keyed `scope_id` for dimensions with
-# no table of their own yet (CORPORATE/BRAND/OPERATIONAL_UNIT), a REAL
-# `scope_id` for dimensions that do have one today (RESTAURANT, LEGAL_
-# ENTITY, OPERATIONAL_AREA — deliberately still no DB-level ForeignKey, for
-# the identical reason AuthorityGrant's own docstring already gives: one
-# generic column must keep working unchanged as more scope kinds gain real
-# tables) — plus a string-keyed `scope_key` for the dimensions Core defines
-# without any canonical numeric-id registry existing anywhere in this
-# schema (DOMAIN/MODULE/PROCESS/PROCESS_PHASE), mirroring exactly how
-# `OperationalSignature.domain`/`module`/`object_type` above are already
-# plain strings with no FK for the identical reason.
+# no table of their own yet (CORPORATE/BRAND), a REAL `scope_id` for
+# dimensions that do have one today (RESTAURANT, LEGAL_ENTITY,
+# OPERATIONAL_AREA, OPERATIONAL_UNIT — see note below; deliberately still
+# no DB-level ForeignKey, for the identical reason AuthorityGrant's own
+# docstring already gives: one generic column must keep working unchanged
+# as more scope kinds gain real tables) — plus a string-keyed `scope_key`
+# for the dimensions Core defines without any canonical numeric-id registry
+# existing anywhere in this schema (DOMAIN/MODULE/PROCESS/PROCESS_PHASE),
+# mirroring exactly how `OperationalSignature.domain`/`module`/`object_type`
+# above are already plain strings with no FK for the identical reason.
+#
+# RESTAURANT vs OPERATIONAL_UNIT (TASK_ORG_RUNTIME_CONSISTENCY_FIXES,
+# verified against the Restaurant Domain's own canonical docs before
+# concluding anything — CLAUDE.md "NON assumere"): the runtime `Restaurant`
+# table's docstring, and this schema's own `LegalEntity` docstring, call
+# `Restaurant` "an Operational Unit" (a looser sense, contrasting it with
+# being a Legal Entity, citing `01 Domains/Business Domain/Restaurant/Model/
+# OU-Restaurant.md`'s "Extends: Operational Unit"). `01 Domains/Business
+# Domain/Restaurant/Restaurant Semantic Model.md` §3 later reconciles this
+# more precisely for the ACTUAL Core-hierarchy level each runtime row plays:
+# runtime `Restaurant` = **Brand**; runtime `Location` = **Operational
+# Unit/site**. These two statements are not reconciled with each other
+# anywhere in the Restaurant Domain's own documentation — a pre-existing
+# Restaurant-Domain terminology question, out of this Foundation's scope to
+# resolve. This Foundation therefore deliberately does NOT treat
+# `POSITION_SCOPE_RESTAURANT` and `POSITION_SCOPE_OPERATIONAL_UNIT` as
+# interchangeable/matching — they remain independently scoped, and
+# `POSITION_SCOPE_OPERATIONAL_UNIT.scope_id` is presented in the admin UI as
+# a `Location` reference (the more specific reconciliation's own mapping),
+# never merged with `RESTAURANT`'s own id space.
 # ---------------------------------------------------------------------------
 
 POSITION_SCOPE_CORPORATE = "CORPORATE"
@@ -640,6 +660,14 @@ class AttentionItem(Base):
     scope_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     scope_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
+    # CURRENT/latest routing outcome only — a convenience snapshot for
+    # "who does this reach right now," never the audit trail. Overwritten by
+    # every explicit `route_attention()` call (TASK_ORG_RUNTIME_CONSISTENCY_
+    # FIXES §5): each such call ALSO appends an immutable
+    # `AttentionRoutingResolution` row below, so a prior resolution is never
+    # lost, only superseded here for quick reading. Nothing re-routes
+    # automatically when a Position/Occupant changes — these fields change
+    # only when something explicitly calls `route_attention()` again.
     resolved_process_owner_position_id: Mapped[int | None] = mapped_column(
         ForeignKey("positions.id"), nullable=True
     )
@@ -674,6 +702,44 @@ class AttentionItem(Base):
         foreign_keys=[acknowledged_by_identity_id]
     )
     resolved_by_identity: Mapped["ActingIdentity | None"] = relationship(foreign_keys=[resolved_by_identity_id])
+
+
+class AttentionRoutingResolution(Base):
+    """One IMMUTABLE record of a single `route_attention()` evaluation for
+    an `AttentionItem` (TASK_ORG_RUNTIME_CONSISTENCY_FIXES §5) — the actual
+    audit trail task §21's own audit requirements name, distinct from
+    `AttentionItem`'s own `resolved_*`/`resolution_path` columns (a
+    convenience snapshot of the LATEST evaluation only). Never updated once
+    inserted — the same append-only discipline `OperationalSignature`
+    already establishes above, applied here to routing evaluations
+    specifically: a re-evaluation (whether from the "Re-evaluate routing
+    now" admin action, or any future automated caller) always INSERTS a new
+    row, never overwrites a prior one, so "when did routing happen, to
+    whom, via which path, why, and was it re-routed later" all remain
+    reconstructable. Nothing here causes a historical resolution to change
+    on its own — a new row is created only when `route_attention()` is
+    actually called again, never automatically when a Position/Occupant/
+    Coverage changes elsewhere."""
+
+    __tablename__ = "attention_routing_resolutions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    attention_item_id: Mapped[int] = mapped_column(ForeignKey("attention_items.id"), nullable=False, index=True)
+
+    resolved_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    owner_position_id: Mapped[int | None] = mapped_column(ForeignKey("positions.id"), nullable=True)
+    resolved_recipient_acting_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True
+    )
+    # Same conceptual values as `AttentionItem.resolution_path` — see there.
+    resolution_path: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    unresolved_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    attention_item: Mapped["AttentionItem"] = relationship()
+    owner_position: Mapped["Position | None"] = relationship()
+    resolved_recipient_acting_identity: Mapped["ActingIdentity | None"] = relationship()
 
 
 class PositionBackup(Base):

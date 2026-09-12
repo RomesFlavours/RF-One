@@ -2,15 +2,21 @@
   {% for k in scope_kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
 {% endmacro %}
 
-{% macro scope_field(scope_kinds, restaurants, legal_entities, phases) %}
+{% macro scope_field(scope_kinds, restaurants, legal_entities, phases, locations=[]) %}
 <div class="scope-field field-row">
   <label>Scope type</label>
   <select name="scope_type" required>{{ scope_type_options(scope_kinds) }}</select>
 
   <div data-scope-value-for="RESTAURANT" hidden>
-    <label>Restaurant</label>
+    <label>Restaurant (Brand)</label>
     <select name="scope_id">
       {% for r in restaurants %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div data-scope-value-for="OPERATIONAL_UNIT" hidden>
+    <label>Operational Unit (Location)</label>
+    <select name="scope_id">
+      {% for loc in locations %}<option value="{{ loc.id }}">{{ loc.name }}</option>{% endfor %}
     </select>
   </div>
   <div data-scope-value-for="LEGAL_ENTITY" hidden>
@@ -26,7 +32,7 @@
     </select>
   </div>
   <div data-scope-value-for="GENERIC_ID" hidden>
-    <label>Reference id (Corporate/Brand/Operational Unit/Operational Area — no dedicated table yet)</label>
+    <label>Reference id (Corporate/Brand/Operational Area — no dedicated table yet)</label>
     <input type="number" name="scope_id" placeholder="numeric id">
   </div>
   <div data-scope-value-for="GENERIC_KEY" hidden>

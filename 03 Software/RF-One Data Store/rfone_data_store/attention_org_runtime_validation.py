@@ -257,6 +257,68 @@ def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
         ack_ok and resolved_ok and invalid_transition_raised,
     )
 
+    # === 15: AMBIGUOUS_OWNER classified structurally, never by string match
+    # (TASK_ORG_RUNTIME_CONSISTENCY_FIXES §3) ==================================
+    domain_amb, process_amb = "TESTDOMAIN_AMBIGUOUS", "TEST_PROCESS_AMBIGUOUS"
+    position_amb_1 = org_svc.create_position(session, name="TEST/DEMO Ambiguous Owner Candidate 1")
+    position_amb_2 = org_svc.create_position(session, name="TEST/DEMO Ambiguous Owner Candidate 2")
+    org_svc.set_process_ownership(session, domain=domain_amb, process_name=process_amb, position=position_amb_1)
+    org_svc.set_process_ownership(session, domain=domain_amb, process_name=process_amb, position=position_amb_2)
+    session.commit()
+    ambiguous_resolution = org_svc.resolve_process_owner(session, domain=domain_amb, process_name=process_amb)
+    result.check(
+        "15. AMBIGUOUS_OWNER is exposed as a structured `unresolved_code` "
+        "(org_svc.PROCESS_OWNER_AMBIGUOUS), not derived from matching text in `unresolved_reason`",
+        ambiguous_resolution.position is None
+        and ambiguous_resolution.unresolved_code == org_svc.PROCESS_OWNER_AMBIGUOUS
+        and ambiguous_resolution.unresolved_reason is not None,
+    )
+
+    # === 16: Attention routing audit trail — re-routing never destroys a
+    # prior resolution (TASK_ORG_RUNTIME_CONSISTENCY_FIXES §5) ================
+    domain_hist, process_hist = "TESTDOMAIN_HISTORY", "TEST_PROCESS_ROUTING_HISTORY"
+    position_hist = org_svc.create_position(session, name="TEST/DEMO Routing History Position")
+    occupant_hist_1 = _identity(session, "TEST/DEMO Routing History Occupant 1")
+    org_svc.assign_occupant(session, position=position_hist, occupant=occupant_hist_1, valid_from=T0)
+    org_svc.set_process_ownership(session, domain=domain_hist, process_name=process_hist, position=position_hist)
+    session.commit()
+
+    item_hist = att_svc.create_attention(
+        session, source_domain=domain_hist, source_process_name=process_hist,
+        reason="TEST/DEMO: routing history", priority=m.ATTENTION_PRIORITY_HIGH,
+    )
+    session.commit()
+    att_svc.route_attention(session, item=item_hist, now=T0)
+    session.commit()
+    first_resolution_recipient_id = item_hist.resolved_recipient_acting_identity_id
+
+    # A new Occupant takes over the SAME Position — nothing re-routes
+    # automatically; only an explicit new `route_attention()` call evaluates it.
+    occupant_hist_2 = _identity(session, "TEST/DEMO Routing History Occupant 2")
+    org_svc.assign_occupant(session, position=position_hist, occupant=occupant_hist_2, valid_from=T0 + timedelta(days=1))
+    session.commit()
+    result.check(
+        "16a. Changing a Position's Occupant does NOT silently change an already-routed Attention Item's "
+        "resolved recipient — no automatic re-routing",
+        item_hist.resolved_recipient_acting_identity_id == first_resolution_recipient_id,
+    )
+
+    att_svc.route_attention(session, item=item_hist, now=T0 + timedelta(days=2))
+    session.commit()
+    history = att_svc.list_routing_history(session, item=item_hist)
+    result.check(
+        "16b. Explicit re-routing ('Re-evaluate routing now') DOES update the current resolution to the new Occupant",
+        item_hist.resolved_recipient_acting_identity_id == occupant_hist_2.id,
+    )
+    result.check(
+        "16c. Every past routing evaluation remains reconstructable via `list_routing_history` — "
+        "the first (superseded) resolution is never deleted or overwritten in the audit trail",
+        len(history) == 2
+        and history[0].resolved_recipient_acting_identity_id == occupant_hist_1.id
+        and history[1].resolved_recipient_acting_identity_id == occupant_hist_2.id
+        and history[0].resolved_at <= history[1].resolved_at,
+    )
+
     _run_integration_demo(session, result)
 
 

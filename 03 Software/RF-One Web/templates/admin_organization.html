@@ -23,10 +23,20 @@
   <div class="coverage-tile"><div class="coverage-tile-value">{{ counts.processes_known }}</div><div class="coverage-tile-label">Processes known</div></div>
   <div class="coverage-tile"><div class="coverage-tile-value">{{ counts.FULLY_COVERED }}</div><div class="coverage-tile-label">Fully covered</div></div>
   <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.partial_coverage }}</div><div class="coverage-tile-label">Partial coverage (Backup/Fallback)</div></div>
-  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.unowned_responsibilities }}</div><div class="coverage-tile-label">Unowned / gap</div></div>
+  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.GAP }}</div><div class="coverage-tile-label">Configuration gap (undelivered)</div></div>
   <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.fallback_to_organizational_fallback }}</div><div class="coverage-tile-label">Fallback used</div></div>
   <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.positions_missing_required_backup }}</div><div class="coverage-tile-label">Missing required Backup</div></div>
   <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.unresolved_attention_items }}</div><div class="coverage-tile-label">Unresolved Attention Items</div></div>
+</div>
+<h2>Organizational Health</h2>
+<p class="empty">
+  Independent of delivery above: does a correctly configured PRIMARY ownership exist for each Process?
+  A Process can be delivered right now via Backup/Fallback (tiles above) while still missing primary ownership (tiles below) — both are shown, one never hides the other.
+</p>
+<div class="coverage-tiles">
+  <div class="coverage-tile"><div class="coverage-tile-value">{{ counts.CONFIGURED }}</div><div class="coverage-tile-label">Primary ownership configured</div></div>
+  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.NO_OWNER }}</div><div class="coverage-tile-label">No owner configured</div></div>
+  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.AMBIGUOUS_OWNER }}</div><div class="coverage-tile-label">Ambiguous ownership</div></div>
 </div>
 <p class="empty">Counts are computed live from the database — <a href="{{ url_for('admin_org_coverage_check') }}">click through for per-Process detail</a>.</p>
 

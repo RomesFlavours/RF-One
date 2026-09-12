@@ -14,7 +14,15 @@
   <div class="coverage-tile"><div class="coverage-tile-value">{{ counts.FULLY_COVERED }}</div><div class="coverage-tile-label">Fully covered</div></div>
   <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.COVERED_VIA_BACKUP }}</div><div class="coverage-tile-label">Covered via Backup</div></div>
   <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.COVERED_VIA_FALLBACK }}</div><div class="coverage-tile-label">Covered via Organizational Fallback</div></div>
-  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.GAP }}</div><div class="coverage-tile-label">Gap</div></div>
+  <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.GAP }}</div><div class="coverage-tile-label">Gap (undelivered)</div></div>
+</div>
+<p class="empty">
+  Delivery (above) and Organizational Health (below) are two INDEPENDENT questions: a Process can be
+  "Covered via Fallback" (delivered right now) while still "No owner" (nobody is correctly configured as
+  its primary owner) — both are always shown, neither hides the other.
+</p>
+<div class="coverage-tiles">
+  <div class="coverage-tile"><div class="coverage-tile-value">{{ counts.CONFIGURED }}</div><div class="coverage-tile-label">Primary ownership configured</div></div>
   <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.NO_OWNER }}</div><div class="coverage-tile-label">No owner</div></div>
   <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.AMBIGUOUS_OWNER }}</div><div class="coverage-tile-label">Ambiguous owner</div></div>
 </div>
@@ -23,17 +31,18 @@
   <h2>Per-Process detail</h2>
   <div class="table-scroll">
     <table>
-      <thead><tr><th>Domain</th><th>Module</th><th>Process</th><th>Phase</th><th>Status</th><th>Owner</th><th>Detail</th></tr></thead>
+      <thead><tr><th>Domain</th><th>Module</th><th>Process</th><th>Phase</th><th>Delivery</th><th>Ownership health</th><th>Owner</th><th>Detail</th></tr></thead>
       <tbody>
         {% for e in result.entries %}
           <tr>
             <td>{{ e.domain }}</td><td>{{ e.module or "-" }}</td><td>{{ e.process_name }}</td><td>{{ e.phase or "(whole process)" }}</td>
             <td><span class="badge {{ 'ok' if e.status == 'FULLY_COVERED' else 'warn' if e.status in ('COVERED_VIA_BACKUP','COVERED_VIA_FALLBACK') else 'bad' }}">{{ e.status }}</span></td>
+            <td><span class="badge {{ 'ok' if e.ownership_health == 'CONFIGURED' else 'bad' }}">{{ e.ownership_health }}</span></td>
             <td>{% if e.owner_position %}<a href="{{ url_for('admin_org_position_detail', position_id=e.owner_position.id) }}">{{ e.owner_position.name }}</a>{% else %}-{% endif %}</td>
             <td class="muted" style="font-size:.78rem;">{{ e.detail }}</td>
           </tr>
         {% else %}
-          <tr><td colspan="7" class="empty">No Process known yet (no Process Ownership configured, no Attention Item raised).</td></tr>
+          <tr><td colspan="8" class="empty">No Process known yet (no Process Ownership configured, no Attention Item raised).</td></tr>
         {% endfor %}
       </tbody>
     </table>

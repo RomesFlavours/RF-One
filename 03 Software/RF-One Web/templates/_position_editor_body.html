@@ -31,7 +31,7 @@
   <form method="post" action="{{ url_for('admin_org_position_scope_new', position_id=position.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if in_modal %}<input type="hidden" name="next" value="{{ url_for('admin_organization') }}#position-{{ position.id }}">{% endif %}
-    {{ org_macros.scope_field(scope_kinds, restaurants, legal_entities, phases) }}
+    {{ org_macros.scope_field(scope_kinds, restaurants, legal_entities, phases, locations) }}
     <button type="submit">Add Scope</button>
   </form>
 </div>

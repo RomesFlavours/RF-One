@@ -25,6 +25,27 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit">Re-evaluate routing now</button>
   </form>
+  <p class="empty">Re-evaluating never rewrites a prior resolution — it only records a new one below (TASK_ORG_RUNTIME_CONSISTENCY_FIXES §5).</p>
+
+  <h3>Routing history (audit trail)</h3>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Resolved at</th><th>Owner Position</th><th>Recipient</th><th>Resolution path</th><th>Reason (if unresolved)</th></tr></thead>
+      <tbody>
+        {% for r in routing_history %}
+          <tr>
+            <td>{{ r.resolved_at }}</td>
+            <td>{{ r.owner_position.name if r.owner_position else "-" }}</td>
+            <td>{{ r.resolved_recipient_acting_identity.display_name if r.resolved_recipient_acting_identity else "-" }}</td>
+            <td>{{ r.resolution_path or "-" }}</td>
+            <td class="muted" style="font-size:.78rem;">{{ r.unresolved_reason or "-" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="empty">No routing evaluation has run yet for this Attention Item.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
   {% if item.status in ("OPEN", "ACKNOWLEDGED") %}
   <h3>Actions</h3>

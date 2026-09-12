@@ -67,11 +67,25 @@
       coverageEl.textContent = "Covered by: " + node.coverage_summary;
       box.appendChild(coverageEl);
     }
+    /* Delivery badges (TASK_ORG_RUNTIME_CONSISTENCY_FIXES §4) — mutually
+     * exclusive, worst-first from the server: a Position actually routable
+     * via Backup/Fallback is never labelled a "gap" — only a genuine GAP
+     * (nothing resolves at all) is. */
     if (node.gap_warning) {
       const warnEl = document.createElement("div");
       warnEl.className = "org-node-badge org-node-badge-warn";
-      warnEl.textContent = "⚠ Coverage gap";
+      warnEl.textContent = "⚠ Configuration gap";
       box.appendChild(warnEl);
+    } else if (node.covered_via_fallback) {
+      const infoEl = document.createElement("div");
+      infoEl.className = "org-node-badge";
+      infoEl.textContent = "Covered via Organizational Fallback";
+      box.appendChild(infoEl);
+    } else if (node.covered_via_backup) {
+      const infoEl = document.createElement("div");
+      infoEl.className = "org-node-badge";
+      infoEl.textContent = "Covered via Backup";
+      box.appendChild(infoEl);
     }
     if (node.missing_required_backup) {
       const warnEl = document.createElement("div");

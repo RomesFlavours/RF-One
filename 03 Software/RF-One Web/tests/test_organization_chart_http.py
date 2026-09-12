@@ -180,6 +180,34 @@ def main() -> int:
         resp = admin_client.get(f"/admin/org/positions/{child_id}")
         check("the new Backup Position appears on the Position detail page", b"TEST/DEMO Parent Position" in resp.data)
 
+        # -- badge fix (TASK_ORG_RUNTIME_CONSISTENCY_FIXES §4): a Process
+        # actually routable via its owner's Backup Position must NOT be
+        # shown as a "Coverage gap" — it is delivered, via Backup. Uses
+        # fresh Positions (the shared child_id above already has a direct
+        # Occupant by this point in the test, from the earlier assignment
+        # step, so it would no longer exercise the Backup path at all). ----
+        with SessionFactory() as s:
+            badge_owner = org_svc.create_position(s, name="TEST/DEMO Badge Owner (vacant, has Backup)")
+            badge_backup = org_svc.create_position(s, name="TEST/DEMO Badge Backup (occupied)")
+            badge_backup_occupant = m.ActingIdentity(kind=m.HUMAN_USER, display_name="TEST/DEMO Badge Backup Occupant")
+            s.add(badge_backup_occupant)
+            s.flush()
+            org_svc.assign_occupant(s, position=badge_backup, occupant=badge_backup_occupant, valid_from=datetime(2026, 1, 1, tzinfo=UTC))
+            org_svc.set_process_ownership(s, domain="TESTHTTPCHART", process_name="BadgeProcess", position=badge_owner)
+            org_svc.add_position_backup(s, covered_position=badge_owner, backup_position=badge_backup)
+            s.commit()
+            badge_owner_id = badge_owner.id
+        graph_after_backup = admin_client.get("/admin/organization/graph-data.json").get_json()
+        by_id_after_backup = {p["id"]: p for p in graph_after_backup["positions"]}
+        check(
+            "graph data does NOT flag a Position as a coverage gap once its Backup Position resolves the Process",
+            by_id_after_backup[badge_owner_id]["gap_warning"] is False,
+        )
+        check(
+            "graph data instead flags that Position as covered via Backup",
+            by_id_after_backup[badge_owner_id]["covered_via_backup"] is True,
+        )
+
         # -- Temporary Coverage ----------------------------------------------------------
         resp = admin_client.get(f"/admin/org/positions/{child_id}")
         csrf = extract_csrf(resp.data)
@@ -211,6 +239,26 @@ def main() -> int:
         check("Organizational Fallback Policy creation via the form works", resp.status_code in (302, 303))
         resp = admin_client.get("/admin/org/fallback-policies")
         check("the new Fallback Policy appears on its own admin page", b"TEST/DEMO Parent Position" in resp.data)
+
+        # -- badge fix (TASK_ORG_RUNTIME_CONSISTENCY_FIXES §4): a Process
+        # with a vacant owner and NO Backup, now resolved only via the
+        # freshly-configured GLOBAL Organizational Fallback Policy, must be
+        # shown as "covered via Fallback", never as a generic "gap". -------
+        with SessionFactory() as s:
+            fallback_owner = org_svc.create_position(s, name="TEST/DEMO Fallback-badge Owner (vacant, no backup)")
+            org_svc.set_process_ownership(s, domain="TESTHTTPCHART", process_name="FallbackBadgeProcess", position=fallback_owner)
+            s.commit()
+            fallback_owner_id = fallback_owner.id
+        graph_after_fallback = admin_client.get("/admin/organization/graph-data.json").get_json()
+        by_id_after_fallback = {p["id"]: p for p in graph_after_fallback["positions"]}
+        check(
+            "graph data does NOT flag a Position as a coverage gap once the GLOBAL Fallback Policy resolves the Process",
+            by_id_after_fallback[fallback_owner_id]["gap_warning"] is False,
+        )
+        check(
+            "graph data instead flags that Position as covered via Organizational Fallback",
+            by_id_after_fallback[fallback_owner_id]["covered_via_fallback"] is True,
+        )
 
         # -- trigger/process without owner: an Attention Item on a truly unowned
         # process still appears somewhere in the coverage/attention picture ----------
