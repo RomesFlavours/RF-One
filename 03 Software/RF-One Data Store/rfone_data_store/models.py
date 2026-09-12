@@ -400,6 +400,14 @@ class Position(Base):
     parent_position_id: Mapped[int | None] = mapped_column(ForeignKey("positions.id"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    # Opt-in policy flag (TASK_ORG_CHART_ADMIN_PAGE §12): an admin marks a
+    # specific Position as requiring at least one active Backup Position —
+    # never assumed true for every Position (that would invent a Business
+    # Rule no organization has actually stated). The Organizational
+    # Coverage Check only flags a missing backup for Positions where this
+    # is explicitly True.
+    backup_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -638,6 +646,11 @@ class AttentionItem(Base):
     resolved_recipient_acting_identity_id: Mapped[int | None] = mapped_column(
         ForeignKey("acting_identities.id"), nullable=True
     )
+    # Conceptual values: DIRECT_OCCUPANT, TEMPORARY_COVERAGE, BACKUP_POSITION,
+    # ORGANIZATIONAL_FALLBACK (TASK_ORG_CHART_ADMIN_PAGE §15 — "which fallback
+    # would be used" must be visible, not just the final recipient). NULL
+    # until routed, or when routing is unresolved.
+    resolution_path: Mapped[str | None] = mapped_column(String(32), nullable=True)
     routing_unresolved_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -661,6 +674,81 @@ class AttentionItem(Base):
         foreign_keys=[acknowledged_by_identity_id]
     )
     resolved_by_identity: Mapped["ActingIdentity | None"] = relationship(foreign_keys=[resolved_by_identity_id])
+
+
+class PositionBackup(Base):
+    """One entry in a Position's ORDERED Backup Position chain
+    (TASK_ORG_CHART_ADMIN_PAGE §8) — distinct from `PositionTemporaryCoverage`
+    above: a Backup Position is a STANDING organizational fact ("if this
+    Position's normal resolution path fails, try this other Position next"),
+    never date-bounded and never itself implying the backup is currently
+    acting — whereas Temporary Coverage is an active, time-bounded
+    Delegation that PRECEDES normal resolution entirely (task §9: a
+    Position's own active coverage is still checked first, before ever
+    consulting its backup chain).
+
+    A Backup Position is NOT required to be the parent Position, a manager,
+    or otherwise hierarchically superior (task §8) — `backup_position_id`
+    may be any other Position the organization considers sufficiently
+    authorized. `sequence` orders a chain when more than one backup is
+    configured (1 = tried first); this Foundation does NOT recurse into a
+    backup's OWN backup chain (task §8's "NON inventare escalation
+    automatica verticale universale") — only the covered Position's own
+    ordered list is walked."""
+
+    __tablename__ = "position_backups"
+    __table_args__ = (
+        CheckConstraint("covered_position_id != backup_position_id", name="ck_position_backup_not_self"),
+        UniqueConstraint("covered_position_id", "sequence", name="uq_position_backup_sequence"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    covered_position_id: Mapped[int] = mapped_column(ForeignKey("positions.id"), nullable=False, index=True)
+    backup_position_id: Mapped[int] = mapped_column(ForeignKey("positions.id"), nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    covered_position: Mapped["Position"] = relationship(foreign_keys=[covered_position_id])
+    backup_position: Mapped["Position"] = relationship(foreign_keys=[backup_position_id])
+
+
+class OrganizationalFallbackPolicy(Base):
+    """A company-configured "if nothing else resolves, use this Position"
+    rule (TASK_ORG_CHART_ADMIN_PAGE §14) — explicitly ORGANIZATIONAL POLICY,
+    never a Core rule: Core does not fix "Unowned Attention -> CEO" or any
+    other universal fallback (`Organizational Responsibility.md` §5,
+    `12_Attention_Management.md` §9). For Rome's Flavours, the Product
+    Owner may configure exactly this by creating one row here with
+    `scope_type=GLOBAL` and `fallback_position_id` pointing at a
+    Product-Owner-created "CEO" Position — no such row is created
+    automatically by this Foundation.
+
+    `scope_type`/`scope_id`/`scope_key` follow the same shape as
+    `PositionScope`/`ProcessOwnership`'s own scope override — a policy may
+    be scoped narrowly (e.g. only for one Restaurant) or apply via
+    `GLOBAL`."""
+
+    __tablename__ = "organizational_fallback_policies"
+    __table_args__ = (
+        CheckConstraint(f"scope_type IN {POSITION_SCOPE_KINDS!r}", name="ck_organizational_fallback_scope_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scope_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    scope_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scope_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    fallback_position_id: Mapped[int] = mapped_column(ForeignKey("positions.id"), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    fallback_position: Mapped["Position"] = relationship()
 
 
 # ---------------------------------------------------------------------------

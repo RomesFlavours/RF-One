@@ -261,3 +261,74 @@ tbody tr:hover { background: var(--olive-050); }
 .badge { display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .72rem; font-weight: 600; border: 1px solid var(--olive-300); }
 .badge.ok { background: #e7f3ea; color: var(--ok); border-color: #bcdcc6; }
 .badge.bad { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+
+/* --- Organizational Chart (TASK_ORG_CHART_ADMIN_PAGE) — plain CSS
+   box-and-line tree, no charting library. Derived from the DB via
+   /admin/organization/graph-data.json; this is presentation only. --- */
+.org-chart-wrap { max-width: none; overflow-x: auto; padding-bottom: 2rem; }
+.org-tree, .org-tree ul { list-style: none; margin: 0; padding: 0; display: flex; }
+.org-tree { padding-top: 0; }
+.org-tree ul { padding-top: 24px; position: relative; }
+.org-tree li { display: flex; flex-direction: column; align-items: center; padding: 24px 8px 0 8px; position: relative; }
+.org-tree li::before, .org-tree li::after {
+  content: ""; position: absolute; top: 0; right: 50%; border-top: 2px solid var(--olive-300); width: 50%; height: 24px;
+}
+.org-tree li::after { right: auto; left: 50%; border-left: 2px solid var(--olive-300); }
+.org-tree li:only-child::after, .org-tree li:only-child::before { display: none; }
+.org-tree li:only-child { padding-top: 0; }
+.org-tree li:first-child::before { border: 0 none; }
+.org-tree li:last-child::after { border: 0 none; }
+.org-tree li:last-child::before { border-right: 2px solid var(--olive-300); border-radius: 0 5px 0 0; }
+.org-tree li:first-child::after { border-radius: 5px 0 0 0; }
+.org-tree > li { padding-top: 0; }
+.org-tree > li::before, .org-tree > li::after { display: none; }
+.org-tree ul::before {
+  content: ""; position: absolute; top: 0; left: 50%; border-left: 2px solid var(--olive-300); width: 0; height: 24px;
+}
+
+.org-node {
+  position: relative; display: inline-flex; flex-direction: column; gap: .2rem;
+  background: var(--surface); border: 1px solid var(--olive-300); border-radius: var(--radius);
+  box-shadow: var(--shadow-card); padding: .6rem .8rem; min-width: 160px; max-width: 220px; cursor: pointer;
+  text-align: left;
+}
+.org-node:hover, .org-node:focus { border-color: var(--olive-500); outline: none; }
+.org-node.org-node-inactive { opacity: .55; }
+.org-node.org-node-warn { border-color: #d99a2b; }
+.org-node-name { font-weight: 700; font-size: .88rem; }
+.org-node-occupant { font-size: .8rem; }
+.org-node-occupant.org-node-vacant { color: var(--bad); font-weight: 600; }
+.org-node-scope { font-size: .72rem; color: var(--muted); }
+.org-node-badge { font-size: .68rem; color: var(--muted); }
+.org-node-badge-warn { color: #8a5a10; font-weight: 600; }
+.org-node-toggle {
+  position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%);
+  width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--olive-300); background: var(--surface);
+  font-size: .85rem; line-height: 1; cursor: pointer; padding: 0;
+}
+
+/* --- Modal (click-to-edit without leaving the graph view) --- */
+.org-modal-overlay {
+  position: fixed; inset: 0; background: rgba(36, 39, 28, 0.45); display: flex; align-items: flex-start;
+  justify-content: center; padding: 2rem 1rem; overflow-y: auto; z-index: 50;
+}
+.org-modal-panel {
+  background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-card);
+  max-width: 700px; width: 100%; padding: 1.2rem 1.5rem; position: relative;
+}
+.org-modal-panel .modal-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .8rem; }
+.org-modal-close {
+  position: absolute; top: .6rem; right: .8rem; border: none; background: none; font-size: 1.3rem; cursor: pointer;
+  color: var(--muted);
+}
+
+/* --- Coverage summary tiles (task §15) --- */
+.coverage-tiles { display: flex; gap: .8rem; flex-wrap: wrap; margin: 1rem 0; }
+.coverage-tile {
+  background: var(--olive-050); border: 1px solid var(--olive-300); border-radius: var(--radius);
+  padding: .6rem 1rem; min-width: 140px;
+}
+.coverage-tile .coverage-tile-value { font-size: 1.4rem; font-weight: 700; }
+.coverage-tile .coverage-tile-label { font-size: .75rem; color: var(--muted); }
+.coverage-tile.coverage-tile-warn { border-color: #d99a2b; }
+.coverage-tile.coverage-tile-warn .coverage-tile-value { color: #8a5a10; }

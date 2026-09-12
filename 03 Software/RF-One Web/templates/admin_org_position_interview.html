@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block page_title %}Scope Interview · {{ position.name }} · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_org_position_detail', position_id=position.id) }}">&larr; {{ position.name }}</a></p>
+<h1>Define / Review Scope with Cognito</h1>
+<p class="empty">
+  <span class="badge">ADMIN / TEST ONLY</span> —
+  this is NOT the final operational Cognito experience. No AI conducts this interview today; it exists so the
+  structured questions a future Cognito interview would ask are already answered into real, structured data —
+  never free-text prose saved as canonical Scope (task §6-§7).
+</p>
+
+<div class="card">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <h2>Q1. Which Organizational Units (Restaurants) fall under this Position?</h2>
+    <div class="field-row">
+      {% for r in restaurants %}
+        <label style="display:block;"><input type="checkbox" name="restaurant_ids" value="{{ r.id }}"> {{ r.name }}</label>
+      {% else %}
+        <p class="empty">No Restaurant configured yet.</p>
+      {% endfor %}
+    </div>
+
+    <h2>Q2. Which Domain is this Position primarily associated with?</h2>
+    <div class="field-row">
+      <input type="text" name="domain" placeholder="e.g. Tips, Purchasing, Selection">
+    </div>
+
+    <h2>Q3. Of which Process is this Position the owner?</h2>
+    <div class="field-row">
+      <input type="text" name="process_name" placeholder="e.g. TipPayout">
+    </div>
+
+    <h2>Q4. Of which Process Phase, if a specific one (optional)?</h2>
+    <div class="field-row">
+      <select name="phase">
+        <option value="">(whole process)</option>
+        {% for ph in phases %}<option value="{{ ph }}">{{ ph }}</option>{% endfor %}
+      </select>
+    </div>
+
+    <h2>Q5. Which Position should serve as Backup when this one cannot respond?</h2>
+    <div class="field-row">
+      <select name="backup_position_id">
+        <option value="">(none for now)</option>
+        {% for p in positions %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+      </select>
+    </div>
+
+    <p class="empty">
+      Authority and escalation-policy questions (task §7's "quale Authority possiede", "quali decisioni richiedono
+      escalation") are not answered here — Authority remains RF-One's shared Identity &amp; Access infrastructure
+      (`10 System/Identity &amp; Access/`), not a Position field, and general escalation policy is configured via
+      Organizational Fallback Policy, not per-Position free text.
+    </p>
+
+    <button type="submit">Save structured answers</button>
+  </form>
+</div>
+{% endblock %}

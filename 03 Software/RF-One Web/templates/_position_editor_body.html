@@ -1,0 +1,178 @@
+{% import "_org_macros.html" as org_macros %}
+<p class="empty">{{ position.description or "" }}
+  {% if position.parent_position %} — reports to <a href="{{ url_for('admin_org_position_detail', position_id=position.parent_position_id) }}">{{ position.parent_position.name }}</a>{% endif %}
+</p>
+<p>Status: <span class="badge {{ 'ok' if position.is_active else 'bad' }}">{{ "active" if position.is_active else "inactive" }}</span>
+  — Current occupant: <strong>{{ current_occupant.display_name if current_occupant else "VACANT" }}</strong>
+  {% if active_coverage %}
+    — <span class="badge warn">covered</span> by
+    {% if active_coverage.delegate_acting_identity %}{{ active_coverage.delegate_acting_identity.display_name }}
+    {% else %}Position "{{ active_coverage.delegate_position.name }}"{% endif %}
+    until {{ active_coverage.valid_to or "(open-ended)" }}
+  {% endif %}
+</p>
+<p><a href="{{ url_for('admin_org_position_interview', position_id=position.id) }}" class="btn btn-secondary">DEFINE / REVIEW SCOPE WITH COGNITO (ADMIN / TEST ONLY)</a></p>
+
+<div class="card">
+  <h2>Scope</h2>
+  <p class="empty">Structured only — never free text (task §5). Empty = globally applicable.</p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Type</th><th>Value</th></tr></thead>
+      <tbody>
+        {% for s in scopes %}
+          <tr><td>{{ s.scope_type }}</td><td>{{ scope_display(s) }}</td></tr>
+        {% else %}
+          <tr><td colspan="2" class="empty">No scope set — treated as globally applicable.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="{{ url_for('admin_org_position_scope_new', position_id=position.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if in_modal %}<input type="hidden" name="next" value="{{ url_for('admin_organization') }}#position-{{ position.id }}">{% endif %}
+    {{ org_macros.scope_field(scope_kinds, restaurants, legal_entities, phases) }}
+    <button type="submit">Add Scope</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Occupant history</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Occupant</th><th>Valid from</th><th>Valid to</th></tr></thead>
+      <tbody>
+        {% for a in assignments %}
+          <tr><td>{{ a.acting_identity.display_name }}</td><td>{{ a.valid_from }}</td><td>{{ a.valid_to or "(open-ended)" }}</td></tr>
+        {% else %}
+          <tr><td colspan="3" class="empty">Vacant — no occupant ever assigned.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="{{ url_for('admin_org_position_assignment_new', position_id=position.id) }}" class="field-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if in_modal %}<input type="hidden" name="next" value="{{ url_for('admin_organization') }}#position-{{ position.id }}">{% endif %}
+    <select name="acting_identity_id" required>
+      {% for i in identities %}<option value="{{ i.id }}">{{ i.display_name }}</option>{% endfor %}
+    </select>
+    <input type="datetime-local" name="valid_from" placeholder="valid_from (defaults to now)">
+    <input type="datetime-local" name="valid_to" placeholder="valid_to (optional)">
+    <button type="submit">Assign Occupant</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Temporary Coverage / Delegation (of THIS Position, by another Position or identity)</h2>
+  <p class="empty">For vacations, sickness, planned absence — precedes Backup Position in resolution (task §9).</p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Delegate</th><th>Valid from</th><th>Valid to</th><th>Revoked</th></tr></thead>
+      <tbody>
+        {% for c in coverages %}
+          <tr>
+            <td>{{ c.delegate_acting_identity.display_name if c.delegate_acting_identity else "Position: " ~ c.delegate_position.name }}</td>
+            <td>{{ c.valid_from }}</td><td>{{ c.valid_to or "(open-ended)" }}</td><td>{{ "yes" if c.revoked_at else "no" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="empty">No Temporary Coverage configured.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="{{ url_for('admin_org_position_coverage_new', position_id=position.id) }}" class="field-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if in_modal %}<input type="hidden" name="next" value="{{ url_for('admin_organization') }}#position-{{ position.id }}">{% endif %}
+    <select name="delegate_position_id">
+      <option value="">(delegate to a Position instead)</option>
+      {% for p in positions %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+    </select>
+    <select name="delegate_acting_identity_id">
+      <option value="">(delegate directly to an identity instead)</option>
+      {% for i in identities %}<option value="{{ i.id }}">{{ i.display_name }}</option>{% endfor %}
+    </select>
+    <input type="datetime-local" name="valid_from" placeholder="valid_from (defaults to now)">
+    <input type="datetime-local" name="valid_to" placeholder="valid_to (optional)">
+    <button type="submit">Create Coverage</button>
+  </form>
+  <p class="empty">Fill exactly one of the two delegate selectors.</p>
+</div>
+
+<div class="card">
+  <h2>Backup Position</h2>
+  <p class="empty">Standing escalation chain, distinct from Temporary Coverage — used by Attention Management when the Occupant is unavailable and no coverage is active (task §8). Not required to be the parent Position or a manager.</p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Order</th><th>Backup Position</th><th>Active</th><th></th></tr></thead>
+      <tbody>
+        {% for b in backups %}
+          <tr>
+            <td>{{ b.sequence }}</td>
+            <td><a href="{{ url_for('admin_org_position_detail', position_id=b.backup_position_id) }}">{{ b.backup_position.name }}</a></td>
+            <td>{{ "yes" if b.is_active else "no" }}</td>
+            <td>
+              {% if b.is_active %}
+              <form method="post" action="{{ url_for('admin_org_position_backup_deactivate', position_id=position.id, backup_id=b.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {% if in_modal %}<input type="hidden" name="next" value="{{ url_for('admin_organization') }}#position-{{ position.id }}">{% endif %}
+                <button type="submit" style="font-size:.78rem;">Deactivate</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="empty">No Backup Position configured.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="{{ url_for('admin_org_position_backup_new', position_id=position.id) }}" class="field-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if in_modal %}<input type="hidden" name="next" value="{{ url_for('admin_organization') }}#position-{{ position.id }}">{% endif %}
+    <select name="backup_position_id" required>
+      {% for p in positions %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+    </select>
+    <button type="submit">Add Backup Position</button>
+  </form>
+  <form method="post" action="{{ url_for('admin_org_position_backup_required_toggle', position_id=position.id) }}" class="field-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if in_modal %}<input type="hidden" name="next" value="{{ url_for('admin_organization') }}#position-{{ position.id }}">{% endif %}
+    <label><input type="checkbox" name="backup_required" {{ "checked" if position.backup_required }} onchange="this.form.submit()"> This Position requires at least one active Backup Position (flagged by the Organizational Coverage Check if missing)</label>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Process Ownership held by this Position</h2>
+  <p class="empty">"This Position is responsible for these Processes in this Scope."</p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Domain</th><th>Module</th><th>Process</th><th>Phase</th><th>Scope</th></tr></thead>
+      <tbody>
+        {% for o in ownerships %}
+          <tr>
+            <td>{{ o.domain }}</td><td>{{ o.module or "-" }}</td><td>{{ o.process_name }}</td><td>{{ o.phase or "(whole process)" }}</td>
+            <td>{{ scope_display(o) if o.scope_type else "(uses this Position's own Scope)" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="empty">This Position owns no Process yet. <a href="{{ url_for('admin_org_process_ownerships') }}">Add one</a>.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Subordinate Positions</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Name</th></tr></thead>
+      <tbody>
+        {% for sub in subordinates %}
+          <tr><td><a href="{{ url_for('admin_org_position_detail', position_id=sub.id) }}">{{ sub.name }}</a></td></tr>
+        {% else %}
+          <tr><td class="empty">No subordinate Position reports here.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
