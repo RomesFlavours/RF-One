@@ -60,6 +60,12 @@ from rfone_data_store.technical.connectors.clover.acquisition import (  # noqa: 
 )
 from rfone_data_store.tips import distribution_engine as engine_svc  # noqa: E402
 from rfone_data_store.tips import distribution_rule_service as rule_svc  # noqa: E402
+from rfone_data_store.tips import payment_instruction as pi_svc  # noqa: E402
+from rfone_data_store.tips import payout_process as payout_svc  # noqa: E402
+from rfone_data_store.tips import readiness as readiness_svc  # noqa: E402
+from rfone_data_store.technical.connectors.mercury.client import (  # noqa: E402
+    MercuryClient, MercuryConnectorError,
+)
 from rfone_data_store import restaurant_role_service as role_svc  # noqa: E402
 
 UTC = timezone.utc
@@ -562,6 +568,183 @@ def calculate_tips_history():
             "calculate_tips_history.html", restaurant=restaurant, run_rows=run_rows,
             active_nav="calculate-tips-history",
         )
+
+
+# ---------------------------------------------------------------------------
+# Tip Payouts — Mercury Sandbox pilot (TASK_TIPS_CORE2_PILOT §15).
+#
+# This is EXCEPTION-HANDLING and CONFIGURATION UI, not the normal Process:
+# the normal Process (readiness -> calculate -> pay out -> verify Outcome)
+# runs without a human opening this screen at all
+# (`rfone_data_store.tips.payout_process.run_business_date_payout`, callable
+# identically from a script or a future scheduler). This page exists so a
+# human can (a) see what, if anything, currently needs attention, (b)
+# manually trigger a run for this pilot (standing in for a future automatic
+# Process Activation trigger), and (c) link an Employee to an existing
+# Mercury sandbox recipient — never create one (task §7).
+#
+# SANDBOX ONLY: `MercuryClient()` defaults to the Mercury Sandbox base URL
+# and reads `MERCURY_SANDBOX_API_TOKEN` from the environment. No production
+# Mercury endpoint or token is referenced anywhere in this file.
+# ---------------------------------------------------------------------------
+
+
+def _pilot_source_account_id(client: MercuryClient) -> str | None:
+    """Pilot-only convenience: the first active Mercury `checking` account
+    with a positive balance. A real deployment would read this from an
+    explicit Restaurant-scoped configuration (mirroring `Payment
+    Execution.md`'s `PayrollExecutionConfiguration` pattern) — not built
+    here, since this pilot has exactly one sandbox organization and no
+    multi-account selection requirement to satisfy yet."""
+    for account in client.get_accounts():
+        if account.type == "mercury" and account.status == "active" and account.kind == "checking" and account.available_balance > 0:
+            return account.id
+    return None
+
+
+@app.route("/payouts")
+def payouts_home():
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        state = None
+        instructions = []
+        employees_by_id = {}
+        references_by_employee = {}
+        connector_error = None
+        if restaurant is not None:
+            state = readiness_svc.describe_readiness(session, restaurant.id)
+            if state.calculation_run is not None:
+                instructions = list(
+                    session.scalars(
+                        select(m.TipPaymentInstruction)
+                        .where(m.TipPaymentInstruction.calculation_run_id == state.calculation_run.id)
+                        .order_by(m.TipPaymentInstruction.employee_id)
+                    )
+                )
+                employee_ids = [i.employee_id for i in instructions]
+                if employee_ids:
+                    employees_by_id = {
+                        e.id: e for e in session.scalars(select(m.Employee).where(m.Employee.id.in_(employee_ids))).all()
+                    }
+                    references_by_employee = {
+                        r.employee_id: r
+                        for r in session.scalars(
+                            select(m.EmployeeExternalPaymentAccount).where(
+                                m.EmployeeExternalPaymentAccount.employee_id.in_(employee_ids),
+                                m.EmployeeExternalPaymentAccount.is_active.is_(True),
+                            )
+                        )
+                    }
+            try:
+                MercuryClient()
+            except MercuryConnectorError as exc:
+                connector_error = str(exc)
+
+        return render_template(
+            "payouts.html", restaurant=restaurant, state=state, instructions=instructions,
+            employees_by_id=employees_by_id, references_by_employee=references_by_employee,
+            connector_error=connector_error, active_nav="payouts",
+        )
+
+
+@app.route("/payouts/run", methods=["POST"])
+def payouts_run():
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        if restaurant is None:
+            flash("No Restaurant exists in this database yet.", "error")
+            return redirect(url_for("payouts_home"))
+        try:
+            client = MercuryClient()
+            source_account_id = _pilot_source_account_id(client)
+            if source_account_id is None:
+                flash("No active Mercury sandbox checking account with a positive balance was found.", "error")
+                return redirect(url_for("payouts_home"))
+            result = payout_svc.run_business_date_payout(
+                session, restaurant_id=restaurant.id, client=client, source_account_id=source_account_id,
+            )
+            session.commit()
+        except MercuryConnectorError as exc:
+            session.rollback()
+            flash(f"Mercury sandbox connector error: {exc}", "error")
+            return redirect(url_for("payouts_home"))
+
+        if result.blocked_reason:
+            flash(result.blocked_reason, "error")
+        else:
+            flash(
+                f"Business Date {result.business_date}: {result.submitted_count} instruction(s) submitted, "
+                f"{result.verified_count} Outcome-verified, {result.needs_attention_count} needing attention.",
+                "summary",
+            )
+    return redirect(url_for("payouts_home"))
+
+
+@app.route("/payouts/instruction/<int:instruction_id>/retry", methods=["POST"])
+def payouts_retry_instruction(instruction_id: int):
+    with SessionFactory() as session:
+        instruction = session.get(m.TipPaymentInstruction, instruction_id)
+        if instruction is None:
+            flash("Payment Instruction not found.", "error")
+            return redirect(url_for("payouts_home"))
+        try:
+            client = MercuryClient()
+            source_account_id = instruction.provider_account_id or _pilot_source_account_id(client)
+            if source_account_id is None:
+                flash("No Mercury sandbox source account available for retry.", "error")
+                return redirect(url_for("payouts_home"))
+            payout_svc.retry_instruction(session, instruction, client, source_account_id=source_account_id)
+            session.commit()
+        except MercuryConnectorError as exc:
+            session.rollback()
+            flash(f"Mercury sandbox connector error: {exc}", "error")
+            return redirect(url_for("payouts_home"))
+        flash(f"Payment Instruction {instruction.id} retried — status is now {instruction.status}.", "summary")
+    return redirect(url_for("payouts_home"))
+
+
+@app.route("/payouts/employee/<int:employee_id>/link-recipient", methods=["POST"])
+def payouts_link_recipient(employee_id: int):
+    """Links an Employee to an EXISTING Mercury sandbox recipient by exact
+    name (task §7: never creates one). Deactivates any prior active
+    reference for this Employee rather than deleting it (Historical
+    Integrity)."""
+    recipient_name = (request.form.get("recipient_name") or "").strip()
+    if not recipient_name:
+        flash("Recipient name is required.", "error")
+        return redirect(url_for("payouts_home"))
+    with SessionFactory() as session:
+        employee = session.get(m.Employee, employee_id)
+        if employee is None:
+            flash("Employee not found.", "error")
+            return redirect(url_for("payouts_home"))
+        try:
+            client = MercuryClient()
+            recipient = client.find_recipient_by_name(recipient_name)
+        except MercuryConnectorError as exc:
+            flash(f"Mercury sandbox connector error: {exc}", "error")
+            return redirect(url_for("payouts_home"))
+        if recipient is None:
+            flash(f"No Mercury sandbox recipient named {recipient_name!r} was found.", "error")
+            return redirect(url_for("payouts_home"))
+
+        existing = session.scalars(
+            select(m.EmployeeExternalPaymentAccount).where(
+                m.EmployeeExternalPaymentAccount.employee_id == employee_id,
+                m.EmployeeExternalPaymentAccount.provider == "MERCURY",
+                m.EmployeeExternalPaymentAccount.is_active.is_(True),
+            )
+        ).all()
+        for row in existing:
+            row.is_active = False
+        session.add(
+            m.EmployeeExternalPaymentAccount(
+                employee_id=employee_id, provider="MERCURY", provider_recipient_id=recipient.id, is_active=True,
+            )
+        )
+        session.commit()
+        flash(f"Employee {employee_id} linked to Mercury sandbox recipient {recipient.name!r}.", "summary")
+    return redirect(url_for("payouts_home"))
 
 
 # ---------------------------------------------------------------------------
