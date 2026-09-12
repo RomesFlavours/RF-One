@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block page_title %}New Position · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_org_positions') }}">&larr; Positions</a></p>
+<h1>New Position</h1>
+<div class="card">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <label for="name">Name</label>
+      <input type="text" id="name" name="name" required autofocus>
+    </div>
+    <div class="field-row">
+      <label for="description">Description</label>
+      <input type="text" id="description" name="description">
+    </div>
+    <div class="field-row">
+      <label for="parent_position_id">Parent Position</label>
+      <select id="parent_position_id" name="parent_position_id">
+        <option value="">(none)</option>
+        {% for p in positions %}
+          <option value="{{ p.id }}">{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit">Create Position</button>
+  </form>
+</div>
+{% endblock %}

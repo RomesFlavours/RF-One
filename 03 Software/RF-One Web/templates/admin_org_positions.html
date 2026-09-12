@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block page_title %}Positions · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+<h1>Positions — ADMIN / CONFIGURATION / TEST HARNESS</h1>
+<p class="empty">Configuration and inspection only. Not the operational Attention interface — see Attention Items below.</p>
+
+<div class="btn-row">
+  <a class="btn" href="{{ url_for('admin_org_position_new') }}">New Position</a>
+  <a class="btn" href="{{ url_for('admin_org_process_ownerships') }}">Process Ownerships</a>
+  <a class="btn" href="{{ url_for('admin_org_chart') }}">Org Chart</a>
+  <a class="btn" href="{{ url_for('admin_org_attention') }}">Attention Items</a>
+</div>
+
+<div class="card">
+  {% if rows %}
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Name</th><th>Parent</th><th>Active</th><th>Current Occupant</th><th></th></tr></thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td>{{ row.position.name }}</td>
+              <td>{{ row.position.parent_position.name if row.position.parent_position else "-" }}</td>
+              <td><span class="badge {{ 'ok' if row.position.is_active else 'bad' }}">{{ "active" if row.position.is_active else "inactive" }}</span></td>
+              <td>{{ row.occupant.display_name if row.occupant else "VACANT" }}</td>
+              <td><a href="{{ url_for('admin_org_position_detail', position_id=row.position.id) }}">Manage</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No Position configured yet. The Product Owner has not been asked to invent a real org chart — create Positions here when ready.</p>
+  {% endif %}
+</div>
+{% endblock %}

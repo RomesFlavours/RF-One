@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block page_title %}Process Ownerships · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_org_positions') }}">&larr; Positions</a></p>
+<h1>Process Ownerships — ADMIN / CONFIGURATION / TEST HARNESS</h1>
+
+<div class="card">
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Domain</th><th>Module</th><th>Process</th><th>Phase</th><th>Position</th><th>Scope override</th></tr></thead>
+      <tbody>
+        {% for o in ownerships %}
+          <tr>
+            <td>{{ o.domain }}</td><td>{{ o.module or "-" }}</td><td>{{ o.process_name }}</td>
+            <td>{{ o.phase or "(whole process)" }}</td>
+            <td><a href="{{ url_for('admin_org_position_detail', position_id=o.position_id) }}">{{ o.position.name }}</a></td>
+            <td>{{ (o.scope_type ~ "=" ~ (o.scope_id if o.scope_id is not none else o.scope_key)) if o.scope_type else "(uses Position's own scope)" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="empty">No Process Ownership configured yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>New Process Ownership</h2>
+  <form method="post" action="{{ url_for('admin_org_process_ownership_new') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row"><label for="domain">Domain</label><input type="text" id="domain" name="domain" required placeholder="e.g. Tips"></div>
+    <div class="field-row"><label for="module">Module</label><input type="text" id="module" name="module" placeholder="optional"></div>
+    <div class="field-row"><label for="process_name">Process name</label><input type="text" id="process_name" name="process_name" required placeholder="e.g. TipPayout"></div>
+    <div class="field-row">
+      <label for="phase">Phase</label>
+      <select id="phase" name="phase">
+        <option value="">(whole process)</option>
+        {% for ph in phases %}<option value="{{ ph }}">{{ ph }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field-row">
+      <label for="position_id">Owning Position</label>
+      <select id="position_id" name="position_id" required>
+        {% for p in positions %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field-row">
+      <label for="scope_type">Scope override (optional)</label>
+      <select id="scope_type" name="scope_type">
+        <option value="">(none — use Position's own scope)</option>
+        {% for k in scope_kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field-row"><label for="scope_id">scope_id</label><input type="number" id="scope_id" name="scope_id"></div>
+    <div class="field-row"><label for="scope_key">scope_key</label><input type="text" id="scope_key" name="scope_key"></div>
+    <button type="submit">Create Process Ownership</button>
+  </form>
+</div>
+{% endblock %}
