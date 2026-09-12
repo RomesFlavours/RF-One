@@ -43,6 +43,16 @@ Every implementation shall clearly separate:
 
 Business logic belongs exclusively to the Domain layer.
 
+## Channel Independence
+
+The Domain layer's business capabilities and the Business Logic required to execute a Process shall not depend on the channel through which the Process is requested, triggered, observed or controlled.
+
+Application/UI is one possible consumer of Domain capability, not the only one. The same Domain capability must be usable, where appropriate, by: Application/UI; Cognito or another cognitive interface; Scheduling/Event Triggering; another Process; an API/Connector; and any future channel. No consumer shall be required to simulate a browser, a form, a click, navigation or a UI route merely to obtain execution of Business Logic that already exists.
+
+This does not: prohibit UI; require microservices, REST APIs, or a service bus; require a new deployment; mandate a specific technology; require every capability to be named "Engine"; or move Business Rules into Cognito or a Scheduler. UI, Cognito, Scheduler and Connector remain consumers/orchestrators — Business Logic remains in the Domain layer.
+
+This is the architectural precondition for a Process to advance autonomously without depending on a person traversing a UI — see [ConceptualArchitecture/11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md](ConceptualArchitecture/11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md). It enables Process Autonomy, Scheduling/Event Triggering, Cognito and other autonomous Processes to consume the same Domain capability; it does not redefine any of them.
+
 ---
 
 # External Systems
@@ -134,6 +144,7 @@ New modules and new data sources must integrate through existing architectural p
 
 - Implement the Domain first.
 - Keep business logic independent.
+- Domain capability must not depend on the channel that invokes it.
 - Separate business from infrastructure.
 - Preserve traceability.
 - Protect business knowledge.

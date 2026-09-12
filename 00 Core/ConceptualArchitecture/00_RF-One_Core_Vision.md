@@ -19,7 +19,12 @@ This document is the entry point of the RF-One Core Conceptual Architecture. It 
 - [07_Core_Glossary.md](07_Core_Glossary.md)
 - [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md)
 - [09_Identity_Authority_and_Accountability.md](09_Identity_Authority_and_Accountability.md)
-- See also [../RF-ONE Core Principles.md](../RF-ONE%20Core%20Principles.md) for the immutable layer principles this vision specializes.
+- [10_RF-One_Intelligence_and_User_Relationship.md](10_RF-One_Intelligence_and_User_Relationship.md)
+- [11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md](11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md)
+- [12_Attention_Management.md](12_Attention_Management.md)
+- [13_Process_Activation_and_Trigger_Intelligence.md](13_Process_Activation_and_Trigger_Intelligence.md)
+- [14_Cognito_RF-One_Cognitive_Intelligence.md](14_Cognito_RF-One_Cognitive_Intelligence.md)
+- See also [../Organizational Responsibility.md](../Organizational%20Responsibility.md) (Position, Process Ownership) and [../RF-ONE Core Principles.md](../RF-ONE%20Core%20Principles.md) for the immutable layer principles this vision specializes.
 
 ---
 
@@ -102,5 +107,12 @@ The Core does not encode pricing or commercial strategy — those belong to Prod
 | [07_Core_Glossary.md](07_Core_Glossary.md) | What does each term precisely mean? |
 | [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md) | How does RF-One reason about what a Subject actually retains, and about lawful ways to change future constraints? |
 | [09_Identity_Authority_and_Accountability.md](09_Identity_Authority_and_Accountability.md) | Who acts, under what authority, and how is that provable afterward? |
+| [10_RF-One_Intelligence_and_User_Relationship.md](10_RF-One_Intelligence_and_User_Relationship.md) | What kind of intelligence must RF-One itself be, and how does it relate to the person managing the business? |
+| [11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md](11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md) | How does RF-One execute a Process without a human as a mandatory link between its stages, and when does it involve one? |
+| [12_Attention_Management.md](12_Attention_Management.md) | When a matter requires human attention, who receives it, with what priority, through what channel, and at what level of synthesis? |
+| [13_Process_Activation_and_Trigger_Intelligence.md](13_Process_Activation_and_Trigger_Intelligence.md) | How does RF-One recognize what activates, advances, or changes a Process, without a hardcoded trigger list? |
+| [14_Cognito_RF-One_Cognitive_Intelligence.md](14_Cognito_RF-One_Cognitive_Intelligence.md) | What is Cognito, and how do Human Interaction and Trigger Intelligence relate to it as capabilities of one Cognitive Intelligence? |
 
 This vision, and the documents that specialize it, are the canonical conceptual architecture for the concepts they define. Domain and Product documentation must remain consistent with them.
+
+**Not part of the table above, listed here only for discoverability:** [20_RF-One_Selection_Pills_Cognitive_Model.md](20_RF-One_Selection_Pills_Cognitive_Model.md) physically sits in this same folder but is **not** Approved Core 2.0 at the same canonical level as 00–14 above. Its own status is "CONCEPTUAL BASELINE — FROZEN FOR THE DECISIONS RECORDED HERE; UNRESOLVED ITEMS REMAIN OPEN," it records genuine unresolved reconciliation items (its own §25), and its folder location does not imply parity of canonical authority with the Approved documents in the table above.

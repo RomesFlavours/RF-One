@@ -215,6 +215,214 @@ Compatibility Notes:
 
 ---
 
+Version: Core 2.0 (CORE_PROCESS_AUTONOMY_AND_EXCEPTION_DRIVEN_HUMAN_INVOLVEMENT)
+
+Date: 2026-09-12
+
+Modified Entity:
+`RF-ONE Core Principles.md` (Principle 23), a new canonical document `ConceptualArchitecture/11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md`, and cross-reference/index updates to `ConceptualArchitecture/00_RF-One_Core_Vision.md` and `README.md`.
+
+Reason:
+An approved Product Owner conceptual decision required RF-One to be documented as executing its Processes autonomously within established rules and Delegated Authority — already established by `06_Business_Autopilot_and_Intelligence_Engine.md` and by `10_RF-One_Intelligence_and_User_Relationship.md` §12 — verifying their actual result rather than presenting an unverified result as achieved, and involving the competent Acting Identity only when genuine human contribution is required, rather than reproducing an equivalent screen-driven workflow through a sequence of voice commands. This specializes, and does not redefine, the existing Business Autopilot / Delegated Authority model, the Decision/Action/Outcome/Learning cycle, and Identity/Authority/Accountability. It makes explicit that a Process description must start from the expected result and its verification condition (reusing `Process.md`'s existing Components and Verification, and `Goal.md`'s Verification principle) rather than from the sequence of screens a user operates, that an anomaly RF-One can resolve within its own authority does not require escalation, and that when escalation is required it must reach the specific competent Acting Identity with a circumscribed, contextualized request rather than the whole Process or a fixed universal target (e.g. always the highest authority in the organization).
+
+Concepts introduced:
+
+- Process Autonomy (Process execution without a human as a mandatory link between stages, within already-established rules and Delegated Authority)
+- Exception-Driven Human Involvement (escalation only when genuinely required, addressed to the specific competent Acting Identity, never a default full-process handoff)
+- the completion criterion: a Process concludes only once its expected result is verified, not when a calculation finishes or a command is dispatched to an external system
+
+Impacted Domains:
+
+- None modified. This is a Core-level principle available to any Domain or Product; no existing Domain, Product or Software file was touched. The Restaurant Tips nightly-routine example used to illustrate the principle is recorded as a Product Owner functional objective only, not as an implemented capability, and does not alter the Tips/Compensation/Payroll/Banking Domain boundaries.
+
+Future Expected Impact:
+
+- Any future Domain, Product or interaction-layer design (including a future cognitive/voice interface) that must decide when RF-One acts without human involvement, what a Process's completion condition is, and who a required escalation must reach.
+
+Compatibility Notes:
+
+- All prior Core 2.0 content is preserved; no existing definition was reversed. Changes are additive: a new document plus small cross-referencing additions.
+- Business Autopilot, Delegated Authority (`06_Business_Autopilot_and_Intelligence_Engine.md`), the Decision/Action/Outcome/Learning cycle (`03_Decision_Action_Outcome_Learning.md`) and Identity/Authority/Accountability (`09_Identity_Authority_and_Accountability.md`) are explicitly preserved as-is; this document specializes them for Process execution and completion, it does not redefine them.
+- No specific interface, device, vendor, or the separate, still "CONCEPTUAL DIRECTION — UNDER REVIEW" `00 Core/Cognitive Interface/RF-ONE_COGNITIVE_INTERFACE_CONCEPT.md` document is authorized or elevated in status by this change.
+- Open item (resolved by the following entry): the Product Owner's task instructions referred to an existing Core distinction "Planning → Scheduling/Programming → Management → Operations" to be preserved. This exact sequence could not be located as an existing canonical Core, Domain or Software distinction under this or an equivalent name; per the no-new-taxonomy instruction, this document does not assert or fix such a sequence as Core — see `07 Tasks/Reports/CORE_PROCESS_AUTONOMY_AND_EXCEPTION_DRIVEN_HUMAN_INVOLVEMENT_REPORT.md` for the full note and the question for the Product Owner.
+- No Domain, Product or Software file was modified.
+
+---
+
+Version: Core 2.0 (CORE_PROCESS_PHASES)
+
+Date: 2026-09-12
+
+Modified Entity:
+`Process.md` (new section "Phases of Execution," plus two Design Principles bullets), `RF-ONE Core Principles.md` (Principle 24), and `ConceptualArchitecture/11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md` (updated cross-references, §3 and Related documents, and the corresponding Non-assumptions line, to reflect that the sequence is now formalized rather than open).
+
+Reason:
+A Product Owner conceptual decision, following directly from the open item recorded in the previous entry (CORE_PROCESS_AUTONOMY_AND_EXCEPTION_DRIVEN_HUMAN_INVOLVEMENT), formalized the chronological sequence by which a Process's execution progresses: Planning (determining what is to be achieved and under what approach) → Scheduling/Programming (turning what was planned into commitments, assignments, timing or operational readiness) → Management (governing execution: attention, resources, reacting to actual conditions, keeping the Process within Goal/rules/constraints) → Operations (materially carrying out the work that produces the result). This is a logical progression of organizational work, not a software taxonomy, menu structure or mandatory module subdivision, and a Process is not required to formally contain all four phases (`Process.md`, "Recursive Decomposition," already establishes that decomposition is optional and Domain/Runtime-specific). None of the four phases is defined by who or what performs it: within Delegated Authority, RF-One may itself perform Planning, Scheduling/Programming, Management or Operations activity, consistent with Principle 23 and `ConceptualArchitecture/11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md`. Reporting, Administration, Analysis and Feedback were explicitly excluded from this sequence: they observe, support, document, measure or influence the Process without being chronological phases of it; legal, compliance and tax constraints enter the Process as rules/limits under the pre-existing "Optimization Boundaries" section, not as separate phases.
+
+Concepts introduced:
+
+- Phases of Execution: Planning, Scheduling/Programming, Management, Operations (a chronological decomposition of Process execution, not a new Core primitive alongside Process, Decision, Action or Outcome)
+- Explicit exclusion of Reporting, Administration, Analysis and Feedback from this sequence
+
+Impacted Domains:
+
+- None modified. This is a Core-level refinement of the existing Process concept, available to any Domain; no existing Domain, Product or Software file was touched. The Tips distribution example used to illustrate the four phases is recorded as a short, generic illustration only and does not modify Tips Domain documentation.
+
+Future Expected Impact:
+
+- Any future Domain or Product that models how a Process's execution unfolds over time, or that needs to distinguish operational phases from Reporting/Administration/Analysis/Feedback.
+
+Compatibility Notes:
+
+- All prior Core 2.0 content is preserved; no existing definition was reversed. The change is additive: a new section in `Process.md`, one new Core Principle, and small cross-reference corrections in the document (11) that had left this sequence explicitly open.
+- `Process.md`'s existing Recursive Decomposition, Optimization Boundaries, Verification and Components sections are unchanged in meaning; the new section specializes "Recursive Decomposition" without replacing it.
+- No new ConceptualArchitecture document was created; per the task's stated preference, the concept was integrated directly into the existing `Process.md`, judged semantically sufficient.
+- No Domain, Product or Software file was modified.
+
+---
+
+Version: Core 2.0 (CORE_ORGANIZATIONAL_RESPONSIBILITY_AND_ATTENTION_MANAGEMENT)
+
+Date: 2026-09-12
+
+Modified Entity:
+Two new canonical documents — `Organizational Responsibility.md` (Position, Position scope, Position vs. Occupant, temporary coverage, Process Ownership) and `ConceptualArchitecture/12_Attention_Management.md` (Attention Management: priority, real-time vs. non-real-time attention, attention list vs. report, aggregation, the Cognito interaction principle, direct human intervention and resumption, escalation as organizational policy, human state/context, Learning boundaries) — plus `RF-ONE Core Principles.md` (Principles 25–26) and cross-reference/index updates to `ConceptualArchitecture/00_RF-One_Core_Vision.md` and `README.md`.
+
+Reason:
+Process Autonomy (`11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md`) already requires every Process to name the Acting Identity responsible when human contribution is required, and Identity/Authority/Delegation (`09_Identity_Authority_and_Accountability.md`) already establish who acts and under what authority — but neither states which organizational Position is responsible for a given Process, independent of the specific person currently occupying it, nor how RF-One decides whether, to whom, and how a matter genuinely requiring human attention actually reaches that Position's occupant. A Product Owner conceptual decision formalized both gaps as two related, non-overlapping Core documents: `Organizational Responsibility.md` establishes Position as a stable responsibility (scoped through the already-existing Corporate/Brand/Operational Unit/Operational Area hierarchy, never a parallel one) that a person occupies for a period, that may be temporarily covered by a delegate, and that owns a Process or a specific phase of it (reusing `Process.md`'s "Phases of Execution"); `ConceptualArchitecture/12_Attention_Management.md` defines the transversal capability that consumes Position/Process Ownership together with Authority/Delegation to determine whether a matter requires human attention, who receives it, with what priority (CRITICAL/HIGH/MEDIUM/LOW, dynamically determined, never a fixed table), through what channel, and at what level of synthesis — explicitly distinguishing the attention list from a general report, real-time operational intervention from non-real-time attention, and stating that Cognito (or any interaction channel) is a channel, never the Process engine. Neither document fixes a universal organizational hierarchy shape or a universal escalation rule: both are declared organizational policy/configuration, consistent with CLAUDE.md's "Modular Architecture" and the existing refusal (`06_Business_Autopilot_and_Intelligence_Engine.md` §2) to impose a single authority/permission taxonomy.
+
+Concepts introduced:
+
+- Position (a stable organizational responsibility, distinct from its current occupant)
+- Position Scope, Position vs. Occupant, Temporary Coverage (a form of Delegation)
+- Process Ownership (a Process, or Process phase, attributed to a responsible Position)
+- Attention Management (the capability determining whether/who/priority/channel/synthesis for human attention)
+- Priority levels CRITICAL/HIGH/MEDIUM/LOW as a dynamic, context-determined classification (not a fixed table)
+- Attention List (distinct from a general operational report)
+- Real-time operational intervention vs. non-real-time attention
+- The Cognito interaction principle ("I interrupted you for X. I would do Y. Do you authorize me?") and direct human intervention with automatic Process resumption
+
+Impacted Domains:
+
+- None modified. Both documents are general-purpose Core vocabulary available to any Domain or Product; no existing Domain, Product or Software file was touched. The illustrative examples (a server struggling during service; a generic Process-phase ownership example) are recorded as non-normative illustrations only, consistent with how the Tips example in document 11 was handled.
+
+Future Expected Impact:
+
+- Any future Domain or Product that models an organizational chart, job/role definitions, shift coverage, on-call/escalation policy, or a proactive/attention-driven interface (including a future Cognitive Interface/Cognito, still separately "CONCEPTUAL DIRECTION — UNDER REVIEW" and not elevated in status by this change).
+
+Compatibility Notes:
+
+- All prior Core 2.0 content is preserved; no existing definition was reversed. Changes are additive: two new documents plus small cross-referencing additions to `00_RF-One_Core_Vision.md`, `README.md` and `RF-ONE Core Principles.md`.
+- Identity, Authority, Delegation and Accountability (`09_Identity_Authority_and_Accountability.md`) are explicitly preserved as-is; Position is defined as what an Acting Identity occupies to hold role-derived Authority, not a replacement for any of the four.
+- Corporate/Brand/Operational Unit/Operational Area (`Corporate.md`, `Brand.md`, `Operational Unit.md`, `OperationalArea.md`) are explicitly preserved as-is; Position's scope is expressed through this existing hierarchy. The pre-existing "Manager" attribute on Operational Unit/Operational Area is identified as a lightweight precedent this document generalizes, not superseded or required to change.
+- No universal organizational hierarchy shape, no universal escalation rule (e.g. "always escalate to the superior"), and no fixed priority-scoring table were introduced — these remain organizational policy/configuration by explicit design.
+- No data model, database schema, notification system, scheduler, queue or API was introduced anywhere in `00 Core/` — those remain Runtime/Software/Product concerns by design (Core is definition, not implementation).
+- No Domain, Product or Software file was modified.
+
+---
+
+Version: Core 2.0 (CORE_UI_INDEPENDENT_DOMAIN_LOGIC)
+
+Date: 2026-09-12
+
+Modified Entity:
+`ImplementationGuidelines.md` ("Layer Separation" section — new "Channel Independence" subsection; one new Design Principles bullet).
+
+Reason:
+An audit of five representative Domains (Tips, Compensation, Purchasing, Selection, Training) against Process Autonomy (`ConceptualArchitecture/11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md`) found that in four of five cases Business Logic already lives in plain, UI-independent modules, and that the remaining gaps (an unwired reconciliation call, a missing input-derivation capability, a manual batch trigger, and Training's absent Gap/Priority logic) are Domain/Implementation/Governance gaps, not evidence of a missing structural capability. A Product Owner conceptual decision formalized the already-prevailing pattern as an explicit architectural requirement, extending `ImplementationGuidelines.md`'s existing "Business logic belongs exclusively to the Domain layer" rule: Domain capability must not depend on the channel — Application/UI, Cognito or another cognitive interface, Scheduling/Event Triggering, another Process, or an API/Connector — through which a Process is requested, triggered, observed or controlled. This is the architectural precondition Process Autonomy already presupposes for a Process to advance without a person traversing a UI; it does not redefine Process Autonomy, Attention Management or Organizational Responsibility.
+
+Concepts introduced:
+
+- Channel Independence (Domain capability must not depend on its calling channel — Application/UI is one consumer among several, never the only one)
+
+Impacted Domains:
+
+- None modified. This is a clarification of an existing Implementation Guideline, available to any Domain; no Tips, Compensation, Purchasing, Selection or Training file was touched. The local gaps identified by the audit were deliberately left open — they are Domain/Implementation/Governance corrections, not part of this formalization.
+
+Future Expected Impact:
+
+- Any future Domain, Product, Scheduling/Event Triggering capability, or cognitive interface (Cognito) design that needs to invoke existing Domain capability without duplicating or simulating UI behavior.
+
+Compatibility Notes:
+
+- All prior content is preserved; the change is an additive clarification of the pre-existing "Layer Separation" section, not a new rule. No new Core Principle, document, layer or Entity was introduced.
+- No microservice, REST API, service bus, deployment, or specific technology was mandated; UI, Cognito, Scheduler and Connector remain consumers/orchestrators, never holders of Business Logic.
+- No Domain, Product or Software file was modified.
+
+---
+
+Version: Core 2.0 (CORE_PROCESS_ACTIVATION_AND_TRIGGER_INTELLIGENCE)
+
+Date: 2026-09-12
+
+Modified Entity:
+A new canonical document `ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md` (Process Activation; Trigger Intelligence; Explicit/Implicit Trigger; Trigger Discovery vs. Trigger Resolution vs. Authorized Consequence; Derived Trigger Map; Missing Semantics), `RF-ONE Core Principles.md` (Principle 27), and cross-reference/index updates to `ConceptualArchitecture/00_RF-One_Core_Vision.md` and `README.md`.
+
+Reason:
+A repeatability test conducted on the Invoice Intake / Purchasing Process (three independent trigger-discovery passes over the same canonical documentation) found that most explicit and implicit triggers governing a Process's activation and behavior can be recognized directly from existing Process, Business Rule, Entity and State documentation, without a centralized, manually maintained, trigger-by-trigger hardcoded list — and that the triggers which proved unstable across passes were concentrated exactly where the necessary semantics lived in documentation the Process's own canonical description never referenced. A Product Owner conceptual decision generalized what had been framed, in prior analysis, as "Scheduling / Event Triggering" into the broader Process Activation and Trigger Intelligence: time is one possible triggering event among others (a Payroll Period closing, a document arriving, a second reconciliation source becoming available are all instances of the same underlying concept — an observable change in Reality relevant to one or more Processes), not a separate foundational Core concept. The document makes explicit that recognizing a trigger never itself grants Authority to act on it (Trigger Discovery ≠ Trigger Resolution ≠ Authorized Consequence), that a recognized human-attention need is handed to Attention Management rather than resolved internally, that Process Activation must be able to invoke Domain capability under the already-approved Channel Independence principle, and that a possible future Derived Trigger Map is knowledge derived from the Process — regenerable, invalidatable, and never authoritative over the canonical Business Knowledge it comes from.
+
+Concepts introduced:
+
+- Process Activation (starting, advancing, resuming, branching, or making a Rule applicable to a Process — broader than "starting a Process")
+- Trigger Intelligence (recognizing explicit and implicit triggers from canonical Process/Business/Entity/State knowledge)
+- Explicit Trigger / Implicit Trigger
+- Trigger Discovery vs. Trigger Resolution vs. Authorized Consequence
+- Derived Trigger Map (a non-authoritative, regenerable, invalidatable representation of recognized triggers — not a data model or runtime artifact)
+- Missing Semantics (representing a gap in Business Knowledge needed to resolve a trigger, rather than inventing a value)
+
+Impacted Domains:
+
+- None modified. This is a Core-level principle available to any Domain or Product; no Invoice Intake, Purchasing, or other Domain file was touched. The Invoice Intake example used to illustrate the principle (§14 of the new document) is recorded as a brief, non-normative illustration only, consistent with how prior illustrative examples (Tips, doc 11; a server struggling during service, doc 12) were handled, and does not modify Invoice Intake/Purchasing Domain documentation.
+
+Future Expected Impact:
+
+- Any future Domain, Product, or capability design (including a future Scheduling/event-triggering mechanism, or Cognito) that needs to recognize what activates or changes a Process without a hardcoded, per-Process trigger list.
+
+Compatibility Notes:
+
+- All prior Core 2.0 content is preserved; no existing definition was reversed. The change is additive: a new document plus small cross-referencing additions.
+- Process Autonomy (`11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md`), Attention Management (`12_Attention_Management.md`), Organizational Responsibility, Identity/Authority/Delegation (`09_...md`) and Channel Independence (`ImplementationGuidelines.md`) are explicitly preserved as-is; this document specializes and connects them at the point of Process activation, it does not redefine any of them.
+- No scheduler, event bus, queue, Trigger table, confidence-scoring algorithm, AI model, or API was introduced or selected anywhere in `00 Core/` — those remain future Runtime/Software/Product concerns by design (Core is definition, not implementation).
+- No Domain, Product or Software file was modified.
+
+---
+
+Version: Core 2.0 (CORE_COGNITO_COGNITIVE_INTELLIGENCE)
+
+Date: 2026-09-12
+
+Modified Entity:
+A new canonical document `ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md`; corrections to `ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md` §12–§13 (Cognito's relationship to Trigger Intelligence and to the Process Activation sequence), `ConceptualArchitecture/12_Attention_Management.md` §7 (the Cognito interaction principle), and `ConceptualArchitecture/11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md` §5 (interaction channel wording); a discoverability note added to `00 Core/Cognitive Interface/RF-ONE_COGNITIVE_INTERFACE_CONCEPT.md` without changing its status; `RF-ONE Core Principles.md` (Principle 28); and cross-reference/index updates to `ConceptualArchitecture/00_RF-One_Core_Vision.md`, `README.md` and `ConceptualArchitecture/07_Core_Glossary.md`.
+
+Reason:
+Documents 12 and 13, approved earlier in the same conceptual sequence, had each independently described Cognito as "a possible interaction channel" — adequate as far as it went, but incomplete: it left Cognito indistinguishable from a plain voice/UI channel and, in document 13, described Trigger Intelligence as something Cognito merely carried messages for rather than something Cognito itself does. A Product Owner conceptual decision corrected this: Cognito is RF-One's Cognitive Intelligence — a single transversal cognitive capacity, of which Human Interaction (conversation, briefing/debriefing, explanation) and Trigger Intelligence (document 13) are two capabilities among others, not two independent intelligences. The distinction between Cognito's capabilities is functional, not ontological, and a technical implementation may separate them into different agents, processes or services for performance, latency, reliability, scalability or fault isolation — but that separation must never produce divergent Business Knowledge, divergent Authority, divergent Process semantics, or conceptually independent intelligences; every capability consumes the same canonical RF-One knowledge. Attention Management (document 12) remains a distinct capability, not absorbed by Cognito: Trigger Intelligence (a Cognito capability) detects that a matter requires human attention, Attention Management decides who/when/priority/channel, and Cognito's Human Interaction capability may be the cognitive channel Attention Management actually reaches the person through. The document also formally records the terminology collision already present in the repository between this concept and AWS Cognito (a System-level authentication technology candidate, `10 System/Identity & Access/`), without renaming either.
+
+Concepts introduced:
+
+- Cognito (RF-One Cognitive Intelligence) — a single transversal cognitive capacity, not a channel
+- Trigger Intelligence and Human Interaction as capabilities of Cognito (functional, not ontological, distinction)
+- Cognito's open, non-exhaustive capability list (Human Interaction, Trigger Intelligence, Context Interpretation, Explanation, Briefing/Debriefing)
+- Implementation freedom for Cognito's capabilities, bounded by a shared-canonical-knowledge requirement
+- The explicit "Cognito ≠ AWS Cognito" terminology distinction
+
+Impacted Domains:
+
+- None modified. This is a Core-level correction and addition available to any Domain or Product; no Domain, Product or Software file was touched, including `10 System/Identity & Access/`, which was reviewed only to confirm the AWS Cognito naming collision and was not modified.
+
+Future Expected Impact:
+
+- Any future design of an actual Cognito runtime, agent, or interface, and any future Domain or Product description of a human-facing interaction that must correctly attribute Business Logic to the Domain, not to Cognito.
+
+Compatibility Notes:
+
+- All prior Core 2.0 content is preserved; no existing definition was reversed except the specific "Cognito = a channel" phrasing in documents 11 §5, 12 §7 and 13 §13, which is corrected in place with an explicit note rather than silently rewritten, consistent with Historical Integrity (`ArchitecturePrinciples.md`) applied to Core documentation itself.
+- Process Autonomy, Attention Management, Process Activation and Trigger Intelligence's own substance (documents 11, 12, 13 §1–§11) are explicitly preserved and not reopened; only their description of Cognito's role is corrected.
+- `00 Core/Cognitive Interface/RF-ONE_COGNITIVE_INTERFACE_CONCEPT.md` remains at its own stated status, "CONCEPTUAL DIRECTION — UNDER REVIEW" — it was not elevated to Approved, per the task's explicit instruction; only a discoverability note pointing to the new canonical document was added.
+- No agent runtime, AI model, prompt, API, microservice, or deployment topology was designed, chosen, or created. AWS Cognito was not renamed or modified.
+- No Domain, Product or Software file was modified.
+
+---
+
 # Design Principles
 
 - The Core Domain is extracted from real domains.

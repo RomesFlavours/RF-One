@@ -44,6 +44,37 @@ A lower-level Process remains a Process. Granularity alone does not create a fun
 
 Decomposing a Process is optional: a Domain or Runtime is not required to model every Process explicitly as a hierarchy, and this pattern does not by itself require any part of that hierarchy to be persisted.
 
+## Phases of Execution
+
+A Process's execution may progress, chronologically, through up to four fundamental phases:
+
+```text
+Planning
+→ Scheduling / Programming
+→ Management
+→ Operations
+```
+
+- **Planning** — determining what is to be achieved and under what approach: the Goal, its intended treatment, and the governing rules, before any commitment is made.
+- **Scheduling / Programming** — turning what was planned into commitments, assignments, timing, sequencing or operational readiness.
+- **Management** — governing execution: allocating attention and resources, reacting to actual conditions, and keeping the Process within its Goal, rules and constraints.
+- **Operations** — materially carrying out the work that produces the result.
+
+This sequence describes the logical progression of organizational work. It is not a software taxonomy, a menu structure, or a mandatory subdivision into modules. A Process may include one, several, or all four phases, depending on its level of decomposition (see "Recursive Decomposition" above) and the Goal it serves; a Process is not required to formally contain all four.
+
+None of these phases is defined by who or what performs it. Management, for example, does not mean "a human manager performs an action": within Delegated Authority, RF-One may itself perform governing activity that belongs to the Management phase, exactly as it may perform Planning, Scheduling/Programming or Operations activity within the same boundary. Where a Process is automated, autonomous execution may span one or more of these phases without a human separately triggering each one — see [ConceptualArchitecture/11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md](ConceptualArchitecture/11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md).
+
+### Not part of this sequence
+
+Reporting, Administration, Analysis and Feedback are not chronological phases of this sequence. They observe, support, document, measure or influence the Process, but must not be artificially inserted into Planning → Scheduling/Programming → Management → Operations:
+
+- **Reporting** describes what happened or is happening.
+- **Administration** records, formalizes, or satisfies administrative requirements.
+- **Analysis** interprets data and results.
+- **Feedback** returns knowledge to the system and may influence Planning or another future phase (see Learning, [ConceptualArchitecture/03_Decision_Action_Outcome_Learning.md](ConceptualArchitecture/03_Decision_Action_Outcome_Learning.md)).
+
+Legal, compliance, tax and other similar constraints do not automatically constitute separate phases of the Process. They enter the Process as rules, limits, conditions or obligations that the four phases above must respect (see "Optimization Boundaries" below). Administration must adapt to the operational Process; the Process must not be deformed to fit the structure of administrative, accounting or software systems.
+
 ## Optimization Boundaries
 
 Optimization and execution of a Process must remain subordinate to the currently applicable combination of:
@@ -96,3 +127,5 @@ AI does not define the Process.
 - Training is an integral part of the Process.
 - A Process is independent from its executor.
 - Humans, AI systems and robots may execute the same Process.
+- Execution may progress through Planning, Scheduling/Programming, Management and Operations; a Process need not formally contain all four.
+- Reporting, Administration, Analysis and Feedback are not phases of that sequence.

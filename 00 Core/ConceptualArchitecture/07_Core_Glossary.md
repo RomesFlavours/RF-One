@@ -102,3 +102,19 @@ This glossary provides concise canonical definitions for the concepts introduced
 **Accountability** — The ability to attribute a specific Decision or Action to the Acting Identity responsible for it and the Authority under which it was performed, including the AI Recommendation vs. AI-Authorized Execution distinction. See [09_Identity_Authority_and_Accountability.md](09_Identity_Authority_and_Accountability.md).
 
 **Auditability** — The ability to reconstruct who did what, when, in what context, under what Authority, against which object, and with what before/after state — consistent with Historical Integrity and Temporal Coherence. A capability, not a mandate to persist every Decision. See [09_Identity_Authority_and_Accountability.md](09_Identity_Authority_and_Accountability.md).
+
+**Attention Management** — The transversal capability by which RF-One determines whether a matter genuinely requires human attention, who should receive it (via Position/Process Ownership and Authority/Delegation), with what priority, through what channel, and at what level of synthesis. Not a notification system. See [12_Attention_Management.md](12_Attention_Management.md).
+
+**Attention List** — A collection of decisions required, authorizations required, exceptions and matters requiring human judgment for a Position/occupant, presented at a contextually appropriate moment. Distinct from a general operational report. See [12_Attention_Management.md](12_Attention_Management.md).
+
+**Trigger Intelligence** — The use of canonical Process, Business Rule, Entity and State knowledge to recognize the events and conditions that activate, advance, or change the behavior of a Process, without a centralized hardcoded trigger list. See [13_Process_Activation_and_Trigger_Intelligence.md](13_Process_Activation_and_Trigger_Intelligence.md).
+
+**Process Activation** — Starting a Process, activating or making executable one of its phases, resuming a suspended Process, changing its relevant branch, making a Rule applicable, or requiring Attention — broader than "starting a Process." See [13_Process_Activation_and_Trigger_Intelligence.md](13_Process_Activation_and_Trigger_Intelligence.md).
+
+**Trigger Discovery / Trigger Resolution / Authorized Consequence** — Three distinct steps that must never be confused: recognizing that a condition may be significant (Discovery); determining whether it is actually satisfied in current Reality (Resolution); determining what RF-One may do about it within Business Rules and Delegated Authority (Authorized Consequence). Trigger recognition ≠ execution authority. See [13_Process_Activation_and_Trigger_Intelligence.md](13_Process_Activation_and_Trigger_Intelligence.md).
+
+**Derived Trigger Map** — Knowledge derived from a Process representing recognized triggers, their semantic source, and confidence — regenerable, invalidatable, and never authoritative over the Business Knowledge it comes from. See [13_Process_Activation_and_Trigger_Intelligence.md](13_Process_Activation_and_Trigger_Intelligence.md).
+
+**Cognito** — RF-One's Cognitive Intelligence: a single transversal cognitive capacity, of which Human Interaction and Trigger Intelligence are two capabilities among others (Context Interpretation, Explanation, Briefing/Debriefing being further illustrative examples), not two independent intelligences. Not to be confused with AWS Cognito, an unrelated System-level authentication technology candidate. See [14_Cognito_RF-One_Cognitive_Intelligence.md](14_Cognito_RF-One_Cognitive_Intelligence.md).
+
+**Cognito Human Interaction** — The capability of Cognito through which it converses with people (voice, text, briefing, debriefing, questions/answers, authorization requests, explanations, visual views when useful). One of Cognito's capabilities, not a synonym for Cognito itself. See [14_Cognito_RF-One_Cognitive_Intelligence.md](14_Cognito_RF-One_Cognitive_Intelligence.md).

@@ -122,6 +122,12 @@ Ownership does not imply operational responsibility; operational responsibility 
 
 ---
 
+# Position
+
+A stable organizational responsibility, independent of who currently occupies it. A person occupies a Position for a period of time; a Position may be temporarily covered by a delegate. Every Process, or Process phase, is owned by a Position. See [Organizational Responsibility.md](Organizational%20Responsibility.md).
+
+---
+
 # Process
 
 An ordered sequence of business activities performed to achieve a Goal.
