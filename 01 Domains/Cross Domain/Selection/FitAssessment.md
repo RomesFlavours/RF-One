@@ -3,6 +3,7 @@
 **Version:** 0.1
 **Status:** Draft (initial canonical foundation)
 **Module:** Domain / Selection
+**Recovery:** Reconstructed 2026-09-12 after uncommitted working-tree edits elsewhere in this Domain were accidentally lost; this document's own content was not affected. Only the "Related concepts" backlinks below have been added. No new dimension is introduced here — see those backlinks for what remains an open point.
 
 ---
 
@@ -109,3 +110,5 @@ The same structure applies to any other role or industry; only the dimensions ac
 - [CandidateEvidence.md](CandidateEvidence.md)
 - [SelectionDecision.md](SelectionDecision.md)
 - [TrainableGap.md](TrainableGap.md)
+- [SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md](SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md) — names Guidability as a candidate addition to this document's "Trainability / Growth Potential" dimension family; not yet formally adopted here (open point, see that document §11 item 2)
+- [SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md](SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md)

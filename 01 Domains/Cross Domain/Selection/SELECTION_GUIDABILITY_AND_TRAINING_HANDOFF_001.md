@@ -4,6 +4,7 @@
 **Status:** Draft (initial canonical foundation)
 **Module:** Domain / Selection
 **Origin:** Follow-up to the Selection/Training/Guided-Operations documentation audit (2026-09-07) and [PERSON_CONTINUITY_001.md](../PERSON_CONTINUITY_001.md)
+**Recovery:** Reconstructed 2026-09-12 after uncommitted working-tree edits to this document were accidentally lost. §7 and the Related documents list have been updated to reflect [../TRAINING_SERVICE_001.md](../TRAINING_SERVICE_001.md) (a later, surviving decision); §11 item 6 has been closed on the same evidence. §11 item 5's original content could not be recovered — see the note at item 5 itself. No version number is asserted for what was lost; the Version above is unchanged from the last committed state.
 
 ---
 
@@ -159,7 +160,7 @@ Training               → receives the Baseline as its starting point
 
 Training **may** verify or revise Selection's assumptions through new Evidence gathered during actual training (e.g. a Trainable Gap Selection estimated as low-effort may prove otherwise once training begins). When it does, the **prior Selection Evidence remains preserved and traceable** — a revision produces new Evidence and, where warranted, a new Inference; it does not overwrite or delete what Selection originally recorded, consistent with the same non-destructive discipline [SelectionDecision.md](SelectionDecision.md) and the Selection Feedback Intelligence Foundation already apply elsewhere in this Domain (append-only observation, immutable snapshots — see `reports/SELECTION_FEEDBACK_INTELLIGENCE_FOUNDATION_REPORT.md`).
 
-**No Training curriculum, content, method, or duration is defined by this document** — that remains [Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md)'s deferred scope (the Domain that conceptually superseded the former Training placeholder — see its own README).
+**No Training curriculum, content, method, or duration is defined by this document** — that belongs to **Training**, the internal RF-One service responsible for the training cycle (see [../TRAINING_SERVICE_001.md](../TRAINING_SERVICE_001.md) and [SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md](SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md)), not to [Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md), whose own broader, non-training productivity scope is unchanged — see item 6 in §11 below for how this boundary was closed.
 
 ---
 
@@ -205,7 +206,7 @@ This document does **not** define, decide, or imply any of the following:
 - Support Dependency Decay;
 - smartwatch interaction (remains [Smartwatch Interaction.md](../../Business%20Domain/Restaurant/Service%20Copilot/Smartwatch%20Interaction.md) scope);
 - Service Copilot prompting/guidance logic;
-- any change to Selection scoring (Selection remains scoreless by design — [SELECTION_CURRENT_STATUS.md](reports/SELECTION_CURRENT_STATUS.md), "Candidate scoring / universal ranking... deliberately not implemented");
+- any change to Selection scoring (Selection remains scoreless by design — [SELECTION_CURRENT_STATUS.md](reports/SELECTION_CURRENT_STATUS.md), "Candidate scoring / universal ranking... deliberately not implemented"; the per-pill 1-5 Capability scale later introduced by [SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md](SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md) §4 is a narrower assessment/readiness representation for one pill at a time and does not reopen this exclusion — see that document's own "Reconciling this with 'Selection remains scoreless by design'");
 - new hiring rules or workflow;
 - new database models, schema, or migrations.
 
@@ -213,12 +214,14 @@ This document does **not** define, decide, or imply any of the following:
 
 ## 11. Open decisions
 
-The following are genuine, unresolved design questions this document deliberately leaves open:
+This list mixes three distinct states, kept explicit below so none is mistaken for another: items 1-4 are genuine, unresolved design questions this document deliberately leaves open; item 5 is historical and its original content is not recoverable (see its own note); item 6 was originally open and is now **closed**.
 
 1. **How Guidability will eventually be assessed.** What evidence-gathering mechanism (structured interview, trial shift, simulation, or another method) would actually produce the Guidability observations described in §3 — not decided here.
 2. **Whether Guidability becomes a formal [FitAssessment.md](FitAssessment.md) dimension, or remains a separate evidence/concept alongside Fit Assessment.** §6 notes it as a candidate addition to Fit Assessment's dimension family; whether it is formally added there, or kept structurally distinct, is not decided here.
 3. **How "expected initial support areas" (§5) will actually be represented** once Training exists to receive them — as a structured field, a narrative note, or some other form.
 4. **Which Selection observations are safe to pass into operational guidance at all.** Not every Selection-stage observation about a person (e.g. sensitive interview context) is necessarily appropriate to surface to a real-time guidance capability during live work — which subset of the Baseline is safe and relevant for that eventual purpose is not decided here.
+5. **[Historical item — original content not recoverable.]** This list originally carried at least six items, as evidenced by external references to "item 6" below (see [SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md](SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md) and [../TRAINING_SERVICE_001.md](../TRAINING_SERVICE_001.md), both of which cite "§11, item 6" by that number). Item 5's own text was lost together with other uncommitted edits to this document (see "Recovery" above) and is not recoverable from any surviving repository evidence. Its position is preserved, not renumbered or removed, so that the existing external references to item 6 remain valid; no content is invented in its place.
+6. **Training's Domain-boundary name — closed.** Whether the capability this document calls "Training" (§7) belonged to Operational Knowledge, to Continuous Productivity Development, to a distinct future Cross Domain, or to something else was originally recorded here as open. **This is now decided**, by the same Product Owner decision that closed the identical open point in [SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md](SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md) ("Training's Domain-boundary name — closed") and recorded in full in [../TRAINING_SERVICE_001.md](../TRAINING_SERVICE_001.md): Training is an internal RF-One service responsible for the entire training cycle described in §7 — not a new top-level Cross Domain folder; Operational Knowledge is a component internal to Training; Continuous Productivity Development keeps its broader, non-training productivity scope and requests a training intervention from Training rather than deciding the formative mechanics itself. See [../TRAINING_SERVICE_001.md](../TRAINING_SERVICE_001.md) for the full decision and for what it deliberately leaves open.
 
 ---
 
@@ -226,6 +229,8 @@ The following are genuine, unresolved design questions this document deliberatel
 
 - [Selection.md](Selection.md), [CandidateEvidence.md](CandidateEvidence.md), [FitAssessment.md](FitAssessment.md), [TrainableGap.md](TrainableGap.md), [SelectionDecision.md](SelectionDecision.md)
 - [../PERSON_CONTINUITY_001.md](../PERSON_CONTINUITY_001.md)
-- [../Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md) — conceptually superseded the former Training placeholder this document's title still names
+- [SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md](SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md) — extends this document's Baseline with per-pill Capability assessment and the Selection→Training handoff mechanics
+- [../TRAINING_SERVICE_001.md](../TRAINING_SERVICE_001.md) — closes item 6 above ("Training's Domain-boundary name")
+- [../Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md) — sibling Cross Domain; keeps its broader, non-training productivity scope per [../TRAINING_SERVICE_001.md](../TRAINING_SERVICE_001.md) §4
 - [reports/SELECTION_FEEDBACK_INTELLIGENCE_FOUNDATION_REPORT.md](reports/SELECTION_FEEDBACK_INTELLIGENCE_FOUNDATION_REPORT.md)
 - [../../Business Domain/Restaurant/Service Copilot/README.md](../../Business%20Domain/Restaurant/Service%20Copilot/README.md)

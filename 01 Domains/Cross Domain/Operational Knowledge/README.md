@@ -3,7 +3,8 @@
 **Version:** 1.0
 **Status:** Approved (Domain boundary and core concept — initial concept modeling; detailed data model deferred). Domain family: **Cross Domain** (`01 Domains/Cross Domain/Operational Knowledge/`).
 **Domain:** Operational Knowledge (Cross Domain)
-**Origin:** Replaces the former placeholder Cross Domain `Training` (`01 Domains/Cross Domain/Training/`, "Domain boundary only — no concept modeling"). This is a redefinition, not a rename-in-place: Training's original scope ("closes an evidenced, trainable gap") was already conceptually superseded by [Continuous Productivity Development](../Continuous%20Productivity%20Development/README.md) — see "Relationship to Continuous Productivity Development" below. Operational Knowledge is a genuinely different concept occupying this Cross Domain slot, not a continuation of Training's prior definition under a new name.
+**Origin:** Replaces the former placeholder Cross Domain `Training` (`01 Domains/Cross Domain/Training/`, "Domain boundary only — no concept modeling"). This is a redefinition, not a rename-in-place: Operational Knowledge is a genuinely different concept occupying this Cross Domain slot, not a continuation of Training's prior definition under a new name — see "Relationship to Continuous Productivity Development" below, and the "Update — Training Service boundary" note there for the 2026-09-11 decision on where Training's original scope now lives.
+**Recovery:** Reconstructed 2026-09-12 after uncommitted working-tree edits to this document were accidentally lost. Only the "Update — Training Service boundary" paragraph below and the Related-documents entry have been added; the rest of this document's surviving content, including its own "passive, retrievable" boundary, is unchanged. No lost version number is asserted; the Version above is unchanged from the last committed state.
 
 ---
 
@@ -91,6 +92,8 @@ Operational Knowledge does not perform any part of that loop. It is, at most, a 
 
 **Repeated use of a Pill, or repeated Copilot guidance, may naturally lead a person to learn over time — but that learning is an outcome Continuous Productivity Development may eventually observe and measure (as Operational Data feeding its own loop — see [CONTINUOUS_PRODUCTIVITY_DEVELOPMENT_001.md](../Continuous%20Productivity%20Development/CONTINUOUS_PRODUCTIVITY_DEVELOPMENT_001.md) §1), never a responsibility Operational Knowledge itself carries.**
 
+**Update — Training Service boundary (2026-09-11):** [TRAINING_SERVICE_001.md](../TRAINING_SERVICE_001.md) names **Training** — an internal RF-One service, not a Cross Domain — as owner of the training-cycle governance (pill catalog linkage to needs, thresholds, gap/priority, path assignment). For that purpose, Operational Knowledge is **a component internal to Training** (see TRAINING_SERVICE_001.md §3). This changes nothing about the boundary already stated above: Operational Knowledge still never decides an intervention, sets a threshold, or measures an outcome. It means Training, rather than Continuous Productivity Development, is the party that governs how Pills are catalogued and linked to training needs.
+
 ---
 
 ## Relationship to Selection
@@ -137,6 +140,7 @@ Detailed modeling of Operational Knowledge Pill data structure, authoring/curati
 
 - [../../Domain Architecture.md](../../Domain%20Architecture.md) §4
 - [../Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md), [../Continuous Productivity Development/CONTINUOUS_PRODUCTIVITY_DEVELOPMENT_001.md](../Continuous%20Productivity%20Development/CONTINUOUS_PRODUCTIVITY_DEVELOPMENT_001.md)
-- [../Selection/README.md](../Selection/README.md), [../Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md](../Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md)
+- [../TRAINING_SERVICE_001.md](../TRAINING_SERVICE_001.md) — names Training as the internal service Operational Knowledge is a component of
+- [../Selection/README.md](../Selection/README.md), [../Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md](../Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md), [../Selection/SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md](../Selection/SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md)
 - [../Performance/README.md](../Performance/README.md)
 - [../../Business Domain/Restaurant/Service Copilot/README.md](../../Business%20Domain/Restaurant/Service%20Copilot/README.md)

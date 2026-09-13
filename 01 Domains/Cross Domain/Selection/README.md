@@ -1,8 +1,9 @@
 # Selection Domain
 
 **Version:** 0.3
-**Status:** Draft (initial canonical foundation). Selection is a **top-level, transversal Domain**, a sibling of Restaurant, Personnel Management, Taxation and Administration — re-elevated from being a Personnel Management module by explicit Product Owner direction (TASK_DOMAINS_003), which supersedes TASK_DOMAINS_002's earlier consolidation of Selection into Personnel Management. See `../../Domain%20Architecture.md` §4-5 and `07 Tasks/Reports/TASK_DOMAINS_003_REPORT.md`.
-**Domain:** Selection
+**Status:** Draft (initial canonical foundation). Selection is a **top-level, transversal Cross Domain**, sibling of [Operational Knowledge](../Operational%20Knowledge/README.md), [Continuous Productivity Development](../Continuous%20Productivity%20Development/README.md), Performance, Personnel Management, Taxation and Administration — not a module of any of them, and not itself part of the Business Domain family (currently Restaurant only) — re-elevated from being a Personnel Management module by explicit Product Owner direction (TASK_DOMAINS_003), which supersedes TASK_DOMAINS_002's earlier consolidation of Selection into Personnel Management. See `../../Domain%20Architecture.md` §4-5 and `07 Tasks/Reports/TASK_DOMAINS_003_REPORT.md`.
+**Domain:** Selection (Cross Domain)
+**Recovery:** Reconstructed 2026-09-12 after uncommitted working-tree edits to this document were accidentally lost. The terminology above, and in "Universal scope" below, has been corrected from this file's own pre-reorganization wording ("sibling of Restaurant...") to the current Cross Domain / Business Domain taxonomy, consistent with the rest of this same document and with the sibling Cross Domain READMEs. No lost version number is asserted; the Version above is unchanged from the last committed state.
 
 ---
 
@@ -26,7 +27,7 @@ Those may become Product/Runtime capabilities built around this Domain. This Dom
 
 ## Universal scope
 
-Selection is a **universal, cross-industry, transversal Domain** (see [../README.md](../../README.md) and [../Domain Architecture.md](../../Domain%20Architecture.md)) — a sibling of Restaurant, Personnel Management, Taxation and Administration, not a module of any of them. It applies wherever an organization must evaluate candidates against role/context requirements and decide whom to select — regardless of industry, role, or the specific technical knowledge involved.
+Selection is a **universal, cross-industry, transversal Cross Domain** (see [../README.md](../../README.md) and [../Domain Architecture.md](../../Domain%20Architecture.md) §4) — a sibling of Operational Knowledge, Continuous Productivity Development, Performance, Personnel Management, Taxation and Administration, not a module of any of them, and not itself part of the Business Domain family (currently Restaurant only). It applies wherever an organization must evaluate candidates against role/context requirements and decide whom to select — regardless of industry, role, or the specific technical knowledge involved.
 
 **Restaurant is the first concrete application context, not the architectural owner of this Domain.** Nothing in Selection Core may assume a restaurant, a kitchen, a dining room, or any other Restaurant-specific concept, and Selection Core has no structural dependency on the Restaurant Domain — the dependency runs the other way: Restaurant's own Industry Extension of Selection (`01 Domains/Business Domain/Restaurant/Selection/`) depends on and extends Selection Core, never the reverse. Where this Domain uses Restaurant examples (see "Restaurant as first application" below), those examples exist to validate universality, not to define it.
 
@@ -126,6 +127,8 @@ Those are Product/Runtime concerns, to be designed later on top of this Domain i
 | [FitAssessment.md](FitAssessment.md) | A contextual, multidimensional assessment of how well available Evidence supports a candidate's suitability — not a Fact, not a mandatory single score. |
 | [SelectionDecision.md](SelectionDecision.md) | The Selection-specific application of the Core `Decision` concept. |
 | [TrainableGap.md](TrainableGap.md) | A gap between current candidate capability and the desired standard that may reasonably be addressed through learning, training, practice, onboarding or experience. |
+| [SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md](SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md) | The Capability / Trainability / Guidability / Unsafe-Not-Suitable baseline Selection hands to Training at hiring. |
+| [SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md](SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md) | Per-pill Capability assessment inside Selection (1-5 scale, evidence, consolidation) and the hiring-time handoff to Training. |
 
 ---
 
@@ -155,7 +158,7 @@ Selection assumptions / predictions
             → better future Selection
 ```
 
-**No Continuous Productivity Development content is created by this task.** (Performance — a sibling Cross Domain, not a Personnel Management module — is now documented in depth by a later task, TASK_PERSONNEL_001; see [../Performance/README.md](../Performance/README.md); it was still undocumented when this Selection Domain was first written. Continuous Productivity Development itself — which conceptually superseded the former Training placeholder's scope — now has its own draft concept specification; see [../Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md).) Selection's definitions only need to remain compatible with this feedback loop — see [TrainableGap.md](TrainableGap.md) for where the Selection/Continuous Productivity Development boundary is drawn today.
+**No Continuous Productivity Development content is created by this task.** (Performance — a sibling Cross Domain, not a Personnel Management module — is now documented in depth by a later task, TASK_PERSONNEL_001; see [../Performance/README.md](../Performance/README.md); it was still undocumented when this Selection Domain was first written. Continuous Productivity Development itself now has its own draft concept specification; see [../Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md). Downstream of a hire, the Selection Output Baseline in [SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md](SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md) is handed to **Training** — an internal RF-One service, not a Cross Domain — which governs the pill catalog and gap/priority mechanics; Continuous Productivity Development may request a training intervention from Training but does not itself decide that mechanics — see [SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md](SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md) and [../TRAINING_SERVICE_001.md](../TRAINING_SERVICE_001.md).) Selection's definitions only need to remain compatible with this feedback loop — see [TrainableGap.md](TrainableGap.md) for where the Selection/Continuous Productivity Development boundary is drawn today.
 
 ---
 
@@ -173,3 +176,13 @@ At minimum, every document in this Domain preserves:
 - retention/privacy mechanisms belong to future Product/Runtime governance.
 
 This Domain does not attempt to define employment law.
+
+---
+
+## Related documents
+
+- [SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md](SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md) — the Capability / Trainability / Guidability / Unsafe-Not-Suitable baseline Selection hands to Training at hiring
+- [SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md](SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md) — per-pill Capability assessment inside Selection and the hiring-time handoff to Training
+- [../TRAINING_SERVICE_001.md](../TRAINING_SERVICE_001.md) — Training's canonical boundary (internal RF-One service, not a Cross Domain)
+- [../PERSON_CONTINUITY_001.md](../PERSON_CONTINUITY_001.md)
+- [../Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md), [../Operational Knowledge/README.md](../Operational%20Knowledge/README.md)
