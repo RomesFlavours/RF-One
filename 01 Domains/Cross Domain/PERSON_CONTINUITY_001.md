@@ -2,8 +2,9 @@
 
 **Version:** 0.1
 **Status:** Draft (initial canonical foundation)
-**Scope:** Cross-cutting concept — not owned by any single Domain. Applies wherever [Selection](Selection/README.md), Personnel Management ([Workforce](Personnel%20Management/Workforce/README.md)/Organization), [Training](Training/README.md), [Performance](Performance/README.md), and any Business Domain's real-time operational-guidance capability (e.g. Restaurant's [Service Copilot](../Business%20Domain/Restaurant/Service%20Copilot/README.md)) each hold evidence about the same real person.
+**Scope:** Cross-cutting concept — not owned by any single Domain. Applies wherever [Selection](Selection/README.md), Personnel Management ([Workforce](Personnel%20Management/Workforce/README.md)/Organization), Training (see [TRAINING_SERVICE_001.md](TRAINING_SERVICE_001.md) — an internal RF-One service, not a Cross Domain folder), [Performance](Performance/README.md), and any Business Domain's real-time operational-guidance capability (e.g. Restaurant's [Service Copilot](../Business%20Domain/Restaurant/Service%20Copilot/README.md)) each hold evidence about the same real person.
 **Origin:** Follow-up to the Selection/Training/Guided-Operations documentation audit (2026-09-07) — see §11.
+**Recovery:** Reconstructed 2026-09-12 after uncommitted working-tree edits to this document were accidentally lost. All references to the former `Training/README.md` placeholder have been corrected to [TRAINING_SERVICE_001.md](TRAINING_SERVICE_001.md) (Approved, 2026-09-11), which closed that naming question; §11's existing-state note has been updated accordingly, and Related documents now cross-reference the surviving Selection/Pills documents that already extend this one. No lost version number is asserted; the Version above is unchanged from the last committed state.
 
 ---
 
@@ -32,7 +33,7 @@ This document defines the continuity *requirement* and the *boundary rules* that
 
 > **Candidate, Employee, Trainee, Server, Manager, etc. are roles or states of the same person — not separate people.**
 
-Each of these is a context-specific role a person occupies at a point in time, in the same sense that [Domain Architecture.md](../Domain%20Architecture.md) §5 already treats Selection, Workforce, Personnel Decisions, Performance and Training as distinct *reasoning perspectives* on a person, not distinct people. Person Continuity extends that same discipline to the person's **identity**, not only to the reasoning about them:
+Each of these is a context-specific role a person occupies at a point in time, in the same sense that [Domain Architecture.md](../Domain%20Architecture.md) §5 already treats Selection, Workforce, Personnel Decisions, Performance and Continuous Productivity Development as distinct *reasoning perspectives* on a person, not distinct people (Training, per [TRAINING_SERVICE_001.md](TRAINING_SERVICE_001.md), is a separate, internal RF-One service, not one of these five Domain-level reasoning perspectives). Person Continuity extends that same discipline to the person's **identity**, not only to the reasoning about them:
 
 - Selection Evidence, Trainable Gaps, and a Selection Decision produced about a candidate;
 - the Training history and current training state produced once that candidate is hired;
@@ -70,7 +71,8 @@ This does not merge Domains, and does not change any Domain's existing ownership
 Selection             owns Candidate Evidence, Fit Assessment, Trainable Gap, Selection Decision
 Organization /         owns employment / assignment (Employee, Employee Assignment,
   Workforce             Restaurant Role — see 07 Tasks/Reports/TASK_ORGANIZATION_002_REPORT.md)
-Training               owns training state / history (once modeled — see Training/README.md)
+Training               owns training state / history (once modeled — Training is an internal
+                        RF-One service, not a Cross Domain folder; see TRAINING_SERVICE_001.md)
 Performance            owns operational Evidence / the Individual Performance Profile
                         (see ../Business Domain/Restaurant/Server Performance/
                         Individual Performance Profile.md for the Restaurant specialization)
@@ -78,7 +80,7 @@ Service Copilot        consumes current operational/person context; owns none of
                         (see ../Business Domain/Restaurant/Service Copilot/README.md, "Inputs")
 ```
 
-Each Domain remains fully responsible for the meaning, correctness and lifecycle of its own records, exactly as established elsewhere (e.g. [Domain Architecture.md](../Domain%20Architecture.md) §5.6: "Workforce answers 'who,' Selection answers 'who else is viable,' ... Performance answers 'what actually happened,' and Training answers 'how do we close an evidenced gap'"). Person Continuity adds exactly one requirement on top of that existing separation: **every one of these Domain-owned records must be able to point back to the same person identity**, so that a person's records can be assembled across Domains without requiring any Domain to duplicate, absorb, or redefine another Domain's knowledge.
+Each Domain remains fully responsible for the meaning, correctness and lifecycle of its own records, exactly as established elsewhere (e.g. [Domain Architecture.md](../Domain%20Architecture.md) §5.6: "Workforce answers 'who,' Selection answers 'who else is viable,' ... Performance answers 'what actually happened,' and **Continuous Productivity Development** answers 'how do we close an evidenced gap or capture an opportunity'" — Training, per [TRAINING_SERVICE_001.md](TRAINING_SERVICE_001.md), is an internal RF-One service that governs the training cycle, not this Domain-level reasoning perspective). Person Continuity adds exactly one requirement on top of that existing separation: **every one of these Domain-owned records must be able to point back to the same person identity**, so that a person's records can be assembled across Domains without requiring any Domain to duplicate, absorb, or redefine another Domain's knowledge.
 
 This is a narrower, identity-specific instance of the general [Cross-domain evidence principle](../Domain%20Architecture.md#7-cross-domain-evidence-principle) already recorded in `Domain Architecture.md` §7 ("The same Reality may inform multiple Domains... evidence reuse across Domains is expected and must not be blocked by artificial Domain silos"). §7 concerns evidence *content* reuse; this document concerns the *subject* that evidence is about remaining the same subject wherever it is reused.
 
@@ -160,7 +162,7 @@ Selection prediction
 
 This document does **not** define, decide, or imply any of the following. They are named only to fix the boundary of this document, not because they are unimportant:
 
-- Training curriculum, methods, or duration (remains [Training/README.md](Training/README.md)'s "Deferred" scope);
+- Training curriculum, methods, or duration (remains Training's own scope — an internal RF-One service, not a Cross Domain folder; see [TRAINING_SERVICE_001.md](TRAINING_SERVICE_001.md));
 - Minimum Safe Operational Level;
 - Guidability scoring;
 - Progressive Autonomy;
@@ -177,7 +179,7 @@ The 2026-09-07 documentation audit (Selection / Training / Guided Operations) fo
 
 - `candidate_persons` (Selection) and `employees` (Organization) are **not presently formally linked** — there is no foreign key or other structural reference between them in the current schema. Selection's own identity matching (`identity_service.py`) operates only *within* Selection, resolving whether two applications concern the same candidate — it does not, and structurally cannot, reach across into Employee identity.
 - Selection already has **downstream-feedback foundations** — the `selection_downstream_outcome_feedback` table described in the [Selection Feedback Intelligence Foundation report](Selection/reports/SELECTION_FEEDBACK_INTELLIGENCE_FOUNDATION_REPORT.md), explicitly built "structurally separate, never touching Case Memory" — but that report also explicitly lists "Training integration" and "Performance integration" among the items **deliberately not implemented**. The foundation is a placeholder capable of one day receiving downstream evidence; it is not yet an active continuity mechanism.
-- Training (`Training/README.md`) remains an explicit placeholder ("Domain boundary only — no concept modeling"), so there is currently nothing on the Training side for a continuous person identity to hand evidence to, even where Selection's side is ready.
+- Training's Domain-boundary name was, at the time of the 2026-09-07 audit, an open question — whether the "closes an evidenced gap" capability the former `Training/` placeholder reserved belonged to Operational Knowledge, to Continuous Productivity Development, to a distinct future Cross Domain, or to something else. **This is now closed** (Product Owner decision, 2026-09-11): Training is an internal RF-One service responsible for the entire training cycle, with Operational Knowledge as a component internal to it and Continuous Productivity Development requesting training interventions from it rather than deciding the formative mechanics itself — see [TRAINING_SERVICE_001.md](TRAINING_SERVICE_001.md). This closes the *naming* question only; it does not by itself create the technical continuity mechanism §12 still requires, and the `candidate_persons`/`employees` structural gap noted above remains exactly as described.
 
 None of the above is treated here as acceptable end-state architecture — it is the reason this document exists.
 
@@ -198,7 +200,8 @@ The following are genuine, unresolved decisions this document deliberately leave
 ## Related documents
 
 - [Selection/README.md](Selection/README.md), [Selection.md](Selection/Selection.md), [CandidateEvidence.md](Selection/CandidateEvidence.md), [FitAssessment.md](Selection/FitAssessment.md), [TrainableGap.md](Selection/TrainableGap.md), [SelectionDecision.md](Selection/SelectionDecision.md)
-- [Training/README.md](Training/README.md)
+- [Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md](Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md), [Selection/SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md](Selection/SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md) — both extend this document's continuity requirement with the Selection Output Baseline and its handoff to Training
+- [TRAINING_SERVICE_001.md](TRAINING_SERVICE_001.md) — Training's canonical boundary (internal RF-One service, not a Cross Domain folder)
 - [Performance/README.md](Performance/README.md)
 - [Personnel Management/README.md](Personnel%20Management/README.md)
 - [../Domain Architecture.md](../Domain%20Architecture.md), §5 (Domain distinctions) and §7 (Cross-domain evidence principle)
