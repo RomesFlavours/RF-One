@@ -423,6 +423,44 @@ Compatibility Notes:
 
 ---
 
+---
+
+Version: PROPOSED — Post-Baseline Conceptual Extension (CORE_HUMAN_OPERATIONAL_STATE_AND_ADAPTIVE_COGNITO_INTERACTION)
+
+Date: 2026-09-13
+
+Modified Entity:
+A new document `ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md` (status PROPOSED, not Approved Core 2.0), plus discoverability/cross-reference-only additions to `ConceptualArchitecture/00_RF-One_Core_Vision.md`, `ConceptualArchitecture/07_Core_Glossary.md`, `ConceptualArchitecture/12_Attention_Management.md` (Related documents only), `ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md` (Related documents plus one clarifying sentence in §3), `Organizational Responsibility.md` (Related documents only), `README.md`, and a FUTURE/CONCEPTUAL EXTENSION note in `RF_ONE_2_0_BASELINE.md`.
+
+Reason:
+This work was produced from `release/rf-one-2.0` (tag `rf-one-2.0-baseline`), **after** the `core-2.0-freeze` tag, on a dedicated branch (`docs/cognito-human-operational-state`) — a Product Owner conceptual exploration, not (yet) an approved architectural decision folded into the canonical 00–14 set. It formalizes that the same person is not operationally identical at every moment of the same shift, and that Cognito's Human Interaction capability ([14](ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md) §3) may adapt to the person's current, temporary Human Operational State — informed by operational context, behavioral context, and, where authorized, physiological evidence — without that state ever becoming a medical diagnosis, an Authority change, or a permanent judgment about the person. It explicitly distinguishes this temporary state from the durable, stable person knowledge already described in [10](ConceptualArchitecture/10_RF-One_Intelligence_and_User_Relationship.md) §6–§8, states that it may only influence Attention Management's existing routing/timing/priority/channel decisions ([12](ConceptualArchitecture/12_Attention_Management.md)) and Organizational Responsibility's existing Temporary Coverage/Backup Position/Fallback mechanisms (`Organizational Responsibility.md` §3, §5) — never Position, Authority, or Process Ownership themselves — and states an explicit privacy/consent/data-minimization boundary for any authorized physiological signal, without designing its compliance implementation.
+
+Concepts introduced (PROPOSED, not yet Approved Core 2.0):
+
+- Human Operational State (temporary, contextual, dynamic; distinct from stable person knowledge)
+- Adaptive Cognito Interaction (a specialization of the existing Human Interaction capability, not a new Cognito capability)
+- Authorized Physiological Evidence as contextual, non-conclusive Evidence (Epistemic Boundary), never a diagnostic signal
+- The explicit Human Operational State ≠ Medical State boundary
+- The explicit privacy/consent/data-minimization boundary for physiological signals
+- Device/wearable independence for future human-state signal consumption
+
+Impacted Domains:
+
+- None modified. No Software, Product, or Domain file was touched; this is documentation-only, Core-level conceptual material available to any future Domain or Product. No wearable, sensor, vendor, threshold, formula, or diagnostic algorithm was chosen or designed.
+
+Future Expected Impact:
+
+- Any future Cognito Edge/mobile bridge design, any future Domain or Product surfacing shift-based or workload-based human context, and any future consent/compliance implementation task for physiological data.
+
+Compatibility Notes:
+
+- All prior Core 2.0 content is preserved; no existing definition was reversed. This entry is explicitly additive and, unlike prior entries in this log, is **not** presented as an Approved Core 2.0 change: the new document's own status is "PROPOSED — Post-Baseline Conceptual Extension," it is deliberately **not** added to the canonical 00–14 table in `00_RF-One_Core_Vision.md` §6 or to `README.md`'s "Approved Core 2.0" ConceptualArchitecture description (both list it only for discoverability, following the same pattern already used for `20_RF-One_Selection_Pills_Cognitive_Model.md`), and `RF-ONE Core Principles.md` was deliberately **not** modified — the "Cognito Principle" this work formalizes is stated only inside the new document itself (§1), pending a future, separate Product Owner ratification decision to number it as a Core Principle.
+- The `core-2.0-freeze` tag was not moved and is not referenced as covering this content. `RF_ONE_2_0_BASELINE.md` was updated only to add a FUTURE/CONCEPTUAL EXTENSION note; it was not rewritten to imply this capability is implemented.
+- Cognito ([14](ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md)), Attention Management ([12](ConceptualArchitecture/12_Attention_Management.md)), Organizational Responsibility, and Identity/Authority/Delegation/Accountability ([09](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md)) are explicitly preserved as-is; this new document specializes them for one narrow purpose, it does not redefine any of them.
+- No Domain, Product or Software file was modified.
+
+---
+
 # Design Principles
 
 - The Core Domain is extracted from real domains.

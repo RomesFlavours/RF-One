@@ -14,6 +14,7 @@
 - [ConceptualArchitecture/09_Identity_Authority_and_Accountability.md](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md) — Acting Identity, Authority, Delegation; Position is typically the source of role-derived Authority and the organizational context for Delegation and temporary coverage.
 - [ConceptualArchitecture/11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md](ConceptualArchitecture/11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md) — requires every Process to name the Acting Identity responsible for a required human contribution; this document defines the organizational concept that makes that naming concrete and stable across personnel change.
 - See also [ConceptualArchitecture/12_Attention_Management.md](ConceptualArchitecture/12_Attention_Management.md), which consumes, and does not redefine, the concepts below.
+- See also [ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md](ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md) — status PROPOSED, post-baseline conceptual extension. It states explicitly that Human Operational State never modifies Position, Authority, Process Ownership or Position scope; it may only influence routing through Temporary Coverage/Backup Position/Fallback as already defined below.
 
 ---
 
