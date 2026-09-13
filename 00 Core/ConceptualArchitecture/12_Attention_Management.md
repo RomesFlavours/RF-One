@@ -16,6 +16,7 @@
 - [../Process.md](../Process.md) — "Phases of Execution."
 - [14_Cognito_RF-One_Cognitive_Intelligence.md](14_Cognito_RF-One_Cognitive_Intelligence.md) — the canonical definition of Cognito as RF-One's Cognitive Intelligence; §7 below is corrected to reflect that Cognito's Human Interaction capability, not Cognito itself, is the channel referred to there.
 - See also `00 Core/Cognitive Interface/RF-ONE_COGNITIVE_INTERFACE_CONCEPT.md` — an exploratory, status "CONCEPTUAL DIRECTION — UNDER REVIEW" document. It is not authority for this document; §7 below states how any such interface relates to the principle defined here, independent of that document's own eventual design.
+- See also [15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md](15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md) — status PROPOSED, post-baseline conceptual extension, not yet part of the canonical 00–14 set. It specializes the "operational state" input already named in §2 and §10 below; it does not redefine who/when/priority/channel decisions, which remain Attention Management's own.
 
 ---
 
