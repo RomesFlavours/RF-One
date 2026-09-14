@@ -20,6 +20,7 @@
 - [../../01 Domains/Cross Domain/PERSON_CONTINUITY_001.md](../../01%20Domains/Cross%20Domain/PERSON_CONTINUITY_001.md) — stable person knowledge/continuity, a different concept from both Human Operational State and Ambient Operational Context; see that document's own §0.
 - [../../01 Domains/Business Domain/Restaurant/Service Copilot/README.md](../../01%20Domains/Business%20Domain/Restaurant/Service%20Copilot/README.md) and its module files — an existing, Approved, **Restaurant Domain-specific** real-time in-service assistance capability, recognized upon this document's ratification as the **first Domain-level consumer instance** of the Core concept this document names (§6). This document does not redefine, rename, extend, merge, or require any change to Service Copilot's approved content or functional behavior — Service Copilot remains a Restaurant Domain module that consumes this Core concept; it is not merged into Cognito, and Cognito is not merged into it.
 - See also `00 Core/Cognitive Interface/RF-ONE_COGNITIVE_INTERFACE_CONCEPT.md` — status "CONCEPTUAL DIRECTION — UNDER REVIEW." Not authority for this document.
+- See also [17_Visual_Video_Context_as_Ambient_Evidence.md](17_Visual_Video_Context_as_Ambient_Evidence.md) — status PROPOSED — Post-Baseline Conceptual Extension, a sub-extension of this document. It specializes §3's illustrative source-category list with Visual/Video Context (authorized images/video as scene-level Ambient Evidence); it does not redefine this document's §1–§18.
 
 ---
 
