@@ -1,7 +1,7 @@
 # Human Operational State and Adaptive Cognito Interaction
 
 **Version:** 1.0
-**Status:** PROPOSED — Post-Baseline Conceptual Extension. Core 2.0 is already frozen (`core-2.0-freeze`, commit `71de3663dba2716ccbb6c1f93ffd458e20da8ead`) and `release/rf-one-2.0` (tag `rf-one-2.0-baseline`) is a released baseline built from it. This document is a conceptual extension proposed after that baseline, not a retroactive change to it. It is not yet part of the Approved 00–14 canonical set ([00_RF-One_Core_Vision.md](00_RF-One_Core_Vision.md) §6) and awaits Product Owner ratification before being folded into it.
+**Status:** APPROVED — Post-Baseline Conceptual Extension. Core 2.0 is already frozen (`core-2.0-freeze`, commit `71de3663dba2716ccbb6c1f93ffd458e20da8ead`) and `release/rf-one-2.0` (tag `rf-one-2.0-baseline`) is a released baseline built from it. This document is a conceptual extension ratified by the Product Owner after that baseline — not a retroactive change to `core-2.0-freeze` or to `release/rf-one-2.0`, and not itself folded into the Approved 00–14 canonical set ([00_RF-One_Core_Vision.md](00_RF-One_Core_Vision.md) §6). See [../Core Evolution.md](../Core%20Evolution.md) for the ratification record. Promotion to a numbered Core Principle remains a separate, future decision.
 **Module:** Core / ConceptualArchitecture
 
 ---
@@ -262,9 +262,12 @@ Human Operational State may extend, create, or remove Authority, Position,
   Process Ownership, or Position scope
 learning under this document may produce disciplinary judgments, Selection
   scoring, Performance penalties, or Authority changes
-this document is part of the Approved Core 2.0 00-14 canonical set, or that
-  it has been ratified by the Product Owner, absent an explicit later record
-  in Core Evolution.md changing this document's own status
+this document's APPROVED — Post-Baseline Conceptual Extension status folds
+  it into the Approved Core 2.0 00-14 canonical set, or retroactively extends
+  the `core-2.0-freeze` tag — see Core Evolution.md's ratification record and
+  00_RF-One_Core_Vision.md §6
+promotion to a numbered Core Principle in RF-ONE Core Principles.md has
+  occurred merely because this document is APPROVED as an extension
 Cognito acquires a new capability distinct from Human Interaction
   ([14_Cognito_RF-One_Cognitive_Intelligence.md](14_Cognito_RF-One_Cognitive_Intelligence.md) §6)
 ```

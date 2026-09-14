@@ -461,6 +461,38 @@ Compatibility Notes:
 
 ---
 
+Version: Core 2.0 (Ratification — CORE_HUMAN_OPERATIONAL_STATE_AND_ADAPTIVE_COGNITO_INTERACTION)
+
+Date: 2026-09-13
+
+Modified Entity:
+`ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md` (Status header and one Non-assumptions line only), `ConceptualArchitecture/07_Core_Glossary.md` (status parentheticals for the three terms it introduced), `README.md` (discoverability line status), and `RF_ONE_2_0_BASELINE.md` (FUTURE/CONCEPTUAL EXTENSION note status) — following the final consistency review recorded in this ratification entry. `01 Domains/Cross Domain/PERSON_CONTINUITY_001.md` also received a short, targeted cross-reference to document 15, distinguishing Stable Person Knowledge/continuity from current Human Operational State.
+
+Reason:
+The Product Owner ratified `ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md` following a dedicated final consistency review against Cognito ([14](ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md)), Attention Management ([12](ConceptualArchitecture/12_Attention_Management.md)), Organizational Responsibility, Identity/Authority/Accountability ([09](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md)), the Epistemic Boundary ([05](ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md)), stable person knowledge ([10](ConceptualArchitecture/10_RF-One_Intelligence_and_User_Relationship.md) §6–§8), Person Continuity (`01 Domains/Cross Domain/PERSON_CONTINUITY_001.md`), and the `core-2.0-freeze` discipline. No conceptual contradiction was found; the review confirmed that Human Operational State is never a permanent trait, that Authorized Physiological Evidence remains Evidence and never Fact, that it never creates Authority, that Cognito interprets/adapts interaction while Attention Management alone decides who/when/priority/channel, that vitals never become a medical diagnosis, that a temporary state can never automatically become disciplinary evidence, a Selection score, a Performance penalty, or a permanent label, and that device/wearable independence is preserved. The document's own status is accordingly changed from PROPOSED to **APPROVED — Post-Baseline Conceptual Extension**.
+
+Concepts introduced:
+
+- None new. This entry ratifies the status of concepts already introduced by the prior PROPOSED entry above (Human Operational State, Adaptive Cognito Interaction, Authorized Physiological Evidence); it does not add or redefine any concept.
+
+Impacted Domains:
+
+- None modified beyond the single targeted Person Continuity cross-reference named above. No Software, Product, or Domain business-logic file was touched.
+
+Future Expected Impact:
+
+- Same as the prior PROPOSED entry above; ratification does not by itself trigger new consumption, only removes PROPOSED status from the document and its glossary terms.
+
+Compatibility Notes:
+
+- **APPROVED — Post-Baseline Conceptual Extension does not mean retroactively part of `core-2.0-freeze` or of `release/rf-one-2.0`.** The `core-2.0-freeze` tag was not moved, and its history was not rewritten. Document 15 remains outside the Approved Core 2.0 00–14 canonical set (`00_RF-One_Core_Vision.md` §6) — ratification approves it as a stable, standalone post-baseline extension, not as an addition to that frozen set.
+- Promotion of this document's canonical principle (§1 of document 15) to a numbered entry in `RF-ONE Core Principles.md` is deliberately **not** performed by this entry and remains a separate, future Product Owner decision.
+- `ConceptualArchitecture/00_RF-One_Core_Vision.md` §6, `ConceptualArchitecture/12_Attention_Management.md`, `ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md`, and `Organizational Responsibility.md` still describe document 15's status as "PROPOSED" in their own Related-documents notes as of this entry; these were intentionally left unmodified because they were outside this review's authorized file scope. This is recorded as a known, non-blocking staleness (see the corresponding task report) to be corrected in a small, separate follow-up edit.
+- All prior Core Evolution entries are preserved unchanged, consistent with Historical Integrity (`ArchitecturePrinciples.md`): this is an additive new entry, not a rewrite of the PROPOSED entry it ratifies.
+- No Domain, Product or Software file was modified.
+
+---
+
 # Design Principles
 
 - The Core Domain is extracted from real domains.
