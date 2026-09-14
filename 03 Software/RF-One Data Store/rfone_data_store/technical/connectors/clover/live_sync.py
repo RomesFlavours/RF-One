@@ -105,6 +105,11 @@ def compute_next_sync_window(
             m.IngestionRun.source_system_id == source_system_id,
             m.IngestionRun.status.in_(("COMPLETE", "PARTIAL")),
             m.IngestionRun.source_window_end.is_not(None),
+            # The Live Cursor is the whole-Location Backfill/Live Sync
+            # checkpoint only — the Correction/Reconciliation Poller's own
+            # per-resource Modification Cursor rows (`resource_type` set,
+            # correction_sync.py) must never be mistaken for it.
+            m.IngestionRun.resource_type.is_(None),
         )
         .order_by(m.IngestionRun.id.desc())
         .limit(1)

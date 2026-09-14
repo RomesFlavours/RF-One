@@ -57,11 +57,13 @@ Clover remains the system of record for POS/transactional history. RF-One's cano
 
 **Cursor granularity — current state vs. this decision's target shape.** Today's Live Cursor is scoped **per Location**, shared by every entity type fetched in that Location's cycle — not one independent cursor per Location *and* per resource/table, as this document's ideal model (§4) describes. This is recorded as a known, non-blocking granularity gap (see Report §K), not a defect: a single per-Location cursor is a correct, safe implementation of the *current* Live Sync scope (a fixed, small set of entities always fetched together). Splitting the Live Cursor into independent per-resource/table cursors is a legitimate future refinement — useful mainly if different entity types eventually need materially different polling cadences — but is **not implemented and not decided by this document**; it is not required to make the Fast Live Extractor role, as it exists today, sound.
 
+**Cursor safety fix (implemented — see Implementation status below).** The Correction/Reconciliation Poller task's own required PRECHECK verified that this per-Location cursor, as it existed before that task, was **UNSAFE**: `_finalize_import_run` derived a run's status from `summary.errors` alone, so a run whose Payments or Refunds createdTime-windowed scan itself failed — while another resource fetched earlier in the SAME cycle had already succeeded — still finalized as PARTIAL, and PARTIAL already counted as a valid checkpoint for both `compute_next_sync_window` and `freshness._is_range_covered`. The cursor therefore silently advanced past a window that was never actually scanned, permanently skipping (beyond the small overlap buffer) any change to that resource inside it. The fix is minimal and does not change the Live Cursor's granularity (it remains per-Location, exactly as this section already describes): `ImportSummary.window_scan_failed` is now set specifically when the Payments or Refunds fetch itself does not succeed, and `_finalize_import_run` marks such a run FAILED (excluded from both checkpoint queries) instead of PARTIAL. See the Task report ("Live Cursor safety") for the full PRECHECK finding.
+
 ---
 
 ## 3. Correction / Reconciliation Poller
 
-**Correction/Reconciliation Poller** is a second, distinct, continuous process — **not yet implemented** — approved by this decision as a required complement to the Fast Live Extractor, not an alternative to it.
+**Correction/Reconciliation Poller** is a second, distinct, continuous process — **implemented** as `technical/connectors/clover/correction_sync.py` (see Implementation status below) — approved by this decision as a required complement to the Fast Live Extractor, not an alternative to it.
 
 **Why it is needed — a verified, real gap, not a hypothetical one.** `import_clover_period()` filters Clover's Orders/Payments API calls by `createdTime` only (`acquisition.py`, `filter=[createdTime>=..., createdTime<=...]`). Live Sync's window therefore only ever revisits records **created** inside its own short recent window (plus its 2-minute overlap buffer). A correction made to a record whose `createdTime` has already scrolled out of that window — an order line item voided an hour later, a payment refunded the next day, an employee reassignment corrected after the shift — is **structurally invisible to Live Sync**, no matter how long it keeps running. `acquisition.py`'s own existing comment already anticipates exactly this failure mode for one case ("Card tips can finalize after `Payment.createdTime`, so a re-import MUST refresh the tip from Clover's current value") — but today's mechanism only catches it if the correction happens to land inside Live Sync's short window. This document formalizes the general-purpose process needed to catch it regardless of how much time has passed.
 
@@ -69,7 +71,7 @@ Clover remains the system of record for POS/transactional history. RF-One's cano
 - **Purpose:** detect changes to Clover records **already previously acquired**, regardless of how long ago they were created, and correct RF-One's own canonical rows accordingly.
 - **What it must intercept, where Clover exposes it:** modified Orders; removed/voided line items; modified Payments; Refunds; Employee reassignment; other equivalent corrections.
 - **What it corrects:** the same RF-One Data Store the Fast Live Extractor writes to. It does **not** create a second database. It does **not** create a Clover event ledger/history — `SourceRecord` (Provider Mirror) remains what it already is today: an append-only, unmapped mirror of raw fetched payloads for audit/reconciliation/reprocessing, never read back for business logic, and this document does not expand its role into a general event-sourcing store.
-- **Relationship to existing `reconciliation.py`:** the existing module performs a one-time, post-bulk-ingestion validation (counts/monetary/empirical checks) against a completed historical load. The Correction/Reconciliation Poller is conceptually related (both compare source to canonical) but operationally distinct: it runs continuously against live, already-canonical data, looking for **changed** records, not validating a completed batch. Whether it is eventually implemented as a new module, an extension of `live_sync.py`, or a variant of `freshness.py`'s on-demand pattern is an open implementation decision (§ Open decisions in the final report), not fixed here.
+- **Relationship to existing `reconciliation.py`:** the existing module performs a one-time, post-bulk-ingestion validation (counts/monetary/empirical checks) against a completed historical load. The Correction/Reconciliation Poller is conceptually related (both compare source to canonical) but operationally distinct: it runs continuously against live, already-canonical data, looking for **changed** records, not validating a completed batch. **Decided (see Implementation status below):** a new, distinct module, `technical/connectors/clover/correction_sync.py` — not an extension of `live_sync.py` (whose own module docstring's continuous-polling loop shape it mirrors, without sharing its code) and not a variant of `freshness.py` (which remains the on-demand, synchronous "is this range already imported" check it already was — see its own module docstring, unchanged).
 
 **This is not optional relative to the Fast Live Extractor.** Per §14, the two are both required; the Fast Live Extractor alone is fresh but does not self-correct outside its own short window, and the Correction/Reconciliation Poller alone would not deliver the near-real-time freshness Cognito needs. Neither replaces the other.
 
@@ -88,10 +90,15 @@ LIVE CURSOR
 MODIFICATION CURSOR
 → marks the last verified modifiedTime (or equivalent) checked for
   corrections, per Location / per resource-table
-→ not yet implemented as a distinct construct
+→ implemented (see Implementation status below): IngestionRun.resource_type
+  (nullable, NULL for every Live Cursor row) + one new IngestionRun row per
+  resource per correction cycle — Location × Resource, as this section
+  requires — reusing this existing table, no new one
 ```
 
 **What already exists toward a Modification Cursor.** Clover's `modifiedTime` is already captured as raw evidence on ingestion — `mapping.py` maps it into `source_modified_at` (Item, Employee, and other catalog/reference entities) or `modified_at` (Order, Payment). This gives the Correction/Reconciliation Poller (§3) the raw signal it needs once built; it does not, by itself, constitute the Modification Cursor — no process today reads these columns to decide "what changed since I last checked." Extending `source_modified_at`/`modified_at` coverage to every entity type the Poller must correct, and deciding where the cursor value itself is persisted (e.g. an `IngestionRun`-shaped record analogous to today's Live Cursor, or a new dedicated table), are open implementation decisions, not resolved by this document (no schema change is made here).
+
+**Decided (see Implementation status below).** `Order`/`Payment` already had `modified_at`; no further coverage extension was needed for the two resources the Poller actually re-verifies via `modifiedTime` (Orders, Payments). The cursor value is persisted on the existing `IngestionRun` table (a new nullable `resource_type` column, migration `aa48187f696b`) rather than a new table — `IngestionRun` already models "one execution of a source ingestion process" with a window and a status; adding one column to distinguish "which resource this particular run's window covers" (`NULL` = the whole-Location Live Cursor, unchanged) was sufficient to represent Location × Resource unambiguously, per this document's own "create a new table only if the existing model cannot represent it without ambiguity" spirit.
 
 ---
 
@@ -138,6 +145,8 @@ Clover live data
 ```
 
 **"Business Date consolidated / ready" is not a new concept this document introduces** — it is the existing `Order.business_date` concept (Restaurant Sales Model §6a) together with the existing readiness gate `tips/readiness.py`'s `describe_readiness()` already exposes (latest `Order.business_date` on file, whether it is already calculated, Payment Instruction status, settlement). This document only states the general principle those existing mechanisms already embody: **Tips must not calculate or pay against a Business Date before that Business Date's Clover data has had the opportunity to pass through both the Fast Live Extractor and the Correction/Reconciliation Poller.** It does not change `readiness.py`'s logic, its schema, or its UI.
+
+**Implemented (see Implementation status below).** `readiness.describe_readiness()` now concretely enforces the principle above: `BusinessDateReadiness` gained `reconciliation_ready`/`reconciliation_reason`, and both `ready_to_calculate`/`ready_to_submit_payouts` additionally require `technical.connectors.clover.correction_sync.describe_reconciliation_status()` to report the Business Date's own end already reached by the Live Cursor AND all three Correction resource cursors. This is the follow-up IMPLEMENTATION this document approved, not a change to this document's own decision.
 
 ---
 
@@ -224,12 +233,28 @@ Both arrows into the RF-One Data Store are required. They are not two alternativ
 
 ---
 
+## Implementation status (added post-approval — non-normative; implements, does not amend, the decision above)
+
+This document remains documentation-only as approved (§ Scope) — the following is a record that a LATER, separate implementation task carried out what this document approved, not a change to the decision itself.
+
+- **Fast Live Extractor (§2):** unchanged in shape (per-Location Live Cursor, unchanged). One correctness fix applied: `_finalize_import_run` (`acquisition.py`) now marks a run FAILED, never PARTIAL, when the Payments or Refunds createdTime-windowed scan itself did not succeed — closing a verified "cursor silently advances past an unscanned window" gap the task's own required PRECHECK found. See §2's own new note above.
+- **Correction/Reconciliation Poller (§3):** implemented as `technical/connectors/clover/correction_sync.py`, a new, distinct module (~60s default interval, configurable), reusing `acquisition.py`'s per-entity upsert primitives — no second mapping/ingestion architecture. Resource coverage: **orders** and **payments** (Clover's own `modifiedTime`, already mapped into `modified_at`, list-filtered the same way `createdTime` already is for Payments/Refunds); **refunds** (no confirmed `modifiedTime` field anywhere in this codebase for this resource — documented fallback: a rolling recent `createdTime` window, default 48h); **employees** — deliberately no separate resource, already covered continuously by Live Sync's own full-catalog refresh every cycle; Order Item/Modifier/Fee/Payment Tip ride along with their parent Order/Payment; Order-level Discounts and Order Item Tax remain Historical-Backfill-only, unchanged (catalog-dependent, outside this Poller's scope).
+- **Modification Cursor (§4):** implemented — `IngestionRun.resource_type` (nullable, migration `aa48187f696b`), Location × Resource, one new row per resource per correction cycle, advancing only on that resource's own success. `live_sync.compute_next_sync_window` and `freshness._is_range_covered` were both updated to filter `resource_type IS NULL`, so these new rows cannot be mistaken for a Live Cursor/freshness-coverage checkpoint.
+- **Tips boundary (§7):** implemented — `tips/readiness.py`'s `describe_readiness()` now gates `ready_to_calculate`/`ready_to_submit_payouts` on `correction_sync.describe_reconciliation_status()`, per the concrete "minimum requirement" this document's Task report defines (Live Sync cursor + all three Correction resource cursors past the Business Date's own end).
+- **Cognito boundary (§6):** verified, not implemented (no Cognito code exists yet in this codebase to implement against) — no code path was found or added where any component reads Clover directly instead of the RF-One canonical schema.
+- Full detail, verified file list, and test coverage: see this task's own final report (git history — "Implement Clover correction synchronization").
+
+---
+
 ## Non-assumptions
 
 Do not assume:
 
 ```text
-this document changes any software, schema, migration, or connector behavior
+this document's OWN TEXT changes any software, schema, migration, or
+  connector behavior — it does not; the Implementation status section above
+  records a LATER, separate implementation task's work, not an edit to this
+  decision
 Live Sync and the Correction/Reconciliation Poller are alternative designs —
   both are required, per §14 of the originating decision and §3/§11 above
 RF-One is intended to become a full historical replica of Clover's POS data
@@ -239,10 +264,14 @@ event sourcing, or a Clover event ledger, is introduced by this document
   mirror only, never read back for business logic)
 a confidence-scoring formula for freshness or correctness is defined here
 any medical, diagnostic, or Attention Management concept is introduced here
-the Modification Cursor (§4) is implemented, persisted, or scheduled by
-  this document — it is an approved target shape, not a shipped mechanism
+the Modification Cursor (§4) was implemented, persisted, or scheduled BY
+  THIS DOCUMENT — it approved the target shape; a LATER, separate
+  implementation task shipped it (Implementation status above), which does
+  not retroactively make this decision document itself a code change
 per-resource/table Live Cursor granularity (§2) is implemented — today's
-  Live Cursor remains per-Location, as it already is in production code
+  Live Cursor remains per-Location, exactly as this document's own §2
+  describes; only the Correction/Reconciliation Poller got a per-resource
+  cursor, a distinct, new construct (§4), never a Live Cursor split
 the eventual consistency window of §5 is a defect to be minimized to zero —
   it is an intentional, accepted product boundary
 ```

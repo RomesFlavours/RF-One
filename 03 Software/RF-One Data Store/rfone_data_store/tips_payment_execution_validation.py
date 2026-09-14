@@ -55,6 +55,7 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
     with session_factory() as session:
         try:
             _run_all_scenarios(session, result)
+            _test_reconciliation_gate_on_business_date_readiness(session, result)
         finally:
             session.rollback()
     return result
@@ -359,4 +360,88 @@ def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
     result.check(
         "insufficient funding: NO instruction was submitted to Mercury (no partial payout)",
         poor_client.create_transaction_calls == 0 and all(i.status == "READY" for i in funding_result.instructions),
+    )
+
+
+def _test_reconciliation_gate_on_business_date_readiness(session: Session, result: ValidationResult) -> None:
+    """CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md §7 — "Tips must not
+    calculate ... against a Business Date before that Business Date's Clover
+    data has had the opportunity to pass through both the Fast Live
+    Extractor and the Correction/Reconciliation Poller." Unlike `_build_base_
+    fixture` above (deliberately `CLOVER-PEV-{suffix}`-coded, so it is not
+    recognized as Clover-sourced by `_resolve_clover_merchant` and therefore
+    correctly bypasses this gate — see Task report), THIS fixture uses the
+    real `"CLOVER"` source system code specifically to exercise the gate."""
+    source_system = session.scalars(select(m.SourceSystem).filter_by(code="CLOVER")).first()
+    if source_system is None:
+        source_system = m.SourceSystem(code="CLOVER", name="Clover", active=True)
+        session.add(source_system)
+        session.flush()
+    merchant = m.Merchant(source_system_id=source_system.id, source_merchant_id="RECON-GATE-MERCH", name="Recon Gate Merchant")
+    session.add(merchant)
+    session.flush()
+    location = m.Location(
+        merchant_id=merchant.id, source_system_id=source_system.id, source_location_id="RECON-GATE-LOC",
+        name="Recon Gate Location", currency="USD",
+    )
+    session.add(location)
+    session.flush()
+    restaurant = m.Restaurant(name="Reconciliation Gate Test Restaurant", default_currency="USD")
+    session.add(restaurant)
+    session.flush()
+    session.add(m.RestaurantLocation(restaurant_id=restaurant.id, location_id=location.id, is_primary=True))
+    employee = m.Employee(
+        location_id=location.id, source_system_id=source_system.id, source_employee_id="RG-EMP1",
+        display_name="Recon Gate Server", system_role="EMPLOYEE",
+    )
+    session.add(employee)
+    session.flush()
+
+    business_date = date(2026, 4, 1)
+    order_time = datetime(2026, 4, 1, 11, 0, tzinfo=UTC)
+    order = m.Order(
+        location_id=location.id, source_system_id=source_system.id, source_order_id="RG-ORDER-1",
+        employee_id=employee.id, source_employee_id=employee.source_employee_id,
+        created_at=order_time, business_date=business_date, state="locked", payment_state="PAID",
+        currency="USD", total=5000,
+    )
+    session.add(order)
+    session.flush()
+    payment = m.Payment(
+        order_id=order.id, source_system_id=source_system.id, source_payment_id="RG-PAY-1",
+        employee_id=employee.id, source_employee_id=employee.source_employee_id, created_at=order_time,
+        amount=5000, result="SUCCESS", currency="USD",
+    )
+    session.add(payment)
+    session.flush()
+    session.add(m.PaymentTip(payment_id=payment.id, amount=1000, source_present=True))
+    session.commit()
+
+    state_before = readiness_svc.describe_readiness(session, restaurant.id)
+    result.check(
+        "reconciliation gate: ready_to_calculate is False with a real Clover-sourced Location and NO "
+        "Live Sync/Correction run recorded yet for it",
+        state_before.business_date == business_date and not state_before.ready_to_calculate
+        and not state_before.reconciliation_ready,
+    )
+
+    business_date_end = readiness_svc.business_date_period(business_date)[1]
+    for resource_type in (None, "orders", "payments", "refunds"):
+        session.add(
+            m.IngestionRun(
+                source_system_id=source_system.id, location_id=location.id, started_at=business_date_end,
+                finished_at=business_date_end, status="COMPLETE",
+                source_window_start=business_date_end - timedelta(hours=1),
+                source_window_end=business_date_end + timedelta(hours=1),
+                resource_type=resource_type,
+                notes="synthetic seed: Live Sync/Correction cursor past this Business Date",
+            )
+        )
+    session.commit()
+
+    state_after = readiness_svc.describe_readiness(session, restaurant.id)
+    result.check(
+        "reconciliation gate: ready_to_calculate becomes True once Live Sync's cursor and all 3 "
+        "Correction resource cursors have each passed this Business Date's own end",
+        state_after.ready_to_calculate and state_after.reconciliation_ready,
     )

@@ -860,6 +860,21 @@ class IngestionRun(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE §4 — Modification
+    # Cursor (Location × Resource). NULL for every Historical Backfill/Live
+    # Sync run, exactly as before this column existed — those remain one
+    # whole-Location run per cycle, unchanged. Set (e.g. "orders",
+    # "payments", "refunds") only by the Correction/Reconciliation Poller
+    # (`technical/connectors/clover/correction_sync.py`), one row per
+    # resource per correction cycle, so each resource's own `source_window_
+    # end` advances independently on that resource's own success — reusing
+    # this existing table rather than a new one, since a nullable column is
+    # sufficient to represent the distinction unambiguously. Live Cursor
+    # queries (`live_sync.compute_next_sync_window`) and freshness coverage
+    # queries (`freshness._is_range_covered`) both explicitly filter this
+    # column to NULL, so Correction rows never influence either.
+    resource_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # TIPS_IMPORT_CONCURRENCY_GUARD_001 §5 — the execution token. Non-NULL
