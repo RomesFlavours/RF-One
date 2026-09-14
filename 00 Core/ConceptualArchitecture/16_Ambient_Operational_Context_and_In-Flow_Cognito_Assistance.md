@@ -1,7 +1,7 @@
 # Ambient Operational Context and In-Flow Cognito Assistance
 
 **Version:** 1.0
-**Status:** PROPOSED — Post-Baseline Conceptual Extension. Core 2.0 is already frozen (`core-2.0-freeze`, commit `71de3663dba2716ccbb6c1f93ffd458e20da8ead`) and `release/rf-one-2.0` (tag `rf-one-2.0-baseline`) is a released baseline built from it. This document is produced from the tip of `docs/cognito-human-operational-state` (which already carries [15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md](15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md) as APPROVED — Post-Baseline Conceptual Extension), on a further dedicated branch (`docs/cognito-ambient-operational-context`). It is a Product Owner conceptual exploration, not yet an approved architectural decision folded into the canonical 00–14 set, and does not retroactively extend `core-2.0-freeze`. Promotion to Approved status, and to a numbered Core Principle, remain separate, future Product Owner decisions — exactly the discipline already applied to document 15 (see [../Core Evolution.md](../Core%20Evolution.md)).
+**Status:** APPROVED — Post-Baseline Conceptual Extension. Core 2.0 is already frozen (`core-2.0-freeze`, commit `71de3663dba2716ccbb6c1f93ffd458e20da8ead`) and `release/rf-one-2.0` (tag `rf-one-2.0-baseline`) is a released baseline built from it. This document is a conceptual extension ratified by the Product Owner after that baseline — not a retroactive change to `core-2.0-freeze` or to `release/rf-one-2.0`, and not itself folded into the Approved 00–14 canonical set ([00_RF-One_Core_Vision.md](00_RF-One_Core_Vision.md) §6). It was produced from the tip of `docs/cognito-human-operational-state` (which already carries [15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md](15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md) as APPROVED — Post-Baseline Conceptual Extension) on a further dedicated branch (`docs/cognito-ambient-operational-context`). See [../Core Evolution.md](../Core%20Evolution.md) for the ratification record. Promotion to a numbered Core Principle remains a separate, future decision — exactly the discipline already applied to document 15.
 **Module:** Core / ConceptualArchitecture
 
 ---
@@ -18,7 +18,7 @@
 - [10_RF-One_Intelligence_and_User_Relationship.md](10_RF-One_Intelligence_and_User_Relationship.md) §2, §7–§9 — the "compendium of the best manager" framing and the support-capability estimate this document's value-proposition section (§13) draws on without redefining.
 - [../Organizational Responsibility.md](../Organizational%20Responsibility.md) — Position, Process Ownership; unaffected by this document exactly as already stated for Human Operational State (doc 15 §8).
 - [../../01 Domains/Cross Domain/PERSON_CONTINUITY_001.md](../../01%20Domains/Cross%20Domain/PERSON_CONTINUITY_001.md) — stable person knowledge/continuity, a different concept from both Human Operational State and Ambient Operational Context; see that document's own §0.
-- [../../01 Domains/Business Domain/Restaurant/Service Copilot/README.md](../../01%20Domains/Business%20Domain/Restaurant/Service%20Copilot/README.md) and its module files — an existing, Approved, **Restaurant Domain-specific** real-time in-service assistance capability. §6 below identifies it as a pre-existing illustration of the general pattern this document names at Core level; this document does not redefine, extend, or require any change to Service Copilot's approved content.
+- [../../01 Domains/Business Domain/Restaurant/Service Copilot/README.md](../../01%20Domains/Business%20Domain/Restaurant/Service%20Copilot/README.md) and its module files — an existing, Approved, **Restaurant Domain-specific** real-time in-service assistance capability, recognized upon this document's ratification as the **first Domain-level consumer instance** of the Core concept this document names (§6). This document does not redefine, rename, extend, merge, or require any change to Service Copilot's approved content or functional behavior — Service Copilot remains a Restaurant Domain module that consumes this Core concept; it is not merged into Cognito, and Cognito is not merged into it.
 - See also `00 Core/Cognitive Interface/RF-ONE_COGNITIVE_INTERFACE_CONCEPT.md` — status "CONCEPTUAL DIRECTION — UNDER REVIEW." Not authority for this document.
 
 ---
@@ -112,7 +112,18 @@ The associate keeps interacting naturally with the customer. They are not requir
 The following are conceptual illustrations of the same general pattern across different kinds of work. None of them asserts that RF-One currently models a Legal or Accounting Domain, and none of them authorizes Cognito to give legal, medical, or other professional advice, or to become the professional decision-maker in place of the human:
 
 - **Retail associate** — suggesting a genuinely available product or alternative (§5).
-- **Restaurant server** — surfacing an ingredient/allergen concern, a known preference, or table context during the conversation with a guest. RF-One already documents a Restaurant Domain-specific instance of real-time in-service assistance for this general pattern — [Service Copilot](../../01%20Domains/Business%20Domain/Restaurant/Service%20Copilot/README.md) (Approved) — which this document does not redefine; a future decision may describe Service Copilot as consuming Cognito's Ambient Operational Context and In-Flow Cognito Assistance, but that mapping is not made by this document.
+- **Restaurant server** — surfacing an ingredient/allergen concern, a known preference, or table context during the conversation with a guest. [Service Copilot](../../01%20Domains/Business%20Domain/Restaurant/Service%20Copilot/README.md) (Approved, Restaurant Domain) is recognized, upon this document's ratification, as the **first Domain-level instance** that already applies this general pattern — real-time, in-service assistance combining ambient context with canonical business state — without this document redefining, renaming, or requiring any functional change to Service Copilot's own approved content:
+
+```text
+Core concept:
+Ambient Operational Context + In-Flow Cognito Assistance
+  ↓ consumed by
+Domain instance:
+Restaurant / Service Copilot
+```
+
+  Service Copilot remains what it already was — a Restaurant Domain module that assists the Server ([Service Copilot README](../../01%20Domains/Business%20Domain/Restaurant/Service%20Copilot/README.md) §"Purpose") — never merged into Cognito, and Cognito is not merged into it: Service Copilot is a Domain consumer of this Core concept, never a replacement for Cognito, and Cognito interprets/assists, it does not replace or absorb Service Copilot.
+
 - **Legal assistant** — recalling a deadline, a missing document, or the risk of an improper commitment during a conversation. This is recall/surfacing of already-known information, never a legal opinion — consistent with [05](05_Epistemic_Boundary_and_Subject_Sovereignty.md) §1's existing rule that a legal interpretation must never be silently promoted to Fact.
 - **Accountant** — recalling a missing document, an anomaly, a prior classification, or a deadline while working a case. Same boundary: recall and surfacing, never a tax or accounting determination presented as settled Fact ([05] §1; [08_Net_Outcome_and_Structural_Optimization.md](08_Net_Outcome_and_Structural_Optimization.md), §7).
 
@@ -292,6 +303,7 @@ An earbud is a useful illustration (§5, §7) — never an architectural depende
 | Attention Management relationship (§15) | [12](12_Attention_Management.md) §2, §7, §10 |
 | Trigger Intelligence relationship (§16) | [13](13_Process_Activation_and_Trigger_Intelligence.md) §3 (Discovery/Resolution/Authorized Consequence) |
 | Device independence (§17) | [15](15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md) §11 |
+| Service Copilot relationship (§6) | [Restaurant Domain / Service Copilot](../../01%20Domains/Business%20Domain/Restaurant/Service%20Copilot/README.md) — first Domain-level consumer instance, recognized upon ratification; not redefined, renamed, or merged with Cognito |
 
 Nothing in this document reopens or redefines Cognito, Human Operational State, Attention Management, Trigger Intelligence, Organizational Responsibility, Identity/Authority/Delegation/Accountability, or the Epistemic Boundary. It names one new, narrowly-scoped concept and one specialization of an existing Cognito capability, and states their relationship to each of them.
 
@@ -325,10 +337,18 @@ this document asserts that RF-One currently has a Retail, Legal, or Accounting
 this document redefines, extends, or requires any change to the Restaurant
   Domain's existing Service Copilot, Next Best Action and Next Best Moment,
   Management Intrusiveness, or Smartwatch Interaction documents
-this document's PROPOSED status folds it into the Approved Core 2.0 00-14
-  canonical set, or retroactively extends the `core-2.0-freeze` tag
+recognizing Service Copilot as this Core concept's first Domain consumer
+  instance (§6) renames Service Copilot, merges it into Cognito, merges
+  Cognito into it, or changes any of Service Copilot's functional behavior —
+  it does not; Service Copilot remains a distinct Restaurant Domain module,
+  and Cognito remains a distinct Core capability
+this document's APPROVED — Post-Baseline Conceptual Extension status folds
+  it into the Approved Core 2.0 00-14 canonical set, or retroactively extends
+  the `core-2.0-freeze` tag — see Core Evolution.md's ratification record and
+  00_RF-One_Core_Vision.md §6
 promotion of this document's canonical principle (§1) to a numbered Core
-  Principle has occurred merely because this document exists
+  Principle has occurred merely because this document is APPROVED as an
+  extension
 any specific interface, API, vendor, or deployment topology is designed,
   chosen, or authorized by this document
 ```

@@ -529,6 +529,40 @@ Compatibility Notes:
 
 ---
 
+---
+
+Version: Core 2.0 (Ratification — CORE_AMBIENT_OPERATIONAL_CONTEXT_AND_IN_FLOW_COGNITO_ASSISTANCE)
+
+Date: 2026-09-14
+
+Modified Entity:
+`ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md` (Status header, the Service Copilot Related-documents line, §6's Restaurant illustration, one new row in the §18 relationship table, and the Non-assumptions lines about status/Core-Principle-promotion/Service-Copilot-recognition), `ConceptualArchitecture/07_Core_Glossary.md` (status parentheticals for the two terms it introduced), `README.md` and `ConceptualArchitecture/00_RF-One_Core_Vision.md` (discoverability line status), `ConceptualArchitecture/12_Attention_Management.md`, `ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md`, and `ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md` (their own "See also" cross-reference status, plus one clarifying word in doc 14 §6), `RF_ONE_2_0_BASELINE.md` (FUTURE/CONCEPTUAL EXTENSION note status), and `01 Domains/Business Domain/Restaurant/Service Copilot/README.md` (its own cross-reference line, formalizing the consumer relationship) — following the final consistency review recorded in this ratification entry.
+
+Reason:
+The Product Owner ratified `ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md` following a dedicated final consistency review against Cognito ([14](ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md)), Human Operational State ([15](ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md)), Attention Management ([12](ConceptualArchitecture/12_Attention_Management.md)), Trigger Intelligence ([13](ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md)), Organizational Responsibility, Identity/Authority/Accountability ([09](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md)), the Epistemic Boundary ([05](ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md)), stable person knowledge/Person Continuity (`01 Domains/Cross Domain/PERSON_CONTINUITY_001.md`), privacy/surveillance boundaries, device independence, and the Restaurant Domain's existing Service Copilot module. No conceptual contradiction was found; the review confirmed that Ambient Operational Context is never confused with Human Operational State (the former answers "what is happening around the person," the latter "how is the person doing"), that ambient observation never by itself constitutes Authority or an Authorized Consequence (Trigger Discovery evidence only), that Ambient Operational Context only ever supplies evidence/context to Attention Management, which alone continues to decide who/when/priority/channel, that Cognito interprets and assists while Service Copilot is confirmed as a Domain **consumer** of this Core concept and never a replacement for Cognito (nor is Cognito a replacement for Service Copilot), that no surveillance/permanent-recording capability is assumed or authorized, that no direct-to-customer default is introduced (the worker remains the human-facing actor), and that no specific vendor/device dependency is introduced (earbud/smartwatch remain illustrative only). The document's own status is accordingly changed from PROPOSED to **APPROVED — Post-Baseline Conceptual Extension**, and Restaurant Domain's Service Copilot is formally recognized, by cross-reference only, as this Core concept's **first Domain-level consumer instance**.
+
+Concepts introduced:
+
+- None new. This entry ratifies the status of concepts already introduced by the prior PROPOSED entry above (Ambient Operational Context, In-Flow Cognito Assistance); it does not add or redefine any concept. The only new formalization is the explicit naming of Service Copilot as this concept's first Domain-level consumer instance — a recognition/cross-reference, not a new concept, capability, or Entity.
+
+Impacted Domains:
+
+- None modified beyond the single targeted Service Copilot cross-reference named above (Restaurant Domain, `01 Domains/Business Domain/Restaurant/Service Copilot/README.md`). Service Copilot's own Purpose, Inputs, Boundaries, module map, and every other approved-content section are untouched: not renamed, not merged into Cognito, and no functional/behavioral change of any kind. No Software, Product, or Domain business-logic file was touched. No new capability, software, database, or Domain business-logic file was implemented by this ratification.
+
+Future Expected Impact:
+
+- Same as the prior PROPOSED entry above; ratification does not by itself trigger new consumption or new implementation, only removes PROPOSED status from the document and its glossary terms, and formally records the pre-existing Service Copilot relationship for discoverability.
+
+Compatibility Notes:
+
+- **APPROVED — Post-Baseline Conceptual Extension does not mean retroactively part of `core-2.0-freeze` or of `release/rf-one-2.0`.** The `core-2.0-freeze` tag was not moved, and its history was not rewritten. Document 16 remains outside the Approved Core 2.0 00–14 canonical set (`00_RF-One_Core_Vision.md` §6) — ratification approves it as a stable, standalone post-baseline extension, exactly as document 15 was ratified before it, not as an addition to that frozen set.
+- Promotion of this document's canonical principle (§1 of document 16) to a numbered entry in `RF-ONE Core Principles.md` is deliberately **not** performed by this entry and remains a separate, future Product Owner decision. `RF-ONE Core Principles.md` was not modified.
+- Recognizing Service Copilot as the first Domain-level consumer instance is a documentation-only, cross-reference-only act: Service Copilot is not renamed, is not merged into Cognito (nor is Cognito merged into it), and none of its approved functional behavior changes as a result of this entry.
+- All prior Core Evolution entries are preserved unchanged, consistent with Historical Integrity (`ArchitecturePrinciples.md`): this is an additive new entry, not a rewrite of the PROPOSED entry it ratifies.
+- No Domain, Product or Software file was modified beyond the single Service Copilot cross-reference line named above. No new capability, software, or database change was implemented by this ratification.
+
+---
+
 # Design Principles
 
 - The Core Domain is extracted from real domains.
