@@ -18,16 +18,23 @@ Process Ownership -> Position -> Occupant -> Temporary Coverage -> Backup
 Position -> Organizational Fallback chain every other Domain already uses —
 no Tips-specific escalation model.
 
-Known Authority-model gap (§14, reported rather than invented): `AuthorityGrant`'s
-`scope_type` vocabulary (`models.AUTHORITY_SCOPE_KINDS`) has no `RESTAURANT`
-value today (only CORPORATE/BRAND/OPERATIONAL_UNIT/OPERATIONAL_AREA/GLOBAL) —
-unlike `Position`/`ProcessOwnership`'s own `POSITION_SCOPE_KINDS`, which
-already does. The Approve & Pay gate below therefore checks a GLOBAL-scoped
-grant (`domain=TIPS, action=APPROVE_AND_PAY`) — authorizing "may this Acting
-Identity Approve & Pay Tips at all," not yet "for this specific Restaurant
-only." See this task's final report "Known gaps" — extending `AuthorityGrant`
-to support a Restaurant scope is a Core/Authority-model change out of this
-task's scope, not invented here.
+Approve & Pay is scoped per-Restaurant (TASK_TIPS_RESTAURANT_AUTHORITY_SCOPE_001):
+the gate below checks a grant for `domain=TIPS, action=APPROVE_AND_PAY,
+scope_type=RESTAURANT, scope_id=<this cycle's restaurant_id>` — an Acting
+Identity authorized for Restaurant A is never thereby authorized for
+Restaurant B, and the same Acting Identity may hold one such grant per
+Restaurant with no duplication/workaround (`authority_service.grant_authority`
+called once per Restaurant). A GLOBAL-scoped grant continues to authorize
+Approve & Pay for every Restaurant unconditionally — `authorize()`'s own
+GLOBAL match is unconditional regardless of the requested `scope_type`/
+`scope_id` (see that function's docstring) — so a real cross-Restaurant
+authorization is expressed with a GLOBAL grant, never by omitting scope.
+This resolves the Authority-model gap this module's own docstring previously
+reported (only CORPORATE/BRAND/OPERATIONAL_UNIT/OPERATIONAL_AREA/GLOBAL
+existed as `AuthorityGrant.scope_type` values); `models.AUTHORITY_SCOPE_KINDS`
+now also includes `RESTAURANT`, mirroring `POSITION_SCOPE_KINDS`'s existing
+`POSITION_SCOPE_RESTAURANT` value (a separate enum on a separate table — the
+two scope vocabularies are not merged).
 """
 
 from __future__ import annotations
@@ -224,6 +231,20 @@ class ApproveAndPayError(ValueError):
     raised."""
 
 
+def can_approve_and_pay(session: Session, *, acting_identity: "m.ActingIdentity", restaurant_id: int) -> bool:
+    """Read-only convenience wrapper around the SAME gate `approve_and_pay_
+    cycle` enforces server-side (never a second, divergent check) — for a
+    UI (or any other caller) that wants to show/filter options before a
+    submit attempt. Never itself a substitute for the server-side gate:
+    `approve_and_pay_cycle` re-checks Authority unconditionally regardless
+    of what this returned."""
+    decision = authorize(
+        session, actor=acting_identity, action=AUTHORITY_ACTION_APPROVE_AND_PAY,
+        context=AuthorizationContext(domain=AUTHORITY_DOMAIN_TIPS, scope_type=m.SCOPE_RESTAURANT, scope_id=restaurant_id),
+    )
+    return decision.allowed
+
+
 @dataclass
 class ApproveAndPayResult:
     cycle: "m.TipPaymentCycle"
@@ -238,9 +259,13 @@ def approve_and_pay_cycle(
 ) -> ApproveAndPayResult:
     """Task §14 — REVIEW is simply reading `cycle`/its instructions (no
     mutation); this function IS "APPROVE & PAY," gated on Authority (never
-    `is_admin`). Raises `ApproveAndPayError` and changes NOTHING if the
-    Acting Identity is not authorized, the cycle is not OPEN, or funding is
-    insufficient for the whole batch (task §8's existing funding-check
+    `is_admin`), scoped to `cycle.restaurant_id` specifically (module
+    docstring above) so an Acting Identity authorized for one Restaurant can
+    never Approve & Pay another's cycle — a GLOBAL grant remains the only way
+    to authorize every Restaurant at once. Raises `ApproveAndPayError` and
+    changes NOTHING (no Mercury call is made either) if the Acting Identity
+    is not authorized for this Restaurant, the cycle is not OPEN, or funding
+    is insufficient for the whole batch (task §8's existing funding-check
     principle, preserved unchanged — Mercury's `availableBalance` must cover
     the full batch before ANY instruction submits)."""
     if cycle.status != m.TIP_PAYMENT_CYCLE_STATUS_OPEN:
@@ -248,11 +273,14 @@ def approve_and_pay_cycle(
 
     decision = authorize(
         session, actor=acting_identity, action=AUTHORITY_ACTION_APPROVE_AND_PAY,
-        context=AuthorizationContext(domain=AUTHORITY_DOMAIN_TIPS, scope_type=m.SCOPE_GLOBAL, scope_id=None),
+        context=AuthorizationContext(
+            domain=AUTHORITY_DOMAIN_TIPS, scope_type=m.SCOPE_RESTAURANT, scope_id=cycle.restaurant_id,
+        ),
     )
     if not decision.allowed:
         raise ApproveAndPayError(
-            f"Acting Identity {acting_identity.id} is not authorized to Approve & Pay Tips: {decision.reason}"
+            f"Acting Identity {acting_identity.id} is not authorized to Approve & Pay Tips for Restaurant "
+            f"{cycle.restaurant_id}: {decision.reason}"
         )
 
     instructions = list(

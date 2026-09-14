@@ -732,9 +732,19 @@ def payment_control_home():
         attention_items_by_instruction = {}
         mercury_balance = None
         connector_error = None
-        identities = list(session.scalars(select(m.ActingIdentity).order_by(m.ActingIdentity.display_name)))
+        identities = []
 
         if restaurant is not None:
+            # Only Acting Identities actually authorized to Approve & Pay
+            # THIS Restaurant are offered — never a global list a user could
+            # pick from and then be rejected server-side (the server-side
+            # gate in `approve_and_pay_cycle` remains authoritative either
+            # way; this is a UI convenience, not a second/divergent check).
+            identities = [
+                identity
+                for identity in session.scalars(select(m.ActingIdentity).order_by(m.ActingIdentity.display_name))
+                if cycle_svc.can_approve_and_pay(session, acting_identity=identity, restaurant_id=restaurant.id)
+            ]
             calc_state = readiness_svc.describe_readiness(session, restaurant.id)
             cycle_readiness = cycle_svc.describe_payment_cycle_readiness(session, restaurant.id)
             open_cycle = cycle_readiness.open_cycle

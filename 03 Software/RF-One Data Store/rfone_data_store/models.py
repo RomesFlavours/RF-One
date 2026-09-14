@@ -115,22 +115,33 @@ class ActingIdentity(Base):
 
 # Authority scope kinds — the Core organizational context chain
 # (00 Core/Corporate.md, Operational Unit.md, OperationalArea.md, Brand.md):
-# Corporate -> Brand -> Operational Unit -> Operational Area. Only Restaurant
-# (a Domain-level entity, not this chain) and Restaurant's own, narrower
-# `OperationalArea` (kitchen/dining zones — a Domain specialization, NOT this
-# Core concept) are persisted anywhere in RF-One today; Corporate/Brand/
-# Operational Unit have no table of their own yet (00 Core defines them;
-# nothing has implemented them — see CLAUDE.md "Core ≠ Domain ≠ Product").
-# `AuthorityGrant.scope_id` is therefore a plain integer with NO foreign key
-# to any of these — a grant is already scoped generically by whichever
-# concrete table eventually backs each `scope_type`, with zero redesign of
-# this table when that happens. GLOBAL is the one scope with no `scope_id`.
+# Corporate -> Brand -> Operational Unit -> Operational Area, plus RESTAURANT
+# (a Domain-level entity, not this Core chain — see `Restaurant` below, which
+# DOES have a real table/id) and Restaurant's own, narrower `OperationalArea`
+# (kitchen/dining zones — a Domain specialization, NOT the Core concept of
+# the same name). Corporate/Brand/Operational Unit still have no table of
+# their own (00 Core defines them; nothing has implemented them — see
+# CLAUDE.md "Core ≠ Domain ≠ Product"). `AuthorityGrant.scope_id` is
+# therefore a plain integer with NO foreign key to any of these — a grant is
+# already scoped generically by whichever concrete table backs each
+# `scope_type` (a real `restaurants.id` for RESTAURANT today; nothing yet for
+# CORPORATE/BRAND/OPERATIONAL_UNIT/OPERATIONAL_AREA), with zero redesign of
+# this table when the rest gain tables. GLOBAL is the one scope with no
+# `scope_id`, and continues to mean "every scope," RESTAURANT included
+# (`authority_service.authorize()`'s GLOBAL match is unconditional — see its
+# own docstring). RESTAURANT mirrors `POSITION_SCOPE_RESTAURANT` below
+# (Organizational Responsibility's own Position scope), but is a SEPARATE
+# enum value on a separate table — this module does not merge the two scope
+# vocabularies (TASK_TIPS_RESTAURANT_AUTHORITY_SCOPE_001).
 SCOPE_CORPORATE = "CORPORATE"
 SCOPE_BRAND = "BRAND"
 SCOPE_OPERATIONAL_UNIT = "OPERATIONAL_UNIT"
 SCOPE_OPERATIONAL_AREA = "OPERATIONAL_AREA"
+SCOPE_RESTAURANT = "RESTAURANT"
 SCOPE_GLOBAL = "GLOBAL"
-AUTHORITY_SCOPE_KINDS = (SCOPE_CORPORATE, SCOPE_BRAND, SCOPE_OPERATIONAL_UNIT, SCOPE_OPERATIONAL_AREA, SCOPE_GLOBAL)
+AUTHORITY_SCOPE_KINDS = (
+    SCOPE_CORPORATE, SCOPE_BRAND, SCOPE_OPERATIONAL_UNIT, SCOPE_OPERATIONAL_AREA, SCOPE_RESTAURANT, SCOPE_GLOBAL,
+)
 
 # The one wildcard `authority_service.authorize()` understands for `module`/
 # `action` — never for `domain` or `scope_type`/`scope_id` (Authority is
@@ -164,7 +175,7 @@ class AuthorityGrant(Base):
     __tablename__ = "authority_grants"
     __table_args__ = (
         CheckConstraint(
-            "scope_type IN ('CORPORATE', 'BRAND', 'OPERATIONAL_UNIT', 'OPERATIONAL_AREA', 'GLOBAL')",
+            "scope_type IN ('CORPORATE', 'BRAND', 'OPERATIONAL_UNIT', 'OPERATIONAL_AREA', 'RESTAURANT', 'GLOBAL')",
             name="ck_authority_grant_scope_type",
         ),
         CheckConstraint(

@@ -1,11 +1,15 @@
 """Automated synthetic tests for the Tips Core 2.0 Payment Execution pilot
-(TASK_TIPS_CORE2_PILOT §18; TASK_TIPS_COMPLETE_001).
+(TASK_TIPS_CORE2_PILOT §18; TASK_TIPS_COMPLETE_001;
+TASK_TIPS_RESTAURANT_AUTHORITY_SCOPE_001).
 
 Mirrors `tips_distribution_engine_validation.py`'s pattern exactly: builds a
 synthetic fixture inside a disposable database, exercises `tips.readiness`,
 `tips.payout_process`, `tips.payment_cycle_service`, and
 `tips.payment_instruction`, asserts the required behaviors, and always rolls
-back.
+back. `_test_restaurant_scoped_approve_and_pay_authority` specifically covers
+per-Restaurant Approve & Pay Authority scoping (WP-only/MD-denied,
+multi-Restaurant grants, GLOBAL-still-means-every-Restaurant, no-grant, and
+denial-before-any-Mercury-call).
 
 Uses a FAKE Mercury client (`_FakeMercuryClient` below) — this file makes NO
 network call and requires no `MERCURY_SANDBOX_API_TOKEN`. The one real-
@@ -59,6 +63,7 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
         try:
             _run_all_scenarios(session, result)
             _test_reconciliation_gate_on_business_date_readiness(session, result)
+            _test_restaurant_scoped_approve_and_pay_authority(session, result)
         finally:
             session.rollback()
     return result
@@ -596,3 +601,173 @@ def _test_reconciliation_gate_on_business_date_readiness(session: Session, resul
     )
     calc_after = payout_svc.run_calculation_now(session, restaurant_id=restaurant.id)
     result.check("reconciliation gate: calculation now proceeds", calc_after.ran)
+
+
+def _make_restaurant(session: Session, *, name: str) -> m.Restaurant:
+    restaurant = m.Restaurant(name=name, default_currency="USD")
+    session.add(restaurant)
+    session.flush()
+    return restaurant
+
+
+def _open_cycle(session: Session, *, restaurant_id: int) -> m.TipPaymentCycle:
+    """A bare OPEN `TipPaymentCycle` with no `TipPaymentInstruction`s — valid
+    for these tests because `approve_and_pay_cycle`'s Authority gate runs
+    BEFORE it queries instructions or calls Mercury (task §14): an empty
+    cycle is sufficient to prove both ALLOW/DENY and "denied before any
+    Mercury call", without needing a full Order/Entitlement fixture."""
+    cycle = m.TipPaymentCycle(
+        restaurant_id=restaurant_id, period_start=T0, period_end=T0 + timedelta(days=1),
+        status=m.TIP_PAYMENT_CYCLE_STATUS_OPEN, triggered_by="MANUAL",
+        notes="synthetic Restaurant-authority-scope test cycle (no entitlements).",
+    )
+    session.add(cycle)
+    session.flush()
+    return cycle
+
+
+def _test_restaurant_scoped_approve_and_pay_authority(session: Session, result: ValidationResult) -> None:
+    """TASK_TIPS_RESTAURANT_AUTHORITY_SCOPE_001 — Approve & Pay Authority is
+    scoped per Restaurant (`AuthorityGrant.scope_type=RESTAURANT`), never a
+    single all-Restaurants-or-nothing choice, while a GLOBAL grant continues
+    to mean every Restaurant unconditionally (unchanged semantics — a
+    regression check in its own right, since `approve_and_pay_cycle`'s
+    context `scope_type` changed from GLOBAL to RESTAURANT to get here)."""
+    wp = _make_restaurant(session, name="Winter Park Test Restaurant")
+    md = _make_restaurant(session, name="Mount Dora Test Restaurant")
+    session.commit()
+
+    client = _FakeMercuryClient(available_balance=Decimal("100000.00"), recipient_behavior={})
+
+    # === 1/2: authorized for Winter Park ONLY -> WP allowed, MD denied. ===
+    wp_only = m.ActingIdentity(kind="HUMAN_USER", display_name="WP-only Approver", is_active=True)
+    session.add(wp_only)
+    session.flush()
+    authority_service.grant_authority(
+        session, actor=wp_only, domain=cycle_svc.AUTHORITY_DOMAIN_TIPS,
+        action=cycle_svc.AUTHORITY_ACTION_APPROVE_AND_PAY, scope_type=m.SCOPE_RESTAURANT, scope_id=wp.id,
+    )
+    session.commit()
+
+    wp_cycle_1 = _open_cycle(session, restaurant_id=wp.id)
+    session.commit()
+    wp_result = cycle_svc.approve_and_pay_cycle(
+        session, cycle=wp_cycle_1, acting_identity=wp_only, client=client, source_account_id="acct-1",
+    )
+    session.commit()
+    result.check(
+        "restaurant scope (1): WP-only Acting Identity CAN Approve & Pay Winter Park",
+        wp_cycle_1.status == "APPROVED" and wp_result.submitted_count == 0,
+    )
+
+    md_cycle_1 = _open_cycle(session, restaurant_id=md.id)
+    session.commit()
+    calls_before = client.create_transaction_calls
+    md_denied = False
+    try:
+        cycle_svc.approve_and_pay_cycle(
+            session, cycle=md_cycle_1, acting_identity=wp_only, client=client, source_account_id="acct-1",
+        )
+    except cycle_svc.ApproveAndPayError:
+        md_denied = True
+    result.check("restaurant scope (2): WP-only Acting Identity is DENIED for Mount Dora", md_denied)
+    result.check(
+        "restaurant scope (6): the Mount Dora denial made NO Mercury call and left the cycle OPEN",
+        client.create_transaction_calls == calls_before and md_cycle_1.status == "OPEN",
+    )
+
+    # === 3: two independent Restaurant-scoped grants on the SAME Acting
+    # Identity (no duplication/workaround) -> both Restaurants allowed. ===
+    both = m.ActingIdentity(kind="HUMAN_USER", display_name="WP+MD Approver", is_active=True)
+    session.add(both)
+    session.flush()
+    authority_service.grant_authority(
+        session, actor=both, domain=cycle_svc.AUTHORITY_DOMAIN_TIPS,
+        action=cycle_svc.AUTHORITY_ACTION_APPROVE_AND_PAY, scope_type=m.SCOPE_RESTAURANT, scope_id=wp.id,
+    )
+    authority_service.grant_authority(
+        session, actor=both, domain=cycle_svc.AUTHORITY_DOMAIN_TIPS,
+        action=cycle_svc.AUTHORITY_ACTION_APPROVE_AND_PAY, scope_type=m.SCOPE_RESTAURANT, scope_id=md.id,
+    )
+    session.commit()
+    result.check(
+        "restaurant scope: the same Acting Identity holds two independent Restaurant-scoped grants, "
+        "no duplication/workaround",
+        len(authority_service.list_active_grants(session, actor=both)) == 2,
+    )
+
+    wp_cycle_2 = _open_cycle(session, restaurant_id=wp.id)
+    md_cycle_2 = _open_cycle(session, restaurant_id=md.id)
+    session.commit()
+    cycle_svc.approve_and_pay_cycle(
+        session, cycle=wp_cycle_2, acting_identity=both, client=client, source_account_id="acct-1",
+    )
+    cycle_svc.approve_and_pay_cycle(
+        session, cycle=md_cycle_2, acting_identity=both, client=client, source_account_id="acct-1",
+    )
+    session.commit()
+    result.check(
+        "restaurant scope (3): dual-grant Acting Identity CAN Approve & Pay both Winter Park and Mount Dora",
+        wp_cycle_2.status == "APPROVED" and md_cycle_2.status == "APPROVED",
+    )
+
+    # === 4: a GLOBAL grant still authorizes every Restaurant unconditionally
+    # — regression: unchanged even though the gate's context scope_type is
+    # now RESTAURANT rather than GLOBAL (authorize()'s own GLOBAL-match
+    # short-circuit, never comparing scope_type/scope_id for a GLOBAL
+    # grant). ===
+    global_approver = _make_authorized_approver(session, suffix="restaurant-scope-global")
+    wp_cycle_3 = _open_cycle(session, restaurant_id=wp.id)
+    md_cycle_3 = _open_cycle(session, restaurant_id=md.id)
+    session.commit()
+    cycle_svc.approve_and_pay_cycle(
+        session, cycle=wp_cycle_3, acting_identity=global_approver, client=client, source_account_id="acct-1",
+    )
+    cycle_svc.approve_and_pay_cycle(
+        session, cycle=md_cycle_3, acting_identity=global_approver, client=client, source_account_id="acct-1",
+    )
+    session.commit()
+    result.check(
+        "restaurant scope (4): a GLOBAL grant still authorizes both Winter Park and Mount Dora",
+        wp_cycle_3.status == "APPROVED" and md_cycle_3.status == "APPROVED",
+    )
+
+    # === 5: no grant at all -> denied, before any Mercury call. ===
+    no_grant = m.ActingIdentity(kind="HUMAN_USER", display_name="No-Grant Identity", is_active=True)
+    session.add(no_grant)
+    session.commit()
+    wp_cycle_4 = _open_cycle(session, restaurant_id=wp.id)
+    session.commit()
+    calls_before_2 = client.create_transaction_calls
+    no_grant_denied = False
+    try:
+        cycle_svc.approve_and_pay_cycle(
+            session, cycle=wp_cycle_4, acting_identity=no_grant, client=client, source_account_id="acct-1",
+        )
+    except cycle_svc.ApproveAndPayError:
+        no_grant_denied = True
+    result.check("restaurant scope (5): an Acting Identity with no grant at all is denied", no_grant_denied)
+    result.check(
+        "restaurant scope (6): the no-grant denial made NO Mercury call and left the cycle OPEN",
+        client.create_transaction_calls == calls_before_2 and wp_cycle_4.status == "OPEN",
+    )
+
+    # === can_approve_and_pay (the UI's read-only filter) agrees exactly with
+    # approve_and_pay_cycle's own enforced gate, for every case above. ===
+    result.check(
+        "restaurant scope: can_approve_and_pay agrees with the enforced gate (WP-only x WP = True)",
+        cycle_svc.can_approve_and_pay(session, acting_identity=wp_only, restaurant_id=wp.id) is True,
+    )
+    result.check(
+        "restaurant scope: can_approve_and_pay agrees with the enforced gate (WP-only x MD = False)",
+        cycle_svc.can_approve_and_pay(session, acting_identity=wp_only, restaurant_id=md.id) is False,
+    )
+    result.check(
+        "restaurant scope: can_approve_and_pay agrees with the enforced gate (GLOBAL x WP/MD = True/True)",
+        cycle_svc.can_approve_and_pay(session, acting_identity=global_approver, restaurant_id=wp.id) is True
+        and cycle_svc.can_approve_and_pay(session, acting_identity=global_approver, restaurant_id=md.id) is True,
+    )
+    result.check(
+        "restaurant scope: can_approve_and_pay agrees with the enforced gate (no-grant x WP = False)",
+        cycle_svc.can_approve_and_pay(session, acting_identity=no_grant, restaurant_id=wp.id) is False,
+    )
