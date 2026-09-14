@@ -423,6 +423,217 @@ Compatibility Notes:
 
 ---
 
+---
+
+Version: PROPOSED — Post-Baseline Conceptual Extension (CORE_HUMAN_OPERATIONAL_STATE_AND_ADAPTIVE_COGNITO_INTERACTION)
+
+Date: 2026-09-13
+
+Modified Entity:
+A new document `ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md` (status PROPOSED, not Approved Core 2.0), plus discoverability/cross-reference-only additions to `ConceptualArchitecture/00_RF-One_Core_Vision.md`, `ConceptualArchitecture/07_Core_Glossary.md`, `ConceptualArchitecture/12_Attention_Management.md` (Related documents only), `ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md` (Related documents plus one clarifying sentence in §3), `Organizational Responsibility.md` (Related documents only), `README.md`, and a FUTURE/CONCEPTUAL EXTENSION note in `RF_ONE_2_0_BASELINE.md`.
+
+Reason:
+This work was produced from `release/rf-one-2.0` (tag `rf-one-2.0-baseline`), **after** the `core-2.0-freeze` tag, on a dedicated branch (`docs/cognito-human-operational-state`) — a Product Owner conceptual exploration, not (yet) an approved architectural decision folded into the canonical 00–14 set. It formalizes that the same person is not operationally identical at every moment of the same shift, and that Cognito's Human Interaction capability ([14](ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md) §3) may adapt to the person's current, temporary Human Operational State — informed by operational context, behavioral context, and, where authorized, physiological evidence — without that state ever becoming a medical diagnosis, an Authority change, or a permanent judgment about the person. It explicitly distinguishes this temporary state from the durable, stable person knowledge already described in [10](ConceptualArchitecture/10_RF-One_Intelligence_and_User_Relationship.md) §6–§8, states that it may only influence Attention Management's existing routing/timing/priority/channel decisions ([12](ConceptualArchitecture/12_Attention_Management.md)) and Organizational Responsibility's existing Temporary Coverage/Backup Position/Fallback mechanisms (`Organizational Responsibility.md` §3, §5) — never Position, Authority, or Process Ownership themselves — and states an explicit privacy/consent/data-minimization boundary for any authorized physiological signal, without designing its compliance implementation.
+
+Concepts introduced (PROPOSED, not yet Approved Core 2.0):
+
+- Human Operational State (temporary, contextual, dynamic; distinct from stable person knowledge)
+- Adaptive Cognito Interaction (a specialization of the existing Human Interaction capability, not a new Cognito capability)
+- Authorized Physiological Evidence as contextual, non-conclusive Evidence (Epistemic Boundary), never a diagnostic signal
+- The explicit Human Operational State ≠ Medical State boundary
+- The explicit privacy/consent/data-minimization boundary for physiological signals
+- Device/wearable independence for future human-state signal consumption
+
+Impacted Domains:
+
+- None modified. No Software, Product, or Domain file was touched; this is documentation-only, Core-level conceptual material available to any future Domain or Product. No wearable, sensor, vendor, threshold, formula, or diagnostic algorithm was chosen or designed.
+
+Future Expected Impact:
+
+- Any future Cognito Edge/mobile bridge design, any future Domain or Product surfacing shift-based or workload-based human context, and any future consent/compliance implementation task for physiological data.
+
+Compatibility Notes:
+
+- All prior Core 2.0 content is preserved; no existing definition was reversed. This entry is explicitly additive and, unlike prior entries in this log, is **not** presented as an Approved Core 2.0 change: the new document's own status is "PROPOSED — Post-Baseline Conceptual Extension," it is deliberately **not** added to the canonical 00–14 table in `00_RF-One_Core_Vision.md` §6 or to `README.md`'s "Approved Core 2.0" ConceptualArchitecture description (both list it only for discoverability, following the same pattern already used for `20_RF-One_Selection_Pills_Cognitive_Model.md`), and `RF-ONE Core Principles.md` was deliberately **not** modified — the "Cognito Principle" this work formalizes is stated only inside the new document itself (§1), pending a future, separate Product Owner ratification decision to number it as a Core Principle.
+- The `core-2.0-freeze` tag was not moved and is not referenced as covering this content. `RF_ONE_2_0_BASELINE.md` was updated only to add a FUTURE/CONCEPTUAL EXTENSION note; it was not rewritten to imply this capability is implemented.
+- Cognito ([14](ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md)), Attention Management ([12](ConceptualArchitecture/12_Attention_Management.md)), Organizational Responsibility, and Identity/Authority/Delegation/Accountability ([09](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md)) are explicitly preserved as-is; this new document specializes them for one narrow purpose, it does not redefine any of them.
+- No Domain, Product or Software file was modified.
+
+---
+
+Version: Core 2.0 (Ratification — CORE_HUMAN_OPERATIONAL_STATE_AND_ADAPTIVE_COGNITO_INTERACTION)
+
+Date: 2026-09-13
+
+Modified Entity:
+`ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md` (Status header and one Non-assumptions line only), `ConceptualArchitecture/07_Core_Glossary.md` (status parentheticals for the three terms it introduced), `README.md` (discoverability line status), and `RF_ONE_2_0_BASELINE.md` (FUTURE/CONCEPTUAL EXTENSION note status) — following the final consistency review recorded in this ratification entry. `01 Domains/Cross Domain/PERSON_CONTINUITY_001.md` also received a short, targeted cross-reference to document 15, distinguishing Stable Person Knowledge/continuity from current Human Operational State.
+
+Reason:
+The Product Owner ratified `ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md` following a dedicated final consistency review against Cognito ([14](ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md)), Attention Management ([12](ConceptualArchitecture/12_Attention_Management.md)), Organizational Responsibility, Identity/Authority/Accountability ([09](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md)), the Epistemic Boundary ([05](ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md)), stable person knowledge ([10](ConceptualArchitecture/10_RF-One_Intelligence_and_User_Relationship.md) §6–§8), Person Continuity (`01 Domains/Cross Domain/PERSON_CONTINUITY_001.md`), and the `core-2.0-freeze` discipline. No conceptual contradiction was found; the review confirmed that Human Operational State is never a permanent trait, that Authorized Physiological Evidence remains Evidence and never Fact, that it never creates Authority, that Cognito interprets/adapts interaction while Attention Management alone decides who/when/priority/channel, that vitals never become a medical diagnosis, that a temporary state can never automatically become disciplinary evidence, a Selection score, a Performance penalty, or a permanent label, and that device/wearable independence is preserved. The document's own status is accordingly changed from PROPOSED to **APPROVED — Post-Baseline Conceptual Extension**.
+
+Concepts introduced:
+
+- None new. This entry ratifies the status of concepts already introduced by the prior PROPOSED entry above (Human Operational State, Adaptive Cognito Interaction, Authorized Physiological Evidence); it does not add or redefine any concept.
+
+Impacted Domains:
+
+- None modified beyond the single targeted Person Continuity cross-reference named above. No Software, Product, or Domain business-logic file was touched.
+
+Future Expected Impact:
+
+- Same as the prior PROPOSED entry above; ratification does not by itself trigger new consumption, only removes PROPOSED status from the document and its glossary terms.
+
+Compatibility Notes:
+
+- **APPROVED — Post-Baseline Conceptual Extension does not mean retroactively part of `core-2.0-freeze` or of `release/rf-one-2.0`.** The `core-2.0-freeze` tag was not moved, and its history was not rewritten. Document 15 remains outside the Approved Core 2.0 00–14 canonical set (`00_RF-One_Core_Vision.md` §6) — ratification approves it as a stable, standalone post-baseline extension, not as an addition to that frozen set.
+- Promotion of this document's canonical principle (§1 of document 15) to a numbered entry in `RF-ONE Core Principles.md` is deliberately **not** performed by this entry and remains a separate, future Product Owner decision.
+- `ConceptualArchitecture/00_RF-One_Core_Vision.md` §6, `ConceptualArchitecture/12_Attention_Management.md`, `ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md`, and `Organizational Responsibility.md` still describe document 15's status as "PROPOSED" in their own Related-documents notes as of this entry; these were intentionally left unmodified because they were outside this review's authorized file scope. This is recorded as a known, non-blocking staleness (see the corresponding task report) to be corrected in a small, separate follow-up edit.
+- All prior Core Evolution entries are preserved unchanged, consistent with Historical Integrity (`ArchitecturePrinciples.md`): this is an additive new entry, not a rewrite of the PROPOSED entry it ratifies.
+- No Domain, Product or Software file was modified.
+
+---
+
+---
+
+Version: PROPOSED — Post-Baseline Conceptual Extension (CORE_AMBIENT_OPERATIONAL_CONTEXT_AND_IN_FLOW_COGNITO_ASSISTANCE)
+
+Date: 2026-09-14
+
+Modified Entity:
+A new document `ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md` (status PROPOSED, not Approved Core 2.0), plus discoverability/cross-reference-only additions to `ConceptualArchitecture/00_RF-One_Core_Vision.md`, `ConceptualArchitecture/07_Core_Glossary.md`, `ConceptualArchitecture/12_Attention_Management.md` (Related documents only), `ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md` (Related documents only), `ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md` (Related documents plus one clarifying sentence in §6), `README.md`, and `01 Domains/Business Domain/Restaurant/Service Copilot/README.md` (Related documents only).
+
+Reason:
+This work was produced from the tip of `docs/cognito-human-operational-state` — which already carries document 15 as APPROVED — Post-Baseline Conceptual Extension — on a further dedicated branch (`docs/cognito-ambient-operational-context`), following a Product Owner conceptual exploration, not (yet) an approved architectural decision folded into the canonical 00–14 set. It formalizes that Cognito should be able to understand the real operational context in which a person is working — the current conversation, process, business entities, counterpart, and canonical business state — without requiring the person to interrupt their work to query RF-One explicitly, and specializes this as **Ambient Operational Context**, distinct from the person's own Human Operational State (document 15). It specializes Cognito's already-named, previously unspecialized **Context Interpretation** capability ([14] §6) rather than adding a new one, and states how Ambient Operational Context feeds Cognito's Human Interaction capability as **In-Flow Cognito Assistance** and Trigger Intelligence as Trigger Discovery evidence — never itself an Authorized Consequence ([13] §3). It states a mandatory boundary distinguishing Ambient Cognition from Employee Surveillance/Recording, generalizing document 15 §10's privacy/consent/data-minimization discipline from physiological signals to ambient/conversational signals. It identifies the Restaurant Domain's existing, Approved Service Copilot module as a pre-existing instance of the same general pattern, without redefining it. It records cross-industry illustrations (retail, restaurant, legal assistant, accountant) as non-normative only, explicitly not asserting that RF-One currently has Retail, Legal, or Accounting Domains, and explicitly excluding legal/medical advice or professional decision substitution, consistent with the existing Epistemic Boundary rule that a legal or tax interpretation must never be silently promoted to Fact ([05] §1).
+
+Concepts introduced (PROPOSED, not yet Approved Core 2.0):
+
+- Ambient Operational Context (what is happening around a person, distinct from Human Operational State)
+- In-Flow Cognito Assistance (a specialization of the existing Human Interaction capability, using Ambient Operational Context combined with canonical business state)
+- The explicit Ambient Cognition ≠ Employee Surveillance/Recording boundary
+- The explicit "ambient observation ≠ Authority" restatement of Trigger Discovery/Resolution/Authorized Consequence for ambient evidence specifically
+
+Impacted Domains:
+
+- None modified. No Software, Product, or Domain business-logic file was touched; the single Domain-level edit is a discoverability-only cross-reference added to the Restaurant Domain's existing Service Copilot README, which is not itself redefined. No wearable, sensor, vendor, microphone, transcription mechanism, or surveillance capability was chosen or designed.
+
+Future Expected Impact:
+
+- Any future Cognito Edge/mobile bridge design, any future Domain or Product surfacing real-time in-flow operational assistance (including a possible future description of Service Copilot as an instance of this Core concept), and any future consent/compliance implementation task for ambient/conversational data.
+
+Compatibility Notes:
+
+- All prior Core 2.0 content is preserved; no existing definition was reversed. This entry is additive and, like the initial document 15 entry before its ratification, is **not** presented as an Approved Core 2.0 change: the new document's own status is "PROPOSED — Post-Baseline Conceptual Extension," it is deliberately **not** added to the canonical 00–14 table in `00_RF-One_Core_Vision.md` §6 or to `README.md`'s "Approved Core 2.0" ConceptualArchitecture description (both list it only for discoverability), and `RF-ONE Core Principles.md` was deliberately **not** modified.
+- The `core-2.0-freeze` tag was not moved and is not referenced as covering this content.
+- Cognito ([14](ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md)), Human Operational State ([15](ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md)), Attention Management ([12](ConceptualArchitecture/12_Attention_Management.md)), Trigger Intelligence ([13](ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md)), Organizational Responsibility, Identity/Authority/Delegation/Accountability ([09](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md)), and the Restaurant Domain's Service Copilot module are explicitly preserved as-is; this new document specializes them for one narrow purpose, it does not redefine any of them.
+- No Domain, Product or Software business-logic file was modified.
+
+---
+
+---
+
+Version: Core 2.0 (Ratification — CORE_AMBIENT_OPERATIONAL_CONTEXT_AND_IN_FLOW_COGNITO_ASSISTANCE)
+
+Date: 2026-09-14
+
+Modified Entity:
+`ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md` (Status header, the Service Copilot Related-documents line, §6's Restaurant illustration, one new row in the §18 relationship table, and the Non-assumptions lines about status/Core-Principle-promotion/Service-Copilot-recognition), `ConceptualArchitecture/07_Core_Glossary.md` (status parentheticals for the two terms it introduced), `README.md` and `ConceptualArchitecture/00_RF-One_Core_Vision.md` (discoverability line status), `ConceptualArchitecture/12_Attention_Management.md`, `ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md`, and `ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md` (their own "See also" cross-reference status, plus one clarifying word in doc 14 §6), `RF_ONE_2_0_BASELINE.md` (FUTURE/CONCEPTUAL EXTENSION note status), and `01 Domains/Business Domain/Restaurant/Service Copilot/README.md` (its own cross-reference line, formalizing the consumer relationship) — following the final consistency review recorded in this ratification entry.
+
+Reason:
+The Product Owner ratified `ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md` following a dedicated final consistency review against Cognito ([14](ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md)), Human Operational State ([15](ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md)), Attention Management ([12](ConceptualArchitecture/12_Attention_Management.md)), Trigger Intelligence ([13](ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md)), Organizational Responsibility, Identity/Authority/Accountability ([09](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md)), the Epistemic Boundary ([05](ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md)), stable person knowledge/Person Continuity (`01 Domains/Cross Domain/PERSON_CONTINUITY_001.md`), privacy/surveillance boundaries, device independence, and the Restaurant Domain's existing Service Copilot module. No conceptual contradiction was found; the review confirmed that Ambient Operational Context is never confused with Human Operational State (the former answers "what is happening around the person," the latter "how is the person doing"), that ambient observation never by itself constitutes Authority or an Authorized Consequence (Trigger Discovery evidence only), that Ambient Operational Context only ever supplies evidence/context to Attention Management, which alone continues to decide who/when/priority/channel, that Cognito interprets and assists while Service Copilot is confirmed as a Domain **consumer** of this Core concept and never a replacement for Cognito (nor is Cognito a replacement for Service Copilot), that no surveillance/permanent-recording capability is assumed or authorized, that no direct-to-customer default is introduced (the worker remains the human-facing actor), and that no specific vendor/device dependency is introduced (earbud/smartwatch remain illustrative only). The document's own status is accordingly changed from PROPOSED to **APPROVED — Post-Baseline Conceptual Extension**, and Restaurant Domain's Service Copilot is formally recognized, by cross-reference only, as this Core concept's **first Domain-level consumer instance**.
+
+Concepts introduced:
+
+- None new. This entry ratifies the status of concepts already introduced by the prior PROPOSED entry above (Ambient Operational Context, In-Flow Cognito Assistance); it does not add or redefine any concept. The only new formalization is the explicit naming of Service Copilot as this concept's first Domain-level consumer instance — a recognition/cross-reference, not a new concept, capability, or Entity.
+
+Impacted Domains:
+
+- None modified beyond the single targeted Service Copilot cross-reference named above (Restaurant Domain, `01 Domains/Business Domain/Restaurant/Service Copilot/README.md`). Service Copilot's own Purpose, Inputs, Boundaries, module map, and every other approved-content section are untouched: not renamed, not merged into Cognito, and no functional/behavioral change of any kind. No Software, Product, or Domain business-logic file was touched. No new capability, software, database, or Domain business-logic file was implemented by this ratification.
+
+Future Expected Impact:
+
+- Same as the prior PROPOSED entry above; ratification does not by itself trigger new consumption or new implementation, only removes PROPOSED status from the document and its glossary terms, and formally records the pre-existing Service Copilot relationship for discoverability.
+
+Compatibility Notes:
+
+- **APPROVED — Post-Baseline Conceptual Extension does not mean retroactively part of `core-2.0-freeze` or of `release/rf-one-2.0`.** The `core-2.0-freeze` tag was not moved, and its history was not rewritten. Document 16 remains outside the Approved Core 2.0 00–14 canonical set (`00_RF-One_Core_Vision.md` §6) — ratification approves it as a stable, standalone post-baseline extension, exactly as document 15 was ratified before it, not as an addition to that frozen set.
+- Promotion of this document's canonical principle (§1 of document 16) to a numbered entry in `RF-ONE Core Principles.md` is deliberately **not** performed by this entry and remains a separate, future Product Owner decision. `RF-ONE Core Principles.md` was not modified.
+- Recognizing Service Copilot as the first Domain-level consumer instance is a documentation-only, cross-reference-only act: Service Copilot is not renamed, is not merged into Cognito (nor is Cognito merged into it), and none of its approved functional behavior changes as a result of this entry.
+- All prior Core Evolution entries are preserved unchanged, consistent with Historical Integrity (`ArchitecturePrinciples.md`): this is an additive new entry, not a rewrite of the PROPOSED entry it ratifies.
+- No Domain, Product or Software file was modified beyond the single Service Copilot cross-reference line named above. No new capability, software, or database change was implemented by this ratification.
+
+---
+
+---
+
+Version: PROPOSED — Post-Baseline Conceptual Extension (CORE_VISUAL_VIDEO_CONTEXT_AS_AMBIENT_EVIDENCE)
+
+Date: 2026-09-14
+
+Modified Entity:
+A new document `ConceptualArchitecture/17_Visual_Video_Context_as_Ambient_Evidence.md` (status PROPOSED, a sub-extension of document 16, not Approved Core 2.0), plus discoverability/cross-reference-only additions to `ConceptualArchitecture/00_RF-One_Core_Vision.md`, `ConceptualArchitecture/07_Core_Glossary.md`, `ConceptualArchitecture/12_Attention_Management.md`, `ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md`, `ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md`, `ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md` (Related documents only, no substantive section reopened), `README.md`, and `RF_ONE_2_0_BASELINE.md`.
+
+Reason:
+This work was produced on the same dedicated branch as document 16 (`docs/cognito-ambient-operational-context`), following a Product Owner conceptual exploration, not (yet) an approved architectural decision. It formalizes **Visual/Video Context** as one source category of Ambient Operational Context (document 16 §3, already illustrative and non-exhaustive): authorized images/video may contribute scene-level Ambient Evidence (occupancy, queue length, a table occupied, crowding, movement/flow, and similar illustrative, non-exhaustive examples) — never an automatic Fact (applying the existing Epistemic Boundary, [05] §1, unmodified), and never a judgment about a person (a Scene/Activity Understanding vs. Person Judgment distinction the document draws explicitly: "there appears to be a queue," never "this employee is lazy"). It states, as a mandatory boundary, that Visual Ambient Cognition is distinct from Employee Surveillance (no continuous permanent recording, no long-term raw retention, no employee scoring, no disciplinary/productivity monitoring, no covert observation assumed), generalizing document 16 §10's existing surveillance boundary to visual signals specifically. It states that video must not be used automatically to infer Human Operational State, and explicitly declines to formalize facial-expression/posture/movement-speed as fixed interpretive rules — the same "no fixed interpretive rule" discipline document 15 §5 already established for physiological signals, extended here rather than modified. It states retention, third-party/customer privacy, and identity/biometric boundaries (face recognition and biometric identification are named as a separate capability, not implicit in this concept), and preserves the existing Trigger Discovery/Trigger Resolution/Authorized Consequence separation and the Attention Management who/when/priority/channel boundary for visual evidence specifically. Device independence is preserved (no CCTV vendor, camera brand, or smart-glasses product named).
+
+Concepts introduced (PROPOSED, not yet Approved Core 2.0):
+
+- Visual/Video Context (a source category of Ambient Operational Context, not a new Cognito capability)
+- Scene/Activity Understanding vs. Person Judgment (a named distinction for visual/video inferences specifically)
+- The explicit Visual Ambient Cognition ≠ Employee Surveillance boundary
+- The retention principle: derived operational context retained when justified, raw visual media discarded unless a separate business/legal purpose requires it
+- The explicit identity/biometric boundary: "a person appears in area X" ≠ "this is John Smith"; face/biometric/emotion recognition named as a separate, non-implicit capability
+
+Impacted Domains:
+
+- None modified. No Software, Product, or Domain business-logic file was touched. No computer vision model, video ingestion path, camera stream, image storage, object detection, face recognition, biometric identification, or emotion recognition was chosen, designed, or implemented.
+
+Future Expected Impact:
+
+- Any future Domain or Product design considering authorized visual/video signals as an Ambient Operational Context input (e.g. a Restaurant host-stand queue view, a Retail fitting-room occupancy view), and any future consent/retention/compliance implementation task for visual data.
+
+Compatibility Notes:
+
+- All prior Core 2.0 content is preserved; no existing definition was reversed. This entry is additive and, like the initial document 16 entry before its own ratification, is **not** presented as an Approved Core 2.0 change: the new document's own status is "PROPOSED — Post-Baseline Conceptual Extension," it is deliberately **not** added to the canonical 00–14 table in `00_RF-One_Core_Vision.md` §6 or to `README.md`'s "Approved Core 2.0" ConceptualArchitecture description (both list it only for discoverability), and `RF-ONE Core Principles.md` was deliberately **not** modified.
+- The `core-2.0-freeze` tag was not moved and is not referenced as covering this content.
+- Ambient Operational Context ([16](ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md)), Human Operational State ([15](ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md)), Cognito ([14](ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md)), Attention Management ([12](ConceptualArchitecture/12_Attention_Management.md)), Trigger Intelligence ([13](ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md)), the Epistemic Boundary ([05](ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md)), and Identity/Authority/Delegation/Accountability ([09](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md)) are explicitly preserved as-is; this new document specializes them for one narrow, illustrative source category, it does not redefine any of them.
+- No Domain, Product or Software file was modified.
+
+---
+
+---
+
+Version: Core 2.0 (Ratification — CORE_VISUAL_VIDEO_CONTEXT_AS_AMBIENT_EVIDENCE)
+
+Date: 2026-09-14
+
+Modified Entity:
+`ConceptualArchitecture/17_Visual_Video_Context_as_Ambient_Evidence.md` (Status header and the Non-assumptions line about status/document-16-status/`core-2.0-freeze` only), `ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md` (the one "See also" cross-reference status word only, no other section reopened), `ConceptualArchitecture/07_Core_Glossary.md` (status parenthetical for the one term it introduced), `README.md` and `ConceptualArchitecture/00_RF-One_Core_Vision.md` (discoverability line status), `ConceptualArchitecture/12_Attention_Management.md`, `ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md`, and `ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md` (their own "See also" cross-reference status word), and `RF_ONE_2_0_BASELINE.md` (FUTURE/CONCEPTUAL EXTENSION note status) — following the final consistency review recorded in this ratification entry.
+
+Reason:
+The Product Owner ratified `ConceptualArchitecture/17_Visual_Video_Context_as_Ambient_Evidence.md` following a dedicated final consistency review against Ambient Operational Context ([16](ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md)), Human Operational State ([15](ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md)), Cognito ([14](ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md)), Attention Management ([12](ConceptualArchitecture/12_Attention_Management.md)), Trigger Intelligence ([13](ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md)), the Epistemic Boundary ([05](ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md)), Identity/Authority/Accountability ([09](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md)), privacy/surveillance boundaries, device independence, and the `core-2.0-freeze` discipline. No conceptual contradiction was found; the review confirmed that Visual/Video Context remains a source category of Ambient Operational Context and never an independent Cognito capability, that a visual/video signal is Ambient Evidence and never an automatic Fact, that Scene/Activity Understanding is never collapsed into a judgment about a person, that video never automatically infers Human Operational State (no fixed facial-expression/posture/movement-speed interpretive rule is formalized), that visual observation never itself constitutes Authority, that visual evidence may support Trigger Discovery/Attention context but never bypasses Trigger Resolution or an Authorized Consequence, that Visual Ambient Cognition remains explicitly distinct from Employee Surveillance (no permanent recording, no long-term raw retention, no employee scoring, no disciplinary/productivity monitoring, no covert observation assumed), that face recognition and biometric identification remain a separate, non-implicit capability, that raw video retention is not assumed (derived context retained when justified, raw media discarded unless a separate business/legal purpose requires it), and that no specific camera/vendor/device dependency is introduced. The document's own status is accordingly changed from PROPOSED to **APPROVED — Post-Baseline Conceptual Extension**.
+
+Concepts introduced:
+
+- None new. This entry ratifies the status of the concept already introduced by the prior PROPOSED entry above (Visual/Video Context as a source category of Ambient Operational Context); it does not add or redefine any concept.
+
+Impacted Domains:
+
+- None modified. No Software, Product, or Domain business-logic file was touched. No computer vision model, video ingestion path, camera stream, image storage, object detection, face recognition, biometric identification, or emotion recognition was chosen, designed, or implemented by this ratification.
+
+Future Expected Impact:
+
+- Same as the prior PROPOSED entry above; ratification does not by itself trigger new consumption or new implementation, only removes PROPOSED status from the document and its glossary term.
+
+Compatibility Notes:
+
+- **APPROVED — Post-Baseline Conceptual Extension does not mean retroactively part of `core-2.0-freeze` or of `release/rf-one-2.0`.** The `core-2.0-freeze` tag was not moved, and its history was not rewritten. Document 17 remains outside the Approved Core 2.0 00–14 canonical set (`00_RF-One_Core_Vision.md` §6) — ratification approves it as a stable, standalone post-baseline extension, the same discipline already applied to documents 15 and 16.
+- Document 17 remains explicitly a specialization/source category of document 16 ([16](ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md) §12), never a new independent Cognito capability; document 16 itself was not reopened by this ratification beyond its own single cross-reference status word.
+- Promotion of this document's canonical principle (§1 of document 17) to a numbered entry in `RF-ONE Core Principles.md` is deliberately **not** performed by this entry and remains a separate, future Product Owner decision. `RF-ONE Core Principles.md` was not modified.
+- All prior Core Evolution entries are preserved unchanged, consistent with Historical Integrity (`ArchitecturePrinciples.md`): this is an additive new entry, not a rewrite of the PROPOSED entry it ratifies.
+- No Domain, Product or Software file was modified. No software capability was implemented by this ratification.
+
+---
+
 # Design Principles
 
 - The Core Domain is extracted from real domains.
