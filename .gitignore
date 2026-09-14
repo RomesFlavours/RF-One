@@ -40,6 +40,12 @@ __pycache__/
 !03 Software/InvoiceIntake/uploads/.gitkeep
 03 Software/InvoiceIntake/data/*.xlsx
 
+# Aruba mailbox acquisition (Purchased / Invoice Intake email acquisition) —
+# local acquisition-layer state (cursor, provenance, dedup/retry) is
+# operational data, never committed.
+03 Software/InvoiceIntake/data/*.db
+03 Software/InvoiceIntake/data/*.db-journal
+
 # GIT_RELEASE_PREP_002 — real Rome's Flavours invoice/receipt source
 # documents (Domain-level reference copies, distinct from the Software
 # prototype's uploads/ above) are runtime/reference business data, never

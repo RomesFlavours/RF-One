@@ -51,10 +51,11 @@ Deterministic quantity/identity comparison only — `MATCH`, `SHORT`, `EXTRA`, `
 
 ## 5. InvoiceIntake integration (`03 Software/InvoiceIntake/purchased_bridge.py`)
 
-`InvoiceIntake` (OCR/text extraction → human review → save) saves through this bridge into the RF-One Data Store — the Purchased Purchase Fact, per the ownership realignment above (renamed from `purchasing_bridge.py`; same persistence target, same tables):
+`InvoiceIntake` (OCR/text extraction → human review → save) saves through this bridge into the RF-One Data Store — the Purchased Purchase Fact, per the ownership realignment above (renamed from `purchasing_bridge.py`; same persistence target, same tables). The source document reaches this bridge either via manual upload (`app.py`) or, as of "Purchased Invoice Intake — Aruba Mailbox Acquisition," via `mailbox_acquisition/` polling Rome's Flavours' operational mailbox (`invoices@romesflavours.com`) — both converge on the exact same pipeline:
 
 ```text
-Supplier document (PDF/photo)
+Supplier document (PDF/photo — manual upload, or an email attachment
+acquired by mailbox_acquisition/)
         ↓
 ocr_engine.py / parser.py     (unchanged — still heuristic, still human-reviewed)
         ↓

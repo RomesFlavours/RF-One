@@ -370,3 +370,21 @@ def get_saved_document_functional_status(purchase_document_id: int) -> str:
     session_factory = create_session_factory(engine)
     with session_factory() as session:
         return repo.get_document_functional_status(session, purchase_document_id)
+
+
+def get_saved_document_supplier_name(purchase_document_id: int) -> str | None:
+    """The resolved Supplier name for an already-saved document, or `None`
+    if the document no longer exists — a thin read-only helper for admin
+    views (e.g. `mailbox/` acquisition's own view) that display which
+    Supplier a delivered document was recognized as, without exposing the
+    Purchasing repository/session machinery directly."""
+
+    url = get_database_url()
+    engine = create_configured_engine(url)
+    session_factory = create_session_factory(engine)
+    with session_factory() as session:
+        document = session.get(m.PurchaseDocument, purchase_document_id)
+        if document is None:
+            return None
+        supplier = session.get(m.Supplier, document.supplier_id)
+        return supplier.name if supplier is not None else None
