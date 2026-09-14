@@ -1,7 +1,7 @@
 """Tip Payment Instruction — RF-One's own canonical duplicate-payment guard
-and Outcome Verification for paying a finalized TipDistributionCalculationRun
-through Mercury (TASK_TIPS_CORE2_PILOT; `01 Domains/Business Domain/
-Restaurant/Tips/Tips Payment Execution.md`).
+and Outcome Verification for paying out a Tip Payment Cycle through Mercury
+(TASK_TIPS_CORE2_PILOT; TASK_TIPS_COMPLETE_001 §10; `01 Domains/Business
+Domain/Restaurant/Tips/Tips Payment Execution.md`).
 
 Consumes, never redefines, Core 2.0:
 - Process Autonomy / completion requires a verified result, not a dispatched
@@ -11,10 +11,11 @@ Consumes, never redefines, Core 2.0:
 - Attention Management's CRITICAL/HIGH/MEDIUM/LOW, contextually determined,
   never a fixed table (`12_...md` §3).
 
-Deliberately reuses (never recomputes) `distribution_engine.
-build_employee_review`'s existing `net_before_adjustments_minor` as the
-per-Employee Final Payable — this module adds payment identity and outcome
-tracking, it does not touch a single Tip Business Rule.
+This module owns Payment Instruction identity/submission/outcome tracking
+only — WHICH Employees/amounts end up in an instruction (aggregating
+`TipEntitlement` rows across a Payment Cycle) is `payment_cycle_service.
+start_payment_cycle`'s concern, not this module's; this module never reads
+`TipEntitlement` or `TipDistributionCalculationRun` directly.
 """
 
 from __future__ import annotations
@@ -31,7 +32,6 @@ from ..technical.connectors.mercury.client import (
     MercuryAuthError, MercuryClient, MercuryDuplicateProtectionError, MercuryNotFoundError,
     MercuryUnavailableError, MercuryValidationError,
 )
-from . import distribution_engine as engine_svc
 
 UTC = timezone.utc
 
@@ -60,58 +60,23 @@ PRIORITY_LOW = "LOW"
 _MERCURY_TERMINAL_FAILURE_STATUSES = {"failed", "blocked", "cancelled"}
 
 
-def build_idempotency_key(calculation_run_id: int, employee_id: int, reference_id: int) -> str:
+def build_idempotency_key(payment_cycle_id: int, employee_id: int, reference_id: int) -> str:
     """Deterministic from RF-One's own canonical Payment Instruction
     identity PLUS the specific recipient reference resolved at submit time
     — never random, never provider-influenced (task §5). Including
-    `reference_id` (not just run+employee) is required by empirical Mercury
-    sandbox behavior: resubmitting under the SAME key after the underlying
-    `recipientId` changed (a corrected reference) returns HTTP 409, not a
-    safe replay — see `models.TipPaymentInstruction.idempotency_key`. The
-    SAME key is still reused on every retry against the SAME resolved
-    reference (a transient-failure retry stays deduplicated); only a
-    genuine reference correction derives a new key."""
-    return f"RFONE-TIPS-RUN{calculation_run_id}-EMP{employee_id}-REF{reference_id}"
+    `reference_id` (not just cycle+employee) is required by empirical
+    Mercury sandbox behavior: resubmitting under the SAME key after the
+    underlying `recipientId` changed (a corrected reference) returns HTTP
+    409, not a safe replay — see `models.TipPaymentInstruction.
+    idempotency_key`. The SAME key is still reused on every retry against
+    the SAME resolved reference (a transient-failure retry stays
+    deduplicated); only a genuine reference correction derives a new key.
 
-
-def get_or_create_payment_instructions_for_run(
-    session: Session, run: "m.TipDistributionCalculationRun",
-) -> list["m.TipPaymentInstruction"]:
-    """Idempotent by construction (task §5): calling this twice for the same
-    Run never creates a second row for the same Employee —
-    `uq_tip_payment_instruction_run_employee` makes a duplicate structurally
-    impossible even under a concurrent double-invocation, and this function
-    checks first so the normal (non-racing) path never even attempts one.
-
-    Only Employees with a strictly positive `net_before_adjustments_minor`
-    (`distribution_engine.build_employee_review`) get an instruction — an
-    Employee who net-owes nothing this period has nothing to pay out."""
-    existing_by_employee = {
-        row.employee_id: row
-        for row in session.scalars(
-            select(m.TipPaymentInstruction).where(m.TipPaymentInstruction.calculation_run_id == run.id)
-        )
-    }
-    review_rows = engine_svc.build_employee_review(session, run)
-
-    instructions: list[m.TipPaymentInstruction] = []
-    for row in review_rows:
-        if row.net_before_adjustments_minor <= 0:
-            continue
-        existing = existing_by_employee.get(row.employee_id)
-        if existing is not None:
-            instructions.append(existing)
-            continue
-        instruction = m.TipPaymentInstruction(
-            calculation_run_id=run.id, employee_id=row.employee_id,
-            amount_minor=row.net_before_adjustments_minor,
-            idempotency_key=None,  # derived at first submit, once a recipient reference is resolved — see build_idempotency_key.
-            status=STATUS_READY,
-        )
-        session.add(instruction)
-        instructions.append(instruction)
-    session.flush()
-    return instructions
+    Keyed by `payment_cycle_id` (TASK_TIPS_COMPLETE_001 §4/§10), not a
+    single `calculation_run_id` — one Payment Instruction may now aggregate
+    entitlements from many calculation runs/Business Dates, so the Payment
+    Cycle (not any one run) is this instruction's true, stable identity."""
+    return f"RFONE-TIPS-CYCLE{payment_cycle_id}-EMP{employee_id}-REF{reference_id}"
 
 
 def _active_recipient_reference(session: Session, employee_id: int) -> "m.EmployeeExternalPaymentAccount | None":
@@ -162,7 +127,7 @@ def submit_payment_instruction(
     # was derived yet) derives a fresh one — see `build_idempotency_key`.
     if instruction.provider_recipient_id != reference.provider_recipient_id or instruction.idempotency_key is None:
         instruction.idempotency_key = build_idempotency_key(
-            instruction.calculation_run_id, instruction.employee_id, reference.id,
+            instruction.payment_cycle_id, instruction.employee_id, reference.id,
         )
     instruction.provider_recipient_id = reference.provider_recipient_id
 

@@ -97,7 +97,7 @@ The migration scripts live in `migrations/versions/`. `migrations/env.py` resolv
 | `create_database.py` | Entry point: create schema + validate. |
 | `inspect_database.py` | Entry point: read-only schema/row-count inventory. |
 | `rfone_data_store/ingestion/` | The Clover source adapter (TASK_DATABASE_002) — see `CLOVER_INGESTION.md`. |
-| `rfone_data_store/tips/` | Post-hoc Tip calculation engine — `engine.py` (calculation), `resolvers.py` (service-attribution boundary), `rounding.py` (deterministic largest-remainder apportionment). TASK_TIPS_001 — see `RESTAURANT_PROFILE.md` §3 and `01 Domains/Business Domain/Restaurant/Tips/`. |
+| `rfone_data_store/tips/` | Tip Distribution Engine (`distribution_engine.py`), Distribution Rule configuration (`distribution_rule_service.py`), Calculation/Payment Schedule configuration (`schedule_service.py`), Payment Cycle aggregation/Approve & Pay/Attention integration (`payment_cycle_service.py`), Mercury payout instruction identity (`payment_instruction.py`), calculation trigger orchestration (`payout_process.py`), the two automatic scheduler loops (`scheduler.py`), readiness (`readiness.py`), `resolvers.py` (service-attribution boundary), `rounding.py` (deterministic largest-remainder apportionment). See `01 Domains/Business Domain/Restaurant/Tips/Tips Configuration.md` and `Tips Payment Execution.md`. |
 | `rfone_data_store/tips_validation.py` | Synthetic-fixture Tips engine tests, same pattern as `schema_validation.py`. Always rolled back. |
 | `calculate_tips.py` | Entry point: post-hoc Tip calculation for a Restaurant/period, dry-run by default. |
 | `validate_tips_readiness.py` | Entry point: read-only Tips readiness report against the configured database. |

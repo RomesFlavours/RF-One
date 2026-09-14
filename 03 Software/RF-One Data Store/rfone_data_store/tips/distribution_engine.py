@@ -28,7 +28,7 @@ scheduling are explicitly NOT implemented here — see
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
@@ -554,6 +554,49 @@ def build_employee_review(session: Session, run: m.TipDistributionCalculationRun
             )
         )
     return rows
+
+
+def populate_entitlements_for_run(
+    session: Session, run: m.TipDistributionCalculationRun, *, business_date: date | None = None,
+) -> list[m.TipEntitlement]:
+    """TASK_TIPS_COMPLETE_001 §9 — persists `build_employee_review`'s own
+    per-Employee aggregate (gross/outbound/inbound/net) as one `TipEntitlement`
+    row per Employee for this run, so it can later be aggregated across MANY
+    runs/Business Dates into a Payment Cycle (§4/§10) without re-deriving it
+    from `TipDistributionAllocation` again. Idempotent: calling this twice
+    for the same COMPLETE run never creates duplicate rows (`uq_tip_
+    entitlement_run_employee`) — existing rows are left exactly as they
+    were (an entitlement, once persisted, is never silently recomputed; a
+    genuine correction goes through the same run-supersession discipline
+    `run_tip_distribution_calculation` already uses).
+
+    `business_date` is the caller's own business-date attribution for this
+    run's period (`readiness.business_date_period`'s inverse) — left `None`
+    for a manually-chosen, non-single-day period, per `TipEntitlement`'s own
+    docstring. Only ever called for a COMPLETE run; a FAILED run has no
+    employee results to persist."""
+    if run.status != STATUS_COMPLETE:
+        return []
+
+    existing = list(
+        session.scalars(select(m.TipEntitlement).where(m.TipEntitlement.calculation_run_id == run.id))
+    )
+    if existing:
+        return existing
+
+    review_rows = build_employee_review(session, run)
+    entitlements: list[m.TipEntitlement] = []
+    for row in review_rows:
+        entitlement = m.TipEntitlement(
+            calculation_run_id=run.id, restaurant_id=run.restaurant_id, business_date=business_date,
+            employee_id=row.employee_id, gross_amount_minor=row.gross_earned_tips_minor,
+            outbound_amount_minor=row.outbound_tip_out_minor, inbound_amount_minor=row.inbound_tip_out_minor,
+            payable_amount_minor=row.net_before_adjustments_minor, tip_payment_instruction_id=None,
+        )
+        session.add(entitlement)
+        entitlements.append(entitlement)
+    session.flush()
+    return entitlements
 
 
 def get_order_drilldown(session: Session, run: m.TipDistributionCalculationRun, order_id: int) -> dict | None:

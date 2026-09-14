@@ -60,9 +60,11 @@ from rfone_data_store.technical.connectors.clover.acquisition import (  # noqa: 
 )
 from rfone_data_store.tips import distribution_engine as engine_svc  # noqa: E402
 from rfone_data_store.tips import distribution_rule_service as rule_svc  # noqa: E402
+from rfone_data_store.tips import payment_cycle_service as cycle_svc  # noqa: E402
 from rfone_data_store.tips import payment_instruction as pi_svc  # noqa: E402
 from rfone_data_store.tips import payout_process as payout_svc  # noqa: E402
 from rfone_data_store.tips import readiness as readiness_svc  # noqa: E402
+from rfone_data_store.tips import schedule_service as sched_svc  # noqa: E402
 from rfone_data_store.technical.connectors.mercury.client import (  # noqa: E402
     MercuryClient, MercuryConnectorError,
 )
@@ -571,17 +573,125 @@ def calculate_tips_history():
 
 
 # ---------------------------------------------------------------------------
-# Tip Payouts — Mercury Sandbox pilot (TASK_TIPS_CORE2_PILOT §15).
-#
-# This is EXCEPTION-HANDLING and CONFIGURATION UI, not the normal Process:
-# the normal Process (readiness -> calculate -> pay out -> verify Outcome)
-# runs without a human opening this screen at all
-# (`rfone_data_store.tips.payout_process.run_business_date_payout`, callable
-# identically from a script or a future scheduler). This page exists so a
-# human can (a) see what, if anything, currently needs attention, (b)
-# manually trigger a run for this pilot (standing in for a future automatic
-# Process Activation trigger), and (c) link an Employee to an existing
-# Mercury sandbox recipient — never create one (task §7).
+# Tips Configuration (TASK_TIPS_COMPLETE_001 §3) — Calculation Schedule and
+# Payment Schedule, Restaurant-scoped, deliberately independent of each
+# other. "Run Calculation Now" (task §15) lives here too — the Clover-
+# readiness-gated manual trigger, distinct from the existing "Calculate
+# Tips" tab's own operator-chosen From/Through form (kept unchanged, for
+# ad hoc/backfill periods).
+# ---------------------------------------------------------------------------
+
+
+def _parse_time(value: str | None) -> time | None:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%H:%M").time()
+    except ValueError:
+        return None
+
+
+@app.route("/tips-configuration")
+def tips_configuration_home():
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        calc_config = None
+        payment_config = None
+        readiness_state = None
+        if restaurant is not None:
+            calc_config = sched_svc.get_calculation_schedule_effective_at(session, restaurant_id=restaurant.id)
+            payment_config = sched_svc.get_payment_schedule_effective_at(session, restaurant_id=restaurant.id)
+            readiness_state = readiness_svc.describe_readiness(session, restaurant.id)
+        return render_template(
+            "tips_configuration.html", restaurant=restaurant, calc_config=calc_config,
+            payment_config=payment_config, readiness_state=readiness_state,
+            schedule_modes=m.TIPS_SCHEDULE_MODES, active_nav="tips-configuration",
+        )
+
+
+@app.route("/tips-configuration/calculation-schedule", methods=["POST"])
+def tips_configuration_set_calculation_schedule():
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        if restaurant is None:
+            flash("No Restaurant exists in this database yet.", "error")
+            return redirect(url_for("tips_configuration_home"))
+        mode = request.form.get("mode") or ""
+        interval_days = request.form.get("interval_days", type=int)
+        execution_time = _parse_time(request.form.get("execution_time"))
+        anchor_date_dt = _parse_date(request.form.get("anchor_date"))
+        try:
+            sched_svc.set_calculation_schedule(
+                session, restaurant_id=restaurant.id, mode=mode, interval_days=interval_days,
+                execution_time=execution_time, anchor_date=anchor_date_dt.date() if anchor_date_dt else None,
+                created_by=(request.form.get("created_by") or "").strip() or None,
+            )
+            session.commit()
+            flash("Calculation Schedule updated.", "summary")
+        except sched_svc.ScheduleConfigError as exc:
+            session.rollback()
+            flash(str(exc), "error")
+    return redirect(url_for("tips_configuration_home"))
+
+
+@app.route("/tips-configuration/payment-schedule", methods=["POST"])
+def tips_configuration_set_payment_schedule():
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        if restaurant is None:
+            flash("No Restaurant exists in this database yet.", "error")
+            return redirect(url_for("tips_configuration_home"))
+        mode = request.form.get("mode") or ""
+        interval_days = request.form.get("interval_days", type=int)
+        execution_time = _parse_time(request.form.get("execution_time"))
+        anchor_date_dt = _parse_date(request.form.get("anchor_date"))
+        mercury_source_account_id = (request.form.get("mercury_source_account_id") or "").strip() or None
+        try:
+            sched_svc.set_payment_schedule(
+                session, restaurant_id=restaurant.id, mode=mode, interval_days=interval_days,
+                execution_time=execution_time, anchor_date=anchor_date_dt.date() if anchor_date_dt else None,
+                mercury_source_account_id=mercury_source_account_id,
+                created_by=(request.form.get("created_by") or "").strip() or None,
+            )
+            session.commit()
+            flash("Payment Schedule updated.", "summary")
+        except sched_svc.ScheduleConfigError as exc:
+            session.rollback()
+            flash(str(exc), "error")
+    return redirect(url_for("tips_configuration_home"))
+
+
+@app.route("/tips-configuration/run-calculation-now", methods=["POST"])
+def tips_configuration_run_calculation_now():
+    """Task §15 — "Run Calculation Now": always targets the latest
+    Business Date via `readiness.describe_readiness`, gated by Clover
+    readiness (task §5) exactly like the automatic scheduler would be —
+    manual and automatic triggers share the exact same gated entry point,
+    `payout_process.run_calculation_now`."""
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        if restaurant is None:
+            flash("No Restaurant exists in this database yet.", "error")
+            return redirect(url_for("tips_configuration_home"))
+        result = payout_svc.run_calculation_now(session, restaurant_id=restaurant.id)
+        session.commit()
+        if result.ran:
+            flash(
+                f"Business Date {result.business_date}: calculated, {result.entitlements_created} "
+                "Tip Entitlement(s) persisted.",
+                "summary",
+            )
+        else:
+            flash(result.blocked_reason or "Nothing to calculate.", "error")
+    return redirect(url_for("tips_configuration_home"))
+
+
+# ---------------------------------------------------------------------------
+# Tips Payment Control (TASK_TIPS_COMPLETE_001 §13/§14) — authorized visual
+# control surface over the Payment Cycle: REVIEW (read-only) and
+# APPROVE & PAY (gated by `authority_service.authorize()`, never `is_admin`).
+# Not a workflow engine — every action here delegates entirely to
+# `tips.payment_cycle_service`/`tips.payment_instruction`.
 #
 # SANDBOX ONLY: `MercuryClient()` defaults to the Mercury Sandbox base URL
 # and reads `MERCURY_SANDBOX_API_TOKEN` from the environment. No production
@@ -590,34 +700,49 @@ def calculate_tips_history():
 
 
 def _pilot_source_account_id(client: MercuryClient) -> str | None:
-    """Pilot-only convenience: the first active Mercury `checking` account
-    with a positive balance. A real deployment would read this from an
-    explicit Restaurant-scoped configuration (mirroring `Payment
-    Execution.md`'s `PayrollExecutionConfiguration` pattern) — not built
-    here, since this pilot has exactly one sandbox organization and no
-    multi-account selection requirement to satisfy yet."""
+    """Fallback ONLY when this Restaurant has not yet configured a Mercury
+    source account (`TipsPaymentScheduleConfig.mercury_source_account_id` —
+    task §3's Payment Schedule configuration, resolved first by
+    `_resolve_source_account_id` below): the first active Mercury `checking`
+    account with a positive balance. Never used once a Restaurant has
+    configured its own account explicitly."""
     for account in client.get_accounts():
         if account.type == "mercury" and account.status == "active" and account.kind == "checking" and account.available_balance > 0:
             return account.id
     return None
 
 
-@app.route("/payouts")
-def payouts_home():
+def _resolve_source_account_id(session, restaurant_id: int, client: MercuryClient) -> str | None:
+    payment_config = sched_svc.get_payment_schedule_effective_at(session, restaurant_id=restaurant_id)
+    if payment_config is not None and payment_config.mercury_source_account_id:
+        return payment_config.mercury_source_account_id
+    return _pilot_source_account_id(client)
+
+
+@app.route("/payment-control")
+def payment_control_home():
     with SessionFactory() as session:
         restaurant = _default_restaurant(session)
-        state = None
+        calc_state = None
+        cycle_readiness = None
+        open_cycle = None
         instructions = []
         employees_by_id = {}
         references_by_employee = {}
+        attention_items_by_instruction = {}
+        mercury_balance = None
         connector_error = None
+        identities = list(session.scalars(select(m.ActingIdentity).order_by(m.ActingIdentity.display_name)))
+
         if restaurant is not None:
-            state = readiness_svc.describe_readiness(session, restaurant.id)
-            if state.calculation_run is not None:
+            calc_state = readiness_svc.describe_readiness(session, restaurant.id)
+            cycle_readiness = cycle_svc.describe_payment_cycle_readiness(session, restaurant.id)
+            open_cycle = cycle_readiness.open_cycle
+            if open_cycle is not None:
                 instructions = list(
                     session.scalars(
                         select(m.TipPaymentInstruction)
-                        .where(m.TipPaymentInstruction.calculation_run_id == state.calculation_run.id)
+                        .where(m.TipPaymentInstruction.payment_cycle_id == open_cycle.id)
                         .order_by(m.TipPaymentInstruction.employee_id)
                     )
                 )
@@ -635,98 +760,143 @@ def payouts_home():
                             )
                         )
                     }
+                attention_items_by_instruction = {
+                    i.id: session.get(m.AttentionItem, i.attention_item_id)
+                    for i in instructions if i.attention_item_id is not None
+                }
             try:
-                MercuryClient()
+                client = MercuryClient()
+                account_id = _resolve_source_account_id(session, restaurant.id, client)
+                if account_id is not None:
+                    accounts = {a.id: a for a in client.get_accounts()}
+                    account = accounts.get(account_id)
+                    # Never the full account object (task §13 "NON mostrare
+                    # dati bancari completi") — only the one figure this
+                    # control surface needs.
+                    mercury_balance = account.available_balance if account is not None else None
             except MercuryConnectorError as exc:
                 connector_error = str(exc)
 
         return render_template(
-            "payouts.html", restaurant=restaurant, state=state, instructions=instructions,
-            employees_by_id=employees_by_id, references_by_employee=references_by_employee,
-            connector_error=connector_error, active_nav="payouts",
+            "payment_control.html", restaurant=restaurant, calc_state=calc_state, cycle_readiness=cycle_readiness,
+            open_cycle=open_cycle, instructions=instructions, employees_by_id=employees_by_id,
+            references_by_employee=references_by_employee, attention_items_by_instruction=attention_items_by_instruction,
+            mercury_balance=mercury_balance, connector_error=connector_error, identities=identities,
+            active_nav="payment-control",
         )
 
 
-@app.route("/payouts/run", methods=["POST"])
-def payouts_run():
+@app.route("/payment-control/start-cycle", methods=["POST"])
+def payment_control_start_cycle():
     with SessionFactory() as session:
         restaurant = _default_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
-            return redirect(url_for("payouts_home"))
+            return redirect(url_for("payment_control_home"))
+        cycle = cycle_svc.start_payment_cycle(
+            session, restaurant_id=restaurant.id, triggered_by=m.TIP_PAYMENT_CYCLE_TRIGGER_MANUAL,
+        )
+        session.commit()
+        if cycle is None:
+            flash("Nothing unpaid to aggregate into a Payment Cycle.", "error")
+        else:
+            flash(f"Payment Cycle {cycle.id} opened — review below before Approve & Pay.", "summary")
+    return redirect(url_for("payment_control_home"))
+
+
+@app.route("/payment-control/approve-and-pay", methods=["POST"])
+def payment_control_approve_and_pay():
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        cycle = cycle_svc.get_open_cycle(session, restaurant.id) if restaurant is not None else None
+        if cycle is None:
+            flash("No open Payment Cycle to approve.", "error")
+            return redirect(url_for("payment_control_home"))
+
+        acting_identity_id = request.form.get("acting_identity_id", type=int)
+        acting_identity = session.get(m.ActingIdentity, acting_identity_id) if acting_identity_id else None
+        if acting_identity is None:
+            flash("Select the Acting Identity approving this payout.", "error")
+            return redirect(url_for("payment_control_home"))
+
         try:
             client = MercuryClient()
-            source_account_id = _pilot_source_account_id(client)
+            source_account_id = _resolve_source_account_id(session, restaurant.id, client)
             if source_account_id is None:
-                flash("No active Mercury sandbox checking account with a positive balance was found.", "error")
-                return redirect(url_for("payouts_home"))
-            result = payout_svc.run_business_date_payout(
-                session, restaurant_id=restaurant.id, client=client, source_account_id=source_account_id,
+                flash("No Mercury sandbox source account configured or available.", "error")
+                return redirect(url_for("payment_control_home"))
+            result = cycle_svc.approve_and_pay_cycle(
+                session, cycle=cycle, acting_identity=acting_identity, client=client,
+                source_account_id=source_account_id,
             )
             session.commit()
+        except cycle_svc.ApproveAndPayError as exc:
+            session.rollback()
+            flash(str(exc), "error")
+            return redirect(url_for("payment_control_home"))
         except MercuryConnectorError as exc:
             session.rollback()
             flash(f"Mercury sandbox connector error: {exc}", "error")
-            return redirect(url_for("payouts_home"))
+            return redirect(url_for("payment_control_home"))
 
-        if result.blocked_reason:
-            flash(result.blocked_reason, "error")
-        else:
-            flash(
-                f"Business Date {result.business_date}: {result.submitted_count} instruction(s) submitted, "
-                f"{result.verified_count} Outcome-verified, {result.needs_attention_count} needing attention.",
-                "summary",
-            )
-    return redirect(url_for("payouts_home"))
+        flash(
+            f"Payment Cycle {cycle.id} approved: {result.submitted_count} instruction(s) submitted, "
+            f"{result.needs_attention_count} needing attention.",
+            "summary",
+        )
+    return redirect(url_for("payment_control_home"))
 
 
-@app.route("/payouts/instruction/<int:instruction_id>/retry", methods=["POST"])
-def payouts_retry_instruction(instruction_id: int):
+@app.route("/payment-control/instruction/<int:instruction_id>/retry", methods=["POST"])
+def payment_control_retry_instruction(instruction_id: int):
     with SessionFactory() as session:
         instruction = session.get(m.TipPaymentInstruction, instruction_id)
         if instruction is None:
             flash("Payment Instruction not found.", "error")
-            return redirect(url_for("payouts_home"))
+            return redirect(url_for("payment_control_home"))
+        cycle = session.get(m.TipPaymentCycle, instruction.payment_cycle_id)
         try:
             client = MercuryClient()
-            source_account_id = instruction.provider_account_id or _pilot_source_account_id(client)
+            source_account_id = instruction.provider_account_id or (
+                _resolve_source_account_id(session, cycle.restaurant_id, client) if cycle is not None else None
+            )
             if source_account_id is None:
                 flash("No Mercury sandbox source account available for retry.", "error")
-                return redirect(url_for("payouts_home"))
-            payout_svc.retry_instruction(session, instruction, client, source_account_id=source_account_id)
+                return redirect(url_for("payment_control_home"))
+            cycle_svc.retry_instruction(session, instruction, client, source_account_id=source_account_id)
             session.commit()
         except MercuryConnectorError as exc:
             session.rollback()
             flash(f"Mercury sandbox connector error: {exc}", "error")
-            return redirect(url_for("payouts_home"))
+            return redirect(url_for("payment_control_home"))
         flash(f"Payment Instruction {instruction.id} retried — status is now {instruction.status}.", "summary")
-    return redirect(url_for("payouts_home"))
+    return redirect(url_for("payment_control_home"))
 
 
-@app.route("/payouts/employee/<int:employee_id>/link-recipient", methods=["POST"])
-def payouts_link_recipient(employee_id: int):
+@app.route("/payment-control/employee/<int:employee_id>/link-recipient", methods=["POST"])
+def payment_control_link_recipient(employee_id: int):
     """Links an Employee to an EXISTING Mercury sandbox recipient by exact
-    name (task §7: never creates one). Deactivates any prior active
+    name (task §7/§11: never creates one). Deactivates any prior active
     reference for this Employee rather than deleting it (Historical
     Integrity)."""
     recipient_name = (request.form.get("recipient_name") or "").strip()
     if not recipient_name:
         flash("Recipient name is required.", "error")
-        return redirect(url_for("payouts_home"))
+        return redirect(url_for("payment_control_home"))
     with SessionFactory() as session:
         employee = session.get(m.Employee, employee_id)
         if employee is None:
             flash("Employee not found.", "error")
-            return redirect(url_for("payouts_home"))
+            return redirect(url_for("payment_control_home"))
         try:
             client = MercuryClient()
             recipient = client.find_recipient_by_name(recipient_name)
         except MercuryConnectorError as exc:
             flash(f"Mercury sandbox connector error: {exc}", "error")
-            return redirect(url_for("payouts_home"))
+            return redirect(url_for("payment_control_home"))
         if recipient is None:
             flash(f"No Mercury sandbox recipient named {recipient_name!r} was found.", "error")
-            return redirect(url_for("payouts_home"))
+            return redirect(url_for("payment_control_home"))
 
         existing = session.scalars(
             select(m.EmployeeExternalPaymentAccount).where(
@@ -744,7 +914,7 @@ def payouts_link_recipient(employee_id: int):
         )
         session.commit()
         flash(f"Employee {employee_id} linked to Mercury sandbox recipient {recipient.name!r}.", "summary")
-    return redirect(url_for("payouts_home"))
+    return redirect(url_for("payment_control_home"))
 
 
 # ---------------------------------------------------------------------------

@@ -1,10 +1,11 @@
 """Automated synthetic tests for the Tips Core 2.0 Payment Execution pilot
-(TASK_TIPS_CORE2_PILOT §18).
+(TASK_TIPS_CORE2_PILOT §18; TASK_TIPS_COMPLETE_001).
 
 Mirrors `tips_distribution_engine_validation.py`'s pattern exactly: builds a
 synthetic fixture inside a disposable database, exercises `tips.readiness`,
-`tips.payment_instruction`, and `tips.payout_process`, asserts the required
-behaviors, and always rolls back.
+`tips.payout_process`, `tips.payment_cycle_service`, and
+`tips.payment_instruction`, asserts the required behaviors, and always rolls
+back.
 
 Uses a FAKE Mercury client (`_FakeMercuryClient` below) — this file makes NO
 network call and requires no `MERCURY_SANDBOX_API_TOKEN`. The one real-
@@ -22,12 +23,14 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import authority_service
 from . import models as m
 from .technical.connectors.mercury.client import (
     MercuryAccount, MercuryDuplicateProtectionError, MercuryTransaction, MercuryValidationError,
 )
 from .tips import distribution_engine as engine
 from .tips import distribution_rule_service as rule_svc
+from .tips import payment_cycle_service as cycle_svc
 from .tips import payment_instruction as pi_svc
 from .tips import payout_process as payout_svc
 from .tips import readiness as readiness_svc
@@ -55,6 +58,7 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
     with session_factory() as session:
         try:
             _run_all_scenarios(session, result)
+            _test_reconciliation_gate_on_business_date_readiness(session, result)
         finally:
             session.rollback()
     return result
@@ -228,6 +232,21 @@ def _link_recipient(session: Session, employee: m.Employee, recipient_id: str) -
     session.commit()
 
 
+def _make_authorized_approver(session: Session, *, suffix: str) -> m.ActingIdentity:
+    """A synthetic, authorized Acting Identity for Approve & Pay (task §14)
+    — reuses `authority_service.grant_authority`, never a hand-rolled
+    permission check."""
+    approver = m.ActingIdentity(kind="HUMAN_USER", display_name=f"Approver {suffix}", is_active=True)
+    session.add(approver)
+    session.flush()
+    authority_service.grant_authority(
+        session, actor=approver, domain=cycle_svc.AUTHORITY_DOMAIN_TIPS,
+        action=cycle_svc.AUTHORITY_ACTION_APPROVE_AND_PAY, scope_type=m.SCOPE_GLOBAL, scope_id=None,
+    )
+    session.commit()
+    return approver
+
+
 def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
     restaurant, server_a, server_b, make_order_with_tip = _build_base_fixture(session)
 
@@ -241,6 +260,34 @@ def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
     state1 = readiness_svc.describe_readiness(session, restaurant.id)
     result.check("readiness: candidate Business Date found once Orders exist", state1.business_date == date(2026, 3, 6))
     result.check("readiness: ready_to_calculate is True before any calculation run", state1.ready_to_calculate)
+    result.check(
+        "readiness: a non-'CLOVER'-coded (test) Location is never gated by the Clover readiness check",
+        state1.clover_ready is True,
+    )
+
+    # === 2: Calculation — gated, idempotent, persists Tip Entitlements ===
+    calc_result = payout_svc.run_calculation_now(session, restaurant_id=restaurant.id)
+    session.commit()
+    result.check("calculation: Run Calculation Now ran successfully", calc_result.ran)
+    result.check(
+        "calculation: one Tip Entitlement persisted per Employee touched",
+        calc_result.entitlements_created == 2,
+    )
+
+    calc_result_again = payout_svc.run_calculation_now(session, restaurant_id=restaurant.id)
+    result.check(
+        "calculation: re-running for the same, already-calculated Business Date is blocked, not silently redone",
+        not calc_result_again.ran and calc_result_again.blocked_reason is not None,
+    )
+
+    entitlements = list(
+        session.scalars(select(m.TipEntitlement).where(m.TipEntitlement.restaurant_id == restaurant.id))
+    )
+    result.check(
+        "entitlements: each carries its own Business Date/gross/net figures, unpaid (no instruction yet)",
+        len(entitlements) == 2 and all(e.business_date == date(2026, 3, 6) for e in entitlements)
+        and all(e.tip_payment_instruction_id is None for e in entitlements),
+    )
 
     _link_recipient(session, server_a, "recipient-a-ok")
     _link_recipient(session, server_b, "recipient-b-fail")
@@ -250,15 +297,63 @@ def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
         recipient_behavior={"recipient-a-ok": "ok", "recipient-b-fail": "sync_fail"},
     )
 
-    # === 2: payout success + synchronous failure + one-payee isolation, in
-    # ONE batch run — ServerA succeeds, ServerB fails, ServerA is unaffected.
-    run_result = payout_svc.run_business_date_payout(
-        session, restaurant_id=restaurant.id, client=client, source_account_id="acct-1",
+    # === 3: Payment Cycle — aggregates unpaid entitlements, one instruction
+    # per Employee, still just REVIEW (OPEN), nothing submitted yet. ===
+    readiness_before = cycle_svc.describe_payment_cycle_readiness(session, restaurant.id)
+    result.check(
+        "payment cycle readiness: unpaid entitlements are visible before any cycle exists",
+        readiness_before.has_unpaid and readiness_before.payee_count == 2 and readiness_before.open_cycle is None,
+    )
+    cycle = cycle_svc.start_payment_cycle(session, restaurant_id=restaurant.id, triggered_by="MANUAL")
+    session.commit()
+    result.check("payment cycle: Start Payment Cycle Now opens a new OPEN cycle", cycle is not None and cycle.status == "OPEN")
+
+    same_cycle = cycle_svc.start_payment_cycle(session, restaurant_id=restaurant.id, triggered_by="MANUAL")
+    result.check(
+        "payment cycle: starting again while one is OPEN is idempotent — returns the SAME cycle, never a second one",
+        same_cycle.id == cycle.id,
+    )
+
+    instructions = list(
+        session.scalars(select(m.TipPaymentInstruction).where(m.TipPaymentInstruction.payment_cycle_id == cycle.id))
+    )
+    by_employee = {i.employee_id: i for i in instructions}
+    result.check("payment cycle: two Payment Instructions were created (one per Employee)", len(instructions) == 2)
+    result.check(
+        "payment cycle: entitlements are now linked to their Payment Instruction",
+        all(e.tip_payment_instruction_id is not None for e in session.scalars(
+            select(m.TipEntitlement).where(m.TipEntitlement.restaurant_id == restaurant.id)
+        )),
+    )
+
+    # === 4: Approve & Pay — unauthorized identity rejected, no Mercury call
+    # made, no state changed. ===
+    unauthorized = m.ActingIdentity(kind="HUMAN_USER", display_name="Rando", is_active=True)
+    session.add(unauthorized)
+    session.commit()
+    calls_before_reject = client.create_transaction_calls
+    rejected = False
+    try:
+        cycle_svc.approve_and_pay_cycle(
+            session, cycle=cycle, acting_identity=unauthorized, client=client, source_account_id="acct-1",
+        )
+    except cycle_svc.ApproveAndPayError:
+        rejected = True
+    result.check("Approve & Pay: an unauthorized Acting Identity is rejected", rejected)
+    result.check(
+        "Approve & Pay: rejection makes NO Mercury call and changes NO state",
+        client.create_transaction_calls == calls_before_reject and cycle.status == "OPEN"
+        and all(i.status == "READY" for i in instructions),
+    )
+
+    # === 5: Approve & Pay — authorized identity: success + synchronous
+    # failure + one-payee isolation, in ONE batch. ===
+    approver = _make_authorized_approver(session, suffix="1")
+    approve_result = cycle_svc.approve_and_pay_cycle(
+        session, cycle=cycle, acting_identity=approver, client=client, source_account_id="acct-1",
     )
     session.commit()
-
-    by_employee = {i.employee_id: i for i in run_result.instructions}
-    result.check("payout: two Payment Instructions were created (one per Employee)", len(run_result.instructions) == 2)
+    result.check("Approve & Pay: an authorized Acting Identity succeeds — cycle is now APPROVED", cycle.status == "APPROVED")
     result.check(
         "payout success: ServerA's instruction reached SENT/OUTCOME_VERIFIED", by_employee[server_a.id].status in ("SENT", "OUTCOME_VERIFIED"),
     )
@@ -275,46 +370,66 @@ def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
         "batch isolation: ServerB's failure did not roll back ServerA's already-submitted instruction",
         by_employee[server_a.id].provider_transaction_id is not None,
     )
+    result.check(
+        "Attention Management: ServerB's NEEDS_ATTENTION instruction raised exactly one AttentionItem",
+        by_employee[server_b.id].attention_item_id is not None,
+    )
+    attention_item = session.get(m.AttentionItem, by_employee[server_b.id].attention_item_id)
+    result.check(
+        "Attention Management: no bank/secret data leaked into the AttentionItem's reason text",
+        attention_item is not None and "recipient-b-fail" not in (attention_item.reason or "")
+        and "acct-1" not in (attention_item.reason or ""),
+    )
+    result.check(
+        "Attention Management: successful ServerA instruction raised NO AttentionItem",
+        by_employee[server_a.id].attention_item_id is None,
+    )
 
-    # === 3: RF-One-side duplicate protection — re-running the SAME Business
-    # Date must never create a second instruction for ServerA, and must
-    # never call Mercury again for an already-SENT instruction. ===
+    # === 6: RF-One-side duplicate protection — re-approving the SAME cycle
+    # is refused (not OPEN anymore); Mercury is never called again for an
+    # already-SENT instruction via a raw resubmission either. ===
     calls_before = client.create_transaction_calls
-    run_result_2 = payout_svc.run_business_date_payout(
-        session, restaurant_id=restaurant.id, client=client, source_account_id="acct-1",
-    )
-    session.commit()
+    re_approve_rejected = False
+    try:
+        cycle_svc.approve_and_pay_cycle(
+            session, cycle=cycle, acting_identity=approver, client=client, source_account_id="acct-1",
+        )
+    except cycle_svc.ApproveAndPayError:
+        re_approve_rejected = True
     result.check(
-        "duplicate protection: re-running never creates a second instruction per Employee",
-        len(run_result_2.instructions) == 2,
-    )
-    result.check(
-        "duplicate protection: Mercury is never called again for ServerA's already-SENT instruction",
-        client.create_transaction_calls == calls_before,
+        "duplicate protection: re-approving an already-APPROVED cycle is refused, no new Mercury call",
+        re_approve_rejected and client.create_transaction_calls == calls_before,
     )
 
-    # === 4: Outcome Verification — Mercury eventually reports `sent` with
+    # === 7: Outcome Verification — Mercury eventually reports `sent` with
     # `postedAt` populated -> OUTCOME_VERIFIED. ===
     server_a_instruction = by_employee[server_a.id]
     client.set_transaction_status(
         server_a_instruction.provider_transaction_id, status="sent", posted_at="2026-03-06T00:00:00Z",
     )
-    pi_svc.refresh_outcome(session, server_a_instruction, client)
+    cycle_svc.refresh_outcomes_for_cycle(session, cycle, client)
     session.commit()
     result.check(
         "Outcome Verification: sent + postedAt -> OUTCOME_VERIFIED", server_a_instruction.status == "OUTCOME_VERIFIED",
     )
+    result.check("Outcome Verification: no bank/secret exposure on the instruction row itself",
+                 not hasattr(server_a_instruction, "account_number") and not hasattr(server_a_instruction, "routing_number"))
 
-    # === 5: reversed re-opens a previously verified Outcome ===
+    # === 8: reversed re-opens a previously verified Outcome, with a fresh
+    # Attention Item (never reusing a resolved prior one). ===
     client.set_transaction_status(server_a_instruction.provider_transaction_id, status="reversed")
-    pi_svc.refresh_outcome(session, server_a_instruction, client)
+    cycle_svc.refresh_outcomes_for_cycle(session, cycle, client)
     session.commit()
     result.check(
         "reversed success: a later `reversed` observation reopens the Outcome to NEEDS_ATTENTION",
         server_a_instruction.status == "NEEDS_ATTENTION" and server_a_instruction.failure_class == pi_svc.FAILURE_OUTCOME_REOPENED,
     )
+    result.check(
+        "reversed success: reopening raises a NEW AttentionItem for ServerA (history preserved, not overwritten)",
+        server_a_instruction.attention_item_id is not None,
+    )
 
-    # === 6: retry of ONLY the failed instruction — fix ServerB's reference,
+    # === 9: retry of ONLY the failed instruction — fix ServerB's reference,
     # then retry ONLY ServerB's instruction; ServerA (already reopened
     # above) must be completely untouched by this call. ===
     server_a_status_before_retry = server_a_instruction.status
@@ -330,7 +445,7 @@ def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
     _link_recipient(session, server_b, "recipient-b-ok")
     client._recipient_behavior["recipient-b-ok"] = "ok"
 
-    payout_svc.retry_instruction(session, server_b_instruction, client, source_account_id="acct-1")
+    cycle_svc.retry_instruction(session, server_b_instruction, client, source_account_id="acct-1")
     session.commit()
     result.check(
         "retry-only: the retried instruction (ServerB) now succeeded", server_b_instruction.status in ("SENT", "OUTCOME_VERIFIED"),
@@ -340,23 +455,144 @@ def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
         server_a_instruction.status == server_a_status_before_retry,
     )
 
-    # === 7: insufficient funding blocks the WHOLE batch, no partial payout ==
+    # === 10: insufficient funding blocks the WHOLE batch, no partial payout,
+    # via a SECOND, independent Restaurant. ===
     restaurant2, server_c, server_d, make_order_with_tip_2 = _build_base_fixture(session, suffix="2")
     make_order_with_tip_2(employee=server_c, tip_minor=500000, order_suffix="C1")
     make_order_with_tip_2(employee=server_d, tip_minor=500000, order_suffix="D1")
     _link_recipient(session, server_c, "recipient-c-ok")
     _link_recipient(session, server_d, "recipient-d-ok")
+
+    calc2 = payout_svc.run_calculation_now(session, restaurant_id=restaurant2.id)
+    session.commit()
+    result.check("second Restaurant: calculation runs independently of the first", calc2.ran)
+    cycle2 = cycle_svc.start_payment_cycle(session, restaurant_id=restaurant2.id, triggered_by="MANUAL")
+    session.commit()
+    approver2 = _make_authorized_approver(session, suffix="2")
+
     poor_client = _FakeMercuryClient(
         available_balance=Decimal("1.00"), recipient_behavior={"recipient-c-ok": "ok", "recipient-d-ok": "ok"},
     )
-    funding_result = payout_svc.run_business_date_payout(
-        session, restaurant_id=restaurant2.id, client=poor_client, source_account_id="acct-1",
-    )
+    funding_rejected = False
+    try:
+        cycle_svc.approve_and_pay_cycle(
+            session, cycle=cycle2, acting_identity=approver2, client=poor_client, source_account_id="acct-1",
+        )
+    except cycle_svc.ApproveAndPayError:
+        funding_rejected = True
     session.commit()
-    result.check(
-        "insufficient funding: batch is blocked, reason references funding", funding_result.blocked_reason is not None,
-    )
+    result.check("insufficient funding: batch is blocked, cycle stays OPEN", funding_rejected and cycle2.status == "OPEN")
     result.check(
         "insufficient funding: NO instruction was submitted to Mercury (no partial payout)",
-        poor_client.create_transaction_calls == 0 and all(i.status == "READY" for i in funding_result.instructions),
+        poor_client.create_transaction_calls == 0,
     )
+    cycle2_instructions = list(
+        session.scalars(select(m.TipPaymentInstruction).where(m.TipPaymentInstruction.payment_cycle_id == cycle2.id))
+    )
+    result.check(
+        "insufficient funding: every instruction remains READY, none partially submitted",
+        all(i.status == "READY" for i in cycle2_instructions),
+    )
+
+    # === 11: regression — Distribution Engine's own atomic allocations are
+    # untouched by any of the above (Tip Entitlement is an aggregate ON TOP
+    # of allocations, never a replacement for them). ===
+    run = state1.calculation_run or engine.get_latest_unsuperseded_run(
+        session, restaurant_id=restaurant.id,
+        period_start=readiness_svc.business_date_period(date(2026, 3, 6))[0],
+        period_end=readiness_svc.business_date_period(date(2026, 3, 6))[1],
+    )
+    allocations = list(
+        session.scalars(select(m.TipDistributionAllocation).where(m.TipDistributionAllocation.calculation_run_id == run.id))
+    ) if run else []
+    result.check(
+        "regression: Distribution Engine's atomic TipDistributionAllocation rows are still produced normally",
+        len(allocations) > 0,
+    )
+
+
+def _test_reconciliation_gate_on_business_date_readiness(session: Session, result: ValidationResult) -> None:
+    """CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md / TASK_TIPS_
+    COMPLETE_001 §5 — a REAL `"CLOVER"`-coded Location (unlike `_build_base_
+    fixture`'s deliberately non-matching `CLOVER-PEV-{suffix}` code, which
+    correctly bypasses this gate — see the check above) must NOT be
+    considered ready to calculate until Clover Live Sync/Backfill has
+    reached past the Business Date's own end."""
+    source_system = session.scalars(select(m.SourceSystem).filter_by(code="CLOVER")).first()
+    if source_system is None:
+        source_system = m.SourceSystem(code="CLOVER", name="Clover", active=True)
+        session.add(source_system)
+        session.flush()
+    merchant = m.Merchant(source_system_id=source_system.id, source_merchant_id="RECON-GATE-MERCH", name="Recon Gate Merchant")
+    session.add(merchant)
+    session.flush()
+    location = m.Location(
+        merchant_id=merchant.id, source_system_id=source_system.id, source_location_id="RECON-GATE-LOC",
+        name="Recon Gate Location", currency="USD",
+    )
+    session.add(location)
+    session.flush()
+    restaurant = m.Restaurant(name="Reconciliation Gate Test Restaurant", default_currency="USD")
+    session.add(restaurant)
+    session.flush()
+    session.add(m.RestaurantLocation(restaurant_id=restaurant.id, location_id=location.id, is_primary=True))
+    employee = m.Employee(
+        location_id=location.id, source_system_id=source_system.id, source_employee_id="RG-EMP1",
+        display_name="Recon Gate Server", system_role="EMPLOYEE",
+    )
+    session.add(employee)
+    session.flush()
+
+    business_date = date(2026, 4, 1)
+    order_time = datetime(2026, 4, 1, 11, 0, tzinfo=UTC)
+    order = m.Order(
+        location_id=location.id, source_system_id=source_system.id, source_order_id="RG-ORDER-1",
+        employee_id=employee.id, source_employee_id=employee.source_employee_id,
+        created_at=order_time, business_date=business_date, state="locked", payment_state="PAID",
+        currency="USD", total=5000,
+    )
+    session.add(order)
+    session.flush()
+    payment = m.Payment(
+        order_id=order.id, source_system_id=source_system.id, source_payment_id="RG-PAY-1",
+        employee_id=employee.id, source_employee_id=employee.source_employee_id, created_at=order_time,
+        amount=5000, result="SUCCESS", currency="USD",
+    )
+    session.add(payment)
+    session.flush()
+    session.add(m.PaymentTip(payment_id=payment.id, amount=1000, source_present=True))
+    session.commit()
+
+    state_before = readiness_svc.describe_readiness(session, restaurant.id)
+    result.check(
+        "reconciliation gate: ready_to_calculate is False with a real Clover-sourced Location and NO "
+        "Live Sync/Backfill run recorded yet for it",
+        state_before.business_date == business_date and not state_before.ready_to_calculate
+        and not state_before.clover_ready,
+    )
+    calc_attempt = payout_svc.run_calculation_now(session, restaurant_id=restaurant.id)
+    result.check(
+        "reconciliation gate: run_calculation_now refuses to calculate incomplete data — no false financial error, just blocked",
+        not calc_attempt.ran and calc_attempt.blocked_reason is not None,
+    )
+
+    business_date_end = readiness_svc.business_date_period(business_date)[1]
+    session.add(
+        m.IngestionRun(
+            source_system_id=source_system.id, location_id=location.id, started_at=business_date_end,
+            finished_at=business_date_end, status="COMPLETE",
+            source_window_start=business_date_end - timedelta(hours=1),
+            source_window_end=business_date_end + timedelta(hours=1),
+            notes="synthetic seed: Live Sync cursor past this Business Date",
+        )
+    )
+    session.commit()
+
+    state_after = readiness_svc.describe_readiness(session, restaurant.id)
+    result.check(
+        "reconciliation gate: ready_to_calculate becomes True once the Live Sync cursor has passed this "
+        "Business Date's own end",
+        state_after.ready_to_calculate and state_after.clover_ready,
+    )
+    calc_after = payout_svc.run_calculation_now(session, restaurant_id=restaurant.id)
+    result.check("reconciliation gate: calculation now proceeds", calc_after.ran)

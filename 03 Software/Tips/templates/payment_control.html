@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    {% if category == "error" %}
+      <div class="error">{{ message }}</div>
+    {% endif %}
+  {% endfor %}
+
+  <div class="card">
+    <h2>Tips Payment Control — Mercury Sandbox pilot</h2>
+    <p class="muted" style="font-size:.85rem;">
+      Authorized visual control surface, not a workflow engine (TASK_TIPS_COMPLETE_001 §13). SANDBOX ONLY:
+      never a production Mercury endpoint or token. No bank/account details are ever shown here.
+    </p>
+    {% if connector_error %}
+      <p class="error">Mercury sandbox connector not available: {{ connector_error }}</p>
+    {% endif %}
+    {% if not restaurant %}
+      <p class="error">No Restaurant exists in this database yet.</p>
+    {% else %}
+      <table style="margin-bottom:1rem;">
+        <tr><td class="muted">Restaurant</td><td><strong>{{ restaurant.name }}</strong></td></tr>
+        <tr><td class="muted">Calculation Period (latest Business Date)</td>
+            <td>{{ calc_state.business_date if calc_state and calc_state.business_date else "-" }}
+                {% if calc_state and calc_state.already_calculated %}(calculated){% endif %}</td></tr>
+        <tr><td class="muted">Unpaid Tip Entitlements</td>
+            <td>{{ cycle_readiness.unpaid_entitlement_count if cycle_readiness else 0 }}
+                across {{ cycle_readiness.payee_count if cycle_readiness else 0 }} payee(s),
+                ${{ "%.2f"|format((cycle_readiness.unpaid_total_minor if cycle_readiness else 0) / 100) }} total</td></tr>
+        <tr><td class="muted">Mercury available balance</td>
+            <td>{{ "$%.2f"|format(mercury_balance) if mercury_balance is not none else "-" }}</td></tr>
+        <tr><td class="muted">Open Payment Cycle</td>
+            <td>
+              {% if open_cycle %}
+                #{{ open_cycle.id }} — status {{ open_cycle.status }},
+                period {{ open_cycle.period_start.strftime("%Y-%m-%d") }} .. {{ open_cycle.period_end.strftime("%Y-%m-%d") }}
+              {% else %}
+                none
+              {% endif %}
+            </td></tr>
+      </table>
+
+      <form method="post" action="{{ url_for('payment_control_start_cycle') }}" style="display:inline-block; margin-right:.6rem;">
+        <button type="submit" {{ 'disabled' if not cycle_readiness or not cycle_readiness.ready_to_start_cycle else '' }}>
+          Start Payment Cycle Now
+        </button>
+      </form>
+
+      {% if open_cycle and open_cycle.status == "OPEN" %}
+      <form method="post" action="{{ url_for('payment_control_approve_and_pay') }}" style="display:inline-flex; gap:.4rem; align-items:center;">
+        <select name="acting_identity_id" required>
+          <option value="">Acting as…</option>
+          {% for identity in identities %}
+            <option value="{{ identity.id }}">{{ identity.display_name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Approve &amp; Pay</button>
+      </form>
+      <p class="muted" style="font-size:.78rem; margin-top:.4rem;">
+        Approve &amp; Pay is gated by Authority (`TIPS`/`APPROVE_AND_PAY`) — an unauthorized Acting Identity is
+        rejected before any Mercury call is made.
+      </p>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {% for category, summary in messages %}
+    {% if category == "summary" %}
+    <div class="card"><p>{{ summary }}</p></div>
+    {% endif %}
+  {% endfor %}
+{% endwith %}
+
+<div class="card">
+  <h2>Payment Instructions (this Payment Cycle)</h2>
+  {% if not instructions %}
+    <p class="empty">No open Payment Cycle, or no Payment Instructions in it yet.</p>
+  {% else %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Employee</th><th>Amount</th><th>Mercury recipient</th><th>Status</th>
+        <th>Provider status</th><th>Priority / Reason</th><th>Attention</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for instruction in instructions %}
+      {% set employee = employees_by_id.get(instruction.employee_id) %}
+      {% set reference = references_by_employee.get(instruction.employee_id) %}
+      {% set attention = attention_items_by_instruction.get(instruction.id) %}
+      <tr>
+        <td>{{ employee.display_name if employee else ('Employee #' ~ instruction.employee_id) }}</td>
+        <td>${{ "%.2f"|format(instruction.amount_minor / 100) }}</td>
+        <td>
+          {% if reference %}
+            <span class="muted" style="font-size:.78rem;">linked</span>
+          {% else %}
+            <form method="post" action="{{ url_for('payment_control_link_recipient', employee_id=instruction.employee_id) }}" style="display:flex; gap:.3rem;">
+              <input type="text" name="recipient_name" placeholder="Mercury sandbox recipient name" required style="font-size:.78rem;">
+              <button type="submit" style="font-size:.78rem;">Link</button>
+            </form>
+          {% endif %}
+        </td>
+        <td><span class="badge {{ 'warn' if instruction.status == 'NEEDS_ATTENTION' else '' }}">{{ instruction.status }}</span></td>
+        <td>{{ instruction.provider_status or "-" }}</td>
+        <td class="muted" style="font-size:.78rem;">
+          {% if instruction.priority %}<strong>{{ instruction.priority }}</strong> — {% endif %}
+          {{ instruction.reason_for_failure or "" }}
+        </td>
+        <td class="muted" style="font-size:.78rem;">
+          {% if attention %}
+            #{{ attention.id }} {{ attention.status }}
+            {% if attention.resolution_path %}via {{ attention.resolution_path }}{% endif %}
+          {% else %}
+            -
+          {% endif %}
+        </td>
+        <td>
+          {% if instruction.status == "NEEDS_ATTENTION" %}
+          <form method="post" action="{{ url_for('payment_control_retry_instruction', instruction_id=instruction.id) }}">
+            <button type="submit" style="font-size:.78rem;">Retry this instruction only</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
+    Retrying resubmits ONLY the selected instruction, with the same deterministic idempotency key — every
+    other instruction is unaffected. A NEEDS_ATTENTION row without a linked recipient must be linked first.
+  </p>
+  {% endif %}
+</div>
+
+{% endblock %}
