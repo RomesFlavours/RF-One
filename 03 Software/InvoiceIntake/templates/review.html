@@ -24,7 +24,13 @@
       </div>
       <div>
         <label>Tipo documento</label>
-        <input type="text" name="document_type" value="Invoice">
+        <select name="document_type">
+          <option value="Invoice" selected>Invoice</option>
+          <option value="Credit Memo">Credit Memo (correzione fornitore)</option>
+          <option value="Corrected Invoice">Corrected Invoice (correzione fornitore)</option>
+          <option value="Return Credit">Return Credit (correzione fornitore)</option>
+          <option value="Adjustment">Adjustment (correzione fornitore)</option>
+        </select>
       </div>
     </div>
     <div class="row">

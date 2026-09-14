@@ -187,7 +187,7 @@ This specification deliberately does **not** define, and no future implementatio
 
 - Restaurant/Purchasing models.
 - Supplier economic meaning (what a supplier's pricing/terms mean for cost or margin).
-- `PurchaseDocument`/`PurchaseLine` (Restaurant/Purchasing's own canonical entities).
+- `PurchaseDocument`/`PurchaseLine` (canonical entities now owned by Purchased, consumed by Restaurant/Purchasing — see Purchased/README.md, "Invoice Intake alignment (closed)").
 - Effective Product Cost.
 - Reconciliation (Order vs. Invoice vs. Receiving, or any other business reconciliation).
 - Accounting/tax treatment (see also the still-open "Invoice Tax Treatment" question in `OpenQuestions.md`, unaffected by this spec).
@@ -198,7 +198,7 @@ This specification deliberately does **not** define, and no future implementatio
 
 ## 14. Relationship to the current `03 Software/InvoiceIntake/` prototype
 
-Not a rule, a factual note for implementers: the current prototype (`ocr_engine.py`, `parser.py`, `purchasing_bridge.py` — see `07 Tasks/Reports/INVOICE_INTAKE_MULTI_FORMAT_CAPABILITY_AUDIT` findings, reported in-conversation) already implements a narrower, single-provider (Tesseract), single-file, Purchasing-only version of the acquisition idea this specification generalizes. It is not redesigned, extended, or replaced by this document — this is a specification for the target V1 agent, not an instruction to modify that prototype.
+Not a rule, a factual note for implementers: the current prototype (`ocr_engine.py`, `parser.py`, `purchased_bridge.py` — renamed from `purchasing_bridge.py` by "Align legacy Invoice Intake with Purchased"; see `07 Tasks/Reports/INVOICE_INTAKE_MULTI_FORMAT_CAPABILITY_AUDIT` findings, reported in-conversation) already implements a narrower, single-provider (Tesseract), single-file version of the acquisition idea this specification generalizes, now saving through Purchased's canonical persistence rather than a Purchasing-owned one (see Purchased/README.md, "Invoice Intake alignment (closed)"). It is not redesigned, extended, or replaced by this document — this is a specification for the target V1 agent, not an instruction to modify that prototype.
 
 ---
 

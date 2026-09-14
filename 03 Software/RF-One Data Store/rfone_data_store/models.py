@@ -4559,6 +4559,16 @@ class PurchaseDocument(Base):
     entity of the Purchasing module. Immutable by convention (Purchasing/
     BusinessRules.md, Rule 2): the repository never updates a row here
     except `status` (business processing status, not a source fact).
+
+    Ownership (Align legacy Invoice Intake with Purchased): this table is the
+    Purchase Fact `01 Domains/Shared Domains/Purchased/README.md` canonically
+    owns (capture + normalize + publish) — Restaurant/Purchasing consumes it
+    rather than owning it. A supplier-side correction (credit memo, corrected
+    invoice, return credit, adjustment) is its own new row referencing the
+    original by `document_number`/`supplier_id`, never a rewrite of a prior
+    row (Purchased/README.md, "Supplier-side corrections"). NORMALIZED/HUMAN
+    functional state is derived, not a column — see
+    `purchasing/repository.py`'s `get_document_functional_status`.
     `destination_location` is stored as the Supplier's own disclosed text,
     not resolved against the canonical `locations` table — the source may
     name a ship-to address this Restaurant's own Location catalog does not
@@ -4619,7 +4629,15 @@ class PurchaseLine(Base):
     ("Supplier Product Relationship Depends on Line Type" — only a `PRODUCT`
     line may reference a Supplier Product or carry an economic
     classification) a structural database guarantee, not merely an
-    application convention that could be bypassed by a future caller."""
+    application convention that could be bypassed by a future caller.
+
+    Ownership (Align legacy Invoice Intake with Purchased): a `PRODUCT` line
+    here is a Purchased Line (`01 Domains/Shared Domains/Purchased/README.md`).
+    Non-goods `SURCHARGE`/`DISCOUNT` lines are kept as their own rows for
+    source evidence but are never Purchased Lines in their own right —
+    Purchased's canonical output allocates them across the `PRODUCT` lines
+    instead (see `purchasing/repository.py`'s
+    `get_purchased_lines_with_allocation`)."""
 
     __tablename__ = "purchase_lines"
     __table_args__ = (

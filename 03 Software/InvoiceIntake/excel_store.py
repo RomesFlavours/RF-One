@@ -1,8 +1,9 @@
 """
-Secondary export/debugging copy only (TASK_PURCHASING_004): appends reviewed
+Secondary export/debugging copy only (TASK_PURCHASING_004; bridge module
+renamed by "Align legacy Invoice Intake with Purchased"): appends reviewed
 Purchase Documents and Purchase Lines to a single Excel workbook so the data
 can be opened and checked directly. The canonical store is now the RF-One
-Data Store (`03 Software/RF-One Data Store/`, via `purchasing_bridge.py`) --
+Data Store (`03 Software/RF-One Data Store/`, via `purchased_bridge.py`) --
 this module is called only after that canonical save succeeds, and a
 failure here (e.g. the workbook open in Excel) never blocks or loses it.
 

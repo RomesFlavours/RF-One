@@ -26,6 +26,18 @@ Derived values (Effective Product Cost, allocation shares, category totals,
 Reconciliation Outcome, Expected Supplier Credit's Recognized/Outstanding
 Amount) are computed on demand by functions in this module or in
 `reconciliation.py` — none of them is a column this module writes to.
+
+Ownership note (Align legacy Invoice Intake with Purchased): `PurchaseDocument`
+and `PurchaseLine` are the Purchase Fact — capture + normalize + publish —
+that `01 Domains/Shared Domains/Purchased/README.md` (a Shared Domain) now
+canonically owns; this module remains their only writer, unchanged. Restaurant/
+Purchasing (`01 Domains/Business Domain/Restaurant/Purchasing/`) no longer
+needs to be invoked to create one — it consumes this output for its own,
+still Purchasing-owned concerns (Purchase Order, Configured Expectation,
+Physical Receiving, Reconciliation, Alerts, Expected Supplier Credit — all
+still implemented in this same module, unchanged). See "Purchased output"
+below for the read-side functions Purchased's functional model (NORMALIZED/
+HUMAN, non-goods cost allocation) adds on top of this unchanged write path.
 """
 
 from __future__ import annotations
@@ -746,6 +758,135 @@ def acknowledge_alert(session: Session, alert_id: int, employee_id: int | None =
         alert.responsible_user_employee_id = employee_id
     session.flush()
     return alert
+
+
+# ---------------------------------------------------------------------------
+# Purchased output (Align legacy Invoice Intake with Purchased)
+#
+# `PurchaseDocument`/`PurchaseLine` above are the Purchase Fact Purchased
+# (`01 Domains/Shared Domains/Purchased/README.md`) owns: capture + normalize
+# + publish. These three functions expose that fact the way Purchased's
+# README requires -- non-goods cost allocated onto goods lines, and a
+# NORMALIZED/HUMAN functional state -- without adding any new column: the
+# functional state is derived from the existing `PurchasingValidationLogEntry`
+# mechanism (an OPEN WARNING/ERROR entry against a Document/Line IS that
+# Document/Line's HUMAN state), and the allocation is computed on demand,
+# consistent with this schema's existing "Persist Facts -- Derive
+# Calculations" convention (Effective Product Cost, Reconciliation Outcome).
+# Restaurant/Purchasing (and any other Business Domain) consumes this output;
+# it does not own it.
+# ---------------------------------------------------------------------------
+
+
+def find_purchase_documents_by_number(
+    session: Session, supplier_id: int, document_number: str
+) -> list[m.PurchaseDocument]:
+    """Every existing Purchase Document sharing the same (Supplier, Document
+    Number) identity -- the identity Purchased's duplicate-handling rule
+    compares against (Purchased/README.md, "Duplicate handling"). Returns an
+    empty list for a blank `document_number` (too weak an identity to compare
+    on)."""
+
+    if not document_number:
+        return []
+    return list(
+        session.scalars(
+            select(m.PurchaseDocument).where(
+                m.PurchaseDocument.supplier_id == supplier_id,
+                m.PurchaseDocument.document_number == document_number,
+            )
+        )
+    )
+
+
+def get_document_functional_status(session: Session, purchase_document_id: int) -> str:
+    """NORMALIZED / HUMAN (Purchased/README.md, "NORMALIZED / HUMAN") for one
+    Purchase Document -- derived, never stored. HUMAN whenever an OPEN
+    WARNING/ERROR `PurchasingValidationLogEntry` references this document;
+    NORMALIZED otherwise. An OPEN INFORMATION-severity entry (e.g. "this
+    document is a correction of #123") never forces HUMAN by itself."""
+
+    open_issues = session.scalar(
+        select(func.count(m.PurchasingValidationLogEntry.id)).where(
+            m.PurchasingValidationLogEntry.purchase_document_id == purchase_document_id,
+            m.PurchasingValidationLogEntry.status == "OPEN",
+            m.PurchasingValidationLogEntry.severity.in_(("WARNING", "ERROR")),
+        )
+    )
+    return "HUMAN" if open_issues else "NORMALIZED"
+
+
+def get_line_functional_status(session: Session, purchase_line_id: int) -> str:
+    """Same rule as `get_document_functional_status`, scoped to one Purchase
+    Line (Purchased Line's own NORMALIZED/HUMAN state, Purchased/README.md,
+    "Purchased Line -- minimum conceptual data")."""
+
+    open_issues = session.scalar(
+        select(func.count(m.PurchasingValidationLogEntry.id)).where(
+            m.PurchasingValidationLogEntry.purchase_line_id == purchase_line_id,
+            m.PurchasingValidationLogEntry.status == "OPEN",
+            m.PurchasingValidationLogEntry.severity.in_(("WARNING", "ERROR")),
+        )
+    )
+    return "HUMAN" if open_issues else "NORMALIZED"
+
+
+def get_purchased_lines_with_allocation(session: Session, purchase_document_id: int) -> list[dict[str, Any]]:
+    """Purchased's canonical output view of one Purchase Document's PRODUCT
+    (goods) lines (Purchased/README.md, "Non-goods cost allocation"):
+    freight/delivery/fuel-surcharge/handling/tax-not-directly-attributable
+    and similar non-goods amounts -- recorded here as SURCHARGE/DISCOUNT
+    `PurchaseLine` rows, signed exactly as disclosed by the source -- are
+    apportioned across the PRODUCT lines in proportion to each PRODUCT
+    line's own `source_amount_minor`, never persisted as their own
+    standalone Purchased Line. The raw SURCHARGE/DISCOUNT rows are never
+    deleted or hidden -- they remain in the database as source evidence
+    (README: "the raw/source representation can continue to conserve
+    them") -- this function only adds the allocated view on top.
+
+    When the document has no PRODUCT lines at all, no allocation base
+    exists; each non-goods amount is left unallocated (`allocated_non_goods_minor`
+    stays 0 for -- there being no PRODUCT line to attach it to), matching
+    the README's own "an invoice with no goods lines at all" open edge case.
+    """
+
+    document = session.get(m.PurchaseDocument, purchase_document_id)
+    if document is None:
+        raise ValueError(f"Unknown PurchaseDocument id={purchase_document_id}")
+
+    product_lines = sorted(
+        (line for line in document.lines if line.line_type == "PRODUCT"), key=lambda line: line.id
+    )
+    non_goods_total = sum(
+        (line.source_amount_minor or 0) for line in document.lines if line.line_type in ("SURCHARGE", "DISCOUNT")
+    )
+    goods_total = sum((line.source_amount_minor or 0) for line in product_lines)
+
+    output: list[dict[str, Any]] = []
+    allocated_so_far = 0
+    for index, line in enumerate(product_lines):
+        line_amount = line.source_amount_minor or 0
+        if goods_total > 0:
+            if index == len(product_lines) - 1:
+                # The last line absorbs any rounding remainder, so the sum of
+                # allocated shares always reconciles exactly to non_goods_total.
+                share = non_goods_total - allocated_so_far
+            else:
+                share = round(non_goods_total * line_amount / goods_total)
+                allocated_so_far += share
+        else:
+            share = 0
+        output.append(
+            {
+                "purchase_line_id": line.id,
+                "raw_description": line.raw_description,
+                "source_amount_minor": line.source_amount_minor,
+                "allocated_non_goods_minor": share,
+                "allocated_amount_minor": line_amount + share,
+                "functional_status": get_line_functional_status(session, line.id),
+            }
+        )
+    return output
 
 
 # ---------------------------------------------------------------------------

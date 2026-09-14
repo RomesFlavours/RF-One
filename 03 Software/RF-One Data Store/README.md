@@ -68,6 +68,8 @@ python test_purchasing_engine.py       # Purchasing tests: structural/repository
                                 # for real and re-read after a fresh Engine/Session ("process restart")
                                 # — always targets its own disposable data/purchasing_test.db, never
                                 # RFONE_DATABASE_URL / the shared local rfone.db
+python test_purchased_alignment.py     # Purchased output tests (NORMALIZED/HUMAN, non-goods allocation)
+                                # — self-provisioned disposable database, never rfone.db
 ```
 
 `create_database.py` creates the schema and then validates it against a small **synthetic fixture that is always rolled back** — the database is left with tables only, no leftover test rows, ready for a future ingestion task. It prints only the (redacted) database URL, the number of tables created, and the validation outcome — never raw data.
@@ -110,9 +112,10 @@ The migration scripts live in `migrations/versions/`. `migrations/env.py` resolv
 | `rfone_data_store/payroll_validation.py` | Synthetic-fixture Payroll tests, same pattern as `schema_validation.py`. Always rolled back. |
 | `import_payroll_results.py` | Entry point: ADP Payroll Detail Excel import, dry-run by default. |
 | `test_payroll_engine.py` | Entry point: run the Payroll synthetic-fixture tests. |
-| `rfone_data_store/purchasing/` | Restaurant/Purchasing persistence — `repository.py` (the only supported way to write Purchasing data; enforces historical-integrity invariants Alembic/SQL CheckConstraints cannot express alone), `reconciliation.py` (deterministic Order vs Invoice vs Receiving atomic-difference comparison). TASK_PURCHASING_004 — see `PURCHASING.md` and `01 Domains/Business Domain/Restaurant/Purchasing/`. |
+| `rfone_data_store/purchasing/` | Purchase Fact persistence (owned by Purchased, `01 Domains/Shared Domains/Purchased/README.md`) plus Restaurant/Purchasing's own consumer-side logic — `repository.py` (the only supported way to write this data; enforces historical-integrity invariants Alembic/SQL CheckConstraints cannot express alone; also exposes Purchased's NORMALIZED/HUMAN + non-goods-allocation read functions), `reconciliation.py` (deterministic Order vs Invoice vs Receiving atomic-difference comparison, still Purchasing-owned). TASK_PURCHASING_004, realigned by "Align legacy Invoice Intake with Purchased" — see `PURCHASING.md` and `01 Domains/Business Domain/Restaurant/Purchasing/`. |
 | `rfone_data_store/purchasing_validation.py` | Synthetic-fixture Purchasing structural/repository tests, same rolled-back pattern as `schema_validation.py`. |
 | `test_purchasing_engine.py` | Entry point: run the Purchasing structural tests plus the 7 canonical business scenarios, including the persistence-survives-restart check (see "Usage" above). |
+| `test_purchased_alignment.py` | Entry point: Purchased output repository tests (NORMALIZED/HUMAN derivation, non-goods cost allocation) added by "Align legacy Invoice Intake with Purchased" — disposable database, same convention as `test_purchasing_engine.py`. |
 | `alembic.ini`, `migrations/` | Schema migrations — see "Schema migrations (Alembic)" above. |
 | `data/` | Local SQLite database file lives here (Git-ignored) — not the raw Clover exports, which remain under `03 Software/Clover Data Explorer/data/`. |
 

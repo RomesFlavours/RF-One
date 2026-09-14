@@ -7,13 +7,21 @@ source documents — the acquisition/process layer, industry-independent by
 nature (any Business Domain that receives supplier documents can reuse it).
 
 It does **not** own the canonical business/cost model those documents feed.
-Business Domains such as `01 Domains/Business Domain/Restaurant/Purchasing/`
-consume the normalized document Invoice Intake produces and apply their own
-domain-specific processing (classification, costing, reconciliation) to it.
 This mirrors the same acquisition-vs-domain-meaning split already
 established for Clover data acquisition (`Technical/Connectors` acquires,
 Domains interpret) — Invoice Intake is that same split applied to supplier
 document intake instead of a POS API.
+
+**Ownership (Align legacy Invoice Intake with Purchased):** the canonical
+Purchase Fact that Invoice Intake's normalized output feeds is owned by
+**Purchased** (`01 Domains/Cross Domain/Purchased/README.md`), a Shared
+Domain — capture + normalize + publish. Business Domains such as
+`01 Domains/Business Domain/Restaurant/Purchasing/` are *consumers* of that
+Purchase Fact for their own domain-specific processing (Purchase Order,
+Configured Expectation, Physical Receiving, Reconciliation, Alert) — they no
+longer own it, and owning it is never a prerequisite for Invoice Intake to
+produce one. See Purchased's README, "Relationship to Restaurant's existing
+Purchasing module — Invoice Intake alignment (closed)."
 
 ## Structure
 
@@ -27,9 +35,17 @@ document intake instead of a POS API.
 ## Related
 
 - `03 Software/InvoiceIntake/` — the current runtime prototype (upload → OCR
-  → review → normalized output), Software-layer, not moved by this task.
+  → review → normalized output), Software-layer. Its `purchased_bridge.py`
+  (renamed from `purchasing_bridge.py` by "Align legacy Invoice Intake with
+  Purchased") persists that output as Purchased's canonical Purchase Fact.
+- `01 Domains/Cross Domain/Purchased/README.md` — the Shared Domain that
+  now canonically owns the Purchase Fact this module's output feeds (capture
+  + normalize + publish); see its "Invoice Intake alignment (closed)" note.
 - `01 Domains/Business Domain/Restaurant/Purchasing/` — the Business Domain
-  that consumes Invoice Intake's normalized output today (`Purchase
-  Document`/`Purchase Line`); see `07 Tasks/Reports/TASK_PURCHASING_001_REPORT.md`
-  for the prior reconciliation of an earlier, Administration-local invoice
-  model into that canonical Purchasing model.
+  that *consumes* Invoice Intake's normalized output (`Purchase
+  Document`/`Purchase Line`) for its own remaining scope (Purchase Order,
+  Configured Expectation, Physical Receiving, Reconciliation, Alert) — it no
+  longer owns the Purchase Fact itself; see
+  `07 Tasks/Reports/TASK_PURCHASING_001_REPORT.md` for the prior
+  reconciliation of an earlier, Administration-local invoice model into that
+  Purchasing model.

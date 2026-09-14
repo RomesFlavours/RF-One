@@ -2,6 +2,8 @@
 
 The first persistent implementation of `01 Domains/Business Domain/Restaurant/Purchasing/` (TASK_PURCHASING_001-003, documentation only) — TASK_PURCHASING_004. Software must adapt to that Domain model; nothing here redefines it. Section references below (e.g. "Rule 26") are to `01 Domains/Business Domain/Restaurant/Purchasing/BusinessRules.md` unless stated otherwise.
 
+**Ownership realignment (Align legacy Invoice Intake with Purchased):** `PurchaseDocument`/`PurchaseLine` — §2 below, unchanged — are the Purchase Fact that `01 Domains/Shared Domains/Purchased/README.md` (a Shared Domain) canonically owns: capture + normalize + publish. Restaurant/Purchasing is a **consumer** of this Purchase Fact for its own remaining scope (Purchase Order, Configured Expectation, Physical Receiving, Reconciliation, Alert, Expected Supplier Credit — all unchanged, §3-§8 below) — it is never a prerequisite for creating one. No table was renamed and no migration was added for this realignment: the existing schema already models the Purchase Fact correctly: only *ownership* and a few *behaviors* changed — see the new §5 and §11 below.
+
 ---
 
 ## 1. Domain boundaries (implementation view)
@@ -47,27 +49,33 @@ Deterministic quantity/identity comparison only — `MATCH`, `SHORT`, `EXTRA`, `
 
 ---
 
-## 5. InvoiceIntake integration (`03 Software/InvoiceIntake/purchasing_bridge.py`)
+## 5. InvoiceIntake integration (`03 Software/InvoiceIntake/purchased_bridge.py`)
 
-`InvoiceIntake` (OCR/text extraction → human review → save) now saves through this bridge into the RF-One Data Store, replacing Excel as the canonical target:
+`InvoiceIntake` (OCR/text extraction → human review → save) saves through this bridge into the RF-One Data Store — the Purchased Purchase Fact, per the ownership realignment above (renamed from `purchasing_bridge.py`; same persistence target, same tables):
 
 ```text
 Supplier document (PDF/photo)
         ↓
 ocr_engine.py / parser.py     (unchanged — still heuristic, still human-reviewed)
         ↓
-review.html                    (now also lets the reviewer set/correct line_type)
+review.html                    (line_type + document_type, incl. correction types)
         ↓
-purchasing_bridge.save_purchase_document()   ← NEW canonical path
+purchased_bridge.save_purchase_document()   ← duplicate/correction check, then insert
         ↓
 rfone_data_store.purchasing.repository.record_purchase_document()
         ↓
-RF-One Data Store (this module)
+RF-One Data Store (this module) — the canonical Purchase Fact Purchased owns
 ```
 
 `excel_store.py` (and `data/PurchaseDocuments.xlsx`) remain available only as a secondary, best-effort export/debugging capability — `app.py` still calls it after the canonical save, but a failure there (e.g. the workbook open in Excel on Windows) never blocks or loses the canonical save. No OCR/parsing logic changed.
 
 The bridge never invents a fact the OCR/parser did not extract (an unparsed date/amount is passed through as `None`/Unknown, never defaulted). It has no restaurant-selection UI yet — see "Remaining gaps."
+
+`purchased_bridge.py` additionally (Align legacy Invoice Intake with Purchased):
+
+- **Duplicate handling** (Purchased/README.md): before inserting, looks up existing `PurchaseDocument` rows by `(supplier_id, document_number)`. An equivalent re-submission (same total/issue date) returns the existing `PurchaseDocumentId` rather than inserting a second row. A same-identity submission with *different* content is still inserted (nothing is ever silently overwritten) but flagged via a WARNING `PurchasingValidationLogEntry` cross-referencing the earlier document.
+- **Supplier-side corrections** (Purchased/README.md): a `document_type` of Credit Memo / Corrected Invoice / Return Credit / Adjustment against an existing `document_number` is treated as a deliberate correction — inserted as its own new row, linked to the original via an INFORMATION (non-blocking) validation log entry, never a rewrite of the original.
+- **Functional state**: computes a WARNING validation log entry when the document (OCR-sourced and/or missing a key header field) or a PRODUCT line (no description) looks unreliable — see §11.
 
 ---
 
@@ -106,13 +114,23 @@ python test_purchasing_engine.py       # structural/repository validation + the 
 
 ---
 
-## 10. Remaining gaps (intentional, out of this task's scope)
+## 10. Purchased output (NORMALIZED/HUMAN, non-goods allocation)
+
+`rfone_data_store/purchasing/repository.py` exposes three read-only functions implementing Purchased's own functional model over the unchanged `PurchaseDocument`/`PurchaseLine` schema — no new column, no migration:
+
+- `get_document_functional_status(session, purchase_document_id)` / `get_line_functional_status(session, purchase_line_id)` — **NORMALIZED** unless an OPEN WARNING/ERROR `PurchasingValidationLogEntry` references the document/line, in which case **HUMAN** (Purchased/README.md, "NORMALIZED / HUMAN" — no other functional state is exposed). Derived on demand, same convention as Effective Product Cost/Reconciliation Outcome.
+- `get_purchased_lines_with_allocation(session, purchase_document_id)` — Purchased/README.md's "Non-goods cost allocation": each PRODUCT line's `source_amount_minor` plus a proportional share of the document's SURCHARGE/DISCOUNT lines' total (signed as disclosed), the last line absorbing any rounding remainder so shares reconcile exactly. The raw SURCHARGE/DISCOUNT `PurchaseLine` rows are never deleted or hidden — they remain queryable as source evidence; this function only adds the allocated view on top. A document with no PRODUCT line leaves any non-goods amount unallocated (README's own open edge case).
+- `find_purchase_documents_by_number(session, supplier_id, document_number)` — the identity lookup `purchased_bridge.py`'s duplicate/correction handling (§5) is built on.
+
+---
+
+## 11. Remaining gaps (intentional, out of this task's scope)
 
 - **Ingredient/Recipe/Food Cost persistence** — no `ingredients`/`products`/`specifications` table exists yet; `SupplierProduct.ingredient_id` is an un-constrained placeholder. Explicitly out of scope ("Software boundary": "Do not build recipe costing").
 - **Order/Purchase Support module** — `PurchaseOrder`/`PurchaseOrderLine` remain deliberately minimal; nothing creates/manages them beyond what reconciliation needs.
 - **`PACKAGING_DEVIATION` reconciliation outcome** — Rule 33's illustrative list includes it, but no current repository code path distinguishes an observed packaging mismatch from `QUANTITY_DEVIATION`/`SUBSTITUTED` at the Receiving reconciliation level (as opposed to the separate, already-implemented `CONFIGURATION_DEVIATION` Alert path for Purchase Lines, Rule 20). A future task can add it without a schema change — `reconciliation.py`'s outcome list is not a rigid enum.
 - **Module Capability Gap escalation** — Rule 24's principle is representable (`decide_configuration_alert(..., "MODULE_CAPABILITY_GAP")` records the decision without changing the Configured Expectation), but no routing/ticketing mechanism exists, matching TASK_PURCHASING_002's own explicit non-goal.
 - **Credit-matching automation** — `link_supplier_credit()` requires an explicit caller decision about which Expected Supplier Credit a later document satisfies; no automatic/probabilistic matching was built, per this task's explicit instruction.
-- **InvoiceIntake restaurant selection** — `purchasing_bridge.py` reuses the single existing `Restaurant` row (or creates one placeholder) rather than offering a chooser; InvoiceIntake has no multi-restaurant UI.
+- **InvoiceIntake restaurant selection** — `purchased_bridge.py` reuses the single existing `Restaurant` row (or creates one placeholder) rather than offering a chooser; InvoiceIntake has no multi-restaurant UI. This is also Purchased/README.md's single-scope-per-invoice rule in practice (one Restaurant reused/created per document) — a genuinely multi-scope source is not detected or handled (README: routed to HUMAN, not designed here).
 - **InvoiceIntake Supplier Item Code extraction** — the existing OCR/parser heuristics do not extract a structured supplier item code, so InvoiceIntake-sourced Purchase Lines do not yet exercise Supplier Product memory reuse (`supplier_product_id` stays `NULL`); Physical Receiving and the direct `repository.record_purchase_document()` API already support it fully when a caller supplies `supplier_item_code`.
 - **No Purchasing UI, no automatic ordering, no supplier negotiation, no Inventory** — per the task's explicit "Software boundary."

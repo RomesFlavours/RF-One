@@ -7,7 +7,7 @@ Every provider (`tesseract_provider.py`, `textract_provider.py`) implements
 Invoice Intake — and, later, whatever consumes its output — never depends
 on which provider actually ran. Nothing here calls Purchasing or any other
 Business Domain; this module has no import of `rfone_data_store` or
-`purchasing_bridge` at all.
+`purchased_bridge` (renamed from `purchasing_bridge`) at all.
 """
 
 from __future__ import annotations
