@@ -493,6 +493,42 @@ Compatibility Notes:
 
 ---
 
+---
+
+Version: PROPOSED — Post-Baseline Conceptual Extension (CORE_AMBIENT_OPERATIONAL_CONTEXT_AND_IN_FLOW_COGNITO_ASSISTANCE)
+
+Date: 2026-09-14
+
+Modified Entity:
+A new document `ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md` (status PROPOSED, not Approved Core 2.0), plus discoverability/cross-reference-only additions to `ConceptualArchitecture/00_RF-One_Core_Vision.md`, `ConceptualArchitecture/07_Core_Glossary.md`, `ConceptualArchitecture/12_Attention_Management.md` (Related documents only), `ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md` (Related documents only), `ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md` (Related documents plus one clarifying sentence in §6), `README.md`, and `01 Domains/Business Domain/Restaurant/Service Copilot/README.md` (Related documents only).
+
+Reason:
+This work was produced from the tip of `docs/cognito-human-operational-state` — which already carries document 15 as APPROVED — Post-Baseline Conceptual Extension — on a further dedicated branch (`docs/cognito-ambient-operational-context`), following a Product Owner conceptual exploration, not (yet) an approved architectural decision folded into the canonical 00–14 set. It formalizes that Cognito should be able to understand the real operational context in which a person is working — the current conversation, process, business entities, counterpart, and canonical business state — without requiring the person to interrupt their work to query RF-One explicitly, and specializes this as **Ambient Operational Context**, distinct from the person's own Human Operational State (document 15). It specializes Cognito's already-named, previously unspecialized **Context Interpretation** capability ([14] §6) rather than adding a new one, and states how Ambient Operational Context feeds Cognito's Human Interaction capability as **In-Flow Cognito Assistance** and Trigger Intelligence as Trigger Discovery evidence — never itself an Authorized Consequence ([13] §3). It states a mandatory boundary distinguishing Ambient Cognition from Employee Surveillance/Recording, generalizing document 15 §10's privacy/consent/data-minimization discipline from physiological signals to ambient/conversational signals. It identifies the Restaurant Domain's existing, Approved Service Copilot module as a pre-existing instance of the same general pattern, without redefining it. It records cross-industry illustrations (retail, restaurant, legal assistant, accountant) as non-normative only, explicitly not asserting that RF-One currently has Retail, Legal, or Accounting Domains, and explicitly excluding legal/medical advice or professional decision substitution, consistent with the existing Epistemic Boundary rule that a legal or tax interpretation must never be silently promoted to Fact ([05] §1).
+
+Concepts introduced (PROPOSED, not yet Approved Core 2.0):
+
+- Ambient Operational Context (what is happening around a person, distinct from Human Operational State)
+- In-Flow Cognito Assistance (a specialization of the existing Human Interaction capability, using Ambient Operational Context combined with canonical business state)
+- The explicit Ambient Cognition ≠ Employee Surveillance/Recording boundary
+- The explicit "ambient observation ≠ Authority" restatement of Trigger Discovery/Resolution/Authorized Consequence for ambient evidence specifically
+
+Impacted Domains:
+
+- None modified. No Software, Product, or Domain business-logic file was touched; the single Domain-level edit is a discoverability-only cross-reference added to the Restaurant Domain's existing Service Copilot README, which is not itself redefined. No wearable, sensor, vendor, microphone, transcription mechanism, or surveillance capability was chosen or designed.
+
+Future Expected Impact:
+
+- Any future Cognito Edge/mobile bridge design, any future Domain or Product surfacing real-time in-flow operational assistance (including a possible future description of Service Copilot as an instance of this Core concept), and any future consent/compliance implementation task for ambient/conversational data.
+
+Compatibility Notes:
+
+- All prior Core 2.0 content is preserved; no existing definition was reversed. This entry is additive and, like the initial document 15 entry before its ratification, is **not** presented as an Approved Core 2.0 change: the new document's own status is "PROPOSED — Post-Baseline Conceptual Extension," it is deliberately **not** added to the canonical 00–14 table in `00_RF-One_Core_Vision.md` §6 or to `README.md`'s "Approved Core 2.0" ConceptualArchitecture description (both list it only for discoverability), and `RF-ONE Core Principles.md` was deliberately **not** modified.
+- The `core-2.0-freeze` tag was not moved and is not referenced as covering this content.
+- Cognito ([14](ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md)), Human Operational State ([15](ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md)), Attention Management ([12](ConceptualArchitecture/12_Attention_Management.md)), Trigger Intelligence ([13](ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md)), Organizational Responsibility, Identity/Authority/Delegation/Accountability ([09](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md)), and the Restaurant Domain's Service Copilot module are explicitly preserved as-is; this new document specializes them for one narrow purpose, it does not redefine any of them.
+- No Domain, Product or Software business-logic file was modified.
+
+---
+
 # Design Principles
 
 - The Core Domain is extracted from real domains.
