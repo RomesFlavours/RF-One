@@ -17,7 +17,7 @@ It is **not** a single score, a rank, or a static label assigned once. It is an 
 
 ## What the Profile holds
 
-Structurally, the Profile is an accumulation of the same atomic Performance Evidence, Measures and Indicators already defined generically by [Personnel Management/Performance](../../../Cross%20Domain/Performance/README.md), organized around this Server across:
+Structurally, the Profile is an accumulation of the same atomic Performance Evidence, Measures and Indicators already defined generically by [Personnel Management/Performance](../../../Shared%20Domains/Performance/README.md), organized around this Server across:
 
 ```text
 Dimensions        Productivity, Quality of Sale, Opportunity Capture, Operational Discipline,
@@ -41,19 +41,19 @@ Temporal trajectory isolated event / recurring pattern / improvement / decline /
                     Temporal Coherence application — Performance.md, "Temporal evolution")
 ```
 
-None of these fields is a single stored number — each is itself an accumulation of Observed, Derived and Inferred content ([Evidence Sources.md](Evidence%20Sources.md)), preserving the same atomicity principle [PerformanceEvidence.md](../../../Cross%20Domain/Performance/PerformanceEvidence.md) already requires generically.
+None of these fields is a single stored number — each is itself an accumulation of Observed, Derived and Inferred content ([Evidence Sources.md](Evidence%20Sources.md)), preserving the same atomicity principle [PerformanceEvidence.md](../../../Shared%20Domains/Performance/PerformanceEvidence.md) already requires generically.
 
 ---
 
 ## One Employee, one Profile, Location-segmented
 
-Consistent with Organization's canonical Employee identity (`07 Tasks/Reports/TASK_ORGANIZATION_002_REPORT.md`): a Server who works at both Winter Park and Mount Dora has **one** Individual Performance Profile, not two — but the Profile's dimensions, benchmarks and load curve are evaluated per Location/context where that distinction is meaningful (a Server's Personal Baseline at a high-volume Location is not assumed comparable to their Baseline at a quiet one without accounting for that context — see [Performance Context.md](../../../Cross%20Domain/Performance/PerformanceContext.md)). The Profile aggregates across Locations only where doing so is meaningful (e.g. Brand-wide recognition), and keeps Location-specific views available where context genuinely differs.
+Consistent with Organization's canonical Employee identity (`07 Tasks/Reports/TASK_ORGANIZATION_002_REPORT.md`): a Server who works at both Winter Park and Mount Dora has **one** Individual Performance Profile, not two — but the Profile's dimensions, benchmarks and load curve are evaluated per Location/context where that distinction is meaningful (a Server's Personal Baseline at a high-volume Location is not assumed comparable to their Baseline at a quiet one without accounting for that context — see [Performance Context.md](../../../Shared%20Domains/Performance/PerformanceContext.md)). The Profile aggregates across Locations only where doing so is meaningful (e.g. Brand-wide recognition), and keeps Location-specific views available where context genuinely differs.
 
 ---
 
 ## The Profile is never used to autonomously decide employment
 
-The Individual Performance Profile is Reality-grounded evidence. It may eventually help management build the evidence history described in [Coaching Model.md](Coaching%20Model.md), "Underperformance / management evidence" — but it never itself decides retain/develop/move/replace. That Decision belongs exclusively to Personnel Management's [Personnel Decisions](../../../Cross%20Domain/Personnel%20Management/Personnel%20Decisions/README.md) module, applied by a human. See [Exclusions.md](Exclusions.md).
+The Individual Performance Profile is Reality-grounded evidence. It may eventually help management build the evidence history described in [Coaching Model.md](Coaching%20Model.md), "Underperformance / management evidence" — but it never itself decides retain/develop/move/replace. That Decision belongs exclusively to Personnel Management's [Personnel Decisions](../../../Shared%20Domains/Personnel%20Management/Personnel%20Decisions/README.md) module, applied by a human. See [Exclusions.md](Exclusions.md).
 
 ---
 
@@ -63,4 +63,4 @@ The Individual Performance Profile is Reality-grounded evidence. It may eventual
 - [Brand Expectation and Personal Baseline.md](Brand%20Expectation%20and%20Personal%20Baseline.md)
 - [Concurrent Service Load.md](Concurrent%20Service%20Load.md)
 - [Coaching Model.md](Coaching%20Model.md)
-- [../../Personnel Management/Performance/Performance.md](../../../Cross%20Domain/Performance/Performance.md), "Temporal evolution"
+- [../../Personnel Management/Performance/Performance.md](../../../Shared%20Domains/Performance/Performance.md), "Temporal evolution"

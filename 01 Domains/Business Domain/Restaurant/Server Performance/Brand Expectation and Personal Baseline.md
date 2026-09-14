@@ -16,7 +16,7 @@ Brand Expectation    what the Restaurant/Brand considers desirable performance
 Personal Baseline     how this specific Server normally performs
 ```
 
-This specializes, for the Server role, the generic [Performance Context](../../../Cross%20Domain/Performance/PerformanceContext.md) comparison principle: "do not assume raw person-to-person, or raw period-to-period, comparison is meaningful."
+This specializes, for the Server role, the generic [Performance Context](../../../Shared%20Domains/Performance/PerformanceContext.md) comparison principle: "do not assume raw person-to-person, or raw period-to-period, comparison is meaningful."
 
 ---
 
@@ -53,7 +53,7 @@ None of these distinctions is recoverable from Brand Expectation alone — a Ser
 
 ### Baseline is not a single number
 
-Consistent with [Performance.md](../../../Cross%20Domain/Performance/Performance.md), "Temporal evolution," a Personal Baseline is a Server's typical range/distribution of results under comparable [Performance Context](../../../Cross%20Domain/Performance/PerformanceContext.md) (comparable Concurrent Service Load, comparable daypart, comparable tenure stage) — not one fixed number the Server is permanently compared against. A Baseline established during a Server's first month is not assumed valid for evaluating their second year; Personal Baseline evolves as Temporal Coherence (`00 Core/ConceptualArchitecture/04_Temporal_Coherence_and_Evolution.md`) is applied to the accumulating Individual Performance Profile.
+Consistent with [Performance.md](../../../Shared%20Domains/Performance/Performance.md), "Temporal evolution," a Personal Baseline is a Server's typical range/distribution of results under comparable [Performance Context](../../../Shared%20Domains/Performance/PerformanceContext.md) (comparable Concurrent Service Load, comparable daypart, comparable tenure stage) — not one fixed number the Server is permanently compared against. A Baseline established during a Server's first month is not assumed valid for evaluating their second year; Personal Baseline evolves as Temporal Coherence (`00 Core/ConceptualArchitecture/04_Temporal_Coherence_and_Evolution.md`) is applied to the accumulating Individual Performance Profile.
 
 ---
 
@@ -74,7 +74,7 @@ A result that is below Brand Expectation but represents a genuine improvement ov
 ## What this document does not do
 
 - It does not specify Rome's Flavours' (or any Brand's) actual strategic products, thresholds or priorities — that is Brand configuration, entered later.
-- It does not define a normalization algorithm for comparing across Concurrent Service Load, daypart, or tenure — see [Performance Context.md](../../../Cross%20Domain/Performance/PerformanceContext.md), "This document does not design a normalization algorithm," which applies unchanged here.
+- It does not define a normalization algorithm for comparing across Concurrent Service Load, daypart, or tenure — see [Performance Context.md](../../../Shared%20Domains/Performance/PerformanceContext.md), "This document does not design a normalization algorithm," which applies unchanged here.
 - It does not define how Personal Baseline is statistically computed (window length, outlier handling, minimum sample size) — that is future Product/Runtime/Intelligence Engine work, not Domain modeling.
 
 ---
@@ -83,5 +83,5 @@ A result that is below Brand Expectation but represents a genuine improvement ov
 
 - [README.md](README.md), [Server Performance.md](Server%20Performance.md)
 - [Individual Performance Profile.md](Individual%20Performance%20Profile.md)
-- [../../Personnel Management/Performance/PerformanceContext.md](../../../Cross%20Domain/Performance/PerformanceContext.md)
+- [../../Personnel Management/Performance/PerformanceContext.md](../../../Shared%20Domains/Performance/PerformanceContext.md)
 - [../Commercial Catalog/README.md](../Commercial%20Catalog/README.md)

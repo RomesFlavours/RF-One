@@ -106,7 +106,7 @@ The migration scripts live in `migrations/versions/`. `migrations/env.py` resolv
 | `rfone_data_store/profile_validation.py` | Synthetic-fixture bootstrap engine tests, same pattern as `schema_validation.py`. Always rolled back. |
 | `bootstrap_restaurant_profile.py` | Entry point: Restaurant Profile bootstrap/sync from Clover source configuration, dry-run by default. |
 | `test_restaurant_profile_bootstrap.py` | Entry point: run the bootstrap engine synthetic-fixture tests. |
-| `rfone_data_store/payroll/` | Administration/Payroll — `schedule.py` (PayrollSchedule/Workweek helpers, no overtime logic), `compensation.py` (Compensation Terms temporal/conflict helpers), `adp_importer.py` (ADP Payroll Detail Excel parsing, Employee mapping, idempotent import), `labor_cost.py` (Payroll Employer Cost query). TASK_PAYROLL_001 — see `PAYROLL.md` and `01 Domains/Cross Domain/Administration/Payroll/`. |
+| `rfone_data_store/payroll/` | Administration/Payroll — `schedule.py` (PayrollSchedule/Workweek helpers, no overtime logic), `compensation.py` (Compensation Terms temporal/conflict helpers), `adp_importer.py` (ADP Payroll Detail Excel parsing, Employee mapping, idempotent import), `labor_cost.py` (Payroll Employer Cost query). TASK_PAYROLL_001 — see `PAYROLL.md` and `01 Domains/Shared Domains/Administration/Payroll/`. |
 | `rfone_data_store/payroll_validation.py` | Synthetic-fixture Payroll tests, same pattern as `schema_validation.py`. Always rolled back. |
 | `import_payroll_results.py` | Entry point: ADP Payroll Detail Excel import, dry-run by default. |
 | `test_payroll_engine.py` | Entry point: run the Payroll synthetic-fixture tests. |

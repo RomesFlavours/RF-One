@@ -1,7 +1,7 @@
 # Selection — Resume Screening (MVP)
 
 **Task:** TASK_SELECTION_001, extended by TASK_SELECTION_002 (multi-résumé batch import)
-**Canonical documentation:** `01 Domains/Cross Domain/Selection/ResumeScreening/` (Selection Core) and `01 Domains/Business Domain/Restaurant/Selection/` (Restaurant Industry Extension).
+**Canonical documentation:** `01 Domains/Shared Domains/Selection/ResumeScreening/` (Selection Core) and `01 Domains/Business Domain/Restaurant/Selection/` (Restaurant Industry Extension).
 
 A small local web app to screen résumés for Rome's Flavours' Server role: upload one or many PDFs at once, each résumé is parsed independently into a structured Candidate CV Profile, and the candidate detail page shows Facts, Derived Information, Flags/Questions and Indicators as four clearly separate areas — never one combined score.
 
