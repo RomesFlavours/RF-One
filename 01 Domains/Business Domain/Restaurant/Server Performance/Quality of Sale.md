@@ -13,7 +13,7 @@ Performance must evaluate not only "how much did the Server sell?" but "what did
 
 A Server may create high throughput while wasting commercial opportunity by failing to present appetizers, strategic dishes, premium items, wine, additional drinks, desserts, profitable modifiers/add-ons, or other Brand-priority products. **Quality of Sale reflects alignment between actual selling behavior and Brand commercial priorities** ([Brand Expectation and Personal Baseline.md](Brand%20Expectation%20and%20Personal%20Baseline.md)).
 
-Two Servers with equal Sales-per-Hour Productivity can represent materially different economic value to the Brand if their product mix differs — the same distinction [PerformanceMeasure.md](../../../Cross%20Domain/Performance/PerformanceMeasure.md) already illustrates generically ("gross per hour" vs. "contribution margin per hour"); Quality of Sale is where that distinction becomes Restaurant-concrete.
+Two Servers with equal Sales-per-Hour Productivity can represent materially different economic value to the Brand if their product mix differs — the same distinction [PerformanceMeasure.md](../../../Shared%20Domains/Performance/PerformanceMeasure.md) already illustrates generically ("gross per hour" vs. "contribution margin per hour"); Quality of Sale is where that distinction becomes Restaurant-concrete.
 
 ---
 

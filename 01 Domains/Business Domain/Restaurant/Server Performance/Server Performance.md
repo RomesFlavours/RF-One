@@ -21,7 +21,7 @@ RF-One does not pretend to know the private/personal reason a Server performed d
 - intervenes only on what RF-One can actually influence (Brand guidance, timely information, coaching, training);
 - measures what changes as a result.
 
-This mirrors, for the Server role specifically, the general principle already stated in [Personnel Management/Performance.md](../../../Cross%20Domain/Performance/Performance.md): Performance grounds Personnel Management in observed Reality rather than impression, reputation or prediction.
+This mirrors, for the Server role specifically, the general principle already stated in [Personnel Management/Performance.md](../../../Shared%20Domains/Performance/Performance.md): Performance grounds Personnel Management in observed Reality rather than impression, reputation or prediction.
 
 ---
 
@@ -43,10 +43,10 @@ Brand Expectations
 Each stage reuses Core concepts already established for the rest of RF-One rather than inventing a parallel model:
 
 - **Brand Expectations** — a Goal-shaped statement of what the Brand wants (see [Brand Expectation and Personal Baseline.md](Brand%20Expectation%20and%20Personal%20Baseline.md)).
-- **Observation** — [Performance Evidence](../../../Cross%20Domain/Performance/PerformanceEvidence.md), atomic and provenance-preserving, sourced per [Evidence Sources.md](Evidence%20Sources.md).
+- **Observation** — [Performance Evidence](../../../Shared%20Domains/Performance/PerformanceEvidence.md), atomic and provenance-preserving, sourced per [Evidence Sources.md](Evidence%20Sources.md).
 - **Individual Performance Profile** — the accumulated, multidimensional record RF-One keeps about one Server (see [Individual Performance Profile.md](Individual%20Performance%20Profile.md)).
 - **Gap / Opportunity** — the Core `Reality Check` between expected and observed (`00 Core/ConceptualArchitecture/02_Desire_Goal_and_Reality_Check.md`), evaluated against both Brand Expectation and Personal Baseline simultaneously.
-- **Coaching / Training Intervention** — Core `Decision`/`Action` (see [Coaching Model.md](Coaching%20Model.md)); delivered in real time by [Service Copilot](../Service%20Copilot/README.md) and/or structurally as an intervention selected by the sibling [Continuous Productivity Development](../../../Cross%20Domain/Continuous%20Productivity%20Development/README.md) Cross Domain (which conceptually superseded the former Training placeholder).
+- **Coaching / Training Intervention** — Core `Decision`/`Action` (see [Coaching Model.md](Coaching%20Model.md)); delivered in real time by [Service Copilot](../Service%20Copilot/README.md) and/or structurally as an intervention selected by the sibling [Continuous Productivity Development](../../../Shared%20Domains/Continuous%20Productivity%20Development/README.md) Shared Domains (which conceptually superseded the former Training placeholder).
 - **New Observation → Outcome → Learning** — Core `Outcome`/`Learning` (`00 Core/ConceptualArchitecture/03_Decision_Action_Outcome_Learning.md`), reused without redefinition, closing the loop back into the Individual Performance Profile.
 
 ---
@@ -90,7 +90,7 @@ RF-One does **not** assume causation from these signals — a void may reflect a
 
 ## Epistemic discipline (mandatory)
 
-Every important Server Performance concept distinguishes, where appropriate, three epistemic states — the same discipline already established generically by [Personnel Management/Performance](../../../Cross%20Domain/Performance/README.md) and by Core's [Epistemic Boundary](../../../../00%20Core/ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md), applied here to Restaurant evidence specifically. See [Evidence Sources.md](Evidence%20Sources.md) for the full model and worked examples (e.g. "Server sold wine on 8 of 20 qualifying tables" → 40% conversion → "may be weak at introducing wine to this archetype").
+Every important Server Performance concept distinguishes, where appropriate, three epistemic states — the same discipline already established generically by [Personnel Management/Performance](../../../Shared%20Domains/Performance/README.md) and by Core's [Epistemic Boundary](../../../../00%20Core/ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md), applied here to Restaurant evidence specifically. See [Evidence Sources.md](Evidence%20Sources.md) for the full model and worked examples (e.g. "Server sold wine on 8 of 20 qualifying tables" → 40% conversion → "may be weak at introducing wine to this archetype").
 
 ```text
 Observed   directly evidenced (a transaction, a Payment Tip, a Shift, a QR Survey response)
@@ -141,7 +141,7 @@ Service Copilot and/or Continuous Productivity Development → intervention
 Server Performance   → observes outcome, closing the loop
 ```
 
-Server Performance, Service Copilot and Continuous Productivity Development (the sibling Cross Domain that conceptually superseded the former Training placeholder) remain three distinct modules and are never merged (see [Performance/README.md](../../../Cross%20Domain/Performance/README.md), "Relationship to Continuous Productivity Development," which this specializes for the Server role).
+Server Performance, Service Copilot and Continuous Productivity Development (the sibling Shared Domains that conceptually superseded the former Training placeholder) remain three distinct modules and are never merged (see [Performance/README.md](../../../Shared%20Domains/Performance/README.md), "Relationship to Continuous Productivity Development," which this specializes for the Server role).
 
 ## Relationship to Sales
 
@@ -159,4 +159,4 @@ Server Performance uses canonical `Employee`, `Restaurant`, `Location`, `Restaur
 - [Brand Expectation and Personal Baseline.md](Brand%20Expectation%20and%20Personal%20Baseline.md)
 - [Individual Performance Profile.md](Individual%20Performance%20Profile.md)
 - [Evidence Sources.md](Evidence%20Sources.md)
-- [../../Personnel Management/Performance/Performance.md](../../../Cross%20Domain/Performance/Performance.md)
+- [../../Personnel Management/Performance/Performance.md](../../../Shared%20Domains/Performance/Performance.md)

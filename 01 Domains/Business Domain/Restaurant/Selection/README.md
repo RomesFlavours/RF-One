@@ -2,14 +2,14 @@
 
 **Version:** 0.1
 **Status:** Draft (initial canonical foundation)
-**Module:** Restaurant Domain / Selection (Industry Extension of the Selection Domain's Resume Screening capability — `01 Domains/Cross Domain/Selection/`)
+**Module:** Restaurant Domain / Selection (Industry Extension of the Selection Domain's Resume Screening capability — `01 Domains/Shared Domains/Selection/`)
 **Origin:** TASK_SELECTION_001
 
 ---
 
 ## Purpose
 
-This document is the **Restaurant Industry Extension** of Selection's Resume Screening sub-area (`01 Domains/Cross Domain/Selection/ResumeScreening/`). It adds Restaurant-specific interpretation — a normalized role catalog, role classification, and the first real Client/Role Configuration (Rome's Flavours' Server role) — on top of the generic, industry-agnostic Resume Screening engine. Nothing here is assumed by Selection Core; Selection Core does not know Restaurant exists (`01 Domains/Cross Domain/Selection/ResumeScreening/README.md`, "Domain architecture"). Selection is a top-level, transversal Domain — this Restaurant Industry Extension depends on Selection Core, never the reverse; Selection Core has no knowledge of this folder's existence.
+This document is the **Restaurant Industry Extension** of Selection's Resume Screening sub-area (`01 Domains/Shared Domains/Selection/ResumeScreening/`). It adds Restaurant-specific interpretation — a normalized role catalog, role classification, and the first real Client/Role Configuration (Rome's Flavours' Server role) — on top of the generic, industry-agnostic Resume Screening engine. Nothing here is assumed by Selection Core; Selection Core does not know Restaurant exists (`01 Domains/Shared Domains/Selection/ResumeScreening/README.md`, "Domain architecture"). Selection is a top-level, transversal Domain — this Restaurant Industry Extension depends on Selection Core, never the reverse; Selection Core has no knowledge of this folder's existence.
 
 This document does not redefine any Restaurant Domain knowledge (food cost, kitchen process, service sequence, purchasing, menu, restaurant operations — canonical under `01 Domains/Business Domain/Restaurant/`) — it only adds the Selection-specific interpretation of Restaurant roles.
 

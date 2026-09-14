@@ -60,7 +60,7 @@ Reservation
 Dining Session identity/context
 ```
 
-No such integration is implemented by this task. This document only fixes that the eventual adapter boundary must translate provider-specific guest/reservation data into these three canonical concepts, mirroring the provider-independence discipline already established for Payroll (`01 Domains/Cross Domain/Administration/Payroll/Payroll Provider Result.md`, "Provider boundary") and Tips (`Tips/README.md`, "Relationship to Clover source semantics").
+No such integration is implemented by this task. This document only fixes that the eventual adapter boundary must translate provider-specific guest/reservation data into these three canonical concepts, mirroring the provider-independence discipline already established for Payroll (`01 Domains/Shared Domains/Administration/Payroll/Payroll Provider Result.md`, "Provider boundary") and Tips (`Tips/README.md`, "Relationship to Clover source semantics").
 
 ---
 
@@ -73,6 +73,6 @@ This document does not decide how a guest is legitimately identified (loyalty pr
 ## Related documents
 
 - [README.md](README.md), [Dining Session Profile.md](Dining%20Session%20Profile.md)
-- [../../Personnel Management/Performance/PerformanceEvidence.md](../../../Cross%20Domain/Performance/PerformanceEvidence.md), "Direct observation vs. derived interpretation"
-- [../../Administration/Payroll/Payroll Provider Result.md](../../../Cross%20Domain/Administration/Payroll/Payroll%20Provider%20Result.md), "Provider boundary"
+- [../../Personnel Management/Performance/PerformanceEvidence.md](../../../Shared%20Domains/Performance/PerformanceEvidence.md), "Direct observation vs. derived interpretation"
+- [../../Administration/Payroll/Payroll Provider Result.md](../../../Shared%20Domains/Administration/Payroll/Payroll%20Provider%20Result.md), "Provider boundary"
 - [../Server Performance/Exclusions.md](../Server%20Performance/Exclusions.md)

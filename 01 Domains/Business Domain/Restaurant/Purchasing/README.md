@@ -118,6 +118,8 @@ AI may propose classifications and mappings but never validates them autonomousl
 
 Restaurant/Purchasing understands what was purchased. Administration consumes the derived economic result (category totals, document totals, reconciliation status) but does not own Purchase Document, Purchase Line, Supplier Product, or Ingredient mapping, and does not reinterpret item-level semantics — see `BusinessRules.md`, "Purchasing Precedes Administration and Taxation."
 
+See also `01 Domains/Shared Domains/Purchased/README.md` — a later, cross-Business-Domain Shared Domain formalizing the general "purchase fact" concept (what was invoiced, one normalized line per economic item). It does not redefine, rename, or take over this module's Purchase Document/Purchase Line/Effective Product Cost model, which remains exactly as approved here; the relationship between the two is recorded there as an explicitly open question, not decided by either document.
+
 ---
 
 ## Validation
