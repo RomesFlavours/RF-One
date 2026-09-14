@@ -77,6 +77,14 @@
       <tr><td class="muted">Every</td><td>{{ payment_config.interval_days }} day(s)</td></tr>
       <tr><td class="muted">Execution time</td><td>{{ payment_config.execution_time or "00:00" }}</td></tr>
       <tr><td class="muted">Anchor date</td><td>{{ payment_config.anchor_date or "-" }}</td></tr>
+      <tr><td class="muted">Approval</td>
+          <td><strong>{{ payment_config.auto_approval_mode or "WITH_APPROVAL" }}</strong>
+              {% if (payment_config.auto_approval_mode or "WITH_APPROVAL") == "WITH_APPROVAL" %}
+                — a human still Approves &amp; Pays each cycle
+              {% else %}
+                — RF-One Approves &amp; Pays automatically once READY, within Delegated Authority
+              {% endif %}
+          </td></tr>
       {% endif %}
       <tr><td class="muted">Mercury source account</td><td>{{ payment_config.mercury_source_account_id or "not configured" }}</td></tr>
     </table>
@@ -92,12 +100,20 @@
     <label>Every N days <input type="number" name="interval_days" min="1"></label>
     <label>Execution time <input type="time" name="execution_time"></label>
     <label>Anchor date <input type="date" name="anchor_date"></label>
+    <label>Approval (AUTOMATIC only)
+      <select name="auto_approval_mode">
+        <option value="">WITH_APPROVAL (a human Approves &amp; Pays)</option>
+        <option value="WITHOUT_APPROVAL">WITHOUT_APPROVAL (RF-One Approves &amp; Pays automatically when READY)</option>
+      </select>
+    </label>
     <label>Mercury source account id <input type="text" name="mercury_source_account_id"></label>
     <label>Set by <input type="text" name="created_by"></label>
     <button type="submit">Update Payment Schedule</button>
   </form>
   <p class="muted" style="font-size:.78rem; margin-top:.6rem;">
     "Start Payment Cycle Now" and "Approve &amp; Pay" live on the <a href="{{ url_for('payment_control_home') }}">Payment Control</a> page.
+    WITHOUT_APPROVAL requires this Restaurant to hold an explicit TIPS/APPROVE_AND_PAY Authority grant for
+    the RF-One System identity — it is never implied by choosing this mode alone.
   </p>
 </div>
 

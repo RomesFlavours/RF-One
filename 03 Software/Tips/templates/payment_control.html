@@ -5,62 +5,120 @@
   {% for category, message in messages %}
     {% if category == "error" %}
       <div class="error">{{ message }}</div>
+    {% elif category == "info" %}
+      <div class="info">{{ message }}</div>
     {% endif %}
   {% endfor %}
 
-  <div class="card">
+  <div class="card" id="content-start">
     <h2>Tips Payment Control — Mercury Sandbox pilot</h2>
     <p class="muted" style="font-size:.85rem;">
-      Authorized visual control surface, not a workflow engine (TASK_TIPS_COMPLETE_001 §13). SANDBOX ONLY:
-      never a production Mercury endpoint or token. No bank/account details are ever shown here.
+      Authorized visual control surface, not a workflow engine (TASK_TIPS_COMPLETE_001 §13). One responsive
+      page for PC, smartphone and tablet — SANDBOX ONLY: never a production Mercury endpoint or token. No
+      bank/account details are ever shown here.
     </p>
+    {% if is_deep_link and open_cycle %}
+      <p class="info" style="margin-bottom:1rem;">
+        Viewing Payment Cycle #{{ open_cycle.id }} directly (deep link) — status {{ open_cycle.status }}.
+      </p>
+    {% endif %}
     {% if connector_error %}
       <p class="error">Mercury sandbox connector not available: {{ connector_error }}</p>
     {% endif %}
     {% if not restaurant %}
       <p class="error">No Restaurant exists in this database yet.</p>
     {% else %}
-      <table style="margin-bottom:1rem;">
-        <tr><td class="muted">Restaurant</td><td><strong>{{ restaurant.name }}</strong></td></tr>
-        <tr><td class="muted">Calculation Period (latest Business Date)</td>
-            <td>{{ calc_state.business_date if calc_state and calc_state.business_date else "-" }}
-                {% if calc_state and calc_state.already_calculated %}(calculated){% endif %}</td></tr>
-        <tr><td class="muted">Unpaid Tip Entitlements</td>
-            <td>{{ cycle_readiness.unpaid_entitlement_count if cycle_readiness else 0 }}
-                across {{ cycle_readiness.payee_count if cycle_readiness else 0 }} payee(s),
-                ${{ "%.2f"|format((cycle_readiness.unpaid_total_minor if cycle_readiness else 0) / 100) }} total</td></tr>
-        <tr><td class="muted">Mercury available balance</td>
-            <td>{{ "$%.2f"|format(mercury_balance) if mercury_balance is not none else "-" }}</td></tr>
-        <tr><td class="muted">Open Payment Cycle</td>
-            <td>
-              {% if open_cycle %}
-                #{{ open_cycle.id }} — status {{ open_cycle.status }},
-                period {{ open_cycle.period_start.strftime("%Y-%m-%d") }} .. {{ open_cycle.period_end.strftime("%Y-%m-%d") }}
-              {% else %}
-                none
-              {% endif %}
-            </td></tr>
-      </table>
 
-      <form method="post" action="{{ url_for('payment_control_start_cycle') }}" style="display:inline-block; margin-right:.6rem;">
+      {# ---- Mobile-first summary — everything an authorized person needs
+             to see in one glance, before scrolling (task §6). ---- #}
+      <div class="stat-grid">
+        <div class="stat-tile">
+          <div class="label">Restaurant</div>
+          <div class="value">{{ restaurant.name }}</div>
+        </div>
+        <div class="stat-tile">
+          <div class="label">Payment Cycle</div>
+          <div class="value small">
+            {% if open_cycle %}
+              #{{ open_cycle.id }} — {{ open_cycle.status }}<br>
+              {{ open_cycle.period_start.strftime("%Y-%m-%d") }} .. {{ open_cycle.period_end.strftime("%Y-%m-%d") }}
+            {% else %}
+              none open
+            {% endif %}
+          </div>
+        </div>
+        <div class="stat-tile">
+          <div class="label">Payees / Total due</div>
+          <div class="value">
+            {{ cycle_readiness.payee_count if cycle_readiness else 0 }} payee(s)<br>
+            <span class="small">${{ "%.2f"|format((cycle_readiness.unpaid_total_minor if cycle_readiness else 0) / 100) }}</span>
+          </div>
+        </div>
+        <div class="stat-tile">
+          <div class="label">Business Dates</div>
+          <div class="value small">
+            latest: {{ calc_state.business_date if calc_state and calc_state.business_date else "-" }}
+            {% if calc_state and calc_state.already_calculated %}(calculated){% endif %}
+          </div>
+        </div>
+        <div class="stat-tile">
+          <div class="label">Mercury available balance</div>
+          <div class="value">{{ "$%.2f"|format(mercury_balance) if mercury_balance is not none else "-" }}</div>
+        </div>
+        <div class="stat-tile">
+          <div class="label">Clover reconciliation</div>
+          <div class="value small">
+            {% if payment_readiness %}
+              {{ payment_readiness.reconciliation_status }}
+              {% if payment_readiness.reconciliation_last_checked_at %}
+                <br><span class="muted">as of {{ payment_readiness.reconciliation_last_checked_at.strftime("%H:%M:%S UTC") }}</span>
+              {% endif %}
+            {% else %}
+              -
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      {# ---- READY / NOT READY — the single unmissable signal (task §3/§6). ---- #}
+      {% if payment_readiness %}
+      <div class="status-line {{ 'ready' if payment_readiness.ready else 'not-ready' }}">
+        <span class="badge lg {{ 'ok' if payment_readiness.ready else 'warn' }}">
+          {{ "READY FOR PAYMENT" if payment_readiness.ready else "NOT READY" }}
+        </span>
+        <span class="status-reason">{{ payment_readiness.reason }}</span>
+      </div>
+      {% endif %}
+
+      {# ---- Attention / exceptions, only when present — never noise on a normal day. ---- #}
+      {% if payment_readiness and payment_readiness.has_blocking_attention %}
+        <p class="error">A CRITICAL Attention item for this Restaurant's Tips must be resolved before payment can proceed.</p>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('payment_control_start_cycle') }}" style="display:inline-block; margin-right:.6rem; margin-bottom:.6rem;">
         <button type="submit" {{ 'disabled' if not cycle_readiness or not cycle_readiness.ready_to_start_cycle else '' }}>
           Start Payment Cycle Now
         </button>
       </form>
 
       {% if open_cycle and open_cycle.status == "OPEN" %}
-      <form method="post" action="{{ url_for('payment_control_approve_and_pay') }}" style="display:inline-flex; gap:.4rem; align-items:center;">
+      {# ---- Approve & Pay — clearly accessible when authorized AND ready (task §6/§10). ---- #}
+      <form method="post" action="{{ url_for('payment_control_approve_and_pay') }}" class="approve-pay-form">
         <select name="acting_identity_id" required>
           <option value="">Acting as…</option>
           {% for identity in identities %}
             <option value="{{ identity.id }}">{{ identity.display_name }}</option>
           {% endfor %}
         </select>
-        <button type="submit">Approve &amp; Pay</button>
+        <button type="submit" {{ 'disabled' if not identities or (payment_readiness and not payment_readiness.ready) else '' }}>
+          Approve &amp; Pay
+        </button>
       </form>
       <p class="muted" style="font-size:.78rem; margin-top:.4rem;">
-        Approve &amp; Pay is gated by Authority (`TIPS`/`APPROVE_AND_PAY`) — an unauthorized Acting Identity is
-        rejected before any Mercury call is made.
+        Approve &amp; Pay is gated by Authority (`TIPS`/`APPROVE_AND_PAY`, scoped to this Restaurant) AND by
+        Payment Readiness (Clover live health + reconciliation + no blocking Attention) — both re-checked
+        server-side before any Mercury call is made, regardless of what this page shows.
+        {% if not identities %}No Acting Identity currently holds Approve &amp; Pay Authority for this Restaurant.{% endif %}
       </p>
       {% endif %}
     {% endif %}
@@ -79,11 +137,11 @@
     <p class="empty">No open Payment Cycle, or no Payment Instructions in it yet.</p>
   {% else %}
   <div class="table-scroll">
-  <table>
+  <table class="responsive-table">
     <thead>
       <tr>
         <th>Employee</th><th>Amount</th><th>Mercury recipient</th><th>Status</th>
-        <th>Provider status</th><th>Priority / Reason</th><th>Attention</th><th></th>
+        <th>Provider status</th><th>Priority / Reason</th><th>Attention</th><th>Detail</th><th></th>
       </tr>
     </thead>
     <tbody>
@@ -91,26 +149,27 @@
       {% set employee = employees_by_id.get(instruction.employee_id) %}
       {% set reference = references_by_employee.get(instruction.employee_id) %}
       {% set attention = attention_items_by_instruction.get(instruction.id) %}
+      {% set entitlements = entitlements_by_instruction.get(instruction.id, []) %}
       <tr>
-        <td>{{ employee.display_name if employee else ('Employee #' ~ instruction.employee_id) }}</td>
-        <td>${{ "%.2f"|format(instruction.amount_minor / 100) }}</td>
-        <td>
+        <td data-label="Employee">{{ employee.display_name if employee else ('Employee #' ~ instruction.employee_id) }}</td>
+        <td data-label="Amount">${{ "%.2f"|format(instruction.amount_minor / 100) }}</td>
+        <td data-label="Mercury recipient">
           {% if reference %}
             <span class="muted" style="font-size:.78rem;">linked</span>
           {% else %}
-            <form method="post" action="{{ url_for('payment_control_link_recipient', employee_id=instruction.employee_id) }}" style="display:flex; gap:.3rem;">
+            <form method="post" action="{{ url_for('payment_control_link_recipient', employee_id=instruction.employee_id) }}" style="display:flex; gap:.3rem; justify-content:flex-end;">
               <input type="text" name="recipient_name" placeholder="Mercury sandbox recipient name" required style="font-size:.78rem;">
               <button type="submit" style="font-size:.78rem;">Link</button>
             </form>
           {% endif %}
         </td>
-        <td><span class="badge {{ 'warn' if instruction.status == 'NEEDS_ATTENTION' else '' }}">{{ instruction.status }}</span></td>
-        <td>{{ instruction.provider_status or "-" }}</td>
-        <td class="muted" style="font-size:.78rem;">
+        <td data-label="Status"><span class="badge {{ 'warn' if instruction.status == 'NEEDS_ATTENTION' else '' }}">{{ instruction.status }}</span></td>
+        <td data-label="Provider status">{{ instruction.provider_status or "-" }}</td>
+        <td data-label="Priority / Reason" class="muted" style="font-size:.78rem;">
           {% if instruction.priority %}<strong>{{ instruction.priority }}</strong> — {% endif %}
           {{ instruction.reason_for_failure or "" }}
         </td>
-        <td class="muted" style="font-size:.78rem;">
+        <td data-label="Attention" class="muted" style="font-size:.78rem;">
           {% if attention %}
             #{{ attention.id }} {{ attention.status }}
             {% if attention.resolution_path %}via {{ attention.resolution_path }}{% endif %}
@@ -118,7 +177,30 @@
             -
           {% endif %}
         </td>
-        <td>
+        <td data-label="Detail">
+          {% if entitlements %}
+          <details>
+            <summary style="cursor:pointer; font-size:.78rem;">{{ entitlements|length }} Business Date(s)</summary>
+            <table style="margin-top:.5rem;">
+              <thead><tr><th>Business Date</th><th>Gross/source tips</th><th>Transferred out</th><th>Transferred in</th><th>Final payable</th></tr></thead>
+              <tbody>
+                {% for e in entitlements %}
+                <tr>
+                  <td>{{ e.business_date or "-" }}</td>
+                  <td>${{ "%.2f"|format(e.gross_amount_minor / 100) }}</td>
+                  <td>${{ "%.2f"|format(e.outbound_amount_minor / 100) }}</td>
+                  <td>${{ "%.2f"|format(e.inbound_amount_minor / 100) }}</td>
+                  <td><strong>${{ "%.2f"|format(e.payable_amount_minor / 100) }}</strong></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </details>
+          {% else %}
+            <span class="muted" style="font-size:.78rem;">-</span>
+          {% endif %}
+        </td>
+        <td data-label="">
           {% if instruction.status == "NEEDS_ATTENTION" %}
           <form method="post" action="{{ url_for('payment_control_retry_instruction', instruction_id=instruction.id) }}">
             <button type="submit" style="font-size:.78rem;">Retry this instruction only</button>
@@ -133,6 +215,8 @@
   <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
     Retrying resubmits ONLY the selected instruction, with the same deterministic idempotency key — every
     other instruction is unaffected. A NEEDS_ATTENTION row without a linked recipient must be linked first.
+    "Detail" expands gross/source tips, amounts transferred, and final payable per Business Date — never a
+    full account number, routing number, token, or secret (task §7).
   </p>
   {% endif %}
 </div>

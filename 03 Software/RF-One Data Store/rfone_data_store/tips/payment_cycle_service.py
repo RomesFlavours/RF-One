@@ -35,6 +35,21 @@ existed as `AuthorityGrant.scope_type` values); `models.AUTHORITY_SCOPE_KINDS`
 now also includes `RESTAURANT`, mirroring `POSITION_SCOPE_KINDS`'s existing
 `POSITION_SCOPE_RESTAURANT` value (a separate enum on a separate table — the
 two scope vocabularies are not merged).
+
+Approve & Pay is ALSO gated on `payment_readiness.describe_payment_readiness`
+(TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001,
+CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md §7) — Clover live healthy,
+reconciliation recent and successful, no blocking CRITICAL Attention — in
+addition to, never instead of, the Authority gate above. This is the SAME
+gate function the Web Payment Control and `tips/scheduler.py`'s AUTO WITHOUT
+APPROVAL path both call (task §9's Channel Independence boundary: no
+business rule lives only in a route/template). A NOT READY outcome raises
+`PaymentNotReadyError` — never treated as a financial error, never a Mercury
+call — and is a normal, expected, silent-by-default condition; only a
+PERSISTENTLY failing reconciliation is escalated to a human, via
+`maybe_raise_attention_for_payment_readiness` below, reusing Attention
+Management exactly as `_raise_attention_for_instruction` already does for a
+failed payment instruction — never a Tips-specific escalation mechanism.
 """
 
 from __future__ import annotations
@@ -51,6 +66,8 @@ from ..authority_service import AuthorizationContext, authorize
 from ..organizational_responsibility_service import ScopeContext
 from ..technical.connectors.mercury.client import MercuryClient
 from . import payment_instruction as pi_svc
+from . import payment_readiness as readiness_svc
+from . import schedule_service as sched_svc
 
 UTC = timezone.utc
 
@@ -64,6 +81,34 @@ ATTENTION_SOURCE_PROCESS_NAME = "TIP_PAYOUT"
 
 def _aware_utc(dt: datetime) -> datetime:
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+
+
+# ---------------------------------------------------------------------------
+# Mercury source account resolution (task §9's Channel Independence: moved
+# here from `Tips/app.py`, which had it as a route-local helper — the
+# automatic scheduler's AUTO WITHOUT APPROVAL path (`tips/scheduler.py`)
+# needs the EXACT same resolution outside any Flask request, so it can no
+# longer live only in a route/template).
+# ---------------------------------------------------------------------------
+
+
+def pilot_source_account_id(client: MercuryClient) -> str | None:
+    """Fallback ONLY when this Restaurant has not yet configured a Mercury
+    source account (`TipsPaymentScheduleConfig.mercury_source_account_id` —
+    resolved first by `resolve_source_account_id` below): the first active
+    Mercury `checking` account with a positive balance. Never used once a
+    Restaurant has configured its own account explicitly."""
+    for account in client.get_accounts():
+        if account.type == "mercury" and account.status == "active" and account.kind == "checking" and account.available_balance > 0:
+            return account.id
+    return None
+
+
+def resolve_source_account_id(session: Session, restaurant_id: int, client: MercuryClient) -> str | None:
+    payment_config = sched_svc.get_payment_schedule_effective_at(session, restaurant_id=restaurant_id)
+    if payment_config is not None and payment_config.mercury_source_account_id:
+        return payment_config.mercury_source_account_id
+    return pilot_source_account_id(client)
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +265,50 @@ def _maybe_raise_attention(session: Session, instruction: "m.TipPaymentInstructi
         _raise_attention_for_instruction(session, instruction, restaurant_id=restaurant_id)
 
 
+ATTENTION_SOURCE_PHASE_RECONCILIATION = "PAYMENT_READINESS_PERSISTENT_FAILURE"
+
+
+def maybe_raise_attention_for_payment_readiness(
+    session: Session, *, restaurant_id: int, readiness: "readiness_svc.PaymentReadiness",
+) -> "m.AttentionItem | None":
+    """Task §11 — "se reconciliation fallisce persistentemente... usa
+    Attention Management esistente. NON creare escalation specifica Tips."
+    Called explicitly by the Web Payment Control route and by `tips/
+    scheduler.py`'s automatic tick — NEVER from inside `approve_and_pay_
+    cycle` itself, so a routine, expected NOT-READY denial never raises
+    Attention on its own (task §3/§11's "NON creare allarme inutile" for a
+    normal wait). Idempotent: reuses the SAME `source_reference` dedup
+    convention `_raise_attention_for_instruction` already uses — a second
+    call while the SAME persistent-failure condition is still open returns
+    the existing OPEN/ACKNOWLEDGED item instead of raising a duplicate.
+    Returns `None` when readiness is not persistently failing — nothing to
+    raise."""
+    if not readiness.is_persistently_failing:
+        return None
+
+    source_reference = f"Restaurant:{restaurant_id}:PaymentReadiness"
+    existing = session.scalars(
+        select(m.AttentionItem).where(
+            m.AttentionItem.source_domain == ATTENTION_SOURCE_DOMAIN,
+            m.AttentionItem.source_reference == source_reference,
+            m.AttentionItem.status.in_((m.ATTENTION_STATUS_OPEN, m.ATTENTION_STATUS_ACKNOWLEDGED)),
+        )
+    ).first()
+    if existing is not None:
+        return existing
+
+    item = create_attention(
+        session, source_domain=ATTENTION_SOURCE_DOMAIN, source_module=ATTENTION_SOURCE_MODULE,
+        source_process_name=ATTENTION_SOURCE_PROCESS_NAME, source_phase=ATTENTION_SOURCE_PHASE_RECONCILIATION,
+        source_reference=source_reference,
+        reason=f"Tips payment readiness for this Restaurant has been persistently NOT READY: {readiness.reason}",
+        priority=m.ATTENTION_PRIORITY_HIGH,
+        scope=ScopeContext(scope_type=m.POSITION_SCOPE_RESTAURANT, scope_id=restaurant_id),
+    )
+    route_attention(session, item=item)
+    return item
+
+
 # ---------------------------------------------------------------------------
 # Approve & Pay (task §14)
 # ---------------------------------------------------------------------------
@@ -229,6 +318,19 @@ class ApproveAndPayError(ValueError):
     """A malformed or unauthorized Approve & Pay attempt — no Mercury call
     is ever made and no cycle/instruction state changes when this is
     raised."""
+
+
+class PaymentNotReadyError(ApproveAndPayError):
+    """Raised instead of proceeding when `payment_readiness.
+    describe_payment_readiness` reports NOT READY (stale/failed/incomplete
+    reconciliation, an unhealthy Clover live connection, or a blocking
+    CRITICAL Attention) — never a financial error (task §3): a normal,
+    expected "not yet" outcome, exactly like `ApproveAndPayError` more
+    generally, no Mercury call is ever made and no state changes."""
+
+    def __init__(self, readiness: "readiness_svc.PaymentReadiness"):
+        self.readiness = readiness
+        super().__init__(f"Payment Cycle for Restaurant {readiness.restaurant_id} is NOT READY: {readiness.reason}")
 
 
 def can_approve_and_pay(session: Session, *, acting_identity: "m.ActingIdentity", restaurant_id: int) -> bool:
@@ -255,7 +357,7 @@ class ApproveAndPayResult:
 
 def approve_and_pay_cycle(
     session: Session, *, cycle: "m.TipPaymentCycle", acting_identity: "m.ActingIdentity", client: MercuryClient,
-    source_account_id: str,
+    source_account_id: str, now: datetime | None = None,
 ) -> ApproveAndPayResult:
     """Task §14 — REVIEW is simply reading `cycle`/its instructions (no
     mutation); this function IS "APPROVE & PAY," gated on Authority (never
@@ -264,10 +366,16 @@ def approve_and_pay_cycle(
     never Approve & Pay another's cycle — a GLOBAL grant remains the only way
     to authorize every Restaurant at once. Raises `ApproveAndPayError` and
     changes NOTHING (no Mercury call is made either) if the Acting Identity
-    is not authorized for this Restaurant, the cycle is not OPEN, or funding
+    is not authorized for this Restaurant, the cycle is not OPEN, funding
     is insufficient for the whole batch (task §8's existing funding-check
     principle, preserved unchanged — Mercury's `availableBalance` must cover
-    the full batch before ANY instruction submits)."""
+    the full batch before ANY instruction submits), or `payment_readiness.
+    describe_payment_readiness` reports NOT READY (raises `PaymentNotReadyError`
+    — module docstring above; checked AFTER Authority so an unauthorized
+    caller never learns this Restaurant's reconciliation state, and BEFORE
+    the funding check/any Mercury call). `now` is passed straight through to
+    `describe_payment_readiness` — production callers omit it (real wall-clock
+    time); tests pin it for a deterministic fresh/stale boundary."""
     if cycle.status != m.TIP_PAYMENT_CYCLE_STATUS_OPEN:
         raise ApproveAndPayError(f"Payment Cycle {cycle.id} is not OPEN (status={cycle.status!r}).")
 
@@ -282,6 +390,10 @@ def approve_and_pay_cycle(
             f"Acting Identity {acting_identity.id} is not authorized to Approve & Pay Tips for Restaurant "
             f"{cycle.restaurant_id}: {decision.reason}"
         )
+
+    readiness = readiness_svc.describe_payment_readiness(session, cycle.restaurant_id, now=now)
+    if not readiness.ready:
+        raise PaymentNotReadyError(readiness)
 
     instructions = list(
         session.scalars(select(m.TipPaymentInstruction).where(m.TipPaymentInstruction.payment_cycle_id == cycle.id))

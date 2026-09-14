@@ -88,7 +88,9 @@ Per this task's own explicit instruction (§12/§14): where Attention Management
 - ~~**Organizational Responsibility runtime**~~ — **implemented**, same note as above: routing is resolved through the existing Process Ownership -> Position -> Occupant -> Coverage -> Backup -> Fallback chain, scoped `POSITION_SCOPE_RESTAURANT`.
 - **Mobile/Attention Inbox delivery** (task §14): still not built — no PWA, native app, or push-notification infrastructure exists in this repository today. This remains a separate, cross-domain Foundation gap, not a Tips concern. Today, a failure is visible by opening `/payment-control` in a browser, or via `attention_service.list_attention_for_identity()` for any other future channel (e.g. Cognito).
 
-**Authority** (`APPROVE_AND_PAY`) is now implemented too (`Tips Configuration.md` §7), with one reported, not invented-around, gap: `AuthorityGrant` has no `RESTAURANT` scope kind yet, so grants are `GLOBAL`-scoped for now.
+**Authority** (`APPROVE_AND_PAY`) is now implemented too (`Tips Configuration.md` §7), Restaurant-scoped (TASK_TIPS_RESTAURANT_AUTHORITY_SCOPE_001 closed the `GLOBAL`-only gap this note used to report) — a `GLOBAL` grant remains available for a cross-Restaurant authorization, but is no longer the only option.
+
+**Payment Readiness** (Clover reconciliation gate before Approve & Pay) and the AUTOMATIC WITHOUT APPROVAL payment mode are now implemented too (TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001 — `Tips Configuration.md` §10-§11), closing this document's own earlier "predates the Correction/Reconciliation Poller" note.
 
 ---
 

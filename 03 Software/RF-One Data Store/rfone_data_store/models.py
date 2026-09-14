@@ -852,6 +852,10 @@ class IngestionRun(Base):
     __tablename__ = "ingestion_runs"
     __table_args__ = (
         Index("ix_ingestion_runs_lock_key", "lock_key", unique=True),
+        CheckConstraint(
+            "mode IS NULL OR mode IN ('BACKFILL', 'LIVE_SYNC', 'RECONCILIATION')",
+            name="ck_ingestion_run_mode",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -870,6 +874,21 @@ class IngestionRun(Base):
     source_window_end: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    # CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md §3-§4 — a real,
+    # queryable column (BACKFILL/LIVE_SYNC/RECONCILIATION) rather than only
+    # the free-text `mode=...` marker already embedded in `notes` below (kept
+    # for human-readable continuity, not replaced). Existing this connector
+    # already encoded mode only in `notes`' text; this column exists so the
+    # Reconciliation Poller's own Modification Cursor (`reconciliation_
+    # poller.compute_next_reconciliation_window`) can find its own prior run
+    # without parsing free text, and without conflating its checkpoint with
+    # Live Sync's/Backfill's `source_window_end` lineage (a deliberately
+    # SEPARATE cursor track, per the architecture doc's "two distinct
+    # cursors"). Nullable: every `IngestionRun` row that predates this column
+    # has no mode recorded here — never guessed for those; only mode-specific
+    # cursor queries need this column, and they simply find no legacy rows.
+    mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -1871,6 +1890,24 @@ TIPS_SCHEDULE_MODE_MANUAL = "MANUAL"
 TIPS_SCHEDULE_MODE_AUTOMATIC = "AUTOMATIC"
 TIPS_SCHEDULE_MODES = (TIPS_SCHEDULE_MODE_MANUAL, TIPS_SCHEDULE_MODE_AUTOMATIC)
 
+# TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001 — the three Tips payment
+# modes the Product Owner already decided: MANUAL (mode=MANUAL); AUTOMATIC
+# WITH human Approve & Pay approval (mode=AUTOMATIC, auto_approval_mode=
+# WITH_APPROVAL or NULL — the existing, already-tested behavior); AUTOMATIC
+# WITHOUT approval (mode=AUTOMATIC, auto_approval_mode=WITHOUT_APPROVAL —
+# RF-One itself Approves & Pays, as the SYSTEM Acting Identity, strictly
+# within whatever Delegated Authority — a TIPS/APPROVE_AND_PAY AuthorityGrant
+# — that Restaurant has explicitly granted it; never a bypass of the
+# Authority gate, see `tips/scheduler.py`). Deliberately a SEPARATE field
+# from `mode`, not a third `mode` value: "WHEN" (mode/interval/execution_time)
+# and "WITH WHAT APPROVAL" are independent questions, and a Restaurant may
+# switch one without touching the other.
+TIPS_PAYMENT_AUTO_APPROVAL_MODE_WITH_APPROVAL = "WITH_APPROVAL"
+TIPS_PAYMENT_AUTO_APPROVAL_MODE_WITHOUT_APPROVAL = "WITHOUT_APPROVAL"
+TIPS_PAYMENT_AUTO_APPROVAL_MODES = (
+    TIPS_PAYMENT_AUTO_APPROVAL_MODE_WITH_APPROVAL, TIPS_PAYMENT_AUTO_APPROVAL_MODE_WITHOUT_APPROVAL,
+)
+
 
 class TipsCalculationScheduleConfig(Base):
     """Restaurant-scoped, effective-dated configuration of WHEN Tips are
@@ -1956,6 +1993,14 @@ class TipsPaymentScheduleConfig(Base):
             "mode = 'MANUAL' OR interval_days IS NOT NULL",
             name="ck_tips_payment_schedule_interval_required_if_automatic",
         ),
+        CheckConstraint(
+            "auto_approval_mode IS NULL OR auto_approval_mode IN ('WITH_APPROVAL', 'WITHOUT_APPROVAL')",
+            name="ck_tips_payment_schedule_auto_approval_mode",
+        ),
+        CheckConstraint(
+            "mode = 'AUTOMATIC' OR auto_approval_mode IS NULL",
+            name="ck_tips_payment_schedule_auto_approval_mode_requires_automatic",
+        ),
         Index("ix_tips_payment_schedule_restaurant_valid_from", "restaurant_id", "valid_from"),
     )
 
@@ -1966,6 +2011,14 @@ class TipsPaymentScheduleConfig(Base):
     interval_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     execution_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     anchor_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # Only meaningful when mode=AUTOMATIC (enforced by the CHECK above); NULL
+    # on an AUTOMATIC row means WITH_APPROVAL (see the TIPS_PAYMENT_AUTO_
+    # APPROVAL_MODE_* comment above) — the pre-existing, already-tested
+    # behavior, so no existing configuration's behavior changes by this
+    # column's addition. Always NULL when mode=MANUAL — approval mode has no
+    # meaning without automation.
+    auto_approval_mode: Mapped[str | None] = mapped_column(String(24), nullable=True)
 
     # Mercury sandbox account this Restaurant's Payment Cycles fund from.
     # Nullable: a Restaurant may configure AUTOMATIC/MANUAL payment mode

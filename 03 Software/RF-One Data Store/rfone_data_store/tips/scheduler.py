@@ -16,7 +16,29 @@ entirely on manual "Run Calculation Now"/"Start Payment Cycle Now" (task
 
 Calculation due-ness never itself bypasses `payout_process.run_calculation_
 now`'s own Clover-readiness/already-calculated checks (task §5) — this
-module only decides WHEN to ATTEMPT, never whether the attempt succeeds."""
+module only decides WHEN to ATTEMPT, never whether the attempt succeeds.
+
+TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001 §4 — the Payment loop's
+tick additionally drives the THREE decided Tips payment modes end to end:
+
+    MANUAL                       — never touched by this module at all; a
+                                    human starts the cycle AND Approves & Pays
+                                    it (Tips/app.py's Payment Control).
+    AUTOMATIC + WITH_APPROVAL     — `run_due_payment_cycle_starts` opens the
+                                    cycle when due; a human still Approves &
+                                    Pays it (unchanged, pre-existing behavior).
+    AUTOMATIC + WITHOUT_APPROVAL  — `run_due_payment_cycle_starts` opens the
+                                    cycle when due, and `run_due_payment_
+                                    cycle_auto_approvals` (called every tick,
+                                    independently of whether a NEW cycle just
+                                    opened) Approves & Pays any currently OPEN
+                                    cycle for that Restaurant AS SOON AS it
+                                    becomes READY — never before, and never by
+                                    bypassing the Authority or Payment
+                                    Readiness gates, which `approve_and_pay_
+                                    cycle` re-checks unconditionally for the
+                                    SYSTEM Acting Identity exactly as for a
+                                    human one."""
 
 from __future__ import annotations
 
@@ -30,8 +52,11 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from .. import acting_identity_service
 from .. import models as m
+from ..technical.connectors.mercury.client import MercuryClient, MercuryConnectorError
 from . import payment_cycle_service as cycle_svc
+from . import payment_readiness as readiness_svc
 from . import payout_process as payout_svc
 from . import schedule_service as sched_svc
 
@@ -132,11 +157,110 @@ def run_due_payment_cycle_starts(session: Session, *, now: datetime | None = Non
     return outcomes
 
 
+@dataclass
+class DueAutoApprovalOutcome:
+    restaurant_id: int
+    cycle_id: int
+    approved: bool
+    reason: str | None
+
+
+def run_due_payment_cycle_auto_approvals(
+    session: Session, *, now: datetime | None = None, client: MercuryClient | None = None,
+) -> list[DueAutoApprovalOutcome]:
+    """One tick of the AUTO WITHOUT APPROVAL path (module docstring above):
+    for every Restaurant configured `mode=AUTOMATIC, auto_approval_mode=
+    WITHOUT_APPROVAL` with a currently OPEN Payment Cycle, attempts Approve &
+    Pay using the stable SYSTEM Acting Identity (`acting_identity_service.
+    get_or_create_system_identity`) — never a bare bypass: `approve_and_pay_
+    cycle` re-checks Authority (a TIPS/APPROVE_AND_PAY `AuthorityGrant` that
+    Restaurant must have explicitly granted the SYSTEM identity — Core 09
+    §5.1 "AI-Authorized Execution... strictly within explicit Delegated
+    Authority") and Payment Readiness exactly as for a human-triggered
+    Approve & Pay. A NOT READY or unauthorized outcome is reported in the
+    returned outcome and simply retried next tick — never raised as an
+    error here (task §3); a persistently-failing readiness raises Attention
+    via the SAME mechanism the Web Payment Control route uses, never a
+    Tips-specific one.
+
+    `client` — same dependency-injection shape `approve_and_pay_cycle`
+    itself already takes: defaults to a real `MercuryClient()` (sandbox,
+    per that class's own default), overridable in tests with a fake — one
+    client per tick, shared by every Restaurant approved in it, exactly
+    like a real deployment would (one Mercury sandbox account per
+    environment today)."""
+    now = now or datetime.now(UTC)
+    client = client or MercuryClient()
+    outcomes: list[DueAutoApprovalOutcome] = []
+    for restaurant_id in _all_restaurant_ids(session):
+        config = sched_svc.get_payment_schedule_effective_at(session, restaurant_id=restaurant_id, at=now)
+        if (
+            config is None or config.mode != m.TIPS_SCHEDULE_MODE_AUTOMATIC
+            or config.auto_approval_mode != m.TIPS_PAYMENT_AUTO_APPROVAL_MODE_WITHOUT_APPROVAL
+        ):
+            continue
+        cycle = cycle_svc.get_open_cycle(session, restaurant_id)
+        if cycle is None:
+            continue
+
+        readiness = readiness_svc.describe_payment_readiness(session, restaurant_id, now=now)
+        if not readiness.ready:
+            cycle_svc.maybe_raise_attention_for_payment_readiness(session, restaurant_id=restaurant_id, readiness=readiness)
+            session.commit()
+            outcomes.append(
+                DueAutoApprovalOutcome(restaurant_id=restaurant_id, cycle_id=cycle.id, approved=False, reason=readiness.reason)
+            )
+            continue
+
+        try:
+            source_account_id = cycle_svc.resolve_source_account_id(session, restaurant_id, client)
+            if source_account_id is None:
+                outcomes.append(
+                    DueAutoApprovalOutcome(
+                        restaurant_id=restaurant_id, cycle_id=cycle.id, approved=False,
+                        reason="no Mercury sandbox source account configured or available",
+                    )
+                )
+                continue
+            system_identity = acting_identity_service.get_or_create_system_identity(session)
+            cycle_svc.approve_and_pay_cycle(
+                session, cycle=cycle, acting_identity=system_identity, client=client, source_account_id=source_account_id,
+            )
+            session.commit()
+            outcomes.append(DueAutoApprovalOutcome(restaurant_id=restaurant_id, cycle_id=cycle.id, approved=True, reason=None))
+        except cycle_svc.ApproveAndPayError as exc:
+            session.rollback()
+            outcomes.append(
+                DueAutoApprovalOutcome(restaurant_id=restaurant_id, cycle_id=cycle.id, approved=False, reason=str(exc))
+            )
+        except MercuryConnectorError as exc:
+            session.rollback()
+            outcomes.append(
+                DueAutoApprovalOutcome(
+                    restaurant_id=restaurant_id, cycle_id=cycle.id, approved=False,
+                    reason=f"Mercury sandbox connector error: {exc}",
+                )
+            )
+    return outcomes
+
+
+def run_payment_tick(session: Session, *, now: datetime | None = None, client: MercuryClient | None = None) -> list:
+    """The Payment loop's actual per-tick entry point: starts any due
+    cycles, THEN attempts auto-approval for any Restaurant configured
+    WITHOUT_APPROVAL — in that order, so a cycle started on THIS tick can
+    also be auto-approved on the SAME tick if it happens to already be
+    READY (never waits an extra full interval for no reason)."""
+    now = now or datetime.now(UTC)
+    start_outcomes = run_due_payment_cycle_starts(session, now=now)
+    approval_outcomes = run_due_payment_cycle_auto_approvals(session, now=now, client=client)
+    return [*start_outcomes, *approval_outcomes]
+
+
 def _run_forever(
     session_factory: sessionmaker[Session], *, loop: str, interval_seconds: float,
 ) -> None:  # pragma: no cover — thin process loop, exercised via run_due_* directly in tests
     LOG.info("Starting Tips %s scheduler loop (interval=%.0fs).", loop, interval_seconds)
-    runner = run_due_calculations if loop == "calculation" else run_due_payment_cycle_starts
+    runner = run_due_calculations if loop == "calculation" else run_payment_tick
     while True:
         try:
             with session_factory() as session:
@@ -168,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI
     engine = create_configured_engine(db_url)
     session_factory = create_session_factory(engine)
 
-    runner = run_due_calculations if args.loop == "calculation" else run_due_payment_cycle_starts
+    runner = run_due_calculations if args.loop == "calculation" else run_payment_tick
     if args.once:
         with session_factory() as session:
             outcomes = runner(session)

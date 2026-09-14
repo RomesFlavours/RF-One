@@ -36,20 +36,31 @@ This module owns the one shared acquisition path every mode uses:
 - **Live Sync** (`technical/connectors/clover/live_sync.py`): a short,
   recent, automatically-advancing window, run on a tight interval for
   near-real-time operation (seconds, not minutes).
+- **Correction/Reconciliation Poller** (`technical/connectors/clover/
+  reconciliation_poller.py`, CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md
+  §3): a short, recent, automatically-advancing window over the SAME data,
+  filtered by `modifiedTime` instead of `createdTime` — catches a correction
+  to a record acquired long ago (a voided line item, a finalized tip, a
+  corrected employee reassignment) that Live Sync's `createdTime`-only
+  window can never revisit. Required alongside Live Sync, never a
+  replacement for it (doc §3, §11).
 
-Both call the exact same `import_clover_period()` — there is no second
+All three call the exact same `import_clover_period()` — there is no second
 ingestion system, no duplicated fetch/mapping/upsert logic, and no
-duplicated concurrency guard. The two modes differ in HOW the
-`period_start`/`period_end` window is chosen and how often the call is
-made, AND (CLOVER_LIVE_SYNC_SCOPE_REDUCTION_001) in which entities each one
-refreshes: Live Sync keeps only what needs continuous refresh (Orders,
-Order Items, Order Item Modifiers, Payments, Payment Tips, Refunds, Order
-Fees, Shifts, Employees); Historical Backfill additionally refreshes
-catalog/reference data (Items, Categories, Modifier Groups/Modifiers, Tax
-Rates, Discount Definitions, Order Types, Tenders, Devices, Source Roles)
-plus Order Item Tax and Order-level Discounts, which depend on that
-catalog. `mode=` is recorded on the `IngestionRun` for observability and
-is the one flag `import_clover_period()` itself branches on for this.
+duplicated concurrency guard. The modes differ in HOW the `period_start`/
+`period_end` window is chosen, how often the call is made, WHICH Clover
+time field bounds the query (`createdTime` for Backfill/Live Sync,
+`modifiedTime` for Reconciliation), AND (CLOVER_LIVE_SYNC_SCOPE_REDUCTION_001)
+in which entities each one refreshes: Live Sync and Reconciliation keep only
+what needs continuous refresh (Orders, Order Items, Order Item Modifiers,
+Payments, Payment Tips, Refunds, Order Fees, Shifts, Employees); Historical
+Backfill additionally refreshes catalog/reference data (Items, Categories,
+Modifier Groups/Modifiers, Tax Rates, Discount Definitions, Order Types,
+Tenders, Devices, Source Roles) plus Order Item Tax and Order-level
+Discounts, which depend on that catalog. `mode=` is recorded on the
+`IngestionRun` (both as a queryable column and, for human-readable
+continuity, inside `notes`) and is the one flag `import_clover_period()`
+itself branches on for all of this.
 
 Reuses the exact canonical schema and the exact pure raw-dict ->
 column-kwargs mapping functions (`mapping.py`) and the exact idempotent
@@ -156,6 +167,17 @@ _STALE_RUN_THRESHOLD = timedelta(minutes=30)
 
 MODE_BACKFILL = "BACKFILL"
 MODE_LIVE_SYNC = "LIVE_SYNC"
+# CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md §3 — the Correction/
+# Reconciliation Poller. Same fetch/mapping/upsert/concurrency-guard path as
+# Live Sync; the only structural difference is WHICH Clover time field the
+# Payments/Orders queries are filtered by (see `import_clover_period` below):
+# Live Sync/Backfill filter by `createdTime` (new records only) — Reconciliation
+# filters by `modifiedTime` (catches a correction to a record acquired long
+# ago, whose `createdTime` has since scrolled out of Live Sync's short
+# window). Reuses the SAME canonical tables — no second database, no Clover
+# event ledger (doc §3, §11).
+MODE_RECONCILIATION = "RECONCILIATION"
+ACQUISITION_MODES = (MODE_BACKFILL, MODE_LIVE_SYNC, MODE_RECONCILIATION)
 
 
 class CloverReadClient(Protocol):
@@ -753,7 +775,7 @@ def _acquire_import_lock(
         run = m.IngestionRun(
             source_system_id=source_system_id, location_id=location_id, started_at=utc_now(),
             status="RUNNING", source_window_start=period_start, source_window_end=period_end,
-            lock_key=lock_key,
+            lock_key=lock_key, mode=mode,
             notes=f"CLOVER_ACQUISITION mode={mode} location_id={location_id}; RUNNING",
         )
         session.add(run)
@@ -842,10 +864,12 @@ def import_clover_period(
     resolves which Location it wants acquired (e.g. Tips resolves its
     Restaurant's own Location via `RestaurantLocation`) before calling in.
 
-    `mode` (`MODE_BACKFILL` default, or `MODE_LIVE_SYNC`) is recorded on the
-    `IngestionRun` and, since CLOVER_LIVE_SYNC_SCOPE_REDUCTION_001, is also
-    what this function branches on to decide which entities to refresh (see
-    the module docstring) — it does not change the concurrency guard's scope
+    `mode` (`MODE_BACKFILL` default, `MODE_LIVE_SYNC`, or `MODE_RECONCILIATION`)
+    is recorded on the `IngestionRun` and, since CLOVER_LIVE_SYNC_SCOPE_
+    REDUCTION_001, is also what this function branches on to decide which
+    entities to refresh AND (`MODE_RECONCILIATION` only) which Clover time
+    field bounds the Payments/Orders queries (see the module docstring) — it
+    does not change the concurrency guard's scope
     (also the sole entry point enforcing that guard) — raises
     `ImportAlreadyRunningError` immediately
     (before any Clover fetch) if another acquisition of ANY mode is already
@@ -881,12 +905,23 @@ def import_clover_period(
         start_ms = int(period_start.astimezone(UTC).timestamp() * 1000)
         end_ms = int(period_end.astimezone(UTC).timestamp() * 1000)
 
+        # CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md §3-§4 — the ONE
+        # structural difference between Reconciliation and Backfill/Live
+        # Sync: which Clover time field bounds the query. `createdTime`
+        # (Backfill/Live Sync) only ever revisits records CREATED in the
+        # window; `modifiedTime` (Reconciliation) catches a correction to a
+        # record created at any time in the past, as long as the correction
+        # itself happened inside this window — this is what makes a rolling
+        # window, no wider than Live Sync's own, sufficient to eventually
+        # catch every correction, regardless of the corrected record's age.
+        time_field = "modifiedTime" if mode == MODE_RECONCILIATION else "createdTime"
+
         payments_result = paginate(
             resolved_client, f"/v3/merchants/{merchant_id}/payments",
             extra_params={
                 "expand": "order,tender,employee",
-                "filter": [f"createdTime>={start_ms}", f"createdTime<={end_ms}"],
-                "orderBy": "createdTime ASC",
+                "filter": [f"{time_field}>={start_ms}", f"{time_field}<={end_ms}"],
+                "orderBy": f"{time_field} ASC",
             },
         )
         if not payments_result.ok:
@@ -936,6 +971,31 @@ def import_clover_period(
             )
 
         order_ids_needed: set[str] = set()
+        if mode == MODE_RECONCILIATION:
+            # A correction may touch an Order (a voided line item, a
+            # corrected employee reassignment) without touching any
+            # Payment's own `modifiedTime` — the Payments-derived
+            # `order_ids_needed` below would miss it entirely. Reconciliation
+            # additionally queries Orders directly by `modifiedTime` so an
+            # Order-only correction is still caught (doc §3's explicit
+            # "modified Orders; removed/voided line items; ... Employee
+            # reassignment").
+            orders_modified_result = paginate(
+                resolved_client, f"/v3/merchants/{merchant_id}/orders",
+                extra_params={
+                    "filter": [f"modifiedTime>={start_ms}", f"modifiedTime<={end_ms}"],
+                    "orderBy": "modifiedTime ASC",
+                },
+            )
+            if orders_modified_result.ok:
+                for order_stub in orders_modified_result.elements:
+                    stub_id = order_stub.get("id")
+                    if stub_id:
+                        order_ids_needed.add(stub_id)
+            else:
+                summary.errors.append(
+                    f"Fetching modified Orders failed: {orders_modified_result.error or 'unknown error'}"
+                )
         for p in payments_raw:
             ref = p.get("order")
             oid = ref.get("id") if isinstance(ref, dict) else None
@@ -978,7 +1038,7 @@ def import_clover_period(
                     catalog=catalog, ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at,
                     mirror_source_record=_mirror_source_record, tax_override_cache=tax_override_cache,
                 )
-            elif mode == MODE_LIVE_SYNC:
+            elif mode in (MODE_LIVE_SYNC, MODE_RECONCILIATION):
                 # CLOVER_LIVE_SYNC_SCOPE_REDUCTION_001 — Order Items and
                 # Order Item Modifiers remain in Live Sync's retained-entity
                 # list (they are transactional facts, not catalog), but
@@ -987,6 +1047,9 @@ def import_clover_period(
                 # already canonical instead. No Order Item Tax, no Order
                 # Discount here — both depend on catalogs Live Sync no
                 # longer refreshes (TaxRate/Item, DiscountDefinition).
+                # Reconciliation reuses this exact same reduced-scope refresh
+                # (a removed/voided line item is an Order Item correction,
+                # not a catalog one) — never a second, parallel detail path.
                 historical_backfill_detail.ingest_order_item_and_modifier_detail(
                     session, resolved_client, order_raw, order, source_system_id=source_system_id,
                     ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at,

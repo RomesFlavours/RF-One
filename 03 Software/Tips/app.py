@@ -62,6 +62,7 @@ from rfone_data_store.tips import distribution_engine as engine_svc  # noqa: E40
 from rfone_data_store.tips import distribution_rule_service as rule_svc  # noqa: E402
 from rfone_data_store.tips import payment_cycle_service as cycle_svc  # noqa: E402
 from rfone_data_store.tips import payment_instruction as pi_svc  # noqa: E402
+from rfone_data_store.tips import payment_readiness as payment_readiness_svc  # noqa: E402
 from rfone_data_store.tips import payout_process as payout_svc  # noqa: E402
 from rfone_data_store.tips import readiness as readiness_svc  # noqa: E402
 from rfone_data_store.tips import schedule_service as sched_svc  # noqa: E402
@@ -646,11 +647,12 @@ def tips_configuration_set_payment_schedule():
         execution_time = _parse_time(request.form.get("execution_time"))
         anchor_date_dt = _parse_date(request.form.get("anchor_date"))
         mercury_source_account_id = (request.form.get("mercury_source_account_id") or "").strip() or None
+        auto_approval_mode = (request.form.get("auto_approval_mode") or "").strip() or None
         try:
             sched_svc.set_payment_schedule(
                 session, restaurant_id=restaurant.id, mode=mode, interval_days=interval_days,
                 execution_time=execution_time, anchor_date=anchor_date_dt.date() if anchor_date_dt else None,
-                mercury_source_account_id=mercury_source_account_id,
+                mercury_source_account_id=mercury_source_account_id, auto_approval_mode=auto_approval_mode,
                 created_by=(request.form.get("created_by") or "").strip() or None,
             )
             session.commit()
@@ -699,37 +701,56 @@ def tips_configuration_run_calculation_now():
 # ---------------------------------------------------------------------------
 
 
-def _pilot_source_account_id(client: MercuryClient) -> str | None:
-    """Fallback ONLY when this Restaurant has not yet configured a Mercury
-    source account (`TipsPaymentScheduleConfig.mercury_source_account_id` —
-    task §3's Payment Schedule configuration, resolved first by
-    `_resolve_source_account_id` below): the first active Mercury `checking`
-    account with a positive balance. Never used once a Restaurant has
-    configured its own account explicitly."""
-    for account in client.get_accounts():
-        if account.type == "mercury" and account.status == "active" and account.kind == "checking" and account.available_balance > 0:
-            return account.id
-    return None
-
-
-def _resolve_source_account_id(session, restaurant_id: int, client: MercuryClient) -> str | None:
-    payment_config = sched_svc.get_payment_schedule_effective_at(session, restaurant_id=restaurant_id)
-    if payment_config is not None and payment_config.mercury_source_account_id:
-        return payment_config.mercury_source_account_id
-    return _pilot_source_account_id(client)
+# `_resolve_source_account_id` used to live here as a route-local helper;
+# TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001 (task §9, Channel
+# Independence) moved it to `tips.payment_cycle_service.resolve_source_
+# account_id` so the automatic scheduler's AUTO WITHOUT APPROVAL path can
+# call the exact same resolution outside any Flask request — this module now
+# just calls that shared function (`_resolve_source_account_id` kept as a
+# thin local alias so every existing call site below reads unchanged).
+_resolve_source_account_id = cycle_svc.resolve_source_account_id
 
 
 @app.route("/payment-control")
 def payment_control_home():
+    return _render_payment_control(cycle_id=None)
+
+
+@app.route("/payment-control/cycle/<int:cycle_id>")
+def payment_control_cycle(cycle_id: int):
+    """TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001 §8 — Cognito deep-
+    link target: a stable, resolvable URL for ONE specific Payment Cycle,
+    independent of whichever Restaurant `_default_restaurant()` would
+    otherwise pick. No Cognito capability is implemented by this route — it
+    only makes a future one's "open Payment Control on the correct Payment
+    Cycle" possible, by existing as a real, addressable route now. Works for
+    a Cycle in ANY status (OPEN for action, APPROVED for after-the-fact
+    review), not only an actionable one."""
+    return _render_payment_control(cycle_id=cycle_id)
+
+
+def _render_payment_control(*, cycle_id: int | None):
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = None
+        deep_link_cycle: "m.TipPaymentCycle | None" = None
+        if cycle_id is not None:
+            deep_link_cycle = session.get(m.TipPaymentCycle, cycle_id)
+            if deep_link_cycle is None:
+                flash(f"Payment Cycle {cycle_id} not found.", "error")
+                return redirect(url_for("payment_control_home"))
+            restaurant = session.get(m.Restaurant, deep_link_cycle.restaurant_id)
+        else:
+            restaurant = _default_restaurant(session)
+
         calc_state = None
         cycle_readiness = None
+        payment_readiness = None
         open_cycle = None
         instructions = []
         employees_by_id = {}
         references_by_employee = {}
         attention_items_by_instruction = {}
+        entitlements_by_instruction = {}
         mercury_balance = None
         connector_error = None
         identities = []
@@ -747,7 +768,13 @@ def payment_control_home():
             ]
             calc_state = readiness_svc.describe_readiness(session, restaurant.id)
             cycle_readiness = cycle_svc.describe_payment_cycle_readiness(session, restaurant.id)
-            open_cycle = cycle_readiness.open_cycle
+            # TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001 §6 — the SAME
+            # payment_readiness.describe_payment_readiness gate approve_and_
+            # pay_cycle itself enforces server-side; shown here for the
+            # READY/NOT READY summary and to enable/disable Approve & Pay —
+            # never a second, divergent readiness definition.
+            payment_readiness = payment_readiness_svc.describe_payment_readiness(session, restaurant.id)
+            open_cycle = deep_link_cycle if deep_link_cycle is not None else cycle_readiness.open_cycle
             if open_cycle is not None:
                 instructions = list(
                     session.scalars(
@@ -774,6 +801,18 @@ def payment_control_home():
                     i.id: session.get(m.AttentionItem, i.attention_item_id)
                     for i in instructions if i.attention_item_id is not None
                 }
+                # Task §7's per-payee Detail view: Business Dates included,
+                # gross/source tips, distributions transferred in/out, final
+                # payable — all already persisted per TipEntitlement, never
+                # re-derived here.
+                instruction_ids = [i.id for i in instructions]
+                entitlements_by_instruction: dict[int, list] = {i: [] for i in instruction_ids}
+                for entitlement in session.scalars(
+                    select(m.TipEntitlement)
+                    .where(m.TipEntitlement.tip_payment_instruction_id.in_(instruction_ids))
+                    .order_by(m.TipEntitlement.business_date)
+                ):
+                    entitlements_by_instruction[entitlement.tip_payment_instruction_id].append(entitlement)
             try:
                 client = MercuryClient()
                 account_id = _resolve_source_account_id(session, restaurant.id, client)
@@ -789,10 +828,12 @@ def payment_control_home():
 
         return render_template(
             "payment_control.html", restaurant=restaurant, calc_state=calc_state, cycle_readiness=cycle_readiness,
-            open_cycle=open_cycle, instructions=instructions, employees_by_id=employees_by_id,
-            references_by_employee=references_by_employee, attention_items_by_instruction=attention_items_by_instruction,
+            payment_readiness=payment_readiness, open_cycle=open_cycle, instructions=instructions,
+            employees_by_id=employees_by_id, references_by_employee=references_by_employee,
+            attention_items_by_instruction=attention_items_by_instruction,
+            entitlements_by_instruction=entitlements_by_instruction,
             mercury_balance=mercury_balance, connector_error=connector_error, identities=identities,
-            active_nav="payment-control",
+            is_deep_link=cycle_id is not None, active_nav="payment-control",
         )
 
 
@@ -840,6 +881,13 @@ def payment_control_approve_and_pay():
                 source_account_id=source_account_id,
             )
             session.commit()
+        except cycle_svc.PaymentNotReadyError as exc:
+            # Task §3/§11 — NOT READY is a normal, expected wait, never a
+            # financial error: a calm "info" message, not the red "error"
+            # styling below (still no Mercury call, still no state change).
+            session.rollback()
+            flash(str(exc), "info")
+            return redirect(url_for("payment_control_home"))
         except cycle_svc.ApproveAndPayError as exc:
             session.rollback()
             flash(str(exc), "error")

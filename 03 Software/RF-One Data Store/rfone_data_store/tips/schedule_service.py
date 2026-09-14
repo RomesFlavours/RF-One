@@ -120,10 +120,24 @@ def get_payment_schedule_effective_at(
 def set_payment_schedule(
     session: Session, *, restaurant_id: int, mode: str, interval_days: int | None = None,
     execution_time: time | None = None, anchor_date: date | None = None,
-    mercury_source_account_id: str | None = None, effective_from: datetime | None = None,
-    created_by: str | None = None,
+    mercury_source_account_id: str | None = None, auto_approval_mode: str | None = None,
+    effective_from: datetime | None = None, created_by: str | None = None,
 ) -> m.TipsPaymentScheduleConfig:
+    """`auto_approval_mode` (task §4 — the three decided Tips payment modes)
+    is only meaningful when `mode=AUTOMATIC`: `None`/`WITH_APPROVAL` means
+    a human still Approves & Pays every cycle this configuration opens
+    (pre-existing, unchanged behavior); `WITHOUT_APPROVAL` means the SYSTEM
+    Acting Identity does, under whatever Delegated Authority (`AuthorityGrant`)
+    this Restaurant has explicitly granted it — never a bypass of that gate.
+    Silently ignored (never persisted) when `mode=MANUAL`, mirroring how
+    `interval_days` is already ignored for MANUAL — approval mode has no
+    meaning without automation."""
     _validate(mode=mode, interval_days=interval_days)
+    if auto_approval_mode is not None and auto_approval_mode not in m.TIPS_PAYMENT_AUTO_APPROVAL_MODES:
+        raise ScheduleConfigError(
+            f"Invalid auto_approval_mode {auto_approval_mode!r} — must be one of "
+            f"{m.TIPS_PAYMENT_AUTO_APPROVAL_MODES} or None."
+        )
     effective_from = effective_from or datetime.now(UTC)
 
     current = get_payment_schedule_effective_at(session, restaurant_id=restaurant_id, at=effective_from)
@@ -133,6 +147,7 @@ def set_payment_schedule(
     config = m.TipsPaymentScheduleConfig(
         restaurant_id=restaurant_id, mode=mode, interval_days=interval_days, execution_time=execution_time,
         anchor_date=anchor_date, mercury_source_account_id=mercury_source_account_id,
+        auto_approval_mode=auto_approval_mode if mode == m.TIPS_SCHEDULE_MODE_AUTOMATIC else None,
         valid_from=effective_from, valid_to=None, created_by=created_by,
     )
     session.add(config)

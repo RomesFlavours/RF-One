@@ -1,6 +1,6 @@
 # Tips Configuration — Calculation Schedule, Payment Schedule, and Payment Cycle
 
-**Version:** 1.0
+**Version:** 1.1 — extended by TASK_TIPS_RESTAURANT_AUTHORITY_SCOPE_001 (§7) and TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001 (§10-§12), noted inline below
 **Status:** IMPLEMENTED — sandbox-only Mercury payout; see `Tips Payment Execution.md` for the payout-pilot boundary this document does not change
 **Module:** Restaurant Domain / Tips
 **Origin:** TASK_TIPS_COMPLETE_001
@@ -71,7 +71,7 @@ Schedule / Manual Trigger
 
 `tips/readiness._clover_live_sync_readiness` checks the Restaurant's Clover-sourced Location(s)' `IngestionRun.source_window_end` (the same Live Cursor `technical/connectors/clover/live_sync.py` already maintains) against the Business Date's own end. A Location with no Clover source at all is never gated (nothing to check).
 
-**Known scope boundary of this gate (see this task's final report "Known gaps"):** this baseline predates the separately-approved Correction/Reconciliation Poller architecture decision (`CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md`), which is not implemented on this branch. This gate therefore checks the Live Cursor only — a fuller reconciliation-based gate (checking that *corrections* to already-acquired records have also been swept, not just that new records have been acquired) is future work layered on top of this same `describe_readiness()` entry point, not a redesign of it.
+This CALCULATION-time gate deliberately checks the Live Cursor only — never the Correction/Reconciliation Poller's own Modification Cursor (§10 below). **Clover live is about operational freshness** ("has new data for this Business Date arrived"); **Clover reconciliation is about payment consolidation** ("have corrections to already-acquired data been swept before money actually moves") — two different questions, asked at two different moments of the same overall process, never conflated. §10 formalizes the second one, applied at PAYMENT time (Approve & Pay), not at calculation time.
 
 ---
 
@@ -103,9 +103,9 @@ Payment Cycle status:
 
 ## 7. Approve & Pay — Authority, never `is_admin`
 
-`payment_cycle_service.approve_and_pay_cycle` calls the shared `authority_service.authorize()` (domain `TIPS`, action `APPROVE_AND_PAY`) before any Mercury call — an unauthorized Acting Identity is rejected with no state change and no funding check performed. Funding is still checked once for the whole batch before any instruction submits (unchanged from the original pilot).
+`payment_cycle_service.approve_and_pay_cycle` calls the shared `authority_service.authorize()` (domain `TIPS`, action `APPROVE_AND_PAY`, scope `RESTAURANT`/`scope_id=<this cycle's restaurant_id>`) before any Mercury call — an unauthorized Acting Identity is rejected with no state change and no funding check performed. Funding is still checked once for the whole batch before any instruction submits (unchanged from the original pilot). Immediately after Authority, the SAME function also checks Payment Readiness (§10) — both gates, never either alone, guard every Mercury call regardless of which of the three modes (§11) triggered it.
 
-**Reported Authority-model gap (not invented around):** `AuthorityGrant.scope_type` (`models.AUTHORITY_SCOPE_KINDS`) has no `RESTAURANT` value today, unlike `Position`/`ProcessOwnership`'s own `POSITION_SCOPE_KINDS`, which already does. Approve & Pay grants are therefore `GLOBAL`-scoped ("may Approve & Pay Tips at all"), not yet Restaurant-scoped. Extending `AuthorityGrant`'s scope vocabulary is a Core/Authority-model decision outside this document's scope.
+**Restaurant-scoped Authority (TASK_TIPS_RESTAURANT_AUTHORITY_SCOPE_001 — resolves the gap this section previously reported):** `AuthorityGrant.scope_type` now includes `RESTAURANT` (`models.AUTHORITY_SCOPE_KINDS`), mirroring `Position`/`ProcessOwnership`'s own `POSITION_SCOPE_KINDS`. An Acting Identity authorized for Restaurant A is never thereby authorized for Restaurant B; the same identity may hold one such grant per Restaurant (e.g. Winter Park + Mount Dora), with no duplication/workaround. A `GLOBAL`-scoped grant continues to authorize every Restaurant unconditionally — `authorize()`'s GLOBAL match is unconditional regardless of the requested scope — so a genuine cross-Restaurant authorization is still expressed with a GLOBAL grant, never by omitting scope. The Tips Payment Control page (§12) offers only Acting Identities actually authorized for the Restaurant currently in view.
 
 ---
 
@@ -117,9 +117,57 @@ A failed, blocked, cancelled, or reopened (reversed) `TipPaymentInstruction` rai
 
 ## 9. Manual and Automatic triggers share one gated entry point
 
-"Run Calculation Now" (Tips Configuration page) and the automatic Calculation scheduler tick both call the identical `payout_process.run_calculation_now` — manual action never bypasses Clover readiness or the already-calculated check. Symmetrically, "Start Payment Cycle Now" and the automatic Payment scheduler tick both call `payment_cycle_service.start_payment_cycle` — but **only** the aggregation step; Approve & Pay is never automatic, regardless of trigger source (§7's Authority gate always applies).
+"Run Calculation Now" (Tips Configuration page) and the automatic Calculation scheduler tick both call the identical `payout_process.run_calculation_now` — manual action never bypasses Clover readiness or the already-calculated check. Symmetrically, "Start Payment Cycle Now" and the automatic Payment scheduler tick both call `payment_cycle_service.start_payment_cycle` — but **only** the aggregation step. Whether Approve & Pay itself is automatic depends on the Payment Schedule's `auto_approval_mode` (§11) — §7's Authority gate and §10's Payment Readiness gate apply unconditionally either way, never bypassed by automation.
 
 `tips/scheduler.py` runs two independent loops (mirroring `technical/connectors/clover/live_sync.py`'s own polling-process shape) — Calculation and Payment never share a scheduler process, matching §1's principle at the automation layer too.
+
+---
+
+## 10. Payment Readiness — the Clover reconciliation gate before Approve & Pay
+
+TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001 implements the Correction/Reconciliation Poller `CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md` §3 approved but §3 above's Calculation-time gate predates — `technical/connectors/clover/reconciliation_poller.py`, a continuous, ~60s-default, configurable process that revisits already-acquired Clover records by `modifiedTime` (not `createdTime`), catching a correction to a record regardless of how long ago it was originally created (a voided line item, a finalized tip, a corrected employee reassignment). Reuses the exact same `acquisition.import_clover_period()` path Live Sync/Backfill already use (`mode=RECONCILIATION`) — no second database, no Clover event ledger, no full POS history.
+
+`tips/payment_readiness.describe_payment_readiness(session, restaurant_id)` is the new, separate PAYMENT-time gate (never confused with §3's CALCULATION-time gate) `payment_cycle_service.approve_and_pay_cycle` checks immediately after Authority, before any Mercury call:
+
+```text
+Payment Cycle
+  -> Clover live healthy (Live Sync/Backfill running and succeeding, not stalled)
+  -> reconciliation recent and successful (Correction/Reconciliation Poller,
+     within a bounded staleness window, default 5 minutes)
+  -> no blocking (CRITICAL) Attention pertinent to this Restaurant's Tips
+  -> READY FOR PAYMENT
+```
+
+Stale, failed, or incomplete reconciliation makes the Payment Cycle **NOT READY** — a normal, expected, non-alarming wait (never treated as a financial error, never itself raising Attention), reported via `PaymentNotReadyError` and shown calmly in Payment Control (§12). Only a **persistently** failing reconciliation (stale/failed beyond a longer threshold, default 30 minutes) is escalated to a human, via `payment_cycle_service.maybe_raise_attention_for_payment_readiness` — reusing the existing Attention Management capability (§8) unchanged, never a Tips-specific escalation mechanism. A Restaurant with no Clover-sourced Location at all is never gated (nothing to reconcile).
+
+---
+
+## 11. Three Tips payment modes
+
+```text
+MANUAL                        a human starts the cycle AND Approves & Pays it
+                               (Payment Control, §12)
+
+AUTOMATIC + WITH_APPROVAL      the scheduler opens the cycle when due; a
+(TipsPaymentScheduleConfig.    human still Approves & Pays it — the
+ auto_approval_mode, default)  pre-existing, unchanged behavior
+
+AUTOMATIC + WITHOUT_APPROVAL   the scheduler opens the cycle when due, and
+                               auto-approves it AS SOON AS §10 reports READY
+                               — no human step
+```
+
+`auto_approval_mode` is a separate field from `mode` on `TipsPaymentScheduleConfig` (meaningful only when `mode=AUTOMATIC`; `NULL` means `WITH_APPROVAL`, the pre-existing behavior, so no existing configuration's behavior changed when this field was added). For `WITHOUT_APPROVAL`, `tips/scheduler.run_due_payment_cycle_auto_approvals` Approves & Pays using the stable **SYSTEM Acting Identity** (`acting_identity_service.get_or_create_system_identity`) — Core `09_Identity_Authority_and_Accountability.md` §5.1's "AI-Authorized Execution... strictly within explicit Delegated Authority": the SYSTEM identity must hold its own `TIPS`/`APPROVE_AND_PAY` `AuthorityGrant` for that Restaurant (§7), explicitly configured by that Restaurant — never implied merely by choosing `WITHOUT_APPROVAL`. Every mode passes through the identical §7 Authority gate and §10 Payment Readiness gate inside `approve_and_pay_cycle` — no mode has a shortcut around either.
+
+---
+
+## 12. Payment Control — authorized visual control surface, not a workflow engine
+
+`03 Software/Tips/templates/payment_control.html` / `/payment-control` (TASK_TIPS_COMPLETE_001 §13, extended by TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001) is **one** responsive web surface for PC, smartphone and tablet — no separate mobile app, no separate mobile stylesheet. It shows, before any scrolling: Restaurant, Payment Cycle/period, Business Dates included, payee count, total due, Mercury available balance, Clover reconciliation status, and a single READY/NOT READY signal (§10) — Approve & Pay is offered only when both authorized (§7) and READY (§10), though the server-side gates inside `approve_and_pay_cycle` remain authoritative regardless of what the page shows. A per-payee Detail view (Business Dates included, gross/source tips, amounts transferred in/out, final payable, payment/provider status, Attention) is available without ever showing a full account number, routing number, token, or secret — none of which this schema even persists (`EmployeeExternalPaymentAccount` stores only Mercury's own opaque recipient id).
+
+**Payment Control is the authorized visual control surface over the Payment Cycle — it is not the workflow engine.** Every business rule it displays or triggers (readiness, Authority, aggregation, Approve & Pay, retry) lives in `tips/payment_cycle_service.py`/`tips/payment_readiness.py`/`tips/scheduler.py`, called identically by this page, by `tips/scheduler.py`'s automatic ticks, and by a future Cognito capability — never a rule that exists only in a route or template.
+
+`/payment-control/cycle/<cycle_id>` is a stable, resolvable deep-link route to one specific Payment Cycle, independent of whichever Restaurant this pilot's single-Restaurant `_default_restaurant()` convention would otherwise show — the concrete target a future Cognito capability (*"Le Tips di Winter Park sono pronte... Vuoi controllarle?"* → opens directly here) can link to. No Cognito capability is implemented by this route; it only makes that future integration possible without a later route/URL redesign.
 
 ---
 
@@ -127,7 +175,9 @@ A failed, blocked, cancelled, or reopened (reversed) `TipPaymentInstruction` rai
 
 - [Tips Payment Execution.md](Tips%20Payment%20Execution.md) — the Mercury sandbox payout pilot this document extends; its own "What this pilot does NOT implement" section is superseded where noted above
 - [Tip.md](Tip.md), [Tip Policy.md](Tip%20Policy.md), [Tip Allocation.md](Tip%20Allocation.md) — untouched Business Rules
-- `03 Software/RF-One Data Store/CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md` — the Cognito-vs-consolidation principle §2/§3 above mirrors
-- `00 Core/ConceptualArchitecture/12_Attention_Management.md`, `Organizational Responsibility.md` — the shared runtime §8 consumes, unchanged
-- `03 Software/RF-One Data Store/rfone_data_store/tips/{schedule_service,payment_cycle_service,scheduler}.py` — this document's own new modules
+- `03 Software/RF-One Data Store/CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md` — the Cognito-vs-consolidation principle §2/§3 above mirrors, and the Correction/Reconciliation Poller architecture §10 implements
+- `00 Core/ConceptualArchitecture/12_Attention_Management.md`, `Organizational Responsibility.md` — the shared runtime §8/§10 consume, unchanged
+- `00 Core/ConceptualArchitecture/09_Identity_Authority_and_Accountability.md` §5.1 — AI-Authorized Execution, the concept §11's AUTOMATIC WITHOUT APPROVAL mode applies
+- `03 Software/RF-One Data Store/rfone_data_store/tips/{schedule_service,payment_cycle_service,payment_readiness,scheduler}.py` — this document's own modules
+- `03 Software/RF-One Data Store/rfone_data_store/technical/connectors/clover/reconciliation_poller.py` — the Correction/Reconciliation Poller §10 describes
 - `07 Tasks/Reports/TASK_TIPS_CORE2_PILOT_REPORT.md`, `TIP_DISTRIBUTION_ENGINE_001.md` — prior implementation reports this document builds on
