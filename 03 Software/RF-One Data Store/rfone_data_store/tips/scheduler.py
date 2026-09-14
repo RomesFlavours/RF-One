@@ -223,8 +223,15 @@ def run_due_payment_cycle_auto_approvals(
                 )
                 continue
             system_identity = acting_identity_service.get_or_create_system_identity(session)
+            # `now` is threaded through explicitly (TASK_TIPS_END_TO_END_
+            # VALIDATION_001 finding): without it, this call's own internal
+            # Payment Readiness re-check would resolve its `now` independently
+            # (defaulting to a fresh `datetime.now(UTC)`), which could disagree
+            # with the pre-check just above if evaluated even slightly later —
+            # one tick must reason from one consistent instant throughout.
             cycle_svc.approve_and_pay_cycle(
                 session, cycle=cycle, acting_identity=system_identity, client=client, source_account_id=source_account_id,
+                now=now,
             )
             session.commit()
             outcomes.append(DueAutoApprovalOutcome(restaurant_id=restaurant_id, cycle_id=cycle.id, approved=True, reason=None))
