@@ -32,12 +32,24 @@ Purchasing module — Invoice Intake alignment (closed)."
 - `Invoices/TestCases/` — reserved for verified/reference datasets used to
   validate acquisition/parsing behavior.
 
+## Acquisition sources
+
+Invoice Intake acquires source documents from more than one channel. As of
+"Purchased Invoice Intake — Aruba Mailbox Acquisition":
+
+- **Manual upload** — a person uploads a photo/PDF directly (`03 Software/InvoiceIntake/app.py`'s `/upload`).
+- **Email — Aruba mailbox.** `invoices@romesflavours.com` is Rome's Flavours' operational mailbox for supplier invoices, connected via IMAP (`03 Software/InvoiceIntake/mailbox_acquisition/`). A continuous, configurable poll identifies new messages, downloads every documental attachment (PDF, JPG/JPEG, PNG, TIFF and similar — never assuming one email is one invoice), records source/provenance (mailbox, message id, sender, subject, received/ingestion timestamps, attachment filename, content hash), and hands each attachment to the same acquisition/normalization pipeline manual upload uses. It never deletes or moves mailbox messages, and it is acquisition only — it does not decide functional duplicate-vs-correction (that remains Purchased's own responsibility, see Purchased/README.md, "Duplicate handling"). Credentials are never hardcoded — configured via environment/`.env`, never committed.
+
+Both channels converge on the same downstream pipeline and the same Purchased canonical persistence — see "Ownership" above and `03 Software/InvoiceIntake/mailbox_acquisition/README.md`.
+
 ## Related
 
 - `03 Software/InvoiceIntake/` — the current runtime prototype (upload → OCR
   → review → normalized output), Software-layer. Its `purchased_bridge.py`
   (renamed from `purchasing_bridge.py` by "Align legacy Invoice Intake with
   Purchased") persists that output as Purchased's canonical Purchase Fact.
+- `03 Software/InvoiceIntake/mailbox_acquisition/README.md` — the Aruba
+  mailbox acquisition source (`invoices@romesflavours.com`) described above.
 - `01 Domains/Shared Domains/Purchased/README.md` — the Shared Domain that
   now canonically owns the Purchase Fact this module's output feeds (capture
   + normalize + publish); see its "Invoice Intake alignment (closed)" note.

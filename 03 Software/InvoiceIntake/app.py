@@ -7,6 +7,9 @@ import ocr_engine
 import parser as invoice_parser
 import excel_store
 import purchased_bridge
+from mailbox_acquisition.acquisition_store import AcquisitionStore
+from mailbox_acquisition.acquisition_service import DEFAULT_DB_PATH as MAILBOX_DB_PATH
+from mailbox_acquisition.config import MailboxConfigError, load_config as load_mailbox_config
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -131,6 +134,48 @@ def save():
     return render_template(
         "success.html", doc_id=doc_id, excel_path=EXCEL_PATH, excel_ok=excel_ok, functional_status=functional_status
     )
+
+
+@app.route("/mailbox")
+def mailbox_acquisitions():
+    """Simple admin view over the Aruba mailbox acquisition's own local
+    state (`mailbox_acquisition/acquisition_store.py`) — not a dashboard,
+    just enough to see what was acquired, its status, and any failure/retry
+    (Task requirement 11, "Human visibility")."""
+
+    store = AcquisitionStore(MAILBOX_DB_PATH)
+    try:
+        records = store.list_recent(limit=200)
+    finally:
+        store.close()
+
+    rows = []
+    for record in records:
+        supplier_name = None
+        if record.purchase_document_id is not None:
+            try:
+                supplier_name = purchased_bridge.get_saved_document_supplier_name(record.purchase_document_id)
+            except Exception:
+                supplier_name = None
+        rows.append(
+            {
+                "received_at": record.received_at,
+                "sender": record.sender,
+                "attachment_filename": record.attachment_filename,
+                "supplier_name": supplier_name,
+                "status": record.status,
+                "functional_status": record.functional_status,
+                "failure_reason": record.failure_reason,
+                "retry_count": record.retry_count,
+            }
+        )
+
+    try:
+        mailbox_label = load_mailbox_config().username
+    except MailboxConfigError:
+        mailbox_label = "(non configurata — vedi mailbox_acquisition/README.md)"
+
+    return render_template("mailbox.html", records=rows, mailbox=mailbox_label)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,8 @@
 
 Piccola web app locale per validare il flusso: carichi una fattura (foto o PDF), l'app la legge, tu correggi/completi i dati (incluso il tipo di riga: Prodotto/Supplemento/Sconto) in una schermata di revisione, e alla conferma il documento viene registrato come Purchase Fact canonico. `purchased_bridge.py` calcola anche lo stato funzionale **NORMALIZED/HUMAN** (Purchased/README.md) e riconosce documenti duplicati/correzioni fornitore (Credit Memo, Corrected Invoice, ecc.) — vedi PURCHASING.md, §5.
 
+**Acquisizione via email (`mailbox_acquisition/`):** oltre al caricamento manuale, Invoice Intake acquisisce fatture direttamente dalla casella **`invoices@romesflavours.com`** (mailbox operativa Aruba di Rome's Flavours) — un processo continuo/configurabile che scarica gli allegati documentali di ogni nuovo messaggio e li consegna a questa stessa pipeline (OCR/parser/`purchased_bridge.py`), senza saltarla. Vedi `mailbox_acquisition/README.md` per configurazione e comportamento (idempotenza, provenance, retry).
+
 ## Come funziona la lettura
 
 - **PDF con testo digitale** (fatture generate al computer): il testo viene estratto direttamente, in modo pulito e affidabile.
@@ -35,7 +37,16 @@ pip install -r "../RF-One Data Store/requirements.txt"
 python app.py
 ```
 
-Poi apri il browser su **http://127.0.0.1:5000**
+Poi apri il browser su **http://127.0.0.1:5000** — la vista `/mailbox` mostra le fatture acquisite via email.
+
+## Avvio dell'acquisizione email (opzionale)
+
+```
+python run_mailbox_acquisition.py          # loop continuo (30–60s configurabile)
+python run_mailbox_acquisition.py --once   # un solo ciclo, poi esce
+```
+
+Richiede `ARUBA_IMAP_USERNAME`/`ARUBA_IMAP_PASSWORD` (vedi `.env.example` alla radice del repository) — vedi `mailbox_acquisition/README.md`.
 
 ## Dove finiscono i dati
 
