@@ -563,6 +563,43 @@ Compatibility Notes:
 
 ---
 
+---
+
+Version: PROPOSED — Post-Baseline Conceptual Extension (CORE_VISUAL_VIDEO_CONTEXT_AS_AMBIENT_EVIDENCE)
+
+Date: 2026-09-14
+
+Modified Entity:
+A new document `ConceptualArchitecture/17_Visual_Video_Context_as_Ambient_Evidence.md` (status PROPOSED, a sub-extension of document 16, not Approved Core 2.0), plus discoverability/cross-reference-only additions to `ConceptualArchitecture/00_RF-One_Core_Vision.md`, `ConceptualArchitecture/07_Core_Glossary.md`, `ConceptualArchitecture/12_Attention_Management.md`, `ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md`, `ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md`, `ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md` (Related documents only, no substantive section reopened), `README.md`, and `RF_ONE_2_0_BASELINE.md`.
+
+Reason:
+This work was produced on the same dedicated branch as document 16 (`docs/cognito-ambient-operational-context`), following a Product Owner conceptual exploration, not (yet) an approved architectural decision. It formalizes **Visual/Video Context** as one source category of Ambient Operational Context (document 16 §3, already illustrative and non-exhaustive): authorized images/video may contribute scene-level Ambient Evidence (occupancy, queue length, a table occupied, crowding, movement/flow, and similar illustrative, non-exhaustive examples) — never an automatic Fact (applying the existing Epistemic Boundary, [05] §1, unmodified), and never a judgment about a person (a Scene/Activity Understanding vs. Person Judgment distinction the document draws explicitly: "there appears to be a queue," never "this employee is lazy"). It states, as a mandatory boundary, that Visual Ambient Cognition is distinct from Employee Surveillance (no continuous permanent recording, no long-term raw retention, no employee scoring, no disciplinary/productivity monitoring, no covert observation assumed), generalizing document 16 §10's existing surveillance boundary to visual signals specifically. It states that video must not be used automatically to infer Human Operational State, and explicitly declines to formalize facial-expression/posture/movement-speed as fixed interpretive rules — the same "no fixed interpretive rule" discipline document 15 §5 already established for physiological signals, extended here rather than modified. It states retention, third-party/customer privacy, and identity/biometric boundaries (face recognition and biometric identification are named as a separate capability, not implicit in this concept), and preserves the existing Trigger Discovery/Trigger Resolution/Authorized Consequence separation and the Attention Management who/when/priority/channel boundary for visual evidence specifically. Device independence is preserved (no CCTV vendor, camera brand, or smart-glasses product named).
+
+Concepts introduced (PROPOSED, not yet Approved Core 2.0):
+
+- Visual/Video Context (a source category of Ambient Operational Context, not a new Cognito capability)
+- Scene/Activity Understanding vs. Person Judgment (a named distinction for visual/video inferences specifically)
+- The explicit Visual Ambient Cognition ≠ Employee Surveillance boundary
+- The retention principle: derived operational context retained when justified, raw visual media discarded unless a separate business/legal purpose requires it
+- The explicit identity/biometric boundary: "a person appears in area X" ≠ "this is John Smith"; face/biometric/emotion recognition named as a separate, non-implicit capability
+
+Impacted Domains:
+
+- None modified. No Software, Product, or Domain business-logic file was touched. No computer vision model, video ingestion path, camera stream, image storage, object detection, face recognition, biometric identification, or emotion recognition was chosen, designed, or implemented.
+
+Future Expected Impact:
+
+- Any future Domain or Product design considering authorized visual/video signals as an Ambient Operational Context input (e.g. a Restaurant host-stand queue view, a Retail fitting-room occupancy view), and any future consent/retention/compliance implementation task for visual data.
+
+Compatibility Notes:
+
+- All prior Core 2.0 content is preserved; no existing definition was reversed. This entry is additive and, like the initial document 16 entry before its own ratification, is **not** presented as an Approved Core 2.0 change: the new document's own status is "PROPOSED — Post-Baseline Conceptual Extension," it is deliberately **not** added to the canonical 00–14 table in `00_RF-One_Core_Vision.md` §6 or to `README.md`'s "Approved Core 2.0" ConceptualArchitecture description (both list it only for discoverability), and `RF-ONE Core Principles.md` was deliberately **not** modified.
+- The `core-2.0-freeze` tag was not moved and is not referenced as covering this content.
+- Ambient Operational Context ([16](ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md)), Human Operational State ([15](ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md)), Cognito ([14](ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md)), Attention Management ([12](ConceptualArchitecture/12_Attention_Management.md)), Trigger Intelligence ([13](ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md)), the Epistemic Boundary ([05](ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md)), and Identity/Authority/Delegation/Accountability ([09](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md)) are explicitly preserved as-is; this new document specializes them for one narrow, illustrative source category, it does not redefine any of them.
+- No Domain, Product or Software file was modified.
+
+---
+
 # Design Principles
 
 - The Core Domain is extracted from real domains.
