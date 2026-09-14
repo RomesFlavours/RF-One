@@ -600,6 +600,40 @@ Compatibility Notes:
 
 ---
 
+---
+
+Version: Core 2.0 (Ratification — CORE_VISUAL_VIDEO_CONTEXT_AS_AMBIENT_EVIDENCE)
+
+Date: 2026-09-14
+
+Modified Entity:
+`ConceptualArchitecture/17_Visual_Video_Context_as_Ambient_Evidence.md` (Status header and the Non-assumptions line about status/document-16-status/`core-2.0-freeze` only), `ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md` (the one "See also" cross-reference status word only, no other section reopened), `ConceptualArchitecture/07_Core_Glossary.md` (status parenthetical for the one term it introduced), `README.md` and `ConceptualArchitecture/00_RF-One_Core_Vision.md` (discoverability line status), `ConceptualArchitecture/12_Attention_Management.md`, `ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md`, and `ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md` (their own "See also" cross-reference status word), and `RF_ONE_2_0_BASELINE.md` (FUTURE/CONCEPTUAL EXTENSION note status) — following the final consistency review recorded in this ratification entry.
+
+Reason:
+The Product Owner ratified `ConceptualArchitecture/17_Visual_Video_Context_as_Ambient_Evidence.md` following a dedicated final consistency review against Ambient Operational Context ([16](ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md)), Human Operational State ([15](ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md)), Cognito ([14](ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md)), Attention Management ([12](ConceptualArchitecture/12_Attention_Management.md)), Trigger Intelligence ([13](ConceptualArchitecture/13_Process_Activation_and_Trigger_Intelligence.md)), the Epistemic Boundary ([05](ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md)), Identity/Authority/Accountability ([09](ConceptualArchitecture/09_Identity_Authority_and_Accountability.md)), privacy/surveillance boundaries, device independence, and the `core-2.0-freeze` discipline. No conceptual contradiction was found; the review confirmed that Visual/Video Context remains a source category of Ambient Operational Context and never an independent Cognito capability, that a visual/video signal is Ambient Evidence and never an automatic Fact, that Scene/Activity Understanding is never collapsed into a judgment about a person, that video never automatically infers Human Operational State (no fixed facial-expression/posture/movement-speed interpretive rule is formalized), that visual observation never itself constitutes Authority, that visual evidence may support Trigger Discovery/Attention context but never bypasses Trigger Resolution or an Authorized Consequence, that Visual Ambient Cognition remains explicitly distinct from Employee Surveillance (no permanent recording, no long-term raw retention, no employee scoring, no disciplinary/productivity monitoring, no covert observation assumed), that face recognition and biometric identification remain a separate, non-implicit capability, that raw video retention is not assumed (derived context retained when justified, raw media discarded unless a separate business/legal purpose requires it), and that no specific camera/vendor/device dependency is introduced. The document's own status is accordingly changed from PROPOSED to **APPROVED — Post-Baseline Conceptual Extension**.
+
+Concepts introduced:
+
+- None new. This entry ratifies the status of the concept already introduced by the prior PROPOSED entry above (Visual/Video Context as a source category of Ambient Operational Context); it does not add or redefine any concept.
+
+Impacted Domains:
+
+- None modified. No Software, Product, or Domain business-logic file was touched. No computer vision model, video ingestion path, camera stream, image storage, object detection, face recognition, biometric identification, or emotion recognition was chosen, designed, or implemented by this ratification.
+
+Future Expected Impact:
+
+- Same as the prior PROPOSED entry above; ratification does not by itself trigger new consumption or new implementation, only removes PROPOSED status from the document and its glossary term.
+
+Compatibility Notes:
+
+- **APPROVED — Post-Baseline Conceptual Extension does not mean retroactively part of `core-2.0-freeze` or of `release/rf-one-2.0`.** The `core-2.0-freeze` tag was not moved, and its history was not rewritten. Document 17 remains outside the Approved Core 2.0 00–14 canonical set (`00_RF-One_Core_Vision.md` §6) — ratification approves it as a stable, standalone post-baseline extension, the same discipline already applied to documents 15 and 16.
+- Document 17 remains explicitly a specialization/source category of document 16 ([16](ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md) §12), never a new independent Cognito capability; document 16 itself was not reopened by this ratification beyond its own single cross-reference status word.
+- Promotion of this document's canonical principle (§1 of document 17) to a numbered entry in `RF-ONE Core Principles.md` is deliberately **not** performed by this entry and remains a separate, future Product Owner decision. `RF-ONE Core Principles.md` was not modified.
+- All prior Core Evolution entries are preserved unchanged, consistent with Historical Integrity (`ArchitecturePrinciples.md`): this is an additive new entry, not a rewrite of the PROPOSED entry it ratifies.
+- No Domain, Product or Software file was modified. No software capability was implemented by this ratification.
+
+---
+
 # Design Principles
 
 - The Core Domain is extracted from real domains.

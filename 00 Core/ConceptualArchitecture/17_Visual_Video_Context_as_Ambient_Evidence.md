@@ -1,7 +1,7 @@
 # Visual/Video Context as Ambient Evidence for Cognito
 
 **Version:** 1.0
-**Status:** PROPOSED — Post-Baseline Conceptual Extension, a sub-extension of [16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md](16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md) (itself APPROVED — Post-Baseline Conceptual Extension). Core 2.0 is already frozen (`core-2.0-freeze`, commit `71de3663dba2716ccbb6c1f93ffd458e20da8ead`) and `release/rf-one-2.0` (tag `rf-one-2.0-baseline`) is a released baseline built from it. This document is a Product Owner conceptual exploration, not yet an approved architectural decision, produced on the same dedicated branch as document 16 (`docs/cognito-ambient-operational-context`), and does not retroactively extend `core-2.0-freeze`. Promotion to Approved status, and to a numbered Core Principle, remain separate, future Product Owner decisions — the same discipline already applied to documents 15 and 16.
+**Status:** APPROVED — Post-Baseline Conceptual Extension, a sub-extension of [16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md](16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md) (itself APPROVED — Post-Baseline Conceptual Extension). Core 2.0 is already frozen (`core-2.0-freeze`, commit `71de3663dba2716ccbb6c1f93ffd458e20da8ead`) and `release/rf-one-2.0` (tag `rf-one-2.0-baseline`) is a released baseline built from it. This document is a conceptual extension ratified by the Product Owner after document 16, on the same dedicated branch (`docs/cognito-ambient-operational-context`) — not a retroactive change to `core-2.0-freeze` or to `release/rf-one-2.0`, and not itself folded into the Approved 00–14 canonical set ([00_RF-One_Core_Vision.md](00_RF-One_Core_Vision.md) §6). See [../Core Evolution.md](../Core%20Evolution.md) for the ratification record. Promotion to a numbered Core Principle remains a separate, future decision — the same discipline already applied to documents 15 and 16.
 **Module:** Core / ConceptualArchitecture
 
 ---
@@ -334,9 +334,9 @@ this document introduces jurisdiction- or country-specific privacy
 this document asserts that RF-One currently models a Retail, Warehouse, or
   Office/professional Domain — the cross-industry examples in §11 are
   illustrative only
-this document's PROPOSED status folds it into the Approved Core 2.0 00-14
-  canonical set, or into document 16's own APPROVED status, or retroactively
-  extends the `core-2.0-freeze` tag
+this document's APPROVED — Post-Baseline Conceptual Extension status folds
+  it into the Approved Core 2.0 00-14 canonical set, or into document 16's
+  own status, or retroactively extends the `core-2.0-freeze` tag
 promotion of this document's canonical principle (§1) to a numbered Core
   Principle has occurred merely because this document exists
 any specific camera vendor, sensor, smart-glasses product, or deployment
