@@ -1,6 +1,6 @@
 # Purchased
 
-**Version:** 1.1 (expands v1.0's initial definition with non-goods cost allocation, date policy, Supplier identity resolution, source/format validation and training, the NORMALIZED/HUMAN functional-state model, duplicate handling, supplier-side correction mechanics, and the single-object invoice scope rule — all Product Owner decisions recorded below; v1.0's core boundaries are preserved, not reversed)
+**Version:** 1.2 (closes, for the legacy `03 Software/InvoiceIntake/` path specifically, the "Relationship to Restaurant's existing Purchasing module" open question v1.1 recorded below — see "Invoice Intake alignment (closed)" — while leaving v1.1's conceptual content otherwise unchanged; v1.1 expanded v1.0's initial definition with non-goods cost allocation, date policy, Supplier identity resolution, source/format validation and training, the NORMALIZED/HUMAN functional-state model, duplicate handling, supplier-side correction mechanics, and the single-object invoice scope rule)
 **Status:** APPROVED DOMAIN DEFINITION
 **Module:** Shared Domains / Purchased
 
@@ -8,10 +8,10 @@
 
 ## Related documents
 
-- [../../Domain Architecture.md](../../Domain%20Architecture.md) §4 (Shared Domains / Business Domain taxonomy, where Purchased is introduced as a Shared Domain) and §9, Open Question 6 (Purchased vs. Restaurant/Purchasing, recorded but not decided by this document)
+- [../../Domain Architecture.md](../../Domain%20Architecture.md) §4 (Shared Domains / Business Domain taxonomy, where Purchased is introduced as a Shared Domain) and §9, Open Question 6 (Purchased vs. Restaurant/Purchasing — partially closed for the `03 Software/InvoiceIntake/` path, see below; still open more broadly)
 - [../../README.md](../../README.md) (`01 Domains/` purpose, the Shared Domains / Business Domain taxonomy, and the distinction between `Shared Domains/` and `_Shared/`)
 - [../Administration/README.md](../Administration/README.md) and [../Administration/Invoice Intake/README.md](../Administration/Invoice%20Intake/README.md) — Administration is a possible consumer of Purchased's output (economic category/document totals); Administration's own Invoice Intake module is a distinct, pre-existing capability under Administration, not the same thing as Purchased and not renamed or merged by this document
-- [../../Business Domain/Restaurant/Purchasing/README.md](../../Business%20Domain/Restaurant/Purchasing/README.md) — Restaurant's existing, Business-Domain-specific Purchasing module, which already normalizes supplier invoices into its own Purchase Document/Purchase Line/Effective Product Cost model; see "Relationship to Restaurant's existing Purchasing module" below for the explicitly open question this document does not resolve
+- [../../Business Domain/Restaurant/Purchasing/README.md](../../Business%20Domain/Restaurant/Purchasing/README.md) — Restaurant's existing, Business-Domain-specific Purchasing module, which normalizes supplier invoices into a Purchase Document/Purchase Line/Effective Product Cost model now consuming, rather than owning, the Purchase Fact for the `03 Software/InvoiceIntake/` path; see "Relationship to Restaurant's existing Purchasing module" below
 - `CLAUDE.md` — Core/Domain/Product/Runtime distinction; this document is Domain-level definition, not Product or Runtime design
 
 ---
@@ -78,7 +78,7 @@ Purchased may acquire evidence from, illustratively and non-exhaustively:
 
 **Invoice Intake is a process that feeds Purchased — it is not the name of this Domain.** No email intake, OCR, invoice parser, or supplier API integration is designed, authorized, or implied by this document.
 
-RF-One already has a pre-existing **Invoice Intake** capability (`../Administration/Invoice Intake/README.md`), documented as "a Shared Domains capability... document acquisition, OCR/parsing, normalization, review, and routing," which today feeds Restaurant/Purchasing's canonical model rather than this document. Whether that existing process should also (or instead) feed Purchased as defined here is part of the same open question recorded below — this document does not redirect Invoice Intake's existing output.
+RF-One already has a pre-existing **Invoice Intake** capability (`../Administration/Invoice Intake/README.md`), documented as "a Shared Domains capability... document acquisition, OCR/parsing, normalization, review, and routing." As of "Align legacy Invoice Intake with Purchased" (see "Relationship to Restaurant's existing Purchasing module" below, "Invoice Intake alignment (closed)"), its legacy runtime prototype (`03 Software/InvoiceIntake/`) feeds Purchased's persistence directly — Restaurant/Purchasing consumes that output rather than owning it.
 
 ---
 
@@ -418,13 +418,19 @@ Restaurant already has its own, pre-existing, Business-Domain-specific **Purchas
 
 This document does **not** merge, redefine, rename, or take over Restaurant/Purchasing's existing approved content — Restaurant/Purchasing's entities and business rules remain exactly as previously approved, unmodified by this task.
 
-Whether — and how — Purchased (this Shared Domain) and Restaurant/Purchasing (that Business Domain module) should relate is an **explicitly open question**, not decided here: for example, whether Restaurant/Purchasing should eventually be re-expressed as Restaurant's own consumer/specialization of Purchased (the same kind of relationship already recognized between Ambient Operational Context and the Restaurant Domain's Service Copilot module), or whether the two are deliberately kept separate because Restaurant/Purchasing's scope (Physical Receiving, Configured Expectations/Alerts, Ingredient Mapping) genuinely exceeds what a cross-industry Purchased fact needs to model. This question is sharpened, not created, by this document: `Administration/Invoice Intake/README.md` already records that an earlier, Administration-local invoice model was previously reconciled *into* Restaurant/Purchasing's canonical model (`07 Tasks/Reports/TASK_PURCHASING_001_REPORT.md`) — the same kind of consolidation this open question may eventually require in the other direction, or may not. This is recorded as an open implementation point (see also [../../Domain Architecture.md](../../Domain%20Architecture.md) §9, Open Question 6) for a future, dedicated Product Owner decision — it is not resolved by formalizing Purchased.
+Whether — and how — Purchased (this Shared Domain) and Restaurant/Purchasing (that Business Domain module) should relate *more broadly* is still an **open question** for a future, dedicated Product Owner decision — e.g. whether Restaurant/Purchasing should eventually be re-expressed wholesale as Restaurant's own consumer/specialization of Purchased (the same kind of relationship already recognized between Ambient Operational Context and the Restaurant Domain's Service Copilot module), or whether the two are deliberately kept separate because Restaurant/Purchasing's remaining scope (Physical Receiving, Configured Expectations/Alerts, Ingredient Mapping) genuinely exceeds what a cross-industry Purchased fact needs to model (see also [../../Domain Architecture.md](../../Domain%20Architecture.md) §9, Open Question 6).
+
+**Invoice Intake alignment (closed) — "Align legacy Invoice Intake with Purchased":** for the one concrete path this open question originally named — `03 Software/InvoiceIntake/` (the legacy prototype: OCR/parse → human review → save) — the Product Owner has closed it. As of this task:
+
+- **Purchased owns the Purchase Fact** that path produces: capture (Invoice Intake) + normalize (OCR/parser + human review) + publish. Persistence continues to use the existing `PurchaseDocument`/`PurchaseLine` schema under `03 Software/RF-One Data Store/rfone_data_store/purchasing/` — evolved (ownership documentation, a duplicate/correction check, and derived NORMALIZED/HUMAN and non-goods-allocation read functions), never duplicated into a second schema. See `03 Software/RF-One Data Store/PURCHASING.md` §1 and §10.
+- **Restaurant/Purchasing consumes** this Purchase Fact for its own remaining, still Purchasing-owned scope (Purchase Order, Configured Expectation, Physical Receiving, Reconciliation, Alert, Expected Supplier Credit) — it is never a prerequisite for creating one; `03 Software/InvoiceIntake/purchased_bridge.py` (renamed from `purchasing_bridge.py`) calls none of Purchasing's decision/receiving functions.
+- This closes Open Question 6 **for this one software path only** — the broader question in the paragraph above (e.g. whether Restaurant/Purchasing's remaining scope should itself eventually be re-expressed as a Purchased consumer/specialization) stays open.
 
 ---
 
 ## Open implementation points
 
-- The relationship between Purchased and Restaurant's existing Purchasing module (see above) — not decided by this document.
+- The relationship between Purchased and Restaurant's existing Purchasing module (see above) — closed for the `03 Software/InvoiceIntake/` path ("Invoice Intake alignment (closed)"); still open more broadly.
 - No database schema, table, or field is fixed by this document — the "minimum conceptual data" list above is illustrative, not final.
 - No Invoice Intake process (email, OCR, parser, supplier API) is designed or implemented here.
 - No Bank Reconciliation process is designed here — only the boundary that it does not belong to Purchased.

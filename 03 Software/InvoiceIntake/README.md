@@ -1,8 +1,8 @@
 # Invoice Intake (prototipo)
 
-**Nota canonica (TASK_PURCHASING_004):** a partire da questo task, il salvataggio finale avviene nel **RF-One Data Store** (`03 Software/RF-One Data Store/`), che implementa persistentemente il modello canonico `01 Domains/Business Domain/Restaurant/Purchasing/` (Purchase Document / Purchase Line, con `line_type` PRODUCT/SURCHARGE/DISCOUNT e Merchandise/Economic Classification). Il file Excel (`data/PurchaseDocuments.xlsx`) resta disponibile solo come copia di debug/esportazione secondaria — non è più lo store canonico. Vedi `03 Software/RF-One Data Store/PURCHASING.md` per i dettagli implementativi.
+**Nota canonica (Align legacy Invoice Intake with Purchased, evolve di TASK_PURCHASING_004):** Invoice Intake è il processo che alimenta **Purchased** (`01 Domains/Shared Domains/Purchased/README.md`), lo Shared Domain proprietario del Purchase Fact (capture + normalize + publish). Il salvataggio finale avviene nel **RF-One Data Store** (`03 Software/RF-One Data Store/`, tramite `purchased_bridge.py`), che persiste il Purchase Document / Purchase Line (`line_type` PRODUCT/SURCHARGE/DISCOUNT) — lo stesso schema introdotto da TASK_PURCHASING_004, riusato as-is (nessuna tabella nuova). **Restaurant/Purchasing consuma** questo Purchase Fact per le proprie decisioni (Purchase Order, Configured Expectation, Physical Receiving, Reconciliation, Alert) — non lo possiede più, e non è mai un prerequisito per crearlo. Il file Excel (`data/PurchaseDocuments.xlsx`) resta disponibile solo come copia di debug/esportazione secondaria. Vedi `03 Software/RF-One Data Store/PURCHASING.md` per i dettagli implementativi.
 
-Piccola web app locale per validare il flusso: carichi una fattura (foto o PDF), l'app la legge, tu correggi/completi i dati (incluso il tipo di riga: Prodotto/Supplemento/Sconto) in una schermata di revisione, e alla conferma il documento viene registrato nel RF-One Data Store come Purchase Document/Purchase Line canonici.
+Piccola web app locale per validare il flusso: carichi una fattura (foto o PDF), l'app la legge, tu correggi/completi i dati (incluso il tipo di riga: Prodotto/Supplemento/Sconto) in una schermata di revisione, e alla conferma il documento viene registrato come Purchase Fact canonico. `purchased_bridge.py` calcola anche lo stato funzionale **NORMALIZED/HUMAN** (Purchased/README.md) e riconosce documenti duplicati/correzioni fornitore (Credit Memo, Corrected Invoice, ecc.) — vedi PURCHASING.md, §5.
 
 ## Come funziona la lettura
 
@@ -16,7 +16,7 @@ Testato con i due esempi in `01 Domains/Shared Domains/Administration/Invoice In
 - Python 3.10 o superiore
 - [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) installato (su Windows: scarica l'installer, e assicurati che `tesseract.exe` sia nel PATH di sistema)
 - Facoltativo: [Poppler for Windows](https://github.com/oschwartz10612/poppler-windows/releases) se vuoi che funzioni anche il fallback OCR per PDF scansionati (non serve per PDF con testo digitale)
-- Le dipendenze di `03 Software/RF-One Data Store/` (SQLAlchemy, Alembic — vedi il suo `requirements.txt`), poiché `purchasing_bridge.py` importa `rfone_data_store` da lì
+- Le dipendenze di `03 Software/RF-One Data Store/` (SQLAlchemy, Alembic — vedi il suo `requirements.txt`), poiché `purchased_bridge.py` importa `rfone_data_store` da lì
 
 ## Installazione
 
@@ -39,7 +39,9 @@ Poi apri il browser su **http://127.0.0.1:5000**
 
 ## Dove finiscono i dati
 
-Ogni fattura confermata viene salvata nel RF-One Data Store (SQLite locale per default: `03 Software/RF-One Data Store/data/rfone.db`, creato/aggiornato automaticamente tramite le migration Alembic esistenti — vedi `03 Software/RF-One Data Store/README.md`). La schermata finale mostra il `PurchaseDocumentId` canonico assegnato.
+Ogni fattura confermata viene salvata nel RF-One Data Store (SQLite locale per default: `03 Software/RF-One Data Store/data/rfone.db`, creato/aggiornato automaticamente tramite le migration Alembic esistenti — vedi `03 Software/RF-One Data Store/README.md`). La schermata finale mostra il `PurchaseDocumentId` canonico assegnato e lo stato funzionale **NORMALIZED** o **HUMAN** (Purchased/README.md) — HUMAN quando il documento/una riga richiede verifica (lettura OCR incerta, campo chiave mancante, o identità fattura in conflitto con un documento già registrato).
+
+Una fattura già registrata, ricaricata di nuovo (stesso fornitore/numero/data/totale, magari da un altro canale), non crea un secondo Purchase Fact: viene riconosciuto come duplicato e restituito il `PurchaseDocumentId` esistente. Un Credit Memo/Corrected Invoice/Return Credit/Adjustment selezionato come "Tipo documento" viene invece registrato come nuovo documento collegato all'originale (correzione fornitore, mai una riscrittura del fatto precedente).
 
 `data/PurchaseDocuments.xlsx` continua a essere aggiornato come copia di debug/esportazione secondaria ad ogni salvataggio (append, non sovrascrive) — utile per un controllo visivo rapido, ma non è più la fonte di verità. Se il file è aperto in Excel al momento del salvataggio, il salvataggio canonico nel RF-One Data Store avviene comunque; solo la copia Excel potrebbe fallire silenziosamente (messaggio informativo nella schermata di conferma).
 

@@ -2,7 +2,8 @@
 {% block content %}
 <div class="card">
   <h3 style="margin-top:0;">Salvato ✓</h3>
-  <p>Documento registrato nel RF-One Data Store con <strong>PurchaseDocumentId = {{ doc_id }}</strong>.</p>
+  <p>Documento registrato come Purchase Fact (Purchased) con <strong>PurchaseDocumentId = {{ doc_id }}</strong>.</p>
+  <p class="hint">Stato: <strong>{{ functional_status }}</strong>{% if functional_status == 'HUMAN' %} — richiede verifica umana (vedi Validation Log){% endif %}</p>
   {% if excel_ok %}
   <p class="hint">Copia di debug anche su Excel: <code>{{ excel_path }}</code></p>
   {% else %}

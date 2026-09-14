@@ -6,7 +6,7 @@ from flask import Flask, render_template, request, redirect, url_for
 import ocr_engine
 import parser as invoice_parser
 import excel_store
-import purchasing_bridge
+import purchased_bridge
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -54,7 +54,7 @@ def upload():
     header["acquisition_method"] = method
     lines = invoice_parser.parse_lines(text)
     for line in lines:
-        line["line_type"] = purchasing_bridge.guess_line_type(line.get("description", ""))
+        line["line_type"] = purchased_bridge.guess_line_type(line.get("description", ""))
 
     # Always offer a handful of blank extra rows for manual entry, since
     # automatic line-item parsing is unreliable on noisy/photographed
@@ -111,21 +111,26 @@ def save():
 
     source_file = form.get("source_file", "")
 
-    # Canonical persistence (TASK_PURCHASING_004): the RF-One Data Store is
-    # the Purchase Document/Purchase Line source of truth from here on.
-    doc_id = purchasing_bridge.save_purchase_document(header, lines, source_file)
+    # Canonical persistence (Align legacy Invoice Intake with Purchased): the
+    # RF-One Data Store is the Purchase Fact source of truth from here on,
+    # owned by Purchased (01 Domains/Shared Domains/Purchased/README.md).
+    doc_id = purchased_bridge.save_purchase_document(header, lines, source_file)
 
     # Excel remains available only as a secondary export/debugging capability
-    # (01 Domains/Business Domain/Restaurant/Purchasing/README.md is unaffected by this —
-    # Excel was never canonical there; it was only ever this prototype's
-    # storage). A failure here must never lose the canonical save above.
+    # (Purchased was never canonical there; it was only ever this
+    # prototype's storage). A failure here must never lose the canonical
+    # save above.
     excel_ok = True
     try:
         excel_store.save_purchase_document(EXCEL_PATH, header, lines, source_file)
     except Exception:
         excel_ok = False
 
-    return render_template("success.html", doc_id=doc_id, excel_path=EXCEL_PATH, excel_ok=excel_ok)
+    functional_status = purchased_bridge.get_saved_document_functional_status(doc_id)
+
+    return render_template(
+        "success.html", doc_id=doc_id, excel_path=EXCEL_PATH, excel_ok=excel_ok, functional_status=functional_status
+    )
 
 
 if __name__ == "__main__":
