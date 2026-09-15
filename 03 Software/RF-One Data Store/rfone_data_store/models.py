@@ -4378,6 +4378,63 @@ class PurchasingValidationLogEntry(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class PurchasedFieldCorrection(Base):
+    """Purchased Human Review's own audit trail ("Purchased Human Review +
+    Supplier Format Training UI"): one row per field a human reviewed —
+    confirmed as `CORRECT`, or corrected from `original_value` to
+    `corrected_value` after being classified `INCORRECT`/`UNREAD`/
+    `AMBIGUOUS` (the same four Human Review Model classifications
+    `supplier_format_training.py` already uses — Task requirement 6).
+
+    **Never overwrites `PurchaseDocument`/`PurchaseLine`'s own columns** —
+    those stay exactly as originally extracted, forever (Task requirement
+    5: "La source evidence resta immutabile"; also preserves the existing
+    "no function updates a source-fact column once inserted" invariant
+    documented at the top of this repository module). This table is purely
+    additive: one INSERT per review action, oldest-first is the complete
+    history, and the LATEST row for a given (document, line, field) is the
+    "effective" reviewed value — see `03 Software/InvoiceIntake/
+    human_review.py`'s `effective_document_view()`, which merges these on
+    top of the immutable original columns for display/re-validation.
+    Nothing here is ever deleted or updated in place.
+
+    `field_name` is free text (illustrative, not an enum) — matches
+    whichever header/line field the review screen showed: `"supplier"`,
+    `"document_number"`, `"issue_date"`, `"total_amount"`, `"description"`,
+    `"normalized_item"`, `"quantity"`, `"unit_of_measure"`, `"unit_price"`,
+    `"line_amount"`."""
+
+    __tablename__ = "purchased_field_corrections"
+    __table_args__ = (
+        CheckConstraint(
+            "classification IN ('CORRECT', 'INCORRECT', 'UNREAD', 'AMBIGUOUS')",
+            name="ck_purchased_field_corrections_classification",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    purchase_document_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_documents.id"), nullable=False, index=True
+    )
+    # NULL for a header-level field; set for a line-level field.
+    purchase_line_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_lines.id"), nullable=True, index=True)
+
+    field_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    classification: Mapped[str] = mapped_column(String(16), nullable=False)
+    original_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    corrected_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Free text, not a User FK -- Identity & Access is currently frozen (see
+    # `10 System/Identity & Access/README.md`) and no Domain integrates
+    # with it yet; recording a plain reviewer name/identifier here is the
+    # minimum viable "who reviewed" audit trail (Task requirement 17)
+    # without building against the frozen foundation.
+    reviewed_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 # ---------------------------------------------------------------------------
 # Selection module — Resume Screening (TASK_SELECTION_001)
 #
