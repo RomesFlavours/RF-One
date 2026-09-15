@@ -34,9 +34,10 @@ Currently covers, both validated against real Rome's Flavours documents:
   block below it ("Tran ID#", "EFT/Debit <amount>") is consistently clean
   in every real sample seen so far and is used instead, both as this
   format's document-identity number and as its total.
-- **Ben E. Keith Foods** (priority 2) — supplier NAME recognition only; its
-  Number/Date/Total fields stay the generic parser's problem for now (see
-  that section below for why).
+- **Ben E. Keith Foods** (priority 2) — supplier name and document_number
+  recognition (the "Invoice No. | Page | Rep" row — added in Phase 2 for
+  multi-invoice splitting); Date/Total stay the generic parser's problem for
+  now (see that section below for why).
 
 Samuel & Son, Sam's Club (direct or via Instacart) have no real acquired
 documents yet (see the phase-1 report, section D/G) — no specialization is
@@ -52,9 +53,17 @@ import re
 # Prime Line Distributors
 # ---------------------------------------------------------------------------
 
+# pdfplumber renders an unmapped glyph (an untagged tab cell in these forms'
+# own table layout) as a literal "(cid:9)" token instead of whitespace — a
+# real, recurring artifact confirmed on page 4 of the real 4-invoice batch
+# `PL20200609171959_001.pdf` ("Number.(cid:9) 1103053"), where a plain
+# `\s*` between the label and its value missed the number entirely (added
+# for "Purchased Supplier Training Phase 2", multi-invoice splitting).
+_LABEL_SEP = r"(?:\(cid:\d+\)|\s)*"
+
 _PRIME_LINE_BRAND = re.compile(r"prime\s+line\s+distributors", re.IGNORECASE)
-_PRIME_LINE_NUMBER = re.compile(r"\bnumber\s*[.:]\s*([A-Za-z0-9]+)", re.IGNORECASE)
-_PRIME_LINE_DATE = re.compile(r"\bdate\s*[.:]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b", re.IGNORECASE)
+_PRIME_LINE_NUMBER = re.compile(r"\bnumber\s*[.:]" + _LABEL_SEP + r"([A-Za-z0-9]+)", re.IGNORECASE)
+_PRIME_LINE_DATE = re.compile(r"\bdate\s*[.:]?" + _LABEL_SEP + r"(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b", re.IGNORECASE)
 _MONEY_TAIL = re.compile(r"(\d+\.\d{2})")
 
 CANONICAL_PRIME_LINE_NAME = "Prime Line Distributors"
@@ -167,16 +176,34 @@ def _apply_costco(raw_text: str, header: dict) -> dict:
 
 _KEITH_BRAND = re.compile(r"ben\s*e\.?\s*keith", re.IGNORECASE)
 
+# Added for "Purchased Supplier Training Phase 2" (multi-invoice splitting,
+# §5B/§16): the table header on every real Keith page prints
+# "Invoice No. | Page | Rep" and the row right under it as three adjacent
+# numbers -- e.g. "90080721 1 OT", "90080721 2 OT". This one is used as a
+# split-boundary + document-identity signal because it survived the exact
+# real page (page 2 of `24 Keith_20241010_0002-1-3.pdf`) where the brand
+# text itself came back so character-scrambled by pdfplumber that
+# `_KEITH_BRAND` above does NOT match it -- so this pattern is also treated
+# as its own, independent Keith-recognition signal (`_is_keith()` below),
+# not only a refinement applied after the brand is already found. Digits
+# can still be individually OCR-misread (same residual risk already
+# documented for Costco's Tran ID# in Phase 1) -- this is a real, stable,
+# *recurring* pattern, not a guess.
+_KEITH_INVOICE_NUMBER = re.compile(r"\b(\d{6,9})\s+\d{1,2}\s+(?:OT|\d{2,3})\b")
+
 CANONICAL_KEITH_NAME = "Ben E. Keith Foods"
 
 
 def _is_keith(raw_text: str) -> bool:
-    return bool(_KEITH_BRAND.search(raw_text))
+    return bool(_KEITH_BRAND.search(raw_text)) or bool(_KEITH_INVOICE_NUMBER.search(raw_text))
 
 
 def _apply_keith(raw_text: str, header: dict) -> dict:
     header = dict(header)
     header["supplier_name"] = CANONICAL_KEITH_NAME
+    number_match = _KEITH_INVOICE_NUMBER.search(raw_text)
+    if number_match:
+        header["document_number"] = number_match.group(1)
     return header
 
 

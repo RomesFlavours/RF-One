@@ -19,6 +19,7 @@ import uuid
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from supplier_format_training import (  # noqa: E402
+    DEFAULT_TRUST_THRESHOLD,
     FIELD_REVIEW_AMBIGUOUS,
     FIELD_REVIEW_CORRECT,
     FIELD_REVIEW_INCORRECT,
@@ -282,6 +283,167 @@ def test_field_review_rejects_unknown_classification(result: Result, tmp_dir: st
         store.close()
 
 
+def test_default_trust_threshold_is_5(result: Result, tmp_dir: str) -> None:
+    """Task requirement 11: "Default operativo iniziale: 5 documenti
+    consecutivi verificati corretti" — and requirement 9 of the test list."""
+
+    store = _make_store(tmp_dir)
+    try:
+        result.check("DEFAULT_TRUST_THRESHOLD constant is 5", DEFAULT_TRUST_THRESHOLD == 5)
+        result.check(
+            "get_trust_threshold() returns the default (5) with no configuration at all",
+            store.get_trust_threshold("Prime Line Distributors", "OCR/Direct") == 5,
+        )
+    finally:
+        store.close()
+
+
+def test_global_trust_threshold_override(result: Result, tmp_dir: str) -> None:
+    store = _make_store(tmp_dir)
+    try:
+        store.set_trust_threshold(8)
+        result.check(
+            "a global override applies to every (Supplier, Format) pair with no pair-specific override",
+            store.get_trust_threshold("Costco Wholesale", "OCR/Direct") == 8
+            and store.get_trust_threshold("Ben E. Keith Foods", "PDF-Text/Direct") == 8,
+        )
+    finally:
+        store.close()
+
+
+def test_per_supplier_format_trust_threshold_override(result: Result, tmp_dir: str) -> None:
+    """Task requirement 10 of the test list: "threshold override works" —
+    and requirement 14: "global default; eventualmente override
+    Supplier+Format"."""
+
+    store = _make_store(tmp_dir)
+    try:
+        store.set_trust_threshold(3, supplier_name="Costco Wholesale", source_format="OCR/Direct")
+        result.check(
+            "a pair-specific override applies only to that exact pair",
+            store.get_trust_threshold("Costco Wholesale", "OCR/Direct") == 3,
+        )
+        result.check(
+            "an unrelated pair still gets the global default (unchanged, 5)",
+            store.get_trust_threshold("Costco Wholesale", "OCR/Instacart") == 5,
+        )
+
+        raised = False
+        try:
+            store.set_trust_threshold(3, supplier_name="Costco Wholesale")  # source_format missing
+        except ValueError:
+            raised = True
+        result.check("supplier_name without source_format (or vice versa) is rejected", raised)
+
+        raised = False
+        try:
+            store.set_trust_threshold(0)
+        except ValueError:
+            raised = True
+        result.check("a non-positive threshold is rejected", raised)
+    finally:
+        store.close()
+
+
+def test_five_consecutive_correct_makes_a_training_pair_eligible(result: Result, tmp_dir: str) -> None:
+    """Task requirement 12 / test list requirement 11: "5 consecutive
+    correct can become eligible"."""
+
+    store = _make_store(tmp_dir)
+    try:
+        store.record_observation(supplier_name="Costco Wholesale", source_format="OCR/Direct", was_normalized=True)
+        store.set_trust_state("Costco Wholesale", "OCR/Direct", TRUST_STATE_TRAINING)
+
+        for _ in range(4):
+            store.record_observation(supplier_name="Costco Wholesale", source_format="OCR/Direct", was_normalized=True)
+        obs = store.get("Costco Wholesale", "OCR/Direct")
+        eligible, reason = store.is_eligible_for_validation("Costco Wholesale", "OCR/Direct")
+        result.check("after only 5 total observations, reviewed_count/streak both reach 5", obs.reviewed_count == 5 and obs.consecutive_correct_count == 5)
+        result.check("is_eligible_for_validation() is True once the default threshold (5) is met", eligible and "5" in reason)
+
+        promoted = store.promote_if_eligible("Costco Wholesale", "OCR/Direct")
+        result.check("promote_if_eligible() actually promotes an eligible pair to VALIDATED", promoted.trust_state == TRUST_STATE_VALIDATED)
+    finally:
+        store.close()
+
+
+def test_recent_incorrect_prevents_promotion(result: Result, tmp_dir: str) -> None:
+    """Task requirement 12 / test list requirement 12: "recent incorrect
+    prevents promotion" — a HUMAN observation resets the streak, so
+    reaching a high reviewed_count is never enough by itself."""
+
+    store = _make_store(tmp_dir)
+    try:
+        store.record_observation(supplier_name="Ben E. Keith Foods", source_format="PDF-Text/Direct", was_normalized=True)
+        store.set_trust_state("Ben E. Keith Foods", "PDF-Text/Direct", TRUST_STATE_TRAINING)
+        for _ in range(3):
+            store.record_observation(supplier_name="Ben E. Keith Foods", source_format="PDF-Text/Direct", was_normalized=True)
+        # A HUMAN observation right before the streak would have reached 5.
+        store.record_observation(supplier_name="Ben E. Keith Foods", source_format="PDF-Text/Direct", was_normalized=False)
+        store.record_observation(supplier_name="Ben E. Keith Foods", source_format="PDF-Text/Direct", was_normalized=True)
+
+        obs = store.get("Ben E. Keith Foods", "PDF-Text/Direct")
+        result.check("reviewed_count is high (6) but the streak reset", obs.reviewed_count == 6 and obs.consecutive_correct_count == 1)
+        eligible, reason = store.is_eligible_for_validation("Ben E. Keith Foods", "PDF-Text/Direct")
+        result.check(
+            "not eligible despite a high reviewed_count — the streak, not just the count, matters",
+            not eligible and "consecutive correct" in reason,
+        )
+
+        raised = False
+        try:
+            store.promote_if_eligible("Ben E. Keith Foods", "PDF-Text/Direct")
+        except ValueError:
+            raised = True
+        result.check("promote_if_eligible() refuses (raises) rather than silently no-op or promote anyway", raised)
+    finally:
+        store.close()
+
+
+def test_promotion_requires_training_state_first(result: Result, tmp_dir: str) -> None:
+    """Task requirement 12: promotion needs "human confirmation / explicit
+    approval dove previsto" — an UNTRAINED pair, however many correct
+    observations it has, is never eligible until a human explicitly moves
+    it to TRAINING first."""
+
+    store = _make_store(tmp_dir)
+    try:
+        for _ in range(10):
+            store.record_observation(supplier_name="Prime Line Distributors", source_format="OCR/Direct", was_normalized=True)
+        eligible, reason = store.is_eligible_for_validation("Prime Line Distributors", "OCR/Direct")
+        result.check("still UNTRAINED (never explicitly moved to TRAINING) -> not eligible", not eligible and "TRAINING" in reason)
+    finally:
+        store.close()
+
+
+def test_degraded_pair_needs_explicit_training_before_re_eligible(result: Result, tmp_dir: str) -> None:
+    """Task requirement 13: "Dopo DEGRADED: serve nuova verifica/training"
+    — a DEGRADED pair is not directly eligible again; a human must move it
+    back to TRAINING first (same discipline as the initial promotion)."""
+
+    store = _make_store(tmp_dir)
+    try:
+        for _ in range(5):
+            store.record_observation(supplier_name="Costco Wholesale", source_format="OCR/Direct", was_normalized=True, signature="S1D1N1T1-L5")
+        store.set_trust_state("Costco Wholesale", "OCR/Direct", TRUST_STATE_TRAINING)
+        store.promote_if_eligible("Costco Wholesale", "OCR/Direct")
+
+        # A real error while VALIDATED -- Task requirement 13.
+        degraded = store.record_observation(supplier_name="Costco Wholesale", source_format="OCR/Direct", was_normalized=False, signature="S1D1N1T1-L5")
+        result.check("a real HUMAN outcome while VALIDATED demotes to DEGRADED (not just a layout change)", degraded.trust_state == TRUST_STATE_DEGRADED)
+
+        eligible, reason = store.is_eligible_for_validation("Costco Wholesale", "OCR/Direct")
+        result.check("a DEGRADED pair is not directly eligible again", not eligible and "DEGRADED" in reason)
+
+        store.set_trust_state("Costco Wholesale", "OCR/Direct", TRUST_STATE_TRAINING)
+        for _ in range(5):
+            store.record_observation(supplier_name="Costco Wholesale", source_format="OCR/Direct", was_normalized=True, signature="S1D1N1T1-L5")
+        eligible_again, _ = store.is_eligible_for_validation("Costco Wholesale", "OCR/Direct")
+        result.check("eligible again once explicitly retrained with a fresh correct streak", eligible_again)
+    finally:
+        store.close()
+
+
 def main() -> int:
     tmp_dir = tempfile.mkdtemp(prefix="supplier_format_training_test_")
     result = Result()
@@ -299,6 +461,13 @@ def main() -> int:
             test_instacart_and_direct_are_distinct_training_units,
             test_field_review_recorded_and_summarized,
             test_field_review_rejects_unknown_classification,
+            test_default_trust_threshold_is_5,
+            test_global_trust_threshold_override,
+            test_per_supplier_format_trust_threshold_override,
+            test_five_consecutive_correct_makes_a_training_pair_eligible,
+            test_recent_incorrect_prevents_promotion,
+            test_promotion_requires_training_state_first,
+            test_degraded_pair_needs_explicit_training_before_re_eligible,
         ):
             test_fn(result, tmp_dir)
         test_layout_signature_is_a_coarse_shape_only(result)

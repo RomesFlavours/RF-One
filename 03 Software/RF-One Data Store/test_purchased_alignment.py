@@ -195,6 +195,51 @@ def main() -> int:
                 "find_purchase_documents_by_number returns nothing for a blank document_number",
                 repo.find_purchase_documents_by_number(session, supplier.id, "") == [],
             )
+
+            # --- Supplier alias model / canonical cleanup ("Purchased
+            # Supplier Training Phase 2", §8-10) --------------------------
+            dirty_supplier = repo.get_or_create_supplier(session, restaurant.id, "PRIME LINE DISTRIBUTORS INVOICE")
+            linked_document = repo.record_purchase_document(
+                session,
+                dirty_supplier.id,
+                header={"document_number": "PL-0001", "document_type": "Invoice", "issue_date": _now(), "total_amount_minor": 12345},
+                lines=[{"line_type": "PRODUCT", "raw_description": "Some Item", "source_amount_minor": 12345}],
+            )
+            session.commit()
+            supplier_id_before_rename = dirty_supplier.id
+
+            renamed = repo.rename_supplier_canonical(session, dirty_supplier.id, "Prime Line Distributors")
+            session.commit()
+            result.check(
+                "rename_supplier_canonical renames in place (same id)",
+                renamed.id == supplier_id_before_rename and renamed.name == "Prime Line Distributors",
+            )
+            result.check(
+                "the old dirty name is preserved as an alias, not deleted",
+                any(a.alias_name == "PRIME LINE DISTRIBUTORS INVOICE" for a in repo.list_supplier_aliases(session, renamed.id)),
+            )
+            result.check(
+                "the pre-existing PurchaseDocument's FK/data is untouched by the rename",
+                session.get(m.PurchaseDocument, linked_document.id).supplier_id == supplier_id_before_rename
+                and session.get(m.PurchaseDocument, linked_document.id).total_amount_minor == 12345,
+            )
+            result.check(
+                "renaming to the same name again is a no-op (idempotent, no duplicate alias)",
+                repo.rename_supplier_canonical(session, renamed.id, "Prime Line Distributors").id == renamed.id
+                and len(repo.list_supplier_aliases(session, renamed.id)) == 1,
+            )
+
+            resolved_via_alias = repo.get_or_create_supplier(session, restaurant.id, "PRIME LINE DISTRIBUTORS INVOICE")
+            result.check(
+                "get_or_create_supplier resolves a known ALIAS to the current canonical Supplier, never a duplicate",
+                resolved_via_alias.id == renamed.id,
+            )
+
+            add_alias_again = repo.add_supplier_alias(session, renamed.id, "PRIME LINE DISTRIBUTORS INVOICE", source="dup-call")
+            result.check(
+                "add_supplier_alias is idempotent for an already-recorded alias",
+                add_alias_again.id == next(a.id for a in repo.list_supplier_aliases(session, renamed.id) if a.alias_name == "PRIME LINE DISTRIBUTORS INVOICE"),
+            )
     finally:
         cleanup_disposable_test_database_url(url)
 
