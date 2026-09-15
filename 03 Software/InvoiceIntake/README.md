@@ -16,9 +16,22 @@ Testato con i due esempi in `01 Domains/Shared Domains/Administration/Invoice In
 ## Requisiti
 
 - Python 3.10 o superiore
-- [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) installato (su Windows: scarica l'installer, e assicurati che `tesseract.exe` sia nel PATH di sistema)
-- Facoltativo: [Poppler for Windows](https://github.com/oschwartz10612/poppler-windows/releases) se vuoi che funzioni anche il fallback OCR per PDF scansionati (non serve per PDF con testo digitale)
+- **Tesseract OCR** — necessario per leggere JPG/PNG/TIFF e PDF scansionati (i PDF con testo digitale non ne hanno bisogno, vedi "PDF digitale vs PDF scansionato" sotto). Su Windows, via [winget](https://learn.microsoft.com/windows/package-manager/winget/):
+  ```
+  winget install --id UB-Mannheim.TesseractOCR
+  ```
+  oppure scarica l'installer da [UB-Mannheim/tesseract](https://github.com/UB-Mannheim/tesseract/wiki) — assicurati che `tesseract.exe` sia nel PATH di sistema (il pacchetto winget lo richiede esplicitamente in un secondo momento; se non lo fa in automatico, aggiungi `C:\Program Files\Tesseract-OCR` al PATH utente).
+- **Poppler** — necessario per il fallback OCR sui PDF scansionati (rende ogni pagina come immagine prima di passarla a Tesseract; non serve per PDF con testo digitale). Su Windows, via winget:
+  ```
+  winget install --id oschwartz10612.Poppler
+  ```
+  oppure scarica da [oschwartz10612/poppler-windows](https://github.com/oschwartz10612/poppler-windows/releases) — assicurati che la cartella `bin` (contiene `pdftoppm.exe`) sia nel PATH.
+- Le dipendenze Python già in `requirements.txt` (`pytesseract`, `pdfplumber`, `pdf2image`, ecc.) — `pip install -r requirements.txt`.
 - Le dipendenze di `03 Software/RF-One Data Store/` (SQLAlchemy, Alembic — vedi il suo `requirements.txt`), poiché `purchased_bridge.py` importa `rfone_data_store` da lì
+
+### PDF digitale vs PDF scansionato
+
+`ocr_engine.py` distingue sempre i due casi, senza bisogno di configurazione: un **PDF digitale** (testo incorporato, es. fatture generate al computer) viene letto direttamente con `pdfplumber` — veloce, accurato, non serve Tesseract/Poppler. Solo quando il testo incorporato è assente o insufficiente (**PDF scansionato/fotografato**) scatta il fallback: `pdf2image`/Poppler rasterizza le pagine, poi Tesseract le legge via OCR. Questo comportamento non è stato modificato da questo task.
 
 ## Installazione
 
@@ -46,7 +59,7 @@ python run_mailbox_acquisition.py          # loop continuo (30–60s configurabi
 python run_mailbox_acquisition.py --once   # un solo ciclo, poi esce
 ```
 
-Richiede `ARUBA_IMAP_USERNAME`/`ARUBA_IMAP_PASSWORD` (vedi `.env.example` alla radice del repository) — vedi `mailbox_acquisition/README.md`.
+Richiede `ARUBA_IMAP_USERNAME`/`ARUBA_IMAP_PASSWORD` (vedi `.env.example` alla radice del repository) — vedi `mailbox_acquisition/README.md`, inclusa la sezione su come vengono riconosciuti e ignorati logo/firme email inline (mai un vero allegato di fattura).
 
 ## Dove finiscono i dati
 
@@ -60,6 +73,7 @@ Le immagini/PDF caricati restano salvati in `uploads/` per tracciabilità. **Not
 
 ## Limiti noti di questo prototipo
 
+- **Il training dei fornitori (supplier training) viene dopo, non prima, di questo passo.** Questo prototipo diventa affidabile solo una volta che Tesseract/Poppler sono realmente installati (vedi "Requisiti" sopra) — senza di essi, ogni documento non digitale finisce comunque HUMAN, indipendentemente da quanto sia leggibile la fattura reale.
 - Il parsing delle righe (descrizione/quantità/prezzo/importo) è basato su euristiche ed espressioni regolari, non su un modello AI: funziona bene su testo pulito, meno su OCR rumoroso.
 - Il `line_type` (Prodotto/Supplemento/Sconto) viene proposto con un'euristica su parole chiave nella descrizione (es. "surcharge", "fee" → Supplemento; "discount", "credit" → Sconto) ma è sempre correggibile dall'utente prima del salvataggio.
 - L'OCR/parser non estrae ancora un codice articolo fornitore strutturato, quindi le righe PRODUCT create da qui non alimentano ancora la "Supplier Product memory" (riconoscimento automatico dello stesso Supplier Product a fatture successive) — il modello e il repository lo supportano già pienamente quando un codice è disponibile (es. da Physical Receiving); vedi `03 Software/RF-One Data Store/PURCHASING.md`, "Remaining gaps".
