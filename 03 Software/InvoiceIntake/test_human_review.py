@@ -194,6 +194,65 @@ def test_field_correction_persists_and_preserves_original(result: Result) -> Non
         session.close()
 
 
+def test_queue_shows_effective_header_values_not_raw(result: Result) -> None:
+    """Task "Make Effective Purchased View canonical for all consumers",
+    item 6/7/8: a document still HUMAN for one unresolved field must still
+    show its OTHER, already-corrected header fields as effective in the
+    review queue -- not the stale raw extraction. The queue is itself a
+    Purchased consumer (Restaurant/Purchasing's own reviewers read it),
+    not just `review_detail()`."""
+
+    document_id = _make_human_document(source_file="hr-queue-effective.pdf", document_number="HR-QUEUE-EFFECTIVE")
+    # Correct supplier, document number and total, but leave issue_date (the
+    # actual blocker for this fixture, see _make_human_document) unresolved
+    # -- the document stays HUMAN and in the queue.
+    human_review.submit_field_review(
+        document_id, field_name="supplier", classification="INCORRECT", reviewed_by="alice", corrected_value="Corrected Foods Inc."
+    )
+    human_review.submit_field_review(
+        document_id, field_name="document_number", classification="INCORRECT", reviewed_by="alice", corrected_value="HR-QUEUE-FIXED"
+    )
+    human_review.submit_field_review(
+        document_id, field_name="total_amount", classification="INCORRECT", reviewed_by="alice", corrected_value="999.00"
+    )
+
+    rows = {row["id"]: row for row in human_review.get_review_queue()}
+    result.check("the corrected document is still in the queue (issue_date still unresolved)", document_id in rows)
+    row = rows.get(document_id, {})
+    result.check("the queue shows the CORRECTED supplier (supplier correction reflected), not the raw one", row.get("supplier_name") == "Corrected Foods Inc.")
+    result.check("the queue shows the CORRECTED document number", row.get("document_number") == "HR-QUEUE-FIXED")
+    result.check("the queue shows the CORRECTED total amount (total correction reflected)", row.get("total_amount") == "999.00")
+
+
+def test_no_duplicate_merge_logic(result: Result) -> None:
+    """Task requirement 17: "NON duplicare merge logic in più moduli" -- the
+    "latest correction per field wins" reduction has exactly one
+    implementation, in `purchasing/repository.py`
+    (`resolve_latest_field_corrections`/`latest_field_corrections`/
+    `effective_field_value`); `human_review.py` must call it, never keep its
+    own private copy (it used to, as `_latest_corrections`/`_effective_value`,
+    before "Make Effective Purchased View canonical for all consumers")."""
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    source = open(os.path.join(base_dir, "human_review.py"), encoding="utf-8").read()
+    tree = ast.parse(source, filename="human_review.py")
+    defined_function_names = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+    result.check(
+        "human_review.py no longer defines its own correction-merge helpers (moved to repository.py)",
+        "_latest_corrections" not in defined_function_names and "_effective_value" not in defined_function_names,
+    )
+    result.check(
+        "the single canonical merge implementation lives in the repository module",
+        hasattr(repo, "resolve_latest_field_corrections")
+        and hasattr(repo, "latest_field_corrections")
+        and hasattr(repo, "effective_field_value"),
+    )
+    result.check(
+        "human_review.py actually calls the shared repository merge functions, not a local equivalent",
+        "repo.effective_field_value(" in source and "repo.latest_field_corrections(" in source,
+    )
+
+
 def test_incomplete_review_remains_human(result: Result) -> None:
     document_id = _make_human_document(source_file="hr-incomplete.pdf", document_number="HR-INCOMPLETE")
     # Only confirm the supplier -- issue_date is still missing/blocking.
@@ -499,6 +558,8 @@ def main() -> int:
             test_keith_batch_two_review_records_multi_page,
             test_page_provenance_correct,
             test_field_correction_persists_and_preserves_original,
+            test_queue_shows_effective_header_values_not_raw,
+            test_no_duplicate_merge_logic,
             test_incomplete_review_remains_human,
             test_complete_review_normalizes,
             test_training_store_updated_automatically,

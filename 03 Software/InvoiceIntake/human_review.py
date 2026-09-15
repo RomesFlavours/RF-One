@@ -23,6 +23,17 @@ columns for display and for re-validation. Nothing about the original
 extraction is ever lost (Task requirement 5/17: "La source evidence resta
 immutabile" / "NON cancellare la lettura originale").
 
+**"Make Effective Purchased View canonical for all consumers":** the merge
+itself ("latest correction per field, else the original value") lives in
+`purchasing/repository.py` (`resolve_latest_field_corrections()` /
+`effective_field_value()`), not in this module — `effective_document_view()`
+below is a caller of that shared implementation, same as
+`get_purchased_lines_with_allocation()`'s non-goods allocation and
+Restaurant/Purchasing's own Physical Receiving three-way comparison (its
+effective invoice quantity). This module owns only the InvoiceIntake-
+specific orchestration on top (display formatting, re-validation, training
+observation), never a second copy of the merge rule itself.
+
 Re-validation reuses `purchased_bridge._validate_extracted_fields()` —
 the EXACT SAME function used at initial save — rather than a second,
 parallel correctness check (Task: "NON aggiungere nuove euristiche
@@ -88,24 +99,6 @@ def _date_str(value: datetime | None) -> str | None:
     return value.strftime("%m/%d/%Y") if value else None
 
 
-def _latest_corrections(corrections: list) -> dict[tuple[int | None, str], "m.PurchasedFieldCorrection"]:
-    """Latest correction per (purchase_line_id, field_name) — `corrections`
-    must already be ordered oldest-first (`repo.list_field_corrections()`'s
-    own contract), so a later dict write always wins."""
-
-    latest: dict[tuple[int | None, str], "m.PurchasedFieldCorrection"] = {}
-    for correction in corrections:
-        latest[(correction.purchase_line_id, correction.field_name)] = correction
-    return latest
-
-
-def _effective_value(latest: dict, line_id: int | None, field_name: str, original: str | None) -> str | None:
-    correction = latest.get((line_id, field_name))
-    if correction is not None and correction.classification != "CORRECT" and correction.corrected_value is not None:
-        return correction.corrected_value
-    return original
-
-
 def _lookup_mailbox_provenance(source_reference: str | None) -> dict | None:
     """Task requirement 4A: "email/message provenance dove disponibile" —
     a best-effort cross-reference into `mailbox_acquisition`'s own local
@@ -138,7 +131,7 @@ def effective_document_view(session, purchase_document_id: int) -> dict | None:
         return None
     supplier = session.get(m.Supplier, document.supplier_id)
     corrections = repo.list_field_corrections(session, purchase_document_id)
-    latest = _latest_corrections(corrections)
+    latest = repo.latest_field_corrections(corrections)
 
     header_original = {
         "supplier": supplier.name if supplier else None,
@@ -146,7 +139,9 @@ def effective_document_view(session, purchase_document_id: int) -> dict | None:
         "issue_date": _date_str(document.issue_date),
         "total_amount": _money_str(document.total_amount_minor),
     }
-    header_effective = {field: _effective_value(latest, None, field, value) for field, value in header_original.items()}
+    header_effective = {
+        field: repo.effective_field_value(latest, None, field, value) for field, value in header_original.items()
+    }
 
     allocation_by_line_id = {row["purchase_line_id"]: row for row in repo.get_purchased_lines_with_allocation(session, document.id)}
 
@@ -160,7 +155,9 @@ def effective_document_view(session, purchase_document_id: int) -> dict | None:
             "unit_price": _money_str(line.unit_price_minor),
             "line_amount": _money_str(line.source_amount_minor),
         }
-        effective = {field: _effective_value(latest, line.id, field, value) for field, value in original.items()}
+        effective = {
+            field: repo.effective_field_value(latest, line.id, field, value) for field, value in original.items()
+        }
         lines_view.append(
             {
                 "id": line.id,
@@ -215,14 +212,21 @@ def get_review_queue(restaurant_id: int | None = None) -> list[dict]:
         documents = repo.list_human_review_queue(session, rid)
         rows = []
         for document in documents:
-            supplier = session.get(m.Supplier, document.supplier_id)
+            # Effective Purchased View, not raw columns (Task "Make
+            # Effective Purchased View canonical for all consumers"): a
+            # document still HUMAN for one unresolved field (e.g. a missing
+            # line description) may already carry an accepted correction to
+            # another field (e.g. supplier/date/total) -- the queue must show
+            # that corrected value to the next reviewer, not the stale
+            # original one.
+            view = effective_document_view(session, document.id)
             rows.append(
                 {
                     "id": document.id,
-                    "supplier_name": supplier.name if supplier else "Unknown Supplier",
-                    "document_number": document.document_number,
-                    "issue_date": _date_str(document.issue_date),
-                    "total_amount": _money_str(document.total_amount_minor),
+                    "supplier_name": view["header_effective"]["supplier"] or "Unknown Supplier",
+                    "document_number": view["header_effective"]["document_number"],
+                    "issue_date": view["header_effective"]["issue_date"],
+                    "total_amount": view["header_effective"]["total_amount"],
                     "created_at": document.created_at,
                     "source_reference": document.source_reference,
                     "is_multi_invoice": bool(document.source_reference and "#" in (document.source_reference or "")),
@@ -368,7 +372,7 @@ def complete_review(purchase_document_id: int, *, reviewed_by: str) -> dict:
                 signature=signature,
             )
             for field_name in HEADER_FIELDS:
-                correction = _latest_corrections(view["corrections"]).get((None, field_name))
+                correction = repo.latest_field_corrections(view["corrections"]).get((None, field_name))
                 if correction is not None:
                     training_store.record_field_review(
                         supplier_name=corrected_supplier_name or original_supplier_name or "Unknown Supplier",
