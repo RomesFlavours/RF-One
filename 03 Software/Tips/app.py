@@ -56,7 +56,7 @@ from rfone_data_store.database import (  # noqa: E402
     create_configured_engine, create_session_factory, get_database_url,
 )
 from rfone_data_store.technical.connectors.clover.acquisition import (  # noqa: E402
-    ImportAlreadyRunningError, MODE_BACKFILL, get_order_settlement_time, import_clover_period,
+    ImportAlreadyRunningError, MODE_BACKFILL, _safe_error_summary, get_order_settlement_time, import_clover_period,
 )
 from rfone_data_store.tips import distribution_engine as engine_svc  # noqa: E402
 from rfone_data_store.tips import distribution_rule_service as rule_svc  # noqa: E402
@@ -409,6 +409,20 @@ def run_historical_backfill():
             # Clean, user-facing rejection instead of a stack trace or a
             # second concurrent SQLite writer.
             flash("An import is already in progress. Please wait for it to finish.", "error")
+            return redirect(url_for("home", from_date=from_date, through_date=through_date))
+        except Exception as exc:  # noqa: BLE001 — Diagnose Historical Backfill 500 Error: a real
+            # Clover failure (missing/invalid credentials, a network error,
+            # an unexpected API response shape, or any other bug) must never
+            # surface as a raw, unhandled 500 — `import_clover_period` itself
+            # already released its RUNNING lock and marked the IngestionRun
+            # FAILED before re-raising (see its own `except Exception ...:
+            # raise`); this is the boundary that turns that into a
+            # controlled, user-facing message instead. `_safe_error_summary`
+            # is the same type-name-and-message-only formatter the connector
+            # already uses for `IngestionRun.notes` — never a full traceback,
+            # never a credential value.
+            session.rollback()
+            flash(f"Historical Backfill failed: {_safe_error_summary(exc)}", "error")
             return redirect(url_for("home", from_date=from_date, through_date=through_date))
         session.commit()
 
