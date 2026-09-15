@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import sys
 from datetime import datetime, timezone
 from email.message import EmailMessage
@@ -95,6 +96,72 @@ def _build_email(
         maintype, _, subtype = content_type.partition("/")
         msg.add_attachment(content, maintype=maintype, subtype=subtype, filename=filename)
     return bytes(msg)
+
+
+def _build_email_with_inline_image(
+    *,
+    sender: str = "service@romesflavours.com",
+    subject: str = "Bla Bla Bla.",
+    date: datetime | None = None,
+    inline_image: tuple[str, bytes, str, str, str | None] | None = None,
+    attachments: list[tuple[str, bytes, str]] | None = None,
+    html_references_cid: bool = True,
+) -> bytes:
+    """Builds a realistic HTML email with an embedded/inline image inside a
+    `multipart/related` part (mirrors real Outlook-generated mail, verified
+    against a real message from `invoices@romesflavours.com` during the
+    Aruba smoke test) plus zero or more ordinary attachments.
+
+    `inline_image` is `(filename, content, content_type, cid, disposition)`
+    where `disposition` is `"inline"`, `None` (real Aruba mail often sets
+    no explicit disposition at all, relying on Content-ID + a `cid:`
+    reference in the HTML body instead), or any other value to simulate an
+    UNREFERENCED Content-ID (no matching `cid:` in the HTML body) — used to
+    test the "ambiguous image" scenarios.
+    """
+    from email.mime.application import MIMEApplication
+    from email.mime.image import MIMEImage
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    msg = MIMEMultipart("mixed")
+    msg["From"] = sender
+    msg["To"] = "invoices@romesflavours.com"
+    msg["Subject"] = subject
+    msg["Date"] = format_datetime(date or datetime(2026, 1, 15, 9, 30, tzinfo=UTC))
+
+    related = MIMEMultipart("related")
+    if inline_image is not None and html_references_cid:
+        filename, content, content_type, cid, disposition = inline_image
+        html = f'<html><body><p>Hi</p><img src="cid:{cid}"></body></html>'
+    else:
+        html = "<html><body><p>Hi</p></body></html>"
+    related.attach(MIMEText(html, "html"))
+
+    if inline_image is not None:
+        filename, content, content_type, cid, disposition = inline_image
+        maintype, _, subtype = content_type.partition("/")
+        img_part = MIMEImage(content, _subtype=subtype) if maintype == "image" else MIMEApplication(content, _subtype=subtype)
+        img_part.add_header("Content-ID", f"<{cid}>")
+        # Real Aruba mail sets a filename via Content-Type's own "name"
+        # param even when Content-Disposition is entirely absent -- match
+        # that (get_filename() falls back to Content-Type's name param).
+        img_part.set_param("name", filename)
+        if disposition == "inline":
+            img_part.add_header("Content-Disposition", "inline", filename=filename)
+        elif disposition is not None:
+            img_part.add_header("Content-Disposition", str(disposition), filename=filename)
+        related.attach(img_part)
+
+    msg.attach(related)
+
+    for filename, content, content_type in attachments or []:
+        maintype, _, subtype = content_type.partition("/")
+        part = MIMEImage(content, _subtype=subtype) if maintype == "image" else MIMEApplication(content, _subtype=subtype)
+        part.add_header("Content-Disposition", "attachment", filename=filename)
+        msg.attach(part)
+
+    return msg.as_bytes()
 
 
 _FAKE_PDF_BYTES = b"%PDF-1.4 fake pdf content for testing purposes only\n"
@@ -466,6 +533,284 @@ def test_attachment_delivered_through_real_pipeline(result: Result, tmp_dir: str
 
 
 # ---------------------------------------------------------------------------
+# Email attachment noise filter (inline signature/logo images)
+# ---------------------------------------------------------------------------
+
+
+def test_inline_signature_logo_is_ignored(result: Result, tmp_dir: str) -> None:
+    """Scenario 4 — an inline logo (Content-ID referenced by `cid:` in the
+    HTML body, mirroring a real Aruba/Outlook email) is never delivered as a
+    document, even though its file type (JPG) is otherwise allowed."""
+
+    store = _make_store(tmp_dir)
+    try:
+        imap = FakeImapClient()
+        imap.add_message(
+            "201",
+            _build_email_with_inline_image(
+                inline_image=("image001.jpg", _FAKE_JPG_BYTES, "image/jpeg", "logo123@mail", None),
+                attachments=[("real_invoice.pdf", _FAKE_PDF_BYTES, "application/pdf")],
+            ),
+        )
+        calls: list[str] = []
+        poll_result = poll_once(_config(), imap, store, deliver=_make_fake_deliver(calls))
+
+        result.check("only the real invoice is delivered, not the inline logo", poll_result.delivered == 1)
+        result.check("the inline logo is counted as an ignored email asset", poll_result.ignored_email_assets == 1)
+        result.check("deliver() was never called for the logo", all("image001" not in c for c in calls))
+        result.check(
+            "no acquisition record exists for the ignored logo (only the real invoice)",
+            len(store.list_recent()) == 1 and store.list_recent()[0].attachment_filename == "real_invoice.pdf",
+        )
+    finally:
+        store.close()
+
+
+def test_real_jpg_attachment_not_inline_is_not_ignored(result: Result, tmp_dir: str) -> None:
+    """Scenario 5 — a real JPG sent as a normal attachment (no Content-ID,
+    `Content-Disposition: attachment`) is never filtered just because it is
+    an image, even if superficially named like an inline asset."""
+
+    store = _make_store(tmp_dir)
+    try:
+        imap = FakeImapClient()
+        imap.add_message(
+            "202", _build_email(attachments=[("invoice_photo.jpg", _FAKE_JPG_BYTES, "image/jpeg")])
+        )
+        poll_result = poll_once(_config(), imap, store, deliver=_make_fake_deliver())
+        result.check("a real JPG attachment (not inline) is delivered normally", poll_result.delivered == 1)
+        result.check("nothing was ignored", poll_result.ignored_email_assets == 0)
+
+        # Even a JPG whose filename happens to match the generic inline-asset
+        # pattern must NOT be filtered when it carries no Content-ID at all --
+        # the naming heuristic is never sufficient on its own (Task requirement:
+        # "NON usare una regola stupida tipo 'ignore all image001.jpg'").
+        store2 = _make_store(tmp_dir)
+        try:
+            imap2 = FakeImapClient()
+            imap2.add_message("203", _build_email(attachments=[("image001.jpg", _FAKE_JPG_BYTES, "image/jpeg")]))
+            poll_result_2 = poll_once(_config(), imap2, store2, deliver=_make_fake_deliver())
+            result.check(
+                "a plain attachment named like a generic inline asset, but with no Content-ID, is still processed",
+                poll_result_2.delivered == 1 and poll_result_2.ignored_email_assets == 0,
+            )
+        finally:
+            store2.close()
+    finally:
+        store.close()
+
+
+def test_repeated_signature_asset_ignored_consistently(result: Result, tmp_dir: str) -> None:
+    """Scenario 6 — the same inline logo, repeated across several
+    messages/poll cycles, is ignored every single time; the real invoice
+    next to it is delivered every time, without ever duplicating."""
+
+    store = _make_store(tmp_dir)
+    try:
+        imap = FakeImapClient()
+        for i, uid in enumerate(("204", "205", "206")):
+            imap.add_message(
+                uid,
+                _build_email_with_inline_image(
+                    inline_image=("image001.jpg", _FAKE_JPG_BYTES, "image/jpeg", "logo123@mail", None),
+                    attachments=[(f"invoice_{i}.pdf", _FAKE_PDF_BYTES + str(i).encode(), "application/pdf")],
+                ),
+            )
+        poll_result = poll_once(_config(), imap, store, deliver=_make_fake_deliver())
+        result.check("all 3 logos are ignored (one per message)", poll_result.ignored_email_assets == 3)
+        result.check("all 3 distinct real invoices are delivered", poll_result.delivered == 3)
+        result.check("no store record exists for the repeated logo at all", all("image001" not in r.attachment_filename for r in store.list_recent()))
+
+        # Re-poll (idempotency check for the same, already-processed messages).
+        second = poll_once(_config(), imap, store, deliver=_make_fake_deliver())
+        result.check("re-polling the same messages ignores the logo again, not newly delivers it", second.delivered == 0)
+    finally:
+        store.close()
+
+
+def test_ambiguous_image_is_processed_not_discarded(result: Result, tmp_dir: str) -> None:
+    """Scenario 7 — an image with a Content-ID that cannot be confirmed as
+    referenced by any HTML body, and a non-generic filename, is genuinely
+    ambiguous: per the Task's "Safe filter principle" it must be processed
+    as a document candidate (better HUMAN than losing a real invoice), not
+    silently discarded."""
+
+    store = _make_store(tmp_dir)
+    try:
+        imap = FakeImapClient()
+        imap.add_message(
+            "207",
+            _build_email_with_inline_image(
+                inline_image=("receipt_scan_2026.jpg", _FAKE_JPG_BYTES, "image/jpeg", "some-cid", None),
+                html_references_cid=False,
+            ),
+        )
+        poll_result = poll_once(_config(), imap, store, deliver=_make_fake_deliver())
+        result.check("an ambiguous image (unreferenced Content-ID, non-generic name) is processed, not discarded", poll_result.delivered == 1)
+        result.check("nothing was ignored for this ambiguous case", poll_result.ignored_email_assets == 0)
+    finally:
+        store.close()
+
+
+# ---------------------------------------------------------------------------
+# Real OCR (Tesseract + Poppler) — skipped gracefully if not installed
+# ---------------------------------------------------------------------------
+
+_TESSERACT_AVAILABLE = shutil.which("tesseract") is not None
+_POPPLER_AVAILABLE = shutil.which("pdftoppm") is not None
+
+
+def _draw_text_image(lines: list[str]):
+    from PIL import Image, ImageDraw, ImageFont
+
+    img = Image.new("RGB", (1000, 120 + 50 * len(lines)), "white")
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype("arial.ttf", 28)
+    except Exception:
+        font = ImageFont.load_default()
+    for i, line in enumerate(lines):
+        draw.text((30, 30 + i * 50), line, fill="black", font=font)
+    return img
+
+
+def test_scanned_pdf_produces_ocr_text(result: Result, tmp_dir: str) -> None:
+    """Scenario 1 (§10) — a scanned (image-only, no embedded text layer)
+    PDF goes through the OCR fallback (Poppler renders pages -> Tesseract
+    reads them) and produces real, non-trivial text."""
+
+    if not (_TESSERACT_AVAILABLE and _POPPLER_AVAILABLE):
+        result.check("SKIPPED: scanned PDF OCR (tesseract/poppler not installed in this environment)", True)
+        return
+
+    img = _draw_text_image(["INVOICE NUMBER 12345", "TOTAL DUE 199.99"])
+    pdf_path = os.path.join(tmp_dir, "scanned_invoice.pdf")
+    img.save(pdf_path, "PDF")
+
+    import ocr_engine
+
+    text, method = ocr_engine.extract_from_pdf(pdf_path)
+    result.check("a scanned/image-only PDF is read via the OCR fallback, not the digital-text path", method == "OCR")
+    result.check("OCR actually produced recognizable text from the scanned PDF", "INVOICE" in text.upper() and "199.99" in text)
+
+
+def test_jpg_photo_produces_ocr_text(result: Result, tmp_dir: str) -> None:
+    """Scenario 2 (§10) — a photographed JPG invoice is read via Tesseract
+    and produces real, non-trivial text."""
+
+    if not _TESSERACT_AVAILABLE:
+        result.check("SKIPPED: JPG OCR (tesseract not installed in this environment)", True)
+        return
+
+    img = _draw_text_image(["ACME SUPPLIES INC", "AMOUNT 42.50"])
+    jpg_path = os.path.join(tmp_dir, "invoice_photo.jpg")
+    img.save(jpg_path, "JPEG")
+
+    import ocr_engine
+
+    text = ocr_engine.extract_from_image(jpg_path)
+    result.check("OCR produced recognizable text from a photographed JPG invoice", "ACME" in text.upper() and "42.50" in text)
+
+
+def test_digital_pdf_still_uses_embedded_text_path(result: Result, tmp_dir: str) -> None:
+    """Scenario 3 (§10) — a digital-text PDF (embedded text layer) is still
+    read via pdfplumber's fast/accurate path, never falling through to OCR,
+    exactly as before this task (§8, "Digital PDF vs scanned PDF")."""
+
+    _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    real_pdf_path = os.path.join(
+        _REPO_ROOT, "01 Domains", "Shared Domains", "Administration", "Invoice Intake", "Invoices", "Raw", "Invoice 6855.pdf"
+    )
+    if not os.path.isfile(real_pdf_path):
+        result.check("SKIPPED: digital PDF sample not present", True)
+        return
+
+    import ocr_engine
+
+    text, method = ocr_engine.extract_from_pdf(real_pdf_path)
+    result.check("a digital-text PDF is read via the embedded-text path, not OCR", method == "PDF-Text")
+    result.check("meaningful text was extracted without needing Tesseract/Poppler at all", len(text.strip()) > 40)
+
+
+def test_ocr_soft_failure_yields_human(result: Result, tmp_dir: str) -> None:
+    """Scenario 10 (§10) — OCR that runs without crashing but produces no
+    usable text (e.g. a blank/illegible image) must never be a hard
+    FAILURE: the document is still delivered, just correctly flagged
+    HUMAN."""
+
+    if not _TESSERACT_AVAILABLE:
+        result.check("SKIPPED: OCR soft-failure (tesseract not installed in this environment)", True)
+        return
+
+    from PIL import Image
+
+    blank_path = os.path.join(tmp_dir, "blank.jpg")
+    Image.new("RGB", (300, 300), "white").save(blank_path, "JPEG")
+
+    url_module = __import__("rfone_data_store.database", fromlist=["create_disposable_test_database_url", "cleanup_disposable_test_database_url"])
+    url = url_module.create_disposable_test_database_url("mailbox_ocr_soft_failure")
+    os.environ["RFONE_DATABASE_URL"] = url
+    try:
+        from mailbox_acquisition.acquisition_service import deliver_to_invoice_intake
+
+        store = _make_store(tmp_dir)
+        try:
+            imap = FakeImapClient()
+            with open(blank_path, "rb") as handle:
+                blank_bytes = handle.read()
+            imap.add_message("208", _build_email(attachments=[("blank.jpg", blank_bytes, "image/jpeg")]))
+            poll_result = poll_once(_config(), imap, store, deliver=deliver_to_invoice_intake)
+
+            result.check("an unreadable/blank image is still delivered (OCR did not crash)", poll_result.delivered == 1)
+            result.check("no attachment failure was recorded for it", poll_result.attachment_failures == [])
+            record = store.list_recent()[0]
+            result.check("it is correctly flagged HUMAN, not silently accepted as reliable", record.functional_status == "HUMAN")
+        finally:
+            store.close()
+    finally:
+        url_module.cleanup_disposable_test_database_url(url)
+        os.environ.pop("RFONE_DATABASE_URL", None)
+
+
+def test_ocr_success_but_parser_uncertain_is_human(result: Result, tmp_dir: str) -> None:
+    """Scenario 11 (§10) — OCR successfully extracts real text, but the
+    parser cannot confidently determine key header fields (e.g. no
+    recognizable date) -- still HUMAN, not falsely NORMALIZED."""
+
+    if not (_TESSERACT_AVAILABLE and _POPPLER_AVAILABLE):
+        result.check("SKIPPED: OCR success/parser-uncertain (tesseract/poppler not installed in this environment)", True)
+        return
+
+    img = _draw_text_image(["SOME SUPPLIER TEXT", "TOTAL DUE 199.99"])  # deliberately no parseable date
+    pdf_path = os.path.join(tmp_dir, "no_date_invoice.pdf")
+    img.save(pdf_path, "PDF")
+
+    url_module = __import__("rfone_data_store.database", fromlist=["create_disposable_test_database_url", "cleanup_disposable_test_database_url"])
+    url = url_module.create_disposable_test_database_url("mailbox_ocr_parser_uncertain")
+    os.environ["RFONE_DATABASE_URL"] = url
+    try:
+        from mailbox_acquisition.acquisition_service import deliver_to_invoice_intake
+
+        store = _make_store(tmp_dir)
+        try:
+            imap = FakeImapClient()
+            with open(pdf_path, "rb") as handle:
+                pdf_bytes = handle.read()
+            imap.add_message("209", _build_email(attachments=[("no_date_invoice.pdf", pdf_bytes, "application/pdf")]))
+            poll_result = poll_once(_config(), imap, store, deliver=deliver_to_invoice_intake)
+
+            result.check("OCR succeeded and the document was delivered", poll_result.delivered == 1)
+            record = store.list_recent()[0]
+            result.check("OCR text was in fact extracted (method=OCR)", record.functional_status is not None)
+            result.check("missing date -> HUMAN despite OCR producing real text", record.functional_status == "HUMAN")
+        finally:
+            store.close()
+    finally:
+        url_module.cleanup_disposable_test_database_url(url)
+        os.environ.pop("RFONE_DATABASE_URL", None)
+
+
+# ---------------------------------------------------------------------------
 # Scenario 11 — no secret ever appears in a log/failure reason
 # ---------------------------------------------------------------------------
 
@@ -516,6 +861,15 @@ def main() -> int:
             test_restart_with_fresh_store_instance_does_not_duplicate,
             test_provenance_fields_recorded,
             test_attachment_delivered_through_real_pipeline,
+            test_inline_signature_logo_is_ignored,
+            test_real_jpg_attachment_not_inline_is_not_ignored,
+            test_repeated_signature_asset_ignored_consistently,
+            test_ambiguous_image_is_processed_not_discarded,
+            test_scanned_pdf_produces_ocr_text,
+            test_jpg_photo_produces_ocr_text,
+            test_digital_pdf_still_uses_embedded_text_path,
+            test_ocr_soft_failure_yields_human,
+            test_ocr_success_but_parser_uncertain_is_human,
             test_no_secret_in_failure_reason_or_output,
         ):
             test_fn(result, tmp_dir)

@@ -48,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
                     "Mailbox poll: "
                     f"{result.delivered} delivered, {result.duplicates} technical duplicate(s), "
                     f"{result.skipped_already_processed} already processed, "
+                    f"{result.ignored_email_assets} inline email asset(s) ignored, "
                     f"{len(result.attachment_failures)} attachment failure(s), "
                     f"{len(result.message_failures)} message failure(s)"
                 )

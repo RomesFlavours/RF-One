@@ -4,11 +4,12 @@
 mailbox (ImapClient)
   -> list new/retryable message UIDs
     -> fetch + parse each message (email_parsing.py)
-      -> filter attachments to documental ones (attachment_filter.py)
-        -> technical dedup (identity + content hash, AcquisitionStore)
-          -> save bytes under uploads/ (same folder app.py's manual upload uses)
-            -> deliver_to_invoice_intake(): ocr_engine -> parser -> purchased_bridge
-              -> Purchased canonical persistence (unchanged pipeline)
+      -> filter attachments to documental file types (attachment_filter.py)
+        -> filter out inline email assets (logos/signatures -- attachment_filter.py)
+          -> technical dedup (identity + content hash, AcquisitionStore)
+            -> save bytes under uploads/ (same folder app.py's manual upload uses)
+              -> deliver_to_invoice_intake(): ocr_engine -> parser -> purchased_bridge
+                -> Purchased canonical persistence (unchanged pipeline)
 ```
 
 This module never writes `PurchaseDocument`/`PurchaseLine` directly and
@@ -36,7 +37,7 @@ import parser as invoice_parser
 import purchased_bridge
 
 from .acquisition_store import TERMINAL_SUCCESS_STATUSES, AcquisitionStore
-from .attachment_filter import is_documental_attachment
+from .attachment_filter import is_documental_attachment, is_email_asset
 from .config import MailboxConfig
 from .email_parsing import parse_email
 from .imap_client import ImapClient
@@ -53,6 +54,7 @@ class PollResult:
     delivered: int = 0
     duplicates: int = 0
     skipped_already_processed: int = 0
+    ignored_email_assets: int = 0
     attachment_failures: list[tuple[str, str, str]] = field(default_factory=list)  # (uid, filename, reason)
     message_failures: list[tuple[str, str]] = field(default_factory=list)  # (uid, reason)
 
@@ -135,9 +137,25 @@ def poll_once(
             continue
 
         parsed = parse_email(raw_message.raw_bytes)
-        candidate_attachments = [a for a in parsed.attachments if is_documental_attachment(a.filename)]
+        # Index is assigned over every documental-*type* attachment (PDF/
+        # JPG/PNG/...) BEFORE the inline-asset check below, so a real
+        # document's (mailbox, uid, index) identity never shifts depending
+        # on how many inline logos happen to sit ahead of it in the message
+        # -- see attachment_filter.py for the EMAIL_ASSET/DOCUMENT_CANDIDATE
+        # evidence-based classification itself.
+        documental_attachments = [a for a in parsed.attachments if is_documental_attachment(a.filename)]
 
-        for index, attachment in enumerate(candidate_attachments):
+        for index, attachment in enumerate(documental_attachments):
+            if is_email_asset(attachment):
+                # An inline signature/logo/banner, not a supplier document
+                # (Task requirement 4/5, "Email attachment noise filter" /
+                # "Safe filter principle") -- never becomes an acquisition
+                # candidate, never reaches OCR/Purchased. Classification is
+                # deterministic MIME evidence, not history, so nothing needs
+                # to be persisted to keep re-polls consistent.
+                result.ignored_email_assets += 1
+                continue
+
             content_hash = hashlib.sha256(attachment.content).hexdigest()
             existing = store.find_by_identity(mailbox, uid, index)
 
