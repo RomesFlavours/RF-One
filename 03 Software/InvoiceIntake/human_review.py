@@ -83,6 +83,16 @@ HEADER_FIELDS = ("supplier", "document_number", "issue_date", "total_amount")
 LINE_FIELDS = ("description", "normalized_item", "quantity", "unit_of_measure", "unit_price", "line_amount")
 ALL_FIELDS = HEADER_FIELDS + LINE_FIELDS
 
+# "Close Purchased Human Review Reliability Gaps" §6/§7: the header fields
+# `purchased_bridge._validate_extracted_fields()` actually requires for
+# NORMALIZED today -- `document_number` is deliberately excluded (Task:
+# "NON rendere document_number obbligatorio se oggi non lo è"), and no
+# per-line field is individually required either (only the LINE AMOUNTS'
+# aggregate arithmetic coherence matters, checked separately). This is the
+# set `_unresolved_required_field_reasons()` below checks an AMBIGUOUS/
+# UNREAD classification against.
+REQUIRED_HEADER_FIELDS = ("supplier", "issue_date", "total_amount")
+
 
 def _session_factory():
     url = get_database_url()
@@ -120,6 +130,35 @@ def _lookup_mailbox_provenance(source_reference: str | None) -> dict | None:
     return None
 
 
+def _unresolved_required_field_reasons(latest: dict) -> list[str]:
+    """"Close Purchased Human Review Reliability Gaps" §6, "AMBIGUOUS IS
+    BLOCKING": a REQUIRED header field (`REQUIRED_HEADER_FIELDS`) whose
+    LATEST review is AMBIGUOUS or UNREAD and carries no `corrected_value`
+    is UNRESOLVED -- it must never silently count as complete just because
+    a raw/original value happens to be present. This is the exact real bug
+    found on a Ben E. Keith invoice during Operator Review Testing: its
+    garbled $15.85 total, marked AMBIGUOUS with no correction, still
+    "looked complete" to `purchased_bridge._validate_extracted_fields()`
+    (which only ever checks presence/coherence of the EFFECTIVE value,
+    never the review classification behind it). A field becomes resolved
+    again either by a later correction that DOES override
+    (`INCORRECT`/`UNREAD`/`AMBIGUOUS` with a `corrected_value`,
+    `repo.correction_overrides_value()`) or a later `CORRECT`
+    confirmation — both already end this field's UNRESOLVED state simply
+    by not matching the condition checked here."""
+
+    reasons = []
+    for field_name in REQUIRED_HEADER_FIELDS:
+        correction = latest.get((None, field_name))
+        if (
+            correction is not None
+            and correction.classification in ("AMBIGUOUS", "UNREAD")
+            and not repo.correction_overrides_value(correction)
+        ):
+            reasons.append(f"{field_name} is marked {correction.classification} and not yet resolved with a value")
+    return reasons
+
+
 def effective_document_view(session, purchase_document_id: int) -> dict | None:
     """The one function everything else in this module (and the review
     templates) builds on: original extracted values, the latest human
@@ -144,6 +183,7 @@ def effective_document_view(session, purchase_document_id: int) -> dict | None:
     }
 
     allocation_by_line_id = {row["purchase_line_id"]: row for row in repo.get_purchased_lines_with_allocation(session, document.id)}
+    added_line_ids = repo.human_added_line_ids(session, document.id)
 
     lines_view = []
     for line in sorted(document.lines, key=lambda entry: entry.id):
@@ -166,6 +206,13 @@ def effective_document_view(session, purchase_document_id: int) -> dict | None:
                 "effective": effective,
                 "allocation": allocation_by_line_id.get(line.id),
                 "functional_status": repo.get_line_functional_status(session, line.id),
+                # Task "Close Purchased Human Review Reliability Gaps" §4:
+                # the source/raw view must keep showing that a manually
+                # added line never existed in the original extraction --
+                # `original`/`effective` above are otherwise indistinguishable
+                # for it (both reflect what the reviewer typed at creation),
+                # so this flag is the one place that distinction survives.
+                "human_added": line.id in added_line_ids,
             }
         )
 
@@ -194,6 +241,7 @@ def effective_document_view(session, purchase_document_id: int) -> dict | None:
         "header_effective": header_effective,
         "lines": lines_view,
         "corrections": corrections,
+        "line_additions": repo.list_line_additions(session, document.id),
         "open_validation_entries": open_entries,
         "functional_status": repo.get_document_functional_status(session, document.id),
         "siblings": repo.list_sibling_documents(session, document.id),
@@ -290,6 +338,73 @@ def submit_field_review(
         session.commit()
 
 
+def add_missing_line(
+    purchase_document_id: int,
+    *,
+    added_by: str,
+    line_type: str = "PRODUCT",
+    description: str,
+    normalized_item: str | None = None,
+    quantity: str | None = None,
+    unit_of_measure: str | None = None,
+    unit_price: str | None = None,
+    line_amount: str | None = None,
+) -> dict:
+    """Task "Close Purchased Human Review Reliability Gaps" §3: adds a
+    Purchase Line the original OCR/parser extraction never created at all
+    -- an ADDITIVE correction (`repo.add_manual_purchase_line()`, a brand
+    new `PurchaseLine` row plus its own `PurchasedLineAddition` audit row),
+    never a rewrite of anything already captured (Task: "non una modifica
+    distruttiva della source evidence").
+
+    `normalized_item` has no backing `PurchaseLine` column (same as every
+    OTHER line on this document -- see `effective_document_view()`'s own
+    `original["normalized_item"] = None`) — when given, it is recorded the
+    exact same way a reviewer would correct it on any other line: one
+    `PurchasedFieldCorrection` against the new line's id, reusing the
+    existing correction pathway rather than adding a second one.
+
+    The new line then appears in `effective_document_view()`/
+    `get_purchased_lines_with_allocation()` exactly like any other line
+    (Task §4/§5) — a reviewer must still call `complete_review()`
+    afterward for it to factor into re-validation, same as any other
+    correction."""
+
+    if not description or not description.strip():
+        raise ValueError("description is required to add a missing Purchase Line")
+    session_factory = _session_factory()
+    with session_factory() as session:
+        document = session.get(m.PurchaseDocument, purchase_document_id)
+        if document is None:
+            raise ValueError(f"No PurchaseDocument with id={purchase_document_id!r}")
+
+        is_product = line_type == "PRODUCT"
+        line, created = repo.add_manual_purchase_line(
+            session,
+            purchase_document_id,
+            added_by=added_by,
+            line_type=line_type,
+            raw_description=description.strip(),
+            quantity=purchased_bridge._parse_decimal(quantity) if is_product else None,
+            purchase_unit=(unit_of_measure or None) if is_product else None,
+            unit_price_minor=purchased_bridge._parse_money_minor(unit_price) if is_product else None,
+            source_amount_minor=purchased_bridge._parse_money_minor(line_amount),
+        )
+        if created and normalized_item and normalized_item.strip():
+            repo.record_field_correction(
+                session,
+                purchase_document_id=purchase_document_id,
+                purchase_line_id=line.id,
+                field_name="normalized_item",
+                classification="INCORRECT",
+                reviewed_by=added_by,
+                original_value=None,
+                corrected_value=normalized_item.strip(),
+            )
+        session.commit()
+        return {"purchase_line_id": line.id, "created": created}
+
+
 def complete_review(purchase_document_id: int, *, reviewed_by: str) -> dict:
     """Task requirement 7/8: re-validates the EFFECTIVE (post-correction)
     values with the SAME validation function used at initial save; if they
@@ -320,12 +435,49 @@ def complete_review(purchase_document_id: int, *, reviewed_by: str) -> dict:
             view["header_effective"]["supplier"], document_header, repository_lines, ""
         )
 
-        if validation.is_normalized:
-            for entry in view["open_validation_entries"]:
-                if entry.severity in ("WARNING", "ERROR"):
+        latest_corrections = repo.latest_field_corrections(view["corrections"])
+        # Task §6, "AMBIGUOUS IS BLOCKING": a required field left AMBIGUOUS/
+        # UNREAD with no corrected_value is unresolved regardless of what
+        # `_validate_extracted_fields()` concluded from its (possibly
+        # stale/wrong-but-present) raw effective value.
+        unresolved_reasons = _unresolved_required_field_reasons(latest_corrections)
+        is_normalized = validation.is_normalized and not unresolved_reasons
+        all_reasons = validation.reasons + unresolved_reasons
+
+        open_blocking_entries = [e for e in view["open_validation_entries"] if e.severity in ("WARNING", "ERROR")]
+        if is_normalized:
+            for entry in open_blocking_entries:
+                repo.close_validation_log_entry(
+                    session, entry.id, human_decision=f"Resolved by Purchased Human Review (reviewer: {reviewed_by})"
+                )
+        else:
+            # Keep the OPEN validation log accurate on every re-validation,
+            # not just the first one: one blocking reason may already be
+            # resolved (e.g. issue_date just got corrected) while a
+            # DIFFERENT one remains (e.g. a newly-flagged AMBIGUOUS total)
+            # -- an untouched stale entry would keep showing the OLD,
+            # already-fixed complaint next to (or instead of) the real
+            # current blocker, which is confusing and inaccurate for a
+            # reviewer reading `view["open_validation_entries"]` on the
+            # next page load. Re-validation always supersedes any existing
+            # blocking entry/entries with exactly one reflecting today's
+            # `all_reasons` -- skipped only when it would be identical (no
+            # pointless audit-trail churn on a repeated "Completa review"
+            # click that changed nothing).
+            current_message = "Not reliable enough to trust automatically: " + "; ".join(all_reasons) + "."
+            already_current = len(open_blocking_entries) == 1 and open_blocking_entries[0].message == current_message
+            if not already_current:
+                for entry in open_blocking_entries:
                     repo.close_validation_log_entry(
-                        session, entry.id, human_decision=f"Resolved by Purchased Human Review (reviewer: {reviewed_by})"
+                        session, entry.id, human_decision=f"Superseded by re-validation (reviewer: {reviewed_by})"
                     )
+                repo.add_validation_log_entry(
+                    session,
+                    purchase_document_id=purchase_document_id,
+                    severity="WARNING",
+                    message=current_message,
+                    suggested_action="Resolve the flagged field(s) with a value.",
+                )
 
         # Supplier alias capture (Task requirement 12): if the review
         # corrected the supplier to a name that differs from what the
@@ -372,7 +524,7 @@ def complete_review(purchase_document_id: int, *, reviewed_by: str) -> dict:
                 signature=signature,
             )
             for field_name in HEADER_FIELDS:
-                correction = repo.latest_field_corrections(view["corrections"]).get((None, field_name))
+                correction = latest_corrections.get((None, field_name))
                 if correction is not None:
                     training_store.record_field_review(
                         supplier_name=corrected_supplier_name or original_supplier_name or "Unknown Supplier",
@@ -386,7 +538,7 @@ def complete_review(purchase_document_id: int, *, reviewed_by: str) -> dict:
         finally:
             training_store.close()
 
-        return {"functional_status": new_status, "reasons": validation.reasons}
+        return {"functional_status": new_status, "reasons": all_reasons}
 
 
 def list_supplier_training_status() -> list[dict]:

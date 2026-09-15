@@ -6,6 +6,8 @@
 </p>
 <h2>Documento #{{ doc_id }} — <span style="color: {{ 'green' if view.functional_status == 'NORMALIZED' else '#8a3b2e' }}">{{ view.functional_status }}</span></h2>
 
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
 {% if view.siblings %}
 <div class="card">
   <p class="hint"><strong>Allegato multi-fattura</strong> — questo file ha generato {{ view.siblings|length + 1 }} documenti:</p>
@@ -78,13 +80,14 @@
   <table>
     <thead>
       <tr>
-        <th>Description</th><th>Normalized item</th><th>Qty</th><th>UOM</th><th>Unit price</th><th>Line amount</th>
+        <th>Origine</th><th>Description</th><th>Normalized item</th><th>Qty</th><th>UOM</th><th>Unit price</th><th>Line amount</th>
         <th>Alloc. non-goods</th><th>Effective amount</th><th>Stato</th>{% if can_correct %}<th>Correggi</th>{% endif %}
       </tr>
     </thead>
     <tbody>
       {% for line in view.lines %}
       <tr>
+        <td>{% if line.human_added %}<strong>aggiunta manualmente</strong>{% else %}originale estratta{% endif %}</td>
         {% for field in line_fields %}
         <td>{{ line.effective[field] or '—' }}</td>
         {% endfor %}
@@ -113,6 +116,24 @@
       {% endfor %}
     </tbody>
   </table>
+  {% if can_correct %}
+  <h4>Aggiungi riga mancante</h4>
+  <p class="hint">Usa questo modulo quando OCR/parser non ha creato una riga che il documento sorgente mostra chiaramente — la nuova riga è additiva (non modifica l'estrazione originale) e partecipa all'allocazione non-goods come le altre.</p>
+  <form method="post" action="{{ url_for('review_add_line', doc_id=doc_id) }}" class="row">
+    <select name="line_type">
+      <option value="PRODUCT" selected>Prodotto</option>
+      <option value="SURCHARGE">Supplemento</option>
+      <option value="DISCOUNT">Sconto</option>
+    </select>
+    <input type="text" name="description" placeholder="Descrizione (come sul documento)" required>
+    <input type="text" name="normalized_item" placeholder="Item normalizzato (se noto)">
+    <input type="text" name="quantity" placeholder="Qtà" style="width:5rem;">
+    <input type="text" name="unit_of_measure" placeholder="UOM" style="width:4.5rem;">
+    <input type="text" name="unit_price" placeholder="Prezzo unitario" style="width:6rem;">
+    <input type="text" name="line_amount" placeholder="Importo" style="width:6rem;">
+    <button type="submit" class="secondary">Aggiungi riga</button>
+  </form>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -127,6 +148,24 @@
   <p class="hint">Nessun problema aperto.</p>
   {% endif %}
 </div>
+
+{% if view.line_additions %}
+<div class="card">
+  <h3>Audit / righe aggiunte (ADD_LINE)</h3>
+  <table>
+    <thead><tr><th>Quando</th><th>Chi</th><th>Riga</th></tr></thead>
+    <tbody>
+      {% for addition in view.line_additions %}
+      <tr>
+        <td>{{ addition.added_at }}</td>
+        <td>{{ addition.added_by }}</td>
+        <td>#{{ addition.purchase_line_id }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 {% if view.corrections %}
 <div class="card">
