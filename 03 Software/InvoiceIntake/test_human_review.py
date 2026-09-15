@@ -194,6 +194,41 @@ def test_field_correction_persists_and_preserves_original(result: Result) -> Non
         session.close()
 
 
+def test_correct_confirmation_after_prior_correction_does_not_revert(result: Result) -> None:
+    """Bug fix ("Purchased Operator Review Test on Real Invoices" -- found
+    by actually driving a real two-step review through the app on a real
+    Ben E. Keith invoice): correcting a field (INCORRECT -> a real value),
+    then LATER submitting a bare CORRECT confirmation on that SAME field
+    (a realistic reviewer action -- re-opening a document and confirming a
+    value someone already fixed) must CONFIRM the already-corrected value,
+    never silently revert it back to the raw, wrong original."""
+
+    document_id = _make_human_document(source_file="hr-confirm-after-correct.pdf", document_number="HR-CONFIRM-AFTER-CORRECT")
+    before = human_review.get_review_detail(document_id)
+    result.check("supplier starts out at its raw extracted value", before["header_effective"]["supplier"] == "Test Foods Inc.")
+
+    human_review.submit_field_review(
+        document_id, field_name="supplier", classification="INCORRECT", reviewed_by="alice", corrected_value="Corrected Supplier Name"
+    )
+    after_correction = human_review.get_review_detail(document_id)
+    result.check(
+        "the correction is effective immediately", after_correction["header_effective"]["supplier"] == "Corrected Supplier Name"
+    )
+
+    # A later CORRECT confirmation on the same field -- e.g. a second
+    # reviewer re-checking the document and agreeing the correction stands.
+    human_review.submit_field_review(document_id, field_name="supplier", classification="CORRECT", reviewed_by="bob")
+    after_confirmation = human_review.get_review_detail(document_id)
+    result.check(
+        "a later CORRECT confirmation CONFIRMS the already-corrected value -- it must NOT revert to the raw original",
+        after_confirmation["header_effective"]["supplier"] == "Corrected Supplier Name",
+    )
+    result.check(
+        "the raw PurchaseDocument column itself is still untouched throughout (both records are additive)",
+        after_confirmation["header_original"]["supplier"] == "Test Foods Inc.",
+    )
+
+
 def test_queue_shows_effective_header_values_not_raw(result: Result) -> None:
     """Task "Make Effective Purchased View canonical for all consumers",
     item 6/7/8: a document still HUMAN for one unresolved field must still
@@ -558,6 +593,7 @@ def main() -> int:
             test_keith_batch_two_review_records_multi_page,
             test_page_provenance_correct,
             test_field_correction_persists_and_preserves_original,
+            test_correct_confirmation_after_prior_correction_does_not_revert,
             test_queue_shows_effective_header_values_not_raw,
             test_no_duplicate_merge_logic,
             test_incomplete_review_remains_human,
