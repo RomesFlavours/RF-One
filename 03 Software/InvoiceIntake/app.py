@@ -4,8 +4,6 @@ import uuid
 from flask import Flask, abort, render_template, request, redirect, send_from_directory, session, url_for
 
 import ocr_engine
-import parser as invoice_parser
-import excel_store
 import human_review
 import purchased_bridge
 import review_authority
@@ -53,6 +51,26 @@ def index():
 
 @app.route("/upload", methods=["POST"])
 def upload():
+    """Task "Close Purchased Human Review Reliability Gaps" §2: a manually
+    uploaded file uses the exact same split path the mailbox acquisition
+    pipeline already uses (`mailbox_acquisition/acquisition_service.py`'s
+    `deliver_to_invoice_intake()`) — one saved file becomes 1..N
+    `PurchaseDocument`s via `invoice_splitter.split_into_invoices()` +
+    `purchased_bridge.save_purchase_documents_from_batch()`, never a second,
+    duplicated split implementation. A 4-invoice Prime Line batch now
+    produces 4 documents here exactly like it already does through the
+    mailbox; when the split is genuinely uncertain, `invoice_splitter`
+    itself falls back to one document (never an invented boundary), which
+    then goes through the normal NORMALIZED/HUMAN check like before.
+
+    There is no more pre-save manual header/lines editing step (the old
+    single-document `review.html` form this route used to render) — every
+    resulting document, split or not, is saved directly and any correction
+    happens afterward through Purchased Human Review (`/review/<id>`),
+    exactly as it already does for mailbox-acquired documents. This makes
+    manual upload and mailbox acquisition literally the same pipeline from
+    here on, not two independently-maintained ones."""
+
     file = request.files.get("invoice_file")
     if not file or file.filename == "":
         return render_template("upload.html", error="Seleziona un file.", excel_path=EXCEL_PATH)
@@ -70,93 +88,18 @@ def upload():
     file.save(saved_path)
 
     if ext == ".pdf":
-        text, method = ocr_engine.extract_from_pdf(saved_path)
+        pages, method = ocr_engine.extract_pages_from_pdf(saved_path)
     else:
-        text = ocr_engine.extract_from_image(saved_path)
+        pages = [ocr_engine.extract_from_image(saved_path)]
         method = "OCR"
 
-    header = invoice_parser.parse_header(text)
-    header["acquisition_method"] = method
-    lines = invoice_parser.parse_lines(text)
-    for line in lines:
-        line["line_type"] = purchased_bridge.guess_line_type(line.get("description", ""))
+    document_ids = purchased_bridge.save_purchase_documents_from_batch(pages, unique_name, method)
+    results = [
+        {"doc_id": doc_id, "functional_status": purchased_bridge.get_saved_document_functional_status(doc_id)}
+        for doc_id in document_ids
+    ]
 
-    # Always offer a handful of blank extra rows for manual entry, since
-    # automatic line-item parsing is unreliable on noisy/photographed
-    # invoices.
-    blank_rows_to_add = max(0, 8 - len(lines))
-    for _ in range(blank_rows_to_add):
-        lines.append({"description": "", "quantity": "", "unit_price": "", "line_amount": "", "line_type": "PRODUCT"})
-
-    return render_template(
-        "review.html",
-        header=header,
-        lines=lines,
-        raw_text=text,
-        source_file=unique_name,
-        original_name=file.filename,
-    )
-
-
-@app.route("/save", methods=["POST"])
-def save():
-    form = request.form
-
-    header = {
-        "supplier_name": form.get("supplier_name", "").strip(),
-        "document_number": form.get("document_number", "").strip(),
-        "document_type": form.get("document_type", "Invoice").strip(),
-        "issue_date": form.get("issue_date", "").strip(),
-        "acquisition_method": form.get("acquisition_method", "OCR").strip(),
-        "currency": form.get("currency", "").strip(),
-        "total_amount": form.get("total_amount", "").strip(),
-    }
-
-    descriptions = request.form.getlist("line_description")
-    quantities = request.form.getlist("line_quantity")
-    units = request.form.getlist("line_unit")
-    unit_prices = request.form.getlist("line_unit_price")
-    line_amounts = request.form.getlist("line_amount")
-    line_types = request.form.getlist("line_type")
-
-    lines = []
-    for desc, qty, unit, price, amount, line_type in zip(
-        descriptions, quantities, units, unit_prices, line_amounts, line_types
-    ):
-        lines.append(
-            {
-                "description": desc.strip(),
-                "quantity": qty.strip(),
-                "unit": unit.strip(),
-                "unit_price": price.strip(),
-                "line_amount": amount.strip(),
-                "line_type": (line_type or "PRODUCT").strip().upper(),
-            }
-        )
-
-    source_file = form.get("source_file", "")
-    raw_text = form.get("raw_text", "")
-
-    # Canonical persistence (Align legacy Invoice Intake with Purchased): the
-    # RF-One Data Store is the Purchase Fact source of truth from here on,
-    # owned by Purchased (01 Domains/Shared Domains/Purchased/README.md).
-    doc_id = purchased_bridge.save_purchase_document(header, lines, source_file, raw_text=raw_text)
-
-    # Excel remains available only as a secondary export/debugging capability
-    # (Purchased was never canonical there; it was only ever this
-    # prototype's storage). A failure here must never lose the canonical
-    # save above.
-    excel_ok = True
-    try:
-        excel_store.save_purchase_document(EXCEL_PATH, header, lines, source_file)
-    except Exception:
-        excel_ok = False
-
-    functional_status = purchased_bridge.get_saved_document_functional_status(doc_id)
-
-    return render_template(
-        "success.html", doc_id=doc_id, excel_path=EXCEL_PATH, excel_ok=excel_ok, functional_status=functional_status
-    )
+    return render_template("success.html", results=results, original_name=file.filename)
 
 
 @app.route("/mailbox")
@@ -251,6 +194,7 @@ def review_detail(doc_id):
         reviewer_name=reviewer_name,
         reviewer_role=reviewer_role,
         can_correct=can_correct,
+        error=request.args.get("error"),
     )
 
 
@@ -262,14 +206,45 @@ def review_submit_field(doc_id):
     classification = request.form.get("classification", "")
     purchase_line_id = request.form.get("purchase_line_id") or None
     corrected_value = request.form.get("corrected_value") or None
-    human_review.submit_field_review(
-        doc_id,
-        field_name=field_name,
-        classification=classification,
-        reviewed_by=reviewer_name or "unknown",
-        purchase_line_id=int(purchase_line_id) if purchase_line_id else None,
-        corrected_value=corrected_value,
-    )
+    try:
+        human_review.submit_field_review(
+            doc_id,
+            field_name=field_name,
+            classification=classification,
+            reviewed_by=reviewer_name or "unknown",
+            purchase_line_id=int(purchase_line_id) if purchase_line_id else None,
+            corrected_value=corrected_value,
+        )
+    except ValueError as exc:
+        return redirect(url_for("review_detail", doc_id=doc_id, error=str(exc)))
+    return redirect(url_for("review_detail", doc_id=doc_id))
+
+
+@app.route("/review/<int:doc_id>/line/add", methods=["POST"])
+def review_add_line(doc_id):
+    """Task "Close Purchased Human Review Reliability Gaps" §3: lets a
+    reviewer add a Purchase Line the original OCR/parser extraction never
+    created at all — gated behind the same `ACTION_CORRECT` permission as
+    any other field correction (adding a missing line is itself a
+    correction, not a new action tier)."""
+
+    _require_action(review_authority.ACTION_CORRECT)
+    reviewer_name, _ = _current_reviewer()
+    form = request.form
+    try:
+        human_review.add_missing_line(
+            doc_id,
+            added_by=reviewer_name or "unknown",
+            line_type=(form.get("line_type") or "PRODUCT").strip().upper(),
+            description=form.get("description", ""),
+            normalized_item=form.get("normalized_item") or None,
+            quantity=form.get("quantity") or None,
+            unit_of_measure=form.get("unit_of_measure") or None,
+            unit_price=form.get("unit_price") or None,
+            line_amount=form.get("line_amount") or None,
+        )
+    except ValueError as exc:
+        return redirect(url_for("review_detail", doc_id=doc_id, error=str(exc)))
     return redirect(url_for("review_detail", doc_id=doc_id))
 
 

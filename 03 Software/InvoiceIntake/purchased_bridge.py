@@ -15,10 +15,12 @@ Restaurant/Purchasing's own Physical Receiving uses. Restaurant/Purchasing is
 a *consumer* of the resulting Purchase Fact, never a prerequisite for
 creating one — nothing in this module calls a Purchasing decision/receiving
 function (Purchase Order, Configured Expectation, Physical Receiving, Alert).
-`excel_store.py` itself is untouched and still available as a secondary
-export/debugging capability (`app.py` calls both, but only this module's
-result is the canonical PurchaseDocumentId shown to the user) — see
-`03 Software/RF-One Data Store/PURCHASING.md`.
+`excel_store.py` itself is untouched and still importable as a standalone
+debugging utility, but `app.py`'s `/upload` route no longer calls it
+("Close Purchased Human Review Reliability Gaps" §2: manual upload now
+saves through `save_purchase_documents_from_batch()` below, the same
+entry point the mailbox pipeline uses, which never called `excel_store`
+either) — see `03 Software/RF-One Data Store/PURCHASING.md`.
 
 This module deliberately does NOT invent facts the OCR/parser did not
 extract: an unparsed date or amount is passed through as `None` (Unknown),

@@ -960,6 +960,7 @@ def get_purchased_lines_with_allocation(session: Session, purchase_document_id: 
         raise ValueError(f"Unknown PurchaseDocument id={purchase_document_id}")
 
     latest_corrections = resolve_latest_field_corrections(session, purchase_document_id)
+    added_line_ids = human_added_line_ids(session, purchase_document_id)
 
     def _effective_amount_minor(line: "m.PurchaseLine") -> int | None:
         effective = effective_field_value(latest_corrections, line.id, "line_amount", line.source_amount_minor)
@@ -969,6 +970,13 @@ def get_purchased_lines_with_allocation(session: Session, purchase_document_id: 
         # latter needs parsing back into minor units.
         return _parse_money_minor_text(effective) if isinstance(effective, str) else effective
 
+    # A manually-added line (Task "Close Purchased Human Review Reliability
+    # Gaps" §3/§5) is a genuine PRODUCT/SURCHARGE/DISCOUNT `PurchaseLine`
+    # row like any other -- `document.lines` already includes it, so it
+    # participates in `product_lines`/`non_goods_total`/`goods_total` below
+    # with no special-casing of the allocation formula itself (Task: "NON
+    # duplicare formule"). `human_added` on the output row only flags it
+    # for display/audit -- it changes no number.
     product_lines = sorted(
         (line for line in document.lines if line.line_type == "PRODUCT"), key=lambda line: line.id
     )
@@ -1000,6 +1008,7 @@ def get_purchased_lines_with_allocation(session: Session, purchase_document_id: 
                 "allocated_non_goods_minor": share,
                 "allocated_amount_minor": line_amount + share,
                 "functional_status": get_line_functional_status(session, line.id),
+                "human_added": line.id in added_line_ids,
             }
         )
     return output
@@ -1020,6 +1029,126 @@ def _parse_money_minor_text(value: str | None) -> int | None:
         return int((Decimal(cleaned) * 100).to_integral_value())
     except (InvalidOperation, ValueError):
         return None
+
+
+# ---------------------------------------------------------------------------
+# Add Missing Line (Task "Close Purchased Human Review Reliability Gaps",
+# §3): the one way Purchased Human Review may add a Purchase Line the
+# original OCR/parser extraction never created at all. ADDITIVE, never a
+# rewrite -- see `models.PurchasedLineAddition`'s own docstring for why a
+# genuine new `PurchaseLine` row plus a matching audit row (not a schema
+# change to `purchase_lines` itself) is the mechanism.
+# ---------------------------------------------------------------------------
+
+
+def human_added_line_ids(session: Session, purchase_document_id: int) -> set[int]:
+    """Every `PurchaseLine.id` on this document that was added via Human
+    Review rather than the original extraction -- the one place every
+    consumer (allocation, Effective Purchased View, the review UI) checks
+    to tell an added line apart from source evidence."""
+
+    return set(
+        session.scalars(
+            select(m.PurchasedLineAddition.purchase_line_id).where(
+                m.PurchasedLineAddition.purchase_document_id == purchase_document_id
+            )
+        ).all()
+    )
+
+
+def list_line_additions(session: Session, purchase_document_id: int) -> list[m.PurchasedLineAddition]:
+    """Full ADD_LINE audit history for one document, oldest first (Task §3:
+    "Preserva audit: reviewer, timestamp, action = ADD_LINE")."""
+
+    return list(
+        session.scalars(
+            select(m.PurchasedLineAddition)
+            .where(m.PurchasedLineAddition.purchase_document_id == purchase_document_id)
+            .order_by(m.PurchasedLineAddition.id)
+        ).all()
+    )
+
+
+def add_manual_purchase_line(
+    session: Session,
+    purchase_document_id: int,
+    *,
+    added_by: str,
+    line_type: str = "PRODUCT",
+    raw_description: str,
+    quantity: Decimal | None = None,
+    purchase_unit: str | None = None,
+    unit_price_minor: int | None = None,
+    source_amount_minor: int | None = None,
+) -> tuple[m.PurchaseLine, bool]:
+    """Adds a Purchase Line the original OCR/parser extraction never
+    created (Task §3) -- a brand-new, genuine `PurchaseLine` row (so it
+    participates in `get_purchased_lines_with_allocation()`/the Effective
+    Purchased View exactly like any other line, Task §4/§5) plus its own
+    `PurchasedLineAddition` audit row. Never touches any EXISTING
+    `PurchaseDocument`/`PurchaseLine` row -- purely additive, same
+    discipline `record_field_correction` already follows for field-level
+    corrections.
+
+    Returns `(line, created)`. Idempotent re-submission guard (Task §9,
+    test 15, "no duplicate lines on repeated submit"): a second call for
+    the SAME document with the exact same `line_type` + `raw_description` +
+    `source_amount_minor` as an already-HUMAN-ADDED line reuses that line
+    instead of inserting a duplicate (e.g. a reviewer's browser
+    double-submitting the same form) -- `created` is `False` in that case.
+    An original (non-human-added) line with coincidentally identical values
+    is never matched here: only rows already recorded in
+    `purchased_line_additions` for this document are considered, so a
+    genuinely blank source-evidence line whose text happens to match is
+    never mistaken for a prior manual addition."""
+
+    document = session.get(m.PurchaseDocument, purchase_document_id)
+    if document is None:
+        raise ValueError(f"Unknown PurchaseDocument id={purchase_document_id}")
+    if line_type not in ("PRODUCT", "SURCHARGE", "DISCOUNT"):
+        raise ValueError(f"Invalid line_type {line_type!r}; must be PRODUCT/SURCHARGE/DISCOUNT")
+    if not raw_description or not raw_description.strip():
+        raise ValueError("raw_description is required to add a Purchase Line")
+
+    existing = session.scalars(
+        select(m.PurchaseLine)
+        .join(m.PurchasedLineAddition, m.PurchasedLineAddition.purchase_line_id == m.PurchaseLine.id)
+        .where(
+            m.PurchasedLineAddition.purchase_document_id == purchase_document_id,
+            m.PurchaseLine.line_type == line_type,
+            m.PurchaseLine.raw_description == raw_description,
+            m.PurchaseLine.source_amount_minor == source_amount_minor,
+        )
+    ).first()
+    if existing is not None:
+        return existing, False
+
+    line = m.PurchaseLine(
+        purchase_document_id=purchase_document_id,
+        line_type=line_type,
+        raw_description=raw_description,
+        source_amount_minor=source_amount_minor,
+        quantity=quantity if line_type == "PRODUCT" else None,
+        purchase_unit=purchase_unit if line_type == "PRODUCT" else None,
+        unit_price_minor=unit_price_minor if line_type == "PRODUCT" else None,
+    )
+    session.add(line)
+    session.flush()
+    session.add(m.PurchasedLineAddition(purchase_document_id=purchase_document_id, purchase_line_id=line.id, added_by=added_by))
+    session.flush()
+    # This module's sessions use `expire_on_commit=False` (database.py) --
+    # `document`'s own `.lines` collection, if already loaded earlier in
+    # THIS session (e.g. a caller that read the document before adding a
+    # line), would otherwise keep returning the pre-addition snapshot for
+    # the rest of the session's lifetime, since `session.get()` returns the
+    # identity-mapped instance rather than re-querying. Expiring just this
+    # relationship (not the whole object) guarantees the next access -- by
+    # this caller or another, e.g. `get_purchased_lines_with_allocation()`
+    # re-fetching the same document later in a long-lived session -- sees
+    # the newly added line, without forcing an unnecessary reload of every
+    # other already-loaded attribute.
+    session.expire(document, ["lines"])
+    return line, True
 
 
 # ---------------------------------------------------------------------------
@@ -1100,6 +1229,15 @@ def record_field_correction(
 ) -> m.PurchasedFieldCorrection:
     if classification not in ("CORRECT", "INCORRECT", "UNREAD", "AMBIGUOUS"):
         raise ValueError(f"Invalid classification {classification!r}")
+    if classification == "INCORRECT" and not (corrected_value and corrected_value.strip()):
+        # "Close Purchased Human Review Reliability Gaps" §7, Field Review
+        # Semantics: "INCORRECT -> richiede corrected value" -- unlike
+        # AMBIGUOUS/UNREAD (which may legitimately stay unresolved when the
+        # source is genuinely illegible), classifying a field INCORRECT
+        # asserts a specific, known-better value exists; without one this
+        # is a malformed review action, rejected outright rather than
+        # silently accepted as a no-op.
+        raise ValueError("classification='INCORRECT' requires a non-blank corrected_value")
     correction = m.PurchasedFieldCorrection(
         purchase_document_id=purchase_document_id,
         purchase_line_id=purchase_line_id,

@@ -4435,6 +4435,48 @@ class PurchasedFieldCorrection(Base):
     )
 
 
+class PurchasedLineAddition(Base):
+    """Audit trail for a `PurchaseLine` added during Purchased Human Review
+    because the original OCR/parser extraction never created one at all
+    ("Close Purchased Human Review Reliability Gaps", §3: "impossibilità di
+    aggiungere Purchase Lines mancanti").
+
+    The referenced `PurchaseLine` (`purchase_line_id`) IS a genuine row in
+    `purchase_lines` — inserted once, through the same immutable-by-
+    convention discipline every other `PurchaseLine` follows — so it
+    participates in `get_purchased_lines_with_allocation()`/non-goods
+    allocation and every other Effective Purchased View consumer exactly
+    like an originally-extracted line (Task §4/§5: "I consumer BD devono
+    vederle esattamente come le altre Purchased Lines effettive"). This
+    table is the ONLY way to tell the two apart: a `PurchaseLine` with a
+    matching row here was never produced by the original capture — the
+    source/raw view uses this to say so (Task §4: "La source/raw view deve
+    continuare a mostrare che la riga non esisteva nell'estrazione
+    originale") — every other `PurchaseLine` is original source evidence,
+    unchanged. One row per ADD_LINE action; never updated or deleted.
+
+    `reviewed_by`/`added_at` are this action's own audit fields (Task §3:
+    "reviewer, timestamp, action = ADD_LINE") — "action" itself is implicit
+    in this table's very existence (a row here always means ADD_LINE; no
+    other action is ever recorded by it), matching the same "free text
+    reviewer identifier, no User FK" convention `PurchasedFieldCorrection`
+    already uses (Identity & Access is frozen)."""
+
+    __tablename__ = "purchased_line_additions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    purchase_document_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_documents.id"), nullable=False, index=True
+    )
+    purchase_line_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_lines.id"), nullable=False, unique=True, index=True
+    )
+    added_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 # ---------------------------------------------------------------------------
 # Selection module — Resume Screening (TASK_SELECTION_001)
 #

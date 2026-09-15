@@ -407,6 +407,57 @@ def main() -> int:
                 "raise_receiving_discrepancy_alert also resolves the effective quantity (MATCH -> no Alert raised)",
                 outcomes_alert is None,
             )
+
+            # --- Add Missing Line ("Close Purchased Human Review
+            # Reliability Gaps" §3): repository-level API + idempotency
+            # guard + human_added flag ------------------------------------
+            addline_document = repo.record_purchase_document(
+                session,
+                supplier.id,
+                header={"document_number": "ADDLINE-1", "document_type": "Invoice", "issue_date": _now()},
+                lines=[{"line_type": "PRODUCT", "raw_description": "Original Item", "source_amount_minor": 5000}],
+            )
+            session.commit()
+            original_line = addline_document.lines[0]
+
+            added_line, created_first = repo.add_manual_purchase_line(
+                session, addline_document.id, added_by="alice", line_type="PRODUCT",
+                raw_description="Missed Item", quantity=Decimal("2"), purchase_unit="case",
+                unit_price_minor=1500, source_amount_minor=3000,
+            )
+            session.commit()
+            result.check("add_manual_purchase_line creates a new PurchaseLine the first time", created_first is True)
+            result.check(
+                "the original line's own columns are untouched by adding a new one",
+                session.get(m.PurchaseLine, original_line.id).raw_description == "Original Item",
+            )
+            result.check(
+                "human_added_line_ids reports the new line but not the original one",
+                repo.human_added_line_ids(session, addline_document.id) == {added_line.id},
+            )
+            addline_allocation = {row["purchase_line_id"]: row for row in repo.get_purchased_lines_with_allocation(session, addline_document.id)}
+            result.check(
+                "the added line is visible to the same Restaurant/Purchasing consumer read as any other line, flagged human_added",
+                added_line.id in addline_allocation and addline_allocation[added_line.id]["human_added"] is True,
+            )
+            result.check(
+                "the ORIGINAL line is not flagged human_added",
+                addline_allocation[original_line.id]["human_added"] is False,
+            )
+
+            _, created_second = repo.add_manual_purchase_line(
+                session, addline_document.id, added_by="bob", line_type="PRODUCT",
+                raw_description="Missed Item", quantity=Decimal("2"), purchase_unit="case",
+                unit_price_minor=1500, source_amount_minor=3000,
+            )
+            result.check(
+                "a second, identical add_manual_purchase_line call is idempotent (no duplicate line)",
+                created_second is False,
+            )
+            result.check(
+                "list_line_additions records exactly one ADD_LINE audit row (the duplicate was never inserted)",
+                len(repo.list_line_additions(session, addline_document.id)) == 1,
+            )
     finally:
         cleanup_disposable_test_database_url(url)
 
