@@ -104,6 +104,7 @@ from rfone_data_store.database import (  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.purchasing import repository as repo  # noqa: E402
 
+import invoice_splitter  # noqa: E402
 import parser as invoice_parser  # noqa: E402
 import supplier_format_rules  # noqa: E402
 import supplier_format_training  # noqa: E402
@@ -231,6 +232,12 @@ def _resolve_supplier_name(session, restaurant_id: int, candidate: str, source_f
     falls back to "Unknown Supplier" (unchanged from before this task) and
     the missing-supplier field counts against NORMALIZED in
     `_validate_extracted_fields()`.
+
+    "Purchased Supplier Training Phase 2" (§9, "Supplier alias model"):
+    also matches against known `SupplierAlias` rows — e.g. the pre-Phase-2
+    dirty name "PRIME LINE DISTRIBUTORS INVOICE" now on file as an alias of
+    the clean canonical "Prime Line Distributors" — always resolving to the
+    Supplier's CURRENT canonical name, never the alias text itself.
     """
 
     from sqlalchemy import select
@@ -247,6 +254,18 @@ def _resolve_supplier_name(session, restaurant_id: int, candidate: str, source_f
         for supplier in session.scalars(select(m.Supplier).where(m.Supplier.restaurant_id == restaurant_id)).all()
         if invoice_parser.looks_like_plausible_name(supplier.name) and len(supplier.name.strip()) > 3
     ]
+    # (alias_name, canonical Supplier.name) pairs, same plausibility/length
+    # filter as known_suppliers above -- an alias is only ever as
+    # trustworthy as the Supplier it points to.
+    known_supplier_ids = {supplier.id for supplier in known_suppliers}
+    known_aliases = [
+        (alias.alias_name, alias.supplier_id)
+        for alias in session.scalars(
+            select(m.SupplierAlias).where(m.SupplierAlias.supplier_id.in_(known_supplier_ids))
+        ).all()
+        if invoice_parser.looks_like_plausible_name(alias.alias_name) and len(alias.alias_name.strip()) > 3
+    ] if known_supplier_ids else []
+    supplier_by_id = {supplier.id: supplier for supplier in known_suppliers}
 
     candidate_plausible = invoice_parser.looks_like_plausible_name(candidate or "")
     if candidate_plausible:
@@ -255,6 +274,10 @@ def _resolve_supplier_name(session, restaurant_id: int, candidate: str, source_f
             lowered_known = supplier.name.lower()
             if lowered_known in lowered_candidate or lowered_candidate in lowered_known:
                 return supplier.name  # reuse the canonical, already-known spelling
+        for alias_name, supplier_id in known_aliases:
+            lowered_alias = alias_name.lower()
+            if lowered_alias in lowered_candidate or lowered_candidate in lowered_alias:
+                return supplier_by_id[supplier_id].name  # the CURRENT canonical name, never the alias text
         return candidate  # a plausible new name the document itself states
 
     # The document's own text produced nothing plausible -- fall back to
@@ -266,6 +289,9 @@ def _resolve_supplier_name(session, restaurant_id: int, candidate: str, source_f
         for supplier in known_suppliers:
             if supplier.name.lower() in lowered_filename:
                 return supplier.name
+        for alias_name, supplier_id in known_aliases:
+            if alias_name.lower() in lowered_filename:
+                return supplier_by_id[supplier_id].name
 
     return None
 
@@ -361,7 +387,9 @@ def _record_conflict_or_correction(
         )
 
 
-def save_purchase_document(header: dict, lines: list[dict], source_file: str, raw_text: str = "") -> int:
+def save_purchase_document(
+    header: dict, lines: list[dict], source_file: str, raw_text: str = "", batch_note: str | None = None
+) -> int:
     """Maps InvoiceIntake's reviewed header/lines onto the canonical
     Purchased Purchase Fact and persists them. Returns the resulting
     `PurchaseDocumentId` — either a newly inserted document, or a pre-existing
@@ -378,6 +406,12 @@ def save_purchase_document(header: dict, lines: list[dict], source_file: str, ra
     `app.py`'s own manual-review form-post does not carry it across the
     redirect, so it is omitted there). Used only for the conflicting-totals
     check (`_validate_extracted_fields`) — never persisted, never required.
+    `batch_note` (Task "Purchased Supplier Training Phase 2", multi-invoice
+    splitting) is an optional free-text note appended to
+    `source_provenance` — `save_purchase_documents_from_batch()` below uses
+    it to record which invoice/page-range of a multi-invoice source file
+    this one document came from (Task requirement 6: "page/range
+    provenance"); a caller outside that function has no reason to pass it.
     """
 
     url = get_database_url()
@@ -413,9 +447,12 @@ def save_purchase_document(header: dict, lines: list[dict], source_file: str, ra
             "status": "RECORDED",
             "source_reference": source_file or None,
             "source_provenance": (
-                f"InvoiceIntake upload; raw issue_date as read: {header.get('issue_date')!r}"
-                if header.get("issue_date") and _parse_date(header.get("issue_date")) is None
-                else "InvoiceIntake upload"
+                (
+                    f"InvoiceIntake upload; raw issue_date as read: {header.get('issue_date')!r}"
+                    if header.get("issue_date") and _parse_date(header.get("issue_date")) is None
+                    else "InvoiceIntake upload"
+                )
+                + (f"; {batch_note}" if batch_note else "")
             ),
         }
 
@@ -543,6 +580,60 @@ def save_purchase_document(header: dict, lines: list[dict], source_file: str, ra
 
         session.commit()
         return document.id
+
+
+def save_purchase_documents_from_batch(pages: list[str], source_file: str, acquisition_method: str) -> list[int]:
+    """"Purchased Supplier Training — Phase 2": one physical PDF can carry
+    more than one real invoice (`invoice_splitter.py`'s own docstring has
+    the real evidence/cases). This is the ONE call site
+    `mailbox_acquisition`'s automated pipeline uses instead of building a
+    header/lines pair once and calling `save_purchase_document()` directly
+    — everything else about persistence, dedup, NORMALIZED/HUMAN
+    validation and Supplier+Format training stays entirely inside that
+    unchanged function, called once per real invoice found.
+
+    `pages` is the source file's own per-page text
+    (`ocr_engine.extract_pages_from_pdf`). When `invoice_splitter.split_into_invoices()`
+    decides NOT to split (see its own "Uncertainty rule" — anywhere from
+    "only one page" to "genuinely ambiguous"), this behaves exactly like
+    Phase 1's single-call path: one `PurchaseDocument`, `source_reference`
+    equal to `source_file` unchanged.
+
+    When it DOES split, each resulting invoice is saved as its own
+    document, with its own `source_reference` encoding which page range of
+    the original file it came from (Task requirement 6: "page/range
+    provenance") — `source_file` itself is never lost, only ever
+    *extended* (e.g. `"batch.pdf#p2-3"`), so the original file is always
+    recoverable by prefix. Returns every resulting PurchaseDocumentId, in
+    page order — the caller decides what "the" id for this attachment
+    means to it (see `mailbox_acquisition/acquisition_service.py`, which
+    treats the first one as primary for its own single-id bookkeeping,
+    same discipline `test_replay_does_not_persist_anything` already
+    established: no new write path, just this module's own existing save
+    function called more than once)."""
+
+    def _build_and_save(text: str, segment_source_file: str, batch_note: str | None) -> int:
+        header = invoice_parser.parse_header(text)
+        header["acquisition_method"] = acquisition_method
+        lines = invoice_parser.parse_lines(text)
+        for line in lines:
+            line["line_type"] = guess_line_type(line.get("description", ""))
+        return save_purchase_document(header, lines, segment_source_file, raw_text=text, batch_note=batch_note)
+
+    segments = invoice_splitter.split_into_invoices(pages)
+    if segments is None:
+        combined_text = "\n".join(pages).strip()
+        return [_build_and_save(combined_text, source_file, batch_note=None)]
+
+    document_ids = []
+    for segment in segments:
+        segment_source_file = f"{source_file}#{segment.page_range_label}"
+        batch_note = (
+            f"multi-invoice batch: invoice {segment.segment_index} of {segment.segment_count}, "
+            f"page {segment.page_range_label} of {segment.total_pages} (source file: {source_file!r})"
+        )
+        document_ids.append(_build_and_save(segment.text, segment_source_file, batch_note))
+    return document_ids
 
 
 def get_saved_document_functional_status(purchase_document_id: int) -> str:

@@ -3777,6 +3777,34 @@ class Supplier(Base):
     )
 
 
+class SupplierAlias(Base):
+    """A historical/source name a Supplier has been known by ("Purchased
+    Supplier Training — Phase 2", canonical Supplier cleanup). Correcting
+    `Supplier.name` in place (e.g. "PRIME LINE DISTRIBUTORS INVOICE" ->
+    "Prime Line Distributors") must never discard the prior spelling —
+    Purchased/README.md, "Supplier identity": "The original text/code as it
+    appeared in the source must always remain available as source
+    provenance, even after resolution to a canonical Supplier." This is the
+    minimum needed to represent that — canonical Supplier + known source
+    aliases — nothing else (no per-alias usage counters, no fuzzy-matching
+    configuration)."""
+
+    __tablename__ = "supplier_aliases"
+    __table_args__ = (UniqueConstraint("supplier_id", "alias_name", name="uq_supplier_aliases_supplier_id_alias_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), nullable=False, index=True)
+    alias_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Free text (illustrative, not an enum): e.g. "previous canonical name",
+    # "source filename match" — why this alias is on file, not a
+    # confidence score.
+    source: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class PurchaseOrder(Base):
     """The Restaurant's purchasing request to a Supplier
     (Purchasing/EntityDefinitions.md, "Purchase Order"). Deliberately

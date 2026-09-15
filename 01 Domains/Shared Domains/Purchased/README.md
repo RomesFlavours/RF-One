@@ -436,8 +436,9 @@ Whether — and how — Purchased (this Shared Domain) and Restaurant/Purchasing
 - No Bank Reconciliation process is designed here — only the boundary that it does not belong to Purchased.
 - The non-goods cost allocation mechanism's edge cases (rounding, what counts as "directly attributable," an invoice with no goods lines) are not fully specified here.
 - Which date a given consumer process should treat as "the" Purchase Date is left to business/system configuration, not fixed here.
-- The Supplier identity resolution algorithm (alias/code matching) is not designed here.
-- The training-period length (N), accuracy threshold, and per-Supplier/format "trusted" criteria in "Source/format validation and training" are left configurable, not fixed here.
+- The Supplier identity resolution algorithm (alias/code matching) is not designed here (a concrete canonical-Supplier-plus-alias mechanism now exists for the `03 Software/InvoiceIntake/` path specifically — "Purchased Supplier Training — Phase 2" — but no general algorithm is fixed by this document).
+- The training-period length (N), accuracy threshold, and per-Supplier/format "trusted" criteria in "Source/format validation and training" are left configurable, not fixed here (a concrete, overridable default — N=5 consecutive correct documents — now exists for `03 Software/InvoiceIntake/` specifically; still a configuration value, not a rule fixed by this document).
+- Whether one physical source document always corresponds to exactly one Purchase Fact is not addressed here (a real acquired document can bundle more than one invoice — `03 Software/InvoiceIntake/invoice_splitter.py`, "Purchased Supplier Training — Phase 2," handles this for that one concrete path; no general multi-document-source model is designed by this document).
 - The document-equivalence check used before deduplication is not designed here.
 - How HUMAN-state Purchased Lines and duplicate/anomaly cases surface to a person (Attention routing, review queue, etc.) is not designed here.
 - Which Business Domain(s)/capabilities actually consume Purchased's output, and how, is left to future Domain/Product/Runtime work.

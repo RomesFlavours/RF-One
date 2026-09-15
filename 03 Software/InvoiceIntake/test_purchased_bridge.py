@@ -111,6 +111,17 @@ def test_static_no_purchasing_decision_dependency(result: Result) -> None:
         not any(term in lowered for term in forbidden_terms),
     )
 
+    # Test list requirement 18 ("no Bank Reconciliation logic introduced"):
+    # the same check, extended to every new module "Purchased Supplier
+    # Training Phase 2" added.
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    for phase2_filename in ("invoice_splitter.py", "supplier_format_rules.py", "supplier_format_training.py"):
+        phase2_source = open(os.path.join(base_dir, phase2_filename), encoding="utf-8").read().lower()
+        result.check(
+            f"{phase2_filename} introduces no Bank Reconciliation logic",
+            not any(term in phase2_source for term in forbidden_terms),
+        )
+
 
 def test_standard_invoice_and_allocation(result: Result) -> None:
     """Scenarios 1-4: a standard multi-line invoice with a non-goods charge
@@ -560,6 +571,174 @@ def test_costco_specialization_applied_end_to_end(result: Result) -> None:
         os.environ.pop("RFONE_DATABASE_URL", None)
 
 
+# ---------------------------------------------------------------------------
+# Multi-invoice batch splitting ("Purchased Supplier Training — Phase 2")
+# ---------------------------------------------------------------------------
+
+
+def _prime_line_page(number: str, date: str, total: str) -> str:
+    return (
+        "PRIME LINE DISTRIBUTORS INVOICE\n"
+        f"ROME'S FLAVOURS Number: {number}\n"
+        f"Date: {date}\n"
+        "BM43 8 CASE SAN BENEDETTO NATURAL PET 1.5L 6/50.7 oz 8 7.99 63.92\n"
+        f"TOTAL $ {total}\n"
+    )
+
+
+def _keith_page(number: str, page_in_invoice: int, total_line: str = "") -> str:
+    return (
+        "REMIT TO: BEN E KEITH FLORIDA FOODS\n"
+        f"lnvoice No. Page Rep\n{number} {page_in_invoice} OT\n"
+        "CHICKEN BREAST 8OZ BUTTER 2/10 LB 85.06 170.12\n" + total_line
+    )
+
+
+def test_four_invoice_batch_creates_four_purchase_documents(result: Result) -> None:
+    """Test list requirement 1: "batch PDF 4 invoice -> 4 PurchaseDocument"."""
+
+    pages = [
+        _prime_line_page("2001001", "06/30/20", "100.00"),
+        _prime_line_page("2001002", "05/26/20", "200.00"),
+        _prime_line_page("2001003", "05/26/20", "300.00"),
+        _prime_line_page("2001004", "05/26/20", "400.00"),
+    ]
+    url = create_disposable_test_database_url("purchased_bridge_4invoice_batch")
+    os.environ["RFONE_DATABASE_URL"] = url
+    try:
+        document_ids = purchased_bridge.save_purchase_documents_from_batch(pages, "batch4.pdf", "OCR")
+        result.check("4 distinct PurchaseDocumentIds are returned", len(document_ids) == 4 and len(set(document_ids)) == 4)
+
+        session = _open_session(url)
+        try:
+            documents = [session.get(m.PurchaseDocument, doc_id) for doc_id in document_ids]
+            result.check(
+                "each PurchaseDocument has its own document_number from its own page",
+                [d.document_number for d in documents] == ["2001001", "2001002", "2001003", "2001004"],
+            )
+            result.check(
+                "each PurchaseDocument's source_reference encodes its own page range of the original file",
+                [d.source_reference for d in documents] == ["batch4.pdf#p1", "batch4.pdf#p2", "batch4.pdf#p3", "batch4.pdf#p4"],
+            )
+            result.check(
+                "each PurchaseDocument's own total is preserved independently",
+                [d.total_amount_minor for d in documents] == [10000, 20000, 30000, 40000],
+            )
+        finally:
+            session.close()
+    finally:
+        cleanup_disposable_test_database_url(url)
+        os.environ.pop("RFONE_DATABASE_URL", None)
+
+
+def test_two_invoice_batch_one_multi_page_creates_two_purchase_documents(result: Result) -> None:
+    """Test list requirement 2: "batch PDF 2 invoice con una multi-page -> 2
+    PurchaseDocument"."""
+
+    pages = [
+        _keith_page("3001001", 1, total_line="Total Invoice 170.12\n"),
+        _keith_page("3001002", 1),
+        _keith_page("3001002", 2, total_line="New Total 340.24\n"),
+    ]
+    url = create_disposable_test_database_url("purchased_bridge_keith_batch")
+    os.environ["RFONE_DATABASE_URL"] = url
+    try:
+        document_ids = purchased_bridge.save_purchase_documents_from_batch(pages, "keith_batch.pdf", "PDF-Text")
+        result.check("exactly 2 PurchaseDocuments for 3 pages, 2 real invoices", len(document_ids) == 2)
+
+        session = _open_session(url)
+        try:
+            documents = [session.get(m.PurchaseDocument, doc_id) for doc_id in document_ids]
+            result.check(
+                "document_numbers match the 2 real invoices",
+                [d.document_number for d in documents] == ["3001001", "3001002"],
+            )
+            result.check(
+                "the multi-page invoice's source_reference records its full page range (2-3), not just one page",
+                documents[1].source_reference == "keith_batch.pdf#p2-3",
+            )
+            result.check(
+                "the multi-page invoice's source_provenance still names the original source file",
+                "keith_batch.pdf" in (documents[1].source_provenance or ""),
+            )
+        finally:
+            session.close()
+    finally:
+        cleanup_disposable_test_database_url(url)
+        os.environ.pop("RFONE_DATABASE_URL", None)
+
+
+def test_ambiguous_batch_falls_back_to_single_document(result: Result) -> None:
+    """Test list requirement 3: "ambiguous boundary -> HUMAN". When
+    `invoice_splitter` cannot confidently split, exactly one
+    PurchaseDocument is created for the whole file (the legacy behavior),
+    which normal field-validation then routes to HUMAN for the usual
+    reasons (incoherent/incomplete combined content) — no special-casing
+    needed here."""
+
+    ambiguous_page = "some illegible scan noise with no recognizable label at all\n"
+    pages = [_prime_line_page("4001001", "06/30/20", "100.00"), ambiguous_page, _prime_line_page("4001002", "05/26/20", "200.00")]
+    url = create_disposable_test_database_url("purchased_bridge_ambiguous_batch")
+    os.environ["RFONE_DATABASE_URL"] = url
+    try:
+        document_ids = purchased_bridge.save_purchase_documents_from_batch(pages, "ambiguous.pdf", "OCR")
+        result.check("an ambiguous batch is NOT split -- exactly one PurchaseDocument", len(document_ids) == 1)
+    finally:
+        cleanup_disposable_test_database_url(url)
+        os.environ.pop("RFONE_DATABASE_URL", None)
+
+
+def test_replaying_same_batch_creates_no_duplicates(result: Result) -> None:
+    """Test list requirement 4: "replay stesso batch -> no duplicates"."""
+
+    pages = [
+        _prime_line_page("5001001", "06/30/20", "100.00"),
+        _prime_line_page("5001002", "05/26/20", "200.00"),
+    ]
+    url = create_disposable_test_database_url("purchased_bridge_batch_replay")
+    os.environ["RFONE_DATABASE_URL"] = url
+    try:
+        first_ids = purchased_bridge.save_purchase_documents_from_batch(pages, "replay_batch.pdf", "OCR")
+        second_ids = purchased_bridge.save_purchase_documents_from_batch(pages, "replay_batch.pdf (resent)", "OCR")
+        result.check("reprocessing the exact same batch returns the SAME PurchaseDocumentIds, not new ones", first_ids == second_ids)
+
+        session = _open_session(url)
+        try:
+            from sqlalchemy import func, select
+
+            doc_count = session.scalar(select(func.count()).select_from(m.PurchaseDocument))
+            result.check("exactly 2 PurchaseDocuments total exist, not 4", doc_count == 2)
+        finally:
+            session.close()
+    finally:
+        cleanup_disposable_test_database_url(url)
+        os.environ.pop("RFONE_DATABASE_URL", None)
+
+
+def test_non_batch_document_is_unaffected_by_batch_save_path(result: Result) -> None:
+    """A single-page (or otherwise unsplit) document routed through
+    `save_purchase_documents_from_batch()` behaves exactly like the direct
+    `save_purchase_document()` call it replaces in
+    `mailbox_acquisition/acquisition_service.py` — Task requirement 16/17
+    ("existing Invoice Intake/mailbox acquisition regressions")."""
+
+    pages = [_prime_line_page("6001001", "06/30/20", "100.00")]
+    url = create_disposable_test_database_url("purchased_bridge_single_page_batch_path")
+    os.environ["RFONE_DATABASE_URL"] = url
+    try:
+        document_ids = purchased_bridge.save_purchase_documents_from_batch(pages, "single.pdf", "OCR")
+        result.check("a single-page document still produces exactly one PurchaseDocument", len(document_ids) == 1)
+        session = _open_session(url)
+        try:
+            document = session.get(m.PurchaseDocument, document_ids[0])
+            result.check("source_reference is the plain filename, unchanged (no page-range suffix added for a non-split document)", document.source_reference == "single.pdf")
+        finally:
+            session.close()
+    finally:
+        cleanup_disposable_test_database_url(url)
+        os.environ.pop("RFONE_DATABASE_URL", None)
+
+
 def main() -> int:
     # `save_purchase_document()` always writes to
     # `supplier_format_training.py`'s own observation store as a side
@@ -588,6 +767,11 @@ def main() -> int:
             test_supplier_format_specialization_applied_end_to_end,
             test_specialization_does_not_break_duplicate_detection,
             test_costco_specialization_applied_end_to_end,
+            test_four_invoice_batch_creates_four_purchase_documents,
+            test_two_invoice_batch_one_multi_page_creates_two_purchase_documents,
+            test_ambiguous_batch_falls_back_to_single_document,
+            test_replaying_same_batch_creates_no_duplicates,
+            test_non_batch_document_is_unaffected_by_batch_save_path,
         ):
             test_fn(result)
     finally:

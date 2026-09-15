@@ -70,8 +70,76 @@ def get_or_create_supplier(session: Session, restaurant_id: int, name: str) -> m
     ).first()
     if existing is not None:
         return existing
+
+    # A `name` that is a known ALIAS of an already-canonical Supplier
+    # ("Purchased Supplier Training Phase 2", §9: reuse the alias
+    # mechanism -- "NON creare un secondo Supplier duplicato se
+    # evitabile") resolves to that same Supplier, never a new duplicate.
+    alias_match = session.scalars(
+        select(m.Supplier)
+        .join(m.SupplierAlias, m.SupplierAlias.supplier_id == m.Supplier.id)
+        .where(m.Supplier.restaurant_id == restaurant_id, m.SupplierAlias.alias_name == name)
+    ).first()
+    if alias_match is not None:
+        return alias_match
+
     supplier = m.Supplier(restaurant_id=restaurant_id, name=name, status="ACTIVE")
     session.add(supplier)
+    session.flush()
+    return supplier
+
+
+def add_supplier_alias(session: Session, supplier_id: int, alias_name: str, source: str | None = None) -> m.SupplierAlias:
+    """Records `alias_name` as a known historical/source name for this
+    Supplier (Task requirement 9: "canonical supplier + known source
+    aliases"). Idempotent — returns the existing row unchanged if this
+    exact (supplier_id, alias_name) pair is already on file, never a
+    duplicate alias row."""
+
+    existing = session.scalars(
+        select(m.SupplierAlias).where(
+            m.SupplierAlias.supplier_id == supplier_id, m.SupplierAlias.alias_name == alias_name
+        )
+    ).first()
+    if existing is not None:
+        return existing
+    alias = m.SupplierAlias(supplier_id=supplier_id, alias_name=alias_name, source=source)
+    session.add(alias)
+    session.flush()
+    return alias
+
+
+def list_supplier_aliases(session: Session, supplier_id: int) -> list[m.SupplierAlias]:
+    return list(
+        session.scalars(
+            select(m.SupplierAlias).where(m.SupplierAlias.supplier_id == supplier_id).order_by(m.SupplierAlias.id)
+        ).all()
+    )
+
+
+def rename_supplier_canonical(
+    session: Session, supplier_id: int, new_name: str, *, source: str | None = None
+) -> m.Supplier:
+    """Task requirement 8/10 ("Correggi il Supplier canonico esistente...
+    NON cancellare il vecchio valore... mantieni la referential
+    integrity"). Renames `Supplier.name` IN PLACE — same `id`, so every
+    existing `PurchaseDocument.supplier_id` foreign key stays valid without
+    touching a single `PurchaseDocument`/`PurchaseLine` row, and no amount
+    or FK ever changes — and records the OLD name as a `SupplierAlias`
+    before overwriting it, so `get_or_create_supplier()` still resolves the
+    old spelling to this exact same Supplier afterward. Idempotent:
+    renaming to the name the Supplier already has is a no-op (the old name
+    is only ever recorded as an alias when it genuinely differs from the
+    new one), so this is safe to call more than once."""
+
+    supplier = session.get(m.Supplier, supplier_id)
+    if supplier is None:
+        raise ValueError(f"No Supplier with id={supplier_id!r}")
+    old_name = supplier.name
+    if old_name == new_name:
+        return supplier
+    add_supplier_alias(session, supplier_id, old_name, source=source or "previous canonical name")
+    supplier.name = new_name
     session.flush()
     return supplier
 

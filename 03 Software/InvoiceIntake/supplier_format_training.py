@@ -45,11 +45,31 @@ moves it to `DEGRADED` on the spot, so a silently changed supplier format
 is never left looking trusted. Nothing here ever moves a pair the other
 direction automatically.
 
+**Phase 2 ("Purchased Supplier Training — Phase 2") extension:** the
+threshold N (Task requirement 11) is now a real, configurable value —
+`get_trust_threshold()`/`set_trust_threshold()`, a global default seeded to
+`DEFAULT_TRUST_THRESHOLD` plus optional per-(Supplier, Format) overrides —
+and there is a real path from `TRAINING` to `VALIDATED`:
+`is_eligible_for_validation()` checks `reviewed_count` and an unbroken
+`consecutive_correct_count` streak against that threshold, and
+`promote_if_eligible()` is the one function that actually promotes —
+called only by an explicit human/operator action, never by
+`record_observation()` or anything else in this module (Task requirement
+12: "NON auto-promuovere solo perché il numero N è raggiunto se ci sono
+incongruenze"). `record_observation()`'s own automatic-demotion rule
+(previously layout-change only) now also covers "quando... iniziano
+errori reali" (Task requirement 13): a `VALIDATED` pair that produces even
+one HUMAN outcome is demoted to `DEGRADED` immediately, same as a layout
+change — from there, `set_trust_state()` back to `TRAINING` is a deliberate
+human step before it can become eligible again.
+
 A plain local SQLite file, its own and separate from `rfone_data_store`'s
 canonical database — the same "acquisition/quality-tracking metadata, not
 a Purchased fact" boundary already drawn by `mailbox_acquisition/
 acquisition_store.py`, so no Alembic migration is needed for this
-foundation.
+foundation (Phase 2's new columns/table are added to an existing file via
+a guarded, idempotent `ALTER TABLE`/`CREATE TABLE IF NOT EXISTS` in
+`SupplierFormatTrainingStore.__init__`, not a schema migration tool).
 """
 
 from __future__ import annotations
@@ -107,6 +127,7 @@ CREATE TABLE IF NOT EXISTS supplier_format_observations (
     reviewed_count INTEGER NOT NULL DEFAULT 0,
     normalized_count INTEGER NOT NULL DEFAULT 0,
     human_count INTEGER NOT NULL DEFAULT 0,
+    consecutive_correct_count INTEGER NOT NULL DEFAULT 0,
     trust_state TEXT NOT NULL DEFAULT 'UNTRAINED',
     last_layout_signature TEXT,
     last_seen_at TEXT NOT NULL,
@@ -125,7 +146,25 @@ CREATE TABLE IF NOT EXISTS field_reviews (
     note TEXT,
     reviewed_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS trust_thresholds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    supplier_name TEXT,
+    source_format TEXT,
+    threshold_n INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (supplier_name, source_format)
+);
 """
+
+# `consecutive_correct_count` was added by "Purchased Supplier Training
+# Phase 2" after `supplier_format_observations` already existed in
+# deployed training-store files — `CREATE TABLE IF NOT EXISTS` above only
+# ever helps a brand new file, so an existing one needs this column added
+# explicitly, once, guarded so re-running it is always a no-op.
+_MIGRATE_ADD_CONSECUTIVE_CORRECT_COUNT = (
+    "ALTER TABLE supplier_format_observations ADD COLUMN consecutive_correct_count INTEGER NOT NULL DEFAULT 0"
+)
 
 
 def _shape_prefix(signature: str | None) -> str | None:
@@ -140,6 +179,14 @@ def _shape_prefix(signature: str | None) -> str | None:
     return signature.split("-", 1)[0]
 
 
+# A default STARTING POINT, never a universal/immutable rule (Task
+# requirement 11: "questo è un DEFAULT, NON una regola universale
+# immutabile. Deve essere configurabile") — see `get_trust_threshold()`/
+# `set_trust_threshold()` below for the global-default-plus-per-
+# Supplier+Format-override configuration this constant only seeds.
+DEFAULT_TRUST_THRESHOLD = 5
+
+
 @dataclass(frozen=True)
 class SupplierFormatObservation:
     id: int
@@ -148,6 +195,7 @@ class SupplierFormatObservation:
     reviewed_count: int
     normalized_count: int
     human_count: int
+    consecutive_correct_count: int
     trust_state: str
     last_layout_signature: Optional[str]
     last_seen_at: str
@@ -197,6 +245,9 @@ class SupplierFormatTrainingStore:
         self._conn.row_factory = sqlite3.Row
         with self._conn:
             self._conn.executescript(_SCHEMA)
+            existing_columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(supplier_format_observations)")}
+            if "consecutive_correct_count" not in existing_columns:
+                self._conn.execute(_MIGRATE_ADD_CONSECUTIVE_CORRECT_COUNT)
 
     def close(self) -> None:
         self._conn.close()
@@ -212,40 +263,57 @@ class SupplierFormatTrainingStore:
         """Records one more observed document for this (Supplier, Source
         Format) pair. A brand new pair is written as `UNTRAINED`; an
         existing pair keeps whatever `trust_state` it already had —
-        *except* a `VALIDATED` pair whose layout shape just changed
-        materially, which this function demotes to `DEGRADED` on the spot
-        (Task requirement 12). This is the only trust_state transition this
+        *except* a `VALIDATED` pair that either (a) just showed a
+        materially different layout shape (Task requirement 12), or (b)
+        just produced a real HUMAN outcome (Task requirement 13: "quando...
+        iniziano errori reali") — either one demotes it to `DEGRADED` on
+        the spot. This is the only kind of trust_state transition this
         function ever makes — it never promotes anything (see module
-        docstring)."""
+        docstring); promotion is `promote_if_eligible()`'s job, and even
+        that is never called automatically by anything in this module.
+
+        Also maintains `consecutive_correct_count` — how many observations
+        in a row were NORMALIZED (Task requirement 12: "documenti
+        consecutivi richiesti corretti") — reset to 0 the moment a HUMAN
+        observation breaks the streak, incremented otherwise. This is what
+        `is_eligible_for_validation()` checks against the configured
+        threshold; it is bookkeeping only, never itself a promotion."""
 
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._conn:
             existing = self._conn.execute(
-                "SELECT trust_state, last_layout_signature FROM supplier_format_observations "
-                "WHERE supplier_name = ? AND source_format = ?",
+                "SELECT trust_state, last_layout_signature, consecutive_correct_count "
+                "FROM supplier_format_observations WHERE supplier_name = ? AND source_format = ?",
                 (supplier_name, source_format),
             ).fetchone()
 
             next_trust_state = TRUST_STATE_UNTRAINED
+            next_consecutive_correct_count = 1 if was_normalized else 0
             if existing is not None:
                 next_trust_state = existing["trust_state"]
-                if (
-                    existing["trust_state"] == TRUST_STATE_VALIDATED
-                    and signature is not None
-                    and existing["last_layout_signature"] is not None
-                    and _shape_prefix(signature) != _shape_prefix(existing["last_layout_signature"])
-                ):
-                    next_trust_state = TRUST_STATE_DEGRADED
+                next_consecutive_correct_count = (
+                    existing["consecutive_correct_count"] + 1 if was_normalized else 0
+                )
+                if existing["trust_state"] == TRUST_STATE_VALIDATED:
+                    layout_changed = (
+                        signature is not None
+                        and existing["last_layout_signature"] is not None
+                        and _shape_prefix(signature) != _shape_prefix(existing["last_layout_signature"])
+                    )
+                    real_error = not was_normalized
+                    if layout_changed or real_error:
+                        next_trust_state = TRUST_STATE_DEGRADED
 
             self._conn.execute(
                 "INSERT INTO supplier_format_observations "
                 "(supplier_name, source_format, reviewed_count, normalized_count, human_count, "
-                " trust_state, last_layout_signature, last_seen_at) "
-                "VALUES (?, ?, 1, ?, ?, ?, ?, ?) "
+                " consecutive_correct_count, trust_state, last_layout_signature, last_seen_at) "
+                "VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(supplier_name, source_format) DO UPDATE SET "
                 "reviewed_count = reviewed_count + 1, "
                 "normalized_count = normalized_count + excluded.normalized_count, "
                 "human_count = human_count + excluded.human_count, "
+                "consecutive_correct_count = excluded.consecutive_correct_count, "
                 "trust_state = excluded.trust_state, "
                 "last_layout_signature = excluded.last_layout_signature, "
                 "last_seen_at = excluded.last_seen_at",
@@ -254,6 +322,7 @@ class SupplierFormatTrainingStore:
                     source_format,
                     1 if was_normalized else 0,
                     0 if was_normalized else 1,
+                    next_consecutive_correct_count,
                     next_trust_state,
                     signature,
                     now,
@@ -281,6 +350,96 @@ class SupplierFormatTrainingStore:
                 (trust_state, supplier_name, source_format),
             )
         return self.get(supplier_name, source_format)
+
+    # -- Trust threshold configuration (Task requirement 11/14) -------------
+    #
+    # "questo è un DEFAULT, NON una regola universale immutabile. Deve
+    # essere configurabile" — a simple two-level config, no UI: a single
+    # GLOBAL default row (supplier_name/source_format both NULL, seeded to
+    # `DEFAULT_TRUST_THRESHOLD`) plus optional per-(Supplier, Format)
+    # override rows. `get_trust_threshold()` is the one function anything
+    # else in this codebase should call to find out N for a given pair.
+
+    def get_trust_threshold(self, supplier_name: str | None = None, source_format: str | None = None) -> int:
+        if supplier_name is not None and source_format is not None:
+            row = self._conn.execute(
+                "SELECT threshold_n FROM trust_thresholds WHERE supplier_name = ? AND source_format = ?",
+                (supplier_name, source_format),
+            ).fetchone()
+            if row is not None:
+                return int(row["threshold_n"])
+        row = self._conn.execute(
+            "SELECT threshold_n FROM trust_thresholds WHERE supplier_name IS NULL AND source_format IS NULL"
+        ).fetchone()
+        return int(row["threshold_n"]) if row is not None else DEFAULT_TRUST_THRESHOLD
+
+    def set_trust_threshold(
+        self, threshold_n: int, *, supplier_name: str | None = None, source_format: str | None = None
+    ) -> None:
+        """Sets the GLOBAL default (when both `supplier_name` and
+        `source_format` are omitted) or a per-(Supplier, Format) override
+        (when both are given — one without the other is rejected, since a
+        threshold is only ever meaningful for the training UNIT, not a bare
+        Supplier or a bare format). `threshold_n` must be a positive
+        integer — a default/override of 0 or less would make every pair
+        trivially "eligible", defeating the point of a threshold."""
+
+        if (supplier_name is None) != (source_format is None):
+            raise ValueError("supplier_name and source_format must be given together, or both omitted for the global default")
+        if threshold_n < 1:
+            raise ValueError(f"threshold_n must be a positive integer, got {threshold_n!r}")
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO trust_thresholds (supplier_name, source_format, threshold_n, updated_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(supplier_name, source_format) DO UPDATE SET "
+                "threshold_n = excluded.threshold_n, updated_at = excluded.updated_at",
+                (supplier_name, source_format, threshold_n, now),
+            )
+
+    # -- Promotion eligibility (Task requirement 12) -------------------------
+
+    def is_eligible_for_validation(self, supplier_name: str, source_format: str) -> tuple[bool, str]:
+        """Whether (Supplier, Format) COULD be promoted to `VALIDATED` right
+        now — never promotes anything itself (see `promote_if_eligible()`).
+        Returns `(eligible, reason)`; `reason` explains a `False` result,
+        and is a human-readable confirmation when `True`.
+
+        Deliberately conservative (Task requirement 12: "NON
+        auto-promuovere solo perché il numero N è raggiunto se ci sono
+        incongruenze"): only a pair currently in `TRAINING` — a human
+        decision in itself, see `set_trust_state()` — with `reviewed_count`
+        AND an unbroken `consecutive_correct_count` streak both meeting the
+        configured threshold is eligible. A single HUMAN outcome anywhere
+        in that streak resets it to 0 (see `record_observation()`), so a
+        format that is merely "usually" correct never becomes eligible."""
+
+        observation = self.get(supplier_name, source_format)
+        if observation is None:
+            return False, "no observations recorded yet"
+        if observation.trust_state != TRUST_STATE_TRAINING:
+            return False, f"trust_state is {observation.trust_state!r}, not TRAINING (a DEGRADED pair needs an explicit set_trust_state() back to TRAINING first)"
+        threshold = self.get_trust_threshold(supplier_name, source_format)
+        if observation.reviewed_count < threshold:
+            return False, f"reviewed_count ({observation.reviewed_count}) is below the threshold ({threshold})"
+        if observation.consecutive_correct_count < threshold:
+            return False, f"only {observation.consecutive_correct_count} consecutive correct observations so far, threshold is {threshold}"
+        return True, f"{observation.consecutive_correct_count} consecutive correct observations meets the threshold ({threshold})"
+
+    def promote_if_eligible(self, supplier_name: str, source_format: str) -> SupplierFormatObservation:
+        """The one function that actually promotes a pair to `VALIDATED` —
+        an explicit call is itself the "human confirmation / explicit
+        approval" Task requirement 12 asks for: nothing calls this
+        automatically anywhere in this codebase. Raises `ValueError` (never
+        silently no-ops) when `is_eligible_for_validation()` says no —
+        "Meglio HUMAN corretto che NORMALIZED sbagliato" applies to trust
+        promotion too."""
+
+        eligible, reason = self.is_eligible_for_validation(supplier_name, source_format)
+        if not eligible:
+            raise ValueError(f"({supplier_name!r}, {source_format!r}) is not eligible for VALIDATED: {reason}")
+        return self.set_trust_state(supplier_name, source_format, TRUST_STATE_VALIDATED)
 
     def get(self, supplier_name: str, source_format: str) -> SupplierFormatObservation | None:
         row = self._conn.execute(

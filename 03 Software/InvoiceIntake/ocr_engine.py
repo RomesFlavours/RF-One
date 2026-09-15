@@ -57,15 +57,20 @@ def extract_from_image(path: str) -> str:
     return max(candidates, key=lambda t: len(t.strip()))
 
 
-def extract_from_pdf(path: str) -> tuple[str, str]:
-    """Returns (text, method) where method is 'PDF-Text' or 'OCR'."""
+def extract_pages_from_pdf(path: str) -> tuple[list[str], str]:
+    """Same extraction as `extract_from_pdf()` below, but keeps each PDF
+    page as its own text instead of joining them — the page boundary
+    evidence `invoice_splitter.py` needs (Task "Purchased Supplier Training
+    Phase 2", §3: "page markers" as one of several generalizable split
+    signals). `extract_from_pdf()` is unchanged in behavior for every
+    existing caller — it now simply joins what this function returns."""
+
     if pdfplumber is not None:
         try:
             with pdfplumber.open(path) as pdf:
                 pages_text = [p.extract_text() or "" for p in pdf.pages]
-            combined = "\n".join(pages_text).strip()
-            if len(combined) > 40:
-                return combined, "PDF-Text"
+            if len("\n".join(pages_text).strip()) > 40:
+                return pages_text, "PDF-Text"
         except Exception:
             pass
 
@@ -76,11 +81,17 @@ def extract_from_pdf(path: str) -> tuple[str, str]:
             for img in images:
                 img = _preprocess_image(img)
                 texts.append(pytesseract.image_to_string(img, config="--psm 4"))
-            return "\n".join(texts), "OCR"
+            return texts, "OCR"
         except Exception as exc:
-            return f"(Impossibile leggere il PDF: {exc})", "OCR"
+            return [f"(Impossibile leggere il PDF: {exc})"], "OCR"
 
-    return "(Nessun motore disponibile per leggere questo PDF)", "OCR"
+    return ["(Nessun motore disponibile per leggere questo PDF)"], "OCR"
+
+
+def extract_from_pdf(path: str) -> tuple[str, str]:
+    """Returns (text, method) where method is 'PDF-Text' or 'OCR'."""
+    pages, method = extract_pages_from_pdf(path)
+    return "\n".join(pages).strip(), method
 
 
 def extract_text(path: str) -> tuple[str, str]:

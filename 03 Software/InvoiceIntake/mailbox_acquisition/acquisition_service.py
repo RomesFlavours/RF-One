@@ -8,8 +8,9 @@ mailbox (ImapClient)
         -> filter out inline email assets (logos/signatures -- attachment_filter.py)
           -> technical dedup (identity + content hash, AcquisitionStore)
             -> save bytes under uploads/ (same folder app.py's manual upload uses)
-              -> deliver_to_invoice_intake(): ocr_engine -> parser -> purchased_bridge
-                -> Purchased canonical persistence (unchanged pipeline)
+              -> deliver_to_invoice_intake(): ocr_engine -> invoice_splitter -> purchased_bridge
+                -> Purchased canonical persistence (unchanged pipeline; one or more
+                   PurchaseDocument per attachment -- see invoice_splitter.py)
 ```
 
 This module never writes `PurchaseDocument`/`PurchaseLine` directly and
@@ -23,6 +24,17 @@ document received from another channel" vs. "a genuine correction" — is
 README.md, "Duplicate handling" / "Supplier-side corrections"); this module
 only ever decides the narrower, purely technical question "have I already
 acquired this exact attachment before."
+
+**Multi-invoice batches (Task "Purchased Supplier Training — Phase 2"):**
+one attachment can now yield more than one `PurchaseDocument`
+(`purchased_bridge.save_purchase_documents_from_batch()`, driven by
+`invoice_splitter.py`). `AcquisitionStore` still records a single primary
+`purchase_document_id` per attachment (`deliver_to_invoice_intake()`
+returns the first one) — every resulting document is nonetheless fully
+persisted and traceable back to this exact attachment via its own
+`source_reference` (`"<filename>#p<range>"`). Extending the mailbox admin
+view to list every resulting document per attachment is a UI-only
+follow-up, deliberately out of scope here.
 """
 
 from __future__ import annotations
@@ -33,7 +45,6 @@ import uuid
 from dataclasses import dataclass, field
 
 import ocr_engine
-import parser as invoice_parser
 import purchased_bridge
 
 from .acquisition_store import TERMINAL_SUCCESS_STATUSES, AcquisitionStore
@@ -71,25 +82,35 @@ def redact(text: str, config: MailboxConfig) -> str:
 def deliver_to_invoice_intake(saved_path: str) -> int:
     """Runs the existing Invoice Intake pipeline against one saved
     attachment — identical to what `app.py`'s `/upload` + `/save` routes do
-    for a manually-uploaded file — and returns the resulting
-    `PurchaseDocumentId`. No second pipeline: this calls the exact same
-    `ocr_engine` / `parser` / `purchased_bridge` modules."""
+    for a manually-uploaded file, EXCEPT that a PDF now also goes through
+    `invoice_splitter.py` (Task "Purchased Supplier Training — Phase 2":
+    real acquired PDFs can bundle more than one invoice — see that
+    module's own docstring). No second pipeline: this still calls the
+    exact same `ocr_engine` / `parser` / `purchased_bridge` modules, just
+    through `purchased_bridge.save_purchase_documents_from_batch()`
+    instead of `save_purchase_document()` directly, so a non-PDF or a PDF
+    the splitter does not confidently split behaves exactly as before
+    (one document).
+
+    Returns the FIRST resulting `PurchaseDocumentId` — the one this
+    mailbox pipeline's own single-id bookkeeping (`AcquisitionStore`,
+    unchanged in Phase 2) keeps as this attachment's primary reference.
+    Every resulting document (including any additional ones from a real
+    split) is still fully and correctly persisted in the canonical
+    database regardless — see `save_purchase_documents_from_batch()`'s own
+    docstring for how each one stays traceable back to this exact source
+    file via its own `source_reference`."""
 
     ext = os.path.splitext(saved_path)[1].lower()
     if ext == ".pdf":
-        text, method = ocr_engine.extract_from_pdf(saved_path)
+        pages, method = ocr_engine.extract_pages_from_pdf(saved_path)
     else:
-        text = ocr_engine.extract_from_image(saved_path)
+        pages = [ocr_engine.extract_from_image(saved_path)]
         method = "OCR"
 
-    header = invoice_parser.parse_header(text)
-    header["acquisition_method"] = method
-    lines = invoice_parser.parse_lines(text)
-    for line in lines:
-        line["line_type"] = purchased_bridge.guess_line_type(line.get("description", ""))
-
     source_file = os.path.basename(saved_path)
-    return purchased_bridge.save_purchase_document(header, lines, source_file, raw_text=text)
+    document_ids = purchased_bridge.save_purchase_documents_from_batch(pages, source_file, method)
+    return document_ids[0]
 
 
 def _save_attachment(content: bytes, original_filename: str) -> str:
