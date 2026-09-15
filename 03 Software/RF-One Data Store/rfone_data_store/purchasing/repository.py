@@ -1191,15 +1191,39 @@ def effective_field_value(
 ) -> Any:
     """The Human-Review-effective value for one field: the latest
     correction's `corrected_value` when it actually overrides the original
-    (`correction_overrides_value()`), `original` verbatim otherwise.
-    `original` is returned unchanged when there is no override, so a caller
-    may pass either a display string (`human_review.py`) or a raw typed
-    value (a `PurchaseLine` column, e.g. `quantity`/`source_amount_minor`)
-    depending on what it needs back — only the override branch is ever a
-    `str` (a `PurchasedFieldCorrection.corrected_value`)."""
+    (`correction_overrides_value()`); otherwise whatever was ALREADY
+    effective at the moment that latest (non-overriding) record was
+    submitted — its own `original_value` snapshot — falling back to the
+    caller-supplied `original` only when no correction exists at all, or
+    when that snapshot itself is `None`.
+
+    Bug fix ("Purchased Operator Review Test on Real Invoices", found by
+    actually driving a two-step real review: correct a field, then later
+    submit a bare `CORRECT` confirmation on that SAME field). Before this
+    fix, a later non-overriding record (a `CORRECT` confirmation, or an
+    `AMBIGUOUS`/`UNREAD` left with no `corrected_value`) always fell back
+    to `original` — the RAW column value — silently discarding an earlier
+    real correction's effect the instant any later record for that field
+    carried no override of its own. `record_field_correction` always
+    snapshots the then-current effective value into `original_value`
+    (`human_review.submit_field_review()`'s own `original_value =
+    view["header_effective"][field_name]`/line equivalent), so that
+    snapshot — not the raw column — is the correct fallback: a later
+    confirmation must confirm/leave what a reviewer actually SAW and
+    accepted, never silently un-correct it.
+
+    A caller may pass either a display string (`human_review.py`) or a raw
+    typed value (a `PurchaseLine` column, e.g. `quantity`/
+    `source_amount_minor`) as `original` — only the override branch and a
+    correction's own `original_value` are ever a `str`
+    (`PurchasedFieldCorrection` columns)."""
 
     correction = latest.get((purchase_line_id, field_name))
-    return correction.corrected_value if correction_overrides_value(correction) else original
+    if correction is None:
+        return original
+    if correction_overrides_value(correction):
+        return correction.corrected_value
+    return correction.original_value if correction.original_value is not None else original
 
 
 def list_human_review_queue(session: Session, restaurant_id: int, *, limit: int = 200) -> list[m.PurchaseDocument]:

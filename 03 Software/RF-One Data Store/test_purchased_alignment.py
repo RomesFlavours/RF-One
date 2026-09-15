@@ -304,17 +304,25 @@ def main() -> int:
 
             # A later CORRECT confirmation on the SAME field is not a value
             # override (record_field_correction never stores a
-            # corrected_value for CORRECT) -- the LATEST correction still
-            # wins, and it reverts the effective value back to the original.
+            # corrected_value for CORRECT) -- but it must CONFIRM whatever
+            # was already effective (the earlier real correction, 200.00),
+            # never silently revert to the raw original (100.00). Bug fix
+            # ("Purchased Operator Review Test on Real Invoices"): before
+            # this fix, effective_field_value() always fell back to the raw
+            # column on any non-overriding record, discarding an earlier
+            # real correction the instant a later CORRECT confirmation (or
+            # an AMBIGUOUS/UNREAD left with no corrected_value) was
+            # recorded for that same field.
             repo.record_field_correction(
                 session, purchase_document_id=eff_document.id, purchase_line_id=goods_a.id,
                 field_name="line_amount", classification="CORRECT", reviewed_by="alice", original_value="200.00",
             )
             session.commit()
-            reverted = {row["raw_description"]: row for row in repo.get_purchased_lines_with_allocation(session, eff_document.id)}
+            confirmed = {row["raw_description"]: row for row in repo.get_purchased_lines_with_allocation(session, eff_document.id)}
             result.check(
-                "multiple corrections: the LATEST one wins -- a later CORRECT confirmation reverts to the original value",
-                reverted["Goods A"]["effective_amount_minor"] == 10000,
+                "multiple corrections: the LATEST one wins -- a later CORRECT confirmation CONFIRMS the "
+                "already-effective corrected value (200.00), it does not revert to the raw original (100.00)",
+                confirmed["Goods A"]["effective_amount_minor"] == 20000,
             )
 
             # Correcting the non-goods (SURCHARGE) line's own amount changes
