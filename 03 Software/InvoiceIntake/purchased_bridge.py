@@ -51,6 +51,16 @@ per-Supplier/format trust-training mechanism (`supplier_format_training.py`)
 remains a separate, purely observational foundation — nothing here reads
 it back to influence a document's own result.
 
+**Phase 1 ("Purchased Supplier+Format Training — Phase 1"):** before
+resolving/validating anything, `header` is passed through
+`supplier_format_rules.apply_supplier_specializations()` — a narrow,
+second parsing stage (generic parser -> supplier-format specialization ->
+validation) that corrects specific fields only for a Supplier+Format
+combination whose raw text carries a real, verified recognition signature
+(currently Prime Line Distributors and Costco Wholesale/direct — see that
+module). It never invents a value its own targeted pattern does not find,
+and every other Supplier's header passes through completely unchanged.
+
 Duplicate/correction handling (Purchased/README.md, "Duplicate handling" and
 "Supplier-side corrections"): before inserting, this module looks up any
 existing Purchase Document sharing the same (Supplier, Document Number)
@@ -95,6 +105,7 @@ from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.purchasing import repository as repo  # noqa: E402
 
 import parser as invoice_parser  # noqa: E402
+import supplier_format_rules  # noqa: E402
 import supplier_format_training  # noqa: E402
 
 UTC = timezone.utc
@@ -374,6 +385,15 @@ def save_purchase_document(header: dict, lines: list[dict], source_file: str, ra
     engine = create_configured_engine(url)
     session_factory = create_session_factory(engine)
 
+    # Supplier + Format specialization (Task "Purchased Supplier+Format
+    # Training — Phase 1"): a second, narrowly-scoped pass over the
+    # generic parser's own header, applied only when the raw text carries a
+    # real, verified Supplier+Format signature (see
+    # `supplier_format_rules.py`'s module docstring for which ones and
+    # why). Never touches `lines` — line-item extraction stays entirely the
+    # generic parser's concern for this phase.
+    header = supplier_format_rules.apply_supplier_specializations(raw_text, header)
+
     with session_factory() as session:
         restaurant_id = _get_or_create_default_restaurant(session)
         resolved_supplier_name = _resolve_supplier_name(session, restaurant_id, header.get("supplier_name") or "", source_file)
@@ -483,9 +503,17 @@ def save_purchase_document(header: dict, lines: list[dict], source_file: str, ra
                     total_found=document_header.get("total_amount_minor") is not None,
                     line_count=len(repository_lines),
                 )
+                # Method (OCR/PDF-Text) + CHANNEL (Direct/Instacart) together
+                # form the training unit's own "source_format" (Task
+                # requirement 9): the same Supplier arriving through a
+                # marketplace/delivery channel is never merged with its
+                # direct-acquisition format just because the Supplier
+                # identity is the same.
+                channel = supplier_format_rules.detect_channel(raw_text, source_file)
+                acquisition_method = header.get("acquisition_method") or "UNKNOWN"
                 training_store.record_observation(
                     supplier_name=supplier.name,
-                    source_format=header.get("acquisition_method") or "UNKNOWN",
+                    source_format=f"{acquisition_method}/{channel}",
                     was_normalized=validation.is_normalized,
                     signature=signature,
                 )

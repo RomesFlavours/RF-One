@@ -430,20 +430,169 @@ def test_replay_does_not_persist_anything(result: Result) -> None:
         os.environ.pop("RFONE_DATABASE_URL", None)
 
 
+_PRIME_LINE_RAW_TEXT = """PRIME LINE DISTRIBUTORS INVOICE
+IMPORTERS OF SELECTED SPECIALTY FOODS
+ROME'S FLAVOURS Number: 1107919
+Date: 06/30/20
+CASH CHECK # AMOUNT INVOICE #
+Ootters Conte
+SUBTOTAL $ 523.72
+TAX $ 0.00
+TOTAL $ 523.72
+"""
+
+# What the GENERIC parser alone actually produces for `_PRIME_LINE_RAW_TEXT`
+# (wrong document_number, from the blank "INVOICE #" stub -- see
+# `test_supplier_format_rules.py` for the same finding against real OCR
+# text) -- used here to prove `save_purchase_document()` itself applies the
+# Phase 1 specialization, not just the pure function in isolation.
+_PRIME_LINE_GENERIC_HEADER = {
+    "supplier_name": "IMPORTERS OF SELECTED SPECIALTY FOODS",
+    "document_number": "Ootters",
+    "document_type": "Invoice",
+    "issue_date": "06/30/20",
+    "acquisition_method": "OCR",
+    "currency": "USD",
+    "total_amount": "523.72",
+}
+
+
+def test_supplier_format_specialization_applied_end_to_end(result: Result) -> None:
+    """"Purchased Supplier+Format Training — Phase 1": `save_purchase_document`
+    itself (not just `supplier_format_rules.py` in isolation) must run the
+    Prime Line specialization over the generic parser's header before
+    resolving/validating it -- correcting the wrong document_number and
+    canonicalizing the supplier name -- resulting in NORMALIZED for an
+    otherwise-complete real-pattern read."""
+
+    url = create_disposable_test_database_url("purchased_bridge_specialization")
+    os.environ["RFONE_DATABASE_URL"] = url
+    try:
+        lines = [{"description": "San Benedetto Water", "quantity": "8", "unit": "case", "unit_price": "7.99", "line_amount": "523.72", "line_type": "PRODUCT"}]
+        doc_id = purchased_bridge.save_purchase_document(
+            _PRIME_LINE_GENERIC_HEADER, lines, "PL20200630125750_001.pdf", raw_text=_PRIME_LINE_RAW_TEXT
+        )
+        session = _open_session(url)
+        try:
+            document = session.get(m.PurchaseDocument, doc_id)
+            supplier = session.get(m.Supplier, document.supplier_id)
+            result.check("supplier name was canonicalized by the specialization, not left as the generic guess", supplier.name == "Prime Line Distributors")
+            result.check("document_number was corrected by the specialization, not left as the wrong generic stub value", document.document_number == "1107919")
+            result.check(
+                "a fully specialized, coherent Prime Line read is NORMALIZED",
+                purchased_bridge.get_saved_document_functional_status(doc_id) == "NORMALIZED",
+            )
+        finally:
+            session.close()
+    finally:
+        cleanup_disposable_test_database_url(url)
+        os.environ.pop("RFONE_DATABASE_URL", None)
+
+
+def test_specialization_does_not_break_duplicate_detection(result: Result) -> None:
+    """Task requirement 13 ("NON creare duplicati Purchased"): resubmitting
+    the exact same real-pattern document a second time (e.g. arriving again
+    through a different channel) must still be recognized as the same
+    Purchase Fact now that the specialization changes what document_number/
+    supplier actually get persisted."""
+
+    url = create_disposable_test_database_url("purchased_bridge_specialization_dup")
+    os.environ["RFONE_DATABASE_URL"] = url
+    try:
+        lines = [{"description": "San Benedetto Water", "quantity": "8", "unit": "case", "unit_price": "7.99", "line_amount": "523.72", "line_type": "PRODUCT"}]
+        first_id = purchased_bridge.save_purchase_document(
+            _PRIME_LINE_GENERIC_HEADER, lines, "PL20200630125750_001.pdf", raw_text=_PRIME_LINE_RAW_TEXT
+        )
+        second_id = purchased_bridge.save_purchase_document(
+            _PRIME_LINE_GENERIC_HEADER, lines, "PL20200630125750_001.pdf (resent)", raw_text=_PRIME_LINE_RAW_TEXT
+        )
+        result.check("resubmitting the same specialized document returns the same PurchaseDocumentId", first_id == second_id)
+
+        session = _open_session(url)
+        try:
+            from sqlalchemy import func, select
+
+            doc_count = session.scalar(select(func.count()).select_from(m.PurchaseDocument))
+            result.check("exactly one PurchaseDocument was persisted, not two", doc_count == 1)
+        finally:
+            session.close()
+    finally:
+        cleanup_disposable_test_database_url(url)
+        os.environ.pop("RFONE_DATABASE_URL", None)
+
+
+def test_costco_specialization_applied_end_to_end(result: Result) -> None:
+    """Same Phase 1 wiring check for Costco: Merchant-ID-only recognition
+    (no "COSTCO" wordmark in this raw text, matching the real
+    `CO2020-02-08.pdf` sample) and the EFT/Debit total, both applied by
+    `save_purchase_document` itself."""
+
+    costco_raw_text = (
+        "Altamonte Springs #183\n"
+        "SUBTOTAL 364.36\nTAX 4.06\nwoe TOTAL PSO 42 |\n"
+        "Tran ID#: 063900003938....\nMerchant ID: 990183\n"
+        "EFT/Debit 368.42\nCHANGE 0.00\n02/08/2020 11:45\n"
+    )
+    generic_header = {
+        "supplier_name": "Altamonte Springs #183",
+        "document_number": "",
+        "document_type": "Invoice",
+        "issue_date": "02/08/2020",
+        "acquisition_method": "OCR",
+        "currency": "USD",
+        "total_amount": "0.00",
+    }
+    url = create_disposable_test_database_url("purchased_bridge_costco_specialization")
+    os.environ["RFONE_DATABASE_URL"] = url
+    try:
+        doc_id = purchased_bridge.save_purchase_document(generic_header, [], "CO2020-02-08.pdf", raw_text=costco_raw_text)
+        session = _open_session(url)
+        try:
+            document = session.get(m.PurchaseDocument, doc_id)
+            supplier = session.get(m.Supplier, document.supplier_id)
+            result.check("Costco recognized via Merchant ID even without the wordmark", supplier.name == "Costco Wholesale")
+            result.check("document_number taken from Tran ID#, not left blank", document.document_number == "063900003938")
+            result.check("total_amount taken from EFT/Debit, not the garbled/zero-read TOTAL line", document.total_amount_minor == 36842)
+        finally:
+            session.close()
+    finally:
+        cleanup_disposable_test_database_url(url)
+        os.environ.pop("RFONE_DATABASE_URL", None)
+
+
 def main() -> int:
+    # `save_purchase_document()` always writes to
+    # `supplier_format_training.py`'s own observation store as a side
+    # effect; every test in this file that calls it must never pollute the
+    # real, persistent training data with synthetic test suppliers (Task
+    # "Purchased Supplier+Format Training — Phase 1" finding — see
+    # `supplier_format_training.py`'s `_ENV_DB_PATH_OVERRIDE`).
+    import shutil
+    import tempfile
+
+    tmp_dir = tempfile.mkdtemp(prefix="supplier_format_training_isolation_")
+    os.environ["SUPPLIER_FORMAT_TRAINING_DB_PATH"] = os.path.join(tmp_dir, "isolated_training.db")
+
     result = Result()
-    for test_fn in (
-        test_static_no_purchasing_decision_dependency,
-        test_standard_invoice_and_allocation,
-        test_uncertain_read_is_human,
-        test_duplicate_returns_same_fact,
-        test_conflicting_identity_is_human,
-        test_credit_memo_is_compensating_fact,
-        test_single_scope_per_invoice,
-        test_no_purchasing_side_effects_and_purchasing_can_consume,
-        test_replay_does_not_persist_anything,
-    ):
-        test_fn(result)
+    try:
+        for test_fn in (
+            test_static_no_purchasing_decision_dependency,
+            test_standard_invoice_and_allocation,
+            test_uncertain_read_is_human,
+            test_duplicate_returns_same_fact,
+            test_conflicting_identity_is_human,
+            test_credit_memo_is_compensating_fact,
+            test_single_scope_per_invoice,
+            test_no_purchasing_side_effects_and_purchasing_can_consume,
+            test_replay_does_not_persist_anything,
+            test_supplier_format_specialization_applied_end_to_end,
+            test_specialization_does_not_break_duplicate_detection,
+            test_costco_specialization_applied_end_to_end,
+        ):
+            test_fn(result)
+    finally:
+        os.environ.pop("SUPPLIER_FORMAT_TRAINING_DB_PATH", None)
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
     total = len(result.passed) + len(result.failed)
     if not result.failed:

@@ -847,6 +847,12 @@ def main() -> int:
     import shutil
 
     tmp_dir = tempfile.mkdtemp(prefix="mailbox_acquisition_test_")
+    # `deliver_to_invoice_intake` -> `purchased_bridge.save_purchase_document()`
+    # always writes to `supplier_format_training.py`'s own observation
+    # store as a side effect -- isolate it from the real, persistent
+    # training data, same as `test_purchased_bridge.py` (Task "Purchased
+    # Supplier+Format Training — Phase 1" finding).
+    os.environ["SUPPLIER_FORMAT_TRAINING_DB_PATH"] = os.path.join(tmp_dir, "isolated_training.db")
     result = Result()
     try:
         for test_fn in (
@@ -874,6 +880,7 @@ def main() -> int:
         ):
             test_fn(result, tmp_dir)
     finally:
+        os.environ.pop("SUPPLIER_FORMAT_TRAINING_DB_PATH", None)
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
     total = len(result.passed) + len(result.failed)

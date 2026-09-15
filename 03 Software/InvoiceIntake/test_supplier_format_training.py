@@ -19,8 +19,14 @@ import uuid
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from supplier_format_training import (  # noqa: E402
+    FIELD_REVIEW_AMBIGUOUS,
+    FIELD_REVIEW_CORRECT,
+    FIELD_REVIEW_INCORRECT,
     SupplierFormatTrainingStore,
+    TRUST_STATE_DEGRADED,
+    TRUST_STATE_TRAINING,
     TRUST_STATE_UNTRAINED,
+    TRUST_STATE_VALIDATED,
     layout_signature,
 )
 
@@ -106,6 +112,176 @@ def test_never_auto_promotes(result: Result, tmp_dir: str) -> None:
         store.close()
 
 
+def test_set_trust_state_is_explicit_never_automatic(result: Result, tmp_dir: str) -> None:
+    """Task requirements 10/11: promotion is a human/Product-Owner decision
+    (`set_trust_state()`), never something `record_observation()` does on
+    its own, and no universal N/threshold is enforced by this module --
+    `set_trust_state()` accepts the caller's decision as-is."""
+
+    store = _make_store(tmp_dir)
+    try:
+        store.record_observation(supplier_name="Prime Line Distributors", source_format="OCR/Direct", was_normalized=True)
+        promoted = store.set_trust_state("Prime Line Distributors", "OCR/Direct", TRUST_STATE_TRAINING)
+        result.check("set_trust_state moves a pair to TRAINING when explicitly told to", promoted.trust_state == TRUST_STATE_TRAINING)
+
+        promoted = store.set_trust_state("Prime Line Distributors", "OCR/Direct", TRUST_STATE_VALIDATED)
+        result.check("set_trust_state moves a pair to VALIDATED when explicitly told to", promoted.trust_state == TRUST_STATE_VALIDATED)
+
+        raised = False
+        try:
+            store.set_trust_state("Prime Line Distributors", "OCR/Direct", "NOT_A_REAL_STATE")
+        except ValueError:
+            raised = True
+        result.check("set_trust_state rejects an unknown trust_state", raised)
+
+        raised = False
+        try:
+            store.set_trust_state("Never Observed Supplier", "OCR/Direct", TRUST_STATE_TRAINING)
+        except ValueError:
+            raised = True
+        result.check("set_trust_state rejects a (Supplier, Format) pair with no observations yet", raised)
+    finally:
+        store.close()
+
+
+def test_record_observation_never_promotes_on_its_own(result: Result, tmp_dir: str) -> None:
+    store = _make_store(tmp_dir)
+    try:
+        store.record_observation(supplier_name="Costco Wholesale", source_format="OCR/Direct", was_normalized=True)
+        for _ in range(10):
+            store.record_observation(supplier_name="Costco Wholesale", source_format="OCR/Direct", was_normalized=True, signature="S1D1N1T1-L3")
+        obs = store.get("Costco Wholesale", "OCR/Direct")
+        result.check("many consecutive NORMALIZED observations alone never promote past UNTRAINED", obs.trust_state == TRUST_STATE_UNTRAINED)
+    finally:
+        store.close()
+
+
+def test_validated_pair_demoted_on_layout_change(result: Result, tmp_dir: str) -> None:
+    """Task requirement 12: a VALIDATED pair whose layout shape changes
+    materially is demoted to DEGRADED automatically -- the one trust_state
+    transition this module makes on its own."""
+
+    store = _make_store(tmp_dir)
+    try:
+        store.record_observation(supplier_name="Costco Wholesale", source_format="OCR/Direct", was_normalized=True, signature="S1D1N1T1-L20")
+        store.set_trust_state("Costco Wholesale", "OCR/Direct", TRUST_STATE_VALIDATED)
+
+        # A materially different shape: the date is no longer being found at all.
+        obs = store.record_observation(supplier_name="Costco Wholesale", source_format="OCR/Direct", was_normalized=False, signature="S1D0N1T1-L18")
+        result.check("a VALIDATED pair is demoted to DEGRADED when its layout shape changes", obs.trust_state == TRUST_STATE_DEGRADED)
+    finally:
+        store.close()
+
+
+def test_validated_pair_not_demoted_by_line_count_alone(result: Result, tmp_dir: str) -> None:
+    """A bigger or smaller invoice (different `line_count`) is normal
+    variation, not a layout change -- only the field-presence shape matters
+    (Task requirement 12's own "materially diverso", not any difference)."""
+
+    store = _make_store(tmp_dir)
+    try:
+        store.record_observation(supplier_name="Prime Line Distributors", source_format="PDF-Text/Direct", was_normalized=True, signature="S1D1N1T1-L3")
+        store.set_trust_state("Prime Line Distributors", "PDF-Text/Direct", TRUST_STATE_VALIDATED)
+
+        obs = store.record_observation(supplier_name="Prime Line Distributors", source_format="PDF-Text/Direct", was_normalized=True, signature="S1D1N1T1-L9")
+        result.check("same field-presence shape, different line_count -> stays VALIDATED", obs.trust_state == TRUST_STATE_VALIDATED)
+    finally:
+        store.close()
+
+
+def test_trust_state_independent_of_normalized_human_counts(result: Result, tmp_dir: str) -> None:
+    """Task requirement 5/Purchased/README.md distinction: SOURCE FORMAT
+    trust (`trust_state`) and per-document NORMALIZED/HUMAN outcomes are
+    tracked side by side but are never the same thing -- a HUMAN-heavy
+    stretch of observations must not, by itself, change trust_state."""
+
+    store = _make_store(tmp_dir)
+    try:
+        store.record_observation(supplier_name="Ben E. Keith Foods", source_format="PDF-Text/Direct", was_normalized=True)
+        store.set_trust_state("Ben E. Keith Foods", "PDF-Text/Direct", TRUST_STATE_TRAINING)
+        for _ in range(5):
+            store.record_observation(supplier_name="Ben E. Keith Foods", source_format="PDF-Text/Direct", was_normalized=False)
+        obs = store.get("Ben E. Keith Foods", "PDF-Text/Direct")
+        result.check("human_count reflects the HUMAN-heavy stretch", obs.human_count == 5)
+        result.check("trust_state (TRAINING) is untouched by the HUMAN outcomes themselves", obs.trust_state == TRUST_STATE_TRAINING)
+    finally:
+        store.close()
+
+
+def test_instacart_and_direct_are_distinct_training_units(result: Result, tmp_dir: str) -> None:
+    """Task requirement 9: Costco direct != Costco via Instacart."""
+
+    store = _make_store(tmp_dir)
+    try:
+        store.record_observation(supplier_name="Costco Wholesale", source_format="OCR/Direct", was_normalized=True)
+        store.record_observation(supplier_name="Costco Wholesale", source_format="OCR/Instacart", was_normalized=False)
+        result.check(
+            "(Costco, OCR/Direct) and (Costco, OCR/Instacart) are distinct units",
+            store.get("Costco Wholesale", "OCR/Direct").reviewed_count == 1 and store.get("Costco Wholesale", "OCR/Instacart").reviewed_count == 1,
+        )
+        result.check(
+            "they are not merged just because the Supplier is the same",
+            store.get("Costco Wholesale", "OCR/Direct").normalized_count == 1 and store.get("Costco Wholesale", "OCR/Instacart").human_count == 1,
+        )
+    finally:
+        store.close()
+
+
+def test_field_review_recorded_and_summarized(result: Result, tmp_dir: str) -> None:
+    """Task requirement 5 (Human Review Model): field-level classification
+    against the real document, never a silent correction."""
+
+    store = _make_store(tmp_dir)
+    try:
+        store.record_field_review(
+            supplier_name="Prime Line Distributors",
+            source_format="OCR/Direct",
+            document_reference="PL20200630125750_001.pdf",
+            field_name="total",
+            classification=FIELD_REVIEW_CORRECT,
+            extracted_value="523.72",
+            expected_value="523.72",
+        )
+        store.record_field_review(
+            supplier_name="Prime Line Distributors",
+            source_format="OCR/Direct",
+            document_reference="PL20200602113022_001.pdf",
+            field_name="total",
+            classification=FIELD_REVIEW_INCORRECT,
+            extracted_value="8.49",
+            expected_value="468.47",
+        )
+        reviews = store.list_field_reviews(supplier_name="Prime Line Distributors")
+        result.check("both field reviews are recorded", len(reviews) == 2)
+        result.check("classification is stored as given, never auto-corrected", {r.classification for r in reviews} == {FIELD_REVIEW_CORRECT, FIELD_REVIEW_INCORRECT})
+
+        summaries = {(s.supplier_name, s.source_format, s.field_name): s.counts for s in store.summarize_field_reviews()}
+        counts = summaries[("Prime Line Distributors", "OCR/Direct", "total")]
+        result.check("summary counts CORRECT and INCORRECT for this (Supplier, Format, field)", counts[FIELD_REVIEW_CORRECT] == 1 and counts[FIELD_REVIEW_INCORRECT] == 1)
+        result.check("summary always reports every classification bucket, even at 0", counts[FIELD_REVIEW_AMBIGUOUS] == 0)
+    finally:
+        store.close()
+
+
+def test_field_review_rejects_unknown_classification(result: Result, tmp_dir: str) -> None:
+    store = _make_store(tmp_dir)
+    try:
+        raised = False
+        try:
+            store.record_field_review(
+                supplier_name="Costco Wholesale",
+                source_format="OCR/Direct",
+                document_reference="CO2020-02-11.pdf",
+                field_name="total",
+                classification="LOOKS_FINE",  # not a real classification
+            )
+        except ValueError:
+            raised = True
+        result.check("an unknown field-review classification is rejected, not silently accepted", raised)
+    finally:
+        store.close()
+
+
 def main() -> int:
     tmp_dir = tempfile.mkdtemp(prefix="supplier_format_training_test_")
     result = Result()
@@ -115,6 +291,14 @@ def main() -> int:
             test_observations_accumulate_per_supplier_and_format,
             test_supplier_and_format_are_a_distinct_unit,
             test_never_auto_promotes,
+            test_set_trust_state_is_explicit_never_automatic,
+            test_record_observation_never_promotes_on_its_own,
+            test_validated_pair_demoted_on_layout_change,
+            test_validated_pair_not_demoted_by_line_count_alone,
+            test_trust_state_independent_of_normalized_human_counts,
+            test_instacart_and_direct_are_distinct_training_units,
+            test_field_review_recorded_and_summarized,
+            test_field_review_rejects_unknown_classification,
         ):
             test_fn(result, tmp_dir)
         test_layout_signature_is_a_coarse_shape_only(result)
