@@ -77,7 +77,19 @@ class ArubaImapClient:
             raise ImapClientError("IMAP UID SEARCH failed")
         if not data or not data[0]:
             return []
-        return [uid.decode() for uid in data[0].split()]
+        uids = [uid.decode() for uid in data[0].split()]
+
+        if since_uid is not None:
+            # Observed against real Aruba IMAP (RF-One smoke test): a
+            # "UID N:*" search where N exceeds every existing UID does not
+            # reliably return an empty result -- the server returns the
+            # highest existing UID instead (a known ambiguity in how "*" in
+            # a UID range is resolved, not unique to Aruba). Filtering
+            # client-side guarantees this method's own contract ("since"
+            # is exclusive) regardless of server-specific interpretation.
+            uids = [uid for uid in uids if int(uid) > int(since_uid)]
+
+        return uids
 
     def fetch_message(self, mailbox: str, uid: str) -> RawEmailMessage:
         conn = self._connect()
