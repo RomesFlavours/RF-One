@@ -32,13 +32,24 @@ document or a line looks unreliable — the same mechanism the repository
 already used for an unclassified Supplier Product. The actual functional
 state is always derived on demand from these entries
 (`repository.get_document_functional_status`/`get_line_functional_status`),
-never stored as its own column. The specific heuristic here (OCR/photo
-acquisition defaults to HUMAN; a fully-parsed digital-PDF-text header
-defaults to NORMALIZED) is InvoiceIntake's own provisional rule for this
-prototype's parser — not a universal threshold; Purchased/README.md's
-"Source/format validation and training" explicitly leaves the real
-per-Supplier/format training criteria (N, accuracy threshold) as a future,
-configurable concern.
+never stored as its own column.
+
+Ownership realignment ("Purchased Invoice Intake — Improve Generic Parser
+and Prepare Supplier Format Training"): the decision is now based
+**entirely on the completeness/coherence of the extracted fields** —
+supplier recognized, date recognized, total recognized, no conflicting
+totals, line amounts (when any were extracted) arithmetically summing to
+the total. *How* the text was acquired (OCR vs. a digital PDF's
+embedded text vs., in the future, a trusted API/EDI feed) is deliberately
+NOT a factor any more — "the document went through OCR" never by itself
+implies HUMAN, and never by itself implies NORMALIZED either (Purchased/
+README.md, "Source/format validation and training": SOURCE FORMAT
+reliability and ITEM MAPPING/field-extraction reliability are two
+different questions, and this module only ever answers the second one for
+a single document). See `_validate_extracted_fields()` below. The real
+per-Supplier/format trust-training mechanism (`supplier_format_training.py`)
+remains a separate, purely observational foundation — nothing here reads
+it back to influence a document's own result.
 
 Duplicate/correction handling (Purchased/README.md, "Duplicate handling" and
 "Supplier-side corrections"): before inserting, this module looks up any
@@ -65,6 +76,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
@@ -82,9 +94,23 @@ from rfone_data_store.database import (  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.purchasing import repository as repo  # noqa: E402
 
+import parser as invoice_parser  # noqa: E402
+import supplier_format_training  # noqa: E402
+
 UTC = timezone.utc
 
-_DATE_FORMATS = ("%m/%d/%Y", "%d/%m/%Y", "%m-%d-%Y", "%d-%m-%Y", "%Y-%m-%d")
+# 4-digit-year formats first, then 2-digit-year (Task requirement 2: "MM/DD/YY").
+# %y follows Python's own POSIX-derived rule (00-68 -> 2000-2068, 69-99 ->
+# 1969-1999) -- correct for this business's real invoice date range.
+_DATE_FORMATS = (
+    "%m/%d/%Y", "%d/%m/%Y", "%m-%d-%Y", "%d-%m-%Y", "%Y-%m-%d",
+    "%m/%d/%y", "%d/%m/%y", "%m-%d-%y", "%d-%m-%y",
+)
+# A parsed date outside this window is treated as unparseable, not silently
+# accepted -- catches an OCR-garbled year (e.g. "2620" misread from "2020")
+# without guessing what the real year should have been ("NON introdurre
+# inferenze arbitrarie" -- Task requirement 2, "se una data è ambigua -> HUMAN").
+_PLAUSIBLE_YEAR_MIN = 2000
 
 _SURCHARGE_KEYWORDS = ("surcharge", "delivery fee", "fuel", "service fee", "environmental fee")
 _DISCOUNT_KEYWORDS = ("discount", "credit", "rebate", "bonus")
@@ -114,12 +140,16 @@ def _parse_date(raw: str | None) -> datetime | None:
     if not raw:
         return None
     raw = raw.strip()
+    now_year = datetime.now(UTC).year
     for fmt in _DATE_FORMATS:
         try:
-            return datetime.strptime(raw, fmt).replace(tzinfo=UTC)
+            parsed = datetime.strptime(raw, fmt).replace(tzinfo=UTC)
         except ValueError:
             continue
-    return None  # unparsed -> Unknown, never guessed
+        if not (_PLAUSIBLE_YEAR_MIN <= parsed.year <= now_year + 1):
+            continue  # implausible year (e.g. an OCR-garbled digit) -- try another format, or give up
+        return parsed
+    return None  # unparsed/implausible -> Unknown, never guessed
 
 
 def _parse_money_minor(raw: str | None) -> int | None:
@@ -174,23 +204,119 @@ def _get_or_create_default_restaurant(session) -> int:
     return placeholder.id
 
 
-def _looks_reliably_read(header: dict, document_header: dict) -> bool:
-    """InvoiceIntake's own provisional NORMALIZED/HUMAN heuristic (see module
-    docstring): a digital-PDF-text extraction with every key header field
-    successfully parsed is NORMALIZED; a photo/OCR-sourced document, or one
-    missing a key field, is HUMAN. This directly operationalizes this
-    prototype's own documented reality (README.md: digital PDF text reads
-    "almost perfectly"; phone photos "read only partially and require manual
-    corrections") — it is not the future per-Supplier/format trust-training
-    mechanism Purchased/README.md leaves as an open, configurable concern."""
+def _resolve_supplier_name(session, restaurant_id: int, candidate: str, source_file: str | None) -> str | None:
+    """Best-effort Supplier NAME resolution (Task requirement 5): prefers the
+    document's own header text (`candidate`, already extracted by
+    `parser.guess_supplier`), matched against Suppliers already known for
+    this restaurant so the same real-world supplier is not fragmented into
+    near-duplicate rows by a slightly different OCR read each time (e.g.
+    "COSTCO WHOLESALE" one time, "Costco Wholesale #123" another). The
+    source filename is consulted only as a SECONDARY signal, and only when
+    the document's own text produced nothing plausible — never as the
+    primary source of identity, and never to invent a Supplier that is not
+    already known (Task: "NON inventare supplier identity").
 
-    if (header.get("acquisition_method") or "").upper() == "OCR":
-        return False
-    return bool(
-        header.get("supplier_name")
-        and document_header.get("issue_date") is not None
-        and document_header.get("total_amount_minor") is not None
-    )
+    Returns `None` when nothing plausible could be resolved; the caller
+    falls back to "Unknown Supplier" (unchanged from before this task) and
+    the missing-supplier field counts against NORMALIZED in
+    `_validate_extracted_fields()`.
+    """
+
+    from sqlalchemy import select
+
+    # Only ever match against ALREADY-plausible known Suppliers -- a stray
+    # "Unknown Supplier" or a short garbled name recorded before this task
+    # (e.g. a bare "I") must never be propagated forward as if it were a
+    # legitimate alias target, and a very short known name (<=3 chars) is
+    # excluded from substring matching entirely: a 1-3 character string is
+    # too likely to appear incidentally inside unrelated text/filenames to
+    # be trustworthy evidence of identity either way.
+    known_suppliers = [
+        supplier
+        for supplier in session.scalars(select(m.Supplier).where(m.Supplier.restaurant_id == restaurant_id)).all()
+        if invoice_parser.looks_like_plausible_name(supplier.name) and len(supplier.name.strip()) > 3
+    ]
+
+    candidate_plausible = invoice_parser.looks_like_plausible_name(candidate or "")
+    if candidate_plausible:
+        lowered_candidate = candidate.lower()
+        for supplier in known_suppliers:
+            lowered_known = supplier.name.lower()
+            if lowered_known in lowered_candidate or lowered_candidate in lowered_known:
+                return supplier.name  # reuse the canonical, already-known spelling
+        return candidate  # a plausible new name the document itself states
+
+    # The document's own text produced nothing plausible -- fall back to
+    # checking whether a KNOWN Supplier's name appears in the source
+    # filename (secondary evidence only; never used to fabricate a brand
+    # new identity that isn't already on file).
+    if source_file:
+        lowered_filename = source_file.lower()
+        for supplier in known_suppliers:
+            if supplier.name.lower() in lowered_filename:
+                return supplier.name
+
+    return None
+
+
+@dataclass
+class FieldValidationResult:
+    is_normalized: bool
+    reasons: list[str]
+
+
+def _check_arithmetic_coherence(repository_lines: list[dict], total_amount_minor: int | None) -> bool | None:
+    """True/False when checkable, `None` when not applicable (Task
+    requirement 7, "arithmetic coherent where possible"). Not applicable
+    when there is no total to check against, or no PRODUCT line carried a
+    parsed amount at all (an empty/未-extracted line list must never count
+    against a document — that is a known, separate line-parsing gap, not a
+    coherence failure)."""
+
+    if total_amount_minor is None:
+        return None
+    line_amounts = [line["source_amount_minor"] for line in repository_lines if line.get("source_amount_minor") is not None]
+    if not line_amounts:
+        return None
+    lines_sum = sum(line_amounts)
+    # Tolerance accounts for tax/fees/allocation not itemized as their own
+    # PRODUCT line amount -- 5%, or at least $1.00 for small documents.
+    tolerance = max(100, abs(total_amount_minor) // 20)
+    return abs(lines_sum - total_amount_minor) <= tolerance
+
+
+def _validate_extracted_fields(
+    resolved_supplier_name: str | None, document_header: dict, repository_lines: list[dict], raw_text: str
+) -> FieldValidationResult:
+    """Replaces the old OCR-implies-HUMAN rule (Task requirement 6, "OCR ≠
+    HUMAN automatico"): the decision depends only on the completeness and
+    internal coherence of what was actually extracted, never on *how* the
+    text was acquired. Deliberately simple, concrete checks (Task
+    requirement 7, "NON creare un confidence score complesso") — every
+    unmet check is recorded as its own plain-language reason, both for the
+    Validation Log message and for this task's replay report."""
+
+    reasons: list[str] = []
+
+    if not resolved_supplier_name or not invoice_parser.looks_like_plausible_name(resolved_supplier_name):
+        reasons.append("supplier not reliably recognized")
+    if document_header.get("issue_date") is None:
+        reasons.append("issue date not recognized (missing, unparseable, or an implausible year)")
+    # A $0.00 read is treated the same as "not recognized" -- almost never a
+    # genuine invoice total, far more often a mis-extraction (e.g. a
+    # trailing "0.00" balance/change line mistaken for the total). Better a
+    # false HUMAN here than a false NORMALIZED on a fabricated-looking zero
+    # (Task requirement 11, "Meglio HUMAN corretto che NORMALIZED sbagliato").
+    if document_header.get("total_amount_minor") is None or document_header.get("total_amount_minor") == 0:
+        reasons.append("total amount not recognized (missing or an implausible $0.00 read)")
+    if invoice_parser.has_conflicting_totals(raw_text):
+        reasons.append("multiple conflicting total-like amounts found in the source text")
+
+    arithmetic_ok = _check_arithmetic_coherence(repository_lines, document_header.get("total_amount_minor"))
+    if arithmetic_ok is False:
+        reasons.append("line amounts do not add up to the stated total")
+
+    return FieldValidationResult(is_normalized=not reasons, reasons=reasons)
 
 
 def _record_conflict_or_correction(
@@ -224,7 +350,7 @@ def _record_conflict_or_correction(
         )
 
 
-def save_purchase_document(header: dict, lines: list[dict], source_file: str) -> int:
+def save_purchase_document(header: dict, lines: list[dict], source_file: str, raw_text: str = "") -> int:
     """Maps InvoiceIntake's reviewed header/lines onto the canonical
     Purchased Purchase Fact and persists them. Returns the resulting
     `PurchaseDocumentId` — either a newly inserted document, or a pre-existing
@@ -236,6 +362,11 @@ def save_purchase_document(header: dict, lines: list[dict], source_file: str) ->
     currency, total_amount.
     `lines` items: description, quantity, unit, unit_price, line_amount,
     line_type (added by the review form; defaults to PRODUCT if absent).
+    `raw_text` is optional — the original OCR/extracted text, when the
+    caller still has it (e.g. `mailbox_acquisition`'s direct pipeline call;
+    `app.py`'s own manual-review form-post does not carry it across the
+    redirect, so it is omitted there). Used only for the conflicting-totals
+    check (`_validate_extracted_fields`) — never persisted, never required.
     """
 
     url = get_database_url()
@@ -245,7 +376,8 @@ def save_purchase_document(header: dict, lines: list[dict], source_file: str) ->
 
     with session_factory() as session:
         restaurant_id = _get_or_create_default_restaurant(session)
-        supplier_name = header.get("supplier_name") or "Unknown Supplier"
+        resolved_supplier_name = _resolve_supplier_name(session, restaurant_id, header.get("supplier_name") or "", source_file)
+        supplier_name = resolved_supplier_name or "Unknown Supplier"
         supplier = repo.get_or_create_supplier(session, restaurant_id, supplier_name)
 
         document_type = header.get("document_type") or "Invoice"
@@ -325,17 +457,43 @@ def save_purchase_document(header: dict, lines: list[dict], source_file: str) ->
         session.commit()
 
         # --- Functional state (Purchased/README.md, "NORMALIZED / HUMAN") ---
-        if not _looks_reliably_read(header, document_header):
+        # Field completeness/coherence only -- acquisition method (OCR vs.
+        # digital text) is never a factor (Task requirement 6, "OCR ≠ HUMAN
+        # automatico"; see _validate_extracted_fields()'s own docstring).
+        validation = _validate_extracted_fields(resolved_supplier_name, document_header, repository_lines, raw_text)
+        if not validation.is_normalized:
             repo.add_validation_log_entry(
                 session,
                 purchase_document_id=document.id,
                 severity="WARNING",
-                message=(
-                    "Document read via OCR and/or missing a key header field "
-                    "(supplier, issue date, or total) — not reliable enough to trust automatically."
-                ),
-                suggested_action="Verify supplier, issue date and total against the original document.",
+                message="Not reliable enough to trust automatically: " + "; ".join(validation.reasons) + ".",
+                suggested_action="Verify the listed field(s) against the original document.",
             )
+
+        # --- Supplier + Source Format training foundation (observation only) ---
+        # Never reads its own history back to influence this document's
+        # result -- see supplier_format_training.py's module docstring.
+        try:
+            training_store = supplier_format_training.SupplierFormatTrainingStore()
+            try:
+                signature = supplier_format_training.layout_signature(
+                    supplier_found=bool(resolved_supplier_name),
+                    date_found=document_header.get("issue_date") is not None,
+                    number_found=bool(document_header.get("document_number")),
+                    total_found=document_header.get("total_amount_minor") is not None,
+                    line_count=len(repository_lines),
+                )
+                training_store.record_observation(
+                    supplier_name=supplier.name,
+                    source_format=header.get("acquisition_method") or "UNKNOWN",
+                    was_normalized=validation.is_normalized,
+                    signature=signature,
+                )
+            finally:
+                training_store.close()
+        except Exception:  # noqa: BLE001 — a foundation/observation side effect must never block the canonical save
+            pass
+
         ordered_lines = sorted(document.lines, key=lambda line: line.id)
         for persisted_line, was_unreliable in zip(ordered_lines, unreliable_line_flags):
             if was_unreliable:

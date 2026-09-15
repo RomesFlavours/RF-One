@@ -89,7 +89,7 @@ def deliver_to_invoice_intake(saved_path: str) -> int:
         line["line_type"] = purchased_bridge.guess_line_type(line.get("description", ""))
 
     source_file = os.path.basename(saved_path)
-    return purchased_bridge.save_purchase_document(header, lines, source_file)
+    return purchased_bridge.save_purchase_document(header, lines, source_file, raw_text=text)
 
 
 def _save_attachment(content: bytes, original_filename: str) -> str:

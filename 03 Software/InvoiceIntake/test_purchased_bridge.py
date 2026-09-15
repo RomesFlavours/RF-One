@@ -155,16 +155,39 @@ def test_standard_invoice_and_allocation(result: Result) -> None:
 
 
 def test_uncertain_read_is_human(result: Result) -> None:
-    """Scenario 6: an OCR-sourced document, and a PRODUCT line with no
-    description, both surface as HUMAN."""
+    """Scenario 6/9/10 ("Improve Generic Parser..."): OCR is no longer, by
+    itself, a reason for HUMAN — an OCR-sourced document with complete,
+    coherent fields is NORMALIZED exactly like a digital-text one; a
+    PRODUCT line with no description still surfaces as HUMAN regardless of
+    acquisition method."""
 
     url = create_disposable_test_database_url("purchased_bridge_human")
     os.environ["RFONE_DATABASE_URL"] = url
     try:
-        ocr_header = dict(_DIGITAL_HEADER, document_number="INV-2001", acquisition_method="OCR")
-        doc_id = purchased_bridge.save_purchase_document(ocr_header, _TWO_GOODS_LINES, "photo.jpg")
+        # _DIGITAL_HEADER's own total_amount (440.00) already matches
+        # _TWO_GOODS_LINES' sum including its Delivery Fee surcharge (100 +
+        # 300 + 40) -- arithmetically coherent -- so acquisition_method=
+        # "OCR" is the only thing distinguishing this from a fully-
+        # NORMALIZED digital read.
+        ocr_header_coherent = dict(_DIGITAL_HEADER, document_number="INV-2000", acquisition_method="OCR")
+        doc_id_coherent = purchased_bridge.save_purchase_document(ocr_header_coherent, _TWO_GOODS_LINES, "photo-good.jpg")
         result.check(
-            "an OCR/photo-sourced document is HUMAN by default (this prototype's own documented reliability gap)",
+            "an OCR-sourced document with complete, coherent fields is NORMALIZED, not HUMAN merely for being OCR",
+            purchased_bridge.get_saved_document_functional_status(doc_id_coherent) == "NORMALIZED",
+        )
+
+        # Same acquisition method, but a garbled/implausible supplier name
+        # and no recognizable date -- a genuinely poor extraction, HUMAN.
+        ocr_header_poor = dict(
+            _DIGITAL_HEADER,
+            document_number="INV-2001",
+            acquisition_method="OCR",
+            supplier_name="lilllilt]lilt ililililflIilil]t",
+            issue_date="",
+        )
+        doc_id = purchased_bridge.save_purchase_document(ocr_header_poor, _TWO_GOODS_LINES, "photo.jpg")
+        result.check(
+            "an OCR-sourced document with a poor/garbled extraction is still HUMAN",
             purchased_bridge.get_saved_document_functional_status(doc_id) == "HUMAN",
         )
 
@@ -356,6 +379,57 @@ def test_no_purchasing_side_effects_and_purchasing_can_consume(result: Result) -
         os.environ.pop("RFONE_DATABASE_URL", None)
 
 
+def test_replay_does_not_persist_anything(result: Result) -> None:
+    """Scenario 12 ("Improve Generic Parser..."): re-running OCR/parser and
+    the field-validation/supplier-resolution logic against an
+    already-acquired document (a "replay", as §10 of that task does across
+    all 10 real documents) must never create a new PurchaseDocument or a
+    new Supplier — these are read-only analysis functions, not a second
+    write path."""
+
+    url = create_disposable_test_database_url("purchased_bridge_replay")
+    os.environ["RFONE_DATABASE_URL"] = url
+    try:
+        # A real document already saved once (the "original" acquisition).
+        doc_id = purchased_bridge.save_purchase_document(
+            dict(_DIGITAL_HEADER, document_number="INV-8001"), _TWO_GOODS_LINES, "invoice-8001.pdf"
+        )
+
+        session = _open_session(url)
+        try:
+            from sqlalchemy import func, select
+
+            doc_count_before = session.scalar(select(func.count()).select_from(m.PurchaseDocument))
+            supplier_count_before = session.scalar(select(func.count()).select_from(m.Supplier))
+
+            # "Replay": re-run the read-only field-validation/supplier-
+            # resolution functions against the same extracted text, exactly
+            # as a reprocessing/report pass would -- never calling
+            # save_purchase_document() again.
+            restaurant_id = purchased_bridge._get_or_create_default_restaurant(session)
+            resolved_supplier = purchased_bridge._resolve_supplier_name(
+                session, restaurant_id, _DIGITAL_HEADER["supplier_name"], "invoice-8001.pdf"
+            )
+            document_header = {
+                "issue_date": purchased_bridge._parse_date(_DIGITAL_HEADER["issue_date"]),
+                "total_amount_minor": purchased_bridge._parse_money_minor(_DIGITAL_HEADER["total_amount"]),
+            }
+            purchased_bridge._validate_extracted_fields(resolved_supplier, document_header, [], "")
+            session.rollback()
+
+            doc_count_after = session.scalar(select(func.count()).select_from(m.PurchaseDocument))
+            supplier_count_after = session.scalar(select(func.count()).select_from(m.Supplier))
+
+            result.check("replaying field validation creates no new PurchaseDocument", doc_count_after == doc_count_before)
+            result.check("replaying supplier resolution creates no new Supplier", supplier_count_after == supplier_count_before)
+            result.check("the original document is untouched and still retrievable", session.get(m.PurchaseDocument, doc_id) is not None)
+        finally:
+            session.close()
+    finally:
+        cleanup_disposable_test_database_url(url)
+        os.environ.pop("RFONE_DATABASE_URL", None)
+
+
 def main() -> int:
     result = Result()
     for test_fn in (
@@ -367,6 +441,7 @@ def main() -> int:
         test_credit_memo_is_compensating_fact,
         test_single_scope_per_invoice,
         test_no_purchasing_side_effects_and_purchasing_can_consume,
+        test_replay_does_not_persist_anything,
     ):
         test_fn(result)
 
