@@ -71,11 +71,18 @@ STRONG_TOTAL_KEYWORDS = ("grand total", "invoice total", "receipt total", "amoun
 # A line containing one of these must never be read as "the total" even
 # though it may contain the substring "total" (Subtotal) or look like a
 # total-shaped line otherwise (Task requirement 4: "Evita di confondere:
-# subtotal, tax, balance forward, tip, payment amount").
+# subtotal, tax, balance forward, tip, payment amount"). "total weight" and
+# "sub total for" (a per-section subtotal, e.g. "SUB TOTAL FOR COOLER") were
+# added by "Purchased Supplier+Format Training — Phase 1" after a real
+# distributor invoice (Ben E. Keith Foods) showed a per-line freight
+# weight/subtotal ("TOTAL WEIGHT 19.10# 15.85 302.74") being misread as the
+# document's own total — purely additive, so this only ever makes total
+# recognition more conservative, never introduces a new false match.
 EXCLUDE_FROM_TOTAL_LINE = (
     "subtotal",
     "sub-total",
     "sub total",
+    "total weight",
     "tax",
     "balance forward",
     "tip",
