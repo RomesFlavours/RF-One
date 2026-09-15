@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="hint">
+  <a href="{{ url_for('review_queue') }}">&larr; coda</a>
+  &nbsp;·&nbsp; Revisore: {{ reviewer_name or '—' }} ({{ reviewer_role or 'non autenticato' }})
+</p>
+<h2>Documento #{{ doc_id }} — <span style="color: {{ 'green' if view.functional_status == 'NORMALIZED' else '#8a3b2e' }}">{{ view.functional_status }}</span></h2>
+
+{% if view.siblings %}
+<div class="card">
+  <p class="hint"><strong>Allegato multi-fattura</strong> — questo file ha generato {{ view.siblings|length + 1 }} documenti:</p>
+  <table>
+    <thead><tr><th>Documento</th><th>Pagine</th><th>Numero</th><th>Stato</th></tr></thead>
+    <tbody>
+      <tr><td><strong>#{{ doc_id }} (questo)</strong></td><td>{{ view.page_range or '—' }}</td><td>{{ view.header_effective.document_number or '—' }}</td><td>{{ view.functional_status }}</td></tr>
+      {% for sib in view.siblings %}
+      <tr>
+        <td><a href="{{ url_for('review_detail', doc_id=sib.id) }}">#{{ sib.id }}</a></td>
+        <td>{{ sib.source_reference.split('#')[1] if sib.source_reference and '#' in sib.source_reference else '—' }}</td>
+        <td>{{ sib.document_number or '—' }}</td>
+        <td>{{ '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3>A. Source / Provenance</h3>
+  <p class="hint">Filename: <code>{{ view.source_filename or '—' }}</code>{% if view.page_range %} &nbsp;·&nbsp; Pagine: {{ view.page_range }}{% endif %}</p>
+  <p class="hint">Supplier (nome dal documento): {{ view.header_original.supplier or '—' }}</p>
+  <p class="hint">Acquisition method: {{ view.document.acquisition_method or '—' }} &nbsp;·&nbsp; Source provenance: {{ view.document.source_provenance or '—' }}</p>
+  {% if view.mailbox_provenance %}
+  <p class="hint">Email: {{ view.mailbox_provenance.sender or '—' }} — "{{ view.mailbox_provenance.subject or '—' }}" ({{ view.mailbox_provenance.received_at or '—' }})</p>
+  {% endif %}
+  {% if view.source_filename %}
+  <p class="hint"><a href="{{ url_for('review_source', filename=view.source_filename) }}" target="_blank">Apri documento sorgente</a></p>
+  {% endif %}
+  <p class="hint">Supplier canonico: <strong>{{ view.supplier.name if view.supplier else '—' }}</strong>
+    {% if view.aliases %} — alias noti: {% for a in view.aliases %}{{ a.alias_name }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}
+  </p>
+</div>
+
+<div class="card">
+  <h3>B. Extracted header</h3>
+  <table>
+    <thead><tr><th>Campo</th><th>Valore estratto</th><th>Valore effettivo (dopo review)</th>{% if can_correct %}<th>Correggi</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for field in header_fields %}
+      <tr>
+        <td>{{ field }}</td>
+        <td>{{ view.header_original[field] or '—' }}</td>
+        <td>{{ view.header_effective[field] or '—' }}</td>
+        {% if can_correct %}
+        <td>
+          <form method="post" action="{{ url_for('review_submit_field', doc_id=doc_id) }}" class="row">
+            <input type="hidden" name="field_name" value="{{ field }}">
+            <select name="classification">
+              <option value="CORRECT">CORRECT</option>
+              <option value="INCORRECT">INCORRECT</option>
+              <option value="UNREAD">UNREAD</option>
+              <option value="AMBIGUOUS">AMBIGUOUS</option>
+            </select>
+            <input type="text" name="corrected_value" placeholder="valore corretto (se non CORRECT)">
+            <button type="submit" class="secondary">Salva</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>C. Lines</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th><th>Normalized item</th><th>Qty</th><th>UOM</th><th>Unit price</th><th>Line amount</th>
+        <th>Alloc. non-goods</th><th>Effective amount</th><th>Stato</th>{% if can_correct %}<th>Correggi</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in view.lines %}
+      <tr>
+        {% for field in line_fields %}
+        <td>{{ line.effective[field] or '—' }}</td>
+        {% endfor %}
+        <td>{{ '%.2f'|format(line.allocation.allocated_non_goods_minor / 100) if line.allocation else '—' }}</td>
+        <td>{{ '%.2f'|format(line.allocation.allocated_amount_minor / 100) if line.allocation else '—' }}</td>
+        <td>{{ line.functional_status }}</td>
+        {% if can_correct %}
+        <td>
+          <form method="post" action="{{ url_for('review_submit_field', doc_id=doc_id) }}" class="row">
+            <input type="hidden" name="purchase_line_id" value="{{ line.id }}">
+            <select name="field_name">
+              {% for field in line_fields %}<option value="{{ field }}">{{ field }}</option>{% endfor %}
+            </select>
+            <select name="classification">
+              <option value="CORRECT">CORRECT</option>
+              <option value="INCORRECT">INCORRECT</option>
+              <option value="UNREAD">UNREAD</option>
+              <option value="AMBIGUOUS">AMBIGUOUS</option>
+            </select>
+            <input type="text" name="corrected_value" placeholder="valore corretto">
+            <button type="submit" class="secondary">Salva</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>D. Validation reasons</h3>
+  {% if view.open_validation_entries %}
+  <ul>
+    {% for entry in view.open_validation_entries %}
+    <li>[{{ entry.severity }}] {{ entry.message }}{% if entry.suggested_action %} — <em>{{ entry.suggested_action }}</em>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="hint">Nessun problema aperto.</p>
+  {% endif %}
+</div>
+
+{% if view.corrections %}
+<div class="card">
+  <h3>Audit / history</h3>
+  <table>
+    <thead><tr><th>Quando</th><th>Chi</th><th>Campo</th><th>Esito</th><th>Originale</th><th>Corretto</th></tr></thead>
+    <tbody>
+      {% for c in view.corrections %}
+      <tr>
+        <td>{{ c.reviewed_at }}</td>
+        <td>{{ c.reviewed_by }}</td>
+        <td>{{ c.field_name }}{% if c.purchase_line_id %} (riga {{ c.purchase_line_id }}){% endif %}</td>
+        <td>{{ c.classification }}</td>
+        <td>{{ c.original_value or '—' }}</td>
+        <td>{{ c.corrected_value or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if can_correct %}
+<div class="actions">
+  <form method="post" action="{{ url_for('review_complete', doc_id=doc_id) }}">
+    <button type="submit">Completa review &rarr; ricalcola NORMALIZED/HUMAN</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

@@ -981,3 +981,130 @@ def add_validation_log_entry(
     session.add(entry)
     session.flush()
     return entry
+
+
+def close_validation_log_entry(
+    session: Session, entry_id: int, *, human_decision: str, status: str = "CLOSED"
+) -> m.PurchasingValidationLogEntry:
+    """Moves one `PurchasingValidationLogEntry` OPEN -> `status` (Task
+    "Purchased Human Review", requirement 7: HUMAN -> NORMALIZED once
+    review resolves what made it HUMAN in the first place) — never touches
+    `message`/`suggested_action` (models.py, "Rule 13"). This is what lets
+    `get_document_functional_status()`/`get_line_functional_status()`
+    naturally return NORMALIZED again once every OPEN WARNING/ERROR
+    referencing a document (or its lines) has been closed — no third
+    functional state is introduced anywhere by this."""
+
+    if status not in ("APPROVED", "REJECTED", "CLOSED"):
+        raise ValueError(f"Invalid resolution status {status!r}; must be APPROVED/REJECTED/CLOSED")
+    entry = session.get(m.PurchasingValidationLogEntry, entry_id)
+    if entry is None:
+        raise ValueError(f"No PurchasingValidationLogEntry with id={entry_id!r}")
+    entry.status = status
+    entry.human_decision = human_decision
+    entry.resolved_at = _now()
+    session.flush()
+    return entry
+
+
+# ---------------------------------------------------------------------------
+# Human Review (Task "Purchased Human Review + Supplier Format Training UI")
+#
+# `PurchasedFieldCorrection` (models.py) is purely additive — it NEVER
+# overwrites a `PurchaseDocument`/`PurchaseLine` column. These functions are
+# its only reader/writer; `03 Software/InvoiceIntake/human_review.py` is the
+# orchestration layer on top (effective-value merging, re-validation,
+# closing out Validation Log entries, Supplier+Format training
+# observation) — kept in InvoiceIntake because it needs
+# `purchased_bridge._validate_extracted_fields` (the SAME validation
+# function used at initial save, reused rather than reimplemented — Task:
+# "NON aggiungere nuove euristiche parser") and `supplier_format_training.py`.
+# ---------------------------------------------------------------------------
+
+
+def record_field_correction(
+    session: Session,
+    *,
+    purchase_document_id: int,
+    field_name: str,
+    classification: str,
+    reviewed_by: str,
+    purchase_line_id: int | None = None,
+    original_value: str | None = None,
+    corrected_value: str | None = None,
+) -> m.PurchasedFieldCorrection:
+    if classification not in ("CORRECT", "INCORRECT", "UNREAD", "AMBIGUOUS"):
+        raise ValueError(f"Invalid classification {classification!r}")
+    correction = m.PurchasedFieldCorrection(
+        purchase_document_id=purchase_document_id,
+        purchase_line_id=purchase_line_id,
+        field_name=field_name,
+        classification=classification,
+        original_value=original_value,
+        corrected_value=corrected_value,
+        reviewed_by=reviewed_by,
+    )
+    session.add(correction)
+    session.flush()
+    return correction
+
+
+def list_field_corrections(session: Session, purchase_document_id: int) -> list[m.PurchasedFieldCorrection]:
+    """Full history, oldest first — the audit trail (Task requirement 17).
+    Callers wanting only the CURRENT/effective value per field should take
+    the LAST row per (purchase_line_id, field_name), which
+    `human_review.effective_document_view()` does."""
+
+    return list(
+        session.scalars(
+            select(m.PurchasedFieldCorrection)
+            .where(m.PurchasedFieldCorrection.purchase_document_id == purchase_document_id)
+            .order_by(m.PurchasedFieldCorrection.id)
+        ).all()
+    )
+
+
+def list_human_review_queue(session: Session, restaurant_id: int, *, limit: int = 200) -> list[m.PurchaseDocument]:
+    """Every `PurchaseDocument` for this Restaurant currently in the HUMAN
+    functional state, most recently created first (Task requirement 2:
+    "Ordina prioritariamente per: più recenti"). A small local-scale query
+    (Python-side status filter, not a SQL EXISTS) — proportionate to this
+    prototype's real data volumes, same simplicity convention the rest of
+    this module already follows."""
+
+    candidates = list(
+        session.scalars(
+            select(m.PurchaseDocument)
+            .join(m.Supplier, m.PurchaseDocument.supplier_id == m.Supplier.id)
+            .where(m.Supplier.restaurant_id == restaurant_id)
+            .order_by(m.PurchaseDocument.created_at.desc())
+            .limit(limit)
+        ).all()
+    )
+    return [doc for doc in candidates if get_document_functional_status(session, doc.id) == "HUMAN"]
+
+
+def list_sibling_documents(session: Session, purchase_document_id: int) -> list[m.PurchaseDocument]:
+    """Every OTHER `PurchaseDocument` that came from the exact same source
+    file as this one (Task requirement 3, "Multi-invoice visibility") —
+    matched by `source_reference`'s own page-range-suffix convention
+    (`"<file>#p<range>"`, `invoice_splitter.py`) so a Prime Line-style
+    4-invoice batch shows all 4 review records together, not just the one
+    being viewed. A document whose `source_reference` carries no `#`
+    suffix (not a split batch) has no siblings by definition."""
+
+    document = session.get(m.PurchaseDocument, purchase_document_id)
+    if document is None or not document.source_reference or "#" not in document.source_reference:
+        return []
+    supplier = session.get(m.Supplier, document.supplier_id)
+    file_prefix = document.source_reference.split("#", 1)[0]
+    siblings = session.scalars(
+        select(m.PurchaseDocument)
+        .join(m.Supplier, m.PurchaseDocument.supplier_id == m.Supplier.id)
+        .where(
+            m.Supplier.restaurant_id == supplier.restaurant_id,
+            m.PurchaseDocument.source_reference.like(f"{file_prefix}#%"),
+            m.PurchaseDocument.id != purchase_document_id,
+        )
+    ).all()
+    return list(siblings)
