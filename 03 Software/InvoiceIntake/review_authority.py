@@ -1,6 +1,14 @@
 """Minimal Purchased Human Review action model ("Purchased Human Review +
 Supplier Format Training UI", Task requirement 19).
 
+**Status: TEMPORARY / NON-CANONICAL.** This module is a local, Purchased-
+only stand-in, not a general-purpose authorization framework — do not
+extend it to cover another Domain/module's actions, and do not treat it as
+a precedent for how RF-One authorization should work generally. It exists
+only until Identity & Access unfreezes (see below); "Make Effective
+Purchased View canonical for all consumers" deliberately leaves it exactly
+as-is.
+
 **Why this is not the shared Authority system**: `10 System/Identity &
 Access/README.md` is explicit — "Identity & Access development is
 **FROZEN**... Do not continue implementation against this area until

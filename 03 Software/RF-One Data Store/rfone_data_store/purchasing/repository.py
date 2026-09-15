@@ -42,8 +42,9 @@ HUMAN, non-goods cost allocation) adds on top of this unchanged write path.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import func, select
@@ -584,6 +585,29 @@ def complete_receiving(session: Session, receiving_record_id: int) -> m.Receivin
     return record
 
 
+def _effective_invoice_quantity(session: Session, purchase_line: m.PurchaseLine | None) -> Decimal | None:
+    """The Human-Review-effective invoice quantity for one Purchase Line
+    (Task "Make Effective Purchased View canonical for all consumers" —
+    Restaurant/Purchasing's own three-way reconciliation must not compare a
+    physical receipt against a `quantity` a reviewer has since corrected).
+    Resolves through the same `resolve_latest_field_corrections()`/
+    `effective_field_value()` pair `get_purchased_lines_with_allocation()`
+    uses — no second merge implementation. Falls back to the raw,
+    immutable column when there is no override, or when a corrected value
+    cannot be parsed as a number."""
+
+    if purchase_line is None:
+        return None
+    latest_corrections = resolve_latest_field_corrections(session, purchase_line.purchase_document_id)
+    effective = effective_field_value(latest_corrections, purchase_line.id, "quantity", purchase_line.quantity)
+    if not isinstance(effective, str):
+        return effective
+    try:
+        return Decimal(effective.strip())
+    except InvalidOperation:
+        return purchase_line.quantity
+
+
 def reconcile_receiving_line(session: Session, receiving_line_id: int) -> list[str]:
     """Rule 26/33 — derived on demand, never persisted (see reconciliation.py)."""
 
@@ -615,7 +639,7 @@ def reconcile_receiving_line(session: Session, receiving_line_id: int) -> list[s
 
     inputs = ReconciliationInput(
         order_quantity=order_line.quantity if order_line else None,
-        invoice_quantity=purchase_line.quantity if purchase_line else None,
+        invoice_quantity=_effective_invoice_quantity(session, purchase_line),
         received_quantity=receiving_line.observed_quantity,
         damaged_quantity=receiving_line.damaged_quantity,
         is_extra_item=receiving_line.purchase_order_line_id is None,
@@ -651,7 +675,7 @@ def raise_receiving_discrepancy_alert(
     )
     inputs = ReconciliationInput(
         order_quantity=order_line.quantity if order_line else None,
-        invoice_quantity=purchase_line.quantity if purchase_line else None,
+        invoice_quantity=_effective_invoice_quantity(session, purchase_line),
         received_quantity=receiving_line.observed_quantity,
         damaged_quantity=receiving_line.damaged_quantity,
     )
@@ -906,11 +930,24 @@ def get_purchased_lines_with_allocation(session: Session, purchase_document_id: 
     and similar non-goods amounts -- recorded here as SURCHARGE/DISCOUNT
     `PurchaseLine` rows, signed exactly as disclosed by the source -- are
     apportioned across the PRODUCT lines in proportion to each PRODUCT
-    line's own `source_amount_minor`, never persisted as their own
-    standalone Purchased Line. The raw SURCHARGE/DISCOUNT rows are never
-    deleted or hidden -- they remain in the database as source evidence
-    (README: "the raw/source representation can continue to conserve
-    them") -- this function only adds the allocated view on top.
+    line's own EFFECTIVE amount, never persisted as their own standalone
+    Purchased Line. The raw SURCHARGE/DISCOUNT rows are never deleted or
+    hidden -- they remain in the database as source evidence (README: "the
+    raw/source representation can continue to conserve them") -- this
+    function only adds the allocated view on top.
+
+    ("Make Effective Purchased View canonical for all consumers"): every
+    amount this function allocates on is first passed through
+    `effective_field_value()` against the latest `PurchasedFieldCorrection`
+    for that line's `"line_amount"` field, if any -- a Human Review
+    correction to a line's amount changes the allocation base and every
+    downstream `allocated_amount_minor` this function returns, exactly like
+    it already changes `human_review.effective_document_view()`'s own
+    displayed `line_amount`. Both consumers resolve corrections through the
+    same `resolve_latest_field_corrections()`/`effective_field_value()`
+    pair below -- there is only one merge implementation. The immutable
+    `source_amount_minor` column is still returned alongside, for callers
+    that need the original, uncorrected source-evidence figure.
 
     When the document has no PRODUCT lines at all, no allocation base
     exists; each non-goods amount is left unallocated (`allocated_non_goods_minor`
@@ -922,18 +959,28 @@ def get_purchased_lines_with_allocation(session: Session, purchase_document_id: 
     if document is None:
         raise ValueError(f"Unknown PurchaseDocument id={purchase_document_id}")
 
+    latest_corrections = resolve_latest_field_corrections(session, purchase_document_id)
+
+    def _effective_amount_minor(line: "m.PurchaseLine") -> int | None:
+        effective = effective_field_value(latest_corrections, line.id, "line_amount", line.source_amount_minor)
+        # `effective_field_value()` returns either the untouched `original`
+        # argument (already an int/None here -- no override exists) or a
+        # human-typed correction string (an override exists) -- only the
+        # latter needs parsing back into minor units.
+        return _parse_money_minor_text(effective) if isinstance(effective, str) else effective
+
     product_lines = sorted(
         (line for line in document.lines if line.line_type == "PRODUCT"), key=lambda line: line.id
     )
     non_goods_total = sum(
-        (line.source_amount_minor or 0) for line in document.lines if line.line_type in ("SURCHARGE", "DISCOUNT")
+        (_effective_amount_minor(line) or 0) for line in document.lines if line.line_type in ("SURCHARGE", "DISCOUNT")
     )
-    goods_total = sum((line.source_amount_minor or 0) for line in product_lines)
+    goods_total = sum((_effective_amount_minor(line) or 0) for line in product_lines)
 
     output: list[dict[str, Any]] = []
     allocated_so_far = 0
     for index, line in enumerate(product_lines):
-        line_amount = line.source_amount_minor or 0
+        line_amount = _effective_amount_minor(line) or 0
         if goods_total > 0:
             if index == len(product_lines) - 1:
                 # The last line absorbs any rounding remainder, so the sum of
@@ -949,12 +996,30 @@ def get_purchased_lines_with_allocation(session: Session, purchase_document_id: 
                 "purchase_line_id": line.id,
                 "raw_description": line.raw_description,
                 "source_amount_minor": line.source_amount_minor,
+                "effective_amount_minor": line_amount,
                 "allocated_non_goods_minor": share,
                 "allocated_amount_minor": line_amount + share,
                 "functional_status": get_line_functional_status(session, line.id),
             }
         )
     return output
+
+
+def _parse_money_minor_text(value: str | None) -> int | None:
+    """Tolerant parse of a Human Review corrected money string (e.g.
+    `"12.34"`, possibly with stray formatting a reviewer typed) into integer
+    minor units -- mirrors `purchased_bridge._parse_money_minor()`'s own
+    tolerance without this lower-layer module importing InvoiceIntake."""
+
+    if value is None:
+        return None
+    cleaned = re.sub(r"[^0-9.\-]", "", str(value))
+    if cleaned in ("", "-", "."):
+        return None
+    try:
+        return int((Decimal(cleaned) * 100).to_integral_value())
+    except (InvalidOperation, ValueError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -1052,8 +1117,9 @@ def record_field_correction(
 def list_field_corrections(session: Session, purchase_document_id: int) -> list[m.PurchasedFieldCorrection]:
     """Full history, oldest first — the audit trail (Task requirement 17).
     Callers wanting only the CURRENT/effective value per field should take
-    the LAST row per (purchase_line_id, field_name), which
-    `human_review.effective_document_view()` does."""
+    the LAST row per (purchase_line_id, field_name) — see
+    `latest_field_corrections()`/`resolve_latest_field_corrections()`
+    below, the one shared reduction every consumer of Purchased uses."""
 
     return list(
         session.scalars(
@@ -1062,6 +1128,78 @@ def list_field_corrections(session: Session, purchase_document_id: int) -> list[
             .order_by(m.PurchasedFieldCorrection.id)
         ).all()
     )
+
+
+# ---------------------------------------------------------------------------
+# Effective Purchased View ("Make Effective Purchased View canonical for all
+# consumers"): the ONE merge implementation -- original, immutable
+# PurchaseDocument/PurchaseLine columns plus the latest additive
+# PurchasedFieldCorrection per field -- every consumer of Purchased output
+# builds on, instead of each reading raw columns and/or reimplementing its
+# own "latest correction wins" reduction. Used by:
+#   - `get_purchased_lines_with_allocation()` above (non-goods allocation
+#     base, per-line effective amount);
+#   - `reconcile_receiving_line()`/`raise_receiving_discrepancy_alert()`
+#     below (effective invoice quantity for three-way reconciliation);
+#   - `03 Software/InvoiceIntake/human_review.py`'s `effective_document_view()`
+#     (header/line display values, re-validation).
+# `PurchaseDocument`/`PurchaseLine` themselves are never mutated by any of
+# this -- the merge is always computed on read (Task requirement: "Ma il
+# valore CANONICO CONSUMABILE è sempre il valore effettivo risultante dal
+# merge").
+# ---------------------------------------------------------------------------
+
+
+def latest_field_corrections(
+    corrections: list[m.PurchasedFieldCorrection],
+) -> dict[tuple[int | None, str], m.PurchasedFieldCorrection]:
+    """Reduces an oldest-first correction history (`list_field_corrections()`'s
+    own contract) to the single latest row per (purchase_line_id,
+    field_name). Pure/no I/O — for a caller that already holds the full
+    history (e.g. `human_review.py`'s own `view["corrections"]`) and would
+    otherwise re-query it via `resolve_latest_field_corrections()` below."""
+
+    latest: dict[tuple[int | None, str], m.PurchasedFieldCorrection] = {}
+    for correction in corrections:
+        latest[(correction.purchase_line_id, correction.field_name)] = correction
+    return latest
+
+
+def resolve_latest_field_corrections(
+    session: Session, purchase_document_id: int
+) -> dict[tuple[int | None, str], m.PurchasedFieldCorrection]:
+    """Convenience wrapper: fetch + reduce in one call, for a caller that
+    does not already hold the document's full correction history."""
+
+    return latest_field_corrections(list_field_corrections(session, purchase_document_id))
+
+
+def correction_overrides_value(correction: m.PurchasedFieldCorrection | None) -> bool:
+    """True only when `correction` is an actual value override — a bare
+    `CORRECT` confirmation never carries a `corrected_value`
+    (`record_field_correction` always stores `None` for it), so it is never
+    treated as an override; the original value stands confirmed as-is."""
+
+    return correction is not None and correction.classification != "CORRECT" and correction.corrected_value is not None
+
+
+def effective_field_value(
+    latest: dict[tuple[int | None, str], m.PurchasedFieldCorrection],
+    purchase_line_id: int | None,
+    field_name: str,
+    original: Any,
+) -> Any:
+    """The Human-Review-effective value for one field: the latest
+    correction's `corrected_value` when it actually overrides the original
+    (`correction_overrides_value()`), `original` verbatim otherwise.
+    `original` is returned unchanged when there is no override, so a caller
+    may pass either a display string (`human_review.py`) or a raw typed
+    value (a `PurchaseLine` column, e.g. `quantity`/`source_amount_minor`)
+    depending on what it needs back — only the override branch is ever a
+    `str` (a `PurchasedFieldCorrection.corrected_value`)."""
+
+    correction = latest.get((purchase_line_id, field_name))
+    return correction.corrected_value if correction_overrides_value(correction) else original
 
 
 def list_human_review_queue(session: Session, restaurant_id: int, *, limit: int = 200) -> list[m.PurchaseDocument]:
