@@ -119,13 +119,19 @@ python test_purchasing_engine.py       # structural/repository validation + the 
 
 `rfone_data_store/purchasing/repository.py` exposes three read-only functions implementing Purchased's own functional model over the unchanged `PurchaseDocument`/`PurchaseLine` schema — no new column, no migration:
 
-- `get_document_functional_status(session, purchase_document_id)` / `get_line_functional_status(session, purchase_line_id)` — **NORMALIZED** unless an OPEN WARNING/ERROR `PurchasingValidationLogEntry` references the document/line, in which case **HUMAN** (Purchased/README.md, "NORMALIZED / HUMAN" — no other functional state is exposed). Derived on demand, same convention as Effective Product Cost/Reconciliation Outcome.
+- `get_document_functional_status(session, purchase_document_id)` / `get_line_functional_status(session, purchase_line_id)` — **NORMALIZED** unless an OPEN WARNING/ERROR `PurchasingValidationLogEntry` references the document/line, in which case **HUMAN** (Purchased/README.md, "NORMALIZED / HUMAN" — no other functional state is exposed). Derived on demand, same convention as Effective Product Cost/Reconciliation Outcome. **What decides NORMALIZED vs. HUMAN in the first place** (`purchased_bridge._validate_extracted_fields()`, "Improve Generic Parser and Prepare Supplier Format Training"): field completeness/coherence only — supplier recognized, date recognized, total recognized (a $0.00 read counts as unrecognized), no conflicting total-like amounts, line amounts (when any were extracted) arithmetically summing to the total. **The acquisition method (OCR vs. digital-text PDF) is never itself a factor** — an OCR-sourced document with complete, coherent fields is NORMALIZED exactly like a digital-text one; the earlier "OCR → HUMAN by default" rule is retired.
 - `get_purchased_lines_with_allocation(session, purchase_document_id)` — Purchased/README.md's "Non-goods cost allocation": each PRODUCT line's `source_amount_minor` plus a proportional share of the document's SURCHARGE/DISCOUNT lines' total (signed as disclosed), the last line absorbing any rounding remainder so shares reconcile exactly. The raw SURCHARGE/DISCOUNT `PurchaseLine` rows are never deleted or hidden — they remain queryable as source evidence; this function only adds the allocated view on top. A document with no PRODUCT line leaves any non-goods amount unallocated (README's own open edge case).
 - `find_purchase_documents_by_number(session, supplier_id, document_number)` — the identity lookup `purchased_bridge.py`'s duplicate/correction handling (§5) is built on.
 
 ---
 
-## 11. Remaining gaps (intentional, out of this task's scope)
+## 11. Supplier + Source Format training foundation
+
+`03 Software/InvoiceIntake/supplier_format_training.py` is a foundation only, per Purchased/README.md's own "Source/format validation and training" (§10 there): a local, append-only record of how many documents have been observed for each (Supplier name, source format) pair and with what NORMALIZED/HUMAN outcome. Its own SQLite file, separate from the canonical database — no migration. It **never** auto-validates a Supplier: `trust_state` is always written as `UNTRAINED`, no universal N or accuracy threshold is defined, and nothing in `purchased_bridge.py` reads this store back to influence a document's own NORMALIZED/HUMAN result. Automatic promotion is a deliberate future decision, not implemented here.
+
+---
+
+## 12. Remaining gaps (intentional, out of this task's scope)
 
 - **Ingredient/Recipe/Food Cost persistence** — no `ingredients`/`products`/`specifications` table exists yet; `SupplierProduct.ingredient_id` is an un-constrained placeholder. Explicitly out of scope ("Software boundary": "Do not build recipe costing").
 - **Order/Purchase Support module** — `PurchaseOrder`/`PurchaseOrderLine` remain deliberately minimal; nothing creates/manages them beyond what reconciliation needs.

@@ -113,11 +113,12 @@ def save():
         )
 
     source_file = form.get("source_file", "")
+    raw_text = form.get("raw_text", "")
 
     # Canonical persistence (Align legacy Invoice Intake with Purchased): the
     # RF-One Data Store is the Purchase Fact source of truth from here on,
     # owned by Purchased (01 Domains/Shared Domains/Purchased/README.md).
-    doc_id = purchased_bridge.save_purchase_document(header, lines, source_file)
+    doc_id = purchased_bridge.save_purchase_document(header, lines, source_file, raw_text=raw_text)
 
     # Excel remains available only as a secondary export/debugging capability
     # (Purchased was never canonical there; it was only ever this
