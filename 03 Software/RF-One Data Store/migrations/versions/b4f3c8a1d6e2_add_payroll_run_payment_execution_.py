@@ -6,7 +6,7 @@ Create Date: 2026-08-30 00:00:00.000000
 
 One additive, non-destructive change: a nullable `payment_execution_provider`
 column on `payroll_runs`, constrained to `ADP_DIRECT_DEPOSIT`/`MERCURY_ACH`
-(`01 Domains/Cross Domain/Administration/Payroll/Payment Execution.md`).
+(`01 Domains/Shared Domains/Administration/Payroll/Payment Execution.md`).
 
 Closes a real production gap: before this migration, nothing on `PayrollRun`
 recorded who is responsible for actually moving money to Employees, so

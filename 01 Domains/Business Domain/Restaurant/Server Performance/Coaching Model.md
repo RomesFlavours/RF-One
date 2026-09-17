@@ -96,7 +96,7 @@ Baseline
         → improvement or continued underperformance
 ```
 
-This may help management determine whether continued employment makes business sense. **RF-One does not autonomously fire or replace Employees — final personnel decisions remain human**, and remain the exclusive authority of Personnel Management's [Personnel Decisions](../../../Cross%20Domain/Personnel%20Management/Personnel%20Decisions/README.md) module. The important concept this module supplies is that persistent underperformance is evaluated only after reasonable, targeted attempts to improve the person — never from a single ranking or a single observation. See [Exclusions.md](Exclusions.md).
+This may help management determine whether continued employment makes business sense. **RF-One does not autonomously fire or replace Employees — final personnel decisions remain human**, and remain the exclusive authority of Personnel Management's [Personnel Decisions](../../../Shared%20Domains/Personnel%20Management/Personnel%20Decisions/README.md) module. The important concept this module supplies is that persistent underperformance is evaluated only after reasonable, targeted attempts to improve the person — never from a single ranking or a single observation. See [Exclusions.md](Exclusions.md).
 
 ---
 
@@ -106,5 +106,5 @@ This may help management determine whether continued employment makes business s
 - [Individual Performance Profile.md](Individual%20Performance%20Profile.md)
 - [Opportunity Capture.md](Opportunity%20Capture.md), [Perceived Service Quality.md](Perceived%20Service%20Quality.md)
 - [../Service Copilot/Service Copilot.md](../Service%20Copilot/Service%20Copilot.md)
-- [../../Personnel Management/Personnel Decisions/README.md](../../../Cross%20Domain/Personnel%20Management/Personnel%20Decisions/README.md)
-- [../../Continuous Productivity Development/README.md](../../../Cross%20Domain/Continuous%20Productivity%20Development/README.md) — sibling Cross Domain that conceptually superseded the former Training placeholder
+- [../../Personnel Management/Personnel Decisions/README.md](../../../Shared%20Domains/Personnel%20Management/Personnel%20Decisions/README.md)
+- [../../Continuous Productivity Development/README.md](../../../Shared%20Domains/Continuous%20Productivity%20Development/README.md) — sibling Shared Domain that conceptually superseded the former Training placeholder

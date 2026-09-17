@@ -1,5 +1,5 @@
 """Manual return of Payroll Provider results, and reconciliation against
-what RF-One approved (`01 Domains/Cross Domain/Personnel Management/
+what RF-One approved (`01 Domains/Shared Domains/Personnel Management/
 Compensation/PAYROLL_HANDOFF_CONNECTOR.md`, "optional Connector return /
 manual recording" — this task makes that return path part of Compensation
 V1).

@@ -47,7 +47,7 @@ Each consumer applies its own judgment to a correlation Dining Intelligence supp
 
 ## Epistemic status
 
-A learned correlation is always **Inferred** — a statistical relationship observed across many Dining Sessions, carrying uncertainty and a confidence/support level, never presented as a deterministic rule ("guests who order X always order Y"). It must remain traceable to the underlying Observed Order Item evidence it was learned from, the same traceability requirement already established for a [Performance Indicator](../../../Cross%20Domain/Performance/PerformanceIndicator.md).
+A learned correlation is always **Inferred** — a statistical relationship observed across many Dining Sessions, carrying uncertainty and a confidence/support level, never presented as a deterministic rule ("guests who order X always order Y"). It must remain traceable to the underlying Observed Order Item evidence it was learned from, the same traceability requirement already established for a [Performance Indicator](../../../Shared%20Domains/Performance/PerformanceIndicator.md).
 
 A correlation is also never treated as causal without further evidence — "tables ordering X frequently also order Y" does not establish that suggesting Y to a table that ordered X will actually increase conversion; it only establishes association. Whether a suggested correlation genuinely helps is itself subject to the same intervention/outcome learning loop [Server Performance/Coaching Model.md](../Server%20Performance/Coaching%20Model.md) already applies to coaching interventions.
 

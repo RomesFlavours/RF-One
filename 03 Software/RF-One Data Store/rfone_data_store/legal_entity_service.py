@@ -1,7 +1,7 @@
 """Minimal, standalone Legal Entity management service.
 
 `LegalEntity` is the canonical juridical/employing entity (`01 Domains/
-Cross Domain/Personnel Management/Compensation/
+Shared Domains/Personnel Management/Compensation/
 COMPENSATION_AND_INCOME_COMPOSITION_001.md` §3) — never Restaurant, Brand,
 or Corporate. This service is deliberately separate from Compensation:
 Compensation only ever reads existing `LegalEntity` rows (to scope a

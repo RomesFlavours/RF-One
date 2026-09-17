@@ -1,6 +1,6 @@
 # RF-One Data Store — Payroll
 
-TASK_PAYROLL_001 — the first runtime/database implementation of the Administration/Payroll Domain documented conceptually at `01 Domains/Cross Domain/Administration/Payroll/`. This document is the Software-layer counterpart: it explains how the schema in `DATABASE_SCHEMA.md` §4d is populated and used, and documents the ADP `Payroll Detail` Excel import workflow. It does not repeat the Domain-level definitions — see `01 Domains/Cross Domain/Administration/Payroll/README.md` and its sibling files for those.
+TASK_PAYROLL_001 — the first runtime/database implementation of the Administration/Payroll Domain documented conceptually at `01 Domains/Shared Domains/Administration/Payroll/`. This document is the Software-layer counterpart: it explains how the schema in `DATABASE_SCHEMA.md` §4d is populated and used, and documents the ADP `Payroll Detail` Excel import workflow. It does not repeat the Domain-level definitions — see `01 Domains/Shared Domains/Administration/Payroll/README.md` and its sibling files for those.
 
 ---
 
@@ -26,7 +26,7 @@ Concretely: no table in this schema has an `ADP`-specific column; `SourceSystem(
 
 ## 3. Compensation Terms
 
-`rfone_data_store/payroll_calculation/compensation.py` (relocated from `rfone_data_store/payroll/compensation.py` by explicit Product Owner decision — this helper module and the `employee_compensation_terms` table are Compensation-owned/shared, consumed by this Administration/Payroll package without being owned by it) + the `employee_compensation_terms` table. `terms_valid_during` resolves which terms apply to an interval; `detect_mid_period_conflict`/`review_status_for_period` implement the `MANUAL_REVIEW_REQUIRED` rule for an incompatible same-`function_label` rate change inside one Payroll Period (`01 Domains/Cross Domain/Administration/Payroll/Compensation Terms.md`). A `CheckConstraint` on the table enforces that `HOURLY` rows carry `hourly_rate_minor` (and no `salaried_period_amount_minor`) and vice versa for `SALARIED`.
+`rfone_data_store/payroll_calculation/compensation.py` (relocated from `rfone_data_store/payroll/compensation.py` by explicit Product Owner decision — this helper module and the `employee_compensation_terms` table are Compensation-owned/shared, consumed by this Administration/Payroll package without being owned by it) + the `employee_compensation_terms` table. `terms_valid_during` resolves which terms apply to an interval; `detect_mid_period_conflict`/`review_status_for_period` implement the `MANUAL_REVIEW_REQUIRED` rule for an incompatible same-`function_label` rate change inside one Payroll Period (`01 Domains/Shared Domains/Administration/Payroll/Compensation Terms.md`). A `CheckConstraint` on the table enforces that `HOURLY` rows carry `hourly_rate_minor` (and no `salaried_period_amount_minor`) and vice versa for `SALARIED`.
 
 ---
 
@@ -44,7 +44,7 @@ Concretely: no table in this schema has an `ADP`-specific column; `SourceSystem(
 
 ## 5. Payroll Result Acquisition adapters (TASK_PAYROLL_003)
 
-`rfone_data_store/payroll/acquisition.py`, entry point `acquire_payroll_results.py`. Implements `01 Domains/Cross Domain/Administration/Payroll/Payroll Result Acquisition.md`'s adapter contract (`PayrollAcquisitionAdapter.fetch() -> list[AcquiredPayrollFile]`), every implementation normalizing into `ParsedPayrollDetail` and persisting via `adp_importer.persist_parsed_import` — no adapter has its own persistence or idempotency logic.
+`rfone_data_store/payroll/acquisition.py`, entry point `acquire_payroll_results.py`. Implements `01 Domains/Shared Domains/Administration/Payroll/Payroll Result Acquisition.md`'s adapter contract (`PayrollAcquisitionAdapter.fetch() -> list[AcquiredPayrollFile]`), every implementation normalizing into `ParsedPayrollDetail` and persisting via `adp_importer.persist_parsed_import` — no adapter has its own persistence or idempotency logic.
 
 - **`LocalFileAcquisitionAdapter`** — wraps a single local `.xlsx` path; `acquisition_method="ADP_XLSX_FILE"`. The pre-existing manual fallback, unchanged in behavior, now expressed through the same adapter interface.
 - **`AdpSftpAcquisitionAdapter`** — genuinely automatic. Connects (via `paramiko`, imported lazily so it is only required when SFTP acquisition actually runs) to a customer-controlled SFTP endpoint ADP's Automatic Export Service delivers a scheduled report to, and downloads every not-yet-processed `.xlsx` file in the configured remote directory; `acquisition_method="ADP_SFTP_AES"`. Connection details load only from environment variables (`ADP_SFTP_HOST`, `ADP_SFTP_USERNAME`, `ADP_SFTP_REMOTE_DIRECTORY`, `ADP_SFTP_PORT`, `ADP_SFTP_PASSWORD` or `ADP_SFTP_PRIVATE_KEY_PATH`) — `from_environment()` raises `AcquisitionNotConfiguredError` naming exactly what is missing when they are absent. The transport itself is expressed as a small `SftpTransport` Protocol (`listdir`/`open`), injectable via `transport_factory=`, so the adapter's logic is fully unit-testable without a real SFTP server or network access.

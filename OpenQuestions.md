@@ -42,11 +42,11 @@ establishes that it is economically borne by the business.
 
 For Florida restaurant purchases specifically, resale/exemption treatment must be verified before any automatic inclusion or exclusion of tax in Effective Product Cost.
 
-This question is expected to be resolved once the Taxation Domain (`01 Domains/Cross Domain/Taxation/README.md`) or a jurisdiction rule pack establishes the applicable treatment for these suppliers/purchase categories. Restaurant/Purchasing comes before fiscal treatment — see `01 Domains/Business Domain/Restaurant/Purchasing/BusinessRules.md`, "Purchasing Precedes Administration and Taxation."
+This question is expected to be resolved once the Taxation Domain (`01 Domains/Shared Domains/Taxation/README.md`) or a jurisdiction rule pack establishes the applicable treatment for these suppliers/purchase categories. Restaurant/Purchasing comes before fiscal treatment — see `01 Domains/Business Domain/Restaurant/Purchasing/BusinessRules.md`, "Purchasing Precedes Administration and Taxation."
 
 ### Architectural boundary (TASK_REPOSITORY_STABILIZATION_001)
 
-The Taxation Domain (`01 Domains/Cross Domain/Taxation/README.md`, TASK_TAXATION_001) now exists and is canonical, but nothing has yet connected it to this open question — the boundary below makes the intended integration explicit so it is not forgotten, without deciding it:
+The Taxation Domain (`01 Domains/Shared Domains/Taxation/README.md`, TASK_TAXATION_001) now exists and is canonical, but nothing has yet connected it to this open question — the boundary below makes the intended integration explicit so it is not forgotten, without deciding it:
 
 ```text
 Restaurant/Purchasing
@@ -88,7 +88,7 @@ If it is not causally attributable
 No artificial Employee allocation.
 ```
 
-Canonical definition: `01 Domains/Cross Domain/Administration/Personnel Cost.md` (`Total Employee Cost`, `Unallocated Personnel Cost`, `Total Personnel Cost = Σ Total Employee Cost + Unallocated Personnel Cost`). The earlier provisional `Direct Employee Labor Cost + Allocated Labor Overhead` framing, and the `Allocated Labor Overhead` concept itself, are rejected — RF-One never distributes a generic/shared personnel cost across Employees merely to make per-Employee totals add up, because doing so would create false comparative evidence for Personnel Management (`Personnel Cost.md` §11).
+Canonical definition: `01 Domains/Shared Domains/Administration/Personnel Cost.md` (`Total Employee Cost`, `Unallocated Personnel Cost`, `Total Personnel Cost = Σ Total Employee Cost + Unallocated Personnel Cost`). The earlier provisional `Direct Employee Labor Cost + Allocated Labor Overhead` framing, and the `Allocated Labor Overhead` concept itself, are rejected — RF-One never distributes a generic/shared personnel cost across Employees merely to make per-Employee totals add up, because doing so would create false comparative evidence for Personnel Management (`Personnel Cost.md` §11).
 
 ---
 

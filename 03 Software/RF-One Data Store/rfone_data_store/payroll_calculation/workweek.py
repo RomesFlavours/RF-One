@@ -5,7 +5,7 @@
 Rule Matrix to define the evaluation window a future Overtime Evaluator must
 use — never by the Administration/Payroll domain's own `PayrollSchedule`/
 `PayrollRun` cadence, which remains a purely administrative processing
-schedule (`01 Domains/Cross Domain/Administration/Payroll/Payroll Schedule
+schedule (`01 Domains/Shared Domains/Administration/Payroll/Payroll Schedule
 and Period.md`). Ownership of the Workweek boundary therefore belongs to
 Compensation / Compensation Rules / Rule Matrix, not to Administration/
 Payroll, even though `WorkweekDefinition`'s physical table

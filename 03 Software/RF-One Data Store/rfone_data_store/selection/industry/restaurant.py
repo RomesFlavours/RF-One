@@ -186,7 +186,7 @@ ROME_FLAVOURS_SERVER_ROLE_CONFIG = RoleConfiguration(
 )
 
 # Registry, keyed by target role code — the smallest coherent "Role
-# Configuration lookup" the MVP needs (01 Domains/Cross Domain/Personnel Management/
+# Configuration lookup" the MVP needs (01 Domains/Shared Domains/Personnel Management/
 # Selection/ResumeScreening/README.md, "Domain architecture", layer D).
 ROLE_CONFIGURATIONS: dict[str, RoleConfiguration] = {
     "SERVER": ROME_FLAVOURS_SERVER_ROLE_CONFIG,

@@ -24,7 +24,7 @@ No overtime, deductions, taxes, employer taxes, bonus formula, or
 payroll-provider submission is computed here. `tips_amount` and
 `bonus_amount` are always caller-supplied employee-summary input facts —
 never split into earning lines — and Tips calculation logic
-(`rfone_data_store.tips`) and Bonus rules (future Performance Cross Domain
+(`rfone_data_store.tips`) and Bonus rules (future Performance Shared Domain
 capability) are never invoked or reimplemented by this module.
 
 Compensation V1 manual Payroll Handoff task: `calculate_employee_payroll`

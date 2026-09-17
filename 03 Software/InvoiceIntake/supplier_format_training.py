@@ -1,6 +1,6 @@
 """Supplier + Source Format training foundation.
 
-`01 Domains/Cross Domain/Purchased/README.md`, "Source/format validation
+`01 Domains/Shared Domains/Purchased/README.md`, "Source/format validation
 and training" already describes the target concept: Purchased must
 validate the combination **Supplier + acquisition method/document format**,
 not "the Supplier" in the abstract, and a training period (the first N

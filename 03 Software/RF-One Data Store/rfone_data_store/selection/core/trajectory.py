@@ -1,4 +1,4 @@
-"""Career Trajectory detection (01 Domains/Cross Domain/Selection/
+"""Career Trajectory detection (01 Domains/Shared Domains/Selection/
 ResumeScreening/ExperienceAndTrajectory.md, "Career trajectory").
 
 Detects THAT a transition happened; never infers WHY (see that document,

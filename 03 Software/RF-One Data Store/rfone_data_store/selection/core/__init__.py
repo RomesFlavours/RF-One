@@ -2,7 +2,7 @@
 
 Nothing in this package may import from `..industry` or mention a
 restaurant, FOH/BOH, or any other industry concept
-(01 Domains/Cross Domain/Selection/ResumeScreening/README.md,
+(01 Domains/Shared Domains/Selection/ResumeScreening/README.md,
 "Domain architecture").
 Industry-specific classification (which roles are customer-facing, which
 titles map to which normalized role, seniority ranking) is always supplied

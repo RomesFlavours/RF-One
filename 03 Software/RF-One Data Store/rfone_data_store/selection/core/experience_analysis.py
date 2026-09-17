@@ -1,4 +1,4 @@
-"""Experience Analysis (01 Domains/Cross Domain/Selection/
+"""Experience Analysis (01 Domains/Shared Domains/Selection/
 ResumeScreening/ExperienceAndTrajectory.md).
 
 Every function here returns Derived Information computed from Work History

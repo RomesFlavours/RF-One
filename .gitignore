@@ -52,8 +52,8 @@ __pycache__/
 # committed. Only the directory placeholder is tracked; TestCases/ (below)
 # is the sanctioned location for committed fixtures, and only synthetic/
 # sanitized ones.
-01 Domains/Cross Domain/Administration/Invoice Intake/Invoices/Raw/*
-!01 Domains/Cross Domain/Administration/Invoice Intake/Invoices/Raw/.gitkeep
+01 Domains/Shared Domains/Administration/Invoice Intake/Invoices/Raw/*
+!01 Domains/Shared Domains/Administration/Invoice Intake/Invoices/Raw/.gitkeep
 
 # TASK_SELECTION_001 — Selection's uploaded résumés (real candidate PII) and
 # its own local development database must never be committed.

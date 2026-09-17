@@ -1,4 +1,4 @@
-"""RF-One Training (Cross Domain) — first operational version.
+"""RF-One Training (Shared Domain) — first operational version.
 
 Business logic for the staff dish/wine "pill" learning feature lives here,
 mirroring the existing `rfone_data_store/tips/` and `rfone_data_store/

@@ -120,5 +120,5 @@ Because Tips appear in both Service Quality Evidence and Coaching's economic-mot
 
 - [Server Performance.md](Server%20Performance.md)
 - [Quality of Sale.md](Quality%20of%20Sale.md), [Opportunity Capture.md](Opportunity%20Capture.md), [Concurrent Service Load.md](Concurrent%20Service%20Load.md), [Perceived Service Quality.md](Perceived%20Service%20Quality.md)
-- [../../Personnel Management/Performance/PerformanceMeasure.md](../../../Cross%20Domain/Performance/PerformanceMeasure.md), [../../Personnel Management/Performance/PerformanceIndicator.md](../../../Cross%20Domain/Performance/PerformanceIndicator.md)
+- [../../Personnel Management/Performance/PerformanceMeasure.md](../../../Shared%20Domains/Performance/PerformanceMeasure.md), [../../Personnel Management/Performance/PerformanceIndicator.md](../../../Shared%20Domains/Performance/PerformanceIndicator.md)
 - [../../Domain Architecture.md](../../../Domain%20Architecture.md) §8

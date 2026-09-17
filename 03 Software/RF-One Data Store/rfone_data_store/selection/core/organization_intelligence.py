@@ -3,7 +3,7 @@
 Deliberately not implemented. A future capability would reason about the
 *employer* side of a candidate's Work History (e.g. what a given employer's
 real operating/training standard is, so two candidates' "3 years" carry
-correctly calibrated weight) — see 01 Domains/Cross Domain/Personnel Management/
+correctly calibrated weight) — see 01 Domains/Shared Domains/Personnel Management/
 Selection/ResumeScreening/README.md, "Organization Intelligence — OPEN /
 TBD." No employer-quality score, employer-training score, external employer
 research, or employer-enrichment logic exists here or anywhere else in

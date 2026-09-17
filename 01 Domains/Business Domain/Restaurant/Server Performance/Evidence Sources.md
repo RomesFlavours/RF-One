@@ -69,11 +69,11 @@ Directly evidenced. Example: *"Server sold wine on 8 of 20 qualifying tables."* 
 
 ### Derived
 
-Deterministically calculated from Observed canonical facts, with a repeatable, auditable formula. Example: *"Wine conversion = 40%."* — a [Performance Measure](../../../Cross%20Domain/Performance/PerformanceMeasure.md).
+Deterministically calculated from Observed canonical facts, with a repeatable, auditable formula. Example: *"Wine conversion = 40%."* — a [Performance Measure](../../../Shared%20Domains/Performance/PerformanceMeasure.md).
 
 ### Inferred
 
-A model-generated conclusion carrying uncertainty. Example: *"This Server may be weak at introducing wine to this table archetype."* — a [Performance Indicator](../../../Cross%20Domain/Performance/PerformanceIndicator.md)-adjacent conclusion or a Coaching Model hypothesis, never presented with Observed-grade confidence, and never silently collapsed back into an Observed or Derived fact.
+A model-generated conclusion carrying uncertainty. Example: *"This Server may be weak at introducing wine to this table archetype."* — a [Performance Indicator](../../../Shared%20Domains/Performance/PerformanceIndicator.md)-adjacent conclusion or a Coaching Model hypothesis, never presented with Observed-grade confidence, and never silently collapsed back into an Observed or Derived fact.
 
 RF-One does not collapse these states into each other anywhere in this module — not in the Individual Performance Profile, not in a Service Copilot recommendation, not in a coaching dollar estimate.
 
@@ -99,6 +99,6 @@ This mirrors the service-attribution caution Tips already established (`Tips/REA
 ## Related documents
 
 - [Server Performance.md](Server%20Performance.md)
-- [../../Personnel Management/Performance/PerformanceEvidence.md](../../../Cross%20Domain/Performance/PerformanceEvidence.md)
+- [../../Personnel Management/Performance/PerformanceEvidence.md](../../../Shared%20Domains/Performance/PerformanceEvidence.md)
 - [../Tips/README.md](../Tips/README.md)
 - [../Dining Intelligence/README.md](../Dining%20Intelligence/README.md)

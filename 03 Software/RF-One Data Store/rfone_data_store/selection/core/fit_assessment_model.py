@@ -1,4 +1,4 @@
-"""Fit Assessment vocabulary (Task 3B; 01 Domains/Cross Domain/Selection/
+"""Fit Assessment vocabulary (Task 3B; 01 Domains/Shared Domains/Selection/
 CandidateEvidence.md / FitAssessment.md). Defines the generic, restaurant-
 agnostic MEANING of assessment status, evidence source/classification/
 relationship, and confidence — never any specific restaurant's judgment
