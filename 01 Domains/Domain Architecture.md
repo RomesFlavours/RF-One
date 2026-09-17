@@ -1,8 +1,8 @@
-# Domain Architecture — Cross-Domain Conclusions
+# Domain Architecture — Shared-Domains Conclusions
 
-**Version:** 1.2
-**Status:** Approved (canonicalizes TASK_DOMAINS_001; updated by TASK_DOMAINS_002; Selection re-elevated by TASK_DOMAINS_003; Shared Domains / Business Domain taxonomy and Training/Performance extraction documented by the post-reorganization documentation alignment task; Continuous Productivity Development added and Training redefined as Operational Knowledge by a later reorganization — see §4-5)
-**Module:** Domain / Cross-Domain Architecture
+**Version:** 1.3
+**Status:** Approved (canonicalizes TASK_DOMAINS_001; updated by TASK_DOMAINS_002; Selection re-elevated by TASK_DOMAINS_003; Shared Domains / Business Domain taxonomy and Training/Performance extraction documented by the post-reorganization documentation alignment task; Continuous Productivity Development added and Training redefined as Operational Knowledge by a later reorganization; Cross Domain renamed Shared Domains and the Purchased Shared Domain added by a later reorganization — see §4-5)
+**Module:** Domain / Shared-Domains Architecture
 
 ---
 
@@ -15,8 +15,9 @@
 - [Operational Knowledge/README.md](Shared%20Domains/Operational%20Knowledge/README.md) — a Shared Domain extracted from Personnel Management as **Training** (see §4), later redefined as Operational Knowledge (a distinct concept — see its own README)
 - [Continuous Productivity Development/README.md](Shared%20Domains/Continuous%20Productivity%20Development/README.md) — a Shared Domain that conceptually superseded Training's original "closes an evidenced gap" scope before Training was itself redefined as Operational Knowledge (see §4, §5)
 - [Performance/README.md](Shared%20Domains/Performance/README.md) — Shared Domain extracted from Personnel Management (see §4); documented in depth by TASK_PERSONNEL_001
+- [Purchased/README.md](Shared%20Domains/Purchased/README.md) — a Shared Domain added later still (see §4): normalized purchase facts from what a Business Domain was invoiced for
 - [../00 Core/ConceptualArchitecture/](../00%20Core/ConceptualArchitecture/) — Core 2.0 concepts reused below (Subject, Reality, Goal, Decision/Action/Outcome/Learning, Epistemic Boundary)
-- [../07 Tasks/TASK_DOMAINS_001_Document_Cross_Domain_Architecture_Conclusions.md](../07%20Tasks/TASK_DOMAINS_001_Document_Cross_Domain_Architecture_Conclusions.md) — task that produced this document
+- [../07 Tasks/TASK_DOMAINS_001_Document_Cross_Domain_Architecture_Conclusions.md](../07%20Tasks/TASK_DOMAINS_001_Document_Cross_Domain_Architecture_Conclusions.md) — task that produced this document (historical filename retained — the task predates the Shared Domains rename)
 - [../07 Tasks/TASK_DOMAINS_002_Canonicalize_Personnel_Management_and_Move_Selection.md](../07%20Tasks/TASK_DOMAINS_002_Canonicalize_Personnel_Management_and_Move_Selection.md) — task that canonicalized Personnel Management and moved Selection under it (superseded for Selection by TASK_DOMAINS_003, `07 Tasks/Reports/TASK_DOMAINS_003_REPORT.md`)
 
 ---
@@ -62,14 +63,14 @@ Restaurant is currently the first concrete application context for these Domains
 
 Every Domain under `01 Domains/` belongs to exactly one of two families, physically expressed as the two folders directly under `01 Domains/`:
 
-- **Shared Domains** (`01 Domains/Shared Domains/`) — a Domain whose concepts, ontology and reasoning structure are genuinely industry-independent: it must remain usable by any business/industry, not just the one that happens to be RF-One's first application. A Shared Domain may consume industry-specific content supplied by a Business Domain (as data, configuration or evidence), but must never structurally depend on one specific Business Domain to function or to be defined.
-- **Business Domain** (`01 Domains/Business Domain/`) — a Domain whose ontology, integrations, metrics and operational semantics are specific to one industry/business context. A Business Domain may consume Shared Domain capabilities (e.g. Restaurant using Selection to evaluate a candidate, or Personnel Management to reason about its people), and may supply its own technical content into a Shared Domain's reasoning as an input — but it does not own or redefine the Shared Domain capability itself.
+- **Shared Domains** (`01 Domains/Shared Domains/`, **formerly named `Cross Domain`** — renamed by a later reorganization; see below) — a Domain whose concepts, ontology and reasoning structure are genuinely industry-independent: it must remain usable by any business/industry, not just the one that happens to be RF-One's first application. A Shared Domain may consume industry-specific content supplied by a Business Domain (as data, configuration or evidence), but must never structurally depend on one specific Business Domain to function or to be defined.
+- **Business Domain** (`01 Domains/Business Domain/`) — a Domain whose ontology, integrations, metrics and operational semantics are specific to one industry/business context. A Business Domain may consume Shared Domain capabilities (e.g. Restaurant using Selection to evaluate a candidate, or Personnel Management to reason about its people), and may supply its own technical content into a Shared Domain's reasoning as an input — but it does not own or redefine the Shared Domain capability itself. **"BD"** is an accepted textual abbreviation for "Business Domain" in RF-One documents (prose shorthand only; the folder stays spelled out as `Business Domain/`).
 
-This is the same **transversal Domain principle** already established in §3, now given an explicit physical home so the distinction is visible in the folder structure, not only in prose.
+This is the same **transversal Domain principle** already established in §3, now given an explicit physical home so the distinction is visible in the folder structure, not only in prose. The family itself was originally named **Cross Domain** (TASK_DOMAINS_002 onward) and was renamed **Shared Domains** by a later reorganization, at the same time the **Purchased** Shared Domain was added (see below) — the rename changed no Domain's functional meaning; it only replaced the family label and its folder name (`01 Domains/Cross Domain/` → `01 Domains/Shared Domains/`) everywhere it was live/canonical. Do not confuse this **Shared Domains** family with **`_Shared/`** (§ README.md) — `_Shared/` is not a Domain at all.
 
 ```text
 01 Domains/
-├── Shared Domains/
+├── Shared Domains/                  (formerly Cross Domain/)
 │   ├── Administration               (transversal Domain, with its Payroll module)
 │   ├── Continuous Productivity      (top-level, transversal Domain — conceptually superseded
 │   │   Development                   Training's original "closes an evidenced gap" scope
@@ -86,6 +87,10 @@ This is the same **transversal Domain principle** already established in §3, no
 │   │                                    determines, composes and approves
 │   │                                    compensation but does not itself
 │   │                                    perform Payroll)
+│   ├── Purchased                    (top-level, transversal Domain — added by a later
+│   │                                 reorganization; normalizes what a Business Domain
+│   │                                 was invoiced for into Purchased Lines; owns the
+│   │                                 purchase fact, never its payment/settlement)
 │   ├── Selection                    (top-level, transversal Domain — re-elevated by
 │   │                                 TASK_DOMAINS_003; was a Personnel Management module,
 │   │                                 TASK_DOMAINS_002, before that)
@@ -235,5 +240,5 @@ No KPI algorithm, scoring formula, or derivation mechanism is designed by this d
 2. **Personnel Decisions vs. Workforce boundary in practice.** Both concern "the person in the role," but from different angles (structural occupancy vs. ongoing relationship/performance management). Confirm this boundary holds once concrete entities (e.g. Assignment, Employment Relationship) are modeled, or whether some concepts naturally belong to both.
 3. **Customer Feedback ↔ Review linkage.** How and whether these two Domains share an underlying evidence/entity model (e.g. a Review as one possible representation of Feedback) is not decided here.
 4. **Performance and KPI ownership.** Whether Performance is the (Shared Domain) capability that hosts KPI-discovery logic, or whether KPI discovery reads from Performance among other sources, is not decided here.
-5. **Naming.** "Personnel Management" and its modules (Workforce, Personnel Decisions, Compensation) are the fixed canonical names (TASK_DOMAINS_002). Selection, Operational Knowledge (formerly Training), Continuous Productivity Development and Performance are each a fixed canonical name too, each a sibling top-level Shared Domain rather than a Personnel Management module (TASK_DOMAINS_003 for Selection; the Shared Domain / Business Domain reorganization for Training and Performance; a later reorganization for Continuous Productivity Development and Operational Knowledge). No final names are fixed for the remaining candidates, Customer Feedback and Review.
-6. **Purchased vs. Restaurant/Purchasing.** The new Purchased Shared Domain (§4; `Shared Domains/Purchased/README.md`) and Restaurant's pre-existing, Business-Domain-specific `Purchasing` module (`Business Domain/Restaurant/Purchasing/README.md`) both normalize supplier invoices into purchase-line-level facts. **Partially closed** by "Align legacy Invoice Intake with Purchased": for the `03 Software/InvoiceIntake/` runtime path specifically, Purchased now owns the Purchase Fact (capture + normalize + publish) and Restaurant/Purchasing consumes it — see Purchased's own README, "Relationship to Restaurant's existing Purchasing module — Invoice Intake alignment (closed)." Whether Restaurant/Purchasing's *remaining* scope (Purchase Order, Configured Expectation, Physical Receiving, Reconciliation, Alert, Expected Supplier Credit) should eventually become Restaurant's own consumer/specialization of Purchased more broadly remains open; Restaurant/Purchasing's own approved content is otherwise unmodified.
+5. **Naming.** "Personnel Management" and its modules (Workforce, Personnel Decisions, Compensation) are the fixed canonical names (TASK_DOMAINS_002). Selection, Operational Knowledge (formerly Training), Continuous Productivity Development and Performance are each a fixed canonical name too, each a sibling top-level Shared Domain rather than a Personnel Management module (TASK_DOMAINS_003 for Selection; the Cross Domain / Business Domain reorganization (Cross Domain since renamed Shared Domains) for Training and Performance; a later reorganization for Continuous Productivity Development and Operational Knowledge). No final names are fixed for the remaining candidates, Customer Feedback and Review.
+6. **Purchased vs. Restaurant/Purchasing.** The new Purchased Shared Domain (§4; `Shared Domains/Purchased/README.md`) and Restaurant's pre-existing, Business-Domain-specific `Purchasing` module (`Business Domain/Restaurant/Purchasing/README.md`) both normalize supplier invoices into purchase-line-level facts. **Partially closed** by "Align legacy Invoice Intake with Purchased": for the `03 Software/InvoiceIntake/` runtime path specifically, Purchased now owns the Purchase Fact (capture + normalize + publish) and Restaurant/Purchasing consumes it — see Purchased's own README, "Relationship to Restaurant's existing Purchasing module — Invoice Intake alignment (closed)." Whether Restaurant/Purchasing's *remaining* scope (Purchase Order, Configured Expectation, Physical Receiving, Reconciliation, Alert, Expected Supplier Credit) should eventually become Restaurant's own consumer/specialization of Purchased more broadly, analogous to Service Copilot's recognized relationship to Ambient Operational Context, remains open; Restaurant/Purchasing's own approved content is otherwise unmodified.
