@@ -1,8 +1,15 @@
 """add supplier aliases table
 
 Revision ID: baf1fe9ef53a
-Revises: f7174fa37e93
+Revises: 09ed62634a09
 Create Date: 2026-09-15 08:37:08.904882
+
+Rechained from its original source-branch down_revision (f7174fa37e93) to
+main's actual current head (09ed62634a09) — main gained the Organizational
+Responsibility/Attention Runtime and Tips Payment Execution migrations
+(merged at 09ed62634a09) after this branch diverged; keeping the original
+down_revision would have created a second Alembic head instead of
+extending the existing one linearly.
 
 "Purchased Supplier Training — Phase 2" (canonical Supplier cleanup, §8/§9):
 adds `supplier_aliases`, the minimum needed to represent "canonical
@@ -29,7 +36,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'baf1fe9ef53a'
-down_revision: Union[str, Sequence[str], None] = 'f7174fa37e93'
+down_revision: Union[str, Sequence[str], None] = '09ed62634a09'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
