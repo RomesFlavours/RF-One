@@ -1,7 +1,8 @@
 """Tip Payment Instruction — RF-One's own canonical duplicate-payment guard
-and Outcome Verification for paying a finalized TipDistributionCalculationRun
-through Mercury (TASK_TIPS_CORE2_PILOT; `01 Domains/Business Domain/
-Restaurant/Tips/Tips Payment Execution.md`).
+and Outcome Verification for paying out a Tip Payment Cycle through the
+connector configured for that Restaurant (TASK_TIPS_CORE2_PILOT;
+TASK_TIPS_COMPLETE_001 §10; STEP 12B integration; `01 Domains/Business
+Domain/Restaurant/Tips/Tips Payment Execution.md`).
 
 Consumes, never redefines, Core 2.0:
 - Process Autonomy / completion requires a verified result, not a dispatched
@@ -11,15 +12,26 @@ Consumes, never redefines, Core 2.0:
 - Attention Management's CRITICAL/HIGH/MEDIUM/LOW, contextually determined,
   never a fixed table (`12_...md` §3).
 
-Deliberately reuses (never recomputes) `distribution_engine.
-build_employee_review`'s existing `net_before_adjustments_minor` as the
-per-Employee Final Payable — this module adds payment identity and outcome
-tracking, it does not touch a single Tip Business Rule.
-"""
+This module owns Payment Instruction identity/submission/outcome tracking
+only — WHICH Employees/amounts end up in an instruction (aggregating
+`TipEntitlement` rows across a Payment Cycle) is `payment_cycle_service.
+start_payment_cycle`'s concern, not this module's; this module never reads
+`TipEntitlement` or `TipDistributionCalculationRun` directly.
+
+Provider-neutral by construction (STEP 12B Product Owner decision): every
+function below takes a `connector: payment_connector.PaymentConnector`
+(never a `MercuryClient` directly) and catches only
+`payment_connector.PaymentConnectorError` subclasses — never a
+Mercury-specific exception type. `payment_cycle_service.py`/
+`payout_process.py`/`scheduler.py` resolve WHICH connector to pass in from
+each Restaurant's own configured `connector_code`
+(`tips/payment_connector.resolve_connector`); this module simply executes
+against whichever connector it is given, exactly like it always executed
+against whichever client was passed to it."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -27,11 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models as m
-from ..technical.connectors.mercury.client import (
-    MercuryAuthError, MercuryClient, MercuryDuplicateProtectionError, MercuryNotFoundError,
-    MercuryUnavailableError, MercuryValidationError,
-)
-from . import distribution_engine as engine_svc
+from . import payment_connector as connector_svc
 
 UTC = timezone.utc
 
@@ -42,9 +50,9 @@ STATUS_OUTCOME_VERIFIED = "OUTCOME_VERIFIED"
 STATUS_NEEDS_ATTENTION = "NEEDS_ATTENTION"
 STATUS_CANCELLED = "CANCELLED"
 
-# Failure classes — task §11's A-E, plus the two conditions specific to this
-# pilot's own resolution step (no recipient reference on file, and Outcome
-# Reopened by a later `reversed` observation, task §10).
+# Failure classes — plus the two conditions specific to this pilot's own
+# resolution step (no recipient reference on file, and Outcome Reopened by
+# a later `reversed` observation).
 FAILURE_RECIPIENT_NOT_CONFIGURED = "RECIPIENT_NOT_CONFIGURED"
 FAILURE_SYNCHRONOUS_VALIDATION = "SYNCHRONOUS_VALIDATION"
 FAILURE_DUPLICATE_PROTECTION = "DUPLICATE_PROTECTION"
@@ -57,68 +65,30 @@ PRIORITY_HIGH = "HIGH"
 PRIORITY_MEDIUM = "MEDIUM"
 PRIORITY_LOW = "LOW"
 
-_MERCURY_TERMINAL_FAILURE_STATUSES = {"failed", "blocked", "cancelled"}
+_TERMINAL_FAILURE_STATUSES = {"failed", "blocked", "cancelled"}
 
 
-def build_idempotency_key(calculation_run_id: int, employee_id: int, reference_id: int) -> str:
+def build_idempotency_key(payment_cycle_id: int, employee_id: int, reference_id: int) -> str:
     """Deterministic from RF-One's own canonical Payment Instruction
     identity PLUS the specific recipient reference resolved at submit time
-    — never random, never provider-influenced (task §5). Including
-    `reference_id` (not just run+employee) is required by empirical Mercury
-    sandbox behavior: resubmitting under the SAME key after the underlying
+    — never random, never provider-influenced. Including `reference_id`
+    (not just cycle+employee) is required by empirical Mercury sandbox
+    behavior: resubmitting under the SAME key after the underlying
     `recipientId` changed (a corrected reference) returns HTTP 409, not a
     safe replay — see `models.TipPaymentInstruction.idempotency_key`. The
     SAME key is still reused on every retry against the SAME resolved
     reference (a transient-failure retry stays deduplicated); only a
     genuine reference correction derives a new key."""
-    return f"RFONE-TIPS-RUN{calculation_run_id}-EMP{employee_id}-REF{reference_id}"
+    return f"RFONE-TIPS-CYCLE{payment_cycle_id}-EMP{employee_id}-REF{reference_id}"
 
 
-def get_or_create_payment_instructions_for_run(
-    session: Session, run: "m.TipDistributionCalculationRun",
-) -> list["m.TipPaymentInstruction"]:
-    """Idempotent by construction (task §5): calling this twice for the same
-    Run never creates a second row for the same Employee —
-    `uq_tip_payment_instruction_run_employee` makes a duplicate structurally
-    impossible even under a concurrent double-invocation, and this function
-    checks first so the normal (non-racing) path never even attempts one.
-
-    Only Employees with a strictly positive `net_before_adjustments_minor`
-    (`distribution_engine.build_employee_review`) get an instruction — an
-    Employee who net-owes nothing this period has nothing to pay out."""
-    existing_by_employee = {
-        row.employee_id: row
-        for row in session.scalars(
-            select(m.TipPaymentInstruction).where(m.TipPaymentInstruction.calculation_run_id == run.id)
-        )
-    }
-    review_rows = engine_svc.build_employee_review(session, run)
-
-    instructions: list[m.TipPaymentInstruction] = []
-    for row in review_rows:
-        if row.net_before_adjustments_minor <= 0:
-            continue
-        existing = existing_by_employee.get(row.employee_id)
-        if existing is not None:
-            instructions.append(existing)
-            continue
-        instruction = m.TipPaymentInstruction(
-            calculation_run_id=run.id, employee_id=row.employee_id,
-            amount_minor=row.net_before_adjustments_minor,
-            idempotency_key=None,  # derived at first submit, once a recipient reference is resolved — see build_idempotency_key.
-            status=STATUS_READY,
-        )
-        session.add(instruction)
-        instructions.append(instruction)
-    session.flush()
-    return instructions
-
-
-def _active_recipient_reference(session: Session, employee_id: int) -> "m.EmployeeExternalPaymentAccount | None":
+def _active_recipient_reference(
+    session: Session, employee_id: int, *, connector_code: str,
+) -> "m.EmployeeExternalPaymentAccount | None":
     return session.scalars(
         select(m.EmployeeExternalPaymentAccount).where(
             m.EmployeeExternalPaymentAccount.employee_id == employee_id,
-            m.EmployeeExternalPaymentAccount.provider == "MERCURY",
+            m.EmployeeExternalPaymentAccount.provider == connector_code,
             m.EmployeeExternalPaymentAccount.is_active.is_(True),
         )
     ).first()
@@ -134,27 +104,34 @@ def mark_needs_attention(
 
 
 def submit_payment_instruction(
-    session: Session, instruction: "m.TipPaymentInstruction", client: MercuryClient, *, account_id: str,
+    session: Session, instruction: "m.TipPaymentInstruction", connector: "connector_svc.PaymentConnector", *,
+    account_id: str,
 ) -> None:
     """Submits exactly ONE Payment Instruction. Never touches any other
-    instruction — a caller iterating a batch (`payout_process.py`) wraps
-    each call independently so one failure can never block or roll back the
-    others (task §9). Safe to call again on an instruction already in
+    instruction — a caller iterating a batch (`payment_cycle_service.py`)
+    wraps each call independently so one failure can never block or roll
+    back the others. Safe to call again on an instruction already in
     NEEDS_ATTENTION: the SAME idempotency_key is reused, so a retry after a
-    transient provider failure is exactly the resubmission Mercury's own
-    duplicate protection is designed to make safe."""
+    transient provider failure is exactly the resubmission a connector's
+    own duplicate protection is designed to make safe."""
     if instruction.status not in (STATUS_READY, STATUS_NEEDS_ATTENTION):
         return  # already submitted/terminal — never resubmit a SENT/OUTCOME_VERIFIED instruction.
 
-    reference = _active_recipient_reference(session, instruction.employee_id)
+    reference = _active_recipient_reference(
+        session, instruction.employee_id, connector_code=connector.connector_code,
+    )
     if reference is None:
         mark_needs_attention(
             instruction, failure_class=FAILURE_RECIPIENT_NOT_CONFIGURED,
-            reason=f"Employee {instruction.employee_id} has no active Mercury recipient reference on file.",
+            reason=(
+                f"Employee {instruction.employee_id} has no active {connector.connector_code} recipient "
+                f"reference on file."
+            ),
             priority=PRIORITY_HIGH,
         )
         return
 
+    instruction.provider = connector.connector_code
     instruction.provider_account_id = account_id
     # A key already derived from THIS SAME reference is reused as-is (a
     # transient-failure retry against the same recipient must stay
@@ -162,45 +139,45 @@ def submit_payment_instruction(
     # was derived yet) derives a fresh one — see `build_idempotency_key`.
     if instruction.provider_recipient_id != reference.provider_recipient_id or instruction.idempotency_key is None:
         instruction.idempotency_key = build_idempotency_key(
-            instruction.calculation_run_id, instruction.employee_id, reference.id,
+            instruction.payment_cycle_id, instruction.employee_id, reference.id,
         )
     instruction.provider_recipient_id = reference.provider_recipient_id
 
     amount = _amount_decimal(instruction.amount_minor)
     try:
-        transaction = client.create_transaction(
+        transaction = connector.create_transaction(
             account_id=account_id, recipient_id=reference.provider_recipient_id, amount=amount,
             payment_method="ach", idempotency_key=instruction.idempotency_key,
         )
-    except MercuryAuthError as exc:
+    except connector_svc.ConnectorAuthError as exc:
         mark_needs_attention(
             instruction, failure_class=FAILURE_PROVIDER_UNAVAILABLE,
-            reason=f"Mercury authentication failed: {exc}", priority=PRIORITY_CRITICAL,
+            reason=f"Connector authentication failed: {exc}", priority=PRIORITY_CRITICAL,
         )
         return
-    except MercuryDuplicateProtectionError as exc:
+    except connector_svc.ConnectorDuplicateError as exc:
         # Should not happen in normal operation — RF-One's own idempotency
         # check above is the primary guard. Seeing this means either a
         # genuine race, or an operator manually resubmitted outside this
         # code path; either way it is itself worth surfacing, not silently
-        # treated as a benign no-op (task §5's "Mercury duplicate protection
-        # is only a safety net" cuts both ways: when it fires, RF-One's own
-        # guard should be reviewed).
+        # treated as a benign no-op (a connector's own duplicate protection
+        # is only a safety net — when it fires, RF-One's own guard should
+        # be reviewed).
         mark_needs_attention(
             instruction, failure_class=FAILURE_DUPLICATE_PROTECTION,
-            reason=f"Mercury rejected this as a duplicate: {exc}", priority=PRIORITY_HIGH,
+            reason=f"Connector rejected this as a duplicate: {exc}", priority=PRIORITY_HIGH,
         )
         return
-    except MercuryValidationError as exc:
+    except connector_svc.ConnectorValidationError as exc:
         mark_needs_attention(
             instruction, failure_class=FAILURE_SYNCHRONOUS_VALIDATION,
             reason=str(exc), priority=PRIORITY_HIGH,
         )
         return
-    except MercuryUnavailableError as exc:
+    except connector_svc.ConnectorUnavailableError as exc:
         mark_needs_attention(
             instruction, failure_class=FAILURE_PROVIDER_UNAVAILABLE,
-            reason=f"Mercury unavailable: {exc}", priority=PRIORITY_MEDIUM,
+            reason=f"Connector unavailable: {exc}", priority=PRIORITY_MEDIUM,
         )
         return
 
@@ -213,33 +190,34 @@ def submit_payment_instruction(
     instruction.priority = None
 
 
-def refresh_outcome(session: Session, instruction: "m.TipPaymentInstruction", client: MercuryClient) -> None:
-    """Polls Mercury for this instruction's Transaction and updates the
-    observed outcome (task §10). The ONLY state this pilot treats as a
-    verified successful Outcome is `provider_status == 'sent'` AND
-    `posted_at` populated — and even then, calling this again LATER can
-    still flip a previously OUTCOME_VERIFIED instruction back to
-    NEEDS_ATTENTION if Mercury now reports `reversed` (Outcome Reopened,
-    task §10's explicit non-immutability requirement)."""
+def refresh_outcome(
+    session: Session, instruction: "m.TipPaymentInstruction", connector: "connector_svc.PaymentConnector",
+) -> None:
+    """Polls the connector for this instruction's Transaction and updates
+    the observed outcome. The ONLY state this pilot treats as a verified
+    successful Outcome is `provider_status == 'sent'` AND `posted_at`
+    populated — and even then, calling this again LATER can still flip a
+    previously OUTCOME_VERIFIED instruction back to NEEDS_ATTENTION if the
+    connector now reports `reversed` (Outcome Reopened)."""
     if instruction.provider_transaction_id is None:
         return  # nothing to poll yet.
 
     try:
-        transaction = client.get_transaction(instruction.provider_transaction_id)
-    except MercuryNotFoundError as exc:
+        transaction = connector.get_transaction(instruction.provider_transaction_id)
+    except connector_svc.ConnectorNotFoundError as exc:
         mark_needs_attention(
             instruction, failure_class=FAILURE_PROVIDER_UNAVAILABLE,
-            reason=f"Mercury transaction {instruction.provider_transaction_id} not found on read-back: {exc}",
+            reason=f"Connector transaction {instruction.provider_transaction_id} not found on read-back: {exc}",
             priority=PRIORITY_HIGH,
         )
         return
-    except (MercuryAuthError, MercuryUnavailableError) as exc:
+    except connector_svc.ConnectorUnavailableError as exc:
         # A transient read failure does NOT itself reopen a
         # previously-verified Outcome — it only means this particular
         # refresh attempt could not confirm anything new either way.
         mark_needs_attention(
             instruction, failure_class=FAILURE_PROVIDER_UNAVAILABLE,
-            reason=f"Could not read back Mercury transaction status: {exc}", priority=PRIORITY_MEDIUM,
+            reason=f"Could not read back connector transaction status: {exc}", priority=PRIORITY_MEDIUM,
         )
         return
 
@@ -250,17 +228,17 @@ def refresh_outcome(session: Session, instruction: "m.TipPaymentInstruction", cl
         mark_needs_attention(
             instruction, failure_class=FAILURE_OUTCOME_REOPENED,
             reason=(
-                "Mercury Transaction previously observed sent has since been reversed — the prior Outcome is "
+                "A Transaction previously observed sent has since been reversed — the prior Outcome is "
                 "reopened; this Payment Instruction requires re-evaluation, not automatic resubmission."
             ),
             priority=PRIORITY_HIGH,
         )
         return
 
-    if transaction.status in _MERCURY_TERMINAL_FAILURE_STATUSES:
+    if transaction.status in _TERMINAL_FAILURE_STATUSES:
         mark_needs_attention(
             instruction, failure_class=FAILURE_PROVIDER_STATUS_FAILURE,
-            reason=transaction.reason_for_failure or f"Mercury transaction status is {transaction.status!r}.",
+            reason=transaction.reason_for_failure or f"Connector transaction status is {transaction.status!r}.",
             priority=PRIORITY_HIGH,
         )
         return
@@ -273,8 +251,8 @@ def refresh_outcome(session: Session, instruction: "m.TipPaymentInstruction", cl
         return
 
     # `pending`/`sent` with no `postedAt` yet: not a failure, not yet
-    # verified — leave as SENT for a later refresh to re-check (task §10:
-    # never presented as completed before verification).
+    # verified — leave as SENT for a later refresh to re-check (never
+    # presented as completed before verification).
     instruction.status = STATUS_SENT
 
 
@@ -301,19 +279,20 @@ class FundingCheckResult:
     reason: str | None = None
 
 
-def check_funding(client: MercuryClient, *, account_id: str, instructions: list["m.TipPaymentInstruction"]) -> FundingCheckResult:
-    """Task §8 — Mercury `availableBalance` must cover the FULL batch total
-    before ANY instruction in it is submitted. Chase -> Mercury funding
-    itself is out of scope (External Funding Dependency, task §9 of the
-    Mercury discovery task) — this only reads what Mercury already reports
-    as available right now."""
+def check_funding(
+    connector: "connector_svc.PaymentConnector", *, account_id: str, instructions: list["m.TipPaymentInstruction"],
+) -> FundingCheckResult:
+    """The connector's own available balance must cover the FULL batch
+    total before ANY instruction in it is submitted. Funding the source
+    account itself is out of scope — this only reads what the connector
+    already reports as available right now."""
     required_minor = sum(i.amount_minor for i in instructions if i.status == STATUS_READY)
-    accounts = {a.id: a for a in client.get_accounts()}
+    accounts = {a.id: a for a in connector.get_accounts()}
     account = accounts.get(account_id)
     if account is None:
         return FundingCheckResult(
             required_minor=required_minor, available_minor=0, sufficient=False, account_id=account_id,
-            reason=f"Source account {account_id} not found among Mercury accounts.",
+            reason=f"Source account {account_id} not found among {connector.connector_code} accounts.",
         )
     available_minor = int((account.available_balance * 100).to_integral_value())
     sufficient = available_minor >= required_minor
@@ -321,7 +300,7 @@ def check_funding(client: MercuryClient, *, account_id: str, instructions: list[
         required_minor=required_minor, available_minor=available_minor, sufficient=sufficient,
         account_id=account_id,
         reason=None if sufficient else (
-            f"Mercury availableBalance ({available_minor} minor units) is less than the total READY Payment "
-            f"Instruction amount ({required_minor} minor units) for this batch."
+            f"{connector.connector_code} available balance ({available_minor} minor units) is less than the "
+            f"total READY Payment Instruction amount ({required_minor} minor units) for this batch."
         ),
     )

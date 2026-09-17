@@ -1,19 +1,45 @@
-"""Tip payout Process Activation / readiness (TASK_TIPS_CORE2_PILOT §4;
+"""Tip CALCULATION Process Activation / readiness (TASK_TIPS_CORE2_PILOT §4;
 Core 2.0 `00 Core/ConceptualArchitecture/13_Process_Activation_and_Trigger_
-Intelligence.md`).
+Intelligence.md`; STEP 12A Clover Correction/Reconciliation Sync; STEP 12B
+integration).
 
 Exposes ONE channel-independent question — "is there a Business Date ready
-to be calculated/paid out, and what state is it in?" — callable identically
-from the existing Flask UI, a script, a future scheduler, or a future
-Cognito Trigger Intelligence capability (`00 Core/ImplementationGuidelines.
-md`, "Channel Independence"). No scheduler, cron expression, or "run at
-02:00" rule is defined here — the Business Date being fully settled (no
-newer Order data expected to still arrive for it) is a deterministic fact
-derivable from already-persisted Clover data today; per Core 2.0 §5
-("Time is just an event"), this module treats readiness as a data
-condition, never a wall-clock rule, so it composes without change with a
-future Trigger Intelligence that recognizes the SAME condition from an
+to be CALCULATED, and what state is it in?" — callable identically from the
+existing Flask UI, a script, `tips/scheduler.py`'s automatic calculation
+loop, or a future Cognito Trigger Intelligence capability (`00 Core/
+ImplementationGuidelines.md`, "Channel Independence"). No scheduler, cron
+expression, or "run at 02:00" rule is defined here — the Business Date being
+fully settled (no newer Order data expected to still arrive for it) is a
+deterministic fact derivable from already-persisted Clover data today; per
+Core 2.0 §5 ("Time is just an event"), this module treats readiness as a
+data condition, never a wall-clock rule, so it composes without change with
+a future Trigger Intelligence that recognizes the SAME condition from an
 observed event instead of from a caller asking on demand.
+
+PAYMENT readiness is a SEPARATE concept, deliberately not answered here
+(TASK_TIPS_COMPLETE_001 §2/§4: Calculation Schedule != Payment Schedule) —
+see `tips/payment_readiness.describe_payment_readiness` for "is it safe to
+Approve & Pay a Payment Cycle right now," and `tips/payment_cycle_service.
+describe_payment_cycle_readiness` for "is there an unpaid balance ready to
+be aggregated into one." Both REUSE, never re-derive, THIS module's own
+canonical Clover Correction/Reconciliation Sync gate below — STEP 12B
+integration audit: no duplicate Clover gate anywhere in this Domain.
+
+STEP 12B integration note: `BusinessDateReadiness` previously (TASK_TIPS_
+CORE2_PILOT) also carried `payment_instructions_total`/
+`payment_instructions_needing_attention`/`payment_instructions_verified`/
+`fully_settled`/`ready_to_submit_payouts`, derived from `TipPaymentInstruction.
+calculation_run_id` — a column that no longer exists once Tips adopted the
+Payment Cycle model (a Payment Instruction now aggregates MANY calculation
+runs via `TipEntitlement`, so "this run's own payment instructions" is no
+longer a coherent question at all). Those fields are removed here, not
+preserved: the underlying schema they read is gone by construction of the
+approved Payment Cycle schema change, and the settlement question they
+answered now belongs to the Payment Cycle level (`payment_cycle_service.
+describe_payment_cycle_readiness`), never re-derived per-Business-Date.
+`ready_to_calculate`/`reconciliation_ready`/`reconciliation_reason` below —
+the actual Clover Correction/Reconciliation Sync gate this note exists to
+protect — are otherwise UNCHANGED from current main.
 """
 
 from __future__ import annotations
@@ -59,12 +85,7 @@ class BusinessDateReadiness:
     has_orders: bool
     calculation_run: "m.TipDistributionCalculationRun | None"
     already_calculated: bool
-    payment_instructions_total: int
-    payment_instructions_needing_attention: int
-    payment_instructions_verified: int
     ready_to_calculate: bool
-    ready_to_submit_payouts: bool
-    fully_settled: bool
     # CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md §7 — Tips privileges
     # consolidation over freshness: `reconciliation_ready` reflects whether
     # this Business Date's Clover data has had the opportunity to pass
@@ -93,9 +114,8 @@ def describe_readiness(session: Session, restaurant_id: int) -> BusinessDateRead
     if business_date is None:
         return BusinessDateReadiness(
             business_date=None, has_orders=False, calculation_run=None, already_calculated=False,
-            payment_instructions_total=0, payment_instructions_needing_attention=0,
-            payment_instructions_verified=0, ready_to_calculate=False, ready_to_submit_payouts=False,
-            fully_settled=False, reconciliation_ready=False, reconciliation_reason="no Business Date candidate yet",
+            ready_to_calculate=False, reconciliation_ready=False,
+            reconciliation_reason="no Business Date candidate yet",
         )
 
     period_start, period_end = business_date_period(business_date)
@@ -104,28 +124,12 @@ def describe_readiness(session: Session, restaurant_id: int) -> BusinessDateRead
     )
     already_calculated = run is not None
 
-    instructions: list[m.TipPaymentInstruction] = []
-    if run is not None:
-        instructions = list(
-            session.scalars(
-                select(m.TipPaymentInstruction).where(m.TipPaymentInstruction.calculation_run_id == run.id)
-            )
-        )
-    needing_attention = sum(1 for i in instructions if i.status == "NEEDS_ATTENTION")
-    verified = sum(1 for i in instructions if i.status == "OUTCOME_VERIFIED")
-
-    fully_settled = already_calculated and bool(instructions) and verified == len(instructions)
-
     reconciliation = describe_reconciliation_status(
         session, location_ids=_restaurant_location_ids(session, restaurant_id), period_end=period_end,
     )
 
     return BusinessDateReadiness(
         business_date=business_date, has_orders=True, calculation_run=run, already_calculated=already_calculated,
-        payment_instructions_total=len(instructions), payment_instructions_needing_attention=needing_attention,
-        payment_instructions_verified=verified,
         ready_to_calculate=not already_calculated and reconciliation.ready,
-        ready_to_submit_payouts=already_calculated and not fully_settled and reconciliation.ready,
-        fully_settled=fully_settled,
         reconciliation_ready=reconciliation.ready, reconciliation_reason=reconciliation.reason,
     )

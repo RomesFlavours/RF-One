@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    {% if category == "error" %}
+      <div class="error">{{ message }}</div>
+    {% endif %}
+  {% endfor %}
+  {% for category, summary in messages %}
+    {% if category == "summary" %}
+    <div class="card"><p>{{ summary }}</p></div>
+    {% endif %}
+  {% endfor %}
+{% endwith %}
+
+{% if not restaurant %}
+  <div class="card"><p class="error">No Restaurant exists in this database yet.</p></div>
+{% else %}
+
+<div class="card">
+  <h2>Calculation Schedule</h2>
+  <p class="muted" style="font-size:.85rem;">
+    WHEN Tips are calculated — independent of the Payment Schedule below (TASK_TIPS_COMPLETE_001 §2:
+    "Calculation Schedule != Payment Schedule"). The recommended pattern is daily calculation regardless of
+    how often payment happens.
+  </p>
+  {% if calc_config %}
+    <table style="margin-bottom:1rem;">
+      <tr><td class="muted">Current mode</td><td><strong>{{ calc_config.mode }}</strong></td></tr>
+      {% if calc_config.mode == "AUTOMATIC" %}
+      <tr><td class="muted">Every</td><td>{{ calc_config.interval_days }} day(s)</td></tr>
+      <tr><td class="muted">Execution time</td><td>{{ calc_config.execution_time or "00:00" }}</td></tr>
+      <tr><td class="muted">Anchor date</td><td>{{ calc_config.anchor_date or "-" }}</td></tr>
+      {% endif %}
+    </table>
+  {% else %}
+    <p class="empty">No Calculation Schedule configured yet — defaults to Manual only.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('tips_configuration_set_calculation_schedule') }}">
+    <label>Mode
+      <select name="mode" required>
+        {% for mode in schedule_modes %}<option value="{{ mode }}">{{ mode }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Every N days <input type="number" name="interval_days" min="1"></label>
+    <label>Execution time <input type="time" name="execution_time"></label>
+    <label>Anchor date <input type="date" name="anchor_date"></label>
+    <label>Set by <input type="text" name="created_by"></label>
+    <button type="submit">Update Calculation Schedule</button>
+  </form>
+
+  <form method="post" action="{{ url_for('tips_configuration_run_calculation_now') }}" style="margin-top:.8rem;">
+    <button type="submit" {{ 'disabled' if readiness_state and readiness_state.already_calculated else '' }}>
+      Run Calculation Now
+    </button>
+    {% if readiness_state %}
+      <span class="muted" style="font-size:.78rem;">
+        Business Date {{ readiness_state.business_date or "-" }} —
+        {% if readiness_state.already_calculated %}already calculated{% elif not readiness_state.clover_ready %}not ready: {{ readiness_state.clover_reason }}{% else %}ready{% endif %}
+      </span>
+    {% endif %}
+  </form>
+</div>
+
+<div class="card">
+  <h2>Payment Schedule</h2>
+  <p class="muted" style="font-size:.85rem;">
+    WHEN Tips are paid out — a Payment Cycle aggregates every unpaid Tip Entitlement accrued since the
+    previous cycle (e.g. daily calculation + payment every 7 days). Also configures which Mercury sandbox
+    account funds this Restaurant's payouts.
+  </p>
+  {% if payment_config %}
+    <table style="margin-bottom:1rem;">
+      <tr><td class="muted">Current mode</td><td><strong>{{ payment_config.mode }}</strong></td></tr>
+      {% if payment_config.mode == "AUTOMATIC" %}
+      <tr><td class="muted">Every</td><td>{{ payment_config.interval_days }} day(s)</td></tr>
+      <tr><td class="muted">Execution time</td><td>{{ payment_config.execution_time or "00:00" }}</td></tr>
+      <tr><td class="muted">Anchor date</td><td>{{ payment_config.anchor_date or "-" }}</td></tr>
+      <tr><td class="muted">Approval</td>
+          <td><strong>{{ payment_config.auto_approval_mode or "WITH_APPROVAL" }}</strong>
+              {% if (payment_config.auto_approval_mode or "WITH_APPROVAL") == "WITH_APPROVAL" %}
+                — a human still Approves &amp; Pays each cycle
+              {% else %}
+                — RF-One Approves &amp; Pays automatically once READY, within Delegated Authority
+              {% endif %}
+          </td></tr>
+      {% endif %}
+      <tr><td class="muted">Payment connector</td><td><strong>{{ payment_config.connector_code or "not configured" }}</strong></td></tr>
+      <tr><td class="muted">Mercury source account</td><td>{{ payment_config.mercury_source_account_id or "not configured" }}</td></tr>
+    </table>
+  {% else %}
+    <p class="empty">No Payment Schedule configured yet — defaults to Manual only, no connector, and no Mercury source account.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('tips_configuration_set_payment_schedule') }}">
+    <label>Mode
+      <select name="mode" required>
+        {% for mode in schedule_modes %}<option value="{{ mode }}">{{ mode }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Every N days <input type="number" name="interval_days" min="1"></label>
+    <label>Execution time <input type="time" name="execution_time"></label>
+    <label>Anchor date <input type="date" name="anchor_date"></label>
+    <label>Approval (AUTOMATIC only)
+      <select name="auto_approval_mode">
+        <option value="">WITH_APPROVAL (a human Approves &amp; Pays)</option>
+        <option value="WITHOUT_APPROVAL">WITHOUT_APPROVAL (RF-One Approves &amp; Pays automatically when READY)</option>
+      </select>
+    </label>
+    <label>Payment connector
+      <select name="connector_code" required>
+        <option value="">— select —</option>
+        {% for code in connector_codes %}<option value="{{ code }}">{{ code }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Mercury source account id <input type="text" name="mercury_source_account_id"></label>
+    <label>Set by <input type="text" name="created_by"></label>
+    <button type="submit">Update Payment Schedule</button>
+  </form>
+  <p class="muted" style="font-size:.78rem; margin-top:.6rem;">
+    "Start Payment Cycle Now" and "Approve &amp; Pay" live on the <a href="{{ url_for('payment_control_home') }}">Payment Control</a> page.
+    WITHOUT_APPROVAL requires this Restaurant to hold an explicit TIPS/APPROVE_AND_PAY Authority grant for
+    the RF-One System identity — it is never implied by choosing this mode alone. Payment connector selects
+    WHICH technical connector executes this Restaurant's payments (Mercury is currently the only registered
+    one) — leaving it unconfigured, or choosing one not yet registered, makes Approve &amp; Pay fail closed
+    with an explicit error, never a silent Mercury default.
+  </p>
+</div>
+
+{% endif %}
+{% endblock %}
