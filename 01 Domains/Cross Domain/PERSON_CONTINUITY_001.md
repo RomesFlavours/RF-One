@@ -8,6 +8,12 @@
 
 ---
 
+## 0. Not to be confused with Human Operational State
+
+Person Continuity (this document) preserves knowledge and continuity **about the person** — stable, revisable evidence and history — across processes and time. It is a distinct concept from **Human Operational State** ([00 Core/ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md](../../00%20Core/ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md)), which describes the person's temporary, contextual operational condition **in the current moment** (e.g. shift fatigue, workload, authorized physiological evidence) and adapts how Cognito interacts with them. The two are related — Human Operational State may be interpreted in light of stable person knowledge — but are never interchangeable: a specific instance of elevated operational load must never be written back into the continuous person identity or history this document defines as a new durable trait.
+
+---
+
 ## 1. Purpose
 
 RF-One must preserve the continuity of the same real person as they move through:

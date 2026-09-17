@@ -17,6 +17,9 @@
 - [06_Business_Autopilot_and_Intelligence_Engine.md](06_Business_Autopilot_and_Intelligence_Engine.md) — the Intelligence Engine abstraction; Cognito is itself an Intelligence Engine consumer, not a replacement for the Business Autopilot model.
 - [../ImplementationGuidelines.md](../ImplementationGuidelines.md), "Channel Independence" — a technical separation of Cognito's capabilities must still respect Domain capability being callable independently of any one channel.
 - See also `00 Core/Cognitive Interface/RF-ONE_COGNITIVE_INTERFACE_CONCEPT.md` — an earlier exploratory document, status "CONCEPTUAL DIRECTION — UNDER REVIEW," about a future interaction layer. That document does not itself use the name "Cognito," predates this canonical definition, and remains under review at its own stated status — it is not authority for this document and is not elevated in status by it. This document is the canonical definition of what Cognito conceptually is; the exploratory document remains a separate, not-yet-approved product-direction discussion.
+- See also [15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md](15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md) — status APPROVED — Post-Baseline Conceptual Extension, ratified by the Product Owner after the baseline and still not part of this canonical 00–14 set (ratification does not retroactively extend `core-2.0-freeze`). It specializes how the Human Interaction capability (§3 below) may adapt to the current Human Operational State of the person Cognito is interacting with. It does not add a new capability to §6's list and does not redefine Cognito.
+- See also [16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md](16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md) — status APPROVED — Post-Baseline Conceptual Extension, ratified by the Product Owner after document 15, still not part of this canonical 00–14 set and not retroactively extending `core-2.0-freeze`. It specializes the Context Interpretation capability named in §6 below with Ambient Operational Context, and states how that feeds the Human Interaction capability (§3 below) as In-Flow Cognito Assistance. It does not add a new capability to §6's list and does not redefine Cognito. It also recognizes the Restaurant Domain's existing Service Copilot module as this concept's first Domain-level consumer instance, without merging it into Cognito.
+- See also [17_Visual_Video_Context_as_Ambient_Evidence.md](17_Visual_Video_Context_as_Ambient_Evidence.md) — status APPROVED — Post-Baseline Conceptual Extension, a sub-extension of document 16. It documents Visual/Video Context as one source category of Ambient Operational Context, further specializing the same Context Interpretation capability named in §6 below — it does not add a new capability and does not redefine Cognito.
 
 ---
 
@@ -53,6 +56,8 @@ The distinction between Trigger Intelligence and Cognito's other capabilities is
 **Cognito Human Interaction** is the complementary capability through which Cognito converses with people. It may include: voice; text; briefing; debriefing; questions and answers; authorization requests; explanations; and access to visual views when necessary ([11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md](11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md) §5: voice to understand and decide, screen when a visual representation improves the decision).
 
 Human Interaction is **one of Cognito's capabilities, not a synonym for Cognito itself**. Describing Cognito only in terms of voice or conversation, as if that were the whole of it, is exactly the reduction this document corrects.
+
+When exercising Human Interaction, Cognito may adapt to the current Human Operational State of the person it is addressing — the same person is not operationally identical at every moment of the same shift. This adaptation is specialized, not redefined, in [15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md](15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md) (status: APPROVED — Post-Baseline Conceptual Extension, ratified after the baseline; still outside the canonical 00–14 set and not retroactively part of `core-2.0-freeze`). It never constitutes medical diagnosis, never creates Authority, and never becomes a permanent judgment about the person.
 
 ---
 
@@ -100,7 +105,7 @@ This sequence is conceptual, not a mandatory technical specification (document 1
 
 ## 6. One Intelligence, several capabilities
 
-Cognito is **one** conceptual Cognitive Intelligence. It may have different capabilities. Approved examples, illustrative and non-exhaustive: Human Interaction; Trigger Intelligence; Context Interpretation; Explanation; Briefing/Debriefing.
+Cognito is **one** conceptual Cognitive Intelligence. It may have different capabilities. Approved examples, illustrative and non-exhaustive: Human Interaction; Trigger Intelligence; Context Interpretation; Explanation; Briefing/Debriefing. Context Interpretation is specialized, not redefined, by [16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md](16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md) (status APPROVED — Post-Baseline Conceptual Extension).
 
 Core does not fix a closed taxonomy of Cognito's capabilities, and does not assume this list is complete. A future capability may be added without redefining Cognito itself, exactly as a new Domain may be added without redefining Core (see [00_RF-One_Core_Vision.md](00_RF-One_Core_Vision.md) §1).
 
