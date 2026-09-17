@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block page_title %}Bank Reconciliation · Monthly Export · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('bank_home') }}">&larr; Bank Reconciliation</a></p>
+<h1>Kermali monthly export</h1>
+<p class="muted">Generates <code>RfBank_YYYY_MM.xlsx</code> — the Monthly Accountant Export. Blocked while any reason below applies.</p>
+
+<div class="card">
+  <form method="get" class="compact-form">
+    <div class="field-row">
+      <label for="year">Year</label>
+      <input type="number" id="year" name="year" value="{{ year or '' }}" min="2000" max="2100" required>
+    </div>
+    <div class="field-row">
+      <label for="month">Month</label>
+      <input type="number" id="month" name="month" value="{{ month or '' }}" min="1" max="12" required>
+    </div>
+    <button type="submit">Check</button>
+  </form>
+
+  {% if year and month %}
+    {% if blockers %}
+      <h2>Export blocked</h2>
+      <ul>
+        {% for blocker in blockers %}
+          <li>{{ blocker.reason }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>No blocking reason found for {{ year }}-{{ "%02d"|format(month) }}.</p>
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="year" value="{{ year }}">
+        <input type="hidden" name="month" value="{{ month }}">
+        <button type="submit">Download RfBank_{{ year }}_{{ "%02d"|format(month) }}.xlsx</button>
+      </form>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

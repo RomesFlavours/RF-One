@@ -47,6 +47,7 @@ from rfone_data_store import rfone_recovery_service as recovery_service  # noqa:
 from rfone_data_store.technical import ses_email  # noqa: E402
 from compensation_routes import register_compensation_routes  # noqa: E402
 from organizational_responsibility_routes import register_organizational_responsibility_routes  # noqa: E402
+from bank_routes import register_bank_routes  # noqa: E402
 import training_integration  # noqa: E402
 
 app = Flask(__name__)
@@ -326,6 +327,22 @@ register_compensation_routes(
 
 register_organizational_responsibility_routes(
     app, require_admin=require_admin, SessionFactory=SessionFactory, require_csrf=require_csrf,
+)
+
+
+# ---------------------------------------------------------------------------
+# Bank Reconciliation — Canonical Financial Model Convergence (Phases 1-6B,
+# FINANCIAL_MODEL_CONVERGENCE_001). Manual CSV import (Chase, First
+# Citizens) and PayPal acquisition, normalized into the canonical
+# PaymentInstrument/FinancialTransaction ledger; the Bank Recognition
+# Expert System, Kermali Monthly Accountant Export, and automatic
+# cross-ledger internal-transfer matching (Phase 6B). Gated the same way
+# as every other destination here: `require_domain_access("BANK")`.
+# ---------------------------------------------------------------------------
+
+register_bank_routes(
+    app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
+    load_current_account=load_current_account, require_csrf=require_csrf,
 )
 
 

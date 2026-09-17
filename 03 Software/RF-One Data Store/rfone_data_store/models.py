@@ -36,6 +36,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -9818,6 +9819,772 @@ class RFOneAccountVerificationCode(Base):
     account: Mapped["RFOneAccount"] = relationship()
 
 
+
+# ---------------------------------------------------------------------------
+# Canonical Financial Model Convergence — Phase 1 (FINANCIAL_MODEL_
+# CONVERGENCE_001). `PaymentInstrument` is the single canonical identity for
+# a financial/payment instrument — a Bank Account, a Credit Card, or a
+# PayPal account. It absorbs the source-resolution fields
+# (`institution`/`last_four`/`external_account_identifier`) an earlier,
+# CSV-only `FinancialAccount` model used for the same purpose; that model
+# is not migrated, modified, or retired by this phase — this table is
+# additive only. Deliberately only these three `instrument_type` values
+# (approved convergence plan — "Do not invent additional instrument
+# types"); not a speculative plugin architecture for arbitrary future
+# providers.
+# ---------------------------------------------------------------------------
+
+
+class PaymentInstrument(Base):
+    """A financial/payment instrument that can originate reconciliation-
+    participating transactions — a Bank Account, a Credit Card, or a
+    PayPal account.
+
+    `institution`/`last_four`/`external_account_identifier` are absorbed
+    from the earlier `FinancialAccount` model's source-resolution fields
+    (e.g. CHASE/FIRST_CITIZENS institution matching, last-four-digit and
+    external-account-number matching a source file's own identifier to
+    this instrument) — required by existing source-resolution behavior,
+    not invented for this phase. `external_account_identifier` is the one
+    canonical field for a source's external account identifier; it is not
+    duplicated as a second, separately-named column.
+
+    `linked_instrument_id` records a known settlement/funding relationship
+    to another `PaymentInstrument` (e.g. a PayPal account's linked bank
+    account, or a Credit Card's linked payment bank account) — self-
+    referential, many-to-one (several instruments may settle to the same
+    bank account). `source_system_id` names the connector this instrument
+    is (or will be) synchronized from — NULL for an instrument reconciled
+    only from manual/human-entered transactions."""
+
+    __tablename__ = "payment_instruments"
+    __table_args__ = (
+        CheckConstraint(
+            "instrument_type IN ('BANK_ACCOUNT', 'CREDIT_CARD', 'PAYPAL')",
+            name="ck_pi_instrument_type",
+        ),
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_pi_status"),
+        Index("ix_pi_legal_entity_id", "legal_entity_id"),
+        Index("ix_pi_linked_instrument_id", "linked_instrument_id"),
+        Index("ix_pi_source_system_id", "source_system_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    legal_entity_id: Mapped[int | None] = mapped_column(ForeignKey("legal_entities.id"), nullable=True)
+
+    instrument_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # Source-resolution data absorbed from `FinancialAccount` (spec §3.2,
+    # §5.2 of the earlier Bank Reconciliation V1 task) — used to
+    # automatically match a source row to this instrument when the source
+    # file/feed itself carries an identifier. Never used to invent a Legal
+    # Entity or instrument identity on its own.
+    institution: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_four: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    external_account_identifier: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+
+    currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+
+    linked_instrument_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=True
+    )
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
+
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    legal_entity: Mapped["LegalEntity | None"] = relationship()
+    linked_instrument: Mapped["PaymentInstrument | None"] = relationship(
+        remote_side=[id], foreign_keys=[linked_instrument_id]
+    )
+    source_system: Mapped["SourceSystem | None"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Canonical Financial Model Convergence — Phase 3 (FINANCIAL_MODEL_
+# CONVERGENCE_001). `BankImportBatch`/`RawBankTransaction` are the CSV-
+# specific, source-layer provenance models ported from the proven Bank
+# Reconciliation V1 vertical slice (`feature/bank-reconciliation-mvp`) —
+# whole-file preservation and per-row raw preservation. Their shape and
+# behavior are unchanged from V1; only their identity references are
+# retargeted to the canonical model: `financial_account_id` ->
+# `payment_instrument_id` (-> `PaymentInstrument.id`), and
+# `RawBankTransaction.normalized_transaction_id` -> `FinancialTransaction.id`
+# (was `NormalizedFinancialTransaction.id`). Per Product Owner decision,
+# these remain CSV-specific — a future connector-sourced acquisition
+# (PayPal, Mercury) is not expected to use them, exactly as it does not use
+# them on the source branch today.
+# ---------------------------------------------------------------------------
+
+
+class BankImportBatch(Base):
+    """One manual CSV upload (spec §4, "Import Batch"). Idempotent by
+    content hash (`sha256`, unique): re-uploading the exact same bytes must
+    never create a second batch (spec §8, condition 1) — the caller reuses
+    the existing row instead. `raw_file_bytes` is the durable, unmodified
+    preservation of the file exactly as received (spec §4.1) — stored
+    inline rather than on a new AWS resource (no new infrastructure was
+    authorized for this vertical slice)."""
+
+    __tablename__ = "bank_import_batches"
+    __table_args__ = (
+        UniqueConstraint("sha256", name="uq_bank_import_batches_sha256"),
+        CheckConstraint(
+            "detected_format IN ("
+            "'CHASE_BANK_ACCOUNT', 'CHASE_CREDIT_CARD_WITH_CARD', "
+            "'CHASE_CREDIT_CARD_NO_CARD', 'FIRST_CITIZENS')",
+            name="ck_bank_import_batch_detected_format",
+        ),
+        CheckConstraint(
+            "status IN ('RECEIVED', 'PARSED', 'NORMALIZED', 'REQUIRES_REVIEW', 'ACCEPTED', 'REJECTED')",
+            name="ck_bank_import_batch_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    detected_format: Mapped[str] = mapped_column(String(48), nullable=False)
+    # Resolved instrument for this batch. NULL until a human confirms it for
+    # formats where the file itself carries no reliable identifier (Chase
+    # bank accounts; Chase credit card Variant B) — spec §3.2: a file name
+    # may be used only as a hint in the upload UI, never as the authoritative
+    # identity of the instrument (never stored as authoritative resolution
+    # here).
+    payment_instrument_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=True
+    )
+
+    original_file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    raw_file_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    uploaded_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    date_range_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    date_range_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="RECEIVED", server_default="RECEIVED")
+    error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Informational only (spec §8, condition 3) — a later download's date
+    # range overlapping an earlier accepted batch for the SAME instrument.
+    # Never blocks the import; surfaced to the human reviewer as-is.
+    overlap_warning: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    payment_instrument: Mapped["PaymentInstrument | None"] = relationship()
+    raw_rows: Mapped[list["RawBankTransaction"]] = relationship(back_populates="import_batch")
+
+
+class RawBankTransaction(Base):
+    """One row of a `BankImportBatch`, exactly as received (spec §4.1) —
+    every original field is preserved in `raw_fields`, including columns
+    unused by normalization. Never discarded, never overwritten."""
+
+    __tablename__ = "raw_bank_transactions"
+    __table_args__ = (
+        UniqueConstraint("import_batch_id", "row_number", name="uq_raw_bank_transaction_batch_row"),
+        CheckConstraint(
+            "parse_status IN ('PARSED', 'ANOMALOUS', 'UNREADABLE')", name="ck_raw_bank_transaction_parse_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    import_batch_id: Mapped[int] = mapped_column(
+        ForeignKey("bank_import_batches.id"), nullable=False, index=True
+    )
+    row_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Every original column -> raw string value, verbatim (spec §4.1: unused
+    # fields must not be discarded). Never re-derived from the normalized row.
+    raw_fields: Mapped[dict] = mapped_column(JSON, nullable=False)
+    row_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+
+    parse_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    anomalies: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    normalized_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_transactions.id"), nullable=True
+    )
+
+    import_batch: Mapped["BankImportBatch"] = relationship(back_populates="raw_rows")
+    normalized_transaction: Mapped["FinancialTransaction | None"] = relationship(
+        foreign_keys=[normalized_transaction_id],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Canonical Financial Model Convergence — Phase 2/3 (FINANCIAL_MODEL_
+# CONVERGENCE_001). `FinancialTransaction` is the single normalized
+# transaction ledger for every financial-movement source (bank/credit-card
+# CSV import, PayPal API, future connectors) — acquisition mechanism never
+# determines transaction identity. Neither `NormalizedFinancialTransaction`
+# nor `PaymentInstrumentTransaction` (the two pre-convergence ledgers this
+# table replaces) is created or ported here — they do not exist on this
+# branch and are not reintroduced.
+#
+# `explanation_id` remains deliberately OMITTED — `BankTransactionExplanation`
+# has not been ported yet (Recognition is explicitly excluded from Phase 3),
+# and a nullable FK to a table that does not exist would be unsafe. It is
+# deferred to the phase that ports Recognition/Explanation.
+#
+# `import_batch_id` is now a proper FK to `bank_import_batches.id` (Phase 3
+# ports `BankImportBatch`) — still nullable, since an API-sourced
+# transaction (e.g. a future PayPal row) will not have a CSV import batch.
+#
+# Several fields proven necessary by the existing CSV Bank Reconciliation
+# implementation (`bank_source`, `description_original`, `fingerprint`,
+# `occurrence_index_in_batch`/`occurrence_count_in_batch`,
+# `duplicate_status`, `review_status`, `source_row_number`) remain nullable,
+# unlike their CSV-only predecessor, because an API-sourced transaction
+# legitimately does not use the CSV-specific duplicate-detection/review
+# mechanism.
+# ---------------------------------------------------------------------------
+
+
+class FinancialTransaction(Base):
+    """The canonical, source-independent financial movement fact — the
+    single ledger cross-ledger reconciliation, Bank Recognition, and
+    internal-transfer matching will eventually all read and write,
+    regardless of whether the movement arrived via CSV import or a
+    connector API. Not yet written to by any code in this phase.
+
+    Three separate date/time concepts are preserved per explicit Product
+    Owner decision (FINANCIAL_MODEL_CONVERGENCE_001 §5) and never
+    collapsed into one: `posting_date` (accounting/posting/settlement date
+    when a source supplies it), `transaction_date` (business/source
+    transaction date, when supplied separately from `posting_date`), and
+    `transaction_datetime` (precise source timestamp, when available —
+    particularly from API sources such as PayPal). All three are nullable:
+    an API source may supply `transaction_datetime` without a distinct
+    accounting posting date, and a future adapter decides which fields it
+    populates — no adapter is implemented by this phase.
+
+    `amount_minor` is the canonical signed amount in minor currency units
+    (never floating point) — the one fact every source must supply.
+    `gross_amount_minor`/`fee_amount_minor`/`net_amount_minor` remain
+    nullable, for sources (e.g. PayPal) that provide an explicit
+    gross/fee/net breakdown; none is inferred or calculated here.
+
+    `classification` (WHAT kind of movement) lives directly on this table
+    and defaults to `UNKNOWN` — the proven five-value vocabulary is
+    preserved verbatim; no classification logic is implemented by this
+    phase. Occurrence (WHO) and Reason (WHY) remain distinct concepts not
+    represented on this table in Phase 2.
+
+    `(payment_instrument_id, external_transaction_id)` is unique whenever
+    `external_transaction_id` is not NULL — the same idempotency rule
+    PayPal ingestion already relies on (standard SQL/SQLite semantics:
+    multiple NULLs in a unique column never conflict with each other)."""
+
+    __tablename__ = "financial_transactions"
+    __table_args__ = (
+        UniqueConstraint(
+            "payment_instrument_id", "external_transaction_id",
+            name="uq_ft_instrument_external_id",
+        ),
+        CheckConstraint(
+            "classification IN ('REVENUE', 'EXPENSE', 'INTERNAL_TRANSFER', 'FEE', 'UNKNOWN')",
+            name="ck_ft_classification",
+        ),
+        CheckConstraint(
+            "status IN ('COMPLETED', 'PENDING', 'REVERSED', 'FAILED', 'UNKNOWN')",
+            name="ck_ft_status",
+        ),
+        CheckConstraint(
+            "duplicate_status IS NULL OR duplicate_status IN "
+            "('NONE', 'CANDIDATE_DUPLICATE', 'CONFIRMED_DUPLICATE', 'CONFIRMED_DISTINCT')",
+            name="ck_ft_duplicate_status",
+        ),
+        CheckConstraint(
+            "review_status IS NULL OR review_status IN ('REQUIRES_REVIEW', 'REVIEWED', 'ACCEPTED')",
+            name="ck_ft_review_status",
+        ),
+        Index("ix_ft_instrument_posting_date_amount", "payment_instrument_id", "posting_date", "amount_minor"),
+        Index("ix_ft_instrument_datetime", "payment_instrument_id", "transaction_datetime"),
+        Index("ix_ft_source_system_id", "source_system_id"),
+        Index("ix_ft_fingerprint", "fingerprint"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # --- Core identity / provenance linkage --------------------------------
+    payment_instrument_id: Mapped[int] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=False, index=True
+    )
+    source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
+    external_transaction_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    # --- Bank/source facts ---------------------------------------------------
+    bank_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    posting_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    transaction_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    transaction_datetime: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    description_original: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description_normalized: Mapped[str | None] = mapped_column(Text, nullable=True)
+    amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    native_transaction_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    balance_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="UNKNOWN")
+
+    # --- CSV provenance linkage ----------------------------------------------
+    import_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_import_batches.id"), nullable=True
+    )
+    source_row_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # --- Duplicate-detection / occurrence fields ------------------------------
+    fingerprint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    occurrence_index_in_batch: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    occurrence_count_in_batch: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duplicate_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    duplicate_of_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_transactions.id"), nullable=True
+    )
+
+    # --- Review linkage ---------------------------------------------------
+    review_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    # Canonical Financial Model Convergence — Phase 4B (Product Owner
+    # Decision 6): the CURRENT canonical reconciliation decision — always
+    # the same row `bank_reconciliation.recognition.get_current_
+    # explanation` would resolve for this transaction. Every new current
+    # decision row (RULE or HUMAN, via `recognition._create_decision_row`)
+    # updates this pointer; Kermali export (`bank_reconciliation/
+    # export.py`) reads that row's immutable snapshot fields through it.
+    # Older decision rows remain queryable history but are never pointed
+    # to by this column once superseded.
+    explanation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_transaction_explanations.id"), nullable=True
+    )
+
+    # --- PayPal/API-capable facts -------------------------------------------
+    gross_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fee_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    net_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    counterparty_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    counterparty_identifier: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    related_external_transaction_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    # --- Business classification (WHAT) ---------------------------------------
+    classification: Mapped[str] = mapped_column(String(16), nullable=False, default="UNKNOWN")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    payment_instrument: Mapped["PaymentInstrument"] = relationship()
+    source_system: Mapped["SourceSystem | None"] = relationship()
+    import_batch: Mapped["BankImportBatch | None"] = relationship()
+    duplicate_of: Mapped["FinancialTransaction | None"] = relationship(
+        remote_side="FinancialTransaction.id",
+    )
+    # Explicit foreign_keys required since `bank_transaction_explanations`
+    # also carries the opposite-direction `financial_transaction_id` FK
+    # back to this table (BANK_RECONCILIATION_EXPERT_SYSTEM_001), making
+    # the join otherwise ambiguous.
+    explanation: Mapped["BankTransactionExplanation | None"] = relationship(foreign_keys=[explanation_id])
+
+
+# ---------------------------------------------------------------------------
+# Canonical Financial Model Convergence — Phase 6 (FINANCIAL_MODEL_
+# CONVERGENCE_001). `FinancialTransactionMatch` is the canonical cross-
+# ledger internal-transfer match, ported from `feature/purchased-invoice-
+# intake-alignment`'s proven `PaymentInstrumentTransactionMatch` and
+# retargeted to `FinancialTransaction.id` (that branch's
+# `PaymentInstrumentTransaction` ledger is not present on this branch and
+# is not reintroduced). Renamed from `PaymentInstrumentTransactionMatch` —
+# the old name incorrectly implied the now-retired ledger; the canonical
+# name reflects what it actually links today.
+#
+# `updated_at` is deliberately NOT carried over: the source model never had
+# one, and a match row is either newly created or an idempotent re-match
+# returns the pre-existing row unchanged (`bank_reconciliation/
+# matching.py:create_match`) — no code path ever updates an existing match
+# row in place, so there is nothing for an `updated_at` to track.
+# ---------------------------------------------------------------------------
+
+
+class FinancialTransactionMatch(Base):
+    """One confirmed cross-ledger link between two `FinancialTransaction`
+    rows on DIFFERENT Payment Instruments, representing the two sides of
+    the same internal movement of funds (e.g. a PayPal "transfer to bank"
+    row and the corresponding bank "PayPal transfer" deposit row, or a Bank
+    Account "credit card payment" row and the corresponding Credit Card
+    "payment received" row). Creating a match never deletes or merges
+    either source transaction — both remain independently auditable; it
+    only records the link and sets both transactions' `classification` to
+    `'INTERNAL_TRANSFER'` (`bank_reconciliation/matching.py:create_match`)
+    — never `'REVENUE'`/`'EXPENSE'`.
+
+    `transaction_a_id < transaction_b_id` is DB-enforced so the pair has
+    one canonical orientation — `uq_ftm_pair` then makes re-matching the
+    same pair idempotent rather than silently allowed to duplicate in
+    either order (A<->B and B<->A can never both exist).
+
+    `match_method` distinguishes an automatic match (`auto_match_
+    transaction`, created only when amount/direction/currency/date/
+    instrument-link all hold exactly) from a human-confirmed one
+    (`confirm_match`, the fallback for insufficient automatic evidence,
+    e.g. no `linked_instrument_id` configured yet) — this distinction,
+    plus `confirmed_by`, is the auditable record of how RF-One came to
+    know the relationship."""
+
+    __tablename__ = "financial_transaction_matches"
+    __table_args__ = (
+        UniqueConstraint("transaction_a_id", "transaction_b_id", name="uq_ftm_pair"),
+        CheckConstraint("match_type IN ('INTERNAL_TRANSFER')", name="ck_ftm_match_type"),
+        CheckConstraint("match_method IN ('AUTO', 'HUMAN')", name="ck_ftm_match_method"),
+        CheckConstraint("transaction_a_id < transaction_b_id", name="ck_ftm_ordered_pair"),
+        Index("ix_ftm_transaction_a_id", "transaction_a_id"),
+        Index("ix_ftm_transaction_b_id", "transaction_b_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    transaction_a_id: Mapped[int] = mapped_column(
+        ForeignKey("financial_transactions.id"), nullable=False
+    )
+    transaction_b_id: Mapped[int] = mapped_column(
+        ForeignKey("financial_transactions.id"), nullable=False
+    )
+
+    match_type: Mapped[str] = mapped_column(String(24), nullable=False, default="INTERNAL_TRANSFER")
+    match_method: Mapped[str] = mapped_column(String(8), nullable=False)
+    match_basis: Mapped[str | None] = mapped_column(Text, nullable=True)
+    matched_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    confirmed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    transaction_a: Mapped["FinancialTransaction"] = relationship(foreign_keys=[transaction_a_id])
+    transaction_b: Mapped["FinancialTransaction"] = relationship(foreign_keys=[transaction_b_id])
+
+
+# ---------------------------------------------------------------------------
+# Canonical Financial Model Convergence — Phase 4 (FINANCIAL_MODEL_
+# CONVERGENCE_001). Bank Reconciliation — incremental expert system for WHO
+# is involved in a bank movement and WHY it exists
+# (BANK_RECONCILIATION_EXPERT_SYSTEM_001), ported from the preserved
+# in-progress work on `feature/bank-reconciliation-mvp`. Explicitly NOT a
+# cost-family/cost-type classifier: `BankOccurrence` and
+# `BankTransactionReason` never carry Food Cost/Operative/Deductible-style
+# fields — that classification comes from invoices (Invoice Intake/
+# Purchased), never from a bank movement alone. `Supplier` is only one of
+# several possible `BankOccurrenceType` values, never assumed by default.
+#
+# Canonical adaptation: `BankRecognitionRule.financial_account_id` ->
+# `payment_instrument_id` (-> `PaymentInstrument.id`); `BankTransaction
+# Explanation.normalized_financial_transaction_id` -> `financial_transaction_id`
+# (-> `FinancialTransaction.id`, was `NormalizedFinancialTransaction.id`).
+# No business behavior is changed by either rename.
+# ---------------------------------------------------------------------------
+
+
+class BankOccurrenceType(Base):
+    """Controlled vocabulary for the TYPE of subject a bank movement
+    involves (spec: "la tipologia del soggetto coinvolto"). Deliberately
+    carries no cost-family/cost-type field of any kind — a type answers
+    "what kind of party is this," never "what did this movement pay for.\""""
+
+    __tablename__ = "bank_occurrence_types"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_bank_occurrence_type_code"),
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_bank_occurrence_type_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE", server_default="ACTIVE")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class BankOccurrence(Base):
+    """The subject concretely recognized in a bank movement — "chi o cosa
+    è coinvolto" — e.g. US Foods, ADP, Chase, Florida Department of
+    Revenue. Never named/assumed to be a Supplier: its `occurrence_type`
+    may be any `BankOccurrenceType` (spec: "Supplier è soltanto una
+    possibile tipologia del soggetto coinvolto")."""
+
+    __tablename__ = "bank_occurrences"
+    __table_args__ = (
+        UniqueConstraint("canonical_name", name="uq_bank_occurrence_canonical_name"),
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_bank_occurrence_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    canonical_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    occurrence_type_id: Mapped[int] = mapped_column(ForeignKey("bank_occurrence_types.id"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE", server_default="ACTIVE")
+    optional_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    occurrence_type: Mapped["BankOccurrenceType"] = relationship()
+
+
+class BankTransactionReason(Base):
+    """Controlled vocabulary for WHY a bank movement exists (spec: "perché
+    la transazione esiste") — e.g. SUPPLIER_INVOICE_PAYMENT, PAYROLL,
+    TAX_PAYMENT. Independent of, and never a substitute for, invoice-side
+    cost family/type/composition."""
+
+    __tablename__ = "bank_transaction_reasons"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_bank_transaction_reason_code"),
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_bank_transaction_reason_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE", server_default="ACTIVE")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    export_mapping: Mapped["BankTransactionReasonExportMapping | None"] = relationship(
+        back_populates="transaction_reason", uselist=False,
+    )
+
+
+class BankTransactionReasonExportMapping(Base):
+    """Canonical Financial Model Convergence — Phase 4B (FINANCIAL_MODEL_
+    CONVERGENCE_001, Product Owner Decision 4). The Kermali/accounting
+    export attributes a Reason implies — `food_cost`/`operative`/
+    `deductible`/`what_label` — are NOT Occurrence, NOT Reason semantics
+    themselves, and NOT Explanation audit metadata: they are an export/
+    accounting mapping associated with a Reason, kept in its own small,
+    bounded model rather than placed directly on `BankTransactionReason`
+    (Decision 3: Reason semantics must remain clean — strictly WHY).
+
+    One-to-one with `BankTransactionReason` (`uq_btrem_reason_id`): each
+    Reason has at most one export mapping, matching the proven Kermali
+    requirement of exactly one Food $/Oper/Deduct/What outcome per
+    reconciliation decision. Bank Reconciliation remains not authoritative
+    for invoice-level cost-family composition (unchanged repository rule,
+    restated on `BankOccurrence`/`BankTransactionReason`) — this mapping
+    only feeds the existing Kermali export shape, nothing more.
+
+    A decision row's own snapshot fields (`BankTransactionExplanation`)
+    are captured FROM this mapping at decision time and never re-read
+    from it afterward — editing a mapping here never changes a historical
+    decision's already-exported values (Decision 8)."""
+
+    __tablename__ = "bank_transaction_reason_export_mappings"
+    __table_args__ = (
+        UniqueConstraint("bank_transaction_reason_id", name="uq_btrem_reason_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bank_transaction_reason_id: Mapped[int] = mapped_column(
+        ForeignKey("bank_transaction_reasons.id"), nullable=False
+    )
+    food_cost: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
+    operative: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
+    deductible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
+    what_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    transaction_reason: Mapped["BankTransactionReason"] = relationship(back_populates="export_mapping")
+
+
+class BankRecognitionRule(Base):
+    """Reusable knowledge learned from confirmed human decisions (spec:
+    "le decisioni umane confermate devono diventare conoscenza
+    riutilizzabile"). `auto_apply_enabled` can only become true as the
+    direct result of an explicit human confirmation
+    (`bank_reconciliation.recognition`) — it is never inferred from a
+    confirmation/contradiction count (no numeric promotion threshold is
+    implemented, by explicit Product Owner instruction).
+
+    `CONTAINS_TEXT`/`PREFIX` rules may exist only because a human
+    explicitly chose that broader match type; `EXACT_NORMALIZED_
+    DESCRIPTION` is the only match type a plain "reuse this decision"
+    confirmation may create on its own."""
+
+    __tablename__ = "bank_recognition_rules"
+    __table_args__ = (
+        CheckConstraint(
+            "match_type IN ('EXACT_NORMALIZED_DESCRIPTION', 'CONTAINS_TEXT', 'PREFIX')",
+            name="ck_bank_recognition_rule_match_type",
+        ),
+        CheckConstraint(
+            "direction IS NULL OR direction IN ('DEBIT', 'CREDIT')",
+            name="ck_bank_recognition_rule_direction",
+        ),
+        CheckConstraint(
+            "status IN ('ACTIVE', 'INACTIVE', 'NEEDS_REVIEW')",
+            name="ck_bank_recognition_rule_status",
+        ),
+        Index("ix_bank_recognition_rule_pattern", "normalized_pattern"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    match_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    normalized_pattern: Mapped[str] = mapped_column(Text, nullable=False)
+    # NULL = applies to any Payment Instrument; set = scoped to one instrument.
+    payment_instrument_id: Mapped[int | None] = mapped_column(ForeignKey("payment_instruments.id"), nullable=True)
+    # NULL = applies regardless of direction. DEBIT = amount_minor < 0,
+    # CREDIT = amount_minor >= 0 (same sign convention as the normalized
+    # Amount — spec §3.3).
+    direction: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    occurrence_id: Mapped[int] = mapped_column(ForeignKey("bank_occurrences.id"), nullable=False, index=True)
+    transaction_reason_id: Mapped[int] = mapped_column(ForeignKey("bank_transaction_reasons.id"), nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE", server_default="ACTIVE")
+    auto_apply_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
+    human_confirmations: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    human_contradictions: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_from_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_transactions.id"), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    payment_instrument: Mapped["PaymentInstrument | None"] = relationship()
+    occurrence: Mapped["BankOccurrence"] = relationship()
+    transaction_reason: Mapped["BankTransactionReason"] = relationship()
+    created_from_transaction: Mapped["FinancialTransaction | None"] = relationship()
+
+
+class BankTransactionExplanation(Base):
+    """The ONE canonical reconciliation decision/audit row for a
+    `FinancialTransaction` (Canonical Financial Model Convergence — Phase
+    4B, FINANCIAL_MODEL_CONVERGENCE_001, Product Owner Decision 1). One
+    row per DECISION EVENT — never updated in place and never deleted, so
+    a transaction's full decision history (rule-suggested, auto-applied,
+    human-confirmed, human-overridden, ...) accumulates as multiple rows
+    over time (BANK_RECONCILIATION_EXPERT_SYSTEM_001, "audit /
+    non-overwrite"). The CURRENT decision for a transaction is the
+    highest-`id` row with that `financial_transaction_id` — resolved by
+    `bank_reconciliation.recognition.get_current_explanation` — and is
+    kept in sync with `FinancialTransaction.explanation_id`, which every
+    new current decision row updates (Decision 6).
+
+    The legacy, pre-Phase-4B catalog-style generation of this table
+    (`name`/`category`/`food_cost`/`operative`/`deductible`/`what_label`/
+    `active`, standalone rows with no `financial_transaction_id`) has
+    been retired (Decisions 1, 2, 4, 5) — `Supplier/Receiving` is now
+    `BankOccurrence.canonical_name` (Decision 2), and the Kermali
+    accounting/export attributes (`food_cost`/`operative`/`deductible`/
+    `what_label`) now live on `BankTransactionReasonExportMapping`,
+    associated with the canonical Reason (Decision 4) — never directly on
+    this per-decision row as a live, editable value.
+
+    **Immutable decision snapshot** (Decision 8): `occurrence_name_
+    snapshot`/`food_cost_snapshot`/`operative_snapshot`/`deductible_
+    snapshot`/`what_label_snapshot` are captured ONCE, at the moment this
+    row is created, from `BankOccurrence.canonical_name` and the selected
+    Reason's `BankTransactionReasonExportMapping` — never re-read from
+    those tables afterward. Kermali export reads ONLY these snapshot
+    fields, never the live `BankOccurrence`/`BankTransactionReasonExport
+    Mapping` rows, so renaming an Occurrence or editing a Reason's export
+    mapping later never changes a historical decision's already-exported
+    values. This is a decision-time snapshot, not a second reusable
+    catalog and not general historical versioning — `occurrence_id`/
+    `transaction_reason_id` remain the canonical FKs for anything that
+    needs the live, current vocabulary (e.g. Recognition rule matching).
+
+    Per the Expert System task's explicit boundary: `Food $`/`Oper`/
+    `Deduct` are never derived from `occurrence`/`transaction_reason`
+    themselves — cost family/type/composition come from invoices (Invoice
+    Intake/Purchased), never from Bank Reconciliation; the export mapping
+    is a Reason-level accounting attribute, not a reconciliation
+    semantic."""
+
+    __tablename__ = "bank_transaction_explanations"
+    __table_args__ = (
+        CheckConstraint(
+            "decision_source IS NULL OR decision_source IN ('HUMAN', 'RULE')",
+            name="ck_bank_transaction_explanation_decision_source",
+        ),
+        CheckConstraint(
+            "decision_status IS NULL OR decision_status IN "
+            "('SUGGESTED', 'AUTO_APPLIED', 'HUMAN_CONFIRMED', 'HUMAN_OVERRIDDEN', 'NEEDS_HUMAN_REVIEW')",
+            name="ck_bank_transaction_explanation_decision_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # --- Canonical decision linkage ----------------------------------------
+    financial_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_transactions.id"), nullable=True, index=True
+    )
+    occurrence_id: Mapped[int | None] = mapped_column(ForeignKey("bank_occurrences.id"), nullable=True)
+    transaction_reason_id: Mapped[int | None] = mapped_column(ForeignKey("bank_transaction_reasons.id"), nullable=True)
+    recognition_rule_id: Mapped[int | None] = mapped_column(ForeignKey("bank_recognition_rules.id"), nullable=True)
+    # Conceptual values: HUMAN, RULE.
+    decision_source: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    # Conceptual values: SUGGESTED, AUTO_APPLIED, HUMAN_CONFIRMED,
+    # HUMAN_OVERRIDDEN, NEEDS_HUMAN_REVIEW. Only AUTO_APPLIED,
+    # HUMAN_CONFIRMED and HUMAN_OVERRIDDEN are exportable/resolved states.
+    decision_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    # Short descriptive label (e.g. "HIGH"/"MEDIUM"/"LOW"), never a
+    # numeric score used to auto-promote a rule (Product Owner: "non
+    # inventare una soglia numerica per promuovere autonomamente una
+    # regola") — purely explanatory.
+    confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Technical rationale sufficient to explain the outcome (e.g. which
+    # rule matched, or why multiple candidates disagreed).
+    explanation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confirmed_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # --- Immutable decision snapshot (Decision 8) — captured once at
+    # creation from BankOccurrence.canonical_name and the selected
+    # Reason's BankTransactionReasonExportMapping; never re-read from
+    # those tables afterward. Kermali export reads these fields only. ----
+    occurrence_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    food_cost_snapshot: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    operative_snapshot: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    deductible_snapshot: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    what_label_snapshot: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, server_default=func.now(), onupdate=func.now()
+    )
+
+    financial_transaction: Mapped["FinancialTransaction | None"] = relationship(
+        foreign_keys=[financial_transaction_id],
+    )
+    occurrence: Mapped["BankOccurrence | None"] = relationship()
+    transaction_reason: Mapped["BankTransactionReason | None"] = relationship()
+    recognition_rule: Mapped["BankRecognitionRule | None"] = relationship()
+
 ALL_MODELS: tuple[type[Base], ...] = (
     ActingIdentity,
     AuthorityGrant,
@@ -10003,4 +10770,15 @@ ALL_MODELS: tuple[type[Base], ...] = (
     RFOneAccountDomainAccess,
     RFOneTrainingIdentityLink,
     RFOneAccountVerificationCode,
+    PaymentInstrument,
+    FinancialTransaction,
+    BankImportBatch,
+    RawBankTransaction,
+    BankOccurrenceType,
+    BankOccurrence,
+    BankTransactionReason,
+    BankTransactionReasonExportMapping,
+    BankRecognitionRule,
+    BankTransactionExplanation,
+    FinancialTransactionMatch,
 )
