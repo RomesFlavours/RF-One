@@ -4,6 +4,8 @@
 **Status:** APPROVED — Post-Baseline Conceptual Extension. Core 2.0 is already frozen (`core-2.0-freeze`, commit `71de3663dba2716ccbb6c1f93ffd458e20da8ead`) and `release/rf-one-2.0` (tag `rf-one-2.0-baseline`) is a released baseline built from it. This document is a conceptual extension ratified by the Product Owner after that baseline — not a retroactive change to `core-2.0-freeze` or to `release/rf-one-2.0`, and not itself folded into the Approved 00–14 canonical set ([00_RF-One_Core_Vision.md](00_RF-One_Core_Vision.md) §6). See [../Core Evolution.md](../Core%20Evolution.md) for the ratification record. Promotion to a numbered Core Principle remains a separate, future decision.
 **Module:** Core / ConceptualArchitecture
 
+> **Exploration-vs-adoption clarification (external-review clarification, added post-baseline — does not modify this document's approved substance):** every candidate evidence category this document names (§2, §5 — including physiological signals such as heart rate, HRV, and respiration rate) is a candidate for *technical exploration only*. Being named here means the concept has been identified as worth evaluating — it does NOT mean RF-One has approved collecting or operationally using that specific signal. The Product Owner's decision sequence is: **first**, explore what each technically available evidence/signal source can actually provide and how reliably; **then, separately**, decide which of those RF-One will actually use operationally. No specific wearable, sensor, or biometric signal is authorized for operational deployment merely by appearing in this document's illustrative lists. Operational adoption of any specific signal requires a later, explicit Product Owner decision, which must also address the privacy, legal, and employee-impact considerations that decision — not this document — owns.
+
 ---
 
 ## Related documents
@@ -102,6 +104,8 @@ rather than a longer explanation surveying multiple alternatives. This is illust
 ---
 
 ## 5. Authorized physiological evidence is contextual, not conclusive
+
+*(See the exploration-vs-adoption clarification at the top of this document: the signals named below are candidates for technical exploration, not an operational authorization.)*
 
 Future authorized devices may supply physiological signals — for example heart rate, heart rate variability (HRV), respiration rate, or other signals that may become available — as additional contextual evidence.
 

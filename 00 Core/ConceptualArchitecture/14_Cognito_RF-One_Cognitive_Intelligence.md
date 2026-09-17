@@ -4,6 +4,8 @@
 **Status:** Approved (Core 2.0)
 **Module:** Core / ConceptualArchitecture
 
+> **Naming note (external-review clarification, added post-baseline — does not modify this document's approved substance):** "Cognito" in this document ("RF-One Cognito") is RF-One's own internal name for the Cognitive Intelligence concept defined below. It is an unrelated concept to **Amazon Cognito**, the AWS authentication/identity service referenced elsewhere in this repository (e.g. `10 System/Identity & Access/Identity Authority and Security Architecture.md`, `rfone_data_store/technical/cognito_jwt.py`). The two share a name only by coincidence. The Product Owner has already identified this naming collision and a request is in progress to identify a replacement name for RF-One's Cognitive Intelligence concept; until that name changes, every "Cognito" in this document refers to RF-One's own concept, never to the AWS service.
+
 ---
 
 ## Related documents
