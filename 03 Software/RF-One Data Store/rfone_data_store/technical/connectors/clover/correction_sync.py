@@ -83,10 +83,13 @@ next interval (`ImportAlreadyRunningError`, caught exactly like Live Sync
 already catches it). No new locking primitive is introduced. Each of the
 three resources is then processed sequentially inside that one lock, each
 writing its OWN Modification Cursor row (created RUNNING, finalized
-COMPLETE/PARTIAL/FAILED and committed independently) so one resource's
-failure never blocks or reverts another's success, and a Location's failure
-never affects any other Location (each Location is its own process
-invocation, exactly like Live Sync).
+COMPLETE/FAILED and committed independently — baseline-closure fix: a
+per-record failure inside an otherwise-successful scan now finalizes
+FAILED, not PARTIAL, so the checkpoint never advances past unretried work;
+see `_correct_orders`'s own comment) so one resource's failure never
+blocks or reverts another's success, and a Location's failure never
+affects any other Location (each Location is its own process invocation,
+exactly like Live Sync).
 
 Idempotency: every resource reuses the exact same upsert-by-source-identity
 primitives Backfill/Live Sync already use, and a deliberate overlap
@@ -193,7 +196,7 @@ class ResourceCorrectionResult:
     location_id: int
     window_start: datetime
     window_end: datetime
-    status: str  # COMPLETE | PARTIAL | FAILED
+    status: str  # COMPLETE | FAILED (baseline-closure fix: PARTIAL is never produced by this module anymore)
     records_seen: int = 0
     records_touched: int = 0
     errors: list[str] = field(default_factory=list)
@@ -367,7 +370,19 @@ def _correct_orders(
                 touched += 1
             except Exception as exc:  # noqa: BLE001 — one bad Order must never abort the whole resource pass
                 errors.append(f"Order {(order_raw.get('id') or '')[:8]}...: {_safe_error_summary(exc)}")
-        status = "COMPLETE" if not errors else "PARTIAL"
+        # Baseline-closure fix: FAILED, never PARTIAL, when even one Order in
+        # this window could not be applied. PARTIAL previously still
+        # advanced the checkpoint (`_latest_cursor_end` accepts COMPLETE OR
+        # PARTIAL), so a single bad Order was silently, permanently skipped
+        # — the checkpoint had already moved past its `modifiedTime` before
+        # the next cycle ran. FAILED is excluded from that checkpoint query
+        # (STEP 12A's own `window_scan_failed` precedent, extended here from
+        # "whole fetch failed" to "any record inside it failed too"), so the
+        # ENTIRE window — including the successfully-touched Orders, safe to
+        # re-touch via this codebase's existing idempotent upsert — is
+        # retried next cycle until the failing Order succeeds or is fixed,
+        # with no operator action and no need to know which record failed.
+        status = "COMPLETE" if not errors else "FAILED"
 
     _finish_cursor_run(session, cursor_run, status=status, touched=touched, seen=seen, errors=errors)
     return ResourceCorrectionResult(
@@ -391,7 +406,14 @@ def _correct_payments(
     start_ms = int(window_start.astimezone(UTC).timestamp() * 1000)
     end_ms = int(window_end.astimezone(UTC).timestamp() * 1000)
     retrieved_at = utc_now()
+    # `errors` — records genuinely NOT applied this pass (skipped, or the
+    # upsert itself raised) — is what decides FAILED-vs-COMPLETE below
+    # (baseline-closure fix). `informational_notes` — a successfully
+    # touched Payment that `_ingest_payment` merely flagged a non-fatal
+    # data-quality anomaly on — never blocks the checkpoint; nothing about
+    # it needs retrying. Both are recorded in `_finish_cursor_run`'s notes.
     errors: list[str] = []
+    informational_notes: list[str] = []
     touched = 0
     seen = 0
 
@@ -436,18 +458,24 @@ def _correct_payments(
                 touched += 1
                 # `_ingest_payment` may flag a non-fatal data-quality anomaly
                 # (e.g. a previously-recorded tip now absent on re-fetch) into
-                # `summary.errors` without raising — surfaced here into this
-                # resource pass's own `errors` (PARTIAL, not FAILED: the
-                # Payment row itself was still correctly upserted).
-                errors.extend(sink.errors)
+                # `summary.errors` without raising — the Payment row itself
+                # was still correctly upserted, so this is informational
+                # only and never forces a FAILED/non-advancing checkpoint
+                # (baseline-closure fix: only a record that was NOT applied
+                # — skipped above, or an exception below — does that).
+                informational_notes.extend(sink.errors)
             except Exception as exc:  # noqa: BLE001 — one bad Payment must never abort the whole resource pass
                 errors.append(f"Payment {(payment_raw.get('id') or '')[:8]}...: {_safe_error_summary(exc)}")
-        status = "COMPLETE" if not errors else "PARTIAL"
+        # FAILED, never PARTIAL, when even one Payment could not be applied
+        # (skipped above, or raised here) — see `_correct_orders`'s own
+        # comment for the full rationale; the same fix, applied here too.
+        status = "COMPLETE" if not errors else "FAILED"
 
-    _finish_cursor_run(session, cursor_run, status=status, touched=touched, seen=seen, errors=errors)
+    all_notes = errors + informational_notes
+    _finish_cursor_run(session, cursor_run, status=status, touched=touched, seen=seen, errors=all_notes)
     return ResourceCorrectionResult(
         resource_type=RESOURCE_PAYMENTS, location_id=location_id, window_start=window_start, window_end=window_end,
-        status=status, records_seen=seen, records_touched=touched, errors=errors,
+        status=status, records_seen=seen, records_touched=touched, errors=all_notes,
     )
 
 
@@ -508,7 +536,9 @@ def _correct_refunds(
                 touched += 1
             except Exception as exc:  # noqa: BLE001 — one bad Refund must never abort the whole resource pass
                 errors.append(f"Refund {(refund_raw.get('id') or '')[:8]}...: {_safe_error_summary(exc)}")
-        status = "COMPLETE" if not errors else "PARTIAL"
+        # FAILED, never PARTIAL, when even one Refund could not be applied
+        # — see `_correct_orders`'s own comment for the full rationale.
+        status = "COMPLETE" if not errors else "FAILED"
 
     _finish_cursor_run(session, cursor_run, status=status, touched=touched, seen=seen, errors=errors)
     return ResourceCorrectionResult(

@@ -2427,7 +2427,14 @@ class TipPaymentInstruction(Base):
     # NEEDS_ATTENTION, CANCELLED — see class docstring.
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="READY")
 
-    provider: Mapped[str] = mapped_column(String(16), nullable=False, default="MERCURY")
+    # Baseline-closure fix: NO default. `provider` records which connector
+    # ACTUALLY executed this instruction (`payment_instruction.
+    # submit_payment_instruction` sets it from `connector.connector_code`
+    # at submit time) — NULL until then, never a Mercury-shaped default
+    # that would misrepresent a READY, not-yet-submitted instruction as
+    # already Mercury-bound before any connector was even resolved from
+    # this Restaurant's own configuration.
+    provider: Mapped[str | None] = mapped_column(String(16), nullable=True)
     provider_account_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     provider_recipient_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     provider_transaction_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

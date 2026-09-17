@@ -13,12 +13,19 @@ this one class, kept small and replaceable.
 
 Credentials are read from environment variables only — never hard-coded or
 committed (`PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, optionally
-`PAYPAL_API_BASE_URL` to target the sandbox
-`https://api-m.sandbox.paypal.com` instead of the live API). No real
-PayPal credentials are available in this environment — this module is
-exercised only up to the point of an HTTP call; `PayPalCredentialsError`/
-network calls themselves are not covered by the test suite for that
-reason (ported unchanged from `feature/purchased-invoice-intake-alignment`).
+`PAYPAL_API_BASE_URL` to target the LIVE API
+`https://api-m.paypal.com` instead of the sandbox). No real PayPal
+credentials are available in this environment — this module is exercised
+only up to the point of an HTTP call; `PayPalCredentialsError`/network
+calls themselves are not covered by the test suite for that reason.
+
+Baseline-closure fix: the unset-`PAYPAL_API_BASE_URL` default is now the
+**sandbox** endpoint, never production — mirroring
+`technical.connectors.mercury.client.MercuryClient`'s own established,
+already-audited convention in this codebase (default to sandbox; fail
+closed only on missing credentials, never on a missing base URL). Reaching
+PayPal's live API requires explicitly setting `PAYPAL_API_BASE_URL` to it
+— never the default, silent behavior.
 """
 
 from __future__ import annotations
@@ -31,7 +38,15 @@ from typing import Any
 
 import requests
 
-DEFAULT_API_BASE_URL = "https://api-m.paypal.com"
+DEFAULT_SANDBOX_BASE_URL = "https://api-m.sandbox.paypal.com"
+DEFAULT_LIVE_BASE_URL = "https://api-m.paypal.com"
+
+# Baseline-closure fix: NO implicit production endpoint. Unset
+# `PAYPAL_API_BASE_URL` now means sandbox, never live — see module
+# docstring. Kept as `DEFAULT_API_BASE_URL` too (equal to the sandbox
+# value) purely so any external reference to the old name still resolves
+# to the SAFE endpoint rather than breaking outright.
+DEFAULT_API_BASE_URL = DEFAULT_SANDBOX_BASE_URL
 
 
 class PayPalCredentialsError(RuntimeError):
@@ -43,7 +58,7 @@ class PayPalCredentialsError(RuntimeError):
 class PayPalCredentials:
     client_id: str
     client_secret: str
-    api_base_url: str = DEFAULT_API_BASE_URL
+    api_base_url: str = DEFAULT_SANDBOX_BASE_URL
 
 
 def load_credentials_from_env() -> PayPalCredentials:
@@ -51,7 +66,13 @@ def load_credentials_from_env() -> PayPalCredentials:
     from the environment. Raises `PayPalCredentialsError` rather than
     returning a partially-configured/placeholder client — a real
     PayPal connection is either fully configured or explicitly not
-    attempted."""
+    attempted.
+
+    `api_base_url` defaults to the SANDBOX endpoint when
+    `PAYPAL_API_BASE_URL` is unset (baseline-closure fix — mirrors
+    `MercuryClient`'s own convention) — reaching PayPal's live API
+    requires setting `PAYPAL_API_BASE_URL` explicitly; it is never reached
+    implicitly."""
     client_id = os.environ.get("PAYPAL_CLIENT_ID")
     client_secret = os.environ.get("PAYPAL_CLIENT_SECRET")
     if not client_id or not client_secret:
@@ -59,7 +80,7 @@ def load_credentials_from_env() -> PayPalCredentials:
             "PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET are not set in the environment - "
             "a real PayPal connection cannot be established without them."
         )
-    api_base_url = os.environ.get("PAYPAL_API_BASE_URL", DEFAULT_API_BASE_URL)
+    api_base_url = os.environ.get("PAYPAL_API_BASE_URL", DEFAULT_SANDBOX_BASE_URL)
     return PayPalCredentials(client_id=client_id, client_secret=client_secret, api_base_url=api_base_url)
 
 

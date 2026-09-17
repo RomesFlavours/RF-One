@@ -56,6 +56,7 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
             _test_fail_closed_behavior(session, result)
             _test_mercury_through_resolver(session, result)
             _test_scheduler_uses_configured_connector(session, result)
+            _test_provider_reflects_actual_connector_not_a_default(session, result)
         finally:
             session.rollback()
     return result
@@ -505,4 +506,71 @@ def _test_scheduler_uses_configured_connector(session: Session, result: Validati
         result.check(
             "I. Restaurant 2's failure never touched Restaurant 1's instruction, and vice versa",
             instruction2.status == "READY",
+        )
+
+
+def _test_provider_reflects_actual_connector_not_a_default(session: Session, result: ValidationResult) -> None:
+    """Baseline-closure fix: `TipPaymentInstruction.provider` must reflect
+    the connector actually selected by configuration — Mercury is not the
+    conceptual default. Covers, explicitly:
+
+    A. a new, unsubmitted instruction does not falsely claim MERCURY;
+    B. configured MERCURY execution records MERCURY appropriately;
+    C. another registered (fake) connector records its OWN identity;
+    D. routing (and the resulting `provider` value) remains
+       configuration-driven, never hardcoded."""
+    with _fake_connector_registered():
+        # --- A: unsubmitted instruction has no provider claim at all. ---
+        restaurant_a, employee_a, cycle_a, instruction_a = _make_fixture(
+            session, suffix="provA", connector_code=CONNECTOR_CODE_FAKE,
+        )
+        result.check(
+            "A. a new, unsubmitted (READY) TipPaymentInstruction does not falsely claim MERCURY — provider is "
+            "unset (None), not defaulted",
+            instruction_a.status == "READY" and instruction_a.provider is None,
+        )
+
+        # --- B: MERCURY, configured and actually executed, records MERCURY. ---
+        restaurant_b, employee_b, cycle_b, instruction_b = _make_fixture(session, suffix="provB", connector_code="MERCURY")
+        result.check(
+            "B setup: unsubmitted MERCURY-configured instruction is ALSO unset, not pre-filled",
+            instruction_b.provider is None,
+        )
+        config_b = sched_svc.get_payment_schedule_effective_at(session, restaurant_id=restaurant_b.id)
+        fake_mercury_client = _FakeMercuryClient()
+        connector_b = connector_svc.resolve_connector(config_b.connector_code, client=fake_mercury_client)
+        approver_b = _make_authorized_approver(session, restaurant_id=restaurant_b.id, suffix="provB")
+        cycle_svc.approve_and_pay_cycle(
+            session, cycle=cycle_b, acting_identity=approver_b, connector=connector_b, source_account_id="mercury-acct-1",
+        )
+        session.commit()
+        result.check(
+            "B. after real execution through the configured MERCURY connector, provider records 'MERCURY'",
+            instruction_b.provider == "MERCURY" and fake_mercury_client.create_transaction_calls == 1,
+        )
+
+        # --- C: a different registered connector records ITS OWN identity. ---
+        restaurant_c, employee_c, cycle_c, instruction_c = _make_fixture(session, suffix="provC", connector_code=CONNECTOR_CODE_FAKE)
+        config_c = sched_svc.get_payment_schedule_effective_at(session, restaurant_id=restaurant_c.id)
+        connector_c = connector_svc.resolve_connector(config_c.connector_code)
+        approver_c = _make_authorized_approver(session, restaurant_id=restaurant_c.id, suffix="provC")
+        with _recipient_reference_override(employee_id=employee_c.id, recipient_id="fake-recipient-provC"):
+            cycle_svc.approve_and_pay_cycle(
+                session, cycle=cycle_c, acting_identity=approver_c, connector=connector_c, source_account_id="fake-acct-1",
+            )
+        session.commit()
+        result.check(
+            "C. a different registered (fake) connector records ITS OWN connector_code, never 'MERCURY'",
+            instruction_c.provider == CONNECTOR_CODE_FAKE and instruction_c.provider != "MERCURY",
+        )
+
+        # --- D: routing/provider outcome is configuration-driven, not hardcoded —
+        # two Restaurants configured for two DIFFERENT connectors end up with
+        # two DIFFERENT recorded providers from the identical code path. ---
+        result.check(
+            "D. routing remains configuration-driven: Restaurant B (MERCURY-configured) and Restaurant C "
+            "(fake-connector-configured) recorded DIFFERENT providers from the SAME approve_and_pay_cycle "
+            "code path",
+            instruction_b.provider == "MERCURY" and instruction_c.provider == CONNECTOR_CODE_FAKE
+            and instruction_b.provider != instruction_c.provider,
         )

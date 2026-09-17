@@ -103,6 +103,7 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
             _test_location_failure_does_not_affect_another_location(session, result)
             _test_repeated_cycle_is_idempotent_no_duplicates(session, result)
             _test_reconciliation_status_gates_on_all_cursors(session, result)
+            _test_one_bad_record_fails_the_whole_resource_and_self_heals(session, result)
         finally:
             session.rollback()
     return result
@@ -482,4 +483,150 @@ def _test_reconciliation_status_gates_on_all_cursors(session: Session, result: V
         "reconciliation is NOT ready when even ONE required resource (here: refunds) has not yet reached "
         "this Business Date's end, even though Live Sync and the other 2 resources have",
         status2.ready is False and "refunds" in status2.reason,
+    )
+
+
+def _test_one_bad_record_fails_the_whole_resource_and_self_heals(session: Session, result: ValidationResult) -> None:
+    """Baseline-closure invariant: RF-One must NOT permanently skip a failed
+    Clover correction record merely because other records in the SAME scan
+    succeeded. One Order ("poisoned" so its own ingestion raises,
+    independent of anything the fake Clover client itself returns) sits
+    alongside one good Order in the same window. Proves: (1) the resource
+    is reported FAILED, not PARTIAL/COMPLETE; (2) the checkpoint does NOT
+    advance past the failed record's window; (3) the identical next cycle
+    automatically retries the SAME window with no operator action and no
+    need to know which record failed; (4) the good Order, retried again
+    too, is upserted idempotently (no duplicate row); (5) once the poison
+    is lifted, the cycle finally reports COMPLETE and the checkpoint
+    advances; (6) Payments/Refunds and a SECOND, independent Location are
+    completely unaffected throughout."""
+    restaurant, location, source_system = _build_fixture(session, merchant_source_id="CORR-ONEBADREC")
+    other_restaurant, other_location, _other_source_system = _build_fixture(session, merchant_source_id="CORR-ONEBADREC-OTHER")
+    now = datetime(2026, 9, 12, 12, 0, 0, tzinfo=UTC)
+
+    good_order = {
+        "id": "OBR-GOOD-1", "employee": {"id": "OBR-EMP1"}, "createdTime": _ms(now - timedelta(hours=2)),
+        "modifiedTime": _ms(now - timedelta(hours=1)), "state": "locked", "paymentState": "PAID",
+        "currency": "USD", "total": 2000, "lineItems": {"elements": []},
+    }
+    bad_order = {
+        "id": "OBR-BAD-1", "employee": {"id": "OBR-EMP1"}, "createdTime": _ms(now - timedelta(hours=2)),
+        "modifiedTime": _ms(now - timedelta(hours=1)), "state": "locked", "paymentState": "PAID",
+        "currency": "USD", "total": 3000, "lineItems": {"elements": []},
+    }
+    client = _CorrectionFakeCloverClient(merchant_id="CORR-ONEBADREC")
+    client.orders = [good_order, bad_order]
+
+    other_client = _CorrectionFakeCloverClient(merchant_id="CORR-ONEBADREC-OTHER")
+
+    # Poison exactly ONE Order's ingestion — independent of anything the
+    # fake Clover client itself returns (a real deployment could hit this
+    # from a transient DB hiccup or a genuine data-quality edge case; the
+    # fix's correctness does not depend on WHY ingestion raised).
+    original_ingest_order = cs._ingest_order
+    poisoned = {"active": True}
+
+    def poison_ingest_order(session_, order_raw, **kwargs):
+        if poisoned["active"] and order_raw.get("id") == "OBR-BAD-1":
+            raise ValueError("synthetic poison: this Order cannot be ingested")
+        return original_ingest_order(session_, order_raw, **kwargs)
+
+    cs._ingest_order = poison_ingest_order
+    try:
+        # === Cycle 1: one bad record among a good one -> whole resource FAILED. ===
+        summary1 = cs.run_correction_cycle(session, location_id=location.id, client=client, now=now)
+        session.commit()
+        session.expire_all()
+        orders_result1 = next(r for r in summary1.results if r.resource_type == cs.RESOURCE_ORDERS)
+        result.check(
+            "(1) a scan with one bad record among good ones is reported FAILED, never COMPLETE/PARTIAL",
+            orders_result1.status == "FAILED",
+        )
+        result.check(
+            "the good Order in the SAME failed scan was still upserted (per-record isolation preserved)",
+            session.scalars(
+                select(m.Order).filter_by(source_system_id=source_system.id, source_order_id="OBR-GOOD-1")
+            ).one_or_none() is not None,
+        )
+        result.check(
+            "the bad Order itself was never created",
+            session.scalars(
+                select(m.Order).filter_by(source_system_id=source_system.id, source_order_id="OBR-BAD-1")
+            ).one_or_none() is None,
+        )
+
+        orders_cursor_end_1, orders_status_1 = cs._latest_cursor_end(
+            session, location_id=location.id, source_system_id=source_system.id, resource_type=cs.RESOURCE_ORDERS,
+        )
+        result.check(
+            "(2) the checkpoint does NOT advance past the failed window — no successful cursor exists yet "
+            "for Orders at this Location",
+            orders_cursor_end_1 is None and orders_status_1 is None,
+        )
+
+        # === Cycle 2 (poison still active): identical window is retried
+        # automatically, with no operator action, no knowledge of WHICH
+        # record failed, and no duplicate of the already-upserted good
+        # Order. ===
+        now2 = now + timedelta(minutes=1)
+        summary2 = cs.run_correction_cycle(session, location_id=location.id, client=client, now=now2)
+        session.commit()
+        session.expire_all()
+        orders_result2 = next(r for r in summary2.results if r.resource_type == cs.RESOURCE_ORDERS)
+        result.check(
+            "(3) the very next cycle automatically retries the SAME unresolved window — both the good AND "
+            "bad Order are seen again (nothing was skipped ahead), still FAILED, still no operator input, "
+            "still no record-identity required from the caller",
+            orders_result2.status == "FAILED" and orders_result2.records_seen == 2,
+        )
+        result.check(
+            "(4) the good Order, re-touched on retry, is upserted idempotently — still exactly one row",
+            len(session.scalars(
+                select(m.Order).filter_by(source_system_id=source_system.id, source_order_id="OBR-GOOD-1")
+            ).all()) == 1,
+        )
+
+        # === Lift the poison — the SAME window (no operator needing to know
+        # which record it was) now succeeds in full. ===
+        poisoned["active"] = False
+        now3 = now2 + timedelta(minutes=1)
+        summary3 = cs.run_correction_cycle(session, location_id=location.id, client=client, now=now3)
+        session.commit()
+        session.expire_all()
+        orders_result3 = next(r for r in summary3.results if r.resource_type == cs.RESOURCE_ORDERS)
+        result.check(
+            "(5) once the underlying issue is resolved, the SAME still-pending window finally reports "
+            "COMPLETE, and the previously-failing Order is now ingested too",
+            orders_result3.status == "COMPLETE"
+            and session.scalars(
+                select(m.Order).filter_by(source_system_id=source_system.id, source_order_id="OBR-BAD-1")
+            ).one_or_none() is not None,
+        )
+        orders_cursor_end_3, orders_status_3 = cs._latest_cursor_end(
+            session, location_id=location.id, source_system_id=source_system.id, resource_type=cs.RESOURCE_ORDERS,
+        )
+        result.check(
+            "(5) the checkpoint FINALLY advances once the resource is genuinely fully successful",
+            orders_status_3 == "COMPLETE" and orders_cursor_end_3 is not None,
+        )
+
+        payments_result3 = next(r for r in summary3.results if r.resource_type == cs.RESOURCE_PAYMENTS)
+        refunds_result3 = next(r for r in summary3.results if r.resource_type == cs.RESOURCE_REFUNDS)
+        result.check(
+            "(6) Payments/Refunds for the SAME Location, and SAME cycle, were never affected by the "
+            "Orders-resource failure/retry",
+            payments_result3.status == "COMPLETE" and refunds_result3.status == "COMPLETE",
+        )
+    finally:
+        cs._ingest_order = original_ingest_order
+
+    # === (6) A completely independent, second Location is unaffected by
+    # any of the above — its OWN correction cycle, never touched by the
+    # first Location's poisoned Order at any point. ===
+    other_summary = cs.run_correction_cycle(session, location_id=other_location.id, client=other_client, now=now)
+    session.commit()
+    result.check(
+        "(6) a second, independent Location's own correction cycle is completely unaffected by the first "
+        "Location's per-record failure/retry history",
+        other_summary is not None and all(r.status == "COMPLETE" for r in other_summary.results),
     )

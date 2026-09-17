@@ -1,6 +1,6 @@
 # Identity & Access
 
-**Status:** Development **FROZEN**. This README is a documentation-organization update only — no feature, model, migration, or authorization behavior is added or changed by it.
+**Status:** Structural development **FROZEN** — **approved Domain consumption of the already-built services below is explicitly allowed and, as of Tips STEP 12B, actually happening** (Product Owner decision, baseline-closure task; see "Status: FROZEN" below for the precise scope). This README is a documentation-organization update only where structure is concerned — no NEW feature, model, or migration to Identity & Access's OWN tables is added or changed by it.
 
 ---
 
@@ -55,14 +55,17 @@ An initial software foundation exists and **remains in `03 Software/`** — it i
 - `03 Software/RF-One Data Store/migrations/versions/a3cafbea7fe7_add_authority_grant_and_operational_.py` — the schema migration for the two tables above
 - `03 Software/RF-One Data Store/rfone_data_store/identity_authority_signature_validation.py`, `03 Software/RF-One Data Store/test_identity_authority_signature.py` — the test suite
 - `03 Software/User Interaction Architecture.md` §3–§6, §12 — the initial User Identity/Authentication/Authorization model, Visibility Principle, Authorization Scope and Mobile Security (a broader cross-cutting interaction-architecture document that is not moved here in full; only its Identity/Authority-relevant sections connect to this area)
+- `03 Software/RF-One Data Store/migrations/versions/f5d11c7966be_add_restaurant_scope_to_authority_grant.py` — widens `AuthorityGrant.scope_type` to include `RESTAURANT` (TASK_TIPS_RESTAURANT_AUTHORITY_SCOPE_001), the first Domain-driven addition to this table's own vocabulary since the original foundation
 
-No Domain currently consumes this foundation (Tips, Selection, Purchasing and other Domains are not integrated — by design, per the task that created this foundation).
+**Tips is the first Domain to actually consume this foundation** (STEP 12B integration): `authority_service.authorize()`/`AuthorityGrant` gate Tips' Approve & Pay directly (`03 Software/RF-One Data Store/rfone_data_store/tips/payment_cycle_service.py`), scoped per-Restaurant. This is approved Domain *consumption* of already-built services, not a structural change to Identity & Access itself (the one exception, the `RESTAURANT` scope-value widening above, was itself a minimal, additive, Product-Owner-approved schema change to the existing `scope_type` vocabulary — see "Status: FROZEN" below for why this did not require lifting the freeze). No other Domain (Selection, Purchasing, etc.) has integrated with this foundation yet.
 
 ---
 
-## Status: FROZEN
+## Status: FROZEN (structural) — consumption is allowed
 
-Identity & Access development is **frozen**. The existing software foundation listed above may remain in `03 Software/` as-is. **Do not continue implementation** against this area until explicitly unfrozen by the Product Owner.
+Identity & Access's **structural/architectural development is frozen**: no new capability, no redesign of `ActingIdentity`/`AuthorityGrant`/`OperationalSignature`'s own shape, no authentication-provider decision, and none of the "Open items" below may be worked without the Product Owner explicitly unfreezing them first.
+
+**The freeze does not prohibit an approved Domain from consuming the services already built here.** Any Domain may call `authority_service.authorize()`, request/hold `AuthorityGrant`s, and record `OperationalSignature`s exactly as designed — that is this foundation's whole purpose, and withholding it from Domains that need it would defeat the point of building it centrally (Core Principle 21). Tips does this today (see above). A minimal, additive widening of an EXISTING column's own value vocabulary to support a Domain's legitimate scoping need — e.g. `AuthorityGrant.scope_type` gaining `RESTAURANT` — is Domain-driven consumption, not a structural change to this foundation, and does not itself require lifting the freeze; it still requires ordinary Product Owner approval like any schema change, exactly as `f5d11c7966be` received. What the freeze DOES block is redesigning the foundation itself (its own table shapes, its own authorization algorithm, its own assurance-level model, the authentication-provider choice) — that remains **frozen** until the Product Owner explicitly says otherwise.
 
 ---
 
@@ -73,7 +76,7 @@ Recorded as open, not designed further here:
 - Final choice of authentication provider (Cognito is the current preferred candidate, not a locked decision)
 - Exact Cognito (or alternative) configuration, user pool design, and token scheme
 - Whether/how Corporate, Brand and Operational Unit become persisted System-level entities (today only `Restaurant` and Restaurant's own narrower `OperationalArea` exist in the canonical schema — the Core Corporate/Brand/Operational Unit chain has no backing table yet)
-- Domain integration sequencing — which Domain (if any) integrates with this foundation first, and how
+- Domain integration sequencing beyond Tips — Tips answered "which Domain integrates first, and how" (direct `authority_service.authorize()` consumption, Restaurant-scoped grants); which Domain integrates next, and whether any of them need their own additive scope-vocabulary widening the way Tips did, remains open
 - The final legal e-signature provider (explicitly out of scope for the RF-One Operational Signature itself)
 - The complete commercial multi-tenant implementation model (schema-per-tenant vs. row-level isolation vs. another model)
 - How intervention/delegation revocation chains and the AI-Recommendation-vs-AI-Authorized-Execution rule are actually enforced (currently recorded as data, not policy-enforced)
