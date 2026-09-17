@@ -579,6 +579,23 @@ operational_areas.restaurant_id, physical_areas.restaurant_id, restaurant_roles.
 
 No additional speculative indexes were added (task §37's explicit caution).
 
+### Known `alembic check` false positives (SQLite reflection)
+
+Verified (STEP 11B/11C, external-review closure): `alembic check` reports drift on four tables even though their actual enforced uniqueness is unchanged and correct —
+
+```text
+applications.candidate_id
+in_person_interview_plans.application_id
+phone_interview_plans.application_id
+purchased_line_additions.purchase_line_id
+```
+
+Cause: each column is declared inline as `mapped_column(ForeignKey(...), nullable=False, unique=True, index=True)`. SQLite's reflection of an inline `unique=True` column-level constraint differs textually from an explicit named `UniqueConstraint`/`Index` object, which is what `alembic check`'s autogenerate comparison expects — the column is still uniquely enforced at the database level in both cases; this is a reflection/tooling artifact, not a schema defect. No migration is required for these four columns.
+
+This is a known class of false positive, not a blanket exemption — a future `alembic check` difference on a *different* column must still be individually investigated rather than assumed to be the same cause.
+
+**Circular-FK `SAWarning`:** `Base.metadata.sorted_tables` raises `SAWarning: Cannot correctly sort tables; there are unresolvable cycles...` because RF-One's schema has genuine circular FK references between certain tables. This does not affect actual schema creation (Alembic's migrations use explicit, individually ordered `op.create_table()` calls, never `Base.metadata.create_all()`) or ORM query behavior (ambiguous relationships already disambiguated via explicit `foreign_keys=[...]` on the affected `relationship()` calls). `create_database.py`'s own diagnostic table count previously triggered this warning unnecessarily by calling `.sorted_tables` for a count that does not need sort order; it now uses `.tables` instead (see that file). `inspect_database.py` still uses `.sorted_tables` for its own per-table listing and will still emit the same warning there — same known cause, not yet fixed, tracked as a separate non-blocking cleanup.
+
 ---
 
 ## 13. Text ER relationship diagram

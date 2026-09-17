@@ -38,7 +38,7 @@ def main() -> None:
     # `Base.metadata.tables` (not `.sorted_tables`) — this is a count only, so
     # topological dependency order is irrelevant; `.sorted_tables` also
     # triggers an SAWarning on RF-One's known circular FKs for no benefit
-    # here (see migrations/README_MIGRATIONS.md, "Circular FK SAWarning").
+    # here (see DATABASE_SCHEMA.md §12, "Circular FK SAWarning").
     table_count = len(Base.metadata.tables)
     print(f"Tables created: {table_count}")
 
