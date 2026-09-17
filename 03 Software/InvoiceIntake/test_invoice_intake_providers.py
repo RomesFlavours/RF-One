@@ -5,7 +5,7 @@ boundary (CROSS_DOMAIN_INVOICE_INTAKE_AGENT_001_FOUNDATION_V1).
 Covers: provider adapter contract, normalized draft creation, multi-file
 document handling, raw-response preservation, and the absence of any
 Purchasing dependency. Uses only the small real samples already under
-`01 Domains/Shared Domains/Administration/Invoice Intake/Invoices/Raw/` — no
+`01 Domains/Cross Domain/Administration/Invoice Intake/Invoices/Raw/` — no
 large or production AWS calls are made; the Textract provider is validated
 against `botocore.stub.Stubber` with a canned, schema-accurate response,
 never a real network call.
@@ -38,7 +38,7 @@ TESSERACT_BINARY_AVAILABLE = shutil.which("tesseract") is not None
 
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _RAW_SAMPLES_DIR = os.path.join(
-    _REPO_ROOT, "01 Domains", "Shared Domains", "Administration", "Invoice Intake", "Invoices", "Raw",
+    _REPO_ROOT, "01 Domains", "Cross Domain", "Administration", "Invoice Intake", "Invoices", "Raw",
 )
 
 

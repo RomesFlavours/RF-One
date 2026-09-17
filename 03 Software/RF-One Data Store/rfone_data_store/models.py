@@ -4589,7 +4589,7 @@ class PurchaseDocument(Base):
     except `status` (business processing status, not a source fact).
 
     Ownership (Align legacy Invoice Intake with Purchased): this table is the
-    Purchase Fact `01 Domains/Shared Domains/Purchased/README.md` canonically
+    Purchase Fact `01 Domains/Cross Domain/Purchased/README.md` canonically
     owns (capture + normalize + publish) — Restaurant/Purchasing consumes it
     rather than owning it. A supplier-side correction (credit memo, corrected
     invoice, return credit, adjustment) is its own new row referencing the
@@ -4660,7 +4660,7 @@ class PurchaseLine(Base):
     application convention that could be bypassed by a future caller.
 
     Ownership (Align legacy Invoice Intake with Purchased): a `PRODUCT` line
-    here is a Purchased Line (`01 Domains/Shared Domains/Purchased/README.md`).
+    here is a Purchased Line (`01 Domains/Cross Domain/Purchased/README.md`).
     Non-goods `SURCHARGE`/`DISCOUNT` lines are kept as their own rows for
     source evidence but are never Purchased Lines in their own right —
     Purchased's canonical output allocates them across the `PRODUCT` lines

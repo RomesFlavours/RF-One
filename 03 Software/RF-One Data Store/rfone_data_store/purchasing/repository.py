@@ -29,7 +29,7 @@ Amount) are computed on demand by functions in this module or in
 
 Ownership note (Align legacy Invoice Intake with Purchased): `PurchaseDocument`
 and `PurchaseLine` are the Purchase Fact — capture + normalize + publish —
-that `01 Domains/Shared Domains/Purchased/README.md` (a Shared Domain) now
+that `01 Domains/Cross Domain/Purchased/README.md` (a Cross Domain) now
 canonically owns; this module remains their only writer, unchanged. Restaurant/
 Purchasing (`01 Domains/Business Domain/Restaurant/Purchasing/`) no longer
 needs to be invoked to create one — it consumes this output for its own,
@@ -856,7 +856,7 @@ def acknowledge_alert(session: Session, alert_id: int, employee_id: int | None =
 # Purchased output (Align legacy Invoice Intake with Purchased)
 #
 # `PurchaseDocument`/`PurchaseLine` above are the Purchase Fact Purchased
-# (`01 Domains/Shared Domains/Purchased/README.md`) owns: capture + normalize
+# (`01 Domains/Cross Domain/Purchased/README.md`) owns: capture + normalize
 # + publish. These three functions expose that fact the way Purchased's
 # README requires -- non-goods cost allocated onto goods lines, and a
 # NORMALIZED/HUMAN functional state -- without adding any new column: the

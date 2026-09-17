@@ -3,8 +3,8 @@ persistence layer (originally TASK_PURCHASING_004; realigned by "Align
 legacy Invoice Intake with Purchased").
 
 Ownership (Align legacy Invoice Intake with Purchased): Invoice Intake is a
-process that feeds Purchased (`01 Domains/Shared Domains/Purchased/README.md`)
-— a Shared Domain, not owned by Restaurant or any other Business Domain.
+process that feeds Purchased (`01 Domains/Cross Domain/Purchased/README.md`)
+— a Cross Domain, not owned by Restaurant or any other Business Domain.
 Purchased owns the Purchase Fact: capture + normalize + publish. This module
 is that capture-and-normalize step for InvoiceIntake's reviewed header/lines:
 it maps them onto the existing `PurchaseDocument`/`PurchaseLine` model

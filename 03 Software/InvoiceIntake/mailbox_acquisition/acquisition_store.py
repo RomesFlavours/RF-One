@@ -6,7 +6,7 @@ schema. Purchased owns the Purchase Fact (`PurchaseDocument`/`PurchaseLine`,
 `03 Software/RF-One Data Store/`); this store only owns "did I already see
 this exact attachment, and what happened when I tried to deliver it" — the
 same acquisition-vs-domain-meaning split already established for Invoice
-Intake generally (`01 Domains/Shared Domains/Administration/Invoice Intake/README.md`).
+Intake generally (`01 Domains/Cross Domain/Administration/Invoice Intake/README.md`).
 
 A plain `sqlite3` file (its own, separate from `rfone_data_store`'s
 SQLAlchemy/Alembic-managed database) — proportionate to this prototype's
