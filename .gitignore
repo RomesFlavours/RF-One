@@ -40,6 +40,12 @@ __pycache__/
 !03 Software/InvoiceIntake/uploads/.gitkeep
 03 Software/InvoiceIntake/data/*.xlsx
 
+# Aruba mailbox acquisition (Purchased / Invoice Intake email acquisition) —
+# local acquisition-layer state (cursor, provenance, dedup/retry) is
+# operational data, never committed.
+03 Software/InvoiceIntake/data/*.db
+03 Software/InvoiceIntake/data/*.db-journal
+
 # GIT_RELEASE_PREP_002 — real Rome's Flavours invoice/receipt source
 # documents (Domain-level reference copies, distinct from the Software
 # prototype's uploads/ above) are runtime/reference business data, never
@@ -90,6 +96,14 @@ id_rsa.*
 id_ed25519
 id_ed25519.*
 *.ppk
+
+# --- Bank Reconciliation local source data ---------------------------------
+# Local bank downloads/exports (e.g. Chase CSV activity, reconciliation
+# export workbooks) are real financial business data, never committed.
+# Previously protected only via this worktree's local, non-shared
+# .git/info/exclude — added here so a fresh clone/external developer
+# environment is protected too, without relying on that local-only file.
+/Bank/
 
 # --- Python virtual environments -------------------------------------------
 venv/

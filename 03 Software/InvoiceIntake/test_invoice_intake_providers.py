@@ -210,13 +210,13 @@ def test_raw_response_preservation(result: Result) -> None:
 
 
 def test_no_purchasing_dependency(result: Result) -> None:
-    """None of the new provider-boundary modules import Purchasing/
+    """None of the new provider-boundary modules import Purchased's bridge/
     rfone_data_store — the foundation task must not connect Invoice Intake
-    to Purchasing."""
+    to Purchased/Purchasing directly."""
     import ast
 
     providers_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "providers")
-    forbidden = ("purchasing_bridge", "rfone_data_store")
+    forbidden = ("purchasing_bridge", "purchased_bridge", "rfone_data_store")
     offending: list[str] = []
     for filename in os.listdir(providers_dir):
         if not filename.endswith(".py"):
@@ -232,7 +232,7 @@ def test_no_purchasing_dependency(result: Result) -> None:
             if any(f in name for name in names for f in forbidden):
                 offending.append(f"{filename}: {names}")
 
-    result.check("no providers/*.py file imports purchasing_bridge or rfone_data_store", not offending)
+    result.check("no providers/*.py file imports purchased_bridge/purchasing_bridge or rfone_data_store", not offending)
 
 
 class _StubTextractClient:

@@ -4460,6 +4460,34 @@ class Supplier(Base):
     )
 
 
+class SupplierAlias(Base):
+    """A historical/source name a Supplier has been known by ("Purchased
+    Supplier Training — Phase 2", canonical Supplier cleanup). Correcting
+    `Supplier.name` in place (e.g. "PRIME LINE DISTRIBUTORS INVOICE" ->
+    "Prime Line Distributors") must never discard the prior spelling —
+    Purchased/README.md, "Supplier identity": "The original text/code as it
+    appeared in the source must always remain available as source
+    provenance, even after resolution to a canonical Supplier." This is the
+    minimum needed to represent that — canonical Supplier + known source
+    aliases — nothing else (no per-alias usage counters, no fuzzy-matching
+    configuration)."""
+
+    __tablename__ = "supplier_aliases"
+    __table_args__ = (UniqueConstraint("supplier_id", "alias_name", name="uq_supplier_aliases_supplier_id_alias_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), nullable=False, index=True)
+    alias_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Free text (illustrative, not an enum): e.g. "previous canonical name",
+    # "source filename match" — why this alias is on file, not a
+    # confidence score.
+    source: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class PurchaseOrder(Base):
     """The Restaurant's purchasing request to a Supplier
     (Purchasing/EntityDefinitions.md, "Purchase Order"). Deliberately
@@ -4559,6 +4587,16 @@ class PurchaseDocument(Base):
     entity of the Purchasing module. Immutable by convention (Purchasing/
     BusinessRules.md, Rule 2): the repository never updates a row here
     except `status` (business processing status, not a source fact).
+
+    Ownership (Align legacy Invoice Intake with Purchased): this table is the
+    Purchase Fact `01 Domains/Cross Domain/Purchased/README.md` canonically
+    owns (capture + normalize + publish) — Restaurant/Purchasing consumes it
+    rather than owning it. A supplier-side correction (credit memo, corrected
+    invoice, return credit, adjustment) is its own new row referencing the
+    original by `document_number`/`supplier_id`, never a rewrite of a prior
+    row (Purchased/README.md, "Supplier-side corrections"). NORMALIZED/HUMAN
+    functional state is derived, not a column — see
+    `purchasing/repository.py`'s `get_document_functional_status`.
     `destination_location` is stored as the Supplier's own disclosed text,
     not resolved against the canonical `locations` table — the source may
     name a ship-to address this Restaurant's own Location catalog does not
@@ -4619,7 +4657,15 @@ class PurchaseLine(Base):
     ("Supplier Product Relationship Depends on Line Type" — only a `PRODUCT`
     line may reference a Supplier Product or carry an economic
     classification) a structural database guarantee, not merely an
-    application convention that could be bypassed by a future caller."""
+    application convention that could be bypassed by a future caller.
+
+    Ownership (Align legacy Invoice Intake with Purchased): a `PRODUCT` line
+    here is a Purchased Line (`01 Domains/Cross Domain/Purchased/README.md`).
+    Non-goods `SURCHARGE`/`DISCOUNT` lines are kept as their own rows for
+    source evidence but are never Purchased Lines in their own right —
+    Purchased's canonical output allocates them across the `PRODUCT` lines
+    instead (see `purchasing/repository.py`'s
+    `get_purchased_lines_with_allocation`)."""
 
     __tablename__ = "purchase_lines"
     __table_args__ = (
@@ -5013,6 +5059,105 @@ class PurchasingValidationLogEntry(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PurchasedFieldCorrection(Base):
+    """Purchased Human Review's own audit trail ("Purchased Human Review +
+    Supplier Format Training UI"): one row per field a human reviewed —
+    confirmed as `CORRECT`, or corrected from `original_value` to
+    `corrected_value` after being classified `INCORRECT`/`UNREAD`/
+    `AMBIGUOUS` (the same four Human Review Model classifications
+    `supplier_format_training.py` already uses — Task requirement 6).
+
+    **Never overwrites `PurchaseDocument`/`PurchaseLine`'s own columns** —
+    those stay exactly as originally extracted, forever (Task requirement
+    5: "La source evidence resta immutabile"; also preserves the existing
+    "no function updates a source-fact column once inserted" invariant
+    documented at the top of this repository module). This table is purely
+    additive: one INSERT per review action, oldest-first is the complete
+    history, and the LATEST row for a given (document, line, field) is the
+    "effective" reviewed value — see `03 Software/InvoiceIntake/
+    human_review.py`'s `effective_document_view()`, which merges these on
+    top of the immutable original columns for display/re-validation.
+    Nothing here is ever deleted or updated in place.
+
+    `field_name` is free text (illustrative, not an enum) — matches
+    whichever header/line field the review screen showed: `"supplier"`,
+    `"document_number"`, `"issue_date"`, `"total_amount"`, `"description"`,
+    `"normalized_item"`, `"quantity"`, `"unit_of_measure"`, `"unit_price"`,
+    `"line_amount"`."""
+
+    __tablename__ = "purchased_field_corrections"
+    __table_args__ = (
+        CheckConstraint(
+            "classification IN ('CORRECT', 'INCORRECT', 'UNREAD', 'AMBIGUOUS')",
+            name="ck_purchased_field_corrections_classification",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    purchase_document_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_documents.id"), nullable=False, index=True
+    )
+    # NULL for a header-level field; set for a line-level field.
+    purchase_line_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_lines.id"), nullable=True, index=True)
+
+    field_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    classification: Mapped[str] = mapped_column(String(16), nullable=False)
+    original_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    corrected_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Free text, not a User FK -- Identity & Access is currently frozen (see
+    # `10 System/Identity & Access/README.md`) and no Domain integrates
+    # with it yet; recording a plain reviewer name/identifier here is the
+    # minimum viable "who reviewed" audit trail (Task requirement 17)
+    # without building against the frozen foundation.
+    reviewed_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class PurchasedLineAddition(Base):
+    """Audit trail for a `PurchaseLine` added during Purchased Human Review
+    because the original OCR/parser extraction never created one at all
+    ("Close Purchased Human Review Reliability Gaps", §3: "impossibilità di
+    aggiungere Purchase Lines mancanti").
+
+    The referenced `PurchaseLine` (`purchase_line_id`) IS a genuine row in
+    `purchase_lines` — inserted once, through the same immutable-by-
+    convention discipline every other `PurchaseLine` follows — so it
+    participates in `get_purchased_lines_with_allocation()`/non-goods
+    allocation and every other Effective Purchased View consumer exactly
+    like an originally-extracted line (Task §4/§5: "I consumer BD devono
+    vederle esattamente come le altre Purchased Lines effettive"). This
+    table is the ONLY way to tell the two apart: a `PurchaseLine` with a
+    matching row here was never produced by the original capture — the
+    source/raw view uses this to say so (Task §4: "La source/raw view deve
+    continuare a mostrare che la riga non esisteva nell'estrazione
+    originale") — every other `PurchaseLine` is original source evidence,
+    unchanged. One row per ADD_LINE action; never updated or deleted.
+
+    `reviewed_by`/`added_at` are this action's own audit fields (Task §3:
+    "reviewer, timestamp, action = ADD_LINE") — "action" itself is implicit
+    in this table's very existence (a row here always means ADD_LINE; no
+    other action is ever recorded by it), matching the same "free text
+    reviewer identifier, no User FK" convention `PurchasedFieldCorrection`
+    already uses (Identity & Access is frozen)."""
+
+    __tablename__ = "purchased_line_additions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    purchase_document_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_documents.id"), nullable=False, index=True
+    )
+    purchase_line_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_lines.id"), nullable=False, unique=True, index=True
+    )
+    added_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -26,12 +26,25 @@ Derived values (Effective Product Cost, allocation shares, category totals,
 Reconciliation Outcome, Expected Supplier Credit's Recognized/Outstanding
 Amount) are computed on demand by functions in this module or in
 `reconciliation.py` — none of them is a column this module writes to.
+
+Ownership note (Align legacy Invoice Intake with Purchased): `PurchaseDocument`
+and `PurchaseLine` are the Purchase Fact — capture + normalize + publish —
+that `01 Domains/Cross Domain/Purchased/README.md` (a Cross Domain) now
+canonically owns; this module remains their only writer, unchanged. Restaurant/
+Purchasing (`01 Domains/Business Domain/Restaurant/Purchasing/`) no longer
+needs to be invoked to create one — it consumes this output for its own,
+still Purchasing-owned concerns (Purchase Order, Configured Expectation,
+Physical Receiving, Reconciliation, Alerts, Expected Supplier Credit — all
+still implemented in this same module, unchanged). See "Purchased output"
+below for the read-side functions Purchased's functional model (NORMALIZED/
+HUMAN, non-goods cost allocation) adds on top of this unchanged write path.
 """
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import func, select
@@ -58,8 +71,76 @@ def get_or_create_supplier(session: Session, restaurant_id: int, name: str) -> m
     ).first()
     if existing is not None:
         return existing
+
+    # A `name` that is a known ALIAS of an already-canonical Supplier
+    # ("Purchased Supplier Training Phase 2", §9: reuse the alias
+    # mechanism -- "NON creare un secondo Supplier duplicato se
+    # evitabile") resolves to that same Supplier, never a new duplicate.
+    alias_match = session.scalars(
+        select(m.Supplier)
+        .join(m.SupplierAlias, m.SupplierAlias.supplier_id == m.Supplier.id)
+        .where(m.Supplier.restaurant_id == restaurant_id, m.SupplierAlias.alias_name == name)
+    ).first()
+    if alias_match is not None:
+        return alias_match
+
     supplier = m.Supplier(restaurant_id=restaurant_id, name=name, status="ACTIVE")
     session.add(supplier)
+    session.flush()
+    return supplier
+
+
+def add_supplier_alias(session: Session, supplier_id: int, alias_name: str, source: str | None = None) -> m.SupplierAlias:
+    """Records `alias_name` as a known historical/source name for this
+    Supplier (Task requirement 9: "canonical supplier + known source
+    aliases"). Idempotent — returns the existing row unchanged if this
+    exact (supplier_id, alias_name) pair is already on file, never a
+    duplicate alias row."""
+
+    existing = session.scalars(
+        select(m.SupplierAlias).where(
+            m.SupplierAlias.supplier_id == supplier_id, m.SupplierAlias.alias_name == alias_name
+        )
+    ).first()
+    if existing is not None:
+        return existing
+    alias = m.SupplierAlias(supplier_id=supplier_id, alias_name=alias_name, source=source)
+    session.add(alias)
+    session.flush()
+    return alias
+
+
+def list_supplier_aliases(session: Session, supplier_id: int) -> list[m.SupplierAlias]:
+    return list(
+        session.scalars(
+            select(m.SupplierAlias).where(m.SupplierAlias.supplier_id == supplier_id).order_by(m.SupplierAlias.id)
+        ).all()
+    )
+
+
+def rename_supplier_canonical(
+    session: Session, supplier_id: int, new_name: str, *, source: str | None = None
+) -> m.Supplier:
+    """Task requirement 8/10 ("Correggi il Supplier canonico esistente...
+    NON cancellare il vecchio valore... mantieni la referential
+    integrity"). Renames `Supplier.name` IN PLACE — same `id`, so every
+    existing `PurchaseDocument.supplier_id` foreign key stays valid without
+    touching a single `PurchaseDocument`/`PurchaseLine` row, and no amount
+    or FK ever changes — and records the OLD name as a `SupplierAlias`
+    before overwriting it, so `get_or_create_supplier()` still resolves the
+    old spelling to this exact same Supplier afterward. Idempotent:
+    renaming to the name the Supplier already has is a no-op (the old name
+    is only ever recorded as an alias when it genuinely differs from the
+    new one), so this is safe to call more than once."""
+
+    supplier = session.get(m.Supplier, supplier_id)
+    if supplier is None:
+        raise ValueError(f"No Supplier with id={supplier_id!r}")
+    old_name = supplier.name
+    if old_name == new_name:
+        return supplier
+    add_supplier_alias(session, supplier_id, old_name, source=source or "previous canonical name")
+    supplier.name = new_name
     session.flush()
     return supplier
 
@@ -504,6 +585,29 @@ def complete_receiving(session: Session, receiving_record_id: int) -> m.Receivin
     return record
 
 
+def _effective_invoice_quantity(session: Session, purchase_line: m.PurchaseLine | None) -> Decimal | None:
+    """The Human-Review-effective invoice quantity for one Purchase Line
+    (Task "Make Effective Purchased View canonical for all consumers" —
+    Restaurant/Purchasing's own three-way reconciliation must not compare a
+    physical receipt against a `quantity` a reviewer has since corrected).
+    Resolves through the same `resolve_latest_field_corrections()`/
+    `effective_field_value()` pair `get_purchased_lines_with_allocation()`
+    uses — no second merge implementation. Falls back to the raw,
+    immutable column when there is no override, or when a corrected value
+    cannot be parsed as a number."""
+
+    if purchase_line is None:
+        return None
+    latest_corrections = resolve_latest_field_corrections(session, purchase_line.purchase_document_id)
+    effective = effective_field_value(latest_corrections, purchase_line.id, "quantity", purchase_line.quantity)
+    if not isinstance(effective, str):
+        return effective
+    try:
+        return Decimal(effective.strip())
+    except InvalidOperation:
+        return purchase_line.quantity
+
+
 def reconcile_receiving_line(session: Session, receiving_line_id: int) -> list[str]:
     """Rule 26/33 — derived on demand, never persisted (see reconciliation.py)."""
 
@@ -535,7 +639,7 @@ def reconcile_receiving_line(session: Session, receiving_line_id: int) -> list[s
 
     inputs = ReconciliationInput(
         order_quantity=order_line.quantity if order_line else None,
-        invoice_quantity=purchase_line.quantity if purchase_line else None,
+        invoice_quantity=_effective_invoice_quantity(session, purchase_line),
         received_quantity=receiving_line.observed_quantity,
         damaged_quantity=receiving_line.damaged_quantity,
         is_extra_item=receiving_line.purchase_order_line_id is None,
@@ -571,7 +675,7 @@ def raise_receiving_discrepancy_alert(
     )
     inputs = ReconciliationInput(
         order_quantity=order_line.quantity if order_line else None,
-        invoice_quantity=purchase_line.quantity if purchase_line else None,
+        invoice_quantity=_effective_invoice_quantity(session, purchase_line),
         received_quantity=receiving_line.observed_quantity,
         damaged_quantity=receiving_line.damaged_quantity,
     )
@@ -749,6 +853,305 @@ def acknowledge_alert(session: Session, alert_id: int, employee_id: int | None =
 
 
 # ---------------------------------------------------------------------------
+# Purchased output (Align legacy Invoice Intake with Purchased)
+#
+# `PurchaseDocument`/`PurchaseLine` above are the Purchase Fact Purchased
+# (`01 Domains/Cross Domain/Purchased/README.md`) owns: capture + normalize
+# + publish. These three functions expose that fact the way Purchased's
+# README requires -- non-goods cost allocated onto goods lines, and a
+# NORMALIZED/HUMAN functional state -- without adding any new column: the
+# functional state is derived from the existing `PurchasingValidationLogEntry`
+# mechanism (an OPEN WARNING/ERROR entry against a Document/Line IS that
+# Document/Line's HUMAN state), and the allocation is computed on demand,
+# consistent with this schema's existing "Persist Facts -- Derive
+# Calculations" convention (Effective Product Cost, Reconciliation Outcome).
+# Restaurant/Purchasing (and any other Business Domain) consumes this output;
+# it does not own it.
+# ---------------------------------------------------------------------------
+
+
+def find_purchase_documents_by_number(
+    session: Session, supplier_id: int, document_number: str
+) -> list[m.PurchaseDocument]:
+    """Every existing Purchase Document sharing the same (Supplier, Document
+    Number) identity -- the identity Purchased's duplicate-handling rule
+    compares against (Purchased/README.md, "Duplicate handling"). Returns an
+    empty list for a blank `document_number` (too weak an identity to compare
+    on)."""
+
+    if not document_number:
+        return []
+    return list(
+        session.scalars(
+            select(m.PurchaseDocument).where(
+                m.PurchaseDocument.supplier_id == supplier_id,
+                m.PurchaseDocument.document_number == document_number,
+            )
+        )
+    )
+
+
+def get_document_functional_status(session: Session, purchase_document_id: int) -> str:
+    """NORMALIZED / HUMAN (Purchased/README.md, "NORMALIZED / HUMAN") for one
+    Purchase Document -- derived, never stored. HUMAN whenever an OPEN
+    WARNING/ERROR `PurchasingValidationLogEntry` references this document;
+    NORMALIZED otherwise. An OPEN INFORMATION-severity entry (e.g. "this
+    document is a correction of #123") never forces HUMAN by itself."""
+
+    open_issues = session.scalar(
+        select(func.count(m.PurchasingValidationLogEntry.id)).where(
+            m.PurchasingValidationLogEntry.purchase_document_id == purchase_document_id,
+            m.PurchasingValidationLogEntry.status == "OPEN",
+            m.PurchasingValidationLogEntry.severity.in_(("WARNING", "ERROR")),
+        )
+    )
+    return "HUMAN" if open_issues else "NORMALIZED"
+
+
+def get_line_functional_status(session: Session, purchase_line_id: int) -> str:
+    """Same rule as `get_document_functional_status`, scoped to one Purchase
+    Line (Purchased Line's own NORMALIZED/HUMAN state, Purchased/README.md,
+    "Purchased Line -- minimum conceptual data")."""
+
+    open_issues = session.scalar(
+        select(func.count(m.PurchasingValidationLogEntry.id)).where(
+            m.PurchasingValidationLogEntry.purchase_line_id == purchase_line_id,
+            m.PurchasingValidationLogEntry.status == "OPEN",
+            m.PurchasingValidationLogEntry.severity.in_(("WARNING", "ERROR")),
+        )
+    )
+    return "HUMAN" if open_issues else "NORMALIZED"
+
+
+def get_purchased_lines_with_allocation(session: Session, purchase_document_id: int) -> list[dict[str, Any]]:
+    """Purchased's canonical output view of one Purchase Document's PRODUCT
+    (goods) lines (Purchased/README.md, "Non-goods cost allocation"):
+    freight/delivery/fuel-surcharge/handling/tax-not-directly-attributable
+    and similar non-goods amounts -- recorded here as SURCHARGE/DISCOUNT
+    `PurchaseLine` rows, signed exactly as disclosed by the source -- are
+    apportioned across the PRODUCT lines in proportion to each PRODUCT
+    line's own EFFECTIVE amount, never persisted as their own standalone
+    Purchased Line. The raw SURCHARGE/DISCOUNT rows are never deleted or
+    hidden -- they remain in the database as source evidence (README: "the
+    raw/source representation can continue to conserve them") -- this
+    function only adds the allocated view on top.
+
+    ("Make Effective Purchased View canonical for all consumers"): every
+    amount this function allocates on is first passed through
+    `effective_field_value()` against the latest `PurchasedFieldCorrection`
+    for that line's `"line_amount"` field, if any -- a Human Review
+    correction to a line's amount changes the allocation base and every
+    downstream `allocated_amount_minor` this function returns, exactly like
+    it already changes `human_review.effective_document_view()`'s own
+    displayed `line_amount`. Both consumers resolve corrections through the
+    same `resolve_latest_field_corrections()`/`effective_field_value()`
+    pair below -- there is only one merge implementation. The immutable
+    `source_amount_minor` column is still returned alongside, for callers
+    that need the original, uncorrected source-evidence figure.
+
+    When the document has no PRODUCT lines at all, no allocation base
+    exists; each non-goods amount is left unallocated (`allocated_non_goods_minor`
+    stays 0 for -- there being no PRODUCT line to attach it to), matching
+    the README's own "an invoice with no goods lines at all" open edge case.
+    """
+
+    document = session.get(m.PurchaseDocument, purchase_document_id)
+    if document is None:
+        raise ValueError(f"Unknown PurchaseDocument id={purchase_document_id}")
+
+    latest_corrections = resolve_latest_field_corrections(session, purchase_document_id)
+    added_line_ids = human_added_line_ids(session, purchase_document_id)
+
+    def _effective_amount_minor(line: "m.PurchaseLine") -> int | None:
+        effective = effective_field_value(latest_corrections, line.id, "line_amount", line.source_amount_minor)
+        # `effective_field_value()` returns either the untouched `original`
+        # argument (already an int/None here -- no override exists) or a
+        # human-typed correction string (an override exists) -- only the
+        # latter needs parsing back into minor units.
+        return _parse_money_minor_text(effective) if isinstance(effective, str) else effective
+
+    # A manually-added line (Task "Close Purchased Human Review Reliability
+    # Gaps" §3/§5) is a genuine PRODUCT/SURCHARGE/DISCOUNT `PurchaseLine`
+    # row like any other -- `document.lines` already includes it, so it
+    # participates in `product_lines`/`non_goods_total`/`goods_total` below
+    # with no special-casing of the allocation formula itself (Task: "NON
+    # duplicare formule"). `human_added` on the output row only flags it
+    # for display/audit -- it changes no number.
+    product_lines = sorted(
+        (line for line in document.lines if line.line_type == "PRODUCT"), key=lambda line: line.id
+    )
+    non_goods_total = sum(
+        (_effective_amount_minor(line) or 0) for line in document.lines if line.line_type in ("SURCHARGE", "DISCOUNT")
+    )
+    goods_total = sum((_effective_amount_minor(line) or 0) for line in product_lines)
+
+    output: list[dict[str, Any]] = []
+    allocated_so_far = 0
+    for index, line in enumerate(product_lines):
+        line_amount = _effective_amount_minor(line) or 0
+        if goods_total > 0:
+            if index == len(product_lines) - 1:
+                # The last line absorbs any rounding remainder, so the sum of
+                # allocated shares always reconciles exactly to non_goods_total.
+                share = non_goods_total - allocated_so_far
+            else:
+                share = round(non_goods_total * line_amount / goods_total)
+                allocated_so_far += share
+        else:
+            share = 0
+        output.append(
+            {
+                "purchase_line_id": line.id,
+                "raw_description": line.raw_description,
+                "source_amount_minor": line.source_amount_minor,
+                "effective_amount_minor": line_amount,
+                "allocated_non_goods_minor": share,
+                "allocated_amount_minor": line_amount + share,
+                "functional_status": get_line_functional_status(session, line.id),
+                "human_added": line.id in added_line_ids,
+            }
+        )
+    return output
+
+
+def _parse_money_minor_text(value: str | None) -> int | None:
+    """Tolerant parse of a Human Review corrected money string (e.g.
+    `"12.34"`, possibly with stray formatting a reviewer typed) into integer
+    minor units -- mirrors `purchased_bridge._parse_money_minor()`'s own
+    tolerance without this lower-layer module importing InvoiceIntake."""
+
+    if value is None:
+        return None
+    cleaned = re.sub(r"[^0-9.\-]", "", str(value))
+    if cleaned in ("", "-", "."):
+        return None
+    try:
+        return int((Decimal(cleaned) * 100).to_integral_value())
+    except (InvalidOperation, ValueError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Add Missing Line (Task "Close Purchased Human Review Reliability Gaps",
+# §3): the one way Purchased Human Review may add a Purchase Line the
+# original OCR/parser extraction never created at all. ADDITIVE, never a
+# rewrite -- see `models.PurchasedLineAddition`'s own docstring for why a
+# genuine new `PurchaseLine` row plus a matching audit row (not a schema
+# change to `purchase_lines` itself) is the mechanism.
+# ---------------------------------------------------------------------------
+
+
+def human_added_line_ids(session: Session, purchase_document_id: int) -> set[int]:
+    """Every `PurchaseLine.id` on this document that was added via Human
+    Review rather than the original extraction -- the one place every
+    consumer (allocation, Effective Purchased View, the review UI) checks
+    to tell an added line apart from source evidence."""
+
+    return set(
+        session.scalars(
+            select(m.PurchasedLineAddition.purchase_line_id).where(
+                m.PurchasedLineAddition.purchase_document_id == purchase_document_id
+            )
+        ).all()
+    )
+
+
+def list_line_additions(session: Session, purchase_document_id: int) -> list[m.PurchasedLineAddition]:
+    """Full ADD_LINE audit history for one document, oldest first (Task §3:
+    "Preserva audit: reviewer, timestamp, action = ADD_LINE")."""
+
+    return list(
+        session.scalars(
+            select(m.PurchasedLineAddition)
+            .where(m.PurchasedLineAddition.purchase_document_id == purchase_document_id)
+            .order_by(m.PurchasedLineAddition.id)
+        ).all()
+    )
+
+
+def add_manual_purchase_line(
+    session: Session,
+    purchase_document_id: int,
+    *,
+    added_by: str,
+    line_type: str = "PRODUCT",
+    raw_description: str,
+    quantity: Decimal | None = None,
+    purchase_unit: str | None = None,
+    unit_price_minor: int | None = None,
+    source_amount_minor: int | None = None,
+) -> tuple[m.PurchaseLine, bool]:
+    """Adds a Purchase Line the original OCR/parser extraction never
+    created (Task §3) -- a brand-new, genuine `PurchaseLine` row (so it
+    participates in `get_purchased_lines_with_allocation()`/the Effective
+    Purchased View exactly like any other line, Task §4/§5) plus its own
+    `PurchasedLineAddition` audit row. Never touches any EXISTING
+    `PurchaseDocument`/`PurchaseLine` row -- purely additive, same
+    discipline `record_field_correction` already follows for field-level
+    corrections.
+
+    Returns `(line, created)`. Idempotent re-submission guard (Task §9,
+    test 15, "no duplicate lines on repeated submit"): a second call for
+    the SAME document with the exact same `line_type` + `raw_description` +
+    `source_amount_minor` as an already-HUMAN-ADDED line reuses that line
+    instead of inserting a duplicate (e.g. a reviewer's browser
+    double-submitting the same form) -- `created` is `False` in that case.
+    An original (non-human-added) line with coincidentally identical values
+    is never matched here: only rows already recorded in
+    `purchased_line_additions` for this document are considered, so a
+    genuinely blank source-evidence line whose text happens to match is
+    never mistaken for a prior manual addition."""
+
+    document = session.get(m.PurchaseDocument, purchase_document_id)
+    if document is None:
+        raise ValueError(f"Unknown PurchaseDocument id={purchase_document_id}")
+    if line_type not in ("PRODUCT", "SURCHARGE", "DISCOUNT"):
+        raise ValueError(f"Invalid line_type {line_type!r}; must be PRODUCT/SURCHARGE/DISCOUNT")
+    if not raw_description or not raw_description.strip():
+        raise ValueError("raw_description is required to add a Purchase Line")
+
+    existing = session.scalars(
+        select(m.PurchaseLine)
+        .join(m.PurchasedLineAddition, m.PurchasedLineAddition.purchase_line_id == m.PurchaseLine.id)
+        .where(
+            m.PurchasedLineAddition.purchase_document_id == purchase_document_id,
+            m.PurchaseLine.line_type == line_type,
+            m.PurchaseLine.raw_description == raw_description,
+            m.PurchaseLine.source_amount_minor == source_amount_minor,
+        )
+    ).first()
+    if existing is not None:
+        return existing, False
+
+    line = m.PurchaseLine(
+        purchase_document_id=purchase_document_id,
+        line_type=line_type,
+        raw_description=raw_description,
+        source_amount_minor=source_amount_minor,
+        quantity=quantity if line_type == "PRODUCT" else None,
+        purchase_unit=purchase_unit if line_type == "PRODUCT" else None,
+        unit_price_minor=unit_price_minor if line_type == "PRODUCT" else None,
+    )
+    session.add(line)
+    session.flush()
+    session.add(m.PurchasedLineAddition(purchase_document_id=purchase_document_id, purchase_line_id=line.id, added_by=added_by))
+    session.flush()
+    # This module's sessions use `expire_on_commit=False` (database.py) --
+    # `document`'s own `.lines` collection, if already loaded earlier in
+    # THIS session (e.g. a caller that read the document before adding a
+    # line), would otherwise keep returning the pre-addition snapshot for
+    # the rest of the session's lifetime, since `session.get()` returns the
+    # identity-mapped instance rather than re-querying. Expiring just this
+    # relationship (not the whole object) guarantees the next access -- by
+    # this caller or another, e.g. `get_purchased_lines_with_allocation()`
+    # re-fetching the same document later in a long-lived session -- sees
+    # the newly added line, without forcing an unnecessary reload of every
+    # other already-loaded attribute.
+    session.expire(document, ["lines"])
+    return line, True
+
+
+# ---------------------------------------------------------------------------
 # Validation Log
 # ---------------------------------------------------------------------------
 
@@ -772,3 +1175,236 @@ def add_validation_log_entry(
     session.add(entry)
     session.flush()
     return entry
+
+
+def close_validation_log_entry(
+    session: Session, entry_id: int, *, human_decision: str, status: str = "CLOSED"
+) -> m.PurchasingValidationLogEntry:
+    """Moves one `PurchasingValidationLogEntry` OPEN -> `status` (Task
+    "Purchased Human Review", requirement 7: HUMAN -> NORMALIZED once
+    review resolves what made it HUMAN in the first place) — never touches
+    `message`/`suggested_action` (models.py, "Rule 13"). This is what lets
+    `get_document_functional_status()`/`get_line_functional_status()`
+    naturally return NORMALIZED again once every OPEN WARNING/ERROR
+    referencing a document (or its lines) has been closed — no third
+    functional state is introduced anywhere by this."""
+
+    if status not in ("APPROVED", "REJECTED", "CLOSED"):
+        raise ValueError(f"Invalid resolution status {status!r}; must be APPROVED/REJECTED/CLOSED")
+    entry = session.get(m.PurchasingValidationLogEntry, entry_id)
+    if entry is None:
+        raise ValueError(f"No PurchasingValidationLogEntry with id={entry_id!r}")
+    entry.status = status
+    entry.human_decision = human_decision
+    entry.resolved_at = _now()
+    session.flush()
+    return entry
+
+
+# ---------------------------------------------------------------------------
+# Human Review (Task "Purchased Human Review + Supplier Format Training UI")
+#
+# `PurchasedFieldCorrection` (models.py) is purely additive — it NEVER
+# overwrites a `PurchaseDocument`/`PurchaseLine` column. These functions are
+# its only reader/writer; `03 Software/InvoiceIntake/human_review.py` is the
+# orchestration layer on top (effective-value merging, re-validation,
+# closing out Validation Log entries, Supplier+Format training
+# observation) — kept in InvoiceIntake because it needs
+# `purchased_bridge._validate_extracted_fields` (the SAME validation
+# function used at initial save, reused rather than reimplemented — Task:
+# "NON aggiungere nuove euristiche parser") and `supplier_format_training.py`.
+# ---------------------------------------------------------------------------
+
+
+def record_field_correction(
+    session: Session,
+    *,
+    purchase_document_id: int,
+    field_name: str,
+    classification: str,
+    reviewed_by: str,
+    purchase_line_id: int | None = None,
+    original_value: str | None = None,
+    corrected_value: str | None = None,
+) -> m.PurchasedFieldCorrection:
+    if classification not in ("CORRECT", "INCORRECT", "UNREAD", "AMBIGUOUS"):
+        raise ValueError(f"Invalid classification {classification!r}")
+    if classification == "INCORRECT" and not (corrected_value and corrected_value.strip()):
+        # "Close Purchased Human Review Reliability Gaps" §7, Field Review
+        # Semantics: "INCORRECT -> richiede corrected value" -- unlike
+        # AMBIGUOUS/UNREAD (which may legitimately stay unresolved when the
+        # source is genuinely illegible), classifying a field INCORRECT
+        # asserts a specific, known-better value exists; without one this
+        # is a malformed review action, rejected outright rather than
+        # silently accepted as a no-op.
+        raise ValueError("classification='INCORRECT' requires a non-blank corrected_value")
+    correction = m.PurchasedFieldCorrection(
+        purchase_document_id=purchase_document_id,
+        purchase_line_id=purchase_line_id,
+        field_name=field_name,
+        classification=classification,
+        original_value=original_value,
+        corrected_value=corrected_value,
+        reviewed_by=reviewed_by,
+    )
+    session.add(correction)
+    session.flush()
+    return correction
+
+
+def list_field_corrections(session: Session, purchase_document_id: int) -> list[m.PurchasedFieldCorrection]:
+    """Full history, oldest first — the audit trail (Task requirement 17).
+    Callers wanting only the CURRENT/effective value per field should take
+    the LAST row per (purchase_line_id, field_name) — see
+    `latest_field_corrections()`/`resolve_latest_field_corrections()`
+    below, the one shared reduction every consumer of Purchased uses."""
+
+    return list(
+        session.scalars(
+            select(m.PurchasedFieldCorrection)
+            .where(m.PurchasedFieldCorrection.purchase_document_id == purchase_document_id)
+            .order_by(m.PurchasedFieldCorrection.id)
+        ).all()
+    )
+
+
+# ---------------------------------------------------------------------------
+# Effective Purchased View ("Make Effective Purchased View canonical for all
+# consumers"): the ONE merge implementation -- original, immutable
+# PurchaseDocument/PurchaseLine columns plus the latest additive
+# PurchasedFieldCorrection per field -- every consumer of Purchased output
+# builds on, instead of each reading raw columns and/or reimplementing its
+# own "latest correction wins" reduction. Used by:
+#   - `get_purchased_lines_with_allocation()` above (non-goods allocation
+#     base, per-line effective amount);
+#   - `reconcile_receiving_line()`/`raise_receiving_discrepancy_alert()`
+#     below (effective invoice quantity for three-way reconciliation);
+#   - `03 Software/InvoiceIntake/human_review.py`'s `effective_document_view()`
+#     (header/line display values, re-validation).
+# `PurchaseDocument`/`PurchaseLine` themselves are never mutated by any of
+# this -- the merge is always computed on read (Task requirement: "Ma il
+# valore CANONICO CONSUMABILE è sempre il valore effettivo risultante dal
+# merge").
+# ---------------------------------------------------------------------------
+
+
+def latest_field_corrections(
+    corrections: list[m.PurchasedFieldCorrection],
+) -> dict[tuple[int | None, str], m.PurchasedFieldCorrection]:
+    """Reduces an oldest-first correction history (`list_field_corrections()`'s
+    own contract) to the single latest row per (purchase_line_id,
+    field_name). Pure/no I/O — for a caller that already holds the full
+    history (e.g. `human_review.py`'s own `view["corrections"]`) and would
+    otherwise re-query it via `resolve_latest_field_corrections()` below."""
+
+    latest: dict[tuple[int | None, str], m.PurchasedFieldCorrection] = {}
+    for correction in corrections:
+        latest[(correction.purchase_line_id, correction.field_name)] = correction
+    return latest
+
+
+def resolve_latest_field_corrections(
+    session: Session, purchase_document_id: int
+) -> dict[tuple[int | None, str], m.PurchasedFieldCorrection]:
+    """Convenience wrapper: fetch + reduce in one call, for a caller that
+    does not already hold the document's full correction history."""
+
+    return latest_field_corrections(list_field_corrections(session, purchase_document_id))
+
+
+def correction_overrides_value(correction: m.PurchasedFieldCorrection | None) -> bool:
+    """True only when `correction` is an actual value override — a bare
+    `CORRECT` confirmation never carries a `corrected_value`
+    (`record_field_correction` always stores `None` for it), so it is never
+    treated as an override; the original value stands confirmed as-is."""
+
+    return correction is not None and correction.classification != "CORRECT" and correction.corrected_value is not None
+
+
+def effective_field_value(
+    latest: dict[tuple[int | None, str], m.PurchasedFieldCorrection],
+    purchase_line_id: int | None,
+    field_name: str,
+    original: Any,
+) -> Any:
+    """The Human-Review-effective value for one field: the latest
+    correction's `corrected_value` when it actually overrides the original
+    (`correction_overrides_value()`); otherwise whatever was ALREADY
+    effective at the moment that latest (non-overriding) record was
+    submitted — its own `original_value` snapshot — falling back to the
+    caller-supplied `original` only when no correction exists at all, or
+    when that snapshot itself is `None`.
+
+    Bug fix ("Purchased Operator Review Test on Real Invoices", found by
+    actually driving a two-step real review: correct a field, then later
+    submit a bare `CORRECT` confirmation on that SAME field). Before this
+    fix, a later non-overriding record (a `CORRECT` confirmation, or an
+    `AMBIGUOUS`/`UNREAD` left with no `corrected_value`) always fell back
+    to `original` — the RAW column value — silently discarding an earlier
+    real correction's effect the instant any later record for that field
+    carried no override of its own. `record_field_correction` always
+    snapshots the then-current effective value into `original_value`
+    (`human_review.submit_field_review()`'s own `original_value =
+    view["header_effective"][field_name]`/line equivalent), so that
+    snapshot — not the raw column — is the correct fallback: a later
+    confirmation must confirm/leave what a reviewer actually SAW and
+    accepted, never silently un-correct it.
+
+    A caller may pass either a display string (`human_review.py`) or a raw
+    typed value (a `PurchaseLine` column, e.g. `quantity`/
+    `source_amount_minor`) as `original` — only the override branch and a
+    correction's own `original_value` are ever a `str`
+    (`PurchasedFieldCorrection` columns)."""
+
+    correction = latest.get((purchase_line_id, field_name))
+    if correction is None:
+        return original
+    if correction_overrides_value(correction):
+        return correction.corrected_value
+    return correction.original_value if correction.original_value is not None else original
+
+
+def list_human_review_queue(session: Session, restaurant_id: int, *, limit: int = 200) -> list[m.PurchaseDocument]:
+    """Every `PurchaseDocument` for this Restaurant currently in the HUMAN
+    functional state, most recently created first (Task requirement 2:
+    "Ordina prioritariamente per: più recenti"). A small local-scale query
+    (Python-side status filter, not a SQL EXISTS) — proportionate to this
+    prototype's real data volumes, same simplicity convention the rest of
+    this module already follows."""
+
+    candidates = list(
+        session.scalars(
+            select(m.PurchaseDocument)
+            .join(m.Supplier, m.PurchaseDocument.supplier_id == m.Supplier.id)
+            .where(m.Supplier.restaurant_id == restaurant_id)
+            .order_by(m.PurchaseDocument.created_at.desc())
+            .limit(limit)
+        ).all()
+    )
+    return [doc for doc in candidates if get_document_functional_status(session, doc.id) == "HUMAN"]
+
+
+def list_sibling_documents(session: Session, purchase_document_id: int) -> list[m.PurchaseDocument]:
+    """Every OTHER `PurchaseDocument` that came from the exact same source
+    file as this one (Task requirement 3, "Multi-invoice visibility") —
+    matched by `source_reference`'s own page-range-suffix convention
+    (`"<file>#p<range>"`, `invoice_splitter.py`) so a Prime Line-style
+    4-invoice batch shows all 4 review records together, not just the one
+    being viewed. A document whose `source_reference` carries no `#`
+    suffix (not a split batch) has no siblings by definition."""
+
+    document = session.get(m.PurchaseDocument, purchase_document_id)
+    if document is None or not document.source_reference or "#" not in document.source_reference:
+        return []
+    supplier = session.get(m.Supplier, document.supplier_id)
+    file_prefix = document.source_reference.split("#", 1)[0]
+    siblings = session.scalars(
+        select(m.PurchaseDocument)
+        .join(m.Supplier, m.PurchaseDocument.supplier_id == m.Supplier.id)
+        .where(
+            m.Supplier.restaurant_id == supplier.restaurant_id,
+            m.PurchaseDocument.source_reference.like(f"{file_prefix}#%"),
+            m.PurchaseDocument.id != purchase_document_id,
+        )
+    ).all()
+    return list(siblings)

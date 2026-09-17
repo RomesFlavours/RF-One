@@ -2,12 +2,23 @@
 {% block content %}
 <div class="card">
   <h3 style="margin-top:0;">Salvato ✓</h3>
-  <p>Documento registrato nel RF-One Data Store con <strong>PurchaseDocumentId = {{ doc_id }}</strong>.</p>
-  {% if excel_ok %}
-  <p class="hint">Copia di debug anche su Excel: <code>{{ excel_path }}</code></p>
+  {% if results|length > 1 %}
+  <p>File <strong>{{ original_name }}</strong> conteneva più fatture: registrate come {{ results|length }} Purchase Fact (Purchased) distinti.</p>
   {% else %}
-  <p class="hint">Nota: il salvataggio canonico è andato a buon fine; la copia di debug su Excel non è riuscita (es. file aperto in Excel) — non è un problema, i dati sono comunque salvati.</p>
+  <p>Documento registrato come Purchase Fact (Purchased).</p>
   {% endif %}
+  <table>
+    <thead><tr><th>PurchaseDocumentId</th><th>Stato</th><th></th></tr></thead>
+    <tbody>
+      {% for result in results %}
+      <tr>
+        <td>{{ result.doc_id }}</td>
+        <td><strong>{{ result.functional_status }}</strong>{% if result.functional_status == 'HUMAN' %} — richiede verifica umana{% endif %}</td>
+        <td><a href="{{ url_for('review_detail', doc_id=result.doc_id) }}">Apri in Human Review</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
   <div class="actions">
     <a class="btn" href="{{ url_for('index') }}">Carica un'altra fattura</a>
   </div>
