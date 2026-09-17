@@ -38,12 +38,14 @@ _DATA_STORE_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "RF-One Data Sto
 if _DATA_STORE_DIR not in sys.path:
     sys.path.insert(0, _DATA_STORE_DIR)
 
+from rfone_data_store import authority_service  # noqa: E402
 from rfone_data_store.database import (  # noqa: E402
     cleanup_disposable_test_database_url, create_configured_engine, create_session_factory,
     redact_database_url, resolve_test_database_url,
 )
 from rfone_data_store import models as m  # noqa: E402
-from rfone_data_store.technical.connectors.mercury.client import MercuryClient  # noqa: E402
+from rfone_data_store.tips import payment_connector as connector_svc  # noqa: E402
+from rfone_data_store.tips import payment_cycle_service as cycle_svc  # noqa: E402
 from rfone_data_store.tips import payout_process as payout_svc  # noqa: E402
 from rfone_data_store.tips import readiness as readiness_svc  # noqa: E402
 from rfone_data_store.tips_payment_execution_validation import _build_base_fixture  # noqa: E402
@@ -69,18 +71,23 @@ def main() -> int:
     try:
         session_factory = create_session_factory(engine)
         with session_factory() as session:
-            client = MercuryClient()
+            # STEP 12B integration: resolved through the connector registry
+            # (`tips.payment_connector`), never `MercuryClient()` directly —
+            # this script exercises the SAME resolver production code
+            # exercises, just with 'MERCURY' hardcoded as the ONE connector
+            # this real-sandbox demonstration targets.
+            connector = connector_svc.resolve_connector(connector_svc.CONNECTOR_CODE_MERCURY)
 
             print("\n[1] Resolving real Mercury sandbox accounts/recipients...")
-            accounts = [a for a in client.get_accounts() if a.type == "mercury" and a.status == "active" and a.kind == "checking" and a.available_balance > 0]
+            accounts = [a for a in connector.get_accounts() if a.type == "mercury" and a.status == "active" and a.kind == "checking" and a.available_balance > 0]
             if not accounts:
                 print("No usable sandbox source account found.")
                 return 1
             source_account_id = accounts[0].id
             print(f"    Source account selected (masked): {source_account_id[:4]}...{source_account_id[-2:]}")
 
-            alex_rivera = client.find_recipient_by_name("Alex Rivera")
-            banned = client.find_recipient_by_name("Banned Recipient")
+            alex_rivera = connector.find_recipient_by_name("Alex Rivera")
+            banned = connector.find_recipient_by_name("Banned Recipient")
             if alex_rivera is None or banned is None:
                 print("Expected sandbox fixtures 'Alex Rivera' / 'Banned Recipient' not found.")
                 return 1
@@ -103,14 +110,39 @@ def main() -> int:
             state = readiness_svc.describe_readiness(session, restaurant.id)
             print(f"    Process Activation readiness: business_date={state.business_date}, ready_to_calculate={state.ready_to_calculate}")
 
-            print("\n[3-8] Running the full Payout Process against the REAL Mercury Sandbox...")
-            result = payout_svc.run_business_date_payout(
-                session, restaurant_id=restaurant.id, client=client, source_account_id=source_account_id,
+            print("\n[3] Running Calculation (readiness-gated, entitlements persisted)...")
+            calc_result = payout_svc.run_calculation_now(session, restaurant_id=restaurant.id)
+            session.commit()
+            print(f"    {calc_result.entitlements_created} Tip Entitlement(s) persisted; ran={calc_result.ran}")
+
+            print("\n[4] Starting a Payment Cycle (aggregates unpaid entitlements)...")
+            cycle = cycle_svc.start_payment_cycle(session, restaurant_id=restaurant.id, triggered_by="MANUAL")
+            session.commit()
+            if cycle is None:
+                print("Nothing unpaid to aggregate.")
+                return 1
+
+            approver = m.ActingIdentity(kind="HUMAN_USER", display_name="Sandbox Pilot Approver", is_active=True)
+            session.add(approver)
+            session.flush()
+            authority_service.grant_authority(
+                session, actor=approver, domain=cycle_svc.AUTHORITY_DOMAIN_TIPS,
+                action=cycle_svc.AUTHORITY_ACTION_APPROVE_AND_PAY, scope_type=m.SCOPE_GLOBAL, scope_id=None,
             )
             session.commit()
 
-            print(f"    Funding check: {result.funding_check}")
-            by_employee = {i.employee_id: i for i in result.instructions}
+            print("\n[5-8] Approve & Pay against the REAL Mercury Sandbox...")
+            approve_result = cycle_svc.approve_and_pay_cycle(
+                session, cycle=cycle, acting_identity=approver, connector=connector,
+                source_account_id=source_account_id,
+            )
+            session.commit()
+
+            print(f"    Funding check: {approve_result.funding}")
+            instructions = list(
+                session.query(m.TipPaymentInstruction).filter_by(payment_cycle_id=cycle.id)
+            )
+            by_employee = {i.employee_id: i for i in instructions}
             ok_instruction = by_employee[server_ok.id]
             fail_instruction = by_employee[server_fail.id]
 
@@ -126,7 +158,7 @@ def main() -> int:
                 row.is_active = False
             session.commit()
             _link(session, server_fail, alex_rivera.id)
-            payout_svc.retry_instruction(session, fail_instruction, client, source_account_id=source_account_id)
+            cycle_svc.retry_instruction(session, fail_instruction, connector, source_account_id=source_account_id)
             session.commit()
             print(
                 f"    [FAIL payee after retry] status={fail_instruction.status} "

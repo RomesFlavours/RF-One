@@ -116,22 +116,33 @@ class ActingIdentity(Base):
 
 # Authority scope kinds — the Core organizational context chain
 # (00 Core/Corporate.md, Operational Unit.md, OperationalArea.md, Brand.md):
-# Corporate -> Brand -> Operational Unit -> Operational Area. Only Restaurant
-# (a Domain-level entity, not this chain) and Restaurant's own, narrower
-# `OperationalArea` (kitchen/dining zones — a Domain specialization, NOT this
-# Core concept) are persisted anywhere in RF-One today; Corporate/Brand/
-# Operational Unit have no table of their own yet (00 Core defines them;
-# nothing has implemented them — see CLAUDE.md "Core ≠ Domain ≠ Product").
-# `AuthorityGrant.scope_id` is therefore a plain integer with NO foreign key
-# to any of these — a grant is already scoped generically by whichever
-# concrete table eventually backs each `scope_type`, with zero redesign of
-# this table when that happens. GLOBAL is the one scope with no `scope_id`.
+# Corporate -> Brand -> Operational Unit -> Operational Area, plus RESTAURANT
+# (a Domain-level entity, not this Core chain — see `Restaurant` below, which
+# DOES have a real table/id) and Restaurant's own, narrower `OperationalArea`
+# (kitchen/dining zones — a Domain specialization, NOT the Core concept of
+# the same name). Corporate/Brand/Operational Unit still have no table of
+# their own (00 Core defines them; nothing has implemented them — see
+# CLAUDE.md "Core ≠ Domain ≠ Product"). `AuthorityGrant.scope_id` is
+# therefore a plain integer with NO foreign key to any of these — a grant is
+# already scoped generically by whichever concrete table backs each
+# `scope_type` (a real `restaurants.id` for RESTAURANT today; nothing yet for
+# CORPORATE/BRAND/OPERATIONAL_UNIT/OPERATIONAL_AREA), with zero redesign of
+# this table when the rest gain tables. GLOBAL is the one scope with no
+# `scope_id`, and continues to mean "every scope," RESTAURANT included
+# (`authority_service.authorize()`'s GLOBAL match is unconditional — see its
+# own docstring). RESTAURANT mirrors `POSITION_SCOPE_RESTAURANT` below
+# (Organizational Responsibility's own Position scope), but is a SEPARATE
+# enum value on a separate table — this module does not merge the two scope
+# vocabularies (TASK_TIPS_RESTAURANT_AUTHORITY_SCOPE_001).
 SCOPE_CORPORATE = "CORPORATE"
 SCOPE_BRAND = "BRAND"
 SCOPE_OPERATIONAL_UNIT = "OPERATIONAL_UNIT"
 SCOPE_OPERATIONAL_AREA = "OPERATIONAL_AREA"
+SCOPE_RESTAURANT = "RESTAURANT"
 SCOPE_GLOBAL = "GLOBAL"
-AUTHORITY_SCOPE_KINDS = (SCOPE_CORPORATE, SCOPE_BRAND, SCOPE_OPERATIONAL_UNIT, SCOPE_OPERATIONAL_AREA, SCOPE_GLOBAL)
+AUTHORITY_SCOPE_KINDS = (
+    SCOPE_CORPORATE, SCOPE_BRAND, SCOPE_OPERATIONAL_UNIT, SCOPE_OPERATIONAL_AREA, SCOPE_RESTAURANT, SCOPE_GLOBAL,
+)
 
 # The one wildcard `authority_service.authorize()` understands for `module`/
 # `action` — never for `domain` or `scope_type`/`scope_id` (Authority is
@@ -165,7 +176,7 @@ class AuthorityGrant(Base):
     __tablename__ = "authority_grants"
     __table_args__ = (
         CheckConstraint(
-            "scope_type IN ('CORPORATE', 'BRAND', 'OPERATIONAL_UNIT', 'OPERATIONAL_AREA', 'GLOBAL')",
+            "scope_type IN ('CORPORATE', 'BRAND', 'OPERATIONAL_UNIT', 'OPERATIONAL_AREA', 'RESTAURANT', 'GLOBAL')",
             name="ck_authority_grant_scope_type",
         ),
         CheckConstraint(
@@ -1872,6 +1883,174 @@ class TipDistributionRuleVersion(Base):
 # ---------------------------------------------------------------------------
 
 
+TIPS_SCHEDULE_MODE_MANUAL = "MANUAL"
+TIPS_SCHEDULE_MODE_AUTOMATIC = "AUTOMATIC"
+TIPS_SCHEDULE_MODES = (TIPS_SCHEDULE_MODE_MANUAL, TIPS_SCHEDULE_MODE_AUTOMATIC)
+
+# TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001 — the three Tips payment
+# modes the Product Owner already decided: MANUAL (mode=MANUAL); AUTOMATIC
+# WITH human Approve & Pay approval (mode=AUTOMATIC, auto_approval_mode=
+# WITH_APPROVAL or NULL — the existing, already-tested behavior); AUTOMATIC
+# WITHOUT approval (mode=AUTOMATIC, auto_approval_mode=WITHOUT_APPROVAL —
+# RF-One itself Approves & Pays, as the SYSTEM Acting Identity, strictly
+# within whatever Delegated Authority — a TIPS/APPROVE_AND_PAY AuthorityGrant
+# — that Restaurant has explicitly granted it; never a bypass of the
+# Authority gate, see `tips/scheduler.py`). Deliberately a SEPARATE field
+# from `mode`, not a third `mode` value: "WHEN" (mode/interval/execution_time)
+# and "WITH WHAT APPROVAL" are independent questions, and a Restaurant may
+# switch one without touching the other.
+TIPS_PAYMENT_AUTO_APPROVAL_MODE_WITH_APPROVAL = "WITH_APPROVAL"
+TIPS_PAYMENT_AUTO_APPROVAL_MODE_WITHOUT_APPROVAL = "WITHOUT_APPROVAL"
+TIPS_PAYMENT_AUTO_APPROVAL_MODES = (
+    TIPS_PAYMENT_AUTO_APPROVAL_MODE_WITH_APPROVAL, TIPS_PAYMENT_AUTO_APPROVAL_MODE_WITHOUT_APPROVAL,
+)
+
+
+class TipsCalculationScheduleConfig(Base):
+    """Restaurant-scoped, effective-dated configuration of WHEN Tips are
+    CALCULATED — deliberately a separate table/concept from `TipsPayment
+    ScheduleConfig` below ("Calculation Schedule != Payment Schedule" — a
+    Restaurant may calculate daily while paying out weekly, or any other
+    independent combination; neither schedule may be inferred from the
+    other).
+
+    `mode=MANUAL` means calculation only ever happens when a human (or an
+    authorized caller) explicitly triggers it (`distribution_engine.
+    run_tip_distribution_calculation`, called directly or via `tips/app.py`'s
+    "Run Calculation Now"). `mode=AUTOMATIC` additionally lets `tips/
+    scheduler.py`'s calculation loop trigger it on its own, `interval_days`
+    apart, at `execution_time`, counting from `anchor_date` — never a
+    hardcoded daily/weekly cadence.
+
+    Effective-dated exactly like `TipDistributionRuleVersion`/`PayrollExecution
+    Configuration` (same `valid_from`/`valid_to`, append-only, never
+    overwritten): changing the schedule closes the current row's
+    `valid_to` and inserts a new one; history of what was configured, and
+    when, is never lost."""
+
+    __tablename__ = "tips_calculation_schedule_configs"
+    __table_args__ = (
+        CheckConstraint(
+            "mode IN ('MANUAL','AUTOMATIC')", name="ck_tips_calculation_schedule_mode",
+        ),
+        CheckConstraint(
+            "mode = 'MANUAL' OR interval_days IS NOT NULL",
+            name="ck_tips_calculation_schedule_interval_required_if_automatic",
+        ),
+        Index("ix_tips_calculation_schedule_restaurant_valid_from", "restaurant_id", "valid_from"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), nullable=False, index=True)
+
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    # "every N days" — required when mode=AUTOMATIC; ignored (kept NULL) when
+    # mode=MANUAL, never defaulted to 1/7/any other implicit cadence.
+    interval_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Time-of-day the automatic scheduler should attempt this Restaurant's
+    # cycle (naive wall-clock time — the Restaurant's own Location.timezone
+    # is the interpretation context; this column stores no timezone of its
+    # own, consistent with there being exactly one, already-established
+    # place `Location.timezone` is recorded).
+    execution_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    # The reference date "every N days" counts from. NULL is valid (defaults
+    # to this config row's own `valid_from` date at resolution time).
+    anchor_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class TipsPaymentScheduleConfig(Base):
+    """Restaurant-scoped, effective-dated configuration of WHEN Tips are
+    PAID OUT — the Payment Cycle counterpart to `TipsCalculationScheduleConfig`
+    above; never conflated with it. Mirrors the same MANUAL/AUTOMATIC +
+    interval_days + execution_time + anchor_date shape, plus the payment-
+    specific settings: which Mercury sandbox account funds this
+    Restaurant's payouts (`mercury_source_account_id` — Mercury-specific
+    configuration data, only meaningful when `connector_code='MERCURY'`;
+    a future connector would carry its own, differently-named configuration
+    field rather than reuse this one), and which technical connector
+    executes the payment at all (`connector_code` — STEP 12B integration:
+    the Product Owner decision that payment mode is configurable and the
+    configured connector, never a silent Mercury default, is what
+    `tips/payment_connector.resolve_connector` reads)."""
+
+    __tablename__ = "tips_payment_schedule_configs"
+    __table_args__ = (
+        CheckConstraint(
+            "mode IN ('MANUAL','AUTOMATIC')", name="ck_tips_payment_schedule_mode",
+        ),
+        CheckConstraint(
+            "mode = 'MANUAL' OR interval_days IS NOT NULL",
+            name="ck_tips_payment_schedule_interval_required_if_automatic",
+        ),
+        CheckConstraint(
+            "auto_approval_mode IS NULL OR auto_approval_mode IN ('WITH_APPROVAL', 'WITHOUT_APPROVAL')",
+            name="ck_tips_payment_schedule_auto_approval_mode",
+        ),
+        CheckConstraint(
+            "mode = 'AUTOMATIC' OR auto_approval_mode IS NULL",
+            name="ck_tips_payment_schedule_auto_approval_mode_requires_automatic",
+        ),
+        # Deliberately NO CHECK constraint on `connector_code` — see the
+        # migration's own docstring (`2b7d65e73c2e`): the connector
+        # REGISTRY (`payment_connector._CONNECTOR_FACTORIES`) is the single
+        # source of truth for which codes are valid, enforced at write time
+        # by `schedule_service.set_payment_schedule` and at execution time
+        # by `resolve_connector` (which fails closed regardless of what is
+        # already persisted) — a hardcoded DB whitelist would force a
+        # migration on every future connector addition, the exact rigidity
+        # a registry pattern exists to avoid.
+        Index("ix_tips_payment_schedule_restaurant_valid_from", "restaurant_id", "valid_from"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), nullable=False, index=True)
+
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    interval_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    execution_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    anchor_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # Only meaningful when mode=AUTOMATIC (enforced by the CHECK above); NULL
+    # on an AUTOMATIC row means WITH_APPROVAL (see the TIPS_PAYMENT_AUTO_
+    # APPROVAL_MODE_* comment above) — the pre-existing, already-tested
+    # behavior, so no existing configuration's behavior changes by this
+    # column's addition. Always NULL when mode=MANUAL — approval mode has no
+    # meaning without automation.
+    auto_approval_mode: Mapped[str | None] = mapped_column(String(24), nullable=True)
+
+    # WHICH technical connector executes this Restaurant's Tips payments —
+    # resolved through `tips.payment_connector.resolve_connector`, never
+    # imported/branched-on directly by any Domain code. Nullable: a
+    # Restaurant may configure a payment mode before an operator has chosen
+    # a connector; Approve & Pay then fails closed with an explicit
+    # `ConnectorNotConfiguredError`, never a silent Mercury default.
+    connector_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    # Mercury sandbox account this Restaurant's Payment Cycles fund from —
+    # Mercury-specific configuration data (see class docstring), consulted
+    # only when `connector_code='MERCURY'`. Nullable: a Restaurant may
+    # configure AUTOMATIC/MANUAL payment mode before an operator has linked
+    # a specific sandbox account; Approve&Pay simply cannot proceed
+    # (surfaced explicitly, never guessed) until set.
+    mercury_source_account_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class TipDistributionCalculationRun(Base):
     """One execution of the Tip Distribution Engine over a requested
     Restaurant/period (task §15) — the minimum calculation-run/period
@@ -1986,26 +2165,92 @@ class TipDistributionAllocation(Base):
     rule_version: Mapped[TipDistributionRuleVersion] = relationship()
 
 
+class TipEntitlement(Base):
+    """The persisted, per-Employee, per-calculation-run NET result — exactly
+    what `distribution_engine.build_employee_review` already computes on
+    the fly, now durably saved once a run completes
+    (`distribution_engine.populate_entitlements_for_run`) so it can be
+    queried, aggregated across MANY runs/Business Dates into a Payment
+    Cycle, and marked paid/unpaid — without ever re-deriving it from
+    `TipDistributionAllocation` rows again for that purpose. The atomic
+    `TipDistributionAllocation` rows remain the sole source of truth for HOW
+    this number was derived — this table duplicates no allocation-level
+    fact, it persists their AGGREGATE once, the same aggregate
+    `build_employee_review` already derives statelessly.
+
+    One row per (calculation_run_id, employee_id) — mirrors the natural key
+    `build_employee_review` already iterates by. `business_date` is
+    populated whenever the run's own `[period_start, period_end)` is exactly
+    one calendar day (`readiness.business_date_period`'s own convention);
+    NULL for a manually-chosen, non-single-day period.
+
+    `tip_payment_instruction_id` is NULL until a Payment Cycle aggregates
+    this entitlement into one `TipPaymentInstruction` — NULL is the
+    "unpaid, unassigned" state; once set, this entitlement is considered
+    committed to that instruction for its lifetime (never silently
+    reassigned to a different instruction)."""
+
+    __tablename__ = "tip_entitlements"
+    __table_args__ = (
+        UniqueConstraint("calculation_run_id", "employee_id", name="uq_tip_entitlement_run_employee"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    calculation_run_id: Mapped[int] = mapped_column(
+        ForeignKey("tip_distribution_calculation_runs.id"), nullable=False, index=True
+    )
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), nullable=False, index=True)
+    business_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+
+    # Minor units (cents), same convention as everywhere else in this schema.
+    gross_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    outbound_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    inbound_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    # = gross - outbound + inbound (`build_employee_review`'s own
+    # `net_before_adjustments_minor`) — may be <= 0; only a strictly positive
+    # value is ever aggregated into a Payment Instruction (nothing to pay
+    # out otherwise).
+    payable_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    tip_payment_instruction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tip_payment_instructions.id"), nullable=True, index=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    calculation_run: Mapped[TipDistributionCalculationRun] = relationship()
+    employee: Mapped["Employee"] = relationship()
+
+
 # ---------------------------------------------------------------------------
-# Tip Payment Execution (TASK_TIPS_CORE2_PILOT) — Core 2.0 Process-First pilot
+# Tip Payment Execution (TASK_TIPS_CORE2_PILOT; STEP 12B integration) —
+# Core 2.0 Process-First pilot, evolved from one-run-per-payout to Payment
+# Cycles that aggregate every unpaid `TipEntitlement` for a Restaurant
+# (`TipPaymentCycle` below) — a Restaurant may calculate daily while its
+# Payment Cycle only closes weekly (`tips/schedule_service.py`).
 #
 # Payment Instruction identity and outcome tracking for paying out a
-# TipDistributionCalculationRun's finalized per-Employee net amount through
-# an external Payment Executor (Mercury — `rfone_data_store.technical.
-# connectors.mercury`). RF-One's own idempotency (`uq_tip_payment_instruction_
-# run_employee` below) is the PRIMARY duplicate-payment guard — Mercury's own
-# duplicate protection is a safety net only, never relied upon for
-# correctness (`01 Domains/Business Domain/Restaurant/Tips/Tips Payment
-# Execution.md`, "Idempotency").
+# Payment Cycle's finalized per-Employee net amount through the connector
+# configured for that Restaurant (`rfone_data_store.tips.payment_connector`;
+# Mercury — `rfone_data_store.technical.connectors.mercury` — is this
+# pilot's one currently-implemented connector, never the canonical payment
+# model, `01 Domains/Business Domain/Restaurant/Tips/Tips Payment
+# Execution.md`). RF-One's own idempotency (`uq_tip_payment_instruction_
+# cycle_employee` below) is the PRIMARY duplicate-payment guard — a
+# connector's own duplicate protection is a safety net only, never relied
+# upon for correctness ("Idempotency").
 #
 # `EmployeeExternalPaymentAccount` is the stable Employee <-> external-
-# provider-recipient reference (task §7): RF-One never stores routing/account
+# provider-recipient reference: RF-One never stores routing/account
 # numbers here or anywhere else — only the provider's own opaque recipient
-# id, which the provider (Mercury) resolves to real bank details on its own
-# side. Scoped to Tips ownership for this pilot; a second Domain needing the
-# same pattern (e.g. a future Payroll Mercury path) would promote this to a
-# shared location rather than duplicate it — not done here since Tips is the
-# only consumer today.
+# id, which the provider (Mercury today) resolves to real bank details on
+# its own side. Scoped to Tips ownership for this pilot; a second Domain
+# needing the same pattern (e.g. a future Payroll Mercury path) would
+# promote this to a shared location rather than duplicate it — not done
+# here since Tips is the only consumer today.
 # ---------------------------------------------------------------------------
 
 
@@ -2037,70 +2282,145 @@ class EmployeeExternalPaymentAccount(Base):
     employee: Mapped["Employee"] = relationship()
 
 
+TIP_PAYMENT_CYCLE_STATUS_OPEN = "OPEN"
+TIP_PAYMENT_CYCLE_STATUS_APPROVED = "APPROVED"
+TIP_PAYMENT_CYCLE_STATUSES = (TIP_PAYMENT_CYCLE_STATUS_OPEN, TIP_PAYMENT_CYCLE_STATUS_APPROVED)
+TIP_PAYMENT_CYCLE_TRIGGER_MANUAL = "MANUAL"
+TIP_PAYMENT_CYCLE_TRIGGER_AUTOMATIC = "AUTOMATIC"
+TIP_PAYMENT_CYCLE_TRIGGERS = (TIP_PAYMENT_CYCLE_TRIGGER_MANUAL, TIP_PAYMENT_CYCLE_TRIGGER_AUTOMATIC)
+
+
+class TipPaymentCycle(Base):
+    """One Payment Cycle: the batch that aggregates every currently-unpaid
+    `TipEntitlement` for a Restaurant — spanning as many daily calculation
+    runs/Business Dates as have accrued since the last cycle — into one
+    `TipPaymentInstruction` per Employee. Distinct from
+    `TipDistributionCalculationRun` (one calculation over one period): a
+    Restaurant may calculate daily while its Payment Cycle only closes
+    weekly, and this table is what makes that gap explicit and queryable
+    rather than implicit.
+
+    `status=OPEN` means entitlements have been aggregated into READY
+    instructions but nothing has been submitted yet (the REVIEW state,
+    gated by `tips/payment_cycle_service.describe_payment_cycle_readiness`).
+    `status=APPROVED` means an authorized Acting Identity has run
+    Approve & Pay (`approved_at`/`approved_by_identity_id` below) —
+    submission may still be partially in progress or partially failed;
+    per-Employee outcome is always read from the constituent
+    `TipPaymentInstruction` rows, never re-derived here (this table never
+    duplicates instruction-level state)."""
+
+    __tablename__ = "tip_payment_cycles"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('OPEN','APPROVED')", name="ck_tip_payment_cycle_status",
+        ),
+        CheckConstraint(
+            "triggered_by IN ('MANUAL','AUTOMATIC')", name="ck_tip_payment_cycle_triggered_by",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), nullable=False, index=True)
+
+    # The window whose unpaid Tip Entitlements this cycle aggregated —
+    # `period_start` is informational (the earliest included Business Date);
+    # `period_end` is the authoritative cutoff.
+    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default=TIP_PAYMENT_CYCLE_STATUS_OPEN)
+    triggered_by: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_by_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True
+    )
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    instructions: Mapped[list["TipPaymentInstruction"]] = relationship(back_populates="payment_cycle")
+    approved_by_identity: Mapped["ActingIdentity | None"] = relationship()
+
+
 class TipPaymentInstruction(Base):
     """One Payment Instruction: "pay this Employee this amount for this
-    finalized TipDistributionCalculationRun" — RF-One's own canonical
-    identity for a Tip payout, independent of Mercury's own Transaction
-    identity (`provider_transaction_id` below is evidence of what Mercury
-    did with this instruction, never the instruction's own identity).
+    Payment Cycle" — RF-One's own canonical identity for a Tip payout,
+    independent of the connector's own Transaction identity
+    (`provider_transaction_id` below is evidence of what the connector did
+    with this instruction, never the instruction's own identity). Its
+    `amount_minor` is the SUM of every `TipEntitlement.payable_amount_minor`
+    this Payment Cycle assigned to this Employee
+    (`TipEntitlement.tip_payment_instruction_id`) — potentially spanning
+    many Business Dates/calculation runs, never just one.
 
-    `uq_tip_payment_instruction_run_employee` is the primary double-payment
-    guard (task §5): at most one Payment Instruction ever exists for a given
-    (calculation_run_id, employee_id) pair — created once
-    (`payment_instruction.get_or_create_payment_instructions_for_run`) and
-    never duplicated, regardless of how many times a Process Activation
-    re-evaluates a Business Date's readiness.
+    `uq_tip_payment_instruction_cycle_employee` is the primary double-payment
+    guard: at most one Payment Instruction ever exists for a given
+    (payment_cycle_id, employee_id) pair.
 
-    Conceptual status values (task §3 — concepts preserved, exact strings
-    chosen to fit this codebase's existing UPPER_SNAKE convention):
+    `provider`/`provider_account_id`/`provider_recipient_id`/
+    `provider_transaction_id`/`provider_status` remain named generically
+    ("provider," not "Mercury"): they record which connector actually
+    executed this instruction and that connector's own transaction
+    evidence — outcome bookkeeping, not a routing decision. WHICH connector
+    to invoke is a payment-mode CONFIGURATION question
+    (`TipsPaymentScheduleConfig.connector_code`,
+    `tips/payment_connector.resolve_connector`), never read from this row
+    (`01 Domains/Business Domain/Restaurant/Tips/Tips Payment
+    Execution.md`: `TipPaymentInstruction` stays provider-neutral).
 
-        READY            -> instruction exists, not yet submitted to Mercury
-        SUBMITTED        -> POST accepted by Mercury; Transaction id known
-        SENT             -> observed Mercury status `sent`/`pending` with no
-                             failure yet (Outcome not yet fully verified —
-                             see `postedAt`/`provider_status` for detail)
+    Conceptual status values (concepts preserved, exact strings chosen to
+    fit this codebase's existing UPPER_SNAKE convention):
+
+        READY            -> instruction exists, not yet submitted
+        SUBMITTED        -> connector accepted it; Transaction id known
+        SENT             -> observed provider status `sent`/`pending` with
+                             no failure yet (Outcome not yet fully verified
+                             — see `postedAt`/`provider_status` for detail)
         OUTCOME_VERIFIED -> `provider_status == 'sent'` AND `posted_at` is
-                             set (task §10) — the strongest state this pilot
-                             asserts; still re-checkable, never immutable
-        NEEDS_ATTENTION  -> a failure class (task §11 A/B/C/E) or a REVERSED
-                             transition (task §10's "Outcome Reopened") —
-                             `failure_class`/`reason_for_failure`/`priority`
-                             describe why
-        CANCELLED        -> Mercury reported `cancelled`/`blocked` for this
-                             Transaction
+                             set — the strongest state this pilot asserts;
+                             still re-checkable, never immutable
+        NEEDS_ATTENTION  -> a failure class or a REVERSED transition
+                             ("Outcome Reopened") — `failure_class`/
+                             `reason_for_failure`/`priority` describe why
+        CANCELLED        -> the connector reported `cancelled`/`blocked`
+                             for this Transaction
     """
 
     __tablename__ = "tip_payment_instructions"
     __table_args__ = (
         UniqueConstraint(
-            "calculation_run_id", "employee_id", name="uq_tip_payment_instruction_run_employee",
+            "payment_cycle_id", "employee_id", name="uq_tip_payment_instruction_cycle_employee",
         ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    calculation_run_id: Mapped[int] = mapped_column(
-        ForeignKey("tip_distribution_calculation_runs.id"), nullable=False, index=True
+    payment_cycle_id: Mapped[int] = mapped_column(
+        ForeignKey("tip_payment_cycles.id"), nullable=False, index=True
     )
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
 
     amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    # Deterministically derived from (calculation_run_id, employee_id,
-    # ACTIVE recipient reference id) — `payment_instruction.
-    # build_idempotency_key` — computed and persisted at first submit
-    # attempt, not at instruction creation (NULL until then, since no
-    # recipient reference may exist yet). Reused unchanged on every retry
-    # against the SAME resolved recipient (a transient-failure retry must
-    # stay deduplicated); a NEW key is derived only when the active
-    # reference itself changes (a genuine correction, e.g. a wrong
-    # recipient was linked and then fixed). This split was forced by
-    # empirical Mercury sandbox behavior (TASK_TIPS_CORE2_PILOT): resending
-    # the SAME idempotencyKey after the underlying payload's `recipientId`
-    # changed returns HTTP 409, not a safe idempotent replay — reusing the
-    # instruction's original key across a recipient correction would
-    # therefore have permanently wedged that instruction. Unique once set,
-    # as a second, independent structural guard against ever submitting two
-    # different instructions under the same key.
+    # Deterministically derived from (payment_cycle_id, employee_id, ACTIVE
+    # recipient reference id) — `payment_instruction.build_idempotency_key`
+    # — computed and persisted at first submit attempt, not at instruction
+    # creation (NULL until then, since no recipient reference may exist
+    # yet). Reused unchanged on every retry against the SAME resolved
+    # recipient (a transient-failure retry must stay deduplicated); a NEW
+    # key is derived only when the active reference itself changes (a
+    # genuine correction, e.g. a wrong recipient was linked and then
+    # fixed). This split was forced by empirical Mercury sandbox behavior
+    # (TASK_TIPS_CORE2_PILOT): resending the SAME idempotencyKey after the
+    # underlying payload's `recipientId` changed returns HTTP 409, not a
+    # safe idempotent replay — reusing the instruction's original key
+    # across a recipient correction would therefore have permanently
+    # wedged that instruction. Unique once set, as a second, independent
+    # structural guard against ever submitting two different instructions
+    # under the same key.
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
 
     # Conceptual values: READY, SUBMITTED, SENT, OUTCOME_VERIFIED,
@@ -2111,26 +2431,32 @@ class TipPaymentInstruction(Base):
     provider_account_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     provider_recipient_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     provider_transaction_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    # Mercury's OWN transaction status verbatim (pending/sent/cancelled/
-    # failed/reversed/blocked) — never remapped/renamed, so a human
-    # inspecting this row can cross-check it directly against Mercury's own
-    # dashboard (`Tips Payment Execution.md`, "Use Mercury's real states").
+    # The connector's OWN transaction status verbatim (pending/sent/
+    # cancelled/failed/reversed/blocked) — never remapped/renamed, so a
+    # human inspecting this row can cross-check it directly against the
+    # provider's own dashboard (`Tips Payment Execution.md`, "Use Mercury's
+    # real states").
     provider_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # Task §11 — WHY `status` became NEEDS_ATTENTION/CANCELLED. Conceptual
-    # values: SYNCHRONOUS_VALIDATION, DUPLICATE_PROTECTION, PROVIDER_STATUS_
+    # WHY `status` became NEEDS_ATTENTION/CANCELLED. Conceptual values:
+    # SYNCHRONOUS_VALIDATION, DUPLICATE_PROTECTION, PROVIDER_STATUS_
     # FAILURE, PROVIDER_UNAVAILABLE, OUTCOME_REOPENED, RECIPIENT_NOT_
     # CONFIGURED — set by `payment_instruction.py`, never guessed from
-    # `reason_for_failure` text by any OTHER module (task §11's "isola la
-    # provider-specific interpretation nel connector").
+    # `reason_for_failure` text by any OTHER module (isolate the
+    # provider-specific interpretation inside the connector boundary).
     failure_class: Mapped[str | None] = mapped_column(String(32), nullable=True)
     reason_for_failure: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Conceptual values: CRITICAL, HIGH, MEDIUM, LOW (Core 2.0, `12_Attention_
-    # Management.md` §3) — set contextually by `payment_instruction.py`
-    # (task §13), never a fixed event->priority table. NULL until this
-    # instruction first needs attention.
+    # Management.md` §3) — set contextually by `payment_instruction.py`,
+    # never a fixed event->priority table. NULL until this instruction
+    # first needs attention.
     priority: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    # Set once this instruction raised an AttentionItem — avoids re-raising
+    # a second, duplicate Attention Item for the same instruction/failure
+    # on every subsequent readiness/scheduler pass.
+    attention_item_id: Mapped[int | None] = mapped_column(ForeignKey("attention_items.id"), nullable=True)
 
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -2140,8 +2466,9 @@ class TipPaymentInstruction(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
-    calculation_run: Mapped[TipDistributionCalculationRun] = relationship()
+    payment_cycle: Mapped[TipPaymentCycle] = relationship(back_populates="instructions")
     employee: Mapped["Employee"] = relationship()
+    attention_item: Mapped["AttentionItem | None"] = relationship()
 
 
 # `TipCalculationRun`/`TipAllocation`/`TipCalculationIssue` — the legacy
