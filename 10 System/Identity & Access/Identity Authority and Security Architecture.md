@@ -4,6 +4,8 @@
 **Status:** Approved (initial foundation — CORE_IDENTITY_AUTHORITY_SECURITY_ARCHITECTURE). Moved from `03 Software/` to `10 System/Identity & Access/` when the System top-level area was introduced (this is the same document, unchanged in substance by the move). **Current development status: FROZEN** — see [README.md](README.md).
 **Module:** System / Identity & Access — Cross-cutting Architecture
 
+> **Naming note (external-review clarification, added post-baseline — does not modify this document's approved substance):** every "Cognito" in this document refers to **Amazon Cognito**, the AWS authentication/identity service (currently the preferred, not-yet-locked authentication-provider candidate — see §27 below). It is an unrelated concept to **"RF-One Cognito"**, RF-One's own internal name for its Cognitive Intelligence Core concept (`00 Core/ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md`). The two share a name only by coincidence. The Product Owner has already identified this naming collision and a request is in progress to identify a replacement name for RF-One's Cognitive Intelligence concept; this document's own "Cognito" (Amazon's service) is not affected by that renaming.
+
 ---
 
 ## Purpose
