@@ -82,6 +82,19 @@ DOMAINS: tuple[DomainDefinition, ...] = (
         # verification and what remains to connect the real app securely.
         link="/selection",
     ),
+    DomainDefinition(
+        code="BANK",
+        display_name="Bank Reconciliation",
+        description=(
+            "Manual CSV import from Chase and First Citizens, normalization into the canonical "
+            "PaymentInstrument/FinancialTransaction ledger, and duplicate detection (V1)."
+        ),
+        future_path="/bank",
+        # A real operational application inside RF-One Web itself
+        # (`bank_routes.py`), genuinely mounted here — gated the same way
+        # as every other destination: `require_domain_access("BANK")`.
+        link="/bank",
+    ),
 )
 
 DOMAINS_BY_CODE: dict[str, DomainDefinition] = {d.code: d for d in DOMAINS}

@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block page_title %}Bank Reconciliation · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+<h1>Bank Reconciliation</h1>
+<p class="muted">Manual CSV import from Chase and First Citizens, normalization, duplicate detection, and the monthly Kermali export.</p>
+
+<div class="btn-row">
+  <a class="btn" href="{{ url_for('bank_review') }}">Review transactions</a>
+  <a class="btn btn-secondary" href="{{ url_for('bank_export') }}">Monthly export</a>
+</div>
+
+<div class="card">
+  <h2>Upload CSV files</h2>
+  <form method="post" action="{{ url_for('bank_upload') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <label for="files">Chase / First Citizens CSV file(s)</label>
+      <input type="file" id="files" name="files" accept=".csv" multiple required>
+    </div>
+    <div class="field-row">
+      <label for="payment_instrument_id">Payment Instrument (only needed for a Chase bank account or a Chase credit card file with no <code>Card</code> column — a file name is only ever a hint, never authoritative)</label>
+      <select id="payment_instrument_id" name="payment_instrument_id">
+        <option value="">Auto-resolve if possible&hellip;</option>
+        {% for instrument in instruments %}
+          <option value="{{ instrument.id }}">{{ instrument.display_name }} ({{ instrument.institution }}{% if instrument.last_four %} &middot;&middot;{{ instrument.last_four }}{% endif %})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit">Upload</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Payment Instruments</h2>
+  {% if instruments %}
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Name</th><th>Institution</th><th>Type</th><th>Last 4</th><th>Company</th></tr></thead>
+        <tbody>
+          {% for instrument in instruments %}
+            <tr>
+              <td>{{ instrument.display_name }}</td>
+              <td>{{ instrument.institution }}</td>
+              <td>{{ instrument.instrument_type }}</td>
+              <td>{{ instrument.last_four or (instrument.external_account_identifier[-4:] if instrument.external_account_identifier else None) or "&mdash;" }}</td>
+              <td>
+                {% if instrument.legal_entity %}
+                  {{ instrument.legal_entity.legal_name }}
+                {% else %}
+                  <span class="badge warn">Not configured</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No Payment Instrument configured yet.</p>
+  {% endif %}
+
+  <div class="subsection">
+    <h3>Add a Payment Instrument</h3>
+    <form method="post" action="{{ url_for('bank_instrument_new') }}" class="compact-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field-row">
+        <label for="institution">Institution</label>
+        <input type="text" id="institution" name="institution" placeholder="CHASE / FIRST_CITIZENS" required>
+      </div>
+      <div class="field-row">
+        <label for="display_name">Display name</label>
+        <input type="text" id="display_name" name="display_name" placeholder="Chase Checking 0214" required>
+      </div>
+      <div class="field-row">
+        <label for="instrument_type">Type</label>
+        <select id="instrument_type" name="instrument_type" required>
+          <option value="BANK_ACCOUNT">Bank account</option>
+          <option value="CREDIT_CARD">Credit card</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="last_four">Last 4 digits (credit card auto-resolution)</label>
+        <input type="text" id="last_four" name="last_four" maxlength="4">
+      </div>
+      <div class="field-row">
+        <label for="external_account_identifier">Account number as it appears in the source file (First Citizens auto-resolution)</label>
+        <input type="text" id="external_account_identifier" name="external_account_identifier">
+      </div>
+      <div class="field-row">
+        <label for="legal_entity_id">Company / Legal Entity</label>
+        <select id="legal_entity_id" name="legal_entity_id">
+          <option value="">Not yet configured</option>
+          {% for legal_entity in legal_entities %}
+            <option value="{{ legal_entity.id }}">{{ legal_entity.legal_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit">Add instrument</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Import batches</h2>
+  {% if batches %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>File</th><th>Format</th><th>Instrument</th><th>Rows</th><th>Period</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for batch in batches %}
+            <tr>
+              <td>{{ batch.original_file_name }}</td>
+              <td>{{ batch.detected_format }}</td>
+              <td>
+                {% if batch.payment_instrument_id %}
+                  {{ instruments_by_id.get(batch.payment_instrument_id).display_name if instruments_by_id.get(batch.payment_instrument_id) else batch.payment_instrument_id }}
+                {% else %}
+                  <span class="badge bad">Unresolved</span>
+                {% endif %}
+              </td>
+              <td>{{ batch.row_count }}</td>
+              <td>{% if batch.date_range_start %}{{ batch.date_range_start }} &ndash; {{ batch.date_range_end }}{% endif %}</td>
+              <td>
+                <span class="badge {{ 'ok' if batch.status in ('NORMALIZED', 'ACCEPTED') else ('bad' if batch.status == 'REJECTED' else 'warn') }}">{{ batch.status }}</span>
+                {% if batch.overlap_warning %}<br><span class="muted">{{ batch.overlap_warning }}</span>{% endif %}
+                {% if batch.error_summary %}<br><span class="muted">{{ batch.error_summary }}</span>{% endif %}
+              </td>
+              <td>
+                {% if not batch.payment_instrument_id %}
+                  <form method="post" action="{{ url_for('bank_batch_resolve_instrument', batch_id=batch.id) }}" class="compact-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="payment_instrument_id" required>
+                      <option value="">Resolve instrument&hellip;</option>
+                      {% for instrument in instruments %}
+                        <option value="{{ instrument.id }}">{{ instrument.display_name }}</option>
+                      {% endfor %}
+                    </select>
+                    <button type="submit">Resolve</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No file uploaded yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

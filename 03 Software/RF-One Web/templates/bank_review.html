@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block page_title %}Bank Reconciliation · Review · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('bank_home') }}">&larr; Bank Reconciliation</a></p>
+<h1>Review transactions</h1>
+
+<div class="card">
+  <form method="get" class="compact-form">
+    <div class="field-row">
+      <label for="year">Year</label>
+      <input type="number" id="year" name="year" value="{{ filter_year or '' }}" min="2000" max="2100">
+    </div>
+    <div class="field-row">
+      <label for="month">Month</label>
+      <input type="number" id="month" name="month" value="{{ filter_month or '' }}" min="1" max="12">
+    </div>
+    <div class="field-row">
+      <label for="payment_instrument_id">Instrument</label>
+      <select id="payment_instrument_id" name="payment_instrument_id">
+        <option value="">All</option>
+        {% for instrument in instruments %}
+          <option value="{{ instrument.id }}" {{ 'selected' if filter_payment_instrument_id == instrument.id else '' }}>{{ instrument.display_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field-row">
+      <label for="status">Status</label>
+      <select id="status" name="status">
+        <option value="">All</option>
+        <option value="CANDIDATE_DUPLICATE" {{ 'selected' if filter_status == 'CANDIDATE_DUPLICATE' else '' }}>Candidate duplicates</option>
+        <option value="REQUIRES_REVIEW" {{ 'selected' if filter_status == 'REQUIRES_REVIEW' else '' }}>Requires review</option>
+      </select>
+    </div>
+    <button type="submit">Filter</button>
+  </form>
+</div>
+
+<div class="card">
+  {% if transactions %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Instrument</th><th>Date</th><th>Description</th><th>Amount</th><th>Source</th>
+            <th>Duplicate</th><th>Reconciliation (Who / Why)</th><th>Internal Transfer</th><th>Review</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for txn in transactions %}
+            {% set explanation = explanations_by_id.get(txn.explanation_id) %}
+            {% set resolved = explanation and explanation.decision_status in resolved_decision_statuses %}
+            {% set counterpart = counterpart_by_transaction_id.get(txn.id) %}
+            {% set match_candidates = match_candidates_by_transaction_id.get(txn.id) %}
+            <tr>
+              <td>{{ instruments_by_id.get(txn.payment_instrument_id).display_name if instruments_by_id.get(txn.payment_instrument_id) else txn.payment_instrument_id }}</td>
+              <td>{{ txn.posting_date }}</td>
+              <td>{{ txn.description_original }}</td>
+              <td>{{ "%.2f"|format(txn.amount_minor / 100) }}</td>
+              <td>{{ txn.bank_source }}</td>
+              <td>
+                <span class="badge {{ 'bad' if txn.duplicate_status == 'CANDIDATE_DUPLICATE' else ('warn' if txn.duplicate_status == 'CONFIRMED_DUPLICATE' else 'ok') }}">{{ txn.duplicate_status }}</span>
+                {% if txn.duplicate_status == 'CANDIDATE_DUPLICATE' %}
+                  <form method="post" action="{{ url_for('bank_transaction_duplicate_decision', transaction_id=txn.id) }}" class="compact-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" name="decision" value="CONFIRMED_DISTINCT">Distinct</button>
+                    <button type="submit" name="decision" value="CONFIRMED_DUPLICATE">Duplicate</button>
+                  </form>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge {{ 'ok' if resolved else 'warn' }}">{{ explanation.decision_status if explanation else 'NEEDS_HUMAN_REVIEW' }}</span>
+                {% if resolved %}
+                  <br>
+                  Who: {{ explanation.occurrence.canonical_name if explanation.occurrence else explanation.occurrence_name_snapshot or '—' }}<br>
+                  Why: {{ explanation.transaction_reason.name if explanation.transaction_reason else '—' }}
+                {% endif %}
+                <form method="post" action="{{ url_for('bank_transaction_recognition_decision', transaction_id=txn.id) }}" class="compact-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <select name="occurrence_id" required>
+                    <option value="">Who&hellip;</option>
+                    {% for occurrence in occurrences %}
+                      <option value="{{ occurrence.id }}" {{ 'selected' if explanation and explanation.occurrence_id == occurrence.id else '' }}>{{ occurrence.canonical_name }}</option>
+                    {% endfor %}
+                  </select>
+                  <select name="transaction_reason_id" required>
+                    <option value="">Why&hellip;</option>
+                    {% for reason in reasons %}
+                      <option value="{{ reason.id }}" {{ 'selected' if explanation and explanation.transaction_reason_id == reason.id else '' }}>{{ reason.name }}</option>
+                    {% endfor %}
+                  </select>
+                  <label><input type="checkbox" name="reuse_for_future"> Reuse for future</label>
+                  <button type="submit">{{ 'Correct' if resolved else 'Confirm' }}</button>
+                </form>
+              </td>
+              <td>
+                {% if counterpart %}
+                  <span class="badge ok">INTERNAL_TRANSFER</span><br>
+                  &harr; {{ instruments_by_id.get(counterpart.payment_instrument_id).display_name if instruments_by_id.get(counterpart.payment_instrument_id) else counterpart.payment_instrument_id }}
+                  ({{ "%.2f"|format(counterpart.amount_minor / 100) }})
+                {% elif match_candidates %}
+                  <form method="post" action="{{ url_for('bank_transaction_match_decision', transaction_id=txn.id) }}" class="compact-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="counterpart_transaction_id" required>
+                      <option value="">Match with&hellip;</option>
+                      {% for candidate in match_candidates %}
+                        <option value="{{ candidate.id }}">
+                          {{ instruments_by_id.get(candidate.payment_instrument_id).display_name if instruments_by_id.get(candidate.payment_instrument_id) else candidate.payment_instrument_id }}
+                          ({{ "%.2f"|format(candidate.amount_minor / 100) }})
+                        </option>
+                      {% endfor %}
+                    </select>
+                    <button type="submit">Confirm transfer</button>
+                  </form>
+                {% endif %}
+              </td>
+              <td><span class="badge {{ 'ok' if txn.review_status in ('REVIEWED', 'ACCEPTED') else 'warn' }}">{{ txn.review_status }}</span></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No transaction matches this filter.</p>
+  {% endif %}
+</div>
+{% endblock %}
