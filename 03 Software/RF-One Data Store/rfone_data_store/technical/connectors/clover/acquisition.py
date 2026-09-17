@@ -215,6 +215,21 @@ class ImportSummary:
     employee_mismatches: list[EmployeeMismatch] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
+    # CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE §2 PRECHECK finding —
+    # distinct from `errors` (which also collects per-RECORD issues, e.g. one
+    # unresolved Order reference, that do not mean the period's own
+    # createdTime-windowed scan was incomplete). True only when a scan this
+    # run DEPENDS ON to claim "this window is fully covered" — the Payments
+    # or Refunds createdTime-filtered fetch itself — did not succeed. Read by
+    # `_finalize_import_run` to decide COMPLETE/PARTIAL vs FAILED: a run that
+    # never actually completed its windowed scan must never be eligible to
+    # advance `compute_next_sync_window`'s or `freshness._is_range_covered`'s
+    # checkpoint, even though some other resource in the same cycle (e.g.
+    # Employees, or Orders reached via a partial Payments page) may have
+    # succeeded — see Task report "Live Cursor safety" for the verified gap
+    # this closes.
+    window_scan_failed: bool = False
+
     @property
     def employee_mismatches_count(self) -> int:
         return len(self.employee_mismatches)
@@ -773,9 +788,22 @@ def _acquire_import_lock(
 
 
 def _finalize_import_run(ingestion_run: m.IngestionRun, summary: ImportSummary, *, location_id: int, mode: str) -> None:
-    """The RUNNING -> COMPLETE/PARTIAL transition, and "release the
-    execution guard" (clearing `lock_key` back to NULL)."""
-    ingestion_run.status = "COMPLETE" if not summary.errors else "PARTIAL"
+    """The RUNNING -> COMPLETE/PARTIAL/FAILED transition, and "release the
+    execution guard" (clearing `lock_key` back to NULL).
+
+    `window_scan_failed` (CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE §2
+    PRECHECK) takes priority over the ordinary PARTIAL-on-errors rule: a run
+    whose Payments or Refunds createdTime-windowed scan itself did not
+    succeed is marked FAILED, never PARTIAL/COMPLETE — `compute_next_sync_
+    window` and `freshness._is_range_covered` both only ever treat COMPLETE/
+    PARTIAL runs as having advanced the checkpoint, so a FAILED run here
+    correctly leaves the checkpoint exactly where it was, and the next cycle
+    (via its own overlap buffer) retries the same ground rather than silently
+    skipping past a window that was never actually verified."""
+    if summary.window_scan_failed:
+        ingestion_run.status = "FAILED"
+    else:
+        ingestion_run.status = "COMPLETE" if not summary.errors else "PARTIAL"
     ingestion_run.finished_at = utc_now()
     ingestion_run.lock_key = None
     ingestion_run.notes = (
@@ -784,6 +812,7 @@ def _finalize_import_run(ingestion_run: m.IngestionRun, summary: ImportSummary, 
         f"orders={summary.orders_imported + summary.orders_updated}; "
         f"shifts={summary.shifts_imported}; "
         f"refunds={summary.refunds_found}"
+        + ("; WINDOW SCAN FAILED — checkpoint not advanced, will retry" if summary.window_scan_failed else "")
     )
 
 
@@ -891,6 +920,10 @@ def import_clover_period(
         )
         if not payments_result.ok:
             summary.errors.append(f"Fetching Payments failed: {payments_result.error or 'unknown error'}")
+            # The Payments createdTime scan is what THIS window's checkpoint
+            # certifies as "covered" — if it never succeeded, the window was
+            # never actually scanned and must not be treated as done.
+            summary.window_scan_failed = True
             _finalize_import_run(ingestion_run, summary, location_id=location_id, mode=mode)
             session.flush()
             return summary
@@ -1053,6 +1086,12 @@ def import_clover_period(
                 summary.refunds_found += 1
         else:
             summary.errors.append(f"Fetching Refunds failed: {refunds_result.error or 'unknown error'}")
+            # Same reasoning as the Payments case above: Refunds is the other
+            # createdTime-windowed scan this run's checkpoint certifies —
+            # Orders/Payments having already succeeded earlier in this same
+            # cycle must not mask a Refunds-scan failure into a checkpoint
+            # advance that silently skips this window's refunds forever.
+            summary.window_scan_failed = True
     except Exception as exc:  # noqa: BLE001 — a failed run must release the guard, never stay RUNNING forever
         session.rollback()
         ingestion_run.status = "FAILED"
