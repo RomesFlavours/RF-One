@@ -13,6 +13,8 @@ This document describes how the Tips Distribution Engine's finalized, per-Employ
 
 It does **not** redefine any Tip Business Rule (`Tip.md`, `Tip Policy.md`, `Tip Allocation.md`) — the Tip Distribution Engine (`rfone_data_store/tips/distribution_engine.py`) is reused exactly as it exists today.
 
+**Clover freshness vs. consolidation:** `readiness.py`'s "latest `Order.business_date` on file" is the concrete instance of the consolidation boundary formalized in `03 Software/RF-One Data Store/CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md` §7 — Tips privileges a reconciled Business Date over live Clover freshness; it does not calculate or pay out against a Business Date before that data has passed through both the Fast Live Extractor and the Correction/Reconciliation Poller described there. Not redefined by this document.
+
 ---
 
 ## Canonical payment-connector decision (Product Owner, external-review closure)

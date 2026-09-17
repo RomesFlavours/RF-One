@@ -1,6 +1,6 @@
 # Clover → RF-One Canonical Ingestion
 
-TASK_DATABASE_002 — the first real ingestion of Clover source evidence into the RF-One canonical Restaurant operational database created by TASK_DATABASE_001. This document describes the ingestion **architecture and design decisions**; for the actual run's results, see `CLOVER_INGESTION_RECONCILIATION.md` and `07 Tasks/Reports/TASK_DATABASE_002_REPORT.md`.
+TASK_DATABASE_002 — the first real ingestion of Clover source evidence into the RF-One canonical Restaurant operational database created by TASK_DATABASE_001. This document describes the ingestion **architecture and design decisions**; for the actual run's results, see `CLOVER_INGESTION_RECONCILIATION.md` and `07 Tasks/Reports/TASK_DATABASE_002_REPORT.md`. For the **continuous, always-running** live acquisition/correction architecture (Fast Live Extractor, Correction/Reconciliation Poller, eventual consistency for Cognito, consolidation for Tips) — as opposed to this document's one-off, manually-triggered bulk pipeline — see `CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md`.
 
 ```text
 Clover raw/API evidence
