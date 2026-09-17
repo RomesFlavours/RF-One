@@ -25,6 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models as m
+from ..technical.connectors.clover.correction_sync import describe_reconciliation_status
 from . import distribution_engine as engine_svc
 
 UTC = timezone.utc
@@ -64,6 +65,23 @@ class BusinessDateReadiness:
     ready_to_calculate: bool
     ready_to_submit_payouts: bool
     fully_settled: bool
+    # CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md §7 — Tips privileges
+    # consolidation over freshness: `reconciliation_ready` reflects whether
+    # this Business Date's Clover data has had the opportunity to pass
+    # through both the Fast Live Extractor and the Correction/Reconciliation
+    # Poller (`technical.connectors.clover.correction_sync.
+    # describe_reconciliation_status`). `reconciliation_reason` is the
+    # human-readable "why" — never used to gate anything itself.
+    reconciliation_ready: bool
+    reconciliation_reason: str
+
+
+def _restaurant_location_ids(session: Session, restaurant_id: int) -> list[int]:
+    return list(
+        session.scalars(
+            select(m.RestaurantLocation.location_id).where(m.RestaurantLocation.restaurant_id == restaurant_id)
+        )
+    )
 
 
 def describe_readiness(session: Session, restaurant_id: int) -> BusinessDateReadiness:
@@ -77,7 +95,7 @@ def describe_readiness(session: Session, restaurant_id: int) -> BusinessDateRead
             business_date=None, has_orders=False, calculation_run=None, already_calculated=False,
             payment_instructions_total=0, payment_instructions_needing_attention=0,
             payment_instructions_verified=0, ready_to_calculate=False, ready_to_submit_payouts=False,
-            fully_settled=False,
+            fully_settled=False, reconciliation_ready=False, reconciliation_reason="no Business Date candidate yet",
         )
 
     period_start, period_end = business_date_period(business_date)
@@ -98,11 +116,16 @@ def describe_readiness(session: Session, restaurant_id: int) -> BusinessDateRead
 
     fully_settled = already_calculated and bool(instructions) and verified == len(instructions)
 
+    reconciliation = describe_reconciliation_status(
+        session, location_ids=_restaurant_location_ids(session, restaurant_id), period_end=period_end,
+    )
+
     return BusinessDateReadiness(
         business_date=business_date, has_orders=True, calculation_run=run, already_calculated=already_calculated,
         payment_instructions_total=len(instructions), payment_instructions_needing_attention=needing_attention,
         payment_instructions_verified=verified,
-        ready_to_calculate=not already_calculated,
-        ready_to_submit_payouts=already_calculated and not fully_settled,
+        ready_to_calculate=not already_calculated and reconciliation.ready,
+        ready_to_submit_payouts=already_calculated and not fully_settled and reconciliation.ready,
         fully_settled=fully_settled,
+        reconciliation_ready=reconciliation.ready, reconciliation_reason=reconciliation.reason,
     )

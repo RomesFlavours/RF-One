@@ -31,8 +31,8 @@ This document is about the **physical schema**, not restaurant business meaning 
 
 **Purpose:** one execution of a source ingestion process — supports future incremental imports and auditability. No ingestion logic is implemented by this task.
 **PK:** `id`. **FKs:** `source_system_id` → `source_systems` (required), `location_id` → `locations` (nullable — a run may be merchant-wide before a Location is even known).
-**Direct fields:** `started_at` (required), `finished_at`, `status`, `source_window_start/end`, `notes`.
-**Nullable and why:** everything except `started_at`/`status`/`source_system_id` — a run may still be in progress (`finished_at` null) or unwindowed (a full historical backfill has no natural window).
+**Direct fields:** `started_at` (required), `finished_at`, `status`, `source_window_start/end`, `notes`, `resource_type`.
+**Nullable and why:** everything except `started_at`/`status`/`source_system_id` — a run may still be in progress (`finished_at` null) or unwindowed (a full historical backfill has no natural window). `resource_type` (added by CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md §4) is `NULL` for every Historical Backfill/Live Sync run — one whole-Location run per cycle, unchanged — and set (e.g. `"orders"`, `"payments"`, `"refunds"`) only by the Correction/Reconciliation Poller's own Modification Cursor rows, one per resource per correction cycle. `live_sync.compute_next_sync_window` and `freshness._is_range_covered` both filter `resource_type IS NULL`, so a Modification Cursor row is never mistaken for the whole-Location Live Cursor.
 
 ### `source_records`
 
