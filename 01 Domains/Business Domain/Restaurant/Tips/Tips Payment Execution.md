@@ -15,6 +15,18 @@ It does **not** redefine any Tip Business Rule (`Tip.md`, `Tip Policy.md`, `Tip 
 
 ---
 
+## Canonical payment-connector decision (Product Owner, external-review closure)
+
+Payment method is **variable and configurable**, not fixed to any one provider. RF-One owns the payment instruction and its workflow; a configured payment-mode setting determines WHICH connector actually executes it:
+
+- **`TipPaymentInstruction`** = what RF-One has decided must be paid — provider-neutral, and must remain so.
+- **Payment mode / configuration** = HOW that payment is to be executed.
+- **Configured connector** (Mercury today; other providers possible later) = the technical executor of that payment.
+
+Everything below this point that names Mercury specifically (the connector, its sandbox endpoints, its recipient/idempotency model, its failure classes) describes **this pilot's one implemented connector**, not the canonical payment model — it must not be read as making Tips dependent on Mercury-specific concepts, and future connectors are expected to implement the same instruction-level contract (`TipPaymentInstruction` + Outcome Verification) without requiring Tips-side changes. No new connector API is introduced by this note; it records the boundary the existing Mercury connector already sits behind (`technical/connectors/mercury/`).
+
+---
+
 ## Core 2.0 concepts consumed
 
 | Concept | Core 2.0 source | How this pilot consumes it |
