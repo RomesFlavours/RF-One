@@ -1,5 +1,5 @@
 """CandidateCVProfile — the structured, validated output every ResumeParser
-must return (01 Domains/Cross Domain/Selection/ResumeScreening/
+must return (01 Domains/Shared Domains/Selection/ResumeScreening/
 CandidateCVProfile.md).
 
 Plain dataclasses, deliberately independent of the SQLAlchemy models in

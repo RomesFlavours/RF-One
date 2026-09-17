@@ -1,7 +1,7 @@
 """Payroll Schedule / Payroll Period helpers (TASK_PAYROLL_001).
 
 `PayrollSchedule` and `PayrollPeriod` are structurally independent concepts
-— see `01 Domains/Cross Domain/Administration/Payroll/Payroll Schedule and
+— see `01 Domains/Shared Domains/Administration/Payroll/Payroll Schedule and
 Period.md`. This module holds only the pure helper that demonstrates/
 exercises that independence for the Administration/Payroll domain's own
 cadence configuration.

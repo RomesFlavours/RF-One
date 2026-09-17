@@ -1,4 +1,4 @@
-"""Selection Requirement vocabulary (Task 3A; 01 Domains/Cross Domain/Selection/
+"""Selection Requirement vocabulary (Task 3A; 01 Domains/Shared Domains/Selection/
 SelectionRequirement.md). Defines the generic, industry-agnostic MEANING of
 Criticality, Trainability and Assessment Stage — never a restaurant's
 specific requirements, never Rome's Flavours' hiring philosophy. Which

@@ -5,7 +5,7 @@ Revises: a9d3e5f7c2b4
 Create Date: 2026-08-31 00:00:00.000000
 
 One additive, non-destructive change: four new tables for the Selection
-module's Resume Screening capability (01 Domains/Cross Domain/Personnel Management/
+module's Resume Screening capability (01 Domains/Shared Domains/Personnel Management/
 Selection/ResumeScreening/) — `raw_resumes`, `candidates`,
 `candidate_education`, `candidate_work_history`. Only Facts are persisted
 (RawResume raw text, Candidate/Education/WorkHistory fields as stated in the

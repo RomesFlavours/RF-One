@@ -5,7 +5,7 @@ Revises: f4d8e2a1c6b3
 Create Date: 2026-09-02 00:00:00.000000
 
 One additive, non-destructive change: four new tables for the Selection
-Requirement Framework (01 Domains/Cross Domain/Selection/SelectionRequirement.md) —
+Requirement Framework (01 Domains/Shared Domains/Selection/SelectionRequirement.md) —
 `requirement_templates`, `requirement_template_items`, `requirement_sets`,
 `requirements`. Defines WHAT a restaurant is looking for; no candidate or
 Fit Assessment table is added (out of scope for Task 3A).

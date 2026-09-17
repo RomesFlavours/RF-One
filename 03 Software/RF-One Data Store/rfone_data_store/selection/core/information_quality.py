@@ -1,4 +1,4 @@
-"""Information Quality (01 Domains/Cross Domain/Selection/
+"""Information Quality (01 Domains/Shared Domains/Selection/
 ResumeScreening/FlagsAndIndicators.md, "Information Quality").
 
 Absence of evidence is not automatically negative evidence — these

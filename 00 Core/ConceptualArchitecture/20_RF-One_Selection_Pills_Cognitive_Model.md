@@ -8,10 +8,10 @@
 
 ## Related documents
 
-- [01 Domains/Domain Architecture.md](../../01%20Domains/Domain%20Architecture.md) §4, §10 — the Cross Domain / Business Domain taxonomy; §10 was added by this task to record Template Domain as a proposed third category. See §1 and §25 below for what remains unreconciled between the two.
-- [01 Domains/Cross Domain/Operational Knowledge/README.md](../../01%20Domains/Cross%20Domain/Operational%20Knowledge/README.md) — the canonical Operational Knowledge Pill. This document's Pill (§2) is the same concept, not a competing definition — see §2's reconciliation note.
-- [01 Domains/Cross Domain/Continuous Productivity Development/README.md](../../01%20Domains/Cross%20Domain/Continuous%20Productivity%20Development/README.md) and [CONTINUOUS_PRODUCTIVITY_DEVELOPMENT_001.md](../../01%20Domains/Cross%20Domain/Continuous%20Productivity%20Development/CONTINUOUS_PRODUCTIVITY_DEVELOPMENT_001.md) — the Cross Domain that owns gap/opportunity evaluation and intervention selection; economic productivity optimization is its primary objective, development/Training is one candidate intervention among several, never privileged, and "no intervention" is an equally legitimate outcome. §18 below is written to match this precisely (the previous draft's §13/§16 were not).
-- [01 Domains/Cross Domain/Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md](../../01%20Domains/Cross%20Domain/Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md) — the existing, canonical CAPABILITY / TRAINABILITY / GUIDABILITY / UNSAFE-NOT-SUITABLE model. §6 below reuses these four categories by name; it does not redefine them.
+- [01 Domains/Domain Architecture.md](../../01%20Domains/Domain%20Architecture.md) §4, §10 — the Shared Domains / Business Domain taxonomy; §10 was added by this task to record Template Domain as a proposed third category. See §1 and §25 below for what remains unreconciled between the two.
+- [01 Domains/Shared Domains/Operational Knowledge/README.md](../../01%20Domains/Shared%20Domains/Operational%20Knowledge/README.md) — the canonical Operational Knowledge Pill. This document's Pill (§2) is the same concept, not a competing definition — see §2's reconciliation note.
+- [01 Domains/Shared Domains/Continuous Productivity Development/README.md](../../01%20Domains/Shared%20Domains/Continuous%20Productivity%20Development/README.md) and [CONTINUOUS_PRODUCTIVITY_DEVELOPMENT_001.md](../../01%20Domains/Shared%20Domains/Continuous%20Productivity%20Development/CONTINUOUS_PRODUCTIVITY_DEVELOPMENT_001.md) — the Shared Domain that owns gap/opportunity evaluation and intervention selection; economic productivity optimization is its primary objective, development/Training is one candidate intervention among several, never privileged, and "no intervention" is an equally legitimate outcome. §18 below is written to match this precisely (the previous draft's §13/§16 were not).
+- [01 Domains/Shared Domains/Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md](../../01%20Domains/Shared%20Domains/Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md) — the existing, canonical CAPABILITY / TRAINABILITY / GUIDABILITY / UNSAFE-NOT-SUITABLE model. §6 below reuses these four categories by name; it does not redefine them.
 - [01 Domains/Business Domain/Restaurant/Service Copilot/README.md](../../01%20Domains/Business%20Domain/Restaurant/Service%20Copilot/README.md) — the existing, Approved Service Copilot module this document's §9 relates to a proposed Cognitive Template. See §25 for what that document does not yet say about itself.
 - [00 Core/Cognitive Interface/RF-ONE_COGNITIVE_INTERFACE_CONCEPT.md](../Cognitive%20Interface/RF-ONE_COGNITIVE_INTERFACE_CONCEPT.md) — a separate, also-under-review Product Owner document describing a broader, cross-Domain "one functional mind" conversational layer (not restaurant- or Business-Domain-scoped). Related but not reconciled with the Cognitive Template proposed here — see §25.
 - [00 Core/ConceptualArchitecture/07_Core_Glossary.md](07_Core_Glossary.md)
@@ -48,9 +48,9 @@ Examples: Restaurant, Sales, Purchasing, Compensation.
 
 Example: the Carbonara recipe belongs to the Restaurant Business Domain. Training or Cognitive must not create a second, conflicting copy of the recipe.
 
-### Cross Domain
+### Shared Domain
 
-Provides a capability or knowledge structure genuinely shared across multiple Business Domains — industry-independent, per [Domain Architecture.md](../../01%20Domains/Domain%20Architecture.md) §3-4. This document does not redefine any existing Cross Domain (Selection, Operational Knowledge, Continuous Productivity Development, Performance, Personnel Management, Taxation, Administration).
+Provides a capability or knowledge structure genuinely shared across multiple Business Domains — industry-independent, per [Domain Architecture.md](../../01%20Domains/Domain%20Architecture.md) §3-4. This document does not redefine any existing Shared Domain (Selection, Operational Knowledge, Continuous Productivity Development, Performance, Personnel Management, Taxation, Administration).
 
 ### Template Domain
 
@@ -66,7 +66,7 @@ Cognitive Template    → Restaurant Service Copilot
 
 Example: Restaurant Service Copilot works primarily inside a smaller relevant universe — tables, guests, menu, recipes, POS, tickets, shifts, staff, service processes, restaurant procedures — instead of searching the entire RF-One organizational universe.
 
-**Reconciliation note (see §25 for the full treatment):** Template Domain is a new proposal, recorded here and cross-referenced from [Domain Architecture.md](../../01%20Domains/Domain%20Architecture.md) §10, which that document's own §4 ("every Domain... belongs to exactly one of two families") is not rewritten to accommodate. Whether Selection Template/Restaurant Selection is a genuinely new relationship or a renaming of the already-canonical "Cross Domain consumes Business Domain technical content" pattern Selection already uses (§3-4 of Domain Architecture.md) is not decided here. Whether Training Template's curriculum/quiz/certification apparatus has any existing canonical owner at all (it does not appear to — see §7 and §25) is also not decided here.
+**Reconciliation note (see §25 for the full treatment):** Template Domain is a new proposal, recorded here and cross-referenced from [Domain Architecture.md](../../01%20Domains/Domain%20Architecture.md) §10, which that document's own §4 ("every Domain... belongs to exactly one of two families") is not rewritten to accommodate. Whether Selection Template/Restaurant Selection is a genuinely new relationship or a renaming of the already-canonical "Shared Domain consumes Business Domain technical content" pattern Selection already uses (§3-4 of Domain Architecture.md) is not decided here. Whether Training Template's curriculum/quiz/certification apparatus has any existing canonical owner at all (it does not appear to — see §7 and §25) is also not decided here.
 
 ---
 
@@ -82,7 +82,7 @@ A Pill is **NOT**: a course, a lesson, an assessment, a completion state, or pro
 
 **Surfacing a Pill NEVER means training occurred, learning occurred, or competence was demonstrated.**
 
-**Reconciliation: this is the same concept as the existing [Operational Knowledge Pill](../../01%20Domains/Cross%20Domain/Operational%20Knowledge/README.md), not a second, competing definition.** Operational Knowledge Pill's own defining properties — atomic, contextual, retrievable — and its own explicit exclusions ("does not train people... does not assume information was learned... does not test, assess, certify, or verify retention") match this section's definition directly. This document does not introduce a new Pill concept; it adopts Operational Knowledge Pill as the canonical Pill and uses that name interchangeably with "Pill" throughout.
+**Reconciliation: this is the same concept as the existing [Operational Knowledge Pill](../../01%20Domains/Shared%20Domains/Operational%20Knowledge/README.md), not a second, competing definition.** Operational Knowledge Pill's own defining properties — atomic, contextual, retrievable — and its own explicit exclusions ("does not train people... does not assume information was learned... does not test, assess, certify, or verify retention") match this section's definition directly. This document does not introduce a new Pill concept; it adopts Operational Knowledge Pill as the canonical Pill and uses that name interchangeably with "Pill" throughout.
 
 Existing software terminology such as `TrainingPill` is implementation/model debt to review later (see §23). This task does not rename software.
 
@@ -135,7 +135,7 @@ Possible derived competence states may include: not assessed, demonstrated, assi
 
 ## 6. Selection
 
-Selection and Training must use a coherent competence vocabulary. **This document preserves, and does not redefine, the four categories already canonically defined in [SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md](../../01%20Domains/Cross%20Domain/Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md) §2:**
+Selection and Training must use a coherent competence vocabulary. **This document preserves, and does not redefine, the four categories already canonically defined in [SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md](../../01%20Domains/Shared%20Domains/Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md) §2:**
 
 ```text
 CAPABILITY           What the person can already perform independently, evidenced now.
@@ -151,7 +151,7 @@ UNSAFE / NOT SUITABLE  What cannot, at the current stage, safely or economically
 
 CAPABILITY may generate the **first** Person ↔ Pill Evidence (§5) — e.g. professional wine opening: demonstrated; complaint listening: demonstrated; RF Carbonara composition: not expected/not assessed; RF allergy procedure: not yet learned.
 
-TRAINABILITY is the same concept [TrainableGap.md](../../01%20Domains/Cross%20Domain/Selection/TrainableGap.md) already defines. GUIDABILITY is the ability to work effectively with real-time Cognitive guidance ([SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md](../../01%20Domains/Cross%20Domain/Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md) §3). UNSAFE / NOT SUITABLE names what that same document's §6 already identifies as a hard Constraint or disqualifying incompatibility — not a new disqualification criterion.
+TRAINABILITY is the same concept [TrainableGap.md](../../01%20Domains/Shared%20Domains/Selection/TrainableGap.md) already defines. GUIDABILITY is the ability to work effectively with real-time Cognitive guidance ([SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md](../../01%20Domains/Shared%20Domains/Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md) §3). UNSAFE / NOT SUITABLE names what that same document's §6 already identifies as a hard Constraint or disqualifying incompatibility — not a new disqualification criterion.
 
 Selection therefore establishes: suitability, trainability, guidability, and initial Person ↔ Pill competence Evidence — this is a restatement, in Pill terms, of the Selection Output Baseline that document's §5 already defines, not a second, parallel baseline.
 
@@ -171,7 +171,7 @@ Mandatory/safety-critical competence may still require RF-specific verification 
 
 ## 7. Training Template
 
-Training is a Template Domain candidate (§1; see §25 for what this does and does not have a reconciled home in existing Cross Domain documentation). Training consumes Pills and aggregates them into structured learning.
+Training is a Template Domain candidate (§1; see §25 for what this does and does not have a reconciled home in existing Shared Domain documentation). Training consumes Pills and aggregates them into structured learning.
 
 Training Template supports: Curriculum, Role Path, Module, Lesson, Quiz, Scenario, Practical, Gate, Sign-Off, Certification, Renewal.
 
@@ -329,7 +329,7 @@ Cognitive must **not** automatically rewrite canonical Pills.
 
 ## 18. Continuous Productivity Development
 
-Preserve the boundary with the existing [Continuous Productivity Development](../../01%20Domains/Cross%20Domain/Continuous%20Productivity%20Development/README.md) Cross Domain precisely as that Domain's own documents define it.
+Preserve the boundary with the existing [Continuous Productivity Development](../../01%20Domains/Shared%20Domains/Continuous%20Productivity%20Development/README.md) Shared Domain precisely as that Domain's own documents define it.
 
 **COGNITIVE / SERVICE COPILOT:** assists, observes, collects Evidence, detects signals, briefs, debriefs, surfaces recommendations.
 
@@ -337,7 +337,7 @@ Preserve the boundary with the existing [Continuous Productivity Development](..
 
 **TRAINING:** provides the structured educational intervention **only when Training is the intervention Continuous Productivity Development selects** — it does not decide that a gap exists or that Training is the right response to it.
 
-**Reconciliation correction (this section replaces language in the prior draft that no longer matches Continuous Productivity Development's actual, canonical model):** a gap or repeated signal detected by Cognitive (§17) is a **candidate** Gap/Opportunity for Continuous Productivity Development's governing loop — it is never a standing instruction to train, and Training is never the default or privileged response. Per [CONTINUOUS_PRODUCTIVITY_DEVELOPMENT_001.md](../../01%20Domains/Cross%20Domain/Continuous%20Productivity%20Development/CONTINUOUS_PRODUCTIVITY_DEVELOPMENT_001.md) §3, possible interventions include:
+**Reconciliation correction (this section replaces language in the prior draft that no longer matches Continuous Productivity Development's actual, canonical model):** a gap or repeated signal detected by Cognitive (§17) is a **candidate** Gap/Opportunity for Continuous Productivity Development's governing loop — it is never a standing instruction to train, and Training is never the default or privileged response. Per [CONTINUOUS_PRODUCTIVITY_DEVELOPMENT_001.md](../../01%20Domains/Shared%20Domains/Continuous%20Productivity%20Development/CONTINUOUS_PRODUCTIVITY_DEVELOPMENT_001.md) §3, possible interventions include:
 
 ```text
 Training
@@ -496,11 +496,11 @@ The canonical conceptual Pill (§2) is now the neutral Operational Knowledge Pil
 
 These are genuine, unresolved architectural questions. Per this task's own instruction, they are reported here, not resolved by inventing new architecture.
 
-1. **Template Domain has no physical or canonical-status equivalent to Cross Domain/Business Domain.** [Domain Architecture.md](../../01%20Domains/Domain%20Architecture.md) §4 states every Domain under `01 Domains/` belongs to exactly one of two families, physically expressed as two folders. Template Domain (§1 here) is a proposed third category with no folder, and §4's own text is not rewritten to accommodate it (per this task's scope — only an additive §10 was appended to that document). Until reconciled, Template Domain is a Core-level (00 Core) proposal cross-referenced from, but not integrated into, the Domain-level (01 Domains) taxonomy.
+1. **Template Domain has no physical or canonical-status equivalent to Shared Domains/Business Domain.** [Domain Architecture.md](../../01%20Domains/Domain%20Architecture.md) §4 states every Domain under `01 Domains/` belongs to exactly one of two families, physically expressed as two folders. Template Domain (§1 here) is a proposed third category with no folder, and §4's own text is not rewritten to accommodate it (per this task's scope — only an additive §10 was appended to that document). Until reconciled, Template Domain is a Core-level (00 Core) proposal cross-referenced from, but not integrated into, the Domain-level (01 Domains) taxonomy.
 
-2. **Selection Template's relationship to the already-canonical Selection Cross Domain is undecided.** Selection is already an Approved, top-level, transversal Cross Domain that consumes Restaurant's technical content as input ([Domain Architecture.md](../../01%20Domains/Domain%20Architecture.md) §2-3). "Selection Template → Restaurant Selection" (§1 here) may describe the identical relationship in different vocabulary, or may name something genuinely new. Not decided here.
+2. **Selection Template's relationship to the already-canonical Selection Shared Domain is undecided.** Selection is already an Approved, top-level, transversal Shared Domain that consumes Restaurant's technical content as input ([Domain Architecture.md](../../01%20Domains/Domain%20Architecture.md) §2-3). "Selection Template → Restaurant Selection" (§1 here) may describe the identical relationship in different vocabulary, or may name something genuinely new. Not decided here.
 
-3. **Training Template's curriculum/quiz/certification apparatus has no reconciled canonical owner.** [Operational Knowledge](../../01%20Domains/Cross%20Domain/Operational%20Knowledge/README.md) explicitly excludes curricula, courses, completion tracking, testing, assessment and certification. [Continuous Productivity Development](../../01%20Domains/Cross%20Domain/Continuous%20Productivity%20Development/CONTINUOUS_PRODUCTIVITY_DEVELOPMENT_001.md) §18 explicitly excludes "curriculum or course structures" and "certification states" from its own scope — it decides *that* Training should happen (as one candidate intervention among several, §18 here) but does not itself define or own the curriculum/lesson/quiz/gate/certification mechanics §7 describes. Training Template (§7) is therefore not yet a specialization of any existing Cross Domain in the way Domain Architecture.md's own taxonomy would require — it is a new proposal without a reconciled parent. This is the most material open item for the Shelbi/SWYFox workstream (§21) to be aware of.
+3. **Training Template's curriculum/quiz/certification apparatus has no reconciled canonical owner.** [Operational Knowledge](../../01%20Domains/Shared%20Domains/Operational%20Knowledge/README.md) explicitly excludes curricula, courses, completion tracking, testing, assessment and certification. [Continuous Productivity Development](../../01%20Domains/Shared%20Domains/Continuous%20Productivity%20Development/CONTINUOUS_PRODUCTIVITY_DEVELOPMENT_001.md) §18 explicitly excludes "curriculum or course structures" and "certification states" from its own scope — it decides *that* Training should happen (as one candidate intervention among several, §18 here) but does not itself define or own the curriculum/lesson/quiz/gate/certification mechanics §7 describes. Training Template (§7) is therefore not yet a specialization of any existing Shared Domain in the way Domain Architecture.md's own taxonomy would require — it is a new proposal without a reconciled parent. This is the most material open item for the Shelbi/SWYFox workstream (§21) to be aware of.
 
 4. **Cognitive Template's relationship to Restaurant Service Copilot is asserted one-directionally.** Service Copilot's own Approved README does not describe itself as a Template Domain specialization, and is not rewritten by this task to do so (§9). The relationship recorded here is this document's proposal, not yet confirmed from Service Copilot's own canonical side.
 

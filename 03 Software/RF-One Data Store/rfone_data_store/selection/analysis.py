@@ -4,7 +4,7 @@ MVP (Facts / Derived / Flags / Indicators — task §17.C). This is where the
 Client/Role Configuration choice actually happens for the current
 single-client deployment: Rome's Flavours' Server Role Configuration is
 selected by `target_role`, via `industry.restaurant.ROLE_CONFIGURATIONS`
-(01 Domains/Cross Domain/Selection/ResumeScreening/README.md,
+(01 Domains/Shared Domains/Selection/ResumeScreening/README.md,
 "Domain architecture", layers C/D). A future multi-client deployment would
 look this up per-client instead of importing one industry module directly —
 not needed yet (single Restaurant client today, TASK_RESTAURANT_STRUCTURE_001).

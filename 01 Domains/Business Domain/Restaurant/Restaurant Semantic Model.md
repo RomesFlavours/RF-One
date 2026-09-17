@@ -314,7 +314,7 @@ Restaurant Role
 Employee Assignment in Restaurant context
 ```
 
-**Personnel Management** (`01 Domains/Cross Domain/Personnel Management/`) owns cross-industry workforce semantics:
+**Personnel Management** (`01 Domains/Shared Domains/Personnel Management/`) owns cross-industry workforce semantics:
 
 ```text
 Workforce
@@ -324,7 +324,7 @@ Performance
 Personnel Decisions
 ```
 
-Restaurant Domain does not duplicate or redefine any Personnel Management concept. Personnel Management consumes Restaurant's technical content (e.g. "this Employee's Restaurant Role and Operational Area during the evaluated period") as an input, the same way it consumes any other technical Domain's content — see `01 Domains/Cross Domain/Personnel Management/README.md`, "Relationship to technical Domains," and `Organization/README.md`, "Relationship to Personnel Management."
+Restaurant Domain does not duplicate or redefine any Personnel Management concept. Personnel Management consumes Restaurant's technical content (e.g. "this Employee's Restaurant Role and Operational Area during the evaluated period") as an input, the same way it consumes any other technical Domain's content — see `01 Domains/Shared Domains/Personnel Management/README.md`, "Relationship to technical Domains," and `Organization/README.md`, "Relationship to Personnel Management."
 
 ---
 
@@ -399,6 +399,6 @@ Both are valid: each configured Operational Area satisfies the canonical meaning
 - [Organization/Restaurant Profile.md](Organization/Restaurant%20Profile.md), [Organization/Operational Area.md](Organization/Operational%20Area.md), [Organization/Physical Area.md](Organization/Physical%20Area.md), [Organization/Restaurant Role.md](Organization/Restaurant%20Role.md), [Organization/Employee Assignment.md](Organization/Employee%20Assignment.md) — full concept-level definitions and business rules
 - [Model/OU-Restaurant.md](Model/OU-Restaurant.md), [Model/OperationalArea.md](Model/OperationalArea.md) — Core-inherited Corporate/Brand/Operational Unit placement (a different axis — see § 3)
 - [Sales/Restaurant Sales Model.md](Sales/Restaurant%20Sales%20Model.md) — Table Service, Order, and sales-side canonical model (does not reference Operational Area/Physical Area/Restaurant Role at this time)
-- [../Personnel Management/README.md](../../Cross%20Domain/Personnel%20Management/README.md) — Personnel Management boundary
+- [../Personnel Management/README.md](../../Shared%20Domains/Personnel%20Management/README.md) — Personnel Management boundary
 - `03 Software/RF-One Data Store/DATABASE_SCHEMA.md` § 4a, `03 Software/RF-One Data Store/RESTAURANT_PROFILE.md` — implemented schema and the Tips/Payroll future contract
 - `07 Tasks/Reports/TASK_RESTAURANT_001_REPORT.md`, `07 Tasks/Reports/TASK_RESTAURANT_002_REPORT.md` — implementation and canonicalization history

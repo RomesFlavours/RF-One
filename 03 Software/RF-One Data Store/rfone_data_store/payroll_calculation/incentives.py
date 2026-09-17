@@ -1,5 +1,5 @@
 """Incentive Contributions and the Recognized Incentive (functional spec
-§14, `01 Domains/Cross Domain/Personnel Management/Compensation/
+§14, `01 Domains/Shared Domains/Personnel Management/Compensation/
 COMPENSATION_AND_INCOME_COMPOSITION_001.md`).
 
 Compensation V1 has no Event Log / Incentive Rule engine (spec §10-13

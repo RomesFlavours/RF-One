@@ -10,7 +10,7 @@ Adds `overtime_rules` — the canonical Overtime Rule Matrix foundation
 method, overlap method, effective dating, status) — no overtime is
 calculated by this migration or by any code in this repository. See
 `OvertimeRule`'s own docstring in `rfone_data_store/models.py` and
-`01 Domains/Cross Domain/Personnel Management/Payroll/
+`01 Domains/Shared Domains/Personnel Management/Payroll/
 OVERTIME_RULE_MATRIX_001.md` for the full functional boundary.
 
 Deliberately not attached to `LegalEntity`, `restaurants`, or any other

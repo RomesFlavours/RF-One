@@ -5,7 +5,7 @@ Revises: 590dcb3da39b
 Create Date: 2026-09-11 15:00:00.000000
 
 Completes the operational V1 of Compensation with manual, bidirectional
-communication with the Payroll Provider (`01 Domains/Cross Domain/Personnel
+communication with the Payroll Provider (`01 Domains/Shared Domains/Personnel
 Management/Compensation/COMPENSATION_AND_INCOME_COMPOSITION_001.md`,
 `PAYROLL_HANDOFF_CONNECTOR.md`):
 

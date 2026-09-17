@@ -107,7 +107,7 @@ Chase → Mercury funding is out of scope (unchanged from the earlier Mercury di
 
 - [Tip.md](Tip.md), [Tip Policy.md](Tip%20Policy.md), [Tip Allocation.md](Tip%20Allocation.md) — untouched Business Rules this pilot pays out
 - `00 Core/ConceptualArchitecture/11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md`, `12_Attention_Management.md`, `13_Process_Activation_and_Trigger_Intelligence.md` — Core 2.0 principles consumed
-- `01 Domains/Cross Domain/Administration/Payroll/Payment Execution.md` — the analogous, earlier Payroll boundary (`payment_execution_provider`, evidence-vs-status separation) this pilot's Tips-side design mirrors
+- `01 Domains/Shared Domains/Administration/Payroll/Payment Execution.md` — the analogous, earlier Payroll boundary (`payment_execution_provider`, evidence-vs-status separation) this pilot's Tips-side design mirrors
 - `03 Software/RF-One Data Store/rfone_data_store/technical/connectors/mercury/` — the connector
 - `03 Software/RF-One Data Store/rfone_data_store/tips/{readiness,payment_instruction,payout_process}.py` — the pilot's own modules
 - `03 Software/Tips/sandbox_pilot_e2e.py` — the real-sandbox demonstration script (never part of the automated test suite)

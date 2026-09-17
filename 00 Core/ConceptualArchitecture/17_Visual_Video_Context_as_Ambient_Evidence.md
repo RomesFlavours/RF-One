@@ -15,7 +15,7 @@
 - [13_Process_Activation_and_Trigger_Intelligence.md](13_Process_Activation_and_Trigger_Intelligence.md) — Trigger Discovery / Trigger Resolution / Authorized Consequence; §13 below states that visual observation is, at most, Trigger Discovery evidence.
 - [09_Identity_Authority_and_Accountability.md](09_Identity_Authority_and_Accountability.md) — Authority and Delegation, which visual evidence never creates, extends, or bypasses; also the source of the Acting Identity/Authority discipline §9 and §10 below apply to a person or third party who merely appears in a frame, never confusing "appearing in an authorized view" with "being identified as an Acting Identity."
 - [05_Epistemic_Boundary_and_Subject_Sovereignty.md](05_Epistemic_Boundary_and_Subject_Sovereignty.md) — the Epistemic Boundary this document's treatment of visual/video signals (§4) applies without modification: such signals are Evidence at most, never silently promoted to Fact.
-- [../../01 Domains/Cross Domain/PERSON_CONTINUITY_001.md](../../01%20Domains/Cross%20Domain/PERSON_CONTINUITY_001.md) — stable person knowledge/continuity; §9/§10 below never feed an uncertain visual appearance into a continuous person identity.
+- [../../01 Domains/Shared Domains/PERSON_CONTINUITY_001.md](../../01%20Domains/Shared%20Domains/PERSON_CONTINUITY_001.md) — stable person knowledge/continuity; §9/§10 below never feed an uncertain visual appearance into a continuous person identity.
 
 ---
 

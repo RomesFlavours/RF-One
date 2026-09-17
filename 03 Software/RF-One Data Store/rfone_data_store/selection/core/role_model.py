@@ -1,4 +1,4 @@
-"""Generic Role Model (01 Domains/Cross Domain/Selection/
+"""Generic Role Model (01 Domains/Shared Domains/Selection/
 ResumeScreening/RoleModel.md). Selection Core defines only the shape; every
 concrete role name/list is Industry Extension / Client / Role Configuration
 content supplied by the caller.

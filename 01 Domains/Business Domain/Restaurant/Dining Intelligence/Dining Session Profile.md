@@ -43,7 +43,7 @@ observed guest/service signals (e.g. a smartwatch micro-input — Service Copilo
   Interaction.md)
 ```
 
-This list is illustrative and non-exhaustive, matching the same "not a mandatory universal schema" convention already established for [Performance Context](../../../Cross%20Domain/Performance/PerformanceContext.md).
+This list is illustrative and non-exhaustive, matching the same "not a mandatory universal schema" convention already established for [Performance Context](../../../Shared%20Domains/Performance/PerformanceContext.md).
 
 ---
 

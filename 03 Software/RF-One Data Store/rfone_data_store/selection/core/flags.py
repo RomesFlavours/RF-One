@@ -1,4 +1,4 @@
-"""Structured Flag model (01 Domains/Cross Domain/Selection/
+"""Structured Flag model (01 Domains/Shared Domains/Selection/
 ResumeScreening/FlagsAndIndicators.md, "Flags"). A Flag is never
 automatically negative — it marks something worth the evaluator's
 attention, positive, negative, or simply unresolved.

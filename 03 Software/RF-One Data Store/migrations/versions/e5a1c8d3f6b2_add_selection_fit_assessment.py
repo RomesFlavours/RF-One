@@ -5,7 +5,7 @@ Revises: c2b6e8a4f1d7
 Create Date: 2026-09-04 00:00:00.000000
 
 Three additive, non-destructive tables implementing evidence-based
-Candidate Fit Assessment (01 Domains/Cross Domain/Selection/FitAssessment.md):
+Candidate Fit Assessment (01 Domains/Shared Domains/Selection/FitAssessment.md):
 
 - `fit_assessments` — one evaluation run of one candidate against one
   immutable `RequirementSetSnapshot` (never a live `RequirementSet`).

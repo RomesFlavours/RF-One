@@ -1,4 +1,4 @@
-"""Contextual career/age information (01 Domains/Cross Domain/Personnel Management/
+"""Contextual career/age information (01 Domains/Shared Domains/Personnel Management/
 Selection/ResumeScreening/ExperienceAndTrajectory.md, "Contextual career /
 age information"). Deliberately conservative: only ever declared, or derived
 from a CLEARLY dated high-school-completion record. Never forced from weak

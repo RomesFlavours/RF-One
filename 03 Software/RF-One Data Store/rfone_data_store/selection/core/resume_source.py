@@ -1,4 +1,4 @@
-"""ResumeSource / RawResume (01 Domains/Cross Domain/Selection/
+"""ResumeSource / RawResume (01 Domains/Shared Domains/Selection/
 ResumeScreening/CandidateCVProfile.md, "Resume Source architecture").
 Local PDF upload is the first ResumeSource; a future API-based source
 (Indeed, another provider) is a new `source_type` value, not a new pipeline.

@@ -491,7 +491,7 @@ def test_attachment_delivered_through_real_pipeline(result: Result, tmp_dir: str
 
     _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     real_pdf_path = os.path.join(
-        _REPO_ROOT, "01 Domains", "Cross Domain", "Administration", "Invoice Intake", "Invoices", "Raw", "Invoice 6855.pdf"
+        _REPO_ROOT, "01 Domains", "Shared Domains", "Administration", "Invoice Intake", "Invoices", "Raw", "Invoice 6855.pdf"
     )
     if not os.path.isfile(real_pdf_path):
         result.check("real PDF sample available for end-to-end delivery test", False)
@@ -719,7 +719,7 @@ def test_digital_pdf_still_uses_embedded_text_path(result: Result, tmp_dir: str)
 
     _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     real_pdf_path = os.path.join(
-        _REPO_ROOT, "01 Domains", "Cross Domain", "Administration", "Invoice Intake", "Invoices", "Raw", "Invoice 6855.pdf"
+        _REPO_ROOT, "01 Domains", "Shared Domains", "Administration", "Invoice Intake", "Invoices", "Raw", "Invoice 6855.pdf"
     )
     if not os.path.isfile(real_pdf_path):
         result.check("SKIPPED: digital PDF sample not present", True)

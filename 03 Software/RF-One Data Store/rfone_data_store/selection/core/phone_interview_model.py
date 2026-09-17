@@ -1,4 +1,4 @@
-"""Phone Interview vocabulary (Task 4A; 01 Domains/Cross Domain/Selection Phone
+"""Phone Interview vocabulary (Task 4A; 01 Domains/Shared Domains/Selection Phone
 Interview framework). Defines the generic, restaurant-agnostic MEANING of
 Question Source, Question Importance, Gate Evaluation, Question Instance
 status, and Phone Interview Plan status — never any specific restaurant's

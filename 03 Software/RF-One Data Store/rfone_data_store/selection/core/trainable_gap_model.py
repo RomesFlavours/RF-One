@@ -1,4 +1,4 @@
-"""Trainable Gap vocabulary (Task 5B; 01 Domains/Cross Domain/Selection/
+"""Trainable Gap vocabulary (Task 5B; 01 Domains/Shared Domains/Selection/
 TrainableGap.md). Defines the generic, restaurant-agnostic MEANING of a
 Trainable Gap's 0-4 initial-level scale and eligibility rule — never a
 specific candidate's actual level, which always lives in the persisted

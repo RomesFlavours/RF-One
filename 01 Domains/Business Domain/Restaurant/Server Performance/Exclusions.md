@@ -32,11 +32,11 @@ For the same reason, no floor-optimization, staffing-level, or scheduling-recomm
 
 ## Payroll is outside this module
 
-Server Performance's economic-motivation estimates ([Coaching Model.md](Coaching%20Model.md), "Personal Economic Benefit") are illustrative coaching content only — potential additional Tip dollars presented to the Server as motivation. They are **never** a Payroll input, never reconciled against actual payroll figures, and never touch `01 Domains/Cross Domain/Administration/Payroll/` or its `payment_execution_provider`/Mercury/ADP concepts in any way. Server Performance does not read from, or write to, Payroll.
+Server Performance's economic-motivation estimates ([Coaching Model.md](Coaching%20Model.md), "Personal Economic Benefit") are illustrative coaching content only — potential additional Tip dollars presented to the Server as motivation. They are **never** a Payroll input, never reconciled against actual payroll figures, and never touch `01 Domains/Shared Domains/Administration/Payroll/` or its `payment_execution_provider`/Mercury/ADP concepts in any way. Server Performance does not read from, or write to, Payroll.
 
 ## Generic HR is outside this module
 
-Server Performance does not model employment contracts, disciplinary procedures, leave, benefits, or any other generic HR concern. Where it touches personnel-decision-adjacent territory (persistent underperformance evidence — [Coaching Model.md](Coaching%20Model.md), "Underperformance / management evidence"), it only ever supplies evidence; the Decision itself belongs exclusively to Personnel Management's [Personnel Decisions](../../../Cross%20Domain/Personnel%20Management/Personnel%20Decisions/README.md) module, applied by a human.
+Server Performance does not model employment contracts, disciplinary procedures, leave, benefits, or any other generic HR concern. Where it touches personnel-decision-adjacent territory (persistent underperformance evidence — [Coaching Model.md](Coaching%20Model.md), "Underperformance / management evidence"), it only ever supplies evidence; the Decision itself belongs exclusively to Personnel Management's [Personnel Decisions](../../../Shared%20Domains/Personnel%20Management/Personnel%20Decisions/README.md) module, applied by a human.
 
 ## No unsupported personal-cause inference
 
@@ -57,5 +57,5 @@ This module is Domain/conceptual architecture documentation only. It defines no 
 - [Server Performance.md](Server%20Performance.md)
 - [Concurrent Service Load.md](Concurrent%20Service%20Load.md)
 - [Future Development.md](Future%20Development.md)
-- [../../Personnel Management/Personnel Decisions/README.md](../../../Cross%20Domain/Personnel%20Management/Personnel%20Decisions/README.md)
-- [../../Administration/Payroll/README.md](../../../Cross%20Domain/Administration/Payroll/README.md)
+- [../../Personnel Management/Personnel Decisions/README.md](../../../Shared%20Domains/Personnel%20Management/Personnel%20Decisions/README.md)
+- [../../Administration/Payroll/README.md](../../../Shared%20Domains/Administration/Payroll/README.md)

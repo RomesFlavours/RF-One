@@ -3020,7 +3020,7 @@ class Device(Base):
 # ---------------------------------------------------------------------------
 # Payroll (TASK_PAYROLL_001) — Administration Domain, transversal, independent
 # from Restaurant / Personnel Management / ADP / jurisdiction labor law. See
-# `01 Domains/Cross Domain/Administration/Payroll/` for the Domain-level definitions this
+# `01 Domains/Shared Domains/Administration/Payroll/` for the Domain-level definitions this
 # schema implements without redefining. Money is minor units (cents), never
 # floating point, matching the rest of this schema; every total (Payroll
 # Employer Cost, run totals) is computed from the atomic fact tables below,
@@ -3103,7 +3103,7 @@ class EmployeeCompensationTerm(Base):
 
     `legal_entity_id` is the Legal Entity dimension required by the
     Compensation & Income Composition functional specification (`01 Domains/
-    Cross Domain/Personnel Management/Compensation/
+    Shared Domains/Personnel Management/Compensation/
     COMPENSATION_AND_INCOME_COMPOSITION_001.md` §5) — the same Employee
     may legitimately hold concurrently-effective terms for different Legal
     Entities (e.g. Server at $12/hour for Legal Entity A and Server at
@@ -3635,7 +3635,7 @@ class CompensationPreparationRun(Base):
 
     `legal_entity_id` is the Legal Entity dimension required by the
     Compensation & Income Composition functional specification (`01 Domains/
-    Cross Domain/Personnel Management/Compensation/
+    Shared Domains/Personnel Management/Compensation/
     COMPENSATION_AND_INCOME_COMPOSITION_001.md` §3). Product Owner
     correction: an earlier version of this column was named `restaurant_id`
     and pointed at `restaurants.id` — read-only verification then confirmed
@@ -3891,7 +3891,7 @@ class IncentiveContribution(Base):
 # `rfone_data_store/payroll_calculation/approval.py`, the ONLY code that
 # ever writes them. RF-One does not process Payroll — the snapshot preserves
 # what RF-One approved for later handoff to the Payroll Provider (`01
-# Domains/Cross Domain/Personnel Management/Compensation/
+# Domains/Shared Domains/Personnel Management/Compensation/
 # COMPENSATION_AND_INCOME_COMPOSITION_001.md` §19-20); it never contains a
 # calculated statutory Regular Rate, Overtime premium, tax, withholding,
 # deduction, employer liability, or net pay — those belong to the Payroll
@@ -4252,7 +4252,7 @@ class CompensationReconciliationLine(Base):
 # Overtime Rule Matrix foundation (Product Owner decision) — schema +
 # metadata only. NO overtime is calculated anywhere in this schema or by
 # any code in this repository; see `OvertimeRule`'s own docstring below and
-# `01 Domains/Cross Domain/Personnel Management/Compensation/
+# `01 Domains/Shared Domains/Personnel Management/Compensation/
 # OVERTIME_RULE_MATRIX_001.md` for the full functional boundary.
 # ---------------------------------------------------------------------------
 
@@ -4589,7 +4589,7 @@ class PurchaseDocument(Base):
     except `status` (business processing status, not a source fact).
 
     Ownership (Align legacy Invoice Intake with Purchased): this table is the
-    Purchase Fact `01 Domains/Cross Domain/Purchased/README.md` canonically
+    Purchase Fact `01 Domains/Shared Domains/Purchased/README.md` canonically
     owns (capture + normalize + publish) — Restaurant/Purchasing consumes it
     rather than owning it. A supplier-side correction (credit memo, corrected
     invoice, return credit, adjustment) is its own new row referencing the
@@ -4660,7 +4660,7 @@ class PurchaseLine(Base):
     application convention that could be bypassed by a future caller.
 
     Ownership (Align legacy Invoice Intake with Purchased): a `PRODUCT` line
-    here is a Purchased Line (`01 Domains/Cross Domain/Purchased/README.md`).
+    here is a Purchased Line (`01 Domains/Shared Domains/Purchased/README.md`).
     Non-goods `SURCHARGE`/`DISCOUNT` lines are kept as their own rows for
     source evidence but are never Purchased Lines in their own right —
     Purchased's canonical output allocates them across the `PRODUCT` lines
@@ -5163,7 +5163,7 @@ class PurchasedLineAddition(Base):
 # ---------------------------------------------------------------------------
 # Selection module — Resume Screening (TASK_SELECTION_001)
 #
-# Persists only Facts (01 Domains/Cross Domain/Selection/
+# Persists only Facts (01 Domains/Shared Domains/Selection/
 # ResumeScreening/EvidenceModel.md): the candidate's declared/résumé-stated
 # information and the raw résumé it came from. Derived Information, Flags
 # and Indicators are never persisted here — they are recomputed on every
@@ -5441,7 +5441,7 @@ class CandidateLanguage(Base):
 # Selection module — Requirement Framework (TASK 3A)
 #
 # Defines WHAT a restaurant is looking for — never what a candidate is, and
-# never whether a candidate fits (01 Domains/Cross Domain/Selection/SelectionRequirement.md).
+# never whether a candidate fits (01 Domains/Shared Domains/Selection/SelectionRequirement.md).
 # `RequirementTemplate`/`RequirementTemplateItem` are RF-One-provided,
 # reusable starting points; `RequirementSet`/`Requirement` are the
 # restaurant-owned, independently editable result of instantiating (cloning)
@@ -5705,7 +5705,7 @@ class RequirementSnapshotItem(Base):
 # definitions from `RequirementSnapshotItem` (immutable, TASK 3A-FIX), never
 # from live `Requirement` rows, so a Fit Assessment's meaning cannot be
 # silently rewritten by later edits to the restaurant's live Requirement Set
-# (01 Domains/Cross Domain/Selection/FitAssessment.md).
+# (01 Domains/Shared Domains/Selection/FitAssessment.md).
 # ---------------------------------------------------------------------------
 
 
@@ -7951,7 +7951,7 @@ class SelectionDownstreamOutcomeFeedback(Base):
     """Foundation ONLY for future append-only downstream Outcome Feedback
     (task §18) — no Training/Performance integration is implemented here;
     this table only provides the generic structure so a LATER task can
-    append evidence from Training, Performance, another Cross Domain, or a
+    append evidence from Training, Performance, another Shared Domain, or a
     Business Domain to a closed Selection case WITHOUT altering the
     historical Case Memory. `case_memory_id` is nullable (a feedback record
     may reference the Application generally rather than one specific
@@ -8048,7 +8048,7 @@ class SelectionGovernanceRequirement(Base):
 # override_reason/overridden_at quadruple already used by
 # `RequirementAssessment`, `Application.review_priority_*`,
 # `PrimaryScreeningCriterionEvaluation`, and `SignalObservation` — see
-# `01 Domains/Cross Domain/Selection/TrainableGap.md`.
+# `01 Domains/Shared Domains/Selection/TrainableGap.md`.
 #
 # Exactly one row per RequirementAssessment (unique constraint) — the same
 # discipline RequirementAssessment itself uses against (fit_assessment_id,
@@ -9414,7 +9414,7 @@ class ComplianceDisposition(Base):
 
 
 # ---------------------------------------------------------------------------
-# Cross Domain / Training (staff dish/wine "pill" learning — first operational
+# Shared Domain / Training (staff dish/wine "pill" learning — first operational
 # version, 03 Software/Training/).
 #
 # `TrainingAccount` is Training's own login/authentication record (username,

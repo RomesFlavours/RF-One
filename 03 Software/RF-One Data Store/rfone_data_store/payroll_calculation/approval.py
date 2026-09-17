@@ -3,7 +3,7 @@
 
 RF-One does not process Payroll. This module implements exactly the
 boundary the Compensation functional specification describes (`01 Domains/
-Cross Domain/Personnel Management/Compensation/
+Shared Domains/Personnel Management/Compensation/
 COMPENSATION_AND_INCOME_COMPOSITION_001.md` §19-20): a calculated
 `CompensationPreparationRun` (software status `CALCULATED` — the software
 state equivalent to the spec's "PREPARED", not renamed per Product Owner

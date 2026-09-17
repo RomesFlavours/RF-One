@@ -1,4 +1,4 @@
-"""Initial Indicators (01 Domains/Cross Domain/Selection/
+"""Initial Indicators (01 Domains/Shared Domains/Selection/
 ResumeScreening/FlagsAndIndicators.md, "Indicators"). Separate, named
 dimensions — never combined into one CV score. Each carries a raw value plus
 a descriptive state where useful; no weighting between them is defined here.

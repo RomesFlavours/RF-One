@@ -83,7 +83,7 @@ A source system's current configuration (Clover's, so far) may be used as eviden
 
 ## Relationship to Personnel Management
 
-Personnel Management (`01 Domains/Cross Domain/Personnel Management/`) owns broader workforce/personnel semantics that apply across industries — Workforce, Selection, Training, Performance, Personnel Decisions. This section does not duplicate that.
+Personnel Management (`01 Domains/Shared Domains/Personnel Management/`) owns broader workforce/personnel semantics that apply across industries — Workforce, Selection, Training, Performance, Personnel Decisions. This section does not duplicate that.
 
 Restaurant Organization owns:
 
@@ -95,7 +95,7 @@ restaurant roles
 restaurant assignment context (Employee Assignment)
 ```
 
-Personnel Management consumes this Restaurant-specific technical content (e.g. "this person's Restaurant Role and Operational Area during the evaluated period") the same way it consumes any other technical Domain's content, per `01 Domains/Cross Domain/Personnel Management/README.md`, "Relationship to technical Domains" — it does not redefine Employee Assignment, Operational Area, Physical Area or Restaurant Role.
+Personnel Management consumes this Restaurant-specific technical content (e.g. "this person's Restaurant Role and Operational Area during the evaluated period") the same way it consumes any other technical Domain's content, per `01 Domains/Shared Domains/Personnel Management/README.md`, "Relationship to technical Domains" — it does not redefine Employee Assignment, Operational Area, Physical Area or Restaurant Role.
 
 ---
 
@@ -104,6 +104,6 @@ Personnel Management consumes this Restaurant-specific technical content (e.g. "
 - [../README.md](../README.md) — Restaurant Domain purpose and scope
 - [../Roadmap.md](../Roadmap.md) — Restaurant Domain knowledge coverage
 - [../Model/OU-Restaurant.md](../Model/OU-Restaurant.md), [../Model/OperationalArea.md](../Model/OperationalArea.md) — Core-inherited business-profile model
-- [../../Personnel Management/README.md](../../../Cross%20Domain/Personnel%20Management/README.md) — Personnel Management boundary
+- [../../Personnel Management/README.md](../../../Shared%20Domains/Personnel%20Management/README.md) — Personnel Management boundary
 - `03 Software/RF-One Data Store/RESTAURANT_PROFILE.md` — runtime/database implementation of this section, including the future Tips/Payroll contract
 - `03 Software/RF-One Data Store/DATABASE_SCHEMA.md` §4a — physical schema for `restaurants`, `restaurant_locations`, `operational_areas`, `physical_areas`, `restaurant_roles`, `operational_area_roles`, `employee_assignments`

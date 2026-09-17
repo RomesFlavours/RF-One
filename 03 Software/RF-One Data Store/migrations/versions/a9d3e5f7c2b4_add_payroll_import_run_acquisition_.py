@@ -7,7 +7,7 @@ Create Date: 2026-08-30 00:00:00.000001
 One additive, non-destructive change: a nullable `acquisition_method`
 column on `payroll_import_runs`, recording how each import's bytes actually
 reached RF-One (`ADP_XLSX_FILE`, `ADP_SFTP_AES`, etc — free string,
-`01 Domains/Cross Domain/Administration/Payroll/Payroll Result Acquisition.md`).
+`01 Domains/Shared Domains/Administration/Payroll/Payroll Result Acquisition.md`).
 
 No existing row is modified by this migration — every existing
 `payroll_import_runs` row gets `acquisition_method = NULL` (unknown), which

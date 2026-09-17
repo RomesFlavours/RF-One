@@ -1,6 +1,6 @@
 """Selection module — Resume Screening (TASK_SELECTION_001).
 
-Implements 01 Domains/Cross Domain/Selection/ResumeScreening/.
+Implements 01 Domains/Shared Domains/Selection/ResumeScreening/.
 Package layout mirrors the documented domain architecture
 (ResumeScreening/README.md, "Domain architecture"):
 
