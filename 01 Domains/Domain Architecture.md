@@ -75,6 +75,10 @@ This is the same **transversal Domain principle** already established in §3, no
 │   ├── Continuous Productivity      (top-level, transversal Domain — conceptually superseded
 │   │   Development                   Training's original "closes an evidenced gap" scope
 │   │                                 before Training was itself redefined below)
+│   ├── Intercompany Funding &       (top-level, transversal Domain — financial relationships
+│   │   Settlement                    between Legal Entities: prefunding, Payment/Receipt On
+│   │                                 Behalf, settlement, netting, allocation, all governed by
+│   │                                 a Corporate-configured SettlementPolicy)
 │   ├── Operational Knowledge        (top-level, transversal Domain — formerly "Training",
 │   │                                 extracted from Personnel Management, then redefined as
 │   │                                 the shared retrievable-information repository)
