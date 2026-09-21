@@ -26,9 +26,10 @@ than guessing an account for them.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import models as m
@@ -560,6 +561,149 @@ def cardholder_history(
         )
         .order_by(m.BankCardHolderAssignment.valid_from.desc(), m.BankCardHolderAssignment.id.desc())
     ).all())
+
+
+# ---------------------------------------------------------------------------
+# Recovery of settlement configuration saved through the legacy field
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LegacyRecoveryCandidate:
+    """One card whose settlement account was configured through the older
+    `PaymentInstrument.linked_instrument_id` field before the historized
+    table existed. `valid_from` is None exactly when the card has no
+    imported transaction to date the period from — that case is reported
+    for a human, never dated on a guess."""
+
+    credit_card_id: int
+    credit_card_name: str
+    settlement_account_id: int
+    settlement_account_name: str
+    valid_from: date | None
+    transaction_count: int
+    skip_reason: str | None = None
+
+    @property
+    def recoverable(self) -> bool:
+        return self.skip_reason is None
+
+
+RECOVERY_NOTE = "Recovered from legacy Settles to configuration"
+
+
+def plan_legacy_settlement_recovery(session: Session) -> list[LegacyRecoveryCandidate]:
+    """Preview, writing nothing.
+
+    The ONE source of truth is `linked_instrument_id` — the value a human
+    actually saved. File names, `last_four` and institution are never
+    consulted: inventing a link from those would be guessing, and the
+    whole point of this recovery is that the human already decided.
+
+    A card is a candidate only when all of the following hold:
+
+    * it is a CREDIT_CARD;
+    * `linked_instrument_id` points at an existing BANK_ACCOUNT;
+    * it has NO historized settlement row yet — a card already configured
+      through the canonical path is left completely alone, so a human
+      decision is never overwritten.
+
+    `valid_from` is the earliest posting date among that card's imported
+    transactions, so the recovered period covers the whole history the
+    database actually holds. A card with no transactions yields no date
+    and is reported with a `skip_reason` instead."""
+    candidates: list[LegacyRecoveryCandidate] = []
+
+    cards = session.scalars(
+        select(m.PaymentInstrument)
+        .where(
+            m.PaymentInstrument.instrument_type == CREDIT_CARD,
+            m.PaymentInstrument.linked_instrument_id.is_not(None),
+        )
+        .order_by(m.PaymentInstrument.id)
+    ).all()
+
+    for card in cards:
+        existing = session.scalars(
+            select(m.BankCardSettlementAccount).where(
+                m.BankCardSettlementAccount.credit_card_payment_instrument_id == card.id
+            )
+        ).first()
+        if existing is not None:
+            continue  # already historized — never touched again
+
+        account = session.get(m.PaymentInstrument, card.linked_instrument_id)
+        transaction_count = session.scalar(
+            select(func.count(m.FinancialTransaction.id))
+            .where(m.FinancialTransaction.payment_instrument_id == card.id)
+        ) or 0
+        earliest = session.scalar(
+            select(func.min(m.FinancialTransaction.posting_date))
+            .where(
+                m.FinancialTransaction.payment_instrument_id == card.id,
+                m.FinancialTransaction.posting_date.is_not(None),
+            )
+        )
+
+        skip_reason = None
+        if account is None:
+            skip_reason = (
+                f"the linked instrument {card.linked_instrument_id} does not exist"
+            )
+        elif account.instrument_type != BANK_ACCOUNT:
+            skip_reason = (
+                f"the linked instrument {account.display_name!r} is a "
+                f"{account.instrument_type}, not a BANK_ACCOUNT"
+            )
+        elif account.id == card.id:
+            skip_reason = "the card is linked to itself"
+        elif earliest is None:
+            skip_reason = (
+                "the card has no imported transaction, so there is no evidence of when "
+                "this settlement configuration started — a human must state the date"
+            )
+
+        candidates.append(LegacyRecoveryCandidate(
+            credit_card_id=card.id,
+            credit_card_name=card.display_name,
+            settlement_account_id=account.id if account is not None else card.linked_instrument_id,
+            settlement_account_name=account.display_name if account is not None else "(missing)",
+            valid_from=earliest,
+            transaction_count=transaction_count,
+            skip_reason=skip_reason,
+        ))
+
+    return candidates
+
+
+def apply_legacy_settlement_recovery(
+    session: Session, *, created_by_account_id: int | None = None,
+) -> list[LegacyRecoveryCandidate]:
+    """Write the recoverable candidates into the historized table, and
+    return exactly those that were written.
+
+    Idempotent by construction: `plan_legacy_settlement_recovery` excludes
+    any card that already has a historized row, so running this a second
+    time finds nothing left to do, creates no duplicate row, and changes
+    no existing one.
+
+    Each row carries `RECOVERY_NOTE`, so a reader can always tell a
+    recovered configuration from one a human entered through the UI."""
+    written: list[LegacyRecoveryCandidate] = []
+    for candidate in plan_legacy_settlement_recovery(session):
+        if not candidate.recoverable:
+            continue
+        assignment = m.BankCardSettlementAccount(
+            credit_card_payment_instrument_id=candidate.credit_card_id,
+            settlement_bank_account_id=candidate.settlement_account_id,
+            valid_from=candidate.valid_from,
+            notes=RECOVERY_NOTE,
+            created_by_account_id=created_by_account_id,
+        )
+        session.add(assignment)
+        written.append(candidate)
+    session.flush()
+    return written
 
 
 def configuration_warning(session: Session, instrument: "m.PaymentInstrument") -> str | None:

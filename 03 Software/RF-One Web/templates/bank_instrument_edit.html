@@ -6,6 +6,24 @@
 {{ bank.module_nav('import') }}
 
 <h2>Edit Payment Instrument</h2>
+
+{# Configuration state, stated up front rather than discovered by scrolling. #}
+<p class="config-state-row">
+  {% if instrument.instrument_type == 'CREDIT_CARD' %}
+    {% if current_settlement %}
+      <span class="badge ok">Settlement account configured</span>
+    {% else %}
+      <span class="badge bad">Missing settlement account</span>
+    {% endif %}
+    {% if current_cardholder %}
+      <span class="badge ok">Cardholder: {{ current_cardholder.holder_display_name }}</span>
+    {% else %}
+      <span class="badge warn">Missing cardholder</span>
+    {% endif %}
+  {% else %}
+    <span class="badge ok">{{ instrument.instrument_type }} &mdash; settlement account not applicable</span>
+  {% endif %}
+</p>
 <p class="muted">
   Editing the canonical <code>PaymentInstrument</code> in place — the
   {{ transaction_count }} transaction(s) already recorded on it keep pointing at this same
@@ -65,15 +83,46 @@
       <input type="text" id="currency" name="currency" value="{{ instrument.currency or '' }}" maxlength="8" placeholder="USD">
     </div>
 
+    {# BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001 — the defect this removes.
+       This page used to offer BOTH this legacy "Settles to" select and the
+       Settlement Account panel below. They looked equivalent, so an
+       operator reasonably used this one: the information was saved, but
+       only into `linked_instrument_id`, leaving the historized table —
+       which the accounting layer actually reads — empty.
+
+       For a CREDIT_CARD there is now exactly ONE canonical control, the
+       Settlement Account panel, which writes the historized record and
+       keeps this column in step as a compatibility projection. For a
+       BANK_ACCOUNT a settlement account is not applicable at all. The
+       select survives only for PAYPAL, whose linked bank account is a
+       different fact (the one cross-ledger matching needs) and has no
+       historized equivalent. #}
+    {% if instrument.instrument_type == 'PAYPAL' %}
     <div class="field-row">
-      <label for="linked_instrument_id">Settles to / funded by &mdash; the linked instrument internal-transfer matching requires</label>
+      <label for="linked_instrument_id">Funded by &mdash; the linked bank account internal-transfer matching requires</label>
       <select id="linked_instrument_id" name="linked_instrument_id">
         <option value="">Not linked</option>
         {% for other in instruments %}
-          <option value="{{ other.id }}" {{ 'selected' if instrument.linked_instrument_id == other.id else '' }}>{{ bank.instrument_identity(other) }}</option>
+          {% if other.instrument_type == 'BANK_ACCOUNT' %}
+            <option value="{{ other.id }}" {{ 'selected' if instrument.linked_instrument_id == other.id else '' }}>{{ bank.instrument_identity(other) }}</option>
+          {% endif %}
         {% endfor %}
       </select>
     </div>
+    {% elif instrument.instrument_type == 'CREDIT_CARD' %}
+    <div class="field-row">
+      <label>Settlement account</label>
+      <p class="cell-note">
+        Configured in the <strong>Settlement Account</strong> section below, which records it with an
+        effective date and keeps the full history.
+        {% if current_settlement %}
+          Currently: {{ bank.instrument_identity(current_settlement) }}.
+        {% else %}
+          <strong>Not configured yet.</strong>
+        {% endif %}
+      </p>
+    </div>
+    {% endif %}
 
     <div class="field-row">
       <label for="status">State</label>
@@ -184,48 +233,162 @@
     part in deciding whether two transactions are the same accounting fact.
   </p>
 
-  <form method="post" action="{{ url_for('bank_instrument_cardholder_assign', instrument_id=instrument.id) }}" class="compact-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="field-row">
-      <label for="holder_kind">Holder</label>
-      <select id="holder_kind" name="holder_kind" required>
-        <option value="ACTING_IDENTITY">RF-One identity</option>
-        <option value="EMPLOYEE">Employee</option>
-        <option value="UNLINKED_PERSON">Other person (by name)</option>
-      </select>
+  {# BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001 — the inline form this
+     replaces rendered three selects side by side, two of which were empty
+     in a database with no Employee and only a SYSTEM identity. It looked
+     broken because it WAS showing nothing selectable, with no explanation.
+     One button now opens one modal that lists the real people this
+     database can link to, states plainly when there are none, and always
+     allows a named person who is not in any registry yet. #}
+  <p>
+    <button type="button" id="cardholder-open" class="btn-inline">
+      {{ 'Change cardholder' if current_cardholder else 'Assign cardholder' }}
+    </button>
+    {% if current_cardholder %}
+      <span class="cell-note">
+        Currently {{ current_cardholder.holder_display_name }}
+        ({{ current_cardholder.holder_kind }}) since {{ current_cardholder.valid_from }}.
+      </span>
+    {% else %}
+      <span class="cell-note">No cardholder recorded for this card yet.</span>
+    {% endif %}
+  </p>
+
+  <div id="cardholder-modal" class="org-modal-overlay" hidden aria-hidden="true">
+    <div class="org-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cardholder-modal-title">
+      <button class="org-modal-close" type="button" aria-label="Close" data-modal-close>&times;</button>
+      <div class="modal-header">
+        <h3 id="cardholder-modal-title">Assign cardholder</h3>
+      </div>
+      <p class="muted">
+        Who physically holds {{ instrument.display_name }}. Used for responsibility and analysis
+        only &mdash; it never affects the Company, the settlement account, or deduplication.
+      </p>
+
+      <form method="post" action="{{ url_for('bank_instrument_cardholder_assign', instrument_id=instrument.id) }}" id="cardholder-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="holder_kind" id="cardholder-kind" value="UNLINKED_PERSON">
+        <input type="hidden" name="holder_acting_identity_id" id="cardholder-identity-id" value="">
+        <input type="hidden" name="holder_employee_id" id="cardholder-employee-id" value="">
+
+        {% if cardholder_candidates %}
+          <div class="field-row">
+            <label for="cardholder-search">Search</label>
+            <input type="search" id="cardholder-search" autocomplete="off" placeholder="Name or source">
+          </div>
+          <div class="who-picker-list" id="cardholder-list" role="listbox" aria-label="People this card can be assigned to">
+            {% for candidate in cardholder_candidates %}
+              <button type="button" class="who-option" role="option" aria-selected="false"
+                      data-kind="{{ candidate.kind }}" data-id="{{ candidate.id }}"
+                      data-name="{{ candidate.name }}"
+                      data-haystack="{{ (candidate.name ~ ' ' ~ candidate.source)|lower }}">
+                <span class="who-option-name">{{ candidate.name }}</span>
+                <span class="who-option-type">{{ candidate.source }}</span>
+              </button>
+            {% endfor %}
+          </div>
+          <p class="empty" id="cardholder-no-match" hidden>No person matches this search.</p>
+        {% else %}
+          <p class="modal-empty-state">
+            <strong>No linked people available.</strong><br>
+            This database has no RF-One person identity and no employee to link to yet. You can
+            still record the holder by name below.
+          </p>
+        {% endif %}
+
+        <div class="field-row">
+          <label for="cardholder-name">Name</label>
+          <input type="text" id="cardholder-name" name="holder_display_name" maxlength="255"
+                 placeholder="Type a name to record a holder who is not in any registry yet">
+        </div>
+        <div class="field-row">
+          <label for="cardholder-valid-from">Effective from</label>
+          <input type="date" id="cardholder-valid-from" name="valid_from" value="{{ today }}" required>
+        </div>
+        <div class="field-row">
+          <label for="cardholder-notes">Notes</label>
+          <input type="text" id="cardholder-notes" name="notes" maxlength="500">
+        </div>
+
+        <div class="who-picker-actions">
+          <button type="submit" id="cardholder-confirm">Assign cardholder</button>
+          <button type="button" data-modal-close>Cancel</button>
+        </div>
+      </form>
     </div>
-    <div class="field-row">
-      <label for="holder_acting_identity_id">RF-One identity</label>
-      <select id="holder_acting_identity_id" name="holder_acting_identity_id">
-        <option value="">&mdash;</option>
-        {% for identity in acting_identities %}
-          <option value="{{ identity.id }}">{{ identity.display_name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="field-row">
-      <label for="holder_employee_id">Employee</label>
-      <select id="holder_employee_id" name="holder_employee_id">
-        <option value="">&mdash;</option>
-        {% for employee in employees %}
-          <option value="{{ employee.id }}">{{ employee.display_name or ('Employee ' ~ employee.id) }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="field-row">
-      <label for="holder_display_name">Name</label>
-      <input type="text" id="holder_display_name" name="holder_display_name" maxlength="255" placeholder="Required for “Other person”">
-    </div>
-    <div class="field-row">
-      <label for="holder_valid_from">Effective from</label>
-      <input type="date" id="holder_valid_from" name="valid_from" value="{{ today }}" required>
-    </div>
-    <div class="field-row">
-      <label for="holder_notes">Notes</label>
-      <input type="text" id="holder_notes" name="notes" maxlength="500">
-    </div>
-    <button type="submit">Assign cardholder</button>
-  </form>
+  </div>
+
+  <script>
+  (function () {
+    var overlay = document.getElementById('cardholder-modal');
+    if (!overlay || !window.RFOneModal) { return; }
+
+    var list = document.getElementById('cardholder-list');
+    var search = document.getElementById('cardholder-search');
+    var noMatch = document.getElementById('cardholder-no-match');
+    var nameField = document.getElementById('cardholder-name');
+    var kindField = document.getElementById('cardholder-kind');
+    var identityField = document.getElementById('cardholder-identity-id');
+    var employeeField = document.getElementById('cardholder-employee-id');
+    var options = list ? Array.prototype.slice.call(list.querySelectorAll('.who-option')) : [];
+
+    function clearSelection() {
+      options.forEach(function (option) {
+        option.classList.remove('is-selected');
+        option.setAttribute('aria-selected', 'false');
+      });
+      // Falling back to UNLINKED_PERSON is what makes a typed name work on
+      // its own, with or without any candidate in the list.
+      kindField.value = 'UNLINKED_PERSON';
+      identityField.value = '';
+      employeeField.value = '';
+    }
+
+    function select(option) {
+      clearSelection();
+      option.classList.add('is-selected');
+      option.setAttribute('aria-selected', 'true');
+      kindField.value = option.dataset.kind;
+      if (option.dataset.kind === 'ACTING_IDENTITY') { identityField.value = option.dataset.id; }
+      if (option.dataset.kind === 'EMPLOYEE') { employeeField.value = option.dataset.id; }
+      nameField.value = option.dataset.name;
+    }
+
+    if (list) {
+      list.addEventListener('click', function (event) {
+        var option = event.target.closest('.who-option');
+        if (option) { select(option); }
+      });
+      search.addEventListener('input', function () {
+        var term = search.value.trim().toLowerCase();
+        var shown = 0;
+        options.forEach(function (option) {
+          var match = !term || option.dataset.haystack.indexOf(term) !== -1;
+          option.hidden = !match;
+          if (match) { shown += 1; }
+        });
+        noMatch.hidden = shown !== 0;
+      });
+      // Typing a name by hand means "this person, not the selected one".
+      nameField.addEventListener('input', function () {
+        var selected = list.querySelector('.who-option.is-selected');
+        if (selected && nameField.value !== selected.dataset.name) { clearSelection(); }
+      });
+    }
+
+    var modal = window.RFOneModal.create({
+      overlay: overlay,
+      onOpen: function () {
+        clearSelection();
+        if (search) { search.value = ''; search.dispatchEvent(new Event('input')); }
+      },
+      initialFocus: function () { return search || nameField; },
+    });
+    document.getElementById('cardholder-open').addEventListener('click', function () {
+      modal.open(this);
+    });
+  })();
+  </script>
 
   {% if cardholder_history %}
     <div class="table-scroll">
@@ -255,16 +418,23 @@
                       <option value="EMPLOYEE" {{ 'selected' if row.holder_kind == 'EMPLOYEE' else '' }}>Employee</option>
                       <option value="UNLINKED_PERSON" {{ 'selected' if row.holder_kind == 'UNLINKED_PERSON' else '' }}>Other person</option>
                     </select>
+                    {# One list for both sources, rendered from the same
+                       candidate set the modal uses, so a correction can
+                       never offer a person the assignment form would not. #}
                     <select name="holder_acting_identity_id" aria-label="Corrected identity for assignment {{ row.id }}">
-                      <option value="">&mdash;</option>
-                      {% for identity in acting_identities %}
-                        <option value="{{ identity.id }}" {{ 'selected' if row.holder_acting_identity_id == identity.id else '' }}>{{ identity.display_name }}</option>
+                      <option value="">&mdash; (not an RF-One identity)</option>
+                      {% for candidate in cardholder_candidates %}
+                        {% if candidate.kind == 'ACTING_IDENTITY' %}
+                          <option value="{{ candidate.id }}" {{ 'selected' if row.holder_acting_identity_id == candidate.id else '' }}>{{ candidate.name }}</option>
+                        {% endif %}
                       {% endfor %}
                     </select>
                     <select name="holder_employee_id" aria-label="Corrected employee for assignment {{ row.id }}">
-                      <option value="">&mdash;</option>
-                      {% for employee in employees %}
-                        <option value="{{ employee.id }}" {{ 'selected' if row.holder_employee_id == employee.id else '' }}>{{ employee.display_name or ('Employee ' ~ employee.id) }}</option>
+                      <option value="">&mdash; (not an employee)</option>
+                      {% for candidate in cardholder_candidates %}
+                        {% if candidate.kind == 'EMPLOYEE' %}
+                          <option value="{{ candidate.id }}" {{ 'selected' if row.holder_employee_id == candidate.id else '' }}>{{ candidate.name }}</option>
+                        {% endif %}
                       {% endfor %}
                     </select>
                     <input type="text" name="holder_display_name" value="{{ row.holder_display_name }}" maxlength="255" aria-label="Corrected holder name for assignment {{ row.id }}">

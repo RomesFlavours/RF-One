@@ -230,17 +230,30 @@ def main() -> int:
             "review page no longer renders a separate Why menu",
             b'name="transaction_reason_id"' not in resp.data,
         )
+        # BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001: no Who exists yet at this
+        # point, and an empty picker must SAY so rather than render a search
+        # box over nothing and a Confirm button that can never fire. The
+        # populated controls are asserted further down, once the vocabulary
+        # has been created.
         check(
-            "the Who picker is a modal with its own search field",
-            b'id="who-picker"' in resp.data and b'id="who-picker-search"' in resp.data,
+            "the Who picker exists as a single modal from the start",
+            resp.data.count(b'id="who-picker"') == 1,
         )
         check(
-            "the Who picker can be cancelled and confirmed",
-            b'id="who-picker-cancel"' in resp.data and b'id="who-picker-confirm"' in resp.data,
+            "with no Who configured the picker states it and points at Classification",
+            b"No Who configured" in resp.data and b"/bank/classification" in resp.data,
         )
         check(
-            "the old 'Reuse for future' checkbox no longer gates the Who/Why choice",
-            b"Reuse for future" not in resp.data and b'name="learn_description"' in resp.data,
+            "with no Who configured no unusable Confirm button is rendered",
+            b'id="who-picker-confirm"' not in resp.data,
+        )
+        check(
+            "the picker can always be closed, even when empty",
+            b'id="who-picker-cancel"' in resp.data,
+        )
+        check(
+            "the old 'Reuse for future' checkbox is gone",
+            b"Reuse for future" not in resp.data,
         )
 
         # -----------------------------------------------------------------
@@ -382,6 +395,18 @@ def main() -> int:
         check(
             "the Who picker shows each candidate's derived Why and What",
             b"Why: Supplier Invoice Payment" in resp.data,
+        )
+        check(
+            "once a Who exists the picker renders its search field and Confirm button",
+            b'id="who-picker-search"' in resp.data and b'id="who-picker-confirm"' in resp.data,
+        )
+        check(
+            "the description-learning control is offered alongside them",
+            b'name="learn_description"' in resp.data,
+        )
+        check(
+            "the empty state is gone once a Who exists",
+            b"No Who configured" not in resp.data,
         )
         csrf = extract_csrf(resp.data)
         resp = operator_client.post(

@@ -6,7 +6,13 @@
 {% if brand_logo_filename %}
   <link rel="icon" type="image/png" href="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}?v=2">
 {% endif %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=3">
+{# BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001 — one modal controller for the
+   whole application, loaded with `defer` so it is ready before any page
+   script runs but never blocks rendering. Every dialog shares it, so a
+   fix to open/close, Escape, backdrop, focus restore or scroll locking
+   applies everywhere at once instead of being re-implemented per page. #}
+<script defer src="{{ url_for('static', filename='js/rf-one-modal.js') }}?v=1"></script>
 </head>
 <body>
 <div class="wrap {% block wrap_class %}{% endblock %}">

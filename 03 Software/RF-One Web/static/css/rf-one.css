@@ -505,3 +505,48 @@ tbody tr:hover { background: var(--olive-050); }
    excluded from accounting — so it is de-emphasised, never hidden. */
 .row-suppressed > td { background: var(--olive-050); opacity: .78; }
 .row-suppressed .col-description { font-style: italic; }
+
+/* ---------------------------------------------------------------------
+   `hidden` must actually hide (BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001)
+
+   THE defect this fixes: `.org-modal-overlay` sets `display: flex`. An
+   author rule always beats the user-agent's `[hidden] { display: none }`,
+   so setting the `hidden` attribute on the overlay did nothing — a
+   full-screen, fixed, z-index:50 element stayed painted over the page.
+   The page looked frozen because every click landed on an invisible
+   backdrop, and the panel looked empty because it was showing a list
+   that legitimately had no rows yet.
+
+   This guard is deliberately generic and `!important`: any element with
+   `hidden` is hidden, whatever a class later says. It also repairs the
+   Organization chart's modal, which uses the same overlay class and the
+   same `hidden` toggle and therefore had the same latent defect.
+   --------------------------------------------------------------------- */
+
+[hidden] { display: none !important; }
+
+/* --- Modal behaviour shared by every RF-One dialog ------------------- */
+
+/* While a dialog is open the page behind it must not scroll: otherwise
+   closing the dialog returns the reader to a different place than they
+   left. */
+body.modal-open { overflow: hidden; }
+
+/* The panel must never exceed the viewport on a small screen, and its
+   own content — not the page — is what scrolls. */
+.org-modal-panel {
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 700px) {
+  .org-modal-overlay { padding: .75rem .5rem; }
+  .org-modal-panel { padding: 1rem .9rem; max-height: calc(100vh - 1.5rem); }
+}
+
+/* An empty list is a statement, not a blank area. */
+.modal-empty-state {
+  padding: 1rem; text-align: center; color: var(--muted); font-size: .85rem;
+  border: 1px dashed var(--olive-300); border-radius: var(--radius); margin: .6rem 0;
+}

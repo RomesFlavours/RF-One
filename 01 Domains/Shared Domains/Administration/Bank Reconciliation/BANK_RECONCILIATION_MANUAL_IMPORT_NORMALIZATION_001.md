@@ -1,6 +1,6 @@
 # Bank Reconciliation — Manual Import & Normalization Specification V1
 
-**Version:** 1.7 (adds §13, cardholder history, card settlement account and accounting deduplication — BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001; adds §12, the hierarchical Who → Why → What classification — BANK_RECONCILIATION_WHO_WHY_WHAT_001; Financial Model Convergence integrated into main through Phase 6B — see below; Phase 4B canonical reconciliation decision unification carried forward unchanged)
+**Version:** 1.8 (adds §14, the settlement-configuration repair and the modal contract — BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001; adds §13, cardholder history, card settlement account and accounting deduplication — BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001; adds §12, the hierarchical Who → Why → What classification — BANK_RECONCILIATION_WHO_WHY_WHAT_001; Financial Model Convergence integrated into main through Phase 6B — see below; Phase 4B canonical reconciliation decision unification carried forward unchanged)
 **Status:** Integrated into `main` (Canonical Financial Model Convergence, `FINANCIAL_MODEL_CONVERGENCE_001`, Phases 1-6B): manual CSV upload, format detection, raw preservation, normalization, duplicate detection, and the Bank Recognition Expert System (`BANK_RECONCILIATION_EXPERT_SYSTEM_001` — `BankOccurrenceType`, `BankOccurrence`, `BankTransactionReason`, `BankRecognitionRule`, `recognition.py`) — all in `03 Software/RF-One Data Store/rfone_data_store/bank_reconciliation/` (`parsers.py`, `service.py`, `recognition.py`, `export.py`, `matching.py`), `03 Software/RF-One Data Store/rfone_data_store/models.py` (`PaymentInstrument`, `BankImportBatch`, `RawBankTransaction`, `FinancialTransaction`, `BankOccurrenceType`, `BankOccurrence`, `BankTransactionReason`, `BankRecognitionRule`, `BankTransactionReasonExportMapping`, `BankTransactionExplanation`, `FinancialTransactionMatch`), and `03 Software/RF-One Web/bank_routes.py`. As of Phase 4B, `BankTransactionExplanation` is the ONE canonical reconciliation decision (Product Owner Decision 1) — the legacy V1 Supplier/Receiving catalog workflow (`service.assign_explanation`, `bank_explanation_new`/`bank_transaction_explanation` routes) has been retired; Supplier/Receiving is `BankOccurrence.canonical_name` (Decision 2), and the Kermali accounting/export attributes (Food $/Oper/Deduct/What) live on `BankTransactionReasonExportMapping`, associated with the canonical Reason (Decision 4). Kermali export (`export.py`) reads the current canonical decision's immutable snapshot fields only, never the legacy fields (retired from the schema) and never the live Occurrence/Export Mapping rows — a later rename/edit never changes an already-exported historical value (Decision 8). `RfBank.xlsx` and the real source CSV files were read-only inputs to the original V1 task and were never modified. See "§10. Implementation Decisions" below for the decisions recorded when the V1 slice was originally built.
 
 **Phase 5/6/6B addendum (PayPal, cross-ledger matching, operationalized):** a PayPal connector (`technical/connectors/paypal/`) acquires transactions into the same canonical `FinancialTransaction` ledger as CSV import, using the same `SourceSystem`/`IngestionRun`/`SourceRecord` provenance convention as every other connector in this codebase (Phase 5). `FinancialTransactionMatch` (Phase 6) records a confirmed cross-ledger internal-transfer link between two `FinancialTransaction` rows on different `PaymentInstrument`s (e.g. a PayPal settlement and the matching Bank deposit, or a Bank payment and the matching Credit Card charge), deterministically — same exact-opposite-amount/linked-instrument/compatible-currency/date-tolerance criteria as every other reconciliation decision in this codebase, never fuzzy/probabilistic. As of Phase 6B, this matching is **automatic**: the canonical post-acquisition hook (`matching.on_financial_transaction_acquired`) is called by both the CSV path (`service.py`) and the PayPal path (`technical/connectors/paypal/ingest.py`) immediately after a `FinancialTransaction` is normalized/upserted, so a confirmed AUTO match is attempted regardless of which side of a transfer (Bank, Credit Card, or PayPal) is acquired first — no manual trigger is required for the deterministic case. The HUMAN fallback (`bank_routes.py`'s Bank Review page, `require_linked_instrument=False` candidate discovery, `confirm_match`) remains fully available for evidence the automatic criteria cannot see (e.g. no `linked_instrument_id` configured yet) — Phase 6B narrows nothing HUMAN could previously confirm. A confirmed `INTERNAL_TRANSFER` (`classification` AND a confirmed `FinancialTransactionMatch` together — classification alone is never trusted) is exempt from the Kermali "Missing reconciliation decision" blocker and excluded from Kermali workbook rows, since WHAT (a confirmed transfer) is sufficient economic classification on its own and Kermali must never receive a fabricated WHO/WHY for it.
@@ -550,6 +550,56 @@ Full account numbers are never rendered anywhere — only a name and the last fo
 ### 13.8 Export blockers added
 
 A missing settlement account blocks the months that actually contain the affected transactions, reported once per instrument with the row count, and never blocks a month those rows do not appear in. A missing Company on the settlement account blocks too — the card's own Legal Entity is not a fallback. Rows whose settlement account is unknown remain in the blocker scope so their other reasons (an undecided candidate duplicate, a missing Who) are still reported rather than replaced by this one.
+
+---
+
+## 14. Settlement configuration repair and the modal contract (BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001)
+
+A corrective intervention after §13 was used for real. Two defects, both found by an operator rather than by a test, and both fixed at the cause.
+
+### 14.1 One canonical control for the settlement account
+
+The Edit Payment Instrument page offered **two apparently equivalent controls**: the older `Settles to` (`PaymentInstrument.linked_instrument_id`) and the new historized Settlement Account panel. An operator reasonably used the first. The information was saved — but only into the legacy column, leaving `bank_card_settlement_accounts` empty, which is what the accounting layer actually reads.
+
+The rule now:
+
+- a **CREDIT_CARD** has exactly ONE visible control, the Settlement Account panel. It writes the historized record, closes the previous period, keeps the history, and keeps `linked_instrument_id` in step purely as a **compatibility projection** of the current period;
+- a **BANK_ACCOUNT** has no settlement account control — it is not applicable;
+- the legacy select survives only for **PAYPAL**, whose linked bank account is a different fact (the one cross-ledger matching needs) with no historized equivalent;
+- **any** legacy submission that still reaches the server for a card is routed through the canonical service, never written straight to the column. That is what makes a split configuration impossible rather than merely unlikely.
+
+### 14.2 Recovering a configuration saved the old way
+
+`repair_legacy_settlement_accounts.py` moves an existing, human-entered `linked_instrument_id` into the historized table. It **invents nothing**: the only source is the value a human already saved — never a file name, a `last_four` or an institution.
+
+- `valid_from` is the card's **earliest imported transaction**, so the recovered period covers the whole history the database actually holds;
+- a card with **no transactions** is reported for a human, never dated on a guess;
+- a card whose link points at something other than a BANK_ACCOUNT is reported, never recovered;
+- a card already configured through the canonical path is skipped entirely — a human decision is never overwritten;
+- every recovered row carries the note `Recovered from legacy Settles to configuration`;
+- it **previews by default** and writes only with `--apply`; `--expect N` refuses to write unless exactly N cards are recoverable;
+- it is **idempotent**: a second run finds nothing to do.
+
+No schema change was needed, so no migration was created: this is a controlled repair of existing application data.
+
+### 14.3 The modal contract
+
+The root cause of the "frozen page with an empty dialog" was a CSS specificity defect: `.org-modal-overlay` sets `display: flex`, and an author rule always beats the user agent's `[hidden] { display: none }`. Setting `hidden` therefore did nothing — a full-screen, fixed, `z-index: 50` backdrop stayed painted over the page and swallowed every click. The panel looked empty because it was showing a list that legitimately had no rows yet.
+
+Fixed at the cause with a generic `[hidden] { display: none !important }` guard, which also repairs the Organization chart's dialog (same class, same toggle, same latent defect), plus one shared controller (`static/js/rf-one-modal.js`) that every RF-One dialog uses:
+
+- one instance per page, opened and closed repeatably without a reload;
+- closable by X, Cancel, Escape and a backdrop click (press AND release on the backdrop, so a drag-select released outside does not close it);
+- Escape and Tab-trapping bound once at document level, acting on the topmost open dialog — not on the overlay, where they only worked if focus happened to be inside;
+- focus returns to the trigger, page scroll is locked while open and released on close, and `aria-hidden` always agrees with what is painted;
+- the panel scrolls internally and never exceeds the viewport on a small screen.
+
+A second defect fixed here: the Select Who form action was built with `template.replace(/0$/, id)` against `/bank/transactions/0/recognition-decision`, which does not end in `0`, so the regex never matched and **every confirmation would have posted to transaction 0**. It now substitutes an explicit `/transactions/0/` placeholder, which cannot fail silently.
+
+### 14.4 Empty states are statements, not blank panels
+
+- **Select Who** with no Who configured says `No Who configured`, links to the Classification tab, renders **no** Confirm button (a control that could never fire), and still closes normally.
+- **Cardholder** with no linkable person says `No linked people available` and still allows a named `UNLINKED_PERSON`. Only `HUMAN_USER` identities are offered — a card is held by a person, and listing a SYSTEM identity (the only one present in QA) offered a choice that is never correct. An Employee already represented by an identity of the same name is not shown twice.
 
 ---
 

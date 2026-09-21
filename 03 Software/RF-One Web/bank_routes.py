@@ -153,6 +153,49 @@ def register_bank_routes(
     # Payment Instrument configuration — create and edit.
     # -----------------------------------------------------------------
 
+    def _cardholder_candidates(db):
+        """Real people this database can link a cardholder to.
+
+        `ActingIdentity` is filtered to `HUMAN_USER`: a card is held by a
+        person, and a SYSTEM identity is never a valid answer. An Employee
+        already represented by an identity of the same name is dropped, so
+        the list does not show the same human twice under two labels.
+        Returns plain dicts because the modal renders them uniformly and
+        must not care which table each one came from."""
+        identities = db.scalars(
+            select(m.ActingIdentity)
+            .where(
+                m.ActingIdentity.is_active.is_(True),
+                m.ActingIdentity.kind == "HUMAN_USER",
+            )
+            .order_by(m.ActingIdentity.display_name)
+        ).all()
+        employees = db.scalars(
+            select(m.Employee)
+            .where(or_(m.Employee.active.is_(True), m.Employee.active.is_(None)))
+            .order_by(m.Employee.display_name)
+        ).all()
+
+        candidates = [
+            {
+                "kind": "ACTING_IDENTITY", "id": identity.id,
+                "name": identity.display_name, "source": "RF-One identity",
+            }
+            for identity in identities
+        ]
+        seen = {(c["name"] or "").strip().casefold() for c in candidates}
+        for employee in employees:
+            name = (employee.display_name or "").strip()
+            if name and name.casefold() in seen:
+                continue  # same person, already offered as a canonical identity
+            candidates.append({
+                "kind": "EMPLOYEE", "id": employee.id,
+                "name": name or f"Employee {employee.id}", "source": "Employee",
+            })
+            if name:
+                seen.add(name.casefold())
+        return candidates
+
     def _instrument_form_values(form):
         """The one place the instrument form's fields are read, so the
         create and edit paths can never diverge on what a field means."""
@@ -199,6 +242,36 @@ def register_bank_routes(
             if request.method == "POST":
                 require_csrf()
                 values = _instrument_form_values(request.form)
+
+                # BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001: for a CREDIT_CARD,
+                # `linked_instrument_id` is a PROJECTION of the historized
+                # settlement assignment, never an independent input. The page
+                # no longer offers the legacy control for a card, but a stale
+                # tab or a scripted post still can — so any value arriving
+                # here is routed through the canonical service, which writes
+                # the historized row, closes the previous period and keeps
+                # the projection in step. Writing the column directly is what
+                # produced the split configuration this task repairs.
+                legacy_link = values.pop("linked_instrument_id", None)
+                if instrument.instrument_type == "CREDIT_CARD":
+                    current = card_configuration.current_settlement_account(db, instrument_id)
+                    if legacy_link is not None and (current is None or current.id != legacy_link):
+                        try:
+                            card_configuration.assign_settlement_account(
+                                db, credit_card_payment_instrument_id=instrument_id,
+                                settlement_bank_account_id=legacy_link,
+                                valid_from=date.today(),
+                                notes="Set from the instrument form (routed through the canonical service).",
+                                created_by_account_id=_current_account(db).id,
+                            )
+                            bank_service.recompute_accounting_deduplication(db)
+                        except ValueError as exc:
+                            db.rollback()
+                            flash(str(exc), "error")
+                            return redirect(url_for("bank_instrument_edit", instrument_id=instrument_id))
+                else:
+                    values["linked_instrument_id"] = legacy_link
+
                 try:
                     bank_service.update_payment_instrument(db, instrument_id=instrument_id, **values)
                     warning = bank_service.instrument_export_warning(instrument)
@@ -230,15 +303,15 @@ def register_bank_routes(
                 current_settlement=card_configuration.current_settlement_account(db, instrument_id),
                 settlement_history=card_configuration.settlement_history(db, instrument_id),
                 settlement_warning=card_configuration.configuration_warning(db, instrument),
+                current_cardholder=card_configuration.current_cardholder(db, instrument_id),
                 cardholder_history=card_configuration.cardholder_history(db, instrument_id),
-                acting_identities=db.scalars(
-                    select(m.ActingIdentity)
-                    .where(m.ActingIdentity.is_active.is_(True))
-                    .order_by(m.ActingIdentity.display_name)
-                ).all(),
-                employees=db.scalars(
-                    select(m.Employee).order_by(m.Employee.display_name)
-                ).all(),
+                # BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001: only HUMAN_USER
+                # identities are offered. A card is held by a person, and
+                # listing SYSTEM / AI_AGENT / EXTERNAL_SERVICE identities —
+                # which is what an unfiltered list showed in QA, where the
+                # only identity is "RF-One System" — offers a choice that is
+                # never correct.
+                cardholder_candidates=_cardholder_candidates(db),
                 today=date.today().isoformat(),
                 export_warning=bank_service.instrument_export_warning(instrument),
                 transaction_count=db.scalar(

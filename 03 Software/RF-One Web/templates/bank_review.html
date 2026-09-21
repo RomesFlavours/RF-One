@@ -241,9 +241,9 @@
    rows; the Who list is identical for every row, so it is emitted once as
    data and the dialog is pointed at whichever transaction was clicked.
    ------------------------------------------------------------------------ #}
-<div id="who-picker" class="org-modal-overlay" hidden>
+<div id="who-picker" class="org-modal-overlay" hidden aria-hidden="true">
   <div class="org-modal-panel" role="dialog" aria-modal="true" aria-labelledby="who-picker-title">
-    <button id="who-picker-close" class="org-modal-close" type="button" aria-label="Cancel">&times;</button>
+    <button id="who-picker-close" class="org-modal-close" type="button" aria-label="Cancel" data-modal-close>&times;</button>
     <div class="modal-header">
       <h3 id="who-picker-title">Select Who</h3>
     </div>
@@ -257,11 +257,13 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="occurrence_id" id="who-picker-occurrence-id" value="">
 
+      {% if who_options %}
       <div class="field-row">
         <label for="who-picker-search">Search</label>
         <input type="search" id="who-picker-search" autocomplete="off"
                placeholder="Name or type" aria-controls="who-picker-list">
       </div>
+      {% endif %}
 
       <div class="who-picker-list" id="who-picker-list" role="listbox" aria-label="Active Who values" tabindex="0">
         {% for option in who_options %}
@@ -282,25 +284,36 @@
               </span>
             {% endif %}
           </button>
-        {% else %}
-          <p class="empty">
-            No Who defined yet. Create one on the
-            <a href="{{ url_for('bank_classification') }}">Classification</a> tab.
-          </p>
         {% endfor %}
       </div>
+      {% if not who_options %}
+        {# BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001: an empty vocabulary is a
+           legitimate state, not a failure — but it must say so and offer the
+           way out, and it must not leave a Confirm button that can never do
+           anything. #}
+        <p class="modal-empty-state">
+          <strong>No Who configured.</strong><br>
+          Nothing can be classified until at least one Who exists.
+          <a href="{{ url_for('bank_classification') }}">Open the Classification tab</a> to create
+          a What, a Why and a Who.
+        </p>
+      {% endif %}
       <p class="empty" id="who-picker-empty" hidden>No Who matches this search.</p>
 
+      {% if who_options %}
       <label class="who-picker-learn">
         <input type="checkbox" name="learn_description" checked>
         Learn this description &mdash; next time this exact description appears, recognize the same Who
         automatically. The Who &rarr; Why &rarr; What associations themselves are always kept, with or
         without this.
       </label>
+      {% endif %}
 
       <div class="who-picker-actions">
-        <button type="submit" id="who-picker-confirm" disabled>Confirm</button>
-        <button type="button" id="who-picker-cancel">Cancel</button>
+        {% if who_options %}
+          <button type="submit" id="who-picker-confirm" disabled>Confirm</button>
+        {% endif %}
+        <button type="button" id="who-picker-cancel" data-modal-close>Cancel</button>
       </div>
     </form>
   </div>
@@ -309,7 +322,7 @@
 <script>
 (function () {
   var overlay = document.getElementById('who-picker');
-  if (!overlay) { return; }
+  if (!overlay || !window.RFOneModal) { return; }
 
   var form = document.getElementById('who-picker-form');
   var search = document.getElementById('who-picker-search');
@@ -319,29 +332,39 @@
   var hidden = document.getElementById('who-picker-occurrence-id');
   var confirm = document.getElementById('who-picker-confirm');
   var options = Array.prototype.slice.call(list.querySelectorAll('.who-option'));
-  var lastTrigger = null;
+  var pendingTrigger = null;
 
-  // The route is per transaction, so the one form is retargeted on open.
-  var actionTemplate = {{ url_for('bank_transaction_recognition_decision', transaction_id=0)|tojson }};
+  // BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001 — the bug this replaces: the
+  // action was built with `template.replace(/0$/, id)` against
+  // `/bank/transactions/0/recognition-decision`, which does NOT end in `0`,
+  // so the regex never matched and every confirmation posted to
+  // transaction 0. An explicit placeholder cannot silently fail this way.
+  var ACTION_TEMPLATE = {{ url_for('bank_transaction_recognition_decision', transaction_id=0)|tojson }};
 
-  function visibleOptions() {
-    return options.filter(function (o) { return !o.hidden; });
+  function actionFor(transactionId) {
+    return ACTION_TEMPLATE.replace('/transactions/0/', '/transactions/' + transactionId + '/');
+  }
+
+  function clearSelection() {
+    options.forEach(function (option) {
+      option.classList.remove('is-selected');
+      option.setAttribute('aria-selected', 'false');
+    });
+    hidden.value = '';
+    if (confirm) { confirm.disabled = true; }
   }
 
   function select(option) {
     if (option.dataset.selectable !== '1') { return; }
-    options.forEach(function (o) {
-      o.classList.remove('is-selected');
-      o.setAttribute('aria-selected', 'false');
-    });
+    clearSelection();
     option.classList.add('is-selected');
     option.setAttribute('aria-selected', 'true');
     hidden.value = option.dataset.occurrenceId;
-    confirm.disabled = false;
+    if (confirm) { confirm.disabled = false; }
   }
 
   function applyFilter() {
-    var term = search.value.trim().toLowerCase();
+    var term = search ? search.value.trim().toLowerCase() : '';
     var shown = 0;
     options.forEach(function (option) {
       var match = !term || option.dataset.haystack.indexOf(term) !== -1;
@@ -351,70 +374,59 @@
     empty.hidden = shown !== 0 || options.length === 0;
   }
 
-  function open(trigger) {
-    lastTrigger = trigger;
-    form.action = actionTemplate.replace(/0$/, trigger.dataset.transactionId);
-    subject.textContent = trigger.dataset.transactionLabel || '';
-    hidden.value = '';
-    confirm.disabled = true;
-    search.value = '';
-    applyFilter();
-    options.forEach(function (o) {
-      o.classList.remove('is-selected');
-      o.setAttribute('aria-selected', 'false');
-    });
-    var current = trigger.dataset.currentOccurrenceId;
-    if (current) {
-      var match = options.filter(function (o) { return o.dataset.occurrenceId === current; })[0];
-      if (match) { select(match); }
-    }
-    overlay.hidden = false;
-    search.focus();
+  function visibleSelectable() {
+    return options.filter(function (o) { return !o.hidden && o.dataset.selectable === '1'; });
   }
 
-  function close() {
-    overlay.hidden = true;
-    if (lastTrigger) { lastTrigger.focus(); }
-  }
-
-  document.querySelectorAll('.who-picker-open').forEach(function (button) {
-    button.addEventListener('click', function () { open(button); });
+  var modal = window.RFOneModal.create({
+    overlay: overlay,
+    onOpen: function () {
+      var trigger = pendingTrigger;
+      form.action = actionFor(trigger.dataset.transactionId);
+      subject.textContent = trigger.dataset.transactionLabel || '';
+      clearSelection();
+      if (search) { search.value = ''; }
+      applyFilter();
+      var current = trigger.dataset.currentOccurrenceId;
+      if (current) {
+        var match = options.filter(function (o) { return o.dataset.occurrenceId === current; })[0];
+        if (match) { select(match); }
+      }
+    },
+    initialFocus: function () { return search || overlay.querySelector('[data-modal-close]'); },
   });
 
-  search.addEventListener('input', applyFilter);
+  document.querySelectorAll('.who-picker-open').forEach(function (button) {
+    button.addEventListener('click', function () {
+      pendingTrigger = button;
+      modal.open(button);
+    });
+  });
+
+  if (search) { search.addEventListener('input', applyFilter); }
 
   list.addEventListener('click', function (event) {
     var option = event.target.closest('.who-option');
     if (option) { select(option); }
   });
 
-  // Keyboard: Up/Down move through the visible options, Enter picks one.
-  // Typing in the search field narrows the same list, so the whole dialog
-  // is usable without a mouse.
-  function moveFocus(delta) {
-    var shown = visibleOptions().filter(function (o) { return o.dataset.selectable === '1'; });
+  // Up/Down walk the visible, selectable options; Enter picks one. Escape,
+  // Tab-trapping, the backdrop and focus restore are the shared
+  // controller's job and are not re-implemented here.
+  list.addEventListener('keydown', function (event) {
+    var shown = visibleSelectable();
     if (!shown.length) { return; }
-    var index = shown.indexOf(document.activeElement);
-    var next = shown[Math.max(0, Math.min(shown.length - 1, index + delta))];
-    if (index === -1) { next = shown[0]; }
-    next.focus();
-  }
-
-  overlay.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape') { event.preventDefault(); close(); return; }
-    if (event.key === 'ArrowDown') { event.preventDefault(); moveFocus(1); return; }
-    if (event.key === 'ArrowUp') { event.preventDefault(); moveFocus(-1); return; }
-    if (event.key === 'Enter' && document.activeElement.classList.contains('who-option')) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      var index = shown.indexOf(document.activeElement);
+      var next = index === -1 ? shown[0]
+        : shown[Math.max(0, Math.min(shown.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))];
+      next.focus();
+    } else if (event.key === 'Enter' && document.activeElement.classList.contains('who-option')) {
       event.preventDefault();
       select(document.activeElement);
     }
   });
-
-  overlay.addEventListener('mousedown', function (event) {
-    if (event.target === overlay) { close(); }
-  });
-  document.getElementById('who-picker-close').addEventListener('click', close);
-  document.getElementById('who-picker-cancel').addEventListener('click', close);
 })();
 </script>
 {% endblock %}
