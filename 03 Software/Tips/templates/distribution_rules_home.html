@@ -4,17 +4,137 @@
 {% with messages = get_flashed_messages(with_categories=True) %}
   {% for category, message in messages %}
     {% if category == "error" %}<div class="error">{{ message }}</div>{% endif %}
+    {% if category == "summary" %}<div class="card"><p>{{ message }}</p></div>{% endif %}
   {% endfor %}
 {% endwith %}
 
 <div class="card">
-  <h2>Tip Distribution Rules</h2>
+  <h2>Describe the Tip Distribution Rule</h2>
   {% if restaurant %}
   <p class="muted" style="font-size:.85rem;">Restaurant: <strong>{{ restaurant.name }}</strong></p>
   {% else %}
   <p class="error">No Restaurant exists in this database yet.</p>
   {% endif %}
 
+  {% if not ai_mode %}
+  <p class="muted" style="font-size:.85rem;">
+    Tell RF-One, in plain language, how tips should be shared — who gives, who receives, what share, and
+    when it starts. RF-One will ask only if something genuinely needs clarifying, then show you exactly
+    what it understood before anything is saved.
+  </p>
+  <form method="post" action="{{ url_for('distribution_rule_ai_interpret') }}">
+    <div>
+      <label for="statement">Your instruction</label>
+      <textarea id="statement" name="statement" rows="4" style="width:100%;" required
+        placeholder="For example: 10% of tips goes to the Host present when the payment is made. The remaining 90% stays with the Server. If no Host is present, the Server keeps 100%. Effective September 1, 2026."
+      ></textarea>
+    </div>
+    <input type="hidden" name="history_json" value="[]">
+    <div style="margin-top:.5rem;">
+      <button type="submit" {{ 'disabled' if not restaurant else '' }}>Interpret</button>
+    </div>
+  </form>
+  {% endif %}
+
+  {% if ai_mode == "CLARIFICATION" %}
+  <div class="card" style="background:var(--olive-050);">
+    <p><strong>RF-One needs one more thing:</strong></p>
+    <p>{{ ai_question }}</p>
+  </div>
+  <form method="post" action="{{ url_for('distribution_rule_ai_interpret') }}">
+    <div>
+      <label for="statement">Your answer</label>
+      <textarea id="statement" name="statement" rows="2" style="width:100%;" required></textarea>
+    </div>
+    <input type="hidden" name="history_json" value="{{ ai_history_json }}">
+    {% if ai_rule_id %}<input type="hidden" name="rule_id" value="{{ ai_rule_id }}">{% endif %}
+    <div style="margin-top:.5rem;">
+      <button type="submit">Answer</button>
+    </div>
+  </form>
+  {% endif %}
+
+  {% if ai_mode == "UNSUPPORTED" %}
+  <div class="card" style="background:var(--olive-050);">
+    <p class="error"><strong>{{ ai_unsupported.unsupported_summary }}</strong></p>
+    <p>{{ ai_unsupported.unsupported_detail }}</p>
+    <p class="muted" style="font-size:.85rem;">What you asked for, so nothing is lost: {{ ai_unsupported.preserved_intent }}</p>
+    <p class="muted" style="font-size:.78rem;">
+      RF-One did not save anything and did not approximate this into a different rule. You can restate the
+      Rule below, or use Advanced / Inspect Rule further down for the exact fields RF-One can configure today.
+    </p>
+  </div>
+  <form method="post" action="{{ url_for('distribution_rule_ai_interpret') }}">
+    <div>
+      <label for="statement">Restate the Rule</label>
+      <textarea id="statement" name="statement" rows="3" style="width:100%;" required></textarea>
+    </div>
+    <input type="hidden" name="history_json" value="{{ ai_history_json }}">
+    {% if ai_rule_id %}<input type="hidden" name="rule_id" value="{{ ai_rule_id }}">{% endif %}
+    <div style="margin-top:.5rem;">
+      <button type="submit">Interpret</button>
+    </div>
+  </form>
+  {% endif %}
+
+  {% if ai_mode == "PROPOSED" %}
+  <div class="card" style="background:var(--olive-050);">
+    <p><strong>I understood:</strong></p>
+    <p style="white-space:pre-line;">{{ ai_proposal.human_readable_summary }}</p>
+    {% if ai_proposal.warnings %}
+    <ul>
+      {% for w in ai_proposal.warnings %}<li class="muted">{{ w }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+
+  <details style="margin:.5rem 0;">
+    <summary>View structured rule</summary>
+    <table style="margin-top:.5rem;">
+      <tbody>
+        <tr><td class="muted">Restaurant</td><td>{{ ai_proposal.restaurant_name }}</td></tr>
+        <tr><td class="muted">Source Role (who gives)</td><td>{{ ai_proposal.source_role_name }}</td></tr>
+        <tr><td class="muted">Recipient Role (who receives)</td><td>{{ ai_proposal.recipient_role_name }}</td></tr>
+        <tr><td class="muted">Rate</td><td>{{ ai_proposal.rate }}%</td></tr>
+        <tr><td class="muted">Calculation Base</td><td>{{ ai_proposal.calculation_base }}</td></tr>
+        <tr><td class="muted">Effective From</td><td>{{ ai_proposal.effective_from }}</td></tr>
+        <tr><td class="muted">Effective To</td><td>{{ ai_proposal.effective_to or '(open-ended)' }}</td></tr>
+      </tbody>
+    </table>
+  </details>
+
+  <div class="form-row">
+    <form method="post" action="{{ url_for('distribution_rule_ai_confirm') }}">
+      <input type="hidden" name="proposal_json" value="{{ ai_proposal_json }}">
+      <div>
+        <label for="created_by">Created by</label>
+        <input type="text" id="created_by" name="created_by" placeholder="optional">
+      </div>
+      <div>
+        <button type="submit">Confirm</button>
+      </div>
+    </form>
+    <form method="post" action="{{ url_for('distribution_rule_ai_cancel') }}">
+      <div><button type="submit" class="btn">Cancel</button></div>
+    </form>
+  </div>
+
+  <form method="post" action="{{ url_for('distribution_rule_ai_interpret') }}" style="margin-top:.5rem;">
+    <div>
+      <label for="statement">Or describe what to change</label>
+      <textarea id="statement" name="statement" rows="2" style="width:100%;" required></textarea>
+    </div>
+    <input type="hidden" name="history_json" value="{{ ai_history_json }}">
+    {% if ai_rule_id %}<input type="hidden" name="rule_id" value="{{ ai_rule_id }}">{% endif %}
+    <div style="margin-top:.5rem;">
+      <button type="submit" class="btn">Change</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Existing Rules</h2>
   {% if rules_rows %}
   <div class="table-scroll">
   <table>
@@ -47,9 +167,11 @@
   {% endif %}
 </div>
 
-<div class="card">
-  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
-    <h2 style="margin:0;">Create a new Rule</h2>
+<details class="card">
+  <summary style="cursor:pointer;"><strong>Advanced / Inspect Rule</strong> — direct field-level form</summary>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;margin-top:1rem;">
+    <h3 style="margin:0;">Create a new Rule (manual)</h3>
     <a class="btn" href="{{ url_for('restaurant_roles_home') }}">Manage Roles</a>
   </div>
 
@@ -100,6 +222,6 @@
   <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
     A Restaurant may have multiple Rules, and the same Source Role may have more than one Recipient Rule.
   </p>
-</div>
+</details>
 
 {% endblock %}

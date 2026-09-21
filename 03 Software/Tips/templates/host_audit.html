@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    {% if category == "error" %}<div class="error">{{ message }}</div>{% endif %}
+    {% if category == "summary" %}<div class="card"><p>{{ message }}</p></div>{% endif %}
+  {% endfor %}
+{% endwith %}
+
+<div class="card">
+  <h2>Explain / Audit Host Tips</h2>
+  {% if restaurant %}
+  <p class="muted" style="font-size:.85rem;">Restaurant: <strong>{{ restaurant.name }}</strong></p>
+  {% else %}
+  <p class="error">No Restaurant exists in this database yet.</p>
+  {% endif %}
+  <p class="muted" style="font-size:.78rem;">
+    Explains the existing Tip Distribution Engine's already-calculated output — it never runs a second
+    calculation. Compare any line below directly against your Clover export using the Order/Payment ids.
+  </p>
+  <form method="get" action="{{ url_for('host_audit_home') }}">
+    <div class="form-row">
+      <div>
+        <label for="employee_id">Host Employee</label>
+        <select id="employee_id" name="employee_id" required {{ 'disabled' if not employees else '' }}>
+          <option value="">Select...</option>
+          {% for e in employees %}
+          <option value="{{ e.id }}" {{ 'selected' if e.id == employee_id else '' }}>{{ e.display_name or ('Employee #' ~ e.id) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="start_at">Start date &amp; time</label>
+        <input type="datetime-local" id="start_at" name="start_at" value="{{ start_at }}" required>
+      </div>
+      <div>
+        <label for="end_at">End date &amp; time</label>
+        <input type="datetime-local" id="end_at" name="end_at" value="{{ end_at }}" required>
+      </div>
+      <div>
+        <button type="submit" {{ 'disabled' if not restaurant else '' }}>Explain</button>
+      </div>
+    </div>
+  </form>
+  {% if report %}
+  <p class="muted" style="font-size:.85rem; margin-top:.5rem;">
+    <a href="{{ url_for('host_audit_export_csv', employee_id=employee_id, start_at=start_at, end_at=end_at) }}">Export CSV</a>
+  </p>
+  {% endif %}
+</div>
+
+{% if report %}
+
+<div class="card">
+  <h2>{{ report.host_employee_name }} — Period Summary</h2>
+  <p>Total Host Tips this period: <strong>${{ "%.2f"|format(report.period_total_host_tips_minor / 100) }}</strong></p>
+  {% if report.period_reconciliation_ok %}
+    <p class="muted" style="font-size:.85rem;">Reconciliation OK — the sum of every line shown below matches the Tip Distribution Engine's own independently-computed total for this period.</p>
+  {% else %}
+    <div class="error">
+      <strong>Reconciliation warning:</strong> the sum of the lines shown does not match the engine's own computed total for this period. See detail below — nothing has been hidden.
+    </div>
+  {% endif %}
+  {% if report.reconciliations %}
+  <table style="margin-top:.5rem;">
+    <thead><tr><th>Period</th><th>Sum of lines shown</th><th>Engine-reported total</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for rec in report.reconciliations %}
+      <tr>
+        <td>{{ rec.period_start.strftime('%Y-%m-%d %H:%M') }} – {{ rec.period_end.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>${{ "%.2f"|format(rec.line_sum_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(rec.engine_reported_inbound_minor / 100) }}</td>
+        <td><span class="badge {{ 'ok' if rec.ok else 'bad' }}">{{ 'OK' if rec.ok else 'MISMATCH' }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+{% for group in report.shift_groups %}
+<div class="card">
+  <h3>Shift: {{ group.shift_start.strftime('%Y-%m-%d %H:%M') if group.shift_start else '(no matching Shift record)' }}
+    {% if group.shift_end %} – {{ group.shift_end.strftime('%H:%M') }}{% elif group.shift_start %} – (still open){% endif %}
+  </h3>
+  <table style="margin-bottom:.75rem;">
+    <tr><td class="muted">Host</td><td>{{ report.host_employee_name }}</td></tr>
+    <tr><td class="muted">Business Date</td><td>{{ group.business_date or '-' }}</td></tr>
+    <tr><td class="muted">Role</td><td>{{ group.role_name }}</td></tr>
+    <tr><td class="muted">RuleVersion(s) used</td><td>{{ group.rule_version_ids|join(', ') }}</td></tr>
+    <tr><td class="muted">Total Host Tips this shift</td><td><strong>${{ "%.2f"|format(group.total_host_tips_minor / 100) }}</strong></td></tr>
+  </table>
+
+  {% if group.lines %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Payment Time</th><th>Server</th><th>Order</th><th>Payment</th><th>Tip</th>
+        <th>Host Pool</th><th>Eligible Hosts</th><th>{{ report.host_employee_name }} Allocation</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in group.lines %}
+      <tr>
+        <td>{{ line.settlement_time.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ line.server_employee_name }}</td>
+        <td><a href="{{ url_for('calculate_tips_order_drilldown', order_id=line.order_id, start_at=start_at, end_at=end_at) }}">{{ line.clover_order_id or ('#' ~ line.order_id) }}</a></td>
+        <td>{{ line.clover_payment_ids|join(', ') or '-' }}</td>
+        <td>${{ "%.2f"|format(line.original_tip_amount_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(line.host_pool_amount_minor / 100) }}</td>
+        <td>
+          {{ line.eligible_host_count }}
+          {% if line.eligible_host_count > 1 %}
+          <span class="muted" style="font-size:.78rem;">({% for name, amt in line.eligible_hosts %}{{ name }}: ${{ "%.2f"|format(amt / 100) }}{% if not loop.last %}, {% endif %}{% endfor %})</span>
+          {% endif %}
+        </td>
+        <td><strong>${{ "%.2f"|format(line.host_allocated_amount_minor / 100) }}</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Host Tip lines in this Shift for the requested period.</p>
+  {% endif %}
+</div>
+{% endfor %}
+
+{% if not report.shift_groups %}
+<div class="card"><p class="empty">No Host Tip allocations found for this Employee in the requested period.</p></div>
+{% endif %}
+
+{% if report.unresolved_items %}
+<div class="card">
+  <h3>Unresolved Items (this period, not specific to this Host)</h3>
+  <p class="muted" style="font-size:.78rem;">
+    These Orders' tips could not be automatically allocated by the engine at all (no recipient was ever
+    determined) — shown for human verification, never counted as a Host allocation.
+  </p>
+  <table>
+    <thead><tr><th>Business Date</th><th>Settlement Time</th><th>Order</th><th>Rule Version</th><th>Detail</th></tr></thead>
+    <tbody>
+      {% for item in report.unresolved_items %}
+      <tr>
+        <td>{{ item.business_date or '-' }}</td>
+        <td>{{ item.settlement_time.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td><a href="{{ url_for('calculate_tips_order_drilldown', order_id=item.order_id, start_at=start_at, end_at=end_at) }}">{{ item.clover_order_id or ('#' ~ item.order_id) }}</a></td>
+        <td>{{ item.rule_version_id }}</td>
+        <td class="muted" style="font-size:.78rem;">{{ item.detail }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endif %}
+
+{% endblock %}

@@ -119,7 +119,7 @@ def describe_readiness(session: Session, restaurant_id: int) -> BusinessDateRead
         )
 
     period_start, period_end = business_date_period(business_date)
-    run = engine_svc.get_latest_unsuperseded_run(
+    run = engine_svc.get_latest_payout_run(
         session, restaurant_id=restaurant_id, period_start=period_start, period_end=period_end,
     )
     already_calculated = run is not None

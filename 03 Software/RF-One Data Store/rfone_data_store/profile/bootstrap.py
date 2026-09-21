@@ -24,6 +24,18 @@ Canonical path (task §8):
 Historical Employee stubs (display_name IS NULL) are never touched: no
 mapping is looked up for them, no EmployeeAssignment is created (task §8.6).
 
+CORRECTED (EMPLOYEE_ASSIGNMENT_CLOVER_ALIGNMENT_001): an earlier version of
+this engine treated an Employee currently mapping to more than one distinct
+RestaurantRole as "legitimate concurrent Assignments" and opened all of
+them at once. Clover's real operating model is one Employee account =
+exactly one Role at a time, within one Restaurant/merchant (enforced at the
+database level by `ux_employee_assignments_one_active_role_per_restaurant`
+on `EmployeeAssignment`) — that case is now a genuine ambiguity
+(`ISSUE_EMPLOYEE_WITH_MULTIPLE_CONCURRENT_ROLE_MAPPINGS`, BLOCKING), never
+resolved by guessing which Role applies or by opening more than one. The
+same real-world Person may still hold an independent Role at a DIFFERENT
+Restaurant — this rule is scoped per Restaurant, never globally.
+
 This module never talks to Clover directly — it reads already-ingested
 canonical facts (`Employee`, `SourceRole`, `EmployeeSourceRole`, all
 populated by the separate `ingest_clover.py` pipeline) plus an optional
@@ -86,6 +98,7 @@ ISSUE_CURRENT_EMPLOYEE_WITH_UNMAPPED_SOURCE_ROLE = "CURRENT_EMPLOYEE_WITH_UNMAPP
 ISSUE_EMPLOYEE_ASSIGNMENT_MISSING_AFTER_BOOTSTRAP = "EMPLOYEE_ASSIGNMENT_MISSING_AFTER_BOOTSTRAP"
 ISSUE_SOURCE_ROLE_RELATIONSHIP_INCONSISTENT = "SOURCE_ROLE_RELATIONSHIP_INCONSISTENT"
 ISSUE_DUPLICATE_OR_OVERLAPPING_MAPPING = "DUPLICATE_OR_OVERLAPPING_MAPPING"
+ISSUE_EMPLOYEE_WITH_MULTIPLE_CONCURRENT_ROLE_MAPPINGS = "EMPLOYEE_WITH_MULTIPLE_CONCURRENT_ROLE_MAPPINGS"
 
 
 @dataclass
@@ -475,6 +488,34 @@ def bootstrap_restaurant_profile(
                     continue
                 desired_role_ids.add(mapping.restaurant_role_id)
 
+        if len(desired_role_ids) > 1:
+            # EMPLOYEE_ASSIGNMENT_CLOVER_ALIGNMENT_001 — corrects this
+            # engine's original TASK_ORGANIZATION_002 behavior, which
+            # treated more than one current SourceRole as "legitimate
+            # concurrent Assignments." Clover's real operating model is one
+            # Employee account = exactly one Role at a time; an Employee
+            # who currently maps to more than one distinct RestaurantRole
+            # is now a genuine ambiguity, never resolved by opening every
+            # candidate Role at once. No Assignment is guessed for this
+            # Employee this cycle (any assignment they already held is
+            # closed below, since `desired_role_ids` is emptied) — a human
+            # must resolve which single Role actually applies.
+            _add_issue(
+                session, run, summary,
+                issue_type=ISSUE_EMPLOYEE_WITH_MULTIPLE_CONCURRENT_ROLE_MAPPINGS,
+                severity=SEVERITY_BLOCKING,
+                details=(
+                    f"Employee id={employee.id} currently maps to {len(desired_role_ids)} distinct "
+                    f"RestaurantRoles ({sorted(desired_role_ids)}) via concurrently-active "
+                    "EmployeeSourceRole/SourceRoleMapping evidence — RF-One enforces at most one "
+                    "active RestaurantRole per Employee per Restaurant. No Role was guessed or "
+                    "opened for this Employee this cycle; the ambiguous source Role membership must "
+                    "be resolved explicitly (in Clover or via the SourceRoleMapping configuration)."
+                ),
+                employee_id=employee.id,
+            )
+            desired_role_ids = set()
+
         desired_role_ids_by_employee[employee.id] = desired_role_ids
 
         existing_assignments = session.scalars(
@@ -492,6 +533,20 @@ def bootstrap_restaurant_profile(
         to_close = open_role_ids - desired_role_ids
         assignment_valid_from = t0 if not has_any_prior_assignment else sync_time
 
+        # EMPLOYEE_ASSIGNMENT_CLOVER_ALIGNMENT_001 — CLOSE before OPEN. Since
+        # `ux_employee_assignments_one_active_role_per_restaurant` now
+        # forbids two simultaneously-open rows for the same (Employee,
+        # Restaurant), a Role change must close the prior open row before
+        # the new one is ever inserted (both changes still land in the same
+        # `session.flush()` at the end of this loop, but Python-level
+        # ordering here determines the order SQLAlchemy's unit-of-work
+        # issues them in, which otherwise defaults to insert-before-update
+        # and would trip the constraint on a genuine Role change).
+        for a in open_assignments:
+            if a.restaurant_role_id in to_close:
+                a.valid_to = sync_time
+                summary.assignments_closed += 1
+
         for role_id in sorted(to_open):
             session.add(
                 m.EmployeeAssignment(
@@ -505,7 +560,11 @@ def bootstrap_restaurant_profile(
                     # is the one real Location this Employee's current source
                     # evidence (SourceRole membership) is scoped to — never
                     # inferred from name, never backfilled onto a prior/
-                    # existing Assignment row.
+                    # existing Assignment row. `to_open` now has at most one
+                    # element (EMPLOYEE_ASSIGNMENT_CLOVER_ALIGNMENT_001 —
+                    # `desired_role_ids` is never allowed to exceed size 1),
+                    # so this loop opens at most one new Assignment per
+                    # Employee per Restaurant.
                     location_id=employee.location_id,
                     valid_from=assignment_valid_from,
                     valid_to=None,
@@ -517,11 +576,6 @@ def bootstrap_restaurant_profile(
                 )
             )
             summary.assignments_created += 1
-
-        for a in open_assignments:
-            if a.restaurant_role_id in to_close:
-                a.valid_to = sync_time
-                summary.assignments_closed += 1
 
         summary.assignments_reused += len(open_role_ids & desired_role_ids)
 

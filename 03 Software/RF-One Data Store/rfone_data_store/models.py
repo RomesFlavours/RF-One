@@ -1507,22 +1507,28 @@ class EmployeeAssignment(Base):
     the prior row's `valid_to` and opens a new row — history is preserved.
     `valid_to IS NULL` represents an open-ended/current assignment.
 
-    Multiple concurrent assignments are allowed (task §5-6, e.g. a Manager
-    valid in both FOH and Management at the same time) — no constraint forces
-    one Employee to have only one Role/Area globally or at a given instant.
-    The unique constraint below only rejects an exact duplicate row (same
-    Employee, Area, Role, Location and start instant), not legitimate
-    concurrency — a Location difference (e.g. Manager at Winter Park vs.
-    Manager at Mount Dora, same Area/Role/instant) is never treated as a
-    duplicate (TASK_ORGANIZATION_002).
-
     `location_id` participates in the uniqueness rule below, but ordinary SQL
     UNIQUE semantics treat every NULL as distinct from every other NULL, so a
     plain `UniqueConstraint` including a nullable `location_id` would not by
     itself catch an exact duplicate *Restaurant-wide* Assignment (both rows
     `location_id IS NULL`). The second, partial unique index below closes
     that gap for the `location_id IS NULL` case specifically, without
-    constraining the location-specific rows a second time."""
+    constraining the location-specific rows a second time.
+
+    CORRECTED (EMPLOYEE_ASSIGNMENT_CLOVER_ALIGNMENT_001): TASK_ORGANIZATION_002's
+    original design point above — "no constraint forces one Employee to have
+    only one Role/Area globally or at a given instant" — is superseded for
+    Role specifically. Clover's actual operating model is one Employee
+    account = exactly one Role at a time, within one Restaurant/merchant; a
+    fourth, partial unique index below (`ux_employee_assignments_one_active_
+    role_per_restaurant`) now enforces "at most one OPEN (`valid_to IS NULL`)
+    Assignment per (Employee, Restaurant)" at the database level, regardless
+    of Area/Location. A Role change must close the prior open row and open a
+    new one (never two open rows at once) — history remains fully
+    reconstructable, exactly as before. The SAME RF-One Identity may still
+    hold a different Role at a DIFFERENT Restaurant (a separate Employee/
+    Employment context there) — this index is scoped per Restaurant, never
+    globally per Identity/Person."""
 
     __tablename__ = "employee_assignments"
     __table_args__ = (
@@ -1535,6 +1541,13 @@ class EmployeeAssignment(Base):
             unique=True,
             sqlite_where=text("location_id IS NULL"),
             postgresql_where=text("location_id IS NULL"),
+        ),
+        Index(
+            "ux_employee_assignments_one_active_role_per_restaurant",
+            "employee_id", "restaurant_id",
+            unique=True,
+            sqlite_where=text("valid_to IS NULL"),
+            postgresql_where=text("valid_to IS NULL"),
         ),
         Index("ix_employee_assignments_employee_valid_from", "employee_id", "valid_from"),
     )
@@ -1772,6 +1785,24 @@ DISTRIBUTION_METHOD_EQUAL = "EQUAL"
 NO_ELIGIBLE_RECIPIENT_SOURCE_RETAINS = "SOURCE_RETAINS"
 TRANSACTION_SCOPE_ALL = "ALL"
 
+# ORDER_SERVICE_OWNER_SOURCE_SEMANTICS_001 — a Rule's SOURCE side qualifies
+# an Order one of two ways: `ROLE` (the Order-owning Employee must hold
+# `source_role_id` via `EmployeeAssignment` — the original, still-supported
+# behavior) or `ORDER_SERVICE_OWNER` (the Order-owning Employee, i.e.
+# `Order.employee_id`, unconditionally qualifies as the Service Owner —
+# their current RestaurantRole is irrelevant; a Server, Team Leader,
+# Manager, or anyone else Clover attributed the Order to, all qualify
+# identically). Both values are fully implemented (unlike the
+# Eligibility Mode/Distribution Method/etc. constants above, which each
+# have only one implemented value today) — this is a real, immediate
+# either/or choice a Rule author makes, not a placeholder for a future
+# capability. RECIPIENT-side determination (Host Role + ACTIVE_AT_SETTLEMENT
+# + Shift/EmployeeAssignment eligibility) is completely unaffected — this
+# concept applies to the SOURCE side only.
+TIP_SOURCE_SEMANTICS_ROLE = "ROLE"
+TIP_SOURCE_SEMANTICS_ORDER_SERVICE_OWNER = "ORDER_SERVICE_OWNER"
+TIP_SOURCE_SEMANTICS = (TIP_SOURCE_SEMANTICS_ROLE, TIP_SOURCE_SEMANTICS_ORDER_SERVICE_OWNER)
+
 
 class TipDistributionRule(Base):
     """The stable identity of one restaurant-configured tip-out rule (spec
@@ -1815,17 +1846,37 @@ class TipDistributionRuleVersion(Base):
             "'BEVERAGE_SALES')",
             name="ck_tip_distribution_rule_version_calculation_base",
         ),
+        CheckConstraint(
+            "source_semantics IN ('ROLE','ORDER_SERVICE_OWNER')",
+            name="ck_tip_distribution_rule_version_source_semantics",
+        ),
+        CheckConstraint(
+            "(source_semantics = 'ROLE' AND source_role_id IS NOT NULL) OR "
+            "(source_semantics = 'ORDER_SERVICE_OWNER' AND source_role_id IS NULL)",
+            name="ck_tip_distribution_rule_version_source_role_id_matches_semantics",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     rule_id: Mapped[int] = mapped_column(ForeignKey("tip_distribution_rules.id"), nullable=False, index=True)
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    # ORDER_SERVICE_OWNER_SOURCE_SEMANTICS_001 — which of the two source
+    # semantics (see the `TIP_SOURCE_SEMANTICS_*` module-level comment
+    # above) this Version uses. `source_role_id` is required exactly when
+    # `source_semantics == ROLE`, and must be NULL exactly when
+    # `source_semantics == ORDER_SERVICE_OWNER` (enforced by the CHECK
+    # constraint above, not just application code).
+    source_semantics: Mapped[str] = mapped_column(String(32), nullable=False)
+
     # Restaurant-configured operational roles (task items #3/#4) — reuses
     # the existing `RestaurantRole` catalog (already restaurant-scoped,
     # already populated for Rome's Flavours) rather than a parallel
-    # free-text role concept.
-    source_role_id: Mapped[int] = mapped_column(ForeignKey("restaurant_roles.id"), nullable=False)
+    # free-text role concept. Nullable: only meaningful/required when
+    # `source_semantics == ROLE` (see CHECK constraint above); a Recipient
+    # Role is always required regardless of source semantics, since
+    # RECIPIENT determination is unaffected by this task.
+    source_role_id: Mapped[int | None] = mapped_column(ForeignKey("restaurant_roles.id"), nullable=True)
     recipient_role_id: Mapped[int] = mapped_column(ForeignKey("restaurant_roles.id"), nullable=False)
 
     calculation_base: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -1861,7 +1912,7 @@ class TipDistributionRuleVersion(Base):
     )
 
     rule: Mapped[TipDistributionRule] = relationship(back_populates="versions")
-    source_role: Mapped["RestaurantRole"] = relationship(foreign_keys=[source_role_id])
+    source_role: Mapped["RestaurantRole | None"] = relationship(foreign_keys=[source_role_id])
     recipient_role: Mapped["RestaurantRole"] = relationship(foreign_keys=[recipient_role_id])
 
 
@@ -1886,6 +1937,24 @@ class TipDistributionRuleVersion(Base):
 TIPS_SCHEDULE_MODE_MANUAL = "MANUAL"
 TIPS_SCHEDULE_MODE_AUTOMATIC = "AUTOMATIC"
 TIPS_SCHEDULE_MODES = (TIPS_SCHEDULE_MODE_MANUAL, TIPS_SCHEDULE_MODE_AUTOMATIC)
+
+# HOST_TIP_AUDIT_001 §9/§10/§11 — a Restaurant-scoped operational-workflow
+# toggle only: whether the Host Tip Audit/Explain report is surfaced
+# prominently right after a calculation (AUDIT) or stays available on
+# demand without interrupting the flow (AUTOMATIC). Deliberately NOT part
+# of this table's own effective-dating discipline (`valid_from`/`valid_to`
+# below) — unlike `mode`/`interval_days` (WHEN calculation runs, a fact
+# worth a historical record), this field changes only which UI emphasis a
+# human sees; it never changes what the Tip Distribution Engine computes,
+# so it is simply overwritten in place on the current row (task's own
+# explicit "this setting changes only workflow/UI emphasis... must NOT
+# change calculation semantics"). NULL (no row configured yet, or the
+# column unset on an existing row) always resolves to AUDIT — the
+# task-mandated safe default for the current Winter Park implementation;
+# never silently AUTOMATIC.
+TIPS_REVIEW_MODE_AUDIT = "AUDIT"
+TIPS_REVIEW_MODE_AUTOMATIC = "AUTOMATIC"
+TIPS_REVIEW_MODES = (TIPS_REVIEW_MODE_AUDIT, TIPS_REVIEW_MODE_AUTOMATIC)
 
 # TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001 — the three Tips payment
 # modes the Product Owner already decided: MANUAL (mode=MANUAL); AUTOMATIC
@@ -1937,6 +2006,10 @@ class TipsCalculationScheduleConfig(Base):
             "mode = 'MANUAL' OR interval_days IS NOT NULL",
             name="ck_tips_calculation_schedule_interval_required_if_automatic",
         ),
+        CheckConstraint(
+            "review_mode IS NULL OR review_mode IN ('AUDIT','AUTOMATIC')",
+            name="ck_tips_calculation_schedule_review_mode",
+        ),
         Index("ix_tips_calculation_schedule_restaurant_valid_from", "restaurant_id", "valid_from"),
     )
 
@@ -1964,6 +2037,11 @@ class TipsCalculationScheduleConfig(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+    # HOST_TIP_AUDIT_001 — see the `TIPS_REVIEW_MODE_*` module-level comment
+    # above for why this one column is deliberately NOT part of this table's
+    # own effective-dating discipline (mutated in place, never versioned).
+    review_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
 class TipsPaymentScheduleConfig(Base):
@@ -2052,13 +2130,28 @@ class TipsPaymentScheduleConfig(Base):
 
 
 class TipDistributionCalculationRun(Base):
-    """One execution of the Tip Distribution Engine over a requested
-    Restaurant/period (task §15) — the minimum calculation-run/period
-    structure needed to choose From/Through, calculate, group atomic
-    results, and distinguish one run from another. Stops at a clean
-    CALCULATED/REVIEWABLE state (`status` reaches COMPLETE or FAILED) —
-    the later OPEN -> CALCULATED -> REVIEWED -> APPROVED/LOCKED workflow
-    (spec §20) is explicitly out of scope for this task."""
+    """A PAYOUT ANCHOR, not an authoritative Tips calculation
+    (TIPS_STATELESS_CALCULATION_001).
+
+    Tips itself no longer persists calculation results at all:
+    `distribution_engine.calculate_tips` derives any requested period in
+    memory from source facts and effective-dated Rule Versions, so any
+    period can be recalculated freely and repeatedly, including periods
+    that overlap, contain or sit inside another. Overlap detection,
+    overlap refusal and run supersession are gone, and so is the
+    `TipDistributionAllocation` table this class used to own.
+
+    This row survives only because the DOWNSTREAM payment pipeline has to
+    crystallize an amount it commits to paying: `TipEntitlement.
+    calculation_run_id` is a NOT NULL FK here, and entitlements feed
+    Payment Cycles and Payment Instructions. It therefore records THAT a
+    period was crystallized for payout, and when - never the result
+    itself. Nothing reads a calculation back out of it, and Tips never
+    creates one.
+
+    This is the same boundary Compensation uses: Tips answers on request,
+    and the consuming Domain crystallizes the figure when IT approves.
+    """
 
     __tablename__ = "tip_distribution_calculation_runs"
 
@@ -2077,93 +2170,6 @@ class TipDistributionCalculationRun(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Task §16 "recalculation safety": an explicit, auditable replacement
-    # strategy — a recalculation creates a NEW run and sets the PRIOR run's
-    # own `superseded_by_calculation_run_id` to it; the prior run's
-    # allocations are never deleted or rewritten. Mirrors the existing
-    # `TipCalculationRun.superseded_by_calculation_run_id` convention
-    # (legacy engine), application-set rather than DB-enforced, so a future
-    # LOCKED status can refuse superseding without a schema change.
-    superseded_by_calculation_run_id: Mapped[int | None] = mapped_column(
-        ForeignKey("tip_distribution_calculation_runs.id"), nullable=True
-    )
-
-    allocations: Mapped[list["TipDistributionAllocation"]] = relationship(back_populates="calculation_run")
-
-
-class TipDistributionAllocation(Base):
-    """One atomic, auditable unit of the Tip Distribution Engine's output
-    (task §14) — "Order X's Rule Version Y produced a pool of Z, of which
-    Employee W received/would-have-received this amount, because
-    <eligibility basis>." Never an opaque per-employee total: every row
-    traces to exactly one Order and one `TipDistributionRuleVersion`.
-
-    Exactly one row per (calculation run, Order, Rule Version, recipient) —
-    including the SOURCE_RETAINS case, represented as a single row with
-    `recipient_employee_id IS NULL`, `no_eligible_recipient = True`, and
-    `allocated_amount_minor = 0` (task §11's "result must explicitly record
-    that no recipient was eligible" — never silently omitted)."""
-
-    __tablename__ = "tip_distribution_allocations"
-    __table_args__ = (
-        UniqueConstraint(
-            "calculation_run_id", "order_id", "rule_version_id", "recipient_employee_id",
-            name="uq_tip_distribution_allocation_recipient",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    calculation_run_id: Mapped[int] = mapped_column(
-        ForeignKey("tip_distribution_calculation_runs.id"), nullable=False, index=True
-    )
-    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False, index=True)
-    # Order.employee_id at calculation time (task §4's tip owner) — snapshot
-    # here rather than re-joined through Order every time, and nullable
-    # because Order.employee_id itself is nullable (an unresolved source
-    # owner is a real, if rare, source-data state, not one this engine
-    # invents a value for).
-    source_employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
-
-    rule_version_id: Mapped[int] = mapped_column(
-        ForeignKey("tip_distribution_rule_versions.id"), nullable=False, index=True
-    )
-    # Snapshot of the Rule Version's own configuration at calculation time
-    # (task §14's explicit field list) — never re-derived by joining back to
-    # a rule version that could, in principle, be a different row shape in
-    # the future; `TipDistributionRuleVersion` rows are themselves already
-    # immutable once created, so this is redundant-but-explicit, matching
-    # the task's own explainability requirement.
-    calculation_base: Mapped[str] = mapped_column(String(32), nullable=False)
-    rate: Mapped[Decimal] = mapped_column(Numeric(7, 4), nullable=False)
-
-    # Minor units (cents) throughout — same money convention as every other
-    # amount in this schema. Never floating point.
-    base_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
-    pool_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    # NULL exactly when `no_eligible_recipient` is True (SOURCE_RETAINS).
-    recipient_employee_id: Mapped[int | None] = mapped_column(
-        ForeignKey("employees.id"), nullable=True, index=True
-    )
-    recipient_eligibility_basis: Mapped[str] = mapped_column(Text, nullable=False)
-    no_eligible_recipient: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-
-    allocated_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    # The Order's Settlement Time used for this calculation (task §5/§14) —
-    # snapshot, since eligibility/rule-version selection both derived from
-    # it at the moment this row was created.
-    settlement_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-
-    calculation_run: Mapped[TipDistributionCalculationRun] = relationship(back_populates="allocations")
-    order: Mapped["Order"] = relationship()
-    source_employee: Mapped["Employee | None"] = relationship(foreign_keys=[source_employee_id])
-    recipient_employee: Mapped["Employee | None"] = relationship(foreign_keys=[recipient_employee_id])
-    rule_version: Mapped[TipDistributionRuleVersion] = relationship()
-
 
 class TipEntitlement(Base):
     """The persisted, per-Employee, per-calculation-run NET result — exactly
@@ -2171,12 +2177,14 @@ class TipEntitlement(Base):
     the fly, now durably saved once a run completes
     (`distribution_engine.populate_entitlements_for_run`) so it can be
     queried, aggregated across MANY runs/Business Dates into a Payment
-    Cycle, and marked paid/unpaid — without ever re-deriving it from
-    `TipDistributionAllocation` rows again for that purpose. The atomic
-    `TipDistributionAllocation` rows remain the sole source of truth for HOW
-    this number was derived — this table duplicates no allocation-level
-    fact, it persists their AGGREGATE once, the same aggregate
-    `build_employee_review` already derives statelessly.
+    Cycle, and marked paid/unpaid.
+
+    TIPS_STATELESS_CALCULATION_001: this is the ONLY place a Tips figure is
+    ever persisted, and it exists solely because payment must commit to an
+    amount. It is a crystallization for payout, not a cached calculation —
+    Tips itself always recalculates on demand, and the line-level detail
+    behind this aggregate is re-derived by `calculate_tips` whenever it is
+    needed rather than stored.
 
     One row per (calculation_run_id, employee_id) — mirrors the natural key
     `build_employee_review` already iterates by. `business_date` is

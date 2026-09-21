@@ -19,6 +19,7 @@ from . import models as m
 from .profile.bootstrap import (
     ISSUE_CURRENT_EMPLOYEE_WITH_UNMAPPED_SOURCE_ROLE,
     ISSUE_CURRENT_EMPLOYEE_WITHOUT_SOURCE_ROLE,
+    ISSUE_EMPLOYEE_WITH_MULTIPLE_CONCURRENT_ROLE_MAPPINGS,
     ISSUE_SOURCE_ROLE_WITHOUT_PROFILE_MAPPING,
     MODE_DRY_RUN,
     MODE_PERSIST,
@@ -112,7 +113,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         return emp
 
     emp_single_role = make_employee("E1", "CurrentSingleRole")       # Case: one SourceRole
-    emp_concurrent = make_employee("E2", "CurrentConcurrentRoles")   # Case: two SourceRoles
+    emp_concurrent = make_employee("E2", "CurrentConcurrentRoles")   # Case: two SourceRoles at once -> now ambiguous
     emp_no_role = make_employee("E3", "CurrentNoSourceRole")         # Case: zero SourceRoles
     emp_change = make_employee("E4", "CurrentRoleChange")            # Case: role change over time
     emp_stub = make_employee("E5", None)                             # Historical stub
@@ -199,17 +200,28 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         len(stub_assignments) == 0,
     )
 
-    # Case 7: multiple current SourceRoles create legitimate concurrent Assignments.
+    # Case 7 (CORRECTED, EMPLOYEE_ASSIGNMENT_CLOVER_ALIGNMENT_001): an
+    # Employee currently mapping to more than one distinct RestaurantRole is
+    # now a genuine ambiguity, never "legitimate concurrent Assignments" —
+    # Clover's real operating model is one Employee account = exactly one
+    # Role. No Assignment is guessed; an explicit BLOCKING issue is raised
+    # instead.
     concurrent_assignments = session.scalars(
         select(m.EmployeeAssignment).where(m.EmployeeAssignment.employee_id == emp_concurrent.id)
     ).all()
-    concurrent_role_ids = {a.restaurant_role_id for a in concurrent_assignments}
+    concurrent_issues = session.scalars(
+        select(m.RestaurantProfileReconciliationIssue).where(
+            m.RestaurantProfileReconciliationIssue.employee_id == emp_concurrent.id,
+            m.RestaurantProfileReconciliationIssue.issue_type == ISSUE_EMPLOYEE_WITH_MULTIPLE_CONCURRENT_ROLE_MAPPINGS,
+        )
+    ).all()
     result.check(
-        "Case 7: an Employee with two current SourceRoles (Server + Manager) receives two "
-        "concurrent, non-conflicting EmployeeAssignment rows",
-        len(concurrent_assignments) == 2
-        and all(a.valid_to is None for a in concurrent_assignments)
-        and len(concurrent_role_ids) == 2,
+        "Case 7: an Employee with two current SourceRoles (Server + Manager) receives ZERO "
+        "EmployeeAssignment rows (no Role is guessed) and an explicit "
+        "EMPLOYEE_WITH_MULTIPLE_CONCURRENT_ROLE_MAPPINGS BLOCKING issue instead",
+        len(concurrent_assignments) == 0
+        and len(concurrent_issues) == 1
+        and concurrent_issues[0].severity == "BLOCKING",
     )
 
     # Case 8: current Employee without SourceRole creates an issue, not a guessed Assignment.
@@ -414,7 +426,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     session.add(m.PaymentTip(payment_id=tip_payment.id, amount=1000, source_present=True))
     session.flush()
 
-    tips_run, tips_summary = distribution_engine.run_tip_distribution_calculation(
+    tips_result = distribution_engine.calculate_tips(
         session,
         restaurant_id=restaurant.id,
         # `distribution_engine` always compares its period bounds against a
@@ -425,18 +437,13 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         period_end=datetime.now(UTC) + timedelta(days=1),
     )
     session.flush()
-    tip_order_allocations = session.scalars(
-        select(m.TipDistributionAllocation).where(
-            m.TipDistributionAllocation.calculation_run_id == tips_run.id,
-            m.TipDistributionAllocation.order_id == tip_order.id,
-        )
-    ).all()
+    tip_order_allocations = [line for line in tips_result.lines if line.order_id == tip_order.id]
     result.check(
         "Case 15: after bootstrapping real EmployeeAssignments, the canonical Tip Distribution Engine "
         "still allocates nothing for this Order — an active Tip Distribution Rule is restaurant-"
         "configured data, never invented merely because EmployeeAssignments now exist",
-        tips_run.status == distribution_engine.STATUS_COMPLETE
-        and tips_summary.rules_applied == 0
+        tips_result.blocked_reason is None
+        and tips_result.summary.rules_applied == 0
         and len(tip_order_allocations) == 0,
     )
 

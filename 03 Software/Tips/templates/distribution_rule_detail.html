@@ -31,7 +31,7 @@
     {% for v in versions|reverse %}
       <tr>
         <td>{{ v.version_number }}{% if v.effective_to is none %} <span class="badge ok">current</span>{% endif %}</td>
-        <td>{{ v.source_role.name }}</td>
+        <td>{{ v.source_role.name if v.source_role else "Service Owner (Order owner)" }}</td>
         <td>{{ v.recipient_role.name }}</td>
         <td>{{ v.calculation_base }}</td>
         <td>{{ v.rate }}%</td>

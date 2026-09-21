@@ -26,9 +26,10 @@ from .. import models as m
 
 
 def create_rule(
-    session: Session, *, restaurant_id: int, source_role_id: int, recipient_role_id: int,
+    session: Session, *, restaurant_id: int, recipient_role_id: int,
     calculation_base: str, rate: Decimal, effective_from: datetime, effective_to: datetime | None = None,
-    created_by: str | None = None,
+    created_by: str | None = None, source_role_id: int | None = None,
+    source_semantics: str = m.TIP_SOURCE_SEMANTICS_ROLE,
     eligibility_mode: str = m.ELIGIBILITY_MODE_ACTIVE_AT_SETTLEMENT,
     distribution_method: str = m.DISTRIBUTION_METHOD_EQUAL,
     no_eligible_recipient_behavior: str = m.NO_ELIGIBLE_RECIPIENT_SOURCE_RETAINS,
@@ -38,17 +39,27 @@ def create_rule(
     version (version_number 1). `is_active` defaults to True (task item
     #10) — a newly-created rule is live unless explicitly deactivated.
 
+    `source_semantics` defaults to `ROLE` (ORDER_SERVICE_OWNER_SOURCE_
+    SEMANTICS_001) — every existing caller that only ever passed
+    `source_role_id` (the Tips web UI, `seed_tip_distribution_rules.py`)
+    keeps working unchanged. Pass `source_semantics=ORDER_SERVICE_OWNER`
+    and leave `source_role_id` unset (`None`) for the other semantics — the
+    Order-owning Employee (`Order.employee_id`) unconditionally qualifies as
+    the source, regardless of their current RestaurantRole.
+
     TIP_DISTRIBUTION_ENGINE_001 §6: `eligibility_mode`/`distribution_method`/
     `no_eligible_recipient_behavior`/`transaction_scope` default to the only
-    values the engine currently implements, so every existing caller (the
-    Tips web UI, `seed_tip_distribution_rules.py`) keeps working unchanged."""
+    values the engine currently implements, so every existing caller keeps
+    working unchanged."""
 
     _validate_calculation_base(calculation_base)
     _validate_eligibility_mode(eligibility_mode)
     _validate_distribution_method(distribution_method)
     _validate_no_eligible_recipient_behavior(no_eligible_recipient_behavior)
     _validate_transaction_scope(transaction_scope)
-    _validate_role_belongs_to_restaurant(session, role_id=source_role_id, restaurant_id=restaurant_id, label="Source Role")
+    _validate_source_semantics(source_semantics, source_role_id)
+    if source_semantics == m.TIP_SOURCE_SEMANTICS_ROLE:
+        _validate_role_belongs_to_restaurant(session, role_id=source_role_id, restaurant_id=restaurant_id, label="Source Role")
     _validate_role_belongs_to_restaurant(session, role_id=recipient_role_id, restaurant_id=restaurant_id, label="Recipient Role")
 
     rule = m.TipDistributionRule(restaurant_id=restaurant_id, is_active=True)
@@ -57,7 +68,8 @@ def create_rule(
 
     session.add(
         m.TipDistributionRuleVersion(
-            rule_id=rule.id, version_number=1, source_role_id=source_role_id, recipient_role_id=recipient_role_id,
+            rule_id=rule.id, version_number=1, source_semantics=source_semantics, source_role_id=source_role_id,
+            recipient_role_id=recipient_role_id,
             calculation_base=calculation_base, rate=rate, effective_from=effective_from, effective_to=effective_to,
             created_by=created_by, eligibility_mode=eligibility_mode, distribution_method=distribution_method,
             no_eligible_recipient_behavior=no_eligible_recipient_behavior, transaction_scope=transaction_scope,
@@ -68,8 +80,9 @@ def create_rule(
 
 
 def create_new_version(
-    session: Session, rule_id: int, *, source_role_id: int, recipient_role_id: int, calculation_base: str,
+    session: Session, rule_id: int, *, recipient_role_id: int, calculation_base: str,
     rate: Decimal, effective_from: datetime, effective_to: datetime | None = None, created_by: str | None = None,
+    source_role_id: int | None = None, source_semantics: str = m.TIP_SOURCE_SEMANTICS_ROLE,
     eligibility_mode: str = m.ELIGIBILITY_MODE_ACTIVE_AT_SETTLEMENT,
     distribution_method: str = m.DISTRIBUTION_METHOD_EQUAL,
     no_eligible_recipient_behavior: str = m.NO_ELIGIBLE_RECIPIENT_SOURCE_RETAINS,
@@ -80,7 +93,11 @@ def create_new_version(
     `effective_to IS NULL`), if any, has ONLY its own `effective_to` closed
     to this new version's `effective_from` — no other column on that prior
     row is ever touched, and no prior row is ever deleted (task's own
-    explicit "never rewrite historical rule versions")."""
+    explicit "never rewrite historical rule versions").
+
+    `source_semantics` defaults to `ROLE` (see `create_rule`'s own
+    docstring for the ORDER_SERVICE_OWNER_SOURCE_SEMANTICS_001 alternative)
+    — every existing caller keeps working unchanged."""
 
     rule = session.get(m.TipDistributionRule, rule_id)
     if rule is None:
@@ -90,9 +107,11 @@ def create_new_version(
     _validate_distribution_method(distribution_method)
     _validate_no_eligible_recipient_behavior(no_eligible_recipient_behavior)
     _validate_transaction_scope(transaction_scope)
-    _validate_role_belongs_to_restaurant(
-        session, role_id=source_role_id, restaurant_id=rule.restaurant_id, label="Source Role",
-    )
+    _validate_source_semantics(source_semantics, source_role_id)
+    if source_semantics == m.TIP_SOURCE_SEMANTICS_ROLE:
+        _validate_role_belongs_to_restaurant(
+            session, role_id=source_role_id, restaurant_id=rule.restaurant_id, label="Source Role",
+        )
     _validate_role_belongs_to_restaurant(
         session, role_id=recipient_role_id, restaurant_id=rule.restaurant_id, label="Recipient Role",
     )
@@ -107,7 +126,8 @@ def create_new_version(
         current_open_version.effective_to = effective_from
 
     new_version = m.TipDistributionRuleVersion(
-        rule_id=rule_id, version_number=next_version_number, source_role_id=source_role_id,
+        rule_id=rule_id, version_number=next_version_number, source_semantics=source_semantics,
+        source_role_id=source_role_id,
         recipient_role_id=recipient_role_id, calculation_base=calculation_base, rate=rate,
         effective_from=effective_from, effective_to=effective_to, created_by=created_by,
         eligibility_mode=eligibility_mode, distribution_method=distribution_method,
@@ -171,6 +191,22 @@ def set_active(session: Session, rule_id: int, is_active: bool) -> m.TipDistribu
     rule.is_active = is_active
     session.flush()
     return rule
+
+
+def _validate_source_semantics(source_semantics: str, source_role_id: int | None) -> None:
+    """ORDER_SERVICE_OWNER_SOURCE_SEMANTICS_001 — the exact same either/or
+    the DB CHECK constraint enforces, checked here too so a caller gets a
+    clear `ValueError` instead of a raw `IntegrityError`, exactly matching
+    this module's existing convention for every other closed-vocabulary
+    field."""
+    if source_semantics not in m.TIP_SOURCE_SEMANTICS:
+        raise ValueError(
+            f"Unknown source_semantics {source_semantics!r}; expected one of {m.TIP_SOURCE_SEMANTICS}"
+        )
+    if source_semantics == m.TIP_SOURCE_SEMANTICS_ROLE and source_role_id is None:
+        raise ValueError("source_role_id is required when source_semantics='ROLE'.")
+    if source_semantics == m.TIP_SOURCE_SEMANTICS_ORDER_SERVICE_OWNER and source_role_id is not None:
+        raise ValueError("source_role_id must not be set when source_semantics='ORDER_SERVICE_OWNER'.")
 
 
 def _validate_role_belongs_to_restaurant(

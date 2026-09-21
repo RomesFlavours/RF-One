@@ -19,6 +19,28 @@
 {% else %}
 
 <div class="card">
+  <h2>Review Mode</h2>
+  <p class="muted" style="font-size:.85rem;">
+    Workflow emphasis only (HOST_TIP_AUDIT_001) — never changes what the Tip Distribution Engine computes.
+    <strong>AUDIT</strong>: after a calculation, you are prompted to open Explain / Audit Host Tips for each
+    Host before relying on the results. <strong>AUTOMATIC</strong>: calculation proceeds without requiring
+    that review; the report stays available on demand either way.
+  </p>
+  <p class="muted" style="font-size:.85rem;">Current: <strong>{{ review_mode }}</strong></p>
+  <form method="post" action="{{ url_for('tips_configuration_set_review_mode') }}">
+    <div class="form-row">
+      <div>
+        <select name="review_mode" required>
+          <option value="AUDIT" {{ 'selected' if review_mode == 'AUDIT' else '' }}>AUDIT</option>
+          <option value="AUTOMATIC" {{ 'selected' if review_mode == 'AUTOMATIC' else '' }}>AUTOMATIC</option>
+        </select>
+      </div>
+      <div><button type="submit">Set Review Mode</button></div>
+    </div>
+  </form>
+</div>
+
+<div class="card">
   <h2>Calculation Schedule</h2>
   <p class="muted" style="font-size:.85rem;">
     WHEN Tips are calculated — independent of the Payment Schedule below (TASK_TIPS_COMPLETE_001 §2:

@@ -112,3 +112,62 @@ Tips is Restaurant-specific operational calculation; it does not belong to, and 
 - `03 Software/RF-One Data Store/RESTAURANT_PROFILE.md` §3 — the original Tips/Payroll future contract this task implements
 - `03 Software/RF-One Data Store/DATABASE_SCHEMA.md` §4b — implemented Tip Policy / Calculation schema
 - `07 Tasks/Reports/TASK_TIPS_001_REPORT.md` — implementation history
+
+---
+
+## Statelessness and the Compensation boundary
+
+**Origin:** TIPS_STATELESS_CALCULATION_001
+
+Tips **calculates on request** and **does not persist calculation results**.
+
+There is no authoritative historical Tips calculation. A Tips figure is always
+derived, at the moment it is asked for, from persisted canonical facts:
+
+```text
+Orders
+→ Payments (voluntary Tips; Service Charges kept separate)
+→ Order Service Owner (Order.employee_id)
+→ EmployeeAssignments (effective-dated)
+→ Clover Shifts
+→ TipDistributionRuleVersion effective at each Order's Settlement Time
+```
+
+Those inputs are themselves persisted facts, so re-asking a past period
+reproduces the past answer. Storing the output would add no truth — only a
+second thing to keep in sync.
+
+Consequences, all deliberate:
+
+- **Any interval is calculable**, of any length and at any boundary, in the
+  Restaurant's local timezone. `2026-09-19 14:15 → 21:45` is as valid as a
+  whole Business Day.
+- **Any interval is re-calculable, always.** The same period may be
+  calculated repeatedly, and periods may overlap, contain or sit inside one
+  another. There is no overlap detection, no overlap refusal, and no
+  supersession, because no stored result exists to be contradicted.
+- **Host Audit / Explain is on demand too.** It consumes the same in-memory
+  calculation result, so the audit and the screen that produced it can never
+  disagree. CSV export uses that same freshly calculated result.
+- **Review mode (AUDIT / AUTOMATIC) affects workflow emphasis only.** It never
+  changes a number and never implies persistence.
+
+### Who crystallizes an amount
+
+Tips answers questions; it does not commit to amounts. A downstream Domain
+crystallizes the figure **when that Domain itself approves it**:
+
+```text
+Compensation asks Tips for:   Employee + period
+Tips calculates and returns:  the amount
+Compensation crystallizes:    only when Compensation is approved
+```
+
+Tips does **not** persist a calculation merely because Compensation requested
+it. The same boundary already applies inside Tips' own payment pipeline: a
+`TipEntitlement` is written only when a payout run commits to paying it, and
+`TipDistributionCalculationRun` survives solely as that payout anchor — it
+records *that* a period was crystallized for payment, never the result.
+
+> The Compensation connector itself is **not implemented**; this section
+> records the contract it must honor.

@@ -1,10 +1,20 @@
 """Tip Distribution Engine — core calculation/allocation logic
 (TIP_DISTRIBUTION_ENGINE_001).
 
+STATELESS (TIPS_STATELESS_CALCULATION_001): `calculate_tips` derives the
+complete result for any requested period IN MEMORY and persists nothing —
+no calculation run, no allocation rows, no aggregate. Any period may
+therefore be recalculated freely and repeatedly, including periods that
+overlap, contain, or are contained by any other. Overlap detection,
+overlap refusal and run supersession no longer exist, because no stored
+result can be contradicted. Reproducibility comes from the inputs
+(Orders, Payments, Shifts, EmployeeAssignments, effective-dated
+RuleVersions), all of which are persisted facts.
+
 Implements ONLY what the task authorizes: Order-level Gross Earned Tips,
 Settlement-Time-based rule-version selection, ACTIVE_AT_SETTLEMENT
-eligibility from persisted Shift facts, EQUAL distribution, atomic
-allocation results, and a minimal calculation-run/period structure. Reuses
+eligibility from persisted Shift facts, EQUAL distribution, and atomic
+allocation results. Reuses
 (never duplicates) `tips.distribution_rule_service` for rule configuration/
 versioning, `technical.connectors.clover.acquisition.get_order_settlement_time`
 (the Clover Technical Connector — TECHNICAL_CONNECTORS_STRUCTURE_001 — owns
@@ -61,11 +71,109 @@ class CalculationSummary:
 
 
 @dataclass
+class AllocationLine:
+    """One calculated allocation, held IN MEMORY only
+    (TIPS_STATELESS_CALCULATION_001).
+
+    Carries exactly the fields the retired `TipDistributionAllocation` table
+    used to persist, so Review, Order drill-down, Host Audit and CSV export
+    keep the same line-level detail — the difference is purely that this is
+    derived on demand from source facts each time, never stored. Two
+    calculations over the same period produce equal lines because the
+    inputs (Orders, Payments, Shifts, EmployeeAssignments, effective-dated
+    RuleVersions) are themselves persisted facts."""
+
+    order_id: int
+    clover_order_id: str | None
+    settlement_time: datetime
+    source_employee_id: int | None
+    rule_id: int
+    rule_version_id: int
+    calculation_base: str
+    rate: Decimal
+    base_amount_minor: int
+    pool_amount_minor: int
+    recipient_employee_id: int | None
+    recipient_eligibility_basis: str
+    no_eligible_recipient: bool
+    allocated_amount_minor: int
+    eligible_recipient_count: int
+
+
+@dataclass
+class TipCalculationResult:
+    """The complete in-memory result of one on-demand calculation
+    (TIPS_STATELESS_CALCULATION_001). Nothing here is persisted: any
+    period, of any length, overlapping any other, may be calculated freely
+    and repeatedly.
+
+    `unresolved_*` covers lines the engine genuinely could not compute (an
+    unimplemented Calculation Base or Distribution Method). A
+    NO_ELIGIBLE_RECIPIENT line is NOT unresolved — it is a fully resolved
+    SOURCE_RETAINS outcome that moved $0."""
+
+    restaurant_id: int
+    period_start: datetime
+    period_end: datetime
+    lines: list[AllocationLine] = field(default_factory=list)
+    summary: CalculationSummary = field(default_factory=CalculationSummary)
+    rule_version_ids: list[int] = field(default_factory=list)
+    voluntary_total_minor: int = 0
+    gratuity_total_minor: int = 0
+    blocked_reason: str | None = None
+
+    @property
+    def recipient_lines(self) -> list[AllocationLine]:
+        return [line for line in self.lines if line.recipient_employee_id is not None]
+
+    @property
+    def unresolved_lines(self) -> list[AllocationLine]:
+        return [
+            line for line in self.lines
+            if line.recipient_employee_id is None
+            and line.recipient_eligibility_basis.startswith("NOT_IMPLEMENTED")
+        ]
+
+    @property
+    def no_eligible_recipient_lines(self) -> list[AllocationLine]:
+        return [
+            line for line in self.lines
+            if line.recipient_employee_id is None
+            and line.recipient_eligibility_basis.startswith("NO_ELIGIBLE_RECIPIENT")
+        ]
+
+    @property
+    def distributed_total_minor(self) -> int:
+        """What actually moved to recipients."""
+        return sum(line.allocated_amount_minor for line in self.recipient_lines)
+
+    @property
+    def unresolved_total_minor(self) -> int:
+        return sum(line.pool_amount_minor for line in self.unresolved_lines)
+
+    @property
+    def source_retained_total_minor(self) -> int:
+        """Voluntary tips that stayed with the Order Service Owner —
+        everything not distributed and not stranded in an unresolved line."""
+        return self.voluntary_total_minor - self.distributed_total_minor - self.unresolved_total_minor
+
+    @property
+    def reconciliation_difference_minor(self) -> int:
+        """Must always be 0: retained + distributed + unresolved == voluntary."""
+        return self.voluntary_total_minor - (
+            self.source_retained_total_minor + self.distributed_total_minor + self.unresolved_total_minor
+        )
+
+    @property
+    def reconciles(self) -> bool:
+        return self.reconciliation_difference_minor == 0
+
+
+@dataclass
 class EmployeeReviewRow:
-    """Task §17's Review table row — every figure derived fresh from
-    persisted `TipDistributionAllocation`/source-fact rows, never stored as
-    its own atomic data (task §19: "do not replace atomic data with these
-    summaries")."""
+    """Review table row — every figure derived fresh from source facts and
+    the in-memory calculation result, never stored as its own atomic data
+    (TIPS_STATELESS_CALCULATION_001)."""
 
     employee_id: int
     display_name: str | None
@@ -218,26 +326,39 @@ def _employees_shift_active_at(session: Session, *, location_id: int, at: dateti
 
 
 def _apply_rule_to_order(
-    session: Session, *, run: m.TipDistributionCalculationRun, order: m.Order, restaurant_id: int,
+    session: Session, *, order: m.Order, restaurant_id: int,
     source_employee_id: int, settlement_time: datetime, rule_version: m.TipDistributionRuleVersion,
     voluntary_minor: int, gratuity_minor: int, summary: CalculationSummary,
-) -> None:
+) -> list[AllocationLine]:
+    """Returns the `AllocationLine`s this Rule Version produces for this
+    Order. Pure with respect to the database: it only READS facts and
+    appends to the returned list — it never writes an allocation row
+    (TIPS_STATELESS_CALCULATION_001). The allocation semantics themselves
+    are unchanged from the original engine."""
+
+    def line(**kwargs) -> AllocationLine:
+        base = dict(
+            order_id=order.id, clover_order_id=order.source_order_id, settlement_time=settlement_time,
+            source_employee_id=source_employee_id, rule_id=rule_version.rule_id,
+            rule_version_id=rule_version.id, calculation_base=rule_version.calculation_base,
+            rate=rule_version.rate,
+        )
+        base.update(kwargs)
+        return AllocationLine(**base)
+
     base_amount = _base_amount_for(rule_version.calculation_base, voluntary_minor, gratuity_minor)
     if base_amount is None:
         summary.rules_not_implemented += 1
-        session.add(
-            m.TipDistributionAllocation(
-                calculation_run_id=run.id, order_id=order.id, source_employee_id=source_employee_id,
-                rule_version_id=rule_version.id, calculation_base=rule_version.calculation_base,
-                rate=rule_version.rate, base_amount_minor=0, pool_amount_minor=0, recipient_employee_id=None,
+        return [
+            line(
+                base_amount_minor=0, pool_amount_minor=0, recipient_employee_id=None,
                 recipient_eligibility_basis=(
                     f"NOT_IMPLEMENTED: calculation_base={rule_version.calculation_base!r} is not yet computable "
                     "by this engine (sales-based bases are configuration-only for now); no pool was generated."
                 ),
-                no_eligible_recipient=True, allocated_amount_minor=0, settlement_time=settlement_time,
+                no_eligible_recipient=True, allocated_amount_minor=0, eligible_recipient_count=0,
             )
-        )
-        return
+        ]
 
     summary.rules_applied += 1
     pool_amount = _round_pool(base_amount, rule_version.rate)
@@ -246,20 +367,16 @@ def _apply_rule_to_order(
     role_name = recipient_role.name if recipient_role is not None else str(rule_version.recipient_role_id)
 
     if rule_version.distribution_method != m.DISTRIBUTION_METHOD_EQUAL:
-        session.add(
-            m.TipDistributionAllocation(
-                calculation_run_id=run.id, order_id=order.id, source_employee_id=source_employee_id,
-                rule_version_id=rule_version.id, calculation_base=rule_version.calculation_base,
-                rate=rule_version.rate, base_amount_minor=base_amount, pool_amount_minor=pool_amount,
-                recipient_employee_id=None,
+        return [
+            line(
+                base_amount_minor=base_amount, pool_amount_minor=pool_amount, recipient_employee_id=None,
                 recipient_eligibility_basis=(
                     f"NOT_IMPLEMENTED: distribution_method={rule_version.distribution_method!r} is not yet "
                     "computable by this engine; no outbound allocation was made."
                 ),
-                no_eligible_recipient=True, allocated_amount_minor=0, settlement_time=settlement_time,
+                no_eligible_recipient=True, allocated_amount_minor=0, eligible_recipient_count=0,
             )
-        )
-        return
+        ]
 
     role_holders = _employees_with_role_at(
         session, restaurant_id=restaurant_id, restaurant_role_id=rule_version.recipient_role_id,
@@ -270,41 +387,37 @@ def _apply_rule_to_order(
 
     if eligible_ids:
         shares = equal_split(pool_amount, eligible_ids)
+        lines = []
         for emp_id in eligible_ids:
-            session.add(
-                m.TipDistributionAllocation(
-                    calculation_run_id=run.id, order_id=order.id, source_employee_id=source_employee_id,
-                    rule_version_id=rule_version.id, calculation_base=rule_version.calculation_base,
-                    rate=rule_version.rate, base_amount_minor=base_amount, pool_amount_minor=pool_amount,
-                    recipient_employee_id=emp_id,
+            lines.append(
+                line(
+                    base_amount_minor=base_amount, pool_amount_minor=pool_amount, recipient_employee_id=emp_id,
                     recipient_eligibility_basis=(
                         f"ACTIVE_AT_SETTLEMENT: held Recipient Role {role_name!r} with an active Shift at "
                         f"Settlement Time {settlement_time.isoformat()}; EQUAL split across "
                         f"{len(eligible_ids)} eligible recipient(s)."
                     ),
                     no_eligible_recipient=False, allocated_amount_minor=shares[emp_id],
-                    settlement_time=settlement_time,
+                    eligible_recipient_count=len(eligible_ids),
                 )
             )
             summary.allocations_produced += 1
-    else:
-        # Task §11 — SOURCE_RETAINS: generated outbound allocation = 0, and
-        # the fact that nobody was eligible is preserved explicitly, never
-        # silently omitted.
-        session.add(
-            m.TipDistributionAllocation(
-                calculation_run_id=run.id, order_id=order.id, source_employee_id=source_employee_id,
-                rule_version_id=rule_version.id, calculation_base=rule_version.calculation_base,
-                rate=rule_version.rate, base_amount_minor=base_amount, pool_amount_minor=pool_amount,
-                recipient_employee_id=None,
-                recipient_eligibility_basis=(
-                    f"NO_ELIGIBLE_RECIPIENT: no Employee held Recipient Role {role_name!r} with an active Shift "
-                    f"at Settlement Time {settlement_time.isoformat()}; SOURCE_RETAINS applied — the source "
-                    "employee retains the full pool."
-                ),
-                no_eligible_recipient=True, allocated_amount_minor=0, settlement_time=settlement_time,
-            )
+        return lines
+
+    # Task §11 — SOURCE_RETAINS: generated outbound allocation = 0, and
+    # the fact that nobody was eligible is preserved explicitly, never
+    # silently omitted.
+    return [
+        line(
+            base_amount_minor=base_amount, pool_amount_minor=pool_amount, recipient_employee_id=None,
+            recipient_eligibility_basis=(
+                f"NO_ELIGIBLE_RECIPIENT: no Employee held Recipient Role {role_name!r} with an active Shift "
+                f"at Settlement Time {settlement_time.isoformat()}; SOURCE_RETAINS applied — the source "
+                "employee retains the full pool."
+            ),
+            no_eligible_recipient=True, allocated_amount_minor=0, eligible_recipient_count=0,
         )
+    ]
 
 
 def _orders_in_scope(
@@ -336,73 +449,44 @@ def _orders_in_scope(
     return in_scope
 
 
-def _unsuperseded_conflict(
-    session: Session, restaurant_id: int, period_start: datetime, period_end: datetime, exclude_run_id: int,
-) -> m.TipDistributionCalculationRun | None:
-    return session.scalars(
-        select(m.TipDistributionCalculationRun)
-        .where(
-            m.TipDistributionCalculationRun.restaurant_id == restaurant_id,
-            m.TipDistributionCalculationRun.id != exclude_run_id,
-            m.TipDistributionCalculationRun.status == STATUS_COMPLETE,
-            m.TipDistributionCalculationRun.superseded_by_calculation_run_id.is_(None),
-            m.TipDistributionCalculationRun.period_start < period_end,
-            m.TipDistributionCalculationRun.period_end > period_start,
-        )
-        .limit(1)
-    ).first()
-
-
-def run_tip_distribution_calculation(
+def calculate_tips(
     session: Session, *, restaurant_id: int, period_start: datetime, period_end: datetime,
-) -> tuple[m.TipDistributionCalculationRun, CalculationSummary]:
-    """Task §17's "Calculate Tips" action. Always persists (added to
-    `session`, not committed — the caller decides when to commit, matching
-    this codebase's existing convention); there is no separate dry-run mode
-    for this first version (task §15 stops at a clean CALCULATED/REVIEWABLE
-    state, with no approval/lock workflow to preview against yet).
+) -> TipCalculationResult:
+    """THE canonical Tips calculation (TIPS_STATELESS_CALCULATION_001).
 
-    Task §16 "recalculation safety": recalculating the EXACT same
-    `period_start`/`period_end` as an existing COMPLETE, unsuperseded run
-    for this Restaurant is treated as an explicit, auditable intentional
-    recalculation — the prior run is marked superseded by this one (its
-    `TipDistributionAllocation` rows are never deleted or rewritten) and a
-    fresh set of allocations is produced under this run's own id. A
-    DIFFERENT, only partially-overlapping period is refused rather than
-    guessed at, since this task's UI has no explicit "supersede run #N"
-    control (task §17's "keep it simple").
-    """
-    run = m.TipDistributionCalculationRun(
-        restaurant_id=restaurant_id, period_start=period_start, period_end=period_end, status=STATUS_RUNNING,
+    Computes the complete result for ANY `[period_start, period_end)` and
+    returns it in memory. It writes nothing: no calculation run, no
+    allocation rows, no aggregate. Consequently ANY period may be
+    calculated at any time, as often as wanted — the same period twice, a
+    subset, a superset, or a partially overlapping window. There is no
+    overlap detection, no refusal, and no supersession, because there is no
+    stored result for a later calculation to conflict with.
+
+    Reproducibility comes from the inputs, not from storage: Orders,
+    Payments, Shifts, EmployeeAssignments and effective-dated
+    RuleVersions are all themselves persisted facts, so re-running a past
+    period reproduces the past answer.
+
+    This is the single engine — `run_tip_distribution_calculation` below is
+    a thin wrapper that merely records a payout anchor around this same
+    function; it does not implement a second set of semantics."""
+
+    period_start = _aware_utc(period_start)
+    period_end = _aware_utc(period_end)
+    result = TipCalculationResult(
+        restaurant_id=restaurant_id, period_start=period_start, period_end=period_end,
     )
-    session.add(run)
-    session.flush()
-
-    summary = CalculationSummary()
-
-    conflict = _unsuperseded_conflict(session, restaurant_id, period_start, period_end, exclude_run_id=run.id)
-    if conflict is not None:
-        if _aware_utc(conflict.period_start) == period_start and _aware_utc(conflict.period_end) == period_end:
-            conflict.superseded_by_calculation_run_id = run.id
-        else:
-            run.status = STATUS_FAILED
-            run.completed_at = utc_now()
-            run.notes = (
-                f"Refusing to calculate: TipDistributionCalculationRun {conflict.id} "
-                f"(period {conflict.period_start.isoformat()}..{conflict.period_end.isoformat()}) already "
-                "covers part of the requested period and has not been superseded. Recalculate using the "
-                "EXACT same From/Through to intentionally supersede it, or choose a non-overlapping period."
-            )
-            return run, summary
 
     location_ids = _restaurant_location_ids(session, restaurant_id)
     if not location_ids:
-        run.status = STATUS_FAILED
-        run.completed_at = utc_now()
-        run.notes = f"Restaurant {restaurant_id} has no associated Location — nothing to calculate."
-        return run, summary
+        result.blocked_reason = (
+            f"Restaurant {restaurant_id} has no associated Location — nothing to calculate."
+        )
+        return result
 
     active_rules = rule_svc.list_rules(session, restaurant_id, active_only=True)
+    summary = result.summary
+    rule_version_ids: set[int] = set()
 
     candidates = session.scalars(
         select(m.Order).where(m.Order.location_id.in_(location_ids), m.Order.created_at <= period_end)
@@ -419,11 +503,14 @@ def run_tip_distribution_calculation(
 
         summary.orders_considered += 1
 
+        voluntary_minor, gratuity_minor = _order_gross_tip_components(session, order)
+        result.voluntary_total_minor += voluntary_minor
+        result.gratuity_total_minor += gratuity_minor
+
         if order.employee_id is None:
             summary.orders_skipped_no_employee += 1
             continue
 
-        voluntary_minor, gratuity_minor = _order_gross_tip_components(session, order)
         owner_role_ids = _roles_held_by_employee_at(
             session, restaurant_id=restaurant_id, employee_id=order.employee_id, location_id=order.location_id,
             at=settlement_time,
@@ -431,54 +518,114 @@ def run_tip_distribution_calculation(
 
         for rule in active_rules:
             version = rule_svc.get_version_effective_at(session, rule.id, settlement_time)
-            if version is None or version.source_role_id not in owner_role_ids:
+            if version is None:
                 continue
-            _apply_rule_to_order(
-                session, run=run, order=order, restaurant_id=restaurant_id, source_employee_id=order.employee_id,
-                settlement_time=settlement_time, rule_version=version, voluntary_minor=voluntary_minor,
-                gratuity_minor=gratuity_minor, summary=summary,
+            # ORDER_SERVICE_OWNER_SOURCE_SEMANTICS_001 — a ROLE-semantics
+            # Version still requires the Order-owning Employee to hold
+            # `source_role_id` (unchanged); an ORDER_SERVICE_OWNER Version
+            # is unconditionally sourced from `order.employee_id` — that
+            # Employee's RestaurantRole, if any, is irrelevant to source
+            # qualification.
+            if version.source_semantics == m.TIP_SOURCE_SEMANTICS_ROLE and version.source_role_id not in owner_role_ids:
+                continue
+            rule_version_ids.add(version.id)
+            result.lines.extend(
+                _apply_rule_to_order(
+                    session, order=order, restaurant_id=restaurant_id, source_employee_id=order.employee_id,
+                    settlement_time=settlement_time, rule_version=version, voluntary_minor=voluntary_minor,
+                    gratuity_minor=gratuity_minor, summary=summary,
+                )
             )
 
+    result.rule_version_ids = sorted(rule_version_ids)
+    return result
+
+
+def summarize_notes(result: TipCalculationResult) -> str:
+    s = result.summary
+    return (
+        f"orders_considered={s.orders_considered} "
+        f"orders_with_no_settlement_time={s.orders_with_no_settlement_time} "
+        f"orders_skipped_no_employee={s.orders_skipped_no_employee} "
+        f"rules_applied={s.rules_applied} allocations_produced={s.allocations_produced} "
+        f"rules_not_implemented={s.rules_not_implemented}"
+    )
+
+
+def run_tip_distribution_calculation(
+    session: Session, *, restaurant_id: int, period_start: datetime, period_end: datetime,
+) -> tuple[m.TipDistributionCalculationRun, TipCalculationResult]:
+    """Payout-anchor wrapper (TIPS_STATELESS_CALCULATION_001).
+
+    Tips itself never calls this: the Calculate Tips screen, Host Audit and
+    CSV export all use `calculate_tips` directly and persist nothing. This
+    exists solely because the DOWNSTREAM payment pipeline crystallizes an
+    approved amount: `TipEntitlement.calculation_run_id` is a NOT NULL FK
+    to `TipDistributionCalculationRun`, and entitlements feed Payment
+    Cycles and Payment Instructions. The run row is therefore a payment
+    anchor/receipt, NOT an authoritative Tips calculation — it stores no
+    allocations, and nothing reads a result back out of it.
+
+    Overlap detection, refusal and supersession are gone: two payout runs
+    covering overlapping periods are no longer a conflict, because neither
+    one owns the answer. Duplicate crystallization is prevented where it
+    actually matters — `readiness`'s own already-calculated gate and
+    `uq_tip_entitlement_run_employee`."""
+
+    result = calculate_tips(
+        session, restaurant_id=restaurant_id, period_start=period_start, period_end=period_end,
+    )
+    run = m.TipDistributionCalculationRun(
+        restaurant_id=restaurant_id, period_start=_aware_utc(period_start), period_end=_aware_utc(period_end),
+        status=STATUS_RUNNING,
+    )
+    session.add(run)
     session.flush()
+
+    if result.blocked_reason is not None:
+        run.status = STATUS_FAILED
+        run.completed_at = utc_now()
+        run.notes = result.blocked_reason
+        return run, result
+
     run.status = STATUS_COMPLETE
     run.completed_at = utc_now()
-    run.notes = (
-        f"orders_considered={summary.orders_considered} "
-        f"orders_with_no_settlement_time={summary.orders_with_no_settlement_time} "
-        f"orders_skipped_no_employee={summary.orders_skipped_no_employee} "
-        f"rules_applied={summary.rules_applied} allocations_produced={summary.allocations_produced} "
-        f"rules_not_implemented={summary.rules_not_implemented}"
-    )
-    return run, summary
+    run.notes = summarize_notes(result)
+    return run, result
 
 
-def get_latest_unsuperseded_run(
+def get_latest_payout_run(
     session: Session, *, restaurant_id: int, period_start: datetime, period_end: datetime,
-) -> m.TipDistributionCalculationRun | None:
-    """The current, unsuperseded COMPLETE run for the EXACT requested
-    period, if one exists — what the Review UI should show for this
-    From/Through without re-running the calculation."""
-    stmt = (
+):
+    """The most recent COMPLETE payout-anchor run for this EXACT period, if
+    any (TIPS_STATELESS_CALCULATION_001).
+
+    This answers only "has this period already been crystallized into
+    entitlements for payment?" — it is NOT a cached Tips result and is
+    never used to display or reuse a calculation. Tips always recalculates.
+    Supersession is gone, so this simply returns the latest matching row."""
+    return session.scalars(
         select(m.TipDistributionCalculationRun)
         .where(
             m.TipDistributionCalculationRun.restaurant_id == restaurant_id,
-            m.TipDistributionCalculationRun.period_start == period_start,
-            m.TipDistributionCalculationRun.period_end == period_end,
+            m.TipDistributionCalculationRun.period_start == _aware_utc(period_start),
+            m.TipDistributionCalculationRun.period_end == _aware_utc(period_end),
             m.TipDistributionCalculationRun.status == STATUS_COMPLETE,
-            m.TipDistributionCalculationRun.superseded_by_calculation_run_id.is_(None),
         )
         .order_by(m.TipDistributionCalculationRun.id.desc())
-    )
-    return session.scalars(stmt).first()
+    ).first()
 
 
-def build_employee_review(session: Session, run: m.TipDistributionCalculationRun) -> list[EmployeeReviewRow]:
-    """Task §17/§19 — one row per Employee touched by this run, either as a
+def build_employee_review(session: Session, result: TipCalculationResult) -> list[EmployeeReviewRow]:
+    """One row per Employee touched by this calculation, either as a
     Gross-Tip-earning Order owner, an outbound source, or an inbound
-    recipient. Every figure is recomputed from persisted facts each call —
-    never read from a stored aggregate."""
+    recipient. Derived entirely from the in-memory
+    `TipCalculationResult` plus source facts — it reads no persisted
+    allocation rows and no stored aggregate
+    (TIPS_STATELESS_CALCULATION_001)."""
     orders_in_scope = _orders_in_scope(
-        session, restaurant_id=run.restaurant_id, period_start=run.period_start, period_end=run.period_end,
+        session, restaurant_id=result.restaurant_id,
+        period_start=result.period_start, period_end=result.period_end,
     )
     orders_by_id = {order.id: order for order in orders_in_scope}
 
@@ -491,9 +638,7 @@ def build_employee_review(session: Session, run: m.TipDistributionCalculationRun
             gross_by_employee.get(order.employee_id, 0) + voluntary_minor + gratuity_minor
         )
 
-    allocations = session.scalars(
-        select(m.TipDistributionAllocation).where(m.TipDistributionAllocation.calculation_run_id == run.id)
-    ).all()
+    allocations = result.lines
 
     outbound_by_employee: dict[int, int] = {}
     inbound_by_employee: dict[int, int] = {}
@@ -557,19 +702,18 @@ def build_employee_review(session: Session, run: m.TipDistributionCalculationRun
 
 
 def populate_entitlements_for_run(
-    session: Session, run: m.TipDistributionCalculationRun, *, business_date: date | None = None,
+    session: Session, run: m.TipDistributionCalculationRun, result: TipCalculationResult,
+    *, business_date: date | None = None,
 ) -> list[m.TipEntitlement]:
     """STEP 12B integration (TASK_TIPS_COMPLETE_001 §9) — persists
     `build_employee_review`'s own per-Employee aggregate (gross/outbound/
     inbound/net) as one `TipEntitlement` row per Employee for this run, so
     it can later be aggregated across MANY runs/Business Dates into a
-    Payment Cycle without re-deriving it from `TipDistributionAllocation`
-    again. Idempotent: calling this twice for the same COMPLETE run never
+    Payment Cycle without re-deriving it. Idempotent: calling this twice for the same COMPLETE run never
     creates duplicate rows (`uq_tip_entitlement_run_employee`) — existing
     rows are left exactly as they were (an entitlement, once persisted, is
     never silently recomputed; a genuine correction goes through the same
-    run-supersession discipline `run_tip_distribution_calculation` already
-    uses).
+    correction is a fresh calculation plus a fresh entitlement).
 
     `business_date` is the caller's own business-date attribution for this
     run's period (`readiness.business_date_period`'s inverse) — left `None`
@@ -585,7 +729,7 @@ def populate_entitlements_for_run(
     if existing:
         return existing
 
-    review_rows = build_employee_review(session, run)
+    review_rows = build_employee_review(session, result)
     entitlements: list[m.TipEntitlement] = []
     for row in review_rows:
         entitlement = m.TipEntitlement(
@@ -600,29 +744,26 @@ def populate_entitlements_for_run(
     return entitlements
 
 
-def get_order_drilldown(session: Session, run: m.TipDistributionCalculationRun, order_id: int) -> dict | None:
-    """Task §18 — "why did this employee receive/pay this amount" for one
-    Order under this run. Returns `None` only if `order_id` is not actually
-    part of this run's period/Location scope at all."""
+def get_order_drilldown(session: Session, result: TipCalculationResult, order_id: int) -> dict | None:
+    """"Why did this employee receive/pay this amount" for one Order in
+    this calculation. Returns `None` only if `order_id` is not actually
+    part of the calculated period/Location scope at all. Reads its
+    allocation detail from the in-memory result, never from storage."""
     order = session.get(m.Order, order_id)
     if order is None:
         return None
-    location_ids = _restaurant_location_ids(session, run.restaurant_id)
+    location_ids = _restaurant_location_ids(session, result.restaurant_id)
     if order.location_id not in location_ids:
         return None
     settlement_time = get_order_settlement_time(session, order.id)
     if settlement_time is None:
         return None
     settlement_time = _aware_utc(settlement_time)
-    if not (_aware_utc(run.period_start) <= settlement_time < _aware_utc(run.period_end)):
+    if not (_aware_utc(result.period_start) <= settlement_time < _aware_utc(result.period_end)):
         return None
 
     voluntary_minor, gratuity_minor = _order_gross_tip_components(session, order)
-    allocations = session.scalars(
-        select(m.TipDistributionAllocation).where(
-            m.TipDistributionAllocation.calculation_run_id == run.id, m.TipDistributionAllocation.order_id == order_id,
-        )
-    ).all()
+    allocations = [line for line in result.lines if line.order_id == order_id]
     refunds = session.scalars(select(m.Refund).where(m.Refund.order_id == order_id)).all()
 
     return {

@@ -72,18 +72,20 @@ def run_calculation_now(session: Session, *, restaurant_id: int) -> CalculationR
         return result
 
     period_start, period_end = readiness_svc.business_date_period(state.business_date)
-    run, summary = engine_svc.run_tip_distribution_calculation(
+    run, calc = engine_svc.run_tip_distribution_calculation(
         session, restaurant_id=restaurant_id, period_start=period_start, period_end=period_end,
     )
     session.flush()
     result.calculation_run = run
-    result.calculation_summary = summary
+    result.calculation_summary = calc.summary
 
     if run.status == engine_svc.STATUS_FAILED:
         result.blocked_reason = run.notes
         return result
 
-    entitlements = engine_svc.populate_entitlements_for_run(session, run, business_date=state.business_date)
+    entitlements = engine_svc.populate_entitlements_for_run(
+        session, run, calc, business_date=state.business_date,
+    )
     result.entitlements_created = len(entitlements)
     result.ran = True
     return result

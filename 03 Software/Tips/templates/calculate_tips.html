@@ -18,12 +18,12 @@
     <form method="post" action="{{ url_for('calculate_tips_run') }}">
       <div class="form-row">
         <div>
-          <label for="from_date">From date</label>
-          <input type="date" id="from_date" name="from_date" value="{{ from_date }}" required>
+          <label for="start_at">Start date &amp; time</label>
+          <input type="datetime-local" id="start_at" name="start_at" value="{{ start_at }}" required>
         </div>
         <div>
-          <label for="through_date">Through date</label>
-          <input type="date" id="through_date" name="through_date" value="{{ through_date }}" required>
+          <label for="end_at">End date &amp; time</label>
+          <input type="datetime-local" id="end_at" name="end_at" value="{{ end_at }}" required>
         </div>
         <div>
           <button type="submit" {{ 'disabled' if not restaurant else '' }}>Calculate Tips</button>
@@ -31,9 +31,15 @@
       </div>
     </form>
     <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
-      Calculates only from already-imported RF-One facts — never contacts Clover. Recalculating the SAME
-      From/Through supersedes the prior calculation (its results are kept, never deleted, just marked
-      superseded); a different, overlapping period is refused rather than silently guessed at.
+      Times are in the Restaurant's local timezone (<strong>{{ tz_name }}</strong>){% if not tz_configured %}
+      — this Location has no timezone/business-day cutoff configured yet, so UTC and {{ cutoff }} are assumed{% endif %}.
+      The default window is one Business Day: {{ cutoff }} to {{ cutoff }} the following day.
+      Both bounds are editable, and the end is exclusive.
+    </p>
+    <p class="muted" style="font-size:.78rem;">
+      Tips are calculated on demand from already-imported RF-One facts — never contacts Clover, and nothing
+      is stored. Any period can be calculated as often as you like, including periods that overlap, contain
+      or sit inside one you just calculated.
     </p>
   </div>
 
@@ -44,21 +50,62 @@
   {% endfor %}
 {% endwith %}
 
+{% if audit_mode and result %}
 <div class="card">
-  <h2>Employee Review{% if run %} — run #{{ run.id }} ({{ run.status }}){% endif %}</h2>
-  {% if not from_date or not through_date %}
-    <p class="empty">Select a From/Through date above to view or run a calculation for that period.</p>
-  {% elif not run %}
-    <p class="empty">No calculation exists yet for this exact period — click "Calculate Tips" above.</p>
+  <p>Review mode is <strong>AUDIT</strong>: please open “Explain / Audit Host Tips” for each Host below
+  before relying on these results operationally. This affects emphasis only — the numbers are identical
+  in either review mode.</p>
+</div>
+{% endif %}
+
+{% if result %}
+<div class="card">
+  <h2>Totals</h2>
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th>Voluntary Tips</th><th>Service Owner retained</th><th>Distributed</th>
+          <th>Unresolved</th><th>Difference</th><th>Service Charges (excluded)</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>${{ "%.2f"|format(result.voluntary_total_minor / 100) }}</strong></td>
+        <td>${{ "%.2f"|format(result.source_retained_total_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(result.distributed_total_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(result.unresolved_total_minor / 100) }}</td>
+        <td>
+          ${{ "%.2f"|format(result.reconciliation_difference_minor / 100) }}
+          {% if result.reconciles %}<span class="badge">balanced</span>
+          {% else %}<span class="badge warn">out of balance</span>{% endif %}
+        </td>
+        <td class="muted">${{ "%.2f"|format(result.gratuity_total_minor / 100) }}</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
+    {{ result.summary.orders_considered }} Order(s) considered;
+    {{ result.summary.rules_applied }} rule application(s);
+    {{ result.summary.allocations_produced }} allocation(s).
+    Rule Version(s) applied: {% if result.rule_version_ids %}{{ result.rule_version_ids|join(', ') }}{% else %}none{% endif %}.
+    Service Charges are not Tips and are excluded from the distributable base.
+  </p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Employee Review</h2>
+  {% if period_error %}
+    <p class="empty">{{ period_error }}</p>
   {% elif not review_rows %}
-    <p class="empty">The calculation completed with no Employee activity to review for this period.</p>
+    <p class="empty">No Employee activity to review for this period.</p>
   {% else %}
   <div class="table-scroll">
   <table>
     <thead>
       <tr>
         <th>Employee</th><th>Gross Earned Tips</th><th>Outbound Tip-Out</th><th>Inbound Tip-Out</th>
-        <th>Net (before adjustments)</th><th>Orders</th>
+        <th>Net (before adjustments)</th><th></th><th>Orders</th>
       </tr>
     </thead>
     <tbody>
@@ -72,8 +119,13 @@
         <td>${{ "%.2f"|format(row.outbound_tip_out_minor / 100) }}</td>
         <td>${{ "%.2f"|format(row.inbound_tip_out_minor / 100) }}</td>
         <td><strong>${{ "%.2f"|format(row.net_before_adjustments_minor / 100) }}</strong></td>
+        <td>
+          {% if row.inbound_tip_out_minor %}
+          <a href="{{ url_for('host_audit_home', employee_id=row.employee_id, start_at=start_at, end_at=end_at) }}">Explain / Audit Host Tips</a>
+          {% endif %}
+        </td>
         <td class="muted" style="font-size:.78rem;">
-          {% for order_id in row.order_ids %}<a href="{{ url_for('calculate_tips_order_drilldown', order_id=order_id, from_date=from_date, through_date=through_date) }}">#{{ order_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+          {% for order_id in row.order_ids %}<a href="{{ url_for('calculate_tips_order_drilldown', order_id=order_id, start_at=start_at, end_at=end_at) }}">#{{ order_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
           {% if row.has_warning %}
             {% for note in row.warning_notes %}<div class="error" style="margin-top:.3rem; padding:.3rem .5rem;">{{ note }}</div>{% endfor %}
           {% endif %}

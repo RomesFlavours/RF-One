@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import inspect as sa_inspect, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import models as m
@@ -212,15 +212,8 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         session.flush()
         return fee
 
-    def allocations_for(run: m.TipDistributionCalculationRun, order_id: int) -> list[m.TipDistributionAllocation]:
-        return list(
-            session.scalars(
-                select(m.TipDistributionAllocation).where(
-                    m.TipDistributionAllocation.calculation_run_id == run.id,
-                    m.TipDistributionAllocation.order_id == order_id,
-                )
-            ).all()
-        )
+    def allocations_for(calc, order_id: int) -> list:
+        return [line for line in calc.lines if line.order_id == order_id]
 
     # === 1: voluntary tip only ===============================================
     order1 = make_order(employee=server1, created_at=_at(1, 11))
@@ -307,16 +300,15 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     rule1_v2 = session.get(m.TipDistributionRuleVersion, rule1_v2.id)
 
     period_start, period_end = _at(-1), _at(400)
-    run1, summary1 = engine.run_tip_distribution_calculation(
+    calc1 = engine.calculate_tips(
         session, restaurant_id=restaurant.id, period_start=period_start, period_end=period_end,
     )
-    session.commit()
-    session.expire_all()
+    summary1 = calc1.summary
 
-    result.check("first calculation run is accepted (COMPLETE, no conflict)", run1.status == engine.STATUS_COMPLETE)
+    result.check("first calculation succeeds and persists nothing", calc1.blocked_reason is None)
 
     # --- 1 ---
-    a1 = allocations_for(run1, order1.id)
+    a1 = allocations_for(calc1, order1.id)
     result.check(
         "1: voluntary tip only — base=1000, pool=100 (10%), full pool to the single eligible Host",
         len(a1) == 1 and a1[0].base_amount_minor == 1000 and a1[0].pool_amount_minor == 100
@@ -324,21 +316,21 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
 
     # --- 2 ---
-    a2 = allocations_for(run1, order2.id)
+    a2 = allocations_for(calc1, order2.id)
     result.check(
         "2: gratuity only — base=800 (no voluntary tip), pool=80",
         len(a2) == 1 and a2[0].base_amount_minor == 800 and a2[0].pool_amount_minor == 80,
     )
 
     # --- 3 ---
-    a3 = allocations_for(run1, order3.id)
+    a3 = allocations_for(calc1, order3.id)
     result.check(
         "3: tip + gratuity — base=800 (500 tip + 300 gratuity), pool=80",
         len(a3) == 1 and a3[0].base_amount_minor == 800 and a3[0].pool_amount_minor == 80,
     )
 
     # --- 4 ---
-    a4 = allocations_for(run1, order4.id)
+    a4 = allocations_for(calc1, order4.id)
     fees4 = session.scalars(select(m.OrderFee).where(m.OrderFee.order_id == order4.id)).all()
     result.check(
         "4: split-payment Order — gratuity counted once (700 = 400 voluntary + 300 gratuity, "
@@ -347,14 +339,14 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
 
     # --- 5 ---
-    a5 = allocations_for(run1, order5.id)
+    a5 = allocations_for(calc1, order5.id)
     result.check(
         "5: Order.employee (server1) owns Gross Tips even though Payment.employee is a different Employee",
         len(a5) == 1 and a5[0].source_employee_id == server1.id and a5[0].source_employee_id != host_a.id,
     )
 
     # --- 6 ---
-    a6 = allocations_for(run1, order6.id)
+    a6 = allocations_for(calc1, order6.id)
     result.check(
         "6: one active Host -> receives the FULL configured pool",
         len(a6) == 1 and a6[0].recipient_employee_id == host_a.id and a6[0].allocated_amount_minor == 100
@@ -362,7 +354,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
 
     # --- 7 ---
-    a7 = allocations_for(run1, order7.id)
+    a7 = allocations_for(calc1, order7.id)
     amounts7 = sorted(a.allocated_amount_minor for a in a7)
     recipients7 = {a.recipient_employee_id for a in a7}
     result.check(
@@ -371,7 +363,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
 
     # --- 8 ---
-    a8 = allocations_for(run1, order8.id)
+    a8 = allocations_for(calc1, order8.id)
     amounts8 = sorted(a.allocated_amount_minor for a in a8)
     recipients8 = {a.recipient_employee_id for a in a8}
     result.check(
@@ -386,7 +378,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
 
     # --- 9 ---
-    a9 = allocations_for(run1, order9.id)
+    a9 = allocations_for(calc1, order9.id)
     result.check(
         "9: no Host active -> SOURCE_RETAINS: one explicit row, recipient NULL, allocated=0, pool preserved",
         len(a9) == 1 and a9[0].recipient_employee_id is None and a9[0].allocated_amount_minor == 0
@@ -394,30 +386,30 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
 
     # --- 10/11/12 ---
-    a10 = allocations_for(run1, order10.id)
+    a10 = allocations_for(calc1, order10.id)
     result.check(
         "10: Host clocked out before Settlement Time -> not eligible (SOURCE_RETAINS)",
         len(a10) == 1 and a10[0].no_eligible_recipient is True,
     )
-    a11 = allocations_for(run1, order11.id)
+    a11 = allocations_for(calc1, order11.id)
     result.check(
         "11: Host clocks in after Settlement Time -> not eligible (SOURCE_RETAINS)",
         len(a11) == 1 and a11[0].no_eligible_recipient is True,
     )
-    a12 = allocations_for(run1, order12.id)
+    a12 = allocations_for(calc1, order12.id)
     result.check(
         "12: an open (clock_out NULL) Shift at Settlement Time -> eligible",
         len(a12) == 1 and a12[0].recipient_employee_id == host_edge12.id and a12[0].allocated_amount_minor == 100,
     )
 
     # --- 13/14/15 ---
-    a13 = allocations_for(run1, order13.id)
+    a13 = allocations_for(calc1, order13.id)
     result.check(
         "13/14: an Order settled BEFORE the new rule version's effective_from still resolves to the OLD "
         "version (10% -> pool=100), even though the new version already exists in the database",
         len(a13) == 1 and a13[0].rate == Decimal("10.0000") and a13[0].pool_amount_minor == 100,
     )
-    a14 = allocations_for(run1, order14.id)
+    a14 = allocations_for(calc1, order14.id)
     result.check(
         "14/15: an Order settled AFTER the new rule version's effective_from resolves to the NEW, "
         "configurable rate (25%, never hardcoded 10%) -> pool=250",
@@ -425,7 +417,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
 
     # --- 16 ---
-    a16 = allocations_for(run1, order16.id)
+    a16 = allocations_for(calc1, order16.id)
     by_rule = {a.rule_version_id: a for a in a16}
     result.check(
         "16: two independent rules both compute from the SAME original base (10000) — Host 10% -> 1000, "
@@ -438,12 +430,10 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
 
     # --- 18: employee aggregate reconciles to atomic allocations --------------
-    review1 = engine.build_employee_review(session, run1)
+    review1 = engine.build_employee_review(session, calc1)
     review_by_id = {row.employee_id: row for row in review1}
 
-    all_allocations_run1 = session.scalars(
-        select(m.TipDistributionAllocation).where(m.TipDistributionAllocation.calculation_run_id == run1.id)
-    ).all()
+    all_allocations_run1 = calc1.lines
     manual_outbound = {}
     manual_inbound = {}
     for a in all_allocations_run1:
@@ -468,48 +458,77 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         and any("no eligible recipient" in note for note in review_by_id[server1.id].warning_notes),
     )
 
-    # === 19: recalculation does not duplicate allocations =====================
+    # === 19: ANY period is freely recalculable (TIPS_STATELESS_CALCULATION_001)
+    # Replaces the retired overlap-refusal/supersession behaviour: with no
+    # stored result there is nothing to conflict with, so the only thing
+    # worth asserting is that repeated and overlapping calculations all
+    # succeed and stay deterministic.
     run1_allocation_count_before = len(all_allocations_run1)
-    run2, summary2 = engine.run_tip_distribution_calculation(
+
+    calc2 = engine.calculate_tips(
         session, restaurant_id=restaurant.id, period_start=period_start, period_end=period_end,
     )
-    session.commit()
-    session.expire_all()
+    result.check(
+        "19A: the SAME period can be calculated again, with no refusal and no supersession",
+        calc2.blocked_reason is None,
+    )
+    result.check(
+        "19A: recalculating the same period is deterministic — same number of allocation lines",
+        len(calc2.lines) == run1_allocation_count_before,
+    )
+    result.check(
+        "19A: recalculating the same period yields identical distributed totals",
+        calc2.distributed_total_minor == calc1.distributed_total_minor
+        and calc2.voluntary_total_minor == calc1.voluntary_total_minor,
+    )
 
-    run1_reloaded = session.get(m.TipDistributionCalculationRun, run1.id)
-    result.check(
-        "19: recalculating the EXACT same period auto-supersedes the prior run (auditable, explicit)",
-        run1_reloaded.superseded_by_calculation_run_id == run2.id and run2.status == engine.STATUS_COMPLETE,
-    )
-    run1_allocations_after = session.scalars(
-        select(m.TipDistributionAllocation).where(m.TipDistributionAllocation.calculation_run_id == run1.id)
-    ).all()
-    result.check(
-        "19: the superseded run's own allocation rows are never deleted or rewritten",
-        len(run1_allocations_after) == run1_allocation_count_before,
-    )
-    run2_allocations = session.scalars(
-        select(m.TipDistributionAllocation).where(m.TipDistributionAllocation.calculation_run_id == run2.id)
-    ).all()
-    result.check(
-        "19: the new run produces its OWN fresh, equally-sized set of allocations (deterministic "
-        "recomputation of the same source facts), not a doubled or partial count",
-        len(run2_allocations) == run1_allocation_count_before,
-    )
-    latest = engine.get_latest_unsuperseded_run(
-        session, restaurant_id=restaurant.id, period_start=period_start, period_end=period_end,
-    )
-    result.check("19: the latest-unsuperseded lookup now returns the NEW run, not the superseded one", latest.id == run2.id)
-
-    # A different, only-partially-overlapping period is refused rather than silently guessed at.
-    run3, _ = engine.run_tip_distribution_calculation(
+    calc_overlap = engine.calculate_tips(
         session, restaurant_id=restaurant.id, period_start=period_start, period_end=_at(200),
     )
-    session.commit()
     result.check(
-        "recalculation safety: a DIFFERENT (partially overlapping) period is refused, not silently allowed "
-        "to create a second independently-payable allocation set",
-        run3.status == engine.STATUS_FAILED,
+        "19B: a DIFFERENT, partially overlapping period calculates freely (no refusal)",
+        calc_overlap.blocked_reason is None,
+    )
+
+    calc_subset = engine.calculate_tips(
+        session, restaurant_id=restaurant.id, period_start=_at(0), period_end=_at(2),
+    )
+    result.check("19C: a SUBSET period calculates freely", calc_subset.blocked_reason is None)
+
+    calc_superset = engine.calculate_tips(
+        session, restaurant_id=restaurant.id, period_start=_at(-50), period_end=_at(900),
+    )
+    result.check("19D: a SUPERSET period calculates freely", calc_superset.blocked_reason is None)
+    result.check(
+        "19D: the superset contains at least as many allocation lines as the original window",
+        len(calc_superset.lines) >= run1_allocation_count_before,
+    )
+
+    calc_arbitrary = engine.calculate_tips(
+        session, restaurant_id=restaurant.id,
+        period_start=_at(1, 7) + timedelta(minutes=13),
+        period_end=_at(1, 19) + timedelta(minutes=47),
+    )
+    result.check(
+        "19E: arbitrary (non-midnight, minute-level) datetime boundaries calculate normally",
+        calc_arbitrary.blocked_reason is None,
+    )
+
+    # === G/H: calculating creates NO persisted result records =================
+    runs_now = session.scalars(select(m.TipDistributionCalculationRun)).all()
+    result.check(
+        "G: calculating Tips creates no TipDistributionCalculationRun at all",
+        len(runs_now) == 0,
+    )
+    result.check(
+        "H: the persisted allocation table no longer exists in the schema",
+        "tip_distribution_allocations" not in sa_inspect(session.get_bind()).get_table_names(),
+    )
+
+    # === K: reconciliation invariant =========================================
+    result.check(
+        "K: Service Owner retained + distributed + unresolved == voluntary tips (difference is exactly 0)",
+        calc1.reconciles and calc1.reconciliation_difference_minor == 0,
     )
 
     # === 20: a Refund never auto-reverses a tip calculation ====================
@@ -523,14 +542,17 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     session.commit()
     session.expire_all()
 
-    a1_after_refund = allocations_for(run2, order1.id)
+    calc_after_refund = engine.calculate_tips(
+        session, restaurant_id=restaurant.id, period_start=period_start, period_end=period_end,
+    )
+    a1_after_refund = allocations_for(calc_after_refund, order1.id)
     result.check(
-        "20: a Refund recorded AFTER calculation does not change the already-persisted allocation "
-        "(still full pool=100 to the same Host)",
+        "20: a Refund recorded AFTER the fact never auto-reverses the calculation — recalculating the "
+        "same period still yields the full pool=100 to the same Host",
         len(a1_after_refund) == 1 and a1_after_refund[0].allocated_amount_minor == 100
         and a1_after_refund[0].pool_amount_minor == 100,
     )
-    review2 = engine.build_employee_review(session, session.get(m.TipDistributionCalculationRun, run2.id))
+    review2 = engine.build_employee_review(session, calc_after_refund)
     review2_by_id = {row.employee_id: row for row in review2}
     result.check(
         "20: the Refund appears as a WARNING on server1's Review row, never as an automatic reversal",
@@ -539,7 +561,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
 
     # === Order drill-down (task §18) ===========================================
-    drilldown8 = engine.get_order_drilldown(session, session.get(m.TipDistributionCalculationRun, run2.id), order8.id)
+    drilldown8 = engine.get_order_drilldown(session, calc_after_refund, order8.id)
     result.check(
         "drill-down: order 8 shows Settlement Time, Gross Tip, and all 3 recipient allocations",
         drilldown8 is not None and drilldown8["gross_earned_tips_minor"] == 10000

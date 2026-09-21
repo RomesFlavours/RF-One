@@ -37,10 +37,14 @@ templates, no JS framework/build step.
 
 from __future__ import annotations
 
+import csv
+import io
+import json
 import os
 import sys
 from dataclasses import asdict
 from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -48,7 +52,7 @@ _DATA_STORE_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "RF-One Data Sto
 if _DATA_STORE_DIR not in sys.path:
     sys.path.insert(0, _DATA_STORE_DIR)
 
-from flask import Flask, flash, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
+from flask import Flask, Response, flash, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 
 from rfone_data_store import models as m  # noqa: E402
@@ -60,12 +64,15 @@ from rfone_data_store.technical.connectors.clover.acquisition import (  # noqa: 
 )
 from rfone_data_store.tips import distribution_engine as engine_svc  # noqa: E402
 from rfone_data_store.tips import distribution_rule_service as rule_svc  # noqa: E402
+from rfone_data_store.tips import host_audit_report as audit_svc  # noqa: E402
+from rfone_data_store.tips import review_mode_service as review_mode_svc  # noqa: E402
 from rfone_data_store.tips import payment_connector as connector_svc  # noqa: E402
 from rfone_data_store.tips import payment_cycle_service as cycle_svc  # noqa: E402
 from rfone_data_store.tips import payment_instruction as pi_svc  # noqa: E402
 from rfone_data_store.tips import payment_readiness as payment_readiness_svc  # noqa: E402
 from rfone_data_store.tips import payout_process as payout_svc  # noqa: E402
 from rfone_data_store.tips import readiness as readiness_svc  # noqa: E402
+from rfone_data_store.tips import rule_ai_authoring as rule_ai_svc  # noqa: E402
 from rfone_data_store.tips import schedule_service as sched_svc  # noqa: E402
 from rfone_data_store import restaurant_role_service as role_svc  # noqa: E402
 
@@ -445,161 +452,166 @@ def _summary_flash(summary) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _calculation_period(from_date: str, through_date: str) -> tuple[datetime, datetime] | None:
-    """From/Through -> `[period_start, period_end)` — inclusive through the
-    end of the selected Through day. Unlike `/import`'s own
-    `end.replace(hour=23, minute=59, second=59)` convention (an INCLUSIVE
-    upper bound), `distribution_engine`'s Settlement-Time filter is
-    EXCLUSIVE at `period_end` (task §9/§16), so the Through day's end is
-    expressed as the following day's midnight instead. Returns `None` if
-    either date is missing/unparseable."""
-    start = _parse_date(from_date)
-    end = _parse_date(through_date)
+# TIPS_STATELESS_CALCULATION_001 — period selection is now a full
+# START datetime / END datetime pair, expressed in the Restaurant's own
+# local timezone, and every view recalculates on demand.
+
+DEFAULT_BUSINESS_DAY_CUTOFF = time(2, 0)
+_LOCAL_DT_FORMATS = ("%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S")
+
+
+def _restaurant_period_config(session, restaurant):
+    """The Restaurant's business-day boundary, owned by the EXISTING
+    `Location.timezone` / `Location.operating_day_cutoff_time` configuration
+    (`rfone_data_store.business_date`) rather than by a Tips-local constant,
+    so a different Restaurant or Corporate can choose a different boundary
+    without touching Tips. Falls back to UTC + 02:00 only when a Location
+    has not been configured yet, and the UI says so."""
+    tz_name, cutoff, configured = "UTC", DEFAULT_BUSINESS_DAY_CUTOFF, False
+    if restaurant is not None:
+        location_id = session.scalars(
+            select(m.RestaurantLocation.location_id)
+            .where(m.RestaurantLocation.restaurant_id == restaurant.id)
+        ).first()
+        location = session.get(m.Location, location_id) if location_id else None
+        if location is not None:
+            if location.timezone:
+                tz_name = location.timezone
+            if location.operating_day_cutoff_time is not None:
+                cutoff = location.operating_day_cutoff_time
+            configured = bool(location.timezone) and location.operating_day_cutoff_time is not None
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz_name, tz = "UTC", ZoneInfo("UTC")
+    return tz_name, tz, cutoff, configured
+
+
+def _default_period_local(session, restaurant):
+    """Default Business Day window: the latest Business Date with Orders,
+    from its cutoff time to the SAME time the following day (e.g. 02:00 to
+    02:00 for Winter Park). Returned as local-datetime strings for the
+    form inputs."""
+    _, tz, cutoff, _ = _restaurant_period_config(session, restaurant)
+    business_date = None
+    if restaurant is not None:
+        business_date = readiness_svc.get_latest_business_date_with_orders(session, restaurant.id)
+    if business_date is None:
+        business_date = datetime.now(tz).date()
+    start_local = datetime.combine(business_date, cutoff)
+    end_local = start_local + timedelta(days=1)
+    return start_local.strftime("%Y-%m-%dT%H:%M"), end_local.strftime("%Y-%m-%dT%H:%M")
+
+
+def _parse_local_dt(value: str, tz):
+    for fmt in _LOCAL_DT_FORMATS:
+        try:
+            return datetime.strptime(value, fmt).replace(tzinfo=tz)
+        except ValueError:
+            continue
+    return None
+
+
+def _calculation_period_dt(start_at: str, end_at: str, tz) -> tuple[datetime, datetime] | None:
+    """START/END local datetimes -> `[period_start, period_end)` in UTC.
+
+    Both bounds are explicit instants chosen by the operator, so any
+    interval works — a few hours, a business day, a week, or a window that
+    overlaps one calculated a moment ago. `period_end` stays EXCLUSIVE,
+    matching the engine's Settlement-Time filter."""
+    if not start_at or not end_at:
+        return None
+    start = _parse_local_dt(start_at, tz)
+    end = _parse_local_dt(end_at, tz)
     if start is None or end is None:
         return None
-    return start, end + timedelta(days=1)
+    return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
 
 
 @app.route("/calculate-tips")
 def calculate_tips_home():
+    """Always calculates the selected period ON DEMAND and persists nothing
+    (TIPS_STATELESS_CALCULATION_001). There is no stored run to look up, so
+    any period — repeated, overlapping, narrower or wider than a previous
+    one — simply calculates."""
     with SessionFactory() as session:
         restaurant = _default_restaurant(session)
-        from_date = request.args.get("from_date") or ""
-        through_date = request.args.get("through_date") or ""
+        tz_name, tz, cutoff, tz_configured = _restaurant_period_config(session, restaurant)
 
-        run = None
+        start_at = request.args.get("start_at") or ""
+        end_at = request.args.get("end_at") or ""
+        if not start_at or not end_at:
+            start_at, end_at = _default_period_local(session, restaurant)
+
+        result = None
         review_rows = []
-        if restaurant is not None and from_date and through_date:
-            period = _calculation_period(from_date, through_date)
-            if period is not None:
-                period_start, period_end = period
-                run = engine_svc.get_latest_unsuperseded_run(
-                    session, restaurant_id=restaurant.id, period_start=period_start, period_end=period_end,
-                )
-                if run is not None:
-                    review_rows = engine_svc.build_employee_review(session, run)
+        period_error = None
+        period = _calculation_period_dt(start_at, end_at, tz)
+        if restaurant is None:
+            period_error = "No Restaurant exists in this database yet."
+        elif period is None:
+            period_error = "Enter a valid start and end date/time."
+        elif period[1] <= period[0]:
+            period_error = "End must be after start."
+        else:
+            result = engine_svc.calculate_tips(
+                session, restaurant_id=restaurant.id, period_start=period[0], period_end=period[1],
+            )
+            if result.blocked_reason:
+                period_error = result.blocked_reason
+                result = None
+            else:
+                review_rows = engine_svc.build_employee_review(session, result)
 
+        review_mode = (
+            review_mode_svc.get_review_mode(session, restaurant_id=restaurant.id)
+            if restaurant is not None else None
+        )
         return render_template(
-            "calculate_tips.html", restaurant=restaurant, from_date=from_date, through_date=through_date,
-            run=run, review_rows=review_rows, active_nav="calculate-tips",
+            "calculate_tips.html", restaurant=restaurant, start_at=start_at, end_at=end_at,
+            result=result, review_rows=review_rows, period_error=period_error,
+            tz_name=tz_name, tz_configured=tz_configured,
+            cutoff=cutoff.strftime("%H:%M"), review_mode=review_mode,
+            audit_mode=(review_mode == m.TIPS_REVIEW_MODE_AUDIT),
+            active_nav="calculate-tips",
         )
 
 
 @app.route("/calculate-tips/run", methods=["POST"])
 def calculate_tips_run():
-    from_date = request.form.get("from_date") or ""
-    through_date = request.form.get("through_date") or ""
-    period = _calculation_period(from_date, through_date)
-    if period is None:
-        flash("Both From and Through dates are required.", "error")
-        return redirect(url_for("calculate_tips_home"))
-    period_start, period_end = period
-    if period_end <= period_start:
-        flash("Through date must not be before From date.", "error")
-        return redirect(url_for("calculate_tips_home"))
-
-    with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
-        if restaurant is None:
-            flash("No Restaurant exists in this database yet — nothing to calculate.", "error")
-            return redirect(url_for("calculate_tips_home"))
-
-        run, summary = engine_svc.run_tip_distribution_calculation(
-            session, restaurant_id=restaurant.id, period_start=period_start, period_end=period_end,
-        )
-        session.commit()
-
-        if run.status == engine_svc.STATUS_FAILED:
-            flash(run.notes or "Calculation failed.", "error")
-        else:
-            flash(
-                f"Calculated {summary.orders_considered} Order(s): {summary.allocations_produced} "
-                f"allocation(s) across {summary.rules_applied} rule application(s).",
-                "summary",
-            )
-
-    return redirect(url_for("calculate_tips_home", from_date=from_date, through_date=through_date))
+    """The form posts here only to carry the chosen window back onto the
+    Calculate Tips URL — the calculation itself happens on render. Nothing
+    is written, so "recalculate" is simply "ask again"."""
+    start_at = request.form.get("start_at") or ""
+    end_at = request.form.get("end_at") or ""
+    return redirect(url_for("calculate_tips_home", start_at=start_at, end_at=end_at))
 
 
 @app.route("/calculate-tips/order/<int:order_id>")
 def calculate_tips_order_drilldown(order_id: int):
-    from_date = request.args.get("from_date") or ""
-    through_date = request.args.get("through_date") or ""
+    """Recalculates the selected window and explains one Order from that
+    fresh result — no stored allocation rows are read."""
+    start_at = request.args.get("start_at") or ""
+    end_at = request.args.get("end_at") or ""
     with SessionFactory() as session:
         restaurant = _default_restaurant(session)
-        period = _calculation_period(from_date, through_date)
-        run = None
+        _, tz, _, _ = _restaurant_period_config(session, restaurant)
+        period = _calculation_period_dt(start_at, end_at, tz)
         drilldown = None
-        if restaurant is not None and period is not None:
-            period_start, period_end = period
-            run = engine_svc.get_latest_unsuperseded_run(
-                session, restaurant_id=restaurant.id, period_start=period_start, period_end=period_end,
+        if restaurant is not None and period is not None and period[1] > period[0]:
+            result = engine_svc.calculate_tips(
+                session, restaurant_id=restaurant.id, period_start=period[0], period_end=period[1],
             )
-            if run is not None:
-                drilldown = engine_svc.get_order_drilldown(session, run, order_id)
+            drilldown = engine_svc.get_order_drilldown(session, result, order_id)
 
-        if run is None or drilldown is None:
-            flash("No calculated Order found for that period — recalculate first.", "error")
-            return redirect(url_for("calculate_tips_home", from_date=from_date, through_date=through_date))
+        if drilldown is None:
+            flash("That Order is not within the selected period.", "error")
+            return redirect(url_for("calculate_tips_home", start_at=start_at, end_at=end_at))
 
         return render_template(
-            "order_drilldown.html", restaurant=restaurant, from_date=from_date, through_date=through_date,
+            "order_drilldown.html", restaurant=restaurant, start_at=start_at, end_at=end_at,
             drilldown=drilldown, active_nav="calculate-tips",
         )
-
-
-@app.route("/calculate-tips/history")
-def calculate_tips_history():
-    """Read-only list of past Tip Distribution Calculation runs — no new
-    calculation logic, just a listing over the existing
-    `TipDistributionCalculationRun` rows so a period already calculated can
-    be found and re-opened (via the existing Employee Review page) without
-    guessing dates. Mirrors `home()`'s own "recent runs" query style."""
-    with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
-        run_rows = []
-        if restaurant is not None:
-            runs = session.scalars(
-                select(m.TipDistributionCalculationRun)
-                .where(m.TipDistributionCalculationRun.restaurant_id == restaurant.id)
-                .order_by(m.TipDistributionCalculationRun.started_at.desc())
-                .limit(50)
-            )
-            for run in runs:
-                # Inverse of `_calculation_period`'s "Through day's end is the
-                # following day's midnight" convention, for display/re-open only.
-                run_rows.append(
-                    {
-                        "id": run.id,
-                        "status": run.status,
-                        "from_date": run.period_start.strftime("%Y-%m-%d"),
-                        "through_date": (run.period_end - timedelta(days=1)).strftime("%Y-%m-%d"),
-                        "started_at": run.started_at,
-                        "completed_at": run.completed_at,
-                        "superseded": run.superseded_by_calculation_run_id is not None,
-                    }
-                )
-        return render_template(
-            "calculate_tips_history.html", restaurant=restaurant, run_rows=run_rows,
-            active_nav="calculate-tips-history",
-        )
-
-
-def _parse_time(value: str | None) -> time | None:
-    if not value:
-        return None
-    try:
-        return datetime.strptime(value, "%H:%M").time()
-    except ValueError:
-        return None
-
-
-# ---------------------------------------------------------------------------
-# Tips Configuration (TASK_TIPS_COMPLETE_001 §2/§3/§15) — WHEN Tips are
-# calculated, WHEN/HOW they are paid out, and WHICH payment connector
-# executes them (STEP 12B). Read/write over `tips.schedule_service` only —
-# no scheduling/business logic of its own.
-# ---------------------------------------------------------------------------
 
 
 @app.route("/tips-configuration")
@@ -609,16 +621,36 @@ def tips_configuration_home():
         calc_config = None
         payment_config = None
         readiness_state = None
+        review_mode = m.TIPS_REVIEW_MODE_AUDIT
         if restaurant is not None:
             calc_config = sched_svc.get_calculation_schedule_effective_at(session, restaurant_id=restaurant.id)
             payment_config = sched_svc.get_payment_schedule_effective_at(session, restaurant_id=restaurant.id)
             readiness_state = readiness_svc.describe_readiness(session, restaurant.id)
+            review_mode = review_mode_svc.get_review_mode(session, restaurant_id=restaurant.id)
         return render_template(
             "tips_configuration.html", restaurant=restaurant, calc_config=calc_config,
-            payment_config=payment_config, readiness_state=readiness_state,
+            payment_config=payment_config, readiness_state=readiness_state, review_mode=review_mode,
             schedule_modes=m.TIPS_SCHEDULE_MODES, connector_codes=connector_svc.KNOWN_CONNECTOR_CODES,
             active_nav="tips-configuration",
         )
+
+
+@app.route("/tips-configuration/review-mode", methods=["POST"])
+def tips_configuration_set_review_mode():
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        if restaurant is None:
+            flash("No Restaurant exists in this database yet.", "error")
+            return redirect(url_for("tips_configuration_home"))
+        review_mode = request.form.get("review_mode") or ""
+        try:
+            review_mode_svc.set_review_mode(session, restaurant_id=restaurant.id, review_mode=review_mode)
+            session.commit()
+            flash(f"Review Mode set to {review_mode}.", "summary")
+        except ValueError as exc:
+            session.rollback()
+            flash(str(exc), "error")
+        return redirect(url_for("tips_configuration_home"))
 
 
 @app.route("/tips-configuration/calculation-schedule", methods=["POST"])
@@ -1008,35 +1040,158 @@ def _parse_rate(value: str | None) -> Decimal | None:
         return None
 
 
+def _distribution_rules_base_context(session, restaurant) -> dict:
+    """Shared by the plain GET and the AI-authoring POST handlers below —
+    the existing structured Rules list / roles / Advanced form no longer
+    lives in its own isolated view, so every render (whichever route
+    produced it) shows the same up-to-date Rules list."""
+    rules_rows = []
+    roles = []
+    if restaurant is not None:
+        roles = list(
+            session.scalars(
+                select(m.RestaurantRole).where(m.RestaurantRole.restaurant_id == restaurant.id).order_by(m.RestaurantRole.name)
+            )
+        )
+        for rule in rule_svc.list_rules(session, restaurant.id):
+            versions = rule_svc.list_versions(session, rule.id)
+            current = versions[-1] if versions else None
+            rules_rows.append(
+                {
+                    "id": rule.id,
+                    "is_active": rule.is_active,
+                    "version_count": len(versions),
+                    "current": current,
+                    "source_role_name": (
+                        current.source_role.name if current and current.source_role
+                        else ("Service Owner (Order owner)" if current else "-")
+                    ),
+                    "recipient_role_name": current.recipient_role.name if current else "-",
+                }
+            )
+    return {
+        "restaurant": restaurant, "rules_rows": rules_rows, "roles": roles,
+        "calculation_bases": m.TIP_DISTRIBUTION_CALCULATION_BASES, "active_nav": "distribution-rules",
+    }
+
+
+def _ai_history_from_json(raw: str | None) -> list["rule_ai_svc.ConversationTurn"]:
+    if not raw:
+        return []
+    try:
+        items = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    turns = []
+    for item in items if isinstance(items, list) else []:
+        if isinstance(item, dict) and isinstance(item.get("role"), str) and isinstance(item.get("content"), str):
+            turns.append(rule_ai_svc.ConversationTurn(role=item["role"], content=item["content"]))
+    return turns
+
+
+def _ai_history_to_json(turns: list["rule_ai_svc.ConversationTurn"]) -> str:
+    return json.dumps([asdict(t) for t in turns])
+
+
 @app.route("/distribution-rules")
 def distribution_rules_home():
     with SessionFactory() as session:
         restaurant = _default_restaurant(session)
-        rules_rows = []
-        roles = []
-        if restaurant is not None:
-            roles = list(
-                session.scalars(
-                    select(m.RestaurantRole).where(m.RestaurantRole.restaurant_id == restaurant.id).order_by(m.RestaurantRole.name)
-                )
+        return render_template("distribution_rules_home.html", **_distribution_rules_base_context(session, restaurant))
+
+
+@app.route("/distribution-rules/ai/interpret", methods=["POST"])
+def distribution_rule_ai_interpret():
+    """Natural-language Rule authoring — the PRIMARY way to create/change a
+    Tip Distribution Rule (AI_GOVERNED_RULE_AUTHORING_001 §12, applied to
+    Tips). Stateless: the entire conversation round-trips through hidden
+    form fields (`history_json`), never a server-side session — so the same
+    `rule_ai_authoring.interpret_rule_statement` call underneath this route
+    could equally be driven by a future chat/voice interface (task §10)."""
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        base_ctx = _distribution_rules_base_context(session, restaurant)
+        if restaurant is None:
+            flash("No Restaurant exists in this database yet.", "error")
+            return redirect(url_for("distribution_rules_home"))
+
+        statement = (request.form.get("statement") or "").strip()
+        history = _ai_history_from_json(request.form.get("history_json"))
+        rule_id = request.form.get("rule_id", type=int)
+
+        try:
+            result = rule_ai_svc.interpret_rule_statement(
+                session, restaurant_id=restaurant.id, statement=statement, history=history, rule_id=rule_id,
             )
-            for rule in rule_svc.list_rules(session, restaurant.id):
-                versions = rule_svc.list_versions(session, rule.id)
-                current = versions[-1] if versions else None
-                rules_rows.append(
-                    {
-                        "id": rule.id,
-                        "is_active": rule.is_active,
-                        "version_count": len(versions),
-                        "current": current,
-                        "source_role_name": current.source_role.name if current else "-",
-                        "recipient_role_name": current.recipient_role.name if current else "-",
-                    }
-                )
+        except rule_ai_svc.AIRuleAuthoringUnavailable as exc:
+            flash(f"AI rule interpretation is currently unavailable ({exc}). Use the Advanced form below.", "error")
+            return render_template("distribution_rules_home.html", **base_ctx)
+
+        new_history = list(history) + [rule_ai_svc.ConversationTurn(role="user", content=statement)]
+
+        if result.outcome == rule_ai_svc.OUTCOME_CLARIFICATION_NEEDED:
+            new_history.append(rule_ai_svc.ConversationTurn(role="assistant", content=result.clarification.question))
+            return render_template(
+                "distribution_rules_home.html", **base_ctx,
+                ai_mode="CLARIFICATION", ai_question=result.clarification.question,
+                ai_history_json=_ai_history_to_json(new_history), ai_rule_id=rule_id,
+            )
+
+        if result.outcome == rule_ai_svc.OUTCOME_UNSUPPORTED:
+            new_history.append(
+                rule_ai_svc.ConversationTurn(role="assistant", content=result.unsupported.unsupported_summary)
+            )
+            return render_template(
+                "distribution_rules_home.html", **base_ctx,
+                ai_mode="UNSUPPORTED", ai_unsupported=result.unsupported,
+                ai_history_json=_ai_history_to_json(new_history), ai_rule_id=rule_id,
+            )
+
+        # OUTCOME_PROPOSED
+        proposal = result.proposal
+        new_history.append(rule_ai_svc.ConversationTurn(role="assistant", content=proposal.human_readable_summary))
         return render_template(
-            "distribution_rules_home.html", restaurant=restaurant, rules_rows=rules_rows, roles=roles,
-            calculation_bases=m.TIP_DISTRIBUTION_CALCULATION_BASES, active_nav="distribution-rules",
+            "distribution_rules_home.html", **base_ctx,
+            ai_mode="PROPOSED", ai_proposal=proposal, ai_proposal_json=json.dumps(asdict(proposal)),
+            ai_history_json=_ai_history_to_json(new_history), ai_rule_id=rule_id,
         )
+
+
+@app.route("/distribution-rules/ai/confirm", methods=["POST"])
+def distribution_rule_ai_confirm():
+    """The ONLY route that turns an AI-produced proposal into a persisted
+    `TipDistributionRuleVersion` — reachable only via explicit human CONFIRM
+    (task §6). Re-validates the proposal from scratch (`confirm_rule_
+    proposal` never trusts the round-tripped hidden field blindly)."""
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        try:
+            data = json.loads(request.form.get("proposal_json") or "{}")
+            proposal = rule_ai_svc.RuleProposal(**data)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            flash("The proposed Rule could not be read back — please describe the Rule again.", "error")
+            return redirect(url_for("distribution_rules_home"))
+
+        created_by = (request.form.get("created_by") or "").strip() or None
+        try:
+            rule_ai_svc.confirm_rule_proposal(session, proposal, created_by=created_by)
+            session.commit()
+        except ValueError as exc:
+            session.rollback()
+            flash(str(exc), "error")
+            return redirect(url_for("distribution_rules_home"))
+
+        flash(f"Rule confirmed: {proposal.human_readable_summary}", "summary")
+        return redirect(url_for("distribution_rules_home"))
+
+
+@app.route("/distribution-rules/ai/cancel", methods=["POST"])
+def distribution_rule_ai_cancel():
+    """Explicit CANCEL (task §6) — nothing was ever written for a proposal
+    that only exists in a round-tripped hidden field, so this route's only
+    job is to discard it and return to a clean state."""
+    flash("Cancelled — nothing was created.", "summary")
+    return redirect(url_for("distribution_rules_home"))
 
 
 @app.route("/distribution-rules/new", methods=["POST"])
@@ -1127,6 +1282,89 @@ def distribution_rule_toggle_active(rule_id: int):
             rule_svc.set_active(session, rule_id, not rule.is_active)
             session.commit()
         return redirect(request.form.get("next") or url_for("distribution_rules_home"))
+
+
+# ---------------------------------------------------------------------------
+# Host Tip Audit / Explain (HOST_TIP_AUDIT_001) — explains the EXISTING Tip
+# Distribution Engine's own already-persisted output (`tips.host_audit_
+# report`); never a second calculation path. Read-only throughout.
+# ---------------------------------------------------------------------------
+
+def _host_audit_filters(session, restaurant):
+    employees = []
+    if restaurant is not None:
+        location_ids = list(
+            session.scalars(
+                select(m.RestaurantLocation.location_id).where(m.RestaurantLocation.restaurant_id == restaurant.id)
+            )
+        )
+        if location_ids:
+            employees = list(
+                session.scalars(
+                    select(m.Employee).where(m.Employee.location_id.in_(location_ids)).order_by(m.Employee.display_name)
+                )
+            )
+    return employees
+
+
+def _host_audit_report_from_request(session, restaurant):
+    """Shared by the HTML view and the CSV export — same filters, same
+    report, so the export is always an exact mirror of what is displayed."""
+    employee_id = request.args.get("employee_id", type=int)
+    start_at = request.args.get("start_at") or ""
+    end_at = request.args.get("end_at") or ""
+    if restaurant is None or not employee_id or not start_at or not end_at:
+        return None
+    _, tz, _, _ = _restaurant_period_config(session, restaurant)
+    period = _calculation_period_dt(start_at, end_at, tz)
+    if period is None or period[1] <= period[0]:
+        return None
+    period_start, period_end = period
+    # Calculated fresh here; the CSV export calls this same helper, so the
+    # download always mirrors exactly what the page showed.
+    return audit_svc.build_host_audit_report(
+        session, restaurant_id=restaurant.id, host_employee_id=employee_id,
+        period_start=period_start, period_end=period_end,
+    )
+
+
+@app.route("/host-audit")
+def host_audit_home():
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        employees = _host_audit_filters(session, restaurant)
+        report = _host_audit_report_from_request(session, restaurant)
+        return render_template(
+            "host_audit.html", restaurant=restaurant, employees=employees, report=report,
+            employee_id=request.args.get("employee_id", type=int),
+            start_at=request.args.get("start_at") or "",
+            end_at=request.args.get("end_at") or "", active_nav="host-audit",
+        )
+
+
+@app.route("/host-audit/export.csv")
+def host_audit_export_csv():
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        report = _host_audit_report_from_request(session, restaurant)
+        if report is None:
+            flash("Select a Restaurant, Host Employee, and a start/end date and time first.", "error")
+            return redirect(url_for("host_audit_home", **request.args))
+
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=audit_svc.CSV_FIELDNAMES)
+        writer.writeheader()
+        for row in audit_svc.report_to_csv_rows(report):
+            writer.writerow(row)
+
+        filename = (
+            f"host-tip-audit-{report.host_employee_name}-"
+            f"{request.args.get('start_at')}_{request.args.get('end_at')}.csv"
+        ).replace(":", "")
+        return Response(
+            buffer.getvalue(), mimetype="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import inspect as sa_inspect, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import authority_service
@@ -516,20 +516,22 @@ def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
         all(i.status == "READY" for i in cycle2_instructions),
     )
 
-    # === 11: regression — Distribution Engine's own atomic allocations are
-    # untouched by any of the above (Tip Entitlement is an aggregate ON TOP
-    # of allocations, never a replacement for them). ===
-    run = state1.calculation_run or engine.get_latest_unsuperseded_run(
-        session, restaurant_id=restaurant.id,
-        period_start=readiness_svc.business_date_period(date(2026, 3, 6))[0],
-        period_end=readiness_svc.business_date_period(date(2026, 3, 6))[1],
+    # === 11: regression — the Distribution Engine's atomic allocation lines
+    # are still produced normally, now recalculated ON DEMAND rather than
+    # read back from storage (TIPS_STATELESS_CALCULATION_001). The Tip
+    # Entitlement aggregate is a payout crystallization on top of these
+    # lines, never a replacement for them. ===
+    period_start, period_end = readiness_svc.business_date_period(date(2026, 3, 6))
+    calc = engine.calculate_tips(
+        session, restaurant_id=restaurant.id, period_start=period_start, period_end=period_end,
     )
-    allocations = list(
-        session.scalars(select(m.TipDistributionAllocation).where(m.TipDistributionAllocation.calculation_run_id == run.id))
-    ) if run else []
     result.check(
-        "regression: Distribution Engine's atomic TipDistributionAllocation rows are still produced normally",
-        len(allocations) > 0,
+        "regression: the Distribution Engine still produces its atomic allocation lines, derived on demand",
+        len(calc.lines) > 0,
+    )
+    result.check(
+        "regression: calculating for the payout period persists no allocation rows (nothing to store)",
+        "tip_distribution_allocations" not in sa_inspect(session.get_bind()).get_table_names(),
     )
 
 

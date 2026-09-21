@@ -146,8 +146,26 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         return emp
 
     # =====================================================================
-    # Scenario 2/3 — One Employee, two Locations, including same Role at
-    # both (concurrent, non-conflicting)
+    # Scenario 2/3 — Location-specific Assignment, under the canonical
+    # one-active-Role-per-Restaurant rule
+    # (EMPLOYEE_ASSIGNMENT_CLOVER_ALIGNMENT_001)
+    #
+    # SUPERSEDES this scenario's original expectation. TASK_ORGANIZATION_002
+    # originally asserted that one Employee could hold TWO concurrent open
+    # Assignments under the same Restaurant, differing only by Location
+    # (Winter Park + Mount Dora). Clover's real operating model is one
+    # Employee account = exactly one Role at a time within one Restaurant,
+    # now enforced by `ux_employee_assignments_one_active_role_per_restaurant`,
+    # so that expectation is obsolete and is replaced below.
+    #
+    # The scenario's actual INTENT is preserved intact and split into the
+    # two things that are still true:
+    #   (a) Location-specific Assignment is still fully supported — a single
+    #       active Assignment carries its own `location_id`, never forced to
+    #       NULL;
+    #   (b) one RF-One Employee identity is still never falsely rejected as
+    #       a duplicate — the invariant is scoped PER RESTAURANT, so the same
+    #       person may hold a concurrent Role at a DIFFERENT Restaurant.
     # =====================================================================
     giovanna = make_employee("E-GIOVANNA", "Giovanna")
     assignment_a = m.EmployeeAssignment(
@@ -155,25 +173,85 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         restaurant_role_id=role_manager.id, location_id=location_wp.id,
         valid_from=_dt(400), valid_to=None, assignment_source="MANUAL",
     )
-    assignment_b = m.EmployeeAssignment(
-        employee_id=giovanna.id, restaurant_id=restaurant.id, operational_area_id=area_root.id,
-        restaurant_role_id=role_manager.id, location_id=location_md.id,
+    session.add(assignment_a)
+    session.flush()
+
+    result.check(
+        "Scenario 2/3a: a single active EmployeeAssignment keeps its own Location (Winter Park) — "
+        "Location-specific assignment remains fully supported, never forced to NULL",
+        assignment_a.id is not None
+        and assignment_a.location_id == location_wp.id
+        and assignment_a.restaurant_role_id == role_manager.id
+        and assignment_a.valid_to is None,
+    )
+
+    rejected_second_open = _expect_integrity_error(
+        session,
+        lambda: session.add(
+            m.EmployeeAssignment(
+                employee_id=giovanna.id, restaurant_id=restaurant.id, operational_area_id=area_root.id,
+                restaurant_role_id=role_manager.id, location_id=location_md.id,
+                valid_from=_dt(400), valid_to=None, assignment_source="MANUAL",
+            )
+        ),
+    )
+    result.check(
+        "Scenario 2/3b: a SECOND concurrent open Assignment for the same Employee at the same "
+        "Restaurant is rejected at the database level, even when it differs by Location — one "
+        "Employee account holds at most one active RestaurantRole per Restaurant",
+        rejected_second_open,
+    )
+
+    giovanna_same_restaurant = session.scalars(
+        select(m.EmployeeAssignment).where(
+            m.EmployeeAssignment.employee_id == giovanna.id,
+            m.EmployeeAssignment.restaurant_id == restaurant.id,
+            m.EmployeeAssignment.valid_to.is_(None),
+        )
+    ).all()
+    result.check(
+        "Scenario 2/3c: exactly one active Assignment survives at that Restaurant, and the rejected "
+        "attempt left no partial row behind",
+        len(giovanna_same_restaurant) == 1 and giovanna_same_restaurant[0].id == assignment_a.id,
+    )
+
+    # The same Employee identity at a DIFFERENT Restaurant — the invariant is
+    # scoped per Restaurant, never globally per person, so this must succeed.
+    other_restaurant = m.Restaurant(name="Rome Test — Second Restaurant", default_currency="USD")
+    session.add(other_restaurant)
+    session.flush()
+    session.add(
+        m.RestaurantLocation(restaurant_id=other_restaurant.id, location_id=location_md.id, is_primary=True)
+    )
+    other_area = m.OperationalArea(
+        restaurant_id=other_restaurant.id, name="Restaurant Operations", code="ROOT")
+    other_role_server = m.RestaurantRole(restaurant_id=other_restaurant.id, name="Server")
+    session.add_all([other_area, other_role_server])
+    session.flush()
+
+    assignment_other = m.EmployeeAssignment(
+        employee_id=giovanna.id, restaurant_id=other_restaurant.id, operational_area_id=other_area.id,
+        restaurant_role_id=other_role_server.id, location_id=location_md.id,
         valid_from=_dt(400), valid_to=None, assignment_source="MANUAL",
     )
-    session.add_all([assignment_a, assignment_b])
+    session.add(assignment_other)
     session.flush()
 
     giovanna_assignments = session.scalars(
-        select(m.EmployeeAssignment).where(m.EmployeeAssignment.employee_id == giovanna.id)
+        select(m.EmployeeAssignment).where(
+            m.EmployeeAssignment.employee_id == giovanna.id,
+            m.EmployeeAssignment.valid_to.is_(None),
+        )
     ).all()
     result.check(
-        "Scenario 2/3: one Employee (Giovanna) holds two concurrent, valid EmployeeAssignment rows "
-        "under the SAME Restaurant Role (Manager) differing only by Location (Winter Park vs. Mount "
-        "Dora) — no false-duplicate rejection, no duplicate Employee identity",
+        "Scenario 2/3d: the SAME Employee identity concurrently holds a different active Role at a "
+        "DIFFERENT Restaurant — no false-duplicate rejection, no duplicate Employee identity "
+        "(the one-active-Role rule is scoped per Restaurant, never globally per person)",
         len(giovanna_assignments) == 2
+        and {a.restaurant_id for a in giovanna_assignments} == {restaurant.id, other_restaurant.id}
         and {a.location_id for a in giovanna_assignments} == {location_wp.id, location_md.id}
-        and all(a.restaurant_role_id == role_manager.id for a in giovanna_assignments)
-        and all(a.valid_to is None for a in giovanna_assignments),
+        and {a.restaurant_role_id for a in giovanna_assignments}
+        == {role_manager.id, other_role_server.id},
     )
 
     # =====================================================================
@@ -267,13 +345,21 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
 
     # =====================================================================
-    # Scenario 7 — Exact duplicate Assignment rejected; Location difference
-    # (already proven by Scenario 2/3) is never a false collision
+    # Scenario 7 — Exact duplicate Assignment rejected
+    #
+    # Uses its OWN Employee, who holds no other open Assignment, so the
+    # baseline row below is itself legal under the canonical one-active-
+    # Role-per-Restaurant rule (EMPLOYEE_ASSIGNMENT_CLOVER_ALIGNMENT_001)
+    # and the rejection this scenario asserts is unambiguously caused by the
+    # DUPLICATE, not by the one-active-Role index. This scenario previously
+    # reused Giovanna, who under the superseded model already held two open
+    # Assignments; that is no longer a valid starting state.
     # =====================================================================
+    emp_duplicate = make_employee("E-DUPLICATE", "DuplicateAssignmentEmployee")
     dup_valid_from = _dt(500)
     session.add(
         m.EmployeeAssignment(
-            employee_id=giovanna.id, restaurant_id=restaurant.id, operational_area_id=area_root.id,
+            employee_id=emp_duplicate.id, restaurant_id=restaurant.id, operational_area_id=area_root.id,
             restaurant_role_id=role_server.id, location_id=location_wp.id,
             valid_from=dup_valid_from, valid_to=None, assignment_source="MANUAL",
         )
@@ -283,7 +369,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     def _insert_exact_duplicate() -> None:
         session.add(
             m.EmployeeAssignment(
-                employee_id=giovanna.id, restaurant_id=restaurant.id, operational_area_id=area_root.id,
+                employee_id=emp_duplicate.id, restaurant_id=restaurant.id, operational_area_id=area_root.id,
                 restaurant_role_id=role_server.id, location_id=location_wp.id,
                 valid_from=dup_valid_from, valid_to=None, assignment_source="MANUAL",
             )
@@ -513,7 +599,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     session.add(m.PaymentTip(payment_id=cross_domain_payment.id, amount=1000, source_present=True))
     session.flush()
 
-    tips_run, tips_summary = distribution_engine.run_tip_distribution_calculation(
+    tips_result = distribution_engine.calculate_tips(
         # `distribution_engine` always compares its period bounds against a
         # timezone-aware Settlement Time (see its own `_aware_utc` helper) —
         # unlike this file's own naive-UTC `_dt()` convention, so these two
@@ -522,17 +608,15 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         period_end=datetime.now(UTC) + timedelta(days=1),
     )
     session.flush()
-    location_scoped_allocations = session.scalars(
-        select(m.TipDistributionAllocation).where(
-            m.TipDistributionAllocation.calculation_run_id == tips_run.id,
-            m.TipDistributionAllocation.recipient_employee_id == emp_location_scoped.id,
-        )
-    ).all()
+    location_scoped_allocations = [
+        line for line in tips_result.lines
+        if line.recipient_employee_id == emp_location_scoped.id
+    ]
     result.check(
         "Cross-domain: the canonical Tip Distribution Engine allocates to an Employee whose only "
         "matching Recipient-Role Assignment is Location-scoped (location_id set) exactly as it would "
         "for a Restaurant-wide Assignment — adding Location to EmployeeAssignment does not silently "
         "exclude anyone",
-        tips_run.status == distribution_engine.STATUS_COMPLETE
+        tips_result.blocked_reason is None
         and any(a.allocated_amount_minor >= 1 for a in location_scoped_allocations),
     )
