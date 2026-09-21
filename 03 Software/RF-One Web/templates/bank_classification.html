@@ -118,6 +118,127 @@
     <p class="empty">{{ 'No What matches this search.' if what_search else 'No What defined yet.' }}</p>
   {% endif %}
 
+  {# BANK_CLASSIFICATION_BOOTSTRAP_001 — load the accountant's own plan
+     instead of typing it in a row at a time. Upload -> parse -> PREVIEW ->
+     confirm; there is no path from a file straight into the catalog. #}
+  <details {{ 'open' if what_preview else '' }}>
+    <summary><strong>Import What Catalog</strong> &mdash; load a chart of accounts from a file</summary>
+    <p class="muted">
+      A What is <strong>structure only</strong>: statement type, code, name and hierarchy.
+      Amounts, balances and periods are figures <em>about</em> accounts and are never imported.
+      Rows that read as totals or headings are reported and skipped, not turned into accounts.
+    </p>
+    <form method="post" action="{{ url_for('bank_classification_what_import_preview') }}"
+          enctype="multipart/form-data" class="compact-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field-row">
+        <label for="catalog_file">File</label>
+        <input type="file" id="catalog_file" name="catalog_file" accept=".csv,.xlsx,.xls,.txt" required>
+      </div>
+      <div class="field-row">
+        <label for="sheet_name">Sheet</label>
+        <input type="text" id="sheet_name" name="sheet_name" maxlength="120"
+               placeholder="Workbook sheet name (blank = the first sheet)">
+      </div>
+      <div class="field-row">
+        <label for="default_statement_type">Statement type</label>
+        <select id="default_statement_type" name="default_statement_type">
+          <option value="">The file has its own Statement Type column</option>
+          <option value="PROFIT_LOSS">This whole file is Profit &amp; Loss</option>
+          <option value="BALANCE_SHEET">This whole file is Balance Sheet</option>
+        </select>
+      </div>
+      <button type="submit">Preview import</button>
+    </form>
+
+    {% if what_preview %}
+      <h3>Preview &mdash; nothing has been imported yet</h3>
+      <p class="muted">
+        Source: <code>{{ what_preview_file_name }}</code>
+        {%- if what_preview.sheet_name %}, sheet <code>{{ what_preview.sheet_name }}</code>{% endif %}.
+        {% if what_preview.detected_headers %}
+          Columns recognised:
+          {% for field, header in what_preview.detected_headers.items() %}<code>{{ header }}</code> &rarr; {{ field }}{{ '; ' if not loop.last }}{% endfor %}.
+        {% endif %}
+      </p>
+
+      {% if what_preview.file_anomalies %}
+        <div class="modal-empty-state">
+          <strong>This file cannot be imported.</strong>
+          <ul style="text-align:left;">
+            {% for anomaly in what_preview.file_anomalies %}<li>{{ anomaly }}</li>{% endfor %}
+          </ul>
+        </div>
+      {% else %}
+        <div class="coverage-tiles">
+          <div class="coverage-tile">
+            <div class="coverage-tile-value">{{ what_preview.importable_rows|length }}</div>
+            <div class="coverage-tile-label">Accounts to import</div>
+          </div>
+          <div class="coverage-tile">
+            <div class="coverage-tile-value">{{ what_preview.total_rows|length }}</div>
+            <div class="coverage-tile-label">Total rows (skipped)</div>
+          </div>
+          <div class="coverage-tile">
+            <div class="coverage-tile-value">{{ what_preview.heading_rows|length }}</div>
+            <div class="coverage-tile-label">Headings (skipped)</div>
+          </div>
+          <div class="coverage-tile{{ ' coverage-tile-warn' if what_preview.rejected_rows else '' }}">
+            <div class="coverage-tile-value">{{ what_preview.rejected_rows|length }}</div>
+            <div class="coverage-tile-label">Rejected (anomalies)</div>
+          </div>
+        </div>
+
+        <div class="table-scroll">
+          <table class="table-compact table-stack">
+            <thead>
+              <tr><th>Statement</th><th>Code</th><th>Name</th><th>Parent</th><th>Level</th>
+                  <th>Row type</th><th>Source</th><th>Anomalies</th></tr>
+            </thead>
+            <tbody>
+              {% for row in what_preview.rows %}
+                <tr class="{{ 'row-suppressed' if row.row_type != 'ACCOUNT' or row.anomalies else '' }}">
+                  <td data-label="Statement">
+                    {{ statement_type_labels.get(row.statement_type, row.statement_type or '—') }}
+                  </td>
+                  <td data-label="Code">
+                    <code>{{ row.code or '—' }}</code>
+                    {% if row.code_is_generated %}
+                      <span class="badge warn">generated</span>
+                      <span class="cell-note">Technical code &mdash; the plan carried none. Derived from
+                        the statement type and the account's position, so a re-import produces the same code.</span>
+                    {% endif %}
+                  </td>
+                  <td data-label="Name">{{ row.name }}</td>
+                  <td data-label="Parent"><code>{{ row.parent_code or '—' }}</code></td>
+                  <td data-label="Level" class="col-narrow">{{ row.level }}</td>
+                  <td data-label="Row type" class="col-narrow">
+                    <span class="badge {{ 'ok' if row.row_type == 'ACCOUNT' else 'warn' }}">{{ row.row_type }}</span>
+                  </td>
+                  <td data-label="Source"><span class="cell-note">{{ row.source_label }}</span></td>
+                  <td data-label="Anomalies">
+                    {% if row.anomalies %}
+                      {% for anomaly in row.anomalies %}<span class="cell-note">{{ anomaly }}</span>{% endfor %}
+                    {% else %}&mdash;{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% if what_preview.importable_rows %}
+          <form method="post" action="{{ url_for('bank_classification_what_import_confirm') }}" class="compact-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="preview_token" value="{{ what_preview_token }}">
+            <button type="submit">Confirm import of {{ what_preview.importable_rows|length }} account(s)</button>
+            <a class="btn btn-secondary" href="{{ url_for('bank_classification') }}#what">Cancel</a>
+          </form>
+        {% endif %}
+      {% endif %}
+    {% endif %}
+  </details>
+
   <details>
     <summary>Add a What</summary>
     <form method="post" action="{{ url_for('bank_classification_what_new') }}" class="compact-form">
@@ -374,4 +495,286 @@
     </form>
   </details>
 </details>
+
+{# ------------------------------------------------ D. UNCLASSIFIED RECEIVERS #}
+<details class="card" id="receivers" open>
+  <summary><strong>D. Unclassified Receivers</strong> &mdash; classify a whole group at once</summary>
+
+  <p class="muted">
+    Derived live from the canonical transactions &mdash; nothing here is stored. Transactions are
+    grouped by their <strong>exact normalized payee</strong>, so one decision covers every row that
+    names the same receiver. The
+    {{ receiver_summary.suppressed_copies }} accounting duplicate(s) are <strong>not</strong>
+    offered: classifying a copy is work that can never reach the books. Confirmed internal
+    transfers are excluded too &mdash; a transfer between your own instruments has no receiver.
+  </p>
+
+  <div class="coverage-tiles">
+    <div class="coverage-tile">
+      <div class="coverage-tile-value">{{ receiver_summary.groups }}</div>
+      <div class="coverage-tile-label">Receiver groups</div>
+    </div>
+    <div class="coverage-tile">
+      <div class="coverage-tile-value">{{ receiver_summary.transactions }}</div>
+      <div class="coverage-tile-label">Transactions represented</div>
+    </div>
+    <div class="coverage-tile{{ ' coverage-tile-warn' if receiver_summary.unclassified_groups else '' }}">
+      <div class="coverage-tile-value">{{ receiver_summary.unclassified_groups }}</div>
+      <div class="coverage-tile-label">Still unclassified</div>
+    </div>
+    <div class="coverage-tile{{ ' coverage-tile-warn' if receiver_summary.ambiguous_groups else '' }}">
+      <div class="coverage-tile-value">{{ receiver_summary.ambiguous_groups }}</div>
+      <div class="coverage-tile-label">Ambiguous</div>
+    </div>
+    <div class="coverage-tile">
+      <div class="coverage-tile-value">{{ receiver_summary.assigned_groups }}</div>
+      <div class="coverage-tile-label">Assigned</div>
+    </div>
+  </div>
+
+  <form method="get" class="compact-form" action="{{ url_for('bank_classification') }}#receivers">
+    <div class="field-row">
+      <label for="receiver_q">Search</label>
+      <input type="search" id="receiver_q" name="receiver_q" value="{{ receiver_search }}"
+             placeholder="Payee or original description">
+    </div>
+    <div class="field-row">
+      <label for="receiver_status">Status</label>
+      <select id="receiver_status" name="receiver_status">
+        <option value="">All</option>
+        <option value="UNCLASSIFIED" {{ 'selected' if receiver_status == 'UNCLASSIFIED' else '' }}>Unclassified</option>
+        <option value="AMBIGUOUS" {{ 'selected' if receiver_status == 'AMBIGUOUS' else '' }}>Ambiguous</option>
+        <option value="ASSIGNED" {{ 'selected' if receiver_status == 'ASSIGNED' else '' }}>Assigned</option>
+      </select>
+    </div>
+    <div class="field-row">
+      <label for="receiver_sort">Sort by</label>
+      <select id="receiver_sort" name="receiver_sort">
+        <option value="count" {{ 'selected' if receiver_sort == 'count' else '' }}>Transaction count</option>
+        <option value="value" {{ 'selected' if receiver_sort == 'value' else '' }}>Absolute value</option>
+        <option value="recent" {{ 'selected' if receiver_sort == 'recent' else '' }}>Most recent</option>
+      </select>
+    </div>
+    <button type="submit">Apply</button>
+    {% if receiver_search or receiver_status %}
+      <a href="{{ url_for('bank_classification') }}#receivers">Clear</a>
+    {% endif %}
+  </form>
+
+  {% if receiver_candidates_page %}
+    {# One form around the whole table: several groups can be approved onto
+       the same Who in a single atomic operation. #}
+    <form method="post" action="{{ url_for('bank_classification_receivers_approve') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="table-scroll">
+        <table class="table-compact table-stack">
+          <thead>
+            <tr>
+              <th></th><th>Normalized payee</th><th>Txn</th><th>Period</th><th>Total</th>
+              <th>Dir</th><th>Companies / instruments</th><th>Suggestion</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for candidate in receiver_candidates_page %}
+              <tr class="{{ 'row-suppressed' if candidate.status == STATUS_ASSIGNED else '' }}">
+                <td data-label="Select" class="col-narrow">
+                  {% if candidate.status != STATUS_AMBIGUOUS %}
+                    <input type="checkbox" name="payee_key" value="{{ candidate.group_key }}"
+                           aria-label="Select {{ candidate.payee_normalized }}">
+                  {% endif %}
+                </td>
+                <td data-label="Normalized payee">
+                  <strong>{{ candidate.payee_normalized }}</strong>
+                  <details>
+                    <summary>Examples</summary>
+                    {% for description in candidate.sample_descriptions %}
+                      <span class="cell-note"><code>{{ description }}</code></span>
+                    {% endfor %}
+                    <span class="cell-note">Transaction ids: {{ candidate.transaction_ids[:10]|join(', ') }}{% if candidate.transaction_ids|length > 10 %}, &hellip;{% endif %}</span>
+                  </details>
+                  {% if candidate.similar %}
+                    <details>
+                      <summary>{{ candidate.similar|length }} similar description(s)</summary>
+                      <span class="cell-note">{{ candidate.similar[0].reason }}</span>
+                      {% for similar in candidate.similar[:5] %}
+                        <span class="cell-note">&asymp; <code>{{ similar.payee_normalized }}</code>
+                          ({{ similar.transaction_count }} txn)</span>
+                      {% endfor %}
+                    </details>
+                  {% endif %}
+                </td>
+                <td data-label="Txn" class="col-narrow">{{ candidate.transaction_count }}</td>
+                <td data-label="Period" class="col-date">
+                  {{ candidate.first_date or '—' }}<br>{{ candidate.last_date or '—' }}
+                </td>
+                <td data-label="Total" class="col-amount">
+                  {{ "%.2f"|format(candidate.total_minor / 100) }}
+                  <span class="cell-note">abs {{ "%.2f"|format(candidate.absolute_total_minor / 100) }}</span>
+                </td>
+                <td data-label="Dir" class="col-narrow">{{ candidate.direction }}</td>
+                <td data-label="Companies / instruments">
+                  <span class="cell-note">{{ candidate.legal_entity_names|join(', ') or '—' }}</span>
+                  <span class="cell-note">{{ candidate.instrument_names|join(', ') }}</span>
+                </td>
+                <td data-label="Suggestion">
+                  {% if candidate.suggested_occurrence_name %}
+                    {{ candidate.suggested_occurrence_name }}
+                    <span class="badge {{ 'ok' if candidate.confidence == 'HIGH' else 'warn' }}">{{ candidate.confidence }}</span>
+                  {% else %}&mdash;{% endif %}
+                  {% if candidate.confidence_reason %}
+                    <span class="cell-note">{{ candidate.confidence_reason }}</span>
+                  {% endif %}
+                </td>
+                <td data-label="Status" class="col-narrow">
+                  <span class="badge {{ 'ok' if candidate.status == STATUS_ASSIGNED else ('bad' if candidate.status == STATUS_AMBIGUOUS else 'warn') }}">{{ candidate.status }}</span>
+                  <span class="cell-note">{{ candidate.origin }}</span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <p class="muted">
+        Showing {{ receiver_candidates_page|length }} of {{ receiver_filtered_count }} group(s)
+        &mdash; page {{ receiver_page }} of {{ receiver_total_pages }}.
+        {% if receiver_page > 1 %}
+          <a href="{{ url_for('bank_classification', receiver_q=receiver_search, receiver_status=receiver_status, receiver_sort=receiver_sort, receiver_page=receiver_page - 1) }}#receivers">&larr; Previous</a>
+        {% endif %}
+        {% if receiver_page < receiver_total_pages %}
+          <a href="{{ url_for('bank_classification', receiver_q=receiver_search, receiver_status=receiver_status, receiver_sort=receiver_sort, receiver_page=receiver_page + 1) }}#receivers">Next &rarr;</a>
+        {% endif %}
+      </p>
+
+      <h3>Approve the selected group(s)</h3>
+      <p class="muted">
+        Pick an existing Who, or create one. The <strong>Why</strong> and the <strong>What</strong>
+        follow from that Who &mdash; they are never chosen per transaction. A transaction a human
+        already decided is left untouched.
+      </p>
+      <div class="field-row">
+        <label for="occurrence_id">Existing Who</label>
+        <select id="occurrence_id" name="occurrence_id">
+          <option value="">&mdash; create a new Who instead &mdash;</option>
+          {% for who in whos %}
+            {% set chain = chains.get(who.id) %}
+            <option value="{{ who.id }}" {{ 'disabled' if not (chain and chain.is_complete) else '' }}>
+              {{ who.canonical_name }}{% if not (chain and chain.is_complete) %} (incomplete chain){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="new_occurrence_name">New Who name</label>
+        <input type="text" id="new_occurrence_name" name="new_occurrence_name" maxlength="255"
+               placeholder="Leave blank when picking an existing Who">
+      </div>
+      <div class="field-row">
+        <label for="occurrence_type_id">New Who type</label>
+        <select id="occurrence_type_id" name="occurrence_type_id">
+          <option value="">Choose&hellip;</option>
+          {% for type in occurrence_types %}
+            <option value="{{ type.id }}">{{ type.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="default_transaction_reason_id">New Who default Why</label>
+        <select id="default_transaction_reason_id" name="default_transaction_reason_id">
+          <option value="">Choose a Why&hellip;</option>
+          {% for why in assignable_whys %}
+            {% set what = whats_by_id.get(why.accounting_classification_id) %}
+            <option value="{{ why.id }}">{{ why.name }} &rarr; {{ what.code if what else '—' }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <label class="who-picker-learn">
+        <input type="checkbox" name="learn_description" checked>
+        Record an exact-match rule for each approved description, so the same receiver is
+        recognised automatically on future imports.
+      </label>
+      <div class="btn-row">
+        <button type="submit">Approve selected groups</button>
+      </div>
+    </form>
+  {% else %}
+    <p class="modal-empty-state">
+      {% if receiver_search or receiver_status %}
+        No receiver group matches this filter.
+      {% elif receiver_summary.transactions == 0 %}
+        <strong>No canonical transaction to classify.</strong><br>
+        Import bank files on the <a href="{{ url_for('bank_home') }}">Import &amp; Instruments</a> tab first.
+      {% else %}
+        <strong>Every receiver group is classified.</strong>
+      {% endif %}
+    </p>
+  {% endif %}
+</details>
+
+{# ------------------------------------------- E. ASSIGNED / LEARNED RULES #}
+<details class="card" id="learned">
+  <summary><strong>E. Assigned / Learned Rules</strong> &mdash; what RF-One will recognise next time</summary>
+
+  <p class="muted">
+    Each rule recognises a <strong>Who</strong> from an exact normalized description. The Why and
+    the What are re-derived from that Who's current chain every time the rule applies, so
+    re-pointing a Who takes effect immediately without touching a single rule. Rules that
+    contradict each other leave the transaction for a human instead of guessing.
+  </p>
+
+  {% if learned_rules %}
+    <div class="table-scroll">
+      <table class="table-compact table-stack">
+        <thead>
+          <tr><th>#</th><th>Match</th><th>Pattern</th><th>Who</th><th>Auto</th>
+              <th>Confirmations</th><th>Contradictions</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for rule in learned_rules %}
+            {% set who = occurrences_by_id.get(rule.occurrence_id) %}
+            <tr>
+              <td data-label="#" class="col-narrow">{{ rule.id }}</td>
+              <td data-label="Match" class="col-narrow">{{ rule.match_type }}</td>
+              <td data-label="Pattern"><code>{{ rule.normalized_pattern }}</code></td>
+              <td data-label="Who">{{ who.canonical_name if who else rule.occurrence_id }}</td>
+              <td data-label="Auto" class="col-narrow">
+                <span class="badge {{ 'ok' if rule.auto_apply_enabled else 'warn' }}">{{ 'YES' if rule.auto_apply_enabled else 'NO' }}</span>
+              </td>
+              <td data-label="Confirmations" class="col-narrow">{{ rule.human_confirmations }}</td>
+              <td data-label="Contradictions" class="col-narrow">{{ rule.human_contradictions }}</td>
+              <td data-label="Status" class="col-narrow">
+                <span class="badge {{ 'ok' if rule.status == 'ACTIVE' else 'bad' }}">{{ rule.status }}</span>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="modal-empty-state">
+      <strong>No recognition rule recorded yet.</strong><br>
+      Approving a receiver group above records one, so the same receiver is classified
+      automatically on the next import.
+    </p>
+  {% endif %}
+</details>
+
+{# ------------------------------------------------ Invoice boundary ------ #}
+<div class="card">
+  <h2>Suppliers paid by invoice</h2>
+  <p class="muted">
+    A bank movement says <strong>who was paid</strong>, not <strong>what was bought</strong>. A
+    supplier paid against an invoice is classified here as the settlement it is &mdash; typically an
+    <em>Accounts Payable settlement</em> on the Balance Sheet. The Food Cost / Operating /
+    Deductible composition comes from the invoice (Invoice Intake / Purchased), never from the
+    bank line: a single Costco, Instacart, Sam's, Cheney Brothers or Prime Line payment routinely
+    covers several cost families at once, and splitting it from the bank side would be invention.
+  </p>
+  <p class="muted">
+    Where the invoice or its link is missing, that is reported as a matching gap. Building the
+    Bank &harr; Invoice matching itself is deliberately out of scope here &mdash; this states the
+    boundary, nothing more.
+  </p>
+</div>
 {% endblock %}

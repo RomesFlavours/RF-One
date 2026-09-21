@@ -38,7 +38,9 @@ this module never imports `app.py` itself."""
 
 from __future__ import annotations
 
+import base64
 import calendar
+import json
 from datetime import date, datetime
 
 from flask import Response, abort, flash, redirect, render_template, request, url_for
@@ -47,6 +49,8 @@ from sqlalchemy import func, or_, select
 from rfone_data_store import models as m
 from rfone_data_store.bank_reconciliation import accounting_dedup
 from rfone_data_store.bank_reconciliation import card_configuration
+from rfone_data_store.bank_reconciliation import receiver_candidates
+from rfone_data_store.bank_reconciliation import what_catalog_import
 from rfone_data_store.bank_reconciliation import classification as classification_service
 from rfone_data_store.bank_reconciliation import export as export_service
 from rfone_data_store.bank_reconciliation import matching as matching_service
@@ -882,7 +886,13 @@ def register_bank_routes(
         with SessionFactory() as db:
             try:
                 bank_service.resolve_duplicate_decision(db, transaction_id=transaction_id, decision=decision)
+                # BANK_CLASSIFICATION_BOOTSTRAP_001: a human verdict outranks
+                # the automatic accounting key, so it only takes effect once
+                # deduplication is re-derived. Confirming DISTINCT without
+                # this left the row suppressed despite the decision.
+                bank_service.recompute_accounting_deduplication(db)
                 db.commit()
+                flash(f"Duplicate decision recorded ({decision}) and deduplication recomputed.", "info")
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
@@ -996,9 +1006,66 @@ def register_bank_routes(
             whys_by_id = {r.id: r for r in classification_service.list_transaction_reasons(db)}
             types_by_id = {t.id: t for t in classification_service.list_occurrence_types(db)}
 
+            # BANK_CLASSIFICATION_BOOTSTRAP_001 — the receiver review.
+            # Derived on every request from the current transactions: there
+            # is no stored candidate that could go stale, and rendering the
+            # page writes nothing.
+            receiver_search = (request.args.get("receiver_q") or "").strip()
+            receiver_status = (request.args.get("receiver_status") or "").strip().upper()
+            receiver_sort = request.args.get("receiver_sort") or "count"
+            receiver_page = max(request.args.get("receiver_page", type=int) or 1, 1)
+            page_size = 25
+
+            all_candidates = receiver_candidates.build_candidates(db)
+            filtered = all_candidates
+            if receiver_search:
+                needle = receiver_search.lower()
+                filtered = [
+                    c for c in filtered
+                    if needle in c.payee_normalized.lower()
+                    or any(needle in d.lower() for d in c.sample_descriptions)
+                ]
+            if receiver_status in (
+                receiver_candidates.STATUS_UNCLASSIFIED,
+                receiver_candidates.STATUS_AMBIGUOUS,
+                receiver_candidates.STATUS_ASSIGNED,
+            ):
+                filtered = [c for c in filtered if c.status == receiver_status]
+            if receiver_sort == "value":
+                filtered = sorted(filtered, key=lambda c: -c.absolute_total_minor)
+            elif receiver_sort == "recent":
+                filtered = sorted(filtered, key=lambda c: (c.last_date is None, c.last_date), reverse=True)
+            else:
+                filtered = sorted(
+                    filtered, key=lambda c: (-c.transaction_count, -c.absolute_total_minor)
+                )
+
+            total_pages = max((len(filtered) + page_size - 1) // page_size, 1)
+            receiver_page = min(receiver_page, total_pages)
+            page_start = (receiver_page - 1) * page_size
+            receiver_page_items = filtered[page_start:page_start + page_size]
+
+            learned_rules = db.scalars(
+                select(m.BankRecognitionRule)
+                .order_by(m.BankRecognitionRule.id.desc())
+                .limit(100)
+            ).all()
+
             return render_template(
                 "bank_classification.html",
                 whats=whats, whys=whys, whos=whos,
+                receiver_candidates_page=receiver_page_items,
+                receiver_summary=receiver_candidates.summary(db),
+                receiver_filtered_count=len(filtered),
+                receiver_page=receiver_page, receiver_total_pages=total_pages,
+                receiver_search=receiver_search, receiver_status=receiver_status,
+                receiver_sort=receiver_sort,
+                learned_rules=learned_rules,
+                occurrences_by_id={o.id: o for o in whos},
+                STATUS_UNCLASSIFIED=receiver_candidates.STATUS_UNCLASSIFIED,
+                STATUS_AMBIGUOUS=receiver_candidates.STATUS_AMBIGUOUS,
+                STATUS_ASSIGNED=receiver_candidates.STATUS_ASSIGNED,
+                what_preview=None,
                 whats_by_id=whats_by_id, whys_by_id=whys_by_id, types_by_id=types_by_id,
                 assignable_whats=assignable_whats, assignable_whys=assignable_whys,
                 occurrence_types=classification_service.list_occurrence_types(db),
@@ -1007,6 +1074,184 @@ def register_bank_routes(
                 statement_type_labels=classification_service.STATEMENT_TYPE_LABELS,
                 what_search=what_search, why_search=why_search, who_search=who_search,
             )
+
+    # --- What catalog import (BANK_CLASSIFICATION_BOOTSTRAP_001) ------
+    #
+    # Upload -> parse -> PREVIEW -> human confirmation -> import. There is
+    # deliberately no route that takes a file and writes accounts in one
+    # step: a chart of accounts is the vocabulary every future decision is
+    # phrased in, and it is not imported on trust.
+
+    @app.route("/bank/classification/what/import", methods=["POST"])
+    @gate
+    def bank_classification_what_import_preview():
+        """Parse an uploaded plan and show what it contains. Writes nothing."""
+        require_csrf()
+        uploaded = request.files.get("catalog_file")
+        if uploaded is None or not uploaded.filename:
+            flash("Choose a .csv or .xlsx chart of accounts to import.", "error")
+            return _redirect_to_classification("what")
+
+        payload = uploaded.read()
+        parsed = what_catalog_import.parse(
+            payload,
+            file_name=uploaded.filename,
+            sheet_name=(request.form.get("sheet_name") or "").strip() or None,
+            default_statement_type=(request.form.get("default_statement_type") or "").strip() or None,
+        )
+
+        with SessionFactory() as db:
+            whats = classification_service.list_accounting_classifications(db)
+            whys = classification_service.list_transaction_reasons(db)
+            whos = classification_service.list_occurrences(db)
+            return render_template(
+                "bank_classification.html",
+                whats=whats, whys=whys, whos=whos,
+                whats_by_id={w.id: w for w in whats},
+                whys_by_id={r.id: r for r in whys},
+                types_by_id={t.id: t for t in classification_service.list_occurrence_types(db)},
+                assignable_whats=[
+                    w for w in whats if w.active and w.statement_type is not None
+                ],
+                assignable_whys=[
+                    r for r in whys
+                    if r.status == "ACTIVE" and r.accounting_classification_id is not None
+                ],
+                occurrence_types=classification_service.list_occurrence_types(db),
+                chains=classification_service.resolve_chains(db, whos),
+                usage={
+                    w.id: classification_service.accounting_classification_usage(db, w.id)
+                    for w in whats
+                },
+                statement_type_labels=classification_service.STATEMENT_TYPE_LABELS,
+                what_search="", why_search="", who_search="",
+                receiver_candidates_page=[], receiver_summary=receiver_candidates.summary(db),
+                receiver_filtered_count=0, receiver_page=1, receiver_total_pages=1,
+                receiver_search="", receiver_status="", receiver_sort="count",
+                learned_rules=[], occurrences_by_id={o.id: o for o in whos},
+                STATUS_UNCLASSIFIED=receiver_candidates.STATUS_UNCLASSIFIED,
+                STATUS_AMBIGUOUS=receiver_candidates.STATUS_AMBIGUOUS,
+                STATUS_ASSIGNED=receiver_candidates.STATUS_ASSIGNED,
+                what_preview=parsed,
+                what_preview_file_name=uploaded.filename,
+                # The PARSED ROWS travel back for confirmation, not the file:
+                # the preview a human approved is exactly what gets imported,
+                # and no uploaded document is retained anywhere.
+                what_preview_token=base64.b64encode(json.dumps({
+                    "file_name": uploaded.filename,
+                    "sheet_name": parsed.sheet_name,
+                    "rows": [
+                        {
+                            "source_row_number": row.source_row_number,
+                            "statement_type": row.statement_type,
+                            "code": row.code,
+                            "code_is_generated": row.code_is_generated,
+                            "name": row.name,
+                            "parent_code": row.parent_code,
+                            "level": row.level,
+                            "row_type": row.row_type,
+                            "source_label": row.source_label,
+                        }
+                        for row in parsed.importable_rows
+                    ],
+                }).encode("utf-8")).decode("ascii"),
+            )
+
+    @app.route("/bank/classification/what/import/confirm", methods=["POST"])
+    @gate
+    def bank_classification_what_import_confirm():
+        """Import exactly the rows the human just saw in the preview."""
+        require_csrf()
+        token = request.form.get("preview_token") or ""
+        try:
+            payload = json.loads(base64.b64decode(token).decode("utf-8"))
+        except Exception:  # noqa: BLE001 — a malformed token is operator error
+            flash("The preview could not be read. Upload the file again.", "error")
+            return _redirect_to_classification("what")
+
+        parsed = what_catalog_import.ParsedWhatCatalog(sheet_name=payload.get("sheet_name"))
+        for row in payload.get("rows", []):
+            parsed.rows.append(what_catalog_import.ParsedWhatRow(
+                source_row_number=row["source_row_number"],
+                statement_type=row["statement_type"],
+                code=row["code"],
+                code_is_generated=row["code_is_generated"],
+                name=row["name"],
+                parent_code=row["parent_code"],
+                level=row["level"],
+                row_type=row["row_type"],
+                source_label=row["source_label"],
+            ))
+
+        with SessionFactory() as db:
+            try:
+                outcome = what_catalog_import.apply_import(
+                    db, parsed,
+                    source_note=f"Confirmed from the preview of {payload.get('file_name')!r}.",
+                )
+                db.commit()
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+                return _redirect_to_classification("what")
+
+        message = (
+            f"What catalog imported: {len(outcome.created)} created, "
+            f"{len(outcome.unchanged)} already present and unchanged, "
+            f"{outcome.skipped_totals} total row(s) and {outcome.skipped_headings} heading(s) "
+            f"skipped, {outcome.rejected} row(s) rejected."
+        )
+        flash(message, "info")
+        for conflict in outcome.conflicts:
+            flash(f"Conflict, not overwritten — {conflict}", "error")
+        return _redirect_to_classification("what")
+
+    # --- Receiver approval --------------------------------------------
+
+    @app.route("/bank/classification/receivers/approve", methods=["POST"])
+    @gate
+    def bank_classification_receivers_approve():
+        """Approve one or more receiver groups onto one Who.
+
+        Atomic: `approve_candidates` raises before writing anything if the
+        Who's chain is incomplete or a group is ambiguous, and the commit
+        is all-or-nothing."""
+        require_csrf()
+        payee_keys = request.form.getlist("payee_key")
+        with SessionFactory() as db:
+            account = _current_account(db)
+            try:
+                outcome = receiver_candidates.approve_candidates(
+                    db,
+                    payee_keys=payee_keys,
+                    occurrence_id=request.form.get("occurrence_id", type=int) or None,
+                    new_occurrence_name=(request.form.get("new_occurrence_name") or "").strip() or None,
+                    occurrence_type_id=request.form.get("occurrence_type_id", type=int) or None,
+                    default_transaction_reason_id=request.form.get(
+                        "default_transaction_reason_id", type=int,
+                    ) or None,
+                    confirmed_by_account_id=account.id,
+                    learn_description=bool(request.form.get("learn_description")),
+                )
+                db.commit()
+                flash(
+                    f"{outcome.transactions_classified} transaction(s) classified as "
+                    f"{outcome.occurrence_name!r} across {len(outcome.payees)} receiver group(s). "
+                    + (
+                        f"{outcome.transactions_skipped_human} left untouched because a human had "
+                        "already decided them. " if outcome.transactions_skipped_human else ""
+                    )
+                    + (
+                        f"{len(outcome.rules_created)} exact-match rule(s) recorded for future "
+                        "imports." if outcome.rules_created else
+                        "No recognition rule was recorded."
+                    ),
+                    "info",
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+        return _redirect_to_classification("receivers")
 
     def _redirect_to_classification(section: str):
         return redirect(url_for("bank_classification") + f"#{section}")

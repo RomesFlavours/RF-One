@@ -130,6 +130,18 @@ The detail — the exact key, the payee normalization, the canonical choice, the
 
 ---
 
+## From import to classified books
+
+Importing a bank file is not the same as knowing what its movements are. Classification is made practical in three steps rather than one long review:
+
+1. **The What catalog is loaded from the accountant's own chart of accounts**, not typed in. Upload, parse, preview, confirm — structure only, never amounts, and totals and headings are reported rather than turned into accounts. A plan with no codes of its own gets stable technical codes, so re-importing it changes nothing.
+2. **Receivers are proposed, not invented.** The canonical transactions are grouped by the receiver they actually name, so one decision covers every row naming the same one. Accounting duplicates and confirmed internal transfers are excluded — classifying them would be work that never reaches the books. Descriptions that merely look alike are shown as suggestions with the reason and are never merged automatically.
+3. **One approval classifies the whole group**, derives the Why and the What from the chosen Who, writes an append-only snapshot per transaction, and records an exact-match rule so the same receiver is recognised on the next import. A human decision is never overwritten, and a receiver already classified under two different Who values is reported as ambiguous rather than resolved by guesswork.
+
+Full detail, including the boundary with invoices, is §15 of `BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATION_001.md`.
+
+---
+
 ## Bank Reconciliation ≠ Purchased
 
 Bank Reconciliation is the Business-Domain/Administration-side reconciliation Purchased's own README (`01 Domains/Shared Domains/Purchased/README.md`, "Bank Reconciliation boundary") already anticipates and explicitly excludes from its own scope:
