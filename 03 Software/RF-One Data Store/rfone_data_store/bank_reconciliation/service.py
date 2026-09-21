@@ -1528,6 +1528,13 @@ def _normalize_rows(
             transaction_date=row.transaction_date,
             description_original=row.description or "",
             description_normalized=description_normalized,
+            # BANK_MEMO_PURPOSE_CLASSIFICATION_001 — PURPOSE text the
+            # source supplied, preserved verbatim and separately from the
+            # bank's own description. NOT folded into
+            # `description_normalized`, which stays exactly what it was:
+            # a duplicate-detection key, not an evidence store.
+            source_memo=row.source_memo,
+            source_memo_field=row.source_memo_field,
             amount_minor=row.amount_minor,
             native_transaction_type=row.bank_transaction_type,
             reference=row.reference,

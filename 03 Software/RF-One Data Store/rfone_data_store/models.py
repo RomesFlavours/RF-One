@@ -10711,6 +10711,23 @@ class FinancialTransaction(Base):
     transaction_datetime: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     description_original: Mapped[str | None] = mapped_column(Text, nullable=True)
     description_normalized: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # BANK_MEMO_PURPOSE_CLASSIFICATION_001 — PURPOSE evidence, kept apart
+    # from the bank-generated description above.
+    #
+    # `description_original` is what the BANK wrote: for a person payment
+    # it names the recipient and therefore answers WHO, never why.
+    # `source_memo` is the user-entered or bank-provided PURPOSE text — the
+    # Chase card `Memo` column today, a Mercury note or external memo
+    # later — preserved verbatim, never normalized in place and never
+    # merged into the description. `source_memo_field` records which
+    # source column it came from, so a reader can always tell Description
+    # from Memo from Note rather than trusting one flattened string.
+    #
+    # NULL means the source supplied no purpose field at all, which is a
+    # different fact from "supplied an empty one" and is why neither
+    # column carries a default.
+    source_memo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_memo_field: Mapped[str | None] = mapped_column(String(64), nullable=True)
     amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
     native_transaction_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -11246,13 +11263,26 @@ class BankRecognitionRule(Base):
     `CONTAINS_TEXT`/`PREFIX` rules may exist only because a human
     explicitly chose that broader match type; `EXACT_NORMALIZED_
     DESCRIPTION` is the only match type a plain "reuse this decision"
-    confirmation may create on its own."""
+    confirmation may create on its own.
+
+    Two fields decide the SCOPE of what a rule knows
+    (BANK_MEMO_PURPOSE_CLASSIFICATION_001):
+
+    * `match_field` — DESCRIPTION (the bank's own text) or MEMO (the
+      purpose text a human wrote). A memo rule carries no identity;
+    * `determines_purpose` — whether matching supplies the WHAT, or only
+      the WHO. False is what makes "this is Mario" reusable knowledge
+      while "payments to Mario are contract labour" is not."""
 
     __tablename__ = "bank_recognition_rules"
     __table_args__ = (
         CheckConstraint(
             "match_type IN ('EXACT_NORMALIZED_DESCRIPTION', 'CONTAINS_TEXT', 'PREFIX')",
             name="ck_bank_recognition_rule_match_type",
+        ),
+        CheckConstraint(
+            "match_field IN ('DESCRIPTION', 'MEMO')",
+            name="ck_bank_recognition_rule_match_field",
         ),
         CheckConstraint(
             "direction IS NULL OR direction IN ('DEBIT', 'CREDIT')",
@@ -11268,6 +11298,28 @@ class BankRecognitionRule(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     match_type: Mapped[str] = mapped_column(String(32), nullable=False)
     normalized_pattern: Mapped[str] = mapped_column(Text, nullable=False)
+    # BANK_MEMO_PURPOSE_CLASSIFICATION_001 — which TEXT the pattern is
+    # matched against. DESCRIPTION is what every rule did before this task
+    # and stays the default; MEMO matches the purpose field instead, which
+    # is how "any payment whose memo begins with TIP" becomes a rule
+    # without any person's name in it.
+    match_field: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="DESCRIPTION", server_default="DESCRIPTION",
+    )
+    # Whether this rule may supply the WHAT, or only the WHO.
+    #
+    # A rule learned from a PERSON payment recognizes the person and
+    # nothing else: that Mario received 1099 labour once does not make the
+    # next payment to Mario 1099 labour, and a rule that said so would be
+    # teaching RF-One that identity determines accounting purpose. Such a
+    # rule is stored with `determines_purpose = False`, and recognition
+    # then names the Who and leaves the What for purpose evidence or for a
+    # human. A human may still create a purpose-determining rule for a
+    # person deliberately — but never as a side effect of classifying one
+    # transaction.
+    determines_purpose: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("1"),
+    )
     # NULL = applies to any Payment Instrument; set = scoped to one instrument.
     payment_instrument_id: Mapped[int | None] = mapped_column(ForeignKey("payment_instruments.id"), nullable=True)
     # NULL = applies regardless of direction. DEBIT = amount_minor < 0,

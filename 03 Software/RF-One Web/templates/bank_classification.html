@@ -582,7 +582,8 @@
         <table class="table-compact table-stack">
           <thead>
             <tr>
-              <th></th><th>Normalized payee</th><th>Txn</th><th>Period</th><th>Total</th>
+              <th></th><th>Normalized payee</th><th>Who / method</th><th>Purpose</th>
+              <th>Txn</th><th>Period</th><th>Total</th>
               <th>Dir</th><th>Companies / instruments</th><th>Suggestion</th><th>Status</th>
             </tr>
           </thead>
@@ -593,6 +594,44 @@
                   {% if candidate.status != STATUS_AMBIGUOUS %}
                     <input type="checkbox" name="payee_key" value="{{ candidate.group_key }}"
                            aria-label="Select {{ candidate.payee_normalized }}">
+                  {% endif %}
+                </td>
+                <td data-label="Who / method">
+                  {# BANK_MEMO_PURPOSE_CLASSIFICATION_001 — WHO is one
+                     question. It is shown on its own so that knowing the
+                     person is never read as knowing the reason. #}
+                  {% if candidate.counterparty_name %}
+                    <strong>{{ candidate.counterparty_name }}</strong><br>
+                  {% endif %}
+                  <span class="badge">{{ candidate.channel }}</span>
+                  {% if candidate.is_person_channel %}
+                    <span class="cell-note">Person / direct payee &mdash; the name says who was
+                    paid, never what for.</span>
+                  {% endif %}
+                </td>
+                <td data-label="Purpose">
+                  {% if candidate.purpose_status == 'PROVEN' %}
+                    <span class="badge ok">PROVEN</span>
+                    {{ candidate.purpose_account_code or '' }}
+                  {% elif candidate.purpose_status == 'AMBIGUOUS' %}
+                    <span class="badge warn">AMBIGUOUS</span>
+                  {% else %}
+                    <span class="badge warn">MISSING</span>
+                  {% endif %}
+                  {% if candidate.source_memos %}
+                    <details>
+                      <summary>Memo / note</summary>
+                      <ul class="plain">
+                        {% for memo in candidate.source_memos %}
+                          <li><code>{{ memo }}</code></li>
+                        {% endfor %}
+                      </ul>
+                    </details>
+                  {% else %}
+                    <span class="cell-note">No memo or note in the source.</span>
+                  {% endif %}
+                  {% if candidate.purpose_rationale %}
+                    <span class="cell-note">{{ candidate.purpose_rationale }}</span>
                   {% endif %}
                 </td>
                 <td data-label="Normalized payee">
@@ -705,6 +744,18 @@
         Record an exact-match rule for each approved description, so the same receiver is
         recognised automatically on future imports.
       </label>
+      {# BANK_MEMO_PURPOSE_CLASSIFICATION_001 §10 — approving a group is a
+         decision about THOSE transactions. For a person payment the rule
+         that is left behind recognises the person and stops there, and the
+         reviewer is told so before they tick the box rather than after. #}
+      <p class="cell-note">
+        Approving classifies <strong>only the selected transactions</strong>. For a Zelle,
+        cheque or other direct payment to a person, the learned rule recognises
+        <strong>who</strong> was paid and nothing more &mdash; the accounting treatment stays a
+        decision per payment, because the same person may be paid tips one week and contract
+        labour the next. A rule that decides the account from the wording of a memo, or one
+        that deliberately fixes an account for a counterparty, is created separately.
+      </p>
       <div class="btn-row">
         <button type="submit">Approve selected groups</button>
       </div>

@@ -44,6 +44,12 @@ here:
 * a chain that ends on a GROUP account auto-applies nothing — a
   reporting node is never an automatic classification destination
   (BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001 §6);
+* a rule whose `determines_purpose` is False names the WHO and stops
+  there. The WHAT then comes from PURPOSE EVIDENCE or from a human, never
+  from the fact that this counterparty was classified some way before
+  (BANK_MEMO_PURPOSE_CLASSIFICATION_001). That is what lets the SAME
+  person be Tips on one payment and 1099 contract labour on the next
+  without either result being learned as a property of the person;
 * contradiction between candidate rules is judged on the WHO, because
   two rules agreeing on the WHO can no longer disagree on the WHY;
 * every decision row snapshots the WHY name and the WHAT (id, code, name,
@@ -65,6 +71,7 @@ from sqlalchemy.orm import Session
 
 from .. import models as m
 from . import classification as classification_service
+from . import purpose_evidence as pe
 
 UTC = timezone.utc
 
@@ -93,6 +100,19 @@ _PUNCTUATION_NOISE_RE = re.compile(r"[^A-Z0-9 ]+")
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
+# Which text a rule reads (BANK_MEMO_PURPOSE_CLASSIFICATION_001).
+DESCRIPTION = "DESCRIPTION"
+MEMO = "MEMO"
+
+
+def normalize_memo_for_recognition(raw: str | None) -> str:
+    """The same normalization the description gets, applied to the memo.
+
+    Separate function so the two are never accidentally concatenated: a
+    memo rule must match memo text and nothing else."""
+    return normalize_description_for_recognition(raw or "")
+
+
 def normalize_description_for_recognition(raw: str) -> str:
     """Deterministic, testable normalization used ONLY for recognition
     matching (spec §3 of this task) — a DIFFERENT function from
@@ -115,13 +135,29 @@ def direction_for_amount(amount_minor: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _rule_matches(rule: "m.BankRecognitionRule", normalized_description: str) -> bool:
+def _rule_matches(
+    rule: "m.BankRecognitionRule", normalized_description: str,
+    normalized_memo: str | None = None,
+) -> bool:
+    """Whether this rule matches, against the text the rule says it reads.
+
+    `match_field` selects DESCRIPTION (every rule before
+    BANK_MEMO_PURPOSE_CLASSIFICATION_001, and still the default) or MEMO.
+    A MEMO rule on a transaction with no memo matches nothing — it is not
+    silently retried against the description, because the whole point of a
+    memo rule is that it carries no identity."""
+    if rule.match_field == MEMO:
+        text = normalized_memo or ""
+        if not text:
+            return False
+    else:
+        text = normalized_description
     if rule.match_type == EXACT_NORMALIZED_DESCRIPTION:
-        return rule.normalized_pattern == normalized_description
+        return rule.normalized_pattern == text
     if rule.match_type == PREFIX:
-        return normalized_description.startswith(rule.normalized_pattern)
+        return text.startswith(rule.normalized_pattern)
     if rule.match_type == CONTAINS_TEXT:
-        return rule.normalized_pattern in normalized_description
+        return rule.normalized_pattern in text
     return False
 
 
@@ -141,6 +177,7 @@ def _specificity_sort_key(rule: "m.BankRecognitionRule") -> tuple:
 
 def find_candidate_rules(
     session: Session, *, normalized_description: str, payment_instrument_id: int, direction: str,
+    normalized_memo: str | None = None,
 ) -> list["m.BankRecognitionRule"]:
     """Only ACTIVE rules are ever considered (spec step 2) — a rule at
     `NEEDS_REVIEW` or `INACTIVE` never matches until a human reactivates
@@ -154,10 +191,55 @@ def find_candidate_rules(
         rule for rule in rules
         if (rule.payment_instrument_id is None or rule.payment_instrument_id == payment_instrument_id)
         and (rule.direction is None or rule.direction == direction)
-        and _rule_matches(rule, normalized_description)
+        and _rule_matches(rule, normalized_description, normalized_memo)
     ]
     compatible.sort(key=_specificity_sort_key)
     return compatible
+
+
+# ---------------------------------------------------------------------------
+# Purpose evidence
+# ---------------------------------------------------------------------------
+
+
+def purpose_reason_for(
+    session: Session, txn: "m.FinancialTransaction",
+) -> tuple["m.BankTransactionReason | None", "pe.PurposeEvidence"]:
+    """The Why that this transaction's PURPOSE TEXT proves, if any.
+
+    Returns the evidence whatever the outcome, so a caller can explain the
+    refusal as readily as the match. A Why is returned only when the
+    evidence is PROVEN, the configured Why exists, and the account it
+    points at both matches the evidence and may receive an automatic
+    classification — a group or a review-sensitive account never may
+    (BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001 §6).
+
+    The counterparty is never consulted: `purpose_evidence` strips a
+    person's name before it looks at anything, and this function never
+    reads past decisions for this Who."""
+    evidence = pe.purpose_evidence(txn.description_original, txn.source_memo)
+    if not evidence.is_proven:
+        return None, evidence
+
+    reason = session.scalars(
+        select(m.BankTransactionReason)
+        .where(m.BankTransactionReason.code == evidence.why_code)
+    ).first()
+    if reason is None or reason.status != "ACTIVE":
+        return None, evidence
+
+    what = (
+        session.get(m.BankAccountingClassification, reason.accounting_classification_id)
+        if reason.accounting_classification_id is not None else None
+    )
+    if what is None or what.code != evidence.account_code:
+        # The configured Why no longer means what the purpose rule says it
+        # means. Reported by returning no Why rather than classifying to
+        # something the evidence does not support.
+        return None, evidence
+    if not what.may_receive_automatic_classification:
+        return None, evidence
+    return reason, evidence
 
 
 # ---------------------------------------------------------------------------
@@ -293,10 +375,12 @@ def deduce_for_transaction(
     already has a human decision — `service.py` only calls this at
     creation time, before any human has looked at the row."""
     normalized = normalize_description_for_recognition(txn.description_original)
+    normalized_memo = normalize_memo_for_recognition(txn.source_memo)
     direction = direction_for_amount(txn.amount_minor)
     candidates = find_candidate_rules(
         session, normalized_description=normalized,
         payment_instrument_id=txn.payment_instrument_id, direction=direction,
+        normalized_memo=normalized_memo,
     )
 
     if not candidates:
@@ -375,6 +459,45 @@ def deduce_for_transaction(
             explanation_notes=notes,
         )
 
+    # BANK_MEMO_PURPOSE_CLASSIFICATION_001 §8: a rule that names only the
+    # WHO stops here unless PURPOSE EVIDENCE independently proves the
+    # WHAT. This is what keeps "Mario was 1099 last month" from deciding
+    # this month's payment: the rule contributes an identity, and the
+    # accounting question is answered by the memo or by a human.
+    if not best_rule.determines_purpose:
+        purpose_reason, evidence = purpose_reason_for(session, txn)
+        if purpose_reason is None:
+            notes = (
+                f"Rule #{best_rule.id} recognises Who {chain.occurrence.canonical_name!r} and "
+                "says nothing about why the money moved. Purpose evidence is "
+                f"{evidence.status}"
+                + (f" ({evidence.rationale})" if evidence.rationale else "")
+                + ". The What is left unresolved: a counterparty's identity never determines "
+                "the accounting purpose of a payment."
+            )
+            return _create_decision_row(
+                session, txn, occurrence_id=best_rule.occurrence_id,
+                transaction_reason_id=None, recognition_rule_id=best_rule.id,
+                decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
+                explanation_notes=notes,
+            )
+        purpose_what = session.get(
+            m.BankAccountingClassification, purpose_reason.accounting_classification_id,
+        )
+        notes = (
+            f"Rule #{best_rule.id} recognises Who {chain.occurrence.canonical_name!r}; the WHAT "
+            f"comes from purpose evidence, not from the counterparty. "
+            f"{evidence.source_field} said {evidence.matched_text!r} -> Why "
+            f"{purpose_reason.name!r} -> What {purpose_what.code} ({purpose_what.name}). "
+            f"{evidence.rationale}"
+        )
+        return _create_decision_row(
+            session, txn, occurrence_id=best_rule.occurrence_id,
+            transaction_reason_id=purpose_reason.id, recognition_rule_id=best_rule.id,
+            decision_source="RULE", decision_status="AUTO_APPLIED", confidence="HIGH",
+            explanation_notes=notes,
+        )
+
     derived_reason_id = chain.transaction_reason.id
     chain_text = (
         f"Derived chain: Who {chain.occurrence.canonical_name!r} -> Why {chain.transaction_reason.name!r} "
@@ -414,6 +537,7 @@ def create_or_reuse_rule(
     occurrence_id: int, transaction_reason_id: int,
     payment_instrument_id: int | None, direction: str | None,
     auto_apply_enabled: bool, created_from_transaction_id: int | None, priority: int = 0,
+    match_field: str = DESCRIPTION, determines_purpose: bool = True,
 ) -> "m.BankRecognitionRule":
     """`CONTAINS_TEXT`/`PREFIX` rules are created ONLY when the human
     explicitly chose that broader match type (spec: "devono essere create
@@ -424,9 +548,23 @@ def create_or_reuse_rule(
 
     `auto_apply_enabled` may only be true here as a direct, explicit human
     decision passed by the caller — no confirmation/contradiction count is
-    read or computed to decide it."""
+    read or computed to decide it.
+
+    `match_field` and `determines_purpose` set the rule's SCOPE
+    (BANK_MEMO_PURPOSE_CLASSIFICATION_001). The defaults reproduce every
+    rule written before that task — a description rule that supplies the
+    What — and the person-payment callers pass
+    `determines_purpose=False` so that recognising a person never, by
+    itself, decides the accounting purpose of their next payment.
+
+    Scope is part of a rule's IDENTITY here: a Who-only rule and a
+    purpose-determining rule over the same pattern are two different
+    pieces of knowledge, so reusing one as the other would silently widen
+    what the first was allowed to conclude."""
     if match_type not in _VALID_MATCH_TYPES:
         raise ValueError(f"Invalid match_type: {match_type!r}")
+    if match_field not in (DESCRIPTION, MEMO):
+        raise ValueError(f"Invalid match_field: {match_field!r}")
 
     existing = session.scalars(
         select(m.BankRecognitionRule).where(
@@ -436,6 +574,8 @@ def create_or_reuse_rule(
             else m.BankRecognitionRule.payment_instrument_id == payment_instrument_id,
             m.BankRecognitionRule.direction.is_(direction) if direction is None
             else m.BankRecognitionRule.direction == direction,
+            m.BankRecognitionRule.match_field == match_field,
+            m.BankRecognitionRule.determines_purpose.is_(determines_purpose),
         )
     ).first()
     if existing is not None:
@@ -465,6 +605,7 @@ def create_or_reuse_rule(
 
     rule = m.BankRecognitionRule(
         match_type=match_type, normalized_pattern=normalized_pattern,
+        match_field=match_field, determines_purpose=determines_purpose,
         payment_instrument_id=payment_instrument_id, direction=direction,
         occurrence_id=occurrence_id, transaction_reason_id=transaction_reason_id,
         priority=priority, status="ACTIVE", auto_apply_enabled=auto_apply_enabled,
@@ -496,6 +637,21 @@ class HumanDecisionRequest:
     # Only set when the human explicitly chose a broader rule (spec step 6).
     broaden_match_type: str | None = None  # CONTAINS_TEXT or PREFIX
     broaden_pattern: str | None = None
+    # BANK_MEMO_PURPOSE_CLASSIFICATION_001 §8.
+    #
+    # `learn_purpose_from_memo` teaches the MEMO WORDING, not the person:
+    # "a payment whose memo says TIP is a tips distribution". Such a rule
+    # carries no identity and applies to anyone.
+    #
+    # `who_determines_purpose` is the explicit, knowing opt-in to the
+    # opposite: "payments to THIS counterparty are always this What". It
+    # is False by default and is ignored for anything but a person
+    # channel, where it would otherwise happen as a side effect of
+    # classifying a single transaction. A human may still want it — a
+    # landlord paid monthly by Zelle is a real case — but they have to
+    # say so.
+    learn_purpose_from_memo: bool = False
+    who_determines_purpose: bool = False
     scope_to_account: bool = False
     scope_to_direction: bool = False
     notes: str | None = None
@@ -574,6 +730,18 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
         f"-> What {what.code} ({what.name}, {what.statement_type})."
     )
 
+    # BANK_MEMO_PURPOSE_CLASSIFICATION_001 §8 — what a confirmation is
+    # allowed to learn depends on what the evidence actually was.
+    #
+    # On a PERSON channel the description is the counterparty's name. A
+    # rule over it recognises the person and must not, by itself, decide
+    # the What: that Mario received contract labour today is not proof
+    # about tomorrow. So the learned description rule is stored Who-only
+    # unless the human explicitly asked for the stronger one.
+    who = pe.who_evidence(txn.description_original)
+    describes_person = who.is_person_channel
+    learns_purpose_from_description = not describes_person or request.who_determines_purpose
+
     if request.learn_description or request.broaden_match_type:
         normalized_pattern = normalize_description_for_recognition(txn.description_original)
         direction = direction_for_amount(txn.amount_minor)
@@ -591,6 +759,7 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
                 occurrence_id=request.occurrence_id, transaction_reason_id=reason.id,
                 payment_instrument_id=instrument_scope, direction=direction_scope,
                 auto_apply_enabled=True, created_from_transaction_id=txn.id,
+                determines_purpose=learns_purpose_from_description,
             )
         else:
             rule = create_or_reuse_rule(
@@ -598,9 +767,40 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
                 occurrence_id=request.occurrence_id, transaction_reason_id=reason.id,
                 payment_instrument_id=instrument_scope, direction=direction_scope,
                 auto_apply_enabled=True, created_from_transaction_id=txn.id,
+                determines_purpose=learns_purpose_from_description,
             )
         recognition_rule_id = rule.id
-        notes_parts.append(f"Reusable rule #{rule.id} ({rule.match_type}, pattern={rule.normalized_pattern!r}) created/confirmed.")
+        scope_text = (
+            "WHO only — it recognises the counterparty and leaves the accounting purpose to "
+            "the memo or to a human"
+            if not rule.determines_purpose else "WHO and WHAT"
+        )
+        notes_parts.append(
+            f"Reusable rule #{rule.id} ({rule.match_type}, pattern={rule.normalized_pattern!r}) "
+            f"created/confirmed. Scope: {scope_text}."
+        )
+
+    # A PURPOSE rule is the reusable knowledge that actually generalises:
+    # it is about the wording, applies to any counterparty, and never
+    # mentions a person.
+    if request.learn_purpose_from_memo:
+        memo_pattern = normalize_memo_for_recognition(txn.source_memo)
+        if not memo_pattern:
+            raise ValueError(
+                "This transaction carries no memo, so there is no purpose wording to learn. "
+                "A rule cannot be created from an absent memo."
+            )
+        purpose_rule = create_or_reuse_rule(
+            session, match_type=EXACT_NORMALIZED_DESCRIPTION, normalized_pattern=memo_pattern,
+            occurrence_id=request.occurrence_id, transaction_reason_id=reason.id,
+            payment_instrument_id=None, direction=None,
+            auto_apply_enabled=True, created_from_transaction_id=txn.id,
+            match_field=MEMO, determines_purpose=True,
+        )
+        notes_parts.append(
+            f"Purpose rule #{purpose_rule.id} created/confirmed on the MEMO wording "
+            f"{memo_pattern!r}. It carries no counterparty identity."
+        )
 
     return _create_decision_row(
         session, txn, occurrence_id=request.occurrence_id, transaction_reason_id=reason.id,

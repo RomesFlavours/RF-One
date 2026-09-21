@@ -137,6 +137,18 @@ class ParsedBankRow:
     # layout carries one (First Citizens' Account Number; Chase credit card
     # Variant A's Card). None for layouts with no in-file identifier.
     account_hint: str | None = None
+    # BANK_MEMO_PURPOSE_CLASSIFICATION_001 — PURPOSE text the source
+    # supplies, kept apart from `description` (which is what the BANK
+    # wrote). Chase's two card layouts have a `Memo` column; the Chase bank
+    # account and First Citizens layouts have none, so both stay None
+    # rather than being filled from something that means something else.
+    # `source_memo_field` names the column, so Description / Memo / Note
+    # remain distinguishable downstream.
+    #
+    # A column that EXISTS but is blank leaves both None: "the bank offered
+    # a memo box and nobody filled it" is not purpose evidence.
+    source_memo: str | None = None
+    source_memo_field: str | None = None
 
 
 @dataclass
@@ -150,6 +162,17 @@ class ParsedFile:
 def _get(fields: dict[str, str], key: str) -> str | None:
     value = fields.get(key)
     return value.strip() if value is not None else None
+
+
+def _purpose_field(fields: dict[str, str], key: str) -> tuple[str | None, str | None]:
+    """The layout's purpose column and its name, or (None, None).
+
+    Only a NON-EMPTY value counts. Chase writes a `Memo` header on every
+    card export and leaves it blank unless the cardholder typed something,
+    so an empty cell is the absence of purpose evidence, not evidence of
+    an absent purpose."""
+    value = _get(fields, key)
+    return (value, key) if value else (None, None)
 
 
 def _parse_chase_bank_row(row_number: int, fields: dict[str, str], extra_value: str | None) -> ParsedBankRow:
@@ -187,6 +210,7 @@ def _parse_chase_bank_row(row_number: int, fields: dict[str, str], extra_value: 
 def _parse_chase_card_row(row_number: int, fields: dict[str, str], has_card: bool) -> ParsedBankRow:
     anomalies: list[str] = []
     posting_date, date_err = _parse_date(_get(fields, "Post Date"))
+    source_memo, source_memo_field = _purpose_field(fields, "Memo")
     transaction_date, txn_date_err = _parse_date(_get(fields, "Transaction Date"))
     amount_minor, amount_err = to_minor_units(_get(fields, "Amount"))
     description = _get(fields, "Description")
@@ -206,6 +230,7 @@ def _parse_chase_card_row(row_number: int, fields: dict[str, str], has_card: boo
     return ParsedBankRow(
         row_number=row_number, raw_fields=fields, parse_status=status, anomalies=anomalies,
         posting_date=posting_date, transaction_date=transaction_date, description=description,
+        source_memo=source_memo, source_memo_field=source_memo_field,
         amount_minor=amount_minor, bank_transaction_type=_get(fields, "Type"),
         reference=_get(fields, "Memo"), balance_minor=None, pending_status=None,
         account_hint=_get(fields, "Card") if has_card else None,

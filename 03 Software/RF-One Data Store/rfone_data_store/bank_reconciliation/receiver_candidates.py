@@ -47,6 +47,7 @@ from sqlalchemy.orm import Session
 
 from .. import models as m
 from . import accounting_dedup, classification as classification_service, recognition
+from . import purpose_evidence
 
 STATUS_UNCLASSIFIED = "UNCLASSIFIED"
 STATUS_AMBIGUOUS = "AMBIGUOUS"
@@ -95,10 +96,38 @@ class ReceiverCandidate:
     status: str = STATUS_UNCLASSIFIED
     origin: str = ORIGIN_MISSING
     similar: list[SimilarGroup] = field(default_factory=list)
+    # BANK_MEMO_PURPOSE_CLASSIFICATION_001 — WHO and PURPOSE shown as two
+    # separate answers, so a reviewer can see that the person is known and
+    # the reason is not.
+    channel: str = "OTHER"          # ZELLE | ACH | CHECK | CARD | WIRE | OTHER
+    counterparty_name: str | None = None
+    is_person_channel: bool = False
+    source_memos: list[str] = field(default_factory=list)
+    purpose_status: str = "ABSENT"  # PROVEN | AMBIGUOUS | ABSENT
+    purpose_account_code: str | None = None
+    purpose_rationale: str | None = None
 
     @property
     def group_key(self) -> str:
         return f"{self.direction}|{self.payee_normalized}"
+
+    @property
+    def purpose_is_proven(self) -> bool:
+        return self.purpose_status == "PROVEN"
+
+    @property
+    def learning_warning(self) -> str | None:
+        """What a "learn this" tick would actually teach, in the reviewer's
+        own terms. Shown next to the checkbox so nobody creates
+        "this person always means this account" without meaning to."""
+        if not self.is_person_channel:
+            return None
+        who = self.counterparty_name or "this counterparty"
+        return (
+            f"{who} is a person/payee, so the learned rule will recognise WHO only. The "
+            "accounting treatment stays a decision per payment — a later payment to the "
+            "same person may be something else entirely."
+        )
 
 
 def _similarity_stem(payee: str) -> str:
@@ -222,6 +251,35 @@ def build_candidates(
         if txn.description_original and txn.description_original not in candidate.sample_descriptions:
             if len(candidate.sample_descriptions) < 5:
                 candidate.sample_descriptions.append(txn.description_original)
+
+        # WHO and PURPOSE, asked separately and answered separately.
+        who = purpose_evidence.who_evidence(txn.description_original)
+        if candidate.channel == "OTHER":
+            candidate.channel = who.channel
+        candidate.is_person_channel = candidate.is_person_channel or who.is_person_channel
+        if who.counterparty_name and candidate.counterparty_name is None:
+            candidate.counterparty_name = who.counterparty_name
+        memo = (txn.source_memo or "").strip()
+        if memo and memo not in candidate.source_memos and len(candidate.source_memos) < 5:
+            candidate.source_memos.append(memo)
+        purpose = purpose_evidence.purpose_evidence(txn.description_original, txn.source_memo)
+        # PROVEN beats AMBIGUOUS beats ABSENT, and a group is only ever
+        # reported as proven when every one of its transactions is.
+        if candidate.transaction_count == 1:
+            candidate.purpose_status = purpose.status
+            candidate.purpose_account_code = purpose.account_code
+            candidate.purpose_rationale = purpose.rationale
+        elif purpose.status != candidate.purpose_status or (
+            purpose.account_code != candidate.purpose_account_code
+        ):
+            candidate.purpose_status = (
+                "AMBIGUOUS" if candidate.purpose_status == "PROVEN"
+                or purpose.status == "PROVEN" else candidate.purpose_status
+            )
+            candidate.purpose_account_code = None
+            candidate.purpose_rationale = (
+                "The transactions in this group do not agree about why the money moved."
+            )
 
         instrument = instruments.get(txn.payment_instrument_id)
         if instrument is not None and instrument.display_name not in candidate.instrument_names:
@@ -474,6 +532,14 @@ def approve_candidates(
             outcome.transactions_classified += 1
 
         if learn_description:
+            # BANK_MEMO_PURPOSE_CLASSIFICATION_001 section 10 — approving a
+            # group of person payments together is a HUMAN DECISION ABOUT
+            # THOSE TRANSACTIONS. The rule it leaves behind recognises the
+            # counterparty and nothing more: "eight payments to Tatiana
+            # were tips" must not become "Tatiana means tips forever",
+            # because the ninth may be a reimbursement or a draw.
+            sample = candidate.sample_descriptions[0] if candidate.sample_descriptions else ""
+            names_person = purpose_evidence.who_evidence(sample).is_person_channel
             rule = recognition.create_or_reuse_rule(
                 session,
                 match_type=recognition.EXACT_NORMALIZED_DESCRIPTION,
@@ -486,6 +552,7 @@ def approve_candidates(
                 created_from_transaction_id=(
                     candidate.transaction_ids[0] if candidate.transaction_ids else None
                 ),
+                determines_purpose=not names_person,
             )
             outcome.rules_created.append(rule.id)
 
