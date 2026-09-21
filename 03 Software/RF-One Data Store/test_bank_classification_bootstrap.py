@@ -42,13 +42,13 @@ from rfone_data_store.database import (
 )
 
 CSV_PLAN = b"""Statement Type,Code,Name,Parent,Level
-P&L,4000,Revenue,,0
-P&L,4100,Food sales,4000,1
-P&L,5000,Cost of goods sold,,0
-P&L,5100,Food cost,5000,1
+P&L,TEST-4000,Revenue,,0
+P&L,TEST-4100,Food sales,TEST-4000,1
+P&L,TEST-5000,Cost of goods sold,,0
+P&L,TEST-5100,Food cost,TEST-5000,1
 P&L,,Total cost of goods sold,,0
-Balance Sheet,2000,Liabilities,,0
-Balance Sheet,2100,Accounts payable,2000,1
+Balance Sheet,TEST-2000,Liabilities,,0
+Balance Sheet,TEST-2100,Accounts payable,TEST-2000,1
 """
 
 CSV_NO_CODES = b"""Name,Level
@@ -91,6 +91,14 @@ def main() -> int:
     try:
         session_factory = create_session_factory(engine)
         with session_factory() as s:
+            # BANK_CANONICAL_ACCOUNTING_CATALOG_001: the ordinary migration now
+            # seeds the canonical RF-One chart, so an empty catalog is no
+            # longer the starting point. Every count below is measured
+            # against that baseline rather than against zero — the property
+            # under test is what the IMPORTER does, not how many accounts
+            # happened to exist first.
+            baseline_whats = s.query(m.BankAccountingClassification).count()
+
             # =============================================================
             # 1-7. Parsing and preview
             # =============================================================
@@ -110,12 +118,12 @@ def main() -> int:
             by_code = {r.code: r for r in parsed.importable_rows}
             check(
                 "4. parent/child hierarchy is preserved",
-                by_code["4100"].parent_code == "4000"
-                and by_code["2100"].parent_code == "2000",
+                by_code["TEST-4100"].parent_code == "TEST-4000"
+                and by_code["TEST-2100"].parent_code == "TEST-2000",
             )
             check(
                 "7. the preview writes nothing",
-                s.query(m.BankAccountingClassification).count() == 0,
+                s.query(m.BankAccountingClassification).count() == baseline_whats,
             )
 
             # XLSX
@@ -181,29 +189,39 @@ def main() -> int:
             check(
                 "8. confirming the preview imports exactly the account rows",
                 len(outcome.created) == 6
-                and s.query(m.BankAccountingClassification).count() == 6,
+                and s.query(m.BankAccountingClassification).count() == baseline_whats + 6,
                 detail=f"created={len(outcome.created)}",
             )
             check(
                 "8b. hierarchy survives the import",
-                s.query(m.BankAccountingClassification).filter_by(code="4100").one().parent_id
-                == s.query(m.BankAccountingClassification).filter_by(code="4000").one().id,
+                s.query(m.BankAccountingClassification).filter_by(code="TEST-4100").one().parent_id
+                == s.query(m.BankAccountingClassification).filter_by(code="TEST-4000").one().id,
             )
+            generated = wci.apply_import(s, first)
+            s.commit()
+            marked = s.query(m.BankAccountingClassification).filter(
+                m.BankAccountingClassification.code.startswith(wci.GENERATED_CODE_PREFIX)
+            ).all()
             check(
-                "8c. a generated code is marked as such in the record",
-                True,  # asserted on the no-codes catalogue below
+                "8c. a generated code is recorded AND marked as generated in the row itself",
+                len(generated.created) == 3 and len(marked) == 3
+                and all(wci.GENERATED_CODE_MARKER in (row.description or "") for row in marked),
+                detail=f"created={len(generated.created)} marked={len(marked)}",
             )
 
+            # Everything imported so far is the new baseline for the
+            # idempotence checks below.
+            after_imports = s.query(m.BankAccountingClassification).count()
             again = wci.apply_import(s, wci.parse(CSV_PLAN, file_name="plan.csv"))
             s.commit()
             check(
                 "9. re-importing the same catalog changes nothing",
                 not again.created and len(again.unchanged) == 6
-                and s.query(m.BankAccountingClassification).count() == 6,
+                and s.query(m.BankAccountingClassification).count() == after_imports,
             )
 
             conflicting = wci.parse(
-                b"Statement Type,Code,Name\nP&L,4000,Something completely different\n",
+                b"Statement Type,Code,Name\nP&L,TEST-4000,Something completely different\n",
                 file_name="conflict.csv",
             )
             conflict_outcome = wci.apply_import(s, conflicting)
@@ -211,7 +229,7 @@ def main() -> int:
             check(
                 "10. a code that already means something else is a conflict, not an overwrite",
                 conflict_outcome.has_conflicts
-                and s.query(m.BankAccountingClassification).filter_by(code="4000").one().name
+                and s.query(m.BankAccountingClassification).filter_by(code="TEST-4000").one().name
                 == "Revenue",
             )
 
@@ -222,14 +240,14 @@ def main() -> int:
             )
             check(
                 "11b. no synthetic What is created when a plan is unusable",
-                s.query(m.BankAccountingClassification).count() == 6,
+                s.query(m.BankAccountingClassification).count() == after_imports,
             )
 
             # =============================================================
             # 12. Why requires a What
             # =============================================================
-            cogs = s.query(m.BankAccountingClassification).filter_by(code="5100").one()
-            payable = s.query(m.BankAccountingClassification).filter_by(code="2100").one()
+            cogs = s.query(m.BankAccountingClassification).filter_by(code="TEST-5100").one()
+            payable = s.query(m.BankAccountingClassification).filter_by(code="TEST-2100").one()
             raises(
                 "12. a Why cannot exist without a What",
                 lambda: classification_service.create_transaction_reason(
@@ -395,7 +413,7 @@ def main() -> int:
                 "21. Why and What are derived from the Who, not chosen per transaction",
                 all(
                     e.transaction_reason_id == food_why.id
-                    and e.accounting_classification_code_snapshot == "5100"
+                    and e.accounting_classification_code_snapshot == "TEST-5100"
                     for e in s.query(m.BankTransactionExplanation).filter(
                         m.BankTransactionExplanation.financial_transaction_id.in_([a1.id, a2.id]),
                         m.BankTransactionExplanation.decision_source == "HUMAN",
@@ -413,7 +431,7 @@ def main() -> int:
                 "22. the decision carries the full Who/Why/What snapshot",
                 first_decision.occurrence_name_snapshot == "US Foods"
                 and first_decision.transaction_reason_name_snapshot == "Food purchase"
-                and first_decision.accounting_classification_code_snapshot == "5100"
+                and first_decision.accounting_classification_code_snapshot == "TEST-5100"
                 and first_decision.accounting_statement_type_snapshot == wci.PROFIT_LOSS,
             )
             count_before_second = s.query(m.BankTransactionExplanation).filter_by(
@@ -430,7 +448,7 @@ def main() -> int:
                     financial_transaction_id=a1.id
                 ).count() == count_before_second + 1
                 and first_decision.decision_status == "HUMAN_CONFIRMED"
-                and first_decision.accounting_classification_code_snapshot == "5100",
+                and first_decision.accounting_classification_code_snapshot == "TEST-5100",
             )
             check(
                 "23. an exact-match rule is recorded for future imports",

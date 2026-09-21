@@ -140,6 +140,19 @@ Importing a bank file is not the same as knowing what its movements are. Classif
 
 Full detail, including the boundary with invoices, is §15 of `BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATION_001.md`.
 
+## RF-One's own chart of accounts
+
+RF-One does not wait for the accountant's chart and does not treat it as the source of truth. It defines its **own canonical restaurant accounting structure** — 134 accounts, 91 Profit & Loss and 43 Balance Sheet, on a fixed 1000–8000 numbering — which arrives in every environment through the ordinary deployment, with no manual SQL and no spreadsheet upload. QuickBooks/Kermali may later be mapped onto it; mapping is not owning the meaning.
+
+Four rules the chart encodes, because getting them wrong is expensive:
+
+- **Sales tax and guest tips are liabilities, not revenue.** Collecting or paying either has no profit-and-loss effect at all.
+- **Employees and vendors are WHO, never accounts.** There is no person account and no Costco account.
+- **Derived totals are calculations.** Net Revenue, Gross Profit, Prime Cost and Net Income are computed from the hierarchy — none of them is a posting account, so none can be posted to.
+- **Unknown is review, never Miscellaneous.** Residual accounts exist for genuine residual cases and are never an automatic fallback.
+
+Detail is §16 of the same specification.
+
 ---
 
 ## Bank Reconciliation ≠ Purchased

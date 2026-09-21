@@ -49,12 +49,15 @@ CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 TOKEN_RE = re.compile(r'name="preview_token" value="([^"]+)"')
 FULL_ACCOUNT_NUMBER = "1122334455667788"
 
+# Deliberately TEST- prefixed: the canonical RF-One chart already owns
+# 5000/5100/2100, and reusing those codes would exercise the conflict
+# path instead of the import path this test is about.
 CSV_PLAN = (
     b"Statement Type,Code,Name,Parent,Level\n"
-    b"P&L,5000,Cost of goods sold,,0\n"
-    b"P&L,5100,Food cost,5000,1\n"
+    b"P&L,TEST-5000,Cost of goods sold,,0\n"
+    b"P&L,TEST-5100,Food cost,TEST-5000,1\n"
     b"P&L,,Total cost of goods sold,,0\n"
-    b"Balance Sheet,2100,Accounts payable,,0\n"
+    b"Balance Sheet,TEST-2100,Accounts payable,,0\n"
 )
 
 
@@ -138,7 +141,14 @@ def main() -> int:
         # =================================================================
         # Page structure
         # =================================================================
+        with SessionFactory() as s:
+            baseline_whats = s.query(m.BankAccountingClassification).count()
+
         page = client.get("/bank/classification").data
+        check(
+            "the canonical accounting catalog is present after the ordinary migration",
+            baseline_whats == 134, detail=str(baseline_whats),
+        )
         check(
             "the page presents the five sections in order",
             all(marker in page for marker in (
@@ -197,8 +207,10 @@ def main() -> int:
               b"TOTAL" in preview and b"Total cost of goods sold" in preview)
 
         with SessionFactory() as s:
+            # BANK_CANONICAL_ACCOUNTING_CATALOG_001: the migration now seeds the
+            # canonical chart, so "wrote nothing" means "unchanged", not "empty".
             check("the preview wrote nothing",
-                  s.query(m.BankAccountingClassification).count() == 0)
+                  s.query(m.BankAccountingClassification).count() == baseline_whats)
 
         token_match = TOKEN_RE.search(preview.decode("utf-8"))
         check("the preview carries a confirmation token", token_match is not None)
@@ -210,15 +222,18 @@ def main() -> int:
         with SessionFactory() as s:
             codes = {w.code for w in s.query(m.BankAccountingClassification).all()}
             check("only the account rows were imported, not the Total",
-                  codes == {"5000", "5100", "2100"}, detail=str(codes))
+                  {"TEST-5000", "TEST-5100", "TEST-2100"} <= codes
+                  and "TEST-TOTAL" not in codes
+                  and len(codes) == baseline_whats + 3,
+                  detail=f"{len(codes)} codes, baseline {baseline_whats}")
             check("the hierarchy survived the import",
-                  s.query(m.BankAccountingClassification).filter_by(code="5100").one().parent_id
-                  == s.query(m.BankAccountingClassification).filter_by(code="5000").one().id)
-            cogs_id = s.query(m.BankAccountingClassification).filter_by(code="5100").one().id
+                  s.query(m.BankAccountingClassification).filter_by(code="TEST-5100").one().parent_id
+                  == s.query(m.BankAccountingClassification).filter_by(code="TEST-5000").one().id)
+            cogs_id = s.query(m.BankAccountingClassification).filter_by(code="TEST-5100").one().id
 
         page = client.get("/bank/classification").data
         check("the imported catalog appears in the What section",
-              b"5100" in page and b"Food cost" in page)
+              b"TEST-5100" in page and b"Food cost" in page)
 
         # A Why for the approval below.
         csrf = extract_csrf(page)
@@ -254,7 +269,7 @@ def main() -> int:
                   len(decided) == 2, detail=str(len(decided)))
             check("Why and What were derived from the Who, not supplied per transaction",
                   all(d.transaction_reason_id == why_id
-                      and d.accounting_classification_code_snapshot == "5100" for d in decided))
+                      and d.accounting_classification_code_snapshot == "TEST-5100" for d in decided))
             rules = s.query(m.BankRecognitionRule).all()
             check("an exact-match rule was recorded for future imports",
                   len(rules) == 1 and rules[0].match_type == "EXACT_NORMALIZED_DESCRIPTION"
