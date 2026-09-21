@@ -69,6 +69,15 @@ inferences:
 * `review_sensitive` — a residual account a human may select explicitly but
   that automated recognition must never fall back to.
 * `normal_balance` — DEBIT / CREDIT, which is what signs a subtree total.
+
+**WHAT is a subset of this catalog, not all of it**
+(BANK_WHAT_PL_VOCABULARY_001). `what_catalog` returns the 72 active P&L
+posting categories that are RF-One's official P&L language;
+`what_groups` returns the 21 P&L GROUP nodes that only build the
+presentation; `accounting_destinations` returns the Balance Sheet
+control accounts where a non-P&L Why settles. A transaction that settles
+a liability has an accounting destination and NO WHAT, and that is a
+statement about the P&L, not a gap to be filled.
 """
 
 from __future__ import annotations
@@ -233,6 +242,115 @@ def may_receive_automatic_classification(
     a review-sensitive account, and their decision keeps precedence over
     every automated rule."""
     return classification is not None and classification.may_receive_automatic_classification
+
+
+# ---------------------------------------------------------------------------
+# The official WHAT vocabulary (BANK_WHAT_PL_VOCABULARY_001)
+# ---------------------------------------------------------------------------
+#
+# WHAT is the official Profit & Loss posting category a transaction falls
+# into — RF-One's own P&L language, which Kermali is given rather than
+# consulted about. It is DERIVED from the catalog below, never stored a
+# second time: a parallel What table would be the same accounts copied,
+# free to drift, and the drift would be invisible.
+#
+# 72 WHAT + 21 P&L GROUP = 93 P&L nodes. The other 43 canonical accounts
+# are Balance Sheet, and none of them is WHAT.
+
+WHAT_STATEMENT_TYPE = what_catalog_import.PROFIT_LOSS
+
+
+def is_what(classification: "m.BankAccountingClassification | None") -> bool:
+    """Whether this account is part of the official WHAT vocabulary."""
+    return classification is not None and classification.is_what
+
+
+def what_catalog(session: Session) -> list["m.BankAccountingClassification"]:
+    """THE official WHAT vocabulary: every active P&L posting category.
+
+    One query, one answer, one place. The UI, the classification service
+    and the tests all read this rather than each re-deriving "P&L and not
+    a group and active" and eventually disagreeing about it.
+
+    Excludes, on purpose:
+
+    * P&L GROUP nodes — reporting hierarchy, never a destination;
+    * every Balance Sheet account — those are accounting destinations,
+      reachable through `accounting_destinations` under their own name;
+    * deactivated accounts — still readable for history, not offered for
+      new work."""
+    return list(session.scalars(
+        select(m.BankAccountingClassification)
+        .where(
+            m.BankAccountingClassification.statement_type == WHAT_STATEMENT_TYPE,
+            m.BankAccountingClassification.node_type != GROUP,
+            m.BankAccountingClassification.active.is_(True),
+        )
+        .order_by(m.BankAccountingClassification.code)
+    ).all())
+
+
+def what_groups(session: Session) -> list["m.BankAccountingClassification"]:
+    """The P&L GROUP nodes — the presentation hierarchy the WHAT
+    categories roll up into. Never selectable as a WHAT."""
+    return list(session.scalars(
+        select(m.BankAccountingClassification)
+        .where(
+            m.BankAccountingClassification.statement_type == WHAT_STATEMENT_TYPE,
+            m.BankAccountingClassification.node_type == GROUP,
+        )
+        .order_by(m.BankAccountingClassification.code)
+    ).all())
+
+
+def accounting_destinations(session: Session) -> list["m.BankAccountingClassification"]:
+    """Balance Sheet destinations / control accounts.
+
+    Where a non-P&L Why settles: tips payable, sales tax payable, the card
+    liability, an operating bank account. A transaction landing here has
+    NO WHAT, and calling these WHAT — so that every Why has one — is
+    exactly the confusion BANK_WHAT_PL_VOCABULARY_001 removes."""
+    return list(session.scalars(
+        select(m.BankAccountingClassification)
+        .where(
+            m.BankAccountingClassification.statement_type
+            == what_catalog_import.BALANCE_SHEET,
+            m.BankAccountingClassification.node_type != GROUP,
+            m.BankAccountingClassification.active.is_(True),
+        )
+        .order_by(m.BankAccountingClassification.code)
+    ).all())
+
+
+def what_catalog_problems(session: Session) -> list[str]:
+    """Every rule the official WHAT vocabulary must satisfy. Empty means
+    the vocabulary is sound."""
+    problems: list[str] = []
+    for account in what_catalog(session):
+        if account.statement_type != WHAT_STATEMENT_TYPE:
+            problems.append(f"{account.code}: is {account.statement_type}, not Profit & Loss")
+        if account.node_type == GROUP:
+            problems.append(f"{account.code}: is a GROUP and cannot be a WHAT")
+        if not account.active:
+            problems.append(f"{account.code}: is inactive and must not be offered")
+        if account.normal_balance not in NORMAL_BALANCES:
+            problems.append(f"{account.code}: normal balance is {account.normal_balance!r}")
+        if not (account.code or "").strip():
+            problems.append(f"{account.name!r}: has no canonical code")
+        if not (account.name or "").strip():
+            problems.append(f"{account.code}: has no canonical name")
+        if not account.may_receive_automatic_classification and not account.review_sensitive:
+            problems.append(
+                f"{account.code}: is a WHAT that nothing may ever classify to, and is not "
+                "review-sensitive — one of those two is wrong"
+            )
+    leaked = [
+        account.code for account in what_catalog(session)
+        if account.statement_type == what_catalog_import.BALANCE_SHEET
+    ]
+    for code in leaked:
+        problems.append(f"{code}: a Balance Sheet account appears in the WHAT vocabulary")
+    return problems
 
 
 def contra_accounts(session: Session) -> list["m.BankAccountingClassification"]:

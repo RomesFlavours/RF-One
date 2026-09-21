@@ -10976,8 +10976,33 @@ class FinancialTransactionMatch(Base):
 
 
 class BankAccountingClassification(Base):
-    """WHAT a bank movement ultimately is, in accounting terms — one line
-    of a Profit & Loss statement or of a Balance Sheet.
+    """One line of the canonical chart of accounts — a Profit & Loss line
+    or a Balance Sheet line.
+
+    **This table is the chart of accounts. It is NOT all "WHAT"**
+    (BANK_WHAT_PL_VOCABULARY_001). Since the Product Owner fixed the
+    vocabulary:
+
+        WHAT  = the official P&L posting category a transaction falls
+                into. Exactly the rows with `statement_type =
+                PROFIT_LOSS` and `node_type != GROUP` that are active —
+                72 of them, read through
+                `canonical_catalog.what_catalog`. This is RF-One's P&L
+                language, the structure Kermali is given rather than asked
+                for.
+
+        NOT WHAT, though still canonical accounts:
+          * P&L GROUP nodes (4000 Revenue, 7100 Occupancy, ...) — they
+            build the P&L presentation and nothing may be posted to them;
+          * every Balance Sheet account (2300 Tips Payable, 2200 Sales Tax
+            Payable, 2500 Credit Cards Payable, 1110 Operating Bank
+            Accounts, ...). These are ACCOUNTING DESTINATIONS / control
+            accounts: a Why that settles a liability points at one, and
+            that transaction has no WHAT at all. Forcing them into the
+            WHAT vocabulary so that every Why has a WHAT would destroy the
+            distinction the P&L depends on.
+
+    Use `is_what` to ask the question, never `statement_type` alone.
 
     This is the structure the fixed chart of accounts will later be
     loaded into; it deliberately does NOT contain that chart of accounts
@@ -11093,6 +11118,38 @@ class BankAccountingClassification(Base):
         `node_type` — never derived from whether it happens to have
         children today."""
         return self.node_type in ("POSTING", "POSTING_CATEGORY")
+
+    @property
+    def is_what(self) -> bool:
+        """Whether this account is part of the official WHAT vocabulary —
+        the P&L posting categories (BANK_WHAT_PL_VOCABULARY_001).
+
+        A Balance Sheet account is never WHAT however legitimately a
+        transaction lands on it, and a P&L GROUP is never WHAT because
+        nothing may be posted to a reporting node."""
+        return (
+            self.statement_type == "PROFIT_LOSS"
+            and self.node_type != "GROUP"
+            and bool(self.active)
+        )
+
+    @property
+    def is_accounting_destination(self) -> bool:
+        """Whether this account is a Balance Sheet destination/control
+        account — where a non-P&L Why settles. Deliberately a separate
+        concept from WHAT, and named differently everywhere."""
+        return (
+            self.statement_type == "BALANCE_SHEET"
+            and self.is_posting_account
+            and bool(self.active)
+        )
+
+    @property
+    def display_label(self) -> str:
+        """How a WHAT is shown to a human: the meaning first, with the
+        stable identifier attached — "5100 — Food COGS", never a bare
+        number (BANK_WHAT_PL_VOCABULARY_001 §5)."""
+        return f"{self.code} — {self.name}"
 
     @property
     def may_receive_automatic_classification(self) -> bool:

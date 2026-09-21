@@ -12,12 +12,82 @@
 {% block content %}
 {{ bank.module_nav('classification') }}
 
+
+  <h2 id="what-vocabulary">WHAT &mdash; the official Profit &amp; Loss vocabulary</h2>
+  <p class="muted">
+    {# BANK_WHAT_PL_VOCABULARY_001 — RF-One's own P&L language. #}
+    <strong>WHAT</strong> is the Profit &amp; Loss category a transaction falls into. These
+    {{ what_catalog|length }} posting categories are the whole of it, and they are RF-One's
+    approved P&amp;L structure &mdash; the one the accountant is given, not asked for.
+    The {{ what_group_nodes|length }} group nodes below them build the P&amp;L presentation
+    and can never be classified to. Balance Sheet accounts are
+    <em>accounting destinations</em>, listed separately: a transaction that settles tips,
+    sales tax or a card balance has a destination and <strong>no WHAT</strong>.
+  </p>
+
+  <div class="table-scroll">
+    <table class="table-compact table-stack">
+      <thead>
+        <tr><th>WHAT</th><th>Reports under</th><th>Side</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        {% for what in what_catalog %}
+          {% set group = whats_by_id.get(what.parent_id) %}
+          <tr>
+            <td data-label="WHAT"><strong>{{ what.display_label }}</strong></td>
+            <td data-label="Reports under">
+              {{ group.name if group else '&mdash;' }}
+              {% if group and group.parent_id and whats_by_id.get(group.parent_id) %}
+                <span class="cell-note">{{ whats_by_id.get(group.parent_id).name }}</span>
+              {% endif %}
+            </td>
+            <td data-label="Side">{{ what.normal_balance }}</td>
+            <td data-label="Notes">
+              {% if what.review_sensitive %}
+                <span class="badge warn">REVIEW ONLY</span>
+                <span class="cell-note">A human may choose it; automatic recognition never
+                falls back to it.</span>
+              {% elif what.is_contra %}
+                <span class="badge warn">CONTRA</span>
+                <span class="cell-note">Subtracts from its reporting group.</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <details>
+    <summary>Profit &amp; Loss group nodes ({{ what_group_nodes|length }}) &mdash;
+      reporting hierarchy only, never a WHAT</summary>
+    <ul class="plain">
+      {% for group in what_group_nodes %}
+        <li><code>{{ group.code }}</code> {{ group.name }}</li>
+      {% endfor %}
+    </ul>
+  </details>
+
+  <details>
+    <summary>Balance Sheet accounting destinations ({{ accounting_destinations|length }})
+      &mdash; where a non-P&amp;L Why settles. These are NOT WHAT.</summary>
+    <p class="cell-note">
+      A Why such as a tips settlement or a sales-tax remittance points at one of these. The
+      transaction reduces a liability instead of creating a cost, and it has no WHAT at all.
+    </p>
+    <ul class="plain">
+      {% for destination in accounting_destinations %}
+        <li><code>{{ destination.code }}</code> {{ destination.name }}</li>
+      {% endfor %}
+    </ul>
+  </details>
+
 <h2>Classification</h2>
 
 <p class="muted">
   A bank movement is classified as <strong>Who &rarr; Why &rarr; What</strong>.
   <strong>What</strong> is the final accounting classification &mdash; a Profit &amp; Loss or a
-  Balance Sheet line. Every <strong>Why</strong> resolves to one What, and every
+  Balance Sheet destination. Every <strong>Why</strong> resolves to one destination, and every
   <strong>Who</strong> resolves to one default Why and inherits its What. That is why the
   Review asks only for the Who.
 </p>
@@ -34,9 +104,11 @@
   <summary><strong>A. What</strong> &mdash; accounting classification (P&amp;L / Balance Sheet)</summary>
 
   <p class="muted">
-    The structure the approved chart of accounts will be loaded into. A code is the stable
-    identity a historical decision refers to and is never changed or reused; a What in use is
-    never deleted, only deactivated.
+    The full canonical chart of accounts &mdash; Profit &amp; Loss <em>and</em> Balance Sheet.
+    A code is the stable identity a historical decision refers to and is never changed or
+    reused; an account in use is never deleted, only deactivated.
+    <strong>Only the {{ what_catalog|length }} Profit &amp; Loss posting categories listed
+    above are WHAT</strong>; the Balance Sheet rows here are accounting destinations.
   </p>
 
   <form method="get" class="compact-form" action="{{ url_for('bank_classification') }}#what">

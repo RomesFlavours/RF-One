@@ -49,6 +49,7 @@ from sqlalchemy import func, or_, select
 from rfone_data_store import models as m
 from rfone_data_store.bank_reconciliation import accounting_dedup
 from rfone_data_store.bank_reconciliation import card_configuration
+from rfone_data_store.bank_reconciliation import canonical_catalog
 from rfone_data_store.bank_reconciliation import receiver_candidates
 from rfone_data_store.bank_reconciliation import what_catalog_import
 from rfone_data_store.bank_reconciliation import classification as classification_service
@@ -990,6 +991,13 @@ def register_bank_routes(
 
         with SessionFactory() as db:
             whats = classification_service.list_accounting_classifications(db, search=what_search)
+            # BANK_WHAT_PL_VOCABULARY_001 — WHAT is the official P&L
+            # posting vocabulary, not the whole chart of accounts. The two
+            # are handed to the template SEPARATELY so the page cannot show
+            # a Balance Sheet account under the WHAT heading.
+            what_catalog = canonical_catalog.what_catalog(db)
+            what_group_nodes = canonical_catalog.what_groups(db)
+            accounting_destinations = canonical_catalog.accounting_destinations(db)
             whys = classification_service.list_transaction_reasons(db, search=why_search)
             whos = classification_service.list_occurrences(db, search=who_search)
 
@@ -1057,6 +1065,12 @@ def register_bank_routes(
             return render_template(
                 "bank_classification.html",
                 whats=whats, whys=whys, whos=whos,
+                # BANK_WHAT_PL_VOCABULARY_001 — the official P&L vocabulary
+                # and the Balance Sheet destinations, kept apart so the page
+                # cannot show one under the other's heading.
+                what_catalog=what_catalog,
+                what_group_nodes=what_group_nodes,
+                accounting_destinations=accounting_destinations,
                 receiver_candidates_page=receiver_page_items,
                 receiver_summary=receiver_candidates.summary(db),
                 receiver_filtered_count=len(filtered),
@@ -1107,9 +1121,15 @@ def register_bank_routes(
             whats = classification_service.list_accounting_classifications(db)
             whys = classification_service.list_transaction_reasons(db)
             whos = classification_service.list_occurrences(db)
+            what_catalog = canonical_catalog.what_catalog(db)
+            what_group_nodes = canonical_catalog.what_groups(db)
+            accounting_destinations = canonical_catalog.accounting_destinations(db)
             return render_template(
                 "bank_classification.html",
                 whats=whats, whys=whys, whos=whos,
+                what_catalog=what_catalog,
+                what_group_nodes=what_group_nodes,
+                accounting_destinations=accounting_destinations,
                 whats_by_id={w.id: w for w in whats},
                 whys_by_id={r.id: r for r in whys},
                 types_by_id={t.id: t for t in classification_service.list_occurrence_types(db)},
