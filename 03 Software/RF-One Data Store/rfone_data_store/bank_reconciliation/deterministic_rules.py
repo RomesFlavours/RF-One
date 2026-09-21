@@ -29,6 +29,14 @@ Three classes of thing are deliberately absent:
   is ever added that does. The same guard drops a rule aimed at a GROUP,
   which is a reporting node and never a destination.
 
+This module also owns the STRUCTURAL WHY BASELINE
+(BANK_RESTORE_STRUCTURAL_WHY_BASELINE_001): the canonical transaction
+PURPOSES RF-One itself knows how to recognise. They are vocabulary, not
+evidence — a Why existing says "RF-One understands what a sales-tax
+remittance is", never "this transaction is one". The interpreter still has
+to prove the purpose from the transaction's own text before any What
+resolves, and WHO remains entirely independent of both.
+
 Balance-sheet outcomes matter as much as P&L ones. A credit-card payment,
 a sales-tax remittance, a tip settlement, an internal transfer and a loan
 advance all reach the bank feed looking like ordinary money movements, and
@@ -40,11 +48,14 @@ P&L by construction rather than by a rule somewhere downstream.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import models as m
 from . import canonical_catalog
+from . import classification as classification_service
 
 REVIEW_REQUIRED = "REVIEW_REQUIRED"
 
@@ -212,6 +223,126 @@ HISTORICAL_UNRESOLVED = {
     "Company Tax": "income tax, property tax and licence fees are different accounts",
     "Payroll - BOH ": "the 6200 family is right, but regular vs overtime needs payroll detail",
 }
+
+
+# The canonical purposes that every correctly initialised Bank environment
+# holds as vocabulary (BANK_RESTORE_STRUCTURAL_WHY_BASELINE_001, Product
+# Owner decision). Listed BY CODE only: the name and the account come from
+# the `DeterministicRule` above, so "FOREIGN_TRANSACTION_FEE means 7230" is
+# written in exactly one place and a code/account mismatch cannot be
+# introduced by editing one of two copies.
+#
+# Deliberately a SUBSET of the rules in this module. The purposes this
+# interpreter can also produce but which are NOT structural baseline —
+# BANK_SERVICE_CHARGE, MERCHANT_PROCESSING_FEE, INTEREST_INCOME here, and
+# TIPS_SETTLEMENT, CONTRACT_LABOR, PAYABLE_SETTLEMENT, MEMBER_DRAW,
+# BASE_RENT in `purpose_evidence` — have no Why row until a human creates
+# one, which means a transaction proving one of those purposes reaches a
+# human instead of classifying itself. That is a real gap, reported rather
+# than closed unilaterally: widening the baseline is a Product Owner
+# decision about accounting vocabulary, not a refactor.
+STRUCTURAL_WHY_CODES: tuple[str, ...] = (
+    "FOREIGN_TRANSACTION_FEE",
+    "CREDIT_CARD_SETTLEMENT",
+    "LOAN_ADVANCE",
+    "INTERNAL_BANK_TRANSFER",
+    "SALES_TAX_REMITTANCE",
+)
+
+
+def structural_why_baseline() -> tuple[DeterministicRule, ...]:
+    """The five structural purposes, resolved from the rules above.
+
+    Raises if a code in `STRUCTURAL_WHY_CODES` names no rule — the two must
+    not drift apart silently."""
+    by_code = {rule.why_code: rule for rule in DETERMINISTIC_RULES}
+    missing = [code for code in STRUCTURAL_WHY_CODES if code not in by_code]
+    if missing:
+        raise ValueError(
+            "The structural Why baseline names purposes no deterministic rule defines: "
+            + ", ".join(missing)
+            + ". The baseline and the rules are one vocabulary and must stay together."
+        )
+    return tuple(by_code[code] for code in STRUCTURAL_WHY_CODES)
+
+
+@dataclass
+class StructuralWhyOutcome:
+    created: list[str] = field(default_factory=list)
+    unchanged: list[str] = field(default_factory=list)
+    conflicts: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.conflicts
+
+
+def seed_structural_reasons(session: Session, *, strict: bool = True) -> StructuralWhyOutcome:
+    """Install the structural Why vocabulary. Idempotent.
+
+    A second run creates nothing: a code already present and pointing at the
+    account this module says it means is counted as unchanged. A code
+    present pointing SOMEWHERE ELSE is a conflict — raised with `strict`
+    (the default) rather than repointed, because a Why is what historical
+    decisions resolved their What through, and silently moving it would
+    rewrite what those decisions meant.
+
+    Creates VOCABULARY ONLY. No Who, no rule, no transaction, no decision:
+    that a purpose is understood is not evidence that any transaction has
+    it."""
+    outcome = StructuralWhyOutcome()
+    existing = {
+        reason.code: reason
+        for reason in session.scalars(select(m.BankTransactionReason)).all()
+    }
+
+    for rule in structural_why_baseline():
+        account = canonical_catalog.by_code(session, rule.account_code)
+        if account is None:
+            outcome.conflicts.append(
+                f"{rule.why_code}: account {rule.account_code} does not exist in this "
+                "database — seed the canonical catalog first."
+            )
+            continue
+
+        current = existing.get(rule.why_code)
+        if current is not None:
+            held = (
+                canonical_catalog.by_code(session, rule.account_code)
+                if current.accounting_classification_id == account.id else None
+            )
+            if held is not None:
+                outcome.unchanged.append(rule.why_code)
+            else:
+                pointed_at = session.get(
+                    m.BankAccountingClassification, current.accounting_classification_id,
+                )
+                outcome.conflicts.append(
+                    f"{rule.why_code}: already exists pointing at "
+                    f"{pointed_at.code if pointed_at else 'nothing'}, this module says "
+                    f"{rule.account_code}. Not repointed."
+                )
+            continue
+
+        classification_service.create_transaction_reason(
+            session, code=rule.why_code, name=rule.why_name,
+            accounting_classification_id=account.id,
+            description=(
+                f"Structural Bank vocabulary. {rule.rationale} "
+                "Vocabulary only: a transaction reaches this Why when its own evidence "
+                "proves the purpose, never because of who was paid."
+            ),
+        )
+        outcome.created.append(rule.why_code)
+
+    session.flush()
+    if strict and outcome.conflicts:
+        raise ValueError(
+            "The structural Why baseline conflicts with what is already in this database, "
+            "and nothing was repointed. Resolve these by hand: "
+            + "; ".join(outcome.conflicts)
+        )
+    return outcome
 
 
 @dataclass

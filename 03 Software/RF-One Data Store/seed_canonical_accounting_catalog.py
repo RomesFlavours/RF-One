@@ -26,6 +26,7 @@ import argparse
 import sys
 
 from rfone_data_store.bank_reconciliation import canonical_catalog
+from rfone_data_store.bank_reconciliation import deterministic_rules
 from rfone_data_store.database import (
     create_configured_engine,
     create_session_factory,
@@ -99,6 +100,17 @@ def main() -> int:
                 "Semantics validated: node type, normal balance, contra and review sensitivity "
                 "match the canonical definition."
             )
+
+            # BANK_RESTORE_STRUCTURAL_WHY_BASELINE_001 — the canonical
+            # PURPOSES RF-One recognises, seeded alongside the accounts they
+            # point at. Vocabulary only: no Who, no rule, no transaction.
+            why_outcome = deterministic_rules.seed_structural_reasons(session)
+            session.commit()
+            print()
+            print(f"Structural Why vocabulary: {len(why_outcome.created)} created, "
+                  f"{len(why_outcome.unchanged)} unchanged")
+            for rule in deterministic_rules.structural_why_baseline():
+                print(f"  {rule.why_code:<26} -> {rule.account_code}")
             return 0
     except ValueError as exc:
         print()
