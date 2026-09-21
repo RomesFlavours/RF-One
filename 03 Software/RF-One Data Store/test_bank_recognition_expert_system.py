@@ -171,10 +171,23 @@ def main() -> int:
             s.add(txn)
             s.flush()
             explanation = recognition.deduce_for_transaction(s, txn)
+            # BANK_WHO_WHY_INVARIANT_001 — what this check proves is rule
+            # SCOPING, which is unchanged. What changed is the outcome of a
+            # match: the rule resolves the WHO, and the WHY waits for the
+            # transaction's own purpose evidence or for a human.
             check(
                 "Recognition reads FinancialTransaction and uses payment_instrument_id "
                 "(global rule matches instrument_a)",
-                explanation.decision_status == "AUTO_APPLIED" and explanation.occurrence_id == us_foods.id,
+                explanation.occurrence_id == us_foods.id
+                and explanation.recognition_rule_id is not None,
+                detail=f"occurrence={explanation.occurrence_id}",
+            )
+            check(
+                "a matched rule resolves the WHO and leaves the WHY unresolved when the "
+                "transaction proves no purpose",
+                explanation.decision_status == "NEEDS_HUMAN_REVIEW"
+                and explanation.transaction_reason_id is None,
+                detail=f"{explanation.decision_status}/{explanation.transaction_reason_id}",
             )
 
             # --- 8. Matching rule produces the same source behavior as before:
@@ -193,8 +206,9 @@ def main() -> int:
             other_explanation = recognition.deduce_for_transaction(s, txn_on_other_instrument)
             check(
                 "A globally-scoped rule matches on any Payment Instrument",
-                other_explanation.decision_status == "AUTO_APPLIED"
-                and other_explanation.occurrence_id == us_foods.id,
+                other_explanation.occurrence_id == us_foods.id
+                and other_explanation.recognition_rule_id is not None,
+                detail=f"occurrence={other_explanation.occurrence_id}",
             )
 
             # A rule scoped to instrument_b never matches instrument_a.
@@ -284,8 +298,9 @@ def main() -> int:
             check(
                 "A newly imported CSV transaction enters Recognition automatically",
                 imported_explanation is not None and imported_explanation.decision_source == "RULE"
-                and imported_explanation.decision_status == "AUTO_APPLIED"
                 and imported_explanation.occurrence_id == us_foods.id,
+                detail="no explanation" if imported_explanation is None else
+                       f"{imported_explanation.decision_source}/{imported_explanation.occurrence_id}",
             )
 
             # -----------------------------------------------------------------
@@ -322,7 +337,18 @@ def main() -> int:
             )
             s.add(snapshot_txn)
             s.flush()
-            snapshot_decision = recognition.deduce_for_transaction(s, snapshot_txn)
+            # BANK_WHO_WHY_INVARIANT_001 — recorded as a HUMAN decision so
+            # that a WHY is actually resolved. Automatic recognition no
+            # longer resolves a WHY from the Who alone, and a snapshot of
+            # an unresolved WHY would prove nothing about immutability.
+            # A human choosing this Who for this transaction IS a
+            # transaction-level decision, which the invariant permits.
+            snapshot_decision = recognition.record_human_decision(
+                s, recognition.HumanDecisionRequest(
+                    transaction_id=snapshot_txn.id, occurrence_id=us_foods.id,
+                    confirmed_by_account_id=None, learn_description=False,
+                ),
+            )
             check(
                 "Occurrence snapshot is captured at decision time",
                 snapshot_decision.occurrence_name_snapshot == "US Foods",

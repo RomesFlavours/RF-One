@@ -44,12 +44,15 @@ here:
 * a chain that ends on a GROUP account auto-applies nothing — a
   reporting node is never an automatic classification destination
   (BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001 §6);
-* a rule whose `determines_purpose` is False names the WHO and stops
-  there. The WHAT then comes from PURPOSE EVIDENCE or from a human, never
-  from the fact that this counterparty was classified some way before
-  (BANK_MEMO_PURPOSE_CLASSIFICATION_001). That is what lets the SAME
-  person be Tips on one payment and 1099 contract labour on the next
-  without either result being learned as a property of the person;
+* a matched rule names the WHO and stops there. The WHY and the WHAT
+  come from the TRANSACTION's own purpose evidence — its memo, purpose
+  wording in its description, or a deterministic description rule — and
+  never from the fact that this counterparty was classified some way
+  before (BANK_WHO_WHY_INVARIANT_001). That is what lets the SAME payee
+  be Tips on one payment and 1099 contract labour on the next without
+  either result being learned as a property of the payee, and it is why
+  `BankOccurrence.default_transaction_reason_id` is read here as a
+  SUGGESTION shown to the human, never as the resolution;
 * contradiction between candidate rules is judged on the WHO, because
   two rules agreeing on the WHO can no longer disagree on the WHY;
 * every decision row snapshots the WHY name and the WHAT (id, code, name,
@@ -459,71 +462,65 @@ def deduce_for_transaction(
             explanation_notes=notes,
         )
 
-    # BANK_MEMO_PURPOSE_CLASSIFICATION_001 §8: a rule that names only the
-    # WHO stops here unless PURPOSE EVIDENCE independently proves the
-    # WHAT. This is what keeps "Mario was 1099 last month" from deciding
-    # this month's payment: the rule contributes an identity, and the
-    # accounting question is answered by the memo or by a human.
-    if not best_rule.determines_purpose:
-        purpose_reason, evidence = purpose_reason_for(session, txn)
-        if purpose_reason is None:
-            notes = (
-                f"Rule #{best_rule.id} recognises Who {chain.occurrence.canonical_name!r} and "
-                "says nothing about why the money moved. Purpose evidence is "
-                f"{evidence.status}"
-                + (f" ({evidence.rationale})" if evidence.rationale else "")
-                + ". The What is left unresolved: a counterparty's identity never determines "
-                "the accounting purpose of a payment."
-            )
-            return _create_decision_row(
-                session, txn, occurrence_id=best_rule.occurrence_id,
-                transaction_reason_id=None, recognition_rule_id=best_rule.id,
-                decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
-                explanation_notes=notes,
-            )
-        purpose_what = session.get(
-            m.BankAccountingClassification, purpose_reason.accounting_classification_id,
-        )
+    # BANK_WHO_WHY_INVARIANT_001 — the automatic decision boundary.
+    #
+    #   purpose proven      -> derive the WHAT, classify automatically
+    #   purpose not proven  -> NEEDS_HUMAN_REVIEW
+    #
+    # The WHO may be known in either case, and here it IS known: a rule
+    # matched. What the rule does not do is answer the accounting
+    # question. Until this revision a matched rule resolved the WHY and
+    # the WHAT through the Who's default chain, which is precisely "this
+    # counterparty always means this account" — the thing the Bank Domain
+    # does not have. The Who's chain is still read, and still shown, but
+    # only as a SUGGESTION for the human.
+    purpose_reason, evidence = purpose_reason_for(session, txn)
+    suggestion = (
+        f"Suggestion only, from this Who's current default chain: Why "
+        f"{chain.transaction_reason.name!r} -> What {what.code} ({what.name}). That is what "
+        "this counterparty has been configured to usually mean; it is not evidence about "
+        "this transaction."
+    )
+
+    if purpose_reason is None:
         notes = (
-            f"Rule #{best_rule.id} recognises Who {chain.occurrence.canonical_name!r}; the WHAT "
-            f"comes from purpose evidence, not from the counterparty. "
-            f"{evidence.source_field} said {evidence.matched_text!r} -> Why "
-            f"{purpose_reason.name!r} -> What {purpose_what.code} ({purpose_what.name}). "
-            f"{evidence.rationale}"
+            f"Rule #{best_rule.id} ({best_rule.match_type}, "
+            f"pattern={best_rule.normalized_pattern!r}) recognises Who "
+            f"{chain.occurrence.canonical_name!r} and says nothing about why the money moved. "
+            f"Purpose evidence is {evidence.status}"
+            + (f" ({evidence.rationale})" if evidence.rationale else "")
+            + ". The WHY and the WHAT are left unresolved: counterparty identity alone never "
+            f"establishes the accounting purpose of a transaction. {suggestion}"
         )
         return _create_decision_row(
             session, txn, occurrence_id=best_rule.occurrence_id,
-            transaction_reason_id=purpose_reason.id, recognition_rule_id=best_rule.id,
-            decision_source="RULE", decision_status="AUTO_APPLIED", confidence="HIGH",
+            transaction_reason_id=None, recognition_rule_id=best_rule.id,
+            decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
             explanation_notes=notes,
         )
 
-    derived_reason_id = chain.transaction_reason.id
-    chain_text = (
-        f"Derived chain: Who {chain.occurrence.canonical_name!r} -> Why {chain.transaction_reason.name!r} "
-        f"-> What {chain.accounting_classification.code} ({chain.accounting_classification.name})."
+    purpose_what = session.get(
+        m.BankAccountingClassification, purpose_reason.accounting_classification_id,
     )
-
-    if best_rule.auto_apply_enabled:
-        decision_status = "AUTO_APPLIED"
-        confidence = "HIGH" if best_rule.match_type == EXACT_NORMALIZED_DESCRIPTION else "MEDIUM"
-        notes = (
-            f"Applied rule #{best_rule.id} ({best_rule.match_type}, "
-            f"pattern={best_rule.normalized_pattern!r}, priority={best_rule.priority}) — single "
-            f"non-contradictory Who among {len(candidates)} compatible ACTIVE rule(s). {chain_text}"
+    notes = (
+        f"Rule #{best_rule.id} recognises Who {chain.occurrence.canonical_name!r}; the WHY and "
+        f"the WHAT come from this transaction's own purpose evidence, not from the "
+        f"counterparty. {evidence.source_field} said {evidence.matched_text!r} -> Why "
+        f"{purpose_reason.name!r} -> What {purpose_what.code} ({purpose_what.name}). "
+        f"{evidence.rationale}"
+    )
+    if purpose_reason.id != chain.transaction_reason.id:
+        notes += (
+            f" This differs from the Who's default chain ({chain.transaction_reason.name!r} -> "
+            f"{what.code}), which is a suggestion and does not decide the transaction."
         )
-    else:
-        decision_status = "SUGGESTED"
-        confidence = "LOW"
-        notes = (
-            f"Rule #{best_rule.id} ({best_rule.match_type}, pattern={best_rule.normalized_pattern!r}) "
-            f"matches but auto_apply_enabled=False — suggested only, requires human confirmation. {chain_text}"
-        )
-
     return _create_decision_row(
-        session, txn, occurrence_id=best_rule.occurrence_id, transaction_reason_id=derived_reason_id,
-        recognition_rule_id=best_rule.id, decision_source="RULE", decision_status=decision_status,
-        confidence=confidence, explanation_notes=notes,
+        session, txn, occurrence_id=best_rule.occurrence_id,
+        transaction_reason_id=purpose_reason.id, recognition_rule_id=best_rule.id,
+        decision_source="RULE",
+        decision_status="AUTO_APPLIED" if best_rule.auto_apply_enabled else "SUGGESTED",
+        confidence="HIGH" if best_rule.auto_apply_enabled else "LOW",
+        explanation_notes=notes,
     )
 
 
@@ -537,7 +534,7 @@ def create_or_reuse_rule(
     occurrence_id: int, transaction_reason_id: int,
     payment_instrument_id: int | None, direction: str | None,
     auto_apply_enabled: bool, created_from_transaction_id: int | None, priority: int = 0,
-    match_field: str = DESCRIPTION, determines_purpose: bool = True,
+    match_field: str = DESCRIPTION, determines_purpose: bool | None = None,
 ) -> "m.BankRecognitionRule":
     """`CONTAINS_TEXT`/`PREFIX` rules are created ONLY when the human
     explicitly chose that broader match type (spec: "devono essere create
@@ -550,21 +547,37 @@ def create_or_reuse_rule(
     decision passed by the caller — no confirmation/contradiction count is
     read or computed to decide it.
 
-    `match_field` and `determines_purpose` set the rule's SCOPE
-    (BANK_MEMO_PURPOSE_CLASSIFICATION_001). The defaults reproduce every
-    rule written before that task — a description rule that supplies the
-    What — and the person-payment callers pass
-    `determines_purpose=False` so that recognising a person never, by
-    itself, decides the accounting purpose of their next payment.
+    `match_field` decides the rule's SCOPE, and `determines_purpose`
+    follows from it rather than being chosen
+    (BANK_WHO_WHY_INVARIANT_001):
 
-    Scope is part of a rule's IDENTITY here: a Who-only rule and a
-    purpose-determining rule over the same pattern are two different
-    pieces of knowledge, so reusing one as the other would silently widen
-    what the first was allowed to conclude."""
+    * a DESCRIPTION rule matches the bank's own text, which is where a
+      counterparty is named. It recognises the WHO and may NEVER supply
+      the WHAT. Passing `determines_purpose=True` with this scope raises;
+    * a MEMO rule matches purpose wording a human wrote. It carries no
+      identity — it would match the same memo on any counterparty — so it
+      may supply the WHAT.
+
+    Scope is part of a rule's IDENTITY here: a Who-only rule and a purpose
+    rule over the same pattern are two different pieces of knowledge, so
+    reusing one as the other would silently widen what the first was
+    allowed to conclude."""
     if match_type not in _VALID_MATCH_TYPES:
         raise ValueError(f"Invalid match_type: {match_type!r}")
     if match_field not in (DESCRIPTION, MEMO):
         raise ValueError(f"Invalid match_field: {match_field!r}")
+
+    if determines_purpose is None:
+        determines_purpose = match_field == MEMO
+    if determines_purpose and match_field != MEMO:
+        # The single structural refusal that carries the invariant. A
+        # caller asking for this is asking for "this counterparty always
+        # means this account", which the Bank Domain does not have.
+        raise ValueError(
+            "A description rule recognises WHO and can never determine WHY: counterparty "
+            "identity alone never establishes the accounting purpose of a transaction "
+            "(BANK_WHO_WHY_INVARIANT_001). Learn the purpose from the memo wording instead."
+        )
 
     existing = session.scalars(
         select(m.BankRecognitionRule).where(
@@ -639,19 +652,16 @@ class HumanDecisionRequest:
     broaden_pattern: str | None = None
     # BANK_MEMO_PURPOSE_CLASSIFICATION_001 §8.
     #
-    # `learn_purpose_from_memo` teaches the MEMO WORDING, not the person:
+    # `learn_purpose_from_memo` teaches the MEMO WORDING, not the payee:
     # "a payment whose memo says TIP is a tips distribution". Such a rule
     # carries no identity and applies to anyone.
     #
-    # `who_determines_purpose` is the explicit, knowing opt-in to the
-    # opposite: "payments to THIS counterparty are always this What". It
-    # is False by default and is ignored for anything but a person
-    # channel, where it would otherwise happen as a side effect of
-    # classifying a single transaction. A human may still want it — a
-    # landlord paid monthly by Zelle is a real case — but they have to
-    # say so.
+    # There is deliberately NO counterpart that teaches "payments to THIS
+    # counterparty are always this What". BANK_WHO_WHY_INVARIANT_001
+    # removed the `who_determines_purpose` opt-in that once existed here:
+    # WHO never determines WHY by itself, and a decision the domain
+    # forbids must not be reachable by passing a flag.
     learn_purpose_from_memo: bool = False
-    who_determines_purpose: bool = False
     scope_to_account: bool = False
     scope_to_direction: bool = False
     notes: str | None = None
@@ -730,18 +740,17 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
         f"-> What {what.code} ({what.name}, {what.statement_type})."
     )
 
-    # BANK_MEMO_PURPOSE_CLASSIFICATION_001 §8 — what a confirmation is
-    # allowed to learn depends on what the evidence actually was.
+    # BANK_WHO_WHY_INVARIANT_001 — a confirmation on a description learns
+    # the WHO and stops there, for everyone.
     #
-    # On a PERSON channel the description is the counterparty's name. A
-    # rule over it recognises the person and must not, by itself, decide
-    # the What: that Mario received contract labour today is not proof
-    # about tomorrow. So the learned description rule is stored Who-only
-    # unless the human explicitly asked for the stronger one.
-    who = pe.who_evidence(txn.description_original)
-    describes_person = who.is_person_channel
-    learns_purpose_from_description = not describes_person or request.who_determines_purpose
-
+    # The earlier version of this made that conditional on the channel: a
+    # person's name was Who-only, a supplier's name could decide the
+    # account. The Product Owner removed the distinction. Get Better
+    # Cleaning having been cleaning nine times is evidence for a human,
+    # not a logical rule that Get Better Cleaning can only ever mean
+    # cleaning — the tenth payment may be an equipment purchase or a
+    # deposit refund. So every learned description rule is Who-only, and
+    # `create_or_reuse_rule` refuses to store anything else.
     if request.learn_description or request.broaden_match_type:
         normalized_pattern = normalize_description_for_recognition(txn.description_original)
         direction = direction_for_amount(txn.amount_minor)
@@ -759,7 +768,6 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
                 occurrence_id=request.occurrence_id, transaction_reason_id=reason.id,
                 payment_instrument_id=instrument_scope, direction=direction_scope,
                 auto_apply_enabled=True, created_from_transaction_id=txn.id,
-                determines_purpose=learns_purpose_from_description,
             )
         else:
             rule = create_or_reuse_rule(
@@ -767,17 +775,13 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
                 occurrence_id=request.occurrence_id, transaction_reason_id=reason.id,
                 payment_instrument_id=instrument_scope, direction=direction_scope,
                 auto_apply_enabled=True, created_from_transaction_id=txn.id,
-                determines_purpose=learns_purpose_from_description,
             )
         recognition_rule_id = rule.id
-        scope_text = (
-            "WHO only — it recognises the counterparty and leaves the accounting purpose to "
-            "the memo or to a human"
-            if not rule.determines_purpose else "WHO and WHAT"
-        )
         notes_parts.append(
             f"Reusable rule #{rule.id} ({rule.match_type}, pattern={rule.normalized_pattern!r}) "
-            f"created/confirmed. Scope: {scope_text}."
+            "created/confirmed. Scope: WHO only — it recognises the counterparty and leaves "
+            "the accounting purpose of each future transaction to that transaction's own "
+            "evidence, or to a human."
         )
 
     # A PURPOSE rule is the reusable knowledge that actually generalises:

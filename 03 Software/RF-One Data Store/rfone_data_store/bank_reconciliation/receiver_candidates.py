@@ -532,14 +532,15 @@ def approve_candidates(
             outcome.transactions_classified += 1
 
         if learn_description:
-            # BANK_MEMO_PURPOSE_CLASSIFICATION_001 section 10 — approving a
-            # group of person payments together is a HUMAN DECISION ABOUT
-            # THOSE TRANSACTIONS. The rule it leaves behind recognises the
-            # counterparty and nothing more: "eight payments to Tatiana
-            # were tips" must not become "Tatiana means tips forever",
-            # because the ninth may be a reimbursement or a draw.
-            sample = candidate.sample_descriptions[0] if candidate.sample_descriptions else ""
-            names_person = purpose_evidence.who_evidence(sample).is_person_channel
+            # BANK_MEMO_PURPOSE_CLASSIFICATION_001 §10 /
+            # BANK_WHO_WHY_INVARIANT_001 — approving a group together is a
+            # HUMAN DECISION ABOUT THOSE TRANSACTIONS. The rule it leaves
+            # behind recognises the counterparty and nothing more: "eight
+            # payments to Tatiana were tips" must not become "Tatiana
+            # means tips forever", because the ninth may be a
+            # reimbursement or a draw. The same holds for a supplier —
+            # `create_or_reuse_rule` stores every description rule
+            # Who-only and refuses anything else.
             rule = recognition.create_or_reuse_rule(
                 session,
                 match_type=recognition.EXACT_NORMALIZED_DESCRIPTION,
@@ -552,7 +553,6 @@ def approve_candidates(
                 created_from_transaction_id=(
                     candidate.transaction_ids[0] if candidate.transaction_ids else None
                 ),
-                determines_purpose=not names_person,
             )
             outcome.rules_created.append(rule.id)
 

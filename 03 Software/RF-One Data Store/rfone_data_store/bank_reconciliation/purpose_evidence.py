@@ -1,9 +1,16 @@
-"""WHO is not WHAT
-(BANK_MEMO_PURPOSE_CLASSIFICATION_001).
+"""WHO is not WHY
+(BANK_MEMO_PURPOSE_CLASSIFICATION_001 / BANK_WHO_WHY_INVARIANT_001).
 
-The identity of the person who received money is evidence of WHO. It is
-never, by itself, evidence of WHY the money moved or of WHAT account the
-movement belongs to.
+**Bank Domain invariant: WHO NEVER DETERMINES WHY BY ITSELF.** There is no
+exception, and no opt-in. The identity of the counterparty — a person, a
+supplier, anyone — is evidence of WHO. It is never, by itself, evidence of
+WHY the money moved or of WHAT account the movement belongs to.
+
+A WHO may be ONE INPUT to an interpretation. What is forbidden is identity
+being SUFFICIENT on its own. So this module answers the purpose question
+from transaction-level evidence and never asks who the counterparty is;
+`recognition` then refuses to classify automatically when this module
+finds nothing, however confidently a rule has identified the payee.
 
     ZELLE PAYMENT TO MARIO ROSSI
 
@@ -33,7 +40,17 @@ Purpose evidence comes from:
   which source column it came from);
 * purpose text in the description itself, for channels where the bank
   writes the reason there (ACH `CO ENTRY DESCR`, a cheque memo line) —
-  but never the counterparty-name part of it.
+  but never the counterparty-name part of it;
+* the deterministic description rules (`deterministic_rules`), which are
+  the same kind of statement applied to bank wording: `FOREIGN
+  TRANSACTION FEE` is a fee whatever else is true of the transaction.
+  Those rules live in their own module because they also carry the
+  refusals — every mixed supplier is listed there BY NAME so that a
+  payment to Costco is Who-only, which is this invariant again.
+
+What purpose evidence never comes from: who the counterparty is, what
+this counterparty was classified as before, or what a rule that
+recognised them was once confirmed against.
 
 Three outcomes, and only one of them may act automatically:
 
@@ -55,6 +72,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+
+from . import deterministic_rules
 
 # --- Channels --------------------------------------------------------------
 #
@@ -381,9 +400,14 @@ def purpose_text(description: str | None, memo: str | None) -> tuple[str, str | 
 def purpose_evidence(description: str | None, memo: str | None) -> PurposeEvidence:
     """What the source text proves about why the money moved.
 
-    Never consults the counterparty's identity, and never consults what
-    this counterparty was classified as before. History is evidence for a
-    human; it is not proof about the next payment."""
+    Takes the transaction's own text and NOTHING ELSE — no counterparty,
+    no occurrence, no session, no history. That is not an optimisation: a
+    function that cannot see who was paid cannot be made to conclude
+    anything from who was paid, which is how BANK_WHO_WHY_INVARIANT_001 is
+    enforced rather than merely documented.
+
+    History is evidence for a human. It is not proof about the next
+    payment, and there is no flag that makes it one."""
     text, field = purpose_text(description, memo)
     if not text:
         return PurposeEvidence(status=ABSENT, source_field=field)
@@ -400,6 +424,24 @@ def purpose_evidence(description: str | None, memo: str | None) -> PurposeEviden
                 source_field=field,
                 matched_text=match.group(0).strip(),
                 rationale=rule.rationale,
+            )
+
+    # The deterministic description rules are purpose statements too, and
+    # they are consulted against the SAME name-stripped text — so a rule
+    # can never fire on a counterparty's name that happens to contain a
+    # cost word. They are tried after the memo patterns because a human's
+    # own memo outranks the bank's wording.
+    if field == DESCRIPTION:
+        found = deterministic_rules.match(text)
+        if found is not None:
+            return PurposeEvidence(
+                status=PROVEN,
+                account_code=found.account_code,
+                why_code=found.rule.why_code,
+                why_name=found.rule.why_name,
+                source_field=field,
+                matched_text=text,
+                rationale=found.rule.rationale,
             )
 
     for compiled, why in _COMPILED_AMBIGUOUS:

@@ -11153,6 +11153,17 @@ class BankOccurrence(Base):
     # survive the migration unchanged and stay visible as explicitly
     # INCOMPLETE; an incomplete Occurrence is refused in reconciliation
     # (`classification.resolve_chain`), never silently defaulted.
+    # BANK_WHO_WHY_INVARIANT_001 — a SUGGESTION, never a resolution.
+    #
+    # This is what this counterparty has been configured to USUALLY mean.
+    # It is shown to a human, and a human selecting this Who for a
+    # transaction is making a transaction-level decision that legitimately
+    # uses it. What it must never be is the answer an AUTOMATIC decision
+    # reaches for: `recognition.deduce_for_transaction` reads it only to
+    # print it as a suggestion, and resolves the WHY from the
+    # transaction's own purpose evidence. WHY belongs to the transaction,
+    # not to the counterparty, and the cardinality is deliberately
+    # one Who -> N observed Why, never one-to-one.
     default_transaction_reason_id: Mapped[int | None] = mapped_column(
         ForeignKey("bank_transaction_reasons.id"), nullable=True, index=True
     )
@@ -11266,13 +11277,20 @@ class BankRecognitionRule(Base):
     confirmation may create on its own.
 
     Two fields decide the SCOPE of what a rule knows
-    (BANK_MEMO_PURPOSE_CLASSIFICATION_001):
+    (BANK_MEMO_PURPOSE_CLASSIFICATION_001 / BANK_WHO_WHY_INVARIANT_001):
 
-    * `match_field` — DESCRIPTION (the bank's own text) or MEMO (the
-      purpose text a human wrote). A memo rule carries no identity;
+    * `match_field` — DESCRIPTION (the bank's own text, which is where a
+      counterparty is named) or MEMO (purpose text a human wrote, which
+      carries no identity);
     * `determines_purpose` — whether matching supplies the WHAT, or only
-      the WHO. False is what makes "this is Mario" reusable knowledge
-      while "payments to Mario are contract labour" is not."""
+      the WHO.
+
+    These are not independent. `ck_bank_recognition_rule_purpose_scope`
+    enforces that only a MEMO rule may determine purpose, so a
+    description rule is structurally incapable of concluding "this
+    counterparty means this account". That is the Bank Domain invariant
+    written into the schema: WHO never determines WHY by itself, with no
+    exception and no override."""
 
     __tablename__ = "bank_recognition_rules"
     __table_args__ = (
@@ -11283,6 +11301,14 @@ class BankRecognitionRule(Base):
         CheckConstraint(
             "match_field IN ('DESCRIPTION', 'MEMO')",
             name="ck_bank_recognition_rule_match_field",
+        ),
+        # BANK_WHO_WHY_INVARIANT_001 — the invariant, at the storage layer.
+        # A DESCRIPTION rule names the counterparty; letting one determine
+        # purpose is exactly "identity alone is sufficient", which the
+        # Bank Domain does not permit. Only MEMO purpose wording may.
+        CheckConstraint(
+            "determines_purpose = 0 OR match_field = 'MEMO'",
+            name="ck_bank_recognition_rule_purpose_scope",
         ),
         CheckConstraint(
             "direction IS NULL OR direction IN ('DEBIT', 'CREDIT')",
@@ -11308,15 +11334,17 @@ class BankRecognitionRule(Base):
     )
     # Whether this rule may supply the WHAT, or only the WHO.
     #
-    # A rule learned from a PERSON payment recognizes the person and
-    # nothing else: that Mario received 1099 labour once does not make the
-    # next payment to Mario 1099 labour, and a rule that said so would be
-    # teaching RF-One that identity determines accounting purpose. Such a
-    # rule is stored with `determines_purpose = False`, and recognition
-    # then names the Who and leaves the What for purpose evidence or for a
-    # human. A human may still create a purpose-determining rule for a
-    # person deliberately — but never as a side effect of classifying one
-    # transaction.
+    # TRUE is reachable only for a MEMO rule, by the CHECK above. A rule
+    # matched on a description recognizes the counterparty and nothing
+    # else: that Mario received 1099 labour once does not make the next
+    # payment to Mario 1099 labour, and that Get Better Cleaning was
+    # cleaning nine times does not make the tenth payment cleaning.
+    # Recognition names the Who and leaves the What to that transaction's
+    # own purpose evidence, or to a human.
+    #
+    # BANK_WHO_WHY_INVARIANT_001 removed the opt-in that used to let a
+    # human ask for the opposite. There is no flag, no parameter and no
+    # configuration under which counterparty identity alone resolves WHY.
     determines_purpose: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("1"),
     )

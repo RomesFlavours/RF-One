@@ -337,7 +337,7 @@ def main() -> int:
             )
             check(
                 "8c. and the explanation says why it stopped",
-                "identity never determines" in (decision.explanation_notes or ""),
+                "identity alone never establishes" in (decision.explanation_notes or ""),
                 detail=(decision.explanation_notes or "")[:120],
             )
 

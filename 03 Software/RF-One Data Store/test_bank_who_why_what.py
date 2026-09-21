@@ -332,13 +332,30 @@ def main() -> int:
             later = new_txn("US FOODS INVOICE 4821", 5)
             auto = recognition.deduce_for_transaction(s, later)
             check(
-                "a later transaction with the same description is recognized automatically",
-                auto.decision_status == "AUTO_APPLIED" and auto.occurrence_id == us_foods.id,
+                "a later transaction with the same description has its WHO recognized "
+                "automatically",
+                auto.occurrence_id == us_foods.id and auto.recognition_rule_id is not None,
+                detail=f"occurrence={auto.occurrence_id} rule={auto.recognition_rule_id}",
+            )
+            # BANK_WHO_WHY_INVARIANT_001 — this assertion used to be
+            # "automatic recognition derives the Why and the What too". It
+            # no longer does, and that is the point: US FOODS INVOICE 4821
+            # names a supplier and says nothing about what was bought, so
+            # concluding COGS_FOOD from it would be identity alone deciding
+            # the accounting purpose. The WHO is resolved; the WHY waits.
+            check(
+                "recognizing the WHO does NOT resolve the WHY or the WHAT — the transaction "
+                "carries no purpose evidence, so it goes to a human",
+                auto.decision_status == "NEEDS_HUMAN_REVIEW"
+                and auto.transaction_reason_id is None
+                and auto.accounting_classification_code_snapshot is None,
+                detail=f"{auto.decision_status}/{auto.transaction_reason_id}",
             )
             check(
-                "automatic recognition derives the Why and the What too",
-                auto.transaction_reason_id == supplier_payment.id
-                and auto.accounting_classification_code_snapshot == "COGS_FOOD",
+                "...and the Who's usual Why is offered as a suggestion, never as the answer",
+                "Suggestion only" in (auto.explanation_notes or "")
+                and supplier_payment.name in (auto.explanation_notes or ""),
+                detail=(auto.explanation_notes or "")[-140:],
             )
 
             repeat = new_txn("US FOODS INVOICE 4821", 6)
