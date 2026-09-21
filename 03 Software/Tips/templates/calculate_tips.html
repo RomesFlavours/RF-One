@@ -60,29 +60,46 @@
 
 {% if result %}
 <div class="card">
+  {# TIPS_OPERATIONAL_RESULTS_AND_CALCULATION_FIX_001 §4 — enough to pay
+     from and to reconcile with. Voluntary and Gratuity stay side by side
+     because Clover reports them separately; Gross is their sum, not a
+     replacement for either. #}
   <h2>Totals</h2>
   <div class="table-scroll">
   <table>
     <thead>
-      <tr><th>Voluntary Tips</th><th>Service Owner retained</th><th>Distributed</th>
-          <th>Unresolved</th><th>Difference</th><th>Service Charges (excluded)</th></tr>
+      <tr><th>Voluntary Tips</th><th>Gratuity</th><th>Gross Tips</th>
+          <th>Tip Out to Hosts</th><th>Host Tips Received</th>
+          <th>Total Net Payable</th><th>Unresolved</th><th>Difference</th></tr>
     </thead>
     <tbody>
       <tr>
-        <td><strong>${{ "%.2f"|format(result.voluntary_total_minor / 100) }}</strong></td>
-        <td>${{ "%.2f"|format(result.source_retained_total_minor / 100) }}</td>
-        <td>${{ "%.2f"|format(result.distributed_total_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(result.voluntary_total_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(result.gratuity_total_minor / 100) }}</td>
+        <td><strong>${{ "%.2f"|format(totals.gross_minor / 100) }}</strong></td>
+        <td>${{ "%.2f"|format(totals.tip_out_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(totals.tip_received_minor / 100) }}</td>
+        <td><strong>${{ "%.2f"|format(totals.net_payable_minor / 100) }}</strong></td>
         <td>${{ "%.2f"|format(result.unresolved_total_minor / 100) }}</td>
         <td>
-          ${{ "%.2f"|format(result.reconciliation_difference_minor / 100) }}
-          {% if result.reconciles %}<span class="badge">balanced</span>
+          ${{ "%.2f"|format(totals.distribution_difference_minor / 100) }}
+          {% if totals.distribution_balanced %}<span class="badge">balanced</span>
           {% else %}<span class="badge warn">out of balance</span>{% endif %}
         </td>
-        <td class="muted">${{ "%.2f"|format(result.gratuity_total_minor / 100) }}</td>
       </tr>
     </tbody>
   </table>
   </div>
+  <p class="muted" style="font-size:.78rem; margin-top:.6rem;">
+    Tip Out to Hosts and Host Tips Received must match: every dollar taken from a Service Owner
+    is a dollar a Host is owed. A difference here means money was calculated out of one side and
+    not into the other, and must be explained before paying.
+    {% if result.no_eligible_recipient_lines %}
+      {{ result.no_eligible_recipient_lines|length }} order(s) generated no Host distribution
+      because no Host was eligible &mdash; the Service Owner retained the pool. Open the order
+      drill-down to see which Host was expected and why they were excluded.
+    {% endif %}
+  </p>
   <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
     {{ result.summary.orders_considered }} Order(s) considered;
     {{ result.summary.rules_applied }} rule application(s);
@@ -94,7 +111,12 @@
 {% endif %}
 
 <div class="card">
-  <h2>Employee Review</h2>
+  {# §3/§5/§7 — an operational PAYMENT sheet. One row per employee who must
+     be paid, Hosts included even when they generated nothing themselves.
+     No Outbound/Inbound pair, and no Order IDs cluttering the amounts: the
+     page answers "how much does each person get?", and order-level proof
+     stays one click away in the drill-down. #}
+  <h2>Payment &mdash; what each employee is owed</h2>
   {% if period_error %}
     <p class="empty">{{ period_error }}</p>
   {% elif not review_rows %}
@@ -104,28 +126,51 @@
   <table>
     <thead>
       <tr>
-        <th>Employee</th><th>Gross Earned Tips</th><th>Outbound Tip-Out</th><th>Inbound Tip-Out</th>
-        <th>Net (before adjustments)</th><th></th><th>Orders</th>
+        <th>Employee</th><th>Role / Result</th>
+        <th>Voluntary Tips</th><th>Gratuity</th><th>Gross Tips</th>
+        <th>Tip Out / Tip Received</th><th>Net Payable</th><th>Status</th>
       </tr>
     </thead>
     <tbody>
     {% for row in review_rows %}
       <tr>
+        <td>{{ row.display_name or ('Employee #' ~ row.employee_id) }}</td>
         <td>
-          {{ row.display_name or ('Employee #' ~ row.employee_id) }}
-          {% if row.has_warning %}<span class="badge warn" title="{{ row.warning_notes|join(' | ') }}">warning</span>{% endif %}
+          {% if row.result_type == 'HOST' %}<span class="badge">Host</span>
+          {% elif row.result_type == 'BOTH' %}<span class="badge">Service Owner + Host</span>
+          {% else %}<span class="badge">Service Owner</span>{% endif %}
         </td>
+        <td>${{ "%.2f"|format(row.voluntary_tips_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(row.gratuity_minor / 100) }}</td>
         <td>${{ "%.2f"|format(row.gross_earned_tips_minor / 100) }}</td>
-        <td>${{ "%.2f"|format(row.outbound_tip_out_minor / 100) }}</td>
-        <td>${{ "%.2f"|format(row.inbound_tip_out_minor / 100) }}</td>
-        <td><strong>${{ "%.2f"|format(row.net_before_adjustments_minor / 100) }}</strong></td>
         <td>
-          {% if row.inbound_tip_out_minor %}
-          <a href="{{ url_for('host_audit_home', employee_id=row.employee_id, start_at=start_at, end_at=end_at) }}">Explain / Audit Host Tips</a>
+          {% if row.result_type == 'HOST' %}
+            + ${{ "%.2f"|format(row.inbound_tip_out_minor / 100) }}
+            <span class="muted" style="font-size:.72rem;">received</span>
+          {% elif row.result_type == 'BOTH' %}
+            &minus; ${{ "%.2f"|format(row.outbound_tip_out_minor / 100) }} /
+            + ${{ "%.2f"|format(row.inbound_tip_out_minor / 100) }}
+          {% else %}
+            &minus; ${{ "%.2f"|format(row.outbound_tip_out_minor / 100) }}
+            <span class="muted" style="font-size:.72rem;">tip out</span>
           {% endif %}
         </td>
-        <td class="muted" style="font-size:.78rem;">
-          {% for order_id in row.order_ids %}<a href="{{ url_for('calculate_tips_order_drilldown', order_id=order_id, start_at=start_at, end_at=end_at) }}">#{{ order_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+        <td><strong>${{ "%.2f"|format(row.net_payable_minor / 100) }}</strong></td>
+        <td style="font-size:.78rem;">
+          {% if row.has_warning %}
+            <span class="badge warn" title="{{ row.warning_notes|join(' | ') }}">check</span>
+          {% else %}
+            <span class="muted">ready</span>
+          {% endif %}
+          {% if row.inbound_tip_out_minor %}
+            <a href="{{ url_for('host_audit_home', employee_id=row.employee_id, start_at=start_at, end_at=end_at) }}">audit</a>
+          {% endif %}
+          {% if row.order_ids %}
+            <details>
+              <summary class="muted">orders</summary>
+              {% for order_id in row.order_ids %}<a href="{{ url_for('calculate_tips_order_drilldown', order_id=order_id, start_at=start_at, end_at=end_at) }}">#{{ order_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+            </details>
+          {% endif %}
           {% if row.has_warning %}
             {% for note in row.warning_notes %}<div class="error" style="margin-top:.3rem; padding:.3rem .5rem;">{{ note }}</div>{% endfor %}
           {% endif %}

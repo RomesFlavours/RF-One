@@ -567,9 +567,15 @@ def calculate_tips_home():
             review_mode_svc.get_review_mode(session, restaurant_id=restaurant.id)
             if restaurant is not None else None
         )
+        # §4 — the payment header, derived from the same rows the table
+        # pays from so the two can never disagree.
+        totals = (
+            engine_svc.build_operational_totals(result, review_rows)
+            if result is not None else None
+        )
         return render_template(
             "calculate_tips.html", restaurant=restaurant, start_at=start_at, end_at=end_at,
-            result=result, review_rows=review_rows, period_error=period_error,
+            result=result, review_rows=review_rows, period_error=period_error, totals=totals,
             tz_name=tz_name, tz_configured=tz_configured,
             cutoff=cutoff.strftime("%H:%M"), review_mode=review_mode,
             audit_mode=(review_mode == m.TIPS_REVIEW_MODE_AUDIT),

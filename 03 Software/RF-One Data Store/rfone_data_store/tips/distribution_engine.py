@@ -70,6 +70,15 @@ class CalculationSummary:
     allocations_produced: int = 0
 
 
+# TIPS_OPERATIONAL_RESULTS_AND_CALCULATION_FIX_001 §3/§5 — which side of
+# the distribution an employee is on in THIS run. Derived per run, never
+# a property of the person: the same employee may own orders one week and
+# only receive tip-out the next.
+RESULT_TYPE_SERVICE_OWNER = "SERVICE_OWNER"
+RESULT_TYPE_HOST = "HOST"
+RESULT_TYPE_BOTH = "BOTH"
+
+
 @dataclass
 class AllocationLine:
     """One calculated allocation, held IN MEMORY only
@@ -98,6 +107,24 @@ class AllocationLine:
     no_eligible_recipient: bool
     allocated_amount_minor: int
     eligible_recipient_count: int
+    # TIPS_OPERATIONAL_RESULTS_AND_CALCULATION_FIX_001 §1/§6 — the two
+    # components of the Gross Tip Base, kept APART all the way down to the
+    # line so a run can be reconciled directly against Clover, which
+    # reports voluntary tips and automatic gratuity separately. Their sum
+    # is `gross_tip_base_minor`; `base_amount_minor` is what the RULE
+    # actually charged its rate against, which is the same thing only when
+    # the rule's Calculation Base is TIP_PLUS_GRATUITY.
+    voluntary_minor: int = 0
+    gratuity_minor: int = 0
+    # §6 — why no Host was eligible, retained rather than repaired. Empty
+    # when a recipient was found.
+    candidate_recipient_employee_ids: list[int] = field(default_factory=list)
+    exclusion_reason: str | None = None
+
+    @property
+    def gross_tip_base_minor(self) -> int:
+        """Voluntary + Gratuity for this Order, whatever base the rule used."""
+        return self.voluntary_minor + self.gratuity_minor
 
 
 @dataclass
@@ -182,11 +209,41 @@ class EmployeeReviewRow:
     inbound_tip_out_minor: int
     net_before_adjustments_minor: int
     has_warning: bool
+    # TIPS_OPERATIONAL_RESULTS_AND_CALCULATION_FIX_001 §3 — the operational
+    # page answers one question: how much must this employee be PAID?
+    #
+    # Voluntary and Gratuity stay separate because Clover reports them
+    # separately and the run has to reconcile against it. `result_type`
+    # says which side of the distribution this person is on, so one column
+    # can show "Tip Out" for a Service Owner and "Tip Received" for a Host
+    # rather than the page carrying both.
+    voluntary_tips_minor: int = 0
+    gratuity_minor: int = 0
+    result_type: str = RESULT_TYPE_SERVICE_OWNER
     warning_notes: list[str] = field(default_factory=list)
     # Task §18 — every Order this Employee is traceable through (as Gross-Tip
     # owner, outbound source, or inbound recipient) in this run, sorted, so
     # the Review UI can link straight to each Order's drill-down.
     order_ids: list[int] = field(default_factory=list)
+
+    @property
+    def net_payable_minor(self) -> int:
+        """What this employee must actually be paid for this run.
+
+        Service Owner: Gross Tips - Tip Out. Host: Tip Received. Someone
+        who is both in the same period: both, netted. Identical arithmetic
+        to `net_before_adjustments_minor`, named for what the operator does
+        with it — and the figure a future Mercury payment is expected to
+        match (§8)."""
+        return self.net_before_adjustments_minor
+
+    @property
+    def tip_out_or_received_minor(self) -> int:
+        """The single movement column the operational page shows: money
+        taken from a Service Owner, or money given to a Host."""
+        if self.result_type == RESULT_TYPE_HOST:
+            return self.inbound_tip_out_minor
+        return self.outbound_tip_out_minor
 
 
 def _aware_utc(dt: datetime) -> datetime:
@@ -342,6 +399,10 @@ def _apply_rule_to_order(
             source_employee_id=source_employee_id, rule_id=rule_version.rule_id,
             rule_version_id=rule_version.id, calculation_base=rule_version.calculation_base,
             rate=rule_version.rate,
+            # §1/§6 — kept on every line regardless of which base the rule
+            # charged, so Clover's two figures stay reconcilable and a
+            # diagnostic can show what the base COULD have been.
+            voluntary_minor=voluntary_minor, gratuity_minor=gratuity_minor,
         )
         base.update(kwargs)
         return AllocationLine(**base)
@@ -407,6 +468,26 @@ def _apply_rule_to_order(
     # Task §11 — SOURCE_RETAINS: generated outbound allocation = 0, and
     # the fact that nobody was eligible is preserved explicitly, never
     # silently omitted.
+    #
+    # TIPS_OPERATIONAL_RESULTS_AND_CALCULATION_FIX_001 §6 — and WHY nobody
+    # was eligible is preserved too, in the two halves that actually
+    # distinguish the causes: who held the Role at settlement, and who was
+    # on shift. "Nobody holds the Host role" and "three Hosts hold it but
+    # none was clocked in" are different problems with different fixes, and
+    # the engine must not flatten them into one sentence. Nothing here is
+    # repaired automatically.
+    role_holder_ids = sorted(role_holders)
+    if not role_holder_ids:
+        exclusion = (
+            f"NO_ROLE_HOLDER: no Employee held Recipient Role {role_name!r} at this Location at "
+            f"Settlement Time {settlement_time.isoformat()} — check EmployeeAssignment coverage."
+        )
+    else:
+        exclusion = (
+            f"NO_ACTIVE_SHIFT: {len(role_holder_ids)} Employee(s) held Recipient Role {role_name!r} "
+            f"({', '.join(str(i) for i in role_holder_ids)}) but none had an active Shift at "
+            f"Settlement Time {settlement_time.isoformat()} — check Shift records."
+        )
     return [
         line(
             base_amount_minor=base_amount, pool_amount_minor=pool_amount, recipient_employee_id=None,
@@ -416,6 +497,7 @@ def _apply_rule_to_order(
                 "employee retains the full pool."
             ),
             no_eligible_recipient=True, allocated_amount_minor=0, eligible_recipient_count=0,
+            candidate_recipient_employee_ids=role_holder_ids, exclusion_reason=exclusion,
         )
     ]
 
@@ -629,11 +711,22 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
     )
     orders_by_id = {order.id: order for order in orders_in_scope}
 
+    # §1/§3 — accumulated SEPARATELY. `Order.employee_id` is the Order
+    # Service Owner, which is what attributes a tip to a person; no Role is
+    # consulted here and none ever was.
     gross_by_employee: dict[int, int] = {}
+    voluntary_by_employee: dict[int, int] = {}
+    gratuity_by_employee: dict[int, int] = {}
     for order in orders_in_scope:
         if order.employee_id is None:
             continue
         voluntary_minor, gratuity_minor = _order_gross_tip_components(session, order)
+        voluntary_by_employee[order.employee_id] = (
+            voluntary_by_employee.get(order.employee_id, 0) + voluntary_minor
+        )
+        gratuity_by_employee[order.employee_id] = (
+            gratuity_by_employee.get(order.employee_id, 0) + gratuity_minor
+        )
         gross_by_employee[order.employee_id] = (
             gross_by_employee.get(order.employee_id, 0) + voluntary_minor + gratuity_minor
         )
@@ -687,6 +780,21 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
         gross = gross_by_employee.get(emp_id, 0)
         outbound = outbound_by_employee.get(emp_id, 0)
         inbound = inbound_by_employee.get(emp_id, 0)
+        # §3/§5 — which side of the distribution this employee is on in
+        # THIS run. A Host who generated nothing and only received tip-out
+        # is a HOST row and still appears, because they still have to be
+        # paid; that is the whole point of the operational page.
+        # Judged on MONEY, not on order ownership: a Host who happens to
+        # have a zero-tip order attributed to them is a Host on a payment
+        # sheet, not a Service Owner with nothing to show.
+        owns_orders = gross > 0 or outbound > 0
+        receives = inbound > 0
+        if owns_orders and receives:
+            result_type = RESULT_TYPE_BOTH
+        elif receives:
+            result_type = RESULT_TYPE_HOST
+        else:
+            result_type = RESULT_TYPE_SERVICE_OWNER
         rows.append(
             EmployeeReviewRow(
                 employee_id=emp_id,
@@ -694,11 +802,58 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
                 gross_earned_tips_minor=gross, outbound_tip_out_minor=outbound, inbound_tip_out_minor=inbound,
                 net_before_adjustments_minor=gross - outbound + inbound,
                 has_warning=bool(warnings_by_employee.get(emp_id)),
+                voluntary_tips_minor=voluntary_by_employee.get(emp_id, 0),
+                gratuity_minor=gratuity_by_employee.get(emp_id, 0),
+                result_type=result_type,
                 warning_notes=warnings_by_employee.get(emp_id, []),
                 order_ids=sorted(orders_by_employee.get(emp_id, set())),
             )
         )
     return rows
+
+
+@dataclass
+class OperationalTotals:
+    """The run's payment-and-reconciliation header
+    (TIPS_OPERATIONAL_RESULTS_AND_CALCULATION_FIX_001 §4).
+
+    Derived from the same employee rows the page pays from, so the header
+    can never disagree with the table under it. `distribution_balanced`
+    is the control that matters before anyone is paid: every dollar taken
+    from a Service Owner must be a dollar a Host is owed."""
+
+    voluntary_minor: int = 0
+    gratuity_minor: int = 0
+    gross_minor: int = 0
+    tip_out_minor: int = 0
+    tip_received_minor: int = 0
+    net_payable_minor: int = 0
+    unresolved_minor: int = 0
+
+    @property
+    def distribution_difference_minor(self) -> int:
+        return self.tip_out_minor - self.tip_received_minor
+
+    @property
+    def distribution_balanced(self) -> bool:
+        return self.distribution_difference_minor == 0
+
+
+def build_operational_totals(
+    result: TipCalculationResult, rows: list[EmployeeReviewRow],
+) -> OperationalTotals:
+    """The §4 header for one run. Voluntary and Gratuity are reported
+    separately because Clover reports them separately and the run has to
+    reconcile against it — Gross is their sum, never a substitute."""
+    return OperationalTotals(
+        voluntary_minor=result.voluntary_total_minor,
+        gratuity_minor=result.gratuity_total_minor,
+        gross_minor=result.voluntary_total_minor + result.gratuity_total_minor,
+        tip_out_minor=sum(row.outbound_tip_out_minor for row in rows),
+        tip_received_minor=sum(row.inbound_tip_out_minor for row in rows),
+        net_payable_minor=sum(row.net_payable_minor for row in rows),
+        unresolved_minor=result.unresolved_total_minor,
+    )
 
 
 def populate_entitlements_for_run(
