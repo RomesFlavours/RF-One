@@ -41,6 +41,9 @@ here:
   the CURRENT chain is what a later application of that rule resolves —
   so re-pointing a WHO at another WHY immediately affects new
   transactions without touching a single rule;
+* a chain that ends on a GROUP account auto-applies nothing — a
+  reporting node is never an automatic classification destination
+  (BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001 §6);
 * contradiction between candidate rules is judged on the WHO, because
   two rules agreeing on the WHO can no longer disagree on the WHY;
 * every decision row snapshots the WHY name and the WHAT (id, code, name,
@@ -346,6 +349,25 @@ def deduce_for_transaction(
         notes = (
             f"Rule #{best_rule.id} ({best_rule.match_type}, pattern={best_rule.normalized_pattern!r}) "
             f"matched, but its Who -> Why -> What chain is incomplete: {reason_text}"
+        )
+        return _create_decision_row(
+            session, txn, occurrence_id=None, transaction_reason_id=None, recognition_rule_id=None,
+            decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
+            explanation_notes=notes,
+        )
+
+    # BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001 §6: a GROUP is a
+    # reporting node and is NEVER an automatic final classification
+    # destination. A chain that has drifted onto one — an account
+    # reclassified as a group after the Why was configured — stops here and
+    # waits for a human, exactly as an incomplete chain does. A human may
+    # still decide this transaction any way they choose.
+    what = chain.accounting_classification
+    if not what.is_posting_account:
+        notes = (
+            f"Rule #{best_rule.id} ({best_rule.match_type}, pattern={best_rule.normalized_pattern!r}) "
+            f"matched, but its chain ends on What {what.code} ({what.name}), a {what.node_type} "
+            "reporting node. A group is never an automatic classification destination."
         )
         return _create_decision_row(
             session, txn, occurrence_id=None, transaction_reason_id=None, recognition_rule_id=None,

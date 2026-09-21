@@ -174,6 +174,30 @@ def _validated_statement_type(statement_type: str | None, *, required: bool) -> 
     return value
 
 
+NODE_TYPES = ("GROUP", "POSTING", "POSTING_CATEGORY")
+NORMAL_BALANCES = ("DEBIT", "CREDIT")
+
+
+def _validated_node_type(node_type: str | None) -> str:
+    value = (node_type or "").strip().upper() or "POSTING"
+    if value not in NODE_TYPES:
+        raise ValueError(f"Node type must be one of {', '.join(NODE_TYPES)}, got {node_type!r}.")
+    return value
+
+
+def _validated_normal_balance(normal_balance: str | None) -> str | None:
+    """NULL is allowed and means "not stated" — the same explicit
+    incompleteness `statement_type` carries for a legacy-migrated row.
+    A made-up side is never better than an absent one."""
+    value = (normal_balance or "").strip().upper() or None
+    if value is not None and value not in NORMAL_BALANCES:
+        raise ValueError(
+            f"Normal balance must be {NORMAL_BALANCES[0]} or {NORMAL_BALANCES[1]}, "
+            f"got {normal_balance!r}."
+        )
+    return value
+
+
 def ancestor_ids(session: Session, classification_id: int) -> list[int]:
     """Every ancestor of a classification, nearest first. Walks with its
     own `seen` guard so a cycle that already exists in data (it cannot be
@@ -214,6 +238,8 @@ def _validated_parent_id(
 def create_accounting_classification(
     session: Session, *, code: str, name: str, statement_type: str | None,
     parent_id: int | None = None, description: str | None = None, active: bool = True,
+    node_type: str | None = None, normal_balance: str | None = None,
+    is_contra: bool = False, review_sensitive: bool = False,
 ) -> "m.BankAccountingClassification":
     """A NEW What always states its statement side — only a legacy-migrated
     row is allowed to be incomplete, and a migration is the only thing that
@@ -237,6 +263,10 @@ def create_accounting_classification(
         parent_id=_validated_parent_id(session, parent_id=parent_id, classification_id=None),
         description=(description or "").strip() or None,
         active=active,
+        node_type=_validated_node_type(node_type),
+        normal_balance=_validated_normal_balance(normal_balance),
+        is_contra=bool(is_contra),
+        review_sensitive=bool(review_sensitive),
     )
     session.add(classification)
     session.flush()
@@ -246,6 +276,8 @@ def create_accounting_classification(
 def update_accounting_classification(
     session: Session, *, classification_id: int, name: str, statement_type: str | None,
     parent_id: int | None = None, description: str | None = None,
+    node_type: str | None = None, normal_balance: str | None = None,
+    is_contra: bool | None = None, review_sensitive: bool | None = None,
 ) -> "m.BankAccountingClassification":
     """Editing never changes `code` — the code is the stable identity a
     historical decision snapshot refers to, and recycling it would make
@@ -266,6 +298,17 @@ def update_accounting_classification(
         session, parent_id=parent_id, classification_id=classification_id,
     )
     classification.description = (description or "").strip() or None
+    # The four semantic fields are LEFT ALONE when the caller says nothing
+    # about them: this function is also how `what_catalog_import` links a
+    # parent, and that pass must not reset semantics the import just set.
+    if node_type is not None:
+        classification.node_type = _validated_node_type(node_type)
+    if normal_balance is not None:
+        classification.normal_balance = _validated_normal_balance(normal_balance)
+    if is_contra is not None:
+        classification.is_contra = bool(is_contra)
+    if review_sensitive is not None:
+        classification.review_sensitive = bool(review_sensitive)
     session.flush()
     return classification
 
@@ -345,6 +388,16 @@ def _require_usable_what(session: Session, accounting_classification_id: int | N
     if what.statement_type is None:
         raise ValueError(
             f"What {what.code} — {what.name} has no statement type yet and cannot be assigned to a Why."
+        )
+    if not what.is_posting_account:
+        # A Why IS the automatic destination: every Who that leads to it
+        # classifies there without a human looking again. A GROUP is a
+        # reporting node, so letting one sit behind a Why would be exactly
+        # the automatic classification onto a group that the catalog
+        # forbids (BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001 §6).
+        raise ValueError(
+            f"What {what.code} — {what.name} is a reporting group, not an account that can be "
+            "posted to. Choose one of its accounts instead."
         )
     return what.id
 

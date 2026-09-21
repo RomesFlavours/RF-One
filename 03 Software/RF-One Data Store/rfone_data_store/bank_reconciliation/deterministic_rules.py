@@ -21,7 +21,13 @@ Three classes of thing are deliberately absent:
 * **"I don't know"** — an unrecognised description is REVIEW_REQUIRED.
   Miscellaneous (7880), Other Personnel (6900) and the two Other
   Non-Operating accounts exist for genuine residual cases and are never an
-  automatic fallback.
+  automatic fallback. Since
+  BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001 that is not a convention a
+  contributor has to remember: those accounts carry
+  `review_sensitive = True` in the catalog, `applicable_rules` drops any
+  rule pointing at one, and `destination_problems` fails loudly if a rule
+  is ever added that does. The same guard drops a rule aimed at a GROUP,
+  which is a reporting node and never a destination.
 
 Balance-sheet outcomes matter as much as P&L ones. A credit-card payment,
 a sales-tax remittance, a tip settlement, an internal transfer and a loan
@@ -240,10 +246,44 @@ def is_mixed_supplier(payee_normalized: str) -> bool:
 
 
 def applicable_rules(session: Session) -> list[DeterministicRule]:
-    """The rules whose destination account actually exists in this database.
+    """The rules whose destination account exists in this database AND may
+    legitimately receive an automatic classification.
+
     A rule pointing at a missing account is skipped rather than failing the
-    run, so a partially seeded catalog degrades to review instead of error."""
+    run, so a partially seeded catalog degrades to review instead of error.
+    A rule pointing at a GROUP or at a review-sensitive account is skipped
+    for a different reason: landing there automatically is precisely what
+    the catalog forbids, and degrading to REVIEW_REQUIRED is the correct
+    outcome. `destination_problems` reports such a rule so it is fixed
+    rather than silently ignored."""
     return [
         rule for rule in DETERMINISTIC_RULES
-        if canonical_catalog.by_code(session, rule.account_code) is not None
+        if canonical_catalog.may_receive_automatic_classification(
+            canonical_catalog.by_code(session, rule.account_code)
+        )
     ]
+
+
+def destination_problems(session: Session) -> list[str]:
+    """Every deterministic rule whose destination this catalog refuses as an
+    automatic classification. An empty list means the rule set is safe.
+
+    Checked against the stored catalog rather than a list of codes kept
+    here, so marking an account review-sensitive is enough to make every
+    rule aimed at it fail this check."""
+    problems: list[str] = []
+    for rule in DETERMINISTIC_RULES:
+        account = canonical_catalog.by_code(session, rule.account_code)
+        if account is None:
+            continue  # a partially seeded catalog is not a rule defect
+        if not account.is_posting_account:
+            problems.append(
+                f"{rule.why_code}: points at {account.code} {account.name!r}, which is a "
+                f"{account.node_type} and is never an automatic destination."
+            )
+        if account.review_sensitive:
+            problems.append(
+                f"{rule.why_code}: points at {account.code} {account.name!r}, which is "
+                "review-sensitive and must never be reached automatically."
+            )
+    return problems

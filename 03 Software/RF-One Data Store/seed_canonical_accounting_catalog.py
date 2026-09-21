@@ -55,6 +55,10 @@ def main() -> int:
             print(f"Canonical definition: {len(rows)} account(s)")
             print(f"  Profit & Loss : {len([r for r in rows if r['Statement Type'] == 'PROFIT_LOSS'])}")
             print(f"  Balance Sheet : {len([r for r in rows if r['Statement Type'] == 'BALANCE_SHEET'])}")
+            for node_type in canonical_catalog.NODE_TYPES:
+                print(f"  {node_type:<16}: {len([r for r in rows if r['Node Type'] == node_type])}")
+            print(f"  Contra          : {len([r for r in rows if r['Is Contra'] == 'TRUE'])}")
+            print(f"  Review-sensitive: {len([r for r in rows if r['Review Sensitive'] == 'TRUE'])}")
 
             if not args.apply:
                 present = 0
@@ -83,6 +87,18 @@ def main() -> int:
                     print("  -", problem)
                 return 1
             print("Hierarchy validated: statement sides consistent, no cycle, no duplicate code.")
+
+            semantic = canonical_catalog.semantic_problems(session)
+            if semantic:
+                print()
+                print("SEMANTIC PROBLEMS:")
+                for problem in semantic:
+                    print("  -", problem)
+                return 1
+            print(
+                "Semantics validated: node type, normal balance, contra and review sensitivity "
+                "match the canonical definition."
+            )
             return 0
     except ValueError as exc:
         print()

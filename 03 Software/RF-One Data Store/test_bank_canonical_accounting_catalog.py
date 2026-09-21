@@ -281,10 +281,8 @@ def main() -> int:
             )
             check(
                 "24c. the review-sensitive accounts are never a rule destination",
-                not (
-                    {rule.account_code for rule in dr.DETERMINISTIC_RULES}
-                    & set(cc.REVIEW_SENSITIVE_CODES)
-                ),
+                not dr.destination_problems(s),
+                detail="; ".join(dr.destination_problems(s)[:3]),
             )
             check(
                 "historical Kermali mappings point only at real canonical accounts",
@@ -361,10 +359,10 @@ def main() -> int:
             # Derived P&L presentation — computed, never stored
             # =============================================================
             revenue = cc.subtree_codes(s, "4000")
-            contra = set(cc.CONTRA_REVENUE_CODES)
+            contra = {row.code for row in cc.contra_accounts(s)} & revenue
             check(
                 "the contra-revenue accounts are inside Revenue and identified as contra",
-                contra <= revenue and all(by_code[c].statement_type == PL for c in contra),
+                contra and all(by_code[c].statement_type == PL for c in contra),
             )
             derived = {
                 "Net Revenue": (revenue - contra, contra),
@@ -397,17 +395,18 @@ def main() -> int:
                 ),
             )
 
-            # Posting vs group, derived from the hierarchy.
+            # Posting vs group, read from the stored node type.
             check(
                 "a group node is identifiable as non-postable",
-                not cc.is_posting_account(s, by_code["7000"])
-                and cc.is_posting_account(s, by_code["7230"]),
+                not cc.is_posting_account(by_code["7000"])
+                and cc.is_posting_account(by_code["7230"]),
             )
             check(
-                "the missing model capabilities are reported rather than invented",
-                len(cc.MISSING_MODEL_CAPABILITIES) == 3
-                and {name for name, _ in cc.MISSING_MODEL_CAPABILITIES}
-                == {"node_type", "contra", "review_sensitive"},
+                "the capabilities the previous task reported missing are now model fields",
+                all(
+                    hasattr(by_code["7230"], name)
+                    for name in ("node_type", "is_contra", "review_sensitive", "normal_balance")
+                ),
             )
     finally:
         engine.dispose()

@@ -101,6 +101,18 @@ def main() -> int:
                       "seed_canonical_accounting_catalog.py --apply first.")
                 return 1
 
+            # BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001 §6: a rule whose
+            # destination this catalog refuses as an automatic classification
+            # stops the run rather than quietly writing to it. There is no
+            # such rule today; this is what keeps that true.
+            unsafe = deterministic_rules.destination_problems(session)
+            if unsafe:
+                print("REFUSED — a deterministic rule points where automatic classification "
+                      "may never land:")
+                for problem in unsafe:
+                    print("  -", problem)
+                return 1
+
             candidates = rc.build_candidates(session, include_assigned=False)
             matched: list[tuple] = []
             mixed: list = []

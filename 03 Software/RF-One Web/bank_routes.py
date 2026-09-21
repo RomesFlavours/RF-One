@@ -993,10 +993,13 @@ def register_bank_routes(
             whys = classification_service.list_transaction_reasons(db, search=why_search)
             whos = classification_service.list_occurrences(db, search=who_search)
 
-            # Assignable options are the COMPLETE ones only — the UI never
-            # offers a choice the service layer would then refuse.
+            # Assignable options are the COMPLETE, POSTABLE ones only — the
+            # UI never offers a choice the service layer would then refuse,
+            # and since BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001 a
+            # reporting GROUP is one of those refusals.
             assignable_whats = [w for w in classification_service.list_accounting_classifications(db)
-                                if w.active and w.statement_type is not None]
+                                if w.active and w.statement_type is not None
+                                and w.is_posting_account]
             assignable_whys = [r for r in classification_service.list_transaction_reasons(db)
                                if r.status == "ACTIVE" and r.accounting_classification_id is not None]
 

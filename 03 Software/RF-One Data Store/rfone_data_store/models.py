@@ -10984,7 +10984,18 @@ class BankAccountingClassification(Base):
       `what_label` whose statement side is genuinely not derivable.
       Such a row is explicitly INCOMPLETE rather than silently assigned
       a made-up side; the Classification page shows it as such, and the
-      UI requires a real value on every create/edit."""
+      UI requires a real value on every create/edit.
+    * `node_type`, `is_contra`, `review_sensitive` and `normal_balance`
+      are canonical ACCOUNT METADATA
+      (BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001). They state facts
+      the catalog always had but that used to be inferred: whether an
+      account may be posted to at all, whether it subtracts from its
+      reporting group, whether it is a residual account that automated
+      recognition must never reach for, and which side of the ledger it
+      naturally sits on. They are read, never re-derived — in particular
+      `node_type` is NOT inferred from whether the account currently has
+      children, because a group may legitimately be empty for a while and
+      a posting category may legitimately have children."""
 
     __tablename__ = "bank_accounting_classifications"
     __table_args__ = (
@@ -10994,6 +11005,14 @@ class BankAccountingClassification(Base):
             name="ck_bank_accounting_classification_statement_type",
         ),
         CheckConstraint("parent_id IS NULL OR parent_id <> id", name="ck_bac_parent_not_self"),
+        CheckConstraint(
+            "node_type IN ('GROUP', 'POSTING', 'POSTING_CATEGORY')",
+            name="ck_bac_node_type",
+        ),
+        CheckConstraint(
+            "normal_balance IS NULL OR normal_balance IN ('DEBIT', 'CREDIT')",
+            name="ck_bac_normal_balance",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -11008,6 +11027,35 @@ class BankAccountingClassification(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("1"))
 
+    # GROUP          — a structural/reporting node. NEVER a final
+    #                  classification destination for automated recognition.
+    # POSTING        — a final accounting classification leaf.
+    # POSTING_CATEGORY — a legitimate accounting category that may receive
+    #                  classification even though finer sub-accounts exist or
+    #                  may be added later (2600 Loans & Financing: the bank
+    #                  line says "loan", never short vs long term).
+    node_type: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="POSTING", server_default="POSTING",
+    )
+    # True only where the account reverses the natural direction of its
+    # reporting group — 1590 Accumulated Depreciation inside Fixed Assets,
+    # 4910/4920 inside Revenue. A subtree total reads this instead of a
+    # hardcoded list of account codes.
+    is_contra: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0"),
+    )
+    # True means: a human may select this account explicitly, but automated
+    # recognition must NOT fall back to it because nothing better was found.
+    # "I don't know" is REVIEW_REQUIRED, never Miscellaneous.
+    review_sensitive: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0"),
+    )
+    # DEBIT | CREDIT. NULLABLE for the same single reason `statement_type`
+    # is: a legacy-migrated row whose side is genuinely not derivable is
+    # explicitly INCOMPLETE rather than assigned a made-up normal balance.
+    # Every canonical account states it.
+    normal_balance: Mapped[str | None] = mapped_column(String(8), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
@@ -11021,6 +11069,23 @@ class BankAccountingClassification(Base):
         statement side yet) stays readable and keeps every historical
         decision intact, but must not be the WHAT of a new decision."""
         return self.active and self.statement_type is not None
+
+    @property
+    def is_posting_account(self) -> bool:
+        """Whether this account may be posted to at all. Read from
+        `node_type` — never derived from whether it happens to have
+        children today."""
+        return self.node_type in ("POSTING", "POSTING_CATEGORY")
+
+    @property
+    def may_receive_automatic_classification(self) -> bool:
+        """Whether automated recognition may land a transaction here.
+
+        A GROUP never may. A review-sensitive account never may on the
+        strength of "nothing better matched" — only a deterministic
+        approved rule or an explicit human decision puts a transaction
+        there, and neither goes through this property."""
+        return self.is_posting_account and not self.review_sensitive and self.is_complete
 
 
 class BankOccurrenceType(Base):

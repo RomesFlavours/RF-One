@@ -52,7 +52,7 @@
     <div class="table-scroll">
       <table class="table-compact table-stack">
         <thead>
-          <tr><th>Code</th><th>Name</th><th>Statement</th><th>Parent</th><th>Status</th><th>Edit</th></tr>
+          <tr><th>Code</th><th>Name</th><th>Statement</th><th>Semantics</th><th>Parent</th><th>Status</th><th>Edit</th></tr>
         </thead>
         <tbody>
           {% for what in whats %}
@@ -66,6 +66,17 @@
                 {% else %}
                   <span class="badge bad">INCOMPLETE</span>
                   <span class="cell-note">No statement type yet &mdash; edit this What and choose one.</span>
+                {% endif %}
+              </td>
+              <td data-label="Semantics">
+                <span class="badge {{ 'ok' if what.is_posting_account else 'warn' }}">{{ what.node_type }}</span>
+                {{ what.normal_balance or '—' }}
+                {% if what.is_contra %}<span class="badge warn">CONTRA</span>{% endif %}
+                {% if what.review_sensitive %}<span class="badge warn">REVIEW ONLY</span>{% endif %}
+                {% if not what.is_posting_account %}
+                  <span class="cell-note">A reporting group. Not offered as a Why's What and never an automatic destination.</span>
+                {% elif what.review_sensitive %}
+                  <span class="cell-note">Selectable by a human; automatic recognition never falls back to it.</span>
                 {% endif %}
               </td>
               <td data-label="Parent">{{ parent.code ~ ' — ' ~ parent.name if parent else '—' }}</td>

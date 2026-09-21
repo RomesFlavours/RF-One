@@ -26,7 +26,20 @@ Three rules shape everything here:
 Re-importing an identical catalog is idempotent. A code that already
 exists with a DIFFERENT meaning is a conflict reported for a human, never
 an overwrite: a What already used by a decision must never change meaning
-under the historical snapshots that reference it.
+under the historical snapshots that reference it. Since
+BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001, "meaning" is not only the
+name: a file that states a different node type, normal balance, contra
+flag or review sensitivity for a code that already exists is a conflict
+too, because those four fields are what reporting and automated
+recognition act on.
+
+A file that states NOTHING about them — an ordinary accountant's export,
+which has no such columns — is not in conflict with anything. Such a row
+is created with the semantics that were in force before those columns
+existed: a row that is some other row's parent in the same file is a
+GROUP, anything else is a POSTING, nothing is contra, nothing is
+review-sensitive, and the normal balance stays NULL rather than being
+guessed from a statement side that does not determine it.
 """
 
 from __future__ import annotations
@@ -49,6 +62,31 @@ BALANCE_SHEET = classification_service.BALANCE_SHEET
 GENERATED_CODE_PREFIX = "GEN"
 GENERATED_CODE_MARKER = "[generated technical code]"
 
+# Canonical account semantics (BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001).
+GROUP = "GROUP"
+POSTING = "POSTING"
+POSTING_CATEGORY = "POSTING_CATEGORY"
+NODE_TYPES = (GROUP, POSTING, POSTING_CATEGORY)
+
+DEBIT = "DEBIT"
+CREDIT = "CREDIT"
+NORMAL_BALANCES = (DEBIT, CREDIT)
+
+_TRUE_WORDS = ("true", "1", "yes", "y", "si", "s")
+_FALSE_WORDS = ("false", "0", "no", "n", "")
+
+
+def parse_flag(value: str | None) -> bool:
+    """TRUE/FALSE as a chart of accounts spells it. Anything unrecognizable
+    raises rather than quietly becoming False — a contra account silently
+    read as ordinary would corrupt every total it appears in."""
+    text = (value or "").strip().casefold()
+    if text in _TRUE_WORDS:
+        return True
+    if text in _FALSE_WORDS:
+        return False
+    raise ValueError(f"{value!r} is not a yes/no value.")
+
 # Column names accepted for each field, matched case- and separator-
 # insensitively. Deliberately a fixed vocabulary rather than a guess at
 # what an arbitrary header might mean: an unrecognized header is reported,
@@ -63,6 +101,12 @@ _HEADER_ALIASES = {
     "parent": ("parent", "parent code", "parent account", "padre", "parent name", "group"),
     "level": ("level", "livello", "depth", "indent"),
     "row_type": ("type", "row type", "kind", "tipo riga", "category type"),
+    "node_type": ("node type", "nodetype", "node", "tipo nodo"),
+    "normal_balance": ("normal balance", "normalbalance", "balance side", "dare avere"),
+    "is_contra": ("is contra", "contra", "iscontra", "contra account"),
+    "review_sensitive": (
+        "review sensitive", "reviewsensitive", "review", "review only",
+    ),
 }
 
 _PROFIT_LOSS_HINTS = (
@@ -145,9 +189,27 @@ class ParsedWhatRow:
     source_label: str
     anomalies: list[str] = field(default_factory=list)
 
+    # Canonical account semantics. `stated_semantics` holds ONLY the fields
+    # the file actually spelled out, which is what conflict detection is
+    # allowed to judge an existing account against: an export that says
+    # nothing about contra accounts disagrees with nothing.
+    node_type: str = POSTING
+    normal_balance: str | None = None
+    is_contra: bool = False
+    review_sensitive: bool = False
+    stated_semantics: dict = field(default_factory=dict)
+
     @property
     def importable(self) -> bool:
         return self.row_type == "ACCOUNT" and not self.anomalies
+
+    @property
+    def states_full_semantics(self) -> bool:
+        """Whether the file spelled out all four semantic fields for this
+        row. The canonical catalog must; an operator's export need not."""
+        return {
+            "node_type", "normal_balance", "is_contra", "review_sensitive",
+        } <= set(self.stated_semantics)
 
 
 @dataclass
@@ -403,6 +465,39 @@ def parse(
             code_is_generated = True
         code_by_level[level] = code
 
+        # --- canonical account semantics, only where the file states them ---
+        stated: dict = {}
+
+        raw_node_type = _normalize_header(cell("node_type")).upper().replace(" ", "_")
+        if raw_node_type:
+            if raw_node_type in NODE_TYPES:
+                stated["node_type"] = raw_node_type
+            else:
+                anomalies.append(
+                    f"Node type {cell('node_type')!r} is not one of "
+                    f"{', '.join(NODE_TYPES)}."
+                )
+
+        raw_balance = _normalize_header(cell("normal_balance")).upper()
+        if raw_balance:
+            if raw_balance in NORMAL_BALANCES:
+                stated["normal_balance"] = raw_balance
+            else:
+                anomalies.append(
+                    f"Normal balance {cell('normal_balance')!r} is neither {DEBIT} nor {CREDIT}."
+                )
+
+        for field_name, label in (("is_contra", "Contra"), ("review_sensitive", "Review sensitive")):
+            if field_name not in columns:
+                continue
+            raw_flag = cell(field_name)
+            if not raw_flag:
+                continue
+            try:
+                stated[field_name] = parse_flag(raw_flag)
+            except ValueError:
+                anomalies.append(f"{label} {raw_flag!r} is not a yes/no value.")
+
         result.rows.append(ParsedWhatRow(
             source_row_number=offset,
             statement_type=statement_type,
@@ -418,6 +513,11 @@ def parse(
                 + f" · row {offset}"
             ),
             anomalies=anomalies,
+            node_type=stated.get("node_type", POSTING),
+            normal_balance=stated.get("normal_balance"),
+            is_contra=stated.get("is_contra", False),
+            review_sensitive=stated.get("review_sensitive", False),
+            stated_semantics=stated,
         ))
 
     # --- cross-row validation ----------------------------------------------
@@ -451,6 +551,18 @@ def parse(
                 "statement."
             )
 
+    parent_codes = {
+        parsed.parent_code for parsed in result.rows
+        if parsed.row_type == "ACCOUNT" and parsed.parent_code
+    }
+    for parsed in result.rows:
+        if "node_type" in parsed.stated_semantics or parsed.row_type != "ACCOUNT":
+            continue
+        # No Node Type column: a row that is some other row's parent in this
+        # same file is a group, exactly as RF-One used to derive it. Stated
+        # nowhere, so it is not a fact this file can conflict with.
+        parsed.node_type = GROUP if parsed.code in parent_codes else POSTING
+
     if not result.importable_rows and not result.file_anomalies:
         result.file_anomalies.append(
             "No importable account row was found — every row was a heading, a total, or carried "
@@ -478,17 +590,50 @@ class ImportOutcome:
         return bool(self.conflicts)
 
 
+# Labels used when reporting a semantic disagreement, so the message names
+# the field the way the file spells it.
+_SEMANTIC_LABELS = {
+    "node_type": "node type",
+    "normal_balance": "normal balance",
+    "is_contra": "contra",
+    "review_sensitive": "review-sensitive",
+}
+
+
+def _semantic_disagreements(
+    current: "m.BankAccountingClassification", parsed_row: ParsedWhatRow,
+) -> list[str]:
+    """Where the file contradicts an account that already exists.
+
+    Judged ONLY on the fields the file actually stated. An accountant's
+    export that carries no semantic columns contradicts nothing, which is
+    what keeps an ordinary re-upload idempotent."""
+    disagreements: list[str] = []
+    for field_name, stated in parsed_row.stated_semantics.items():
+        held = getattr(current, field_name, None)
+        if isinstance(stated, bool):
+            held = bool(held)
+        if held != stated:
+            disagreements.append(
+                f"{_SEMANTIC_LABELS[field_name]} is {held!r}, the file says {stated!r}"
+            )
+    return disagreements
+
+
 def apply_import(
     session: Session, parsed: ParsedWhatCatalog, *, source_note: str | None = None,
 ) -> ImportOutcome:
     """Write the importable rows, after a human has seen the preview.
 
-    Idempotent: a code that already exists with the SAME name is left
-    untouched and counted as unchanged, so re-importing an identical
-    catalog changes nothing. A code that exists with a DIFFERENT name is a
-    CONFLICT — reported, never overwritten, because a What already
+    Idempotent: a code that already exists with the SAME name and the same
+    stated semantics is left untouched and counted as unchanged, so
+    re-importing an identical catalog changes nothing. A code that exists
+    with a DIFFERENT name — or with the same name but a different node
+    type, normal balance, contra flag or review sensitivity — is a
+    CONFLICT: reported, never overwritten, because a What already
     referenced by a decision must not change meaning under the historical
-    snapshots that point at it. Nothing is ever deleted.
+    snapshots that point at it, and those four fields are what reporting
+    and automated recognition act on. Nothing is ever deleted.
 
     Raises `ValueError` before writing anything if the parse produced
     file-level anomalies: there is no partial import."""
@@ -513,13 +658,21 @@ def apply_import(
     for parsed_row in parsed.importable_rows:
         current = existing.get(parsed_row.code)
         if current is not None:
-            if current.name.strip().casefold() == parsed_row.name.strip().casefold():
-                outcome.unchanged.append(parsed_row.code)
-            else:
+            if current.name.strip().casefold() != parsed_row.name.strip().casefold():
                 outcome.conflicts.append(
                     f"{parsed_row.code}: already exists as {current.name!r}, the file says "
                     f"{parsed_row.name!r}. Not overwritten."
                 )
+                continue
+            disagreements = _semantic_disagreements(current, parsed_row)
+            if disagreements:
+                outcome.conflicts.append(
+                    f"{parsed_row.code}: already exists with different accounting semantics — "
+                    + "; ".join(disagreements)
+                    + ". Not overwritten."
+                )
+            else:
+                outcome.unchanged.append(parsed_row.code)
             continue
 
         description_parts = [f"Imported from {parsed_row.source_label}."]
@@ -538,6 +691,10 @@ def apply_import(
             statement_type=parsed_row.statement_type,
             description=" ".join(description_parts),
             active=True,
+            node_type=parsed_row.node_type,
+            normal_balance=parsed_row.normal_balance,
+            is_contra=parsed_row.is_contra,
+            review_sensitive=parsed_row.review_sensitive,
         )
         session.add(classification)
         created_by_code[parsed_row.code] = classification
