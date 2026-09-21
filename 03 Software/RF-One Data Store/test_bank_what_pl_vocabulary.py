@@ -261,8 +261,9 @@ def main() -> int:
                 and len(rc.build_candidates(s)) == 0,
             )
             check(
-                "20b. the structural Why baseline is preserved (5 purposes)",
-                s.query(m.BankTransactionReason).count() == 5,
+                "20b. the canonical WHY catalog is seeded (77 purposes, including the five "
+                "structural ones)",
+                s.query(m.BankTransactionReason).count() == 77,
                 detail=str(s.query(m.BankTransactionReason).count()),
             )
             # §8 — every structural Why that settles a liability points at a

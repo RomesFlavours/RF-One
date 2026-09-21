@@ -94,11 +94,23 @@ def main() -> int:
             # =============================================================
             # 1-3. The five exist, from an ordinary migration
             # =============================================================
+            # BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 widened the seeded
+            # vocabulary from these five to the full 77-purpose management
+            # catalog. The five are now a SUBSET — still seeded by an ordinary
+            # migration, still pointing where this task fixed them, and still
+            # reused rather than duplicated by the later revision.
             check(
-                "1. an ordinary `alembic upgrade head` leaves exactly the five structural "
-                "purposes — no script, no prior import",
-                len(reasons) == 5 and set(reasons) == {code for code, _ in EXPECTED},
-                detail=str(sorted(reasons)),
+                "1. an ordinary `alembic upgrade head` leaves the five structural purposes "
+                "present — no script, no prior import",
+                {code for code, _ in EXPECTED} <= set(reasons),
+                detail=str(sorted({code for code, _ in EXPECTED} - set(reasons))),
+            )
+            check(
+                "1b. they were reused, not duplicated, by the canonical WHY catalog",
+                all(
+                    len([r for r in reasons.values() if r.code == code]) == 1
+                    for code, _ in EXPECTED
+                ),
             )
             for code, account_code in EXPECTED:
                 reason = reasons.get(code)
@@ -151,10 +163,12 @@ def main() -> int:
             # =============================================================
             outcome = dr.seed_structural_reasons(s)
             s.commit()
+            before = s.query(m.BankTransactionReason).count()
             check(
-                "4. re-seeding creates nothing: 0 created, 5 unchanged",
+                "4. re-seeding creates nothing: 0 created, 5 unchanged, and the rest of the "
+                "WHY catalog is left alone",
                 not outcome.created and len(outcome.unchanged) == 5
-                and s.query(m.BankTransactionReason).count() == 5,
+                and s.query(m.BankTransactionReason).count() == before,
                 detail=f"created={len(outcome.created)} unchanged={len(outcome.unchanged)}",
             )
             target = s.query(m.BankTransactionReason).filter_by(

@@ -493,9 +493,18 @@ def list_transaction_reasons(
 # ---------------------------------------------------------------------------
 
 
-def _require_usable_why(session: Session, transaction_reason_id: int | None) -> int:
+def _require_usable_why(session: Session, transaction_reason_id: int | None) -> int | None:
+    """Validate a Who's default Why, which is OPTIONAL.
+
+    BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §20 — a Who may have
+    ZERO, one or many Whys, and the relationship is carried by
+    `BankOccurrenceReasonAssociation`. Requiring a default here was a
+    WHO -> one WHY constraint in all but name. What remains is a
+    SUGGESTION: when set it is validated exactly as before; when absent
+    the Who is simply a counterparty nobody has confirmed a purpose for
+    yet, which is the ordinary state of a newly recognised payee."""
     if transaction_reason_id is None:
-        raise ValueError("A Who requires a default Why.")
+        return None
     reason = session.get(m.BankTransactionReason, transaction_reason_id)
     if reason is None:
         raise ValueError(f"Why {transaction_reason_id} does not exist.")
@@ -586,11 +595,11 @@ def set_occurrence_status(
         raise ValueError(f"Who {occurrence_id} does not exist.")
     if status not in ("ACTIVE", "INACTIVE"):
         raise ValueError(f"Who status must be ACTIVE or INACTIVE, got {status!r}.")
-    if status == "ACTIVE" and occurrence.default_transaction_reason_id is None:
-        raise ValueError(
-            f"Who {occurrence.canonical_name!r} cannot be activated without a default Why. "
-            "Edit it and assign one first."
-        )
+    # No default-Why requirement for activation
+    # (BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §20): a Who may
+    # legitimately have zero Whys until a human confirms one against a
+    # real transaction, and refusing to activate it would be the
+    # WHO -> one WHY constraint returning by the back door.
     occurrence.status = status
     session.flush()
     return occurrence

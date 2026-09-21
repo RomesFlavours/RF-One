@@ -381,6 +381,12 @@ def main() -> int:
             s.add(supplier_type)
             s.commit()
 
+            # BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §20 — a Who may now
+            # be CREATED with zero Whys, so the refusal no longer comes from
+            # `create_occurrence`. The property this check exists for is
+            # unchanged and still enforced: bulk approval resolves the chain
+            # BEFORE writing any decision row, and a Who that cannot resolve a
+            # What stops the whole operation.
             raises(
                 "26. an incomplete Who is refused BEFORE anything is written",
                 lambda: rc.approve_candidates(
@@ -388,7 +394,7 @@ def main() -> int:
                     new_occurrence_name="Broken", occurrence_type_id=supplier_type.id,
                     default_transaction_reason_id=None,
                 ),
-                "requires a default Why",
+                "has no default Why",
             )
             s.rollback()
             check(

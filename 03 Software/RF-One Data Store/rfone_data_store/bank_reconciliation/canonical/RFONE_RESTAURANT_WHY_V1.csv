@@ -1,0 +1,78 @@
+Group Code,Group Name,Group Order,Code,Name,Account Code
+KITCHEN_LABOR,Kitchen Labor,10,BOH_REGULAR_PAYROLL,Kitchen / BOH Regular Payroll,6210
+KITCHEN_LABOR,Kitchen Labor,10,BOH_OVERTIME,Kitchen / BOH Overtime,6220
+KITCHEN_LABOR,Kitchen Labor,10,BOH_CONTRACT_LABOR,Kitchen / BOH Contract / 1099 Labor,6800
+FOH_LABOR,Serving / FOH Labor,20,FOH_REGULAR_PAYROLL,Serving / FOH Regular Payroll,6110
+FOH_LABOR,Serving / FOH Labor,20,FOH_OVERTIME,Serving / FOH Overtime,6120
+FOH_LABOR,Serving / FOH Labor,20,FOH_CONTRACT_LABOR,Serving / FOH Contract / 1099 Labor,6800
+PEOPLE,Management & Personnel,30,MANAGEMENT_PAYROLL,Management Payroll,6310
+PEOPLE,Management & Personnel,30,BONUS_INCENTIVE,Bonus / Incentive,6400
+PEOPLE,Management & Personnel,30,EMPLOYER_PAYROLL_TAX,Employer Payroll Tax,6500
+PEOPLE,Management & Personnel,30,EMPLOYEE_BENEFITS,Employee Benefits,6600
+PEOPLE,Management & Personnel,30,WORKERS_COMPENSATION,Workers Compensation,6700
+PEOPLE,Management & Personnel,30,OTHER_PERSONNEL_COST,Other Personnel Cost,6900
+PEOPLE,Management & Personnel,30,RECRUITING_TRAINING,Recruiting / Training,7860
+PRODUCT_COST,Product Cost,40,FOOD_PURCHASES,Food Purchases,5100
+PRODUCT_COST,Product Cost,40,NON_ALCOHOLIC_BEVERAGES,Non-Alcoholic Beverage Purchases,5210
+PRODUCT_COST,Product Cost,40,BEER_PURCHASES,Beer Purchases,5220
+PRODUCT_COST,Product Cost,40,WINE_PURCHASES,Wine Purchases,5230
+PRODUCT_COST,Product Cost,40,LIQUOR_PURCHASES,Liquor / Cocktail Product Purchases,5240
+PRODUCT_COST,Product Cost,40,TO_GO_PACKAGING,Packaging / To-Go Consumables,5300
+PRODUCT_COST,Product Cost,40,DIRECT_CONSUMABLES,Direct Restaurant Consumables,5400
+PRODUCT_COST,Product Cost,40,RESTAURANT_OPERATING_SUPPLIES,Restaurant Operating Supplies,7830
+OCCUPANCY,Occupancy,50,BASE_RENT,Restaurant Base Rent,7110
+OCCUPANCY,Occupancy,50,STORAGE_RENT,Storage Rent,7110
+OCCUPANCY,Occupancy,50,CAM,CAM / Common Area Charges,7120
+OCCUPANCY,Occupancy,50,OCCUPANCY_PROPERTY_CHARGES,Occupancy / Property Charges,7130
+FACILITY,Facility / Structural,60,EQUIPMENT_REPAIR,Equipment Repair / Maintenance,7310
+FACILITY,Facility / Structural,60,FACILITY_MAINTENANCE,Building / Facility Maintenance,7320
+FACILITY,Facility / Structural,60,JANITORIAL_CLEANING,Janitorial / Cleaning,7810
+FACILITY,Facility / Structural,60,HOOD_CLEANING,Hood / Exhaust Cleaning,7810
+UTILITIES,Utilities & Communications,70,ELECTRICITY,Electricity,7410
+UTILITIES,Utilities & Communications,70,WATER_SEWER,Water / Sewer,7420
+UTILITIES,Utilities & Communications,70,NATURAL_GAS,Natural Gas,7430
+UTILITIES,Utilities & Communications,70,WASTE_GARBAGE,Waste / Garbage,7440
+UTILITIES,Utilities & Communications,70,PHONE_INTERNET,Telephone / Internet / Communications,7450
+ADMINISTRATION,Administration & Professional,80,ACCOUNTING_BOOKKEEPING,Accounting / Bookkeeping,7610
+ADMINISTRATION,Administration & Professional,80,LEGAL,Legal Fees,7620
+ADMINISTRATION,Administration & Professional,80,CONSULTING,Consulting / Professional Services,7630
+ADMINISTRATION,Administration & Professional,80,CORPORATE_MANAGEMENT_FEES,Corporate / Management Fees,7640
+ADMINISTRATION,Administration & Professional,80,GENERAL_LIABILITY_INSURANCE,General Liability Insurance,7710
+ADMINISTRATION,Administration & Professional,80,PROPERTY_BUSINESS_INSURANCE,Property / Business Insurance,7720
+ADMINISTRATION,Administration & Professional,80,OTHER_BUSINESS_INSURANCE,Other Business Insurance,7750
+ADMINISTRATION,Administration & Professional,80,LICENSES_PERMITS,Licenses / Permits,7740
+ADMINISTRATION,Administration & Professional,80,OFFICE_SUPPLIES,Office Supplies,7820
+ADMINISTRATION,Administration & Professional,80,DUES_SUBSCRIPTIONS,Dues / Subscriptions,7840
+ADMINISTRATION,Administration & Professional,80,SOFTWARE_POS_TECHNOLOGY,Software / POS / Technology,7850
+ADMINISTRATION,Administration & Professional,80,SHIPPING_POSTAGE,Shipping / Postage,7870
+BANKING,Banking & Payment Costs,90,MERCHANT_PROCESSING_FEE,Merchant / Card Processing Fee,7210
+BANKING,Banking & Payment Costs,90,BANK_SERVICE_CHARGE,Bank Service Charge,7220
+BANKING,Banking & Payment Costs,90,FOREIGN_TRANSACTION_FEE,Foreign Transaction Fee,7230
+BANKING,Banking & Payment Costs,90,INTEREST_INCOME,Bank Interest Income,8100
+BANKING,Banking & Payment Costs,90,INTEREST_EXPENSE,Interest Expense,8200
+MARKETING,Marketing & Business Development,100,MARKETING_ADVERTISING,Marketing / Advertising,7500
+MARKETING,Marketing & Business Development,100,BUSINESS_TRAVEL_SCOUTING,Business Travel / Scouting,7940
+MARKETING,Marketing & Business Development,100,MEALS_ENTERTAINMENT,Meals / Entertainment,7950
+VEHICLE_TRAVEL,Vehicles & Travel,110,VEHICLE_LEASE,Vehicle Lease,7910
+VEHICLE_TRAVEL,Vehicles & Travel,110,VEHICLE_FUEL,Vehicle Fuel,7920
+VEHICLE_TRAVEL,Vehicles & Travel,110,VEHICLE_INSURANCE,Vehicle Insurance,7730
+VEHICLE_TRAVEL,Vehicles & Travel,110,VEHICLE_REPAIRS,Vehicle Repairs / Operating Expense,7930
+VEHICLE_TRAVEL,Vehicles & Travel,110,TOLLS_PARKING,Tolls / Parking,7960
+OWNER_PERSONAL,Owner / Personal,120,OWNER_PERSONAL_HOME,Owner Personal — Home,3400
+OWNER_PERSONAL,Owner / Personal,120,OWNER_PERSONAL_FOOD,Owner Personal — Food,3400
+OWNER_PERSONAL,Owner / Personal,120,OWNER_PERSONAL_HEALTH,Owner Personal — Health,3400
+OWNER_PERSONAL,Owner / Personal,120,OWNER_PERSONAL_RESTAURANT,Owner Personal — Restaurant,3400
+OWNER_PERSONAL,Owner / Personal,120,OWNER_PERSONAL_TAX,Owner Personal — Tax,3400
+OWNER_PERSONAL,Owner / Personal,120,OWNER_PERSONAL_OTHER,Owner Personal — Other,3400
+OWNER_PERSONAL,Owner / Personal,120,MEMBER_DRAW,Member / Owner Draw,3400
+MONEY_MOVEMENT,Money Movements / Liabilities,130,TIPS_SETTLEMENT,Tips Distribution / Settlement,2300
+MONEY_MOVEMENT,Money Movements / Liabilities,130,SALES_TAX_REMITTANCE,Sales Tax Remittance,2200
+MONEY_MOVEMENT,Money Movements / Liabilities,130,CREDIT_CARD_SETTLEMENT,Credit Card Statement Payment,2500
+MONEY_MOVEMENT,Money Movements / Liabilities,130,INTERNAL_BANK_TRANSFER,Internal Bank Transfer,1110
+MONEY_MOVEMENT,Money Movements / Liabilities,130,LOAN_ADVANCE,Loan Advance / Principal Received,2600
+MONEY_MOVEMENT,Money Movements / Liabilities,130,PAYABLE_SETTLEMENT,Accounts Payable Settlement,2100
+MONEY_MOVEMENT,Money Movements / Liabilities,130,MEMBER_CONTRIBUTION,Member / Owner Contribution,3300
+MONEY_MOVEMENT,Money Movements / Liabilities,130,RELATED_PARTY_TRANSFER_OUT,Transfer To Related Party,1610
+MONEY_MOVEMENT,Money Movements / Liabilities,130,RELATED_PARTY_TRANSFER_IN,Transfer From Related Party,2710
+CAPITAL_PROJECTS,Capital / Projects,140,EQUIPMENT_PURCHASE_CAPEX,Equipment / Appliance Purchase — Capital,1520
+CAPITAL_PROJECTS,Capital / Projects,140,LEASEHOLD_IMPROVEMENT,Leasehold Improvement / Remodeling — Capital,1530

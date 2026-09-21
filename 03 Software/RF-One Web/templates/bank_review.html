@@ -248,10 +248,52 @@
       <h3 id="who-picker-title">Select Who</h3>
     </div>
     <p class="muted" id="who-picker-subject"></p>
+    {# BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §21 — after the Who is
+       chosen the operator picks the WHY, from the short list already
+       confirmed for that Who plus "+ New". Management groups are NOT shown
+       here; they live only inside the "+ New" modal. #}
     <p class="muted">
-      Why and What follow from the Who &mdash; they are not chosen here. Manage the chain on the
-      <a href="{{ url_for('bank_classification') }}">Classification</a> tab.
+      Choose the <strong>Who</strong>, then the <strong>Why</strong>. What follows from the Why
+      and is never chosen per transaction &mdash; if a Why resolves to the wrong category, fix it
+      once on the <a href="{{ url_for('bank_classification') }}">Classification</a> tab.
     </p>
+
+    <div id="why-picker" hidden>
+      <h4>Why &mdash; <span id="why-picker-who"></span></h4>
+      <div id="why-picker-known"></div>
+      <button type="button" id="why-picker-new">+ New</button>
+    </div>
+
+    {# The complete canonical catalog, grouped. Rendered once, hidden, and
+       shown only when "+ New" is pressed. #}
+    <div id="why-catalog-modal" hidden>
+      <h4>Associate another purpose with this Who</h4>
+      <p class="muted">
+        Pick from RF-One's complete WHY catalog. The purpose is recorded for this transaction and
+        added to this Who's list, so next time it appears in the short dropdown. Choosing a second
+        purpose never replaces the first.
+      </p>
+      <input type="search" id="why-catalog-search" placeholder="Search purposes" autocomplete="off">
+      {% for group, reasons in why_catalog_groups %}
+        <details class="why-group" open>
+          <summary>{{ group.name if group else 'Ungrouped' }}</summary>
+          <ul class="plain">
+            {% for reason in reasons %}
+              <li class="why-option"
+                  data-reason-id="{{ reason.id }}"
+                  data-haystack="{{ (reason.name ~ ' ' ~ reason.code)|lower }}">
+                <button type="button" class="why-choose" data-reason-id="{{ reason.id }}">
+                  {{ reason.name }}
+                </button>
+                <span class="cell-note">{{ reason.resolution_label }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        </details>
+      {% endfor %}
+    </div>
+
+    <script type="application/json" id="why-by-occurrence">{{ why_ids_by_occurrence | tojson }}</script>
 
     <form id="who-picker-form" method="post" action="">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

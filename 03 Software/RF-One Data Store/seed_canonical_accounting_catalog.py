@@ -27,6 +27,7 @@ import sys
 
 from rfone_data_store.bank_reconciliation import canonical_catalog
 from rfone_data_store.bank_reconciliation import deterministic_rules
+from rfone_data_store.bank_reconciliation import why_catalog
 from rfone_data_store.database import (
     create_configured_engine,
     create_session_factory,
@@ -111,6 +112,29 @@ def main() -> int:
                   f"{len(why_outcome.unchanged)} unchanged")
             for rule in deterministic_rules.structural_why_baseline():
                 print(f"  {rule.why_code:<26} -> {rule.account_code}")
+
+            # BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 — the full
+            # management WHY catalog and its groups. Vocabulary only: no
+            # Who, no association, no rule, no transaction.
+            catalog = why_catalog.seed(session)
+            session.commit()
+            print()
+            print(f"Canonical WHY catalog: {len(catalog.reasons_created)} created, "
+                  f"{len(catalog.reasons_unchanged)} unchanged; "
+                  f"{len(catalog.groups_created)} groups created, "
+                  f"{len(catalog.groups_unchanged)} unchanged")
+            for group, items in why_catalog.catalog_by_group(session):
+                label = group.name if group is not None else "(ungrouped)"
+                print(f"  {label:<34} {len(items):>2}")
+            problems = why_catalog.catalog_problems(session)
+            if problems:
+                print()
+                print("WHY -> WHAT INVARIANT PROBLEMS:")
+                for problem in problems:
+                    print("  -", problem)
+                return 1
+            print("WHY invariant validated: every P&L Why has exactly one WHAT; every "
+                  "non-P&L Why has an explicit Balance Sheet destination.")
             return 0
     except ValueError as exc:
         print()

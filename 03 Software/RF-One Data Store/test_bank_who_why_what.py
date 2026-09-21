@@ -181,13 +181,21 @@ def main() -> int:
             s.add(supplier_type)
             s.flush()
 
-            raises(
-                "a Who cannot be created without a default Why",
-                lambda: classification_service.create_occurrence(
-                    s, canonical_name="Orphan Who", occurrence_type_id=supplier_type.id,
-                    default_transaction_reason_id=None,
-                ),
-                "requires a default Why",
+            # BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §20 — this used to
+            # assert "a Who cannot be created without a default Why", which was
+            # a WHO -> one WHY constraint in all but name. A Who may now have
+            # ZERO Whys: that is the ordinary state of a payee nobody has
+            # confirmed a purpose for yet, and the relationship is carried by
+            # the WHO <-> WHY associations instead.
+            orphan = classification_service.create_occurrence(
+                s, canonical_name="Orphan Who", occurrence_type_id=supplier_type.id,
+                default_transaction_reason_id=None,
+            )
+            check(
+                "a Who may exist with ZERO Why — the default Why is a suggestion, not a "
+                "requirement",
+                orphan.id is not None and orphan.default_transaction_reason_id is None
+                and orphan.status == "ACTIVE",
             )
 
             us_foods = classification_service.create_occurrence(

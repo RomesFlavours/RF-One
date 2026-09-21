@@ -364,9 +364,14 @@ def main() -> int:
             },
         )
         with SessionFactory() as s:
+            # BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §20 — this used to
+            # assert the Who was REFUSED. A Who may now be created with zero
+            # Whys: the default Why is a suggestion, and the real relationship
+            # is the many-to-many association a human builds per transaction.
+            orphan = s.query(m.BankOccurrence).filter_by(canonical_name="Orphan Who").one_or_none()
             check(
-                "a Who cannot be created without a default Why",
-                s.query(m.BankOccurrence).filter_by(canonical_name="Orphan Who").count() == 0,
+                "a Who may be created with ZERO Why — the default Why is a suggestion",
+                orphan is not None and orphan.default_transaction_reason_id is None,
             )
 
         resp = operator_client.post(

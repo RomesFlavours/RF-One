@@ -75,6 +75,7 @@ from sqlalchemy.orm import Session
 from .. import models as m
 from . import classification as classification_service
 from . import purpose_evidence as pe
+from . import why_catalog
 
 UTC = timezone.utc
 
@@ -641,6 +642,17 @@ class HumanDecisionRequest:
     transaction_id: int
     occurrence_id: int
     confirmed_by_account_id: int | None
+    # BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §21-§23 — the WHY the
+    # operator chose for THIS transaction.
+    #
+    # When set, that Why is used and the WHO <-> WHY association is
+    # recorded, so the same Why is offered first next time. The WHAT then
+    # DERIVES from the Why and is never chosen separately: if the mapping
+    # is wrong the central Why definition is fixed, not this transaction.
+    #
+    # When None the Who's default chain is used, which is what every
+    # caller written before this task does.
+    transaction_reason_id: int | None = None
     # Whether this confirmation teaches RF-One that THIS normalized
     # description means THIS Who. It is a learning control only: the
     # Who -> Why -> What associations themselves are stored on the
@@ -679,14 +691,43 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
     if occurrence is None:
         raise ValueError(f"BankOccurrence {request.occurrence_id} not found")
 
-    # WHY and WHAT are derived, never chosen. An incomplete chain is
-    # refused with the concrete reason, so the human is sent to
-    # Bank > Classification rather than given a half-classified row.
-    chain = classification_service.resolve_chain(session, occurrence)
-    if not chain.is_complete:
-        raise ValueError(chain.blocking_reason)
-    reason = chain.transaction_reason
-    what = chain.accounting_classification
+    # The WHY is either the one the operator chose for this transaction, or
+    # the Who's default chain. The WHAT is DERIVED from that Why in both
+    # cases — never chosen independently, and never taken from the Who.
+    if request.transaction_reason_id is not None:
+        reason = session.get(m.BankTransactionReason, request.transaction_reason_id)
+        if reason is None:
+            raise ValueError(f"Why {request.transaction_reason_id} does not exist.")
+        if reason.status != "ACTIVE":
+            raise ValueError(f"Why {reason.code} — {reason.name} is inactive.")
+        what = reason.accounting_classification
+        if what is None:
+            raise ValueError(
+                f"Why {reason.code} — {reason.name} has no accounting destination yet."
+            )
+        if not what.is_posting_account:
+            raise ValueError(
+                f"Why {reason.code} resolves to {what.code}, a reporting group, which "
+                "nothing may be posted to."
+            )
+        # An explicit choice IS the human confirming this purpose for this
+        # counterparty: recorded additively, never replacing another.
+        why_catalog.associate(
+            session, occurrence_id=request.occurrence_id,
+            transaction_reason_id=reason.id, source="HUMAN",
+        )
+        chain = classification_service.ResolvedChain(
+            occurrence, transaction_reason=reason, accounting_classification=what,
+        )
+    else:
+        # WHY and WHAT are derived, never chosen. An incomplete chain is
+        # refused with the concrete reason, so the human is sent to
+        # Bank > Classification rather than given a half-classified row.
+        chain = classification_service.resolve_chain(session, occurrence)
+        if not chain.is_complete:
+            raise ValueError(chain.blocking_reason)
+        reason = chain.transaction_reason
+        what = chain.accounting_classification
 
     previous = get_current_explanation(session, financial_transaction_id=txn.id)
 

@@ -11236,11 +11236,105 @@ class BankOccurrence(Base):
     )
 
 
+class BankReasonGroup(Base):
+    """A MANAGEMENT grouping of Whys
+    (BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §2) — Kitchen Labor,
+    Product Cost, Occupancy, Money Movements, and so on.
+
+    Exists to organise the catalog and to let a future Company Panel /
+    Cognito aggregate group -> Why -> Who -> transactions. It is NOT a
+    classification: nothing is ever posted to a group, and ordinary Bank
+    reconciliation never shows one. The operator sees groups in exactly
+    one place — the "+ New" modal, where the full catalog has to be
+    browsable."""
+
+    __tablename__ = "bank_reason_groups"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_bank_reason_group_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("1"))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class BankOccurrenceReasonAssociation(Base):
+    """WHO <-> WHY, many to many
+    (BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §20).
+
+    One Who may have zero, one or many Whys; one Why may apply to many
+    Whos. Amazon legitimately gains Restaurant Operating Supplies, then
+    Office Supplies, then Food Purchases, and keeps all three.
+
+    **This is a productivity shortcut, not proof.** The rows record which
+    purposes a human has ALREADY confirmed for this counterparty, so the
+    reconciliation dropdown can offer those few instead of all 77. It
+    never establishes the purpose of a NEW transaction — that stays
+    BANK_WHO_WHY_INVARIANT_001: identity alone determines nothing, and
+    adding a second association never replaces the first."""
+
+    __tablename__ = "bank_occurrence_reason_associations"
+    __table_args__ = (
+        UniqueConstraint(
+            "occurrence_id", "transaction_reason_id",
+            name="uq_bank_occurrence_reason_association",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occurrence_id: Mapped[int] = mapped_column(
+        ForeignKey("bank_occurrences.id"), nullable=False, index=True
+    )
+    transaction_reason_id: Mapped[int] = mapped_column(
+        ForeignKey("bank_transaction_reasons.id"), nullable=False, index=True
+    )
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("1"))
+    # How often a human has confirmed this pairing, and when. Evidence a
+    # reviewer can weigh; never a threshold that promotes anything.
+    confirmation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    first_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # HUMAN | SEED — where the association came from.
+    source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    occurrence: Mapped["BankOccurrence"] = relationship()
+    transaction_reason: Mapped["BankTransactionReason"] = relationship()
+
+
 class BankTransactionReason(Base):
-    """Controlled vocabulary for WHY a bank movement exists (spec: "perché
-    la transazione esiste") — e.g. SUPPLIER_INVOICE_PAYMENT, PAYROLL,
-    TAX_PAYMENT. Independent of, and never a substitute for, invoice-side
-    cost family/type/composition."""
+    """WHY a bank movement exists — RF-One's OPERATIONAL/MANAGEMENT
+    classification of what kind of business purpose a transaction serves
+    (BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001).
+
+    A Why carries management granularity; a What carries P&L structure.
+    The two are deliberately not the same shape: Janitorial / Cleaning and
+    Hood / Exhaust Cleaning are two Whys the business wants to see apart,
+    and both resolve to 7810. Several Whys mapping to one What is normal
+    and intended.
+
+    Every Why resolves to exactly ONE accounting destination
+    (`accounting_classification_id`), and what that destination IS decides
+    whether the Why has a WHAT at all:
+
+    * destination is a P&L posting category -> that IS the WHAT;
+    * destination is a Balance Sheet account -> the Why has NO WHAT, and
+      the transaction settles a liability, moves money between the
+      company's own accounts, or capitalises an asset.
+
+    `is_profit_loss` / `what` / `accounting_destination` below are how
+    that question is asked; never `accounting_classification_id` alone."""
 
     __tablename__ = "bank_transaction_reasons"
     __table_args__ = (
@@ -11262,6 +11356,12 @@ class BankTransactionReason(Base):
     accounting_classification_id: Mapped[int | None] = mapped_column(
         ForeignKey("bank_accounting_classifications.id"), nullable=True, index=True
     )
+    # The MANAGEMENT group this Why belongs to. Organisational only —
+    # never shown during ordinary reconciliation, never a classification.
+    # Nullable so a Why created before the canonical catalog survives.
+    reason_group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_reason_groups.id"), nullable=True, index=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -11269,9 +11369,44 @@ class BankTransactionReason(Base):
     )
 
     accounting_classification: Mapped["BankAccountingClassification | None"] = relationship()
+    reason_group: Mapped["BankReasonGroup | None"] = relationship()
     export_mapping: Mapped["BankTransactionReasonExportMapping | None"] = relationship(
         back_populates="transaction_reason", uselist=False,
     )
+
+    @property
+    def is_profit_loss(self) -> bool:
+        """Whether this Why represents a P&L economic event — and so has a
+        WHAT — rather than a Balance Sheet movement."""
+        destination = self.accounting_classification
+        return destination is not None and destination.is_what
+
+    @property
+    def what(self) -> "BankAccountingClassification | None":
+        """The official P&L posting category this Why resolves to, or None
+        for a Balance Sheet Why. A non-P&L Why having no WHAT is a
+        statement about the P&L, never a gap to be filled."""
+        return self.accounting_classification if self.is_profit_loss else None
+
+    @property
+    def accounting_destination(self) -> "BankAccountingClassification | None":
+        """The Balance Sheet destination this Why settles at, or None for a
+        P&L Why."""
+        destination = self.accounting_classification
+        if destination is not None and destination.is_accounting_destination:
+            return destination
+        return None
+
+    @property
+    def resolution_label(self) -> str:
+        """How the resolved accounting outcome is shown next to a Why —
+        read-only, because WHAT is derived from WHY and never chosen per
+        transaction (§23)."""
+        if self.what is not None:
+            return f"WHAT: {self.what.display_label}"
+        if self.accounting_destination is not None:
+            return f"ACCOUNTING DESTINATION: {self.accounting_destination.display_label}"
+        return "No accounting destination configured"
 
 
 class BankTransactionReasonExportMapping(Base):

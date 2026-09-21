@@ -50,6 +50,7 @@ from rfone_data_store import models as m
 from rfone_data_store.bank_reconciliation import accounting_dedup
 from rfone_data_store.bank_reconciliation import card_configuration
 from rfone_data_store.bank_reconciliation import canonical_catalog
+from rfone_data_store.bank_reconciliation import why_catalog
 from rfone_data_store.bank_reconciliation import receiver_candidates
 from rfone_data_store.bank_reconciliation import what_catalog_import
 from rfone_data_store.bank_reconciliation import classification as classification_service
@@ -837,6 +838,24 @@ def register_bank_routes(
                 UNRESOLVED_NO_SETTLEMENT_ACCOUNT=accounting_dedup.UNRESOLVED_NO_SETTLEMENT_ACCOUNT,
                 instruments_by_id=instruments_by_id, explanations_by_id=explanations_by_id,
                 who_options=who_options,
+                # BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §21-§22.
+                # `why_by_occurrence` is the ORDINARY dropdown: per Who,
+                # only the purposes a human already confirmed for it.
+                # `why_catalog_groups` is the "+ New" modal ONLY — the full
+                # catalog, grouped. Management groups appear nowhere else.
+                why_by_occurrence={
+                    option["id"]: why_catalog.reasons_for_occurrence(db, option["id"])
+                    for option in who_options
+                },
+                # Serialisable form for the page script: Who id -> Why ids.
+                why_ids_by_occurrence={
+                    str(option["id"]): [
+                        reason.id
+                        for reason in why_catalog.reasons_for_occurrence(db, option["id"])
+                    ]
+                    for option in who_options
+                },
+                why_catalog_groups=why_catalog.catalog_by_group(db),
                 resolved_decision_statuses=recognition.RESOLVED_DECISION_STATUSES,
                 counterpart_by_transaction_id=counterpart_by_transaction_id,
                 match_candidates_by_transaction_id=match_candidates_by_transaction_id,
@@ -897,6 +916,44 @@ def register_bank_routes(
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
+        return redirect(request.referrer or url_for("bank_review"))
+
+    @app.route("/bank/transactions/<int:transaction_id>/why", methods=["POST"])
+    @require_domain_access("BANK")
+    def bank_transaction_why_decision(transaction_id: int):
+        """Assign the WHY an operator chose for one transaction.
+
+        BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §22-§23 — this is the
+        "+ New" path and the ordinary dropdown path, which are the same
+        action: the Why is recorded for THIS transaction, the WHO <-> WHY
+        association is created or reconfirmed so the dropdown offers it
+        next time, and the WHAT is DERIVED from the Why. The operator
+        never picks a What here; if the mapping is wrong the central Why
+        definition is corrected instead."""
+        account = current_account()
+        occurrence_id = request.form.get("occurrence_id", type=int)
+        transaction_reason_id = request.form.get("transaction_reason_id", type=int)
+        if not occurrence_id or not transaction_reason_id:
+            flash("Choose both a Who and a Why.", "error")
+            return redirect(request.referrer or url_for("bank_review"))
+        try:
+            with SessionFactory() as db:
+                decision = recognition.record_human_decision(
+                    db,
+                    recognition.HumanDecisionRequest(
+                        transaction_id=transaction_id,
+                        occurrence_id=occurrence_id,
+                        transaction_reason_id=transaction_reason_id,
+                        confirmed_by_account_id=account.id,
+                        learn_description=False,
+                    ),
+                )
+                reason = db.get(m.BankTransactionReason, transaction_reason_id)
+                label = reason.resolution_label if reason else ""
+                db.commit()
+            flash(f"Classified as {label}.", "success")
+        except ValueError as exc:
+            flash(str(exc), "error")
         return redirect(request.referrer or url_for("bank_review"))
 
     @app.route("/bank/transactions/<int:transaction_id>/recognition-decision", methods=["POST"])

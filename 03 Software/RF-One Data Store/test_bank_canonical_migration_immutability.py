@@ -176,21 +176,27 @@ def main() -> int:
     # =================================================================
     # Each revision's frozen input is present, and is not the live file
     # =================================================================
+    # Every snapshot, and the row count each revision was written against.
+    # A new revision adding one belongs here: the point is that each file is
+    # frozen at a known size, not that there are only ever two.
+    EXPECTED_SNAPSHOTS = {
+        "b8d3f1a72c64_rfone_restaurant_coa_v1.csv": 134,
+        "c5f8b2e91a47_account_semantics.csv": 134,
+        "c4a9e7d21b56_rfone_restaurant_why_v1.csv": 77,
+    }
     snapshots = sorted(path.name for path in MIGRATION_DATA.glob("*.csv"))
     check(
-        "1d. the two snapshot revisions have a frozen input each, named after them",
-        snapshots == [
-            "b8d3f1a72c64_rfone_restaurant_coa_v1.csv",
-            "c5f8b2e91a47_account_semantics.csv",
-        ],
+        "1d. every snapshot revision has a frozen input, named after it",
+        snapshots == sorted(EXPECTED_SNAPSHOTS),
         detail=str(snapshots),
     )
     for name in snapshots:
         path = MIGRATION_DATA / name
         rows = list(csv.DictReader(io.StringIO(path.read_text(encoding="utf-8-sig"))))
+        expected = EXPECTED_SNAPSHOTS.get(name)
         check(
-            f"1e. {name} is frozen at the historical 134 accounts",
-            len(rows) == 134, detail=f"{len(rows)} rows",
+            f"1e. {name} is frozen at {expected} row(s)",
+            len(rows) == expected, detail=f"{len(rows)} rows",
         )
         check(
             f"1f. {name} is a different file from the live canonical catalog",
