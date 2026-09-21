@@ -48,6 +48,8 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from .. import models as m
+from . import accounting_dedup
+from . import card_configuration
 from . import recognition
 
 KERMALI_COLUMNS = (
@@ -62,12 +64,49 @@ def month_bounds(year: int, month: int) -> tuple[date, date]:
 
 
 def _in_scope_transactions(session: Session, year: int, month: int) -> list["m.FinancialTransaction"]:
+    """The transactions this month's export is about.
+
+    BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001: a row SUPPRESSED as
+    an accounting duplicate is excluded — it is kept in the ledger and
+    stays visible on the import/audit screens, but it never reaches the
+    accountant, which is the whole point of the deduplication.
+
+    A row whose settlement account is unknown is deliberately KEPT in this
+    scope even though it can never be exported: it must still be checked
+    for every other reason it is not ready (an undecided candidate
+    duplicate, a missing Who), and `compute_export_blockers` adds its own
+    reason on top. `build_kermali_workbook` skips it defensively, so it can
+    never reach a sheet even if a caller ignored the blockers.
+
+    A row acquired before this mechanism existed has
+    `accounting_status = NULL` and is treated as visible, so an
+    un-recomputed database exports exactly what it exported before rather
+    than emptying."""
     start, end = month_bounds(year, month)
     return list(session.scalars(
         select(m.FinancialTransaction).where(
             m.FinancialTransaction.posting_date >= start,
             m.FinancialTransaction.posting_date <= end,
             m.FinancialTransaction.duplicate_status != "CONFIRMED_DUPLICATE",
+            accounting_dedup.not_suppressed_filter(),
+        ).order_by(m.FinancialTransaction.posting_date, m.FinancialTransaction.id)
+    ).all())
+
+
+def _unresolved_settlement_transactions(
+    session: Session, year: int, month: int,
+) -> list["m.FinancialTransaction"]:
+    """In-month rows that could not be given an accounting identity because
+    their instrument has no settlement account configured for that date.
+    Reported precisely rather than guessed into some account."""
+    start, end = month_bounds(year, month)
+    return list(session.scalars(
+        select(m.FinancialTransaction).where(
+            m.FinancialTransaction.posting_date >= start,
+            m.FinancialTransaction.posting_date <= end,
+            m.FinancialTransaction.duplicate_status != "CONFIRMED_DUPLICATE",
+            m.FinancialTransaction.accounting_status
+            == accounting_dedup.UNRESOLVED_NO_SETTLEMENT_ACCOUNT,
         ).order_by(m.FinancialTransaction.posting_date, m.FinancialTransaction.id)
     ).all())
 
@@ -270,16 +309,57 @@ def compute_export_blockers(session: Session, *, year: int, month: int) -> list[
         resolved_explanation_ids=resolved_explanation_ids,
     ))
 
+    # BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001: a transaction whose
+    # settlement account is unknown has no accounting identity at all — it
+    # cannot be deduplicated and cannot be attributed to a Company. It is
+    # reported per instrument (not per row) so one unconfigured card does
+    # not produce hundreds of identical blockers, and it blocks only the
+    # months it actually appears in.
+    unresolved = _unresolved_settlement_transactions(session, year, month)
+    if unresolved:
+        by_instrument: dict[int | None, int] = {}
+        for txn in unresolved:
+            by_instrument[txn.payment_instrument_id] = by_instrument.get(txn.payment_instrument_id, 0) + 1
+        for instrument_id, count in sorted(by_instrument.items(), key=lambda kv: (kv[0] or 0)):
+            instrument = session.get(m.PaymentInstrument, instrument_id) if instrument_id else None
+            name = instrument.display_name if instrument is not None else str(instrument_id)
+            blockers.append(ExportBlocker(
+                f"No settlement account configured for {name!r} (id={instrument_id}): {count} "
+                "transaction(s) this month have no accounting identity and could not be "
+                "deduplicated. Configure the card's settlement account in Bank > Import & "
+                "Instruments, then recompute."
+            ))
+
+    # The Company of a transaction comes from its SETTLEMENT ACCOUNT, never
+    # from the card itself and never from whoever holds the card. A card
+    # whose own `legal_entity_id` is set but whose settlement account has
+    # none is therefore still blocked — the card's value is not a fallback.
     instruments_in_scope = {t.payment_instrument_id for t in transactions}
     if instruments_in_scope:
         instruments = session.scalars(
             select(m.PaymentInstrument).where(m.PaymentInstrument.id.in_(instruments_in_scope))
         ).all()
+        reported: set[int] = set()
         for instrument in instruments:
-            if instrument.legal_entity_id is None:
+            posting_dates = [
+                t.posting_date for t in transactions
+                if t.payment_instrument_id == instrument.id and t.posting_date is not None
+            ]
+            on_date = min(posting_dates) if posting_dates else None
+            account = card_configuration.accounting_account_for(
+                session, instrument=instrument, on_date=on_date,
+            )
+            if account is None:
+                continue  # already reported as an unresolved settlement account above
+            if account.legal_entity_id is None and account.id not in reported:
+                reported.add(account.id)
+                via = (
+                    "" if account.id == instrument.id
+                    else f" (settlement account for {instrument.display_name!r})"
+                )
                 blockers.append(ExportBlocker(
                     f"Missing required Company/Legal Entity for instrument "
-                    f"{instrument.display_name!r} (id={instrument.id})."
+                    f"{account.display_name!r} (id={account.id}){via}."
                 ))
 
     return blockers
@@ -298,7 +378,28 @@ def build_kermali_workbook(session: Session, *, year: int, month: int) -> bytes:
             select(m.PaymentInstrument).where(m.PaymentInstrument.id.in_(instrument_ids))
         ).all()
     } if instrument_ids else {}
-    legal_entity_ids = {i.legal_entity_id for i in instruments.values() if i.legal_entity_id is not None}
+
+    # BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001: Company comes from
+    # the SETTLEMENT ACCOUNT of each transaction — the account a card is
+    # paid from — not from the card's own Legal Entity and never from its
+    # holder. `accounting_settlement_account_id` was resolved and stored
+    # when the row was keyed, so the exported Company matches exactly the
+    # account the row was deduplicated under.
+    settlement_ids = {
+        t.accounting_settlement_account_id for t in transactions
+        if t.accounting_settlement_account_id is not None
+    }
+    settlement_accounts = {
+        i.id: i for i in session.scalars(
+            select(m.PaymentInstrument).where(m.PaymentInstrument.id.in_(settlement_ids))
+        ).all()
+    } if settlement_ids else {}
+
+    legal_entity_ids = {
+        i.legal_entity_id
+        for i in list(instruments.values()) + list(settlement_accounts.values())
+        if i.legal_entity_id is not None
+    }
     legal_entities = {
         le.id: le for le in session.scalars(
             select(m.LegalEntity).where(m.LegalEntity.id.in_(legal_entity_ids))
@@ -327,8 +428,22 @@ def build_kermali_workbook(session: Session, *, year: int, month: int) -> bytes:
     for txn in transactions:
         if txn.id in transfer_ids:
             continue
+        # Defensive: the caller is required to refuse to build while any
+        # blocker exists, and a row with no settlement account always
+        # produces one — so this is unreachable in the normal flow and is
+        # here purely so an un-gated caller can never emit a row whose
+        # accounting identity nobody established.
+        if not accounting_dedup.is_accounting_visible(txn):
+            continue
         instrument = instruments.get(txn.payment_instrument_id)
-        legal_entity = legal_entities.get(instrument.legal_entity_id) if instrument and instrument.legal_entity_id else None
+        accounting_account = (
+            settlement_accounts.get(txn.accounting_settlement_account_id)
+            if txn.accounting_settlement_account_id is not None else instrument
+        ) or instrument
+        legal_entity = (
+            legal_entities.get(accounting_account.legal_entity_id)
+            if accounting_account and accounting_account.legal_entity_id else None
+        )
         explanation = explanations.get(txn.explanation_id) if txn.explanation_id else None
 
         amount = Decimal(txn.amount_minor) / 100

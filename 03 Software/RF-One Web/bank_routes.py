@@ -39,12 +39,14 @@ this module never imports `app.py` itself."""
 from __future__ import annotations
 
 import calendar
-from datetime import date
+from datetime import date, datetime
 
 from flask import Response, abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import func, or_, select
 
 from rfone_data_store import models as m
+from rfone_data_store.bank_reconciliation import accounting_dedup
+from rfone_data_store.bank_reconciliation import card_configuration
 from rfone_data_store.bank_reconciliation import classification as classification_service
 from rfone_data_store.bank_reconciliation import export as export_service
 from rfone_data_store.bank_reconciliation import matching as matching_service
@@ -101,6 +103,31 @@ def register_bank_routes(
                 i.id: bank_service.instrument_export_warning(i) for i in instruments
             }
 
+            # BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001. Resolved
+            # server-side so the template states facts instead of deriving
+            # them: for a card, the Company comes through its settlement
+            # account, never from the card's own value and never from its
+            # holder.
+            settlement_accounts = {}
+            cardholders = {}
+            derived_companies = {}
+            card_warnings = {}
+            for instrument in instruments:
+                derived_companies[instrument.id] = card_configuration.legal_entity_for(
+                    db, instrument=instrument, on_date=date.today(),
+                )
+                if instrument.instrument_type == "CREDIT_CARD":
+                    settlement_accounts[instrument.id] = (
+                        card_configuration.current_settlement_account(db, instrument.id)
+                    )
+                    cardholders[instrument.id] = card_configuration.current_cardholder(
+                        db, instrument.id,
+                    )
+                    card_warnings[instrument.id] = card_configuration.configuration_warning(
+                        db, instrument,
+                    )
+            dedup = accounting_dedup.summarize(db)
+
             source_profiles = db.scalars(
                 select(m.BankSourceInstrumentProfile)
                 .order_by(m.BankSourceInstrumentProfile.detected_format,
@@ -117,6 +144,9 @@ def register_bank_routes(
                 instruments_by_id=instruments_by_id, legal_entities=legal_entities,
                 batch_states=batch_states, instrument_warnings=instrument_warnings,
                 source_profiles=source_profiles, assignment_audits=assignment_audits,
+                settlement_accounts=settlement_accounts, cardholders=cardholders,
+                derived_companies=derived_companies, card_warnings=card_warnings,
+                dedup=dedup,
             )
 
     # -----------------------------------------------------------------
@@ -183,17 +213,212 @@ def register_bank_routes(
                     flash(f"{display_name}: {warning}", "error")
                 return redirect(url_for("bank_home"))
 
+            all_instruments = _instruments(db)
             return render_template(
                 "bank_instrument_edit.html",
                 instrument=instrument,
                 legal_entities=_active_legal_entities(db),
-                instruments=[i for i in _instruments(db) if i.id != instrument_id],
+                instruments=[i for i in all_instruments if i.id != instrument_id],
+                instruments_by_id={i.id: i for i in all_instruments},
+                # A card settles to a BANK_ACCOUNT and never to another card,
+                # so only bank accounts are offered — the UI never proposes a
+                # choice the service layer would then refuse.
+                bank_accounts=[
+                    i for i in all_instruments
+                    if i.instrument_type == "BANK_ACCOUNT" and i.id != instrument_id
+                ],
+                current_settlement=card_configuration.current_settlement_account(db, instrument_id),
+                settlement_history=card_configuration.settlement_history(db, instrument_id),
+                settlement_warning=card_configuration.configuration_warning(db, instrument),
+                cardholder_history=card_configuration.cardholder_history(db, instrument_id),
+                acting_identities=db.scalars(
+                    select(m.ActingIdentity)
+                    .where(m.ActingIdentity.is_active.is_(True))
+                    .order_by(m.ActingIdentity.display_name)
+                ).all(),
+                employees=db.scalars(
+                    select(m.Employee).order_by(m.Employee.display_name)
+                ).all(),
+                today=date.today().isoformat(),
                 export_warning=bank_service.instrument_export_warning(instrument),
                 transaction_count=db.scalar(
                     select(func.count(m.FinancialTransaction.id))
                     .where(m.FinancialTransaction.payment_instrument_id == instrument_id)
                 ) or 0,
             )
+
+    # -----------------------------------------------------------------
+    # Card configuration — settlement account and cardholder
+    # (BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001).
+    #
+    # Two separate sets of routes because the two facts have entirely
+    # different consequences: changing the settlement account changes the
+    # Company and the accounting identity of the card's transactions, so it
+    # triggers a deduplication recompute; changing the cardholder changes
+    # nothing but who is accountable, so it triggers nothing.
+    # -----------------------------------------------------------------
+
+    def _form_date(field_name: str, *, required: bool = True) -> date | None:
+        raw = (request.form.get(field_name) or "").strip()
+        if not raw:
+            if required:
+                raise ValueError("Provide an effective date.")
+            return None
+        try:
+            return datetime.strptime(raw, "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError(f"{raw!r} is not a valid date (expected YYYY-MM-DD).") from None
+
+    @app.route("/bank/instruments/<int:instrument_id>/settlement", methods=["POST"])
+    @gate
+    def bank_instrument_settlement_assign(instrument_id: int):
+        """Assign or re-assign the bank account a card settles to.
+
+        A re-assignment closes the previous period rather than overwriting
+        it, and the deduplication recompute that follows is what turns the
+        card's previously un-deduplicable transactions into resolvable
+        ones."""
+        require_csrf()
+        with SessionFactory() as db:
+            account = _current_account(db)
+            try:
+                card_configuration.assign_settlement_account(
+                    db,
+                    credit_card_payment_instrument_id=instrument_id,
+                    settlement_bank_account_id=request.form.get(
+                        "settlement_bank_account_id", type=int,
+                    ),
+                    valid_from=_form_date("valid_from"),
+                    notes=request.form.get("notes"),
+                    created_by_account_id=account.id,
+                )
+                outcome = bank_service.recompute_accounting_deduplication(db)
+                db.commit()
+                flash(
+                    "Settlement account saved. Accounting deduplication recomputed: "
+                    f"{outcome.canonical_transactions} canonical, "
+                    f"{outcome.suppressed_transactions} excluded, "
+                    f"{outcome.unresolved_transactions} still without a settlement account.",
+                    "info",
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+        return redirect(url_for("bank_instrument_edit", instrument_id=instrument_id))
+
+    @app.route(
+        "/bank/instruments/<int:instrument_id>/settlement/<int:assignment_id>",
+        methods=["POST"],
+    )
+    @gate
+    def bank_instrument_settlement_correct(instrument_id: int, assignment_id: int):
+        """Correct a settlement assignment recorded wrongly. The row is
+        edited and kept — never deleted — and the recompute re-derives every
+        affected accounting identity."""
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                card_configuration.correct_settlement_assignment(
+                    db,
+                    assignment_id=assignment_id,
+                    settlement_bank_account_id=request.form.get(
+                        "settlement_bank_account_id", type=int,
+                    ),
+                    valid_from=_form_date("valid_from"),
+                    notes=request.form.get("notes"),
+                )
+                bank_service.recompute_accounting_deduplication(db)
+                db.commit()
+                flash("Settlement assignment corrected and deduplication recomputed.", "info")
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+        return redirect(url_for("bank_instrument_edit", instrument_id=instrument_id))
+
+    @app.route("/bank/instruments/<int:instrument_id>/cardholder", methods=["POST"])
+    @gate
+    def bank_instrument_cardholder_assign(instrument_id: int):
+        """Record who holds this card from a given date. Deliberately does
+        NOT recompute deduplication: the holder has no accounting
+        consequence whatsoever."""
+        require_csrf()
+        with SessionFactory() as db:
+            account = _current_account(db)
+            try:
+                card_configuration.assign_cardholder(
+                    db,
+                    credit_card_payment_instrument_id=instrument_id,
+                    holder_kind=request.form.get("holder_kind", ""),
+                    holder_acting_identity_id=request.form.get(
+                        "holder_acting_identity_id", type=int,
+                    ) or None,
+                    holder_employee_id=request.form.get("holder_employee_id", type=int) or None,
+                    holder_display_name=request.form.get("holder_display_name"),
+                    valid_from=_form_date("valid_from"),
+                    notes=request.form.get("notes"),
+                    created_by_account_id=account.id,
+                )
+                db.commit()
+                flash("Cardholder recorded.", "info")
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+        return redirect(url_for("bank_instrument_edit", instrument_id=instrument_id))
+
+    @app.route(
+        "/bank/instruments/<int:instrument_id>/cardholder/<int:assignment_id>",
+        methods=["POST"],
+    )
+    @gate
+    def bank_instrument_cardholder_correct(instrument_id: int, assignment_id: int):
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                card_configuration.correct_cardholder_assignment(
+                    db,
+                    assignment_id=assignment_id,
+                    holder_kind=request.form.get("holder_kind", ""),
+                    holder_acting_identity_id=request.form.get(
+                        "holder_acting_identity_id", type=int,
+                    ) or None,
+                    holder_employee_id=request.form.get("holder_employee_id", type=int) or None,
+                    holder_display_name=request.form.get("holder_display_name"),
+                    valid_from=_form_date("valid_from"),
+                    notes=request.form.get("notes"),
+                )
+                db.commit()
+                flash("Cardholder assignment corrected.", "info")
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+        return redirect(url_for("bank_instrument_edit", instrument_id=instrument_id))
+
+    @app.route("/bank/accounting-dedup/recompute", methods=["POST"])
+    @gate
+    def bank_recompute_accounting_dedup():
+        """Re-run accounting deduplication over the whole ledger.
+
+        Idempotent: it re-derives everything from the current transactions
+        and the current card configuration and writes only the
+        accounting-dedup columns. No raw row, amount, date, description,
+        human duplicate decision or reconciliation decision is touched."""
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                outcome = bank_service.recompute_accounting_deduplication(db)
+                db.commit()
+                flash(
+                    f"Accounting deduplication recomputed: {outcome.canonical_transactions} "
+                    f"canonical, {outcome.duplicate_groups} duplicate group(s), "
+                    f"{outcome.suppressed_transactions} excluded from accounting, "
+                    f"{outcome.unresolved_transactions} without a settlement account. "
+                    f"{outcome.raw_rows_preserved} raw rows preserved.",
+                    "info",
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+        return redirect(url_for("bank_home"))
 
     # -----------------------------------------------------------------
     # Upload — multiple files, format recognition, instrument confirmation.
@@ -498,8 +723,40 @@ def register_bank_routes(
 
             filter_batch = db.get(m.BankImportBatch, batch_id) if batch_id else None
 
+            # BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001: the accounting
+            # group each visible row belongs to, so a suppressed copy can name
+            # its canonical and the canonical can say how many copies it
+            # absorbed. Suppressed rows stay VISIBLE here — this is the audit
+            # view — they are only excluded from accounting.
+            dedup_groups = {}
+            canonical_copy_counts = {}
+            canonical_by_id = {}
+            for txn in transactions:
+                if txn.accounting_status == accounting_dedup.DUPLICATE_SUPPRESSED:
+                    dedup_groups[txn.id] = accounting_dedup.duplicate_group(db, txn.id)
+                    if txn.accounting_canonical_transaction_id is not None:
+                        canonical_by_id[txn.accounting_canonical_transaction_id] = db.get(
+                            m.FinancialTransaction, txn.accounting_canonical_transaction_id,
+                        )
+                elif txn.accounting_status == accounting_dedup.CANONICAL:
+                    count = db.scalar(
+                        select(func.count(m.FinancialTransaction.id)).where(
+                            m.FinancialTransaction.accounting_canonical_transaction_id == txn.id
+                        )
+                    ) or 0
+                    if count:
+                        canonical_copy_counts[txn.id] = count
+
+            batches_by_id = {
+                b.id: b for b in db.scalars(select(m.BankImportBatch)).all()
+            }
+
             return render_template(
                 "bank_review.html", transactions=transactions, instruments=instruments,
+                dedup_groups=dedup_groups, canonical_copy_counts=canonical_copy_counts,
+                canonical_by_id=canonical_by_id, batches_by_id=batches_by_id,
+                DUPLICATE_SUPPRESSED=accounting_dedup.DUPLICATE_SUPPRESSED,
+                UNRESOLVED_NO_SETTLEMENT_ACCOUNT=accounting_dedup.UNRESOLVED_NO_SETTLEMENT_ACCOUNT,
                 instruments_by_id=instruments_by_id, explanations_by_id=explanations_by_id,
                 who_options=who_options,
                 resolved_decision_statuses=recognition.RESOLVED_DECISION_STATUSES,

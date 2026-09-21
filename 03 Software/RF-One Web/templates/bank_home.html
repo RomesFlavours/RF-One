@@ -27,6 +27,55 @@
 </div>
 
 <div class="card">
+  <h2>Accounting deduplication</h2>
+  {# BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001. Read-only counters:
+     this panel reports what the last recompute stored and never computes
+     or writes anything itself, so opening the page can never change the
+     data it is describing. #}
+  <p class="muted">
+    The same operation can reach the books twice &mdash; from a card and its linked card, from two
+    Chase downloads, twice in one file, or from files saved under different names. Rows that share a
+    <strong>settlement account, posting date, signed amount and normalized payee</strong> are one
+    accounting fact: one canonical transaction feeds accounting, the others are kept, linked and
+    excluded. <strong>No raw row is ever deleted.</strong>
+  </p>
+  <div class="coverage-tiles">
+    <div class="coverage-tile">
+      <div class="coverage-tile-value">{{ dedup.raw_rows_preserved }}</div>
+      <div class="coverage-tile-label">Raw rows preserved</div>
+    </div>
+    <div class="coverage-tile">
+      <div class="coverage-tile-value">{{ dedup.canonical_transactions }}</div>
+      <div class="coverage-tile-label">Canonical transactions</div>
+    </div>
+    <div class="coverage-tile{{ ' coverage-tile-warn' if dedup.duplicate_groups else '' }}">
+      <div class="coverage-tile-value">{{ dedup.duplicate_groups }}</div>
+      <div class="coverage-tile-label">Duplicate groups</div>
+    </div>
+    <div class="coverage-tile{{ ' coverage-tile-warn' if dedup.suppressed_transactions else '' }}">
+      <div class="coverage-tile-value">{{ dedup.suppressed_transactions }}</div>
+      <div class="coverage-tile-label">Excluded from accounting</div>
+    </div>
+    <div class="coverage-tile{{ ' coverage-tile-warn' if dedup.unresolved_transactions else '' }}">
+      <div class="coverage-tile-value">{{ dedup.unresolved_transactions }}</div>
+      <div class="coverage-tile-label">No settlement account</div>
+    </div>
+  </div>
+  {% if dedup.unresolved_transactions %}
+    <p class="muted">
+      {{ dedup.unresolved_transactions }} transaction(s) on {{ dedup.unresolved_cards }} instrument(s)
+      have no settlement account configured for their posting date. They are <strong>not</strong>
+      deduplicated and <strong>not</strong> merged with anything &mdash; configure the card's
+      settlement account below, then recompute.
+    </p>
+  {% endif %}
+  <form method="post" action="{{ url_for('bank_recompute_accounting_dedup') }}" class="compact-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit">Recompute accounting deduplication</button>
+  </form>
+</div>
+
+<div class="card">
   <h2>Payment Instruments</h2>
   {% if instruments %}
     <div class="table-scroll">
@@ -34,7 +83,8 @@
         <thead>
           <tr>
             <th>Name</th><th>Institution</th><th>Type</th><th>Last 4</th>
-            <th>Company</th><th>Currency</th><th>Settles to</th><th>State</th><th></th>
+            <th>Company</th><th>Settlement Account</th><th>Current Cardholder</th>
+            <th>State</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -47,17 +97,47 @@
                 {# Never the full account number — only its last four digits. #}
                 {{ instrument.last_four or (instrument.external_account_identifier[-4:] if instrument.external_account_identifier else '—') }}
               </td>
+              {# BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001: for a card
+                 the Company shown is the one DERIVED through its settlement
+                 account, never the card's own value and never its holder's.
+                 `derived_companies` is computed server-side by the route so
+                 this template states a fact rather than re-deriving one. #}
               <td data-label="Company">
-                {% if instrument.legal_entity %}
-                  {{ instrument.legal_entity.legal_name }}
+                {% set company = derived_companies.get(instrument.id) %}
+                {% if company %}
+                  {{ company.legal_name }}
+                  {% if instrument.instrument_type == 'CREDIT_CARD' %}
+                    <span class="cell-note">via settlement account</span>
+                  {% endif %}
                 {% else %}
                   <span class="badge warn">Not configured</span>
-                  <span class="cell-note">{{ instrument_warnings.get(instrument.id) }}</span>
+                  <span class="cell-note">{{ card_warnings.get(instrument.id) or instrument_warnings.get(instrument.id) }}</span>
                 {% endif %}
               </td>
-              <td data-label="Currency" class="col-narrow">{{ instrument.currency or '—' }}</td>
-              <td data-label="Settles to">
-                {{ instruments_by_id.get(instrument.linked_instrument_id).display_name if instruments_by_id.get(instrument.linked_instrument_id) else '—' }}
+              <td data-label="Settlement Account">
+                {% if instrument.instrument_type == 'CREDIT_CARD' %}
+                  {% set settlement = settlement_accounts.get(instrument.id) %}
+                  {% if settlement %}
+                    {{ bank.instrument_identity(settlement) }}
+                  {% else %}
+                    <span class="badge bad">Not configured</span>
+                  {% endif %}
+                {% else %}
+                  <span class="muted">n/a</span>
+                {% endif %}
+              </td>
+              <td data-label="Current Cardholder">
+                {% if instrument.instrument_type == 'CREDIT_CARD' %}
+                  {% set holder = cardholders.get(instrument.id) %}
+                  {% if holder %}
+                    {{ holder.holder_display_name }}
+                    <span class="cell-note">since {{ holder.valid_from }}</span>
+                  {% else %}
+                    <span class="muted">Not assigned</span>
+                  {% endif %}
+                {% else %}
+                  <span class="muted">n/a</span>
+                {% endif %}
               </td>
               <td data-label="State" class="col-narrow">
                 <span class="badge {{ 'ok' if instrument.status == 'ACTIVE' else 'warn' }}">{{ instrument.status }}</span>

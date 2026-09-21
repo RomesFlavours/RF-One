@@ -10266,6 +10266,218 @@ class PaymentInstrument(Base):
 
 
 # ---------------------------------------------------------------------------
+# Cardholder history and settlement-account assignment
+# (BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001).
+#
+# Two separate historized facts about a Credit Card, deliberately NOT merged
+# into one table and deliberately NOT collapsed onto `PaymentInstrument`
+# itself, because they answer different questions, change on different
+# schedules, and have different consequences:
+#
+#   * WHICH BANK ACCOUNT the card settles to — an ACCOUNTING fact. It is
+#     what derives the Company/Legal Entity of the card's transactions and
+#     what scopes accounting deduplication. Getting it wrong misstates the
+#     books.
+#   * WHO physically holds the card — a RESPONSIBILITY fact, used for
+#     accountability, analysis and possible personal benefits. It has NO
+#     accounting consequence whatsoever: it never derives Company, never
+#     derives the settlement account, and never participates in duplicate
+#     identity.
+#
+# Both are historized (`valid_from`/`valid_to`) rather than overwritten,
+# because a transaction from 2025 must be attributable to the configuration
+# that was true in 2025, not to today's.
+# ---------------------------------------------------------------------------
+
+
+class BankCardSettlementAccount(Base):
+    """The bank account a Credit Card is settled to, over a period of time.
+
+    This is the authoritative, date-aware source for the chain
+
+        Credit Card -> Settlement Bank Account -> Company / Legal Entity
+
+    and for the scope of accounting deduplication. The Company of a card
+    transaction is read from the SETTLEMENT ACCOUNT's `legal_entity_id`,
+    never from the card's own `legal_entity_id` and never from whoever
+    happens to hold the card.
+
+    Relationship to `PaymentInstrument.linked_instrument_id`: that column
+    is the existing, current-state settlement/funding link that cross-
+    ledger matching (`bank_reconciliation/matching.py`) already relies on,
+    and it keeps that role unchanged. This table is the historized,
+    accounting-authoritative record; the service layer keeps
+    `linked_instrument_id` pointed at whichever assignment is currently
+    open, so there is exactly one write path and the two can never drift.
+
+    Rules enforced here and in `bank_reconciliation/card_configuration.py`:
+
+    * the card must be a `CREDIT_CARD` and the settlement account a
+      `BANK_ACCOUNT` — a card never settles to another card;
+    * a card has at most ONE open assignment at a time
+      (`ux_bcsa_one_open_per_card`), and no two assignments for the same
+      card may overlap in time;
+    * an instrument never settles to itself, and a settlement chain never
+      forms a cycle;
+    * a reassignment CLOSES the previous row (sets `valid_to`) and inserts
+      a new one — history is never deleted or overwritten;
+    * nothing is invented for an existing card: a card with no assignment
+      stays visibly unconfigured, and its transactions are reported as
+      un-deduplicable rather than guessed into some account."""
+
+    __tablename__ = "bank_card_settlement_accounts"
+    __table_args__ = (
+        CheckConstraint(
+            "credit_card_payment_instrument_id <> settlement_bank_account_id",
+            name="ck_bcsa_not_self",
+        ),
+        CheckConstraint("valid_to IS NULL OR valid_to > valid_from", name="ck_bcsa_period"),
+        Index("ix_bcsa_card_id", "credit_card_payment_instrument_id"),
+        Index("ix_bcsa_settlement_id", "settlement_bank_account_id"),
+        Index(
+            "ux_bcsa_one_open_per_card", "credit_card_payment_instrument_id",
+            unique=True, sqlite_where=text("valid_to IS NULL"),
+            postgresql_where=text("valid_to IS NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    credit_card_payment_instrument_id: Mapped[int] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=False
+    )
+    settlement_bank_account_id: Mapped[int] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=False
+    )
+
+    valid_from: Mapped[date] = mapped_column(Date, nullable=False)
+    valid_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    credit_card: Mapped["PaymentInstrument"] = relationship(
+        foreign_keys=[credit_card_payment_instrument_id]
+    )
+    settlement_bank_account: Mapped["PaymentInstrument"] = relationship(
+        foreign_keys=[settlement_bank_account_id]
+    )
+
+    @property
+    def is_open(self) -> bool:
+        return self.valid_to is None
+
+
+# Holder reference kinds. RF-One has no single canonical "person" table
+# that fits every cardholder: `ActingIdentity` is the Core accountability
+# identity but exists only for someone who acts in RF-One, and `Employee`
+# is Location-scoped and Clover-sourced, so neither covers, say, an owner
+# who holds a company card and never touches the POS. Rather than force
+# one of them or invent a third person table, a cardholder is recorded as
+# a TYPED reference — exactly the convention `AuthorityGrant.scope_type`/
+# `scope_id` already establishes in this schema — so a canonical identity
+# IS reused wherever one genuinely exists, and the remaining case is
+# explicit rather than hidden.
+CARD_HOLDER_KIND_ACTING_IDENTITY = "ACTING_IDENTITY"
+CARD_HOLDER_KIND_EMPLOYEE = "EMPLOYEE"
+CARD_HOLDER_KIND_UNLINKED_PERSON = "UNLINKED_PERSON"
+CARD_HOLDER_KINDS = (
+    CARD_HOLDER_KIND_ACTING_IDENTITY,
+    CARD_HOLDER_KIND_EMPLOYEE,
+    CARD_HOLDER_KIND_UNLINKED_PERSON,
+)
+
+
+class BankCardHolderAssignment(Base):
+    """Who physically held a Credit Card, over a period of time.
+
+    Purpose: responsibility, analysis, and possible personal benefits. It
+    is deliberately inert for accounting — the holder NEVER determines the
+    Company, NEVER determines the settlement account, and NEVER takes part
+    in accounting-duplicate identity. Two transactions are the same
+    accounting fact or not regardless of who was carrying which plastic.
+
+    `holder_kind` selects which reference carries the identity:
+    `ACTING_IDENTITY` (the Core accountability identity, preferred
+    whenever the person has one), `EMPLOYEE` (the Clover-sourced
+    operational person), or `UNLINKED_PERSON` (a named holder RF-One has
+    no canonical identity for yet — recorded honestly rather than forced
+    into a table that does not fit). `holder_display_name` is always
+    populated, so a list never has to join three ways to render a name,
+    and is the ONLY identity stored for `UNLINKED_PERSON`.
+
+    Not applicable to a `BANK_ACCOUNT`: an account is not held by a
+    person in this sense, and the service layer refuses an assignment for
+    a non-card instrument.
+
+    History is append-and-close: a reassignment sets the previous row's
+    `valid_to` and inserts a new row. Nothing is ever physically deleted,
+    and two open holders for one card are impossible
+    (`ux_bcha_one_open_per_card`)."""
+
+    __tablename__ = "bank_card_holder_assignments"
+    __table_args__ = (
+        CheckConstraint(
+            "holder_kind IN ('ACTING_IDENTITY', 'EMPLOYEE', 'UNLINKED_PERSON')",
+            name="ck_bcha_holder_kind",
+        ),
+        CheckConstraint(
+            "(holder_kind = 'ACTING_IDENTITY' AND holder_acting_identity_id IS NOT NULL "
+            " AND holder_employee_id IS NULL) OR "
+            "(holder_kind = 'EMPLOYEE' AND holder_employee_id IS NOT NULL "
+            " AND holder_acting_identity_id IS NULL) OR "
+            "(holder_kind = 'UNLINKED_PERSON' AND holder_acting_identity_id IS NULL "
+            " AND holder_employee_id IS NULL)",
+            name="ck_bcha_holder_reference_matches_kind",
+        ),
+        CheckConstraint("valid_to IS NULL OR valid_to > valid_from", name="ck_bcha_period"),
+        Index("ix_bcha_card_id", "credit_card_payment_instrument_id"),
+        Index(
+            "ux_bcha_one_open_per_card", "credit_card_payment_instrument_id",
+            unique=True, sqlite_where=text("valid_to IS NULL"),
+            postgresql_where=text("valid_to IS NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    credit_card_payment_instrument_id: Mapped[int] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=False
+    )
+
+    holder_kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    holder_acting_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("acting_identities.id"), nullable=True
+    )
+    holder_employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True)
+    holder_display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    valid_from: Mapped[date] = mapped_column(Date, nullable=False)
+    valid_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    credit_card: Mapped["PaymentInstrument"] = relationship(
+        foreign_keys=[credit_card_payment_instrument_id]
+    )
+    holder_acting_identity: Mapped["ActingIdentity | None"] = relationship()
+    holder_employee: Mapped["Employee | None"] = relationship()
+
+    @property
+    def is_open(self) -> bool:
+        return self.valid_to is None
+
+
+# ---------------------------------------------------------------------------
 # Canonical Financial Model Convergence — Phase 3 (FINANCIAL_MODEL_
 # CONVERGENCE_001). `BankImportBatch`/`RawBankTransaction` are the CSV-
 # specific, source-layer provenance models ported from the proven Bank
@@ -10457,6 +10669,16 @@ class FinancialTransaction(Base):
             name="ck_ft_status",
         ),
         CheckConstraint(
+            "accounting_status IS NULL OR accounting_status IN "
+            "('CANONICAL', 'DUPLICATE_SUPPRESSED', 'UNRESOLVED_NO_SETTLEMENT_ACCOUNT')",
+            name="ck_ft_accounting_status",
+        ),
+        CheckConstraint(
+            "accounting_canonical_transaction_id IS NULL "
+            "OR accounting_canonical_transaction_id <> id",
+            name="ck_ft_accounting_canonical_not_self",
+        ),
+        CheckConstraint(
             "duplicate_status IS NULL OR duplicate_status IN "
             "('NONE', 'CANDIDATE_DUPLICATE', 'CONFIRMED_DUPLICATE', 'CONFIRMED_DISTINCT')",
             name="ck_ft_duplicate_status",
@@ -10469,6 +10691,8 @@ class FinancialTransaction(Base):
         Index("ix_ft_instrument_datetime", "payment_instrument_id", "transaction_datetime"),
         Index("ix_ft_source_system_id", "source_system_id"),
         Index("ix_ft_fingerprint", "fingerprint"),
+        Index("ix_ft_accounting_dedup_key", "accounting_dedup_key"),
+        Index("ix_ft_accounting_canonical_id", "accounting_canonical_transaction_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -10508,6 +10732,50 @@ class FinancialTransaction(Base):
         ForeignKey("financial_transactions.id"), nullable=True
     )
 
+    # --- Accounting deduplication -------------------------------------------
+    # BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001. A SECOND, separate
+    # mechanism from the `duplicate_status` fields above — not a rename of
+    # them. The difference is what each one is for:
+    #
+    #   * `duplicate_status` is the per-INSTRUMENT candidate/human review
+    #     flow (spec §7/§8): two rows on the SAME instrument that look
+    #     identical, surfaced for a person to judge. It stays exactly as
+    #     it was, and a human decision recorded there is never overwritten.
+    #   * these fields are the per-SETTLEMENT-ACCOUNT automatic accounting
+    #     dedup: the same economic operation reaching the books twice
+    #     because it appeared on a mother card AND its linked card, in two
+    #     Chase downloads, twice in one file, or in files with different
+    #     names. A different `last_four` does NOT make a row a different
+    #     accounting fact.
+    #
+    # `accounting_dedup_key` is the fingerprint of the Product-Owner-defined
+    # key: settlement account + posting date + signed amount in cents +
+    # normalized payee. `payee_normalized` and
+    # `payee_normalization_version` are stored alongside the original
+    # description so any grouping decision stays reproducible and auditable
+    # after the algorithm evolves.
+    #
+    # `accounting_status` is CANONICAL (the one occurrence that feeds
+    # accounting), DUPLICATE_SUPPRESSED (kept, linked, excluded from the
+    # books) or UNRESOLVED_NO_SETTLEMENT_ACCOUNT (its settlement account is
+    # not configured, so it is reported rather than guessed — never merged
+    # across unresolved accounts).
+    payee_normalized: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    payee_normalization_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    accounting_dedup_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    accounting_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    accounting_canonical_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_transactions.id"), nullable=True
+    )
+    accounting_dedup_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The settlement account this transaction was attributed to when the
+    # key was computed — a BANK_ACCOUNT's own id, or the account its card
+    # settled to on the posting date. Stored so the grouping, and the
+    # Company derived from it, stay explainable without re-deriving them.
+    accounting_settlement_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=True
+    )
+
     # --- Review linkage ---------------------------------------------------
     review_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
     # Canonical Financial Model Convergence — Phase 4B (Product Owner
@@ -10541,11 +10809,31 @@ class FinancialTransaction(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
-    payment_instrument: Mapped["PaymentInstrument"] = relationship()
+    # `foreign_keys` is explicit because this table now has TWO foreign
+    # keys to `payment_instruments`: the instrument the movement happened
+    # on, and the settlement account it was attributed to for accounting
+    # (BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001). They are
+    # different questions and must never be conflated.
+    payment_instrument: Mapped["PaymentInstrument"] = relationship(
+        foreign_keys=[payment_instrument_id]
+    )
+    accounting_settlement_account: Mapped["PaymentInstrument | None"] = relationship(
+        foreign_keys=[accounting_settlement_account_id]
+    )
     source_system: Mapped["SourceSystem | None"] = relationship()
     import_batch: Mapped["BankImportBatch | None"] = relationship()
+    # Two self-referential foreign keys now exist on this table: the older
+    # per-instrument human duplicate link, and the accounting-canonical
+    # link added by BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001. Both
+    # name their foreign key explicitly so neither can be resolved to the
+    # other — they answer different questions and are never interchangeable.
     duplicate_of: Mapped["FinancialTransaction | None"] = relationship(
         remote_side="FinancialTransaction.id",
+        foreign_keys="FinancialTransaction.duplicate_of_transaction_id",
+    )
+    accounting_canonical_transaction: Mapped["FinancialTransaction | None"] = relationship(
+        remote_side="FinancialTransaction.id",
+        foreign_keys="FinancialTransaction.accounting_canonical_transaction_id",
     )
     # Explicit foreign_keys required since `bank_transaction_explanations`
     # also carries the opposite-direction `financial_transaction_id` FK
@@ -11418,6 +11706,8 @@ ALL_MODELS: tuple[type[Base], ...] = (
     RFOneTrainingIdentityLink,
     RFOneAccountVerificationCode,
     PaymentInstrument,
+    BankCardSettlementAccount,
+    BankCardHolderAssignment,
     FinancialTransaction,
     BankImportBatch,
     RawBankTransaction,

@@ -21,6 +21,7 @@ from __future__ import annotations
 import sys
 from datetime import date
 
+from rfone_data_store.bank_reconciliation import card_configuration
 from rfone_data_store.bank_reconciliation import export, service
 from rfone_data_store.database import (
     cleanup_disposable_test_database_url,
@@ -346,6 +347,18 @@ def main() -> int:
             # the within-file-duplicate rows) — both need Company configured.
             chase_instrument.legal_entity_id = legal_entity.id
             bank_instrument.legal_entity_id = legal_entity.id
+            s.commit()
+
+            # BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001: a credit card
+            # now also needs the bank account it settles to. That account is
+            # what gives its transactions a Company and what scopes accounting
+            # deduplication, so "fully configured" legitimately means more
+            # than it did before this task.
+            card_configuration.assign_settlement_account(
+                s, credit_card_payment_instrument_id=chase_instrument.id,
+                settlement_bank_account_id=bank_instrument.id, valid_from=date(2026, 1, 1),
+            )
+            service.recompute_accounting_deduplication(s)
             s.commit()
 
             final_blockers = export.compute_export_blockers(s, year=2026, month=4)

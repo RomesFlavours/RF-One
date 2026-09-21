@@ -1,6 +1,6 @@
 # Bank Reconciliation — Manual Import & Normalization Specification V1
 
-**Version:** 1.6 (adds §12, the hierarchical Who → Why → What classification — BANK_RECONCILIATION_WHO_WHY_WHAT_001; Financial Model Convergence integrated into main through Phase 6B — see below; Phase 4B canonical reconciliation decision unification carried forward unchanged)
+**Version:** 1.7 (adds §13, cardholder history, card settlement account and accounting deduplication — BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001; adds §12, the hierarchical Who → Why → What classification — BANK_RECONCILIATION_WHO_WHY_WHAT_001; Financial Model Convergence integrated into main through Phase 6B — see below; Phase 4B canonical reconciliation decision unification carried forward unchanged)
 **Status:** Integrated into `main` (Canonical Financial Model Convergence, `FINANCIAL_MODEL_CONVERGENCE_001`, Phases 1-6B): manual CSV upload, format detection, raw preservation, normalization, duplicate detection, and the Bank Recognition Expert System (`BANK_RECONCILIATION_EXPERT_SYSTEM_001` — `BankOccurrenceType`, `BankOccurrence`, `BankTransactionReason`, `BankRecognitionRule`, `recognition.py`) — all in `03 Software/RF-One Data Store/rfone_data_store/bank_reconciliation/` (`parsers.py`, `service.py`, `recognition.py`, `export.py`, `matching.py`), `03 Software/RF-One Data Store/rfone_data_store/models.py` (`PaymentInstrument`, `BankImportBatch`, `RawBankTransaction`, `FinancialTransaction`, `BankOccurrenceType`, `BankOccurrence`, `BankTransactionReason`, `BankRecognitionRule`, `BankTransactionReasonExportMapping`, `BankTransactionExplanation`, `FinancialTransactionMatch`), and `03 Software/RF-One Web/bank_routes.py`. As of Phase 4B, `BankTransactionExplanation` is the ONE canonical reconciliation decision (Product Owner Decision 1) — the legacy V1 Supplier/Receiving catalog workflow (`service.assign_explanation`, `bank_explanation_new`/`bank_transaction_explanation` routes) has been retired; Supplier/Receiving is `BankOccurrence.canonical_name` (Decision 2), and the Kermali accounting/export attributes (Food $/Oper/Deduct/What) live on `BankTransactionReasonExportMapping`, associated with the canonical Reason (Decision 4). Kermali export (`export.py`) reads the current canonical decision's immutable snapshot fields only, never the legacy fields (retired from the schema) and never the live Occurrence/Export Mapping rows — a later rename/edit never changes an already-exported historical value (Decision 8). `RfBank.xlsx` and the real source CSV files were read-only inputs to the original V1 task and were never modified. See "§10. Implementation Decisions" below for the decisions recorded when the V1 slice was originally built.
 
 **Phase 5/6/6B addendum (PayPal, cross-ledger matching, operationalized):** a PayPal connector (`technical/connectors/paypal/`) acquires transactions into the same canonical `FinancialTransaction` ledger as CSV import, using the same `SourceSystem`/`IngestionRun`/`SourceRecord` provenance convention as every other connector in this codebase (Phase 5). `FinancialTransactionMatch` (Phase 6) records a confirmed cross-ledger internal-transfer link between two `FinancialTransaction` rows on different `PaymentInstrument`s (e.g. a PayPal settlement and the matching Bank deposit, or a Bank payment and the matching Credit Card charge), deterministically — same exact-opposite-amount/linked-instrument/compatible-currency/date-tolerance criteria as every other reconciliation decision in this codebase, never fuzzy/probabilistic. As of Phase 6B, this matching is **automatic**: the canonical post-acquisition hook (`matching.on_financial_transaction_acquired`) is called by both the CSV path (`service.py`) and the PayPal path (`technical/connectors/paypal/ingest.py`) immediately after a `FinancialTransaction` is normalized/upserted, so a confirmed AUTO match is attempted regardless of which side of a transfer (Bank, Credit Card, or PayPal) is acquired first — no manual trigger is required for the deterministic case. The HUMAN fallback (`bank_routes.py`'s Bank Review page, `require_linked_instrument=False` candidate discovery, `confirm_match`) remains fully available for evidence the automatic criteria cannot see (e.g. no `linked_instrument_id` configured yet) — Phase 6B narrows nothing HUMAN could previously confirm. A confirmed `INTERNAL_TRANSFER` (`classification` AND a confirmed `FinancialTransactionMatch` together — classification alone is never trusted) is exempt from the Kermali "Missing reconciliation decision" blocker and excluded from Kermali workbook rows, since WHAT (a confirmed transfer) is sufficient economic classification on its own and Kermali must never receive a fabricated WHO/WHY for it.
@@ -457,6 +457,102 @@ A supplier paid by invoice may legitimately classify to an **Accounts Payable se
 
 ---
 
+## 13. Cardholder, settlement account and accounting deduplication (BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001)
+
+Implemented after §12, on the same canonical models. It answers two questions §§6/11 left open — which company a card's spending belongs to, and who was carrying the card — and closes a real accounting defect: the same operation reaching the books more than once.
+
+### 13.1 Card → Settlement Account → Company
+
+A Credit Card settles to a bank account, and **that account decides the Company**:
+
+```text
+Credit Card → Settlement Bank Account → Company / Legal Entity
+```
+
+The Company of a card transaction is read from the settlement account's `legal_entity_id`. It is **never** taken from the card's own `legal_entity_id`, and **never** from whoever holds the card. A card whose settlement account is unconfigured has no Company — visibly, not silently.
+
+The assignment is **historized** (`BankCardSettlementAccount`, `valid_from`/`valid_to`), because a transaction posted in 2025 must be attributed to the configuration that was true in 2025. Reassignment closes the previous row and inserts a new one; nothing is deleted. Rules: the settlement target must be a `BANK_ACCOUNT` (never another card), a card never settles to itself, the chain never forms a cycle, and at most one assignment is open per card (`ux_bcsa_one_open_per_card`).
+
+`PaymentInstrument.linked_instrument_id` keeps its existing role as the current-state link cross-ledger matching already reads; the service layer keeps it pointed at whichever assignment is open, so the two can never drift. Where no historized assignment covers a date, that column is the fallback — which is what lets a card configured before this task still be attributed correctly.
+
+**Nothing is invented for existing cards.** A card with no assignment stays unconfigured, its transactions are reported as un-deduplicable, and the months containing them are blocked from export — months containing no such transaction are unaffected.
+
+### 13.2 Card → Cardholder
+
+`BankCardHolderAssignment` records **who physically held a card**, historized the same way. Its purpose is responsibility, analysis and possible personal benefits.
+
+It is **inert for accounting**. The holder never determines the Company, never determines the settlement account, and never takes part in duplicate identity — two transactions are the same accounting fact or not, regardless of who was carrying which plastic. A `BANK_ACCOUNT` has no cardholder and the service layer refuses one.
+
+At most one holder is open per card; a reassignment closes the previous period, so responsibility for a past charge stays with whoever held the card then.
+
+**Identity reference — a decision worth recording.** RF-One has no single canonical "person" table that fits every cardholder: `ActingIdentity` is the Core accountability identity but exists only for someone who acts in RF-One, and `Employee` is Location-scoped and Clover-sourced, so neither covers (for example) an owner who holds a company card and never touches the POS. Rather than force one or invent a third person table, the holder is a **typed reference** — `holder_kind` ∈ `ACTING_IDENTITY` / `EMPLOYEE` / `UNLINKED_PERSON` — the same convention `AuthorityGrant.scope_type`/`scope_id` already uses. A canonical identity IS reused wherever one genuinely exists; the remaining case is explicit rather than hidden.
+
+### 13.3 The accounting deduplication key
+
+The same economic operation reaches the books twice when it appears on a mother card AND its linked card, in two overlapping Chase downloads, twice inside one file, in files saved under different names, or in imports run weeks apart. **A different `last_four` does not make a row a different accounting fact.**
+
+The Product-Owner-defined key is four elements, and only these four:
+
+1. settlement bank account
+2. accounting/posting date
+3. signed amount, to the cent
+4. normalized payee/receiver description
+
+When all four coincide the rows are one accounting fact, and exactly one occurrence may feed accounting, the monthly export, P&L and Balance Sheet.
+
+This is deliberately a **different** key from §8's `compute_identity_fingerprint`, which stays as it is. That one is per-INSTRUMENT and includes transaction type, reference and balance precisely so a reviewer can see why two similar rows might be distinct (§7.4). The accounting key is per-SETTLEMENT-ACCOUNT and ignores all three, because the accountant's question is narrower: did this money movement already hit the books?
+
+**Payee normalization** (`accounting_dedup.normalize_payee`, version `v1`) is deterministic and conservative: trim, upper-case, remove the two technical card markers Chase adds (`CARD #1234`, a masked `****1234`), collapse punctuation that varies between export formats of the same merchant, collapse whitespace. **No number and no word is dropped on a guess** — an invoice, store or order number is exactly what tells two charges to the same supplier apart. Every transaction stores its original description, its normalized payee, the normalization version and the resulting key, so any grouping decision stays reproducible and auditable after the algorithm evolves.
+
+### 13.4 What happens to a duplicate
+
+**No raw row is ever deleted, and no transaction is ever deleted.** For each group:
+
+- one transaction is **canonical** and feeds accounting;
+- the others are marked `DUPLICATE_SUPPRESSED`, linked to the canonical, and carry the reason and the key that produced the decision;
+- they are excluded from the monthly export, from accounting counts, and from any future P&L / Balance Sheet feed;
+- they remain fully visible in the import and audit screens, showing which batch/file they came from and which transaction was kept.
+
+The **canonical choice is the earliest acquired occurrence** (lowest id), skipping any row a human already confirmed as a duplicate. Id is unique and immutable, so re-running deduplication over the same data — or re-importing that data — never moves the canonical row: a newly imported copy always loses to the occurrence already there.
+
+Deduplication works within one batch, across batches, between a mother card's and a linked card's files, regardless of `last_four`, and regardless of file name.
+
+**Where the settlement account is unknown, nothing is merged.** Such rows are marked `UNRESOLVED_NO_SETTLEMENT_ACCOUNT` and reported. Two cards whose accounts are both unknown are not thereby the same account.
+
+### 13.5 Precedence over existing human duplicate decisions
+
+§8's `duplicate_status` flow (per-instrument candidate duplicates, judged by a person) is a **different mechanism asking a different question**, and it is unchanged. Where it has already produced a verdict, that verdict wins:
+
+| Existing human verdict | Accounting deduplication does |
+|---|---|
+| `CONFIRMED_DISTINCT` | Leaves the row CANONICAL even if the key matches another. A person said these are not the same operation; automatic logic must not overrule that. |
+| `CONFIRMED_DUPLICATE` | Suppresses the row regardless of the key, recording that a human decided it. |
+| `NONE` / `CANDIDATE_DUPLICATE` / unset | Decides normally. |
+
+The direction is deliberately conservative: keeping a real transaction in the books is recoverable, silently dropping one is not.
+
+### 13.6 Recalculation
+
+Deduplication can be recomputed at any time, and is, after: an import; a settlement account being assigned or corrected; a batch or transaction being reassigned to another instrument; or on explicit request from Bank › Import & Instruments.
+
+It is **idempotent and safe**: it re-derives everything from the current transactions and the current card configuration and writes only the accounting-deduplication columns. It never touches `raw_file_bytes` or `raw_fields`, never an amount, date or description, never the `duplicate_status` human flow, and never a reconciliation decision. When scoped to one instrument it still resolves the FULL group each affected row belongs to, so a canonical choice never depends on what the caller happened to pass in.
+
+### 13.7 Interface
+
+**Import & Instruments** reports raw rows preserved, canonical transactions, duplicate groups, rows excluded from accounting, and rows that cannot be deduplicated for want of a settlement account — read-only counters plus an explicit recompute action. The Payment Instruments list shows Name, Institution, Type, Last 4, derived Company, Settlement Account, Current Cardholder and State. A card's edit page owns its settlement account and cardholder, both with their full history and a correction path that keeps the row and records why.
+
+**Review** shows a suppressed copy, clearly marked, with an expandable group detail naming its canonical transaction and the batch/file each member came from. Who → Why → What is **not** requested on a suppressed copy — the classification belongs to the canonical transaction and covers the whole group.
+
+The **monthly export** uses canonical transactions only.
+
+Full account numbers are never rendered anywhere — only a name and the last four digits, unchanged from §11.6.
+
+### 13.8 Export blockers added
+
+A missing settlement account blocks the months that actually contain the affected transactions, reported once per instrument with the row count, and never blocks a month those rows do not appear in. A missing Company on the settlement account blocks too — the card's own Legal Entity is not a fallback. Rows whose settlement account is unknown remain in the blocker scope so their other reasons (an undecided candidate duplicate, a missing Who) are still reported rather than replaced by this one.
+
+---
+
 ## Open Points
 
 - **Placement inconsistency with `Purchased/README.md`.** `01 Domains/Shared Domains/Purchased/README.md`, section "Bank Reconciliation boundary," currently describes Bank Reconciliation as belonging to "the consuming Business Domain" — implying a Business-Domain-owned capability. This document instead places Bank Reconciliation as a transversal Shared Domains / Administration capability (per explicit placement instruction for this task), consistent with how Payroll, Invoice Intake, and Purchased itself are positioned as reusable-across-industries Shared Domains. This is a genuine, unresolved wording/ownership inconsistency between the two documents. It is not resolved here and `Purchased/README.md` is not modified by this task — it requires an explicit Product Owner decision.
@@ -464,7 +560,8 @@ A supplier paid by invoice may legitimately classify to an **Accounts Payable se
 - **Financial Account Registry — data model resolved (§11.6), content still owed by the Product Owner.** The registry is the canonical `PaymentInstrument`, now fully editable from the web interface including its Company/Legal Entity (§11.6). What remains open is unchanged and is data, not design: the Company/Legal Entity and the identifying last four of each account/card in §6 are still not known or invented here, and automatic recognition of a Chase source (§11.1 step 3) cannot work for an instrument whose last four has not been filled in.
 - **~~File-name-based card resolution is explicitly disallowed (§3.2) but no alternative mechanism is designed.~~ Resolved — see §11.1.** The "configured import source" is the ordered evidence chain in §11.1: the file's own identifier, then a rule a human explicitly confirmed, then a `Chase####` file-name prefix matched against a **configured** last four. The file name remains non-authoritative exactly as §3.2 requires — it never resolves anything on its own and is always overridden by in-file content.
 - **The fixed chart of accounts is not defined here.** §12's `BankAccountingClassification` is the STRUCTURE the approved chart of accounts will be loaded into — codes, names, statement side and hierarchy — and deliberately contains no real account tree. Loading the approved chart is a data task, not a schema change. Until then, the only What rows that exist are those a human created and those the hierarchy migration recovered from existing Kermali `what_label` values. **Those migrated rows are explicitly INCOMPLETE: they carry no `statement_type`, because a Kermali label does not say whether it is a Profit & Loss or a Balance Sheet line, and inventing one was refused.** They are shown as incomplete on the Classification tab, and a month containing a transaction still classified against one of them is blocked from export until the statement side is set — one edit per migrated What. This is a deliberate, visible gap awaiting a Product Owner decision, not a defect.
-- **Deduplication/equivalence-check logic is not designed.** §8 establishes that five conditions must be checked separately and that no single key is sufficient, but no algorithm, scoring, or matching procedure is specified — this is intentionally left for a future implementation task.
+- **Two genuinely separate identical charges on one day are indistinguishable under the accounting key — open.** The key is settlement account + posting date + signed amount + normalized payee, by explicit Product Owner decision. It therefore cannot tell one $1.04 `FOREIGN TRANSACTION FEE` from a second, genuinely separate $1.04 `FOREIGN TRANSACTION FEE` posted the same day to the same card: it treats them as one accounting fact and suppresses the second. This is not hypothetical — QA verification against the already-imported Chase files found exactly such a pair (Freedom ··2915, 2026-08-13, two rows of −$1.04). Small repeating per-transaction fees are the realistic case. The mitigation that exists today is §8's per-instrument human review: marking such a row `CONFIRMED_DISTINCT` keeps it in accounting and outranks the automatic key (§13.5). Whether the key should additionally consider a distinguishing element for this case is a Product Owner decision and is deliberately not taken here.
+- **~~Deduplication/equivalence-check logic is not designed.~~ Partly resolved — see §13.3.** The ACCOUNTING deduplication key (settlement account + posting date + signed amount + normalized payee) is now specified and implemented, and it deliberately does not replace §8's per-instrument candidate-duplicate review, which remains a separate, human-judged mechanism with its own five conditions. What is still not designed is any scoring or fuzzy matching: both mechanisms are exact-match only, by design.
 - **Relationship to Invoice Intake / Purchased / Purchasing remains unspecified**, beyond the negative boundary stated in §2.2–§2.3 (a bank movement is not an invoice, and no association mechanism is designed here). Designing that association is explicitly out of scope for this task.
 - **Automated bank feeds are out of scope.** This document covers manual CSV download/import only; whether and how an automated feed (e.g. bank API/aggregator) might later coexist with or replace manual CSV import is not addressed.
 - **Future correlation between an operational payment and `FinancialTransaction` — Product Owner decision recorded, not designed here.** Operational Domains (e.g. Restaurant/Tips, Clover POS) may in the future want to know that a payment they instructed has actually settled in the bank. Any such correlation must be **connector-neutral**: the intended conceptual chain is RF-One operational instruction → configured payment connector → provider/external transaction identity → observed canonical `FinancialTransaction`. The connector may supply provider transaction identifiers/provenance that later help correlation, but Bank Reconciliation must never encode Mercury-specific or Clover-specific payment semantics, and an operational domain must never build a competing financial ledger of its own. **Current state:** the existing HUMAN Occurrence/Reason reconciliation (and Phase 6B's automatic Bank↔Bank/PayPal internal-transfer matching, both above) remain the valid mechanism until a generic automatic correlation is specifically designed. No schema, FK, or correlation model is chosen by this note — it only records the boundary a future design must respect.

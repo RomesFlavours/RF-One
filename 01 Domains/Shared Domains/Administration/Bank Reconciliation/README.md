@@ -100,6 +100,36 @@ The full specification is §12 of `BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATI
 
 ---
 
+## The card, its account and its holder
+
+A Credit Card raises two separate questions, and Bank Reconciliation keeps them strictly apart because they have entirely different consequences.
+
+**Which bank account the card settles to** is an accounting fact:
+
+```text
+Credit Card → Settlement Bank Account → Company / Legal Entity
+```
+
+The Company of a card transaction comes from the settlement account — never from the card's own Legal Entity, and never from whoever holds the card. The assignment is historized, so a transaction posted in 2025 is attributed to the configuration that was true in 2025, and a card with no assignment stays visibly unconfigured rather than being quietly attributed to something.
+
+**Who physically held the card** is a responsibility fact, historized the same way, used for accountability, analysis and possible personal benefits. It is inert for accounting: the holder never determines the Company, never determines the settlement account, and never takes part in deciding whether two transactions are the same accounting fact.
+
+## Accounting deduplication
+
+The same operation can reach the books twice: from a mother card and its linked card, from two overlapping Chase downloads, twice inside one file, from files saved under different names, or from imports run weeks apart. **A different last-four does not make a row a different accounting fact.**
+
+Rows that share a **settlement account, posting date, signed amount and normalized payee** are one accounting fact. One canonical occurrence — the earliest acquired — feeds accounting, the monthly export, P&L and Balance Sheet; the others are kept, linked to it, marked, and excluded.
+
+Three rules make this safe:
+
+- **Nothing is destroyed.** No raw row and no transaction is ever deleted. A suppressed copy stays fully visible in the import and audit screens, showing its file and its canonical.
+- **Nothing is invented.** A transaction whose settlement account is unknown is reported, never merged — and two cards whose accounts are both unknown are not thereby the same account.
+- **A human decision wins.** Where a person already judged two rows distinct, automatic deduplication does not overrule them.
+
+The detail — the exact key, the payee normalization, the canonical choice, the recalculation behavior and the open points — is §13 of `BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATION_001.md`.
+
+---
+
 ## Bank Reconciliation ≠ Purchased
 
 Bank Reconciliation is the Business-Domain/Administration-side reconciliation Purchased's own README (`01 Domains/Shared Domains/Purchased/README.md`, "Bank Reconciliation boundary") already anticipates and explicitly excludes from its own scope:

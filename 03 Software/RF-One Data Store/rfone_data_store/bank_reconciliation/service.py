@@ -49,6 +49,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models as m
+from . import accounting_dedup
 from . import matching
 from . import parsers
 from . import recognition
@@ -953,8 +954,36 @@ def reassign_transaction_instrument(
 
     if txn.import_batch is not None:
         _refresh_batch_status(session, txn.import_batch)
+
+    # The transaction now belongs to a different instrument, so its
+    # settlement account — and therefore its accounting identity — may
+    # have changed. Both the group it left and the group it joins are
+    # re-resolved.
+    accounting_dedup.recompute_accounting_dedup(
+        session,
+        payment_instrument_ids=sorted({previous_instrument_id, instrument.id} - {None}),
+    )
     session.flush()
     return txn
+
+
+def recompute_accounting_deduplication(
+    session: Session, *, payment_instrument_ids: list[int] | None = None,
+) -> "accounting_dedup.DedupOutcome":
+    """The one public entry point for re-running accounting deduplication
+    (BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001). Idempotent and
+    safe to call at any time: it re-derives everything from the current
+    transactions and the current card configuration, writes only the
+    accounting-dedup columns, and never touches the raw layer, an amount,
+    a date, a description, the per-instrument `duplicate_status` flow, or
+    a reconciliation decision.
+
+    Called by the web layer after a settlement account is assigned or
+    corrected — the configuration change that most often turns an
+    un-deduplicable row into a resolvable one."""
+    return accounting_dedup.recompute_accounting_dedup(
+        session, payment_instrument_ids=payment_instrument_ids,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1451,6 +1480,7 @@ def _normalize_rows(
     signature_seen: dict[tuple, int] = {}
 
     raw_by_row_number = {r.row_number: r for r in raw_objs}
+    instrument_cache: dict[int, "m.PaymentInstrument"] = {}
     normalized_count = 0
     candidate_count = 0
 
@@ -1522,6 +1552,16 @@ def _normalize_rows(
         # has a decision (that would risk overwriting a human's choice).
         recognition.deduce_for_transaction(session, normalized)
 
+        # Accounting deduplication keying
+        # (BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001): the payee
+        # normalization, the settlement account in force on this row's
+        # posting date, and the four-element accounting key are computed
+        # here, per row. The canonical-vs-suppressed decision is NOT made
+        # here — it is a decision about a GROUP, and the group is only
+        # complete once the whole batch is in, so `_resolve_accounting_
+        # dedup_for_batch` below makes it once at the end.
+        accounting_dedup.classify_transaction(session, normalized, instrument_cache)
+
         # Canonical post-acquisition matching (Phase 6B, Product Owner
         # Decision D): attempted for every newly normalized row, in the
         # same per-row loop that already makes each row visible to the
@@ -1537,6 +1577,18 @@ def _normalize_rows(
             raw.normalized_transaction_id = normalized.id
 
         normalized_count += 1
+
+    # Accounting deduplication, resolved ONCE for the whole pass rather
+    # than per row: which occurrence is canonical is a property of the
+    # GROUP, and the group is only complete now. Scoped to the instruments
+    # this pass touched, but `recompute_accounting_dedup` always resolves
+    # the FULL group each of those rows belongs to — that is what makes a
+    # row in this batch deduplicate against an identical row imported
+    # weeks ago, from another file, on the linked card.
+    if instrument_cache:
+        accounting_dedup.recompute_accounting_dedup(
+            session, payment_instrument_ids=sorted(instrument_cache),
+        )
 
     return normalized_count, candidate_count
 

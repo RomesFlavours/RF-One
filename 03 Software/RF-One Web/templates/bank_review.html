@@ -62,10 +62,12 @@
           {% for txn in transactions %}
             {% set explanation = explanations_by_id.get(txn.explanation_id) %}
             {% set resolved = explanation and explanation.decision_status in resolved_decision_statuses %}
+            {% set suppressed = txn.accounting_status == DUPLICATE_SUPPRESSED %}
+            {% set unresolved_settlement = txn.accounting_status == UNRESOLVED_NO_SETTLEMENT_ACCOUNT %}
             {% set counterpart = counterpart_by_transaction_id.get(txn.id) %}
             {% set match_candidates = match_candidates_by_transaction_id.get(txn.id) %}
             {% set reassignments = reassignments_by_transaction_id.get(txn.id) %}
-            <tr>
+            <tr class="{{ 'row-suppressed' if suppressed else '' }}">
               <td data-label="Instrument">
                 {{ instruments_by_id.get(txn.payment_instrument_id).display_name if instruments_by_id.get(txn.payment_instrument_id) else txn.payment_instrument_id }}
                 {% if reassignments %}
@@ -111,7 +113,63 @@
                  so this row keeps saying what it was actually classified
                  as even after the vocabulary is edited. #}
               <td data-label="Classification (Who → Why → What)">
+                {# BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001: a copy
+                   excluded from accounting is never given Who/Why/What work.
+                   The classification belongs to the canonical transaction —
+                   asking for it again here would be duplicated effort on a
+                   row that will never reach the books. #}
+                {% if suppressed %}
+                  {% set canonical = canonical_by_id.get(txn.accounting_canonical_transaction_id) %}
+                  <span class="badge warn">EXCLUDED FROM ACCOUNTING</span>
+                  <span class="cell-note">
+                    Same accounting fact as transaction
+                    #{{ txn.accounting_canonical_transaction_id or '—' }}.
+                    Classify that one &mdash; not this copy.
+                  </span>
+                  <details>
+                    <summary>Duplicate group</summary>
+                    <p class="cell-note">{{ txn.accounting_dedup_reason }}</p>
+                    <table class="table-compact">
+                      <thead><tr><th>#</th><th>Role</th><th>Batch / file</th><th>Instrument</th></tr></thead>
+                      <tbody>
+                        {% for member in dedup_groups.get(txn.id, []) %}
+                          {% set batch = batches_by_id.get(member.import_batch_id) %}
+                          <tr>
+                            <td data-label="#">{{ member.id }}</td>
+                            <td data-label="Role">
+                              {% if member.accounting_status == DUPLICATE_SUPPRESSED %}
+                                Excluded copy
+                              {% else %}
+                                <strong>Canonical (kept)</strong>
+                              {% endif %}
+                            </td>
+                            <td data-label="Batch / file">
+                              {% if batch %}#{{ batch.id }} <code>{{ batch.original_file_name }}</code>{% else %}&mdash;{% endif %}
+                            </td>
+                            <td data-label="Instrument">
+                              {{ instruments_by_id.get(member.payment_instrument_id).display_name if instruments_by_id.get(member.payment_instrument_id) else member.payment_instrument_id }}
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </details>
+                {% else %}
                 <span class="badge {{ 'ok' if resolved else 'warn' }}">{{ explanation.decision_status if explanation else 'NEEDS_HUMAN_REVIEW' }}</span>
+                {% if canonical_copy_counts.get(txn.id) %}
+                  <span class="cell-note">
+                    Canonical for {{ canonical_copy_counts[txn.id] }} excluded copy/copies &mdash;
+                    this classification covers the whole group.
+                  </span>
+                {% endif %}
+                {% if unresolved_settlement %}
+                  <span class="badge bad">NO SETTLEMENT ACCOUNT</span>
+                  <span class="cell-note">
+                    This transaction has no accounting identity and was not deduplicated.
+                    Configure the card's settlement account in
+                    <a href="{{ url_for('bank_home') }}">Import &amp; Instruments</a>.
+                  </span>
+                {% endif %}
                 {% if resolved %}
                   <span class="cell-note">
                     Who: {{ explanation.occurrence_name_snapshot or (explanation.occurrence.canonical_name if explanation.occurrence else '—') }}<br>
@@ -142,6 +200,7 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" title="Re-resolve the same Who through the current Who → Why → What chain, as a new auditable decision.">Reclassify</button>
                   </form>
+                {% endif %}
                 {% endif %}
               </td>
               <td data-label="Internal Transfer">

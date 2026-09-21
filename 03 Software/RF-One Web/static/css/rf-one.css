@@ -499,3 +499,9 @@ tbody tr:hover { background: var(--olive-050); }
 .who-picker-actions { display: flex; gap: .5rem; margin-top: .8rem; }
 
 .chain { font-size: .78rem; }
+
+/* --- Accounting-duplicate rows (BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001)
+   A suppressed copy stays fully visible in the audit view — it is only
+   excluded from accounting — so it is de-emphasised, never hidden. */
+.row-suppressed > td { background: var(--olive-050); opacity: .78; }
+.row-suppressed .col-description { font-style: italic; }
