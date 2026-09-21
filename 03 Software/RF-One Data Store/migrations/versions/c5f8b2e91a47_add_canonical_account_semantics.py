@@ -25,14 +25,27 @@ become real columns on `bank_accounting_classifications`:
                        sits on, so a subtree total is signed from data
                        rather than from special-cased codes.
 
-The values come from the version-controlled definition that ships inside
-the package, exactly as the catalog itself does:
+The values come from this revision's OWN FROZEN SNAPSHOT
+(BANK_CANONICAL_MIGRATION_IMMUTABILITY_001):
 
-    rfone_data_store/bank_reconciliation/canonical/RFONE_RESTAURANT_COA_V1.csv
+    migrations/migration_data/c5f8b2e91a47_account_semantics.csv
 
-read with the standard library and written with SQLAlchemy Core, NOT
-through the ORM — a migration must keep working against the schema of its
-own revision.
+the same 134 accounts `b8d3f1a72c64` seeded, with the four semantic
+columns exactly as approved when this revision was written. That file is
+never edited again — see `migrations/migration_data/README.md`.
+
+It is deliberately NOT the live canonical definition at
+`rfone_data_store/bank_reconciliation/canonical/RFONE_RESTAURANT_COA_V1.csv`,
+which this revision originally read. That file is the CURRENT canonical
+source of truth and is actively maintained; a later approved change to it
+must not alter what this September 2026 revision did. The accounting
+corrections that followed (3400, 8400, 8410, 8420) belong to
+`d7a4c9e2f318`, which is where this chain expresses them — not here,
+retroactively.
+
+The rows are read with the standard library and written with SQLAlchemy
+Core, NOT through the ORM — a migration must keep working against the
+schema of its own revision.
 
 Backfill rules, all deterministic:
 
@@ -49,9 +62,9 @@ Backfill rules, all deterministic:
 
 `normal_balance` is therefore nullable, like `statement_type`, while
 `node_type`, `is_contra` and `review_sensitive` are NOT NULL with
-defaults. Every one of the 134 canonical accounts ends this migration
-with all four values explicitly set, which this revision verifies before
-it completes.
+defaults. Every one of the 134 accounts in this revision's snapshot ends
+this migration with all four values explicitly set, which this revision
+verifies before it completes.
 
 The seeded descriptions written by b8d3f1a72c64 end in a generated
 "Node type: X." sentence. It is removed here — not as cleanup, but
@@ -91,11 +104,15 @@ depends_on: Union[str, Sequence[str], None] = None
 TABLE = "bank_accounting_classifications"
 CATALOG_VERSION = "RFONE_RESTAURANT_COA_V1"
 
+# This revision's own frozen input. IMMUTABLE: editing it would change what
+# a shipped migration does. A correction is a new revision.
 _CATALOG_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "rfone_data_store" / "bank_reconciliation" / "canonical"
-    / f"{CATALOG_VERSION}.csv"
+    Path(__file__).resolve().parents[1]
+    / "migration_data" / "c5f8b2e91a47_account_semantics.csv"
 )
+
+# What that snapshot must contain for this revision to be intact.
+_EXPECTED_ROW_COUNT = 134
 
 _NEW_COLUMNS = (
     ("node_type", sa.String(length=24), False, "POSTING"),
@@ -115,10 +132,16 @@ _NODE_TYPE_SENTENCE = " Node type: "
 
 
 def _canonical_rows() -> list[dict]:
+    """This revision's frozen catalog. Never the live canonical CSV."""
     text = _CATALOG_PATH.read_text(encoding="utf-8-sig")
     rows = list(csv.DictReader(io.StringIO(text)))
-    if not rows:
-        raise RuntimeError(f"The canonical catalog {_CATALOG_PATH} is empty.")
+    if len(rows) != _EXPECTED_ROW_COUNT:
+        raise RuntimeError(
+            f"The frozen catalog {_CATALOG_PATH.name} holds {len(rows)} account(s); "
+            f"revision c5f8b2e91a47 was written against exactly {_EXPECTED_ROW_COUNT}. "
+            "A migration snapshot is immutable — restore it and express any change as a "
+            "new revision."
+        )
     missing = [
         row["Code"] for row in rows
         if not (row.get("Node Type") or "").strip()
@@ -128,7 +151,7 @@ def _canonical_rows() -> list[dict]:
     ]
     if missing:
         raise RuntimeError(
-            "The canonical catalog leaves account semantics blank for: "
+            f"The frozen catalog {_CATALOG_PATH.name} leaves account semantics blank for: "
             + ", ".join(missing)
             + ". Every canonical account must state node type, normal balance, contra and "
             "review sensitivity explicitly."

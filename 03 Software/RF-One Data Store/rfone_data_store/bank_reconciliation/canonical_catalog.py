@@ -1,6 +1,13 @@
 """The canonical RF-One restaurant accounting catalog
 (BANK_CANONICAL_ACCOUNTING_CATALOG_001 /
-BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001).
+BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001 /
+BANK_CANONICAL_ACCOUNTING_CORRECTIONS_001 /
+BANK_CANONICAL_MIGRATION_IMMUTABILITY_001).
+
+This module is the RUNTIME / CURRENT-STATE side of the catalog. It answers
+"what is the approved chart of accounts NOW, and does this database agree
+with it". It is NOT what Alembic history runs on — see the separation
+below, and `migrations/migration_data/README.md`.
 
 RF-One defines its own Chart of Accounts. It is not waiting for, and is not
 derived from, the accountant's QuickBooks structure: `Bank/RfBank.xlsx` is
@@ -12,7 +19,29 @@ The definition lives in `canonical/RFONE_RESTAURANT_COA_V1.csv`, inside the
 package and therefore under version control and shipped with the code. That
 is what makes a fresh or production database able to seed the identical
 catalog through the ordinary deployment, with no manual SQL and no XLSX
-upload. The CSV — not the database — remains the canonical definition.
+upload. The CSV — not the database — remains the canonical definition, and
+it keeps evolving as the Product Owner approves changes (134 accounts at
+first approval, 136 after the equity/disposal corrections).
+
+**Two concerns, deliberately kept apart**
+(BANK_CANONICAL_MIGRATION_IMMUTABILITY_001):
+
+* MIGRATION-TIME SEEDING — what the catalog WAS at a given Alembic
+  revision. Each revision carries its own frozen copy of its input, in
+  `migrations/migration_data/` or inline in the revision file, and NEVER
+  reads the CSV below. That is what lets a database built from `base`
+  years from now reproduce the same history: 134 accounts at
+  `b8d3f1a72c64`, still 134 with explicit semantics at `c5f8b2e91a47`,
+  136 after the corrections in `d7a4c9e2f318`.
+* RUNTIME / CURRENT CANONICAL RECONCILIATION — this module. `seed`,
+  `validate_hierarchy` and `semantic_problems` all compare a live database
+  against the CURRENT CSV, which is exactly what they should do: they
+  answer "is this database the approved catalog today?", a question whose
+  answer must change when the approved catalog changes.
+
+Editing the CSV therefore changes what the application bootstraps and
+validates against, and changes nothing about what any shipped migration
+does.
 
 `seed` reuses the existing importer (`what_catalog_import.parse` +
 `apply_import`) rather than re-implementing validation, so the canonical
@@ -89,8 +118,11 @@ def catalog_bytes() -> bytes:
 
 
 def catalog_rows() -> list[dict]:
-    """The canonical rows, parsed straight from the CSV — used by the
-    Alembic data migration, which must not depend on the ORM."""
+    """The CURRENT canonical rows, parsed straight from the CSV.
+
+    Deliberately not used by any Alembic revision: a migration runs on its
+    own frozen snapshot, so that editing this CSV can never change what a
+    shipped migration did (BANK_CANONICAL_MIGRATION_IMMUTABILITY_001)."""
     text = catalog_bytes().decode("utf-8-sig")
     return list(csv.DictReader(io.StringIO(text)))
 
@@ -107,7 +139,13 @@ class SeedOutcome:
 
 
 def seed(session: Session, *, strict: bool = True) -> SeedOutcome:
-    """Install the canonical catalog. Idempotent.
+    """Reconcile this database with the CURRENT canonical catalog. Idempotent.
+
+    This is the runtime path, not the migration path. It reads the live
+    CSV on purpose: its job is to answer "does this database hold the
+    approved catalog as approved TODAY", so it must follow the CSV as the
+    CSV evolves. Alembic history runs on frozen per-revision snapshots and
+    is unaffected by anything this function reads.
 
     A second run creates nothing and changes nothing: every code already
     present with the same name AND the same semantics is counted as

@@ -33,23 +33,28 @@ task left open, now decided by the Product Owner.
 The canonical catalog therefore grows from 134 to 136 accounts. No other
 account changes.
 
-The values come from the version-controlled definition that ships inside
-the package, exactly as b8d3f1a72c64 and c5f8b2e91a47 do:
+This revision touches four accounts, so it CARRIES THEIR VALUES INLINE
+(`_CORRECTIONS` below) rather than reading any file
+(BANK_CANONICAL_MIGRATION_IMMUTABILITY_001). It originally read the live
+canonical definition at
+`rfone_data_store/bank_reconciliation/canonical/RFONE_RESTAURANT_COA_V1.csv`,
+which is the CURRENT canonical source of truth and is actively
+maintained — so a later approved change to it would have changed what
+this September 2026 revision does. Four rows are small enough that a
+frozen snapshot file would be more indirection than data; the sibling
+revisions, which need 134 rows each, use
+`migrations/migration_data/` instead.
 
-    rfone_data_store/bank_reconciliation/canonical/RFONE_RESTAURANT_COA_V1.csv
-
-read with the standard library and written with SQLAlchemy Core, NOT
-through the ORM. Because that CSV is read at run time, this revision
-first asserts it still says exactly what the revision was written for —
-a drifted catalog fails loudly here rather than silently migrating a
-database to something nobody approved.
+Writes go through SQLAlchemy Core, NOT the ORM: a migration must keep
+working against the schema of its own revision.
 
 Idempotent and non-destructive:
 
-* on a FRESH database b8d3f1a72c64 already seeds all 136 accounts from
-  the same CSV and c5f8b2e91a47 already sets their semantics, so this
-  revision finds everything correct and writes nothing — the fresh and
-  the upgraded database end identical;
+* a fresh database reaches this revision with the 134 historical accounts
+  `b8d3f1a72c64` seeded and `c5f8b2e91a47` gave semantics to, and leaves
+  it with the same 136 an existing database does — the chain, not the
+  current catalog file, is what makes the two identical;
+* re-running it writes the same values and inserts nothing twice;
 * a code present with a DIFFERENT name RAISES: an account that historical
   decisions may reference by code is never silently redefined;
 * no classification, decision, recognition rule, raw row or transaction
@@ -63,9 +68,6 @@ reference it.
 """
 from __future__ import annotations
 
-import csv
-import io
-from pathlib import Path
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -81,12 +83,6 @@ depends_on: Union[str, Sequence[str], None] = None
 TABLE = "bank_accounting_classifications"
 CATALOG_VERSION = "RFONE_RESTAURANT_COA_V1"
 
-_CATALOG_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "rfone_data_store" / "bank_reconciliation" / "canonical"
-    / f"{CATALOG_VERSION}.csv"
-)
-
 _SOURCE_NOTE = (
     f"Canonical RF-One restaurant accounting catalog ({CATALOG_VERSION}). "
     "RF-One's own semantics — not derived from QuickBooks/Kermali, which may map onto "
@@ -97,10 +93,11 @@ _SOURCE_NOTE = (
 CORRECTED_CODES = ("3400", "8400")
 NEW_CODES = ("8410", "8420")
 
-# What the CSV must say for this revision to be the right thing to run.
+# This revision's frozen input, inline. IMMUTABLE: editing it would change
+# what a shipped migration does. A correction is a new revision.
 # Code -> (name, statement type, parent, node type, normal balance, contra,
 # review-sensitive).
-_EXPECTED = {
+_CORRECTIONS = {
     "3400": ("Member Distributions / Draws", "BALANCE_SHEET", "3000",
              "POSTING", "DEBIT", True, False),
     "8400": ("Gain / Loss on Asset Disposal", "PROFIT_LOSS", "8000",
@@ -118,42 +115,9 @@ _PREVIOUS = {
 }
 
 
-def _flag(value: str) -> bool:
-    return (value or "").strip().upper() in ("TRUE", "1", "YES", "Y")
-
-
-def _canonical_rows() -> dict[str, dict]:
-    text = _CATALOG_PATH.read_text(encoding="utf-8-sig")
-    rows = {row["Code"]: row for row in csv.DictReader(io.StringIO(text))}
-    if not rows:
-        raise RuntimeError(f"The canonical catalog {_CATALOG_PATH} is empty.")
-
-    drifted: list[str] = []
-    for code, expected in _EXPECTED.items():
-        row = rows.get(code)
-        if row is None:
-            drifted.append(f"{code}: not in the canonical catalog at all")
-            continue
-        actual = (
-            row["Name"].strip(), row["Statement Type"].strip(), row["Parent"].strip(),
-            row["Node Type"].strip(), row["Normal Balance"].strip(),
-            _flag(row["Is Contra"]), _flag(row["Review Sensitive"]),
-        )
-        if actual != expected:
-            drifted.append(f"{code}: catalog says {actual}, this revision expects {expected}")
-    if drifted:
-        raise RuntimeError(
-            "The canonical catalog no longer matches what migration d7a4c9e2f318 was written "
-            "for, and running it would migrate this database to something nobody approved: "
-            + "; ".join(drifted)
-        )
-    return rows
-
-
 def upgrade() -> None:
     """Correct 3400, turn 8400 into a group, add 8410 and 8420."""
     bind = op.get_bind()
-    rows = _canonical_rows()
 
     existing = {
         row[0]: row[1]
@@ -164,11 +128,11 @@ def upgrade() -> None:
     # repurposed that code. Imposing the canonical meaning on it would
     # redefine an account historical decisions already reference.
     conflicts = [
-        f"{code}: already present as {existing[code]!r}, the canonical catalog says "
-        f"{rows[code]['Name']!r}"
+        f"{code}: already present as {existing[code]!r}, this revision means "
+        f"{_CORRECTIONS[code][0]!r}"
         for code in CORRECTED_CODES + NEW_CODES
         if code in existing
-        and existing[code].strip().casefold() != rows[code]["Name"].strip().casefold()
+        and existing[code].strip().casefold() != _CORRECTIONS[code][0].strip().casefold()
     ]
     if conflicts:
         raise RuntimeError(
@@ -184,17 +148,17 @@ def upgrade() -> None:
             # A database that never had this account gets it from the seed
             # migration, not from here.
             continue
-        row = rows[code]
+        _, _, _, node_type, normal_balance, is_contra, review_sensitive = _CORRECTIONS[code]
         bind.execute(
             sa.text(
                 f"UPDATE {TABLE} SET node_type = :node_type, normal_balance = :normal_balance, "
                 "is_contra = :is_contra, review_sensitive = :review_sensitive WHERE code = :code"
             ),
             {
-                "node_type": row["Node Type"].strip(),
-                "normal_balance": row["Normal Balance"].strip(),
-                "is_contra": _flag(row["Is Contra"]),
-                "review_sensitive": _flag(row["Review Sensitive"]),
+                "node_type": node_type,
+                "normal_balance": normal_balance,
+                "is_contra": is_contra,
+                "review_sensitive": review_sensitive,
                 "code": code,
             },
         )
@@ -202,7 +166,9 @@ def upgrade() -> None:
     # --- 3. the two new posting accounts -----------------------------------
     to_insert = [code for code in NEW_CODES if code not in existing]
     for code in to_insert:
-        row = rows[code]
+        name, statement_type, _, node_type, normal_balance, is_contra, review_sensitive = (
+            _CORRECTIONS[code]
+        )
         bind.execute(
             sa.text(
                 f"INSERT INTO {TABLE} "
@@ -213,14 +179,14 @@ def upgrade() -> None:
             ),
             {
                 "code": code,
-                "name": row["Name"],
-                "statement_type": row["Statement Type"],
+                "name": name,
+                "statement_type": statement_type,
                 "description": _SOURCE_NOTE,
                 "active": True,
-                "node_type": row["Node Type"].strip(),
-                "is_contra": _flag(row["Is Contra"]),
-                "review_sensitive": _flag(row["Review Sensitive"]),
-                "normal_balance": row["Normal Balance"].strip(),
+                "node_type": node_type,
+                "is_contra": is_contra,
+                "review_sensitive": review_sensitive,
+                "normal_balance": normal_balance,
             },
         )
 
@@ -232,12 +198,12 @@ def upgrade() -> None:
             ).fetchall()
         }
         for code in to_insert:
-            parent_code = rows[code]["Parent"].strip()
+            parent_code = _CORRECTIONS[code][2]
             parent_id = ids.get(parent_code)
             if parent_id is None:
                 raise RuntimeError(
-                    f"The canonical catalog names parent {parent_code!r} for {code}, but no "
-                    "such account exists in this database."
+                    f"This revision names parent {parent_code!r} for {code}, but no such "
+                    "account exists in this database."
                 )
             bind.execute(
                 sa.text(f"UPDATE {TABLE} SET parent_id = :parent_id WHERE code = :code"),
@@ -245,7 +211,7 @@ def upgrade() -> None:
             )
 
     # --- the promise this revision makes ------------------------------------
-    for code, expected in _EXPECTED.items():
+    for code, expected in _CORRECTIONS.items():
         found = bind.execute(
             sa.text(
                 f"SELECT node_type, normal_balance, is_contra, review_sensitive FROM {TABLE} "
@@ -259,7 +225,7 @@ def upgrade() -> None:
         if (node_type, normal_balance, bool(is_contra), bool(review_sensitive)) != expected[3:]:
             raise RuntimeError(
                 f"{code} still reads {(node_type, normal_balance, bool(is_contra), bool(review_sensitive))} "
-                f"after the corrections; the canonical catalog says {expected[3:]}."
+                f"after the corrections; this revision means {expected[3:]}."
             )
 
 
@@ -298,7 +264,7 @@ def downgrade() -> None:
         if found is None:
             continue
         identifier, name = found
-        if name.strip().casefold() != _EXPECTED[code][0].strip().casefold():
+        if name.strip().casefold() != _CORRECTIONS[code][0].strip().casefold():
             continue  # renamed by a human — left alone
         if identifier in referenced:
             continue  # in use — left alone

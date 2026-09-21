@@ -16,18 +16,33 @@ is the mechanism this repository already uses for exactly that (see
 `8ddfe6f314be`, `c1a9f0d3e7b2`, `f1c7a94d6e02`), so no second deployment
 framework is introduced to avoid a revision.
 
-The rows come from the version-controlled definition that ships inside the
-package:
+The rows come from this revision's OWN FROZEN SNAPSHOT
+(BANK_CANONICAL_MIGRATION_IMMUTABILITY_001):
 
-    rfone_data_store/bank_reconciliation/canonical/RFONE_RESTAURANT_COA_V1.csv
+    migrations/migration_data/b8d3f1a72c64_rfone_restaurant_coa_v1.csv
 
-They are read with the standard library and written with SQLAlchemy Core,
-NOT through the ORM. A migration must keep working against the schema of
-its own revision, and importing the ORM would couple this file to whatever
-`models.py` looks like in the future. The general-purpose importer
-(`what_catalog_import`) remains the validated path for an operator's own
-upload and is what the canonical seeder and the tests use; this migration
-is a pinned load of an already-validated definition.
+That file is the 134-account catalog exactly as approved when this
+revision was written, and it is never edited again — see
+`migrations/migration_data/README.md`.
+
+It is deliberately NOT the live canonical definition at
+`rfone_data_store/bank_reconciliation/canonical/RFONE_RESTAURANT_COA_V1.csv`,
+which this revision originally read. That file is the CURRENT canonical
+source of truth and is actively maintained: it has already grown to 136
+accounts. Reading it here would have made this September 2026 revision
+seed a different catalog on every database created after the next
+approved change, so the same revision chain would produce different
+histories. A migration states what happened; the canonical CSV states
+what is true now. The two are separate concerns, and only the seeder and
+the application read the second.
+
+The rows are read with the standard library and written with SQLAlchemy
+Core, NOT through the ORM. A migration must keep working against the
+schema of its own revision, and importing the ORM would couple this file
+to whatever `models.py` looks like in the future. The general-purpose
+importer (`what_catalog_import`) remains the validated path for an
+operator's own upload and is what the canonical seeder and the tests use;
+this migration is a pinned load of an already-validated definition.
 
 Idempotent and non-destructive:
 
@@ -60,13 +75,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 CATALOG_VERSION = "RFONE_RESTAURANT_COA_V1"
 
-# Located relative to this file so the migration works from any working
-# directory, exactly as `alembic upgrade head` is run in deployment.
+# This revision's own frozen input, located relative to this file so the
+# migration works from any working directory, exactly as
+# `alembic upgrade head` is run in deployment. IMMUTABLE: editing it would
+# change what a shipped migration does. A correction is a new revision.
 _CATALOG_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "rfone_data_store" / "bank_reconciliation" / "canonical"
-    / f"{CATALOG_VERSION}.csv"
+    Path(__file__).resolve().parents[1]
+    / "migration_data" / "b8d3f1a72c64_rfone_restaurant_coa_v1.csv"
 )
+
+# What that snapshot must contain for this revision to be intact. A
+# truncated or swapped file fails here rather than half-seeding a catalog.
+_EXPECTED_ROW_COUNT = 134
 
 _SOURCE_NOTE = (
     f"Canonical RF-One restaurant accounting catalog ({CATALOG_VERSION}). "
@@ -76,10 +96,16 @@ _SOURCE_NOTE = (
 
 
 def _canonical_rows() -> list[dict]:
+    """This revision's frozen catalog. Never the live canonical CSV."""
     text = _CATALOG_PATH.read_text(encoding="utf-8-sig")
     rows = list(csv.DictReader(io.StringIO(text)))
-    if not rows:
-        raise RuntimeError(f"The canonical catalog {_CATALOG_PATH} is empty.")
+    if len(rows) != _EXPECTED_ROW_COUNT:
+        raise RuntimeError(
+            f"The frozen catalog {_CATALOG_PATH.name} holds {len(rows)} account(s); "
+            f"revision b8d3f1a72c64 was written against exactly {_EXPECTED_ROW_COUNT}. "
+            "A migration snapshot is immutable — restore it and express any change as a "
+            "new revision."
+        )
     return rows
 
 
