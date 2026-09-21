@@ -147,7 +147,7 @@ def main() -> int:
         page = client.get("/bank/classification").data
         check(
             "the canonical accounting catalog is present after the ordinary migration",
-            baseline_whats == 134, detail=str(baseline_whats),
+            baseline_whats == 136, detail=str(baseline_whats),
         )
         check(
             "the page presents the five sections in order",

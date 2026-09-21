@@ -71,7 +71,7 @@ def main() -> int:
             rows = s.query(m.BankAccountingClassification).all()
             check(
                 "1. the canonical catalog is seeded by the ordinary migration",
-                len(rows) == 134, detail=f"{len(rows)} accounts",
+                len(rows) == 136, detail=f"{len(rows)} accounts",
             )
             by_code = {row.code: row for row in rows}
 
@@ -79,8 +79,8 @@ def main() -> int:
             s.commit()
             check(
                 "2/3. re-seeding creates nothing and changes nothing",
-                not outcome.created and len(outcome.unchanged) == 134
-                and s.query(m.BankAccountingClassification).count() == 134,
+                not outcome.created and len(outcome.unchanged) == 136
+                and s.query(m.BankAccountingClassification).count() == 136,
             )
 
             codes = [row.code for row in rows]

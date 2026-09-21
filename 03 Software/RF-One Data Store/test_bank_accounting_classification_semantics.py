@@ -40,8 +40,8 @@ from rfone_data_store.database import (
 PL = wci.PROFIT_LOSS
 BS = wci.BALANCE_SHEET
 
-EXPECTED_ACCOUNTS = 134
-EXPECTED_CONTRA = {"1590", "4910", "4920"}
+EXPECTED_ACCOUNTS = 136
+EXPECTED_CONTRA = {"1590", "3400", "4910", "4920"}
 EXPECTED_REVIEW_SENSITIVE = {"6900", "7880", "8500", "8600"}
 
 
@@ -72,7 +72,7 @@ def main() -> int:
             # 1-4. Every canonical account states all four semantics
             # =============================================================
             check(
-                "0. the canonical catalog is the expected 134 accounts",
+                "0. the canonical catalog is the expected 136 accounts",
                 len(rows) == EXPECTED_ACCOUNTS and len(canonical) == EXPECTED_ACCOUNTS,
                 detail=f"{len(rows)} stored, {len(canonical)} defined",
             )
@@ -306,7 +306,7 @@ def main() -> int:
                 )
 
             check(
-                "9-11b. those three are the ONLY contra accounts in the catalog",
+                "9-11b. those four are the ONLY contra accounts in the catalog",
                 {row.code for row in cc.contra_accounts(s)} == EXPECTED_CONTRA,
                 detail=str(sorted(row.code for row in cc.contra_accounts(s))),
             )
@@ -413,7 +413,7 @@ def main() -> int:
             rows_after = s.query(m.BankAccountingClassification).all()
             after_by_code = {row.code: row for row in rows_after}
             check(
-                "25a. the 134-account hierarchy is unchanged — same codes, same names",
+                "25a. the 136-account hierarchy is unchanged — same codes, same names",
                 {row.code for row in rows_after} == set(by_code)
                 and all(after_by_code[c].name == by_code[c].name for c in by_code),
             )
@@ -432,8 +432,8 @@ def main() -> int:
                 detail="; ".join(cc.validate_hierarchy(s)[:3]),
             )
             check(
-                "25e. the statement split is still 91 P&L / 43 Balance Sheet",
-                len([r for r in rows_after if r.statement_type == PL]) == 91
+                "25e. the statement split is still 93 P&L / 43 Balance Sheet",
+                len([r for r in rows_after if r.statement_type == PL]) == 93
                 and len([r for r in rows_after if r.statement_type == BS]) == 43,
             )
 
