@@ -171,7 +171,17 @@ def main() -> int:
             engine.dispose()
 
         # --- Run ONLY the Phase 4B migration. --------------------------------
+        # This is what is under test: 4B's own deterministic migration of the
+        # legacy rows seeded above, run against exactly the schema that
+        # preceded it.
         command.upgrade(cfg, _PHASE_4B_HEAD)
+
+        # The assertions below read through the ORM, which always describes
+        # the CURRENT schema — so the database is brought to head before they
+        # run. Every migration after 4B on these tables is additive (it only
+        # adds nullable columns and fills them where determinable), so 4B's
+        # own outcome, which is what this test asserts, is unchanged by it.
+        command.upgrade(cfg, "head")
 
         engine = create_configured_engine(url)
         try:

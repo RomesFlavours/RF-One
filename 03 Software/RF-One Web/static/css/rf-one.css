@@ -332,3 +332,170 @@ tbody tr:hover { background: var(--olive-050); }
 .coverage-tile .coverage-tile-label { font-size: .75rem; color: var(--muted); }
 .coverage-tile.coverage-tile-warn { border-color: #d99a2b; }
 .coverage-tile.coverage-tile-warn .coverage-tile-value { color: #8a5a10; }
+
+/* ---------------------------------------------------------------------
+   Wide module layout + module navigation
+   (BANK_RECONCILIATION_INSTRUMENT_ASSIGNMENT_001)
+
+   `.wrap` stays 780px for every text-shaped page (Home, Login, Profile,
+   Admin forms), where a longer measure would hurt readability. A page
+   whose primary content is a wide operational table opts in explicitly
+   with `wrap-wide` via base.html's `wrap_class` block — so the Bank
+   tables stop forcing the WHOLE PAGE to scroll sideways, which was the
+   actual defect: a 9-column table inside a 780px column.
+   --------------------------------------------------------------------- */
+
+.wrap-wide { max-width: 1600px; }
+
+/* The body's own 2rem side padding is what makes a 1024px window scroll
+   horizontally once the content genuinely needs the width. Narrow it as
+   the viewport narrows instead of clipping or hiding content. */
+@media (max-width: 1100px) {
+  body { padding-left: 1rem; padding-right: 1rem; }
+}
+@media (max-width: 700px) {
+  body { padding-left: .6rem; padding-right: .6rem; }
+}
+
+/* --- Module header: title is a heading, leaving is a labelled link --- */
+
+.module-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: .6rem;
+}
+.module-identity { min-width: 0; }
+.module-title { font-size: 1.4rem; margin: 0 0 .2rem; color: var(--olive-900); }
+.module-tagline { color: var(--muted); font-size: .82rem; margin: 0; max-width: 70ch; }
+.module-home-link { font-size: .8rem; white-space: nowrap; padding-top: .25rem; }
+
+/* --- Section tabs --- */
+
+.module-tabs {
+  display: flex; flex-wrap: wrap; gap: .25rem;
+  border-bottom: 2px solid var(--olive-150); margin-bottom: 1.2rem;
+}
+.module-tab {
+  padding: .5rem .95rem; font-size: .85rem; font-weight: 600;
+  color: var(--muted); text-decoration: none;
+  border: 1px solid transparent; border-bottom: none;
+  border-radius: 8px 8px 0 0; margin-bottom: -2px;
+}
+.module-tab:hover { color: var(--olive-900); background: var(--olive-050); text-decoration: none; }
+.module-tab.is-active {
+  color: var(--olive-900); background: white;
+  border-color: var(--olive-150); border-bottom: 2px solid white;
+}
+
+/* --- Dense operational tables -------------------------------------- */
+
+.table-compact { table-layout: auto; }
+.table-compact th {
+  font-size: .66rem; padding: .4rem .45rem; white-space: nowrap;
+}
+.table-compact td {
+  font-size: .78rem; padding: .4rem .45rem; vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.table-compact .compact-form input,
+.table-compact .compact-form select { max-width: 100%; font-size: .75rem; padding: .25rem .35rem; }
+.table-compact .compact-form button,
+.table-compact .btn-inline {
+  font-size: .72rem; padding: .3rem .55rem; margin-top: .15rem;
+}
+.table-compact .badge { font-size: .66rem; }
+
+/* Descriptions are the one column that must wrap rather than stretch the
+   table — bank descriptions are long and are never truncated here. */
+.col-description { white-space: normal; min-width: 14rem; }
+.col-amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.col-date { white-space: nowrap; width: 6.5rem; }
+.col-narrow { width: 7rem; }
+.col-actions { width: 11rem; }
+
+.cell-note { display: block; color: var(--muted); font-size: .7rem; margin-top: .2rem; }
+.cell-stack { display: flex; flex-direction: column; gap: .3rem; }
+
+/* --- Stacked rows on narrow viewports ------------------------------
+   Below 900px a 9-column table cannot be read as a grid. Each row
+   becomes a labelled block: every value stays on screen and legible,
+   nothing is hidden and no font is shrunk to fit. --- */
+
+@media (max-width: 900px) {
+  .table-stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .table-stack, .table-stack tbody, .table-stack tr, .table-stack td { display: block; width: auto; }
+  .table-stack tr {
+    border: 1px solid var(--olive-150); border-radius: var(--radius);
+    padding: .5rem .65rem; margin-bottom: .7rem; background: white;
+  }
+  .table-stack td { border-bottom: none; padding: .25rem 0; font-size: .82rem; }
+  .table-stack td::before {
+    content: attr(data-label); display: block;
+    font-size: .66rem; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); font-weight: 700; margin-bottom: .1rem;
+  }
+  .table-stack td:empty { display: none; }
+  .col-amount { text-align: left; }
+  .col-description, .col-date, .col-narrow, .col-actions { width: auto; min-width: 0; }
+  .table-compact .compact-form input,
+  .table-compact .compact-form select { max-width: 100%; font-size: .85rem; padding: .4rem .5rem; }
+}
+
+/* --- Batch status + its concrete reason ----------------------------- */
+
+.status-reason { display: block; font-size: .7rem; color: var(--muted); margin-top: .25rem; }
+.status-count {
+  display: inline-block; margin-left: .3rem; font-size: .66rem; font-weight: 700;
+  background: var(--olive-150); color: var(--olive-900); border-radius: 999px; padding: .05rem .4rem;
+}
+
+/* Export blockers: each reason names a concrete transaction/batch, so the
+   text is long by design — it wraps rather than stretching the page. */
+.blocker-list { font-size: .82rem; padding-left: 1.2rem; margin: .4rem 0 0; }
+.blocker-list li { margin-bottom: .35rem; overflow-wrap: anywhere; }
+
+/* Inline disclosures inside dense tables (Change instrument / Reassign). */
+.table-compact details > summary {
+  cursor: pointer; font-size: .72rem; font-weight: 600; color: var(--olive-600);
+  margin-top: .2rem;
+}
+.table-compact details[open] > summary { margin-bottom: .25rem; }
+
+/* ---------------------------------------------------------------------
+   Select Who picker + classification chain
+   (BANK_RECONCILIATION_WHO_WHY_WHAT_001)
+
+   Reuses `.org-modal-overlay`/`.org-modal-panel` rather than introducing a
+   second modal look: a dialog is a dialog, and the Organization chart's
+   one already defines it. Only what is genuinely new lives here — the
+   searchable option list inside it.
+   --------------------------------------------------------------------- */
+
+.who-picker-list {
+  max-height: 46vh; overflow-y: auto; margin: .6rem 0;
+  border: 1px solid var(--olive-150); border-radius: var(--radius);
+}
+.who-option {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: var(--surface); border: none; border-bottom: 1px solid var(--olive-150);
+  padding: .5rem .7rem; font: inherit;
+}
+.who-option:last-child { border-bottom: none; }
+.who-option:hover, .who-option:focus { background: var(--olive-050); outline: none; }
+.who-option:focus { box-shadow: inset 3px 0 0 var(--olive-900); }
+.who-option.is-selected { background: var(--olive-050); box-shadow: inset 3px 0 0 var(--olive-900); }
+.who-option-name { display: block; font-weight: 600; font-size: .88rem; }
+.who-option-type { display: block; font-size: .72rem; color: var(--muted); }
+.who-option-chain { display: block; font-size: .74rem; color: var(--muted); margin-top: .15rem; }
+
+/* A Who whose chain is incomplete stays VISIBLE and says why, rather than
+   disappearing from the list and sending the operator hunting for it. */
+.who-option.is-blocked { cursor: not-allowed; background: #fdf3e2; }
+.who-option.is-blocked:hover, .who-option.is-blocked:focus { background: #fdf3e2; }
+.who-option.is-blocked .who-option-name { color: var(--muted); }
+.who-option-blocked { display: block; font-size: .74rem; color: #8a5a10; margin-top: .15rem; }
+
+.who-picker-learn { display: block; font-size: .78rem; color: var(--muted); margin: .6rem 0; }
+.who-picker-learn input { margin-right: .35rem; }
+.who-picker-actions { display: flex; gap: .5rem; margin-top: .8rem; }
+
+.chain { font-size: .78rem; }

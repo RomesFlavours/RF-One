@@ -1,8 +1,11 @@
 {% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
 {% block page_title %}Bank Reconciliation · Monthly Export · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('bank_home') }}">&larr; Bank Reconciliation</a></p>
-<h1>Kermali monthly export</h1>
+{{ bank.module_nav('export') }}
+
+<h2>Kermali monthly export</h2>
 <p class="muted">Generates <code>RfBank_YYYY_MM.xlsx</code> — the Monthly Accountant Export. Blocked while any reason below applies.</p>
 
 <div class="card">
@@ -20,8 +23,8 @@
 
   {% if year and month %}
     {% if blockers %}
-      <h2>Export blocked</h2>
-      <ul>
+      <h3>Export blocked &mdash; {{ blockers|length }} reason(s)</h3>
+      <ul class="blocker-list">
         {% for blocker in blockers %}
           <li>{{ blocker.reason }}</li>
         {% endfor %}

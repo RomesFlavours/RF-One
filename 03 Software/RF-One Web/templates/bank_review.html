@@ -1,8 +1,11 @@
 {% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
 {% block page_title %}Bank Reconciliation · Review · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('bank_home') }}">&larr; Bank Reconciliation</a></p>
-<h1>Review transactions</h1>
+{{ bank.module_nav('review') }}
+
+<h2>Review transactions</h2>
 
 <div class="card">
   <form method="get" class="compact-form">
@@ -31,18 +34,28 @@
         <option value="REQUIRES_REVIEW" {{ 'selected' if filter_status == 'REQUIRES_REVIEW' else '' }}>Requires review</option>
       </select>
     </div>
+    {% if filter_batch_id %}
+      <input type="hidden" name="batch_id" value="{{ filter_batch_id }}">
+    {% endif %}
     <button type="submit">Filter</button>
   </form>
+
+  {% if filter_batch_id %}
+    <p class="muted">
+      Showing only batch #{{ filter_batch_id }}{% if filter_batch %} &mdash; <code>{{ filter_batch.original_file_name }}</code>{% endif %}.
+      <a href="{{ url_for('bank_review', year=filter_year, month=filter_month, payment_instrument_id=filter_payment_instrument_id, status=filter_status) }}">Show every batch</a>
+    </p>
+  {% endif %}
 </div>
 
 <div class="card">
   {% if transactions %}
     <div class="table-scroll">
-      <table>
+      <table class="table-compact table-stack">
         <thead>
           <tr>
             <th>Instrument</th><th>Date</th><th>Description</th><th>Amount</th><th>Source</th>
-            <th>Duplicate</th><th>Reconciliation (Who / Why)</th><th>Internal Transfer</th><th>Review</th>
+            <th>Duplicate</th><th>Classification (Who &rarr; Why &rarr; What)</th><th>Internal Transfer</th><th>Review</th>
           </tr>
         </thead>
         <tbody>
@@ -51,15 +64,40 @@
             {% set resolved = explanation and explanation.decision_status in resolved_decision_statuses %}
             {% set counterpart = counterpart_by_transaction_id.get(txn.id) %}
             {% set match_candidates = match_candidates_by_transaction_id.get(txn.id) %}
+            {% set reassignments = reassignments_by_transaction_id.get(txn.id) %}
             <tr>
-              <td>{{ instruments_by_id.get(txn.payment_instrument_id).display_name if instruments_by_id.get(txn.payment_instrument_id) else txn.payment_instrument_id }}</td>
-              <td>{{ txn.posting_date }}</td>
-              <td>{{ txn.description_original }}</td>
-              <td>{{ "%.2f"|format(txn.amount_minor / 100) }}</td>
-              <td>{{ txn.bank_source }}</td>
-              <td>
+              <td data-label="Instrument">
+                {{ instruments_by_id.get(txn.payment_instrument_id).display_name if instruments_by_id.get(txn.payment_instrument_id) else txn.payment_instrument_id }}
+                {% if reassignments %}
+                  <span class="cell-note">Reassigned {{ reassignments|length }}&times; &mdash; latest: {{ reassignments[0].reason }}</span>
+                {% endif %}
+                <details>
+                  <summary>Reassign</summary>
+                  <form method="post" action="{{ url_for('bank_transaction_reassign_instrument', transaction_id=txn.id) }}" class="compact-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="payment_instrument_id" required aria-label="New instrument for transaction {{ txn.id }}">
+                      <option value="">Move to&hellip;</option>
+                      {% for instrument in instruments %}
+                        {% if instrument.id != txn.payment_instrument_id %}
+                          <option value="{{ instrument.id }}">{{ bank.instrument_identity(instrument) }}</option>
+                        {% endif %}
+                      {% endfor %}
+                    </select>
+                    <input type="text" name="reason" placeholder="Why? (required)" required maxlength="500" aria-label="Reason for reassigning transaction {{ txn.id }}">
+                    <button type="submit">Reassign</button>
+                  </form>
+                </details>
+              </td>
+              <td data-label="Date" class="col-date">{{ txn.posting_date }}</td>
+              <td data-label="Description" class="col-description">{{ txn.description_original }}</td>
+              <td data-label="Amount" class="col-amount">{{ "%.2f"|format(txn.amount_minor / 100) }}</td>
+              <td data-label="Source">{{ txn.bank_source }}</td>
+              <td data-label="Duplicate">
                 <span class="badge {{ 'bad' if txn.duplicate_status == 'CANDIDATE_DUPLICATE' else ('warn' if txn.duplicate_status == 'CONFIRMED_DUPLICATE' else 'ok') }}">{{ txn.duplicate_status }}</span>
                 {% if txn.duplicate_status == 'CANDIDATE_DUPLICATE' %}
+                  {% if txn.duplicate_of_transaction_id %}
+                    <span class="cell-note">Same instrument, date, description and amount as transaction #{{ txn.duplicate_of_transaction_id }}.</span>
+                  {% endif %}
                   <form method="post" action="{{ url_for('bank_transaction_duplicate_decision', transaction_id=txn.id) }}" class="compact-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" name="decision" value="CONFIRMED_DISTINCT">Distinct</button>
@@ -67,40 +105,54 @@
                   </form>
                 {% endif %}
               </td>
-              <td>
+              {# BANK_RECONCILIATION_WHO_WHY_WHAT_001: one control, one
+                 choice. The Why and the What are read-only consequences of
+                 the Who, shown from the decision's own immutable snapshot
+                 so this row keeps saying what it was actually classified
+                 as even after the vocabulary is edited. #}
+              <td data-label="Classification (Who → Why → What)">
                 <span class="badge {{ 'ok' if resolved else 'warn' }}">{{ explanation.decision_status if explanation else 'NEEDS_HUMAN_REVIEW' }}</span>
                 {% if resolved %}
-                  <br>
-                  Who: {{ explanation.occurrence.canonical_name if explanation.occurrence else explanation.occurrence_name_snapshot or '—' }}<br>
-                  Why: {{ explanation.transaction_reason.name if explanation.transaction_reason else '—' }}
+                  <span class="cell-note">
+                    Who: {{ explanation.occurrence_name_snapshot or (explanation.occurrence.canonical_name if explanation.occurrence else '—') }}<br>
+                    Why: {{ explanation.transaction_reason_name_snapshot or (explanation.transaction_reason.name if explanation.transaction_reason else '—') }}<br>
+                    What:
+                    {%- if explanation.accounting_classification_code_snapshot %}
+                      <code>{{ explanation.accounting_classification_code_snapshot }}</code>
+                      {{ explanation.accounting_classification_name_snapshot }}
+                      {%- if explanation.accounting_statement_type_snapshot %}
+                        ({{ 'Profit & Loss' if explanation.accounting_statement_type_snapshot == 'PROFIT_LOSS' else 'Balance Sheet' }})
+                      {%- else %}
+                        <span class="badge bad">NO STATEMENT TYPE</span>
+                      {%- endif %}
+                    {%- elif explanation.what_label_snapshot %}
+                      {{ explanation.what_label_snapshot }} <span class="badge warn">LEGACY LABEL</span>
+                    {%- else %} &mdash;
+                    {%- endif %}
+                  </span>
                 {% endif %}
-                <form method="post" action="{{ url_for('bank_transaction_recognition_decision', transaction_id=txn.id) }}" class="compact-form">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <select name="occurrence_id" required>
-                    <option value="">Who&hellip;</option>
-                    {% for occurrence in occurrences %}
-                      <option value="{{ occurrence.id }}" {{ 'selected' if explanation and explanation.occurrence_id == occurrence.id else '' }}>{{ occurrence.canonical_name }}</option>
-                    {% endfor %}
-                  </select>
-                  <select name="transaction_reason_id" required>
-                    <option value="">Why&hellip;</option>
-                    {% for reason in reasons %}
-                      <option value="{{ reason.id }}" {{ 'selected' if explanation and explanation.transaction_reason_id == reason.id else '' }}>{{ reason.name }}</option>
-                    {% endfor %}
-                  </select>
-                  <label><input type="checkbox" name="reuse_for_future"> Reuse for future</label>
-                  <button type="submit">{{ 'Correct' if resolved else 'Confirm' }}</button>
-                </form>
+                <button type="button" class="who-picker-open"
+                        data-transaction-id="{{ txn.id }}"
+                        data-transaction-label="{{ txn.posting_date }} · {{ txn.description_original }} · {{ "%.2f"|format(txn.amount_minor / 100) }}"
+                        data-current-occurrence-id="{{ explanation.occurrence_id if explanation and explanation.occurrence_id else '' }}">
+                  {{ 'Change Who' if resolved else 'Select Who' }}
+                </button>
+                {% if resolved %}
+                  <form method="post" action="{{ url_for('bank_transaction_reclassify', transaction_id=txn.id) }}" class="compact-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" title="Re-resolve the same Who through the current Who → Why → What chain, as a new auditable decision.">Reclassify</button>
+                  </form>
+                {% endif %}
               </td>
-              <td>
+              <td data-label="Internal Transfer">
                 {% if counterpart %}
-                  <span class="badge ok">INTERNAL_TRANSFER</span><br>
-                  &harr; {{ instruments_by_id.get(counterpart.payment_instrument_id).display_name if instruments_by_id.get(counterpart.payment_instrument_id) else counterpart.payment_instrument_id }}
-                  ({{ "%.2f"|format(counterpart.amount_minor / 100) }})
+                  <span class="badge ok">INTERNAL_TRANSFER</span>
+                  <span class="cell-note">&harr; {{ instruments_by_id.get(counterpart.payment_instrument_id).display_name if instruments_by_id.get(counterpart.payment_instrument_id) else counterpart.payment_instrument_id }}
+                  ({{ "%.2f"|format(counterpart.amount_minor / 100) }})</span>
                 {% elif match_candidates %}
                   <form method="post" action="{{ url_for('bank_transaction_match_decision', transaction_id=txn.id) }}" class="compact-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <select name="counterpart_transaction_id" required>
+                    <select name="counterpart_transaction_id" required aria-label="Counterpart for transaction {{ txn.id }}">
                       <option value="">Match with&hellip;</option>
                       {% for candidate in match_candidates %}
                         <option value="{{ candidate.id }}">
@@ -113,7 +165,7 @@
                   </form>
                 {% endif %}
               </td>
-              <td><span class="badge {{ 'ok' if txn.review_status in ('REVIEWED', 'ACCEPTED') else 'warn' }}">{{ txn.review_status }}</span></td>
+              <td data-label="Review" class="col-narrow"><span class="badge {{ 'ok' if txn.review_status in ('REVIEWED', 'ACCEPTED') else 'warn' }}">{{ txn.review_status }}</span></td>
             </tr>
           {% endfor %}
         </tbody>
@@ -123,4 +175,187 @@
     <p class="empty">No transaction matches this filter.</p>
   {% endif %}
 </div>
+
+{# ------------------------------------------------------------------------
+   Select Who — ONE modal for the whole page, retargeted per transaction.
+   Rendering one modal per row would multiply the same markup by up to 500
+   rows; the Who list is identical for every row, so it is emitted once as
+   data and the dialog is pointed at whichever transaction was clicked.
+   ------------------------------------------------------------------------ #}
+<div id="who-picker" class="org-modal-overlay" hidden>
+  <div class="org-modal-panel" role="dialog" aria-modal="true" aria-labelledby="who-picker-title">
+    <button id="who-picker-close" class="org-modal-close" type="button" aria-label="Cancel">&times;</button>
+    <div class="modal-header">
+      <h3 id="who-picker-title">Select Who</h3>
+    </div>
+    <p class="muted" id="who-picker-subject"></p>
+    <p class="muted">
+      Why and What follow from the Who &mdash; they are not chosen here. Manage the chain on the
+      <a href="{{ url_for('bank_classification') }}">Classification</a> tab.
+    </p>
+
+    <form id="who-picker-form" method="post" action="">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="occurrence_id" id="who-picker-occurrence-id" value="">
+
+      <div class="field-row">
+        <label for="who-picker-search">Search</label>
+        <input type="search" id="who-picker-search" autocomplete="off"
+               placeholder="Name or type" aria-controls="who-picker-list">
+      </div>
+
+      <div class="who-picker-list" id="who-picker-list" role="listbox" aria-label="Active Who values" tabindex="0">
+        {% for option in who_options %}
+          <button type="button" class="who-option{% if not option.selectable %} is-blocked{% endif %}"
+                  role="option" aria-selected="false"
+                  data-occurrence-id="{{ option.id }}"
+                  data-selectable="{{ '1' if option.selectable else '0' }}"
+                  data-haystack="{{ (option.name ~ ' ' ~ option.type ~ ' ' ~ option.status)|lower }}"
+                  {% if not option.selectable %}aria-disabled="true"{% endif %}>
+            <span class="who-option-name">{{ option.name }}</span>
+            <span class="who-option-type">{{ option.type }}{% if option.status != 'ACTIVE' %} · {{ option.status }}{% endif %}</span>
+            {% if option.selectable %}
+              <span class="who-option-chain">Why: {{ option.why }} · What: {{ option.what }}</span>
+            {% else %}
+              <span class="who-option-blocked">
+                {{ option.blocking_reason }}
+                <a href="{{ url_for('bank_classification') }}">Fix in Classification</a>
+              </span>
+            {% endif %}
+          </button>
+        {% else %}
+          <p class="empty">
+            No Who defined yet. Create one on the
+            <a href="{{ url_for('bank_classification') }}">Classification</a> tab.
+          </p>
+        {% endfor %}
+      </div>
+      <p class="empty" id="who-picker-empty" hidden>No Who matches this search.</p>
+
+      <label class="who-picker-learn">
+        <input type="checkbox" name="learn_description" checked>
+        Learn this description &mdash; next time this exact description appears, recognize the same Who
+        automatically. The Who &rarr; Why &rarr; What associations themselves are always kept, with or
+        without this.
+      </label>
+
+      <div class="who-picker-actions">
+        <button type="submit" id="who-picker-confirm" disabled>Confirm</button>
+        <button type="button" id="who-picker-cancel">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  var overlay = document.getElementById('who-picker');
+  if (!overlay) { return; }
+
+  var form = document.getElementById('who-picker-form');
+  var search = document.getElementById('who-picker-search');
+  var list = document.getElementById('who-picker-list');
+  var empty = document.getElementById('who-picker-empty');
+  var subject = document.getElementById('who-picker-subject');
+  var hidden = document.getElementById('who-picker-occurrence-id');
+  var confirm = document.getElementById('who-picker-confirm');
+  var options = Array.prototype.slice.call(list.querySelectorAll('.who-option'));
+  var lastTrigger = null;
+
+  // The route is per transaction, so the one form is retargeted on open.
+  var actionTemplate = {{ url_for('bank_transaction_recognition_decision', transaction_id=0)|tojson }};
+
+  function visibleOptions() {
+    return options.filter(function (o) { return !o.hidden; });
+  }
+
+  function select(option) {
+    if (option.dataset.selectable !== '1') { return; }
+    options.forEach(function (o) {
+      o.classList.remove('is-selected');
+      o.setAttribute('aria-selected', 'false');
+    });
+    option.classList.add('is-selected');
+    option.setAttribute('aria-selected', 'true');
+    hidden.value = option.dataset.occurrenceId;
+    confirm.disabled = false;
+  }
+
+  function applyFilter() {
+    var term = search.value.trim().toLowerCase();
+    var shown = 0;
+    options.forEach(function (option) {
+      var match = !term || option.dataset.haystack.indexOf(term) !== -1;
+      option.hidden = !match;
+      if (match) { shown += 1; }
+    });
+    empty.hidden = shown !== 0 || options.length === 0;
+  }
+
+  function open(trigger) {
+    lastTrigger = trigger;
+    form.action = actionTemplate.replace(/0$/, trigger.dataset.transactionId);
+    subject.textContent = trigger.dataset.transactionLabel || '';
+    hidden.value = '';
+    confirm.disabled = true;
+    search.value = '';
+    applyFilter();
+    options.forEach(function (o) {
+      o.classList.remove('is-selected');
+      o.setAttribute('aria-selected', 'false');
+    });
+    var current = trigger.dataset.currentOccurrenceId;
+    if (current) {
+      var match = options.filter(function (o) { return o.dataset.occurrenceId === current; })[0];
+      if (match) { select(match); }
+    }
+    overlay.hidden = false;
+    search.focus();
+  }
+
+  function close() {
+    overlay.hidden = true;
+    if (lastTrigger) { lastTrigger.focus(); }
+  }
+
+  document.querySelectorAll('.who-picker-open').forEach(function (button) {
+    button.addEventListener('click', function () { open(button); });
+  });
+
+  search.addEventListener('input', applyFilter);
+
+  list.addEventListener('click', function (event) {
+    var option = event.target.closest('.who-option');
+    if (option) { select(option); }
+  });
+
+  // Keyboard: Up/Down move through the visible options, Enter picks one.
+  // Typing in the search field narrows the same list, so the whole dialog
+  // is usable without a mouse.
+  function moveFocus(delta) {
+    var shown = visibleOptions().filter(function (o) { return o.dataset.selectable === '1'; });
+    if (!shown.length) { return; }
+    var index = shown.indexOf(document.activeElement);
+    var next = shown[Math.max(0, Math.min(shown.length - 1, index + delta))];
+    if (index === -1) { next = shown[0]; }
+    next.focus();
+  }
+
+  overlay.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') { event.preventDefault(); close(); return; }
+    if (event.key === 'ArrowDown') { event.preventDefault(); moveFocus(1); return; }
+    if (event.key === 'ArrowUp') { event.preventDefault(); moveFocus(-1); return; }
+    if (event.key === 'Enter' && document.activeElement.classList.contains('who-option')) {
+      event.preventDefault();
+      select(document.activeElement);
+    }
+  });
+
+  overlay.addEventListener('mousedown', function (event) {
+    if (event.target === overlay) { close(); }
+  });
+  document.getElementById('who-picker-close').addEventListener('click', close);
+  document.getElementById('who-picker-cancel').addEventListener('click', close);
+})();
+</script>
 {% endblock %}

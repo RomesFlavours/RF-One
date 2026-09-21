@@ -10650,6 +10650,91 @@ class FinancialTransactionMatch(Base):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Hierarchical bank classification — WHO -> WHY -> WHAT
+# (BANK_RECONCILIATION_WHO_WHY_WHAT_001). The three existing canonical
+# concepts are not replaced and not duplicated: `BankOccurrence` IS the
+# WHO, `BankTransactionReason` IS the WHY, and `BankAccountingClassification`
+# (below) is the WHAT the two of them ultimately resolve to. The chain is
+# stored once, on the vocabulary itself — WHO carries its current default
+# WHY, WHY carries its current WHAT — so a human reconciling a transaction
+# selects ONLY the WHO and the rest is derived, never re-selected per
+# transaction.
+#
+# WHAT is the final accounting classification (a P&L or Balance Sheet
+# line). It is deliberately NOT the Kermali export mapping
+# (`BankTransactionReasonExportMapping`, Food $/Oper/Deduct/What label),
+# which stays exactly where Phase 4B put it and keeps feeding the Kermali
+# columns unchanged — the two coexist, the new model never absorbs or
+# rewrites the old one.
+# ---------------------------------------------------------------------------
+
+
+class BankAccountingClassification(Base):
+    """WHAT a bank movement ultimately is, in accounting terms — one line
+    of a Profit & Loss statement or of a Balance Sheet.
+
+    This is the structure the fixed chart of accounts will later be
+    loaded into; it deliberately does NOT contain that chart of accounts
+    now. No real account tree is invented here — the Product Owner
+    approves the actual codes separately, and `parent_id` is present so
+    that approval is a data load, not a schema change.
+
+    Rules this model enforces or enables:
+
+    * `code` is the STABLE identity — it is what a historical decision
+      snapshot records, so it must not be recycled between two different
+      meanings. Editing a name is fine; changing what a code means is not.
+    * A classification already used by a Reason or by a historical
+      decision is never physically deleted — it is DEACTIVATED (`active`
+      = False), which keeps every past decision readable.
+    * `parent_id` forms a hierarchy and must never form a cycle;
+      `bank_reconciliation.classification` is the one place that check
+      lives.
+    * `statement_type` is NULLABLE on purpose, for exactly one case: a
+      classification that a migration recovered from a legacy Kermali
+      `what_label` whose statement side is genuinely not derivable.
+      Such a row is explicitly INCOMPLETE rather than silently assigned
+      a made-up side; the Classification page shows it as such, and the
+      UI requires a real value on every create/edit."""
+
+    __tablename__ = "bank_accounting_classifications"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_bank_accounting_classification_code"),
+        CheckConstraint(
+            "statement_type IS NULL OR statement_type IN ('PROFIT_LOSS', 'BALANCE_SHEET')",
+            name="ck_bank_accounting_classification_statement_type",
+        ),
+        CheckConstraint("parent_id IS NULL OR parent_id <> id", name="ck_bac_parent_not_self"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # PROFIT_LOSS | BALANCE_SHEET. NULL only for a legacy-migrated row
+    # whose statement side was not determinable — see the class docstring.
+    statement_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_accounting_classifications.id"), nullable=True, index=True
+    )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("1"))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    parent: Mapped["BankAccountingClassification | None"] = relationship(remote_side=[id])
+
+    @property
+    def is_complete(self) -> bool:
+        """A classification usable for NEW work. An incomplete one (no
+        statement side yet) stays readable and keeps every historical
+        decision intact, but must not be the WHAT of a new decision."""
+        return self.active and self.statement_type is not None
+
+
 class BankOccurrenceType(Base):
     """Controlled vocabulary for the TYPE of subject a bank movement
     involves (spec: "la tipologia del soggetto coinvolto"). Deliberately
@@ -10692,6 +10777,15 @@ class BankOccurrence(Base):
     occurrence_type_id: Mapped[int] = mapped_column(ForeignKey("bank_occurrence_types.id"), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE", server_default="ACTIVE")
     optional_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # WHO -> WHY (BANK_RECONCILIATION_WHO_WHY_WHAT_001). The ONE current
+    # default Reason this subject implies, which in turn carries the WHAT.
+    # Nullable at the schema level only so that pre-existing Occurrences
+    # survive the migration unchanged and stay visible as explicitly
+    # INCOMPLETE; an incomplete Occurrence is refused in reconciliation
+    # (`classification.resolve_chain`), never silently defaulted.
+    default_transaction_reason_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_transaction_reasons.id"), nullable=True, index=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -10699,6 +10793,9 @@ class BankOccurrence(Base):
     )
 
     occurrence_type: Mapped["BankOccurrenceType"] = relationship()
+    default_transaction_reason: Mapped["BankTransactionReason | None"] = relationship(
+        foreign_keys=[default_transaction_reason_id],
+    )
 
 
 class BankTransactionReason(Base):
@@ -10718,12 +10815,22 @@ class BankTransactionReason(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE", server_default="ACTIVE")
+    # WHY -> WHAT (BANK_RECONCILIATION_WHO_WHY_WHAT_001). The ONE current
+    # accounting classification this economic reason resolves to. Editing
+    # it changes FUTURE classifications only — a historical decision keeps
+    # its own snapshot and is only ever changed by an explicit Reclassify.
+    # Nullable at the schema level only so pre-existing Reasons survive
+    # the migration and stay visible as explicitly INCOMPLETE.
+    accounting_classification_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_accounting_classifications.id"), nullable=True, index=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
+    accounting_classification: Mapped["BankAccountingClassification | None"] = relationship()
     export_mapping: Mapped["BankTransactionReasonExportMapping | None"] = relationship(
         back_populates="transaction_reason", uselist=False,
     )
@@ -10889,7 +10996,8 @@ class BankTransactionExplanation(Base):
         ),
         CheckConstraint(
             "decision_status IS NULL OR decision_status IN "
-            "('SUGGESTED', 'AUTO_APPLIED', 'HUMAN_CONFIRMED', 'HUMAN_OVERRIDDEN', 'NEEDS_HUMAN_REVIEW')",
+            "('SUGGESTED', 'AUTO_APPLIED', 'HUMAN_CONFIRMED', 'HUMAN_OVERRIDDEN', "
+            "'HUMAN_RECLASSIFIED', 'NEEDS_HUMAN_REVIEW')",
             name="ck_bank_transaction_explanation_decision_status",
         ),
     )
@@ -10906,8 +11014,14 @@ class BankTransactionExplanation(Base):
     # Conceptual values: HUMAN, RULE.
     decision_source: Mapped[str | None] = mapped_column(String(8), nullable=True)
     # Conceptual values: SUGGESTED, AUTO_APPLIED, HUMAN_CONFIRMED,
-    # HUMAN_OVERRIDDEN, NEEDS_HUMAN_REVIEW. Only AUTO_APPLIED,
-    # HUMAN_CONFIRMED and HUMAN_OVERRIDDEN are exportable/resolved states.
+    # HUMAN_OVERRIDDEN, HUMAN_RECLASSIFIED, NEEDS_HUMAN_REVIEW. Only
+    # AUTO_APPLIED, HUMAN_CONFIRMED, HUMAN_OVERRIDDEN and
+    # HUMAN_RECLASSIFIED are exportable/resolved states.
+    # HUMAN_RECLASSIFIED (BANK_RECONCILIATION_WHO_WHY_WHAT_001) is the
+    # explicit `Reclassify` action: the SAME WHO re-resolved through the
+    # CURRENT WHO -> WHY -> WHAT chain, recorded as a NEW append-only
+    # decision row. It is not an override of the human's WHO choice, and
+    # it never rewrites the decision it supersedes.
     decision_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
     # Short descriptive label (e.g. "HIGH"/"MEDIUM"/"LOW"), never a
     # numeric score used to auto-promote a rule (Product Owner: "non
@@ -10930,6 +11044,25 @@ class BankTransactionExplanation(Base):
     deductible_snapshot: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     what_label_snapshot: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
+    # --- WHO -> WHY -> WHAT snapshot (BANK_RECONCILIATION_WHO_WHY_WHAT_001)
+    # The WHY this decision resolved to is already `transaction_reason_id`
+    # (+ `transaction_reason_name_snapshot` below); the WHAT it resolved
+    # to is captured here, by id AND by value, exactly once at creation.
+    # `accounting_classification_id` stays for traceability back to the
+    # live row; the `*_snapshot` values are what any report/export reads,
+    # so a later edit of the WHO -> WHY or WHY -> WHAT association can
+    # never silently change what this transaction was classified as.
+    # Changing a historical transaction's classification is only ever
+    # possible through the explicit `Reclassify` action, which writes a
+    # NEW decision row (HUMAN_RECLASSIFIED) rather than editing this one.
+    transaction_reason_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    accounting_classification_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_accounting_classifications.id"), nullable=True
+    )
+    accounting_classification_code_snapshot: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    accounting_classification_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    accounting_statement_type_snapshot: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, server_default=func.now(), onupdate=func.now()
@@ -10941,6 +11074,163 @@ class BankTransactionExplanation(Base):
     occurrence: Mapped["BankOccurrence | None"] = relationship()
     transaction_reason: Mapped["BankTransactionReason | None"] = relationship()
     recognition_rule: Mapped["BankRecognitionRule | None"] = relationship()
+    accounting_classification: Mapped["BankAccountingClassification | None"] = relationship()
+
+# ---------------------------------------------------------------------------
+# Bank Reconciliation — source-resolution correction and reuse
+# (BANK_RECONCILIATION_INSTRUMENT_ASSIGNMENT_001). Two minimal canonical
+# tables, no parallel ledger: the normalized transaction ledger remains
+# `FinancialTransaction` and the raw layer remains `BankImportBatch`/
+# `RawBankTransaction`, both untouched by a reassignment.
+# ---------------------------------------------------------------------------
+
+
+class BankInstrumentAssignmentAudit(Base):
+    """One row per human correction of a source→Payment Instrument
+    assignment — either a whole `BankImportBatch` (a file that represents
+    a single account/card) or a single `FinancialTransaction` (a file
+    carrying several cards/identifiers).
+
+    Append-only history, never updated in place and never deleted: the
+    same "conserva evidenza della decisione precedente" convention
+    `BankTransactionExplanation` already establishes for the reconciliation
+    decision, applied here to the instrument assignment. It records only
+    the correction event — it is NOT a second ledger of transactions, and
+    reading it is never required to know an instrument's CURRENT
+    assignment (that is always `BankImportBatch.payment_instrument_id` /
+    `FinancialTransaction.payment_instrument_id`).
+
+    `previous_payment_instrument_id` is NULL for the FIRST resolution of a
+    batch that had none (spec §3.2's human resolution), which is recorded
+    here too so that "how did this batch get its instrument" always has an
+    answer, not only "how was it later corrected"."""
+
+    __tablename__ = "bank_instrument_assignment_audits"
+    __table_args__ = (
+        CheckConstraint(
+            "scope IN ('BATCH', 'TRANSACTION')", name="ck_biaa_scope",
+        ),
+        CheckConstraint(
+            "(scope = 'BATCH' AND import_batch_id IS NOT NULL AND financial_transaction_id IS NULL) OR "
+            "(scope = 'TRANSACTION' AND financial_transaction_id IS NOT NULL)",
+            name="ck_biaa_scope_target",
+        ),
+        Index("ix_biaa_import_batch_id", "import_batch_id"),
+        Index("ix_biaa_financial_transaction_id", "financial_transaction_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    scope: Mapped[str] = mapped_column(String(16), nullable=False)
+    import_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_import_batches.id"), nullable=True
+    )
+    financial_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_transactions.id"), nullable=True
+    )
+
+    previous_payment_instrument_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=True
+    )
+    new_payment_instrument_id: Mapped[int] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=False
+    )
+
+    # Required: a correction without a stated reason is not auditable.
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    # How many `FinancialTransaction` rows this one correction moved —
+    # recorded at correction time so the audit stays meaningful even after
+    # a later correction moves them again.
+    affected_transaction_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    changed_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    import_batch: Mapped["BankImportBatch | None"] = relationship()
+    financial_transaction: Mapped["FinancialTransaction | None"] = relationship(
+        foreign_keys=[financial_transaction_id],
+    )
+    previous_payment_instrument: Mapped["PaymentInstrument | None"] = relationship(
+        foreign_keys=[previous_payment_instrument_id],
+    )
+    new_payment_instrument: Mapped["PaymentInstrument"] = relationship(
+        foreign_keys=[new_payment_instrument_id],
+    )
+    changed_by_account: Mapped["RFOneAccount | None"] = relationship()
+
+
+class BankSourceInstrumentProfile(Base):
+    """A reusable source→Payment Instrument resolution a human taught
+    RF-One once, for a source file whose own content does not identify the
+    instrument unambiguously.
+
+    The motivating case (spec §3.2) is First Citizens' `AccountHistory.csv`:
+    the file name never changes and, when more than one compatible First
+    Citizens instrument exists, the file alone cannot say which account it
+    is. The human picks once; that choice is saved here and reused on the
+    next import of a structurally identical source.
+
+    This is a SOURCE-RESOLUTION rule (which instrument did this file come
+    from), deliberately separate from `BankRecognitionRule`, which is a
+    RECONCILIATION rule (who/why for an already-instrument-resolved
+    transaction). Merging the two would conflate identity with meaning.
+
+    Resolution keys, most specific first:
+      - `account_hint` — the identifier as it literally appears in the
+        file (First Citizens' `Account Number`, Chase Variant A's `Card`)
+        when the file carries one but it matches no instrument directly;
+      - `file_name_key` — the stable part of the file name, with the
+        variable date and any Windows `(1)`/`(2)` duplication suffix
+        removed (see `bank_reconciliation.service.file_name_key`).
+
+    A file name is still never authoritative on its own (spec §3.2): this
+    rule only applies because a HUMAN explicitly confirmed this exact
+    source maps to this exact instrument, and it is always overridden by a
+    reliable in-file identifier."""
+
+    __tablename__ = "bank_source_instrument_profiles"
+    __table_args__ = (
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_bsip_status"),
+        CheckConstraint(
+            "file_name_key IS NOT NULL OR account_hint IS NOT NULL",
+            name="ck_bsip_has_key",
+        ),
+        UniqueConstraint(
+            "detected_format", "file_name_key", "account_hint",
+            name="uq_bsip_format_name_hint",
+        ),
+        Index("ix_bsip_payment_instrument_id", "payment_instrument_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    detected_format: Mapped[str] = mapped_column(String(48), nullable=False)
+    file_name_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    account_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    payment_instrument_id: Mapped[int] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE", server_default="ACTIVE")
+
+    created_from_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_import_batches.id"), nullable=True
+    )
+    created_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    payment_instrument: Mapped["PaymentInstrument"] = relationship()
+    created_from_batch: Mapped["BankImportBatch | None"] = relationship()
+
 
 ALL_MODELS: tuple[type[Base], ...] = (
     ActingIdentity,
@@ -11131,6 +11421,7 @@ ALL_MODELS: tuple[type[Base], ...] = (
     FinancialTransaction,
     BankImportBatch,
     RawBankTransaction,
+    BankAccountingClassification,
     BankOccurrenceType,
     BankOccurrence,
     BankTransactionReason,
@@ -11138,4 +11429,6 @@ ALL_MODELS: tuple[type[Base], ...] = (
     BankRecognitionRule,
     BankTransactionExplanation,
     FinancialTransactionMatch,
+    BankInstrumentAssignmentAudit,
+    BankSourceInstrumentProfile,
 )

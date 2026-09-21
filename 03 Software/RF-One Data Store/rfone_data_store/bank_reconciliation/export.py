@@ -16,7 +16,24 @@ Every Kermali column sourced from the decision (Supplier/Receiving,
 Food $, Oper, Deduct, What) is read from that row's immutable snapshot
 fields ONLY, never from the live `BankOccurrence`/`BankTransactionReason
 ExportMapping` — so a later rename/edit of either never changes a
-transaction's already-exported historical values."""
+transaction's already-exported historical values.
+
+BANK_RECONCILIATION_WHO_WHY_WHAT_001: the same rule now also governs the
+hierarchical WHO -> WHY -> WHAT classification. The export reads the
+decision's `accounting_classification_*_snapshot` values, never the
+current `BankOccurrence.default_transaction_reason_id` /
+`BankTransactionReason.accounting_classification_id` associations, which
+are editable at any time. The blockers below therefore check the CHAIN
+for anything not yet decided, and the SNAPSHOT for anything already
+decided — an inactive What blocks nothing that already carries a valid
+snapshot of it.
+
+Supplier settlement stays a bank-side fact: a supplier paid by invoice
+may legitimately classify to an Accounts Payable settlement What
+(a Balance Sheet line). This module never infers the Food/Operating
+composition of that invoice's lines from the bank movement — that
+classification continues to come from the invoice (Invoice Intake/
+Purchased), exactly as before."""
 
 from __future__ import annotations
 
@@ -91,6 +108,77 @@ def _confirmed_internal_transfer_ids(
         if match.transaction_b_id in candidate_ids:
             confirmed.add(match.transaction_b_id)
     return confirmed
+
+
+def _classification_blockers(
+    session: Session, *, transactions: list["m.FinancialTransaction"],
+    transfer_ids: set[int], resolved_explanation_ids: set[int],
+) -> list[ExportBlocker]:
+    """BANK_RECONCILIATION_WHO_WHY_WHAT_001 — every way the hierarchical
+    classification can be incomplete for a month, stated as the concrete
+    thing a human must go and fix.
+
+    The rule that keeps this honest: an already-decided transaction is
+    judged on its OWN SNAPSHOT, never on the live chain. So re-pointing a
+    Why at another What, or deactivating a What, never retroactively
+    blocks a month that was already correctly classified — only a
+    transaction whose snapshot is itself incomplete does. Applying the
+    new chain to such a transaction is the explicit `Reclassify` action,
+    never an automatic consequence of an edit."""
+    blockers: list[ExportBlocker] = []
+
+    explanations_by_id = {}
+    explanation_ids = {t.explanation_id for t in transactions if t.explanation_id is not None}
+    if explanation_ids:
+        explanations_by_id = {
+            e.id: e for e in session.scalars(
+                select(m.BankTransactionExplanation)
+                .where(m.BankTransactionExplanation.id.in_(explanation_ids))
+            ).all()
+        }
+
+    for txn in transactions:
+        if txn.id in transfer_ids:
+            continue
+        if txn.explanation_id is None or txn.explanation_id not in resolved_explanation_ids:
+            continue  # already reported as "Missing Who" above
+        explanation = explanations_by_id.get(txn.explanation_id)
+        if explanation is None:
+            continue
+
+        where = (
+            f"transaction id={txn.id} ({txn.posting_date.isoformat()}, "
+            f"{txn.description_original!r})"
+        )
+
+        if explanation.occurrence_id is None and not explanation.occurrence_name_snapshot:
+            blockers.append(ExportBlocker(f"Missing Who: {where} has a decision that records no Who."))
+            continue
+        if explanation.transaction_reason_id is None:
+            blockers.append(ExportBlocker(
+                f"Who without Why: {where} was decided for Who "
+                f"{explanation.occurrence_name_snapshot or explanation.occurrence_id!r} but records no Why. "
+                "Give that Who a default Why in Bank > Classification, then Reclassify this transaction."
+            ))
+            continue
+        if not explanation.accounting_classification_code_snapshot:
+            blockers.append(ExportBlocker(
+                f"Why without What: {where} was decided for Why "
+                f"{explanation.transaction_reason_name_snapshot or explanation.transaction_reason_id!r} "
+                "but its decision records no What (accounting classification). This is an incomplete "
+                "historical classification — assign the Why a What in Bank > Classification, then "
+                "Reclassify this transaction."
+            ))
+            continue
+        if explanation.accounting_statement_type_snapshot is None:
+            blockers.append(ExportBlocker(
+                f"Incomplete historical classification: {where} carries What "
+                f"{explanation.accounting_classification_code_snapshot} with no statement type "
+                "(Profit & Loss or Balance Sheet). Complete that What in Bank > Classification, "
+                "then Reclassify this transaction."
+            ))
+
+    return blockers
 
 
 def compute_export_blockers(session: Session, *, year: int, month: int) -> list[ExportBlocker]:
@@ -172,10 +260,15 @@ def compute_export_blockers(session: Session, *, year: int, month: int) -> list[
     ]
     for txn in unresolved:
         blockers.append(ExportBlocker(
-            f"Missing reconciliation decision: transaction id={txn.id} "
+            f"Missing Who: transaction id={txn.id} "
             f"({txn.posting_date.isoformat()}, {txn.description_original!r}) has no resolved "
-            "Occurrence/Reason decision (Recognition still needs human review)."
+            "Who -> Why -> What decision (Recognition still needs human review)."
         ))
+
+    blockers.extend(_classification_blockers(
+        session, transactions=transactions, transfer_ids=transfer_ids,
+        resolved_explanation_ids=resolved_explanation_ids,
+    ))
 
     instruments_in_scope = {t.payment_instrument_id for t in transactions}
     if instruments_in_scope:
@@ -257,7 +350,7 @@ def build_kermali_workbook(session: Session, *, year: int, month: int) -> bytes:
             food_value,                                              # Food $
             oper_value,                                              # Oper
             deduct_value,                                            # Deduct
-            explanation.what_label_snapshot if explanation else None,  # What
+            _what_cell(explanation),                                 # What
             txn.posting_date.month,                                  # Month — derived from Date
             txn.posting_date.year,                                   # Year — derived from Date
             legal_entity.legal_name if legal_entity else None,        # Company
@@ -271,6 +364,17 @@ def build_kermali_workbook(session: Session, *, year: int, month: int) -> bytes:
     buffer = BytesIO()
     wb.save(buffer)
     return buffer.getvalue()
+
+
+def _what_cell(explanation: "m.BankTransactionExplanation | None") -> str | None:
+    """The Kermali `What` column. A decision taken under the hierarchical
+    WHO -> WHY -> WHAT model reports its accounting classification; a
+    decision that predates it keeps reporting exactly the Kermali
+    `what_label` it was exported with before, so no historical row's
+    output changes. Both are read from the decision's own snapshot."""
+    if explanation is None:
+        return None
+    return explanation.accounting_classification_name_snapshot or explanation.what_label_snapshot
 
 
 def export_file_name(*, year: int, month: int) -> str:

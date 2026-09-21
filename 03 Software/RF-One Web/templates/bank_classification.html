@@ -1,0 +1,377 @@
+{# Bank Reconciliation · Classification (BANK_RECONCILIATION_WHO_WHY_WHAT_001)
+
+   One tab, three sections, deliberately NOT three pages: WHO -> WHY -> WHAT
+   is one chain, and the whole point of this page is that the operator can
+   see and repair the chain in one place. Each section is an independent
+   <details> with its own server-side search, so none of the three can grow
+   into an unusable menu regardless of how large the vocabulary gets. #}
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Bank Reconciliation · Classification · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('classification') }}
+
+<h2>Classification</h2>
+
+<p class="muted">
+  A bank movement is classified as <strong>Who &rarr; Why &rarr; What</strong>.
+  <strong>What</strong> is the final accounting classification &mdash; a Profit &amp; Loss or a
+  Balance Sheet line. Every <strong>Why</strong> resolves to one What, and every
+  <strong>Who</strong> resolves to one default Why and inherits its What. That is why the
+  Review asks only for the Who.
+</p>
+<p class="muted">
+  Changing an association here applies to <strong>future</strong> classifications. Transactions
+  already confirmed keep the classification they were decided with; applying a changed chain to
+  one of them is the explicit <em>Reclassify</em> action on the
+  <a href="{{ url_for('bank_review') }}">Review</a> page, which records a new auditable decision
+  instead of rewriting the old one.
+</p>
+
+{# ------------------------------------------------------------------ A. WHAT #}
+<details class="card" id="what" open>
+  <summary><strong>A. What</strong> &mdash; accounting classification (P&amp;L / Balance Sheet)</summary>
+
+  <p class="muted">
+    The structure the approved chart of accounts will be loaded into. A code is the stable
+    identity a historical decision refers to and is never changed or reused; a What in use is
+    never deleted, only deactivated.
+  </p>
+
+  <form method="get" class="compact-form" action="{{ url_for('bank_classification') }}#what">
+    <div class="field-row">
+      <label for="what_q">Search</label>
+      <input type="search" id="what_q" name="what_q" value="{{ what_search }}" placeholder="Code or name">
+    </div>
+    <button type="submit">Search</button>
+    {% if what_search %}<a href="{{ url_for('bank_classification') }}#what">Clear</a>{% endif %}
+  </form>
+
+  {% if whats %}
+    <div class="table-scroll">
+      <table class="table-compact table-stack">
+        <thead>
+          <tr><th>Code</th><th>Name</th><th>Statement</th><th>Parent</th><th>Status</th><th>Edit</th></tr>
+        </thead>
+        <tbody>
+          {% for what in whats %}
+            {% set parent = whats_by_id.get(what.parent_id) %}
+            <tr>
+              <td data-label="Code"><code>{{ what.code }}</code></td>
+              <td data-label="Name">{{ what.name }}</td>
+              <td data-label="Statement">
+                {% if what.statement_type %}
+                  {{ statement_type_labels.get(what.statement_type, what.statement_type) }}
+                {% else %}
+                  <span class="badge bad">INCOMPLETE</span>
+                  <span class="cell-note">No statement type yet &mdash; edit this What and choose one.</span>
+                {% endif %}
+              </td>
+              <td data-label="Parent">{{ parent.code ~ ' — ' ~ parent.name if parent else '—' }}</td>
+              <td data-label="Status">
+                <span class="badge {{ 'ok' if what.active else 'warn' }}">{{ 'ACTIVE' if what.active else 'INACTIVE' }}</span>
+                {% set use = usage.get(what.id) %}
+                {% if use and use.in_use %}
+                  <span class="cell-note">
+                    Used by {{ use.reason_count }} Why, {{ use.decision_count }} decision(s),
+                    {{ use.child_count }} child What(s) &mdash; never deleted, only deactivated.
+                  </span>
+                {% endif %}
+                <form method="post" action="{{ url_for('bank_classification_what_status', classification_id=what.id) }}" class="compact-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="active" value="{{ '0' if what.active else '1' }}">
+                  <button type="submit">{{ 'Deactivate' if what.active else 'Activate' }}</button>
+                </form>
+              </td>
+              <td data-label="Edit">
+                <details>
+                  <summary>Edit</summary>
+                  <form method="post" action="{{ url_for('bank_classification_what_edit', classification_id=what.id) }}" class="compact-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <p class="cell-note">Code <code>{{ what.code }}</code> is the stable identity and cannot be changed.</p>
+                    <input type="text" name="name" value="{{ what.name }}" required maxlength="255" aria-label="Name of What {{ what.code }}">
+                    <select name="statement_type" required aria-label="Statement type of What {{ what.code }}">
+                      <option value="">Statement type&hellip;</option>
+                      <option value="PROFIT_LOSS" {{ 'selected' if what.statement_type == 'PROFIT_LOSS' else '' }}>Profit &amp; Loss</option>
+                      <option value="BALANCE_SHEET" {{ 'selected' if what.statement_type == 'BALANCE_SHEET' else '' }}>Balance Sheet</option>
+                    </select>
+                    <select name="parent_id" aria-label="Parent of What {{ what.code }}">
+                      <option value="">No parent</option>
+                      {% for candidate in whats_by_id.values() %}
+                        {% if candidate.id != what.id %}
+                          <option value="{{ candidate.id }}" {{ 'selected' if what.parent_id == candidate.id else '' }}>{{ candidate.code }} &mdash; {{ candidate.name }}</option>
+                        {% endif %}
+                      {% endfor %}
+                    </select>
+                    <input type="text" name="description" value="{{ what.description or '' }}" maxlength="500" placeholder="Description (optional)" aria-label="Description of What {{ what.code }}">
+                    <button type="submit">Save</button>
+                  </form>
+                </details>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">{{ 'No What matches this search.' if what_search else 'No What defined yet.' }}</p>
+  {% endif %}
+
+  <details>
+    <summary>Add a What</summary>
+    <form method="post" action="{{ url_for('bank_classification_what_new') }}" class="compact-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field-row">
+        <label for="what_code">Code</label>
+        <input type="text" id="what_code" name="code" required maxlength="64" placeholder="e.g. AP_SETTLEMENT">
+      </div>
+      <div class="field-row">
+        <label for="what_name">Name</label>
+        <input type="text" id="what_name" name="name" required maxlength="255">
+      </div>
+      <div class="field-row">
+        <label for="what_statement_type">Statement</label>
+        <select id="what_statement_type" name="statement_type" required>
+          <option value="">Choose&hellip;</option>
+          <option value="PROFIT_LOSS">Profit &amp; Loss</option>
+          <option value="BALANCE_SHEET">Balance Sheet</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="what_parent_id">Parent</label>
+        <select id="what_parent_id" name="parent_id">
+          <option value="">No parent</option>
+          {% for candidate in whats_by_id.values() %}
+            <option value="{{ candidate.id }}">{{ candidate.code }} &mdash; {{ candidate.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="what_description">Description</label>
+        <input type="text" id="what_description" name="description" maxlength="500">
+      </div>
+      <button type="submit">Add What</button>
+    </form>
+  </details>
+</details>
+
+{# -------------------------------------------------------------- B. WHY → WHAT #}
+<details class="card" id="why" open>
+  <summary><strong>B. Why &rarr; What</strong> &mdash; the economic reason and the line it lands on</summary>
+
+  <p class="muted">A Why cannot be created or activated without a What.</p>
+
+  <form method="get" class="compact-form" action="{{ url_for('bank_classification') }}#why">
+    <div class="field-row">
+      <label for="why_q">Search</label>
+      <input type="search" id="why_q" name="why_q" value="{{ why_search }}" placeholder="Code or name">
+    </div>
+    <button type="submit">Search</button>
+    {% if why_search %}<a href="{{ url_for('bank_classification') }}#why">Clear</a>{% endif %}
+  </form>
+
+  {% if whys %}
+    <div class="table-scroll">
+      <table class="table-compact table-stack">
+        <thead>
+          <tr><th>Code</th><th>Name</th><th>What</th><th>Status</th><th>Edit</th></tr>
+        </thead>
+        <tbody>
+          {% for why in whys %}
+            {% set what = whats_by_id.get(why.accounting_classification_id) %}
+            <tr>
+              <td data-label="Code"><code>{{ why.code }}</code></td>
+              <td data-label="Name">{{ why.name }}</td>
+              <td data-label="What">
+                {% if what %}
+                  <code>{{ what.code }}</code> &mdash; {{ what.name }}
+                  {% if not what.active %}<span class="badge warn">WHAT INACTIVE</span>{% endif %}
+                  {% if what.statement_type is none %}<span class="badge bad">NO STATEMENT TYPE</span>{% endif %}
+                {% else %}
+                  <span class="badge bad">NO WHAT</span>
+                  <span class="cell-note">Assign a What below &mdash; this Why cannot classify anything without one.</span>
+                {% endif %}
+              </td>
+              <td data-label="Status">
+                <span class="badge {{ 'ok' if why.status == 'ACTIVE' else 'warn' }}">{{ why.status }}</span>
+                <form method="post" action="{{ url_for('bank_classification_why_status', transaction_reason_id=why.id) }}" class="compact-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="active" value="{{ '0' if why.status == 'ACTIVE' else '1' }}">
+                  <button type="submit">{{ 'Deactivate' if why.status == 'ACTIVE' else 'Activate' }}</button>
+                </form>
+              </td>
+              <td data-label="Edit">
+                <details>
+                  <summary>Edit</summary>
+                  <form method="post" action="{{ url_for('bank_classification_why_edit', transaction_reason_id=why.id) }}" class="compact-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <p class="cell-note">Code <code>{{ why.code }}</code> is the stable identity and cannot be changed.</p>
+                    <input type="text" name="name" value="{{ why.name }}" required maxlength="255" aria-label="Name of Why {{ why.code }}">
+                    <select name="accounting_classification_id" required aria-label="What for Why {{ why.code }}">
+                      <option value="">What&hellip;</option>
+                      {% for candidate in assignable_whats %}
+                        <option value="{{ candidate.id }}" {{ 'selected' if why.accounting_classification_id == candidate.id else '' }}>{{ candidate.code }} &mdash; {{ candidate.name }}</option>
+                      {% endfor %}
+                    </select>
+                    <input type="text" name="description" value="{{ why.description or '' }}" maxlength="500" placeholder="Description (optional)" aria-label="Description of Why {{ why.code }}">
+                    <button type="submit">Save</button>
+                  </form>
+                </details>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">{{ 'No Why matches this search.' if why_search else 'No Why defined yet.' }}</p>
+  {% endif %}
+
+  <details>
+    <summary>Add a Why</summary>
+    <form method="post" action="{{ url_for('bank_classification_why_new') }}" class="compact-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field-row">
+        <label for="why_code">Code</label>
+        <input type="text" id="why_code" name="code" required maxlength="64" placeholder="e.g. SUPPLIER_INVOICE_PAYMENT">
+      </div>
+      <div class="field-row">
+        <label for="why_name">Name</label>
+        <input type="text" id="why_name" name="name" required maxlength="255">
+      </div>
+      <div class="field-row">
+        <label for="why_what">What</label>
+        <select id="why_what" name="accounting_classification_id" required>
+          <option value="">Choose a What&hellip;</option>
+          {% for candidate in assignable_whats %}
+            <option value="{{ candidate.id }}">{{ candidate.code }} &mdash; {{ candidate.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="why_description">Description</label>
+        <input type="text" id="why_description" name="description" maxlength="500">
+      </div>
+      <button type="submit">Add Why</button>
+    </form>
+  </details>
+</details>
+
+{# --------------------------------------------------------- C. WHO → WHY → WHAT #}
+<details class="card" id="who" open>
+  <summary><strong>C. Who &rarr; Why &rarr; What</strong> &mdash; the subject and the whole chain it implies</summary>
+
+  <p class="muted">
+    A Who cannot be created or activated without a default Why. The What shown below is inherited
+    through that Why and is not chosen here.
+  </p>
+
+  <form method="get" class="compact-form" action="{{ url_for('bank_classification') }}#who">
+    <div class="field-row">
+      <label for="who_q">Search</label>
+      <input type="search" id="who_q" name="who_q" value="{{ who_search }}" placeholder="Name or type">
+    </div>
+    <button type="submit">Search</button>
+    {% if who_search %}<a href="{{ url_for('bank_classification') }}#who">Clear</a>{% endif %}
+  </form>
+
+  {% if whos %}
+    <div class="table-scroll">
+      <table class="table-compact table-stack">
+        <thead>
+          <tr><th>Who</th><th>Type</th><th>Chain</th><th>Status</th><th>Edit</th></tr>
+        </thead>
+        <tbody>
+          {% for who in whos %}
+            {% set chain = chains.get(who.id) %}
+            {% set type = types_by_id.get(who.occurrence_type_id) %}
+            <tr>
+              <td data-label="Who">{{ who.canonical_name }}</td>
+              <td data-label="Type">{{ type.name if type else who.occurrence_type_id }}</td>
+              <td data-label="Chain">
+                {% if chain and chain.is_complete %}
+                  <span class="chain">
+                    {{ who.canonical_name }} &rarr; {{ chain.transaction_reason.name }} &rarr;
+                    <code>{{ chain.accounting_classification.code }}</code> {{ chain.accounting_classification.name }}
+                    ({{ statement_type_labels.get(chain.accounting_classification.statement_type, chain.accounting_classification.statement_type) }})
+                  </span>
+                {% else %}
+                  <span class="badge bad">INCOMPLETE</span>
+                  <span class="cell-note">{{ chain.blocking_reason if chain else 'Chain could not be resolved.' }}</span>
+                {% endif %}
+              </td>
+              <td data-label="Status">
+                <span class="badge {{ 'ok' if who.status == 'ACTIVE' else 'warn' }}">{{ who.status }}</span>
+                <form method="post" action="{{ url_for('bank_classification_who_status', occurrence_id=who.id) }}" class="compact-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="active" value="{{ '0' if who.status == 'ACTIVE' else '1' }}">
+                  <button type="submit">{{ 'Deactivate' if who.status == 'ACTIVE' else 'Activate' }}</button>
+                </form>
+              </td>
+              <td data-label="Edit">
+                <details>
+                  <summary>Edit</summary>
+                  <form method="post" action="{{ url_for('bank_classification_who_edit', occurrence_id=who.id) }}" class="compact-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="text" name="canonical_name" value="{{ who.canonical_name }}" required maxlength="255" aria-label="Canonical name of Who {{ who.id }}">
+                    <select name="occurrence_type_id" required aria-label="Type of Who {{ who.id }}">
+                      {% for candidate in occurrence_types %}
+                        <option value="{{ candidate.id }}" {{ 'selected' if who.occurrence_type_id == candidate.id else '' }}>{{ candidate.name }}</option>
+                      {% endfor %}
+                    </select>
+                    <select name="default_transaction_reason_id" required aria-label="Default Why for Who {{ who.id }}">
+                      <option value="">Default Why&hellip;</option>
+                      {% for candidate in assignable_whys %}
+                        <option value="{{ candidate.id }}" {{ 'selected' if who.default_transaction_reason_id == candidate.id else '' }}>{{ candidate.name }}</option>
+                      {% endfor %}
+                    </select>
+                    <input type="text" name="optional_notes" value="{{ who.optional_notes or '' }}" maxlength="500" placeholder="Notes (optional)" aria-label="Notes for Who {{ who.id }}">
+                    <button type="submit">Save</button>
+                  </form>
+                </details>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">{{ 'No Who matches this search.' if who_search else 'No Who defined yet.' }}</p>
+  {% endif %}
+
+  <details>
+    <summary>Add a Who</summary>
+    <form method="post" action="{{ url_for('bank_classification_who_new') }}" class="compact-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field-row">
+        <label for="who_name">Name</label>
+        <input type="text" id="who_name" name="canonical_name" required maxlength="255" placeholder="e.g. US Foods">
+      </div>
+      <div class="field-row">
+        <label for="who_type">Type</label>
+        <select id="who_type" name="occurrence_type_id" required>
+          <option value="">Choose&hellip;</option>
+          {% for candidate in occurrence_types %}
+            <option value="{{ candidate.id }}">{{ candidate.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="who_why">Default Why</label>
+        <select id="who_why" name="default_transaction_reason_id" required>
+          <option value="">Choose a Why&hellip;</option>
+          {% for candidate in assignable_whys %}
+            <option value="{{ candidate.id }}">{{ candidate.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="who_notes">Notes</label>
+        <input type="text" id="who_notes" name="optional_notes" maxlength="500">
+      </div>
+      <button type="submit">Add Who</button>
+    </form>
+  </details>
+</details>
+{% endblock %}

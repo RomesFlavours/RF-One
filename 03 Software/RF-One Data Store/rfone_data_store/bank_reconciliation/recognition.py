@@ -28,7 +28,28 @@ now the ONE canonical reconciliation decision — every decision row also
 captures an immutable Kermali export snapshot (Decision 8) and keeps
 `FinancialTransaction.explanation_id` pointed at whichever row is current
 (Decision 6). Rule matching, confidence, and the append-only audit
-history are otherwise unchanged."""
+history are otherwise unchanged.
+
+BANK_RECONCILIATION_WHO_WHY_WHAT_001 — hierarchical classification. WHO
+is now the ONLY thing a human (or a rule) ever chooses: WHY comes from
+the WHO's default Reason and WHAT from that Reason's accounting
+classification (`bank_reconciliation/classification.py`). Consequences
+here:
+
+* a recognition rule recognizes a WHO; its stored `transaction_reason_id`
+  is the reason derived when the rule was created, kept as history, and
+  the CURRENT chain is what a later application of that rule resolves —
+  so re-pointing a WHO at another WHY immediately affects new
+  transactions without touching a single rule;
+* contradiction between candidate rules is judged on the WHO, because
+  two rules agreeing on the WHO can no longer disagree on the WHY;
+* every decision row snapshots the WHY name and the WHAT (id, code, name,
+  statement type) alongside the existing Occurrence/Kermali snapshot, so
+  an already-confirmed transaction never changes meaning when the
+  vocabulary is edited;
+* a human may apply an updated chain to a historical transaction only
+  through `reclassify_transaction`, which appends a new HUMAN_RECLASSIFIED
+  decision and never rewrites the one it supersedes."""
 
 from __future__ import annotations
 
@@ -40,6 +61,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models as m
+from . import classification as classification_service
 
 UTC = timezone.utc
 
@@ -52,7 +74,9 @@ DEBIT = "DEBIT"
 CREDIT = "CREDIT"
 
 # Exportable/resolved decision states — everything else blocks export.
-RESOLVED_DECISION_STATUSES = ("AUTO_APPLIED", "HUMAN_CONFIRMED", "HUMAN_OVERRIDDEN")
+RESOLVED_DECISION_STATUSES = (
+    "AUTO_APPLIED", "HUMAN_CONFIRMED", "HUMAN_OVERRIDDEN", "HUMAN_RECLASSIFIED",
+)
 
 _MATCH_TYPE_SPECIFICITY = {EXACT_NORMALIZED_DESCRIPTION: 0, PREFIX: 1, CONTAINS_TEXT: 2}
 
@@ -149,7 +173,13 @@ def _capture_snapshot(
     rename/edit of either must never change an already-decided
     transaction's historical Kermali output. Absence of a value (no
     Occurrence, or a Reason with no configured Export Mapping yet) is
-    preserved as NULL, never guessed."""
+    preserved as NULL, never guessed.
+
+    BANK_RECONCILIATION_WHO_WHY_WHAT_001 extends the same rule to the
+    WHY name and the WHAT: the accounting classification's id, code,
+    name and statement type are captured here too, so editing the
+    WHO -> WHY or WHY -> WHAT association later changes only FUTURE
+    classifications. An absent WHAT stays NULL and is never invented."""
     occurrence_name_snapshot = None
     if occurrence_id is not None:
         occurrence = session.get(m.BankOccurrence, occurrence_id)
@@ -157,6 +187,11 @@ def _capture_snapshot(
             occurrence_name_snapshot = occurrence.canonical_name
 
     food_cost_snapshot = operative_snapshot = deductible_snapshot = what_label_snapshot = None
+    transaction_reason_name_snapshot = None
+    accounting_classification_id = None
+    accounting_classification_code_snapshot = None
+    accounting_classification_name_snapshot = None
+    accounting_statement_type_snapshot = None
     if transaction_reason_id is not None:
         mapping = session.scalars(
             select(m.BankTransactionReasonExportMapping).where(
@@ -169,12 +204,30 @@ def _capture_snapshot(
             deductible_snapshot = mapping.deductible
             what_label_snapshot = mapping.what_label
 
+        reason = session.get(m.BankTransactionReason, transaction_reason_id)
+        if reason is not None:
+            transaction_reason_name_snapshot = reason.name
+            what = (
+                session.get(m.BankAccountingClassification, reason.accounting_classification_id)
+                if reason.accounting_classification_id is not None else None
+            )
+            if what is not None:
+                accounting_classification_id = what.id
+                accounting_classification_code_snapshot = what.code
+                accounting_classification_name_snapshot = what.name
+                accounting_statement_type_snapshot = what.statement_type
+
     return {
         "occurrence_name_snapshot": occurrence_name_snapshot,
         "food_cost_snapshot": food_cost_snapshot,
         "operative_snapshot": operative_snapshot,
         "deductible_snapshot": deductible_snapshot,
         "what_label_snapshot": what_label_snapshot,
+        "transaction_reason_name_snapshot": transaction_reason_name_snapshot,
+        "accounting_classification_id": accounting_classification_id,
+        "accounting_classification_code_snapshot": accounting_classification_code_snapshot,
+        "accounting_classification_name_snapshot": accounting_classification_name_snapshot,
+        "accounting_statement_type_snapshot": accounting_statement_type_snapshot,
     }
 
 
@@ -254,18 +307,22 @@ def deduce_for_transaction(
             explanation_notes=notes,
         )
 
-    outcome_groups: dict[tuple[int, int], list["m.BankRecognitionRule"]] = {}
+    # BANK_RECONCILIATION_WHO_WHY_WHAT_001: a rule recognizes a WHO, and
+    # the WHY/WHAT follow from that WHO's CURRENT chain — so two rules
+    # agreeing on the WHO can no longer contradict each other on the WHY,
+    # and the ambiguity test is a test on the WHO alone.
+    outcome_groups: dict[int, list["m.BankRecognitionRule"]] = {}
     for rule in candidates:
-        outcome_groups.setdefault((rule.occurrence_id, rule.transaction_reason_id), []).append(rule)
+        outcome_groups.setdefault(rule.occurrence_id, []).append(rule)
 
     if len(outcome_groups) > 1:
         summary = "; ".join(
-            f"rule #{group[0].id} ({group[0].match_type} -> occurrence={occ_id}, reason={reason_id})"
-            for (occ_id, reason_id), group in outcome_groups.items()
+            f"rule #{group[0].id} ({group[0].match_type} -> occurrence={occ_id})"
+            for occ_id, group in outcome_groups.items()
         )
         notes = (
-            f"{len(candidates)} compatible ACTIVE rule(s) produced {len(outcome_groups)} different, "
-            f"contradictory outcomes — cannot resolve automatically: {summary}."
+            f"{len(candidates)} compatible ACTIVE rule(s) recognized {len(outcome_groups)} different, "
+            f"contradictory Who values — cannot resolve automatically: {summary}."
         )
         return _create_decision_row(
             session, txn, occurrence_id=None, transaction_reason_id=None, recognition_rule_id=None,
@@ -274,24 +331,52 @@ def deduce_for_transaction(
         )
 
     best_rule = candidates[0]  # most specific among the agreeing candidates
+
+    # The WHY/WHAT are derived from the WHO's CURRENT chain, never from
+    # the rule's own stored reason (which is history). A rule pointing at
+    # a Who whose chain has become incomplete auto-applies nothing — the
+    # transaction waits for a human instead of being classified against a
+    # broken chain.
+    occurrence = session.get(m.BankOccurrence, best_rule.occurrence_id)
+    chain = classification_service.resolve_chain(session, occurrence) if occurrence is not None else None
+    if chain is None or not chain.is_complete:
+        reason_text = chain.blocking_reason if chain is not None else (
+            f"Rule #{best_rule.id} points at Who {best_rule.occurrence_id}, which no longer exists."
+        )
+        notes = (
+            f"Rule #{best_rule.id} ({best_rule.match_type}, pattern={best_rule.normalized_pattern!r}) "
+            f"matched, but its Who -> Why -> What chain is incomplete: {reason_text}"
+        )
+        return _create_decision_row(
+            session, txn, occurrence_id=None, transaction_reason_id=None, recognition_rule_id=None,
+            decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
+            explanation_notes=notes,
+        )
+
+    derived_reason_id = chain.transaction_reason.id
+    chain_text = (
+        f"Derived chain: Who {chain.occurrence.canonical_name!r} -> Why {chain.transaction_reason.name!r} "
+        f"-> What {chain.accounting_classification.code} ({chain.accounting_classification.name})."
+    )
+
     if best_rule.auto_apply_enabled:
         decision_status = "AUTO_APPLIED"
         confidence = "HIGH" if best_rule.match_type == EXACT_NORMALIZED_DESCRIPTION else "MEDIUM"
         notes = (
             f"Applied rule #{best_rule.id} ({best_rule.match_type}, "
             f"pattern={best_rule.normalized_pattern!r}, priority={best_rule.priority}) — single "
-            f"non-contradictory outcome among {len(candidates)} compatible ACTIVE rule(s)."
+            f"non-contradictory Who among {len(candidates)} compatible ACTIVE rule(s). {chain_text}"
         )
     else:
         decision_status = "SUGGESTED"
         confidence = "LOW"
         notes = (
             f"Rule #{best_rule.id} ({best_rule.match_type}, pattern={best_rule.normalized_pattern!r}) "
-            "matches but auto_apply_enabled=False — suggested only, requires human confirmation."
+            f"matches but auto_apply_enabled=False — suggested only, requires human confirmation. {chain_text}"
         )
 
     return _create_decision_row(
-        session, txn, occurrence_id=best_rule.occurrence_id, transaction_reason_id=best_rule.transaction_reason_id,
+        session, txn, occurrence_id=best_rule.occurrence_id, transaction_reason_id=derived_reason_id,
         recognition_rule_id=best_rule.id, decision_source="RULE", decision_status=decision_status,
         confidence=confidence, explanation_notes=notes,
     )
@@ -332,16 +417,26 @@ def create_or_reuse_rule(
         )
     ).first()
     if existing is not None:
-        if existing.occurrence_id == occurrence_id and existing.transaction_reason_id == transaction_reason_id:
+        # BANK_RECONCILIATION_WHO_WHY_WHAT_001: what a rule recognizes is
+        # the WHO. Its `transaction_reason_id` is the WHY derived when the
+        # rule was last confirmed — refreshed here so the stored history
+        # stays readable, never used as the identity of the outcome.
+        if existing.occurrence_id == occurrence_id:
             existing.human_confirmations += 1
+            existing.transaction_reason_id = transaction_reason_id
             if auto_apply_enabled:
                 existing.auto_apply_enabled = True
+            if existing.status == "NEEDS_REVIEW":
+                # A human has just reconfirmed exactly this pattern -> Who.
+                existing.status = "ACTIVE"
             session.flush()
             return existing
         # An existing rule with the same pattern/scope but a DIFFERENT
-        # outcome is contradicted by this new human decision — never
+        # WHO is contradicted by this new human decision — never
         # silently overwritten (spec: "non sovrascrivere silenziosamente
         # una decisione umana precedente"); flagged for review instead.
+        # The new rule created below then becomes the one that applies,
+        # and the contradicted one keeps its accumulated evidence.
         existing.human_contradictions += 1
         existing.status = "NEEDS_REVIEW"
         session.flush()
@@ -361,11 +456,21 @@ def create_or_reuse_rule(
 
 @dataclass
 class HumanDecisionRequest:
+    """BANK_RECONCILIATION_WHO_WHY_WHAT_001: the human chooses the WHO and
+    nothing else. There is deliberately no `transaction_reason_id` field —
+    the WHY is the WHO's current default Reason and the WHAT is that
+    Reason's accounting classification, both resolved by
+    `classification.resolve_chain` at decision time."""
+
     transaction_id: int
     occurrence_id: int
-    transaction_reason_id: int
     confirmed_by_account_id: int | None
-    reuse_for_future: bool = False
+    # Whether this confirmation teaches RF-One that THIS normalized
+    # description means THIS Who. It is a learning control only: the
+    # Who -> Why -> What associations themselves are stored on the
+    # vocabulary and are never re-selected per transaction, so leaving it
+    # off loses nothing but the description-level shortcut.
+    learn_description: bool = True
     # Only set when the human explicitly chose a broader rule (spec step 6).
     broaden_match_type: str | None = None  # CONTAINS_TEXT or PREFIX
     broaden_pattern: str | None = None
@@ -385,28 +490,31 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
     occurrence = session.get(m.BankOccurrence, request.occurrence_id)
     if occurrence is None:
         raise ValueError(f"BankOccurrence {request.occurrence_id} not found")
-    reason = session.get(m.BankTransactionReason, request.transaction_reason_id)
-    if reason is None:
-        raise ValueError(f"BankTransactionReason {request.transaction_reason_id} not found")
+
+    # WHY and WHAT are derived, never chosen. An incomplete chain is
+    # refused with the concrete reason, so the human is sent to
+    # Bank > Classification rather than given a half-classified row.
+    chain = classification_service.resolve_chain(session, occurrence)
+    if not chain.is_complete:
+        raise ValueError(chain.blocking_reason)
+    reason = chain.transaction_reason
+    what = chain.accounting_classification
 
     previous = get_current_explanation(session, financial_transaction_id=txn.id)
 
-    # "Confirm" = the human's chosen occurrence/reason matches what was
-    # already proposed (whether that proposal was a firm AUTO_APPLIED
-    # result or merely SUGGESTED) — HUMAN_CONFIRMED either way.
-    # "Correct" = previous had a concrete proposed answer (i.e. was not
+    # "Confirm" = the human's chosen Who matches what was already proposed
+    # (whether that proposal was a firm AUTO_APPLIED result or merely
+    # SUGGESTED) — HUMAN_CONFIRMED either way.
+    # "Correct" = previous had a concrete proposed Who (i.e. was not
     # NEEDS_HUMAN_REVIEW, which proposes nothing) and the human chose a
-    # DIFFERENT occurrence/reason — HUMAN_OVERRIDDEN.
+    # DIFFERENT one — HUMAN_OVERRIDDEN.
     same_outcome_as_previous = (
-        previous is not None
-        and previous.occurrence_id == request.occurrence_id
-        and previous.transaction_reason_id == request.transaction_reason_id
+        previous is not None and previous.occurrence_id == request.occurrence_id
     )
     is_correction = (
         previous is not None
         and not same_outcome_as_previous
         and previous.occurrence_id is not None
-        and previous.transaction_reason_id is not None
     )
 
     decision_status = "HUMAN_OVERRIDDEN" if is_correction else "HUMAN_CONFIRMED"
@@ -439,7 +547,12 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
     confirmed_at = datetime.now(UTC)
     recognition_rule_id = None
 
-    if request.reuse_for_future or request.broaden_match_type:
+    notes_parts.append(
+        f"Derived chain: Who {occurrence.canonical_name!r} -> Why {reason.name!r} "
+        f"-> What {what.code} ({what.name}, {what.statement_type})."
+    )
+
+    if request.learn_description or request.broaden_match_type:
         normalized_pattern = normalize_description_for_recognition(txn.description_original)
         direction = direction_for_amount(txn.amount_minor)
         instrument_scope = txn.payment_instrument_id if request.scope_to_account else None
@@ -453,14 +566,14 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
             pattern = request.broaden_pattern or normalized_pattern
             rule = create_or_reuse_rule(
                 session, match_type=request.broaden_match_type, normalized_pattern=pattern,
-                occurrence_id=request.occurrence_id, transaction_reason_id=request.transaction_reason_id,
+                occurrence_id=request.occurrence_id, transaction_reason_id=reason.id,
                 payment_instrument_id=instrument_scope, direction=direction_scope,
                 auto_apply_enabled=True, created_from_transaction_id=txn.id,
             )
         else:
             rule = create_or_reuse_rule(
                 session, match_type=EXACT_NORMALIZED_DESCRIPTION, normalized_pattern=normalized_pattern,
-                occurrence_id=request.occurrence_id, transaction_reason_id=request.transaction_reason_id,
+                occurrence_id=request.occurrence_id, transaction_reason_id=reason.id,
                 payment_instrument_id=instrument_scope, direction=direction_scope,
                 auto_apply_enabled=True, created_from_transaction_id=txn.id,
             )
@@ -468,8 +581,75 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
         notes_parts.append(f"Reusable rule #{rule.id} ({rule.match_type}, pattern={rule.normalized_pattern!r}) created/confirmed.")
 
     return _create_decision_row(
-        session, txn, occurrence_id=request.occurrence_id, transaction_reason_id=request.transaction_reason_id,
+        session, txn, occurrence_id=request.occurrence_id, transaction_reason_id=reason.id,
         recognition_rule_id=recognition_rule_id, decision_source="HUMAN", decision_status=decision_status,
         confidence="HIGH", explanation_notes=" ".join(notes_parts),
         confirmed_by_account_id=request.confirmed_by_account_id, confirmed_at=confirmed_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Explicit reclassification of an already-decided transaction
+# ---------------------------------------------------------------------------
+
+
+def reclassify_transaction(
+    session: Session, *, transaction_id: int, confirmed_by_account_id: int | None,
+    occurrence_id: int | None = None, notes: str | None = None,
+) -> "m.BankTransactionExplanation":
+    """BANK_RECONCILIATION_WHO_WHY_WHAT_001 — the `Reclassify` action.
+
+    Editing a Who -> Why or a Why -> What association changes FUTURE
+    classifications only; an already-confirmed transaction keeps the
+    snapshot it was decided with, and nothing ever changes it silently.
+    This function is the one explicit way a human applies the CURRENT
+    chain to a historical transaction — and it does so by APPENDING a new
+    `HUMAN_RECLASSIFIED` decision row, leaving the superseded decision
+    exactly as it was, still queryable as history.
+
+    `occurrence_id` defaults to the transaction's current Who: the normal
+    case is "same Who, re-resolved through the chain as it is now".
+    Passing a different Who is a correction, which
+    `record_human_decision` already covers — so it is refused here, to
+    keep the two actions distinguishable in the audit trail."""
+    txn = session.get(m.FinancialTransaction, transaction_id)
+    if txn is None:
+        raise ValueError(f"FinancialTransaction {transaction_id} not found")
+
+    previous = get_current_explanation(session, financial_transaction_id=txn.id)
+    if previous is None or previous.occurrence_id is None:
+        raise ValueError(
+            "This transaction has no confirmed Who to reclassify. Select a Who first."
+        )
+    if occurrence_id is not None and occurrence_id != previous.occurrence_id:
+        raise ValueError(
+            "Reclassify re-resolves the SAME Who through the current chain. "
+            "To change the Who itself, confirm a different Who instead."
+        )
+
+    occurrence = session.get(m.BankOccurrence, previous.occurrence_id)
+    if occurrence is None:
+        raise ValueError(f"BankOccurrence {previous.occurrence_id} no longer exists")
+
+    chain = classification_service.resolve_chain(session, occurrence)
+    if not chain.is_complete:
+        raise ValueError(chain.blocking_reason)
+
+    notes_parts = [notes] if notes else []
+    notes_parts.append(
+        f"Explicit reclassification of the existing Who {occurrence.canonical_name!r} through the "
+        f"current chain: Why {chain.transaction_reason.name!r} -> What "
+        f"{chain.accounting_classification.code} ({chain.accounting_classification.name})."
+    )
+    notes_parts.append(
+        f"Superseded decision: id={previous.id}, status={previous.decision_status}, "
+        f"reason={previous.transaction_reason_id}, "
+        f"what={previous.accounting_classification_code_snapshot or '—'}. That row is unchanged."
+    )
+
+    return _create_decision_row(
+        session, txn, occurrence_id=occurrence.id, transaction_reason_id=chain.transaction_reason.id,
+        recognition_rule_id=None, decision_source="HUMAN", decision_status="HUMAN_RECLASSIFIED",
+        confidence="HIGH", explanation_notes=" ".join(notes_parts),
+        confirmed_by_account_id=confirmed_by_account_id, confirmed_at=datetime.now(UTC),
     )

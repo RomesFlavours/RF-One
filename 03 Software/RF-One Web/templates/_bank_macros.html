@@ -1,0 +1,52 @@
+{# Bank Reconciliation shared presentation macros.
+
+   Defined once and imported by every Bank page (`bank_home.html`,
+   `bank_review.html`, `bank_export.html`) — the same convention
+   `_org_macros.html` already establishes for the Organization pages, so
+   the module's navigation is never copied into three templates that can
+   then drift apart.
+
+   `module_nav` owns BOTH the module title and the section tabs, because
+   the two together are what tells a reader where they are. "Bank
+   Reconciliation" is a heading, never a link: the previous
+   "← Bank Reconciliation" at the top of Review/Export looked like a way
+   back to the module but actually led to one specific section (Import),
+   which is exactly the misleading control this replaces. Leaving the
+   module is a separate, explicitly labelled "RF-One Home" link. #}
+
+{% macro module_nav(active) %}
+<div class="module-header">
+  <div class="module-identity">
+    <h1 class="module-title">Bank Reconciliation</h1>
+    <p class="module-tagline">Manual CSV import from Chase and First Citizens, normalization into the canonical ledger, duplicate detection, and the monthly Kermali export.</p>
+  </div>
+  <a class="module-home-link" href="{{ url_for('home') }}">RF-One Home</a>
+</div>
+
+<nav class="module-tabs" aria-label="Bank Reconciliation sections">
+  <a class="module-tab{% if active == 'import' %} is-active{% endif %}"
+     href="{{ url_for('bank_home') }}"
+     {% if active == 'import' %}aria-current="page"{% endif %}>Import &amp; Instruments</a>
+  <a class="module-tab{% if active == 'review' %} is-active{% endif %}"
+     href="{{ url_for('bank_review') }}"
+     {% if active == 'review' %}aria-current="page"{% endif %}>Review Transactions</a>
+  <a class="module-tab{% if active == 'export' %} is-active{% endif %}"
+     href="{{ url_for('bank_export') }}"
+     {% if active == 'export' %}aria-current="page"{% endif %}>Monthly Export</a>
+  <a class="module-tab{% if active == 'classification' %} is-active{% endif %}"
+     href="{{ url_for('bank_classification') }}"
+     {% if active == 'classification' %}aria-current="page"{% endif %}>Classification</a>
+</nav>
+{% endmacro %}
+
+
+{# One instrument rendered the way it must ALWAYS be rendered: never the
+   full account number, only the last four digits. `external_account_
+   identifier` is shown reduced to its last four even when the source
+   file stored it in a longer masked form. #}
+{% macro instrument_identity(instrument) %}
+  {{ instrument.display_name }}
+  {%- if instrument.last_four %} &middot;&middot;{{ instrument.last_four }}
+  {%- elif instrument.external_account_identifier %} &middot;&middot;{{ instrument.external_account_identifier[-4:] }}
+  {%- endif %}
+{% endmacro %}

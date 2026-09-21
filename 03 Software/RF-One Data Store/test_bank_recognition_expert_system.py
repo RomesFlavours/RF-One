@@ -68,20 +68,56 @@ def main() -> int:
             s.flush()
             check("BankOccurrenceType creation/use", supplier_type.id is not None and payroll_type.id is not None)
 
-            us_foods = m.BankOccurrence(canonical_name="US Foods", occurrence_type_id=supplier_type.id)
-            adp = m.BankOccurrence(canonical_name="ADP", occurrence_type_id=payroll_type.id)
+            # BANK_RECONCILIATION_WHO_WHY_WHAT_001: WHAT first, then WHY
+            # (which requires a WHAT), then WHO (which requires a WHY) —
+            # the chain is what makes a Who usable at all, so the fixture
+            # builds it in that order rather than creating orphans.
+            cost_of_goods = m.BankAccountingClassification(
+                code="COGS_FOOD", name="Cost of goods sold — food", statement_type="PROFIT_LOSS",
+            )
+            payroll_expense = m.BankAccountingClassification(
+                code="PAYROLL_EXPENSE", name="Payroll expense", statement_type="PROFIT_LOSS",
+            )
+            s.add_all([cost_of_goods, payroll_expense])
+            s.flush()
+            check(
+                "BankAccountingClassification (What) creation/use",
+                cost_of_goods.statement_type == "PROFIT_LOSS" and payroll_expense.id is not None,
+            )
+
+            supplier_invoice_payment = m.BankTransactionReason(
+                code="SUPPLIER_INVOICE_PAYMENT", name="Supplier Invoice Payment",
+                accounting_classification_id=cost_of_goods.id,
+            )
+            payroll_reason = m.BankTransactionReason(
+                code="PAYROLL", name="Payroll", accounting_classification_id=payroll_expense.id,
+            )
+            s.add_all([supplier_invoice_payment, payroll_reason])
+            s.flush()
+            check("BankTransactionReason creation/use", supplier_invoice_payment.id is not None)
+            check(
+                "Why -> What association is stored on the Reason itself",
+                supplier_invoice_payment.accounting_classification_id == cost_of_goods.id,
+            )
+
+            us_foods = m.BankOccurrence(
+                canonical_name="US Foods", occurrence_type_id=supplier_type.id,
+                default_transaction_reason_id=supplier_invoice_payment.id,
+            )
+            adp = m.BankOccurrence(
+                canonical_name="ADP", occurrence_type_id=payroll_type.id,
+                default_transaction_reason_id=payroll_reason.id,
+            )
             s.add_all([us_foods, adp])
             s.flush()
             check(
                 "BankOccurrence creation/use",
                 us_foods.occurrence_type_id == supplier_type.id and adp.occurrence_type_id == payroll_type.id,
             )
-
-            supplier_invoice_payment = m.BankTransactionReason(code="SUPPLIER_INVOICE_PAYMENT", name="Supplier Invoice Payment")
-            payroll_reason = m.BankTransactionReason(code="PAYROLL", name="Payroll")
-            s.add_all([supplier_invoice_payment, payroll_reason])
-            s.flush()
-            check("BankTransactionReason creation/use", supplier_invoice_payment.id is not None)
+            check(
+                "Who -> Why association is stored on the Occurrence itself",
+                us_foods.default_transaction_reason_id == supplier_invoice_payment.id,
+            )
 
             legal_entity = m.LegalEntity(legal_name="Recognition Test LLC", status="ACTIVE")
             s.add(legal_entity)
@@ -207,8 +243,7 @@ def main() -> int:
                 s,
                 recognition.HumanDecisionRequest(
                     transaction_id=unmatched_txn.id, occurrence_id=us_foods.id,
-                    transaction_reason_id=supplier_invoice_payment.id,
-                    confirmed_by_account_id=operator.id,
+                    confirmed_by_account_id=operator.id, learn_description=False,
                 ),
             )
             check(
@@ -339,8 +374,7 @@ def main() -> int:
                 s,
                 recognition.HumanDecisionRequest(
                     transaction_id=confirm_txn.id, occurrence_id=adp.id,
-                    transaction_reason_id=payroll_reason.id, confirmed_by_account_id=operator.id,
-                    reuse_for_future=False,
+                    confirmed_by_account_id=operator.id, learn_description=False,
                 ),
             )
             check(
@@ -352,7 +386,7 @@ def main() -> int:
                 confirm_txn.explanation_id == confirm_decision.id,
             )
             check(
-                "No requested reuse does not create a BankRecognitionRule",
+                "Declining description learning does not create a BankRecognitionRule",
                 s.query(m.BankRecognitionRule).count() == rule_count_before,
             )
 
@@ -360,8 +394,7 @@ def main() -> int:
                 s,
                 recognition.HumanDecisionRequest(
                     transaction_id=confirm_txn.id, occurrence_id=us_foods.id,
-                    transaction_reason_id=supplier_invoice_payment.id, confirmed_by_account_id=operator.id,
-                    reuse_for_future=False,
+                    confirmed_by_account_id=operator.id, learn_description=False,
                 ),
             )
             check(

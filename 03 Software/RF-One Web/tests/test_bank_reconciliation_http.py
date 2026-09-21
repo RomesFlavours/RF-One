@@ -14,10 +14,16 @@ Export/Supplier-Receiving-classification HTTP coverage Phase 3 deferred.
 Phase 6 adds minimal coverage for the Bank Review cross-ledger internal-
 transfer match confirmation action.
 
+BANK_RECONCILIATION_WHO_WHY_WHAT_001 adds the hierarchical WHO -> WHY ->
+WHAT classification over HTTP: the fourth `Classification` tab and its
+CRUD, the single `Select Who` control on Review (and the absence of the
+two separate Who/Why menus it replaced), and explicit Reclassify.
+
 Exercises: domain-access gating, PaymentInstrument creation, CSV upload
 over HTTP, normalization into the canonical FinancialTransaction ledger,
-Supplier/Receiving explanation assignment, the Kermali export download,
-and HUMAN confirmation of a cross-ledger internal-transfer match.
+the Who -> Why -> What classification workflow, the Kermali export
+download, and HUMAN confirmation of a cross-ledger internal-transfer
+match.
 """
 
 from __future__ import annotations
@@ -216,6 +222,26 @@ def main() -> int:
             "review page no longer offers the retired legacy explanation-catalog form",
             b"Add a Supplier/Receiving explanation" not in resp.data,
         )
+        check(
+            "review page offers ONE Select Who control per unclassified transaction",
+            b"Select Who" in resp.data and b"who-picker-open" in resp.data,
+        )
+        check(
+            "review page no longer renders a separate Why menu",
+            b'name="transaction_reason_id"' not in resp.data,
+        )
+        check(
+            "the Who picker is a modal with its own search field",
+            b'id="who-picker"' in resp.data and b'id="who-picker-search"' in resp.data,
+        )
+        check(
+            "the Who picker can be cancelled and confirmed",
+            b'id="who-picker-cancel"' in resp.data and b'id="who-picker-confirm"' in resp.data,
+        )
+        check(
+            "the old 'Reuse for future' checkbox no longer gates the Who/Why choice",
+            b"Reuse for future" not in resp.data and b'name="learn_description"' in resp.data,
+        )
 
         # -----------------------------------------------------------------
         # Export is blocked (no resolved reconciliation decision) before
@@ -224,39 +250,150 @@ def main() -> int:
         resp = operator_client.get("/bank/export?year=2026&month=5")
         check(
             "export page shows a blocking reason before a reconciliation decision is recorded",
-            b"Export blocked" in resp.data and b"Missing reconciliation decision" in resp.data,
+            b"Export blocked" in resp.data and b"Missing Who" in resp.data,
         )
 
-        # Canonical Occurrence/Reason vocabulary — created directly (no UI
-        # CRUD for controlled vocabulary; the human selects from existing
-        # entries, per Decision 11).
+        # -----------------------------------------------------------------
+        # Classification tab — the WHO -> WHY -> WHAT vocabulary is now
+        # configured over HTTP, on its own tab, not seeded directly.
+        # -----------------------------------------------------------------
+        # `no_access_client` above was granted BANK access mid-test, so the
+        # gate is proven with an account that genuinely has none.
         with SessionFactory() as s:
+            account_service.create_account(
+                s, username="no_bank_user", display_name="No Bank", password="NoBankPass123!",
+                status="ACTIVE", is_admin=False,
+            )
+            s.commit()
+        ungated_client = web_app.app.test_client()
+        resp = ungated_client.get("/login")
+        ungated_client.post(
+            "/login",
+            data={
+                "username": "no_bank_user", "password": "NoBankPass123!",
+                "csrf_token": extract_csrf(resp.data),
+            },
+        )
+        check(
+            "the Classification tab is behind the BANK domain gate (403 without access)",
+            ungated_client.get("/bank/classification").status_code == 403,
+        )
+
+        resp = operator_client.get("/bank/classification")
+        check("the Classification tab responds 200 for an authorized user", resp.status_code == 200)
+        check(
+            "every Bank page offers the four tabs in the same order, Classification last",
+            resp.data.index(b"Import &amp; Instruments")
+            < resp.data.index(b"Review Transactions")
+            < resp.data.index(b"Monthly Export")
+            < resp.data.index(b">Classification<"),
+        )
+
+        csrf = extract_csrf(resp.data)
+        resp = operator_client.post(
+            "/bank/classification/what/new",
+            data={
+                "code": "COGS_FOOD", "name": "Cost of goods sold — food",
+                "statement_type": "PROFIT_LOSS", "csrf_token": csrf,
+            },
+        )
+        check("a What can be created from the Classification tab", resp.status_code in (302, 303))
+
+        resp = operator_client.post("/bank/classification/what/new", data={"code": "X", "name": "X"})
+        check(
+            "a Classification mutation without a CSRF token is refused",
+            resp.status_code in (400, 403),
+        )
+
+        with SessionFactory() as s:
+            what = s.query(m.BankAccountingClassification).filter_by(code="COGS_FOOD").one()
+            what_id = what.id
             occurrence_type = m.BankOccurrenceType(code="SUPPLIER", name="Supplier")
             s.add(occurrence_type)
             s.commit()
-            occurrence = m.BankOccurrence(canonical_name="US Foods", occurrence_type_id=occurrence_type.id)
-            reason = m.BankTransactionReason(code="SUPPLIER_INVOICE_PAYMENT", name="Supplier Invoice Payment")
-            s.add_all([occurrence, reason])
-            s.commit()
+            occurrence_type_id = occurrence_type.id
+
+        resp = operator_client.get("/bank/classification")
+        csrf = extract_csrf(resp.data)
+        resp = operator_client.post(
+            "/bank/classification/why/new",
+            data={"code": "ORPHAN_WHY", "name": "Orphan", "csrf_token": csrf},
+        )
+        with SessionFactory() as s:
+            check(
+                "a Why cannot be created without a What",
+                s.query(m.BankTransactionReason).filter_by(code="ORPHAN_WHY").count() == 0,
+            )
+
+        resp = operator_client.post(
+            "/bank/classification/why/new",
+            data={
+                "code": "SUPPLIER_INVOICE_PAYMENT", "name": "Supplier Invoice Payment",
+                "accounting_classification_id": str(what_id), "csrf_token": csrf,
+            },
+        )
+        check("a Why with a What can be created", resp.status_code in (302, 303))
+
+        with SessionFactory() as s:
+            reason = s.query(m.BankTransactionReason).filter_by(code="SUPPLIER_INVOICE_PAYMENT").one()
+            reason_id = reason.id
             export_mapping = m.BankTransactionReasonExportMapping(
                 bank_transaction_reason_id=reason.id, food_cost=True,
             )
             s.add(export_mapping)
             s.commit()
-            occurrence_id, reason_id = occurrence.id, reason.id
 
+        resp = operator_client.post(
+            "/bank/classification/who/new",
+            data={
+                "canonical_name": "Orphan Who", "occurrence_type_id": str(occurrence_type_id),
+                "csrf_token": csrf,
+            },
+        )
+        with SessionFactory() as s:
+            check(
+                "a Who cannot be created without a default Why",
+                s.query(m.BankOccurrence).filter_by(canonical_name="Orphan Who").count() == 0,
+            )
+
+        resp = operator_client.post(
+            "/bank/classification/who/new",
+            data={
+                "canonical_name": "US Foods", "occurrence_type_id": str(occurrence_type_id),
+                "default_transaction_reason_id": str(reason_id), "csrf_token": csrf,
+            },
+        )
+        check("a Who with a default Why can be created", resp.status_code in (302, 303))
+
+        with SessionFactory() as s:
+            occurrence_id = s.query(m.BankOccurrence).filter_by(canonical_name="US Foods").one().id
+
+        resp = operator_client.get("/bank/classification")
+        check(
+            "the Classification tab shows the whole chain for a complete Who",
+            b"US Foods" in resp.data and b"COGS_FOOD" in resp.data
+            and b"Supplier Invoice Payment" in resp.data,
+        )
+
+        # -----------------------------------------------------------------
+        # Review — the human selects ONLY the Who; Why and What derive.
+        # -----------------------------------------------------------------
         resp = operator_client.get("/bank/review")
+        check(
+            "the Who picker shows each candidate's derived Why and What",
+            b"Why: Supplier Invoice Payment" in resp.data,
+        )
         csrf = extract_csrf(resp.data)
         resp = operator_client.post(
             f"/bank/transactions/{txn_id}/recognition-decision",
             data={
-                "occurrence_id": str(occurrence_id), "transaction_reason_id": str(reason_id),
-                "reuse_for_future": "on", "csrf_token": csrf,
+                "occurrence_id": str(occurrence_id),
+                "learn_description": "on", "csrf_token": csrf,
             },
         )
         check(
-            "one HUMAN reconciliation-decision action satisfies the canonical decision "
-            "(no second legacy assignment action is required)",
+            "selecting only the Who records the canonical decision "
+            "(no second Why/What selection is required)",
             resp.status_code in (302, 303),
         )
 
@@ -273,8 +410,32 @@ def main() -> int:
                 and decision.transaction_reason_id == reason_id,
             )
             check(
-                "requesting reuse-for-future created a BankRecognitionRule",
+                "the derived What is snapshotted on the decision, not chosen by the human",
+                decision.accounting_classification_id == what_id
+                and decision.accounting_classification_code_snapshot == "COGS_FOOD"
+                and decision.accounting_statement_type_snapshot == "PROFIT_LOSS",
+            )
+            check(
+                "opting into description learning created a BankRecognitionRule",
                 s.query(m.BankRecognitionRule).filter_by(occurrence_id=occurrence_id).count() == 1,
+            )
+
+        # --- Explicit Reclassify over HTTP -------------------------------
+        resp = operator_client.get("/bank/review")
+        check("a classified row offers Reclassify", b"Reclassify" in resp.data)
+        csrf = extract_csrf(resp.data)
+        resp = operator_client.post(
+            f"/bank/transactions/{txn_id}/reclassify", data={"csrf_token": csrf},
+        )
+        check("Reclassify redirects back to Bank Review", resp.status_code in (302, 303))
+        with SessionFactory() as s:
+            history = s.query(m.BankTransactionExplanation).filter_by(
+                financial_transaction_id=txn_id,
+            ).order_by(m.BankTransactionExplanation.id).all()
+            check(
+                "Reclassify appends a new auditable decision and rewrites none",
+                history[-1].decision_status == "HUMAN_RECLASSIFIED"
+                and history[-2].decision_status == "HUMAN_CONFIRMED",
             )
 
         # -----------------------------------------------------------------

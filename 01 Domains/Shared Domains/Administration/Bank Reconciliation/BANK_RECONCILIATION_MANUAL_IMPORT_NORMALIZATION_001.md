@@ -1,6 +1,6 @@
 # Bank Reconciliation — Manual Import & Normalization Specification V1
 
-**Version:** 1.5 (Financial Model Convergence integrated into main through Phase 6B — see below; Phase 4B canonical reconciliation decision unification carried forward unchanged)
+**Version:** 1.6 (adds §12, the hierarchical Who → Why → What classification — BANK_RECONCILIATION_WHO_WHY_WHAT_001; Financial Model Convergence integrated into main through Phase 6B — see below; Phase 4B canonical reconciliation decision unification carried forward unchanged)
 **Status:** Integrated into `main` (Canonical Financial Model Convergence, `FINANCIAL_MODEL_CONVERGENCE_001`, Phases 1-6B): manual CSV upload, format detection, raw preservation, normalization, duplicate detection, and the Bank Recognition Expert System (`BANK_RECONCILIATION_EXPERT_SYSTEM_001` — `BankOccurrenceType`, `BankOccurrence`, `BankTransactionReason`, `BankRecognitionRule`, `recognition.py`) — all in `03 Software/RF-One Data Store/rfone_data_store/bank_reconciliation/` (`parsers.py`, `service.py`, `recognition.py`, `export.py`, `matching.py`), `03 Software/RF-One Data Store/rfone_data_store/models.py` (`PaymentInstrument`, `BankImportBatch`, `RawBankTransaction`, `FinancialTransaction`, `BankOccurrenceType`, `BankOccurrence`, `BankTransactionReason`, `BankRecognitionRule`, `BankTransactionReasonExportMapping`, `BankTransactionExplanation`, `FinancialTransactionMatch`), and `03 Software/RF-One Web/bank_routes.py`. As of Phase 4B, `BankTransactionExplanation` is the ONE canonical reconciliation decision (Product Owner Decision 1) — the legacy V1 Supplier/Receiving catalog workflow (`service.assign_explanation`, `bank_explanation_new`/`bank_transaction_explanation` routes) has been retired; Supplier/Receiving is `BankOccurrence.canonical_name` (Decision 2), and the Kermali accounting/export attributes (Food $/Oper/Deduct/What) live on `BankTransactionReasonExportMapping`, associated with the canonical Reason (Decision 4). Kermali export (`export.py`) reads the current canonical decision's immutable snapshot fields only, never the legacy fields (retired from the schema) and never the live Occurrence/Export Mapping rows — a later rename/edit never changes an already-exported historical value (Decision 8). `RfBank.xlsx` and the real source CSV files were read-only inputs to the original V1 task and were never modified. See "§10. Implementation Decisions" below for the decisions recorded when the V1 slice was originally built.
 
 **Phase 5/6/6B addendum (PayPal, cross-ledger matching, operationalized):** a PayPal connector (`technical/connectors/paypal/`) acquires transactions into the same canonical `FinancialTransaction` ledger as CSV import, using the same `SourceSystem`/`IngestionRun`/`SourceRecord` provenance convention as every other connector in this codebase (Phase 5). `FinancialTransactionMatch` (Phase 6) records a confirmed cross-ledger internal-transfer link between two `FinancialTransaction` rows on different `PaymentInstrument`s (e.g. a PayPal settlement and the matching Bank deposit, or a Bank payment and the matching Credit Card charge), deterministically — same exact-opposite-amount/linked-instrument/compatible-currency/date-tolerance criteria as every other reconciliation decision in this codebase, never fuzzy/probabilistic. As of Phase 6B, this matching is **automatic**: the canonical post-acquisition hook (`matching.on_financial_transaction_acquired`) is called by both the CSV path (`service.py`) and the PayPal path (`technical/connectors/paypal/ingest.py`) immediately after a `FinancialTransaction` is normalized/upserted, so a confirmed AUTO match is attempted regardless of which side of a transfer (Bank, Credit Card, or PayPal) is acquired first — no manual trigger is required for the deterministic case. The HUMAN fallback (`bank_routes.py`'s Bank Review page, `require_linked_instrument=False` candidate discovery, `confirm_match`) remains fully available for evidence the automatic criteria cannot see (e.g. no `linked_instrument_id` configured yet) — Phase 6B narrows nothing HUMAN could previously confirm. A confirmed `INTERNAL_TRANSFER` (`classification` AND a confirmed `FinancialTransactionMatch` together — classification alone is never trusted) is exempt from the Kermali "Missing reconciliation decision" blocker and excluded from Kermali workbook rows, since WHAT (a confirmed transfer) is sufficient economic classification on its own and Kermali must never receive a fabricated WHO/WHY for it.
@@ -331,12 +331,139 @@ These decisions were recorded when the V1 vertical slice described above was bui
 
 ---
 
+## 11. Source resolution, correction and reuse (BANK_RECONCILIATION_INSTRUMENT_ASSIGNMENT_001)
+
+Implemented after the first local web collaudo of the V1 slice, which exercised the real operator flow end to end and surfaced what §3.2/§6 had left undesigned. These decisions extend §3.2 and §6; they do not relax any rule stated there.
+
+### 11.1 Order of evidence for resolving the Payment Instrument
+
+A source (a whole file, or a single row) is resolved to a `PaymentInstrument` by the **strongest available evidence**, in this fixed order. Ambiguity is never resolved by picking the first match — when more than one instrument qualifies, the import stops and asks a human.
+
+1. **The identifier the file itself carries.** First Citizens' `Account Number`, Chase credit-card Variant A's `Card`, matched against the instrument's `external_account_identifier` (exact) or its last four digits. Always wins over everything below.
+2. **A source rule a human explicitly confirmed** (`BankSourceInstrumentProfile`, §11.4).
+3. **The file name's own `Chase####` prefix**, matched against an instrument's **configured** last four digits. This does not make the file name authoritative (§3.2): the name alone resolves nothing, it only selects among instruments a human already configured, and any in-file identifier overrides it. The variable export date and a Windows `(1)`/`(2)` duplication suffix are stripped before matching, because neither is part of the source's identity.
+4. **Exactly one compatible instrument exists — First Citizens only.** With a single configured First Citizens account there is genuinely nothing to decide. **Deliberately not applied to Chase:** §3.2 requires explicit human confirmation for a Chase source with no reliable identifier, and that rule stands — having configured few instruments is not evidence about a file.
+
+Institution comparison is normalized (case and separators) so that `Chase`/`CHASE` and `First Citizens`/`FIRST_CITIZENS` are the same institution. Automatic resolution must never depend on which spelling an operator happened to type.
+
+### 11.2 A file is not necessarily one account
+
+A source file carrying **several distinct in-file identifiers** (a Chase export with more than one `Card`) is resolved **row by row**, and the batch itself stays unresolved. Assigning such a file as a whole is refused, not merely discouraged: it would silently attribute other cards' rows to one instrument. Rows whose identifier matches no configured instrument are left unnormalized — their raw rows are preserved and wait for a human, which is always preferable to attributing them to the wrong instrument.
+
+### 11.3 Correcting an assignment already made
+
+The first resolution of a batch and a later correction of it are the **same operation on the same canonical field**, and both are recorded. A correction:
+
+- requires a **stated reason** — changing a decision a human already made must say why;
+- **moves the existing `FinancialTransaction` rows in place**; it never deletes a transaction and never creates a second one, so no correction can duplicate or lose a movement;
+- leaves the **raw layer byte-for-byte untouched** (`BankImportBatch.raw_file_bytes`, `RawBankTransaction.raw_fields`) — §4.1 is absolute, and a correction re-reads preserved raw fields rather than the original file;
+- **re-derives** the identity fingerprint (§8), the candidate-duplicate state (§7, §8), Recognition and cross-ledger matching, and the batch's own status and overlap warning;
+- is **idempotent** — repeating it changes nothing the second time.
+
+Two states are deliberately preserved rather than recomputed: a human's own reconciliation decision (`decision_source = HUMAN`) is never overwritten by a rule re-run, and a human's duplicate decision survives as long as the transaction it was decided against is still on the same instrument. A confirmed internal-transfer match that a correction has made nonsensical (both sides now on the same instrument) is **surfaced for review, never deleted**.
+
+Every correction, and every first resolution, writes one `BankInstrumentAssignmentAudit` row: scope (batch or transaction), previous instrument, new instrument, reason, who, when, and how many transactions moved. It is evidence of the change only — the current assignment is always and only `BankImportBatch.payment_instrument_id` / `FinancialTransaction.payment_instrument_id`.
+
+### 11.4 Teaching a source that cannot identify itself
+
+First Citizens' `AccountHistory.csv` never changes name, and with more than one First Citizens account the file alone cannot say which account it is. The human resolves it once and may save that choice as a `BankSourceInstrumentProfile`, keyed on the in-file identifier when there is one and otherwise on the stable part of the file name. Later imports of the same source reuse it (step 2 of §11.1). A rule can be re-pointed at another instrument or disabled; **disabling never deletes it**, so the evidence that a human once taught this mapping is kept.
+
+This is a **source-resolution** rule (which instrument a file came from) and is deliberately a separate model from `BankRecognitionRule`, which is a **reconciliation** rule (who/why for an already-resolved transaction). Merging the two would conflate identity with meaning.
+
+### 11.5 `REQUIRES_REVIEW` must always state why
+
+§9's `REQUIRES_REVIEW` is a status, not an explanation. A batch's review state is therefore **computed from live data, never stored**, and always yields both the concrete reason and the one action that addresses it:
+
+| Actual condition | Reason shown | Action offered |
+|---|---|---|
+| No instrument resolved, nothing normalized | no identifier this configuration can match | `Resolve instrument` |
+| Rows still to normalize (multi-card file) | *n* rows carry an unknown identifier | `Normalize pending rows` |
+| Rows that could not be parsed | *n* unreadable rows, preserved unmodified | `Review issues` |
+| Candidate duplicates awaiting a decision | *n* candidate duplicates | `Review issues` (deep link to those rows) |
+| Match invalidated by a correction | *n* matches now on one instrument | `Reprocess` |
+
+A `Normalize` action is **never** offered for rows that are already normalized. When the batch is fully normalized and only a human decision is missing, the reason says so and links directly to the rows concerned.
+
+### 11.6 Payment Instrument registry — editable, with one guard
+
+§6's registry is the canonical `PaymentInstrument` (no parallel model). It is editable from the web interface: name, institution, type, last four / external identifier, Company/Legal Entity, currency, linked settlement instrument, and active/closed state. Three rules:
+
+- **The full account number is never stored for display and never rendered** — only the last four digits, and the identifier exactly as the source file writes it (typically already masked).
+- **A configuration that would make automatic recognition ambiguous is refused** — two ACTIVE instruments of the same institution and type sharing a last four or an account identifier. Closing one (setting it INACTIVE) resolves it, so reusing a last four on a replacement card is legitimate.
+- **A missing Company/Legal Entity does not block saving**, but it does block the Monthly Export for every month containing that instrument's transactions — stated explicitly at the point of editing rather than discovered later at export time.
+
+---
+
+## 12. Hierarchical classification — Who → Why → What (BANK_RECONCILIATION_WHO_WHY_WHAT_001)
+
+Implemented after §11, on the same canonical models. This section supersedes nothing in §10–§11; it states the shape the classification decision has had since the hierarchy was introduced, and the boundaries that shape must respect.
+
+### 12.1 The three levels
+
+A bank movement is classified as a chain of exactly three levels, each with a single owner:
+
+| Level | Question | Canonical model | Meaning |
+|---|---|---|---|
+| **Who** | Which subject/receiver is involved? | `BankOccurrence` | The party a movement concerns — US Foods, ADP, the Florida Department of Revenue. `Supplier` remains only one possible `BankOccurrenceType`, never a default. |
+| **Why** | Why does this movement exist? | `BankTransactionReason` | The economic reason — supplier invoice payment, payroll, tax payment. |
+| **What** | What is this, in accounting terms? | `BankAccountingClassification` | The final accounting classification: **one line of a Profit & Loss statement or of a Balance Sheet** (`statement_type` ∈ `PROFIT_LOSS`, `BALANCE_SHEET`), with a self-referential `parent_id` for hierarchy. |
+
+No model is duplicated to express this. Who and Why are the models that already existed; What is the one genuinely new concept, and the Kermali export mapping (`BankTransactionReasonExportMapping`: Food $ / Oper / Deduct / `what_label`) is untouched and keeps feeding the Kermali columns exactly as before. **What is an accounting statement line; the Kermali mapping is an export attribute. They coexist and are not the same fact.**
+
+### 12.2 The associations are stored, not re-chosen per transaction
+
+- A **Why** has exactly one current **What** (`BankTransactionReason.accounting_classification_id`).
+- A **Who** has exactly one current default **Why** (`BankOccurrence.default_transaction_reason_id`), and through it inherits that Why's What.
+
+Both are stored on the vocabulary itself and configured once, on the **Classification** tab. They are never selected again transaction by transaction.
+
+A Why cannot be created or activated without a What; a Who cannot be created or activated without a default Why. A Who whose chain is incomplete — no default Why, an inactive Why, a Why with no What, an inactive or statement-type-less What — is **refused in reconciliation**, with the concrete reason and a link to where it is fixed. It is never silently completed with a guess.
+
+### 12.3 The Review asks for the Who and nothing else
+
+Review offers exactly one control per unclassified transaction: **Select Who**, which opens a searchable modal listing every Who with its type, its derived Why and its derived What. Why and What are consequences of the Who and are not selectable there. A Who that cannot be used is shown anyway, greyed, with the reason and a link to the Classification tab — more useful than a name silently missing from the list.
+
+The two separate Who and Why menus this replaced no longer exist.
+
+### 12.4 A decision is an immutable snapshot
+
+Confirming a transaction writes one append-only `BankTransactionExplanation` row recording the Who, the Why, the What (by id, code, name and statement type), the account that confirmed it and when. That snapshot is captured once and never re-read from the live vocabulary — the same rule Phase 4B already established for the Occurrence name and the Kermali attributes, now extended to the whole chain.
+
+Consequently: **editing a Who → Why or a Why → What association applies to future classifications only.** An already-confirmed transaction does not change, silently or otherwise.
+
+### 12.5 Reclassification is explicit and auditable
+
+Applying a changed chain to a historical transaction is a deliberate **Reclassify** action. It re-resolves the *same* Who through the *current* chain and writes a **new** decision row (`decision_status = HUMAN_RECLASSIFIED`); the superseded row is never edited and never deleted, so both remain queryable as history. Changing the Who itself is a different action — confirming a different Who — and stays distinguishable in the audit trail.
+
+### 12.6 Learning recognizes the Who
+
+A confirmed human decision may teach RF-One that a normalized description means a particular Who (`BankRecognitionRule`, `EXACT_NORMALIZED_DESCRIPTION`). What a rule recognizes is the **Who**; the Why and the What are re-derived from that Who's current chain every time the rule applies, so re-pointing a Who at another Why takes effect immediately without touching a single rule.
+
+Unchanged from the original expert system: a single description never creates a broader `CONTAINS_TEXT`/`PREFIX` rule on its own — that requires an explicit separate human choice — and confirmations and contradictions accumulate on the rule rather than promoting it by an invented numeric threshold. Where compatible rules recognize different Whos, or where a matched rule's Who has an incomplete chain, the transaction is left at `NEEDS_HUMAN_REVIEW` and the modal is the operator's next step. Nothing is guessed.
+
+The former "Reuse for future" checkbox no longer has anything to do with whether Who → Why → What persists — those associations always persist. It is now a description-learning control only, labelled as such.
+
+### 12.7 Export
+
+The Monthly Export reads the **confirmed snapshots**, never the currently editable associations. Its blockers are: a missing Who; a Who with no Why; a Why with no What; an incomplete historical classification (a decision whose recorded What has no statement type). A What being inactive blocks nothing that already carries a valid snapshot of it — deactivating a What never retroactively invalidates a month that was correctly classified.
+
+A confirmed internal transfer remains exempt, exactly as Phase 6B established.
+
+### 12.8 Invoice classification stays separate from bank classification
+
+A supplier paid by invoice may legitimately classify to an **Accounts Payable settlement** What (a Balance Sheet line): the bank movement settles a liability, and that is the whole of what the bank movement says.
+
+**Bank Reconciliation never infers the Food / Operating composition of that invoice's lines from the bank movement.** That detailed classification continues to come from the invoice (Invoice Intake / Purchased). §2.2's boundary is unchanged and is, if anything, made sharper by the What level: the bank answers "which accounting line did this movement hit", the invoice answers "what was actually bought".
+
+---
+
 ## Open Points
 
 - **Placement inconsistency with `Purchased/README.md`.** `01 Domains/Shared Domains/Purchased/README.md`, section "Bank Reconciliation boundary," currently describes Bank Reconciliation as belonging to "the consuming Business Domain" — implying a Business-Domain-owned capability. This document instead places Bank Reconciliation as a transversal Shared Domains / Administration capability (per explicit placement instruction for this task), consistent with how Payroll, Invoice Intake, and Purchased itself are positioned as reusable-across-industries Shared Domains. This is a genuine, unresolved wording/ownership inconsistency between the two documents. It is not resolved here and `Purchased/README.md` is not modified by this task — it requires an explicit Product Owner decision.
 - **Duplicate legacy folder — historical, now resolved.** At the time this document was originally written (on the Financial Model Convergence integration branch, before main integration), a second, older `01 Domains/Cross Domain/Administration/` folder still existed alongside the canonical `01 Domains/Shared Domains/Administration/` used by this document. That duplicate no longer exists: the canonical Shared Domains structural migration (completed on `main` independently of this document) retired `01 Domains/Cross Domain/` entirely before this document was integrated here. This document was written under `Shared Domains/Administration/Bank Reconciliation/` from the start, so no path adjustment was needed at integration time.
-- **Financial Account Registry does not yet exist.** §6 lists six accounts/cards requiring configuration (Chase 0214, 3583, 7129, 8076, 9318; First Citizens 7470); their Company/Legal Entity and other registry properties are not known/invented here and must be supplied by the Product Owner. The registry's own data model is not designed by this document.
-- **File-name-based card resolution is explicitly disallowed (§3.2) but no alternative mechanism is designed.** How the "configured import source" actually identifies the account/card when `Card` is absent from a Chase credit-card file is left open.
+- **Financial Account Registry — data model resolved (§11.6), content still owed by the Product Owner.** The registry is the canonical `PaymentInstrument`, now fully editable from the web interface including its Company/Legal Entity (§11.6). What remains open is unchanged and is data, not design: the Company/Legal Entity and the identifying last four of each account/card in §6 are still not known or invented here, and automatic recognition of a Chase source (§11.1 step 3) cannot work for an instrument whose last four has not been filled in.
+- **~~File-name-based card resolution is explicitly disallowed (§3.2) but no alternative mechanism is designed.~~ Resolved — see §11.1.** The "configured import source" is the ordered evidence chain in §11.1: the file's own identifier, then a rule a human explicitly confirmed, then a `Chase####` file-name prefix matched against a **configured** last four. The file name remains non-authoritative exactly as §3.2 requires — it never resolves anything on its own and is always overridden by in-file content.
+- **The fixed chart of accounts is not defined here.** §12's `BankAccountingClassification` is the STRUCTURE the approved chart of accounts will be loaded into — codes, names, statement side and hierarchy — and deliberately contains no real account tree. Loading the approved chart is a data task, not a schema change. Until then, the only What rows that exist are those a human created and those the hierarchy migration recovered from existing Kermali `what_label` values. **Those migrated rows are explicitly INCOMPLETE: they carry no `statement_type`, because a Kermali label does not say whether it is a Profit & Loss or a Balance Sheet line, and inventing one was refused.** They are shown as incomplete on the Classification tab, and a month containing a transaction still classified against one of them is blocked from export until the statement side is set — one edit per migrated What. This is a deliberate, visible gap awaiting a Product Owner decision, not a defect.
 - **Deduplication/equivalence-check logic is not designed.** §8 establishes that five conditions must be checked separately and that no single key is sufficient, but no algorithm, scoring, or matching procedure is specified — this is intentionally left for a future implementation task.
 - **Relationship to Invoice Intake / Purchased / Purchasing remains unspecified**, beyond the negative boundary stated in §2.2–§2.3 (a bank movement is not an invoice, and no association mechanism is designed here). Designing that association is explicitly out of scope for this task.
 - **Automated bank feeds are out of scope.** This document covers manual CSV download/import only; whether and how an automated feed (e.g. bank API/aggregator) might later coexist with or replace manual CSV import is not addressed.

@@ -413,9 +413,23 @@ def main() -> int:
             occurrence_type = m.BankOccurrenceType(code="MISC_6B", name="Misc 6B")
             s.add(occurrence_type)
             s.flush()
-            occurrence = m.BankOccurrence(canonical_name="Some Vendor", occurrence_type_id=occurrence_type.id)
-            reason = m.BankTransactionReason(code="OPERATIONAL_6B", name="Operational 6B")
-            s.add_all([occurrence, reason])
+            # BANK_RECONCILIATION_WHO_WHY_WHAT_001: the Who needs a complete
+            # Who -> Why -> What chain before it can classify anything.
+            what = m.BankAccountingClassification(
+                code="OPERATING_6B", name="Operating 6B", statement_type="PROFIT_LOSS",
+            )
+            s.add(what)
+            s.flush()
+            reason = m.BankTransactionReason(
+                code="OPERATIONAL_6B", name="Operational 6B", accounting_classification_id=what.id,
+            )
+            s.add(reason)
+            s.flush()
+            occurrence = m.BankOccurrence(
+                canonical_name="Some Vendor", occurrence_type_id=occurrence_type.id,
+                default_transaction_reason_id=reason.id,
+            )
+            s.add(occurrence)
             s.flush()
 
             pre_recognized_bank = m.FinancialTransaction(
@@ -426,7 +440,7 @@ def main() -> int:
             s.flush()
             explanation_before = service.record_recognition_decision(
                 s, transaction_id=pre_recognized_bank.id, occurrence_id=occurrence.id,
-                transaction_reason_id=reason.id, confirmed_by_account_id=None, reuse_for_future=False,
+                confirmed_by_account_id=None, learn_description=False,
             )
             s.commit()
             explanation_before_id = explanation_before.id
@@ -472,13 +486,13 @@ def main() -> int:
             blockers_a = export.compute_export_blockers(s, year=year, month=month)
             blocker_reasons_a = [b.reason for b in blockers_a]
             result.check(
-                "confirmed INTERNAL_TRANSFER transactions do NOT trigger 'Missing reconciliation decision' (§25.A)",
+                "confirmed INTERNAL_TRANSFER transactions do NOT trigger the missing-Who blocker (§25.A)",
                 not any(
-                    f"transaction id={bank_side_1.id} " in reason and "Missing reconciliation decision" in reason
+                    f"transaction id={bank_side_1.id} " in reason and "Missing Who" in reason
                     for reason in blocker_reasons_a
                 )
                 and not any(
-                    f"transaction id={paypal_side_1.id} " in reason and "Missing reconciliation decision" in reason
+                    f"transaction id={paypal_side_1.id} " in reason and "Missing Who" in reason
                     for reason in blocker_reasons_a
                 ),
             )
@@ -541,8 +555,8 @@ def main() -> int:
             # way test_bank_reconciliation_service.py's own export flow does.
             for txn in (fake_transfer, ordinary_unresolved):
                 service.record_recognition_decision(
-                    s, transaction_id=txn.id, occurrence_id=occurrence.id, transaction_reason_id=reason.id,
-                    confirmed_by_account_id=None, reuse_for_future=False,
+                    s, transaction_id=txn.id, occurrence_id=occurrence.id,
+                    confirmed_by_account_id=None, learn_description=False,
                 )
             s.commit()
 

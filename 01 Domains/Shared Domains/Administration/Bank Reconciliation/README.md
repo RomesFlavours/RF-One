@@ -31,7 +31,7 @@ This foundation covers exactly three things:
 ## Explicitly out of scope (this foundation)
 
 - Other payment providers (Stripe, Square, Venmo, wire transfer feeds, etc.) — not implemented, not anticipated by this schema beyond the three named instrument types.
-- A general Revenue/Expense/Fee classification engine — this module's automated logic assigns exactly one classification value (`INTERNAL_TRANSFER`), on a confirmed cross-ledger match; every other classification value on `PaymentInstrumentTransaction.classification` exists on the schema for human/manual use but is never assigned automatically here.
+- A general Revenue/Expense/Fee classification engine on `PaymentInstrumentTransaction.classification` — this module's automated *matching* logic assigns exactly one value there (`INTERNAL_TRANSFER`). (The separate, human-driven Who → Why → What accounting classification described below was added later and is not what this bullet excludes.), on a confirmed cross-ledger match; every other value there exists on the schema for human/manual use but is never assigned automatically here.
 - A general ledger, chart of accounts, or financial statement production (see "Bank Reconciliation ≠ Accounting" below).
 - A redesign of RF-One's reconciliation/classification learning mechanism (see "Relationship to auto-expertising/learning" below) — this foundation only ensures its own confirmed matches are structured so a future learning mechanism can read them.
 
@@ -78,6 +78,25 @@ A confirmed match:
 - sets **both** transactions' `classification` to `INTERNAL_TRANSFER` — never Revenue or Expense (a transfer between a business's own instruments is neither);
 - never deletes or merges either source transaction — both remain independently auditable;
 - is idempotent per ordered pair of transactions — re-matching the same pair returns the existing match.
+
+---
+
+## Classification: Who → Why → What
+
+Recognizing that a movement happened is not the same as saying what it is. Bank Reconciliation classifies a movement as a chain of three levels, each answering one question:
+
+- **Who** (`BankOccurrence`) — which subject/receiver the movement concerns.
+- **Why** (`BankTransactionReason`) — the economic reason it exists.
+- **What** (`BankAccountingClassification`) — the final accounting classification: one line of a **Profit & Loss** statement or of a **Balance Sheet**.
+
+Each Why resolves to exactly one What, and each Who to exactly one default Why, so a Who carries its whole chain. Those associations are configured once (Bank › Classification) and stored on the vocabulary itself — **a human reconciling a transaction selects only the Who**, and the Why and What follow.
+
+Two rules keep this honest:
+
+- **A confirmed decision is an immutable snapshot.** Editing an association changes future classifications only; a transaction already confirmed never changes silently. Applying a changed chain to a historical transaction is the explicit, auditable `Reclassify` action, which appends a new decision rather than rewriting the old one.
+- **The invoice still owns invoice-level classification.** A supplier paid by invoice may classify to an Accounts Payable settlement What — a Balance Sheet line — because settling a liability is all a bank movement tells us. The Food / Operating composition of that invoice's lines comes from the invoice (Invoice Intake / Purchased), never from the bank movement. This is the same boundary the next section states, applied to the classification level.
+
+The full specification is §12 of `BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATION_001.md`.
 
 ---
 

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Bank Reconciliation · Edit instrument · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('import') }}
+
+<h2>Edit Payment Instrument</h2>
+<p class="muted">
+  Editing the canonical <code>PaymentInstrument</code> in place — the
+  {{ transaction_count }} transaction(s) already recorded on it keep pointing at this same
+  instrument. The full account number is never stored or displayed here: only the last four
+  digits, and the identifier exactly as the source file writes it.
+</p>
+
+{% if export_warning %}
+  <div class="error">{{ export_warning }}</div>
+{% endif %}
+
+<div class="card">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="field-row">
+      <label for="display_name">Display name</label>
+      <input type="text" id="display_name" name="display_name" value="{{ instrument.display_name }}" required maxlength="255">
+    </div>
+
+    <div class="field-row">
+      <label for="institution">Institution / bank</label>
+      <input type="text" id="institution" name="institution" value="{{ instrument.institution or '' }}" maxlength="64" placeholder="Chase / First Citizens">
+    </div>
+
+    <div class="field-row">
+      <label for="instrument_type">Instrument type</label>
+      <select id="instrument_type" name="instrument_type" required>
+        {% for value, label in (('BANK_ACCOUNT', 'Bank account'), ('CREDIT_CARD', 'Credit card'), ('PAYPAL', 'PayPal')) %}
+          <option value="{{ value }}" {{ 'selected' if instrument.instrument_type == value else '' }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="field-row">
+      <label for="last_four">Last four digits &mdash; what automatic recognition matches a Chase <code>Card</code> value, or a <code>Chase####_Activity_YYYYMMDD.csv</code> file name, against</label>
+      <input type="text" id="last_four" name="last_four" value="{{ instrument.last_four or '' }}" maxlength="4" inputmode="numeric" pattern="[0-9]{4}">
+    </div>
+
+    <div class="field-row">
+      <label for="external_account_identifier">Account identifier as it appears in the source file (First Citizens <code>Account Number</code>, e.g. a masked <code>XXXXXX7470</code>) &mdash; never the full account number</label>
+      <input type="text" id="external_account_identifier" name="external_account_identifier" value="{{ instrument.external_account_identifier or '' }}" maxlength="128">
+    </div>
+
+    <div class="field-row">
+      <label for="legal_entity_id">Company / Legal Entity &mdash; required by the Monthly Export</label>
+      <select id="legal_entity_id" name="legal_entity_id">
+        <option value="">Not configured (export stays blocked)</option>
+        {% for legal_entity in legal_entities %}
+          <option value="{{ legal_entity.id }}" {{ 'selected' if instrument.legal_entity_id == legal_entity.id else '' }}>{{ legal_entity.legal_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="field-row">
+      <label for="currency">Currency &mdash; both sides of an internal transfer must carry the same known currency before RF-One will match them</label>
+      <input type="text" id="currency" name="currency" value="{{ instrument.currency or '' }}" maxlength="8" placeholder="USD">
+    </div>
+
+    <div class="field-row">
+      <label for="linked_instrument_id">Settles to / funded by &mdash; the linked instrument internal-transfer matching requires</label>
+      <select id="linked_instrument_id" name="linked_instrument_id">
+        <option value="">Not linked</option>
+        {% for other in instruments %}
+          <option value="{{ other.id }}" {{ 'selected' if instrument.linked_instrument_id == other.id else '' }}>{{ bank.instrument_identity(other) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="field-row">
+      <label for="status">State</label>
+      <select id="status" name="status">
+        <option value="ACTIVE" {{ 'selected' if instrument.status == 'ACTIVE' else '' }}>Active</option>
+        <option value="INACTIVE" {{ 'selected' if instrument.status == 'INACTIVE' else '' }}>Closed / inactive</option>
+      </select>
+      <span class="cell-note">A closed instrument is never used for automatic source recognition, so reusing its last four digits on a new card is not ambiguous.</span>
+    </div>
+
+    <div class="btn-row">
+      <button type="submit">Save instrument</button>
+      <a class="btn btn-secondary" href="{{ url_for('bank_home') }}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

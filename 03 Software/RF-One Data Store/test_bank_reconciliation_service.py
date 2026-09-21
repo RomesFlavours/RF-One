@@ -287,15 +287,32 @@ def main() -> int:
             check(
                 "April 2026 export is blocked by an undecided candidate duplicate and a missing reconciliation decision",
                 any("candidate duplicate" in b.reason for b in april_blockers)
-                and any("Missing reconciliation decision" in b.reason for b in april_blockers),
+                and any("Missing Who" in b.reason for b in april_blockers),
             )
 
             occurrence_type = m.BankOccurrenceType(code="RIDE_SHARE_PROVIDER", name="Ride Share Provider")
             s.add(occurrence_type)
             s.flush()
-            occurrence = m.BankOccurrence(canonical_name="Uber", occurrence_type_id=occurrence_type.id)
-            reason = m.BankTransactionReason(code="OPERATIONAL_TRAVEL", name="Operational Travel")
-            s.add_all([occurrence, reason])
+            # BANK_RECONCILIATION_WHO_WHY_WHAT_001: a Who is usable only
+            # through a complete chain — Who -> Why -> What — so the What and
+            # the two associations are configured here before any decision.
+            # The Kermali export mapping remains a separate, unchanged fact.
+            what = m.BankAccountingClassification(
+                code="OPERATING_TRAVEL", name="Operating travel", statement_type="PROFIT_LOSS",
+            )
+            s.add(what)
+            s.flush()
+            reason = m.BankTransactionReason(
+                code="OPERATIONAL_TRAVEL", name="Operational Travel",
+                accounting_classification_id=what.id,
+            )
+            s.add(reason)
+            s.flush()
+            occurrence = m.BankOccurrence(
+                canonical_name="Uber", occurrence_type_id=occurrence_type.id,
+                default_transaction_reason_id=reason.id,
+            )
+            s.add(occurrence)
             s.flush()
             export_mapping = m.BankTransactionReasonExportMapping(
                 bank_transaction_reason_id=reason.id, operative=True, what_label="Operational travel",
@@ -310,8 +327,8 @@ def main() -> int:
                 if txn.duplicate_status == "CANDIDATE_DUPLICATE":
                     service.resolve_duplicate_decision(s, transaction_id=txn.id, decision="CONFIRMED_DISTINCT")
                 service.record_recognition_decision(
-                    s, transaction_id=txn.id, occurrence_id=occurrence.id, transaction_reason_id=reason.id,
-                    confirmed_by_account_id=None, reuse_for_future=False,
+                    s, transaction_id=txn.id, occurrence_id=occurrence.id,
+                    confirmed_by_account_id=None, learn_description=False,
                 )
             s.commit()
 
@@ -384,9 +401,20 @@ def main() -> int:
                 any(row[4] == "Uber" for row in data_rows_after_rename)
                 and not any(row[4] == "Uber Technologies Inc (renamed)" for row in data_rows_after_rename),
             )
+            # BANK_RECONCILIATION_WHO_WHY_WHAT_001: the `What` column now
+            # reports the decision's accounting classification (the What of
+            # the Who -> Why -> What chain) for anything decided under the
+            # hierarchical model, and falls back to the Kermali `what_label`
+            # only for decisions that predate it. Both are read from the
+            # decision's OWN snapshot, so the point under test is unchanged:
+            # editing the live mapping afterwards changes nothing historical.
             check(
                 "Editing the Export Mapping after the decision does NOT change the historical Oper/What snapshot",
-                any(row[6] is not None and row[8] == "Operational travel" for row in data_rows_after_rename),
+                any(row[6] is not None and row[8] == "Operating travel" for row in data_rows_after_rename)
+                and not any(
+                    row[8] == "Renamed label — must not appear in history"
+                    for row in data_rows_after_rename
+                ),
             )
 
     finally:

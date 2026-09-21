@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=2">
 </head>
 <body>
-<div class="wrap">
+<div class="wrap {% block wrap_class %}{% endblock %}">
   <header class="site-header">
     <!-- The general shell's own header: "Rome's Flavours · WP" identifies
          RF-One's web presence generally, never a single Domain's own brand
