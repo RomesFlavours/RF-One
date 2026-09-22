@@ -16,6 +16,48 @@
 </p>
 
 <div class="card">
+  <h3>Reconciliation control start</h3>
+  {% if control_config %}
+    <p>
+      RF-One controls Bank source completeness from <strong>{{ control_config.control_start_month }}</strong>
+      onward.{% if control_config.note %} &mdash; {{ control_config.note }}{% endif %}
+    </p>
+  {% else %}
+    <p class="error">
+      Not configured. No month is placed under completeness control automatically, because
+      RF-One has not been told from which month it is responsible. Imported data is still
+      kept normally.
+    </p>
+  {% endif %}
+  <form method="post" action="{{ url_for('bank_monthly_control_start') }}" class="compact-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <label for="control_start_date">First controlled month starts</label>
+      <input type="date" id="control_start_date" name="control_start_date"
+             value="{{ control_config.control_start_date.isoformat() if control_config else '' }}" required>
+      <span class="cell-note">
+        Must be the first day of a month &mdash; Bank completeness is monthly, so a date in the
+        middle of one is refused rather than rounded.
+      </span>
+    </div>
+    <div class="field-row">
+      <label for="control_note">Why</label>
+      <input type="text" id="control_note" name="note"
+             value="{{ control_config.note or '' if control_config else '' }}">
+    </div>
+    <button type="submit">Set control start</button>
+  </form>
+  <p class="cell-note">
+    Months <em>before</em> this hold imported transactions but are <strong>historical</strong>:
+    RF-One does not open them, does not demand their missing accounts, and never certifies them
+    complete just because data exists. Months <em>from</em> it onward are opened automatically
+    when an import covers them, and are controlled by the ordinary rules.
+    Changing this value changes nothing that already exists &mdash; no period, no coverage, no
+    decision an operator has already recorded.
+  </p>
+</div>
+
+<div class="card">
   <h3>Select or create a month</h3>
   <form method="post" action="{{ url_for('bank_monthly_select') }}" class="compact-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -12251,6 +12251,77 @@ LIFECYCLE_END_REASONS = (
 LIFECYCLE_ENDING_RESOLUTIONS = LIFECYCLE_END_REASONS
 
 
+class BankReconciliationControlConfig(Base):
+    """The one month from which RF-One takes responsibility for Bank source
+    completeness — the RECONCILIATION CONTROL START.
+
+    It draws a line through the history, and the two sides mean different
+    things:
+
+      * BEFORE it, financial data is imported and kept exactly as it always
+        was, but its months are HISTORICAL. Data being available is not the
+        same claim as a period being proven complete, and RF-One does not
+        manufacture the second from the first: no month is opened for
+        control, no missing account is demanded, nothing is certified.
+      * FROM it onward, RF-One asserts completeness control: the month is
+        opened, coverage is evaluated by the existing rules, and an
+        expected account no file represents has to be explained.
+
+    MONTH GRANULARITY, by construction. `control_start_month` is stored in
+    exactly the shape `BankMonthlySourcePeriod.period_month` already uses,
+    `YYYY-MM`, because Bank completeness is monthly and a half-controlled
+    January is not a thing RF-One knows how to mean. A mid-month value is
+    refused by the service rather than quietly rounded, so nobody can
+    believe they configured something RF-One then reinterpreted.
+
+    ONE authoritative value: `id` is pinned to 1. Bank completeness itself
+    is global in this schema — `period_month` is unique across the whole
+    database, not per Restaurant or per Legal Entity — so the boundary that
+    governs it is global too, and the constraint says so instead of leaving
+    a second row possible.
+
+    There is no default and none is inferred. Until a human sets it, RF-One
+    has not been told when it takes responsibility, and so takes none
+    automatically. It is never derived from today, from the oldest
+    transaction, from a file name or from `created_at`.
+
+    The value governs AUTOMATIC control only. It never deletes, rewrites or
+    reinterprets a month, a coverage row or a human resolution that already
+    exists — including one an operator deliberately created before it.
+    """
+
+    __tablename__ = "bank_reconciliation_control_configs"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_brcc_singleton"),
+        CheckConstraint("length(control_start_month) = 7", name="ck_brcc_month_shape"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # `YYYY-MM` — the same shape and meaning as BankMonthlySourcePeriod.period_month.
+    control_start_month: Mapped[str] = mapped_column(String(7), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    updated_by: Mapped["RFOneAccount | None"] = relationship()
+
+    @property
+    def control_start_date(self) -> date:
+        """The first day of the first controlled month.
+
+        Derived, never stored: storing both would let them disagree.
+        """
+        year, month = self.control_start_month.split("-")
+        return date(int(year), int(month), 1)
+
+
 class BankMonthlySourcePeriod(Base):
     """One month of Bank source control.
 

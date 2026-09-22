@@ -92,6 +92,90 @@ def get_or_create_period(session: Session, year: int, month: int) -> "m.BankMont
     return period
 
 
+# ---------------------------------------------------------------------------
+# The Reconciliation Control Start — where RF-One starts being responsible
+# ---------------------------------------------------------------------------
+
+
+def get_control_config(session: Session) -> "m.BankReconciliationControlConfig | None":
+    """The configured control start, or None when nobody has set one.
+
+    None is a real state, not a missing default. RF-One does not guess when
+    it became responsible for Bank completeness, so until a human says,
+    NOTHING is controlled automatically.
+    """
+    return session.get(m.BankReconciliationControlConfig, 1)
+
+
+def get_control_start_month(session: Session) -> str | None:
+    """The first controlled month as `YYYY-MM`, or None if unset."""
+    config = get_control_config(session)
+    return config.control_start_month if config is not None else None
+
+
+def set_control_start(
+    session: Session, *, year: int, month: int, note: str | None = None,
+    account_id: int | None = None,
+) -> "m.BankReconciliationControlConfig":
+    """Set, or move, the first controlled month.
+
+    Takes a YEAR and a MONTH rather than a date, because that is what the
+    value means and it leaves no room for a day to be supplied and then
+    silently discarded. `control_start_date_from` converts an operator's
+    typed date and refuses anything that is not the first of a month.
+
+    Moving the boundary is not destructive and deliberately writes nothing
+    but this row. Moving it EARLIER simply lets later imports control more
+    months, through the same machinery. Moving it LATER stops FUTURE
+    automatic control of the months in between; it never deletes, closes or
+    reinterprets a period, a coverage row or a human resolution that
+    already exists. Months already under control stay exactly as they are
+    and keep being evaluated by the ordinary rules.
+    """
+    if not 1 <= month <= 12:
+        raise ValueError(f"month must be 1..12, got {month}")
+    config = get_control_config(session)
+    if config is None:
+        config = m.BankReconciliationControlConfig(id=1)
+        session.add(config)
+    config.control_start_month = period_key(year, month)
+    config.note = (note or "").strip() or None
+    config.updated_by_account_id = account_id
+    session.flush()
+    return config
+
+
+def control_start_date_from(value: date) -> tuple[int, int]:
+    """An operator's typed date as (year, month), refusing a mid-month one.
+
+    Bank completeness is monthly, so 2026-01-15 does not name a boundary
+    RF-One can act on: half of January would be controlled and half not,
+    and no such state is defined. Rounding it to 2026-01-01 or 2026-02-01
+    would be inventing the answer and hiding the choice, so the value is
+    rejected and the operator is told which two dates they might have meant.
+    """
+    if value.day != 1:
+        first = value.replace(day=1)
+        nxt = date(value.year + 1, 1, 1) if value.month == 12 else date(
+            value.year, value.month + 1, 1)
+        raise ValueError(
+            f"{value.isoformat()} is in the middle of a month. Bank completeness is monthly, "
+            f"so the control start must be the first day of one: {first.isoformat()} to "
+            f"control that whole month, or {nxt.isoformat()} to start with the next."
+        )
+    return value.year, value.month
+
+
+def is_controlled_month(session: Session, year: int, month: int) -> bool:
+    """Whether RF-One controls completeness for this month automatically.
+
+    Pure comparison of `YYYY-MM` strings, which sort chronologically by
+    construction — the same key the periods themselves are ordered by.
+    """
+    start = get_control_start_month(session)
+    return start is not None and period_key(year, month) >= start
+
+
 def list_periods(session: Session) -> list["m.BankMonthlySourcePeriod"]:
     return list(session.scalars(
         select(m.BankMonthlySourcePeriod).order_by(m.BankMonthlySourcePeriod.period_month.desc())

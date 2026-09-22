@@ -102,25 +102,50 @@ def _months_spanned(batch) -> set[tuple[int, int]]:
 
 
 def _report_missing_accounts(db, covered_months: set[tuple[int, int]]) -> None:
-    """Re-evaluate the months this import touched, so an expected account
-    that no file represented becomes visible instead of disappearing.
+    """Put the CONTROLLED months this import touched under completeness
+    control, and leave the historical ones alone.
 
-    Entirely the EXISTING monthly coverage logic — `refresh_coverage` and
-    `evaluate`, the same pair the monthly screen runs on every view. It
-    adds no second definition of "expected account" and no second place to
-    resolve one: the resolution itself still happens on the monthly screen,
-    through the workflow that was already there.
+    The Reconciliation Control Start divides the two. A month on or after
+    it is opened if it does not exist, reused if it does, refreshed and
+    evaluated — so an expected account no file represented becomes visible
+    and has to be explained. A month BEFORE it is skipped entirely: its
+    data is imported and kept, but data being available is not the same
+    claim as a period being proven complete, and importing a file is not a
+    reason to start demanding history nobody promised.
 
-    It refreshes only months that ALREADY EXIST. Whether importing a file
-    should OPEN a month nobody opened is a workflow decision RF-One has not
-    made, and inventing one here would put months — potentially years of
-    them, from a single historical download — into the completeness control
-    on RF-One's initiative rather than the Product Owner's.
+    Skipped means untouched. A pre-threshold period an operator created on
+    purpose keeps its coverage, its resolutions and its status exactly as
+    they are; this function does not so much as refresh it, because the
+    threshold governs what RF-One does AUTOMATICALLY and erases no existing
+    work. That also leaves the door open for an explicit historical
+    reconciliation later, which is a separate piece of work.
+
+    Everything past that division is the EXISTING monthly logic —
+    `get_or_create_period`, `refresh_coverage`, `evaluate`, the same three
+    the monthly screen already runs. No second definition of "expected
+    account", no second completeness system, and no second place to resolve
+    one: the resolution still happens on the monthly screen.
     """
+    start = monthly_source.get_control_start_month(db)
+    if start is None:
+        if covered_months:
+            flash(
+                "NO RECONCILIATION CONTROL START is configured, so no month was placed under "
+                "completeness control. The transactions were imported and kept; RF-One simply "
+                "has not been told from which month it is responsible for proving a month "
+                "complete. Set it on Monthly Sources.",
+                "error",
+            )
+        return
+
     flagged = False
+    historical = []
     for year, month in sorted(covered_months):
-        period = monthly_source.get_period(db, year, month)
-        if period is None or period.status == "COMPLETE":
+        if not monthly_source.is_controlled_month(db, year, month):
+            historical.append(monthly_source.period_key(year, month))
+            continue
+        period = monthly_source.get_or_create_period(db, year, month)
+        if period.status == "COMPLETE":
             continue
         monthly_source.refresh_coverage(db, period)
         report = monthly_source.evaluate(db, period)
@@ -134,6 +159,14 @@ def _report_missing_accounts(db, covered_months: set[tuple[int, int]]) -> None:
                 "error",
             )
     db.commit()
+    if historical:
+        flash(
+            f"HISTORICAL DATA — {len(historical)} month(s) before the control start {start} "
+            f"({historical[0]} to {historical[-1]}): the transactions were imported and kept, "
+            "but these months are not placed under completeness control and are not certified "
+            "complete. Nothing existing was changed.",
+            "info",
+        )
     if flagged:
         flash(
             "Resolve them on Monthly Sources — nothing was closed or deactivated by this "
@@ -1024,8 +1057,14 @@ def register_bank_routes(
                     if len(covering) > 1:
                         extra_batches[coverage.id] = covering[1:]
 
+            control_config = monthly_source.get_control_config(db)
             return render_template(
                 "bank_monthly.html",
+                control_config=control_config,
+                period_is_controlled=(
+                    period is not None and control_config is not None
+                    and period.period_month >= control_config.control_start_month
+                ),
                 period=period,
                 periods=monthly_source.list_periods(db),
                 coverages=rows,
@@ -1039,6 +1078,43 @@ def register_bank_routes(
                 NEEDS_CONFIRMATION=m.COVERAGE_NEEDS_CONFIRMATION,
                 RESOLUTIONS=m.COVERAGE_RESOLUTIONS,
             )
+
+    @app.route("/bank/monthly/control-start", methods=["POST"])
+    @gate
+    def bank_monthly_control_start():
+        """Set the month from which RF-One controls Bank completeness.
+
+        Accepts the date the operator typed and refuses a mid-month one
+        rather than rounding it: a half-controlled month is not a state
+        RF-One defines, and silently picking a side would hide the choice.
+        Changing this value writes nothing but the setting itself — no
+        existing period, coverage row or resolution is touched."""
+        require_csrf()
+        typed = _parse_optional_date(request.form.get("control_start_date"))
+        note = request.form.get("note")
+        if typed is None:
+            flash("Enter the first day of the first month RF-One should control (YYYY-MM-DD).",
+                  "error")
+            return redirect(url_for("bank_monthly"))
+        with SessionFactory() as db:
+            account = _current_account(db)
+            try:
+                year, month = monthly_source.control_start_date_from(typed)
+                config = monthly_source.set_control_start(
+                    db, year=year, month=month, note=note, account_id=account.id,
+                )
+                month_key = config.control_start_month
+                db.commit()
+                flash(
+                    f"Reconciliation control starts with {month_key}. Months before it hold "
+                    "imported data but are not under completeness control; nothing already "
+                    "recorded was changed.",
+                    "info",
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+        return redirect(url_for("bank_monthly"))
 
     @app.route("/bank/monthly/select", methods=["POST"])
     @gate
