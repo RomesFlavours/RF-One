@@ -68,37 +68,38 @@
   <div class="table-scroll">
   <table>
     <thead>
-      <tr><th>Voluntary Tips</th><th>Gratuity</th><th>Gross Tips</th>
-          <th>Tip Out Required</th><th>Tip Distributed to Hosts</th>
-          <th>Unresolved Tip Out</th><th>Total Net Payable</th>
-          <th>Financial Difference</th></tr>
+      <tr><th>Voluntary Tips</th><th>Gratuity</th><th>Total Tips + Gratuity</th>
+          <th>Service Owner Entitlements</th><th>Other Recipient Entitlements</th>
+          <th>Total Employee Entitlements</th><th>Control Difference</th></tr>
     </thead>
     <tbody>
       <tr>
         <td>${{ "%.2f"|format(result.voluntary_total_minor / 100) }}</td>
         <td>${{ "%.2f"|format(result.gratuity_total_minor / 100) }}</td>
         <td><strong>${{ "%.2f"|format(totals.gross_minor / 100) }}</strong></td>
-        <td>${{ "%.2f"|format(totals.tip_out_required_minor / 100) }}</td>
-        <td>${{ "%.2f"|format(totals.tip_distributed_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(totals.service_owner_entitlements_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(totals.other_recipient_entitlements_minor / 100) }}</td>
+        <td><strong>${{ "%.2f"|format(totals.total_employee_entitlements_minor / 100) }}</strong></td>
         <td>
-          ${{ "%.2f"|format(totals.unresolved_tip_out_minor / 100) }}
-          {% if totals.has_unresolved_distribution %}<span class="badge warn">unresolved</span>{% endif %}
-        </td>
-        <td><strong>${{ "%.2f"|format(totals.net_payable_minor / 100) }}</strong></td>
-        <td>
-          ${{ "%.2f"|format(totals.financial_difference_minor / 100) }}
-          {% if totals.financially_reconciled %}<span class="badge">reconciled</span>
-          {% else %}<span class="badge warn">not reconciled</span>{% endif %}
+          <strong>${{ "%.2f"|format(totals.control_difference_minor / 100) }}</strong>
+          {% if totals.control_passes %}<span class="badge">balanced</span>
+          {% else %}<span class="badge warn">CONTROL FAILED</span>{% endif %}
         </td>
       </tr>
     </tbody>
   </table>
   </div>
   <p class="muted" style="font-size:.78rem; margin-top:.6rem;">
-    <strong>Tip Out Required</strong> is every pool the policy generated; <strong>Tip Distributed</strong>
-    is what reached an eligible Host. The gap is <strong>Unresolved Tip Out</strong> &mdash; money the rule
-    said to move that nobody could receive. It currently stays inside the Service Owner's Net Payable and
-    that employee is flagged for attention; no withholding rule has been decided.
+    {# §11 — the ONE authoritative control. #}
+    <strong>Total Tips + Gratuity must equal Total Employee Entitlements exactly.</strong> Every cent
+    collected in the period lands on exactly one employee. A non-zero Control Difference means the run is
+    NOT valid for finalization &mdash; it is reported, never repaired automatically.
+    {% if totals.retained_no_eligible_host_minor %}
+      Of the total, ${{ "%.2f"|format(totals.retained_no_eligible_host_minor / 100) }} would have been
+      distributed had a Host been on shift when those Orders opened; with no eligible Host there is no
+      distribution obligation, so the Service Owner keeps 100% &mdash; a normal, payable outcome, not an
+      exception.
+    {% endif %}
     {% if result.no_eligible_recipient_lines %}
       {{ result.no_eligible_recipient_lines|length }} order(s) generated no Host distribution
       because no Host was eligible &mdash; the Service Owner retained the pool. Open the order
@@ -133,7 +134,7 @@
       <tr>
         <th>Employee</th><th>Role / Result</th>
         <th>Voluntary Tips</th><th>Gratuity</th><th>Gross Tips</th>
-        <th>Tip Out / Tip Received</th><th>Unresolved</th><th>Net Payable</th><th>Status</th>
+        <th>Distributed Away / Received</th><th>Final Entitlement</th><th>Status</th>
       </tr>
     </thead>
     <tbody>
@@ -149,27 +150,26 @@
         <td>${{ "%.2f"|format(row.gratuity_minor / 100) }}</td>
         <td>${{ "%.2f"|format(row.gross_earned_tips_minor / 100) }}</td>
         <td>
+          {# §12 — Distributed Away is shown only when distribution actually occurred. #}
           {% if row.result_type == 'HOST' %}
-            + ${{ "%.2f"|format(row.inbound_tip_out_minor / 100) }}
+            + ${{ "%.2f"|format(row.received_minor / 100) }}
             <span class="muted" style="font-size:.72rem;">received</span>
           {% elif row.result_type == 'BOTH' %}
-            &minus; ${{ "%.2f"|format(row.outbound_tip_out_minor / 100) }} /
-            + ${{ "%.2f"|format(row.inbound_tip_out_minor / 100) }}
+            &minus; ${{ "%.2f"|format(row.distributed_away_minor / 100) }} /
+            + ${{ "%.2f"|format(row.received_minor / 100) }}
+          {% elif row.distributed_away_minor %}
+            &minus; ${{ "%.2f"|format(row.distributed_away_minor / 100) }}
+            <span class="muted" style="font-size:.72rem;">distributed away</span>
           {% else %}
-            &minus; ${{ "%.2f"|format(row.outbound_tip_out_minor / 100) }}
-            <span class="muted" style="font-size:.72rem;">tip out</span>
+            <span class="muted">&mdash;</span>
+            {% if row.retained_no_eligible_host_minor %}
+              <span class="cell-note">retains 100% &mdash; no Host on shift when those Orders opened</span>
+            {% endif %}
           {% endif %}
         </td>
-        <td>
-          {% if row.unresolved_tip_out_minor %}
-            <span class="badge warn">${{ "%.2f"|format(row.unresolved_tip_out_minor / 100) }}</span>
-          {% else %}<span class="muted">&mdash;</span>{% endif %}
-        </td>
-        <td><strong>${{ "%.2f"|format(row.net_payable_minor / 100) }}</strong></td>
+        <td><strong>${{ "%.2f"|format(row.final_entitlement_minor / 100) }}</strong></td>
         <td style="font-size:.78rem;">
-          {% if row.unresolved_tip_out_minor %}
-            <span class="badge warn" title="An undistributed tip-out is still inside this Net Payable.">ATTENTION</span>
-          {% elif row.has_warning %}
+          {% if row.has_warning %}
             <span class="badge warn" title="{{ row.warning_notes|join(' | ') }}">check</span>
           {% else %}
             <span class="muted">ready</span>

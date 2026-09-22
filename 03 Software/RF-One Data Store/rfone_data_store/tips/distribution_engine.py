@@ -227,11 +227,17 @@ class EmployeeReviewRow:
     voluntary_tips_minor: int = 0
     gratuity_minor: int = 0
     result_type: str = RESULT_TYPE_SERVICE_OWNER
-    # §9/§10 — the policy-generated pool on this employee's orders that
-    # reached no eligible Host. It stays inside Net Payable for now (no
-    # withholding rule has been decided), but it must be VISIBLE and it
-    # must stop the row reading READY.
-    unresolved_tip_out_minor: int = 0
+    # TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §6 — the pool the
+    # policy WOULD have moved had an eligible Host existed at Order Open
+    # Time, kept for audit only.
+    #
+    # It is NOT an unresolved amount and NOT an attention condition. When
+    # no Host was on shift when the table opened, there is no distribution
+    # obligation at all: the Service Owner retains 100% of that Order's
+    # Tips + Gratuity, and that is a NORMAL, RESOLVED, PAYABLE outcome.
+    # The previous task reported this as "Unresolved 1.86" and flagged the
+    # employee — both were wrong, and both are corrected here.
+    retained_no_eligible_host_minor: int = 0
     warning_notes: list[str] = field(default_factory=list)
     # Task §18 — every Order this Employee is traceable through (as Gross-Tip
     # owner, outbound source, or inbound recipient) in this run, sorted, so
@@ -239,14 +245,36 @@ class EmployeeReviewRow:
     order_ids: list[int] = field(default_factory=list)
 
     @property
+    def final_entitlement_minor(self) -> int:
+        """§10 — what this employee is entitled to receive for the period.
+
+        Service Owner: Tips + Gratuity generated, minus what was ACTUALLY
+        distributed to eligible recipients. An Order with no eligible Host
+        deducts nothing, because no distribution obligation arose.
+        Recipient: the total actually received across the period."""
+        return self.net_before_adjustments_minor
+
+    @property
+    def distributed_away_minor(self) -> int:
+        """§12 — shown for a Service Owner ONLY when distribution actually
+        occurred."""
+        return self.outbound_tip_out_minor
+
+    @property
+    def received_minor(self) -> int:
+        """§12 — aggregate distribution received, for a recipient."""
+        return self.inbound_tip_out_minor
+
+    @property
     def needs_attention(self) -> bool:
         """Whether this row must not be presented as ready to pay.
 
-        True while a positive unresolved distribution sits inside this
-        employee's Net Payable: the amount is theirs today only because no
-        eligible Host could receive it, and that is a decision nobody has
-        made yet (§10 — no withholding rule invented)."""
-        return self.unresolved_tip_out_minor > 0 or self.has_warning
+        §6/§12 — a SOURCE_RETAINS outcome is NOT an attention condition. A
+        Service Owner keeping 100% of an Order because no Host was on shift
+        when it opened is a valid, final result, and flagging it trained
+        the operator to distrust correct numbers. Only a genuine data
+        warning (e.g. a Refund on record) raises attention now."""
+        return self.has_warning
 
     @property
     def net_payable_minor(self) -> int:
@@ -870,8 +898,8 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
     for order in orders_in_scope:
         if order.employee_id is not None:
             orders_by_employee.setdefault(order.employee_id, set()).add(order.id)
-    # §9 — the undistributed pool, attributed to the Service Owner who
-    # generated it and who is currently holding it.
+    # §6 — the pool that WOULD have moved, attributed to the Service Owner
+    # who legitimately keeps it. Audit information, never a control.
     unresolved_by_employee: dict[int, int] = {}
     for allocation in allocations:
         if (
@@ -889,10 +917,13 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
                 outbound_by_employee.get(allocation.source_employee_id, 0) + allocation.allocated_amount_minor
             )
             orders_by_employee.setdefault(allocation.source_employee_id, set()).add(allocation.order_id)
-            if allocation.no_eligible_recipient:
-                warnings_by_employee.setdefault(allocation.source_employee_id, []).append(
-                    f"Order {allocation.order_id}: no eligible recipient for this rule — pool retained."
-                )
+            # §6 — NOT a warning any more. No eligible Host at Order Open
+            # Time means no distribution obligation arose, so the Service
+            # Owner simply keeps 100% of that Order: a normal, resolved,
+            # payable outcome. The amount is reported on the row as
+            # `retained_no_eligible_host_minor` (audit) and the full
+            # per-order diagnostic stays in the Order drill-down; neither
+            # makes the employee's payment questionable.
         if allocation.recipient_employee_id is not None:
             inbound_by_employee[allocation.recipient_employee_id] = (
                 inbound_by_employee.get(allocation.recipient_employee_id, 0) + allocation.allocated_amount_minor
@@ -948,7 +979,7 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
                 voluntary_tips_minor=voluntary_by_employee.get(emp_id, 0),
                 gratuity_minor=gratuity_by_employee.get(emp_id, 0),
                 result_type=result_type,
-                unresolved_tip_out_minor=unresolved_by_employee.get(emp_id, 0),
+                retained_no_eligible_host_minor=unresolved_by_employee.get(emp_id, 0),
                 warning_notes=warnings_by_employee.get(emp_id, []),
                 order_ids=sorted(orders_by_employee.get(emp_id, set())),
             )
@@ -968,46 +999,55 @@ class OperationalTotals:
 
     voluntary_minor: int = 0
     gratuity_minor: int = 0
-    gross_minor: int = 0
-    # TIPS_BRANCH_CONFIG_BUSINESS_DATE_AND_ELIGIBILITY_002 §9 — three
-    # figures that used to be one.
+    # TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §11 — THE ONE
+    # authoritative monetary control:
     #
-    # `tip_out_required_minor` is every pool the POLICY generated.
-    # `tip_distributed_minor` is what actually reached eligible Hosts.
-    # The gap between them is `unresolved_tip_out_minor`: money the rule
-    # said to move that nobody could receive. A SOURCE_RETAINS outcome is
-    # financially retained by the Service Owner and is STILL an unresolved
-    # DISTRIBUTION — reporting it as zero hid real money, which is exactly
-    # what this split fixes.
-    tip_out_required_minor: int = 0
-    tip_distributed_minor: int = 0
-    net_payable_minor: int = 0
-    engine_unresolved_minor: int = 0
+    #     Total Tips + Gratuity  ==  Total Employee Entitlements
+    #
+    # Nothing else is a control. "Tip Out Required", "Unresolved Tip Out"
+    # and "Financial Difference" are gone as controls: they treated a
+    # SOURCE_RETAINS outcome as money in limbo when in fact the Service
+    # Owner simply keeps it, so they reported a problem where none existed.
+    #
+    # Every cent collected in the period must land on exactly one
+    # employee's entitlement. If it does not, the run is not valid for
+    # finalization — and the discrepancy is REPORTED, never repaired.
+    service_owner_entitlements_minor: int = 0
+    other_recipient_entitlements_minor: int = 0
+    # Audit only (§6): what would have been distributed had a Host been on
+    # shift. Never a control, never a difference to explain.
+    retained_no_eligible_host_minor: int = 0
+    distributed_minor: int = 0
 
     @property
-    def unresolved_tip_out_minor(self) -> int:
-        """Required minus distributed — the money the policy called for and
-        no eligible Host received."""
-        return self.tip_out_required_minor - self.tip_distributed_minor
+    def gross_minor(self) -> int:
+        """Total Tips + Gratuity for the period — the left side of the
+        control."""
+        return self.voluntary_minor + self.gratuity_minor
 
     @property
-    def financial_difference_minor(self) -> int:
-        """Reconciliation AFTER accounting for both distributed and
-        unresolved amounts. Zero means every required dollar is accounted
-        for as either distributed or explicitly unresolved."""
+    def total_employee_entitlements_minor(self) -> int:
+        """The right side of the control."""
         return (
-            self.tip_out_required_minor
-            - self.tip_distributed_minor
-            - self.unresolved_tip_out_minor
+            self.service_owner_entitlements_minor
+            + self.other_recipient_entitlements_minor
         )
 
     @property
-    def financially_reconciled(self) -> bool:
-        return self.financial_difference_minor == 0
+    def control_difference_minor(self) -> int:
+        """Total Tips + Gratuity minus Total Employee Entitlements. PASS
+        requires exactly zero at currency precision."""
+        return self.gross_minor - self.total_employee_entitlements_minor
 
     @property
-    def has_unresolved_distribution(self) -> bool:
-        return self.unresolved_tip_out_minor > 0
+    def control_passes(self) -> bool:
+        return self.control_difference_minor == 0
+
+    @property
+    def valid_for_finalization(self) -> bool:
+        """§11/§17/§18 — a run whose control does not balance is NOT valid
+        for finalization, by any path, manual or automatic."""
+        return self.control_passes
 
 
 def build_operational_totals(
@@ -1016,21 +1056,27 @@ def build_operational_totals(
     """The §4 header for one run. Voluntary and Gratuity are reported
     separately because Clover reports them separately and the run has to
     reconcile against it — Gross is their sum, never a substitute."""
-    # §9 — Required is summed from the POOLS the policy generated, once per
-    # rule application. A distributed line is split across N recipients, so
-    # its pool must not be counted N times: take the pool from one line per
-    # (order, rule version) and add every undistributed pool in full.
-    pools: dict[tuple[int, int], int] = {}
+    # §6 — audit figure only: the pool that would have moved, counted once
+    # per (order, rule version) so a split line is not multiplied.
+    retained: dict[tuple[int, int], int] = {}
     for allocation in result.lines:
-        pools[(allocation.order_id, allocation.rule_version_id)] = allocation.pool_amount_minor
+        if allocation.recipient_employee_id is None and allocation.pool_amount_minor > 0:
+            retained[(allocation.order_id, allocation.rule_version_id)] = (
+                allocation.pool_amount_minor
+            )
     return OperationalTotals(
         voluntary_minor=result.voluntary_total_minor,
         gratuity_minor=result.gratuity_total_minor,
-        gross_minor=result.voluntary_total_minor + result.gratuity_total_minor,
-        tip_out_required_minor=sum(pools.values()),
-        tip_distributed_minor=sum(row.inbound_tip_out_minor for row in rows),
-        net_payable_minor=sum(row.net_payable_minor for row in rows),
-        engine_unresolved_minor=result.unresolved_total_minor,
+        service_owner_entitlements_minor=sum(
+            row.final_entitlement_minor for row in rows
+            if row.result_type != RESULT_TYPE_HOST
+        ),
+        other_recipient_entitlements_minor=sum(
+            row.final_entitlement_minor for row in rows
+            if row.result_type == RESULT_TYPE_HOST
+        ),
+        retained_no_eligible_host_minor=sum(retained.values()),
+        distributed_minor=sum(row.received_minor for row in rows),
     )
 
 
