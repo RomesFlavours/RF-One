@@ -104,6 +104,12 @@ class AllocationLine:
     calculation_base: str
     rate: Decimal
     base_amount_minor: int
+    # The pool ACTUALLY generated for distribution, always equal to the sum
+    # of `allocated_amount_minor` across this Order's lines for this Rule
+    # Version. It is 0 whenever nothing was distributed — no eligible Host,
+    # or an unimplemented rule shape — because in that case no pool was
+    # generated. It is NEVER "what the rate would have produced if someone
+    # had been eligible": that number is not computed anywhere in RF-One.
     pool_amount_minor: int
     recipient_employee_id: int | None
     recipient_eligibility_basis: str
@@ -181,26 +187,24 @@ class TipCalculationResult:
         """What actually moved to recipients."""
         return sum(line.allocated_amount_minor for line in self.recipient_lines)
 
-    @property
-    def unresolved_total_minor(self) -> int:
-        return sum(line.pool_amount_minor for line in self.unresolved_lines)
-
-    @property
-    def source_retained_total_minor(self) -> int:
-        """Voluntary tips that stayed with the Order Service Owner —
-        everything not distributed and not stranded in an unresolved line."""
-        return self.voluntary_total_minor - self.distributed_total_minor - self.unresolved_total_minor
-
-    @property
-    def reconciliation_difference_minor(self) -> int:
-        """Must always be 0: retained + distributed + unresolved == voluntary."""
-        return self.voluntary_total_minor - (
-            self.source_retained_total_minor + self.distributed_total_minor + self.unresolved_total_minor
-        )
-
-    @property
-    def reconciles(self) -> bool:
-        return self.reconciliation_difference_minor == 0
+    # There is deliberately NO "retained" / "unresolved" / "would have been
+    # distributed" monetary aggregate on this result.
+    #
+    # They were the remains of a retired reconciliation control (voluntary
+    # == retained + distributed + unresolved) that has not gated anything
+    # since the ONE authoritative control became
+    #
+    #     Total Tips + Gratuity  ==  Total Employee Entitlements
+    #
+    # (`OperationalTotals`). Their only surviving effect was to put a price
+    # on an Order that distributed nothing — money that was never destined
+    # anywhere. What the Service Owner keeps is already stated, in full and
+    # per person, by `build_employee_review`'s `final_entitlement_minor`;
+    # restating a slice of it as "retained" adds no fact and invites the
+    # reading that something is outstanding.
+    #
+    # `no_eligible_recipient_lines` and `unresolved_lines` remain: they are
+    # qualitative — WHICH Orders and WHY — and carry no amount of their own.
 
 
 @dataclass
@@ -472,7 +476,6 @@ def _apply_rule_to_order(
         ]
 
     summary.rules_applied += 1
-    pool_amount = _round_pool(base_amount, rule_version.rate)
 
     recipient_role = session.get(m.RestaurantRole, rule_version.recipient_role_id)
     role_name = recipient_role.name if recipient_role is not None else str(rule_version.recipient_role_id)
@@ -480,7 +483,9 @@ def _apply_rule_to_order(
     if rule_version.distribution_method != m.DISTRIBUTION_METHOD_EQUAL:
         return [
             line(
-                base_amount_minor=base_amount, pool_amount_minor=pool_amount, recipient_employee_id=None,
+                # No pool is computed on a line that distributes nothing —
+                # see the SOURCE_RETAINS branch below for the full reasoning.
+                base_amount_minor=base_amount, pool_amount_minor=0, recipient_employee_id=None,
                 recipient_eligibility_basis=(
                     f"NOT_IMPLEMENTED: distribution_method={rule_version.distribution_method!r} is not yet "
                     "computable by this engine; no outbound allocation was made."
@@ -514,6 +519,11 @@ def _apply_rule_to_order(
     eligible_ids = sorted(role_holders & shift_active)
 
     if eligible_ids:
+        # The pool is computed HERE and nowhere else: a pool only exists
+        # when there is somebody to distribute it to. Computing it before
+        # eligibility is known would produce, on an Order with no eligible
+        # Host, a figure for money that was never destined anywhere.
+        pool_amount = _round_pool(base_amount, rule_version.rate)
         shares = equal_split(pool_amount, eligible_ids)
         lines = []
         for emp_id in eligible_ids:
@@ -532,9 +542,26 @@ def _apply_rule_to_order(
             summary.allocations_produced += 1
         return lines
 
-    # Task §11 — SOURCE_RETAINS: generated outbound allocation = 0, and
-    # the fact that nobody was eligible is preserved explicitly, never
-    # silently omitted.
+    # Task §11 — SOURCE_RETAINS: no pool is generated at all, and the fact
+    # that nobody was eligible is preserved explicitly, never silently
+    # omitted.
+    #
+    # NO HYPOTHETICAL AMOUNT IS PRODUCED HERE. When no Host was eligible at
+    # Order Open Time, 100% of the Order's voluntary Tips and Gratuity
+    # belong to the Service Owner. That is a complete, resolved, final
+    # outcome — not a distribution that failed. There is therefore no
+    # "amount that would have gone to a Host", no "10% withheld because
+    # nobody was present", and no "potentially distributable" figure: such
+    # a number describes money that was never destined anywhere, and
+    # carrying it (even only "for audit") invites exactly the reading it
+    # would be wrong to invite — that something is still owed to somebody.
+    # `pool_amount_minor` is 0 because no pool was generated, matching
+    # `allocated_amount_minor=0`, and the invariant sum(allocated) ==
+    # pool_amount_minor still holds.
+    #
+    # What IS preserved is qualitative only, and that is deliberate: which
+    # Employees held the Recipient Role, whether any of them was on shift,
+    # and the reason no recipient qualified.
     #
     # TIPS_OPERATIONAL_RESULTS_AND_CALCULATION_FIX_001 §6 — and WHY nobody
     # was eligible is preserved too, in the two halves that actually
@@ -557,11 +584,11 @@ def _apply_rule_to_order(
         )
     return [
         line(
-            base_amount_minor=base_amount, pool_amount_minor=pool_amount, recipient_employee_id=None,
+            base_amount_minor=base_amount, pool_amount_minor=0, recipient_employee_id=None,
             recipient_eligibility_basis=(
                 f"NO_ELIGIBLE_RECIPIENT: no Employee held Recipient Role {role_name!r} with an active Shift "
-                f"at {eligibility_instant_label} {eligibility_at.isoformat()}; SOURCE_RETAINS applied — the source "
-                "employee retains the full pool."
+                f"at {eligibility_instant_label} {eligibility_at.isoformat()}; SOURCE_RETAINS applied — no pool "
+                "was generated and the Order Service Owner keeps 100%."
             ),
             no_eligible_recipient=True, allocated_amount_minor=0, eligible_recipient_count=0,
             candidate_recipient_employee_ids=role_holder_ids, exclusion_reason=exclusion,

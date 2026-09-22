@@ -70,11 +70,8 @@ in the period lands on exactly one employee's entitlement.
 A non-zero difference is **reported, never repaired**. A period that does
 not balance cannot become final by any path, manual or automatic.
 
-Three figures are **audit information and never controls**:
-
-- what was distributed to other recipients;
-- what would have been distributed had an eligible recipient existed;
-- per-person retained amounts.
+What was distributed to other recipients is **audit information and never
+a control**.
 
 ### No eligible recipient is not an exception
 
@@ -82,6 +79,23 @@ When no eligible recipient was on shift at the deciding instant, **no
 distribution obligation arose**. The Service Owner keeps 100% of that
 Order. This is a normal, resolved, payable outcome — not an unresolved
 amount, not a warning, and not a reason to flag the employee.
+
+### There is no hypothetical amount
+
+RF-One does **not** compute, store, aggregate, report or display:
+
+- what would have been distributed had an eligible recipient existed;
+- a per-person "retained" amount;
+- a percentage withheld because nobody was present;
+- any other figure describing money that was never destined anywhere.
+
+Such a number has no functional use and actively misleads: it invites the
+reading that something is still owed to somebody. What the Service Owner
+keeps is already stated in full, per person, by their entitlement.
+
+Only **qualitative** audit information is kept for these Orders: which
+Employees held the Recipient Role, whether any of them was on shift, and
+why none qualified. No amount is attached to it.
 
 ---
 

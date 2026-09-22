@@ -41,7 +41,14 @@
         <td>{{ a.calculation_base }}</td>
         <td>{{ a.rate }}%</td>
         <td>${{ "%.2f"|format(a.base_amount_minor / 100) }}</td>
-        <td>${{ "%.2f"|format(a.pool_amount_minor / 100) }}</td>
+        {# No pool was generated when nobody was eligible. RF-One does not
+           compute or show what a pool "would have been" — the Service
+           Owner simply keeps 100%, and the Eligibility Basis column says
+           why, qualitatively. #}
+        <td>
+          {% if a.pool_amount_minor %}${{ "%.2f"|format(a.pool_amount_minor / 100) }}
+          {% else %}<span class="muted" title="No pool was generated for this Order — the Service Owner keeps 100%">&mdash;</span>{% endif %}
+        </td>
         <td>
           {% if a.recipient_employee_id %}Employee #{{ a.recipient_employee_id }}
           {% else %}<span class="badge warn">no eligible recipient</span>{% endif %}

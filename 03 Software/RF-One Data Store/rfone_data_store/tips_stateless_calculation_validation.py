@@ -335,17 +335,24 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         "calculation_run_id" not in audit.CSV_FIELDNAMES,
     )
 
-    # === K: reconciliation invariant =========================================
+    # === K: no hypothetical monetary aggregate exists ========================
     result.check(
-        "K: Service Owner retained + Host allocations + unresolved == voluntary Tip total",
-        current.source_retained_total_minor + current.distributed_total_minor
-        + current.unresolved_total_minor == current.voluntary_total_minor,
+        "K: the result carries no retained / unresolved / would-have-been-distributed monetary "
+        "aggregate — those were the retired reconciliation control, not facts about money",
+        not any(
+            hasattr(current, attr) for attr in (
+                "source_retained_total_minor", "unresolved_total_minor",
+                "reconciliation_difference_minor", "reconciles",
+            )
+        ),
     )
     result.check(
-        "K: the reconciliation difference is exactly zero",
-        current.reconciles and current.reconciliation_difference_minor == 0,
+        "K: what actually moved is still fully stated — distributed total equals the sum of every "
+        "recipient line's allocation",
+        current.distributed_total_minor
+        == sum(l.allocated_amount_minor for l in current.recipient_lines),
     )
-    result.check("K: this fixture has no unresolved items", current.unresolved_total_minor == 0)
+    result.check("K: this fixture has no unresolved items", current.unresolved_lines == [])
 
     # === L: AUDIT vs AUTOMATIC are numerically identical =====================
     review_svc.set_review_mode(session, restaurant_id=restaurant.id, review_mode=m.TIPS_REVIEW_MODE_AUDIT)
@@ -359,8 +366,8 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     result.check(
         "L: AUDIT and AUTOMATIC produce numerically identical results (workflow emphasis only)",
         in_audit.voluntary_total_minor == in_automatic.voluntary_total_minor
+        and in_audit.gratuity_total_minor == in_automatic.gratuity_total_minor
         and in_audit.distributed_total_minor == in_automatic.distributed_total_minor
-        and in_audit.source_retained_total_minor == in_automatic.source_retained_total_minor
         and len(in_audit.lines) == len(in_automatic.lines),
     )
     result.check(

@@ -73,6 +73,17 @@ refreshing it. `ingest_clover.py`'s own older full pipeline still
 independently covers the same ground from an on-disk bundle; none of these
 three paths read each other's writes.
 
+Business Date: every Order this module touches leaves the acquisition with
+its operating day already determined and persisted on
+`Order.business_date`, via `resolve_order_business_dates()` below — called
+once, after this window's Payments are in, because Business Date derives
+from Settlement Time which derives from those Payments. The rule itself is
+NOT defined, derived or duplicated here: this module only calls the single
+canonical implementation in `rfone_data_store.business_date` (Sales Model
+§6a). The same one call is reused by `correction_sync.py`, so an Order
+whose Payments Clover later corrected has its operating day corrected too
+rather than frozen at whatever it was when first acquired.
+
 READ-ONLY against Clover: only `CloverClient.get()` (a GET-only client with
 no write methods at all) is ever used. Never logs or exposes the API token,
 customer names, cardholder names, card numbers, or any `cardTransaction`
@@ -124,7 +135,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Iterable, Protocol
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -212,6 +223,14 @@ class ImportSummary:
     employees_resolved: int = 0  # distinct Employees upserted/resolved this run
     shifts_imported: int = 0  # Shift (clock-in/clock-out) rows touched, within the period
 
+    # Business Date Foundation wiring — Orders this run left with a
+    # persisted `Order.business_date`, and Orders it could not resolve one
+    # for (no successful Payment yet, or an unconfigured Location). The two
+    # always sum to the Orders touched this run, so a silent gap is visible
+    # in the run summary instead of only in the data.
+    business_dates_resolved: int = 0
+    business_dates_unresolved: int = 0
+
     employee_mismatches: list[EmployeeMismatch] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -283,6 +302,48 @@ def get_order_settlement_time(session: Session, order_id: int) -> datetime | Non
             m.Payment.order_id == order_id, m.Payment.result == "SUCCESS",
         )
     )
+
+
+def resolve_order_business_dates(session: Session, order_ids: Iterable[int]) -> int:
+    """Business Date Foundation wiring — persist `Order.business_date` for
+    every Order this acquisition touched, once its Payments are in.
+
+    This connector does NOT define, derive or duplicate the Business Date
+    rule: it only calls the single canonical implementation
+    (`rfone_data_store.business_date.resolve_and_persist_order_business_date`,
+    Sales Model §6a — Settlement Time evaluated against the Location's own
+    `timezone` and `operating_day_cutoff_time`). Nothing about the rule
+    lives here, so a future change to the operating-day definition changes
+    exactly one file, still not this one.
+
+    Call ordering matters and is the whole reason this is a separate step
+    rather than part of `_ingest_order`: Business Date is a function of
+    Settlement Time, which is a function of the Order's successful Payments
+    (`get_order_settlement_time`). At `_ingest_order` time those Payments
+    have not been upserted yet, so an Order ingested there could only ever
+    resolve against a stale or absent Settlement Time.
+
+    Re-entrant by construction, which is what makes it correct for the
+    recurring/nightly path: the canonical function recomputes from current
+    Payments and REPLACES the stored value, so an Order first seen while
+    only partially paid (or not yet settled at all) picks up its real
+    Business Date on the next run that re-reads it, and an Order whose
+    Payments later changed has its Business Date corrected rather than
+    frozen. An Order with no successful Payment yet is left untouched
+    (`None`) — never guessed.
+
+    Returns the number of Orders that came out with a resolved Business
+    Date."""
+    # Imported lazily: `business_date` imports `get_order_settlement_time`
+    # from THIS module, so a module-level import here would be circular.
+    from ....business_date import resolve_and_persist_order_business_date
+
+    resolved = 0
+    for order_id in dict.fromkeys(order_ids):  # de-duplicated, order preserved
+        if resolve_and_persist_order_business_date(session, order_id) is not None:
+            resolved += 1
+    session.flush()
+    return resolved
 
 
 def _mirror_source_record(
@@ -1043,6 +1104,23 @@ def import_clover_period(
                 ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at,
             )
             payment_by_source_id[payment_raw.get("id")] = payment.id
+
+        # Business Date Foundation wiring — deliberately HERE, after every
+        # Payment of this window has been upserted: Business Date derives
+        # from Settlement Time, which derives from the Order's successful
+        # Payments. Resolving it inside the Order loop above would compute
+        # it against Payments this very run had not written yet. Covers all
+        # four required moments in one place, because all four reach this
+        # line: a brand-new Order, an already-known Order re-read, an Order
+        # completed/changed by a later Payment (that Payment puts its Order
+        # back into `order_by_source_id`), and any Order re-read by a
+        # subsequent recurring/nightly run.
+        summary.business_dates_resolved = resolve_order_business_dates(
+            session, order_by_source_id.values()
+        )
+        summary.business_dates_unresolved = (
+            len(order_by_source_id) - summary.business_dates_resolved
+        )
 
         # Order.employee vs Payment.employee: Order.employee is the Tip
         # Distribution Engine's authoritative tip owner; Payment.employee is

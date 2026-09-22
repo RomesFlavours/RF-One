@@ -20,13 +20,14 @@ returning canned, synthetic Clover-shaped dicts only.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import models as m
+from .business_date import derive_business_date
 from .technical.connectors.clover.acquisition import get_order_settlement_time, import_clover_period
 
 UTC = timezone.utc
@@ -135,6 +136,10 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     location = m.Location(
         merchant_id=merchant.id, source_system_id=source_system.id, source_location_id="TESTMERCH1",
         name="Test Location", currency="USD",
+        # Business Date Foundation inputs (Sales Model §6a). Present so the
+        # acquisition path's canonical Business Date step has the Location
+        # configuration it requires; the rule itself is never restated here.
+        timezone="America/New_York", operating_day_cutoff_time=time(4, 0),
     )
     session.add(location)
     session.flush()
@@ -430,6 +435,65 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     result.check("no duplicate Clover external IDs after the first import", len(payment_a_rows) == 1)
 
     # =========================================================================
+    # Business Date Foundation wiring: every Order the acquisition touches
+    # must come out of `import_clover_period` with its operating day already
+    # determined and persisted, using the ONE canonical rule.
+    # =========================================================================
+    def order_row(source_order_id: str) -> m.Order:
+        return session.scalars(
+            select(m.Order).filter_by(source_system_id=source_system.id, source_order_id=source_order_id)
+        ).first()
+
+    all_fixture_orders = [order_row(o) for o in ("ORDER-A", "ORDER-B", "ORDER-C", "ORDER-D", "ORDER-E", "ORDER-F", "ORDER-G")]
+    result.check(
+        "Business Date: every Order imported by the token acquisition comes out with "
+        "Order.business_date persisted — the import itself determines the operating day, "
+        "no separate manual or post-hoc step",
+        all(o is not None and o.business_date is not None for o in all_fixture_orders),
+    )
+    result.check(
+        "Business Date: the run summary reports what it resolved (7 resolved, 0 unresolved), "
+        "so a silent gap is visible in the summary and not only in the data",
+        summary1.business_dates_resolved == 7 and summary1.business_dates_unresolved == 0,
+    )
+
+    # t0 is 2026-06-02 00:00 UTC = 2026-06-01 20:00 America/New_York, so the
+    # canonical operating day (2026-06-01) differs from BOTH the UTC civil
+    # date and the raw createdTime date. A connector that had quietly used a
+    # civil date would land on 2026-06-02 here and fail this check.
+    order_a = order_row("ORDER-A")
+    result.check(
+        "Business Date: the persisted value is the canonical operating day (2026-06-01 for a "
+        "settlement at 2026-06-02 00:00 UTC / 20:00 America/New_York), never the civil UTC date",
+        order_a.business_date == date(2026, 6, 1),
+    )
+    result.check(
+        "Business Date: the acquisition path reproduces `business_date.derive_business_date` "
+        "exactly for every Order — the rule is called, never re-implemented in the connector",
+        all(
+            o.business_date
+            == derive_business_date(
+                settlement_time=get_order_settlement_time(session, o.id),
+                location_timezone=location.timezone,
+                operating_day_cutoff_time=location.operating_day_cutoff_time,
+            )
+            for o in all_fixture_orders
+        ),
+    )
+    order_g = order_row("ORDER-G")
+    result.check(
+        "Business Date: ORDER-G's operating day derives from its last SUCCESSFUL Payment "
+        "(PAY-G2), not from the later FAILED PAY-G3 — Settlement Time semantics are inherited, "
+        "not redefined",
+        order_g.business_date
+        == derive_business_date(
+            settlement_time=datetime.fromtimestamp(g2_time / 1000, tz=UTC),
+            location_timezone=location.timezone,
+            operating_day_cutoff_time=location.operating_day_cutoff_time,
+        ),
+    )
+
+    # =========================================================================
     # CLOVER_PROVIDER_MIRROR_WIRING: Provider Mirror (SourceRecord) checks.
     # =========================================================================
     def mirror_rows(entity_type: str, source_id: str) -> list[m.SourceRecord]:
@@ -566,6 +630,54 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         "canonical idempotency is unaffected by Provider Mirror wiring: Payment A still has exactly ONE "
         "canonical Payment row despite TWO SourceRecord mirror rows now existing for it",
         len(payment_a_rows_after) == 1 and len(payment_a_mirror_after) == 2,
+    )
+
+    # =========================================================================
+    # Business Date on a RECURRING run: an Order settled again later must be
+    # able to MOVE to the operating day its new Settlement Time implies. This
+    # is the nightly-import case — an Order first seen settled on day N gets
+    # a further successful Payment on day N+1.
+    # =========================================================================
+    business_date_before = order_row("ORDER-B").business_date
+    order_g_business_date_before = order_row("ORDER-G").business_date
+
+    # A late successful Payment on ORDER-B, 30 hours after t0: past the
+    # 04:00 cutoff of the following operating day, so the canonical rule
+    # must move ORDER-B from 2026-06-01 to 2026-06-02.
+    late_time = t0 + timedelta(hours=30)
+    client.payments.append(
+        make_payment("PAY-B-LATE", order_id="ORDER-B", employee_id="EMP1", amount=1000,
+                     tip_amount=100, created_time=_ms(late_time))
+    )
+    summary3 = import_clover_period(
+        session, location_id=location.id, period_start=period_start, period_end=period_end, client=client,
+    )
+    session.commit()
+    session.expire_all()
+
+    order_b_after = order_row("ORDER-B")
+    result.check(
+        "Business Date on re-import: a later successful Payment that moves an Order's Settlement "
+        "Time past the operating-day cutoff MOVES its persisted business_date (2026-06-01 -> "
+        "2026-06-02) — an already-imported Order is never frozen on its first-seen operating day",
+        business_date_before == date(2026, 6, 1) and order_b_after.business_date == date(2026, 6, 2),
+    )
+    result.check(
+        "Business Date on re-import: the late Payment is the only NEW row — the operating-day "
+        "refresh never duplicates Orders or Payments",
+        summary3.payments_imported == 1 and summary3.orders_imported == 0,
+    )
+    result.check(
+        "Business Date on re-import: every Order still carries a resolved operating day",
+        summary3.business_dates_unresolved == 0
+        and all(order_row(o).business_date is not None
+                for o in ("ORDER-A", "ORDER-B", "ORDER-C", "ORDER-D", "ORDER-E", "ORDER-F", "ORDER-G")),
+    )
+    result.check(
+        "Business Date on re-import: Orders whose Payments did NOT change keep their operating day "
+        "unchanged — a re-run is not a reshuffle",
+        order_row("ORDER-A").business_date == date(2026, 6, 1)
+        and order_row("ORDER-G").business_date == order_g_business_date_before,
     )
 
     # No Clover call ever requested cardTransaction / customer PII expansions.

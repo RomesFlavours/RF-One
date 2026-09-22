@@ -380,9 +380,24 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     # --- 9 ---
     a9 = allocations_for(calc1, order9.id)
     result.check(
-        "9: no Host active -> SOURCE_RETAINS: one explicit row, recipient NULL, allocated=0, pool preserved",
+        "9: no Host active -> SOURCE_RETAINS: one explicit row, recipient NULL, allocated=0, and NO "
+        "pool is generated (pool_amount_minor == 0) — RF-One never computes what would have been "
+        "distributed had a Host been eligible",
         len(a9) == 1 and a9[0].recipient_employee_id is None and a9[0].allocated_amount_minor == 0
-        and a9[0].no_eligible_recipient is True and a9[0].pool_amount_minor == 100,
+        and a9[0].no_eligible_recipient is True and a9[0].pool_amount_minor == 0,
+    )
+    result.check(
+        "9: the SOURCE_RETAINS row still carries the QUALITATIVE audit facts — which Employees held "
+        "the Recipient Role and why none of them qualified — with no amount attached to them",
+        a9[0].exclusion_reason is not None
+        and ("NO_ACTIVE_SHIFT" in a9[0].exclusion_reason or "NO_ROLE_HOLDER" in a9[0].exclusion_reason)
+        and "SOURCE_RETAINS" in a9[0].recipient_eligibility_basis,
+    )
+    result.check(
+        "9: the Order's real money is untouched by the removal — voluntary + gratuity are still on the "
+        "line in full, they simply all belong to the Service Owner",
+        a9[0].gross_tip_base_minor == a9[0].voluntary_minor + a9[0].gratuity_minor
+        and a9[0].gross_tip_base_minor > 0,
     )
 
     # --- 10/11/12 ---
@@ -541,10 +556,39 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         "tip_distribution_allocations" not in sa_inspect(session.get_bind()).get_table_names(),
     )
 
-    # === K: reconciliation invariant =========================================
+    # === K: no hypothetical monetary aggregate survives anywhere ============
+    # The retired reconciliation control (retained + distributed + unresolved
+    # == voluntary) is gone: its only remaining effect was to put a price on
+    # Orders that distributed nothing. The ONE control is now
+    # Tips + Gratuity == Total Employee Entitlements (`OperationalTotals`).
     result.check(
-        "K: Service Owner retained + distributed + unresolved == voluntary tips (difference is exactly 0)",
-        calc1.reconciles and calc1.reconciliation_difference_minor == 0,
+        "K: TipCalculationResult exposes no retained / unresolved / would-have-been-distributed "
+        "monetary aggregate at all",
+        not any(
+            hasattr(calc1, attr) for attr in (
+                "source_retained_total_minor", "unresolved_total_minor",
+                "reconciliation_difference_minor", "reconciles",
+            )
+        ),
+    )
+    result.check(
+        "K: every line that distributed nothing carries a zero pool — summing pools over "
+        "no-eligible-recipient lines can only ever yield 0.00",
+        sum(l.pool_amount_minor for l in calc1.no_eligible_recipient_lines) == 0,
+    )
+    result.check(
+        "K: on every line that DID distribute, the pool still equals exactly what was allocated — "
+        "the real arithmetic is untouched",
+        all(
+            sum(s.allocated_amount_minor for s in calc1.lines
+                if s.order_id == l.order_id and s.rule_version_id == l.rule_version_id
+                and s.recipient_employee_id is not None) == l.pool_amount_minor
+            for l in calc1.recipient_lines
+        ),
+    )
+    result.check(
+        "K: the qualitative reason survives on every no-eligible-recipient line",
+        all(l.exclusion_reason for l in calc1.no_eligible_recipient_lines),
     )
 
     # === 20: a Refund never auto-reverses a tip calculation ====================

@@ -125,9 +125,10 @@
     collected in the period lands on exactly one employee. A non-zero Control Difference means the run is
     NOT valid for finalization &mdash; it is reported, never repaired automatically.
     {% if result.no_eligible_recipient_lines %}
-      {{ result.no_eligible_recipient_lines|length }} order(s) generated no Host distribution
-      because no Host was eligible &mdash; the Service Owner retained the pool. Open the order
-      drill-down to see which Host was expected and why they were excluded.
+      {{ result.no_eligible_recipient_lines|length }} order(s) had no eligible Host at Order Open Time,
+      so the Service Owner keeps 100% of their Tips and Gratuity. That outcome is complete and final:
+      nothing was withheld and nothing is outstanding. Open the order drill-down to see which Employees
+      held the Host role and why none of them qualified.
     {% endif %}
   </p>
   <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
@@ -215,8 +216,8 @@
   </div>
   <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
     No manual adjustments are reflected above (out of scope for this version). Click an Order's number to
-    see the atomic detail (Settlement Time, Gross Tip, applied Rule, generated pool, and each recipient's
-    allocation) behind any figure above.
+    see the atomic detail (Settlement Time, Gross Tip, applied Rule, any pool actually generated, and each
+    recipient's allocation) behind any figure above.
   </p>
   {% endif %}
 </div>

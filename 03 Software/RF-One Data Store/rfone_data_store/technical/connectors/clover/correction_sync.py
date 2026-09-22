@@ -137,6 +137,7 @@ from .acquisition import (
     _safe_error_summary,
     get_default_client,
     paginate,
+    resolve_order_business_dates,
 )
 
 UTC = timezone.utc
@@ -367,6 +368,12 @@ def _correct_orders(
                         ingestion_run_id=cursor_run.id, retrieved_at=retrieved_at,
                         mirror_source_record=_mirror_source_record,
                     )
+                    # Same canonical Business Date step `import_clover_period`
+                    # performs, reused (never reimplemented): a Clover-side
+                    # edit that moves an Order's facts must be able to move
+                    # its operating day too, not leave the value this Order
+                    # happened to get when it was first acquired.
+                    resolve_order_business_dates(session, [order.id])
                 touched += 1
             except Exception as exc:  # noqa: BLE001 — one bad Order must never abort the whole resource pass
                 errors.append(f"Order {(order_raw.get('id') or '')[:8]}...: {_safe_error_summary(exc)}")
@@ -455,6 +462,13 @@ def _correct_payments(
                         device_by_source_id=device_by_source_id, summary=sink,
                         ingestion_run_id=cursor_run.id, retrieved_at=retrieved_at,
                     )
+                    # A corrected Payment is exactly the case that can move
+                    # an Order's Settlement Time (a late successful Payment,
+                    # a result flipped to SUCCESS), and therefore its
+                    # operating day. Re-resolve through the one canonical
+                    # function rather than leaving the Order on the Business
+                    # Date its earlier, now-superseded Payments produced.
+                    resolve_order_business_dates(session, [order_id])
                 touched += 1
                 # `_ingest_payment` may flag a non-fatal data-quality anomaly
                 # (e.g. a previously-recorded tip now absent on re-fetch) into
