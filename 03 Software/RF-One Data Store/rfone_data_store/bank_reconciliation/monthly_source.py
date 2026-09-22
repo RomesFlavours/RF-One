@@ -42,10 +42,11 @@ import calendar
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import models as m
+from . import accounting_dedup
 
 UTC = timezone.utc
 
@@ -288,6 +289,69 @@ def coverages(session: Session, period: "m.BankMonthlySourcePeriod") -> list["m.
 
 
 # ---------------------------------------------------------------------------
+# The closure date, DERIVED — never typed
+# ---------------------------------------------------------------------------
+
+CONFIRMED_DUPLICATE = "CONFIRMED_DUPLICATE"
+
+
+def lifecycle_eligible_transaction_filter():
+    """Which of an instrument's transactions may date its closure.
+
+    Everything except a KNOWN DUPLICATE COPY: the two states that mean
+    "this row is a second copy of another row", and nothing else.
+
+    NULL is eligible on both columns, and is written out explicitly rather
+    than left to SQL's three-valued logic. `column != 'X'` evaluates to
+    NULL, not TRUE, for a NULL column, so the shorter spelling would
+    silently drop every row that was never marked at all.
+
+    Deliberately NOT `accounting_dedup.accounting_visible_filter()`. That
+    one answers whether a row feeds the BOOKS, and it excludes
+    UNRESOLVED_NO_SETTLEMENT_ACCOUNT — real bank activity whose settlement
+    account merely has not been configured yet. Incomplete configuration
+    must never make an account look as though it stopped earlier than it
+    did, so those rows stay eligible here.
+
+    `FinancialTransaction.status` (COMPLETED / PENDING / REVERSED / FAILED
+    / UNKNOWN) is deliberately NOT consulted. RF-One has no authoritative
+    rule about which of those count, and a closure date is not the place
+    to invent one: a REVERSED row still proves the account was alive that
+    day.
+    """
+    return and_(
+        or_(
+            m.FinancialTransaction.duplicate_status.is_(None),
+            m.FinancialTransaction.duplicate_status != CONFIRMED_DUPLICATE,
+        ),
+        or_(
+            m.FinancialTransaction.accounting_status.is_(None),
+            m.FinancialTransaction.accounting_status != accounting_dedup.DUPLICATE_SUPPRESSED,
+        ),
+    )
+
+
+def last_posting_date(session: Session, instrument_id: int) -> date | None:
+    """MAX(posting_date) over that instrument's eligible transactions.
+
+    `None` MEANS UNKNOWN, and it is a real answer rather than a failure.
+    An instrument with no transactions has no posting date; so does one
+    whose transactions all carry `posting_date = NULL`, which is the
+    normal case for a PayPal instrument, because that connector records
+    only `transaction_datetime` and deliberately populates no separate
+    posting date. Nothing is substituted in either case — not
+    `transaction_date`, not `transaction_datetime`, not `created_at`, not
+    today.
+    """
+    return session.scalars(
+        select(func.max(m.FinancialTransaction.posting_date)).where(
+            m.FinancialTransaction.payment_instrument_id == instrument_id,
+            lifecycle_eligible_transaction_filter(),
+        )
+    ).first()
+
+
+# ---------------------------------------------------------------------------
 # §13 — human resolution of a month with no source file
 # ---------------------------------------------------------------------------
 
@@ -309,6 +373,15 @@ def resolve_coverage(
 
     An unknown effective date stays UNKNOWN (NULL). It is never replaced
     with today, with the period end, or with anything else convenient.
+
+    THE CLOSURE DATE IS DERIVED, NOT SUPPLIED. For a lifecycle-ending
+    resolution the operator names the reason and nothing else: the date
+    comes from `last_posting_date`, the instrument's last eligible posting
+    date. Passing `effective_date` alongside such a resolution is refused
+    rather than ignored, so a second, manual way to date a closure cannot
+    quietly reappear. `effective_date` remains available for the
+    resolutions that end no life, where it is an annotation on the month
+    and touches no instrument.
     """
     if resolution not in m.COVERAGE_RESOLUTIONS:
         raise ValueError(
@@ -328,13 +401,24 @@ def resolve_coverage(
     if resolution == m.RESOLUTION_OTHER and not note:
         raise ValueError("A lifecycle end reason of OTHER requires a short explanation.")
 
+    if resolution in m.LIFECYCLE_ENDING_RESOLUTIONS and effective_date is not None:
+        raise ValueError(
+            "A closure date is never supplied: RF-One derives it from the instrument's last "
+            "eligible posting date. Record the reason alone."
+        )
+
+    instrument = coverage.payment_instrument
+    if resolution in m.LIFECYCLE_ENDING_RESOLUTIONS:
+        # DERIVED here, before anything is written, so the coverage row and
+        # the instrument can never disagree about which date was used.
+        effective_date = last_posting_date(session, instrument.id)
+
     coverage.resolution = resolution
     coverage.resolution_note = note
     coverage.resolution_effective_date = effective_date  # None MEANS UNKNOWN
     coverage.resolved_at = datetime.now(UTC)
     coverage.resolved_by_account_id = account_id
 
-    instrument = coverage.payment_instrument
     if resolution in m.LIFECYCLE_ENDING_RESOLUTIONS:
         # The one path that may end a life, taken only because a human named
         # it. Identity — last four, external identifier, display name — is

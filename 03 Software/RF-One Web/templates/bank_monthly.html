@@ -227,9 +227,12 @@
                     </select>
                   </div>
                   <div class="field-row">
-                    <label for="effective-{{ coverage.id }}">Effective date</label>
-                    <input type="date" id="effective-{{ coverage.id }}" name="effective_date">
-                    <span class="cell-note">Leave blank if unknown &mdash; it stays UNKNOWN.</span>
+                    <span class="cell-note">
+                      Closing, Lost, Replaced and Other end this instrument's life as of its
+                      last posting date, which RF-One derives itself &mdash; there is no date to
+                      type. An instrument with no eligible posting date closes with its
+                      effective date left UNKNOWN.
+                    </span>
                   </div>
                   <div class="field-row">
                     <label for="replaced-{{ coverage.id }}">Replaced by</label>

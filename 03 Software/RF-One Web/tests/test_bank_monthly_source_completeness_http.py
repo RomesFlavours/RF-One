@@ -259,8 +259,15 @@ def main() -> int:
                   and inst.lifecycle_end_reason is None)
 
         # ---- 6/7/8. lifecycle resolutions -----------------------------
-        resolve("to_close", resolution="CLOSED", effective_date="2026-08-20",
-                note="Statement says closed")
+        # SUPERSEDED by BANK_MISSING_ACCOUNT_CONTROL: this call used to post
+        # effective_date="2026-08-20" and assert the instrument closed on the
+        # date the operator typed. The Product Owner has since decided that a
+        # closure date is DERIVED from the instrument's last eligible posting
+        # date and is never typed, so no date is sent here any more and the
+        # assertion below checks the derived outcome instead. The rest of what
+        # this case protects — that CLOSED ends the life, preserves identity,
+        # and that an unknown date stays UNKNOWN — is unchanged.
+        resolve("to_close", resolution="CLOSED", note="Statement says closed")
         resolve("to_lose", resolution="LOST", note="Card lost, replacement date unknown")
         resolve("to_replace", resolution="REPLACED",
                 replaced_by_instrument_id=str(ids["successor"]), note="Reissued with new number")
@@ -269,9 +276,10 @@ def main() -> int:
             lost = db.get(m.PaymentInstrument, ids["to_lose"])
             repl = db.get(m.PaymentInstrument, ids["to_replace"])
             succ = db.get(m.PaymentInstrument, ids["successor"])
-            check("6. CLOSED marks the instrument inactive with its stated date",
+            check("6. CLOSED marks the instrument inactive, dated from its own transactions "
+                  "(none here, so UNKNOWN) and never from a typed date",
                   closed.status == "INACTIVE" and closed.lifecycle_end_reason == "CLOSED"
-                  and closed.effective_end_date == date(2026, 8, 20))
+                  and closed.effective_end_date is None)
             check("6b. the closed instrument is preserved, not deleted, and still queryable",
                   db.get(m.PaymentInstrument, ids["to_close"]) is not None
                   and closed.last_four == "4444" and closed.display_name == "Card To Close")
@@ -498,9 +506,20 @@ def main() -> int:
             monthly_source.refresh_coverage(db, sept)
             db.commit()
             sc = {x.payment_instrument_id: x for x in monthly_source.coverages(db, sept)}
-            check("19b. it appears in a later month too, evaluated as NOT EXPECTED there",
+            # SUPERSEDED by BANK_MISSING_ACCOUNT_CONTROL. This used to assert
+            # NOT EXPECTED, which held only because the operator had typed
+            # 2026-08-20 as the closure date. Now that the date is DERIVED and
+            # this instrument has no transactions, it closes with its end date
+            # UNKNOWN — and `evaluate_expectation`, unchanged, correctly refuses
+            # to conclude anything from an INACTIVE status with no end date. So
+            # the instrument still appears in every later month, and still asks
+            # a human. That is the honest answer, not a regression: nothing
+            # proves when it stopped.
+            check("19b. it appears in a later month too; with its end date UNKNOWN the "
+                  "expectation rule asks a human rather than assuming it was over",
                   ids["to_close"] in sc
-                  and sc[ids["to_close"]].expectation == m.COVERAGE_NOT_EXPECTED)
+                  and sc[ids["to_close"]].expectation == m.COVERAGE_NEEDS_CONFIRMATION,
+                  sc[ids["to_close"]].expectation if ids["to_close"] in sc else "absent")
             check("21b. September used the same generic machinery, nothing month-specific",
                   sept.period_start == date(2026, 9, 1) and sept.period_end == date(2026, 9, 30))
 

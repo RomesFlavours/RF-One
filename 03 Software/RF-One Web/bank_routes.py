@@ -62,20 +62,64 @@ from rfone_data_store.bank_reconciliation import recognition
 from rfone_data_store.bank_reconciliation import service as bank_service
 
 
-def _parse_optional_date(value: str | None) -> date | None:
-    """An empty or unparseable date stays UNKNOWN (None).
+def _months_spanned(batch) -> set[tuple[int, int]]:
+    """The calendar months a source file's own covered range touches.
 
-    BANK_MONTHLY_SOURCE_COMPLETENESS_001 §13B — an operator who does not
-    know when a card was closed must be able to say so, and RF-One must
-    keep that as UNKNOWN rather than substituting today or the period end.
+    Uses the range the parser already recorded on the batch — the same
+    fact `monthly_source.batches_covering` matches a month against — so a
+    file is never attributed to a month by its name or upload date. A
+    batch RF-One could not date covers nothing: an unreadable file is not
+    evidence about any month.
     """
-    value = (value or "").strip()
-    if not value:
-        return None
-    try:
-        return datetime.strptime(value, "%Y-%m-%d").date()
-    except ValueError:
-        return None
+    start, end = batch.date_range_start, batch.date_range_end
+    if start is None or end is None:
+        return set()
+    months, year, month = set(), start.year, start.month
+    while (year, month) <= (end.year, end.month):
+        months.add((year, month))
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return months
+
+
+def _report_missing_accounts(db, covered_months: set[tuple[int, int]]) -> None:
+    """Re-evaluate the months this import touched, so an expected account
+    that no file represented becomes visible instead of disappearing.
+
+    Entirely the EXISTING monthly coverage logic — `refresh_coverage` and
+    `evaluate`, the same pair the monthly screen runs on every view. It
+    adds no second definition of "expected account" and no second place to
+    resolve one: the resolution itself still happens on the monthly screen,
+    through the workflow that was already there.
+
+    It refreshes only months that ALREADY EXIST. Whether importing a file
+    should OPEN a month nobody opened is a workflow decision RF-One has not
+    made, and inventing one here would put months — potentially years of
+    them, from a single historical download — into the completeness control
+    on RF-One's initiative rather than the Product Owner's.
+    """
+    flagged = False
+    for year, month in sorted(covered_months):
+        period = monthly_source.get_period(db, year, month)
+        if period is None or period.status == "COMPLETE":
+            continue
+        monthly_source.refresh_coverage(db, period)
+        report = monthly_source.evaluate(db, period)
+        if report.blockers:
+            flagged = True
+            flash(
+                f"MISSING ACCOUNTS — {period.period_month}: "
+                f"{len(report.blockers)} expected account(s) not represented by the data "
+                "received. Each needs a decision: the file/data is still missing, or the "
+                "account is closed. " + " ".join(report.blockers),
+                "error",
+            )
+    db.commit()
+    if flagged:
+        flash(
+            "Resolve them on Monthly Sources — nothing was closed or deactivated by this "
+            "import.",
+            "info",
+        )
 
 
 def register_bank_routes(
@@ -532,6 +576,7 @@ def register_bank_routes(
 
         with SessionFactory() as db:
             account = _current_account(db)
+            covered_months: set[tuple[int, int]] = set()
             for uploaded in uploaded_files:
                 data = uploaded.read()
                 try:
@@ -594,6 +639,9 @@ def register_bank_routes(
                 if result.batch.overlap_warning:
                     note += f" — {result.batch.overlap_warning}"
                 flash(note, category)
+                covered_months |= _months_spanned(result.batch)
+
+            _report_missing_accounts(db, covered_months)
 
         return redirect(url_for("bank_home"))
 
@@ -995,11 +1043,15 @@ def register_bank_routes(
 
         This is the ONLY path that may end a Payment Instrument's life, and
         only because the operator named the reason. Absence of a file never
-        reaches here on its own."""
+        reaches here on its own.
+
+        No closure date is read from the form. For a lifecycle-ending
+        resolution the service derives it from the instrument's last
+        eligible posting date, so there is exactly one way a closure can be
+        dated and the operator cannot override it."""
         require_csrf()
         resolution = (request.form.get("resolution") or "").strip()
         note = request.form.get("note")
-        effective_date = _parse_optional_date(request.form.get("effective_date"))
         replaced_by = request.form.get("replaced_by_instrument_id", type=int) or None
         with SessionFactory() as db:
             period = _period_or_404(db, period_id)
@@ -1010,13 +1062,22 @@ def register_bank_routes(
             try:
                 monthly_source.resolve_coverage(
                     db, coverage=coverage, resolution=resolution, note=note,
-                    effective_date=effective_date, replaced_by_instrument_id=replaced_by,
-                    account_id=account.id,
+                    replaced_by_instrument_id=replaced_by, account_id=account.id,
                 )
+                derived = coverage.resolution_effective_date
                 db.commit()
+                if resolution in m.LIFECYCLE_ENDING_RESOLUTIONS:
+                    detail = (
+                        f" — closed as of {derived.isoformat()}, its last posting date"
+                        if derived
+                        else " — effective date UNKNOWN: this instrument has no eligible "
+                             "posting date to close on"
+                    )
+                else:
+                    detail = ""
                 flash(
                     f"{coverage.payment_instrument.display_name}: recorded as {resolution}"
-                    + ("" if effective_date else " (effective date UNKNOWN)") + ".",
+                    f"{detail}.",
                     "info",
                 )
             except ValueError as exc:
