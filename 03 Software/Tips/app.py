@@ -1488,11 +1488,28 @@ def distribution_rule_new_version(rule_id: int):
             return redirect(url_for("distribution_rule_detail", rule_id=rule_id))
 
         try:
-            rule_svc.create_new_version(
+            new_version = rule_svc.create_new_version(
                 session, rule_id, source_role_id=source_role_id, recipient_role_id=recipient_role_id,
                 calculation_base=calculation_base, rate=rate, effective_from=effective_from, created_by=created_by,
             )
+            # TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §7 — say out
+            # loud what entering this version did to the others. Silently
+            # re-statusing a rule somebody scheduled for next month is how a
+            # configuration change becomes a surprise on a payslip.
+            replaced = getattr(new_version, "replaced_versions", {"old": [], "cancelled": []})
             session.commit()
+            parts = [f"Version {new_version.version_number} is now in force."]
+            if replaced["old"]:
+                parts.append(
+                    f"Version(s) {', '.join(str(i) for i in replaced['old'])} became OLD and "
+                    "stop at this version's start; their own past is unchanged."
+                )
+            if replaced["cancelled"]:
+                parts.append(
+                    f"Version(s) {', '.join(str(i) for i in replaced['cancelled'])} fell inside "
+                    "this version's coverage and were CANCELLED — they now govern nothing."
+                )
+            flash(" ".join(parts), "summary")
         except ValueError as exc:
             session.rollback()
             flash(str(exc), "error")
