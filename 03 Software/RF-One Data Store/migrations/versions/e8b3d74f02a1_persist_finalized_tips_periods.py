@@ -76,7 +76,9 @@ _RUN_COLUMNS = [
     ("validated_by_account_id", sa.Integer(), True, None),
     ("finalized_at", sa.DateTime(timezone=True), True, None),
     ("finalized_by_account_id", sa.Integer(), True, None),
-    ("finalized_automatically", sa.Boolean(), False, "0"),
+    # sa.false(), not "0": PostgreSQL rejects an integer default on a
+    # boolean column, and this chain is applied to RDS PostgreSQL.
+    ("finalized_automatically", sa.Boolean(), False, sa.false()),
 ]
 
 _ENTITLEMENT_COLUMNS = [

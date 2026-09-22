@@ -133,7 +133,7 @@ def upgrade() -> None:
         sa.Column("statement_type", sa.String(length=16), nullable=True),
         sa.Column("parent_id", sa.Integer(), nullable=True),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("active", sa.Boolean(), server_default=sa.text("1"), nullable=False),
+        sa.Column("active", sa.Boolean(), server_default=sa.true(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.CheckConstraint(

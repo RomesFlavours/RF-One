@@ -77,7 +77,11 @@ depends_on: Union[str, Sequence[str], None] = None
 RULES = "bank_recognition_rules"
 
 _CHECK_NAME = "ck_bank_recognition_rule_purpose_scope"
-_CHECK_CONDITION = "determines_purpose = 0 OR match_field = 'MEMO'"
+# "NOT determines_purpose", not "determines_purpose = 0": PostgreSQL has no
+# boolean-to-integer comparison ("operator does not exist: boolean <>
+# integer"), while SQLite reads NOT on its 0/1 storage exactly the same way.
+# Same meaning, both dialects.
+_CHECK_CONDITION = "NOT determines_purpose OR match_field = 'MEMO'"
 
 
 def upgrade() -> None:
@@ -85,15 +89,27 @@ def upgrade() -> None:
     bind = op.get_bind()
     is_sqlite = bind.dialect.name == "sqlite"
 
-    demoted = bind.execute(sa.text(
-        f"SELECT count(*) FROM {RULES} "
-        "WHERE determines_purpose <> 0 AND match_field <> 'MEMO'"
-    )).scalar() or 0
+    # Expressed through SQLAlchemy Core rather than as a literal 0/1 so
+    # each dialect renders its own boolean literal: PostgreSQL rejects both
+    # "determines_purpose <> 0" and "SET determines_purpose = 0" outright,
+    # and this chain runs on RDS PostgreSQL as well as on SQLite.
+    rules = sa.table(
+        RULES,
+        sa.column("determines_purpose", sa.Boolean()),
+        sa.column("match_field", sa.String()),
+    )
+    still_deciding = sa.and_(
+        rules.c.determines_purpose.is_(True),
+        rules.c.match_field != "MEMO",
+    )
 
-    bind.execute(sa.text(
-        f"UPDATE {RULES} SET determines_purpose = 0 "
-        "WHERE determines_purpose <> 0 AND match_field <> 'MEMO'"
-    ))
+    demoted = bind.execute(
+        sa.select(sa.func.count()).select_from(rules).where(still_deciding)
+    ).scalar() or 0
+
+    bind.execute(
+        rules.update().where(still_deciding).values(determines_purpose=False)
+    )
 
     if is_sqlite:
         with op.batch_alter_table(RULES, schema=None, recreate="always") as batch_op:

@@ -95,7 +95,10 @@ _TRANSACTION_COLUMNS = (
 
 _RULE_COLUMNS = (
     ("match_field", sa.String(length=16), "DESCRIPTION"),
-    ("determines_purpose", sa.Boolean(), sa.text("1")),
+    # sa.false()/sa.true(), not sa.text("0")/("1"): PostgreSQL rejects an
+    # integer default on a boolean column, and this chain is applied to
+    # RDS PostgreSQL as well as to SQLite.
+    ("determines_purpose", sa.Boolean(), sa.true()),
 )
 
 _RULE_CHECKS = (

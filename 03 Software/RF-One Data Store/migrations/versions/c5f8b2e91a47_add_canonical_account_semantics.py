@@ -116,8 +116,11 @@ _EXPECTED_ROW_COUNT = 134
 
 _NEW_COLUMNS = (
     ("node_type", sa.String(length=24), False, "POSTING"),
-    ("is_contra", sa.Boolean(), False, sa.text("0")),
-    ("review_sensitive", sa.Boolean(), False, sa.text("0")),
+    # sa.false()/sa.true(), not sa.text("0")/("1"): PostgreSQL rejects an
+    # integer default on a boolean column, and this chain is applied to
+    # RDS PostgreSQL as well as to SQLite.
+    ("is_contra", sa.Boolean(), False, sa.false()),
+    ("review_sensitive", sa.Boolean(), False, sa.false()),
     ("normal_balance", sa.String(length=8), True, None),
 )
 

@@ -33,12 +33,30 @@ $ExpectedAccount = '418674484214'
 
 function Invoke-CallerIdentity {
     $errFile = [System.IO.Path]::GetTempFileName()
+    # Windows PowerShell 5.1 wraps EVERY stderr line of a native executable
+    # in a NativeCommandError ErrorRecord. With the script-level
+    # $ErrorActionPreference = 'Stop' that error is TERMINATING, so the
+    # moment `aws` writes anything to stderr this function threw and the
+    # script died - before it could classify the failure and before it
+    # could start the renewal login.
+    #
+    # That is exactly the expired-credentials case, i.e. the one case this
+    # script exists to handle. It went unnoticed because the renewal branch
+    # had never actually been executed (see README.md, "Verificato il
+    # 2026-09-11": only the already-valid branch was exercised).
+    #
+    # Restoring 'Continue' for the duration of the call keeps stderr as
+    # DATA - which is what the pattern matching below needs it to be -
+    # without weakening error handling anywhere else in the script.
+    $previousErrorAction = $ErrorActionPreference
     try {
+        $ErrorActionPreference = 'Continue'
         $stdout = & $AwsExe sts get-caller-identity --profile $AwsProfile --region $AwsRegion --output json 2>$errFile
         $exitCode = $LASTEXITCODE
         $stderrText = (Get-Content -Path $errFile -Raw -ErrorAction SilentlyContinue)
     }
     finally {
+        $ErrorActionPreference = $previousErrorAction
         Remove-Item -Path $errFile -Force -ErrorAction SilentlyContinue
     }
 
@@ -97,7 +115,12 @@ $err = $result.StdErr
 $networkPatterns    = @('Could not connect', 'Connection refused', 'timed out', 'Name or service not known', 'getaddrinfo', 'EndpointConnectionError', 'Could not connect to the endpoint')
 $configPatterns     = @('could not be found', 'Unknown options', 'is not recognized', 'The config profile', 'command not found')
 $permissionPatterns = @('AccessDenied', 'is not authorized to perform')
-$credentialPatterns = @('Expired', 'InvalidClientTokenId', 'security token included in the request is invalid', 'Unable to locate credentials', 'could not be refreshed', 'RefreshFailed', 'No cached credentials', 'not logged in')
+# 'session has expired' is the exact wording the current AWS CLI uses
+# ("Your session has expired. Please reauthenticate using 'aws login'."),
+# and it was not matched by any pattern here: 'Expired' is case-sensitive
+# against a lowercase 'expired', so the script fell through to the
+# "unrecognised error, login NOT started" branch and refused to renew.
+$credentialPatterns = @('Expired', 'expired', 'InvalidClientTokenId', 'security token included in the request is invalid', 'Unable to locate credentials', 'could not be refreshed', 'RefreshFailed', 'No cached credentials', 'not logged in', 'reauthenticate')
 
 if (Test-AnyPattern $err $networkPatterns) {
     Write-Host "ERRORE di rete durante la verifica AWS. Login NON avviato." -ForegroundColor Red

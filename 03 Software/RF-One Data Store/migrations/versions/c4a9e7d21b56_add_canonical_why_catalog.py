@@ -124,7 +124,7 @@ def upgrade() -> None:
         sa.Column("code", sa.String(length=64), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("display_order", sa.Integer(), server_default="0", nullable=False),
-        sa.Column("active", sa.Boolean(), server_default=sa.text("1"), nullable=False),
+        sa.Column("active", sa.Boolean(), server_default=sa.true(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
@@ -136,7 +136,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("occurrence_id", sa.Integer(), nullable=False),
         sa.Column("transaction_reason_id", sa.Integer(), nullable=False),
-        sa.Column("active", sa.Boolean(), server_default=sa.text("1"), nullable=False),
+        sa.Column("active", sa.Boolean(), server_default=sa.true(), nullable=False),
         sa.Column("confirmation_count", sa.Integer(), server_default="1", nullable=False),
         sa.Column("first_confirmed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_confirmed_at", sa.DateTime(timezone=True), nullable=True),
@@ -170,10 +170,15 @@ def upgrade() -> None:
         {(r["Group Code"], r["Group Name"], int(r["Group Order"])) for r in rows},
         key=lambda item: item[2],
     ):
+        # `active` is deliberately not listed: its column default already
+        # says ACTIVE, and a literal 1 here is an integer, which PostgreSQL
+        # refuses to put in a boolean column ("column is of type boolean
+        # but expression is of type integer"). Letting the default apply is
+        # both portable and one less place for the two to disagree.
         bind.execute(
             sa.text(
-                f"INSERT INTO {GROUPS} (code, name, display_order, active) "
-                "VALUES (:code, :name, :display_order, 1)"
+                f"INSERT INTO {GROUPS} (code, name, display_order) "
+                "VALUES (:code, :name, :display_order)"
             ),
             {"code": code, "name": name, "display_order": order},
         )
