@@ -30,6 +30,9 @@
   <a class="module-tab{% if active == 'review' %} is-active{% endif %}"
      href="{{ url_for('bank_review') }}"
      {% if active == 'review' %}aria-current="page"{% endif %}>Review Transactions</a>
+  <a class="module-tab{% if active == 'monthly' %} is-active{% endif %}"
+     href="{{ url_for('bank_monthly') }}"
+     {% if active == 'monthly' %}aria-current="page"{% endif %}>Monthly Sources</a>
   <a class="module-tab{% if active == 'export' %} is-active{% endif %}"
      href="{{ url_for('bank_export') }}"
      {% if active == 'export' %}aria-current="page"{% endif %}>Monthly Export</a>

@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Bank Reconciliation · Monthly Sources · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('monthly') }}
+
+<h2>Monthly source completeness</h2>
+
+<p class="muted">
+  One question only: did every bank and card that should have produced an original download this
+  month actually produce one? This is <strong>not</strong> the accounting close, not reconciliation
+  completion and not P&amp;L approval &mdash; a month can be source-complete while every transaction
+  in it is still unclassified. The source of truth is the original monthly download from each
+  issuer; no spreadsheet is ever consulted.
+</p>
+
+<div class="card">
+  <h3>Select or create a month</h3>
+  <form method="post" action="{{ url_for('bank_monthly_select') }}" class="compact-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <label for="year">Year</label>
+      <input type="number" id="year" name="year" min="2000" max="2100" required
+             value="{{ period.period_month.split('-')[0] if period else '' }}">
+    </div>
+    <div class="field-row">
+      <label for="month">Month</label>
+      <input type="number" id="month" name="month" min="1" max="12" required
+             value="{{ period.period_month.split('-')[1]|int if period else '' }}">
+    </div>
+    <button type="submit">Select / Create Month</button>
+  </form>
+  {% if periods %}
+    <p class="cell-note">
+      Known months:
+      {% for p in periods %}
+        <a href="{{ url_for('bank_monthly', year=p.period_month.split('-')[0]|int, month=p.period_month.split('-')[1]|int) }}">{{ p.period_month }}</a>
+        <span class="badge {{ 'ok' if p.status == 'COMPLETE' else 'warn' }}">{{ p.status }}</span>{{ '' if loop.last else ' · ' }}
+      {% endfor %}
+    </p>
+  {% endif %}
+</div>
+
+{% if not period %}
+  <p class="empty">
+    No month selected yet. Create one above &mdash; it works for any month, with nothing
+    special-cased.
+  </p>
+{% else %}
+
+<div class="card">
+  <h3>
+    {{ period.period_month }}
+    <span class="badge {{ 'ok' if period.status == 'COMPLETE' else ('warn' if period.status == 'INCOMPLETE' else '') }}">{{ period.status }}</span>
+  </h3>
+  <p class="cell-note">
+    {{ period.period_start }} through {{ period.period_end }}
+    {%- if period.completed_at %} &middot; last completed {{ period.completed_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}
+  </p>
+
+  {% if report %}
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Expected</th><th>Received</th><th>Resolved without file</th>
+          <th>Not expected</th><th>Needs confirmation</th><th>Missing / unresolved</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{{ report.expected }}</td>
+          <td>{{ report.received }}</td>
+          <td>{{ report.resolved_without_file }}</td>
+          <td>{{ report.not_expected }}</td>
+          <td>{{ report.needs_confirmation }}</td>
+          <td><strong>{{ report.missing_unresolved }}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  {% if report.blockers %}
+    <p class="modal-empty-state">
+      <strong>This month cannot be completed yet.</strong> RF-One cannot mark a monthly Bank source
+      period COMPLETE while an expected or unresolved account/card remains unexplained:
+    </p>
+    <ul class="plain">
+      {% for blocker in report.blockers %}<li class="cell-note">{{ blocker }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+
+  <div class="who-picker-actions">
+    {% if period.status != 'COMPLETE' %}
+      <form method="post" action="{{ url_for('bank_monthly_complete', period_id=period.id) }}" class="compact-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" {{ 'disabled' if report.blockers else '' }}
+                title="Allowed only when every account/card is covered by a source file or explicitly resolved.">
+          Complete Month
+        </button>
+      </form>
+    {% else %}
+      <form method="post" action="{{ url_for('bank_monthly_reopen', period_id=period.id) }}" class="compact-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="reason" placeholder="Reason for reopening" required>
+        <button type="submit">Reopen Month</button>
+      </form>
+    {% endif %}
+    <a class="module-tab" href="{{ url_for('bank_home') }}">Upload Source</a>
+  </div>
+
+  {% if period.audit_log %}
+    <details>
+      <summary>Audit log</summary>
+      <pre class="cell-note">{{ period.audit_log }}</pre>
+    </details>
+  {% endif %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>Accounts and cards for {{ period.period_month }}</h3>
+  {% if not coverages %}
+    <p class="empty">
+      No Payment Instrument is configured yet, so there is nothing to expect this month.
+      Configure the real accounts and cards in
+      <a href="{{ url_for('bank_home') }}">Import &amp; Instruments</a> &mdash; this page then
+      tracks expected-versus-received as their files arrive.
+    </p>
+  {% else %}
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Institution</th>
+          <th>Instrument</th>
+          <th>Lifecycle</th>
+          <th>Expected</th>
+          <th>Source received</th>
+          <th>Source batch</th>
+          <th>Resolution</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for coverage in coverages %}
+        {% set instrument = coverage.payment_instrument %}
+        <tr>
+          <td data-label="Institution">{{ coverage.institution_snapshot or instrument.institution or '—' }}</td>
+          {# Never the full account/card number — only the last four. #}
+          <td data-label="Instrument">{{ bank.instrument_identity(instrument) }}</td>
+          <td data-label="Lifecycle">
+            <span class="cell-note">{{ coverage.lifecycle_label_snapshot or instrument.lifecycle_label }}</span>
+          </td>
+          <td data-label="Expected">
+            <span class="badge {{ 'ok' if coverage.expectation == EXPECTED else ('warn' if coverage.expectation == NEEDS_CONFIRMATION else '') }}">
+              {{ coverage.expectation }}
+            </span>
+            <span class="cell-note">{{ coverage.expectation_basis }}</span>
+          </td>
+          <td data-label="Source received">
+            <span class="badge {{ 'ok' if coverage.source_received else 'warn' }}">
+              {{ 'YES' if coverage.source_received else 'NO' }}
+            </span>
+          </td>
+          <td data-label="Source batch">
+            {% if coverage.import_batch %}
+              batch #{{ coverage.import_batch.id }}
+              <span class="cell-note">
+                {{ coverage.import_batch.original_file_name }}<br>
+                {{ coverage.import_batch.row_count }} row(s)
+                {%- if coverage.import_batch.date_range_start %},
+                  {{ coverage.import_batch.date_range_start }} to {{ coverage.import_batch.date_range_end }}
+                {%- endif %}<br>
+                imported {{ coverage.import_batch.uploaded_at.strftime('%Y-%m-%d %H:%M') }}
+              </span>
+              {% if extra_batches.get(coverage.id) %}
+                <span class="badge warn">OVERLAPPING SOURCE</span>
+                <span class="cell-note">
+                  Also covered by batch
+                  {% for b in extra_batches[coverage.id] %}#{{ b.id }}{{ '' if loop.last else ', ' }}{% endfor %}.
+                  Overlapping date ranges are allowed &mdash; a corrected or reissued file is
+                  legitimate. No transaction is counted twice: that is enforced by the canonical
+                  transaction deduplication, not by rejecting the file.
+                </span>
+              {% endif %}
+            {% else %}
+              &mdash;
+            {% endif %}
+          </td>
+          <td data-label="Resolution">
+            {% if coverage.resolution %}
+              <span class="badge">{{ coverage.resolution }}</span>
+              <span class="cell-note">
+                {{ coverage.resolution_note or '' }}<br>
+                effective {{ coverage.resolution_effective_date or 'UNKNOWN' }}
+                {%- if coverage.resolved_at %} &middot; recorded {{ coverage.resolved_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}
+                {%- if coverage.resolved_by %} by {{ coverage.resolved_by.display_name }}{% endif %}
+              </span>
+            {% else %}
+              &mdash;
+            {% endif %}
+          </td>
+          <td data-label="Actions">
+            {% if period.status == 'COMPLETE' %}
+              <span class="cell-note">Month is complete &mdash; reopen it to change this.</span>
+            {% elif coverage.source_received %}
+              <span class="cell-note">Covered by its source file.</span>
+            {% else %}
+              <details>
+                <summary>Resolve missing source</summary>
+                <form method="post" class="compact-form"
+                      action="{{ url_for('bank_monthly_resolve', period_id=period.id, coverage_id=coverage.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <div class="field-row">
+                    <label for="resolution-{{ coverage.id }}">Decision</label>
+                    <select id="resolution-{{ coverage.id }}" name="resolution" required>
+                      <option value="">Choose&hellip;</option>
+                      <option value="NO_ACTIVITY">No activity &mdash; keep active</option>
+                      <option value="CLOSED">Closed</option>
+                      <option value="LOST">Lost</option>
+                      <option value="REPLACED">Replaced</option>
+                      <option value="OTHER">Other (ceased)</option>
+                      <option value="SOURCE_FILE_MISSING">Source file missing (still owed)</option>
+                      <option value="NOT_EXPECTED_CONFIRMED">Not expected for this period</option>
+                    </select>
+                  </div>
+                  <div class="field-row">
+                    <label for="effective-{{ coverage.id }}">Effective date</label>
+                    <input type="date" id="effective-{{ coverage.id }}" name="effective_date">
+                    <span class="cell-note">Leave blank if unknown &mdash; it stays UNKNOWN.</span>
+                  </div>
+                  <div class="field-row">
+                    <label for="replaced-{{ coverage.id }}">Replaced by</label>
+                    <select id="replaced-{{ coverage.id }}" name="replaced_by_instrument_id">
+                      <option value="">&mdash;</option>
+                      {% for other in instruments if other.id != instrument.id %}
+                        <option value="{{ other.id }}">{{ bank.instrument_identity(other) }}</option>
+                      {% endfor %}
+                    </select>
+                    <span class="cell-note">
+                      The replacement is a different Payment Instrument; this card keeps its own
+                      identity and history.
+                    </span>
+                  </div>
+                  <div class="field-row">
+                    <label for="note-{{ coverage.id }}">Note</label>
+                    <input type="text" id="note-{{ coverage.id }}" name="note"
+                           placeholder="Required for Not expected / Other">
+                  </div>
+                  <button type="submit">Record resolution</button>
+                </form>
+              </details>
+              {% if coverage.resolution %}
+                <form method="post" class="compact-form"
+                      action="{{ url_for('bank_monthly_clear_resolution', period_id=period.id, coverage_id=coverage.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit">Clear resolution</button>
+                </form>
+              {% endif %}
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="cell-note">
+    A missing source file never closes or deactivates an account or card. Only the explicit
+    Closed / Lost / Replaced / Other decisions above do that, and only because an operator chose
+    one by name. A closed instrument is kept permanently for historical audit and matching &mdash;
+    it is never deleted, and its last four and identity are never rewritten.
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

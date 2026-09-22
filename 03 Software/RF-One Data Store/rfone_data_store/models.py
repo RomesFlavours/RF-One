@@ -10557,6 +10557,29 @@ class PaymentInstrument(Base):
 
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
 
+    # BANK_MONTHLY_SOURCE_COMPLETENESS_001 §6 — HISTORICAL EFFECTIVE STATUS,
+    # kept apart from `status` above, which is only what is true TODAY.
+    #
+    # Both dates are nullable and nullable MEANS UNKNOWN. RF-One does not
+    # manufacture them, and in particular `created_at` is NEVER reinterpreted
+    # as the day the real card/account became active: it is the day this row
+    # was written, a system fact about RF-One, not about the bank.
+    #
+    # An instrument is never deleted when it stops being usable — it stays
+    # permanently queryable and matchable for historical audit, with its
+    # identity (last four, external identifier, display name) untouched.
+    effective_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    effective_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # CLOSED / LOST / REPLACED / OTHER — why it ceased, when a human said so.
+    lifecycle_end_reason: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # §13B — a REPLACED card's replacement is a DIFFERENT PaymentInstrument.
+    # This points AT that successor; it never overwrites this row's own
+    # last four or identity. Distinct from `linked_instrument_id`, which is
+    # a settlement/funding relationship and means something else entirely.
+    replaced_by_instrument_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -10568,7 +10591,24 @@ class PaymentInstrument(Base):
     linked_instrument: Mapped["PaymentInstrument | None"] = relationship(
         remote_side=[id], foreign_keys=[linked_instrument_id]
     )
+    replaced_by_instrument: Mapped["PaymentInstrument | None"] = relationship(
+        remote_side=[id], foreign_keys=[replaced_by_instrument_id]
+    )
     source_system: Mapped["SourceSystem | None"] = relationship()
+
+    @property
+    def lifecycle_label(self) -> str:
+        """What is known about this instrument's life, stated without
+        inventing anything. UNKNOWN is shown as UNKNOWN."""
+        start = self.effective_start_date.isoformat() if self.effective_start_date else "UNKNOWN"
+        if self.effective_end_date is not None:
+            end = self.effective_end_date.isoformat()
+        elif self.lifecycle_end_reason is not None:
+            end = "UNKNOWN"
+        else:
+            end = "open"
+        reason = f" ({self.lifecycle_end_reason})" if self.lifecycle_end_reason else ""
+        return f"{self.status} · from {start} · to {end}{reason}"
 
 
 # ---------------------------------------------------------------------------
@@ -12163,6 +12203,203 @@ class BankSourceInstrumentProfile(Base):
     created_from_batch: Mapped["BankImportBatch | None"] = relationship()
 
 
+# ---------------------------------------------------------------------------
+# Monthly Bank SOURCE COMPLETENESS (BANK_MONTHLY_SOURCE_COMPLETENESS_001).
+#
+# One question, and deliberately only one: for a given month, did RF-One
+# receive an original source download for every bank/card it should have?
+#
+# This is NOT the accounting close, NOT reconciliation completion, NOT P&L
+# approval and NOT classification completion. A month can be source-complete
+# while every one of its transactions is still unclassified — those are
+# different questions with different owners, and merging them would let a
+# missing file hide behind a finished-looking close.
+#
+# The source of truth is the ORIGINAL MONTHLY DOWNLOAD from each issuer.
+# No spreadsheet — not the WP Control workbook, not RfBank.xlsx, not any
+# hand-maintained control sheet — ever determines which instruments were
+# expected or whether a month is complete.
+# ---------------------------------------------------------------------------
+
+MONTHLY_PERIOD_STATUSES = ("OPEN", "INCOMPLETE", "COMPLETE")
+
+COVERAGE_EXPECTED = "EXPECTED"
+COVERAGE_NOT_EXPECTED = "NOT_EXPECTED"
+COVERAGE_NEEDS_CONFIRMATION = "NEEDS_HUMAN_CONFIRMATION"
+COVERAGE_EXPECTATIONS = (COVERAGE_EXPECTED, COVERAGE_NOT_EXPECTED, COVERAGE_NEEDS_CONFIRMATION)
+
+# §13 — the only resolutions a human may record for an instrument that has
+# no source file this month. Each says something different about reality,
+# and only the lifecycle ones touch the instrument at all.
+RESOLUTION_NO_ACTIVITY = "NO_ACTIVITY"            # existed, stayed active, nothing happened
+RESOLUTION_CLOSED = "CLOSED"
+RESOLUTION_LOST = "LOST"
+RESOLUTION_REPLACED = "REPLACED"
+RESOLUTION_OTHER = "OTHER"
+RESOLUTION_SOURCE_FILE_MISSING = "SOURCE_FILE_MISSING"  # unresolved ON PURPOSE — blocks COMPLETE
+RESOLUTION_NOT_EXPECTED = "NOT_EXPECTED_CONFIRMED"
+COVERAGE_RESOLUTIONS = (
+    RESOLUTION_NO_ACTIVITY, RESOLUTION_CLOSED, RESOLUTION_LOST, RESOLUTION_REPLACED,
+    RESOLUTION_OTHER, RESOLUTION_SOURCE_FILE_MISSING, RESOLUTION_NOT_EXPECTED,
+)
+LIFECYCLE_END_REASONS = (
+    RESOLUTION_CLOSED, RESOLUTION_LOST, RESOLUTION_REPLACED, RESOLUTION_OTHER,
+)
+# The resolutions that END an instrument's life. SOURCE_FILE_MISSING and
+# NO_ACTIVITY are deliberately absent: §14, absence of a file is not a
+# closure and may never become one.
+LIFECYCLE_ENDING_RESOLUTIONS = LIFECYCLE_END_REASONS
+
+
+class BankMonthlySourcePeriod(Base):
+    """One month of Bank source control.
+
+    Normally a calendar month, and nothing about it is special-cased: the
+    same mechanism works for 2026-08, 2026-09 and every month after, with
+    no month hardcoded anywhere.
+
+    `status` is OPEN while the month is being assembled, INCOMPLETE when it
+    has been evaluated and something is still unexplained, COMPLETE only
+    once every relevant instrument is either covered by an accepted source
+    file or explicitly resolved by a human (§12).
+    """
+
+    __tablename__ = "bank_monthly_source_periods"
+    __table_args__ = (
+        UniqueConstraint("period_month", name="uq_bmsp_period_month"),
+        CheckConstraint(
+            "status IN ('OPEN', 'INCOMPLETE', 'COMPLETE')", name="ck_bmsp_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # 'YYYY-MM'. Stored as text so the natural key is readable in any tool
+    # and sorts chronologically without a date function.
+    period_month: Mapped[str] = mapped_column(String(7), nullable=False)
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="OPEN")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=True
+    )
+    # §17 — append-only. Completing and reopening both add a line; neither
+    # erases what was recorded before, so a reopened month still says what
+    # it had once concluded and who concluded it.
+    audit_log: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    completed_by: Mapped["RFOneAccount | None"] = relationship()
+    coverages: Mapped[list["BankMonthlyInstrumentCoverage"]] = relationship(
+        back_populates="period", cascade="all, delete-orphan",
+    )
+
+
+class BankMonthlyInstrumentCoverage(Base):
+    """What this month knows about ONE Payment Instrument.
+
+    One row per (period, instrument): was it expected, did its source file
+    arrive, and — when it did not — what did a human say about it.
+
+    §18 — the `*_snapshot` columns are written when the month is COMPLETED
+    and never afterwards. They exist so a completed month stays
+    reconstructable: a card closed next year must not rewrite what this
+    month concluded. Only the few facts the completeness decision rested on
+    are copied; the instrument master data is not duplicated wholesale.
+    """
+
+    __tablename__ = "bank_monthly_instrument_coverages"
+    __table_args__ = (
+        UniqueConstraint(
+            "period_id", "payment_instrument_id", name="uq_bmic_period_instrument",
+        ),
+        CheckConstraint(
+            "expectation IN ('EXPECTED', 'NOT_EXPECTED', 'NEEDS_HUMAN_CONFIRMATION')",
+            name="ck_bmic_expectation",
+        ),
+        CheckConstraint(
+            "resolution IS NULL OR resolution IN ("
+            "'NO_ACTIVITY', 'CLOSED', 'LOST', 'REPLACED', 'OTHER', "
+            "'SOURCE_FILE_MISSING', 'NOT_EXPECTED_CONFIRMED')",
+            name="ck_bmic_resolution",
+        ),
+        Index("ix_bmic_period_id", "period_id"),
+        Index("ix_bmic_payment_instrument_id", "payment_instrument_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    period_id: Mapped[int] = mapped_column(
+        ForeignKey("bank_monthly_source_periods.id"), nullable=False
+    )
+    payment_instrument_id: Mapped[int] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=False
+    )
+
+    # §7 — derived from lifecycle EVIDENCE, never from a guess.
+    expectation: Mapped[str] = mapped_column(String(32), nullable=False)
+    # The sentence explaining that verdict, so the operator is never asked
+    # to trust an unexplained label.
+    expectation_basis: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # The accepted source file, when one arrived. `source_received` is
+    # derived from this rather than stored twice.
+    import_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_import_batches.id"), nullable=True
+    )
+
+    resolution: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Nullable MEANS UNKNOWN — never a fabricated date (§13B).
+    resolution_effective_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=True
+    )
+
+    # §18 — frozen at COMPLETE.
+    instrument_display_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    institution_snapshot: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_four_snapshot: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    instrument_status_snapshot: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    lifecycle_label_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    period: Mapped["BankMonthlySourcePeriod"] = relationship(back_populates="coverages")
+    payment_instrument: Mapped["PaymentInstrument"] = relationship()
+    import_batch: Mapped["BankImportBatch | None"] = relationship()
+    resolved_by: Mapped["RFOneAccount | None"] = relationship()
+
+    @property
+    def source_received(self) -> bool:
+        return self.import_batch_id is not None
+
+    @property
+    def is_resolved(self) -> bool:
+        """Whether this instrument no longer blocks the month (§12).
+
+        A received source file resolves it. So does an explicit human
+        resolution — except SOURCE_FILE_MISSING, which is the operator
+        stating that the file IS still owed, and therefore the one
+        resolution that deliberately keeps the month INCOMPLETE.
+        """
+        if self.source_received:
+            return True
+        if self.expectation == COVERAGE_NOT_EXPECTED and self.resolution is None:
+            return True
+        if self.resolution is None:
+            return False
+        return self.resolution != RESOLUTION_SOURCE_FILE_MISSING
+
+
 ALL_MODELS: tuple[type[Base], ...] = (
     ActingIdentity,
     AuthorityGrant,
@@ -12364,4 +12601,6 @@ ALL_MODELS: tuple[type[Base], ...] = (
     FinancialTransactionMatch,
     BankInstrumentAssignmentAudit,
     BankSourceInstrumentProfile,
+    BankMonthlySourcePeriod,
+    BankMonthlyInstrumentCoverage,
 )

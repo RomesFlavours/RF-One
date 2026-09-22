@@ -56,9 +56,26 @@ from rfone_data_store.bank_reconciliation import what_catalog_import
 from rfone_data_store.bank_reconciliation import classification as classification_service
 from rfone_data_store.bank_reconciliation import export as export_service
 from rfone_data_store.bank_reconciliation import matching as matching_service
+from rfone_data_store.bank_reconciliation import monthly_source
 from rfone_data_store.bank_reconciliation import parsers
 from rfone_data_store.bank_reconciliation import recognition
 from rfone_data_store.bank_reconciliation import service as bank_service
+
+
+def _parse_optional_date(value: str | None) -> date | None:
+    """An empty or unparseable date stays UNKNOWN (None).
+
+    BANK_MONTHLY_SOURCE_COMPLETENESS_001 §13B — an operator who does not
+    know when a card was closed must be able to say so, and RF-One must
+    keep that as UNKNOWN rather than substituting today or the period end.
+    """
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
 
 
 def register_bank_routes(
@@ -529,9 +546,34 @@ def register_bank_routes(
 
                 db.commit()
                 if not result.created:
+                    # BANK_MONTHLY_SOURCE_COMPLETENESS_001 §10 — the same
+                    # bytes were already imported, so the normal duplicate
+                    # import STOPS here: no second batch, no duplicate
+                    # transactions. The message names the four facts the
+                    # operator needs to recognise what they already have,
+                    # rather than a bare batch number. Identity is content,
+                    # not file name: a renamed identical file lands here
+                    # too, and a same-named file with different bytes does
+                    # not.
+                    existing = result.batch
+                    instrument = existing.payment_instrument
+                    covered = (
+                        f"{existing.date_range_start} to {existing.date_range_end}"
+                        if existing.date_range_start and existing.date_range_end
+                        else "date range unknown"
+                    )
+                    period_note = ""
+                    if existing.date_range_start is not None:
+                        period_note = (
+                            f", month {existing.date_range_start.strftime('%Y-%m')}"
+                        )
                     flash(
-                        f"{uploaded.filename}: identical file already imported previously "
-                        f"(batch #{result.batch.id}) — no changes made.",
+                        f"SOURCE FILE ALREADY IMPORTED — {uploaded.filename}: "
+                        f"instrument {instrument.display_name if instrument else 'NOT RESOLVED'}"
+                        f"{period_note}, original batch #{existing.id} "
+                        f"({existing.original_file_name}, {covered}), "
+                        f"imported {existing.uploaded_at:%Y-%m-%d %H:%M}. "
+                        "Nothing was imported again.",
                         "info",
                     )
                     continue
@@ -864,6 +906,194 @@ def register_bank_routes(
                 filter_payment_instrument_id=payment_instrument_id, filter_status=status,
                 filter_batch_id=batch_id, filter_batch=filter_batch,
             )
+
+    # -----------------------------------------------------------------
+    # Monthly SOURCE COMPLETENESS (BANK_MONTHLY_SOURCE_COMPLETENESS_001).
+    #
+    # One question only: did every bank/card that should have produced an
+    # original download this month actually produce one? This is not the
+    # accounting close, not reconciliation completion and not P&L approval
+    # — a month can be source-complete with every transaction still
+    # unclassified.
+    # -----------------------------------------------------------------
+
+    def _period_or_404(db, period_id: int):
+        period = db.get(m.BankMonthlySourcePeriod, period_id)
+        if period is None:
+            abort(404)
+        return period
+
+    @app.route("/bank/monthly")
+    @gate
+    def bank_monthly():
+        year = request.args.get("year", type=int)
+        month = request.args.get("month", type=int)
+        with SessionFactory() as db:
+            period = None
+            if year and month:
+                try:
+                    period = monthly_source.get_period(db, year, month)
+                except ValueError:
+                    flash("Month must be between 1 and 12.", "error")
+            if period is None:
+                period = db.scalars(
+                    select(m.BankMonthlySourcePeriod)
+                    .order_by(m.BankMonthlySourcePeriod.period_month.desc())
+                ).first()
+
+            rows, report, extra_batches = [], None, {}
+            if period is not None:
+                # An OPEN month re-evaluates on every view, so the screen is
+                # never stale. A COMPLETE one is history and is read as-is.
+                monthly_source.refresh_coverage(db, period)
+                db.commit()
+                rows = monthly_source.coverages(db, period)
+                report = monthly_source.evaluate(db, period)
+                for coverage in rows:
+                    covering = monthly_source.batches_covering(
+                        db, period=period, instrument_id=coverage.payment_instrument_id,
+                    )
+                    if len(covering) > 1:
+                        extra_batches[coverage.id] = covering[1:]
+
+            return render_template(
+                "bank_monthly.html",
+                period=period,
+                periods=monthly_source.list_periods(db),
+                coverages=rows,
+                report=report,
+                extra_batches=extra_batches,
+                instruments=db.scalars(
+                    select(m.PaymentInstrument).order_by(m.PaymentInstrument.display_name)
+                ).all(),
+                EXPECTED=m.COVERAGE_EXPECTED,
+                NOT_EXPECTED=m.COVERAGE_NOT_EXPECTED,
+                NEEDS_CONFIRMATION=m.COVERAGE_NEEDS_CONFIRMATION,
+                RESOLUTIONS=m.COVERAGE_RESOLUTIONS,
+            )
+
+    @app.route("/bank/monthly/select", methods=["POST"])
+    @gate
+    def bank_monthly_select():
+        require_csrf()
+        year = request.form.get("year", type=int)
+        month = request.form.get("month", type=int)
+        if not year or not month or not 1 <= month <= 12:
+            flash("Enter a year and a month between 1 and 12.", "error")
+            return redirect(url_for("bank_monthly"))
+        with SessionFactory() as db:
+            period = monthly_source.get_or_create_period(db, year, month)
+            monthly_source.refresh_coverage(db, period)
+            db.commit()
+        return redirect(url_for("bank_monthly", year=year, month=month))
+
+    @app.route("/bank/monthly/<int:period_id>/coverage/<int:coverage_id>/resolve", methods=["POST"])
+    @gate
+    def bank_monthly_resolve(period_id: int, coverage_id: int):
+        """Record what a human decided about an instrument with no source
+        file this month.
+
+        This is the ONLY path that may end a Payment Instrument's life, and
+        only because the operator named the reason. Absence of a file never
+        reaches here on its own."""
+        require_csrf()
+        resolution = (request.form.get("resolution") or "").strip()
+        note = request.form.get("note")
+        effective_date = _parse_optional_date(request.form.get("effective_date"))
+        replaced_by = request.form.get("replaced_by_instrument_id", type=int) or None
+        with SessionFactory() as db:
+            period = _period_or_404(db, period_id)
+            coverage = db.get(m.BankMonthlyInstrumentCoverage, coverage_id)
+            if coverage is None or coverage.period_id != period.id:
+                abort(404)
+            account = _current_account(db)
+            try:
+                monthly_source.resolve_coverage(
+                    db, coverage=coverage, resolution=resolution, note=note,
+                    effective_date=effective_date, replaced_by_instrument_id=replaced_by,
+                    account_id=account.id,
+                )
+                db.commit()
+                flash(
+                    f"{coverage.payment_instrument.display_name}: recorded as {resolution}"
+                    + ("" if effective_date else " (effective date UNKNOWN)") + ".",
+                    "info",
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+            month = period.period_month
+        year_s, month_s = month.split("-")
+        return redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s)))
+
+    @app.route("/bank/monthly/<int:period_id>/coverage/<int:coverage_id>/clear", methods=["POST"])
+    @gate
+    def bank_monthly_clear_resolution(period_id: int, coverage_id: int):
+        require_csrf()
+        with SessionFactory() as db:
+            period = _period_or_404(db, period_id)
+            coverage = db.get(m.BankMonthlyInstrumentCoverage, coverage_id)
+            if coverage is None or coverage.period_id != period.id:
+                abort(404)
+            try:
+                monthly_source.clear_resolution(db, coverage=coverage)
+                db.commit()
+                flash("Resolution cleared.", "info")
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+            month = period.period_month
+        year_s, month_s = month.split("-")
+        return redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s)))
+
+    @app.route("/bank/monthly/<int:period_id>/complete", methods=["POST"])
+    @gate
+    def bank_monthly_complete(period_id: int):
+        """The gate. RF-One cannot mark a monthly Bank source period
+        COMPLETE while an expected or unresolved account/card remains
+        unexplained — and there is no override."""
+        require_csrf()
+        with SessionFactory() as db:
+            period = _period_or_404(db, period_id)
+            account = _current_account(db)
+            report = monthly_source.complete_period(
+                db, period=period, account_id=account.id,
+            )
+            db.commit()
+            if report.can_complete:
+                flash(f"{period.period_month} is source-COMPLETE.", "info")
+            else:
+                flash(
+                    f"{period.period_month} stays INCOMPLETE — "
+                    f"{len(report.blockers)} account/card still unexplained.",
+                    "error",
+                )
+                for blocker in report.blockers:
+                    flash(blocker, "error")
+            month = period.period_month
+        year_s, month_s = month.split("-")
+        return redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s)))
+
+    @app.route("/bank/monthly/<int:period_id>/reopen", methods=["POST"])
+    @gate
+    def bank_monthly_reopen(period_id: int):
+        require_csrf()
+        reason = request.form.get("reason") or ""
+        with SessionFactory() as db:
+            period = _period_or_404(db, period_id)
+            account = _current_account(db)
+            try:
+                monthly_source.reopen_period(
+                    db, period=period, reason=reason, account_id=account.id,
+                )
+                db.commit()
+                flash(f"{period.period_month} reopened. Its previous decision is kept in the audit log.", "info")
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+            month = period.period_month
+        year_s, month_s = month.split("-")
+        return redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s)))
 
     @app.route("/bank/transactions/<int:transaction_id>/reassign-instrument", methods=["POST"])
     @gate
