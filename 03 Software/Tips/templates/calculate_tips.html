@@ -41,6 +41,15 @@
       is stored. Any period can be calculated as often as you like, including periods that overlap, contain
       or sit inside one you just calculated.
     </p>
+
+    <form method="post" action="{{ url_for('tips_configuration_run_calculation_now') }}" style="margin-top:.8rem;">
+      <button type="submit">Run Calculation Now</button>
+    </form>
+    <p class="muted" style="font-size:.78rem; margin-top:.4rem;">
+      The operational calculation — the same gated entry point the automatic scheduler uses. It always
+      targets the latest Business Date, not the window above, and it PERSISTS Tip Entitlements. Clover
+      readiness still decides whether it runs. It reports its outcome on Tips Configuration.
+    </p>
   </div>
 
   {% for category, summary in messages %}
