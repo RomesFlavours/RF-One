@@ -1781,6 +1781,17 @@ TIP_DISTRIBUTION_ENGINE_IMPLEMENTED_CALCULATION_BASES = (
 # HOURS_PROPORTIONAL/WEIGHTED_HOURS) can be added without a migration; the
 # engine itself is what currently only recognizes the one value below.
 ELIGIBILITY_MODE_ACTIVE_AT_SETTLEMENT = "ACTIVE_AT_SETTLEMENT"
+# TIPS_BRANCH_CONFIG_BUSINESS_DATE_AND_ELIGIBILITY_002 §5 — the
+# authoritative RF-One rule: a Host is eligible for an Order if they were
+# clocked in WHEN THE ORDER WAS OPENED. A Host who worked the table keeps
+# the tip-out even if they clock out before the guest pays; a Host who
+# arrives after the order was opened does not gain it. Settlement time no
+# longer decides eligibility.
+#
+# Evaluated against `Order.created_at`, which the Clover import maps from
+# `order.createdTime` (mapping.map_order) — the instant Clover opened the
+# order. Not `client_created_at` (a device clock) and not a payment time.
+ELIGIBILITY_MODE_ACTIVE_AT_ORDER_OPEN = "ACTIVE_AT_ORDER_OPEN"
 DISTRIBUTION_METHOD_EQUAL = "EQUAL"
 NO_ELIGIBLE_RECIPIENT_SOURCE_RETAINS = "SOURCE_RETAINS"
 TRANSACTION_SCOPE_ALL = "ALL"

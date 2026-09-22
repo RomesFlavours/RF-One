@@ -240,11 +240,20 @@ def _validate_calculation_base(calculation_base: str) -> None:
 # engine cannot compute would silently create a rule nothing can honor.
 # Broadening these tuples is a code change, never a migration (plain string
 # columns, no DB CheckConstraint).
+_IMPLEMENTED_ELIGIBILITY_MODES = (
+    m.ELIGIBILITY_MODE_ACTIVE_AT_SETTLEMENT,
+    # TIPS_BRANCH_CONFIG_BUSINESS_DATE_AND_ELIGIBILITY_002 §5 — now the
+    # authoritative rule, and genuinely implemented by the engine (both
+    # modes are, unlike the single-value vocabularies alongside them).
+    m.ELIGIBILITY_MODE_ACTIVE_AT_ORDER_OPEN,
+)
+
+
 def _validate_eligibility_mode(eligibility_mode: str) -> None:
-    if eligibility_mode != m.ELIGIBILITY_MODE_ACTIVE_AT_SETTLEMENT:
+    if eligibility_mode not in _IMPLEMENTED_ELIGIBILITY_MODES:
         raise ValueError(
-            f"Unknown or not-yet-implemented Eligibility Mode {eligibility_mode!r}; expected "
-            f"{m.ELIGIBILITY_MODE_ACTIVE_AT_SETTLEMENT!r}"
+            f"Unknown or not-yet-implemented Eligibility Mode {eligibility_mode!r}; expected one "
+            f"of {', '.join(repr(x) for x in _IMPLEMENTED_ELIGIBILITY_MODES)}"
         )
 
 

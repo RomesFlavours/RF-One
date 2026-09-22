@@ -38,7 +38,8 @@ scheduling are explicitly NOT implemented here — see
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
@@ -48,6 +49,8 @@ from .. import models as m
 from ..ingestion.common import utc_now
 from ..technical.connectors.clover.acquisition import get_order_settlement_time
 from . import distribution_rule_service as rule_svc
+
+UTC_TZ = timezone.utc
 from .rounding import equal_split
 
 UTC = timezone.utc
@@ -148,6 +151,10 @@ class TipCalculationResult:
     voluntary_total_minor: int = 0
     gratuity_total_minor: int = 0
     blocked_reason: str | None = None
+    # §5 — the period as the OPERATOR stated it. The UTC period_start/end
+    # above are the retrieval window derived from these, not the truth.
+    first_business_date: date | None = None
+    last_business_date: date | None = None
 
     @property
     def recipient_lines(self) -> list[AllocationLine]:
@@ -220,11 +227,26 @@ class EmployeeReviewRow:
     voluntary_tips_minor: int = 0
     gratuity_minor: int = 0
     result_type: str = RESULT_TYPE_SERVICE_OWNER
+    # §9/§10 — the policy-generated pool on this employee's orders that
+    # reached no eligible Host. It stays inside Net Payable for now (no
+    # withholding rule has been decided), but it must be VISIBLE and it
+    # must stop the row reading READY.
+    unresolved_tip_out_minor: int = 0
     warning_notes: list[str] = field(default_factory=list)
     # Task §18 — every Order this Employee is traceable through (as Gross-Tip
     # owner, outbound source, or inbound recipient) in this run, sorted, so
     # the Review UI can link straight to each Order's drill-down.
     order_ids: list[int] = field(default_factory=list)
+
+    @property
+    def needs_attention(self) -> bool:
+        """Whether this row must not be presented as ready to pay.
+
+        True while a positive unresolved distribution sits inside this
+        employee's Net Payable: the amount is theirs today only because no
+        eligible Host could receive it, and that is a decision nobody has
+        made yet (§10 — no withholding rule invented)."""
+        return self.unresolved_tip_out_minor > 0 or self.has_warning
 
     @property
     def net_payable_minor(self) -> int:
@@ -384,7 +406,8 @@ def _employees_shift_active_at(session: Session, *, location_id: int, at: dateti
 
 def _apply_rule_to_order(
     session: Session, *, order: m.Order, restaurant_id: int,
-    source_employee_id: int, settlement_time: datetime, rule_version: m.TipDistributionRuleVersion,
+    source_employee_id: int, settlement_time: datetime, order_open_time: datetime,
+    rule_version: m.TipDistributionRuleVersion,
     voluntary_minor: int, gratuity_minor: int, summary: CalculationSummary,
 ) -> list[AllocationLine]:
     """Returns the `AllocationLine`s this Rule Version produces for this
@@ -439,11 +462,28 @@ def _apply_rule_to_order(
             )
         ]
 
+    # TIPS_BRANCH_CONFIG_BUSINESS_DATE_AND_ELIGIBILITY_002 §5/§7 — WHICH
+    # INSTANT decides eligibility is the rule's own choice, and both modes
+    # compare ACTUAL INSTANTS. Business Date never enters here: it groups
+    # and reports, it does not establish who was working.
+    #
+    # ACTIVE_AT_ORDER_OPEN is the authoritative rule: the Host who was
+    # clocked in when the table was opened keeps the tip-out even if they
+    # go home before the guest pays. A Host arriving later does not gain it.
+    if rule_version.eligibility_mode == m.ELIGIBILITY_MODE_ACTIVE_AT_ORDER_OPEN:
+        eligibility_at = order_open_time
+        eligibility_label = "ACTIVE_AT_ORDER_OPEN"
+        eligibility_instant_label = "Order Open Time"
+    else:
+        eligibility_at = settlement_time
+        eligibility_label = "ACTIVE_AT_SETTLEMENT"
+        eligibility_instant_label = "Settlement Time"
+
     role_holders = _employees_with_role_at(
         session, restaurant_id=restaurant_id, restaurant_role_id=rule_version.recipient_role_id,
-        location_id=order.location_id, at=settlement_time,
+        location_id=order.location_id, at=eligibility_at,
     )
-    shift_active = _employees_shift_active_at(session, location_id=order.location_id, at=settlement_time)
+    shift_active = _employees_shift_active_at(session, location_id=order.location_id, at=eligibility_at)
     eligible_ids = sorted(role_holders & shift_active)
 
     if eligible_ids:
@@ -454,8 +494,8 @@ def _apply_rule_to_order(
                 line(
                     base_amount_minor=base_amount, pool_amount_minor=pool_amount, recipient_employee_id=emp_id,
                     recipient_eligibility_basis=(
-                        f"ACTIVE_AT_SETTLEMENT: held Recipient Role {role_name!r} with an active Shift at "
-                        f"Settlement Time {settlement_time.isoformat()}; EQUAL split across "
+                        f"{eligibility_label}: held Recipient Role {role_name!r} with an active Shift at "
+                        f"{eligibility_instant_label} {eligibility_at.isoformat()}; EQUAL split across "
                         f"{len(eligible_ids)} eligible recipient(s)."
                     ),
                     no_eligible_recipient=False, allocated_amount_minor=shares[emp_id],
@@ -480,20 +520,20 @@ def _apply_rule_to_order(
     if not role_holder_ids:
         exclusion = (
             f"NO_ROLE_HOLDER: no Employee held Recipient Role {role_name!r} at this Location at "
-            f"Settlement Time {settlement_time.isoformat()} — check EmployeeAssignment coverage."
+            f"{eligibility_instant_label} {eligibility_at.isoformat()} — check EmployeeAssignment coverage."
         )
     else:
         exclusion = (
             f"NO_ACTIVE_SHIFT: {len(role_holder_ids)} Employee(s) held Recipient Role {role_name!r} "
             f"({', '.join(str(i) for i in role_holder_ids)}) but none had an active Shift at "
-            f"Settlement Time {settlement_time.isoformat()} — check Shift records."
+            f"{eligibility_instant_label} {eligibility_at.isoformat()} — check Shift records."
         )
     return [
         line(
             base_amount_minor=base_amount, pool_amount_minor=pool_amount, recipient_employee_id=None,
             recipient_eligibility_basis=(
                 f"NO_ELIGIBLE_RECIPIENT: no Employee held Recipient Role {role_name!r} with an active Shift "
-                f"at Settlement Time {settlement_time.isoformat()}; SOURCE_RETAINS applied — the source "
+                f"at {eligibility_instant_label} {eligibility_at.isoformat()}; SOURCE_RETAINS applied — the source "
                 "employee retains the full pool."
             ),
             no_eligible_recipient=True, allocated_amount_minor=0, eligible_recipient_count=0,
@@ -585,6 +625,11 @@ def calculate_tips(
 
         summary.orders_considered += 1
 
+        # §6 — the authoritative Order Open Time is `Order.created_at`,
+        # which `clover.mapping.map_order` fills from `order.createdTime`.
+        # Never `client_created_at` (a device clock), never a payment time.
+        order_open_time = _aware_utc(order.created_at)
+
         voluntary_minor, gratuity_minor = _order_gross_tip_components(session, order)
         result.voluntary_total_minor += voluntary_minor
         result.gratuity_total_minor += gratuity_minor
@@ -615,6 +660,7 @@ def calculate_tips(
                 _apply_rule_to_order(
                     session, order=order, restaurant_id=restaurant_id, source_employee_id=order.employee_id,
                     settlement_time=settlement_time, rule_version=version, voluntary_minor=voluntary_minor,
+                    order_open_time=order_open_time,
                     gratuity_minor=gratuity_minor, summary=summary,
                 )
             )
@@ -698,6 +744,90 @@ def get_latest_payout_run(
     ).first()
 
 
+def require_location_business_day_config(
+    session: Session, restaurant_id: int,
+) -> tuple[m.Location, str]:
+    """The Location's Business Day configuration, or a clear refusal.
+
+    TIPS_BRANCH_CONFIG_BUSINESS_DATE_AND_ELIGIBILITY_002 §2 — there is NO
+    fallback. RF-One does not invent a timezone and does not invent an
+    operating-day cutoff: a calculation that guessed either would attribute
+    a whole night's takings to the wrong day and nobody would see it happen.
+    Returns `(location, "")` when configured, or `(location_or_None,
+    reason)` naming the Location and the missing field(s)."""
+    location_id = session.scalars(
+        select(m.RestaurantLocation.location_id)
+        .where(m.RestaurantLocation.restaurant_id == restaurant_id)
+    ).first()
+    location = session.get(m.Location, location_id) if location_id else None
+    if location is None:
+        return None, (
+            f"Restaurant {restaurant_id} has no associated Location, so no Business Day "
+            "configuration can be resolved."
+        )
+    missing = []
+    if not location.timezone:
+        missing.append("timezone")
+    if location.operating_day_cutoff_time is None:
+        missing.append("operating_day_cutoff_time")
+    if missing:
+        return location, (
+            f"Location {location.id} ({location.name!r}) is missing its Business Day "
+            f"configuration: {', '.join(missing)}. Tips cannot calculate a Business Date "
+            "without it, and RF-One never substitutes a default timezone or cutoff. "
+            "Configure the Location first."
+        )
+    return location, ""
+
+
+def business_date_window_utc(
+    location: m.Location, first_business_date: date, last_business_date: date,
+) -> tuple[datetime, datetime]:
+    """The UTC half-open instant window covering the INCLUSIVE Business Date
+    range for this Location.
+
+    §3/§5 — business day D is [D at cutoff local, D+1 at cutoff local), so
+    the range [first .. last] inclusive is [first at cutoff, last+1 at
+    cutoff). UTC is an implementation detail for retrieval; the period the
+    operator states and the UI shows is the Business Date range."""
+    tz = ZoneInfo(location.timezone)
+    cutoff = location.operating_day_cutoff_time
+    start_local = datetime.combine(first_business_date, cutoff, tzinfo=tz)
+    end_local = datetime.combine(last_business_date + timedelta(days=1), cutoff, tzinfo=tz)
+    return start_local.astimezone(UTC_TZ), end_local.astimezone(UTC_TZ)
+
+
+def calculate_tips_for_business_dates(
+    session: Session, *, restaurant_id: int,
+    first_business_date: date, last_business_date: date,
+) -> TipCalculationResult:
+    """THE Tips calculation for an INCLUSIVE Business Date range (§3/§4/§5).
+
+    Business Date comes from the canonical Sales implementation
+    (`rfone_data_store.business_date`) via the Location's own timezone and
+    cutoff — Tips has no business-date algorithm of its own and must not
+    grow one. Refuses outright when the Location is unconfigured."""
+    location, reason = require_location_business_day_config(session, restaurant_id)
+    if reason:
+        result = TipCalculationResult(
+            restaurant_id=restaurant_id,
+            period_start=_aware_utc(datetime.combine(first_business_date, time(0, 0))),
+            period_end=_aware_utc(datetime.combine(last_business_date, time(0, 0))),
+        )
+        result.blocked_reason = reason
+        return result
+    period_start, period_end = business_date_window_utc(
+        location, first_business_date, last_business_date,
+    )
+    result = calculate_tips(
+        session, restaurant_id=restaurant_id,
+        period_start=period_start, period_end=period_end,
+    )
+    result.first_business_date = first_business_date
+    result.last_business_date = last_business_date
+    return result
+
+
 def build_employee_review(session: Session, result: TipCalculationResult) -> list[EmployeeReviewRow]:
     """One row per Employee touched by this calculation, either as a
     Gross-Tip-earning Order owner, an outbound source, or an inbound
@@ -740,6 +870,19 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
     for order in orders_in_scope:
         if order.employee_id is not None:
             orders_by_employee.setdefault(order.employee_id, set()).add(order.id)
+    # §9 — the undistributed pool, attributed to the Service Owner who
+    # generated it and who is currently holding it.
+    unresolved_by_employee: dict[int, int] = {}
+    for allocation in allocations:
+        if (
+            allocation.source_employee_id is not None
+            and allocation.recipient_employee_id is None
+            and allocation.pool_amount_minor > 0
+        ):
+            unresolved_by_employee[allocation.source_employee_id] = (
+                unresolved_by_employee.get(allocation.source_employee_id, 0)
+                + allocation.pool_amount_minor
+            )
     for allocation in allocations:
         if allocation.source_employee_id is not None:
             outbound_by_employee[allocation.source_employee_id] = (
@@ -805,6 +948,7 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
                 voluntary_tips_minor=voluntary_by_employee.get(emp_id, 0),
                 gratuity_minor=gratuity_by_employee.get(emp_id, 0),
                 result_type=result_type,
+                unresolved_tip_out_minor=unresolved_by_employee.get(emp_id, 0),
                 warning_notes=warnings_by_employee.get(emp_id, []),
                 order_ids=sorted(orders_by_employee.get(emp_id, set())),
             )
@@ -825,18 +969,45 @@ class OperationalTotals:
     voluntary_minor: int = 0
     gratuity_minor: int = 0
     gross_minor: int = 0
-    tip_out_minor: int = 0
-    tip_received_minor: int = 0
+    # TIPS_BRANCH_CONFIG_BUSINESS_DATE_AND_ELIGIBILITY_002 §9 — three
+    # figures that used to be one.
+    #
+    # `tip_out_required_minor` is every pool the POLICY generated.
+    # `tip_distributed_minor` is what actually reached eligible Hosts.
+    # The gap between them is `unresolved_tip_out_minor`: money the rule
+    # said to move that nobody could receive. A SOURCE_RETAINS outcome is
+    # financially retained by the Service Owner and is STILL an unresolved
+    # DISTRIBUTION — reporting it as zero hid real money, which is exactly
+    # what this split fixes.
+    tip_out_required_minor: int = 0
+    tip_distributed_minor: int = 0
     net_payable_minor: int = 0
-    unresolved_minor: int = 0
+    engine_unresolved_minor: int = 0
 
     @property
-    def distribution_difference_minor(self) -> int:
-        return self.tip_out_minor - self.tip_received_minor
+    def unresolved_tip_out_minor(self) -> int:
+        """Required minus distributed — the money the policy called for and
+        no eligible Host received."""
+        return self.tip_out_required_minor - self.tip_distributed_minor
 
     @property
-    def distribution_balanced(self) -> bool:
-        return self.distribution_difference_minor == 0
+    def financial_difference_minor(self) -> int:
+        """Reconciliation AFTER accounting for both distributed and
+        unresolved amounts. Zero means every required dollar is accounted
+        for as either distributed or explicitly unresolved."""
+        return (
+            self.tip_out_required_minor
+            - self.tip_distributed_minor
+            - self.unresolved_tip_out_minor
+        )
+
+    @property
+    def financially_reconciled(self) -> bool:
+        return self.financial_difference_minor == 0
+
+    @property
+    def has_unresolved_distribution(self) -> bool:
+        return self.unresolved_tip_out_minor > 0
 
 
 def build_operational_totals(
@@ -845,14 +1016,21 @@ def build_operational_totals(
     """The §4 header for one run. Voluntary and Gratuity are reported
     separately because Clover reports them separately and the run has to
     reconcile against it — Gross is their sum, never a substitute."""
+    # §9 — Required is summed from the POOLS the policy generated, once per
+    # rule application. A distributed line is split across N recipients, so
+    # its pool must not be counted N times: take the pool from one line per
+    # (order, rule version) and add every undistributed pool in full.
+    pools: dict[tuple[int, int], int] = {}
+    for allocation in result.lines:
+        pools[(allocation.order_id, allocation.rule_version_id)] = allocation.pool_amount_minor
     return OperationalTotals(
         voluntary_minor=result.voluntary_total_minor,
         gratuity_minor=result.gratuity_total_minor,
         gross_minor=result.voluntary_total_minor + result.gratuity_total_minor,
-        tip_out_minor=sum(row.outbound_tip_out_minor for row in rows),
-        tip_received_minor=sum(row.inbound_tip_out_minor for row in rows),
+        tip_out_required_minor=sum(pools.values()),
+        tip_distributed_minor=sum(row.inbound_tip_out_minor for row in rows),
         net_payable_minor=sum(row.net_payable_minor for row in rows),
-        unresolved_minor=result.unresolved_total_minor,
+        engine_unresolved_minor=result.unresolved_total_minor,
     )
 
 

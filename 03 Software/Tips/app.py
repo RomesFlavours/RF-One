@@ -456,35 +456,58 @@ def _summary_flash(summary) -> dict:
 # START datetime / END datetime pair, expressed in the Restaurant's own
 # local timezone, and every view recalculates on demand.
 
-DEFAULT_BUSINESS_DAY_CUTOFF = time(2, 0)
+# TIPS_BRANCH_CONFIG_BUSINESS_DATE_AND_ELIGIBILITY_002 §2 — the UTC+02:00
+# fallback that used to live here is GONE. RF-One never substitutes a
+# timezone or an operating-day cutoff: a guessed cutoff attributes a whole
+# night's takings to the wrong Business Date and nobody sees it happen. A
+# Tips calculation on an unconfigured Location now refuses, naming the
+# Location and the missing field(s).
 _LOCAL_DT_FORMATS = ("%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S")
 
 
 def _restaurant_period_config(session, restaurant):
-    """The Restaurant's business-day boundary, owned by the EXISTING
-    `Location.timezone` / `Location.operating_day_cutoff_time` configuration
-    (`rfone_data_store.business_date`) rather than by a Tips-local constant,
-    so a different Restaurant or Corporate can choose a different boundary
-    without touching Tips. Falls back to UTC + 02:00 only when a Location
-    has not been configured yet, and the UI says so."""
-    tz_name, cutoff, configured = "UTC", DEFAULT_BUSINESS_DAY_CUTOFF, False
-    if restaurant is not None:
-        location_id = session.scalars(
-            select(m.RestaurantLocation.location_id)
-            .where(m.RestaurantLocation.restaurant_id == restaurant.id)
-        ).first()
-        location = session.get(m.Location, location_id) if location_id else None
-        if location is not None:
-            if location.timezone:
-                tz_name = location.timezone
-            if location.operating_day_cutoff_time is not None:
-                cutoff = location.operating_day_cutoff_time
-            configured = bool(location.timezone) and location.operating_day_cutoff_time is not None
+    """The Branch's business-day boundary, read from the EXISTING
+    `Location.timezone` / `Location.operating_day_cutoff_time`
+    configuration — never from a Tips-local constant, so a different
+    Restaurant or Corporate can choose a different boundary without
+    touching Tips.
+
+    §2 — NO FALLBACK. When either field is unset this returns
+    `configured=False` with a reason naming the Location and the missing
+    field(s), and the caller refuses to calculate. `tz`/`cutoff` come back
+    `None` so no code downstream can accidentally compute with a guess."""
+    if restaurant is None:
+        return None, None, None, False, "No Restaurant selected."
+    location_id = session.scalars(
+        select(m.RestaurantLocation.location_id)
+        .where(m.RestaurantLocation.restaurant_id == restaurant.id)
+    ).first()
+    location = session.get(m.Location, location_id) if location_id else None
+    if location is None:
+        return None, None, None, False, (
+            f"Restaurant {restaurant.id} has no associated Location, so no Business Day "
+            "configuration can be resolved."
+        )
+    missing = []
+    if not location.timezone:
+        missing.append("timezone")
+    if location.operating_day_cutoff_time is None:
+        missing.append("operating_day_cutoff_time")
+    if missing:
+        return None, None, None, False, (
+            f"Location {location.id} ({location.name}) is missing its Business Day "
+            f"configuration: {', '.join(missing)}. Tips cannot determine a Business Date "
+            "without it, and RF-One never substitutes a default timezone or cutoff. "
+            "Configure the Location, then recalculate."
+        )
     try:
-        tz = ZoneInfo(tz_name)
+        tz = ZoneInfo(location.timezone)
     except Exception:
-        tz_name, tz = "UTC", ZoneInfo("UTC")
-    return tz_name, tz, cutoff, configured
+        return None, None, None, False, (
+            f"Location {location.id} ({location.name}) has timezone "
+            f"{location.timezone!r}, which is not a valid IANA identifier."
+        )
+    return location.timezone, tz, location.operating_day_cutoff_time, True, ""
 
 
 def _default_period_local(session, restaurant):
@@ -492,7 +515,9 @@ def _default_period_local(session, restaurant):
     from its cutoff time to the SAME time the following day (e.g. 02:00 to
     02:00 for Winter Park). Returned as local-datetime strings for the
     form inputs."""
-    _, tz, cutoff, _ = _restaurant_period_config(session, restaurant)
+    _, tz, cutoff, configured, _ = _restaurant_period_config(session, restaurant)
+    if not configured:
+        return "", ""
     business_date = None
     if restaurant is not None:
         business_date = readiness_svc.get_latest_business_date_with_orders(session, restaurant.id)
@@ -536,7 +561,7 @@ def calculate_tips_home():
     one — simply calculates."""
     with SessionFactory() as session:
         restaurant = _default_restaurant(session)
-        tz_name, tz, cutoff, tz_configured = _restaurant_period_config(session, restaurant)
+        tz_name, tz, cutoff, tz_configured, config_error = _restaurant_period_config(session, restaurant)
 
         start_at = request.args.get("start_at") or ""
         end_at = request.args.get("end_at") or ""
@@ -546,9 +571,13 @@ def calculate_tips_home():
         result = None
         review_rows = []
         period_error = None
-        period = _calculation_period_dt(start_at, end_at, tz)
+        # §2 — refuse before computing anything when the Branch has no
+        # Business Day configuration. No guessed timezone, no guessed cutoff.
+        period = _calculation_period_dt(start_at, end_at, tz) if tz else None
         if restaurant is None:
             period_error = "No Restaurant exists in this database yet."
+        elif not tz_configured:
+            period_error = config_error
         elif period is None:
             period_error = "Enter a valid start and end date/time."
         elif period[1] <= period[0]:
@@ -577,7 +606,8 @@ def calculate_tips_home():
             "calculate_tips.html", restaurant=restaurant, start_at=start_at, end_at=end_at,
             result=result, review_rows=review_rows, period_error=period_error, totals=totals,
             tz_name=tz_name, tz_configured=tz_configured,
-            cutoff=cutoff.strftime("%H:%M"), review_mode=review_mode,
+            cutoff=cutoff.strftime("%H:%M") if cutoff else None,
+            config_error=config_error, review_mode=review_mode,
             audit_mode=(review_mode == m.TIPS_REVIEW_MODE_AUDIT),
             active_nav="calculate-tips",
         )
@@ -601,7 +631,7 @@ def calculate_tips_order_drilldown(order_id: int):
     end_at = request.args.get("end_at") or ""
     with SessionFactory() as session:
         restaurant = _default_restaurant(session)
-        _, tz, _, _ = _restaurant_period_config(session, restaurant)
+        _, tz, _, _, _ = _restaurant_period_config(session, restaurant)
         period = _calculation_period_dt(start_at, end_at, tz)
         drilldown = None
         if restaurant is not None and period is not None and period[1] > period[0]:
@@ -1321,7 +1351,7 @@ def _host_audit_report_from_request(session, restaurant):
     end_at = request.args.get("end_at") or ""
     if restaurant is None or not employee_id or not start_at or not end_at:
         return None
-    _, tz, _, _ = _restaurant_period_config(session, restaurant)
+    _, tz, _, _, _ = _restaurant_period_config(session, restaurant)
     period = _calculation_period_dt(start_at, end_at, tz)
     if period is None or period[1] <= period[0]:
         return None
