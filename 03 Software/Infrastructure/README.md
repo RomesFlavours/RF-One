@@ -110,3 +110,97 @@ Verificato il 2026-09-11 via `aws sesv2 get-account` / `get-email-identity` / `g
 | Prova reale di invio | **Non eseguita** — il mittente non è ancora verificato, quindi SES rifiuterebbe qualunque invio da quell'indirizzo. |
 
 **Prossimo passaggio (richiede il Product Owner):** aprire l'email di verifica AWS in `rfone@romesflavours.com` e confermare. Dopo la conferma, una sessione futura deve: impostare `RFONE_EMAIL_FROM_ADDRESS=rfone@romesflavours.com` su `rfone-web` (Secrets Manager o env var diretta), ridistribuire, ed eseguire una prova reale di invio verso la stessa casella — distinguendo l'accettazione della chiamata SES dalla consegna effettiva in casella (solo il Product Owner può verificare la seconda).
+
+---
+
+## RF-One come applicazione unica: la sessione condivisa fra `rfone-web` e `rfone-tips`
+
+**Contesto.** `TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001` §15 stabilisce
+che chi valida un periodo Tips deve essere identificato **dal sistema di
+accesso già esistente in RF-One** — mai un secondo login, mai un accesso
+separato per Tips, mai un nome digitato a mano, mai un validatore anonimo.
+
+Il codice rispetta la regola: la risoluzione della sessione vive in un solo
+posto (`rfone_data_store/rfone_web_session.py`) e sia `RF-One Web/auth.py`
+sia `Tips/rfone_identity.py` vi delegano. Tips non emette sessioni, non ha
+una pagina di login e non conosce password: **legge soltanto** l'identità
+che RF-One Web ha già stabilito.
+
+**Il blocco è di deployment, non di codice.** Il cookie di sessione Flask è
+firmato e legato all'**host** (il browser ignora la porta, non il
+hostname). Oggi le due parti di RF-One sono pubblicate su due hostname
+distinti:
+
+| Servizio App Runner | Hostname |
+|---|---|
+| `rfone-web` | `vhmsm9mgh8.us-east-1.awsapprunner.com` |
+| `rfone-tips` | `mxgsc3nwha.us-east-1.awsapprunner.com` |
+
+Un cookie emesso dal primo **non viene inviato** al secondo. Di conseguenza,
+su AWS Tips vede ogni richiesta come anonima e **rifiuta** la validazione —
+comportamento corretto e voluto: un'approvazione che RF-One non può
+attribuire a una persona è peggio di una bloccata, perché *sembra* firmata.
+
+Nessun espediente è stato adottato per aggirarlo. In particolare **non** si
+passa l'identità in URL, query string, header applicativo o token
+condiviso: sarebbe debito architetturale e un rischio di sicurezza.
+
+### Prerequisito comune a ogni soluzione
+
+Entrambi i servizi devono usare **lo stesso `RFONE_FLASK_SECRET_KEY`**,
+altrimenti nessuno dei due può verificare la firma del cookie dell'altro.
+Va verificato su AWS (`apprunner describe-service` su entrambi i servizi,
+più l'eventuale voce in Secrets Manager) — **non è stato verificato in
+questa sessione**, perché richiede accesso AWS.
+
+### Opzione A — un solo ingresso HTTP davanti ai due servizi *(raccomandata)*
+
+Una distribuzione CloudFront (o un dominio personalizzato con routing per
+percorso) davanti a entrambi i servizi App Runner:
+
+```
+https://<unico-host>/            -> origin rfone-web
+https://<unico-host>/tips/*      -> origin rfone-tips
+```
+
+- **Codice applicativo modificato: nessuno.** Entrambe le app restano
+  esattamente come sono.
+- Con un solo hostname il cookie di sessione è condiviso automaticamente:
+  è esattamente ciò che il contratto in `rfone_web_session.py` descrive.
+- Per l'utente RF-One diventa **una sola applicazione**, che è la richiesta
+  di §15.
+- Richiede una risorsa AWS nuova (distribuzione CloudFront, o dominio +
+  certificato). **Non creata**: creare infrastruttura AWS non prevista
+  richiede l'approvazione del Product Owner.
+
+### Opzione B — montare Tips dentro `rfone-web`, come già fatto per Training
+
+RF-One Web monta già Training al proprio interno dietro lo stesso login
+(`RF-One Web/training_integration.py`, route `/training`). Lo stesso
+schema applicato a Tips eliminerebbe del tutto il secondo servizio.
+
+**Non è la modifica minima**, e va detto chiaramente: le route di Training
+erano già un `Blueprint`, mentre quelle di Tips sono definite con
+`@app.route` su un proprio oggetto `Flask` (~40 route in
+`03 Software/Tips/app.py`). Montarle richiederebbe convertirle a Blueprint —
+una rifattorizzazione reale dell'applicazione Tips, non un'operazione di
+deployment. È la destinazione architetturale più pulita nel lungo periodo,
+ma non è ciò che serve per sbloccare la validazione oggi.
+
+### Opzione C — sottodomini con cookie di dominio padre
+
+Con un dominio registrato (`web.<dominio>` e `tips.<dominio>`) e il cookie
+emesso su `Domain=.<dominio>`. Richiede un dominio, un certificato e una
+modifica alla configurazione della sessione in entrambe le app. Più parti
+mobili dell'opzione A senza vantaggi rispetto ad essa.
+
+### Raccomandazione
+
+**Opzione A.** È l'unica che sblocca l'identità condivisa senza toccare il
+codice applicativo e senza introdurre debito: un ingresso unico davanti a
+ciò che già esiste. L'opzione B resta la direzione architetturale corretta
+e può essere affrontata separatamente, come rifattorizzazione dichiarata.
+
+**Decisione richiesta al Product Owner:** quale opzione adottare, e — per
+l'opzione A — se usare una distribuzione CloudFront sugli hostname App
+Runner attuali oppure attestarsi subito su un dominio RF-One definitivo.

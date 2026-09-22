@@ -461,14 +461,17 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     # Owner keeps 100% of that Order, and that is a normal, resolved,
     # payable result — not something to flag. Flagging it trained the
     # operator to distrust correct numbers, which is why it was removed.
-    # The outcome is still fully visible, as the audit-only
-    # `retained_no_eligible_host_minor` figure and in the allocation's own
-    # exclusion reason; it simply is not an attention condition.
+    # The per-order REASON stays in the Order drill-down, where a question
+    # about one order belongs. No AMOUNT is carried onto the employee's
+    # row: the AWS deploy task's §6/§10 removed the "would have been
+    # distributed" figure entirely, because nothing was withheld and
+    # nothing is outstanding — the Service Owner simply earned it.
     result.check(
         "9 (§6): server1's Review row does NOT flag attention for order 9's "
-        "no-eligible-recipient allocation — the Service Owner legitimately keeps it",
+        "no-eligible-recipient allocation, and carries no hypothetical retained amount "
+        "— the Service Owner legitimately earned 100% of it",
         not review_by_id[server1.id].needs_attention
-        and review_by_id[server1.id].retained_no_eligible_host_minor > 0,
+        and not hasattr(review_by_id[server1.id], "retained_no_eligible_host_minor"),
     )
 
     # === 19: ANY period is freely recalculable (TIPS_STATELESS_CALCULATION_001)

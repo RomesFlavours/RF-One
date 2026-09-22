@@ -227,17 +227,16 @@ class EmployeeReviewRow:
     voluntary_tips_minor: int = 0
     gratuity_minor: int = 0
     result_type: str = RESULT_TYPE_SERVICE_OWNER
-    # TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §6 — the pool the
-    # policy WOULD have moved had an eligible Host existed at Order Open
-    # Time, kept for audit only.
+    # There is deliberately NO "retained / would have been distributed"
+    # figure on this row.
     #
-    # It is NOT an unresolved amount and NOT an attention condition. When
-    # no Host was on shift when the table opened, there is no distribution
-    # obligation at all: the Service Owner retains 100% of that Order's
-    # Tips + Gratuity, and that is a NORMAL, RESOLVED, PAYABLE outcome.
-    # The previous task reported this as "Unresolved 1.86" and flagged the
-    # employee — both were wrong, and both are corrected here.
-    retained_no_eligible_host_minor: int = 0
+    # When no eligible recipient was on shift at Order Open Time, no
+    # distribution obligation arose, so nothing was withheld and nothing is
+    # outstanding: the Service Owner earned 100% of that Order. An amount
+    # describing what a rule WOULD have moved under circumstances that did
+    # not occur has no functional use, and carrying it "for audit" invited
+    # exactly the reading it was meant to prevent — that some amount is
+    # still owed to somebody. It is not computed, not stored and not shown.
     warning_notes: list[str] = field(default_factory=list)
     # Task §18 — every Order this Employee is traceable through (as Gross-Tip
     # owner, outbound source, or inbound recipient) in this run, sorted, so
@@ -898,32 +897,19 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
     for order in orders_in_scope:
         if order.employee_id is not None:
             orders_by_employee.setdefault(order.employee_id, set()).add(order.id)
-    # §6 — the pool that WOULD have moved, attributed to the Service Owner
-    # who legitimately keeps it. Audit information, never a control.
-    unresolved_by_employee: dict[int, int] = {}
-    for allocation in allocations:
-        if (
-            allocation.source_employee_id is not None
-            and allocation.recipient_employee_id is None
-            and allocation.pool_amount_minor > 0
-        ):
-            unresolved_by_employee[allocation.source_employee_id] = (
-                unresolved_by_employee.get(allocation.source_employee_id, 0)
-                + allocation.pool_amount_minor
-            )
     for allocation in allocations:
         if allocation.source_employee_id is not None:
             outbound_by_employee[allocation.source_employee_id] = (
                 outbound_by_employee.get(allocation.source_employee_id, 0) + allocation.allocated_amount_minor
             )
             orders_by_employee.setdefault(allocation.source_employee_id, set()).add(allocation.order_id)
-            # §6 — NOT a warning any more. No eligible Host at Order Open
-            # Time means no distribution obligation arose, so the Service
-            # Owner simply keeps 100% of that Order: a normal, resolved,
-            # payable outcome. The amount is reported on the row as
-            # `retained_no_eligible_host_minor` (audit) and the full
-            # per-order diagnostic stays in the Order drill-down; neither
-            # makes the employee's payment questionable.
+            # NOT a warning. No eligible Host at Order Open Time means no
+            # distribution obligation arose, so the Service Owner simply
+            # keeps 100% of that Order: a normal, resolved, payable
+            # outcome. The per-order REASON (which Host was expected, why
+            # they were excluded) stays in the Order drill-down, where a
+            # question about one order belongs — but no amount is carried
+            # forward, because no amount is owed.
         if allocation.recipient_employee_id is not None:
             inbound_by_employee[allocation.recipient_employee_id] = (
                 inbound_by_employee.get(allocation.recipient_employee_id, 0) + allocation.allocated_amount_minor
@@ -979,7 +965,6 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
                 voluntary_tips_minor=voluntary_by_employee.get(emp_id, 0),
                 gratuity_minor=gratuity_by_employee.get(emp_id, 0),
                 result_type=result_type,
-                retained_no_eligible_host_minor=unresolved_by_employee.get(emp_id, 0),
                 warning_notes=warnings_by_employee.get(emp_id, []),
                 order_ids=sorted(orders_by_employee.get(emp_id, set())),
             )
@@ -1014,9 +999,6 @@ class OperationalTotals:
     # finalization — and the discrepancy is REPORTED, never repaired.
     service_owner_entitlements_minor: int = 0
     other_recipient_entitlements_minor: int = 0
-    # Audit only (§6): what would have been distributed had a Host been on
-    # shift. Never a control, never a difference to explain.
-    retained_no_eligible_host_minor: int = 0
     distributed_minor: int = 0
 
     @property
@@ -1056,14 +1038,6 @@ def build_operational_totals(
     """The §4 header for one run. Voluntary and Gratuity are reported
     separately because Clover reports them separately and the run has to
     reconcile against it — Gross is their sum, never a substitute."""
-    # §6 — audit figure only: the pool that would have moved, counted once
-    # per (order, rule version) so a split line is not multiplied.
-    retained: dict[tuple[int, int], int] = {}
-    for allocation in result.lines:
-        if allocation.recipient_employee_id is None and allocation.pool_amount_minor > 0:
-            retained[(allocation.order_id, allocation.rule_version_id)] = (
-                allocation.pool_amount_minor
-            )
     return OperationalTotals(
         voluntary_minor=result.voluntary_total_minor,
         gratuity_minor=result.gratuity_total_minor,
@@ -1075,7 +1049,6 @@ def build_operational_totals(
             row.final_entitlement_minor for row in rows
             if row.result_type == RESULT_TYPE_HOST
         ),
-        retained_no_eligible_host_minor=sum(retained.values()),
         distributed_minor=sum(row.received_minor for row in rows),
     )
 
@@ -1086,7 +1059,7 @@ def populate_entitlements_for_run(
 ) -> list[m.TipEntitlement]:
     """STEP 12B integration (TASK_TIPS_COMPLETE_001 §9) — persists
     `build_employee_review`'s own per-Employee aggregate (gross/outbound/
-    inbound/final entitlement, plus the §13 voluntary/gratuity/result-type
+    inbound/final entitlement, plus the voluntary/gratuity/result-type
     split) as one `TipEntitlement` row per Employee for this run, so
     it can later be aggregated across MANY runs/Business Dates into a
     Payment Cycle without re-deriving it. Idempotent: calling this twice for the same COMPLETE run never
@@ -1125,7 +1098,6 @@ def populate_entitlements_for_run(
             voluntary_amount_minor=row.voluntary_tips_minor,
             gratuity_amount_minor=row.gratuity_minor,
             result_type=row.result_type,
-            retained_no_eligible_host_minor=row.retained_no_eligible_host_minor,
         )
         session.add(entitlement)
         entitlements.append(entitlement)

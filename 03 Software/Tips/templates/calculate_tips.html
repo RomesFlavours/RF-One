@@ -124,12 +124,6 @@
     <strong>Total Tips + Gratuity must equal Total Employee Entitlements exactly.</strong> Every cent
     collected in the period lands on exactly one employee. A non-zero Control Difference means the run is
     NOT valid for finalization &mdash; it is reported, never repaired automatically.
-    {% if totals.retained_no_eligible_host_minor %}
-      Of the total, ${{ "%.2f"|format(totals.retained_no_eligible_host_minor / 100) }} would have been
-      distributed had a Host been on shift when those Orders opened; with no eligible Host there is no
-      distribution obligation, so the Service Owner keeps 100% &mdash; a normal, payable outcome, not an
-      exception.
-    {% endif %}
     {% if result.no_eligible_recipient_lines %}
       {{ result.no_eligible_recipient_lines|length }} order(s) generated no Host distribution
       because no Host was eligible &mdash; the Service Owner retained the pool. Open the order
@@ -192,9 +186,6 @@
             <span class="muted" style="font-size:.72rem;">distributed away</span>
           {% else %}
             <span class="muted">&mdash;</span>
-            {% if row.retained_no_eligible_host_minor %}
-              <span class="cell-note">retains 100% &mdash; no Host on shift when those Orders opened</span>
-            {% endif %}
           {% endif %}
         </td>
         <td><strong>${{ "%.2f"|format(row.final_entitlement_minor / 100) }}</strong></td>

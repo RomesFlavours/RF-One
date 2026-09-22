@@ -270,11 +270,16 @@ def main() -> int:
                 "7. §6 an Order with no eligible Host at Order Open Time leaves the Service "
                 "Owner holding 100% of it, and the row reads READY, not ATTENTION",
                 server is not None
-                and server.retained_no_eligible_host_minor == 500
                 and server.needs_attention is False
                 and all(not r.needs_attention for r in rows),
-                detail=(f"retained {server and server.retained_no_eligible_host_minor}, "
-                        f"attention rows {[r.display_name for r in rows if r.needs_attention]}"),
+                detail=(f"attention rows {[r.display_name for r in rows if r.needs_attention]}"),
+            )
+            check(
+                "7c. §6/§10 NO hypothetical 'would have been distributed' amount exists "
+                "anywhere in the operational result — not on the row, not in the totals",
+                not hasattr(server, "retained_no_eligible_host_minor")
+                and not hasattr(totals, "retained_no_eligible_host_minor"),
+                detail="the figure must be absent, not merely zero",
             )
             check(
                 "7b. §6 the retained amount is INSIDE the Service Owner's entitlement, never "
@@ -333,8 +338,7 @@ def main() -> int:
                 run is not None
                 and run.gross_total_minor == 17000
                 and run.total_employee_entitlements_minor == 17000
-                and run.control_difference_minor == 0
-                and run.retained_no_eligible_host_minor == 500,
+                and run.control_difference_minor == 0,
                 detail=f"gross {run and run.gross_total_minor}",
             )
 
@@ -351,7 +355,7 @@ def main() -> int:
                 and server_ent.voluntary_amount_minor == 15000
                 and server_ent.gratuity_amount_minor == 2000
                 and server_ent.result_type == engine.RESULT_TYPE_SERVICE_OWNER
-                and server_ent.retained_no_eligible_host_minor == 500
+                and not hasattr(server_ent, "retained_no_eligible_host_minor")
                 and host_ent.result_type == engine.RESULT_TYPE_HOST
                 and host_ent.payable_amount_minor == 1200
                 and sum(e.payable_amount_minor for e in entitlements.values())

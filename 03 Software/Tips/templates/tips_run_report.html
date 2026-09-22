@@ -80,13 +80,11 @@
     {% endif %}
   </p>
   <p class="muted" style="font-size:.78rem;">
-    For audit only, never part of the control:
-    <strong>${{ "%.2f"|format((run.distributed_minor or 0) / 100) }}</strong> was distributed to
-    other recipients, and
-    <strong>${{ "%.2f"|format((run.retained_no_eligible_host_minor or 0) / 100) }}</strong> would
-    have been distributed had an eligible Host been on shift when those Orders opened. No Host was,
-    so no distribution obligation arose and the Service Owner keeps it &mdash; a normal, resolved,
-    payable outcome, already inside the entitlements above.
+    Of the entitlements above,
+    <strong>${{ "%.2f"|format((run.distributed_minor or 0) / 100) }}</strong> reached other
+    recipients rather than the Order's own Service Owner. Where an Order reached no eligible
+    recipient, no distribution obligation arose and the Service Owner earned 100% of it &mdash;
+    a normal, resolved, payable outcome with nothing withheld and nothing outstanding.
   </p>
 </div>
 

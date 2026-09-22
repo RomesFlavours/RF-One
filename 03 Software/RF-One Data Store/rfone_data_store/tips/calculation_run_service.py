@@ -105,7 +105,6 @@ def save_calculation_run(
         gratuity_total_minor=totals.gratuity_minor,
         service_owner_entitlements_minor=totals.service_owner_entitlements_minor,
         other_recipient_entitlements_minor=totals.other_recipient_entitlements_minor,
-        retained_no_eligible_host_minor=totals.retained_no_eligible_host_minor,
         distributed_minor=totals.distributed_minor,
         control_difference_minor=totals.control_difference_minor,
         state=m.TIPS_RUN_STATE_CALCULATED,
@@ -322,7 +321,6 @@ def get_run_report(session: Session, run_id: int) -> dict | None:
             "gross_minor": ent.gross_amount_minor,
             "distributed_away_minor": ent.outbound_amount_minor,
             "received_minor": ent.inbound_amount_minor,
-            "retained_no_eligible_host_minor": ent.retained_no_eligible_host_minor or 0,
             "final_entitlement_minor": ent.payable_amount_minor,
         })
     return {

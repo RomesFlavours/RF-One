@@ -2385,7 +2385,6 @@ class TipDistributionCalculationRun(Base):
     service_owner_entitlements_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     other_recipient_entitlements_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # §6 — audit only. Never a control and never a difference to explain.
-    retained_no_eligible_host_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     distributed_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # §11 — THE single control, stored as calculated. Zero is the only
     # value that permits validation or finalization; a non-zero value is
@@ -2516,12 +2515,12 @@ class TipEntitlement(Base):
     gratuity_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # SERVICE_OWNER / HOST / BOTH — how this person appears in the period.
     result_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    # §6 — what the policy WOULD have moved off this person's Orders had an
-    # eligible Host been on shift when the Order opened, and which they
-    # therefore legitimately keep. Audit only: it is already inside
-    # `payable_amount_minor` and is never subtracted from it, never a
-    # control, and never a reason to flag the row.
-    retained_no_eligible_host_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #
+    # There is deliberately no "retained / would have been distributed"
+    # column here. An Order that reached no eligible recipient created no
+    # distribution obligation, so nothing was withheld from this person and
+    # nothing is outstanding — `payable_amount_minor` below is simply what
+    # they earned. See `distribution_engine.EmployeeReviewRow`.
     # = gross - outbound + inbound (`build_employee_review`'s own
     # `net_before_adjustments_minor`) — may be <= 0; only a strictly positive
     # value is ever aggregated into a Payment Instruction (nothing to pay
