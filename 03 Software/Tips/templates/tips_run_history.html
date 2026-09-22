@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block page_title %}RF-One · Tips · Saved Periods{% endblock %}
+{% block content %}
+
+{# TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §19 — the Run History.
+   Every saved Calculation Run, newest first, final or not. Listing only
+   the approved ones would hide the recalculations that led to them, which
+   is the part an auditor asks about first. #}
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    <div class="{{ 'error' if category == 'error' else 'summary' }}">{{ message }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="card">
+  <h2>Saved Periods</h2>
+  {% if restaurant %}
+  <p class="muted" style="font-size:.85rem;">
+    Restaurant: <strong>{{ restaurant.name }}</strong>
+    &nbsp;·&nbsp; Validation Mode: <strong>{{ validation_mode }}</strong>
+  </p>
+  {% else %}
+  <p class="error">No Restaurant exists in this database yet.</p>
+  {% endif %}
+  <p class="muted" style="font-size:.78rem;">
+    A saved period records the Business Dates, the operating-day configuration and the Rule
+    Versions it was calculated under. Only a FINAL period is a Payroll source.
+  </p>
+
+  {% if not runs %}
+    <p class="empty">
+      No period has been saved yet. Close one from the Calculate Tips screen &mdash; calculating
+      a period on screen does not save it.
+    </p>
+  {% else %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Run</th><th>Business Dates</th><th>Total Tips + Gratuity</th>
+        <th>Total Employee Entitlements</th><th>Control</th><th>State</th>
+        <th>Approved by</th><th>Calculated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for run in runs %}
+      <tr>
+        <td><a href="{{ url_for('tips_run_report', run_id=run.id) }}">{{ run.id }}</a></td>
+        <td>
+          {% if run.first_business_date %}
+            {{ run.first_business_date }} &rarr; {{ run.last_business_date }}
+          {% else %}
+            <span class="muted">{{ run.period_start.strftime('%Y-%m-%d %H:%M') }} &rarr;
+            {{ run.period_end.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+          {% endif %}
+        </td>
+        <td>${{ "%.2f"|format(run.gross_total_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(run.total_employee_entitlements_minor / 100) }}</td>
+        <td>
+          {% if run.control_difference_minor is none %}
+            <span class="muted">not recorded</span>
+          {% elif run.control_passes %}
+            <span class="badge">balanced</span>
+          {% else %}
+            <span class="badge warn">${{ "%.2f"|format(run.control_difference_minor / 100) }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if run.is_final %}<span class="badge">FINAL</span>
+          {% else %}<span class="badge warn">{{ run.state }}</span>{% endif %}
+        </td>
+        <td style="font-size:.8rem;">
+          {% if not run.is_final %}
+            <span class="muted">&mdash;</span>
+          {% elif run.finalized_automatically %}
+            <span class="muted">automatically, no validator</span>
+          {% elif run.validated_by_account %}
+            {{ run.validated_by_account.display_name or run.validated_by_account.username }}
+          {% else %}
+            <span class="badge warn">unexplained</span>
+          {% endif %}
+        </td>
+        <td class="muted" style="font-size:.8rem;">
+          {{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '—' }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" style="font-size:.78rem; margin-top:.6rem;">
+    Rows with no Business Dates are older payout-anchor runs created before periods were saved
+    this way. They are shown as they are rather than back-filled with figures nobody calculated.
+  </p>
+  {% endif %}
+</div>
+
+{% endblock %}

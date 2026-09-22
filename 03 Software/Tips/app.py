@@ -62,6 +62,7 @@ from rfone_data_store.database import (  # noqa: E402
 from rfone_data_store.technical.connectors.clover.acquisition import (  # noqa: E402
     ImportAlreadyRunningError, MODE_BACKFILL, _safe_error_summary, get_order_settlement_time, import_clover_period,
 )
+from rfone_data_store.tips import calculation_run_service as run_svc  # noqa: E402
 from rfone_data_store.tips import distribution_engine as engine_svc  # noqa: E402
 from rfone_data_store.tips import distribution_rule_service as rule_svc  # noqa: E402
 from rfone_data_store.tips import host_audit_report as audit_svc  # noqa: E402
@@ -74,6 +75,11 @@ from rfone_data_store.tips import payout_process as payout_svc  # noqa: E402
 from rfone_data_store.tips import readiness as readiness_svc  # noqa: E402
 from rfone_data_store.tips import rule_ai_authoring as rule_ai_svc  # noqa: E402
 from rfone_data_store.tips import schedule_service as sched_svc  # noqa: E402
+from rfone_data_store.tips import validation_mode_service as validation_mode_svc  # noqa: E402
+# TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §15 — the ONE existing
+# RF-One login, read (never issued) here. See `rfone_identity.py` for the
+# whole of the integration and what it needs from the deployment.
+import rfone_identity  # noqa: E402
 from rfone_data_store import restaurant_role_service as role_svc  # noqa: E402
 
 UTC = timezone.utc
@@ -623,6 +629,143 @@ def calculate_tips_run():
     return redirect(url_for("calculate_tips_home", start_at=start_at, end_at=end_at))
 
 
+def _parse_business_date(value: str | None):
+    """A Business Date as the operator typed it (YYYY-MM-DD), or `None`.
+
+    Deliberately a DATE, never a datetime: a Business Date is not an
+    instant, and the Location's own cutoff is what turns it into one
+    (`distribution_engine.business_date_window_utc`)."""
+    parsed = _parse_date(value)
+    return parsed.date() if parsed else None
+
+
+@app.route("/calculate-tips/close-period", methods=["POST"])
+def calculate_tips_close_period():
+    """§12 — calculate an INCLUSIVE Business Date range and SAVE it as a
+    Calculation Run.
+
+    Separate from the Calculate Tips screen's own ad-hoc window on purpose.
+    That screen answers "what do these hours look like?" and persists
+    nothing, which is right for looking. Closing a period is a different
+    act: it names the operating days, records the configuration and rules
+    it was computed under, and produces something that can be validated and
+    paid. Mixing the two would have made every glance at a screen write a
+    payroll record."""
+    first = _parse_business_date(request.form.get("first_business_date"))
+    last = _parse_business_date(request.form.get("last_business_date"))
+    if first is None or last is None:
+        flash("Enter a first and last Business Date (YYYY-MM-DD).", "error")
+        return redirect(url_for("calculate_tips_home"))
+    if last < first:
+        flash("The last Business Date cannot be before the first.", "error")
+        return redirect(url_for("calculate_tips_home"))
+
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        if restaurant is None:
+            flash("No Restaurant exists in this database yet.", "error")
+            return redirect(url_for("calculate_tips_home"))
+        run, reason = run_svc.save_calculation_run(
+            session, restaurant_id=restaurant.id,
+            first_business_date=first, last_business_date=last,
+        )
+        if run is None:
+            session.rollback()
+            flash(reason, "error")
+            return redirect(url_for("calculate_tips_home"))
+        session.commit()
+        run_id = run.id
+        state = run.state
+    flash(
+        f"Business Dates {first} to {last} saved as Calculation Run {run_id} ({state}).",
+        "summary",
+    )
+    return redirect(url_for("tips_run_report", run_id=run_id))
+
+
+@app.route("/tips-runs")
+def tips_run_history():
+    """§19 — every saved Calculation Run for this Restaurant, newest first.
+
+    Non-final runs are listed too. A history showing only what was approved
+    would hide the recalculations that led there, which is precisely the
+    part an auditor asks about."""
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        runs = (
+            run_svc.list_runs(session, restaurant_id=restaurant.id)
+            if restaurant is not None else []
+        )
+        validation_mode = (
+            validation_mode_svc.get_validation_mode(session, restaurant_id=restaurant.id)
+            if restaurant is not None else m.TIPS_VALIDATION_MODE_MANUAL
+        )
+        return render_template(
+            "tips_run_history.html", restaurant=restaurant, runs=runs,
+            validation_mode=validation_mode, active_nav="tips-runs",
+        )
+
+
+@app.route("/tips-runs/<int:run_id>")
+def tips_run_report(run_id: int):
+    """§18 — the Calculation Run Report, read back from what was saved.
+
+    This route does NOT recalculate. `run_svc.get_run_report` has no access
+    to the engine at all, so reopening a final report next year shows the
+    figures it was approved on even if a rule, a shift or an order has been
+    edited since."""
+    with SessionFactory() as session:
+        report = run_svc.get_run_report(session, run_id)
+        if report is None:
+            flash(f"No Calculation Run with id {run_id}.", "error")
+            return redirect(url_for("tips_run_history"))
+        account = rfone_identity.current_account(session)
+        blockers = run_svc.finalization_blockers(session, report["run"])
+        return render_template(
+            "tips_run_report.html", report=report, run=report["run"],
+            validation_mode=validation_mode_svc.get_validation_mode(
+                session, restaurant_id=report["run"].restaurant_id,
+            ),
+            identified_as=rfone_identity.display_name(account),
+            is_identified=account is not None,
+            not_identified_message=rfone_identity.NOT_IDENTIFIED_MESSAGE,
+            finalization_blockers=blockers,
+            active_nav="tips-runs",
+        )
+
+
+@app.route("/tips-runs/<int:run_id>/validate", methods=["POST"])
+def tips_run_validate(run_id: int):
+    """§14/§15 — a person validates the period, which makes it final.
+
+    The validator is whoever this request is authenticated as through the
+    ONE existing RF-One login. There is no name field on the form and no
+    way to supply one: an approval RF-One cannot attach to an identified
+    person is refused, because an unsigned approval that looks signed is
+    worse than no approval at all."""
+    with SessionFactory() as session:
+        account = rfone_identity.current_account(session)
+        if account is None:
+            flash(rfone_identity.NOT_IDENTIFIED_MESSAGE, "error")
+            return redirect(url_for("tips_run_report", run_id=run_id))
+        run, reason = run_svc.validate_run(
+            session, run_id=run_id, account_id=account.id,
+        )
+        if run is None:
+            session.rollback()
+            flash(reason, "error")
+            return redirect(url_for("tips_run_report", run_id=run_id))
+        session.commit()
+        flash(
+            f"Calculation Run {run_id} validated by "
+            f"{rfone_identity.display_name(account)} and is now FINAL. "
+            "It can no longer be modified, and it is the Tips figure Payroll may use for "
+            "this period.",
+            "summary",
+        )
+    return redirect(url_for("tips_run_report", run_id=run_id))
+
+
 @app.route("/calculate-tips/order/<int:order_id>")
 def calculate_tips_order_drilldown(order_id: int):
     """Recalculates the selected window and explains one Order from that
@@ -663,12 +806,58 @@ def tips_configuration_home():
             payment_config = sched_svc.get_payment_schedule_effective_at(session, restaurant_id=restaurant.id)
             readiness_state = readiness_svc.describe_readiness(session, restaurant.id)
             review_mode = review_mode_svc.get_review_mode(session, restaurant_id=restaurant.id)
+        # §16 — a SEPARATE setting from Review Mode above, deliberately. One
+        # decides which report the UI emphasises; this one decides whether a
+        # human has to approve money.
+        validation_mode = (
+            validation_mode_svc.get_validation_mode(session, restaurant_id=restaurant.id)
+            if restaurant is not None else m.TIPS_VALIDATION_MODE_MANUAL
+        )
         return render_template(
             "tips_configuration.html", restaurant=restaurant, calc_config=calc_config,
             payment_config=payment_config, readiness_state=readiness_state, review_mode=review_mode,
+            validation_mode=validation_mode, validation_modes=m.TIPS_VALIDATION_MODES,
             schedule_modes=m.TIPS_SCHEDULE_MODES, connector_codes=connector_svc.KNOWN_CONNECTOR_CODES,
             active_nav="tips-configuration",
         )
+
+
+@app.route("/tips-configuration/validation-mode", methods=["POST"])
+def tips_configuration_set_validation_mode():
+    """§16 — set the Restaurant's Tips Validation Mode.
+
+    Choosing AUTOMATIC means deciding that nobody will sign off this
+    Restaurant's Tips periods, so the change itself records WHO made it
+    (§15) when an RF-One identity is available. The setting is still
+    changeable without one — it is a configuration, not an approval — but
+    an unattributed switch to AUTOMATIC is called out rather than accepted
+    silently."""
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        if restaurant is None:
+            flash("No Restaurant exists in this database yet.", "error")
+            return redirect(url_for("tips_configuration_home"))
+        account = rfone_identity.current_account(session)
+        validation_mode = request.form.get("validation_mode") or ""
+        try:
+            validation_mode_svc.set_validation_mode(
+                session, restaurant_id=restaurant.id, validation_mode=validation_mode,
+                updated_by_account_id=account.id if account else None,
+            )
+            session.commit()
+            if validation_mode == m.TIPS_VALIDATION_MODE_AUTOMATIC and account is None:
+                flash(
+                    "Validation Mode set to AUTOMATIC, but no RF-One user was identified for "
+                    "this change, so the decision is recorded without a name. Tips periods "
+                    "will now finalize themselves whenever the period balances.",
+                    "error",
+                )
+            else:
+                flash(f"Tips Validation Mode set to {validation_mode}.", "summary")
+        except ValueError as exc:
+            session.rollback()
+            flash(str(exc), "error")
+        return redirect(url_for("tips_configuration_home"))
 
 
 @app.route("/tips-configuration/review-mode", methods=["POST"])

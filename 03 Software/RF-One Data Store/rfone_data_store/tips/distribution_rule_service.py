@@ -16,7 +16,7 @@ configuration.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -97,7 +97,27 @@ def create_new_version(
 
     `source_semantics` defaults to `ROLE` (see `create_rule`'s own
     docstring for the ORDER_SERVICE_OWNER_SOURCE_SEMANTICS_001 alternative)
-    — every existing caller keeps working unchanged."""
+    — every existing caller keeps working unchanged.
+
+    TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §7 replaces the old
+    "close whichever version happens to be open-ended" step with the
+    Product Owner's own rule, applied to EVERY existing version, in one
+    pass (`_apply_temporal_replacement`):
+
+      * a version that STARTED EARLIER becomes OLD and stops at this
+        version's `effective_from`;
+      * a version scheduled to start inside this version's coverage
+        becomes CANCELLED, and never governs anything;
+      * a version starting at or after this version's `effective_to`
+        survives as ACTIVE — and when this version is open-ended there is
+        no such date, so every later version is cancelled.
+
+    The same pass runs whether the new version starts tomorrow or last
+    week: inserting a backdated rule needs no special mechanism, which is
+    the point ("Non creare meccanismi speciali o complicati soltanto per
+    inserire una regola storica"). The previous code only ever closed the
+    open-ended version, so backdating produced a window that ended before
+    it began and left two versions both claiming the same days."""
 
     rule = session.get(m.TipDistributionRule, rule_id)
     if rule is None:
@@ -119,11 +139,9 @@ def create_new_version(
     existing_versions = list_versions(session, rule_id)
     next_version_number = (existing_versions[-1].version_number + 1) if existing_versions else 1
 
-    current_open_version = next(
-        (v for v in reversed(existing_versions) if v.effective_to is None), None,
+    replaced = _apply_temporal_replacement(
+        existing_versions, effective_from=effective_from, effective_to=effective_to,
     )
-    if current_open_version is not None:
-        current_open_version.effective_to = effective_from
 
     new_version = m.TipDistributionRuleVersion(
         rule_id=rule_id, version_number=next_version_number, source_semantics=source_semantics,
@@ -132,10 +150,69 @@ def create_new_version(
         effective_from=effective_from, effective_to=effective_to, created_by=created_by,
         eligibility_mode=eligibility_mode, distribution_method=distribution_method,
         no_eligible_recipient_behavior=no_eligible_recipient_behavior, transaction_scope=transaction_scope,
+        status=m.TIP_RULE_VERSION_STATUS_ACTIVE,
     )
     session.add(new_version)
     session.flush()
+    new_version.replaced_versions = replaced  # transient; see the helper
     return new_version
+
+
+def _apply_temporal_replacement(
+    existing_versions: list[m.TipDistributionRuleVersion], *,
+    effective_from: datetime, effective_to: datetime | None,
+) -> dict[str, list[int]]:
+    """§7 — the whole of the Product Owner's rule, and nothing else.
+
+    Mutates each existing version's `status` (and, for an OLD one, its own
+    `effective_to`) and returns `{"old": [ids], "cancelled": [ids]}` so the
+    caller can report what entering this version did. A version's TERMS are
+    never touched; that remains append-only.
+
+    Returned as a plain dict and attached to the new version as a transient
+    attribute rather than persisted: it is a description of this one
+    operation for the operator who performed it, and the durable record of
+    what happened is each affected row's own `status`."""
+    old_ids: list[int] = []
+    cancelled_ids: list[int] = []
+    effective_from = _aware_utc(effective_from)
+    effective_to = _aware_utc(effective_to)
+    for version in existing_versions:
+        version_from = _aware_utc(version.effective_from)
+        version_to = _aware_utc(version.effective_to)
+        if version_from < effective_from:
+            # Started earlier: it governs up to the new version and stops.
+            version.status = m.TIP_RULE_VERSION_STATUS_OLD
+            if version_to is None or version_to > effective_from:
+                version.effective_to = effective_from
+            old_ids.append(version.id)
+        elif effective_to is not None and version_from >= effective_to:
+            # Starts after the new version ends: genuinely still to come.
+            version.status = m.TIP_RULE_VERSION_STATUS_ACTIVE
+        else:
+            # Scheduled inside the new version's coverage (or the new
+            # version is open-ended, so there is no "after"): it never
+            # governs anything.
+            version.status = m.TIP_RULE_VERSION_STATUS_CANCELLED
+            cancelled_ids.append(version.id)
+    return {"old": old_ids, "cancelled": cancelled_ids}
+
+
+def _aware_utc(value: datetime | None) -> datetime | None:
+    """Every effective date in this module is an instant in UTC, but SQLite
+    hands back naive datetimes for a `DateTime(timezone=True)` column, so a
+    stored value and a caller-supplied one cannot be compared directly.
+
+    §7 compares effective dates for the first time (the previous code only
+    ever assigned one), which is where that difference stopped being
+    harmless: an unnormalized comparison raises `TypeError` mid-replacement,
+    after some versions have already been re-statused. Naive values are read
+    as UTC, matching how they were written."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def list_versions(session: Session, rule_id: int) -> list[m.TipDistributionRuleVersion]:
@@ -156,9 +233,16 @@ def get_version_effective_at(
     using the rule version that was effective at that time": the ONE
     version (if any) whose `[effective_from, effective_to)` window contains
     `as_of`. Returns `None` if no version was effective at that moment —
-    never guesses/falls back to the nearest version."""
+    never guesses/falls back to the nearest version.
+
+    §7 — a CANCELLED version is excluded here, which is the entire
+    practical meaning of cancelling it: it governs no moment in time, past
+    or future. An OLD version is NOT excluded — it still governs its own
+    closed window, so a period calculated before the rule changed
+    reconstructs exactly as it did then."""
     stmt = select(m.TipDistributionRuleVersion).where(
         m.TipDistributionRuleVersion.rule_id == rule_id,
+        m.TipDistributionRuleVersion.status != m.TIP_RULE_VERSION_STATUS_CANCELLED,
         m.TipDistributionRuleVersion.effective_from <= as_of,
         (m.TipDistributionRuleVersion.effective_to.is_(None)) | (m.TipDistributionRuleVersion.effective_to > as_of),
     )

@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block page_title %}RF-One · Tips · Calculation Run {{ run.id }}{% endblock %}
+{% block content %}
+
+{# TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §18 — the Calculation
+   Run Report. Every figure on this page was read from what was SAVED when
+   the run was created; nothing here is recalculated on open. That is why
+   a final report can be reopened next year and still be the document that
+   was approved, even if a rule or a shift has changed since. #}
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    <div class="{{ 'error' if category == 'error' else 'summary' }}">{{ message }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="card">
+  <h2>
+    Calculation Run {{ run.id }}
+    {% if run.is_final %}
+      <span class="badge">FINAL</span>
+    {% else %}
+      <span class="badge warn">{{ run.state }} &mdash; not payable</span>
+    {% endif %}
+  </h2>
+  <p class="muted" style="font-size:.85rem;">
+    Business Dates
+    <strong>{{ run.first_business_date }}</strong> to <strong>{{ run.last_business_date }}</strong>
+    &nbsp;·&nbsp; operating day starts
+    <strong>{{ run.operating_day_cutoff_time.strftime('%H:%M') if run.operating_day_cutoff_time else 'not recorded' }}</strong>
+    <strong>{{ run.timezone_name or 'timezone not recorded' }}</strong>
+    &nbsp;·&nbsp; Rule Version{{ 's' if report.rule_version_ids|length != 1 else '' }}
+    {% if report.rule_version_ids %}{{ report.rule_version_ids|join(', ') }}{% else %}none applied{% endif %}
+  </p>
+  <p class="muted" style="font-size:.78rem;">
+    Calculated {{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '—' }} UTC.
+    This page reads the saved run &mdash; it does not recalculate, so the figures cannot drift
+    after the period was closed.
+  </p>
+</div>
+
+{# ---------------------------------------------------------------------
+   §11 — THE single monetary control. One equation, shown as an equation.
+   -------------------------------------------------------------------- #}
+<div class="card">
+  <h2>The control</h2>
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Voluntary Tips</th><th>Gratuity</th><th>Total Tips + Gratuity</th>
+        <th>Service Owner Entitlements</th><th>Other Recipient Entitlements</th>
+        <th>Total Employee Entitlements</th><th>Control Difference</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>${{ "%.2f"|format((run.voluntary_total_minor or 0) / 100) }}</td>
+        <td>${{ "%.2f"|format((run.gratuity_total_minor or 0) / 100) }}</td>
+        <td><strong>${{ "%.2f"|format(run.gross_total_minor / 100) }}</strong></td>
+        <td>${{ "%.2f"|format((run.service_owner_entitlements_minor or 0) / 100) }}</td>
+        <td>${{ "%.2f"|format((run.other_recipient_entitlements_minor or 0) / 100) }}</td>
+        <td><strong>${{ "%.2f"|format(run.total_employee_entitlements_minor / 100) }}</strong></td>
+        <td>
+          <strong>${{ "%.2f"|format((run.control_difference_minor or 0) / 100) }}</strong>
+          {% if run.control_passes %}<span class="badge">balanced</span>
+          {% else %}<span class="badge warn">does not balance</span>{% endif %}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" style="font-size:.78rem; margin-top:.6rem;">
+    Total Tips + Gratuity must equal Total Employee Entitlements exactly. Every cent the
+    Restaurant collected lands on one person's entitlement.
+    {% if not run.control_passes %}
+      This period does not balance, so it cannot become final. The difference is reported as it
+      was calculated and is never adjusted to make the page look right &mdash; find where the
+      money went.
+    {% endif %}
+  </p>
+  <p class="muted" style="font-size:.78rem;">
+    For audit only, never part of the control:
+    <strong>${{ "%.2f"|format((run.distributed_minor or 0) / 100) }}</strong> was distributed to
+    other recipients, and
+    <strong>${{ "%.2f"|format((run.retained_no_eligible_host_minor or 0) / 100) }}</strong> would
+    have been distributed had an eligible Host been on shift when those Orders opened. No Host was,
+    so no distribution obligation arose and the Service Owner keeps it &mdash; a normal, resolved,
+    payable outcome, already inside the entitlements above.
+  </p>
+</div>
+
+{# ---------------------------------------------------------------------
+   §13 — one row per person, with what they are owed.
+   -------------------------------------------------------------------- #}
+<div class="card">
+  <h2>What each employee is owed</h2>
+  {% if not report.employee_rows %}
+    <p class="empty">This period produced no employee results.</p>
+  {% else %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Employee</th><th>Result</th><th>Voluntary</th><th>Gratuity</th><th>Gross</th>
+        <th>Distributed away / received</th><th>Final Entitlement</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in report.employee_rows %}
+      <tr>
+        <td>{{ row.display_name }}</td>
+        <td>
+          {% if row.result_type == 'HOST' %}<span class="badge">Host</span>
+          {% elif row.result_type == 'BOTH' %}<span class="badge">Service Owner + Host</span>
+          {% else %}<span class="badge">Service Owner</span>{% endif %}
+        </td>
+        <td>${{ "%.2f"|format(row.voluntary_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(row.gratuity_minor / 100) }}</td>
+        <td>${{ "%.2f"|format(row.gross_minor / 100) }}</td>
+        <td>
+          {% if row.result_type == 'HOST' %}
+            + ${{ "%.2f"|format(row.received_minor / 100) }}
+          {% elif row.result_type == 'BOTH' %}
+            &minus; ${{ "%.2f"|format(row.distributed_away_minor / 100) }}
+            / + ${{ "%.2f"|format(row.received_minor / 100) }}
+          {% else %}
+            &minus; ${{ "%.2f"|format(row.distributed_away_minor / 100) }}
+          {% endif %}
+        </td>
+        <td><strong>${{ "%.2f"|format(row.final_entitlement_minor / 100) }}</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="6"><strong>Total Employee Entitlements</strong></td>
+        <td><strong>${{ "%.2f"|format(report.employee_total_minor / 100) }}</strong></td>
+      </tr>
+    </tfoot>
+  </table>
+  </div>
+  <p class="muted" style="font-size:.78rem; margin-top:.6rem;">
+    This total is summed from the rows above, not restated from the run header, so the report
+    proves its own arithmetic.
+    {% if report.employee_total_minor != run.total_employee_entitlements_minor %}
+      <span class="badge warn">disagrees with the saved header total</span>
+      The saved per-employee rows sum to
+      ${{ "%.2f"|format(report.employee_total_minor / 100) }} while the run header records
+      ${{ "%.2f"|format(run.total_employee_entitlements_minor / 100) }}. Do not pay from this
+      report until that is explained.
+    {% endif %}
+  </p>
+  {% endif %}
+</div>
+
+{# ---------------------------------------------------------------------
+   §14 / §15 / §16 / §17 / §21 — validation, finalization and Payroll.
+   -------------------------------------------------------------------- #}
+<div class="card">
+  <h2>Validation and finalization</h2>
+  <p class="muted" style="font-size:.85rem;">
+    This Restaurant's Tips Validation Mode is <strong>{{ validation_mode }}</strong>.
+    {% if validation_mode == 'MANUAL' %}
+      A period becomes final only when a person validates it.
+    {% else %}
+      A period finalizes itself as soon as it balances, with no person named.
+    {% endif %}
+  </p>
+
+  {% if run.is_final %}
+    <p>
+      <span class="badge">FINAL</span>
+      Finalized {{ run.finalized_at.strftime('%Y-%m-%d %H:%M') if run.finalized_at else '—' }} UTC
+      {% if run.finalized_automatically %}
+        automatically, under {{ run.validation_mode or 'AUTOMATIC' }} mode. No person validated
+        it, and none is named, because none did.
+      {% elif run.validated_by_account %}
+        after validation by <strong>{{ run.validated_by_account.display_name or run.validated_by_account.username }}</strong>
+        on {{ run.validated_at.strftime('%Y-%m-%d %H:%M') if run.validated_at else '—' }} UTC.
+      {% else %}
+        &mdash; but no validator is recorded, which should not be possible for a manually
+        finalized run. Treat this run as unexplained.
+      {% endif %}
+    </p>
+    <p class="muted" style="font-size:.78rem;">
+      A final run cannot be modified (§17). Correcting this period means calculating a new run;
+      this one stays exactly as it was approved.
+    </p>
+    <p class="muted" style="font-size:.78rem;">
+      Payroll may use this run as its Tips source for these Business Dates. Payroll reads these
+      saved entitlements and never recalculates from Orders.
+    </p>
+  {% else %}
+    {% if finalization_blockers %}
+      {% for blocker in finalization_blockers %}
+        <div class="error">{{ blocker }}</div>
+      {% endfor %}
+    {% endif %}
+    {% if not is_identified %}
+      <div class="error">{{ not_identified_message }}</div>
+    {% endif %}
+    {% if not finalization_blockers and is_identified %}
+      <form method="post" action="{{ url_for('tips_run_validate', run_id=run.id) }}">
+        <p>
+          You are signed in to RF-One as <strong>{{ identified_as }}</strong>. Validating records
+          your account as the person who approved these figures and makes the period final and
+          immutable.
+        </p>
+        <button type="submit">Validate this period as {{ identified_as }}</button>
+      </form>
+      <p class="muted" style="font-size:.78rem;">
+        There is no name field here on purpose: the validator is who you are signed in as, never
+        who anyone types.
+      </p>
+    {% endif %}
+    <p class="muted" style="font-size:.78rem;">
+      Until this period is final it is not a Payroll source, however correct its numbers look.
+    </p>
+  {% endif %}
+</div>
+
+<p><a href="{{ url_for('tips_run_history') }}">&larr; All saved periods</a></p>
+
+{% endblock %}

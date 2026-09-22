@@ -452,10 +452,23 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         "allocations where they are the recipient",
         review_by_id[host_a.id].inbound_tip_out_minor == manual_inbound.get(host_a.id, 0),
     )
+    # TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §6 SUPERSEDES the
+    # assertion that used to stand here, which required order 9's
+    # no-eligible-recipient outcome to raise a warning on server1's row.
+    #
+    # The Product Owner's decision is that no eligible recipient at the
+    # deciding instant means NO DISTRIBUTION OBLIGATION AROSE: the Service
+    # Owner keeps 100% of that Order, and that is a normal, resolved,
+    # payable result — not something to flag. Flagging it trained the
+    # operator to distrust correct numbers, which is why it was removed.
+    # The outcome is still fully visible, as the audit-only
+    # `retained_no_eligible_host_minor` figure and in the allocation's own
+    # exclusion reason; it simply is not an attention condition.
     result.check(
-        "9 (warning): server1's Review row flags a warning for order 9's no-eligible-recipient allocation",
-        review_by_id[server1.id].has_warning
-        and any("no eligible recipient" in note for note in review_by_id[server1.id].warning_notes),
+        "9 (§6): server1's Review row does NOT flag attention for order 9's "
+        "no-eligible-recipient allocation — the Service Owner legitimately keeps it",
+        not review_by_id[server1.id].needs_attention
+        and review_by_id[server1.id].retained_no_eligible_host_minor > 0,
     )
 
     # === 19: ANY period is freely recalculable (TIPS_STATELESS_CALCULATION_001)

@@ -40,6 +40,7 @@ This is Restaurant-independent and POS-independent at the Domain level. Nothing 
 | [Tip Policy.md](Tip%20Policy.md) | Restaurant-configured, temporally valid allocation rules |
 | [Tip Allocation.md](Tip%20Allocation.md) | The atomic, auditable result of applying a Tip Policy |
 | [Tips Payment Execution.md](Tips%20Payment%20Execution.md) | Core 2.0 Process-First pilot: paying a finalized Tip Allocation out through an external Payment Executor (Mercury, sandbox only), Payment Instruction identity, funding check, and Outcome Verification — status PILOT, for technical review |
+| [Finalized Tips Period.md](Finalized%20Tips%20Period.md) | Closing a calculated period: the Rule Version lifecycle (ACTIVE/OLD/CANCELLED), the one monetary control (Total Tips + Gratuity == Total Employee Entitlements), validation through the existing RF-One login, the separate MANUAL/AUTOMATIC Validation Mode, immutability of a final period, the Calculation Run Report, and the Payroll contract — status IMPLEMENTED |
 | [Tips Configuration.md](Tips%20Configuration.md) | Calculation/Payment Schedule, Payment Cycle, Payment Readiness, Restaurant-scoped Approve & Pay authority, connector-neutral payment execution, and the Tips Configuration/Payment Control UI — status IMPLEMENTED |
 
 ---

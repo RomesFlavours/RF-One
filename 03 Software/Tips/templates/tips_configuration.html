@@ -40,6 +40,39 @@
   </form>
 </div>
 
+{# TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §16 — deliberately its
+   own setting, placed immediately after Review Mode because the two are
+   easy to confuse and mean nothing like each other. Review Mode decides
+   which report the screen emphasises. This one decides whether a human has
+   to approve money. #}
+<div class="card">
+  <h2>Tips Validation Mode</h2>
+  <p class="muted" style="font-size:.85rem;">
+    Whether a calculated period needs a person to validate it before it can become final.
+    <strong>MANUAL</strong>: a person identified through their RF-One login must validate the
+    period; this is the default and applies to any Restaurant that has never set this.
+    <strong>AUTOMATIC</strong>: a period finalizes itself as soon as Total Tips + Gratuity equals
+    Total Employee Entitlements, with nobody named as having approved it.
+  </p>
+  <p class="muted" style="font-size:.85rem;">
+    This is <em>not</em> the Review Mode above. That one changes what you are shown; this one
+    changes who is accountable for the money.
+  </p>
+  <p class="muted" style="font-size:.85rem;">Current: <strong>{{ validation_mode }}</strong></p>
+  <form method="post" action="{{ url_for('tips_configuration_set_validation_mode') }}">
+    <div class="form-row">
+      <div>
+        <select name="validation_mode" required>
+          {% for mode in validation_modes %}
+          <option value="{{ mode }}" {{ 'selected' if validation_mode == mode else '' }}>{{ mode }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div><button type="submit">Set Validation Mode</button></div>
+    </div>
+  </form>
+</div>
+
 <div class="card">
   <h2>Calculation Schedule</h2>
   <p class="muted" style="font-size:.85rem;">

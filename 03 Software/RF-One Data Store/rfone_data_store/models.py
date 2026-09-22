@@ -1839,15 +1839,59 @@ class TipDistributionRule(Base):
     )
 
 
+# TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §7 — the lifecycle of
+# one Rule Version, once a LATER version is entered.
+#
+# The Product Owner's rule is deliberately simple, and this vocabulary is
+# the whole of it. When a new version takes effect from date F (running to
+# T, possibly open-ended):
+#
+#   ACTIVE     this version still governs part of the timeline.
+#   OLD        it STARTED BEFORE F. It keeps governing everything up to F
+#              and stops there. Its terms are untouched and its own past
+#              stays reconstructable — "old" means superseded going
+#              forward, never erased.
+#   CANCELLED  it was scheduled to START inside the new version's coverage,
+#              so it never governs anything at all. A future version
+#              survives (stays ACTIVE) only if it starts at or after T; if
+#              the new version is open-ended there is no "after", so every
+#              covered future version is cancelled.
+#
+# This is a status marker on the row, not a rewrite of its terms: rate,
+# calculation base, roles, modes and `effective_from` are never altered by
+# a later version. Only `status` and, for an OLD version, its own
+# `effective_to` move — which is exactly what closing a window means.
+TIP_RULE_VERSION_STATUS_ACTIVE = "ACTIVE"
+TIP_RULE_VERSION_STATUS_OLD = "OLD"
+TIP_RULE_VERSION_STATUS_CANCELLED = "CANCELLED"
+TIP_RULE_VERSION_STATUSES = (
+    TIP_RULE_VERSION_STATUS_ACTIVE,
+    TIP_RULE_VERSION_STATUS_OLD,
+    TIP_RULE_VERSION_STATUS_CANCELLED,
+)
+
+
 class TipDistributionRuleVersion(Base):
     """One effective-dated, complete configuration snapshot of a
-    `TipDistributionRule` (spec §16) — append-only. NEVER updated or deleted
-    once created (task's own explicit "never rewrite historical rule
-    versions"); editing a rule creates a new version here and closes the
-    PREVIOUS version's own `effective_to` only — no other column on a prior
-    version row is ever touched. Historical periods remain reconstructable
-    by selecting whichever version's `[effective_from, effective_to)` window
-    contains the timestamp in question."""
+    `TipDistributionRule` (spec §16).
+
+    A version's TERMS are append-only: rate, calculation base, source and
+    recipient roles, the four modes and `effective_from` are never rewritten
+    once created, and no version row is ever deleted (the task's own
+    "never rewrite historical rule versions"). Historical periods remain
+    reconstructable by selecting whichever ACTIVE-or-OLD version's
+    `[effective_from, effective_to)` window contains the timestamp in
+    question.
+
+    TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §7 adds an explicit
+    `status` (see the `TIP_RULE_VERSION_STATUS_*` comment above) so that
+    entering a new version says out loud what happened to the others:
+    versions that started earlier become OLD and stop at the new version's
+    start, versions scheduled inside the new version's coverage become
+    CANCELLED and never govern anything. Before §7 the only visible trace
+    was a silently-moved `effective_to`, which produced windows that ended
+    before they began when a version was backdated.
+    """
 
     __tablename__ = "tip_distribution_rule_versions"
     __table_args__ = (
@@ -1865,6 +1909,12 @@ class TipDistributionRuleVersion(Base):
             "(source_semantics = 'ROLE' AND source_role_id IS NOT NULL) OR "
             "(source_semantics = 'ORDER_SERVICE_OWNER' AND source_role_id IS NULL)",
             name="ck_tip_distribution_rule_version_source_role_id_matches_semantics",
+        ),
+        # §7 — the lifecycle vocabulary is closed and enforced DB-side, not
+        # only in application code.
+        CheckConstraint(
+            "status IN ('ACTIVE','OLD','CANCELLED')",
+            name="ck_tip_distribution_rule_version_status",
         ),
     )
 
@@ -1912,6 +1962,22 @@ class TipDistributionRuleVersion(Base):
 
     effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # §7 — ACTIVE / OLD / CANCELLED. See the TIP_RULE_VERSION_STATUS_*
+    # comment above the class for the exact meaning of each, and
+    # `distribution_rule_service.create_new_version` for the one place the
+    # transitions are applied.
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False,
+        default=TIP_RULE_VERSION_STATUS_ACTIVE, server_default=TIP_RULE_VERSION_STATUS_ACTIVE,
+    )
+
+    @property
+    def governs_any_period(self) -> bool:
+        """§7 — whether this version may ever be selected for a moment in
+        time. A CANCELLED version never governs anything, by definition; an
+        OLD version still governs its own closed past."""
+        return self.status != TIP_RULE_VERSION_STATUS_CANCELLED
 
     # Free text, matching this schema's pre-ActingIdentity convention for
     # this kind of provenance field (e.g. legacy `SelectionRuleSetVersion.
@@ -2140,6 +2206,100 @@ class TipsPaymentScheduleConfig(Base):
     )
 
 
+# TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §16 — the Tips
+# VALIDATION MODE vocabulary.
+#
+# MANUAL     a human must validate a calculated period before it can
+#            become final. This is the DEFAULT, and it is the default in
+#            every direction: an unconfigured Restaurant is MANUAL, a
+#            Restaurant whose configuration row was never written is
+#            MANUAL, and nothing anywhere resolves to AUTOMATIC by
+#            omission.
+# AUTOMATIC  a period whose single monetary control passes (§11) is
+#            finalized without waiting for a person.
+#
+# Deliberately NOT the existing `TipsCalculationScheduleConfig.review_mode`,
+# whose own AUDIT/AUTOMATIC values mean something entirely different —
+# "which report the UI puts in front of the operator" (see
+# `tips/review_mode_service.py`). Reusing it would have made one switch
+# silently govern two unrelated decisions, so §16 asks for a separate
+# configuration and this is it.
+TIPS_VALIDATION_MODE_MANUAL = "MANUAL"
+TIPS_VALIDATION_MODE_AUTOMATIC = "AUTOMATIC"
+TIPS_VALIDATION_MODES = (TIPS_VALIDATION_MODE_MANUAL, TIPS_VALIDATION_MODE_AUTOMATIC)
+
+
+class TipsValidationModeConfig(Base):
+    """§16 — one row per Restaurant saying whether a calculated Tips period
+    needs a human validation before it may become final.
+
+    One row per Restaurant, mutable in place: "which validation regime is
+    currently in force" is a current setting, not a historical fact needing
+    its own effective-dated audit trail — and every run that has ever been
+    finalized already records, on its own row, WHICH mode finalized it and
+    WHO (if anyone) validated it, so the history that matters is kept where
+    it belongs.
+
+    The absence of a row means MANUAL (`validation_mode_service.
+    get_validation_mode`). AUTOMATIC is only ever the result of an explicit,
+    recorded decision."""
+
+    __tablename__ = "tips_validation_mode_configs"
+    __table_args__ = (
+        UniqueConstraint("restaurant_id", name="uq_tips_validation_mode_config_restaurant"),
+        CheckConstraint(
+            "validation_mode IN ('MANUAL','AUTOMATIC')",
+            name="ck_tips_validation_mode_config_mode",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), nullable=False, index=True)
+    validation_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False,
+        default=TIPS_VALIDATION_MODE_MANUAL, server_default=TIPS_VALIDATION_MODE_MANUAL,
+    )
+    # WHO changed the setting, through the one RF-One login (§15) — never a
+    # typed-in name.
+    updated_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+
+# §12/§14/§16/§17 — the lifecycle of a persisted Tips period.
+#
+# CALCULATED  the period has been calculated and saved. Freely
+#             recalculable, and NOT a payroll source.
+# FINAL       definitive ("DEFINITIVO"). Immutable (§17) and the ONLY
+#             state Payroll may consume (§21).
+#
+# Two states, because there are exactly two ways a period becomes final
+# and both arrive at the same place:
+#
+#   MANUAL mode (§14/§15/§16)  a person identified through the RF-One
+#                              login validates it; `validated_at`/
+#                              `validated_by_account_id` record who and
+#                              when.
+#   AUTOMATIC mode (§16)       it finalizes itself once the §11 control
+#                              passes; `finalized_automatically` is true
+#                              and no validator is named, because there
+#                              is none and inventing one would be a
+#                              fabrication.
+#
+# There is deliberately NO intermediate "VALIDATED but not yet final"
+# state: nothing in the task asks a human to approve twice, and a state
+# nothing can leave is worse than no state at all.
+TIPS_RUN_STATE_CALCULATED = "CALCULATED"
+TIPS_RUN_STATE_FINAL = "FINAL"
+TIPS_RUN_STATES = (TIPS_RUN_STATE_CALCULATED, TIPS_RUN_STATE_FINAL)
+
+
 class TipDistributionCalculationRun(Base):
     """A PAYOUT ANCHOR, not an authoritative Tips calculation
     (TIPS_STATELESS_CALCULATION_001).
@@ -2162,6 +2322,23 @@ class TipDistributionCalculationRun(Base):
 
     This is the same boundary Compensation uses: Tips answers on request,
     and the consuming Domain crystallizes the figure when IT approves.
+
+    TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §12 EXTENDS this same
+    row rather than adding a parallel table beside it ("Non creare
+    duplicati inutili"). The stateless principle above is unchanged — Tips
+    still recalculates any period on demand and this row is still not a
+    cache consulted instead of calculating. What §12 adds is the record of
+    a period that was CLOSED: the Business Dates it covers, the Business
+    Day configuration and Rule Versions it was computed under, its own
+    totals and single control, and who validated and finalized it. That
+    record has to be durable precisely because it must NOT move once final
+    (§17) and because Payroll is only ever allowed to read a FINAL one
+    (§21).
+
+    `status` (RUNNING/COMPLETE/FAILED) still describes whether the
+    CALCULATION executed. `state` (see `TIPS_RUN_STATE_*` above) describes
+    how far through validation and finalization the period has travelled.
+    They answer different questions and neither replaces the other.
     """
 
     __tablename__ = "tip_distribution_calculation_runs"
@@ -2180,6 +2357,108 @@ class TipDistributionCalculationRun(Base):
     # Conceptual values: RUNNING, COMPLETE, FAILED.
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # -- §12: the period, as the operator stated it -----------------------
+    # `period_start`/`period_end` above stay the authoritative UTC
+    # retrieval window. These two are the BUSINESS DATES the operator
+    # actually chose, kept because "14 to 20 September" is the period a
+    # human validates and a report must show — never re-derived from the
+    # UTC instants, which would need the Business Day configuration to
+    # still be what it was.
+    first_business_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    last_business_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+
+    # -- §12: the configuration this run was computed under ---------------
+    # Recorded ON the run so the report can be reopened years later and
+    # still state the basis it used, even if the Location is reconfigured
+    # afterwards. A report that silently re-read today's configuration
+    # would misdescribe its own numbers.
+    timezone_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    operating_day_cutoff_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    # The Rule Version ids actually applied, comma-separated, smallest
+    # first — provenance, not a relationship to traverse for calculation.
+    rule_version_ids: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # -- §12/§13: the period totals, in minor units -----------------------
+    voluntary_total_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    gratuity_total_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    service_owner_entitlements_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    other_recipient_entitlements_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # §6 — audit only. Never a control and never a difference to explain.
+    retained_no_eligible_host_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    distributed_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # §11 — THE single control, stored as calculated. Zero is the only
+    # value that permits validation or finalization; a non-zero value is
+    # reported, never repaired.
+    control_difference_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # -- §12/§14/§15/§16/§17: validation and finalization -----------------
+    state: Mapped[str] = mapped_column(
+        String(16), nullable=False,
+        default=TIPS_RUN_STATE_CALCULATED, server_default=TIPS_RUN_STATE_CALCULATED,
+    )
+    # Which regime was in force when this run was finalized (§16) — kept
+    # per run, because changing the Restaurant's setting later must not
+    # rewrite how an already-final period was approved.
+    validation_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    # §15 — WHO validated, identified through the ONE existing RF-One
+    # login. A FK to `rfone_accounts`, deliberately not a free-text name:
+    # a typed-in name is not an identification, and Tips must not grow a
+    # second login or an anonymous validator.
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    validated_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=True
+    )
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # NULL when finalization was automatic (§16) — there is no person to
+    # name, and naming one would be a fabrication.
+    finalized_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=True
+    )
+    finalized_automatically: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+
+    validated_by_account: Mapped["RFOneAccount | None"] = relationship(
+        foreign_keys=[validated_by_account_id]
+    )
+    finalized_by_account: Mapped["RFOneAccount | None"] = relationship(
+        foreign_keys=[finalized_by_account_id]
+    )
+
+    @property
+    def gross_total_minor(self) -> int:
+        """§11 — Total Tips + Gratuity, the left side of the control."""
+        return (self.voluntary_total_minor or 0) + (self.gratuity_total_minor or 0)
+
+    @property
+    def total_employee_entitlements_minor(self) -> int:
+        """§11 — the right side of the control."""
+        return (self.service_owner_entitlements_minor or 0) + (
+            self.other_recipient_entitlements_minor or 0
+        )
+
+    @property
+    def control_passes(self) -> bool:
+        return self.control_difference_minor == 0
+
+    @property
+    def validated_by_person(self) -> bool:
+        """§14/§15 — whether a named, identified person approved this
+        period, as opposed to it having finalized automatically."""
+        return self.validated_by_account_id is not None
+
+    @property
+    def is_final(self) -> bool:
+        """§17 — whether this run is definitive and therefore immutable."""
+        return self.state == TIPS_RUN_STATE_FINAL
+
+    @property
+    def is_payroll_source(self) -> bool:
+        """§21 — ONLY a final run may be consumed by Payroll. A CALCULATED
+        or VALIDATED run is work in progress, whatever its numbers say."""
+        return self.is_final
 
 
 class TipEntitlement(Base):
@@ -2226,6 +2505,23 @@ class TipEntitlement(Base):
     gross_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
     outbound_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
     inbound_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §13 — the four
+    # figures the run report and Payroll actually need per person, added to
+    # this existing row rather than duplicated into a new table.
+    #
+    # `gross_amount_minor` above is Voluntary + Gratuity; these two split
+    # it the way Clover reports it and the way a payslip explains it.
+    voluntary_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    gratuity_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # SERVICE_OWNER / HOST / BOTH — how this person appears in the period.
+    result_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # §6 — what the policy WOULD have moved off this person's Orders had an
+    # eligible Host been on shift when the Order opened, and which they
+    # therefore legitimately keep. Audit only: it is already inside
+    # `payable_amount_minor` and is never subtracted from it, never a
+    # control, and never a reason to flag the row.
+    retained_no_eligible_host_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # = gross - outbound + inbound (`build_employee_review`'s own
     # `net_before_adjustments_minor`) — may be <= 0; only a strictly positive
     # value is ever aggregated into a Payment Instruction (nothing to pay

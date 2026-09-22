@@ -60,6 +60,36 @@
 
 {% if result %}
 <div class="card">
+  {# TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §12 — closing a
+     period is a different act from looking at one. The window above
+     answers "what do these hours look like?" and saves nothing. This form
+     names the OPERATING DAYS, saves the result with the configuration and
+     rules it was computed under, and produces something that can be
+     validated and paid. #}
+  <h2>Close this period</h2>
+  <p class="muted" style="font-size:.85rem;">
+    Calculating above saves nothing &mdash; look as often as you like. Closing a period saves it
+    as a Calculation Run by <strong>Business Date</strong> (the operating day, which starts at the
+    Branch cutoff, not at midnight) so it can be validated and used by Payroll.
+  </p>
+  <form method="post" action="{{ url_for('calculate_tips_close_period') }}">
+    <div class="form-row">
+      <div>
+        <label for="first_business_date">First Business Date</label>
+        <input type="date" id="first_business_date" name="first_business_date" required>
+      </div>
+      <div>
+        <label for="last_business_date">Last Business Date</label>
+        <input type="date" id="last_business_date" name="last_business_date" required>
+      </div>
+      <div><button type="submit">Calculate and save this period</button></div>
+    </div>
+  </form>
+  <p class="muted" style="font-size:.78rem;">
+    Both dates are inclusive. Saved periods are listed under
+    <a href="{{ url_for('tips_run_history') }}">Saved Periods</a>.
+  </p>
+
   {# TIPS_OPERATIONAL_RESULTS_AND_CALCULATION_FIX_001 §4 — enough to pay
      from and to reconcile with. Voluntary and Gratuity stay side by side
      because Clover reports them separately; Gross is their sum, not a

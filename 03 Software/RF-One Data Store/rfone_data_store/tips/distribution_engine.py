@@ -1086,7 +1086,8 @@ def populate_entitlements_for_run(
 ) -> list[m.TipEntitlement]:
     """STEP 12B integration (TASK_TIPS_COMPLETE_001 §9) — persists
     `build_employee_review`'s own per-Employee aggregate (gross/outbound/
-    inbound/net) as one `TipEntitlement` row per Employee for this run, so
+    inbound/final entitlement, plus the §13 voluntary/gratuity/result-type
+    split) as one `TipEntitlement` row per Employee for this run, so
     it can later be aggregated across MANY runs/Business Dates into a
     Payment Cycle without re-deriving it. Idempotent: calling this twice for the same COMPLETE run never
     creates duplicate rows (`uq_tip_entitlement_run_employee`) — existing
@@ -1115,7 +1116,16 @@ def populate_entitlements_for_run(
             calculation_run_id=run.id, restaurant_id=run.restaurant_id, business_date=business_date,
             employee_id=row.employee_id, gross_amount_minor=row.gross_earned_tips_minor,
             outbound_amount_minor=row.outbound_tip_out_minor, inbound_amount_minor=row.inbound_tip_out_minor,
-            payable_amount_minor=row.net_before_adjustments_minor, tip_payment_instruction_id=None,
+            payable_amount_minor=row.final_entitlement_minor, tip_payment_instruction_id=None,
+            # TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §13 — the
+            # per-person figures the run report and Payroll need, persisted
+            # from the SAME `build_employee_review` row that produced the
+            # aggregate above, so a reopened report can never disagree with
+            # the totals it was finalized on.
+            voluntary_amount_minor=row.voluntary_tips_minor,
+            gratuity_amount_minor=row.gratuity_minor,
+            result_type=row.result_type,
+            retained_no_eligible_host_minor=row.retained_no_eligible_host_minor,
         )
         session.add(entitlement)
         entitlements.append(entitlement)
