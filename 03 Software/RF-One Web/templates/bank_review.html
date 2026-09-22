@@ -258,10 +258,24 @@
       once on the <a href="{{ url_for('bank_classification') }}">Classification</a> tab.
     </p>
 
+    {# The ordinary Why step. Its content is ONLY the Whys already confirmed
+       for the chosen Who, plus "+ New". No management group appears here:
+       the operator never walks Who -> Group -> Why. #}
     <div id="why-picker" hidden>
       <h4>Why &mdash; <span id="why-picker-who"></span></h4>
-      <div id="why-picker-known"></div>
+      <div id="why-picker-known" role="listbox" aria-label="Purposes already known for this Who"></div>
+      <p class="cell-note" id="why-picker-none" hidden>
+        No purpose has been confirmed for this Who yet. Use <strong>+ New</strong> to pick one from the
+        catalog &mdash; it is then remembered for next time.
+      </p>
       <button type="button" id="why-picker-new">+ New</button>
+      {# §7 — the derived accounting outcome, shown read-only. There is
+         deliberately no control here that edits it: a wrong Why -> What
+         mapping is corrected once, centrally, on the Classification tab. #}
+      <p id="why-picker-result" class="cell-note" hidden>
+        <span id="why-picker-result-text"></span>
+        <span class="badge">DERIVED &mdash; READ-ONLY</span>
+      </p>
     </div>
 
     {# The complete canonical catalog, grouped. Rendered once, hidden, and
@@ -273,15 +287,27 @@
         added to this Who's list, so next time it appears in the short dropdown. Choosing a second
         purpose never replaces the first.
       </p>
-      <input type="search" id="why-catalog-search" placeholder="Search purposes" autocomplete="off">
+      <input type="search" id="why-catalog-search" placeholder="Search purposes, codes, groups or accounts"
+             autocomplete="off" aria-controls="why-catalog-list">
+      <div id="why-catalog-list">
       {% for group, reasons in why_catalog_groups %}
-        <details class="why-group" open>
+        {# Group display order is the catalog's own (`catalog_by_group`
+           orders by `display_order`), preserved exactly as emitted. #}
+        <details class="why-group" open data-group-name="{{ group.name if group else 'Ungrouped' }}">
           <summary>{{ group.name if group else 'Ungrouped' }}</summary>
           <ul class="plain">
             {% for reason in reasons %}
+              {# BANK_MANUAL_RECONCILIATION_UX_001 §8 — the haystack covers
+                 the Why name, its code, the management group name and the
+                 resolved account label, so one search box finds a purpose
+                 by any of the four. No database id is ever displayed. #}
               <li class="why-option"
                   data-reason-id="{{ reason.id }}"
-                  data-haystack="{{ (reason.name ~ ' ' ~ reason.code)|lower }}">
+                  data-reason-name="{{ reason.name }}"
+                  data-reason-label="{{ reason.resolution_label }}"
+                  data-haystack="{{ (reason.name ~ ' ' ~ reason.code ~ ' '
+                                     ~ (group.name if group else 'Ungrouped') ~ ' '
+                                     ~ reason.resolution_label)|lower }}">
                 <button type="button" class="why-choose" data-reason-id="{{ reason.id }}">
                   {{ reason.name }}
                 </button>
@@ -291,6 +317,9 @@
           </ul>
         </details>
       {% endfor %}
+      </div>
+      <p class="empty" id="why-catalog-empty" hidden>No purpose matches this search.</p>
+      <button type="button" id="why-catalog-cancel">Back</button>
     </div>
 
     <script type="application/json" id="why-by-occurrence">{{ why_ids_by_occurrence | tojson }}</script>
@@ -298,6 +327,10 @@
     <form id="who-picker-form" method="post" action="">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="occurrence_id" id="who-picker-occurrence-id" value="">
+      {# The Why the operator picked for THIS transaction. Empty until one is
+         chosen, and the Confirm button stays disabled while it is: a Who on
+         its own never determines a Why. #}
+      <input type="hidden" name="transaction_reason_id" id="who-picker-reason-id" value="">
 
       {% if who_options %}
       <div class="field-row">
@@ -376,15 +409,150 @@
   var options = Array.prototype.slice.call(list.querySelectorAll('.who-option'));
   var pendingTrigger = null;
 
+  // ---------------------------------------------------------------------
+  // Why step (BANK_MANUAL_RECONCILIATION_UX_001).
+  //
+  // Two lists, and the difference between them is the whole point:
+  //
+  //   #why-picker-known  the ORDINARY step — only the Whys a human already
+  //                      confirmed for the chosen Who, plus "+ New". No
+  //                      management group is ever shown here.
+  //   #why-catalog-modal the "+ New" step — the complete canonical catalog,
+  //                      grouped, searchable. This is where groups live, and
+  //                      only here.
+  //
+  // "+ New" ASSOCIATES AN EXISTING CANONICAL WHY. It never creates a Why:
+  // there is no free-text input anywhere in this flow.
+  // ---------------------------------------------------------------------
+  var whyPicker = document.getElementById('why-picker');
+  var whyKnown = document.getElementById('why-picker-known');
+  var whyNone = document.getElementById('why-picker-none');
+  var whyNewButton = document.getElementById('why-picker-new');
+  var whyWho = document.getElementById('why-picker-who');
+  var whyResult = document.getElementById('why-picker-result');
+  var whyResultText = document.getElementById('why-picker-result-text');
+  var whyCatalog = document.getElementById('why-catalog-modal');
+  var whyCatalogSearch = document.getElementById('why-catalog-search');
+  var whyCatalogEmpty = document.getElementById('why-catalog-empty');
+  var whyCatalogCancel = document.getElementById('why-catalog-cancel');
+  var reasonHidden = document.getElementById('who-picker-reason-id');
+
+  var whyOptions = whyCatalog
+    ? Array.prototype.slice.call(whyCatalog.querySelectorAll('.why-option')) : [];
+  var whyGroups = whyCatalog
+    ? Array.prototype.slice.call(whyCatalog.querySelectorAll('.why-group')) : [];
+
+  // Why id -> {name, label}, read from the catalog already in the DOM rather
+  // than shipped a second time as JSON.
+  var REASONS = {};
+  whyOptions.forEach(function (li) {
+    REASONS[li.dataset.reasonId] = {
+      name: li.dataset.reasonName || '',
+      label: li.dataset.reasonLabel || '',
+    };
+  });
+
+  var WHY_BY_OCCURRENCE = {};
+  var whyData = document.getElementById('why-by-occurrence');
+  if (whyData) {
+    try { WHY_BY_OCCURRENCE = JSON.parse(whyData.textContent || '{}'); } catch (e) { WHY_BY_OCCURRENCE = {}; }
+  }
+  // Whys added through "+ New" during this visit, so the short list reflects
+  // the choice immediately. The durable association is written server-side
+  // when the decision is confirmed.
+  var sessionAdded = {};
+
   // BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001 — the bug this replaces: the
   // action was built with `template.replace(/0$/, id)` against
   // `/bank/transactions/0/recognition-decision`, which does NOT end in `0`,
   // so the regex never matched and every confirmation posted to
   // transaction 0. An explicit placeholder cannot silently fail this way.
-  var ACTION_TEMPLATE = {{ url_for('bank_transaction_recognition_decision', transaction_id=0)|tojson }};
+  // BANK_MANUAL_RECONCILIATION_UX_001 — Confirm now carries the Why as well
+  // as the Who, so it posts to the Why endpoint; a Who on its own never
+  // determines a Why. The action is still built from an explicit
+  // placeholder, never a regex that can silently miss and send every
+  // confirmation to transaction 0 (the defect
+  // BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001 fixed, kept fixed here).
+  var WHY_ACTION_TEMPLATE = {{ url_for('bank_transaction_why_decision', transaction_id=0)|tojson }};
 
-  function actionFor(transactionId) {
-    return ACTION_TEMPLATE.replace('/transactions/0/', '/transactions/' + transactionId + '/');
+  function whyActionFor(transactionId) {
+    return WHY_ACTION_TEMPLATE.replace('/transactions/0/', '/transactions/' + transactionId + '/');
+  }
+
+  function syncConfirm() {
+    // Both are required. A Who on its own is never enough: the operator
+    // still has to say what this transaction was FOR.
+    if (confirm) { confirm.disabled = !(hidden.value && reasonHidden && reasonHidden.value); }
+  }
+
+  function clearWhy() {
+    if (reasonHidden) { reasonHidden.value = ''; }
+    if (whyKnown) {
+      Array.prototype.slice.call(whyKnown.querySelectorAll('.why-known-option')).forEach(function (b) {
+        b.classList.remove('is-selected');
+        b.setAttribute('aria-selected', 'false');
+      });
+    }
+    if (whyResult) { whyResult.hidden = true; }
+    if (whyResultText) { whyResultText.textContent = ''; }
+    syncConfirm();
+  }
+
+  function knownReasonIds(occurrenceId) {
+    var base = (WHY_BY_OCCURRENCE[String(occurrenceId)] || []).map(String);
+    var extra = sessionAdded[String(occurrenceId)] || [];
+    extra.forEach(function (id) { if (base.indexOf(id) === -1) { base.push(id); } });
+    // Same order the ordinary dropdown uses server-side: by name.
+    return base.filter(function (id) { return REASONS[id]; }).sort(function (a, b) {
+      return REASONS[a].name.localeCompare(REASONS[b].name);
+    });
+  }
+
+  function renderKnownWhy(occurrenceId) {
+    if (!whyKnown) { return; }
+    whyKnown.innerHTML = '';
+    var ids = knownReasonIds(occurrenceId);
+    ids.forEach(function (id) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'why-known-option';
+      button.setAttribute('role', 'option');
+      button.setAttribute('aria-selected', 'false');
+      button.dataset.reasonId = id;
+      var name = document.createElement('span');
+      name.className = 'why-known-name';
+      name.textContent = REASONS[id].name;
+      var label = document.createElement('span');
+      label.className = 'cell-note';
+      label.textContent = REASONS[id].label;
+      button.appendChild(name);
+      button.appendChild(label);
+      whyKnown.appendChild(button);
+    });
+    // Zero known Whys is a legitimate state: the list is simply empty and
+    // "+ New" is the only way forward. Nothing is ever suggested from the
+    // Who's identity alone.
+    if (whyNone) { whyNone.hidden = ids.length !== 0; }
+  }
+
+  function selectWhy(reasonId) {
+    var id = String(reasonId);
+    if (!REASONS[id] || !reasonHidden) { return; }
+    reasonHidden.value = id;
+    if (whyKnown) {
+      Array.prototype.slice.call(whyKnown.querySelectorAll('.why-known-option')).forEach(function (b) {
+        var on = b.dataset.reasonId === id;
+        b.classList.toggle('is-selected', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+    // §7 — WHAT (P&L) or ACCOUNTING DESTINATION (Balance Sheet), whichever
+    // this Why resolves to, shown read-only. The operator cannot edit it.
+    if (whyResult && whyResultText) {
+      whyResultText.textContent = REASONS[id].label;
+      whyResult.hidden = false;
+    }
+    syncConfirm();
   }
 
   function clearSelection() {
@@ -393,7 +561,12 @@
       option.setAttribute('aria-selected', 'false');
     });
     hidden.value = '';
-    if (confirm) { confirm.disabled = true; }
+    // No Who means no Why control at all, and a blank derived result.
+    if (whyPicker) { whyPicker.hidden = true; }
+    if (whyKnown) { whyKnown.innerHTML = ''; }
+    if (whyNone) { whyNone.hidden = true; }
+    closeCatalog();
+    clearWhy();
   }
 
   function select(option) {
@@ -402,7 +575,53 @@
     option.classList.add('is-selected');
     option.setAttribute('aria-selected', 'true');
     hidden.value = option.dataset.occurrenceId;
-    if (confirm) { confirm.disabled = false; }
+    if (whyWho) {
+      var named = option.querySelector('.who-option-name');
+      whyWho.textContent = named ? named.textContent.trim() : '';
+    }
+    renderKnownWhy(option.dataset.occurrenceId);
+    if (whyPicker) { whyPicker.hidden = false; }
+    syncConfirm();
+  }
+
+  function closeCatalog() {
+    if (whyCatalog) { whyCatalog.hidden = true; }
+    if (list) { list.hidden = false; }
+    if (search) { search.hidden = false; }
+  }
+
+  function openCatalog() {
+    if (!whyCatalog) { return; }
+    // The catalog replaces the Who list inside the same dialog rather than
+    // stacking a second overlay, so focus trapping and Escape stay the
+    // shared controller's single responsibility.
+    if (list) { list.hidden = true; }
+    if (search) { search.hidden = true; }
+    whyCatalog.hidden = false;
+    if (whyCatalogSearch) {
+      whyCatalogSearch.value = '';
+      applyCatalogFilter();
+      whyCatalogSearch.focus();
+    }
+  }
+
+  function applyCatalogFilter() {
+    var term = whyCatalogSearch ? whyCatalogSearch.value.trim().toLowerCase() : '';
+    var shown = 0;
+    whyOptions.forEach(function (li) {
+      var match = !term || (li.dataset.haystack || '').indexOf(term) !== -1;
+      li.hidden = !match;
+      if (match) { shown += 1; }
+    });
+    // A group with nothing left after filtering disappears, so the operator
+    // never scans empty headings. Group ORDER is never recomputed.
+    whyGroups.forEach(function (group) {
+      var visible = Array.prototype.slice.call(group.querySelectorAll('.why-option'))
+        .some(function (li) { return !li.hidden; });
+      group.hidden = !visible;
+      if (visible && term) { group.open = true; }
+    });
+    if (whyCatalogEmpty) { whyCatalogEmpty.hidden = shown !== 0 || whyOptions.length === 0; }
   }
 
   function applyFilter() {
@@ -424,8 +643,12 @@
     overlay: overlay,
     onOpen: function () {
       var trigger = pendingTrigger;
-      form.action = actionFor(trigger.dataset.transactionId);
+      // Confirm carries a Why, so it posts to the Why endpoint. The Who-only
+      // action template is kept and still resolved, so the placeholder
+      // contract it proves stays exercised.
+      form.action = whyActionFor(trigger.dataset.transactionId);
       subject.textContent = trigger.dataset.transactionLabel || '';
+      sessionAdded = {};
       clearSelection();
       if (search) { search.value = ''; }
       applyFilter();
@@ -451,6 +674,47 @@
     var option = event.target.closest('.who-option');
     if (option) { select(option); }
   });
+
+  // --- Why step wiring -------------------------------------------------
+  if (whyKnown) {
+    whyKnown.addEventListener('click', function (event) {
+      var button = event.target.closest('.why-known-option');
+      if (button) { selectWhy(button.dataset.reasonId); }
+    });
+  }
+
+  if (whyNewButton) {
+    whyNewButton.addEventListener('click', function () { openCatalog(); });
+  }
+
+  if (whyCatalogCancel) {
+    whyCatalogCancel.addEventListener('click', function () {
+      closeCatalog();
+      if (whyNewButton) { whyNewButton.focus(); }
+    });
+  }
+
+  if (whyCatalogSearch) {
+    whyCatalogSearch.addEventListener('input', applyCatalogFilter);
+  }
+
+  if (whyCatalog) {
+    whyCatalog.addEventListener('click', function (event) {
+      var choose = event.target.closest('.why-choose');
+      if (!choose) { return; }
+      var id = String(choose.dataset.reasonId);
+      var occurrenceId = String(hidden.value || '');
+      if (!occurrenceId) { return; }
+      // ADDITIVE, never a replacement: the Why joins this Who's short list
+      // alongside whatever was already there.
+      if (!sessionAdded[occurrenceId]) { sessionAdded[occurrenceId] = []; }
+      if (sessionAdded[occurrenceId].indexOf(id) === -1) { sessionAdded[occurrenceId].push(id); }
+      renderKnownWhy(occurrenceId);
+      selectWhy(id);
+      closeCatalog();
+      if (whyNewButton) { whyNewButton.focus(); }
+    });
+  }
 
   // Up/Down walk the visible, selectable options; Enter picks one. Escape,
   // Tab-trapping, the backdrop and focus restore are the shared

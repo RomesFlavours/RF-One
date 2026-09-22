@@ -226,9 +226,26 @@ def main() -> int:
             "review page offers ONE Select Who control per unclassified transaction",
             b"Select Who" in resp.data and b"who-picker-open" in resp.data,
         )
+        # This check used to assert that NO Why input existed at all, under
+        # BANK_RECONCILIATION_WHO_WHY_WHAT_001's "the Review offers the WHO
+        # and nothing else". That rule was superseded by
+        # BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §21-§22, which makes
+        # the operator choose the WHY, and wired by
+        # BANK_MANUAL_RECONCILIATION_UX_001.
+        #
+        # The intent worth keeping is the one that has not changed: the
+        # Review never offers a FREE-STANDING Why menu that could be used
+        # without a Who, and it never lets a Why be typed. The Why input
+        # exists, but it lives inside the Who picker, starts empty, and the
+        # Confirm button stays disabled until both are chosen.
         check(
-            "review page no longer renders a separate Why menu",
-            b'name="transaction_reason_id"' not in resp.data,
+            "review page renders no free-standing Why menu and no free-text Why",
+            b'<select name="transaction_reason_id"' not in resp.data
+            and b'<input type="text" name="transaction_reason' not in resp.data,
+        )
+        check(
+            "the Why input is the Who picker's own hidden field, empty until a Who is chosen",
+            b'name="transaction_reason_id" id="who-picker-reason-id" value=""' in resp.data,
         )
         # BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001: no Who exists yet at this
         # point, and an empty picker must SAY so rather than render a search

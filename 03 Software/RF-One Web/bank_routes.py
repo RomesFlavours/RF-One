@@ -930,30 +930,49 @@ def register_bank_routes(
         next time, and the WHAT is DERIVED from the Why. The operator
         never picks a What here; if the mapping is wrong the central Why
         definition is corrected instead."""
-        account = current_account()
+        # BANK_MANUAL_RECONCILIATION_UX_001 — this route writes a
+        # classification decision, so it needs the same CSRF check every
+        # other writing Bank route performs. It was the one POST endpoint
+        # in this module without it, which only went unnoticed while no
+        # browser flow actually reached it.
+        require_csrf()
         occurrence_id = request.form.get("occurrence_id", type=int)
         transaction_reason_id = request.form.get("transaction_reason_id", type=int)
+        # The same learning control the Who-only route already exposes, and
+        # the one the checkbox on this form has always described: it decides
+        # whether this confirmation also teaches RF-One that this normalized
+        # DESCRIPTION means this WHO. It is orthogonal to the WHY — the
+        # WHO <-> WHY association below is recorded either way — and it never
+        # teaches a WHO -> WHY recognition.
+        learn_description = bool(request.form.get("learn_description"))
         if not occurrence_id or not transaction_reason_id:
             flash("Choose both a Who and a Why.", "error")
             return redirect(request.referrer or url_for("bank_review"))
-        try:
-            with SessionFactory() as db:
-                decision = recognition.record_human_decision(
+        with SessionFactory() as db:
+            # `_current_account(db)` — the same session-scoped resolution
+            # every other writing route in this module uses. This line
+            # previously called a bare `current_account()`, a name that
+            # exists nowhere here, so the route raised NameError on every
+            # request; nothing reached it while the Why step was unwired.
+            account = _current_account(db)
+            try:
+                recognition.record_human_decision(
                     db,
                     recognition.HumanDecisionRequest(
                         transaction_id=transaction_id,
                         occurrence_id=occurrence_id,
                         transaction_reason_id=transaction_reason_id,
                         confirmed_by_account_id=account.id,
-                        learn_description=False,
+                        learn_description=learn_description,
                     ),
                 )
                 reason = db.get(m.BankTransactionReason, transaction_reason_id)
                 label = reason.resolution_label if reason else ""
                 db.commit()
-            flash(f"Classified as {label}.", "success")
-        except ValueError as exc:
-            flash(str(exc), "error")
+                flash(f"Classified as {label}.", "success")
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
         return redirect(request.referrer or url_for("bank_review"))
 
     @app.route("/bank/transactions/<int:transaction_id>/recognition-decision", methods=["POST"])
