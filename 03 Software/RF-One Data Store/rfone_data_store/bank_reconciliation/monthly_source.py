@@ -194,6 +194,84 @@ def expectation_for(
     )
 
 
+def lifecycle_end_decision(
+    session: Session, instrument_id: int,
+) -> "tuple[date, str, str] | None":
+    """The month in which a human ENDED this instrument's life, if one did.
+
+    Returns `(period_end, period_month, resolution)` for the EARLIEST month
+    carrying a lifecycle-ending resolution for this instrument, or None.
+
+    This stores nothing new. The decision is already recorded — the
+    resolution on `BankMonthlyInstrumentCoverage` and the month it belongs
+    to — and this only reads it back. It is not a date the account stopped
+    banking: it is the month a person said the account was over, which is a
+    different fact and is deliberately never written into
+    `effective_end_date`.
+    """
+    row = session.execute(
+        select(
+            m.BankMonthlySourcePeriod.period_end,
+            m.BankMonthlySourcePeriod.period_month,
+            m.BankMonthlyInstrumentCoverage.resolution,
+        )
+        .join(
+            m.BankMonthlyInstrumentCoverage,
+            m.BankMonthlyInstrumentCoverage.period_id == m.BankMonthlySourcePeriod.id,
+        )
+        .where(
+            m.BankMonthlyInstrumentCoverage.payment_instrument_id == instrument_id,
+            m.BankMonthlyInstrumentCoverage.resolution.in_(m.LIFECYCLE_ENDING_RESOLUTIONS),
+        )
+        .order_by(m.BankMonthlySourcePeriod.period_month)
+    ).first()
+    return (row[0], row[1], row[2]) if row is not None else None
+
+
+def expectation_with_lifecycle_boundary(
+    session: Session, instrument: "m.PaymentInstrument", period: "m.BankMonthlySourcePeriod",
+) -> Expectation:
+    """`expectation_for`, plus the FORWARD-ONLY effect of a human's explicit
+    lifecycle-ending decision.
+
+    An instrument closed with no eligible posting date keeps
+    `effective_end_date = NULL`, because nothing proves when the real
+    account stopped and RF-One does not invent that. But a person DID say
+    it was over, and that decision is authoritative about the months that
+    follow it: re-asking them to confirm the same closure every month
+    afterwards is noise, not diligence.
+
+    So the human decision closes the FUTURE and nothing else:
+
+      * months AFTER the one resolved -> NOT_EXPECTED;
+      * the resolved month itself -> untouched, and it stays resolved;
+      * every EARLIER month -> untouched, still evaluated by the normal
+        historical rules. A card closed in August was alive in July, and
+        July's source file is still owed. Making history NOT_EXPECTED
+        retroactively would destroy exactly the truth this control exists
+        to keep.
+
+    This applies ONLY while `effective_end_date` is UNKNOWN. When a real
+    banking end date was derived, that date already governs past and future
+    correctly and `evaluate_expectation` is left to do its job unchanged.
+    """
+    verdict = expectation_for(instrument, period)
+    if instrument.effective_end_date is not None:
+        return verdict
+    decision = lifecycle_end_decision(session, instrument.id)
+    if decision is None:
+        return verdict
+    boundary_end, boundary_month, resolution = decision
+    if period.period_start <= boundary_end:
+        return verdict
+    return Expectation(
+        m.COVERAGE_NOT_EXPECTED,
+        f"a human recorded this instrument as {resolution} for {boundary_month}, so it is not "
+        f"expected in any month after that. Its real end date stays UNKNOWN: no eligible "
+        f"posting date exists to derive one from, and none is invented.",
+    )
+
+
 # ---------------------------------------------------------------------------
 # §8/§5 — which source file covers which instrument this month
 # ---------------------------------------------------------------------------
@@ -259,7 +337,7 @@ def refresh_coverage(
 
     rows: list[m.BankMonthlyInstrumentCoverage] = []
     for instrument in relevant_instruments(session):
-        verdict = expectation_for(instrument, period)
+        verdict = expectation_with_lifecycle_boundary(session, instrument, period)
         batches = batches_covering(session, period=period, instrument_id=instrument.id)
         coverage = existing.get(instrument.id)
         if coverage is None:

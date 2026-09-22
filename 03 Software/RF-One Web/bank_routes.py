@@ -62,6 +62,26 @@ from rfone_data_store.bank_reconciliation import recognition
 from rfone_data_store.bank_reconciliation import service as bank_service
 
 
+def _parse_optional_date(value: str | None) -> date | None:
+    """An empty or unparseable date stays UNKNOWN (None).
+
+    BANK_MONTHLY_SOURCE_COMPLETENESS_001 §13B — an operator who does not
+    know a date must be able to say so, and RF-One must keep that as
+    UNKNOWN rather than substituting today or the period end.
+
+    Used only by the resolutions that end no life. A lifecycle-ending
+    resolution is dated from the instrument's own transactions and never
+    from this field.
+    """
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
 def _months_spanned(batch) -> set[tuple[int, int]]:
     """The calendar months a source file's own covered range touches.
 
@@ -1045,13 +1065,19 @@ def register_bank_routes(
         only because the operator named the reason. Absence of a file never
         reaches here on its own.
 
-        No closure date is read from the form. For a lifecycle-ending
-        resolution the service derives it from the instrument's last
-        eligible posting date, so there is exactly one way a closure can be
-        dated and the operator cannot override it."""
+        A lifecycle-ending resolution is dated by the service, from the
+        instrument's last eligible posting date, and the date this form may
+        carry is deliberately NOT read for one: there is exactly one way a
+        closure can be dated and the operator cannot override it. For every
+        other resolution the date is read and passed through exactly as it
+        always was."""
         require_csrf()
         resolution = (request.form.get("resolution") or "").strip()
         note = request.form.get("note")
+        effective_date = (
+            None if resolution in m.LIFECYCLE_ENDING_RESOLUTIONS
+            else _parse_optional_date(request.form.get("effective_date"))
+        )
         replaced_by = request.form.get("replaced_by_instrument_id", type=int) or None
         with SessionFactory() as db:
             period = _period_or_404(db, period_id)
@@ -1062,6 +1088,7 @@ def register_bank_routes(
             try:
                 monthly_source.resolve_coverage(
                     db, coverage=coverage, resolution=resolution, note=note,
+                    effective_date=effective_date,
                     replaced_by_instrument_id=replaced_by, account_id=account.id,
                 )
                 derived = coverage.resolution_effective_date

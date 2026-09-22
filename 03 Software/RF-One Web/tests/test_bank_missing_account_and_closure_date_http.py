@@ -125,6 +125,12 @@ def main() -> int:
             ("nulldates", "Null Dates Card", "8888"),
             ("missing_file", "Missing File Card", "9999"),
             ("override", "Override Card", "1212"),
+            ("lost_unknown", "Lost Card", "1313"),
+            ("replaced_unknown", "Replaced Card", "1414"),
+            ("successor", "Successor Card", "1515"),
+            ("other_unknown", "Other Card", "1616"),
+            ("noactivity", "No Activity Card", "1717"),
+            ("notexpected", "Not Expected Card", "1818"),
         ):
             ids[key] = mk_instrument(db, name, four).id
 
@@ -251,8 +257,14 @@ def main() -> int:
     # =================================================================
     print("\n4. 'Close account' derives the date; none is asked for")
     # =================================================================
-    check("4a. the form no longer offers a date input at all",
-          'name="effective_date"' not in monthly_page)
+    # SUPERSEDED by BANK_UNKNOWN_DATE_CLOSURE_FIX: the date input was removed
+    # for every resolution, which was too broad. It is back for the
+    # resolutions that end no life, and hidden — by the form and unread by
+    # the route — for the ones that do.
+    check("4a. the date field exists again, bound to the decision that governs it",
+          'name="effective_date"' in monthly_page
+          and "data-effective-date-for" in monthly_page
+          and '"CLOSED", "LOST", "REPLACED", "OTHER"' in monthly_page)
     resolve("plain", resolution="CLOSED", note="Statement confirms closure")
     inst = instrument("plain")
     check("4. CLOSED ends the life through the existing mechanism",
@@ -333,6 +345,98 @@ def main() -> int:
           inst.effective_end_date is None)
 
     # =================================================================
+
+    # -----------------------------------------------------------------
+    print("\n14-18. a human lifecycle decision closes the FUTURE, never the past")
+    # -----------------------------------------------------------------
+    # 'empty' was resolved CLOSED for August above and has no transactions,
+    # so its effective_end_date is UNKNOWN. July, August and September are
+    # three different questions and must get three different answers.
+    def expectation_in(year, month, key):
+        with SessionFactory() as db:
+            per = monthly_source.get_or_create_period(db, year, month)
+            monthly_source.refresh_coverage(db, per)
+            db.commit()
+            return {c.payment_instrument_id: c
+                    for c in monthly_source.coverages(db, per)}[ids[key]]
+
+    sept = expectation_in(2026, 9, "empty")
+    check("14. SEPTEMBER: the instrument closed in August is NOT EXPECTED",
+          sept.expectation == m.COVERAGE_NOT_EXPECTED, sept.expectation)
+    check("14b. it needs no further human confirmation and blocks nothing",
+          sept.is_resolved and sept.resolution is None)
+    check("14c. the reason names the decision and admits the date is UNKNOWN",
+          "CLOSED" in (sept.expectation_basis or "")
+          and "2026-08" in (sept.expectation_basis or "")
+          and "UNKNOWN" in (sept.expectation_basis or ""), sept.expectation_basis)
+    check("14d. and the closure date itself is still NULL - nothing was invented",
+          instrument("empty").effective_end_date is None)
+
+    july = expectation_in(2026, 7, "empty")
+    check("15. JULY: history is preserved - an account closed in August was alive in "
+          "July and is NOT silently made NOT_EXPECTED",
+          july.expectation != m.COVERAGE_NOT_EXPECTED, july.expectation)
+    check("15b. July is judged by the normal historical rule",
+          july.expectation == m.COVERAGE_NEEDS_CONFIRMATION, july.expectation)
+
+    aug = expectation_in(2026, 8, "empty")
+    check("16. the AUGUST row that closed it stays resolved and does not reopen",
+          aug.resolution == "CLOSED" and aug.is_resolved and aug.resolved_at is not None)
+
+    resolve("lost_unknown", resolution="LOST", note="card lost")
+    resolve("replaced_unknown", resolution="REPLACED",
+            replaced_by_instrument_id=str(ids["successor"]), note="reissued")
+    resolve("other_unknown", resolution="OTHER", note="merged into another account")
+    for key, reason in (("lost_unknown", "LOST"), ("replaced_unknown", "REPLACED"),
+                        ("other_unknown", "OTHER")):
+        inst = instrument(key)
+        later = expectation_in(2026, 9, key)
+        earlier = expectation_in(2026, 7, key)
+        check("17. " + reason + ": UNKNOWN date, NOT EXPECTED from September on, "
+              "July left to the historical rule",
+              inst.effective_end_date is None and inst.lifecycle_end_reason == reason
+              and later.expectation == m.COVERAGE_NOT_EXPECTED
+              and earlier.expectation != m.COVERAGE_NOT_EXPECTED,
+              str(inst.effective_end_date) + " " + later.expectation + " " + earlier.expectation)
+    check("17b. REPLACED still points at its successor, a different instrument",
+          instrument("replaced_unknown").replaced_by_instrument_id == ids["successor"])
+
+    plain_sept = expectation_in(2026, 9, "plain")
+    plain_july = expectation_in(2026, 7, "plain")
+    check("18. with a KNOWN derived end date (2026-07-20) the date rule still governs: "
+          "September NOT EXPECTED, justified by the date",
+          plain_sept.expectation == m.COVERAGE_NOT_EXPECTED
+          and "2026-07-20" in (plain_sept.expectation_basis or ""),
+          plain_sept.expectation_basis)
+    check("18b. and July is EXPECTED, because it was alive then - decided by the date, "
+          "not by the boundary",
+          plain_july.expectation == m.COVERAGE_EXPECTED, plain_july.expectation_basis)
+    check("18c. the derived date was not overwritten by any of this",
+          instrument("plain").effective_end_date == date(2026, 7, 20))
+
+    # -----------------------------------------------------------------
+    print("\n19. the manual date is back for the resolutions that end no life")
+    # -----------------------------------------------------------------
+    resolve("noactivity", resolution="NO_ACTIVITY", note="dormant",
+            effective_date="2026-08-11")
+    cov = coverage("noactivity")
+    inst = instrument("noactivity")
+    check("19. NO_ACTIVITY accepts a typed effective date again and stores it",
+          cov.resolution_effective_date == date(2026, 8, 11),
+          str(cov.resolution_effective_date))
+    check("19b. and it still touches no lifecycle state whatsoever",
+          inst.status == "ACTIVE" and inst.effective_end_date is None
+          and inst.lifecycle_end_reason is None)
+
+    resolve("notexpected", resolution="NOT_EXPECTED_CONFIRMED",
+            note="opened in September", effective_date="2026-08-05")
+    cov = coverage("notexpected")
+    check("19c. NOT_EXPECTED_CONFIRMED accepts one too, exactly as before",
+          cov.resolution == m.RESOLUTION_NOT_EXPECTED
+          and cov.resolution_effective_date == date(2026, 8, 5))
+    check("19d. a blank date still stays UNKNOWN rather than becoming today",
+          coverage("missing_file").resolution_effective_date is None)
+
     print("\n11/12/13. nothing else moved")
     # =================================================================
     with SessionFactory() as db:

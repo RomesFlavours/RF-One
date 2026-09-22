@@ -226,7 +226,12 @@
                       <option value="NOT_EXPECTED_CONFIRMED">Not expected for this period</option>
                     </select>
                   </div>
-                  <div class="field-row">
+                  <div class="field-row" data-effective-date-for="resolution-{{ coverage.id }}">
+                    <label for="effective-{{ coverage.id }}">Effective date</label>
+                    <input type="date" id="effective-{{ coverage.id }}" name="effective_date">
+                    <span class="cell-note">Leave blank if unknown &mdash; it stays UNKNOWN.</span>
+                  </div>
+                  <div class="field-row" data-lifecycle-note-for="resolution-{{ coverage.id }}" hidden>
                     <span class="cell-note">
                       Closing, Lost, Replaced and Other end this instrument's life as of its
                       last posting date, which RF-One derives itself &mdash; there is no date to
@@ -278,4 +283,32 @@
   {% endif %}
 </div>
 {% endif %}
+
+<script>
+// The Effective date field belongs to the resolutions that end no life.
+// A lifecycle-ending decision is dated from the instrument's own last
+// posting date, so the field is taken away rather than left to be typed
+// and then ignored. The server does not read it for those resolutions
+// either — this only keeps the form honest about what it will use.
+(function () {
+  var LIFECYCLE = ["CLOSED", "LOST", "REPLACED", "OTHER"];
+  document.querySelectorAll("[data-effective-date-for]").forEach(function (dateRow) {
+    var selectId = dateRow.getAttribute("data-effective-date-for");
+    var select = document.getElementById(selectId);
+    var note = document.querySelector('[data-lifecycle-note-for="' + selectId + '"]');
+    if (!select) return;
+    function sync() {
+      var ending = LIFECYCLE.indexOf(select.value) !== -1;
+      dateRow.hidden = ending;
+      if (note) note.hidden = !ending;
+      if (ending) {
+        var input = dateRow.querySelector("input[name='effective_date']");
+        if (input) input.value = "";
+      }
+    }
+    select.addEventListener("change", sync);
+    sync();
+  });
+})();
+</script>
 {% endblock %}

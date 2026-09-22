@@ -506,20 +506,24 @@ def main() -> int:
             monthly_source.refresh_coverage(db, sept)
             db.commit()
             sc = {x.payment_instrument_id: x for x in monthly_source.coverages(db, sept)}
-            # SUPERSEDED by BANK_MISSING_ACCOUNT_CONTROL. This used to assert
-            # NOT EXPECTED, which held only because the operator had typed
-            # 2026-08-20 as the closure date. Now that the date is DERIVED and
-            # this instrument has no transactions, it closes with its end date
-            # UNKNOWN — and `evaluate_expectation`, unchanged, correctly refuses
-            # to conclude anything from an INACTIVE status with no end date. So
-            # the instrument still appears in every later month, and still asks
-            # a human. That is the honest answer, not a regression: nothing
-            # proves when it stopped.
-            check("19b. it appears in a later month too; with its end date UNKNOWN the "
-                  "expectation rule asks a human rather than assuming it was over",
-                  ids["to_close"] in sc
-                  and sc[ids["to_close"]].expectation == m.COVERAGE_NEEDS_CONFIRMATION,
-                  sc[ids["to_close"]].expectation if ids["to_close"] in sc else "absent")
+            # This check has been through both halves of the same story. It
+            # originally read NOT EXPECTED because the operator had typed
+            # 2026-08-20 as the closure date. When the date became DERIVED it
+            # briefly read NEEDS CONFIRMATION, because this instrument has no
+            # transactions and so closed with its end date UNKNOWN. It is back
+            # to NOT EXPECTED now, on a better basis: not a typed date, and not
+            # an assumption from INACTIVE, but the human's own recorded decision
+            # to end this instrument's life in August — which settles every
+            # month AFTER August and no month before it. The end date itself is
+            # still UNKNOWN and still NULL.
+            later = sc[ids["to_close"]] if ids["to_close"] in sc else None
+            check("19b. a later month is settled by the human's August decision, while the "
+                  "real end date stays UNKNOWN",
+                  later is not None
+                  and later.expectation == m.COVERAGE_NOT_EXPECTED
+                  and "CLOSED" in (later.expectation_basis or "")
+                  and closed.effective_end_date is None,
+                  (later.expectation_basis or "") if later else "absent")
             check("21b. September used the same generic machinery, nothing month-specific",
                   sept.period_start == date(2026, 9, 1) and sept.period_end == date(2026, 9, 30))
 
