@@ -21,12 +21,17 @@ below was read back from the database after the write, not predicted.
 | | |
 |---|---|
 | **Path** | `03 Software/RF-One Data Store/data/rfone.db` |
-| **SHA-256 (final)** | `7b569772a51ff6e4f72da0c926f9d1af9ddd4794c961a1c0e542bdf773e46bf4` |
-| **Alembic revision** | `a5e1c93f7b20` (the single head; never downgraded) |
-| **Git commit** | `761c79febe18e4713c1ff537bbe46d6640185023` |
+| **SHA-256 (current)** | `06292315e4f67c181c41f117cf9feb12ac4d2fdb8373a21c9302be23dc6955a7` |
+| **Alembic revision** | `b7d4e92a1c58` (the single head; never downgraded) |
+| **Git commit (baseline certified)** | `761c79febe18e4713c1ff537bbe46d6640185023` |
 
 It is the database RF-One Web and the Data Store resolve when no
 `RFONE_DATABASE_URL` override exists.
+
+> **Schema advanced 2026-09-23 — the business baseline below did NOT
+> change.** See §13. The SHA-256 and the Alembic revision above are the
+> post-advance values; everything else in this certificate still describes
+> the same certified business content, re-verified after the migration.
 
 ### Source, unchanged
 
@@ -259,4 +264,69 @@ catalogs — over a clean operational state, at Alembic head `a5e1c93f7b20`,
 with integrity and foreign keys verified, the full Bank regression green and
 the local Bank UI rendering it correctly.
 
-**Final SHA-256:** `7b569772a51ff6e4f72da0c926f9d1af9ddd4794c961a1c0e542bdf773e46bf4`
+**SHA-256 as certified:** `7b569772a51ff6e4f72da0c926f9d1af9ddd4794c961a1c0e542bdf773e46bf4`
+(superseded by the schema advance in §13, which changed no business content.)
+
+---
+
+## 13. Schema advance — 2026-09-23
+
+**SCHEMA CHANGED. BUSINESS BANK BASELINE DID NOT CHANGE.**
+
+BANK_LOCAL_GOLDEN_SCHEMA_ADVANCE_001 brought this database to the
+repository's Alembic head. It is a schema alignment and nothing else: no
+row of business content was added, removed or rewritten, and every figure
+in §2 through §7 above was re-verified afterwards and still holds.
+
+| | |
+|---|---|
+| **Alembic before** | `a5e1c93f7b20` |
+| **Alembic after** | **`b7d4e92a1c58`** — the single repository head |
+| **Migration applied** | `b7d4e92a1c58_add_bank_reconciliation_control_start.py` — one, purely additive |
+| **SHA-256 before** | `7b569772a51ff6e4f72da0c926f9d1af9ddd4794c961a1c0e542bdf773e46bf4` |
+| **SHA-256 after** | **`06292315e4f67c181c41f117cf9feb12ac4d2fdb8373a21c9302be23dc6955a7`** |
+| **Backup taken first** | `data/rfone.db.pre-schema-advance-b7d4e92a1c58-20260923T022946Z` — hash verified identical to the source before migrating |
+
+### Business content, re-verified after the migration
+
+| | Before | After |
+|---|---|---|
+| Legal Entities | 3 | **3** |
+| Payment Instruments | 14 | **14** |
+| Settlement relationships | 6 | **6** |
+| Canonical accounts · WHAT · WHY · WHY groups | 136 · 72 · 77 · 14 | **136 · 72 · 77 · 14** |
+| All 15 operational Bank tables | 0 | **0** |
+
+All 14 instruments compared field by field on safe business identity —
+institution, display name, last four, type, status, Legal Entity, linked
+instrument and all four lifecycle fields — and are **identical**. Every
+`effective_start_date` is still NULL, meaning UNKNOWN: the migration
+manufactured none. The 6 settlement relationships were compared by business
+identity rather than by id and are unchanged, valid-from dates included.
+
+### The new table
+
+`bank_reconciliation_control_configs` exists, with its expected columns,
+its `rfone_accounts` foreign key, and no default baked into
+`control_start_month`. Both constraints were probed and are genuinely
+enforced: a value that is not `YYYY-MM` is refused by `ck_brcc_month_shape`,
+and a second row is refused by `ck_brcc_singleton`. The probes ran inside a
+transaction that was rolled back, and the file's SHA-256 was identical
+before and after them.
+
+| | |
+|---|---|
+| **Configuration rows** | **0** |
+| **Reconciliation control start value** | **NOT SET** |
+
+The threshold is a Product Owner decision that has not been taken. No value
+was invented — not 2026-01, not 2025-01, not any other. No monthly period
+and no coverage row was created by the migration.
+
+### Verification
+
+`PRAGMA integrity_check` = **ok** and **0** foreign-key violations, before
+and after. The full Bank regression is green on disposable databases —
+**12 web suites (553 checks)** and **12 Data Store suites** — and the
+authoritative file's SHA-256 was identical before and after running them,
+so no test touched it.
