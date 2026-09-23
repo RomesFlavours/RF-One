@@ -21,8 +21,8 @@ below was read back from the database after the write, not predicted.
 | | |
 |---|---|
 | **Path** | `03 Software/RF-One Data Store/data/rfone.db` |
-| **SHA-256 (current)** | `06292315e4f67c181c41f117cf9feb12ac4d2fdb8373a21c9302be23dc6955a7` |
-| **Alembic revision** | `b7d4e92a1c58` (the single head; never downgraded) |
+| **SHA-256 (current)** | `ceac487f08da048feafe20e57f12b4cc95761517f94dd1e8907441d892047c5f` |
+| **Alembic revision** | `c8f1a3e04d97` (the single head; never downgraded) |
 | **Git commit (baseline certified)** | `761c79febe18e4713c1ff537bbe46d6640185023` |
 
 It is the database RF-One Web and the Data Store resolve when no
@@ -330,3 +330,90 @@ and after. The full Bank regression is green on disposable databases —
 **12 web suites (553 checks)** and **12 Data Store suites** — and the
 authoritative file's SHA-256 was identical before and after running them,
 so no test touched it.
+
+---
+
+## 14. Configuration evolution — 2026-09-23
+
+**This is a CONFIGURATION evolution of the Golden baseline, not a new
+baseline.** The certified business content of §2 to §7 is unchanged except
+for the two verified items below, and Bank operational data is still
+entirely empty.
+
+| | |
+|---|---|
+| **Alembic** | `b7d4e92a1c58` → **`c8f1a3e04d97`** (additive; `b7d4e92a1c58` not edited) |
+| **SHA-256** | `06292315e4f6…6955a7` → **`ceac487f08da048feafe20e57f12b4cc95761517f94dd1e8907441d892047c5f`** |
+| **Backup first** | `data/rfone.db.pre-historical-foundation-20260923T032701Z`, hash verified identical before writing |
+| **Legal Entities** | 3, unchanged |
+| **Payment Instruments** | 14 → **15** |
+| **Settlement relationships** | **6**, unchanged, `valid_from` dates untouched |
+| **Operational Bank data** | **0**, unchanged, across every table |
+| **integrity_check / FK** | **ok** / **0** |
+
+### 14.1 RFWP- Checking: ··3336 corrected to ··3376
+
+The registered last four were wrong. Corrected **in place** — the same
+instrument, the same id — so no second account exists and every existing
+relationship follows unchanged. The settlement now reads
+`Business ··1057 → RFWP- Checking ··3376`, with its `valid_from` of
+2026-08-04 untouched.
+
+Evidence: two independent original Chase exports name the account ··3376,
+one week apart, both in the genuine Chase bank-account layout. A **ledger
+test** settles that they are one account rather than two similarly named
+files: they share 1 370 row identities and the running balance is identical
+on **all 1 370**, with zero disagreements. Business context matches RFWP /
+Angeli E Demoni — ANGELI E DEMONI LLC (89 rows), ROME'S FLAVOURS (59),
+GIUSEPPE MIRAGLIA (64).
+
+**No credible ··3336 source exists.** The literal string occurs five times
+across the whole corpus and is never an account identity: it is a digit run
+inside an ACH trace number, a merchant order reference and two running
+balances. The old value had been hand-entered with an empty
+`external_account_identifier`, so nothing corroborated it.
+
+### 14.2 American Express ··1002 registered
+
+| | |
+|---|---|
+| Institution / provider | AMEX / American Express |
+| Type · currency · status | CREDIT_CARD · USD · ACTIVE |
+| Legal Entity | Angeli E Demoni, LLC |
+| Lifecycle | `effective_start_date`, `effective_end_date`, `lifecycle_end_reason`, `replaced_by_instrument_id`, `linked_instrument_id` — **all NULL** |
+
+Evidence: eight original Amex exports agree. The three QBO/OFX files carry
+structured provider metadata — `<ORG>AMEX`, `<FID>3106`, statement type
+`CCSTMTRS` (credit card), `<CURDEF>USD` and an `<ACCTID>` ending 1002 — and
+every QBO row carries a distinct `<FITID>`, a stable provider transaction
+identifier. The five CSV/XLSX exports carry an `Account #` ending 1002 and
+a `Card Member` of GIUSEPPE MIRAGLIA across 341 rows.
+
+The sources stop at 2026-03. That is a **source boundary**, not a closure:
+nothing about the card's life was inferred from where the files happen to
+end.
+
+### 14.3 Audit
+
+Both changes are recorded in `bank_instrument_identity_audits` (2 rows)
+with the old value, the new value, the reason, the source evidence
+including file hashes, and the timestamp. That table is new because the
+existing `bank_instrument_assignment_audits` cannot hold these facts: its
+own CHECK constraint requires a batch or a transaction to point at, and an
+identity correction has neither.
+
+### 14.4 Structures added
+
+`bank_instrument_identity_audits` and
+`bank_historical_instrument_candidates` — the second for accounts the
+evidence names but the registry does not contain, which cannot be
+represented as `BankMonthlyInstrumentCoverage` rows because every one of
+those is anchored to a non-NULL `payment_instrument_id`. Both created
+empty; the candidate table is still empty because the census that fills it
+is read-only until sources are actually imported.
+
+### 14.5 Regression
+
+**67 checks** in the new historical-source-control suite plus the full Bank
+regression green — **12 web suites** and **13 Data Store suites** — all on
+disposable databases.

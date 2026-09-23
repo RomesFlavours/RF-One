@@ -12251,6 +12251,153 @@ LIFECYCLE_END_REASONS = (
 LIFECYCLE_ENDING_RESOLUTIONS = LIFECYCLE_END_REASONS
 
 
+class BankInstrumentIdentityAudit(Base):
+    """Why a Payment Instrument's own identity now reads the way it does.
+
+    Distinct from `BankInstrumentAssignmentAudit`, which records which
+    instrument a SOURCE or a TRANSACTION was assigned to. This records a
+    correction to the instrument ITSELF — its last four, its external
+    identifier, its display name — a fact that has no batch and no
+    transaction to point at and therefore cannot live in that table, whose
+    own CHECK constraint requires one.
+
+    One row per corrected FIELD, so a single decision that touched two
+    fields leaves two legible entries rather than one composite blob.
+    Nothing here ever changes the instrument; it is the memory of why.
+    """
+
+    __tablename__ = "bank_instrument_identity_audits"
+    __table_args__ = (Index("ix_biia_payment_instrument_id", "payment_instrument_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    payment_instrument_id: Mapped[int] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=False
+    )
+    field_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    previous_value: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    new_value: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Both required: a correction without a stated reason, or without the
+    # evidence it rests on, is an opinion.
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    source_evidence: Mapped[str] = mapped_column(Text, nullable=False)
+    changed_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=True
+    )
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    payment_instrument: Mapped["PaymentInstrument"] = relationship()
+    changed_by: Mapped["RFOneAccount | None"] = relationship()
+
+
+# Where a candidate came from.
+CANDIDATE_DIRECT_SOURCE = "DIRECT_SOURCE"
+CANDIDATE_INDIRECT_REFERENCE = "INDIRECT_REFERENCE"
+CANDIDATE_DISCOVERIES = (CANDIDATE_DIRECT_SOURCE, CANDIDATE_INDIRECT_REFERENCE)
+
+# What a human decided about it. The lifecycle words are deliberately the
+# SAME ones `BankMonthlyInstrumentCoverage` already uses, so an operator
+# does not learn a second vocabulary for the same judgement.
+CANDIDATE_CONFIRMED = "CONFIRMED_INSTRUMENT"
+CANDIDATE_SOURCE_MISSING = "SOURCE_FILE_MISSING"
+CANDIDATE_NOT_OURS = "NOT_OUR_INSTRUMENT"
+CANDIDATE_RESOLUTIONS = (
+    CANDIDATE_CONFIRMED, CANDIDATE_SOURCE_MISSING,
+    RESOLUTION_CLOSED, RESOLUTION_LOST, RESOLUTION_REPLACED, RESOLUTION_OTHER,
+    CANDIDATE_NOT_OURS,
+)
+CANDIDATE_LIFECYCLE_RESOLUTIONS = (
+    RESOLUTION_CLOSED, RESOLUTION_LOST, RESOLUTION_REPLACED, RESOLUTION_OTHER,
+)
+
+
+class BankHistoricalInstrumentCandidate(Base):
+    """An account or card the EVIDENCE names, that the registry does not
+    contain.
+
+    The forgotten account. A 2025 statement refers to a card ending ··9191;
+    RF-One has no such Payment Instrument and no source file for it. That
+    fact must not evaporate, and it must not be resolved by silence:
+    absence is not proof the account closed, nor that a file is missing,
+    nor that it was never ours.
+
+    It cannot be a `BankMonthlyInstrumentCoverage` row, because every one of
+    those is anchored to a `payment_instrument_id` that is NOT NULL, and a
+    candidate is precisely an identity with no instrument. Representing it
+    there would mean inventing the instrument a human has not yet confirmed.
+
+    `discovery` says how RF-One learned of it: DIRECT_SOURCE (a file whose
+    own identity matches nothing registered) or INDIRECT_REFERENCE (a
+    transaction on another account mentioning it). Neither ever creates a
+    `PaymentInstrument` on its own.
+
+    `resolution` stays NULL until a person chooses, and the choice is
+    recorded with who made it, when, and in their own words.
+    CONFIRMED_INSTRUMENT is the one that promotes a candidate into a real
+    instrument, linked through `resolved_payment_instrument_id`.
+
+    `first_seen_date` / `last_seen_date` are SOURCE BOUNDARIES — the span
+    of the evidence, nothing more. They are never read as an activation or
+    a closure date, and `resolution_effective_date` stays NULL unless a
+    human genuinely knows one.
+    """
+
+    __tablename__ = "bank_historical_instrument_candidates"
+    __table_args__ = (
+        UniqueConstraint("institution", "last_four", name="uq_bhic_identity"),
+        CheckConstraint("length(last_four) = 4", name="ck_bhic_last_four"),
+        CheckConstraint(
+            "discovery IN ('DIRECT_SOURCE', 'INDIRECT_REFERENCE')",
+            name="ck_bhic_discovery",
+        ),
+        CheckConstraint(
+            "resolution IS NULL OR resolution IN "
+            "('CONFIRMED_INSTRUMENT', 'SOURCE_FILE_MISSING', 'CLOSED', 'LOST', "
+            "'REPLACED', 'OTHER', 'NOT_OUR_INSTRUMENT')",
+            name="ck_bhic_resolution",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    institution: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_four: Mapped[str] = mapped_column(String(4), nullable=False)
+    discovery: Mapped[str] = mapped_column(String(48), nullable=False)
+    evidence: Mapped[str] = mapped_column(Text, nullable=False)
+    first_seen_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    last_seen_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    resolution: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolution_effective_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    resolved_payment_instrument_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=True
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    resolved_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    resolved_payment_instrument: Mapped["PaymentInstrument | None"] = relationship()
+    resolved_by: Mapped["RFOneAccount | None"] = relationship()
+
+    @property
+    def is_resolved(self) -> bool:
+        """SOURCE_FILE_MISSING is recorded but deliberately NOT resolved:
+        the file is still owed, exactly as it is for a registered
+        instrument."""
+        return self.resolution is not None and self.resolution != CANDIDATE_SOURCE_MISSING
+
+
 class BankReconciliationControlConfig(Base):
     """The one month from which RF-One takes responsibility for Bank source
     completeness — the RECONCILIATION CONTROL START.
