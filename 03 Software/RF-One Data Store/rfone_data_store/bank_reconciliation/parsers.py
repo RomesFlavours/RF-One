@@ -19,6 +19,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -335,3 +336,261 @@ def parse_csv_bytes(data: bytes) -> ParsedFile:
         detected_format=detected_format, header=header, rows=rows,
         extra_trailing_column_seen=extra_trailing_column_seen,
     )
+
+
+# ---------------------------------------------------------------------------
+# American Express (BANK_HISTORICAL_CLEAN_CONSOLIDATE_AND_IMPORT_001 §7)
+#
+# Amex publishes the same account in three shapes, and they do NOT agree
+# about the sign of money:
+#
+#   * QBO / OFX  — carries FITID, the provider's own stable transaction id,
+#                  and signs a charge NEGATIVE, exactly as RF-One does.
+#   * XLSX       — carries `Reference`, an 18-digit id in the SAME namespace
+#                  as FITID, and signs a charge POSITIVE.
+#   * CSV        — carries neither id, and signs a charge POSITIVE.
+#
+# Both sign conventions are preserved by NEGATING the spreadsheet/CSV
+# amount at parse time, so every `ParsedBankRow` leaves this module in the
+# one convention the rest of RF-One uses: money out negative. There is no
+# second sign system downstream, and no consumer has to remember which
+# Amex export it is reading.
+# ---------------------------------------------------------------------------
+
+AMEX_QBO = "AMEX_QBO"
+AMEX_XLSX = "AMEX_XLSX"
+AMEX_CSV = "AMEX_CSV"
+
+_AMEX_CSV_HEADERS = {"Date", "Receipt", "Description", "Card Member", "Account #", "Amount"}
+# The spreadsheet carries the CSV columns plus the richer statement detail.
+_AMEX_XLSX_HEADERS = _AMEX_CSV_HEADERS | {
+    "Extended Details", "Appears On Your Statement As", "Address", "City/State",
+    "Zip Code", "Country", "Reference", "Category",
+}
+
+_OFX_STMTTRN = re.compile(r"<STMTTRN>(.*?)</STMTTRN>", re.S)
+_OFX_FIELD = re.compile(r"<([A-Z0-9.]+)>([^<\r\n]*)")
+_OFX_ACCTID = re.compile(r"<ACCTID>([^<\r\n]+)")
+
+
+def _amex_account_hint(account_value: str | None) -> str | None:
+    """The last four of the Amex account, from whichever shape the export
+    used: `-71002`, `XXXX-XXXXXX-71002`, or the QBO's
+    `RGXD2LIXHJ0JMUB|71002`. Only digits are kept, and only when at least
+    four of them survive — a partial token is not an account identifier."""
+    if not account_value:
+        return None
+    digits = re.sub(r"\D", "", str(account_value))
+    return digits[-4:] if len(digits) >= 4 else None
+
+
+def _ofx_date(value: str | None) -> date | None:
+    """OFX timestamps are `YYYYMMDDHHMMSS.SSS[tz]`. Only the calendar date
+    is taken: the time component is the provider's export artefact, not a
+    fact about when the money moved."""
+    if not value:
+        return None
+    digits = value.strip()[:8]
+    if len(digits) != 8 or not digits.isdigit():
+        return None
+    try:
+        return date(int(digits[:4]), int(digits[4:6]), int(digits[6:8]))
+    except ValueError:
+        return None
+
+
+def parse_qbo_bytes(data: bytes) -> ParsedFile:
+    """Parse an Amex QBO/OFX export.
+
+    OFX is SGML, not XML, and Amex emits unclosed tags, so this reads it
+    with the same tolerant field scan the format's own consumers use rather
+    than pretending it will survive an XML parser.
+
+    `FITID` is preserved into `reference`, which is what
+    `historical_source.provider_transaction_id` reads — so an Amex row
+    identified by the provider's own id never falls back to evidence
+    matching."""
+    text = _decode(data)
+    account_hint = None
+    acct = _OFX_ACCTID.search(text)
+    if acct:
+        account_hint = _amex_account_hint(acct.group(1))
+
+    rows: list[ParsedBankRow] = []
+    for index, block in enumerate(_OFX_STMTTRN.findall(text), start=1):
+        fields = {k: v.strip() for k, v in _OFX_FIELD.findall(block)}
+        anomalies: list[str] = []
+
+        posted = _ofx_date(fields.get("DTPOSTED"))
+        if posted is None:
+            anomalies.append("DTPOSTED missing or unreadable")
+        # `DTUSER` is the purchase date when Amex supplies it; absent that,
+        # the posted date is all the source knows and nothing is invented.
+        user_date = _ofx_date(fields.get("DTUSER")) or posted
+
+        amount_minor, amount_error = to_minor_units(fields.get("TRNAMT"))
+        if amount_error:
+            anomalies.append(f"amount: {amount_error}")
+
+        fitid = fields.get("FITID") or None
+        if not fitid:
+            anomalies.append("FITID missing")
+
+        # Amex splits the counterparty across NAME and MEMO. NAME is the
+        # bank's own short description; MEMO is the long statement detail.
+        # They answer different questions and are kept apart, exactly as
+        # the Chase layouts keep Description and Memo apart.
+        description = fields.get("NAME") or fields.get("MEMO") or None
+        memo = fields.get("MEMO") or None
+        memo_field = "MEMO" if memo else None
+
+        status = "PARSED"
+        if amount_minor is None or posted is None:
+            status = "UNREADABLE"
+        elif anomalies:
+            status = "ANOMALOUS"
+
+        rows.append(
+            ParsedBankRow(
+                row_number=index,
+                raw_fields=fields,
+                parse_status=status,
+                anomalies=anomalies,
+                posting_date=posted,
+                transaction_date=user_date,
+                description=description,
+                amount_minor=amount_minor,
+                bank_transaction_type=fields.get("TRNTYPE") or None,
+                reference=fitid,
+                balance_minor=None,
+                account_hint=account_hint,
+                source_memo=memo,
+                source_memo_field=memo_field,
+            )
+        )
+
+    return ParsedFile(detected_format=AMEX_QBO, header=["OFX:STMTTRN"], rows=rows)
+
+
+def _parse_amex_tabular_row(
+    row_number: int, fields: dict[str, str], detected_format: str,
+) -> ParsedBankRow:
+    """One Amex spreadsheet/CSV row.
+
+    The amount is NEGATED. Amex writes a charge as a positive number and a
+    payment as a negative one, which is the opposite of every other source
+    RF-One reads. Flipping it here — once, at the edge — is what keeps a
+    single sign convention true everywhere else."""
+    anomalies: list[str] = []
+
+    posted, date_error = _parse_date(_get(fields, "Date"))
+    if date_error:
+        anomalies.append(f"date: {date_error}")
+
+    raw_amount, amount_error = to_minor_units(_get(fields, "Amount"))
+    if amount_error:
+        anomalies.append(f"amount: {amount_error}")
+    amount_minor = None if raw_amount is None else -raw_amount
+
+    reference = _get(fields, "Reference") or None
+    description = _get(fields, "Description")
+    # `Extended Details` is Amex's long statement narrative. It is the
+    # nearest thing this layout has to a purpose field, and it is kept as
+    # the memo rather than concatenated into the description.
+    memo, memo_field = _purpose_field(fields, "Extended Details")
+
+    status = "PARSED"
+    if amount_minor is None or posted is None:
+        status = "UNREADABLE"
+    elif anomalies:
+        status = "ANOMALOUS"
+
+    return ParsedBankRow(
+        row_number=row_number,
+        raw_fields=fields,
+        parse_status=status,
+        anomalies=anomalies,
+        posting_date=posted,
+        # This layout publishes ONE date. Copying it into both fields
+        # would claim the source distinguished them when it did not, so
+        # the transaction date stays equal to what the source gave.
+        transaction_date=posted,
+        description=description,
+        amount_minor=amount_minor,
+        bank_transaction_type=_get(fields, "Category") or None,
+        reference=reference,
+        balance_minor=None,
+        account_hint=_amex_account_hint(_get(fields, "Account #")),
+        source_memo=memo,
+        source_memo_field=memo_field,
+    )
+
+
+def parse_amex_csv_bytes(data: bytes) -> ParsedFile:
+    """Parse the Amex CSV export — the weakest of the three shapes, with
+    no provider transaction id at all."""
+    text = _decode(data)
+    reader = csv.reader(io.StringIO(text))
+    try:
+        header = next(reader)
+    except StopIteration:
+        raise UnrecognizedFormatError("File is empty — no header row found.")
+    header = [h.strip() for h in header]
+    if {h for h in header if h} != _AMEX_CSV_HEADERS:
+        raise UnrecognizedFormatError(
+            f"Header {sorted(h for h in header if h)!r} is not the Amex CSV layout."
+        )
+
+    rows: list[ParsedBankRow] = []
+    for line_number, raw_row in enumerate(reader, start=2):
+        if not raw_row or all(not cell.strip() for cell in raw_row):
+            continue
+        fields = {header[i]: raw_row[i] for i in range(min(len(header), len(raw_row)))}
+        rows.append(_parse_amex_tabular_row(line_number, fields, AMEX_CSV))
+    return ParsedFile(detected_format=AMEX_CSV, header=header, rows=rows)
+
+
+def parse_amex_xlsx(path: str) -> ParsedFile:
+    """Parse an Amex `Transaction Details` spreadsheet.
+
+    Amex ships two variants of the same sheet: one that starts directly
+    with the column header, and one preceded by a short preamble naming the
+    card member and account. The header row is therefore LOCATED rather
+    than assumed to be row 1 — assuming would silently shift every field by
+    six rows on half the corpus.
+
+    Reads with `openpyxl` in read-only mode and never writes: the workbook
+    is evidence."""
+    import openpyxl  # imported here so the rest of the module stays dependency-free
+
+    workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        sheet_name = (
+            "Transaction Details"
+            if "Transaction Details" in workbook.sheetnames
+            else workbook.sheetnames[0]
+        )
+        sheet = workbook[sheet_name]
+
+        header: list[str] | None = None
+        rows: list[ParsedBankRow] = []
+        for excel_row, values in enumerate(sheet.iter_rows(values_only=True), start=1):
+            cells = ["" if v is None else str(v).strip() for v in values]
+            if header is None:
+                if cells and cells[0] == "Date" and "Amount" in cells:
+                    header = cells
+                continue
+            if not any(cells):
+                continue
+            fields = {header[i]: cells[i] for i in range(min(len(header), len(cells))) if header[i]}
+            if not fields.get("Date"):
+                continue
+            rows.append(_parse_amex_tabular_row(excel_row, fields, AMEX_XLSX))
+
+        if header is None:
+            raise UnrecognizedFormatError(
+                f"{path!r} has no Amex `Date`/`Amount` header row in sheet {sheet_name!r}."
+            )
+        return ParsedFile(detected_format=AMEX_XLSX, header=header, rows=rows)
+    finally:
+        workbook.close()

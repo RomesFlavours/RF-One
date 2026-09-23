@@ -10853,9 +10853,14 @@ class BankImportBatch(Base):
     __table_args__ = (
         UniqueConstraint("sha256", name="uq_bank_import_batches_sha256"),
         CheckConstraint(
+            # Widened by BANK_HISTORICAL_CLEAN_CONSOLIDATE_AND_IMPORT_001:
+            # American Express publishes the same account as QBO/OFX, XLSX
+            # and CSV, and all three are real structured sources RF-One now
+            # parses. The four original layouts are untouched.
             "detected_format IN ("
             "'CHASE_BANK_ACCOUNT', 'CHASE_CREDIT_CARD_WITH_CARD', "
-            "'CHASE_CREDIT_CARD_NO_CARD', 'FIRST_CITIZENS')",
+            "'CHASE_CREDIT_CARD_NO_CARD', 'FIRST_CITIZENS', "
+            "'AMEX_QBO', 'AMEX_XLSX', 'AMEX_CSV')",
             name="ck_bank_import_batch_detected_format",
         ),
         CheckConstraint(
@@ -11508,6 +11513,19 @@ class BankAccountingClassification(Base):
         return self.is_posting_account and not self.review_sensitive and self.is_complete
 
 
+# WHO accounting-category capability
+# (BANK_INVOICE_EVIDENCE_COLLABORATION_001 §3). Defined here because
+# `BankOccurrence` below uses them as column defaults.
+WHO_SINGLE_CATEGORY = "SINGLE_CATEGORY"
+WHO_MULTI_CATEGORY_CAPABLE = "MULTI_CATEGORY_CAPABLE"
+WHO_CATEGORY_UNKNOWN = "UNKNOWN"
+WHO_CATEGORY_CAPABILITIES = (
+    WHO_SINGLE_CATEGORY,
+    WHO_MULTI_CATEGORY_CAPABLE,
+    WHO_CATEGORY_UNKNOWN,
+)
+
+
 class BankOccurrenceType(Base):
     """Controlled vocabulary for the TYPE of subject a bank movement
     involves (spec: "la tipologia del soggetto coinvolto"). Deliberately
@@ -11571,10 +11589,50 @@ class BankOccurrence(Base):
         ForeignKey("bank_transaction_reasons.id"), nullable=True, index=True
     )
 
+    # --- Accounting-category capability
+    # (BANK_INVOICE_EVIDENCE_COLLABORATION_001 §3).
+    #
+    # A statement about WHAT THIS COUNTERPARTY CAN SUPPLY, never about any
+    # one transaction. `MULTI_CATEGORY_CAPABLE` does not mean a payment
+    # contains several categories; it means exactly one thing:
+    #
+    #     WHEN A MATCHING INVOICE EXISTS, ITS LINES MUST BE EXAMINED
+    #     BEFORE THE ACCOUNTING ALLOCATION IS DECIDED.
+    #
+    # Deliberately distinct from `default_transaction_reason_id` above,
+    # which is a suggestion about MEANING. This is about EVIDENCE: Cheney
+    # being multi-category capable is why "WHO = Cheney" may never by
+    # itself produce "WHY = FOOD_PURCHASES".
+    #
+    # UNKNOWN is the honest starting state and is never treated as
+    # SINGLE_CATEGORY: not knowing whether a supplier decomposes is a
+    # different fact from knowing it does not.
+    category_capability: Mapped[str] = mapped_column(
+        String(24), nullable=False,
+        default=WHO_CATEGORY_UNKNOWN, server_default=WHO_CATEGORY_UNKNOWN,
+    )
+    # HUMAN | INVOICE_EVIDENCE — an operator may configure the capability,
+    # and a real invoice showing several canonical categories establishes
+    # it on its own (§18). Once established, it is never downgraded
+    # automatically just because later invoices happen to carry one
+    # category: a supplier that CAN decompose still can.
+    capability_source: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    capability_established_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    capability_evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+    @property
+    def requires_invoice_line_examination(self) -> bool:
+        """Whether a matching invoice MUST have its lines read before this
+        counterparty's transactions can be classified. True only for
+        MULTI_CATEGORY_CAPABLE — the capability's entire purpose."""
+        return self.category_capability == WHO_MULTI_CATEGORY_CAPABLE
 
     occurrence_type: Mapped["BankOccurrenceType"] = relationship()
     default_transaction_reason: Mapped["BankTransactionReason | None"] = relationship(
@@ -12389,6 +12447,9 @@ class BankHistoricalInstrumentCandidate(Base):
 
     resolved_payment_instrument: Mapped["PaymentInstrument | None"] = relationship()
     resolved_by: Mapped["RFOneAccount | None"] = relationship()
+    evidence_items: Mapped[list["BankHistoricalInstrumentCandidateEvidence"]] = relationship(
+        back_populates="candidate", order_by="BankHistoricalInstrumentCandidateEvidence.id",
+    )
 
     @property
     def is_resolved(self) -> bool:
@@ -12396,6 +12457,69 @@ class BankHistoricalInstrumentCandidate(Base):
         the file is still owed, exactly as it is for a registered
         instrument."""
         return self.resolution is not None and self.resolution != CANDIDATE_SOURCE_MISSING
+
+    @property
+    def raw_evidence_count(self) -> int:
+        """Distinct raw bank rows that evidence this candidate."""
+        return len({e.raw_bank_transaction_id for e in self.evidence_items
+                    if e.raw_bank_transaction_id is not None})
+
+    @property
+    def canonical_transaction_count(self) -> int:
+        """Distinct canonical transactions that evidence this candidate."""
+        return len({e.financial_transaction_id for e in self.evidence_items
+                    if e.financial_transaction_id is not None})
+
+
+class BankHistoricalInstrumentCandidateEvidence(Base):
+    """One distinct piece of evidence behind a historical instrument
+    candidate (BANK_HISTORICAL_CHECKPOINT_AND_CANDIDATE_IDEMPOTENCY_001).
+
+    `evidence_key` is the evidence's STABLE identity — `raw:<id>` for a
+    preserved raw bank row, or a caller-supplied key for evidence that is
+    not a row (a whole source file, a human note). It is unique per
+    candidate, so recording the same evidence again is a no-op, and the
+    candidate's `occurrence_count` and first/last dates are always
+    recomputed from this set rather than accumulated. That is what makes
+    re-running a discovery harmless.
+
+    `occurrences` is how many financial occurrences the item stands for when
+    it is NOT tied to a canonical transaction (a source file summarised as
+    200 rows). Items tied to a `financial_transaction_id` always count once
+    per distinct transaction, however many raw copies evidence it.
+    Observed dates are source boundaries, never lifecycle dates.
+    """
+
+    __tablename__ = "bank_historical_instrument_candidate_evidence"
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "evidence_key", name="uq_bhice_candidate_evidence"),
+        CheckConstraint("occurrences >= 1", name="ck_bhice_occurrences_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(
+        ForeignKey("bank_historical_instrument_candidates.id"), nullable=False, index=True
+    )
+    evidence_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    evidence_kind: Mapped[str] = mapped_column(String(48), nullable=False)
+    raw_bank_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("raw_bank_transactions.id"), nullable=True
+    )
+    financial_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_transactions.id"), nullable=True
+    )
+    first_observed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    last_observed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    occurrences: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    candidate: Mapped["BankHistoricalInstrumentCandidate"] = relationship(
+        back_populates="evidence_items"
+    )
 
 
 class BankReconciliationControlConfig(Base):
@@ -12618,6 +12742,1130 @@ class BankMonthlyInstrumentCoverage(Base):
         return self.resolution != RESOLUTION_SOURCE_FILE_MISSING
 
 
+# ---------------------------------------------------------------------------
+# Economic reporting perimeter and Economic Allocation
+# (BANK_ECONOMIC_ALLOCATION_FOUNDATION_001).
+#
+# The one distinction these three tables exist to make:
+#
+#     BANK TRANSACTION    = the movement of money. WHO PAID / WHO WAS PAID.
+#     ECONOMIC ALLOCATION = what that movement MEANS economically: FOR WHOM
+#                           the cost was borne or the revenue earned, and
+#                           which canonical account it belongs to.
+#
+# They are not the same fact and RF-One must never conflate them. A
+# `FinancialTransaction` on RF Gelati's card can carry a cost that
+# economically belongs entirely to RF Mount Dora: the cash left RF Gelati,
+# the expense did not. One bank movement therefore supports 1..N
+# allocations, and the P&L is read from the allocations, NEVER from the
+# parent bank row.
+# ---------------------------------------------------------------------------
+
+REPORTING_ENTITY_LEGAL = "LEGAL"
+REPORTING_ENTITY_VIRTUAL = "VIRTUAL"
+REPORTING_ENTITY_TYPES = (REPORTING_ENTITY_LEGAL, REPORTING_ENTITY_VIRTUAL)
+
+# Allocation lifecycle. Deliberately SEPARATE from
+# `FinancialTransaction.accounting_status` (CANONICAL / DUPLICATE_SUPPRESSED /
+# UNRESOLVED_NO_SETTLEMENT_ACCOUNT), which answers "is this movement the one
+# occurrence that feeds the books". A transaction can be perfectly canonical
+# financially while nobody has yet decided who bore its cost.
+ALLOCATION_UNALLOCATED = "UNALLOCATED"
+ALLOCATION_PENDING_EVIDENCE = "PENDING_EVIDENCE"
+ALLOCATION_NEEDS_OPERATOR = "NEEDS_OPERATOR"
+ALLOCATION_COMPLETE = "COMPLETE"
+ALLOCATION_STATUSES = (
+    ALLOCATION_UNALLOCATED,
+    ALLOCATION_PENDING_EVIDENCE,
+    ALLOCATION_NEEDS_OPERATOR,
+    ALLOCATION_COMPLETE,
+)
+
+# What kind of party actually paid, resolved through the SETTLEMENT ACCOUNT
+# exactly as `bank_reconciliation.card_configuration.legal_entity_for`
+# already resolves the Company — never from the card's own
+# `legal_entity_id`, and never from whoever holds the card.
+PAYER_KIND_LEGAL_ENTITY = "LEGAL_ENTITY"
+PAYER_KIND_PERSONAL = "PERSONAL"
+PAYER_KIND_UNRESOLVED = "UNRESOLVED"
+PAYER_KINDS = (PAYER_KIND_LEGAL_ENTITY, PAYER_KIND_PERSONAL, PAYER_KIND_UNRESOLVED)
+
+# The DERIVED intercompany consequence. An operator never chooses one of
+# these: it follows deterministically from payer vs economic owner.
+INTERCOMPANY_NONE = "NONE"
+INTERCOMPANY_CROSS_ENTITY = "CROSS_ENTITY"
+# A personal instrument paid a legitimate BUSINESS cost
+# (BANK_INVOICE_EVIDENCE_COLLABORATION_001 §19, Product Owner decision).
+#
+# The business owes the individual back: the company side is
+# `2710 Due To Related Parties` BY DEFAULT. It is deliberately NOT
+# `3300 Member Contributions` — assuming a contribution would silently
+# convert a debt into permanent equity, which is a real accounting claim
+# nobody made. 3300 applies only when an operator explicitly says the
+# funding is a non-reimbursable Member Contribution.
+#
+# No fake LegalEntity is ever created for the individual: there is no
+# second LLC here, only a payable.
+INTERCOMPANY_PERSONAL_PAYER_DUE_TO = "PERSONAL_PAYER_DUE_TO"
+INTERCOMPANY_PERSONAL_PAYER_CONTRIBUTION = "PERSONAL_PAYER_CONTRIBUTION"
+# The payer's Legal Entity cannot be resolved at all (an unconfigured
+# settlement account). Reported, never guessed.
+INTERCOMPANY_NOT_DERIVABLE = "NOT_DERIVABLE"
+INTERCOMPANY_OUTCOMES = (
+    INTERCOMPANY_NONE,
+    INTERCOMPANY_CROSS_ENTITY,
+    INTERCOMPANY_PERSONAL_PAYER_DUE_TO,
+    INTERCOMPANY_PERSONAL_PAYER_CONTRIBUTION,
+    INTERCOMPANY_NOT_DERIVABLE,
+)
+
+# How a personal payer's funding of a business cost is treated. The
+# operator chooses only between these two; everything else is derived.
+PERSONAL_FUNDING_REIMBURSABLE = "REIMBURSABLE"          # default -> 2710
+PERSONAL_FUNDING_MEMBER_CONTRIBUTION = "MEMBER_CONTRIBUTION"   # explicit -> 3300
+PERSONAL_FUNDING_TREATMENTS = (
+    PERSONAL_FUNDING_REIMBURSABLE,
+    PERSONAL_FUNDING_MEMBER_CONTRIBUTION,
+)
+
+# The two canonical Balance Sheet control accounts the cross-entity
+# consequence posts to. Read from the EXISTING catalog by code — not new
+# accounts, and never invented here.
+DUE_FROM_RELATED_PARTIES_CODE = "1610"
+DUE_TO_RELATED_PARTIES_CODE = "2710"
+# Used ONLY when an operator explicitly classifies a personal payer's
+# funding as a non-reimbursable Member Contribution (§19).
+MEMBER_CONTRIBUTIONS_CODE = "3300"
+
+# Who decided an allocation. The same two-value vocabulary
+# `BankTransactionExplanation.decision_source` already uses — not renamed.
+ALLOCATION_DECISION_SOURCES = ("HUMAN", "RULE")
+
+
+class ReportingGroup(Base):
+    """The ECONOMIC REPORTING PERIMETER a set of `ReportingEntity` rows
+    consolidate into — what a person means by "the Corporate P&L".
+
+    Deliberately NOT named `Corporate`. `00 Core/Corporate.md` defines
+    Corporate as the highest organizational Entity, responsible for
+    governance, ownership, Brands and strategy; `LegalEntity`'s own
+    docstring records the standing decision that no Corporate table is
+    persisted in this schema. This table is a much narrower thing — the
+    set of entities whose economic results are added together, including
+    VIRTUAL ones that are not legal organizations at all. Persisting it
+    under the name `Corporate` would quietly redefine an approved Core
+    concept, so it does not.
+
+    NOTHING IS SEEDED. The real reporting perimeter is a Product Owner
+    configuration decision, not something this foundation may invent."""
+
+    __tablename__ = "reporting_groups"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_reporting_group_code"),
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_reporting_group_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    entities: Mapped[list["ReportingEntity"]] = relationship(back_populates="reporting_group")
+
+
+class ReportingEntity(Base):
+    """WHO an economic result belongs to for REPORTING purposes — the
+    answer to "for whom was this cost borne".
+
+    Two kinds, and the difference is the whole point of the table:
+
+    * `LEGAL`   — stands for exactly one real `LegalEntity`. Its P&L IS
+                  that LLC's P&L.
+    * `VIRTUAL` — a management/reporting entity that is NOT a legal
+                  organization: a brand line, a project, a location run
+                  inside somebody else's LLC. It has a real management
+                  P&L and belongs to the reporting perimeter, but it is
+                  not an LLC and must never be made to look like one.
+
+    **A VIRTUAL ReportingEntity NEVER creates a `LegalEntity`.** That is
+    enforced structurally, not by convention: `legal_entity_id` must be
+    NULL for VIRTUAL and NOT NULL for LEGAL
+    (`ck_reporting_entity_type_legal_entity`), so a VIRTUAL row cannot
+    point at an LLC and a LEGAL row cannot exist without one.
+    `LegalEntity` keeps its single meaning: a genuine juridical entity.
+
+    A `LegalEntity` is represented by AT MOST ONE LEGAL ReportingEntity
+    (`ux_reporting_entity_legal_entity`), so a consolidated total can
+    never include the same LLC twice under two reporting names.
+
+    NOTHING IS SEEDED — no real entity is invented by this foundation."""
+
+    __tablename__ = "reporting_entities"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_reporting_entity_code"),
+        CheckConstraint(
+            "entity_type IN ('LEGAL', 'VIRTUAL')", name="ck_reporting_entity_type",
+        ),
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_reporting_entity_status"),
+        # The structural guarantee: LEGAL means exactly one real
+        # LegalEntity, VIRTUAL means none at all. Neither can drift into
+        # the other, and no code path can produce a third shape.
+        CheckConstraint(
+            "(entity_type = 'LEGAL' AND legal_entity_id IS NOT NULL) OR "
+            "(entity_type = 'VIRTUAL' AND legal_entity_id IS NULL)",
+            name="ck_reporting_entity_type_legal_entity",
+        ),
+        Index(
+            "ux_reporting_entity_legal_entity",
+            "legal_entity_id",
+            unique=True,
+            sqlite_where=text("legal_entity_id IS NOT NULL"),
+            postgresql_where=text("legal_entity_id IS NOT NULL"),
+        ),
+        Index("ix_reporting_entity_group_id", "reporting_group_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    # NOT NULL exactly when `entity_type` is LEGAL — see the CHECK above.
+    legal_entity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("legal_entities.id"), nullable=True
+    )
+    # Nullable: an entity may legitimately exist before the Product Owner
+    # has defined which perimeter it consolidates into.
+    reporting_group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("reporting_groups.id"), nullable=True
+    )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    legal_entity: Mapped["LegalEntity | None"] = relationship()
+    reporting_group: Mapped["ReportingGroup | None"] = relationship(back_populates="entities")
+
+    @property
+    def is_legal(self) -> bool:
+        return self.entity_type == REPORTING_ENTITY_LEGAL
+
+    @property
+    def is_virtual(self) -> bool:
+        return self.entity_type == REPORTING_ENTITY_VIRTUAL
+
+    @property
+    def display_label(self) -> str:
+        kind = "LEGAL" if self.is_legal else "VIRTUAL"
+        return f"{self.name} ({kind})"
+
+
+class BankTransactionAllocation(Base):
+    """One line of ECONOMIC MEANING carved out of one bank movement.
+
+    The parent `FinancialTransaction` says $2,000 left the card. This row
+    says $1,500 of it was Food Purchases borne by RF Winter Park. A second
+    row says $300 was To-Go Packaging, a third that $200 was Restaurant
+    Operating Supplies. There is still exactly ONE bank transaction — no
+    fictitious child transactions are created, and the parent keeps its own
+    identity, provenance, deduplication state and reconciliation decision.
+
+    **One model, not two.** A movement with a single economic category is
+    represented by ONE allocation, not by a special "unsplit" shape. Every
+    consumer therefore reads the same structure: 1 transaction -> 1..N
+    allocations.
+
+    **The P&L reads allocations and nothing else.** The parent bank row is
+    never a P&L source — not when there are three allocations, and not when
+    there is one. That is what makes double counting structurally
+    impossible rather than something a report has to remember to avoid
+    (`bank_reconciliation.economic_reporting`).
+
+    Amount
+    ------
+    `amount_minor` is signed in EXACTLY the convention
+    `FinancialTransaction.amount_minor` already uses — money out negative,
+    money in positive (`parsers.py`: `credit - debit`). No second sign
+    system exists. `SUM(amount_minor)` over a transaction's allocations
+    must equal the parent's `amount_minor` EXACTLY. Both are integer minor
+    units, so nothing rounds; a set that does not balance is refused, never
+    silently absorbed (`economic_allocation.set_allocations`).
+
+    WHY -> WHAT
+    -----------
+    The accounting destination is DERIVED from the WHY
+    (`BankTransactionReason.accounting_classification`) — never chosen per
+    allocation, and there is no per-allocation accounting override. A P&L
+    WHY yields a WHAT; a non-P&L WHY yields a Balance Sheet destination and
+    the allocation legitimately has no WHAT at all. The `*_snapshot`
+    columns capture that resolution once, at completion, following the
+    convention `BankTransactionExplanation` already establishes: editing a
+    WHY's mapping later changes future work, never this history.
+
+    Payer versus economic owner
+    ---------------------------
+    `reporting_entity_id` is FOR WHOM. `payer_legal_entity_id` is WHO PAID,
+    resolved through the settlement account. When the two disagree, the
+    intercompany consequence below is DERIVED — an operator never chooses
+    Due From or Due To."""
+
+    __tablename__ = "bank_transaction_allocations"
+    __table_args__ = (
+        UniqueConstraint(
+            "financial_transaction_id", "allocation_index",
+            name="uq_bta_transaction_index",
+        ),
+        CheckConstraint(
+            "status IN ('UNALLOCATED', 'PENDING_EVIDENCE', 'NEEDS_OPERATOR', 'COMPLETE')",
+            name="ck_bta_status",
+        ),
+        # A zero-amount allocation carries no economic meaning and would
+        # only make a split harder to read.
+        CheckConstraint("amount_minor <> 0", name="ck_bta_amount_not_zero"),
+        CheckConstraint(
+            "decision_source IS NULL OR decision_source IN ('HUMAN', 'RULE')",
+            name="ck_bta_decision_source",
+        ),
+        CheckConstraint(
+            "payer_kind IS NULL OR payer_kind IN ('LEGAL_ENTITY', 'PERSONAL', 'UNRESOLVED')",
+            name="ck_bta_payer_kind",
+        ),
+        CheckConstraint(
+            "intercompany_outcome IS NULL OR intercompany_outcome IN "
+            "('NONE', 'CROSS_ENTITY', 'PERSONAL_PAYER_DUE_TO', "
+            "'PERSONAL_PAYER_CONTRIBUTION', 'NOT_DERIVABLE')",
+            name="ck_bta_intercompany_outcome",
+        ),
+        # COMPLETE is a promise: somebody it belongs to, a reason, and a
+        # resolved canonical account. An allocation that cannot state all
+        # three is not accounting-closed and must not pretend to be.
+        CheckConstraint(
+            "status <> 'COMPLETE' OR ("
+            "reporting_entity_id IS NOT NULL AND transaction_reason_id IS NOT NULL "
+            "AND accounting_classification_code_snapshot IS NOT NULL)",
+            name="ck_bta_complete_requires_resolution",
+        ),
+        Index("ix_bta_financial_transaction_id", "financial_transaction_id"),
+        Index("ix_bta_reporting_entity_id", "reporting_entity_id"),
+        Index("ix_bta_transaction_reason_id", "transaction_reason_id"),
+        Index("ix_bta_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # --- Parent financial movement ------------------------------------------
+    financial_transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("financial_transactions.id"), nullable=False
+    )
+    # Stable ordering inside one transaction's split, so a three-line split
+    # reads back in the order it was decided.
+    allocation_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # --- The economic facts ---------------------------------------------------
+    amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    # FOR WHOM. Nullable only while the allocation is not yet COMPLETE.
+    reporting_entity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("reporting_entities.id"), nullable=True
+    )
+    # WHY. Nullable only while the allocation is not yet COMPLETE.
+    transaction_reason_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_transaction_reasons.id"), nullable=True
+    )
+
+    # --- Accounting destination, DERIVED from the WHY -------------------------
+    # `accounting_classification_id` stays as the live traceability link; the
+    # `*_snapshot` values are what every report and export reads.
+    accounting_classification_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_accounting_classifications.id"), nullable=True
+    )
+    accounting_classification_code_snapshot: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    accounting_classification_name_snapshot: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    accounting_statement_type_snapshot: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
+    transaction_reason_name_snapshot: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    reporting_entity_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # --- Payer versus economic owner, and the derived consequence -------------
+    # Snapshotted rather than recomputed at read time so the derivation stays
+    # explainable after a settlement-account configuration changes. It is
+    # still a pure function of (payer, economic owner) —
+    # `economic_allocation.derive_intercompany` is the single place it lives.
+    payer_legal_entity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("legal_entities.id"), nullable=True
+    )
+    payer_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    economic_owner_legal_entity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("legal_entities.id"), nullable=True
+    )
+    intercompany_outcome: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # The canonical Balance Sheet codes the cross-entity consequence posts
+    # to — 1610 on the payer's books, 2710 on the economic owner's. Snapshot
+    # values, read from the existing catalog; no new account is created.
+    intercompany_due_from_code_snapshot: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    intercompany_due_to_code_snapshot: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    # Plain words explaining why the outcome above is what it is — present
+    # even when the outcome is NONE, so "no intercompany" is a stated
+    # conclusion rather than an absence.
+    intercompany_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # --- Status, evidence and decision audit ----------------------------------
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default=ALLOCATION_UNALLOCATED,
+        server_default=ALLOCATION_UNALLOCATED,
+    )
+    # HUMAN | RULE — the same vocabulary the reconciliation decision uses.
+    decision_source: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    decided_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # WHAT the decision rests on. Left open on purpose: the Invoice-evidence
+    # task that follows this one owns the controlled vocabulary, and guessing
+    # it now would be inventing the very thing that task must decide. NULL
+    # means no evidence has been recorded, which is a real, readable state.
+    evidence_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    evidence_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    financial_transaction: Mapped["FinancialTransaction"] = relationship()
+    reporting_entity: Mapped["ReportingEntity | None"] = relationship()
+    transaction_reason: Mapped["BankTransactionReason | None"] = relationship()
+    accounting_classification: Mapped["BankAccountingClassification | None"] = relationship()
+    payer_legal_entity: Mapped["LegalEntity | None"] = relationship(
+        foreign_keys=[payer_legal_entity_id]
+    )
+    economic_owner_legal_entity: Mapped["LegalEntity | None"] = relationship(
+        foreign_keys=[economic_owner_legal_entity_id]
+    )
+
+    @property
+    def is_complete(self) -> bool:
+        """Whether this allocation is accounting-closed. Deliberately NOT
+        the same question as whether the parent transaction is a canonical
+        financial fact — a canonical movement may sit here for weeks with
+        nobody having decided who bore its cost."""
+        return self.status == ALLOCATION_COMPLETE
+
+    @property
+    def is_profit_loss(self) -> bool:
+        """Whether this allocation lands on the P&L. A Balance Sheet
+        allocation is not a smaller P&L line; it is not a P&L line at all."""
+        return self.accounting_statement_type_snapshot == "PROFIT_LOSS"
+
+    @property
+    def is_cross_entity(self) -> bool:
+        return self.intercompany_outcome == INTERCOMPANY_CROSS_ENTITY
+
+    @property
+    def display_label(self) -> str:
+        who = self.reporting_entity_name_snapshot or "UNASSIGNED"
+        what = self.accounting_classification_code_snapshot or "UNCLASSIFIED"
+        return f"{who} · {what} · {self.amount_minor / 100:.2f}"
+
+
+# ---------------------------------------------------------------------------
+# Invoice evidence for Bank Assessment
+# (BANK_INVOICE_EVIDENCE_COLLABORATION_001).
+#
+# Bank Assessment remains the accounting/reporting control point. Nothing
+# below is a second accounting area: invoices are EVIDENCE that Bank
+# Assessment consumes to decide how many `BankTransactionAllocation` rows a
+# bank movement needs and what each one means. Reporting still reads
+# allocations, and only allocations.
+#
+#     BANK TRANSACTION
+#           |  matched by BankInvoiceMatch (many-to-many, with amounts)
+#     PURCHASE DOCUMENT
+#           |  its PRODUCT lines, classified by PurchaseLineClassification
+#     INVOICE LINES
+#           |  aggregated by (economic owner, WHY)
+#     BANK TRANSACTION ALLOCATION(S)
+#
+# No parallel reporting ledger is built from invoices, and no invoice row
+# ever posts to a P&L by itself.
+# ---------------------------------------------------------------------------
+
+# What a counterparty is CAPABLE of supplying, accounting-wise. This is a
+# statement about the supplier, never about any single transaction.
+#
+# MULTI_CATEGORY_CAPABLE does NOT mean "this payment contains several
+# categories". It means exactly one thing: WHEN A MATCHING INVOICE EXISTS,
+# ITS LINES MUST BE EXAMINED before the accounting allocation is decided.
+# How a capability came to be known. An operator may configure it; a real
+# invoice showing several canonical categories establishes it on its own.
+CAPABILITY_SOURCE_HUMAN = "HUMAN"
+CAPABILITY_SOURCE_INVOICE_EVIDENCE = "INVOICE_EVIDENCE"
+CAPABILITY_SOURCES = (CAPABILITY_SOURCE_HUMAN, CAPABILITY_SOURCE_INVOICE_EVIDENCE)
+
+# Bank <-> Invoice match lifecycle.
+MATCH_PROPOSED = "PROPOSED"
+MATCH_CONFIRMED = "CONFIRMED"
+MATCH_REJECTED = "REJECTED"
+BANK_INVOICE_MATCH_STATUSES = (MATCH_PROPOSED, MATCH_CONFIRMED, MATCH_REJECTED)
+BANK_INVOICE_MATCH_METHODS = ("AUTO", "HUMAN")
+
+# Why a matched amount differs from the invoice total. Only reasons a
+# source actually supports are ever recorded — RF-One never invents one.
+DIFFERENCE_NONE = "NONE"
+DIFFERENCE_TAX = "TAX"
+DIFFERENCE_FREIGHT = "FREIGHT"
+DIFFERENCE_FEE = "FEE"
+DIFFERENCE_CREDIT = "CREDIT"
+DIFFERENCE_DISCOUNT = "DISCOUNT"
+DIFFERENCE_PARTIAL_PAYMENT = "PARTIAL_PAYMENT"
+DIFFERENCE_UNEXPLAINED = "UNEXPLAINED"
+MATCH_DIFFERENCE_KINDS = (
+    DIFFERENCE_NONE,
+    DIFFERENCE_TAX,
+    DIFFERENCE_FREIGHT,
+    DIFFERENCE_FEE,
+    DIFFERENCE_CREDIT,
+    DIFFERENCE_DISCOUNT,
+    DIFFERENCE_PARTIAL_PAYMENT,
+    DIFFERENCE_UNEXPLAINED,
+)
+
+# How one invoice line's economic meaning was decided.
+LINE_DECISION_HUMAN = "HUMAN"
+LINE_DECISION_LEARNED = "LEARNED"
+LINE_DECISION_DOCUMENT_EVIDENCE = "DOCUMENT_EVIDENCE"
+LINE_DECISION_SOURCES = (
+    LINE_DECISION_HUMAN,
+    LINE_DECISION_LEARNED,
+    LINE_DECISION_DOCUMENT_EVIDENCE,
+)
+LINE_CLASSIFICATION_PROPOSED = "PROPOSED"
+LINE_CLASSIFICATION_CONFIRMED = "CONFIRMED"
+LINE_CLASSIFICATION_STATUSES = (LINE_CLASSIFICATION_PROPOSED, LINE_CLASSIFICATION_CONFIRMED)
+
+# Which evidence identifies a supplier item, strongest first. The order is
+# the rule: a stable supplier code is preferred, and a normalized
+# description is only ever a last resort.
+ITEM_IDENTITY_SUPPLIER_PRODUCT = "SUPPLIER_PRODUCT"
+ITEM_IDENTITY_SUPPLIER_ITEM_CODE = "SUPPLIER_ITEM_CODE"
+ITEM_IDENTITY_NORMALIZED_DESCRIPTION = "NORMALIZED_DESCRIPTION"
+ITEM_IDENTITY_KINDS = (
+    ITEM_IDENTITY_SUPPLIER_PRODUCT,
+    ITEM_IDENTITY_SUPPLIER_ITEM_CODE,
+    ITEM_IDENTITY_NORMALIZED_DESCRIPTION,
+)
+
+# Supplier item learning. Two consistent human confirmations promote a
+# mapping (Product Owner decision: two, not ten). A second WHY reaching the
+# same threshold for the same item does NOT silently win — it contradicts,
+# and automatic proposal stops until a human resolves it.
+LEARNING_OBSERVED = "OBSERVED"
+LEARNING_LEARNED = "LEARNED"
+LEARNING_CONTRADICTED = "CONTRADICTED"
+LEARNING_STATUSES = (LEARNING_OBSERVED, LEARNING_LEARNED, LEARNING_CONTRADICTED)
+# The Product Owner's threshold, in one place so nothing hardcodes a 2.
+ITEM_LEARNING_CONFIRMATION_THRESHOLD = 2
+
+
+class BankOccurrenceSupplier(Base):
+    """WHO (a bank counterparty) <-> Supplier (a purchasing counterparty).
+
+    Two genuinely separate concepts that this task finally has to relate.
+    `BankOccurrence` is global and deliberately not "a Supplier" — its own
+    docstring says a Supplier is only one possible kind of subject.
+    `Supplier` is Restaurant-scoped purchasing configuration. So the link
+    is many-to-many: one bank counterparty may correspond to a Supplier row
+    in each of several Restaurants, and neither table is reshaped to
+    pretend otherwise.
+
+    This exists only so Bank -> Invoice matching knows whose invoices to
+    look at. It confers no classification of its own: linking Amazon the
+    Occurrence to Amazon the Supplier says nothing about WHY any
+    transaction exists."""
+
+    __tablename__ = "bank_occurrence_suppliers"
+    __table_args__ = (
+        UniqueConstraint("occurrence_id", "supplier_id", name="uq_bos_occurrence_supplier"),
+        Index("ix_bos_occurrence_id", "occurrence_id"),
+        Index("ix_bos_supplier_id", "supplier_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occurrence_id: Mapped[int] = mapped_column(ForeignKey("bank_occurrences.id"), nullable=False)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), nullable=False)
+    # HUMAN | EVIDENCE — how the correspondence was established.
+    link_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    occurrence: Mapped["BankOccurrence"] = relationship()
+    supplier: Mapped["Supplier"] = relationship()
+
+
+class BankInvoiceMatch(Base):
+    """One link between a bank movement and a purchase document, carrying
+    the amount that link accounts for.
+
+    **Many-to-many, on purpose.** One payment may settle several invoices;
+    one invoice may be paid by several transactions. A one-to-one foreign
+    key on either table would have been a lie about how suppliers are
+    actually paid, so neither exists. `matched_amount_minor` is what makes
+    the many-to-many meaningful: without a per-link amount, "this payment
+    covers those three invoices" cannot be checked against either side.
+
+    Deliberately NOT `FinancialTransactionMatch`, which links two
+    `FinancialTransaction` rows on different instruments as the two sides
+    of one internal transfer. That is a different relation between
+    different things, its CHECK constraints (`transaction_a_id <
+    transaction_b_id`, `match_type IN ('INTERNAL_TRANSFER')`) say so, and
+    reusing it here would have required breaking them.
+
+    `matched_amount_minor` follows the BANK parent's sign convention, so
+    summing matches for a transaction is directly comparable to its
+    `amount_minor` with no sign juggling.
+
+    A PROPOSED row is a candidate RF-One generated; it feeds nothing until
+    a human confirms it. Ambiguous candidates are never auto-confirmed."""
+
+    __tablename__ = "bank_invoice_matches"
+    __table_args__ = (
+        UniqueConstraint(
+            "financial_transaction_id", "purchase_document_id", name="uq_bim_transaction_document",
+        ),
+        CheckConstraint(
+            "status IN ('PROPOSED', 'CONFIRMED', 'REJECTED')", name="ck_bim_status",
+        ),
+        CheckConstraint("match_method IN ('AUTO', 'HUMAN')", name="ck_bim_match_method"),
+        CheckConstraint("matched_amount_minor <> 0", name="ck_bim_amount_not_zero"),
+        CheckConstraint(
+            "difference_kind IS NULL OR difference_kind IN "
+            "('NONE', 'TAX', 'FREIGHT', 'FEE', 'CREDIT', 'DISCOUNT', "
+            "'PARTIAL_PAYMENT', 'UNEXPLAINED')",
+            name="ck_bim_difference_kind",
+        ),
+        Index("ix_bim_financial_transaction_id", "financial_transaction_id"),
+        Index("ix_bim_purchase_document_id", "purchase_document_id"),
+        Index("ix_bim_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    financial_transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("financial_transactions.id"), nullable=False
+    )
+    purchase_document_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_documents.id"), nullable=False
+    )
+
+    matched_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=MATCH_PROPOSED, server_default=MATCH_PROPOSED,
+    )
+    match_method: Mapped[str] = mapped_column(String(8), nullable=False)
+    # Descriptive label — HIGH / MEDIUM / LOW — matching the convention
+    # `BankTransactionExplanation.confidence` already sets. Never a numeric
+    # score that promotes anything by itself.
+    confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Which facts actually agreed: supplier, amount, date window, document
+    # number, payment reference, instrument. Written so a human can check
+    # the reasoning rather than trust a label.
+    match_basis: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # When the matched amount differs from the document total, WHY —
+    # recorded only when the source supports the explanation.
+    difference_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    difference_kind: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    difference_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    decided_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    financial_transaction: Mapped["FinancialTransaction"] = relationship()
+    purchase_document: Mapped["PurchaseDocument"] = relationship()
+
+    @property
+    def is_confirmed(self) -> bool:
+        return self.status == MATCH_CONFIRMED
+
+    @property
+    def has_unexplained_difference(self) -> bool:
+        """A difference nobody has explained is reported as exactly that.
+        It is never absorbed into an allocation."""
+        return bool(self.difference_minor) and self.difference_kind in (
+            None, DIFFERENCE_UNEXPLAINED,
+        )
+
+
+class PurchaseLineClassification(Base):
+    """What ONE invoice line means economically: its WHY, and for whom.
+
+    A separate table because `PurchaseLine` is immutable by convention
+    (Purchasing/BusinessRules.md Rule 2 — the repository never updates a
+    line once inserted). The source said what the source said; this is
+    RF-One's decision about it, and the two must not be written into the
+    same row.
+
+    **Append-only.** One row per decision event, never updated in place —
+    the same convention `BankTransactionExplanation` establishes for bank
+    decisions. The CURRENT classification of a line is its highest-`id`
+    row. A later human override therefore does not erase the learned
+    proposal it replaced, and a contradiction stays legible forever.
+
+    **WHAT is never chosen here.** `transaction_reason_id` is the WHY; the
+    accounting destination is derived from it through the canonical
+    `BankTransactionReason` chain and snapshotted. There is no column an
+    operator could use to pick an account independently of the reason, by
+    design.
+
+    `reporting_entity_id` answers FOR WHOM. It is NULL when neither the
+    document nor a human has established the beneficiary, and NULL means
+    exactly that: unknown. It is never filled from the payer, from a
+    historical majority, from the supplier, or from what similar items
+    usually turn out to be."""
+
+    __tablename__ = "purchase_line_classifications"
+    __table_args__ = (
+        CheckConstraint(
+            "decision_source IN ('HUMAN', 'LEARNED', 'DOCUMENT_EVIDENCE')",
+            name="ck_plc_decision_source",
+        ),
+        CheckConstraint(
+            "status IN ('PROPOSED', 'CONFIRMED')", name="ck_plc_status",
+        ),
+        Index("ix_plc_purchase_line_id", "purchase_line_id"),
+        Index("ix_plc_purchase_document_id", "purchase_document_id"),
+        Index("ix_plc_reporting_entity_id", "reporting_entity_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    purchase_line_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_lines.id"), nullable=False
+    )
+    # Denormalized from the line so a document's whole classification state
+    # can be read without joining every line — the document is immutable,
+    # so this can never drift.
+    purchase_document_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_documents.id"), nullable=False
+    )
+
+    transaction_reason_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_transaction_reasons.id"), nullable=True
+    )
+    reporting_entity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("reporting_entities.id"), nullable=True
+    )
+
+    # Derived from the WHY, snapshotted once. Never operator-chosen.
+    accounting_classification_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_accounting_classifications.id"), nullable=True
+    )
+    accounting_classification_code_snapshot: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    accounting_statement_type_snapshot: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
+    transaction_reason_name_snapshot: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+
+    decision_source: Mapped[str] = mapped_column(String(24), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False,
+        default=LINE_CLASSIFICATION_PROPOSED, server_default=LINE_CLASSIFICATION_PROPOSED,
+    )
+    confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The learning row this proposal came from, when it came from one —
+    # so a proposal can always be traced back to the confirmations that
+    # produced it.
+    learning_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplier_item_category_learnings.id"), nullable=True
+    )
+    # True when this row replaced an existing classification for the line.
+    # An override is a first-class, visible fact, not an absence of one.
+    is_override: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0"),
+    )
+
+    decided_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    purchase_line: Mapped["PurchaseLine"] = relationship()
+    transaction_reason: Mapped["BankTransactionReason | None"] = relationship()
+    reporting_entity: Mapped["ReportingEntity | None"] = relationship()
+    accounting_classification: Mapped["BankAccountingClassification | None"] = relationship()
+
+    @property
+    def is_confirmed(self) -> bool:
+        return self.status == LINE_CLASSIFICATION_CONFIRMED
+
+    @property
+    def beneficiary_known(self) -> bool:
+        return self.reporting_entity_id is not None
+
+
+class SupplierItemCategoryLearning(Base):
+    """What RF-One has learned about what ONE supplier item means.
+
+    Supplier product substance is stable: a case of chicken from the same
+    supplier item code is a food cost this month and next. So after **two**
+    consistent human confirmations of the same (supplier item, WHY), the
+    mapping may be proposed automatically on later invoices. Two, not ten —
+    an explicit Product Owner decision, held in
+    `ITEM_LEARNING_CONFIRMATION_THRESHOLD` rather than written as a literal
+    anywhere.
+
+    One row per (supplier, item identity, WHY). That shape is what makes a
+    contradiction representable instead of destructive: when a human
+    confirms a DIFFERENT WHY for an item that already has a learned
+    mapping, a second row accumulates its own confirmations and BOTH become
+    `CONTRADICTED`. Automatic proposal then stops for that item until a
+    person decides, and neither row's evidence is overwritten or deleted.
+    Learning never silently rewrites its own history.
+
+    **Identity comes from the strongest available evidence.** A canonical
+    `SupplierProduct`, else the supplier's own item code, else — only when
+    the source offers nothing better — a normalized description.
+    `supplier_id` is part of every key, so "CASE CHICKEN" from two
+    different suppliers is two different things and learning never leaks
+    between them.
+
+    Never learned from one occurrence. A single confirmation leaves the row
+    `OBSERVED`, which proposes nothing."""
+
+    __tablename__ = "supplier_item_category_learnings"
+    __table_args__ = (
+        UniqueConstraint(
+            "supplier_id", "identity_kind", "identity_value", "transaction_reason_id",
+            name="uq_sicl_identity_reason",
+        ),
+        CheckConstraint(
+            "identity_kind IN ('SUPPLIER_PRODUCT', 'SUPPLIER_ITEM_CODE', "
+            "'NORMALIZED_DESCRIPTION')",
+            name="ck_sicl_identity_kind",
+        ),
+        CheckConstraint(
+            "status IN ('OBSERVED', 'LEARNED', 'CONTRADICTED')", name="ck_sicl_status",
+        ),
+        CheckConstraint("confirmation_count >= 0", name="ck_sicl_confirmation_count"),
+        Index("ix_sicl_supplier_identity", "supplier_id", "identity_kind", "identity_value"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), nullable=False)
+    identity_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    # The canonical identity text: a SupplierProduct id as text, a supplier
+    # item code, or a normalized description. Stored uniformly so the
+    # unique constraint can cover every kind with one key.
+    identity_value: Mapped[str] = mapped_column(String(512), nullable=False)
+    supplier_product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplier_products.id"), nullable=True
+    )
+
+    transaction_reason_id: Mapped[int] = mapped_column(
+        ForeignKey("bank_transaction_reasons.id"), nullable=False
+    )
+
+    confirmation_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0",
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=LEARNING_OBSERVED, server_default=LEARNING_OBSERVED,
+    )
+    # Set when another WHY reached the threshold for the same item. Kept as
+    # words, so the reason a mapping stopped proposing is readable.
+    contradiction_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    first_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    supplier: Mapped["Supplier"] = relationship()
+    supplier_product: Mapped["SupplierProduct | None"] = relationship()
+    transaction_reason: Mapped["BankTransactionReason"] = relationship()
+
+    @property
+    def is_learned(self) -> bool:
+        return self.status == LEARNING_LEARNED
+
+    @property
+    def may_propose(self) -> bool:
+        """Whether this mapping may be proposed automatically. A
+        contradicted mapping never may — silence is the correct output of
+        a genuine disagreement."""
+        return (
+            self.status == LEARNING_LEARNED
+            and self.confirmation_count >= ITEM_LEARNING_CONFIRMATION_THRESHOLD
+        )
+
+
+class BankEvidenceBypassAuthorization(Base):
+    """A person taking explicit responsibility for classifying a bank
+    movement whose required invoice is missing.
+
+    This is the ONLY way a MULTI_CATEGORY_CAPABLE counterparty's
+    transaction may be completed without the document. It is never a silent
+    fallback and never a default: absent one of these rows, the allocation
+    stays PENDING_EVIDENCE and the month stays accounting-incomplete.
+
+    Its own table, append-only, because the audit must outlive the
+    allocation it authorized. `BankTransactionAllocation` rows are restated
+    as a whole set when a decision changes, so a bypass recorded only on an
+    allocation row would vanish the first time somebody corrected the
+    split. Here it survives every restatement, forever.
+
+    Nothing about this row is editable, and it is never deleted — including
+    when the missing invoice later turns up. That the classification was
+    once made without the document remains true."""
+
+    __tablename__ = "bank_evidence_bypass_authorizations"
+    __table_args__ = (
+        Index("ix_beba_financial_transaction_id", "financial_transaction_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    financial_transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("financial_transactions.id"), nullable=False
+    )
+    # Required: an authorization without a stated reason is not an
+    # authorization, it is a shrug.
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    # What was missing, in the operator's own words.
+    missing_document_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The counterparty and its capability AT THE MOMENT of the bypass, so
+    # the decision stays explicable after either one changes.
+    occurrence_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_occurrences.id"), nullable=True
+    )
+    occurrence_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    capability_snapshot: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    authorized_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=True
+    )
+    # Free text for the case where the authorizing person is not an RF-One
+    # account holder; never a substitute for the account when one exists.
+    authorized_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    authorized_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    financial_transaction: Mapped["FinancialTransaction"] = relationship()
+    occurrence: Mapped["BankOccurrence | None"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Destination (ship-to) evidence -> ReportingEntity
+# (BANK_REPORTING_CONFIGURATION_001 §5-§9).
+#
+# Invoice evidence used to recognize an economic owner only when a
+# document's ship-to text matched a ReportingEntity's own name exactly.
+# That was too fragile to survive real sources: suppliers write "ROME'S
+# FLAVOURS", "WINTER PARK STORE #2" or a street address, never
+# "Angeli E Demoni, LLC".
+#
+# This is an EVIDENCE MAPPING, not an accounting classification. It says
+# "this destination text means this reporting entity". It says nothing
+# about WHY anything was bought, and it never chooses an account.
+# ---------------------------------------------------------------------------
+
+# How far a mapping's claim reaches. Scope is the whole point of the table:
+# "ROME'S FLAVOURS" from one supplier proves nothing about what the same
+# words mean on somebody else's paperwork.
+DESTINATION_SCOPE_GLOBAL = "GLOBAL"
+DESTINATION_SCOPE_SUPPLIER = "SUPPLIER"
+DESTINATION_SCOPES = (DESTINATION_SCOPE_GLOBAL, DESTINATION_SCOPE_SUPPLIER)
+
+# Where the mapping's authority comes from.
+#   DOCUMENT_EVIDENCE — a real source document states it.
+#   SYSTEM_EVIDENCE   — existing RF-One configuration establishes it
+#                       (e.g. a Legal Entity's own legal name).
+#   HUMAN             — an operator confirmed it.
+DESTINATION_SOURCE_DOCUMENT = "DOCUMENT_EVIDENCE"
+DESTINATION_SOURCE_SYSTEM = "SYSTEM_EVIDENCE"
+DESTINATION_SOURCE_HUMAN = "HUMAN"
+DESTINATION_CONFIRMATION_SOURCES = (
+    DESTINATION_SOURCE_DOCUMENT,
+    DESTINATION_SOURCE_SYSTEM,
+    DESTINATION_SOURCE_HUMAN,
+)
+
+
+class ReportingEntityDestinationAlias(Base):
+    """One piece of destination evidence: this ship-to text means this
+    reporting entity.
+
+    Generic on purpose. The `raw_value` may be a supplier's ship-to line, a
+    delivery location label, an invoice destination name or an address
+    label — RF-One does not care which, only that a human or a document
+    established what it refers to.
+
+    **Scope is the safety mechanism.** A `SUPPLIER`-scoped mapping claims
+    only what that supplier's paperwork means. A `GLOBAL` mapping claims
+    the text means the same thing everywhere, and is therefore reserved
+    for text strong enough to carry that claim — a location name, not a
+    two-letter abbreviation and not a trading name that another company
+    might also use. Resolution prefers the narrowest scope that matches,
+    so a supplier-specific meaning always wins over a general one.
+
+    **Nothing here is ever inferred.** A mapping exists because a document
+    said so, because existing RF-One configuration establishes it, or
+    because an operator confirmed it — each recorded in
+    `confirmation_source`, with the actual evidence in `evidence`, which is
+    mandatory. A mapping with no stated evidence is an opinion, so the
+    column is NOT NULL.
+
+    `normalized_key` is what matching compares; `raw_value` preserves what
+    was actually written, because a normalizer that improves later must
+    not erase what the source said."""
+
+    __tablename__ = "reporting_entity_destination_aliases"
+    __table_args__ = (
+        CheckConstraint(
+            "scope IN ('GLOBAL', 'SUPPLIER')", name="ck_reda_scope",
+        ),
+        # GLOBAL carries no supplier; SUPPLIER requires one. Structural, so
+        # a supplier-specific claim can never silently become a universal
+        # one.
+        CheckConstraint(
+            "(scope = 'GLOBAL' AND supplier_id IS NULL) OR "
+            "(scope = 'SUPPLIER' AND supplier_id IS NOT NULL)",
+            name="ck_reda_scope_supplier",
+        ),
+        CheckConstraint(
+            "confirmation_source IN ('DOCUMENT_EVIDENCE', 'SYSTEM_EVIDENCE', 'HUMAN')",
+            name="ck_reda_confirmation_source",
+        ),
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_reda_status"),
+        CheckConstraint("length(normalized_key) > 0", name="ck_reda_key_not_empty"),
+        # One meaning per key per scope. Two ACTIVE global mappings for the
+        # same text would be a contradiction, not a choice.
+        Index(
+            "ux_reda_global_key",
+            "normalized_key",
+            unique=True,
+            sqlite_where=text("supplier_id IS NULL"),
+            postgresql_where=text("supplier_id IS NULL"),
+        ),
+        Index(
+            "ux_reda_supplier_key",
+            "supplier_id", "normalized_key",
+            unique=True,
+            sqlite_where=text("supplier_id IS NOT NULL"),
+            postgresql_where=text("supplier_id IS NOT NULL"),
+        ),
+        Index("ix_reda_normalized_key", "normalized_key"),
+        Index("ix_reda_reporting_entity_id", "reporting_entity_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # What matching compares — upper-cased, punctuation dropped, whitespace
+    # collapsed by `destination_evidence.normalize_destination`.
+    normalized_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    # What the source actually wrote, preserved verbatim.
+    raw_value: Mapped[str] = mapped_column(String(512), nullable=False)
+
+    scope: Mapped[str] = mapped_column(
+        String(16), nullable=False,
+        default=DESTINATION_SCOPE_GLOBAL, server_default=DESTINATION_SCOPE_GLOBAL,
+    )
+    supplier_id: Mapped[int | None] = mapped_column(
+        ForeignKey("suppliers.id"), nullable=True, index=True
+    )
+
+    reporting_entity_id: Mapped[int] = mapped_column(
+        ForeignKey("reporting_entities.id"), nullable=False
+    )
+
+    confirmation_source: Mapped[str] = mapped_column(String(24), nullable=False)
+    # Mandatory. What actually establishes this mapping, in words a
+    # reviewer can check.
+    evidence: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ACTIVE", server_default="ACTIVE",
+    )
+
+    confirmed_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=True
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    reporting_entity: Mapped["ReportingEntity"] = relationship()
+    supplier: Mapped["Supplier | None"] = relationship()
+
+    @property
+    def is_supplier_scoped(self) -> bool:
+        return self.scope == DESTINATION_SCOPE_SUPPLIER
+
+    @property
+    def display_label(self) -> str:
+        where = f"@supplier {self.supplier_id}" if self.is_supplier_scoped else "@global"
+        return f"{self.raw_value!r} {where} -> {self.reporting_entity_id}"
+
+
 ALL_MODELS: tuple[type[Base], ...] = (
     ActingIdentity,
     AuthorityGrant,
@@ -12821,4 +14069,13 @@ ALL_MODELS: tuple[type[Base], ...] = (
     BankSourceInstrumentProfile,
     BankMonthlySourcePeriod,
     BankMonthlyInstrumentCoverage,
+    ReportingGroup,
+    ReportingEntity,
+    BankTransactionAllocation,
+    BankOccurrenceSupplier,
+    BankInvoiceMatch,
+    PurchaseLineClassification,
+    SupplierItemCategoryLearning,
+    BankEvidenceBypassAuthorization,
+    ReportingEntityDestinationAlias,
 )

@@ -6,7 +6,7 @@
 
 *Preserved from an earlier design (TASK_BANK_RECONCILIATION_PAYPAL_001); the Financial Model Convergence work may supersede parts of this foundation. Retained here for its unique conceptual history — see `01 Domains/Domain Architecture.md` §9 item 6 and the Purchased Domain README for related, still-open boundaries.*
 
-**The current implementation specification is `BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATION_001.md` (this folder)** — it supersedes this README's `PaymentInstrumentTransaction`-based schema description below with the canonical `FinancialTransaction`/Bank Recognition Expert System model now on `main`. This README remains for historical/conceptual context only.
+**The current implementation specifications are `BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATION_001.md`, `BANK_ECONOMIC_ALLOCATION_FOUNDATION_001.md`, `BANK_INVOICE_EVIDENCE_COLLABORATION_001.md` and `BANK_REPORTING_CONFIGURATION_001.md` (this folder)** — it supersedes this README's `PaymentInstrumentTransaction`-based schema description below with the canonical `FinancialTransaction`/Bank Recognition Expert System model now on `main`. This README remains for historical/conceptual context only.
 
 ---
 
@@ -167,6 +167,8 @@ A discrepancy between the two does not automatically modify Purchased, originate
 **Open documentation tension (flagged, not resolved here):** Purchased's own README (line 333) states "Bank Reconciliation belongs to the consuming Business Domain, not to Purchased" — written when Bank Reconciliation was expected to be owned per-Business-Domain (e.g. inside Restaurant). This task instead places Bank Reconciliation under `01 Domains/Shared Domains/Administration/` (a transversal/Shared Domain module), matching the already-existing, already-reserved empty folder this README now fills, and architecturally consistent with `linked_instrument_id`/cross-ledger matching being industry-independent logic (equally applicable to Restaurant or any future Business Domain). Purchased's own wording was not edited by this task (out of this task's strict scope) — a Product Owner decision is needed on whether to update it to match.
 
 ## Bank Reconciliation ≠ Accounting
+
+> **Restated — decided (BANK_INVOICE_EVIDENCE_COLLABORATION_001 §20).** Bank Reconciliation is **not the General Ledger**: it posts no journal entries and is not the external accounting ledger. **But Bank Assessment determines the economic allocations required for reporting and accounting export** — the financial movement, the evidence match, and whether the economic allocation is complete. The canonical chart of accounts (`bank_accounting_classifications`) and P&L production from Economic Allocations therefore live here by decision, not by accident. No separate Accounting domain is created to move this functionality. The original statement below stands for journal entries and for the external ledger; read it with this scope.
 
 Consistent with Administration's own existing "Administration ≠ Accounting" boundary (`01 Domains/Shared Domains/Administration/README.md`): Bank Reconciliation records that two transactions are the same internal movement and assigns Internal Transfer classification — it does not post journal entries, does not maintain a chart of accounts, and does not produce financial statements.
 

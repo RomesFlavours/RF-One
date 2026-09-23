@@ -432,12 +432,61 @@ def reconcile(fingerprints) -> ReconciledSources:
 # deliberately narrow: a bare four-digit run inside a trace number or an
 # order reference is NOT an account reference, and treating it as one would
 # bury the real findings under noise.
+#
+# Each pattern carries the KIND of evidence it is, most specific first, so a
+# candidate can say how it was found. The word immediately before
+# "card/account" is captured as an institution HINT only; whether it is an
+# institution is decided against the registry's own vocabulary, never here.
+REF_CARD_OR_ACCOUNT_ENDING_IN = "CARD_OR_ACCOUNT_ENDING_IN"
+REF_ENDING_IN = "ENDING_IN"
+REF_TRANSFER_MASKED_NUMBER = "TRANSFER_MASKED_NUMBER"
+REF_MASKED_ACCOUNT_NUMBER = "MASKED_ACCOUNT_NUMBER"
+
 _REFERENCE_PATTERNS = (
-    re.compile(r"\b(?:card|account|acct)\s+ending\s+in\s+(\d{4})\b", re.I),
-    re.compile(r"\bending\s+in\s+(\d{4})\b", re.I),
-    re.compile(r"\b(?:to|from)\s+(?:card|account|acct)\s*#?\s*[xX*]{2,}(\d{4})\b", re.I),
-    re.compile(r"\b(?:card|account|acct)\s*#?\s*[xX*]{4,}(\d{4})\b", re.I),
+    (REF_CARD_OR_ACCOUNT_ENDING_IN, re.compile(
+        r"(?:\b(?P<institution>[A-Za-z][A-Za-z&.-]*)\s+)?"
+        r"\b(?:card|account|acct)\s+ending\s+in\s+(?P<last_four>\d{4})\b", re.I)),
+    (REF_ENDING_IN, re.compile(r"\bending\s+in\s+(?P<last_four>\d{4})\b", re.I)),
+    (REF_TRANSFER_MASKED_NUMBER, re.compile(
+        r"\b(?:to|from)\s+(?:card|account|acct)\s*#?\s*[xX*]{2,}(?P<last_four>\d{4})\b", re.I)),
+    (REF_MASKED_ACCOUNT_NUMBER, re.compile(
+        r"\b(?:card|account|acct)\s*#?\s*[xX*]{4,}(?P<last_four>\d{4})\b", re.I)),
 )
+
+
+@dataclass(frozen=True)
+class InstrumentReference:
+    """One credible mention of another account inside a transaction text."""
+
+    last_four: str
+    kind: str
+    institution: str | None = None
+
+
+def instrument_reference_evidence(
+    text: str | None, *, known_institutions: set[str] | frozenset[str] = frozenset(),
+) -> list[InstrumentReference]:
+    """The account references a text credibly makes, one per last four,
+    labelled with the most specific pattern that found it.
+
+    `institution` is filled only when the word before "card/account" is an
+    institution RF-One's registry already uses (compared case-insensitively),
+    so "Chase card ending in 4321" yields CHASE while "credit card ending in
+    4321" yields nothing rather than an institution called CREDIT.
+    """
+    if not text:
+        return []
+    known = {value.upper() for value in known_institutions if value}
+    found: dict[str, InstrumentReference] = {}
+    for kind, pattern in _REFERENCE_PATTERNS:
+        for match in pattern.finditer(text):
+            last_four = match.group("last_four")
+            if last_four in found:
+                continue
+            hint = match.groupdict().get("institution")
+            institution = hint.upper() if hint and hint.upper() in known else None
+            found[last_four] = InstrumentReference(last_four, kind, institution)
+    return [found[key] for key in sorted(found)]
 
 
 def extract_instrument_references(text: str | None) -> set[str]:
@@ -446,13 +495,130 @@ def extract_instrument_references(text: str | None) -> set[str]:
     Only explicit account/card phrasing counts. RF-One would rather miss a
     hint than invent an account out of a trace number.
     """
-    found: set[str] = set()
-    if not text:
-        return found
-    for pattern in _REFERENCE_PATTERNS:
-        for match in pattern.finditer(text):
-            found.add(match.group(1))
-    return found
+    return {reference.last_four for reference in instrument_reference_evidence(text)}
+
+
+# Raw-row keys that describe the row's OWN account or its provenance, never a
+# reference to another account, and are therefore not scanned.
+_NON_REFERENCE_RAW_KEYS = frozenset(
+    {"account_hint", "source_path", "detected_format", "payment_instrument_id"}
+)
+DISCOVERY_SCAN_VERSION = "indirect-reference-scan v1"
+
+
+@dataclass
+class CandidateDiscoveryResult:
+    raw_rows_scanned: int = 0
+    registered_references: set = field(default_factory=set)
+    created: list = field(default_factory=list)
+    updated: list = field(default_factory=list)
+    unchanged: list = field(default_factory=list)
+    skipped: list = field(default_factory=list)
+
+
+def discover_indirect_reference_candidates(session: Session) -> CandidateDiscoveryResult:
+    """Persist every account the RAW evidence names but the registry lacks.
+
+    Scans every preserved `RawBankTransaction` — duplicate evidence
+    included, because a mention is evidence wherever it was downloaded —
+    with the narrow patterns above. A last four matching ANY registered
+    Payment Instrument, whatever its status, is not a candidate.
+
+    Persistence goes through `record_candidate`, one `CandidateEvidence`
+    per raw row keyed by that row's id, so idempotency is a property of the
+    generic function and not of this scan: re-running it offers the same
+    keys and changes nothing. `occurrence_count` is the number of distinct
+    canonical transactions that mention the account; first/last seen are
+    their posting dates — source boundaries, never lifecycle dates.
+
+    Never creates a Payment Instrument, never sets or clears a resolution,
+    never writes to a transaction or raw row. A candidate found by its own
+    source file (DIRECT_SOURCE) is left as its discoverer recorded it.
+    """
+    result = CandidateDiscoveryResult()
+    instruments = list(session.scalars(select(m.PaymentInstrument)))
+    registered = {lf for lf in (instrument_last_four(i) for i in instruments) if lf}
+    known_institutions = {i.institution for i in instruments if i.institution}
+    posting = dict(session.execute(
+        select(m.FinancialTransaction.id, m.FinancialTransaction.posting_date)
+    ).all())
+
+    items: dict[str, dict[str, CandidateEvidence]] = {}
+    kinds: dict[str, set[str]] = {}
+    institutions: dict[str, set[str]] = {}
+    for raw in session.scalars(select(m.RawBankTransaction).order_by(m.RawBankTransaction.id)):
+        result.raw_rows_scanned += 1
+        fields = raw.raw_fields or {}
+        for key in sorted(fields):
+            value = fields[key]
+            if key in _NON_REFERENCE_RAW_KEYS or not isinstance(value, str):
+                continue
+            for reference in instrument_reference_evidence(
+                value, known_institutions=known_institutions,
+            ):
+                if reference.last_four in registered:
+                    result.registered_references.add(reference.last_four)
+                    continue
+                kinds.setdefault(reference.last_four, set()).add(reference.kind)
+                if reference.institution:
+                    institutions.setdefault(reference.last_four, set()).add(reference.institution)
+                # One item per raw row: the first field that referred wins,
+                # so a row mentioning the account twice is still one row.
+                items.setdefault(reference.last_four, {}).setdefault(
+                    f"raw:{raw.id}",
+                    CandidateEvidence.from_raw_row(
+                        raw_bank_transaction_id=raw.id, kind=reference.kind,
+                        financial_transaction_id=raw.normalized_transaction_id,
+                        observed=posting.get(raw.normalized_transaction_id),
+                    ),
+                )
+
+    for last_four in sorted(items):
+        existing = list(session.scalars(
+            select(m.BankHistoricalInstrumentCandidate).where(
+                m.BankHistoricalInstrumentCandidate.last_four == last_four
+            )
+        ))
+        if len(existing) > 1 or (
+            existing and existing[0].discovery != m.CANDIDATE_INDIRECT_REFERENCE
+        ):
+            result.skipped.append(last_four)
+            continue
+        named = sorted(institutions.get(last_four, set()))
+        if existing:
+            institution = existing[0].institution
+            before = (
+                existing[0].occurrence_count, existing[0].first_seen_date,
+                existing[0].last_seen_date, existing[0].evidence,
+                len(existing[0].evidence_items),
+            )
+        else:
+            # One institution only when the evidence is unanimous about it.
+            institution = named[0] if len(named) == 1 else None
+            before = None
+        summary = (
+            f"{m.CANDIDATE_INDIRECT_REFERENCE} found by {DISCOVERY_SCAN_VERSION}: explicit "
+            f"account/card phrasing in another account's raw bank rows; "
+            f"reference_kinds={','.join(sorted(kinds[last_four]))}; "
+            f"institution_named_in_text={','.join(named) or 'none'}. Each distinct raw row is "
+            "one evidence item. Dates are source boundaries, not lifecycle dates. No Payment "
+            "Instrument was created."
+        )
+        candidate = record_candidate(
+            session, last_four=last_four, institution=institution,
+            discovery=m.CANDIDATE_INDIRECT_REFERENCE, evidence=summary,
+            evidence_items=[items[last_four][k] for k in sorted(items[last_four])],
+        )
+        after = (
+            candidate.occurrence_count, candidate.first_seen_date, candidate.last_seen_date,
+            candidate.evidence, len(candidate.evidence_items),
+        )
+        if before is None:
+            result.created.append(last_four)
+        else:
+            (result.updated if after != before else result.unchanged).append(last_four)
+    session.flush()
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -590,16 +756,100 @@ def coverage_for_fingerprints(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class CandidateEvidence:
+    """One distinct piece of evidence for a candidate, with a STABLE key.
+
+    Use `from_raw_row` for a preserved raw bank row: its key is the row's
+    own id, so the same row can never be counted twice however often it is
+    processed. `occurrences` matters only for evidence that is not tied to
+    a canonical transaction (a whole source file summarised as N rows).
+    """
+
+    key: str
+    kind: str
+    raw_bank_transaction_id: int | None = None
+    financial_transaction_id: int | None = None
+    first_observed: date | None = None
+    last_observed: date | None = None
+    occurrences: int = 1
+
+    @classmethod
+    def from_raw_row(
+        cls, *, raw_bank_transaction_id: int, kind: str,
+        financial_transaction_id: int | None, observed: date | None,
+    ) -> "CandidateEvidence":
+        return cls(
+            key=f"raw:{raw_bank_transaction_id}", kind=kind,
+            raw_bank_transaction_id=raw_bank_transaction_id,
+            financial_transaction_id=financial_transaction_id,
+            first_observed=observed, last_observed=observed,
+        )
+
+
+def _summary_evidence(
+    discovery: str, evidence: str, first_seen: date | None, last_seen: date | None,
+    occurrences: int,
+) -> CandidateEvidence:
+    """The single evidence item a caller that has no row-level evidence
+    describes: its identity is the description itself, so repeating the
+    same description is recognised as the same evidence."""
+    digest = hashlib.sha256(
+        "|".join([discovery, evidence, str(first_seen), str(last_seen), str(occurrences)])
+        .encode("utf-8")
+    ).hexdigest()[:40]
+    return CandidateEvidence(
+        key=f"summary:{digest}", kind=discovery, first_observed=first_seen,
+        last_observed=last_seen, occurrences=max(occurrences, 1),
+    )
+
+
+def _recompute_candidate(candidate: "m.BankHistoricalInstrumentCandidate") -> None:
+    """Candidate figures as a pure function of its evidence set.
+
+    Evidence tied to a canonical transaction counts once per DISTINCT
+    transaction, however many raw copies evidence it; other evidence
+    counts its declared `occurrences`. The span is the minimum first and
+    maximum last observed date. Only changed values are written, so an
+    unchanged evidence set leaves the row — and its `updated_at` — alone.
+    """
+    items = candidate.evidence_items
+    transactions = {e.financial_transaction_id for e in items if e.financial_transaction_id}
+    count = len(transactions) + sum(e.occurrences for e in items if not e.financial_transaction_id)
+    firsts = [e.first_observed_date for e in items if e.first_observed_date]
+    lasts = [e.last_observed_date for e in items if e.last_observed_date]
+    values = {
+        "occurrence_count": count,
+        "first_seen_date": min(firsts) if firsts else None,
+        "last_seen_date": max(lasts) if lasts else None,
+    }
+    for name, value in values.items():
+        if getattr(candidate, name) != value:
+            setattr(candidate, name, value)
+
+
 def record_candidate(
     session: Session, *, last_four: str, institution: str | None, discovery: str,
     evidence: str, first_seen: date | None = None, last_seen: date | None = None,
-    occurrences: int = 0,
+    occurrences: int = 0, evidence_items: list[CandidateEvidence] | None = None,
 ) -> "m.BankHistoricalInstrumentCandidate":
     """Remember an account the evidence names and the registry lacks.
 
-    Creates NO `PaymentInstrument`. Re-recording the same identity updates
-    the evidence span rather than duplicating the candidate, so a second
-    file mentioning ··9191 strengthens the record instead of cluttering it.
+    Candidate identity + evidence set -> deterministic persisted state.
+    Each piece of evidence carries a stable key and is stored once per
+    candidate; `occurrence_count` and the first/last observed dates are
+    RECOMPUTED from the whole set on every call, never accumulated. So
+    processing the same evidence again changes nothing, and genuinely new
+    evidence moves the figures by exactly what it adds.
+
+    `evidence` is the human-readable description; it is appended only when
+    the candidate does not already carry that exact text. A caller with no
+    row-level evidence (`evidence_items` omitted) is recorded as a single
+    summary item identified by its own description, dates and count — a
+    repeated identical call is therefore also a no-op.
+
+    Creates NO `PaymentInstrument` and never touches a resolution: what a
+    human decided survives any number of re-discoveries.
     """
     if discovery not in m.CANDIDATE_DISCOVERIES:
         raise ValueError(
@@ -608,8 +858,11 @@ def record_candidate(
         )
     if not last_four or len(last_four) != 4:
         raise ValueError("A candidate is identified by exactly four digits.")
+    items = list(evidence_items) if evidence_items else [
+        _summary_evidence(discovery, evidence, first_seen, last_seen, occurrences)
+    ]
 
-    existing = session.scalars(
+    candidate = session.scalars(
         select(m.BankHistoricalInstrumentCandidate).where(
             m.BankHistoricalInstrumentCandidate.last_four == last_four,
             m.BankHistoricalInstrumentCandidate.institution.is_(institution)
@@ -617,29 +870,37 @@ def record_candidate(
             else m.BankHistoricalInstrumentCandidate.institution == institution,
         )
     ).first()
-    if existing is None:
-        existing = m.BankHistoricalInstrumentCandidate(
+    if candidate is None:
+        candidate = m.BankHistoricalInstrumentCandidate(
             last_four=last_four, institution=institution, discovery=discovery,
-            evidence=evidence, first_seen_date=first_seen, last_seen_date=last_seen,
-            occurrence_count=occurrences,
+            evidence=evidence, occurrence_count=0,
         )
-        session.add(existing)
+        session.add(candidate)
         session.flush()
-        return existing
+    else:
+        # A direct source is stronger evidence than a passing mention, so a
+        # candidate is promoted to DIRECT_SOURCE but never demoted.
+        if discovery == m.CANDIDATE_DIRECT_SOURCE and candidate.discovery != discovery:
+            candidate.discovery = discovery
+        if evidence not in (candidate.evidence or ""):
+            candidate.evidence = f"{candidate.evidence} | {evidence}"
 
-    # A direct source is stronger evidence than a passing mention, so a
-    # candidate is promoted to DIRECT_SOURCE but never demoted.
-    if discovery == m.CANDIDATE_DIRECT_SOURCE:
-        existing.discovery = discovery
-    if evidence not in (existing.evidence or ""):
-        existing.evidence = f"{existing.evidence} | {evidence}"
-    if first_seen and (existing.first_seen_date is None or first_seen < existing.first_seen_date):
-        existing.first_seen_date = first_seen
-    if last_seen and (existing.last_seen_date is None or last_seen > existing.last_seen_date):
-        existing.last_seen_date = last_seen
-    existing.occurrence_count += occurrences
+    known = {e.evidence_key for e in candidate.evidence_items}
+    for item in items:
+        if item.key in known:
+            continue
+        known.add(item.key)
+        candidate.evidence_items.append(m.BankHistoricalInstrumentCandidateEvidence(
+            evidence_key=item.key, evidence_kind=item.kind,
+            raw_bank_transaction_id=item.raw_bank_transaction_id,
+            financial_transaction_id=item.financial_transaction_id,
+            first_observed_date=item.first_observed, last_observed_date=item.last_observed,
+            occurrences=max(item.occurrences, 1),
+        ))
     session.flush()
-    return existing
+    _recompute_candidate(candidate)
+    session.flush()
+    return candidate
 
 
 def resolve_candidate(

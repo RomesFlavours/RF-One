@@ -719,6 +719,29 @@ Three properties of the approved chart have no queryable field on `BankAccountin
 
 None of the three blocks this work. Each is a candidate for a small additive column when the reporting layer is built.
 
+## 17. Historical instrument candidates — evidence identity (BANK_HISTORICAL_SOURCE_CONTROL_FOUNDATION_001 → BANK_HISTORICAL_CHECKPOINT_AND_CANDIDATE_IDEMPOTENCY_001)
+
+A **historical instrument candidate** (`bank_historical_instrument_candidates`) is an account or card the evidence names but the Payment Instrument registry does not contain. It is discovered either DIRECTLY (a source file whose own identity matches no instrument) or INDIRECTLY (another account's transaction text refers to it, e.g. "Payment to Chase card ending in 0246"). A candidate never creates a `PaymentInstrument`, never receives a lifecycle date from its evidence span, and stays unresolved until a person chooses CONFIRMED_INSTRUMENT, SOURCE_FILE_MISSING, CLOSED/LOST/REPLACED/OTHER or NOT_OUR_INSTRUMENT.
+
+### 17.1 Candidate identity + evidence set → deterministic state
+
+Every piece of evidence is stored once, with a **stable key**, in `bank_historical_instrument_candidate_evidence`:
+
+- a preserved raw bank row is `raw:<RawBankTransaction id>` — the same row processed again is the same evidence;
+- evidence that is not a row (a whole source file, a summary) is keyed by its own description, dates and declared count.
+
+The candidate's figures are **recomputed from that set**, never accumulated:
+
+- `occurrence_count` = distinct canonical `FinancialTransaction`s evidenced + the declared occurrences of evidence not tied to a transaction. Several raw copies of one transaction (overlapping downloads) count once;
+- `first_seen_date` / `last_seen_date` = minimum / maximum observed date — source boundaries only;
+- the raw evidence count and the canonical transaction count are read from the set.
+
+Consequences: re-running discovery over the same history changes nothing; a new download that only repeats a known transaction adds a raw evidence row and no occurrence; a genuinely new transaction adds exactly one occurrence and may widen the span. A human resolution is never touched by discovery.
+
+### 17.2 What counts as a reference
+
+Only explicit account/card phrasing (`… card ending in NNNN`, `… account xxxxNNNN`). Trace numbers, order references, check numbers and balances are never read as accounts. A reference whose last four matches any registered instrument, whatever its status, is not a candidate. An institution is recorded only when the text names one that the registry already uses.
+
 ---
 
 ## Open Points
