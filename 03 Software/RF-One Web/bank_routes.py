@@ -684,6 +684,17 @@ def register_bank_routes(
                 if result.candidate_duplicate_count:
                     note += f", {result.candidate_duplicate_count} candidate duplicate(s)"
                 category = "info"
+                if result.unresolved_row_count:
+                    # The file names an account/card RF-One has never been
+                    # told about. Say WHICH one: "not resolved" on its own
+                    # leaves the operator hunting through the file.
+                    note += (
+                        f" — {result.unresolved_row_count} row(s) reference an account/card "
+                        f"with NO REGISTERED PAYMENT INSTRUMENT ({result.resolution_detail}). "
+                        "Those rows are kept as evidence and attributed to nothing; register "
+                        "the instrument, or assign the batch below"
+                    )
+                    category = "error"
                 if result.batch.payment_instrument_id is None:
                     note += " — INSTRUMENT NOT RESOLVED, requires manual resolution below"
                     category = "error"

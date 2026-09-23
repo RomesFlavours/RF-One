@@ -99,6 +99,9 @@
   <p class="cell-note">
     {{ period.period_start }} through {{ period.period_end }}
     {%- if period.completed_at %} &middot; last completed {{ period.completed_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}
+    {%- if not period_is_controlled %} &middot; <strong>historical month</strong>: it is before
+    the reconciliation control start, so it was opened on request rather than automatically.
+    The ordinary completeness rules apply to it all the same{% endif %}.
   </p>
 
   {% if report %}

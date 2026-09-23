@@ -1359,11 +1359,19 @@ def compute_batch_review_state(
         state.status = "REQUIRES_REVIEW"
         distinct_hints = batch_distinct_account_hints(session, batch, raw_rows)
         if len(distinct_hints) > 1:
+            # Name the identifiers that matched nothing. "Some rows did not
+            # match" leaves the operator hunting through the file for which
+            # card RF-One has never been told about; the raw rows already
+            # hold the answer, so say it. This is DISCOVERY and is bounded by
+            # nothing: a card first referenced in a 2025 file is surfaced
+            # exactly the same when reconciliation control starts in 2026.
+            unmatched = sorted(batch_distinct_account_hints(session, batch, unnormalized))
+            named = f" — unregistered: {', '.join(unmatched)}" if unmatched else ""
             state.reasons.append(
                 f"{len(unnormalized)} row(s) carry an in-file identifier that matches no "
-                f"configured instrument. This file mixes {len(distinct_hints)} cards, so it is "
-                "resolved row by row — configure the missing instrument (with its last four "
-                "digits) and normalize the pending rows."
+                f"configured instrument{named}. This file mixes {len(distinct_hints)} cards, "
+                "so it is resolved row by row — configure the missing instrument (with its "
+                "last four digits) and normalize the pending rows."
             )
             state.action = ACTION_NORMALIZE
             state.action_label = "Normalize pending rows"
