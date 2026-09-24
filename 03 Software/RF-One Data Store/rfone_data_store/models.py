@@ -12412,9 +12412,15 @@ RESOLUTION_REPLACED = "REPLACED"
 RESOLUTION_OTHER = "OTHER"
 RESOLUTION_SOURCE_FILE_MISSING = "SOURCE_FILE_MISSING"  # unresolved ON PURPOSE — blocks COMPLETE
 RESOLUTION_NOT_EXPECTED = "NOT_EXPECTED_CONFIRMED"
+# A human's explicit confirmation that an INACTIVE instrument with no
+# recorded end is in fact alive (BANK_EXPLICIT_STILL_ACTIVE_DECISION_001).
+# Sets it ACTIVE for good; writes no date. NO_ACTIVITY is unchanged and
+# remains the answer for an instrument that is already ACTIVE.
+RESOLUTION_STILL_ACTIVE = "STILL_ACTIVE"
 COVERAGE_RESOLUTIONS = (
     RESOLUTION_NO_ACTIVITY, RESOLUTION_CLOSED, RESOLUTION_LOST, RESOLUTION_REPLACED,
     RESOLUTION_OTHER, RESOLUTION_SOURCE_FILE_MISSING, RESOLUTION_NOT_EXPECTED,
+    RESOLUTION_STILL_ACTIVE,
 )
 LIFECYCLE_END_REASONS = (
     RESOLUTION_CLOSED, RESOLUTION_LOST, RESOLUTION_REPLACED, RESOLUTION_OTHER,
@@ -12798,7 +12804,7 @@ class BankMonthlyInstrumentCoverage(Base):
         CheckConstraint(
             "resolution IS NULL OR resolution IN ("
             "'NO_ACTIVITY', 'CLOSED', 'LOST', 'REPLACED', 'OTHER', "
-            "'SOURCE_FILE_MISSING', 'NOT_EXPECTED_CONFIRMED')",
+            "'SOURCE_FILE_MISSING', 'NOT_EXPECTED_CONFIRMED', 'STILL_ACTIVE')",
             name="ck_bmic_resolution",
         ),
         Index("ix_bmic_period_id", "period_id"),

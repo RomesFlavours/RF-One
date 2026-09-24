@@ -295,6 +295,9 @@
                     <select id="resolution-{{ coverage.id }}" name="resolution" required>
                       <option value="">Choose&hellip;</option>
                       <option value="NO_ACTIVITY">No activity &mdash; keep active</option>
+                      {% if instrument.id in still_active_ids %}
+                        <option value="STILL_ACTIVE">Still active &mdash; confirm this INACTIVE instrument is alive</option>
+                      {% endif %}
                       <option value="CLOSED">Closed</option>
                       <option value="LOST">Lost</option>
                       <option value="REPLACED">Replaced</option>

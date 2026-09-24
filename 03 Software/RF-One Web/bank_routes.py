@@ -1038,7 +1038,7 @@ def register_bank_routes(
                     .order_by(m.BankMonthlySourcePeriod.period_month.desc())
                 ).first()
 
-            rows, report, extra_batches = [], None, {}
+            rows, report, extra_batches, still_active_ids = [], None, {}, set()
             if period is not None:
                 # An OPEN month re-evaluates on every view, so the screen is
                 # never stale. A COMPLETE one is history and is read as-is.
@@ -1052,6 +1052,12 @@ def register_bank_routes(
                     )
                     if len(covering) > 1:
                         extra_batches[coverage.id] = covering[1:]
+                # STILL ACTIVE is offered only where the service would accept
+                # it; the service re-checks on submit either way.
+                still_active_ids = {
+                    c.payment_instrument_id for c in rows
+                    if monthly_source.still_active_refusal(db, c.payment_instrument) is None
+                }
 
             control_config = monthly_source.get_control_config(db)
             return render_template(
@@ -1066,6 +1072,7 @@ def register_bank_routes(
                 coverages=rows,
                 report=report,
                 extra_batches=extra_batches,
+                still_active_ids=still_active_ids,
                 instruments=db.scalars(
                     select(m.PaymentInstrument).order_by(m.PaymentInstrument.display_name)
                 ).all(),

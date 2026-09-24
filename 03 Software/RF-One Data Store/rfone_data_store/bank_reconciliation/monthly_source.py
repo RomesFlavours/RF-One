@@ -820,6 +820,37 @@ def derive_birth_dates(session: Session) -> list[BirthChange]:
 # ---------------------------------------------------------------------------
 
 
+def still_active_refusal(session: Session, instrument: "m.PaymentInstrument") -> str | None:
+    """Why STILL_ACTIVE may NOT be recorded for this instrument, or None
+    when it may (BANK_EXPLICIT_STILL_ACTIVE_DECISION_001).
+
+    STILL_ACTIVE exists for one case: an INACTIVE instrument whose record
+    proves no end — no end date, no lifecycle reason, no lifecycle-ending
+    resolution in any month. It confirms the instrument alive. It never
+    revives one a human already closed: reopening is a different decision.
+    An instrument that is already ACTIVE answers a quiet month with the
+    unchanged NO_ACTIVITY instead."""
+    if instrument.status == "ACTIVE":
+        return (
+            f"{instrument.display_name} is already ACTIVE. Record NO_ACTIVITY for a month "
+            "in which it existed and nothing happened."
+        )
+    if instrument.effective_end_date is not None or instrument.lifecycle_end_reason is not None:
+        return (
+            f"{instrument.display_name} has a recorded end "
+            f"({instrument.lifecycle_end_reason or 'end date'} "
+            f"{instrument.effective_end_date or ''}). STILL ACTIVE never reopens a closed "
+            "instrument; that is a separate decision."
+        )
+    ended = lifecycle_end_decision(session, instrument.id)
+    if ended is not None:
+        return (
+            f"{instrument.display_name} was recorded as {ended[2]} for {ended[1]}. STILL ACTIVE "
+            "never overrides a lifecycle-ending decision; reopening is a separate decision."
+        )
+    return None
+
+
 def resolve_coverage(
     session: Session, *, coverage: "m.BankMonthlyInstrumentCoverage", resolution: str,
     note: str | None = None, effective_date: date | None = None,
@@ -872,6 +903,10 @@ def resolve_coverage(
         )
 
     instrument = coverage.payment_instrument
+    if resolution == m.RESOLUTION_STILL_ACTIVE:
+        refusal = still_active_refusal(session, instrument)
+        if refusal is not None:
+            raise ValueError(refusal)
     if resolution in m.LIFECYCLE_ENDING_RESOLUTIONS:
         # DERIVED here, before anything is written, so the coverage row and
         # the instrument can never disagree about which date was used.
@@ -899,6 +934,11 @@ def resolve_coverage(
         # "It existed, it stayed active, nothing happened." Explicitly NOT a
         # lifecycle event: the instrument is left exactly as it was.
         pass
+    elif resolution == m.RESOLUTION_STILL_ACTIVE:
+        # A human confirms the instrument is alive. Status only: no start or
+        # end date is written, no source or transaction is implied, and no
+        # other month is resolved — a later quiet month still asks again.
+        instrument.status = "ACTIVE"
 
     session.flush()
     return coverage
