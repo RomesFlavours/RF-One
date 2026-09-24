@@ -512,6 +512,48 @@ def batches_covering(
     ).all())
 
 
+def multi_instrument_batches_evidencing(
+    session: Session, *, period: "m.BankMonthlySourcePeriod", instrument_id: int,
+) -> list["m.BankImportBatch"]:
+    """Multi-instrument source files that ACTUALLY contained rows for this
+    instrument in this month (BANK_MULTI_INSTRUMENT_SOURCE_COVERAGE_001).
+
+    A batch with no single `payment_instrument_id` (e.g. Chase's combined
+    business-card download) is credited to an instrument only through its
+    own rows: a `RawBankTransaction` of that batch, linked to a
+    `FinancialTransaction` of this instrument whose `posting_date` falls in
+    the month. The raw-row lineage is used rather than
+    `FinancialTransaction.import_batch_id`, which names only the batch that
+    first created the transaction and loses later overlapping uploads.
+
+    Evidence of a SOURCE, not of accounting validity: a row whose
+    transaction is a confirmed or suppressed duplicate still proves the
+    file contained data for the instrument. A transaction with no posting
+    date proves no month. A batch with no attributable row proves nothing
+    for this instrument — sharing a file with another card is not
+    membership. Ordered by batch id, the same convention as
+    `batches_covering`.
+    """
+    return list(session.scalars(
+        select(m.BankImportBatch)
+        .where(
+            m.BankImportBatch.payment_instrument_id.is_(None),
+            m.BankImportBatch.id.in_(
+                select(m.RawBankTransaction.import_batch_id)
+                .join(m.FinancialTransaction,
+                      m.FinancialTransaction.id == m.RawBankTransaction.normalized_transaction_id)
+                .where(
+                    m.FinancialTransaction.payment_instrument_id == instrument_id,
+                    m.FinancialTransaction.posting_date.is_not(None),
+                    m.FinancialTransaction.posting_date >= period.period_start,
+                    m.FinancialTransaction.posting_date <= period.period_end,
+                )
+            ),
+        )
+        .order_by(m.BankImportBatch.id)
+    ).all())
+
+
 def relevant_instruments(session: Session) -> list["m.PaymentInstrument"]:
     """Every Payment Instrument RF-One knows about.
 
@@ -564,6 +606,13 @@ def refresh_coverage(
             coverage.expectation_basis = verdict.basis
         # The earliest covering batch is the one credited with the month;
         # later ones are corrections/reissues and are surfaced separately.
+        # A batch assigned to this instrument always wins; only when there
+        # is none may a multi-instrument file be credited, and only through
+        # its own rows for this instrument and month.
+        if not batches:
+            batches = multi_instrument_batches_evidencing(
+                session, period=period, instrument_id=instrument.id,
+            )
         coverage.import_batch_id = batches[0].id if batches else None
         rows.append(coverage)
 

@@ -768,6 +768,10 @@ Months come only from `BankImportBatch.date_range_start` / `date_range_end`. The
 
 Opening a controlled month is not declaring it complete: missing accounts and files stay blockers, human resolutions stay authoritative, and absence of a source never closes an instrument.
 
+### 20.1 Multi-instrument source files (BANK_MULTI_INSTRUMENT_SOURCE_COVERAGE_001)
+
+A source is received for an instrument and month when a batch **assigned to that instrument** covers the month (unchanged rule). Only when there is none, a batch with **no single instrument** (e.g. Chase's combined business-card download) is credited if it contains at least one raw row linked to a `FinancialTransaction` of that instrument whose `posting_date` is in the month (`monthly_source.multi_instrument_batches_evidencing`). The raw-row lineage is used because `FinancialTransaction.import_batch_id` names only the batch that first created the transaction. A duplicate or suppressed transaction still proves the file contained data; a NULL posting date proves no month; a file without a row for the instrument proves nothing for it. Several qualifying files → the lowest batch id, as for direct batches. `coverage.import_batch_id` stays the single representative batch; no field or table was added.
+
 ---
 
 ## Open Points
