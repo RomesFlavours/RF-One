@@ -261,12 +261,18 @@ def main() -> int:
             tips_decision = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=tips_txn.id, occurrence_id=tips_occurrence.id,
+                    # The human chooses the Why explicitly; a Who's default is
+                    # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
+                    transaction_reason_id=s.get(m.BankOccurrence, tips_occurrence.id).default_transaction_reason_id,
                     confirmed_by_account_id=None, learn_description=False,
                 ),
             )
             labor_decision = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=labor_txn.id, occurrence_id=mario.id,
+                    # The human chooses the Why explicitly; a Who's default is
+                    # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
+                    transaction_reason_id=s.get(m.BankOccurrence, mario.id).default_transaction_reason_id,
                     confirmed_by_account_id=None, learn_description=False,
                 ),
             )
@@ -294,6 +300,9 @@ def main() -> int:
             learned = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=labor_txn.id, occurrence_id=mario.id,
+                    # The human chooses the Why explicitly; a Who's default is
+                    # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
+                    transaction_reason_id=s.get(m.BankOccurrence, mario.id).default_transaction_reason_id,
                     confirmed_by_account_id=None, learn_description=True,
                 ),
             )
@@ -347,6 +356,9 @@ def main() -> int:
             purpose_learn = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=tips_txn.id, occurrence_id=tips_occurrence.id,
+                    # The human chooses the Why explicitly; a Who's default is
+                    # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
+                    transaction_reason_id=s.get(m.BankOccurrence, tips_occurrence.id).default_transaction_reason_id,
                     confirmed_by_account_id=None, learn_description=False,
                     learn_purpose_from_memo=True,
                 ),
@@ -406,6 +418,9 @@ def main() -> int:
             first = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=human_txn.id, occurrence_id=mario.id,
+                    # The human chooses the Why explicitly; a Who's default is
+                    # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
+                    transaction_reason_id=s.get(m.BankOccurrence, mario.id).default_transaction_reason_id,
                     confirmed_by_account_id=None, learn_description=False,
                 ),
             )

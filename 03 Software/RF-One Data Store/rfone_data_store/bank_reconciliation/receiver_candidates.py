@@ -47,7 +47,7 @@ from sqlalchemy.orm import Session
 
 from .. import models as m
 from . import accounting_dedup, classification as classification_service, recognition
-from . import purpose_evidence
+from . import purpose_evidence, structural_why
 
 STATUS_UNCLASSIFIED = "UNCLASSIFIED"
 STATUS_AMBIGUOUS = "AMBIGUOUS"
@@ -198,6 +198,18 @@ def _confirmed_transfer_ids(session: Session, transaction_ids: list[int]) -> set
     return confirmed
 
 
+def _who_decided(explanation: "m.BankTransactionExplanation | None") -> bool:
+    """Whether this decision settles the WHO — the only question this review
+    answers. A resolved decision does; so does a person's Who-only decision,
+    whose Why is still open (BANK_FINAL_RELEASE_BLOCKERS_001): its Who was
+    decided by a human and is never re-asked or overwritten here."""
+    if explanation is None:
+        return False
+    if explanation.decision_status in recognition.RESOLVED_DECISION_STATUSES:
+        return True
+    return explanation.decision_source == "HUMAN" and explanation.occurrence_id is not None
+
+
 def build_candidates(
     session: Session, *, include_assigned: bool = True,
 ) -> list[ReceiverCandidate]:
@@ -218,6 +230,9 @@ def build_candidates(
             .where(m.BankTransactionExplanation.id.in_(explanation_ids))
         ).all()
     } if explanation_ids else {}
+
+    registry = structural_why.load_registry(session)
+    reasons = {r.code: r for r in session.scalars(select(m.BankTransactionReason)).all()}
 
     groups: dict[tuple[str, str], ReceiverCandidate] = {}
     occurrences_seen: dict[tuple[str, str], set[int]] = {}
@@ -262,15 +277,21 @@ def build_candidates(
         memo = (txn.source_memo or "").strip()
         if memo and memo not in candidate.source_memos and len(candidate.source_memos) < 5:
             candidate.source_memos.append(memo)
-        purpose = purpose_evidence.purpose_evidence(txn.description_original, txn.source_memo)
-        # PROVEN beats AMBIGUOUS beats ABSENT, and a group is only ever
-        # reported as proven when every one of its transactions is.
+        # Purpose shown through the ONE automatic engine, so this review can
+        # never display a Why the engine would not assign.
+        engine = structural_why.recognize_transaction(session, txn, registry)
+        engine_reason = structural_why.usable_reason(session, engine, reasons)
+        purpose_status = "PROVEN" if engine_reason is not None else "ABSENT"
+        purpose_account = (engine_reason.accounting_classification.code
+                           if engine_reason is not None else None)
+        # PROVEN beats ABSENT, and a group is only ever reported as proven
+        # when every one of its transactions is.
         if candidate.transaction_count == 1:
-            candidate.purpose_status = purpose.status
-            candidate.purpose_account_code = purpose.account_code
-            candidate.purpose_rationale = purpose.rationale
-        elif purpose.status != candidate.purpose_status or (
-            purpose.account_code != candidate.purpose_account_code
+            candidate.purpose_status = purpose_status
+            candidate.purpose_account_code = purpose_account
+            candidate.purpose_rationale = engine.evidence
+        elif purpose_status != candidate.purpose_status or (
+            purpose_account != candidate.purpose_account_code
         ):
             candidate.purpose_status = (
                 "AMBIGUOUS" if candidate.purpose_status == "PROVEN"
@@ -328,9 +349,7 @@ def build_candidates(
                 t for t in transactions
                 if t.id in candidate.transaction_ids
                 and t.explanation_id is not None
-                and explanations.get(t.explanation_id) is not None
-                and explanations[t.explanation_id].decision_status
-                in recognition.RESOLVED_DECISION_STATUSES
+                and _who_decided(explanations.get(t.explanation_id))
             ]) == candidate.transaction_count
             candidate.status = STATUS_ASSIGNED if fully_decided else STATUS_UNCLASSIFIED
             candidate.origin = (
@@ -450,9 +469,10 @@ def approve_candidates(
 
     Either an existing `occurrence_id` is supplied, or a new Who is created
     from `new_occurrence_name` + `occurrence_type_id` +
-    `default_transaction_reason_id`. The WHY and the WHAT are then derived
-    from that Who's chain, exactly as everywhere else: they are never
-    passed per transaction.
+    `default_transaction_reason_id`. Only the WHO is recorded: the Who's
+    default Why is never applied (BANK_FINAL_RELEASE_BLOCKERS_001), so each
+    transaction keeps its own Why question for the automatic engine or a
+    person.
 
     A transaction that already carries a HUMAN decision is SKIPPED, never
     overwritten. Suppressed accounting copies are not in the candidate set
@@ -472,10 +492,9 @@ def approve_candidates(
             default_transaction_reason_id=default_transaction_reason_id,
         )
 
-    # Refuses here, before anything is written, if the chain is incomplete.
-    chain = classification_service.resolve_chain(session, occurrence)
-    if not chain.is_complete:
-        raise ValueError(chain.blocking_reason)
+    # BANK_FINAL_RELEASE_BLOCKERS_001 — approving a group names its WHO.
+    # The Who's default Why is never applied to the transactions: each keeps
+    # its own Why question, answered by the automatic engine or a human.
 
     wanted = set(payee_keys)
     candidates = [c for c in build_candidates(session) if c.group_key in wanted]
@@ -506,7 +525,7 @@ def approve_candidates(
             if (
                 current is not None
                 and current.decision_source == "HUMAN"
-                and current.decision_status in recognition.RESOLVED_DECISION_STATUSES
+                and _who_decided(current)
             ):
                 outcome.transactions_skipped_human += 1
                 continue
@@ -528,10 +547,11 @@ def approve_candidates(
                     ),
                 ),
             )
-            txn.review_status = "REVIEWED"
             outcome.transactions_classified += 1
 
-        if learn_description:
+        # A rule's stored reason is a required column that decides nothing;
+        # it is filed under the Who's own default, or not learned at all.
+        if learn_description and occurrence.default_transaction_reason_id is not None:
             # BANK_MEMO_PURPOSE_CLASSIFICATION_001 §10 /
             # BANK_WHO_WHY_INVARIANT_001 — approving a group together is a
             # HUMAN DECISION ABOUT THOSE TRANSACTIONS. The rule it leaves
@@ -546,7 +566,7 @@ def approve_candidates(
                 match_type=recognition.EXACT_NORMALIZED_DESCRIPTION,
                 normalized_pattern=candidate.payee_normalized,
                 occurrence_id=occurrence.id,
-                transaction_reason_id=chain.transaction_reason.id,
+                transaction_reason_id=occurrence.default_transaction_reason_id,
                 payment_instrument_id=None,
                 direction=None,
                 auto_apply_enabled=True,

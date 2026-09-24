@@ -286,12 +286,37 @@ def main() -> int:
                 return txn
 
             first = new_txn("US FOODS INVOICE 4821", 1)
-            decision = bank_service.record_recognition_decision(
+            who_only = bank_service.record_recognition_decision(
                 s, transaction_id=first.id, occurrence_id=us_foods.id,
                 confirmed_by_account_id=None, learn_description=True,
             )
+            # BANK_FINAL_RELEASE_BLOCKERS_001 — this used to assert "the Why is
+            # derived" from the Who. A Who's default Why is never applied: the
+            # Who is recorded and the Why stays open for a person.
             check(
-                "the human supplies only the Who; the Why is derived",
+                "the human supplies only the Who; the Why is NOT derived from the Who",
+                who_only.occurrence_id == us_foods.id
+                and who_only.transaction_reason_id is None
+                and who_only.accounting_classification_code_snapshot is None
+                and who_only.decision_status == "NEEDS_HUMAN_REVIEW",
+                detail=f"{who_only.decision_status}/{who_only.transaction_reason_id}",
+            )
+            s.refresh(first)
+            check(
+                "...and a Who alone leaves the transaction in review",
+                first.review_status != "REVIEWED",
+                detail=str(first.review_status),
+            )
+            # The person then chooses the Why; the What derives from it.
+            decision = recognition.record_human_decision(
+                s, recognition.HumanDecisionRequest(
+                    transaction_id=first.id, occurrence_id=us_foods.id,
+                    transaction_reason_id=supplier_payment.id,
+                    confirmed_by_account_id=None, learn_description=False,
+                ),
+            )
+            check(
+                "the Why the person chooses is recorded",
                 decision.transaction_reason_id == supplier_payment.id,
             )
             check(
@@ -307,13 +332,18 @@ def main() -> int:
                 and decision.transaction_reason_name_snapshot == "Supplier invoice payment",
             )
 
-            raises(
-                "confirming an incomplete Who is refused with an actionable reason",
-                lambda: bank_service.record_recognition_decision(
-                    s, transaction_id=new_txn("MYSTERY 1", 2).id, occurrence_id=legacy_who.id,
-                    confirmed_by_account_id=None, learn_description=False,
-                ),
-                "no What",
+            # A Who-only confirmation no longer consults the Who's chain, so a
+            # Who whose usual Why has no What is simply recorded as the Who;
+            # nothing about its broken default leaks into the decision.
+            legacy_only = bank_service.record_recognition_decision(
+                s, transaction_id=new_txn("MYSTERY 1", 2).id, occurrence_id=legacy_who.id,
+                confirmed_by_account_id=None, learn_description=False,
+            )
+            check(
+                "confirming a Who whose default chain is incomplete records only the Who",
+                legacy_only.occurrence_id == legacy_who.id
+                and legacy_only.transaction_reason_id is None
+                and legacy_only.accounting_classification_code_snapshot is None,
             )
             raises(
                 "confirming an INACTIVE Who is refused with an actionable reason",
@@ -445,12 +475,15 @@ def main() -> int:
             )
 
             after_edit = new_txn("BRAND NEW MERCHANT", 10)
-            new_decision = bank_service.record_recognition_decision(
-                s, transaction_id=after_edit.id, occurrence_id=us_foods.id,
-                confirmed_by_account_id=None, learn_description=False,
+            new_decision = recognition.record_human_decision(
+                s, recognition.HumanDecisionRequest(
+                    transaction_id=after_edit.id, occurrence_id=us_foods.id,
+                    transaction_reason_id=supplier_payment.id,
+                    confirmed_by_account_id=None, learn_description=False,
+                ),
             )
             check(
-                "a NEW classification uses the edited chain",
+                "a NEW classification uses the Why's edited mapping",
                 new_decision.accounting_classification_code_snapshot == "SUPPLIES",
             )
 
@@ -483,11 +516,19 @@ def main() -> int:
                     financial_transaction_id=first.id,
                 ).count() == history_before + 1,
             )
+            # BANK_FINAL_RELEASE_BLOCKERS_001 — Reclassify keeps the decision's
+            # own Why and re-derives its What; it never swaps in the Who's
+            # (re-pointed) default Why.
             check(
-                "Reclassify keeps the same Who and applies the CURRENT chain",
+                "Reclassify keeps the same Who and Why and applies the Why's CURRENT mapping",
                 reclassified.occurrence_id == us_foods.id
-                and reclassified.transaction_reason_id == invoice_settlement.id
-                and reclassified.accounting_classification_code_snapshot == "AP_SETTLEMENT",
+                and reclassified.transaction_reason_id == supplier_payment.id
+                and reclassified.accounting_classification_code_snapshot == "SUPPLIES",
+                detail=f"{reclassified.transaction_reason_id}/{reclassified.accounting_classification_code_snapshot}",
+            )
+            check(
+                "...and the Who's default Why was not applied",
+                reclassified.transaction_reason_id != invoice_settlement.id,
             )
             s.refresh(decision)
             check(

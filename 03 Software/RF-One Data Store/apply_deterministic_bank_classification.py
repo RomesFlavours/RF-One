@@ -84,6 +84,13 @@ def _ensure_why(session, rule: deterministic_rules.DeterministicRule):
 
 
 def main() -> int:
+    # BANK_FINAL_RELEASE_BLOCKERS_001 — retired. This script classified
+    # transactions by creating a Who whose DEFAULT Why then decided them,
+    # which is exactly "WHO determines WHY". The one automatic WHY engine is
+    # `structural_why` (import, reprocess, `apply_structural_why.py`).
+    print("RETIRED: WHY is decided by the structural engine only — use "
+          "apply_structural_why.py. Nothing was read or written.")
+    return 1
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="write (default: preview)")
     args = parser.parse_args()

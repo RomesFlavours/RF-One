@@ -692,9 +692,10 @@ def _reprocess_transaction(session: Session, txn: "m.FinancialTransaction") -> b
     is_candidate = _recompute_duplicate_state(session, txn)
     session.flush()
 
-    current = recognition.get_current_explanation(session, financial_transaction_id=txn.id)
-    if current is None or current.decision_source != "HUMAN":
-        recognition.deduce_for_transaction(session, txn)
+    # The SAME engine as import; a human decision is never touched, and an
+    # unchanged automatic decision is kept rather than re-appended, so this
+    # stays idempotent (BANK_FINAL_RELEASE_BLOCKERS_001).
+    recognition.redecide_for_transaction(session, txn)
 
     matching.on_financial_transaction_acquired(session, txn)
     session.flush()
@@ -1160,6 +1161,16 @@ def update_payment_instrument(
     instrument = session.get(m.PaymentInstrument, instrument_id)
     if instrument is None:
         raise ValueError(f"PaymentInstrument {instrument_id} not found")
+    # BANK_FINAL_RELEASE_BLOCKERS_001 — an instrument's life changes only
+    # through the monthly resolution workflow (CLOSED / LOST / REPLACED /
+    # OTHER, which derive the end date, or STILL_ACTIVE, which checks that
+    # nothing ended it). Editing identity or configuration never does.
+    if status is not _UNSET and status is not None and status != instrument.status:
+        raise ValueError(
+            f"{instrument.display_name}: the lifecycle state ({instrument.status}) is not edited "
+            "here. Close it (Closed / Lost / Replaced / Other) or confirm it Still active from "
+            "Monthly Sources, where the end date is derived and the decision recorded."
+        )
 
     def pick(passed, current):
         return current if passed is _UNSET else passed
@@ -1668,11 +1679,10 @@ def record_recognition_decision(
     `assign_explanation` (there is no longer a second, independent
     Supplier/Receiving assignment action).
 
-    BANK_RECONCILIATION_WHO_WHY_WHAT_001: the caller supplies the WHO and
-    nothing else — the WHY and the WHAT come from the Who's stored chain
-    (`classification.resolve_chain`), which is why no
-    `transaction_reason_id` parameter exists any more. An incomplete Who
-    raises `ValueError` carrying the concrete reason to show the human.
+    The caller supplies the WHO only, so this records WHO the counterparty
+    is and leaves the WHY open for a human: a Who's default Why is never
+    applied (BANK_FINAL_RELEASE_BLOCKERS_001). The Why step
+    (`/bank/transactions/<id>/why`) is where a Why is decided.
 
     `learn_description` controls ONLY whether this confirmation also
     teaches RF-One that this exact normalized description means this Who
@@ -1690,7 +1700,10 @@ def record_recognition_decision(
         ),
     )
     txn = session.get(m.FinancialTransaction, transaction_id)
-    txn.review_status = "REVIEWED"
+    # A Who alone settles nothing: the transaction stays in review until its
+    # Why is decided.
+    if result.transaction_reason_id is not None:
+        txn.review_status = "REVIEWED"
     session.flush()
     return result
 

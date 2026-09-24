@@ -125,12 +125,9 @@
     {% endif %}
 
     <div class="field-row">
-      <label for="status">State</label>
-      <select id="status" name="status">
-        <option value="ACTIVE" {{ 'selected' if instrument.status == 'ACTIVE' else '' }}>Active</option>
-        <option value="INACTIVE" {{ 'selected' if instrument.status == 'INACTIVE' else '' }}>Closed / inactive</option>
-      </select>
-      <span class="cell-note">A closed instrument is never used for automatic source recognition, so reusing its last four digits on a new card is not ambiguous.</span>
+      <label>State</label>
+      <span><strong>{{ 'Active' if instrument.status == 'ACTIVE' else 'Closed / inactive' }}</strong></span>
+      <span class="cell-note">Not edited here. An instrument is closed (Closed / Lost / Replaced / Other) or confirmed Still active from Monthly Sources, where the end date is derived from its last posting and the decision is recorded. A closed instrument is never used for automatic source recognition, so reusing its last four digits on a new card is not ambiguous.</span>
     </div>
 
     <div class="btn-row">

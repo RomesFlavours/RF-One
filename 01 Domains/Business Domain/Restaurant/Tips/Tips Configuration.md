@@ -80,7 +80,7 @@ Schedule / Manual Trigger
 
 ## 4. Daily calculation, less-frequent payment
 
-The recommended pattern: `TipsCalculationScheduleConfig.interval_days = 1` (daily) with `TipsPaymentScheduleConfig.interval_days = 7` (weekly). Each daily calculation run persists one `TipEntitlement` row per Employee (§5) via `distribution_engine.populate_entitlements_for_run` — the SAME per-Employee aggregate `build_employee_review` already computed on the fly, now durable. Nothing here recalculates already-consolidated history: `run_tip_distribution_calculation`'s own existing supersession discipline (recalculating the EXACT same period marks the prior run superseded; a different, overlapping period is refused) is unchanged.
+The recommended pattern: `TipsCalculationScheduleConfig.interval_days = 1` (daily) with `TipsPaymentScheduleConfig.interval_days = 7` (weekly). Each daily calculation run persists one `TipEntitlement` row per Employee (§5) through the ONE persisted calculation, `calculation_run_service.save_calculation_run` — the same service "Calculate and save this period" uses — over the Location's own Business Day (its timezone and operating-day cutoff, e.g. America/New_York and 04:00, by Order Open Time; never UTC midnight to midnight) (BANK_FINAL_RELEASE_BLOCKERS_001 T1). The run is saved CALCULATED and becomes FINAL only by validation (MANUAL) or automatic finalization when the §11 control balances (AUTOMATIC). A Business Date may sit in only one FINAL run: finalizing a run whose range overlaps an existing FINAL run is refused.
 
 ---
 
@@ -92,7 +92,7 @@ The recommended pattern: `TipsCalculationScheduleConfig.interval_days = 1` (dail
 
 ## 6. Payment Cycle — aggregating unpaid entitlements
 
-`TipPaymentCycle` (`tips/payment_cycle_service.py`) replaces the original Mercury pilot's "exactly one calculation run per payout" assumption. `start_payment_cycle` aggregates **every** currently-unpaid `TipEntitlement` for a Restaurant — spanning as many Business Dates as accrued since the previous cycle — into one `TipPaymentInstruction` per Employee. Starting a cycle is idempotent (an already-OPEN cycle is returned unchanged, never duplicated) and does **not** submit anything to any connector by itself.
+`TipPaymentCycle` (`tips/payment_cycle_service.py`) replaces the original Mercury pilot's "exactly one calculation run per payout" assumption. `start_payment_cycle` aggregates every currently-unpaid `TipEntitlement` **of a FINAL run** for a Restaurant — spanning as many Business Dates as accrued since the previous cycle — into one `TipPaymentInstruction` per Employee. Entitlements of a CALCULATED (unvalidated, preview-superseded or otherwise non-final) run are never payable (BANK_FINAL_RELEASE_BLOCKERS_001 T2). Starting a cycle is idempotent (an already-OPEN cycle is returned unchanged, never duplicated) and does **not** submit anything to any connector by itself.
 
 ```text
 Payment Cycle status:

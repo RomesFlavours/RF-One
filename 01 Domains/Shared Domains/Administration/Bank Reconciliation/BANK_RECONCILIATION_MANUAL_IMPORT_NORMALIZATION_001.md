@@ -779,6 +779,17 @@ Opening a controlled month is not declaring it complete: missing accounts and fi
 
 A source is received for an instrument and month when a batch **assigned to that instrument** covers the month (unchanged rule). Only when there is none, a batch with **no single instrument** (e.g. Chase's combined business-card download) is credited if it contains at least one raw row linked to a `FinancialTransaction` of that instrument whose `posting_date` is in the month (`monthly_source.multi_instrument_batches_evidencing`). The raw-row lineage is used because `FinancialTransaction.import_batch_id` names only the batch that first created the transaction. A duplicate or suppressed transaction still proves the file contained data; a NULL posting date proves no month; a file without a row for the instrument proves nothing for it. Several qualifying files → the lowest batch id, as for direct batches. `coverage.import_batch_id` stays the single representative batch; no field or table was added.
 
+
+## 21. One WHY engine, no Who → Why, one lifecycle path (BANK_FINAL_RELEASE_BLOCKERS_001)
+
+This section supersedes the parts of §12.2–§12.5 and §15 that derive a transaction's Why from its Who.
+
+- **A Who never decides a Why.** `BankOccurrence.default_transaction_reason_id` is kept (schema unchanged) but no live path applies it: the Review's Who-only confirmation (`service.record_recognition_decision`), receivers Approve (`receiver_candidates.approve_candidates`) and the automatic engine record the Who and leave the Why open (`NEEDS_HUMAN_REVIEW`, transaction not REVIEWED). The Who's usual Why is shown only as a labelled suggestion. A human chooses a Why explicitly (`recognition.record_human_decision` with `transaction_reason_id`, the Review's Why step); the What derives from that Why. An INACTIVE Who is refused for a new decision. A learned description rule still records the Who's default in its required, non-deciding `transaction_reason_id` column; with no default, no rule is learned.
+- **Reclassify** re-derives the What from the decision's **own** Why through that Why's current mapping. It never substitutes the Who's default, and refuses a decision that has no Why yet.
+- **One automatic WHY engine.** `structural_why.recognize_transaction` — §19's structural rules first, then an explicit purpose in the source memo (`purpose_evidence` memo branch) — is the only automatic source of a Why. Import (`recognition.deduce_for_transaction`), reprocess and instrument reassignment (`recognition.redecide_for_transaction`, via `service._reprocess_transaction`) and the batch runner all call it. The description-rule table `deterministic_rules` no longer decides any Why at runtime (it survives only as seed vocabulary for migrations/seeding and for analysis scripts); `apply_deterministic_bank_classification.py` is retired. Receivers review shows the same engine's answer.
+- **Reprocess is safe and idempotent.** A HUMAN decision is never touched; an automatic decision is re-appended only when the engine's Why (or the recognised Who) actually changes, so repeated reprocess writes nothing.
+- **One lifecycle path.** `service.update_payment_instrument` refuses any change of `status`; the edit form shows the state read-only. An instrument's life changes only through Monthly Sources: CLOSED / LOST / REPLACED / OTHER (end date derived) or STILL_ACTIVE.
+
 ---
 
 ## Open Points

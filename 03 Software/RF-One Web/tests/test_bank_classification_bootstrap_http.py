@@ -267,9 +267,11 @@ def main() -> int:
             ).all()
             check("both transactions of the group were classified in one action",
                   len(decided) == 2, detail=str(len(decided)))
-            check("Why and What were derived from the Who, not supplied per transaction",
-                  all(d.transaction_reason_id == why_id
-                      and d.accounting_classification_code_snapshot == "TEST-5100" for d in decided))
+            # BANK_FINAL_RELEASE_BLOCKERS_001 — approval names the Who; the
+            # Who's default Why is never applied to the transactions.
+            check("approval records the Who and applies no Why from it",
+                  all(d.transaction_reason_id is None
+                      and d.accounting_classification_code_snapshot is None for d in decided))
             rules = s.query(m.BankRecognitionRule).all()
             check("an exact-match rule was recorded for future imports",
                   len(rules) == 1 and rules[0].match_type == "EXACT_NORMALIZED_DESCRIPTION"

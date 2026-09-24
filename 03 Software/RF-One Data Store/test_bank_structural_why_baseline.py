@@ -32,6 +32,7 @@ from rfone_data_store.bank_reconciliation import deterministic_rules as dr
 from rfone_data_store.bank_reconciliation import purpose_evidence as pe
 from rfone_data_store.bank_reconciliation import receiver_candidates as rc
 from rfone_data_store.bank_reconciliation import recognition
+from rfone_data_store.bank_reconciliation import structural_why as sw
 from rfone_data_store.database import (
     create_configured_engine,
     create_session_factory,
@@ -51,12 +52,31 @@ EXPECTED = (
 )
 
 # §4 — descriptions that carry their own accounting meaning.
+# §4 — proven purposes, read by the ONE automatic engine
+# (`structural_why`, BANK_FINAL_RELEASE_BLOCKERS_001): (description, source
+# layout, amount, payer, expected Why, expected account). Structure decides,
+# so the layout, the direction and the instruments involved all matter.
+_CARD = sw.InstrumentInfo(9, 1, "CREDIT_CARD")
+_LE1 = sw.InstrumentInfo(6, 1, "BANK_ACCOUNT")
+_LE1_SAVING = sw.InstrumentInfo(4, 1, "BANK_ACCOUNT")
+_LE2 = sw.InstrumentInfo(5, 2, "BANK_ACCOUNT")
+_REGISTERED = {"3376": _LE1, "7129": _LE1_SAVING, "3583": _LE2}
 RESOLVES = (
-    ("FOREIGN TRANSACTION FEE", "FOREIGN_TRANSACTION_FEE", "7230"),
-    ("FLA DEPT REVENUE SALES TAX PAYMENT", "SALES_TAX_REMITTANCE", "2200"),
-    ("PAYMENT THANK YOU WEB", "CREDIT_CARD_SETTLEMENT", "2500"),
-    ("ONLINE TRANSFER TO CHK 3583 TRANSACTION 30078026756", "INTERNAL_BANK_TRANSFER", "1110"),
-    ("CREDIT MEMORANDUM REF ADVANCE ON LOAN TRN 0798736999DM", "LOAN_ADVANCE", "2600"),
+    ("FOREIGN TRANSACTION FEE", "CHASE_CREDIT_CARD_NO_CARD", -300, _CARD, "FOREIGN_TRANSACTION_FEE", "7230"),
+    ("Payment Thank You - Web", "CHASE_CREDIT_CARD_NO_CARD", 50000, _CARD, "CREDIT_CARD_SETTLEMENT", "2500"),
+    ("Online Transfer to SAV ...7129 transaction#: 30078026756", "CHASE_BANK_ACCOUNT", -10000, _LE1,
+     "INTERNAL_BANK_TRANSFER", "1110"),
+    ("Online Transfer to CHK ...3583 transaction#: 30078026756", "CHASE_BANK_ACCOUNT", -10000, _LE1,
+     "RELATED_PARTY_TRANSFER_OUT", "1610"),
+    ("CREDIT MEMORANDUM REF: ADVANCE ON LOAN TRN: 0798736999DM", "CHASE_BANK_ACCOUNT", 1000000, _LE1,
+     "LOAN_ADVANCE", "2600"),
+)
+# Structure that proves nothing: a debit "payment thank you", a transfer to
+# an account RF-One has not registered, a tax authority named without a tax.
+RESOLVES_NOTHING_STRUCTURALLY = (
+    ("Payment Thank You - Web", "CHASE_CREDIT_CARD_NO_CARD", -50000, _CARD),
+    ("Online Transfer to CHK ...4444 transaction#: 30078026756", "CHASE_BANK_ACCOUNT", -10000, _LE1),
+    ("FLA DEPT REVENUE C01 ****6811", "FIRST_CITIZENS", -397918, _LE1),
 )
 
 # §4 — identity, which resolves nothing however suggestive.
@@ -202,26 +222,34 @@ def main() -> int:
                     description_original=description, source_memo=memo, amount_minor=-1000,
                 )
 
-            for description, expected_why, expected_account in RESOLVES:
-                reason, evidence = recognition.purpose_reason_for(s, unsaved(description))
-                what = (
-                    accounts.get(reason.accounting_classification_id) if reason else None
-                )
+            reasons_by_code = {r.code: r for r in s.query(m.BankTransactionReason).all()}
+            for description, layout, amount, payer, expected_why, expected_account in RESOLVES:
+                result = sw.recognize_why(description, sw.WhyContext(
+                    detected_format=layout, amount_minor=amount, instrument=payer,
+                    registered_last_four=_REGISTERED, settlement_of=lambda _card: _LE1))
+                reason = sw.usable_reason(s, result, reasons_by_code)
+                what = accounts.get(reason.accounting_classification_id) if reason else None
                 check(
                     f"§4 {description[:34]!r} -> WHY {expected_why} -> WHAT {expected_account}",
                     reason is not None and reason.code == expected_why
-                    and what is not None and what.code == expected_account
-                    and evidence.is_proven,
-                    detail=f"why={reason.code if reason else None} "
-                           f"what={what.code if what else None} ev={evidence.status}",
+                    and what is not None and what.code == expected_account,
+                    detail=f"why={result.why_code} tier={result.tier} what={what.code if what else None}",
+                )
+            for description, layout, amount, payer in RESOLVES_NOTHING_STRUCTURALLY:
+                result = sw.recognize_why(description, sw.WhyContext(
+                    detected_format=layout, amount_minor=amount, instrument=payer,
+                    registered_last_four=_REGISTERED, settlement_of=lambda _card: _LE1))
+                check(
+                    f"§4 structure proves nothing: {description[:34]!r} ({amount})",
+                    not result.is_resolved, detail=f"{result.tier} {result.why_code}",
                 )
 
             for description in RESOLVES_NOTHING:
                 reason, evidence = recognition.purpose_reason_for(s, unsaved(description))
                 check(
                     f"§4 identity alone resolves no WHY: {description[:40]!r}",
-                    reason is None and not evidence.is_proven,
-                    detail=f"why={reason.code if reason else None} ev={evidence.status}",
+                    reason is None and not evidence.is_resolved,
+                    detail=f"why={reason.code if reason else None} ev={evidence.tier}",
                 )
 
             check(

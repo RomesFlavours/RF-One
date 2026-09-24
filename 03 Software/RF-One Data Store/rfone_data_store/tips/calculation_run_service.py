@@ -133,8 +133,8 @@ def save_calculation_run(
 def _blocking_final_run(
     session: Session, run: m.TipDistributionCalculationRun,
 ) -> m.TipDistributionCalculationRun | None:
-    """An already-FINAL run covering the SAME Business Date range for the
-    same Restaurant, if one exists.
+    """An already-FINAL run whose Business Date range OVERLAPS this one for
+    the same Restaurant, if one exists (identical ranges included).
 
     §17 — this is the case nobody has decided. Two final runs for one period
     would give Payroll two authoritative answers, and choosing between them
@@ -145,8 +145,10 @@ def _blocking_final_run(
     return session.scalars(
         select(m.TipDistributionCalculationRun).where(
             m.TipDistributionCalculationRun.restaurant_id == run.restaurant_id,
-            m.TipDistributionCalculationRun.first_business_date == run.first_business_date,
-            m.TipDistributionCalculationRun.last_business_date == run.last_business_date,
+            # Overlap, not only equality: a day inside two FINAL runs would be
+            # paid twice (BANK_FINAL_RELEASE_BLOCKERS_001 T2).
+            m.TipDistributionCalculationRun.first_business_date <= run.last_business_date,
+            m.TipDistributionCalculationRun.last_business_date >= run.first_business_date,
             m.TipDistributionCalculationRun.state == m.TIPS_RUN_STATE_FINAL,
             m.TipDistributionCalculationRun.id != run.id,
         ).order_by(m.TipDistributionCalculationRun.id)

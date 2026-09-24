@@ -446,6 +446,32 @@ def main() -> int:
 
         with SessionFactory() as s:
             txn_after = s.get(m.FinancialTransaction, txn_id)
+            who_only = s.get(m.BankTransactionExplanation, txn_after.explanation_id)
+            # BANK_FINAL_RELEASE_BLOCKERS_001 — the Who alone never brings its
+            # default Why: the Who is recorded, the Why stays open.
+            check(
+                "selecting only the Who records the Who and leaves the Why open",
+                who_only is not None and who_only.decision_source == "HUMAN"
+                and who_only.occurrence_id == occurrence_id
+                and who_only.transaction_reason_id is None
+                and who_only.accounting_classification_code_snapshot is None
+                and txn_after.review_status != "REVIEWED",
+                detail=f"{getattr(who_only, 'transaction_reason_id', None)}/{txn_after.review_status}",
+            )
+
+        # The person then decides the Why through the Why step.
+        csrf = extract_csrf(operator_client.get("/bank/review").data)
+        resp = operator_client.post(
+            f"/bank/transactions/{txn_id}/why",
+            data={
+                "occurrence_id": str(occurrence_id), "transaction_reason_id": str(reason_id),
+                "csrf_token": csrf,
+            },
+        )
+        check("the Why step records the chosen Why", resp.status_code in (302, 303))
+
+        with SessionFactory() as s:
+            txn_after = s.get(m.FinancialTransaction, txn_id)
             check(
                 "FinancialTransaction.explanation_id now points at the HUMAN decision",
                 txn_after.explanation_id is not None,

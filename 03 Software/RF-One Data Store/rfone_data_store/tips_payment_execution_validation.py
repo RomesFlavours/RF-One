@@ -24,7 +24,7 @@ automatici normali")."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import inspect as sa_inspect, select
@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from . import authority_service
 from . import models as m
+from . import rfone_account_service as account_service
 from .technical.connectors.mercury.client import (
     MercuryAccount, MercuryDuplicateProtectionError, MercuryTransaction, MercuryValidationError,
 )
@@ -41,10 +42,15 @@ from .tips import payment_connector as connector_svc
 from .tips import payment_cycle_service as cycle_svc
 from .tips import payment_instruction as pi_svc
 from .tips import payout_process as payout_svc
+from .tips import calculation_run_service as run_svc
 from .tips import readiness as readiness_svc
 
 UTC = timezone.utc
 T0 = datetime(2026, 3, 1, tzinfo=UTC)
+# BANK_FINAL_RELEASE_BLOCKERS_001 T1 — the authoritative Business Day: the
+# Location's own timezone and 04:00 operating-day cutoff, never UTC midnight.
+BUSINESS_DAY_TIMEZONE = "America/New_York"
+BUSINESS_DAY_CUTOFF = time(4, 0)
 
 
 @dataclass
@@ -168,6 +174,7 @@ def _build_base_fixture(session: Session, *, suffix: str = "1"):
     location = m.Location(
         merchant_id=merchant.id, source_system_id=source_system.id, source_location_id=f"PEV-LOC-{suffix}",
         name="PEV Location", currency="USD",
+        timezone=BUSINESS_DAY_TIMEZONE, operating_day_cutoff_time=BUSINESS_DAY_CUTOFF,
     )
     session.add(location)
     session.flush()
@@ -289,6 +296,25 @@ def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
         "calculation: one Tip Entitlement persisted per Employee touched",
         calc_result.entitlements_created == 2,
     )
+
+    # T2 — a CALCULATED run is not approved truth: nothing is payable until
+    # a person validates it (MANUAL mode, the default).
+    result.check(
+        "payment eligibility: a calculated but NOT yet validated run offers nothing to pay",
+        not cycle_svc.get_unpaid_entitlements(session, restaurant.id)
+        and calc_result.calculation_run.state == m.TIPS_RUN_STATE_CALCULATED,
+    )
+    validator = account_service.create_account(
+        session, username="pev-validator", display_name="PEV Validator",
+        password="a-long-enough-test-password", is_admin=False,
+    )
+    session.flush()
+    validated, validate_reason = run_svc.validate_run(
+        session, run_id=calc_result.calculation_run.id, account_id=validator.id,
+    )
+    session.commit()
+    result.check("payment eligibility: a person validates the run, which makes it FINAL",
+                 validated is not None and validated.state == m.TIPS_RUN_STATE_FINAL)
 
     calc_result_again = payout_svc.run_calculation_now(session, restaurant_id=restaurant.id)
     result.check(
@@ -487,6 +513,8 @@ def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
     calc2 = payout_svc.run_calculation_now(session, restaurant_id=restaurant2.id)
     session.commit()
     result.check("second Restaurant: calculation runs independently of the first", calc2.ran)
+    run_svc.validate_run(session, run_id=calc2.calculation_run.id, account_id=validator.id)
+    session.commit()
     cycle2 = cycle_svc.start_payment_cycle(session, restaurant_id=restaurant2.id, triggered_by="MANUAL")
     session.commit()
     approver2 = _make_authorized_approver(session, suffix="2")
@@ -521,7 +549,9 @@ def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
     # read back from storage (TIPS_STATELESS_CALCULATION_001). The Tip
     # Entitlement aggregate is a payout crystallization on top of these
     # lines, never a replacement for them. ===
-    period_start, period_end = readiness_svc.business_date_period(date(2026, 3, 6))
+    period_start, period_end = readiness_svc.business_date_period(
+        date(2026, 3, 6), engine.require_location_business_day_config(session, restaurant.id)[0],
+    )
     calc = engine.calculate_tips(
         session, restaurant_id=restaurant.id, period_start=period_start, period_end=period_end,
     )
@@ -555,6 +585,7 @@ def _test_reconciliation_gate_on_business_date_readiness(session: Session, resul
     location = m.Location(
         merchant_id=merchant.id, source_system_id=source_system.id, source_location_id="RECON-GATE-LOC",
         name="Recon Gate Location", currency="USD",
+        timezone=BUSINESS_DAY_TIMEZONE, operating_day_cutoff_time=BUSINESS_DAY_CUTOFF,
     )
     session.add(location)
     session.flush()
@@ -602,7 +633,7 @@ def _test_reconciliation_gate_on_business_date_readiness(session: Session, resul
         not calc_attempt.ran and calc_attempt.blocked_reason is not None,
     )
 
-    business_date_end = readiness_svc.business_date_period(business_date)[1]
+    business_date_end = readiness_svc.business_date_period(business_date, location)[1]
     session.add(
         m.IngestionRun(
             source_system_id=source_system.id, location_id=location.id, started_at=business_date_end,
@@ -657,7 +688,10 @@ def _make_restaurant(session: Session, *, name: str) -> m.Restaurant:
     convention, so `approve_and_pay_cycle`'s payment-readiness gate passes
     for a reason unrelated to what this test actually verifies."""
     suffix = name.replace(" ", "-")
-    source_system = m.SourceSystem(code=f"NONCLOVER-RSA-{suffix}", name="Non-Clover", active=True)
+    # `SourceSystem.code` is String(32); PostgreSQL enforces it (SQLite never
+    # did), so the code is cut to the column length. The two Restaurants
+    # built here still get distinct codes.
+    source_system = m.SourceSystem(code=f"NONCLOVER-RSA-{suffix}"[:32], name="Non-Clover", active=True)
     session.add(source_system)
     session.flush()
     merchant = m.Merchant(source_system_id=source_system.id, source_merchant_id=f"RSA-MERCH-{suffix}", name="RSA Merchant")
@@ -666,6 +700,7 @@ def _make_restaurant(session: Session, *, name: str) -> m.Restaurant:
     location = m.Location(
         merchant_id=merchant.id, source_system_id=source_system.id, source_location_id=f"RSA-LOC-{suffix}",
         name="RSA Location", currency="USD",
+        timezone=BUSINESS_DAY_TIMEZONE, operating_day_cutoff_time=BUSINESS_DAY_CUTOFF,
     )
     session.add(location)
     session.flush()

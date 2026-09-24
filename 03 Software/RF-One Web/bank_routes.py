@@ -377,6 +377,9 @@ def register_bank_routes(
                 else:
                     values["linked_instrument_id"] = legacy_link
 
+                # The lifecycle state is never edited from this form: it
+                # changes only through the Monthly Sources resolutions.
+                values.pop("status", None)
                 try:
                     bank_service.update_payment_instrument(db, instrument_id=instrument_id, **values)
                     warning = bank_service.instrument_export_warning(instrument)
@@ -884,8 +887,15 @@ def register_bank_routes(
                         f"{chains[occurrence.id].accounting_classification.name}"
                         if chains[occurrence.id].accounting_classification is not None else None
                     ),
-                    "selectable": chains[occurrence.id].is_complete,
-                    "blocking_reason": chains[occurrence.id].blocking_reason,
+                    # BANK_FINAL_RELEASE_BLOCKERS_001 — choosing a Who records
+                    # the Who only, so any ACTIVE Who may be chosen; its usual
+                    # Why above is shown as a suggestion and never applied.
+                    "selectable": occurrence.status == "ACTIVE",
+                    "blocking_reason": (
+                        None if occurrence.status == "ACTIVE" else
+                        f"Who {occurrence.canonical_name!r} is inactive. Reactivate it in "
+                        "Bank > Classification, or choose another Who."
+                    ),
                 }
                 for occurrence in occurrences
             ]
@@ -1433,10 +1443,9 @@ def register_bank_routes(
     @app.route("/bank/transactions/<int:transaction_id>/recognition-decision", methods=["POST"])
     @gate
     def bank_transaction_recognition_decision(transaction_id: int):
-        """The Who is the only classification input this route accepts.
-        Why and What are derived from the Who's stored chain by
-        `record_recognition_decision`; an incomplete chain comes back as a
-        `ValueError` carrying the sentence to show the human."""
+        """Record WHO the counterparty is. The Who is the only input, so the
+        Why stays open for a human: a Who's default Why is never applied
+        (BANK_FINAL_RELEASE_BLOCKERS_001). The Why step decides the Why."""
         require_csrf()
         occurrence_id = request.form.get("occurrence_id", type=int)
         # Learning control only — it decides whether this confirmation also
@@ -1455,7 +1464,7 @@ def register_bank_routes(
                     confirmed_by_account_id=account.id, learn_description=learn_description,
                 )
                 db.commit()
-                flash("Reconciliation decision recorded.", "info")
+                flash("Who recorded. The Why of this transaction still needs a decision.", "info")
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
@@ -1464,11 +1473,10 @@ def register_bank_routes(
     @app.route("/bank/transactions/<int:transaction_id>/reclassify", methods=["POST"])
     @gate
     def bank_transaction_reclassify(transaction_id: int):
-        """Apply the CURRENT Who -> Why -> What chain to a transaction that
-        was decided under an earlier one. Explicit by design: editing an
-        association never reaches back into confirmed history on its own,
-        and this action appends a new auditable decision rather than
-        rewriting the one it supersedes."""
+        """Re-derive the WHAT of a transaction's ALREADY-decided Why through
+        that Why's current mapping. The Who's default Why is never consulted
+        (BANK_FINAL_RELEASE_BLOCKERS_001). Explicit by design, and appends a
+        new auditable decision rather than rewriting the one it supersedes."""
         require_csrf()
         with SessionFactory() as db:
             account = _current_account(db)
@@ -1477,7 +1485,7 @@ def register_bank_routes(
                     db, transaction_id=transaction_id, confirmed_by_account_id=account.id,
                 )
                 db.commit()
-                flash("Transaction reclassified against the current chain.", "info")
+                flash("Transaction reclassified through its Why's current mapping.", "info")
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
@@ -1789,8 +1797,9 @@ def register_bank_routes(
                 )
                 db.commit()
                 flash(
-                    f"{outcome.transactions_classified} transaction(s) classified as "
-                    f"{outcome.occurrence_name!r} across {len(outcome.payees)} receiver group(s). "
+                    f"{outcome.transactions_classified} transaction(s) assigned to Who "
+                    f"{outcome.occurrence_name!r} across {len(outcome.payees)} receiver group(s); "
+                    "each keeps its own Why decision. "
                     + (
                         f"{outcome.transactions_skipped_human} left untouched because a human had "
                         "already decided them. " if outcome.transactions_skipped_human else ""

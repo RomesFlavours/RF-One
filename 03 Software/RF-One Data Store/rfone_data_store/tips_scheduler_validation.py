@@ -26,10 +26,12 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from . import authority_service
 from . import models as m
+from . import rfone_account_service as account_service
 from .technical.connectors.mercury.client import MercuryAccount, MercuryTransaction
 from .tips import distribution_rule_service as rule_svc
 from .tips import payment_connector as connector_svc
 from .tips import payment_cycle_service as cycle_svc
+from .tips import calculation_run_service as run_svc
 from .tips import payout_process as payout_svc
 from .tips import readiness as readiness_svc
 from .tips import schedule_service as sched_svc
@@ -139,6 +141,9 @@ def _build_fixture(session: Session, *, suffix: str):
     location = m.Location(
         merchant_id=merchant.id, source_system_id=source_system.id, source_location_id=f"SCHED-LOC-{suffix}",
         name="Sched Location", currency="USD",
+        # T1 — the authoritative Business Day: the Location's own timezone
+        # and 04:00 cutoff (BANK_FINAL_RELEASE_BLOCKERS_001).
+        timezone="America/New_York", operating_day_cutoff_time=time(4, 0),
     )
     session.add(location)
     session.flush()
@@ -193,6 +198,21 @@ def _make_order_with_tip(session, *, location, source_system, employee, business
     session.add(m.PaymentTip(payment_id=payment.id, amount=tip_minor, source_present=True))
     session.commit()
     return order
+
+
+def _validate(session: Session, calc) -> None:
+    """T2 — only a FINAL run is payable (BANK_FINAL_RELEASE_BLOCKERS_001):
+    a person validates the calculated run before any payment scenario."""
+    account = session.scalars(select(m.RFOneAccount).filter_by(username="sched-validator")).first()
+    if account is None:
+        account = account_service.create_account(
+            session, username="sched-validator", display_name="Sched Validator",
+            password="a-long-enough-test-password", is_admin=False,
+        )
+        session.flush()
+    run, reason = run_svc.validate_run(session, run_id=calc.calculation_run.id, account_id=account.id)
+    assert run is not None, reason
+    session.commit()
 
 
 def _authorized_approver(session: Session, *, suffix: str) -> m.ActingIdentity:
@@ -382,6 +402,7 @@ def _test_payment_scheduler_end_to_end(session: Session, result: ValidationResul
     calc = payout_svc.run_calculation_now(session, restaurant_id=restaurant.id)
     session.commit()
     result.check("payment scheduler fixture: calculation ran so there is something unpaid to aggregate", calc.ran)
+    _validate(session, calc)
 
     now = datetime(2026, 5, 10, 23, 0, tzinfo=UTC)
     sched_svc.set_payment_schedule(
@@ -414,6 +435,7 @@ def _test_already_paid_entitlements_excluded(session: Session, result: Validatio
     calc1 = payout_svc.run_calculation_now(session, restaurant_id=restaurant.id)
     session.commit()
     result.check("already-paid exclusion fixture: day 1 calculated", calc1.ran)
+    _validate(session, calc1)
 
     client = _FakeMercuryClient()
     connector = _connector_for(client)
@@ -450,6 +472,7 @@ def _test_already_paid_entitlements_excluded(session: Session, result: Validatio
     calc2 = payout_svc.run_calculation_now(session, restaurant_id=restaurant.id)
     session.commit()
     result.check("already-paid exclusion fixture: day 2 calculated independently", calc2.ran)
+    _validate(session, calc2)
 
     cycle2 = cycle_svc.start_payment_cycle(session, restaurant_id=restaurant.id, triggered_by="MANUAL")
     session.commit()
@@ -481,6 +504,7 @@ def _test_blocked_mercury_status_raises_attention(session: Session, result: Vali
     calc = payout_svc.run_calculation_now(session, restaurant_id=restaurant.id)
     session.commit()
     result.check("blocked-status fixture: calculation ran", calc.ran)
+    _validate(session, calc)
 
     session.add(
         m.EmployeeExternalPaymentAccount(employee_id=employee.id, provider="MERCURY", provider_recipient_id="recipient-blocked", is_active=True)

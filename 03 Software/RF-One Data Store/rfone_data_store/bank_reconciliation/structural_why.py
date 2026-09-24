@@ -58,7 +58,12 @@ WHO_RECOGNIZER_VERSION = "who-v1"
 
 DETERMINISTIC = "DETERMINISTIC"
 STRONG_STRUCTURAL = "STRONG_STRUCTURAL"
+# Purpose proven by the source MEMO / NOTE wording (a field a person writes
+# to say what a payment is for), read through `purpose_evidence`'s MEMO
+# rules. Consulted only when the bank structure itself proves nothing.
+MEMO_EVIDENCE = "MEMO_EVIDENCE"
 UNRESOLVED = "UNRESOLVED"
+RESOLVED_TIERS = (DETERMINISTIC, STRONG_STRUCTURAL, MEMO_EVIDENCE)
 
 DEBIT = "DEBIT"
 CREDIT = "CREDIT"
@@ -110,7 +115,11 @@ class WhyResult:
 
     @property
     def is_resolved(self) -> bool:
-        return self.tier in (DETERMINISTIC, STRONG_STRUCTURAL)
+        return self.tier in RESOLVED_TIERS
+
+    @property
+    def confidence(self) -> str:
+        return "MEDIUM" if self.tier == STRONG_STRUCTURAL else "HIGH"
 
 
 @dataclass(frozen=True)
@@ -353,8 +362,17 @@ def _info(instrument: "m.PaymentInstrument | None") -> InstrumentInfo | None:
     return InstrumentInfo(instrument.id, instrument.legal_entity_id, instrument.instrument_type)
 
 
-def recognize_all(session: Session) -> list[tuple["m.FinancialTransaction", WhyResult]]:
-    """Recognise every canonical transaction. Reads only."""
+@dataclass
+class Registry:
+    """RF-One's instrument registry and batch layouts, read once and reused
+    for every transaction of a run."""
+
+    instruments: dict
+    registered_last_four: dict
+    formats: dict
+
+
+def load_registry(session: Session) -> Registry:
     instruments = {i.id: i for i in session.scalars(select(m.PaymentInstrument))}
     registered: dict[str, InstrumentInfo] = {}
     for instrument in instruments.values():
@@ -362,24 +380,93 @@ def recognize_all(session: Session) -> list[tuple["m.FinancialTransaction", WhyR
         if last_four:
             registered.setdefault(last_four, _info(instrument))
     formats = dict(session.execute(select(m.BankImportBatch.id, m.BankImportBatch.detected_format)).all())
+    return Registry(instruments, registered, formats)
 
-    out = []
-    for txn in session.scalars(select(m.FinancialTransaction).order_by(m.FinancialTransaction.id)):
-        on_date: date | None = txn.posting_date or txn.transaction_date
 
-        def settlement_of(card_id: int, _on=on_date) -> InstrumentInfo | None:
-            card = instruments.get(card_id)
-            if card is None:
-                return None
-            return _info(card_configuration.accounting_account_for(session, instrument=card, on_date=_on))
+def transaction_context(session: Session, txn: "m.FinancialTransaction", registry: Registry) -> WhyContext:
+    on_date: date | None = txn.posting_date or txn.transaction_date
+    instruments = registry.instruments
 
-        ctx = WhyContext(
-            detected_format=formats.get(txn.import_batch_id), amount_minor=txn.amount_minor,
-            instrument=_info(instruments[txn.payment_instrument_id]),
-            registered_last_four=registered, settlement_of=settlement_of,
-        )
-        out.append((txn, recognize_why(txn.description_original, ctx)))
-    return out
+    def settlement_of(card_id: int, _on=on_date) -> InstrumentInfo | None:
+        card = instruments.get(card_id)
+        if card is None:
+            return None
+        return _info(card_configuration.accounting_account_for(session, instrument=card, on_date=_on))
+
+    detected_format = registry.formats.get(txn.import_batch_id)
+    if detected_format is None and txn.import_batch_id is not None:
+        batch = session.get(m.BankImportBatch, txn.import_batch_id)
+        detected_format = batch.detected_format if batch is not None else None
+    instrument = instruments.get(txn.payment_instrument_id)
+    if instrument is None and txn.payment_instrument_id is not None:
+        instrument = session.get(m.PaymentInstrument, txn.payment_instrument_id)
+    return WhyContext(
+        detected_format=detected_format, amount_minor=txn.amount_minor,
+        instrument=_info(instrument), registered_last_four=registry.registered_last_four,
+        settlement_of=settlement_of,
+    )
+
+
+def memo_why(memo: str | None) -> WhyResult | None:
+    """The purpose a source MEMO proves, or None. MEMO wording only — the
+    description is never searched here, so a counterparty's name can never
+    become a purpose (BANK_WHO_WHY_INVARIANT_001)."""
+    from . import purpose_evidence as pe
+    if not (memo or "").strip():
+        return None
+    evidence = pe.purpose_evidence(None, memo)
+    if not evidence.is_proven or evidence.source_field != pe.MEMO:
+        return None
+    return WhyResult(
+        MEMO_EVIDENCE, rule_code=f"MEMO_{evidence.why_code}", why_code=evidence.why_code,
+        evidence=f"The source memo says {evidence.matched_text!r}. {evidence.rationale or ''}".strip(),
+    )
+
+
+def recognize_transaction(
+    session: Session, txn: "m.FinancialTransaction", registry: Registry | None = None,
+) -> WhyResult:
+    """THE automatic WHY of one transaction — the single engine used at
+    import, on reprocess, on instrument reassignment and by the batch
+    runner (BANK_FINAL_RELEASE_BLOCKERS_001).
+
+    The bank's own structure first (`recognize_why`); only if it proves
+    nothing, an explicit purpose in the source memo. Never the
+    counterparty's identity, never a Who's default, never history."""
+    registry = registry or load_registry(session)
+    result = recognize_why(txn.description_original, transaction_context(session, txn, registry))
+    if result.is_resolved:
+        return result
+    return memo_why(txn.source_memo) or result
+
+
+def usable_reason(
+    session: Session, result: WhyResult, reasons: dict | None = None,
+) -> "m.BankTransactionReason | None":
+    """The ACTIVE Why a resolved result names, if its destination may receive
+    an automatic classification; otherwise None (the transaction then waits
+    for a human rather than landing on a group or review-sensitive account)."""
+    if not result.is_resolved or not result.why_code:
+        return None
+    if reasons is not None:
+        reason = reasons.get(result.why_code)
+    else:
+        reason = session.scalars(
+            select(m.BankTransactionReason).where(m.BankTransactionReason.code == result.why_code)
+        ).first()
+    if reason is None or reason.status != "ACTIVE":
+        return None
+    account = reason.accounting_classification
+    if account is None or not account.may_receive_automatic_classification:
+        return None
+    return reason
+
+
+def recognize_all(session: Session) -> list[tuple["m.FinancialTransaction", WhyResult]]:
+    """Recognise every canonical transaction through the one engine. Reads only."""
+    registry = load_registry(session)
+    return [(txn, recognize_transaction(session, txn, registry))
+            for txn in session.scalars(select(m.FinancialTransaction).order_by(m.FinancialTransaction.id))]
 
 
 def apply_structural_why(session: Session) -> tuple[WhySummary, list]:
@@ -413,10 +500,8 @@ def apply_structural_why(session: Session) -> tuple[WhySummary, list]:
         summary.by_rule[result.rule_code] += 1
         summary.by_why[result.why_code] += 1
 
-        reason = reasons.get(result.why_code)
-        account = reason.accounting_classification if reason is not None else None
-        if reason is None or reason.status != "ACTIVE" or account is None \
-                or not account.may_receive_automatic_classification:
+        reason = usable_reason(session, result, reasons)
+        if reason is None:
             summary.refused_destination.append((txn.id, result.why_code))
             continue
 
@@ -435,7 +520,7 @@ def apply_structural_why(session: Session) -> tuple[WhySummary, list]:
             session, txn,
             occurrence_id=who.get(txn.id), transaction_reason_id=reason.id, recognition_rule_id=None,
             decision_source="RULE", decision_status="AUTO_APPLIED",
-            confidence="HIGH" if result.tier == DETERMINISTIC else "MEDIUM",
+            confidence=result.confidence,
             explanation_notes=(
                 f"{tag(result.rule_code)} {result.tier} structural WHY {result.why_code}. "
                 f"{result.evidence} The WHO (if any) is recorded for reference only and did not "

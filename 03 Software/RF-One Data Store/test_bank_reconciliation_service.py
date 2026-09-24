@@ -22,7 +22,7 @@ import sys
 from datetime import date
 
 from rfone_data_store.bank_reconciliation import card_configuration
-from rfone_data_store.bank_reconciliation import export, service
+from rfone_data_store.bank_reconciliation import export, recognition, service
 from rfone_data_store.database import (
     cleanup_disposable_test_database_url,
     create_configured_engine,
@@ -327,10 +327,16 @@ def main() -> int:
             ).all():
                 if txn.duplicate_status == "CANDIDATE_DUPLICATE":
                     service.resolve_duplicate_decision(s, transaction_id=txn.id, decision="CONFIRMED_DISTINCT")
-                service.record_recognition_decision(
-                    s, transaction_id=txn.id, occurrence_id=occurrence.id,
-                    confirmed_by_account_id=None, learn_description=False,
+                # The person chooses the Why explicitly; a Who alone leaves it
+                # open (BANK_FINAL_RELEASE_BLOCKERS_001).
+                recognition.record_human_decision(
+                    s, recognition.HumanDecisionRequest(
+                        transaction_id=txn.id, occurrence_id=occurrence.id,
+                        transaction_reason_id=occurrence.default_transaction_reason_id,
+                        confirmed_by_account_id=None, learn_description=False,
+                    ),
                 )
+                txn.review_status = "REVIEWED"
             s.commit()
 
             april_blockers_after = export.compute_export_blockers(s, year=2026, month=4)

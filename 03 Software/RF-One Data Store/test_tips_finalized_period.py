@@ -73,6 +73,7 @@ CUTOFF = time(4, 0)
 # a different test, and it would hide this one's failures.
 DAY_ONE = date(2026, 5, 4)
 DAY_TWO = date(2026, 5, 5)
+DAY_THREE = date(2026, 5, 6)   # no FINAL run covers it
 
 
 def local(day: date, hour: int, minute: int = 0) -> datetime:
@@ -467,10 +468,26 @@ def main() -> int:
                 detail=f"review mode now {review_mode_svc.get_review_mode(s, restaurant_id=restaurant_id)}",
             )
 
-            # 15. AUTOMATIC finalizes on save; MANUAL does not.
-            auto_run, _ = run_svc.save_calculation_run(
+            # 15. AUTOMATIC finalizes on save; MANUAL does not. The automatic
+            # run uses a day no FINAL run covers yet: DAY_ONE and DAY_TWO are
+            # already inside the FINAL DAY_ONE..DAY_TWO run, and a day may sit
+            # in only one FINAL run (BANK_FINAL_RELEASE_BLOCKERS_001 T2).
+            overlapping_auto, _ = run_svc.save_calculation_run(
                 s, restaurant_id=restaurant_id,
                 first_business_date=DAY_ONE, last_business_date=DAY_ONE,
+            )
+            s.flush()
+            check(
+                "15a. T2 AUTOMATIC never finalizes a day already inside a FINAL run "
+                "(overlap, not only an identical range): it stays CALCULATED, never payable",
+                overlapping_auto is not None
+                and overlapping_auto.state == m.TIPS_RUN_STATE_CALCULATED
+                and any("final" in b.lower() for b in run_svc.finalization_blockers(s, overlapping_auto)),
+                detail=f"{overlapping_auto and overlapping_auto.state}",
+            )
+            auto_run, _ = run_svc.save_calculation_run(
+                s, restaurant_id=restaurant_id,
+                first_business_date=DAY_THREE, last_business_date=DAY_THREE,
             )
             s.flush()
             mode_svc.set_validation_mode(

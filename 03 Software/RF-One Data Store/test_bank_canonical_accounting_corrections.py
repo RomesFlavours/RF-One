@@ -368,6 +368,9 @@ def main() -> int:
             decision = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=sale.id, occurrence_id=buyer.id,
+                    # The human chooses the Why explicitly; a Who's default is
+                    # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
+                    transaction_reason_id=s.get(m.BankOccurrence, buyer.id).default_transaction_reason_id,
                     confirmed_by_account_id=None, learn_description=False,
                 ),
             )

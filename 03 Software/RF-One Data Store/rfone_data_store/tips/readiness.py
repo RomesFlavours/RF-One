@@ -57,12 +57,30 @@ from . import distribution_engine as engine_svc
 UTC = timezone.utc
 
 
-def business_date_period(business_date: date) -> tuple[datetime, datetime]:
-    """A single Business Date as a `[period_start, period_end)` pair, in the
-    same EXCLUSIVE-at-end convention `distribution_engine` already uses
-    (Tips/app.py's `_calculation_period`) — one calendar day."""
-    start = datetime(business_date.year, business_date.month, business_date.day, tzinfo=UTC)
-    return start, start + timedelta(days=1)
+def business_date_period(business_date: date, location: "m.Location") -> tuple[datetime, datetime]:
+    """A single Business Date as its `[period_start, period_end)` UTC window:
+    the Location's own Business Day, from its operating-day cutoff in its
+    timezone to the next day's cutoff (BANK_FINAL_RELEASE_BLOCKERS_001 T1).
+
+    Never UTC midnight to midnight: that attributes a whole night's takings
+    to the wrong day. Delegates to `distribution_engine.business_date_window_utc`,
+    the one definition of the window."""
+    return engine_svc.business_date_window_utc(location, business_date, business_date)
+
+
+def latest_run_covering(
+    session: Session, restaurant_id: int, business_date: date,
+) -> "m.TipDistributionCalculationRun | None":
+    """The most recent COMPLETE calculation run whose Business Date range
+    includes `business_date`, whichever action saved it."""
+    return session.scalars(
+        select(m.TipDistributionCalculationRun).where(
+            m.TipDistributionCalculationRun.restaurant_id == restaurant_id,
+            m.TipDistributionCalculationRun.status == engine_svc.STATUS_COMPLETE,
+            m.TipDistributionCalculationRun.first_business_date <= business_date,
+            m.TipDistributionCalculationRun.last_business_date >= business_date,
+        ).order_by(m.TipDistributionCalculationRun.id.desc())
+    ).first()
 
 
 def get_latest_business_date_with_orders(session: Session, restaurant_id: int) -> date | None:
@@ -118,10 +136,15 @@ def describe_readiness(session: Session, restaurant_id: int) -> BusinessDateRead
             reconciliation_reason="no Business Date candidate yet",
         )
 
-    period_start, period_end = business_date_period(business_date)
-    run = engine_svc.get_latest_payout_run(
-        session, restaurant_id=restaurant_id, period_start=period_start, period_end=period_end,
-    )
+    location, config_reason = engine_svc.require_location_business_day_config(session, restaurant_id)
+    if config_reason:
+        return BusinessDateReadiness(
+            business_date=business_date, has_orders=True, calculation_run=None,
+            already_calculated=False, ready_to_calculate=False, reconciliation_ready=False,
+            reconciliation_reason=config_reason,
+        )
+    period_start, period_end = business_date_period(business_date, location)
+    run = latest_run_covering(session, restaurant_id, business_date)
     already_calculated = run is not None
 
     reconciliation = describe_reconciliation_status(

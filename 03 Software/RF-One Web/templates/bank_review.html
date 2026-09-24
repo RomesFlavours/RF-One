@@ -351,7 +351,7 @@
             <span class="who-option-name">{{ option.name }}</span>
             <span class="who-option-type">{{ option.type }}{% if option.status != 'ACTIVE' %} · {{ option.status }}{% endif %}</span>
             {% if option.selectable %}
-              <span class="who-option-chain">Why: {{ option.why }} · What: {{ option.what }}</span>
+              {% if option.why %}<span class="who-option-chain">Usual Why: {{ option.why }} &mdash; a suggestion, never applied</span>{% endif %}
             {% else %}
               <span class="who-option-blocked">
                 {{ option.blocking_reason }}

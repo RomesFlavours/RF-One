@@ -293,8 +293,23 @@ def map_order_fee(fee_line_item_raw: dict[str, Any]) -> dict[str, Any]:
         "name_raw": fee_line_item_raw.get("name"),
         "note_raw": note,
         "amount": fee_line_item_raw.get("price"),
+        # Clover's raw fee-line `percentage` is scaled x10000 relative to
+        # the actual percent (e.g. `180000` = 18.0000%, per
+        # `Clover Data Explorer/CLOVER_EXPORT_MAPPING.md` §"Service Charge
+        # is essentially absent..." and the matching CLOVER_TIPS_DATA_PROBE_001
+        # observation) — divided down here to the same canonical percent-
+        # integer convention `map_discount_definition.percentage` already
+        # uses (e.g. `18` -> `Decimal("18.0000")`), never Clover's own raw
+        # scaling (DATABASE_SCHEMA.md § 0). Found and fixed during the AWS
+        # RDS Clover Live Sync (AWS_CLOVER_LIVE_SYNC_001): PostgreSQL's real
+        # `Numeric(7,4)` precision/scale enforcement rejected the unscaled
+        # raw value outright, a check SQLite silently never performed.
+        # `percentage` is purely descriptive — the charged amount is always
+        # read verbatim from `price` above, never derived from `percentage`
+        # (CLOVER_TIPS_INGESTION_001 §5) — so this defect never affected any
+        # Tips calculation or other monetary figure.
         "percentage": (
-            Decimal(str(fee_line_item_raw.get("percentage")))
+            Decimal(str(fee_line_item_raw.get("percentage"))) / Decimal(10000)
             if fee_line_item_raw.get("percentage") is not None
             else None
         ),

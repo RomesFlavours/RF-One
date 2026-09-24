@@ -31,7 +31,10 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from sqlalchemy import func, select
+
 from .. import models as m
+from . import calculation_run_service as run_svc
 from . import distribution_engine as engine_svc
 from . import readiness as readiness_svc
 
@@ -71,21 +74,21 @@ def run_calculation_now(session: Session, *, restaurant_id: int) -> CalculationR
         result.blocked_reason = f"Not ready to calculate: {state.reconciliation_reason}"
         return result
 
-    period_start, period_end = readiness_svc.business_date_period(state.business_date)
-    run, calc = engine_svc.run_tip_distribution_calculation(
-        session, restaurant_id=restaurant_id, period_start=period_start, period_end=period_end,
+    # BANK_FINAL_RELEASE_BLOCKERS_001 T1 — the ONE persisted calculation:
+    # the same service "Calculate and save this period" uses, over the
+    # Location's Business Day window (timezone + operating-day cutoff, Order
+    # Open Time), producing a validatable run. Never a UTC-midnight window,
+    # never a second entitlement population.
+    run, reason = run_svc.save_calculation_run(
+        session, restaurant_id=restaurant_id,
+        first_business_date=state.business_date, last_business_date=state.business_date,
     )
-    session.flush()
-    result.calculation_run = run
-    result.calculation_summary = calc.summary
-
-    if run.status == engine_svc.STATUS_FAILED:
-        result.blocked_reason = run.notes
+    if run is None:
+        result.blocked_reason = reason
         return result
-
-    entitlements = engine_svc.populate_entitlements_for_run(
-        session, run, calc, business_date=state.business_date,
-    )
-    result.entitlements_created = len(entitlements)
+    result.calculation_run = run
+    result.entitlements_created = session.scalar(
+        select(func.count(m.TipEntitlement.id)).where(m.TipEntitlement.calculation_run_id == run.id)
+    ) or 0
     result.ran = True
     return result

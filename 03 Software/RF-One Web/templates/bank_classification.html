@@ -781,8 +781,8 @@
           <option value="">&mdash; create a new Who instead &mdash;</option>
           {% for who in whos %}
             {% set chain = chains.get(who.id) %}
-            <option value="{{ who.id }}" {{ 'disabled' if not (chain and chain.is_complete) else '' }}>
-              {{ who.canonical_name }}{% if not (chain and chain.is_complete) %} (incomplete chain){% endif %}
+            <option value="{{ who.id }}" {{ 'disabled' if who.status != 'ACTIVE' else '' }}>
+              {{ who.canonical_name }}{% if who.status != 'ACTIVE' %} (inactive){% endif %}
             </option>
           {% endfor %}
         </select>
@@ -851,10 +851,9 @@
   <summary><strong>E. Assigned / Learned Rules</strong> &mdash; what RF-One will recognise next time</summary>
 
   <p class="muted">
-    Each rule recognises a <strong>Who</strong> from an exact normalized description. The Why and
-    the What are re-derived from that Who's current chain every time the rule applies, so
-    re-pointing a Who takes effect immediately without touching a single rule. Rules that
-    contradict each other leave the transaction for a human instead of guessing.
+    Each rule recognises a <strong>Who</strong> from an exact normalized description, and nothing
+    more: a Who never decides a Why. The Why comes from the transaction's own evidence or from a
+    person. Rules that contradict each other leave the transaction for a human instead of guessing.
   </p>
 
   {% if learned_rules %}

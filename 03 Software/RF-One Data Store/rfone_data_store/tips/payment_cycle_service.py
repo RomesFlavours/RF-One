@@ -136,12 +136,21 @@ def get_unpaid_entitlements(session: Session, restaurant_id: int) -> list[m.TipE
     non-positive `payable_amount_minor` is excluded here too — nothing to
     pay out for it (same rule `payment_instruction.
     get_or_create_payment_instructions_for_run` used to apply per-run)."""
+    # BANK_FINAL_RELEASE_BLOCKERS_001 T2 — only entitlements of a FINAL run
+    # (validated by a person, or finalized automatically in AUTOMATIC mode
+    # when the §11 control balances) may be paid. A CALCULATED run is not
+    # approved truth, and two FINAL runs can never share a Business Date
+    # (`calculation_run_service._blocking_final_run`), so no day is paid twice.
     return list(
         session.scalars(
-            select(m.TipEntitlement).where(
+            select(m.TipEntitlement)
+            .join(m.TipDistributionCalculationRun,
+                  m.TipDistributionCalculationRun.id == m.TipEntitlement.calculation_run_id)
+            .where(
                 m.TipEntitlement.restaurant_id == restaurant_id,
                 m.TipEntitlement.tip_payment_instruction_id.is_(None),
                 m.TipEntitlement.payable_amount_minor > 0,
+                m.TipDistributionCalculationRun.state == m.TIPS_RUN_STATE_FINAL,
             )
         )
     )

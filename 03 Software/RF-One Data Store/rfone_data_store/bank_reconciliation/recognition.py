@@ -208,42 +208,20 @@ def find_candidate_rules(
 
 def purpose_reason_for(
     session: Session, txn: "m.FinancialTransaction",
-) -> tuple["m.BankTransactionReason | None", "pe.PurposeEvidence"]:
-    """The Why that this transaction's PURPOSE TEXT proves, if any.
+) -> "tuple[m.BankTransactionReason | None, structural_why.WhyResult]":
+    """The Why this transaction's OWN evidence proves, if any, through the one
+    automatic WHY engine (`structural_why.recognize_transaction`) — the
+    bank's structure first, then an explicit source memo
+    (BANK_FINAL_RELEASE_BLOCKERS_001).
 
-    Returns the evidence whatever the outcome, so a caller can explain the
-    refusal as readily as the match. A Why is returned only when the
-    evidence is PROVEN, the configured Why exists, and the account it
-    points at both matches the evidence and may receive an automatic
-    classification — a group or a review-sensitive account never may
-    (BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001 §6).
-
-    The counterparty is never consulted: `purpose_evidence` strips a
-    person's name before it looks at anything, and this function never
-    reads past decisions for this Who."""
-    evidence = pe.purpose_evidence(txn.description_original, txn.source_memo)
-    if not evidence.is_proven:
-        return None, evidence
-
-    reason = session.scalars(
-        select(m.BankTransactionReason)
-        .where(m.BankTransactionReason.code == evidence.why_code)
-    ).first()
-    if reason is None or reason.status != "ACTIVE":
-        return None, evidence
-
-    what = (
-        session.get(m.BankAccountingClassification, reason.accounting_classification_id)
-        if reason.accounting_classification_id is not None else None
-    )
-    if what is None or what.code != evidence.account_code:
-        # The configured Why no longer means what the purpose rule says it
-        # means. Reported by returning no Why rather than classifying to
-        # something the evidence does not support.
-        return None, evidence
-    if not what.may_receive_automatic_classification:
-        return None, evidence
-    return reason, evidence
+    Returns the engine's result whatever the outcome, so a caller can
+    explain a refusal as readily as a match. A Why is returned only when the
+    result is resolved, the Why exists and is ACTIVE, and its destination
+    may receive an automatic classification. The counterparty is never
+    consulted, and no Who's default ever is."""
+    from . import structural_why
+    result = structural_why.recognize_transaction(session, txn)
+    return structural_why.usable_reason(session, result), result
 
 
 # ---------------------------------------------------------------------------
@@ -371,13 +349,29 @@ def get_current_explanation(
     ).first()
 
 
-def deduce_for_transaction(
-    session: Session, txn: "m.FinancialTransaction",
-) -> "m.BankTransactionExplanation":
-    """Runs once for every newly normalized transaction (called from
-    `service._normalize_rows`). Never invoked for a transaction that
-    already has a human decision — `service.py` only calls this at
-    creation time, before any human has looked at the row."""
+@dataclass(frozen=True)
+class _Proposal:
+    occurrence_id: int | None
+    transaction_reason_id: int | None
+    recognition_rule_id: int | None
+    decision_status: str
+    confidence: str | None
+    notes: str
+
+
+def _propose(session: Session, txn: "m.FinancialTransaction") -> _Proposal:
+    """What the automatic engine concludes about one transaction. Writes nothing.
+
+    Two separate questions, answered separately (BANK_FINAL_RELEASE_BLOCKERS_001):
+
+      WHO — recognition rules name the counterparty (identity only);
+      WHY — the ONE automatic engine, `structural_why.recognize_transaction`,
+            from the transaction's own structure and memo.
+
+    The WHO never gates, suggests or decides the WHY: a Who's default Why is
+    not read at all."""
+    from . import structural_why
+
     normalized = normalize_description_for_recognition(txn.description_original)
     normalized_memo = normalize_memo_for_recognition(txn.source_memo)
     direction = direction_for_amount(txn.amount_minor)
@@ -386,142 +380,110 @@ def deduce_for_transaction(
         payment_instrument_id=txn.payment_instrument_id, direction=direction,
         normalized_memo=normalized_memo,
     )
-
+    occurrence_id = rule_id = None
     if not candidates:
-        notes = (
+        who_note = (
             f"No ACTIVE recognition rule matched. Normalized description: {normalized!r}. "
             f"Payment Instrument: {txn.payment_instrument_id}. Direction: {direction}."
         )
-        return _create_decision_row(
-            session, txn, occurrence_id=None, transaction_reason_id=None, recognition_rule_id=None,
-            decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
-            explanation_notes=notes,
-        )
+    else:
+        groups: dict[int, list["m.BankRecognitionRule"]] = {}
+        for rule in candidates:
+            groups.setdefault(rule.occurrence_id, []).append(rule)
+        if len(groups) > 1:
+            summary = "; ".join(
+                f"rule #{group[0].id} ({group[0].match_type} -> occurrence={occ_id})"
+                for occ_id, group in groups.items()
+            )
+            who_note = (
+                f"{len(candidates)} compatible ACTIVE rule(s) recognized {len(groups)} different, "
+                f"contradictory Who values — the Who is left to a human: {summary}."
+            )
+        else:
+            best = candidates[0]
+            occurrence = session.get(m.BankOccurrence, best.occurrence_id)
+            occurrence_id, rule_id = best.occurrence_id, best.id
+            who_note = (
+                f"Rule #{best.id} ({best.match_type}, pattern={best.normalized_pattern!r}) "
+                f"recognises Who {occurrence.canonical_name if occurrence else best.occurrence_id!r}."
+            )
+            usual = (session.get(m.BankTransactionReason, occurrence.default_transaction_reason_id)
+                     if occurrence is not None and occurrence.default_transaction_reason_id else None)
+            if usual is not None:
+                # Shown to the reviewer, never applied: that this counterparty
+                # is usually one thing is not evidence about this transaction.
+                who_note += (
+                    f" Suggestion only, from this Who's configured usual Why {usual.name!r}: "
+                    "it is not evidence about this transaction and was not applied."
+                )
 
-    # BANK_RECONCILIATION_WHO_WHY_WHAT_001: a rule recognizes a WHO, and
-    # the WHY/WHAT follow from that WHO's CURRENT chain — so two rules
-    # agreeing on the WHO can no longer contradict each other on the WHY,
-    # and the ambiguity test is a test on the WHO alone.
-    outcome_groups: dict[int, list["m.BankRecognitionRule"]] = {}
-    for rule in candidates:
-        outcome_groups.setdefault(rule.occurrence_id, []).append(rule)
-
-    if len(outcome_groups) > 1:
-        summary = "; ".join(
-            f"rule #{group[0].id} ({group[0].match_type} -> occurrence={occ_id})"
-            for occ_id, group in outcome_groups.items()
+    result = structural_why.recognize_transaction(session, txn)
+    reason = structural_why.usable_reason(session, result)
+    if reason is not None:
+        return _Proposal(
+            occurrence_id, reason.id, rule_id, "AUTO_APPLIED", result.confidence,
+            f"{structural_why.tag(result.rule_code)} {result.tier} WHY {result.why_code}. "
+            f"{result.evidence} The Why comes from this transaction's own evidence, not from the "
+            f"counterparty. {who_note}",
         )
-        notes = (
-            f"{len(candidates)} compatible ACTIVE rule(s) recognized {len(outcome_groups)} different, "
-            f"contradictory Who values — cannot resolve automatically: {summary}."
-        )
-        return _create_decision_row(
-            session, txn, occurrence_id=None, transaction_reason_id=None, recognition_rule_id=None,
-            decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
-            explanation_notes=notes,
-        )
-
-    best_rule = candidates[0]  # most specific among the agreeing candidates
-
-    # The WHY/WHAT are derived from the WHO's CURRENT chain, never from
-    # the rule's own stored reason (which is history). A rule pointing at
-    # a Who whose chain has become incomplete auto-applies nothing — the
-    # transaction waits for a human instead of being classified against a
-    # broken chain.
-    occurrence = session.get(m.BankOccurrence, best_rule.occurrence_id)
-    chain = classification_service.resolve_chain(session, occurrence) if occurrence is not None else None
-    if chain is None or not chain.is_complete:
-        reason_text = chain.blocking_reason if chain is not None else (
-            f"Rule #{best_rule.id} points at Who {best_rule.occurrence_id}, which no longer exists."
-        )
-        notes = (
-            f"Rule #{best_rule.id} ({best_rule.match_type}, pattern={best_rule.normalized_pattern!r}) "
-            f"matched, but its Who -> Why -> What chain is incomplete: {reason_text}"
-        )
-        return _create_decision_row(
-            session, txn, occurrence_id=None, transaction_reason_id=None, recognition_rule_id=None,
-            decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
-            explanation_notes=notes,
-        )
-
-    # BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001 §6: a GROUP is a
-    # reporting node and is NEVER an automatic final classification
-    # destination. A chain that has drifted onto one — an account
-    # reclassified as a group after the Why was configured — stops here and
-    # waits for a human, exactly as an incomplete chain does. A human may
-    # still decide this transaction any way they choose.
-    what = chain.accounting_classification
-    if not what.is_posting_account:
-        notes = (
-            f"Rule #{best_rule.id} ({best_rule.match_type}, pattern={best_rule.normalized_pattern!r}) "
-            f"matched, but its chain ends on What {what.code} ({what.name}), a {what.node_type} "
-            "reporting node. A group is never an automatic classification destination."
-        )
-        return _create_decision_row(
-            session, txn, occurrence_id=None, transaction_reason_id=None, recognition_rule_id=None,
-            decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
-            explanation_notes=notes,
-        )
-
-    # BANK_WHO_WHY_INVARIANT_001 — the automatic decision boundary.
-    #
-    #   purpose proven      -> derive the WHAT, classify automatically
-    #   purpose not proven  -> NEEDS_HUMAN_REVIEW
-    #
-    # The WHO may be known in either case, and here it IS known: a rule
-    # matched. What the rule does not do is answer the accounting
-    # question. Until this revision a matched rule resolved the WHY and
-    # the WHAT through the Who's default chain, which is precisely "this
-    # counterparty always means this account" — the thing the Bank Domain
-    # does not have. The Who's chain is still read, and still shown, but
-    # only as a SUGGESTION for the human.
-    purpose_reason, evidence = purpose_reason_for(session, txn)
-    suggestion = (
-        f"Suggestion only, from this Who's current default chain: Why "
-        f"{chain.transaction_reason.name!r} -> What {what.code} ({what.name}). That is what "
-        "this counterparty has been configured to usually mean; it is not evidence about "
-        "this transaction."
+    refusal = result.evidence or "the source proves no purpose"
+    if result.is_resolved:
+        refusal = (f"the engine names {result.why_code}, but that Why is missing, inactive or "
+                   "points where an automatic classification may not land")
+    return _Proposal(
+        occurrence_id, None, rule_id if occurrence_id is not None else None,
+        "NEEDS_HUMAN_REVIEW", None,
+        f"{who_note} The WHY and the WHAT are left unresolved: identity alone never establishes "
+        f"the accounting purpose of a transaction. Automatic WHY engine: {refusal}",
     )
 
-    if purpose_reason is None:
-        notes = (
-            f"Rule #{best_rule.id} ({best_rule.match_type}, "
-            f"pattern={best_rule.normalized_pattern!r}) recognises Who "
-            f"{chain.occurrence.canonical_name!r} and says nothing about why the money moved. "
-            f"Purpose evidence is {evidence.status}"
-            + (f" ({evidence.rationale})" if evidence.rationale else "")
-            + ". The WHY and the WHAT are left unresolved: counterparty identity alone never "
-            f"establishes the accounting purpose of a transaction. {suggestion}"
-        )
-        return _create_decision_row(
-            session, txn, occurrence_id=best_rule.occurrence_id,
-            transaction_reason_id=None, recognition_rule_id=best_rule.id,
-            decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
-            explanation_notes=notes,
-        )
 
-    purpose_what = session.get(
-        m.BankAccountingClassification, purpose_reason.accounting_classification_id,
-    )
-    notes = (
-        f"Rule #{best_rule.id} recognises Who {chain.occurrence.canonical_name!r}; the WHY and "
-        f"the WHAT come from this transaction's own purpose evidence, not from the "
-        f"counterparty. {evidence.source_field} said {evidence.matched_text!r} -> Why "
-        f"{purpose_reason.name!r} -> What {purpose_what.code} ({purpose_what.name}). "
-        f"{evidence.rationale}"
-    )
-    if purpose_reason.id != chain.transaction_reason.id:
-        notes += (
-            f" This differs from the Who's default chain ({chain.transaction_reason.name!r} -> "
-            f"{what.code}), which is a suggestion and does not decide the transaction."
-        )
+def deduce_for_transaction(
+    session: Session, txn: "m.FinancialTransaction",
+) -> "m.BankTransactionExplanation":
+    """Runs once for every newly normalized transaction (called from
+    `service._normalize_rows`) and records what the automatic engine
+    concludes, as a RULE decision. Never invoked for a transaction a human
+    has already decided."""
+    proposal = _propose(session, txn)
     return _create_decision_row(
-        session, txn, occurrence_id=best_rule.occurrence_id,
-        transaction_reason_id=purpose_reason.id, recognition_rule_id=best_rule.id,
-        decision_source="RULE",
-        decision_status="AUTO_APPLIED" if best_rule.auto_apply_enabled else "SUGGESTED",
-        confidence="HIGH" if best_rule.auto_apply_enabled else "LOW",
-        explanation_notes=notes,
+        session, txn, occurrence_id=proposal.occurrence_id,
+        transaction_reason_id=proposal.transaction_reason_id,
+        recognition_rule_id=proposal.recognition_rule_id, decision_source="RULE",
+        decision_status=proposal.decision_status, confidence=proposal.confidence,
+        explanation_notes=proposal.notes,
+    )
+
+
+def redecide_for_transaction(
+    session: Session, txn: "m.FinancialTransaction",
+) -> "m.BankTransactionExplanation | None":
+    """Re-evaluate an automatic decision after something about the
+    transaction changed (reprocess, instrument reassignment) — through the
+    SAME engine as import.
+
+    * a HUMAN decision is never touched;
+    * a new RULE decision is appended only when the engine's WHY changes, or
+      when it now recognises a different Who; otherwise the current decision
+      stands — so reprocessing is idempotent and a structural decision is
+      never replaced by an equivalent one, nor its Who dropped."""
+    current = get_current_explanation(session, financial_transaction_id=txn.id)
+    if current is not None and current.decision_source == "HUMAN":
+        return current
+    proposal = _propose(session, txn)
+    if current is not None:
+        same_why = (current.transaction_reason_id == proposal.transaction_reason_id
+                    and current.decision_status == proposal.decision_status)
+        who_unchanged = (proposal.occurrence_id is None
+                         or proposal.occurrence_id == current.occurrence_id)
+        if same_why and who_unchanged:
+            return current
+    return _create_decision_row(
+        session, txn, occurrence_id=proposal.occurrence_id,
+        transaction_reason_id=proposal.transaction_reason_id,
+        recognition_rule_id=proposal.recognition_rule_id, decision_source="RULE",
+        decision_status=proposal.decision_status, confidence=proposal.confidence,
+        explanation_notes=proposal.notes,
     )
 
 
@@ -633,11 +595,10 @@ def create_or_reuse_rule(
 
 @dataclass
 class HumanDecisionRequest:
-    """BANK_RECONCILIATION_WHO_WHY_WHAT_001: the human chooses the WHO and
-    nothing else. There is deliberately no `transaction_reason_id` field —
-    the WHY is the WHO's current default Reason and the WHAT is that
-    Reason's accounting classification, both resolved by
-    `classification.resolve_chain` at decision time."""
+    """A human decision on one transaction. The human names the WHO, and the
+    WHY when they choose one; the WHAT always derives from that Why. A Who's
+    default Why is never applied (BANK_FINAL_RELEASE_BLOCKERS_001): with no
+    Why chosen the decision records the Who and leaves the Why open."""
 
     transaction_id: int
     occurrence_id: int
@@ -650,8 +611,7 @@ class HumanDecisionRequest:
     # DERIVES from the Why and is never chosen separately: if the mapping
     # is wrong the central Why definition is fixed, not this transaction.
     #
-    # When None the Who's default chain is used, which is what every
-    # caller written before this task does.
+    # When None, only the Who is recorded; the Why stays for a human.
     transaction_reason_id: int | None = None
     # Whether this confirmation teaches RF-One that THIS normalized
     # description means THIS Who. It is a learning control only: the
@@ -690,6 +650,11 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
     occurrence = session.get(m.BankOccurrence, request.occurrence_id)
     if occurrence is None:
         raise ValueError(f"BankOccurrence {request.occurrence_id} not found")
+    if occurrence.status != "ACTIVE":
+        raise ValueError(
+            f"Who {occurrence.canonical_name!r} is inactive. Reactivate it in Bank > "
+            "Classification, or choose another Who."
+        )
 
     # The WHY is either the one the operator chose for this transaction, or
     # the Who's default chain. The WHAT is DERIVED from that Why in both
@@ -720,14 +685,11 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
             occurrence, transaction_reason=reason, accounting_classification=what,
         )
     else:
-        # WHY and WHAT are derived, never chosen. An incomplete chain is
-        # refused with the concrete reason, so the human is sent to
-        # Bank > Classification rather than given a half-classified row.
-        chain = classification_service.resolve_chain(session, occurrence)
-        if not chain.is_complete:
-            raise ValueError(chain.blocking_reason)
-        reason = chain.transaction_reason
-        what = chain.accounting_classification
+        # BANK_FINAL_RELEASE_BLOCKERS_001 — WHO DOES NOT DETERMINE WHY. With
+        # no Why chosen, the human has confirmed WHO the counterparty is and
+        # nothing else: the Who's default Why is never applied. The decision
+        # records the Who and leaves the Why for a human (NEEDS_HUMAN_REVIEW).
+        reason = what = None
 
     previous = get_current_explanation(session, financial_transaction_id=txn.id)
 
@@ -747,6 +709,8 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
     )
 
     decision_status = "HUMAN_OVERRIDDEN" if is_correction else "HUMAN_CONFIRMED"
+    if reason is None:
+        decision_status = "NEEDS_HUMAN_REVIEW"
 
     notes_parts = [request.notes] if request.notes else []
     if previous is not None:
@@ -776,10 +740,20 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
     confirmed_at = datetime.now(UTC)
     recognition_rule_id = None
 
-    notes_parts.append(
-        f"Derived chain: Who {occurrence.canonical_name!r} -> Why {reason.name!r} "
-        f"-> What {what.code} ({what.name}, {what.statement_type})."
-    )
+    if reason is not None:
+        notes_parts.append(
+            f"Chosen: Who {occurrence.canonical_name!r} -> Why {reason.name!r} "
+            f"-> What {what.code} ({what.name}, {what.statement_type})."
+        )
+    else:
+        notes_parts.append(
+            f"Who {occurrence.canonical_name!r} confirmed. No Why was chosen and none is taken "
+            "from the Who: the Why of this transaction still needs a human decision."
+        )
+    # A rule's stored reason is a required column but decides nothing (the
+    # engine never reads it); with no Why chosen, the Who's own default is
+    # stored if it has one, otherwise no description rule is learned.
+    rule_reason_id = reason.id if reason is not None else occurrence.default_transaction_reason_id
 
     # BANK_WHO_WHY_INVARIANT_001 — a confirmation on a description learns
     # the WHO and stops there, for everyone.
@@ -792,7 +766,12 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
     # cleaning — the tenth payment may be an equipment purchase or a
     # deposit refund. So every learned description rule is Who-only, and
     # `create_or_reuse_rule` refuses to store anything else.
-    if request.learn_description or request.broaden_match_type:
+    if (request.learn_description or request.broaden_match_type) and rule_reason_id is None:
+        notes_parts.append(
+            "No description rule was learned: the Who has no stored Why to file it under, and "
+            "none is invented."
+        )
+    elif request.learn_description or request.broaden_match_type:
         normalized_pattern = normalize_description_for_recognition(txn.description_original)
         direction = direction_for_amount(txn.amount_minor)
         instrument_scope = txn.payment_instrument_id if request.scope_to_account else None
@@ -806,14 +785,14 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
             pattern = request.broaden_pattern or normalized_pattern
             rule = create_or_reuse_rule(
                 session, match_type=request.broaden_match_type, normalized_pattern=pattern,
-                occurrence_id=request.occurrence_id, transaction_reason_id=reason.id,
+                occurrence_id=request.occurrence_id, transaction_reason_id=rule_reason_id,
                 payment_instrument_id=instrument_scope, direction=direction_scope,
                 auto_apply_enabled=True, created_from_transaction_id=txn.id,
             )
         else:
             rule = create_or_reuse_rule(
                 session, match_type=EXACT_NORMALIZED_DESCRIPTION, normalized_pattern=normalized_pattern,
-                occurrence_id=request.occurrence_id, transaction_reason_id=reason.id,
+                occurrence_id=request.occurrence_id, transaction_reason_id=rule_reason_id,
                 payment_instrument_id=instrument_scope, direction=direction_scope,
                 auto_apply_enabled=True, created_from_transaction_id=txn.id,
             )
@@ -829,6 +808,10 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
     # it is about the wording, applies to any counterparty, and never
     # mentions a person.
     if request.learn_purpose_from_memo:
+        if reason is None:
+            raise ValueError(
+                "Choose the Why this memo proves before learning a purpose rule from it."
+            )
         memo_pattern = normalize_memo_for_recognition(txn.source_memo)
         if not memo_pattern:
             raise ValueError(
@@ -848,9 +831,10 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
         )
 
     return _create_decision_row(
-        session, txn, occurrence_id=request.occurrence_id, transaction_reason_id=reason.id,
+        session, txn, occurrence_id=request.occurrence_id,
+        transaction_reason_id=reason.id if reason is not None else None,
         recognition_rule_id=recognition_rule_id, decision_source="HUMAN", decision_status=decision_status,
-        confidence="HIGH", explanation_notes=" ".join(notes_parts),
+        confidence="HIGH" if reason is not None else None, explanation_notes=" ".join(notes_parts),
         confirmed_by_account_id=request.confirmed_by_account_id, confirmed_at=confirmed_at,
     )
 
@@ -898,15 +882,26 @@ def reclassify_transaction(
     if occurrence is None:
         raise ValueError(f"BankOccurrence {previous.occurrence_id} no longer exists")
 
-    chain = classification_service.resolve_chain(session, occurrence)
-    if not chain.is_complete:
-        raise ValueError(chain.blocking_reason)
+    # BANK_FINAL_RELEASE_BLOCKERS_001 — the Why is the one ALREADY decided
+    # for this transaction; only its CURRENT Why -> What mapping is re-read.
+    # The Who's default Why is never consulted.
+    reason = (session.get(m.BankTransactionReason, previous.transaction_reason_id)
+              if previous.transaction_reason_id is not None else None)
+    if reason is None:
+        raise ValueError(
+            "This transaction has no Why yet. Choose its Why — a Who's default is never applied."
+        )
+    what = reason.accounting_classification
+    if reason.status != "ACTIVE" or what is None or not what.is_posting_account:
+        raise ValueError(
+            f"Why {reason.code} — {reason.name} is inactive or has no postable accounting "
+            "destination; fix the Why before reclassifying."
+        )
 
     notes_parts = [notes] if notes else []
     notes_parts.append(
-        f"Explicit reclassification of the existing Who {occurrence.canonical_name!r} through the "
-        f"current chain: Why {chain.transaction_reason.name!r} -> What "
-        f"{chain.accounting_classification.code} ({chain.accounting_classification.name})."
+        f"Explicit reclassification of the existing Why {reason.name!r} (Who "
+        f"{occurrence.canonical_name!r}) through its current mapping: What {what.code} ({what.name})."
     )
     notes_parts.append(
         f"Superseded decision: id={previous.id}, status={previous.decision_status}, "
@@ -915,7 +910,7 @@ def reclassify_transaction(
     )
 
     return _create_decision_row(
-        session, txn, occurrence_id=occurrence.id, transaction_reason_id=chain.transaction_reason.id,
+        session, txn, occurrence_id=occurrence.id, transaction_reason_id=reason.id,
         recognition_rule_id=None, decision_source="HUMAN", decision_status="HUMAN_RECLASSIFIED",
         confidence="HIGH", explanation_notes=" ".join(notes_parts),
         confirmed_by_account_id=confirmed_by_account_id, confirmed_at=datetime.now(UTC),

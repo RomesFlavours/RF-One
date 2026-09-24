@@ -50,7 +50,7 @@ Payment method is **variable and configurable**, not fixed to any one provider. 
 
 ### Tips Engine
 
-Untouched. `distribution_engine.run_tip_distribution_calculation` / `build_employee_review` are reused as-is; this pilot only consumes `EmployeeReviewRow.net_before_adjustments_minor` as the per-Employee Final Payable.
+Untouched. The persisted calculation is `calculation_run_service.save_calculation_run` (the Location's Business Day, `build_employee_review` reused as-is); this pilot only consumes `EmployeeReviewRow.net_before_adjustments_minor` as the per-Employee Final Payable, and only from a FINAL run (BANK_FINAL_RELEASE_BLOCKERS_001).
 
 ### Payment Instruction identity (RF-One's own primary duplicate-payment guard)
 

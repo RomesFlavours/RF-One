@@ -387,18 +387,32 @@ def main() -> int:
             # unchanged and still enforced: bulk approval resolves the chain
             # BEFORE writing any decision row, and a Who that cannot resolve a
             # What stops the whole operation.
-            raises(
-                "26. an incomplete Who is refused BEFORE anything is written",
-                lambda: rc.approve_candidates(
-                    s, payee_keys=["DEBIT|US FOODS INC 4821"],
-                    new_occurrence_name="Broken", occurrence_type_id=supplier_type.id,
-                    default_transaction_reason_id=None,
-                ),
-                "has no default Why",
+            # BANK_FINAL_RELEASE_BLOCKERS_001 — approval names the WHO only and
+            # never consults the Who's default chain, so a Who with no default
+            # Why is no longer refused: its transactions get the Who and keep
+            # their own open Why, and no description rule is learned (a rule's
+            # stored reason would have nothing to be filed under). Rolled back
+            # so the rest of this test starts from the same state.
+            no_default = rc.approve_candidates(
+                s, payee_keys=["DEBIT|US FOODS INC 4821"],
+                new_occurrence_name="Broken", occurrence_type_id=supplier_type.id,
+                default_transaction_reason_id=None, learn_description=True,
+            )
+            no_default_rows = s.query(m.BankTransactionExplanation).filter(
+                m.BankTransactionExplanation.financial_transaction_id.in_([a1.id, a2.id]),
+                m.BankTransactionExplanation.decision_source == "HUMAN",
+            ).all()
+            check(
+                "26. a Who with no default Why records the Who and applies no Why",
+                no_default.transactions_classified == 2 and len(no_default_rows) == 2
+                and all(e.transaction_reason_id is None
+                        and e.accounting_classification_code_snapshot is None
+                        for e in no_default_rows)
+                and not no_default.rules_created,
             )
             s.rollback()
             check(
-                "26b. the refused approval classified nothing",
+                "26b. the rolled-back approval left nothing behind",
                 s.query(m.BankTransactionExplanation).filter(
                     m.BankTransactionExplanation.decision_source == "HUMAN"
                 ).count() == 0,
@@ -415,16 +429,27 @@ def main() -> int:
                 outcome.transactions_classified == 2
                 and s.query(m.BankOccurrence).filter_by(canonical_name="US Foods").count() == 1,
             )
+            # BANK_FINAL_RELEASE_BLOCKERS_001 — this used to assert the Why and
+            # What were derived from the Who. They are not: "US FOODS INC 4821"
+            # names a supplier, not what was bought.
+            approved_rows = s.query(m.BankTransactionExplanation).filter(
+                m.BankTransactionExplanation.financial_transaction_id.in_([a1.id, a2.id]),
+                m.BankTransactionExplanation.decision_source == "HUMAN",
+            ).all()
             check(
-                "21. Why and What are derived from the Who, not chosen per transaction",
-                all(
-                    e.transaction_reason_id == food_why.id
-                    and e.accounting_classification_code_snapshot == "TEST-5100"
-                    for e in s.query(m.BankTransactionExplanation).filter(
-                        m.BankTransactionExplanation.financial_transaction_id.in_([a1.id, a2.id]),
-                        m.BankTransactionExplanation.decision_source == "HUMAN",
-                    ).all()
+                "21. approval records the Who; the Who's default Why is NOT applied",
+                len(approved_rows) == 2
+                and all(
+                    e.occurrence_name_snapshot == "US Foods"
+                    and e.transaction_reason_id is None
+                    and e.accounting_classification_code_snapshot is None
+                    for e in approved_rows
                 ),
+            )
+            check(
+                "21b. ...and the approved transactions stay in review until their Why is decided",
+                all(s.get(m.FinancialTransaction, t).review_status != "REVIEWED"
+                    for t in (a1.id, a2.id)),
             )
             # These transactions were created directly rather than imported,
             # so approval writes their FIRST decision — the append-only
@@ -433,12 +458,27 @@ def main() -> int:
             first_decision = recognition.get_current_explanation(
                 s, financial_transaction_id=a1.id,
             )
+            us_foods_who = s.query(m.BankOccurrence).filter_by(canonical_name="US Foods").one()
+            why_decision = recognition.record_human_decision(
+                s, recognition.HumanDecisionRequest(
+                    transaction_id=a1.id, occurrence_id=us_foods_who.id,
+                    transaction_reason_id=food_why.id,
+                    confirmed_by_account_id=None, learn_description=False,
+                ),
+            )
+            s.commit()
             check(
-                "22. the decision carries the full Who/Why/What snapshot",
+                "22. the person's Why decision carries the full Who/Why/What snapshot",
+                why_decision.occurrence_name_snapshot == "US Foods"
+                and why_decision.transaction_reason_name_snapshot == "Food purchase"
+                and why_decision.accounting_classification_code_snapshot == "TEST-5100"
+                and why_decision.accounting_statement_type_snapshot == wci.PROFIT_LOSS,
+            )
+            check(
+                "22a. the Who-only approval row was left as it was",
                 first_decision.occurrence_name_snapshot == "US Foods"
-                and first_decision.transaction_reason_name_snapshot == "Food purchase"
-                and first_decision.accounting_classification_code_snapshot == "TEST-5100"
-                and first_decision.accounting_statement_type_snapshot == wci.PROFIT_LOSS,
+                and first_decision.transaction_reason_id is None
+                and first_decision.accounting_classification_code_snapshot is None,
             )
             count_before_second = s.query(m.BankTransactionExplanation).filter_by(
                 financial_transaction_id=a1.id
@@ -448,13 +488,15 @@ def main() -> int:
             )
             s.commit()
             s.refresh(first_decision)
+            s.refresh(why_decision)
             check(
-                "22b. a further decision APPENDS — the earlier row is untouched",
+                "22b. a further decision APPENDS — the earlier rows are untouched",
                 s.query(m.BankTransactionExplanation).filter_by(
                     financial_transaction_id=a1.id
                 ).count() == count_before_second + 1
-                and first_decision.decision_status == "HUMAN_CONFIRMED"
-                and first_decision.accounting_classification_code_snapshot == "TEST-5100",
+                and first_decision.transaction_reason_id is None
+                and why_decision.decision_status == "HUMAN_CONFIRMED"
+                and why_decision.accounting_classification_code_snapshot == "TEST-5100",
             )
             check(
                 "23. an exact-match rule is recorded for future imports",
@@ -520,12 +562,18 @@ def main() -> int:
             recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=c1.id, occurrence_id=us_foods.id,
+                    # The human chooses the Why explicitly; a Who's default is
+                    # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
+                    transaction_reason_id=s.get(m.BankOccurrence, us_foods.id).default_transaction_reason_id,
                     confirmed_by_account_id=None, learn_description=False,
                 ),
             )
             recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=c2.id, occurrence_id=other_who.id,
+                    # The human chooses the Why explicitly; a Who's default is
+                    # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
+                    transaction_reason_id=s.get(m.BankOccurrence, other_who.id).default_transaction_reason_id,
                     confirmed_by_account_id=None, learn_description=False,
                 ),
             )

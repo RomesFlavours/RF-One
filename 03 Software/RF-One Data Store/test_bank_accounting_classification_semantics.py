@@ -207,6 +207,9 @@ def main() -> int:
             decision = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=posting_txn.id, occurrence_id=cleaner.id,
+                    # The human chooses the Why explicitly; a Who's default is
+                    # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
+                    transaction_reason_id=s.get(m.BankOccurrence, cleaner.id).default_transaction_reason_id,
                     confirmed_by_account_id=None, learn_description=False,
                 ),
             )
@@ -261,6 +264,9 @@ def main() -> int:
             human = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=misc_txn.id, occurrence_id=misc_who.id,
+                    # The human chooses the Why explicitly; a Who's default is
+                    # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
+                    transaction_reason_id=s.get(m.BankOccurrence, misc_who.id).default_transaction_reason_id,
                     confirmed_by_account_id=None, learn_description=False,
                 ),
             )

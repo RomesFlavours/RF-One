@@ -89,7 +89,9 @@ Recognizing that a movement happened is not the same as saying what it is. Bank 
 - **Why** (`BankTransactionReason`) — the economic reason it exists.
 - **What** (`BankAccountingClassification`) — the final accounting classification: one line of a **Profit & Loss** statement or of a **Balance Sheet**.
 
-Each Why resolves to exactly one What, and each Who to exactly one default Why, so a Who carries its whole chain. Those associations are configured once (Bank › Classification) and stored on the vocabulary itself — **a human reconciling a transaction selects only the Who**, and the Why and What follow.
+Each Why resolves to exactly one What, configured once (Bank › Classification) and stored on the vocabulary itself, so **the What always derives from the Why** and is never picked per transaction.
+
+**A Who never decides a Why** (BANK_FINAL_RELEASE_BLOCKERS_001). A Who may carry a *usual* Why, shown to the reviewer as a suggestion, but no live path applies it: choosing a Who records the Who and leaves the Why open. The Why of a transaction comes from exactly two places — the **one automatic WHY engine** (`structural_why.recognize_transaction`: the bank's own structure first, e.g. a same-entity transfer is `INTERNAL_BANK_TRANSFER`, a transfer between two RF-One legal entities is `RELATED_PARTY_TRANSFER_IN/OUT`, a transfer to an unregistered account stays unresolved; then an explicit purpose in the source memo), used identically at import, on reprocess and on instrument reassignment — or **a person** choosing it. Reprocessing never touches a human decision and appends nothing when the engine's answer is unchanged.
 
 Two rules keep this honest:
 
@@ -136,7 +138,7 @@ Importing a bank file is not the same as knowing what its movements are. Classif
 
 1. **The What catalog is loaded from the accountant's own chart of accounts**, not typed in. Upload, parse, preview, confirm — structure only, never amounts, and totals and headings are reported rather than turned into accounts. A plan with no codes of its own gets stable technical codes, so re-importing it changes nothing.
 2. **Receivers are proposed, not invented.** The canonical transactions are grouped by the receiver they actually name, so one decision covers every row naming the same one. Accounting duplicates and confirmed internal transfers are excluded — classifying them would be work that never reaches the books. Descriptions that merely look alike are shown as suggestions with the reason and are never merged automatically.
-3. **One approval classifies the whole group**, derives the Why and the What from the chosen Who, writes an append-only snapshot per transaction, and records an exact-match rule so the same receiver is recognised on the next import. A human decision is never overwritten, and a receiver already classified under two different Who values is reported as ambiguous rather than resolved by guesswork.
+3. **One approval names the Who of the whole group**, writes an append-only snapshot per transaction, and records an exact-match rule so the same receiver is recognised on the next import. It never applies the Who's usual Why: each transaction keeps its own Why question, answered by the automatic engine or a person (BANK_FINAL_RELEASE_BLOCKERS_001). A human decision is never overwritten, and a receiver already classified under two different Who values is reported as ambiguous rather than resolved by guesswork.
 
 Full detail, including the boundary with invoices, is §15 of `BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATION_001.md`.
 

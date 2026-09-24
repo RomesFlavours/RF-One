@@ -38,7 +38,7 @@ from io import BytesIO
 import openpyxl
 from sqlalchemy import select
 
-from rfone_data_store.bank_reconciliation import export, matching, service
+from rfone_data_store.bank_reconciliation import export, matching, recognition, service
 from rfone_data_store.database import (
     cleanup_disposable_test_database_url,
     create_configured_engine,
@@ -554,10 +554,16 @@ def main() -> int:
             # every unrelated blocker must be resolved first, exactly the same
             # way test_bank_reconciliation_service.py's own export flow does.
             for txn in (fake_transfer, ordinary_unresolved):
-                service.record_recognition_decision(
-                    s, transaction_id=txn.id, occurrence_id=occurrence.id,
-                    confirmed_by_account_id=None, learn_description=False,
+                # The person chooses the Why explicitly; a Who alone leaves it
+                # open (BANK_FINAL_RELEASE_BLOCKERS_001).
+                recognition.record_human_decision(
+                    s, recognition.HumanDecisionRequest(
+                        transaction_id=txn.id, occurrence_id=occurrence.id,
+                        transaction_reason_id=occurrence.default_transaction_reason_id,
+                        confirmed_by_account_id=None, learn_description=False,
+                    ),
                 )
+                txn.review_status = "REVIEWED"
             s.commit()
 
             final_blockers = export.compute_export_blockers(s, year=year, month=month)
