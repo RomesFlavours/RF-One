@@ -11640,6 +11640,122 @@ class BankOccurrence(Base):
     )
 
 
+# WHO recognition (BANK_HISTORICAL_WHO_RECOGNITION_001).
+WHO_TIER_DETERMINISTIC = "DETERMINISTIC"
+WHO_TIER_PROPOSED = "PROPOSED"
+WHO_TIER_UNRESOLVED = "UNRESOLVED"
+WHO_TIER_STRUCTURAL = "STRUCTURAL"
+WHO_TIERS = (WHO_TIER_DETERMINISTIC, WHO_TIER_PROPOSED, WHO_TIER_UNRESOLVED, WHO_TIER_STRUCTURAL)
+
+
+class BankOccurrenceAlias(Base):
+    """One raw name a WHO was recognised from, preserved as the source
+    supplied it (BANK_HISTORICAL_WHO_RECOGNITION_001 §12).
+
+    A counterparty legitimately appears under many spellings — a Zelle
+    recipient, an ACH originator field, several card descriptors. Each is
+    kept here against the one `BankOccurrence`, so a canonical WHO can be
+    reused without any source text being rewritten. `alias_key` is the
+    exact normalized form used to decide that two spellings are the same
+    WHO; nothing is merged on similarity."""
+
+    __tablename__ = "bank_occurrence_aliases"
+    __table_args__ = (
+        UniqueConstraint("occurrence_id", "alias_text", "source_family",
+                         name="uq_bank_occurrence_alias"),
+        CheckConstraint("source IN ('PARSER', 'HUMAN')", name="ck_bank_occurrence_alias_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occurrence_id: Mapped[int] = mapped_column(
+        ForeignKey("bank_occurrences.id"), nullable=False, index=True
+    )
+    alias_text: Mapped[str] = mapped_column(String(255), nullable=False)
+    alias_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    source_family: Mapped[str] = mapped_column(String(48), nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="PARSER", server_default="PARSER"
+    )
+    first_financial_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_transactions.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    occurrence: Mapped["BankOccurrence"] = relationship()
+
+
+class BankWhoRecognition(Base):
+    """What a transaction's own bank text proves about its counterparty
+    (BANK_HISTORICAL_WHO_RECOGNITION_001).
+
+    Deliberately NOT a reconciliation decision: creating a
+    `BankTransactionExplanation` repoints `FinancialTransaction.
+    explanation_id` and presents the row as reviewed. This records an
+    earlier, separate fact — recognition — and only references the
+    transaction.
+
+    `tier`:
+
+    * DETERMINISTIC — the text itself names the counterparty through a
+      proven structure; `occurrence_id` is set (enforced by CHECK).
+    * PROPOSED — strong but insufficient evidence; `proposed_name` waits
+      for an operator. No `BankOccurrence` is created for it.
+    * UNRESOLVED — the source does not name the counterparty, or names an
+      account RF-One has not registered.
+    * STRUCTURAL — the counterparty is RF-One itself (a registered
+      instrument, one of its legal entities, or a card settlement received
+      from its own funds): no external WHO applies.
+
+    Never carries a WHY: recognising who was paid says nothing about why.
+    """
+
+    __tablename__ = "bank_who_recognitions"
+    __table_args__ = (
+        UniqueConstraint("financial_transaction_id", "recognizer_version",
+                         name="uq_bank_who_recognition_version"),
+        CheckConstraint(
+            "tier IN ('DETERMINISTIC', 'PROPOSED', 'UNRESOLVED', 'STRUCTURAL')",
+            name="ck_bank_who_recognition_tier",
+        ),
+        CheckConstraint(
+            "(tier = 'DETERMINISTIC') = (occurrence_id IS NOT NULL)",
+            name="ck_bank_who_recognition_occurrence",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    financial_transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("financial_transactions.id"), nullable=False, index=True
+    )
+    recognizer_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    tier: Mapped[str] = mapped_column(String(16), nullable=False)
+    family: Mapped[str] = mapped_column(String(48), nullable=False)
+    parser_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    extracted_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    proposed_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    occurrence_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_occurrences.id"), nullable=True, index=True
+    )
+    internal_payment_instrument_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=True
+    )
+    internal_legal_entity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("legal_entities.id"), nullable=True
+    )
+    referenced_last_four: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    evidence: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    occurrence: Mapped["BankOccurrence | None"] = relationship()
+
+
 class BankReasonGroup(Base):
     """A MANAGEMENT grouping of Whys
     (BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §2) — Kitchen Labor,
