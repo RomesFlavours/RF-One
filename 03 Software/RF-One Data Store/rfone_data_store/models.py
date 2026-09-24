@@ -12675,17 +12675,34 @@ class BankReconciliationControlConfig(Base):
     The value governs AUTOMATIC control only. It never deletes, rewrites or
     reinterprets a month, a coverage row or a human resolution that already
     exists — including one an operator deliberately created before it.
+
+    VALIDATED THROUGH (BANK_ACCOUNT_BIRTH_AND_VALIDATED_HORIZON_001) is the
+    other end of the same interval: the last month whose loaded data a human
+    has certified complete. A month after it holds imported data that is
+    still PROVISIONAL — a file downloaded mid-month for testing is not the
+    month's full statement — so its gaps are shown but never enforced as
+    blockers, it cannot be certified COMPLETE, and it proves nothing about
+    missing files or an account's life. NULL means no horizon has been set,
+    which keeps the behaviour that existed before this column: every month
+    from the control start is enforced. Like the start, it is set by a
+    human and never inferred from the latest imported data.
     """
 
     __tablename__ = "bank_reconciliation_control_configs"
     __table_args__ = (
         CheckConstraint("id = 1", name="ck_brcc_singleton"),
         CheckConstraint("length(control_start_month) = 7", name="ck_brcc_month_shape"),
+        CheckConstraint(
+            "validated_through_month IS NULL OR length(validated_through_month) = 7",
+            name="ck_brcc_validated_through_shape",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # `YYYY-MM` — the same shape and meaning as BankMonthlySourcePeriod.period_month.
     control_start_month: Mapped[str] = mapped_column(String(7), nullable=False)
+    # `YYYY-MM`, the last month whose data is certified; NULL = no horizon.
+    validated_through_month: Mapped[str | None] = mapped_column(String(7), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_by_account_id: Mapped[int | None] = mapped_column(
         ForeignKey("rfone_accounts.id"), nullable=True

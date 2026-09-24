@@ -47,6 +47,21 @@
     </div>
     <button type="submit">Set control start</button>
   </form>
+  {% if control_config %}
+  <form method="post" action="{{ url_for('bank_monthly_validated_through') }}" class="compact-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <label for="validated_through_month">Data validated through</label>
+      <input type="month" id="validated_through_month" name="validated_through_month"
+             value="{{ control_config.validated_through_month or '' }}" required>
+      <span class="cell-note">
+        The last month whose loaded data you have certified complete. Later months stay
+        provisional: kept and shown, never enforced.
+      </span>
+    </div>
+    <button type="submit">Set validated through</button>
+  </form>
+  {% endif %}
   <p class="cell-note">
     Months <em>before</em> this hold imported transactions but are <strong>historical</strong>:
     RF-One does not open them, does not demand their missing accounts, and never certifies them
@@ -128,6 +143,21 @@
     </table>
   </div>
 
+  {% if report.provisional %}
+    <p class="modal-empty-state">
+      <strong>Provisional month.</strong> It is after the validated-through month
+      ({{ control_config.validated_through_month }}): its data is kept and shown, but it is not yet
+      certified complete, so the gaps below are not enforced and say nothing yet about a missing file
+      or an account's life. It becomes subject to the ordinary rules when the validated-through month
+      reaches it.
+    </p>
+    {% if report.provisional_gaps %}
+      <ul class="plain">
+        {% for gap in report.provisional_gaps %}<li class="cell-note">{{ gap }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+  {% endif %}
+
   {% if report.blockers %}
     <p class="modal-empty-state">
       <strong>This month cannot be completed yet.</strong> RF-One cannot mark a monthly Bank source
@@ -142,7 +172,7 @@
     {% if period.status != 'COMPLETE' %}
       <form method="post" action="{{ url_for('bank_monthly_complete', period_id=period.id) }}" class="compact-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" {{ 'disabled' if report.blockers else '' }}
+        <button type="submit" {{ 'disabled' if not report.can_complete else '' }}
                 title="Allowed only when every account/card is covered by a source file or explicitly resolved.">
           Complete Month
         </button>

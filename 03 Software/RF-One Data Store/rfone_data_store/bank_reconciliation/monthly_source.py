@@ -177,6 +177,65 @@ def is_controlled_month(session: Session, year: int, month: int) -> bool:
     return start is not None and period_key(year, month) >= start
 
 
+def get_validated_through_month(session: Session) -> str | None:
+    """The last month whose loaded data a human has certified, `YYYY-MM`,
+    or None when no horizon is set (every controlled month is enforced)."""
+    config = get_control_config(session)
+    return config.validated_through_month if config is not None else None
+
+
+def is_provisional_month(session: Session, year: int, month: int) -> bool:
+    """A month after the validated-through horizon: its data is kept and
+    shown but not yet certified, so nothing is enforced or concluded from
+    it."""
+    horizon = get_validated_through_month(session)
+    return horizon is not None and period_key(year, month) > horizon
+
+
+def is_provisional_period(session: Session, period: "m.BankMonthlySourcePeriod") -> bool:
+    horizon = get_validated_through_month(session)
+    return horizon is not None and period.period_month > horizon
+
+
+def set_validated_through(
+    session: Session, *, year: int, month: int, account_id: int | None = None,
+) -> "m.BankReconciliationControlConfig":
+    """Set, or move, the validated-through horizon. Writes only the setting.
+
+    Requires the control start, and refuses a horizon before it: an interval
+    ending before it begins controls nothing and is almost certainly a typo.
+    """
+    if not 1 <= month <= 12:
+        raise ValueError(f"month must be 1..12, got {month}")
+    config = get_control_config(session)
+    if config is None:
+        raise ValueError("Set the reconciliation control start before the validated-through month.")
+    key = period_key(year, month)
+    if key < config.control_start_month:
+        raise ValueError(
+            f"Validated through {key} is before the control start {config.control_start_month}."
+        )
+    config.validated_through_month = key
+    config.updated_by_account_id = account_id
+    session.flush()
+    return config
+
+
+def activate_validated_through(
+    session: Session, *, year: int, month: int, account_id: int | None = None,
+) -> tuple["m.BankReconciliationControlConfig", str | None, "ControlOutcome | None"]:
+    """Set the horizon and, when it is set for the first time or ADVANCED,
+    bring the newly validated months under the ordinary rules from the
+    batches already imported — no re-upload. Moving it EARLIER writes only
+    the setting: months after it become provisional again, and nothing is
+    deleted, closed or rewritten."""
+    previous = get_validated_through_month(session)
+    config = set_validated_through(session, year=year, month=month, account_id=account_id)
+    if previous is not None and config.validated_through_month <= previous:
+        return config, previous, None
+    return config, previous, apply_control_to_existing_batches(session)
+
+
 def months_spanned(start: date | None, end: date | None) -> set[tuple[int, int]]:
     """The calendar months a source's own covered range touches.
 
@@ -209,6 +268,9 @@ class ControlOutcome:
     control_start_month: str | None
     months: list[MonthControl] = field(default_factory=list)
     historical_months: list[str] = field(default_factory=list)
+    # After the validated-through horizon: data kept, nothing enforced.
+    provisional_months: list[str] = field(default_factory=list)
+    births: list[BirthChange] = field(default_factory=list)
     batches_examined: int = 0
 
     @property
@@ -236,16 +298,28 @@ def bring_months_under_control(
     history and is not touched. A month before the start is only listed:
     no period is opened, nothing existing is refreshed or rewritten.
 
+    A month after the validated-through horizon is PROVISIONAL: listed, and
+    otherwise left exactly as it is.
+
     Creating a controlled month never declares it complete, never resolves a
-    blocker and never changes an instrument's lifecycle. With no control
-    start configured, nothing is controlled.
+    blocker and never ENDS an instrument's life; the only instrument field
+    written is the birth date derived from the first eligible transaction.
+    With no control start configured, nothing is controlled.
     """
     outcome = ControlOutcome(control_start_month=get_control_start_month(session))
     if outcome.control_start_month is None:
         return outcome
+    # Birth first, so a month before an instrument's first transaction is
+    # evaluated as NOT_EXPECTED by the existing expectation rule.
+    outcome.births = derive_birth_dates(session)
     for year, month in sorted(months):
         if not is_controlled_month(session, year, month):
             outcome.historical_months.append(period_key(year, month))
+            continue
+        if is_provisional_month(session, year, month):
+            # Not opened, not refreshed, not evaluated, nothing deleted: an
+            # existing period simply waits for the horizon to reach it.
+            outcome.provisional_months.append(period_key(year, month))
             continue
         created = get_period(session, year, month) is None
         period = get_or_create_period(session, year, month)
@@ -691,6 +765,56 @@ def last_posting_date(session: Session, instrument_id: int) -> date | None:
     ).first()
 
 
+def first_posting_date(session: Session, instrument_id: int) -> date | None:
+    """MIN(posting_date) over the SAME eligible population as
+    `last_posting_date` — a known duplicate copy dates neither end.
+
+    `None` means UNKNOWN: no eligible posting date exists, and nothing is
+    substituted for it."""
+    return session.scalars(
+        select(func.min(m.FinancialTransaction.posting_date)).where(
+            m.FinancialTransaction.payment_instrument_id == instrument_id,
+            lifecycle_eligible_transaction_filter(),
+        )
+    ).first()
+
+
+@dataclass(frozen=True)
+class BirthChange:
+    instrument_id: int
+    display_name: str
+    previous: date | None
+    derived: date
+
+
+def derive_birth_dates(session: Session) -> list[BirthChange]:
+    """Record each instrument's operational BIRTH: its first eligible
+    posting date (BANK_ACCOUNT_BIRTH_AND_VALIDATED_HORIZON_001, Product
+    Owner rule).
+
+    Written into `effective_start_date` when it is empty, or when a real
+    transaction proves the instrument was alive EARLIER than the date on
+    record — a transaction cannot happen before an account exists. A
+    recorded start that is earlier than the first transaction is kept: a
+    human may know the account opened before it was first used.
+
+    Birth only. The LAST transaction never ends a life: death stays a human
+    decision (`resolve_coverage` with a lifecycle-ending resolution). No
+    eligible posting date → the start stays UNKNOWN.
+    """
+    changes: list[BirthChange] = []
+    for instrument in session.scalars(select(m.PaymentInstrument).order_by(m.PaymentInstrument.id)):
+        derived = first_posting_date(session, instrument.id)
+        if derived is None:
+            continue
+        current = instrument.effective_start_date
+        if current is None or derived < current:
+            changes.append(BirthChange(instrument.id, instrument.display_name, current, derived))
+            instrument.effective_start_date = derived
+    session.flush()
+    return changes
+
+
 # ---------------------------------------------------------------------------
 # §13 — human resolution of a month with no source file
 # ---------------------------------------------------------------------------
@@ -817,6 +941,8 @@ class CompletenessReport:
     not_expected: int = 0
     needs_confirmation: int = 0
     blockers: list[str] = field(default_factory=list)
+    provisional: bool = False
+    provisional_gaps: list[str] = field(default_factory=list)
 
     @property
     def missing_unresolved(self) -> int:
@@ -824,7 +950,7 @@ class CompletenessReport:
 
     @property
     def can_complete(self) -> bool:
-        return not self.blockers
+        return not self.blockers and not self.provisional
 
 
 def evaluate(session: Session, period: "m.BankMonthlySourcePeriod") -> CompletenessReport:
@@ -835,7 +961,9 @@ def evaluate(session: Session, period: "m.BankMonthlySourcePeriod") -> Completen
     the operator's words rather than a row id, so the month never has to be
     diagnosed from a log.
     """
-    report = CompletenessReport(period=period)
+    report = CompletenessReport(period=period, provisional=is_provisional_period(session, period))
+    horizon = get_validated_through_month(session)
+    validated = horizon is not None and period.period_month <= horizon
     for coverage in coverages(session, period):
         instrument = coverage.payment_instrument
         label = f"{instrument.institution or '—'} · {instrument.display_name}"
@@ -863,10 +991,24 @@ def evaluate(session: Session, period: "m.BankMonthlySourcePeriod") -> Completen
                 f"{label}: RF-One cannot tell whether this was active during the month, and no "
                 "human has said. Confirm it or resolve it."
             )
+        elif validated:
+            # The data through the horizon is certified complete, so an
+            # absence here is not presumed to be a missing file — nor a
+            # death. The human decides which it is.
+            report.blockers.append(
+                f"{label}: expected this month, but the validated data holds no source for it and "
+                "no resolution is recorded. Decide: still active with no activity, closed, or "
+                "source file missing."
+            )
         else:
             report.blockers.append(
                 f"{label}: expected this month, no source file received and no resolution recorded."
             )
+    if report.provisional:
+        # After the validated-through horizon the data is still arriving:
+        # the gaps are shown, never enforced, and prove nothing about a
+        # missing file or an account's life.
+        report.provisional_gaps, report.blockers = report.blockers, []
     return report
 
 
@@ -884,6 +1026,10 @@ def complete_period(
     """
     refresh_coverage(session, period)
     report = evaluate(session, period)
+    if report.provisional:
+        # Not certifiable yet, and not INCOMPLETE either: it is simply
+        # after the validated-through horizon. Nothing is changed.
+        return report
     if not report.can_complete:
         period.status = "INCOMPLETE"
         session.flush()

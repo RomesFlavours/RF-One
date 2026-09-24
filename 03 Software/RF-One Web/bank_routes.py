@@ -1127,6 +1127,43 @@ def register_bank_routes(
                 flash(str(exc), "error")
         return redirect(url_for("bank_monthly"))
 
+    @app.route("/bank/monthly/validated-through", methods=["POST"])
+    @gate
+    def bank_monthly_validated_through():
+        """Set the last month whose loaded data a human has certified.
+
+        Months after it are provisional: kept and shown, never enforced.
+        Setting it for the first time or advancing it brings the newly
+        validated months under the ordinary rules from the files already
+        imported; moving it back only makes later months provisional again —
+        nothing is deleted, closed or rewritten."""
+        require_csrf()
+        raw = (request.form.get("validated_through_month") or "").strip()
+        try:
+            year, month = (int(part) for part in raw.split("-"))
+        except ValueError:
+            flash("Enter the validated-through month as YYYY-MM.", "error")
+            return redirect(url_for("bank_monthly"))
+        with SessionFactory() as db:
+            account = _current_account(db)
+            try:
+                config, _previous, outcome = monthly_source.activate_validated_through(
+                    db, year=year, month=month, account_id=account.id,
+                )
+                horizon = config.validated_through_month
+                db.commit()
+                flash(
+                    f"Bank data is validated through {horizon}. Later months are provisional: "
+                    "their data is kept, but nothing in them is enforced or concluded.",
+                    "info",
+                )
+                if outcome is not None:
+                    _flash_control_outcome(outcome)
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+        return redirect(url_for("bank_monthly"))
+
     @app.route("/bank/monthly/select", methods=["POST"])
     @gate
     def bank_monthly_select():
@@ -1235,7 +1272,13 @@ def register_bank_routes(
                 db, period=period, account_id=account.id,
             )
             db.commit()
-            if report.can_complete:
+            if report.provisional:
+                flash(
+                    f"{period.period_month} is after the validated-through month, so its data is "
+                    "provisional and it cannot be certified yet. Nothing was changed.",
+                    "error",
+                )
+            elif report.can_complete:
                 flash(f"{period.period_month} is source-COMPLETE.", "info")
             else:
                 flash(
