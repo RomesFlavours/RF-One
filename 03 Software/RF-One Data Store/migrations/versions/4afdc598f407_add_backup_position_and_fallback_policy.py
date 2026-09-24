@@ -21,6 +21,13 @@ Page's Backup Position and Organizational Fallback Policy concepts
 
 No existing row is affected — the two new columns are added with safe
 defaults/nullable, and the two new tables start empty.
+
+Cross-dialect fix (AWS_RDS_ALEMBIC_RECONCILIATION_001): `backup_required`'s
+server default originally used `sa.text('0')`, a SQLite-only boolean
+literal — PostgreSQL rejects an integer literal as the default for a
+`boolean` column outright (empirically confirmed against the real RDS
+target). Changed to `sa.text('false')`, the SQL keyword form accepted by
+both SQLite and PostgreSQL, with no change to the resulting stored value.
 """
 from typing import Sequence, Union
 
@@ -43,7 +50,7 @@ POSITION_SCOPE_KINDS = (
 def upgrade() -> None:
     """Upgrade schema."""
     with op.batch_alter_table('positions') as batch_op:
-        batch_op.add_column(sa.Column('backup_required', sa.Boolean(), nullable=False, server_default=sa.text('0')))
+        batch_op.add_column(sa.Column('backup_required', sa.Boolean(), nullable=False, server_default=sa.text('false')))
 
     with op.batch_alter_table('attention_items') as batch_op:
         batch_op.add_column(sa.Column('resolution_path', sa.String(length=32), nullable=True))

@@ -37,6 +37,15 @@ Does NOT touch `financial_accounts`, `normalized_financial_transactions`,
 `payment_instrument_transactions`, `payment_instrument_transaction_
 matches`, or any PayPal/matching schema.
 
+Cross-dialect fix (AWS_RDS_ALEMBIC_RECONCILIATION_001): the Boolean column
+defaults in `bank_transaction_reason_export_mappings` (upgrade) and in the
+legacy-catalog-column recreation (downgrade) originally used SQLite-only
+integer literals (`sa.text('0')`/`sa.text('1')`) — PostgreSQL rejects an
+integer literal as the default for a `boolean` column outright (empirically
+confirmed against the real RDS target). Changed to the `false`/`true` SQL
+keyword form accepted by both SQLite and PostgreSQL, with no change to the
+resulting stored value.
+
 The data-migration steps use SQLite's `lastrowid` to correlate each newly
 inserted canonical decision row back to its source transaction — the
 same dialect assumption every Bank Reconciliation migration in this
@@ -66,9 +75,9 @@ def upgrade() -> None:
         'bank_transaction_reason_export_mappings',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('bank_transaction_reason_id', sa.Integer(), nullable=False),
-        sa.Column('food_cost', sa.Boolean(), nullable=False, server_default=sa.text('0')),
-        sa.Column('operative', sa.Boolean(), nullable=False, server_default=sa.text('0')),
-        sa.Column('deductible', sa.Boolean(), nullable=False, server_default=sa.text('0')),
+        sa.Column('food_cost', sa.Boolean(), nullable=False, server_default=sa.text('false')),
+        sa.Column('operative', sa.Boolean(), nullable=False, server_default=sa.text('false')),
+        sa.Column('deductible', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('what_label', sa.String(length=128), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
@@ -209,11 +218,11 @@ def downgrade() -> None:
     with op.batch_alter_table('bank_transaction_explanations', schema=None) as batch_op:
         batch_op.add_column(sa.Column('name', sa.String(length=255), nullable=True))
         batch_op.add_column(sa.Column('category', sa.String(length=128), nullable=True))
-        batch_op.add_column(sa.Column('food_cost', sa.Boolean(), nullable=False, server_default=sa.text('0')))
-        batch_op.add_column(sa.Column('operative', sa.Boolean(), nullable=False, server_default=sa.text('0')))
-        batch_op.add_column(sa.Column('deductible', sa.Boolean(), nullable=False, server_default=sa.text('0')))
+        batch_op.add_column(sa.Column('food_cost', sa.Boolean(), nullable=False, server_default=sa.text('false')))
+        batch_op.add_column(sa.Column('operative', sa.Boolean(), nullable=False, server_default=sa.text('false')))
+        batch_op.add_column(sa.Column('deductible', sa.Boolean(), nullable=False, server_default=sa.text('false')))
         batch_op.add_column(sa.Column('what_label', sa.String(length=128), nullable=True))
-        batch_op.add_column(sa.Column('active', sa.Boolean(), nullable=False, server_default=sa.text('1')))
+        batch_op.add_column(sa.Column('active', sa.Boolean(), nullable=False, server_default=sa.text('true')))
         batch_op.create_unique_constraint('uq_bank_transaction_explanation_name', ['name'])
 
         batch_op.drop_column('what_label_snapshot')

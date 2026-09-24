@@ -454,7 +454,10 @@ def upgrade() -> None:
             "learning_id", sa.Integer(),
             sa.ForeignKey("supplier_item_category_learnings.id"), nullable=True,
         ),
-        sa.Column("is_override", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        # sa.false(), not sa.text("0"): PostgreSQL rejects an integer default
+        # on a boolean column; each dialect renders sa.false() itself (0 on
+        # SQLite, false on PostgreSQL), the convention since 92cb7ce.
+        sa.Column("is_override", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column(
             "decided_by_account_id", sa.Integer(),
             sa.ForeignKey("rfone_accounts.id"), nullable=True,

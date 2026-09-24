@@ -23,6 +23,14 @@ financial_transaction_id` -> `financial_transaction_id`, retargeted to
 financial_transactions`, `payment_instrument_transactions`, or
 `payment_instrument_transaction_matches` table is created here. No data
 is migrated.
+
+Cross-dialect fix (AWS_RDS_ALEMBIC_RECONCILIATION_001): the five Boolean
+column defaults below originally used SQLite-only integer literals
+(`sa.text('0')`/`sa.text('1')`) — PostgreSQL rejects an integer literal as
+the default for a `boolean` column outright (empirically confirmed against
+the real RDS target). Changed to the `false`/`true` SQL keyword form
+accepted by both SQLite and PostgreSQL, with no change to the resulting
+stored value.
 """
 from typing import Sequence, Union
 
@@ -94,7 +102,7 @@ def upgrade() -> None:
         sa.Column('transaction_reason_id', sa.Integer(), nullable=False),
         sa.Column('priority', sa.Integer(), nullable=False, server_default='0'),
         sa.Column('status', sa.String(length=16), nullable=False, server_default='ACTIVE'),
-        sa.Column('auto_apply_enabled', sa.Boolean(), nullable=False, server_default=sa.text('0')),
+        sa.Column('auto_apply_enabled', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('human_confirmations', sa.Integer(), nullable=False, server_default='0'),
         sa.Column('human_contradictions', sa.Integer(), nullable=False, server_default='0'),
         sa.Column('created_from_transaction_id', sa.Integer(), nullable=True),
@@ -120,11 +128,11 @@ def upgrade() -> None:
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('name', sa.String(length=255), nullable=True),
         sa.Column('category', sa.String(length=128), nullable=True),
-        sa.Column('food_cost', sa.Boolean(), nullable=False, server_default=sa.text('0')),
-        sa.Column('operative', sa.Boolean(), nullable=False, server_default=sa.text('0')),
-        sa.Column('deductible', sa.Boolean(), nullable=False, server_default=sa.text('0')),
+        sa.Column('food_cost', sa.Boolean(), nullable=False, server_default=sa.text('false')),
+        sa.Column('operative', sa.Boolean(), nullable=False, server_default=sa.text('false')),
+        sa.Column('deductible', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('what_label', sa.String(length=128), nullable=True),
-        sa.Column('active', sa.Boolean(), nullable=False, server_default=sa.text('1')),
+        sa.Column('active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('financial_transaction_id', sa.Integer(), nullable=True),
         sa.Column('occurrence_id', sa.Integer(), nullable=True),
         sa.Column('transaction_reason_id', sa.Integer(), nullable=True),

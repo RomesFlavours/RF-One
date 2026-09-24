@@ -50,8 +50,11 @@ On PostgreSQL none of this applies: the constraint is dropped and recreated
 in place, with no rebuild at all.
 
 Fenced the same way as the previous constraint widening in this repository:
-the upgrade COUNTS THE ROWS FIRST and refuses to rebuild a table that
-contains data.
+before a REBUILD the upgrade counts the rows and refuses to rebuild a table
+that contains data. The fence belongs to the rebuild, so it guards the
+SQLite path only (BANK_POSTGRESQL_RELEASE_PREPARATION_001): on PostgreSQL
+nothing is rebuilt, and a populated `bank_import_batches` — which AWS RDS
+may hold — must not stop a constraint that only admits more values.
 
 Runs unchanged on an empty disposable database, on the local golden
 database, and on AWS RDS through an ordinary `alembic upgrade head`.
@@ -83,17 +86,22 @@ CONSTRAINT = "ck_bank_import_batch_detected_format"
 def _rewrite(old_check: str, new_check: str) -> None:
     bind = op.get_bind()
 
+    if bind.dialect.name != "sqlite":
+        # No rebuild: the constraint is dropped and re-created in place, so
+        # the row-count fence below — which guards the REBUILD — does not
+        # apply. Widening admits every row the old constraint admitted;
+        # narrowing (downgrade) is refused by PostgreSQL itself if an Amex
+        # row exists, and no row is ever touched either way.
+        op.drop_constraint(CONSTRAINT, TABLE, type_="check")
+        op.create_check_constraint(CONSTRAINT, TABLE, new_check[len("CHECK ("):-1])
+        return
+
     existing = bind.execute(sa.text(f"SELECT COUNT(*) FROM {TABLE}")).scalar() or 0
     if existing:
         raise RuntimeError(
             f"{TABLE} holds {existing} row(s). This migration widens a CHECK constraint and will "
             "not rebuild a table that contains data. Migrate those rows deliberately, then re-run."
         )
-
-    if bind.dialect.name != "sqlite":
-        op.drop_constraint(CONSTRAINT, TABLE, type_="check")
-        op.create_check_constraint(CONSTRAINT, TABLE, new_check[len("CHECK ("):-1])
-        return
 
     create_sql = bind.execute(
         sa.text("SELECT sql FROM sqlite_master WHERE type='table' AND name = :name"),
