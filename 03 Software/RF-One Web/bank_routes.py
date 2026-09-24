@@ -91,14 +91,38 @@ def _months_spanned(batch) -> set[tuple[int, int]]:
     batch RF-One could not date covers nothing: an unreadable file is not
     evidence about any month.
     """
-    start, end = batch.date_range_start, batch.date_range_end
-    if start is None or end is None:
-        return set()
-    months, year, month = set(), start.year, start.month
-    while (year, month) <= (end.year, end.month):
-        months.add((year, month))
-        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
-    return months
+    return monthly_source.months_spanned(batch.date_range_start, batch.date_range_end)
+
+
+def _flash_control_outcome(outcome) -> None:
+    """Say what bringing months under control found, in the operator's words.
+
+    Missing accounts become visible and have to be explained on Monthly
+    Sources; nothing is closed, deactivated or resolved here."""
+    for control in outcome.blocked:
+        report = control.report
+        flash(
+            f"MISSING ACCOUNTS — {control.period.period_month}: "
+            f"{len(report.blockers)} expected account(s) not represented by the data "
+            "received. Each needs a decision: the file/data is still missing, or the "
+            "account is closed. " + " ".join(report.blockers),
+            "error",
+        )
+    historical = outcome.historical_months
+    if historical:
+        flash(
+            f"HISTORICAL DATA — {len(historical)} month(s) before the control start "
+            f"{outcome.control_start_month} ({historical[0]} to {historical[-1]}): the "
+            "transactions were imported and kept, but these months are not placed under "
+            "completeness control and are not certified complete. Nothing existing was changed.",
+            "info",
+        )
+    if outcome.blocked:
+        flash(
+            "Resolve them on Monthly Sources — nothing was closed or deactivated by this "
+            "import.",
+            "info",
+        )
 
 
 def _report_missing_accounts(db, covered_months: set[tuple[int, int]]) -> None:
@@ -115,19 +139,13 @@ def _report_missing_accounts(db, covered_months: set[tuple[int, int]]) -> None:
 
     Skipped means untouched. A pre-threshold period an operator created on
     purpose keeps its coverage, its resolutions and its status exactly as
-    they are; this function does not so much as refresh it, because the
-    threshold governs what RF-One does AUTOMATICALLY and erases no existing
-    work. That also leaves the door open for an explicit historical
-    reconciliation later, which is a separate piece of work.
-
-    Everything past that division is the EXISTING monthly logic —
-    `get_or_create_period`, `refresh_coverage`, `evaluate`, the same three
-    the monthly screen already runs. No second definition of "expected
-    account", no second completeness system, and no second place to resolve
-    one: the resolution still happens on the monthly screen.
+    they are. The division and the per-month work are
+    `monthly_source.bring_months_under_control` — the same
+    `get_or_create_period`, `refresh_coverage`, `evaluate` the monthly
+    screen runs, shared with the activation of the control start over
+    already-imported batches. No second completeness system.
     """
-    start = monthly_source.get_control_start_month(db)
-    if start is None:
+    if monthly_source.get_control_start_month(db) is None:
         if covered_months:
             flash(
                 "NO RECONCILIATION CONTROL START is configured, so no month was placed under "
@@ -137,42 +155,9 @@ def _report_missing_accounts(db, covered_months: set[tuple[int, int]]) -> None:
                 "error",
             )
         return
-
-    flagged = False
-    historical = []
-    for year, month in sorted(covered_months):
-        if not monthly_source.is_controlled_month(db, year, month):
-            historical.append(monthly_source.period_key(year, month))
-            continue
-        period = monthly_source.get_or_create_period(db, year, month)
-        if period.status == "COMPLETE":
-            continue
-        monthly_source.refresh_coverage(db, period)
-        report = monthly_source.evaluate(db, period)
-        if report.blockers:
-            flagged = True
-            flash(
-                f"MISSING ACCOUNTS — {period.period_month}: "
-                f"{len(report.blockers)} expected account(s) not represented by the data "
-                "received. Each needs a decision: the file/data is still missing, or the "
-                "account is closed. " + " ".join(report.blockers),
-                "error",
-            )
+    outcome = monthly_source.bring_months_under_control(db, covered_months)
     db.commit()
-    if historical:
-        flash(
-            f"HISTORICAL DATA — {len(historical)} month(s) before the control start {start} "
-            f"({historical[0]} to {historical[-1]}): the transactions were imported and kept, "
-            "but these months are not placed under completeness control and are not certified "
-            "complete. Nothing existing was changed.",
-            "info",
-        )
-    if flagged:
-        flash(
-            "Resolve them on Monthly Sources — nothing was closed or deactivated by this "
-            "import.",
-            "info",
-        )
+    _flash_control_outcome(outcome)
 
 
 def register_bank_routes(
@@ -1098,8 +1083,12 @@ def register_bank_routes(
         Accepts the date the operator typed and refuses a mid-month one
         rather than rounding it: a half-controlled month is not a state
         RF-One defines, and silently picking a side would hide the choice.
-        Changing this value writes nothing but the setting itself — no
-        existing period, coverage row or resolution is touched."""
+
+        Setting it for the first time, or moving it EARLIER, also applies it
+        to the source files already imported: the controlled months they
+        cover are opened (or reused), refreshed and evaluated, without any
+        file being uploaded again. Moving it LATER writes only the setting —
+        no existing period, coverage row, resolution or status is touched."""
         require_csrf()
         typed = _parse_optional_date(request.form.get("control_start_date"))
         note = request.form.get("note")
@@ -1111,17 +1100,28 @@ def register_bank_routes(
             account = _current_account(db)
             try:
                 year, month = monthly_source.control_start_date_from(typed)
-                config = monthly_source.set_control_start(
+                config, _previous, outcome = monthly_source.activate_control_start(
                     db, year=year, month=month, note=note, account_id=account.id,
                 )
                 month_key = config.control_start_month
                 db.commit()
+                if outcome is None:
+                    detail = ("Months already under control keep their periods, coverage and "
+                              "decisions; nothing already recorded was changed.")
+                else:
+                    detail = (
+                        f"{outcome.batches_examined} source file(s) already imported were "
+                        f"examined: {len(outcome.created)} controlled month(s) opened, "
+                        f"{len(outcome.reused)} reused, none re-imported. Nothing is declared "
+                        "complete and no blocker is resolved automatically."
+                    )
                 flash(
                     f"Reconciliation control starts with {month_key}. Months before it hold "
-                    "imported data but are not under completeness control; nothing already "
-                    "recorded was changed.",
+                    f"imported data but are not under completeness control. {detail}",
                     "info",
                 )
+                if outcome is not None:
+                    _flash_control_outcome(outcome)
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")

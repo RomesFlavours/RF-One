@@ -754,6 +754,20 @@ Four tiers: **DETERMINISTIC** (a proven structure names the counterparty — Cha
 
 Transfers are split by ownership: two accounts of the same legal entity → INTERNAL_BANK_TRANSFER; two different legal entities → RELATED_PARTY_TRANSFER_OUT / _IN (INTERNAL_BANK_TRANSFER, "between the company's own accounts", would be false); a personal instrument on either side → unresolved. A card payment settles the card only when the paying account is that card's settlement owner.
 
+## 20. Reconciliation Control Start (BANK_RECONCILIATION_CONTROL_START_DATE_001 → BANK_ACTIVATE_CONTROL_START_001)
+
+One configurable value, `bank_reconciliation_control_configs.control_start_month` (single row, `YYYY-MM`), names the **first controlled month**. A mid-month date is refused, never rounded. Nothing is seeded or inferred: with no value, no month is controlled automatically.
+
+- **Before the start (historical):** transactions are imported and kept; no period is opened automatically, no missing account is demanded, nothing is certified. An operator's own historical period is left untouched.
+- **From the start onward (controlled):** the existing period is reused or created, its coverage refreshed and its completeness evaluated — `get_or_create_period`, `refresh_coverage`, `evaluate`, via `monthly_source.bring_months_under_control`. A COMPLETE month is history and is not touched.
+
+Months come only from `BankImportBatch.date_range_start` / `date_range_end`. The boundary is applied in two moments, through the same function:
+
+1. **on import** — the months the new batch spans;
+2. **on activation** (`monthly_source.activate_control_start`, used by the Monthly Sources screen and `activate_reconciliation_control_start.py`) — when the start is set for the first time or moved EARLIER, every existing non-rejected, dated batch is examined, so history already imported does not have to be uploaded again. Moving it LATER writes only the setting: no period, coverage, resolution or status is deleted or rewritten.
+
+Opening a controlled month is not declaring it complete: missing accounts and files stay blockers, human resolutions stay authoritative, and absence of a source never closes an instrument.
+
 ---
 
 ## Open Points

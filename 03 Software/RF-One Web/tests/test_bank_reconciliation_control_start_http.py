@@ -381,6 +381,9 @@ def main() -> int:
         check("12c. and the historical operator resolution is still there",
               cov.resolution == m.RESOLUTION_NO_ACTIVITY)
     set_control_start("2025-01-01", note="moved backward")
+    check("12d0. moving it BACKWARD applies it to the files ALREADY imported — the newly "
+          "controlled months exist before any file is uploaded again",
+          {"2025-05", "2025-12"} <= set(existing_periods()), str(existing_periods()))
     run_import([pre_batch])
     check("12d. moving it BACKWARD simply lets the same machinery control more months",
           {"2025-05", "2025-12"} <= set(existing_periods()), str(existing_periods()))

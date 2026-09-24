@@ -124,9 +124,10 @@ def set_control_start(
     silently discarded. `control_start_date_from` converts an operator's
     typed date and refuses anything that is not the first of a month.
 
-    Moving the boundary is not destructive and deliberately writes nothing
-    but this row. Moving it EARLIER simply lets later imports control more
-    months, through the same machinery. Moving it LATER stops FUTURE
+    This function writes nothing but this row; `activate_control_start` is
+    what an operator's change goes through, and it additionally applies an
+    initial or EARLIER start to the batches already imported. Moving it
+    EARLIER lets the same machinery control more months. Moving it LATER stops FUTURE
     automatic control of the months in between; it never deletes, closes or
     reinterprets a period, a coverage row or a human resolution that
     already exists. Months already under control stay exactly as they are
@@ -174,6 +175,134 @@ def is_controlled_month(session: Session, year: int, month: int) -> bool:
     """
     start = get_control_start_month(session)
     return start is not None and period_key(year, month) >= start
+
+
+def months_spanned(start: date | None, end: date | None) -> set[tuple[int, int]]:
+    """The calendar months a source's own covered range touches.
+
+    Only the range the parser recorded on the batch is used — never a file
+    name, an upload time or today. A batch with no range covers nothing.
+    """
+    if start is None or end is None:
+        return set()
+    months, year, month = set(), start.year, start.month
+    while (year, month) <= (end.year, end.month):
+        months.add((year, month))
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return months
+
+
+@dataclass
+class MonthControl:
+    """What bringing one month under control did."""
+
+    period: "m.BankMonthlySourcePeriod"
+    created: bool
+    already_complete: bool
+    report: "CompletenessReport | None"
+
+
+@dataclass
+class ControlOutcome:
+    """The result of applying the control boundary to a set of months."""
+
+    control_start_month: str | None
+    months: list[MonthControl] = field(default_factory=list)
+    historical_months: list[str] = field(default_factory=list)
+    batches_examined: int = 0
+
+    @property
+    def created(self) -> list[str]:
+        return [c.period.period_month for c in self.months if c.created]
+
+    @property
+    def reused(self) -> list[str]:
+        return [c.period.period_month for c in self.months if not c.created]
+
+    @property
+    def blocked(self) -> list[MonthControl]:
+        return [c for c in self.months if c.report is not None and c.report.blockers]
+
+
+def bring_months_under_control(
+    session: Session, months: set[tuple[int, int]],
+) -> ControlOutcome:
+    """Place the CONTROLLED months among `months` under completeness control
+    and leave the historical ones alone.
+
+    For a month on or after the control start: the existing period is
+    reused or created, its coverage refreshed and its completeness evaluated
+    — the same three functions the monthly screen runs. A COMPLETE month is
+    history and is not touched. A month before the start is only listed:
+    no period is opened, nothing existing is refreshed or rewritten.
+
+    Creating a controlled month never declares it complete, never resolves a
+    blocker and never changes an instrument's lifecycle. With no control
+    start configured, nothing is controlled.
+    """
+    outcome = ControlOutcome(control_start_month=get_control_start_month(session))
+    if outcome.control_start_month is None:
+        return outcome
+    for year, month in sorted(months):
+        if not is_controlled_month(session, year, month):
+            outcome.historical_months.append(period_key(year, month))
+            continue
+        created = get_period(session, year, month) is None
+        period = get_or_create_period(session, year, month)
+        if period.status == "COMPLETE":
+            outcome.months.append(MonthControl(period, created, True, None))
+            continue
+        refresh_coverage(session, period)
+        outcome.months.append(MonthControl(period, created, False, evaluate(session, period)))
+    session.flush()
+    return outcome
+
+
+def apply_control_to_existing_batches(session: Session) -> ControlOutcome:
+    """Apply the control boundary to source files RF-One already holds, so
+    they do not have to be uploaded again.
+
+    Every existing batch that was not REJECTED and carries its own covered
+    range is examined; the months it spans are handed to
+    `bring_months_under_control`. Reads batches only: no transaction, raw
+    row, batch or instrument is written. Idempotent — a second run reuses
+    every period and coverage row it finds.
+    """
+    batches = list(session.scalars(
+        select(m.BankImportBatch).where(
+            m.BankImportBatch.status != "REJECTED",
+            m.BankImportBatch.date_range_start.is_not(None),
+            m.BankImportBatch.date_range_end.is_not(None),
+        ).order_by(m.BankImportBatch.id)
+    ).all())
+    months: set[tuple[int, int]] = set()
+    for batch in batches:
+        months |= months_spanned(batch.date_range_start, batch.date_range_end)
+    outcome = bring_months_under_control(session, months)
+    outcome.batches_examined = len(batches)
+    return outcome
+
+
+def activate_control_start(
+    session: Session, *, year: int, month: int, note: str | None = None,
+    account_id: int | None = None,
+) -> tuple["m.BankReconciliationControlConfig", str | None, ControlOutcome | None]:
+    """Set the control start and apply it to the history already imported.
+
+    Returns (config, previous start, outcome). When the start is set for the
+    first time or moved EARLIER, the existing batches are examined and the
+    newly controlled months they cover are opened and evaluated
+    (Product Owner decision, BANK_ACTIVATE_CONTROL_START_001). When it is
+    moved LATER, or left where it was, nothing but the setting is written:
+    months already controlled keep their periods, coverage, resolutions and
+    status, and the new start only governs what happens automatically from
+    here on. The outcome is then None.
+    """
+    previous = get_control_start_month(session)
+    config = set_control_start(session, year=year, month=month, note=note, account_id=account_id)
+    if previous is not None and config.control_start_month >= previous:
+        return config, previous, None
+    return config, previous, apply_control_to_existing_batches(session)
 
 
 def list_periods(session: Session) -> list["m.BankMonthlySourcePeriod"]:
