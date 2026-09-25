@@ -233,6 +233,9 @@ def build_candidates(
 
     registry = structural_why.load_registry(session)
     reasons = {r.code: r for r in session.scalars(select(m.BankTransactionReason)).all()}
+    # BANK_PERFORMANCE_N_PLUS_ONE_001 — the ACTIVE exact rules, read once
+    # (this used to be one query per receiver group).
+    exact_rules = _exact_rules_by_pattern(session)
 
     groups: dict[tuple[str, str], ReceiverCandidate] = {}
     occurrences_seen: dict[tuple[str, str], set[int]] = {}
@@ -367,7 +370,7 @@ def build_candidates(
         else:
             candidate.status = STATUS_UNCLASSIFIED
             candidate.origin = ORIGIN_MISSING
-            match = _rule_suggestion(session, candidate)
+            match = _rule_suggestion(session, candidate, exact_rules)
             if match is not None:
                 occurrence, reason = match
                 candidate.suggested_occurrence_id = occurrence.id
@@ -386,19 +389,28 @@ def build_candidates(
     return candidates
 
 
+def _exact_rules_by_pattern(session: Session) -> dict[str, "m.BankRecognitionRule"]:
+    """Every ACTIVE exact-match rule, keyed by its normalized pattern (the
+    lowest id wins when two share a pattern)."""
+    rules: dict[str, m.BankRecognitionRule] = {}
+    for rule in session.scalars(
+        select(m.BankRecognitionRule).where(
+            m.BankRecognitionRule.status == "ACTIVE",
+            m.BankRecognitionRule.match_type == recognition.EXACT_NORMALIZED_DESCRIPTION,
+        ).order_by(m.BankRecognitionRule.id)
+    ):
+        rules.setdefault(rule.normalized_pattern, rule)
+    return rules
+
+
 def _rule_suggestion(
     session: Session, candidate: ReceiverCandidate,
+    exact_rules: dict[str, "m.BankRecognitionRule"],
 ) -> tuple["m.BankOccurrence", str] | None:
     """An existing ACTIVE exact rule that already recognizes this payee.
     Only an exact-match rule is used as a suggestion — a broad
     CONTAINS/PREFIX rule is not evidence about a specific receiver."""
-    rule = session.scalars(
-        select(m.BankRecognitionRule).where(
-            m.BankRecognitionRule.status == "ACTIVE",
-            m.BankRecognitionRule.match_type == recognition.EXACT_NORMALIZED_DESCRIPTION,
-            m.BankRecognitionRule.normalized_pattern == candidate.payee_normalized,
-        )
-    ).first()
+    rule = exact_rules.get(candidate.payee_normalized)
     if rule is None:
         return None
     occurrence = session.get(m.BankOccurrence, rule.occurrence_id)
@@ -580,9 +592,11 @@ def approve_candidates(
     return outcome
 
 
-def summary(session: Session) -> dict:
-    """Counters for the Classification page header."""
-    candidates = build_candidates(session)
+def summary(session: Session, candidates: list[ReceiverCandidate] | None = None) -> dict:
+    """Counters for the Classification page header. A caller that has just
+    built the candidates passes them, so they are not derived twice."""
+    if candidates is None:
+        candidates = build_candidates(session)
     return {
         "groups": len(candidates),
         "unclassified_groups": len([c for c in candidates if c.status == STATUS_UNCLASSIFIED]),

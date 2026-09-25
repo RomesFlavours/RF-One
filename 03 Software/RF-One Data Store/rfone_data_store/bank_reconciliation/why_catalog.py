@@ -385,6 +385,28 @@ def reasons_for_occurrence(
     ).all())
 
 
+def reasons_by_occurrence(session: Session) -> dict[int, list["m.BankTransactionReason"]]:
+    """`reasons_for_occurrence` for every Who at once, in one query
+    (BANK_PERFORMANCE_N_PLUS_ONE_001). Same rows, same order per Who; a Who
+    with no association is simply absent."""
+    result: dict[int, list[m.BankTransactionReason]] = {}
+    for occurrence_id, reason in session.execute(
+        select(m.BankOccurrenceReasonAssociation.occurrence_id, m.BankTransactionReason)
+        .join(
+            m.BankOccurrenceReasonAssociation,
+            m.BankOccurrenceReasonAssociation.transaction_reason_id
+            == m.BankTransactionReason.id,
+        )
+        .where(
+            m.BankOccurrenceReasonAssociation.active.is_(True),
+            m.BankTransactionReason.status == "ACTIVE",
+        )
+        .order_by(m.BankOccurrenceReasonAssociation.occurrence_id, m.BankTransactionReason.name)
+    ):
+        result.setdefault(occurrence_id, []).append(reason)
+    return result
+
+
 def occurrences_for_reason(
     session: Session, transaction_reason_id: int,
 ) -> list["m.BankOccurrence"]:

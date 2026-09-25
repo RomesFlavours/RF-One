@@ -337,6 +337,32 @@ def accounting_classification_usage(session: Session, classification_id: int) ->
     }
 
 
+def accounting_classification_usages(session: Session) -> dict[int, dict]:
+    """`accounting_classification_usage` for every What at once — three
+    grouped counts instead of three counts per What
+    (BANK_PERFORMANCE_N_PLUS_ONE_001). Same keys, same values."""
+    def grouped(column):
+        return dict(session.execute(
+            select(column, func.count()).where(column.is_not(None)).group_by(column)
+        ).all())
+
+    reasons = grouped(m.BankTransactionReason.accounting_classification_id)
+    decisions = grouped(m.BankTransactionExplanation.accounting_classification_id)
+    children = grouped(m.BankAccountingClassification.parent_id)
+    usages = {}
+    for (classification_id,) in session.execute(select(m.BankAccountingClassification.id)):
+        reason_count = reasons.get(classification_id, 0)
+        decision_count = decisions.get(classification_id, 0)
+        child_count = children.get(classification_id, 0)
+        usages[classification_id] = {
+            "reason_count": reason_count,
+            "decision_count": decision_count,
+            "child_count": child_count,
+            "in_use": bool(reason_count or decision_count or child_count),
+        }
+    return usages
+
+
 def set_accounting_classification_active(
     session: Session, *, classification_id: int, active: bool,
 ) -> "m.BankAccountingClassification":

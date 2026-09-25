@@ -1325,20 +1325,36 @@ def compute_batch_review_state(
     candidates = [t for t in transactions if t.duplicate_status == "CANDIDATE_DUPLICATE"]
     needs_review = [t for t in transactions if t.review_status == "REQUIRES_REVIEW"]
 
+    # BANK_PERFORMANCE_N_PLUS_ONE_001 — every match touching this batch is
+    # read in ONE query (it used to be one query per transaction), and the
+    # counterparts' instruments in one more. The count is unchanged: for
+    # each transaction of the batch, each match naming it whose other side
+    # sits on the SAME instrument counts once.
+    batch_ids = select(m.FinancialTransaction.id).where(
+        m.FinancialTransaction.import_batch_id == batch.id
+    )
+    matches = session.scalars(
+        select(m.FinancialTransactionMatch).where(
+            m.FinancialTransactionMatch.transaction_a_id.in_(batch_ids)
+            | m.FinancialTransactionMatch.transaction_b_id.in_(batch_ids)
+        )
+    ).all() if transactions else []
     invalid_matches = 0
-    for txn in transactions:
-        for match in session.scalars(
-            select(m.FinancialTransactionMatch).where(
-                (m.FinancialTransactionMatch.transaction_a_id == txn.id)
-                | (m.FinancialTransactionMatch.transaction_b_id == txn.id)
-            )
-        ).all():
-            other_id = (
-                match.transaction_b_id if match.transaction_a_id == txn.id else match.transaction_a_id
-            )
-            other = session.get(m.FinancialTransaction, other_id)
-            if other is not None and other.payment_instrument_id == txn.payment_instrument_id:
-                invalid_matches += 1
+    if matches:
+        by_id = {t.id: t for t in transactions}
+        other_ids = {x for match in matches for x in (match.transaction_a_id, match.transaction_b_id)}
+        instrument_of = dict(session.execute(
+            select(m.FinancialTransaction.id, m.FinancialTransaction.payment_instrument_id)
+            .where(m.FinancialTransaction.id.in_(other_ids))
+        ).all())
+        for match in matches:
+            a, b = match.transaction_a_id, match.transaction_b_id
+            # A match naming the same transaction twice is still one match
+            # for that transaction, as the per-transaction query returned it.
+            for side, other_id in (((a, b),) if a == b else ((a, b), (b, a))):
+                txn = by_id.get(side)
+                if txn is not None and instrument_of.get(other_id, object()) == txn.payment_instrument_id:
+                    invalid_matches += 1
 
     state = BatchReviewState(
         status="NORMALIZED",

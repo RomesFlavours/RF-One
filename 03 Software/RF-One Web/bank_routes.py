@@ -959,6 +959,17 @@ def register_bank_routes(
             dedup_groups = {}
             canonical_copy_counts = {}
             canonical_by_id = {}
+            # BANK_PERFORMANCE_N_PLUS_ONE_001 — the copies absorbed by each
+            # canonical row on screen, counted in ONE grouped query (it was
+            # one count per row).
+            canonical_ids = [t.id for t in transactions
+                             if t.accounting_status == accounting_dedup.CANONICAL]
+            copies_by_canonical = dict(db.execute(
+                select(m.FinancialTransaction.accounting_canonical_transaction_id,
+                       func.count(m.FinancialTransaction.id))
+                .where(m.FinancialTransaction.accounting_canonical_transaction_id.in_(canonical_ids))
+                .group_by(m.FinancialTransaction.accounting_canonical_transaction_id)
+            ).all()) if canonical_ids else {}
             for txn in transactions:
                 if txn.accounting_status == accounting_dedup.DUPLICATE_SUPPRESSED:
                     dedup_groups[txn.id] = accounting_dedup.duplicate_group(db, txn.id)
@@ -967,17 +978,14 @@ def register_bank_routes(
                             m.FinancialTransaction, txn.accounting_canonical_transaction_id,
                         )
                 elif txn.accounting_status == accounting_dedup.CANONICAL:
-                    count = db.scalar(
-                        select(func.count(m.FinancialTransaction.id)).where(
-                            m.FinancialTransaction.accounting_canonical_transaction_id == txn.id
-                        )
-                    ) or 0
+                    count = copies_by_canonical.get(txn.id, 0)
                     if count:
                         canonical_copy_counts[txn.id] = count
 
             batches_by_id = {
                 b.id: b for b in db.scalars(select(m.BankImportBatch)).all()
             }
+            reasons_by_occurrence = why_catalog.reasons_by_occurrence(db)
 
             return render_template(
                 "bank_review.html", transactions=transactions, instruments=instruments,
@@ -992,15 +1000,15 @@ def register_bank_routes(
                 # only the purposes a human already confirmed for it.
                 # `why_catalog_groups` is the "+ New" modal ONLY — the full
                 # catalog, grouped. Management groups appear nowhere else.
+                # One query for every Who (BANK_PERFORMANCE_N_PLUS_ONE_001).
                 why_by_occurrence={
-                    option["id"]: why_catalog.reasons_for_occurrence(db, option["id"])
+                    option["id"]: reasons_by_occurrence.get(option["id"], [])
                     for option in who_options
                 },
                 # Serialisable form for the page script: Who id -> Why ids.
                 why_ids_by_occurrence={
                     str(option["id"]): [
-                        reason.id
-                        for reason in why_catalog.reasons_for_occurrence(db, option["id"])
+                        reason.id for reason in reasons_by_occurrence.get(option["id"], [])
                     ]
                     for option in who_options
                 },
@@ -1611,7 +1619,7 @@ def register_bank_routes(
                 what_group_nodes=what_group_nodes,
                 accounting_destinations=accounting_destinations,
                 receiver_candidates_page=receiver_page_items,
-                receiver_summary=receiver_candidates.summary(db),
+                receiver_summary=receiver_candidates.summary(db, all_candidates),
                 receiver_filtered_count=len(filtered),
                 receiver_page=receiver_page, receiver_total_pages=total_pages,
                 receiver_search=receiver_search, receiver_status=receiver_status,
@@ -1626,7 +1634,7 @@ def register_bank_routes(
                 assignable_whats=assignable_whats, assignable_whys=assignable_whys,
                 occurrence_types=classification_service.list_occurrence_types(db),
                 chains=classification_service.resolve_chains(db, whos),
-                usage={w.id: classification_service.accounting_classification_usage(db, w.id) for w in whats},
+                usage=classification_service.accounting_classification_usages(db),
                 statement_type_labels=classification_service.STATEMENT_TYPE_LABELS,
                 what_search=what_search, why_search=why_search, who_search=who_search,
             )
@@ -1681,10 +1689,7 @@ def register_bank_routes(
                 ],
                 occurrence_types=classification_service.list_occurrence_types(db),
                 chains=classification_service.resolve_chains(db, whos),
-                usage={
-                    w.id: classification_service.accounting_classification_usage(db, w.id)
-                    for w in whats
-                },
+                usage=classification_service.accounting_classification_usages(db),
                 statement_type_labels=classification_service.STATEMENT_TYPE_LABELS,
                 what_search="", why_search="", who_search="",
                 receiver_candidates_page=[], receiver_summary=receiver_candidates.summary(db),
