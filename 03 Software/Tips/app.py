@@ -52,7 +52,7 @@ _DATA_STORE_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "RF-One Data Sto
 if _DATA_STORE_DIR not in sys.path:
     sys.path.insert(0, _DATA_STORE_DIR)
 
-from flask import Flask, Response, flash, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
+from flask import Flask, Response, abort, flash, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 
 from rfone_data_store import models as m  # noqa: E402
@@ -729,6 +729,9 @@ def tips_run_report(run_id: int):
             identified_as=rfone_identity.display_name(account),
             is_identified=account is not None,
             not_identified_message=rfone_identity.NOT_IDENTIFIED_MESSAGE,
+            is_authorized=rfone_identity.may_validate_tips(session, account),
+            not_authorized_message=rfone_identity.NOT_AUTHORIZED_MESSAGE,
+            csrf_token=rfone_identity.csrf_token(),
             finalization_blockers=blockers,
             active_nav="tips-runs",
         )
@@ -747,6 +750,14 @@ def tips_run_validate(run_id: int):
         account = rfone_identity.current_account(session)
         if account is None:
             flash(rfone_identity.NOT_IDENTIFIED_MESSAGE, "error")
+            return redirect(url_for("tips_run_report", run_id=run_id))
+        # TIPS_AWS_FINALIZATION_WORKFLOW_001 — the same two gates RF-One
+        # Web's own validation route applies: the RF-One CSRF token, and
+        # TIPS Domain access (being signed in is not authorization).
+        if not rfone_identity.csrf_valid():
+            abort(400, description="Invalid or missing CSRF token.")
+        if not rfone_identity.may_validate_tips(session, account):
+            flash(rfone_identity.NOT_AUTHORIZED_MESSAGE, "error")
             return redirect(url_for("tips_run_report", run_id=run_id))
         run, reason = run_svc.validate_run(
             session, run_id=run_id, account_id=account.id,

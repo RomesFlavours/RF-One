@@ -204,3 +204,29 @@ e può essere affrontata separatamente, come rifattorizzazione dichiarata.
 **Decisione richiesta al Product Owner:** quale opzione adottare, e — per
 l'opzione A — se usare una distribuzione CloudFront sugli hostname App
 Runner attuali oppure attestarsi subito su un dominio RF-One definitivo.
+
+### Sblocco della validazione adottato (TIPS_AWS_FINALIZATION_WORKFLOW_001, 2026-09-25)
+
+Senza attendere la scelta A/B/C — che resta aperta e riguarda l'intera
+applicazione Tips — il **solo passo umano di validazione** (CALCULATED →
+FINAL) è ora offerto anche da `rfone-web`, sull'host dove l'utente ha già
+fatto login:
+
+| Route `rfone-web` | Scopo | Controlli server-side |
+|---|---|---|
+| `GET /tips/runs` | elenco dei Calculation Run salvati | `require_domain_access("TIPS")` |
+| `GET /tips/runs/<id>` | report salvato (mai ricalcolato) | `require_domain_access("TIPS")` |
+| `POST /tips/runs/<id>/validate` | validazione → FINAL | `require_domain_access("TIPS")` + `require_csrf()` |
+
+- Codice: `03 Software/RF-One Web/tips_validation_routes.py`; chiama lo
+  stesso `calculation_run_service.validate_run` dell'app Tips — nessuna
+  regola di finalizzazione duplicata, nessun ricalcolo.
+- Nessun cookie condiviso fra host, nessun token in URL, nessun nuovo login.
+- Anche la route di validazione dell'app Tips ora richiede accesso TIPS e il
+  token CSRF RF-One (prima bastava essere loggati).
+- **Nessuna nuova variabile d'ambiente.** Prerequisito già esistente da
+  verificare prima del deploy: `rfone-web` e `rfone-tips` devono puntare
+  allo **stesso database** (`rfone-tips/database-url`), perché la
+  validazione avviene su `rfone-web` e i run li scrive `rfone-tips`.
+- L'account che valida deve avere l'accesso al Domain **TIPS** abilitato
+  (`/admin/accounts/<id>/access`); l'accesso BANK non basta.

@@ -33,6 +33,10 @@
   <p class="empty">No RF-One Domains are currently assigned to this account.</p>
 {% endif %}
 
+{% if tips_validation_available %}
+  <p><a href="{{ url_for('tips_validation_runs') }}">Tips &mdash; validate saved periods</a></p>
+{% endif %}
+
 {% if account.is_admin %}
   <p><a href="{{ url_for('admin_legal_entities') }}">Manage Legal Entities</a></p>
   <p><a href="{{ url_for('admin_organization') }}">Manage Organization</a> <span class="empty">(system / organization configuration — not an operational page)</span></p>

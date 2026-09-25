@@ -45,6 +45,14 @@ from . import rfone_account_service as account_service
 # live here and not in two places.
 SESSION_ACCOUNT_KEY = "rfone_account_id"
 SESSION_VERSION_KEY = "rfone_session_version"
+# The per-session CSRF token RF-One Web issues (`auth.get_csrf_token`). Shared
+# for the same reason as the two keys above: an app that checks a
+# state-changing POST against the RF-One session must read the SAME token,
+# never mint a second one of its own.
+SESSION_CSRF_KEY = "rfone_csrf_token"
+
+# The only account status that may enter a Domain.
+ACTIVE_ACCOUNT_STATUS = "ACTIVE"
 
 
 def account_for_session(
@@ -68,6 +76,27 @@ def account_for_session(
     if session_version != account.session_version:
         return None
     return account
+
+
+def account_may_enter_domain(
+    db_session: Session, account: "m.RFOneAccount | None", domain_code: str,
+) -> bool:
+    """Whether `account` may act inside `domain_code` right now.
+
+    The ONE Domain authorization rule RF-One Web's `require_domain_access`
+    applies to every destination: an ACTIVE account holding an ENABLED
+    `RFOneAccountDomainAccess` row for exactly that Domain. Access to one
+    Domain never implies access to another (BANK does not open TIPS), and
+    being logged in is not, by itself, access to anything.
+
+    Lives here, next to the session lookup, so a second app (Tips) checks
+    the same rule rather than a copy of it."""
+    if account is None or account.status != ACTIVE_ACCOUNT_STATUS:
+        return False
+    return any(
+        row.domain_code == domain_code and row.enabled
+        for row in account_service.list_domain_access_for_account(db_session, account.id)
+    )
 
 
 def account_display_name(account: "m.RFOneAccount | None") -> str:

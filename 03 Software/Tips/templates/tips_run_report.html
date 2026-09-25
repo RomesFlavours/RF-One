@@ -197,9 +197,12 @@
     {% endif %}
     {% if not is_identified %}
       <div class="error">{{ not_identified_message }}</div>
+    {% elif not is_authorized %}
+      <div class="error">{{ not_authorized_message }}</div>
     {% endif %}
-    {% if not finalization_blockers and is_identified %}
+    {% if not finalization_blockers and is_identified and is_authorized %}
       <form method="post" action="{{ url_for('tips_run_validate', run_id=run.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
         <p>
           You are signed in to RF-One as <strong>{{ identified_as }}</strong>. Validating records
           your account as the person who approved these figures and makes the period final and

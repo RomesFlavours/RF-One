@@ -44,10 +44,12 @@ from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store import legal_entity_service  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store import rfone_recovery_service as recovery_service  # noqa: E402
+from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
 from rfone_data_store.technical import ses_email  # noqa: E402
 from compensation_routes import register_compensation_routes  # noqa: E402
 from organizational_responsibility_routes import register_organizational_responsibility_routes  # noqa: E402
 from bank_routes import register_bank_routes  # noqa: E402
+from tips_validation_routes import register_tips_validation_routes  # noqa: E402
 import training_integration  # noqa: E402
 
 app = Flask(__name__)
@@ -258,7 +260,10 @@ def home():
         enabled_codes = {row.domain_code for row in access_rows if row.enabled}
         domains_view = [d for d in DOMAINS if d.code in enabled_codes]
 
-        return render_template("home.html", account=account, domains_view=domains_view)
+        return render_template(
+            "home.html", account=account, domains_view=domains_view,
+            tips_validation_available="TIPS" in enabled_codes,
+        )
 
 
 def require_domain_access(domain_code: str):
@@ -281,10 +286,8 @@ def require_domain_access(domain_code: str):
                 if account is None:
                     log_out()
                     return redirect(url_for("login", next=request.path))
-                if account.status != "ACTIVE":
-                    abort(403)
-                access_rows = account_service.list_domain_access_for_account(db, account.id)
-                if not any(r.domain_code == domain_code and r.enabled for r in access_rows):
+                # The one Domain rule, shared with Tips (`rfone_web_session`).
+                if not shared_session.account_may_enter_domain(db, account, domain_code):
                     abort(403)
             return view(*args, **kwargs)
         return wrapped
@@ -341,6 +344,20 @@ register_organizational_responsibility_routes(
 # ---------------------------------------------------------------------------
 
 register_bank_routes(
+    app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
+    load_current_account=load_current_account, require_csrf=require_csrf,
+)
+
+
+# ---------------------------------------------------------------------------
+# Tips — period validation only (TIPS_AWS_FINALIZATION_WORKFLOW_001). The
+# human step that turns a CALCULATED Tips period FINAL needs the RF-One
+# login, which only reaches this host; everything else in Tips stays in the
+# Tips app. Gated by `require_domain_access("TIPS")` + CSRF — see
+# `tips_validation_routes.py`'s own module docstring.
+# ---------------------------------------------------------------------------
+
+register_tips_validation_routes(
     app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
     load_current_account=load_current_account, require_csrf=require_csrf,
 )

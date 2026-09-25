@@ -41,7 +41,7 @@ from rfone_data_store import rfone_web_session as shared_session
 # they drift everyone is silently logged out of one app only.
 SESSION_ACCOUNT_KEY = shared_session.SESSION_ACCOUNT_KEY
 SESSION_VERSION_KEY = shared_session.SESSION_VERSION_KEY
-SESSION_CSRF_KEY = "rfone_csrf_token"
+SESSION_CSRF_KEY = shared_session.SESSION_CSRF_KEY
 # Deliberately a DIFFERENT key from SESSION_ACCOUNT_KEY: holding the
 # in-progress forgot-password username here (rather than reusing the real
 # login key) means an anonymous visitor mid-recovery is never mistaken for

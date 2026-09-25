@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block page_title %}Tips · Saved periods · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+<h1>Tips &mdash; saved periods</h1>
+<p class="muted">
+  Every saved Tips Calculation Run, final and not. A CALCULATED period is not payable: it becomes
+  FINAL only when an authorized person validates it here. Calculation itself stays in the Tips app.
+</p>
+
+{% for section in sections %}
+<div class="card">
+  <h2>{{ section.restaurant.name }}</h2>
+  <p class="muted">Tips Validation Mode: <strong>{{ section.validation_mode }}</strong></p>
+  {% if section.runs %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Run</th><th>Business Dates</th><th>State</th><th>Control difference</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for run in section.runs %}
+            <tr>
+              <td>{{ run.id }}</td>
+              <td>{{ run.first_business_date or '—' }} &ndash; {{ run.last_business_date or '—' }}</td>
+              <td>
+                {% if run.is_final %}<span class="badge ok">FINAL</span>
+                {% else %}<span class="badge warn">{{ run.state }} &mdash; not payable</span>{% endif %}
+              </td>
+              <td>${{ "%.2f"|format((run.control_difference_minor or 0) / 100) }}</td>
+              <td><a href="{{ url_for('tips_validation_run', run_id=run.id) }}">Open</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No saved Calculation Runs yet.</p>
+  {% endif %}
+</div>
+{% else %}
+  <p class="empty">No Restaurant exists in this database yet.</p>
+{% endfor %}
+{% endblock %}
