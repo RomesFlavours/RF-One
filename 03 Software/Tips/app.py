@@ -52,7 +52,7 @@ _DATA_STORE_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "RF-One Data Sto
 if _DATA_STORE_DIR not in sys.path:
     sys.path.insert(0, _DATA_STORE_DIR)
 
-from flask import Flask, Response, abort, flash, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
+from flask import Flask, Response, flash, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 
 from rfone_data_store import models as m  # noqa: E402
@@ -80,6 +80,9 @@ from rfone_data_store.tips import validation_mode_service as validation_mode_svc
 # RF-One login, read (never issued) here. See `rfone_identity.py` for the
 # whole of the integration and what it needs from the deployment.
 import rfone_identity  # noqa: E402
+# TIPS_AWS_FINALIZATION_WORKFLOW_001 — validation lives in RF-One Web only;
+# Tips links there through `RFONE_WEB_BASE_URL`.
+import rfone_web_link  # noqa: E402
 from rfone_data_store import restaurant_role_service as role_svc  # noqa: E402
 
 UTC = timezone.utc
@@ -94,6 +97,9 @@ app = Flask(__name__)
 # GLOBAL_INTEGRITY_FIX_002's ActingIdentity work for that concern in
 # Selection, not replicated here since this task does not touch identity).
 app.secret_key = os.environ.get("RFONE_FLASK_SECRET_KEY") or os.urandom(24)
+app.jinja_env.globals["rfone_web_base_url"] = rfone_web_link.base_url
+app.jinja_env.globals["rfone_web_run_url"] = rfone_web_link.tips_run_url
+app.jinja_env.globals["rfone_web_not_configured_message"] = rfone_web_link.NOT_CONFIGURED_MESSAGE
 
 
 def _default_restaurant(session) -> "m.Restaurant | None":
@@ -713,68 +719,26 @@ def tips_run_report(run_id: int):
     This route does NOT recalculate. `run_svc.get_run_report` has no access
     to the engine at all, so reopening a final report next year shows the
     figures it was approved on even if a rule, a shift or an order has been
-    edited since."""
+    edited since.
+
+    Read-only for finalization (TIPS_AWS_FINALIZATION_WORKFLOW_001): the
+    page shows why a period cannot yet be final and links to RF-One Web's
+    `/tips/runs/<run_id>`, the one place a person validates it. Tips has no
+    validation route of its own."""
     with SessionFactory() as session:
         report = run_svc.get_run_report(session, run_id)
         if report is None:
             flash(f"No Calculation Run with id {run_id}.", "error")
             return redirect(url_for("tips_run_history"))
-        account = rfone_identity.current_account(session)
         blockers = run_svc.finalization_blockers(session, report["run"])
         return render_template(
             "tips_run_report.html", report=report, run=report["run"],
             validation_mode=validation_mode_svc.get_validation_mode(
                 session, restaurant_id=report["run"].restaurant_id,
             ),
-            identified_as=rfone_identity.display_name(account),
-            is_identified=account is not None,
-            not_identified_message=rfone_identity.NOT_IDENTIFIED_MESSAGE,
-            is_authorized=rfone_identity.may_validate_tips(session, account),
-            not_authorized_message=rfone_identity.NOT_AUTHORIZED_MESSAGE,
-            csrf_token=rfone_identity.csrf_token(),
             finalization_blockers=blockers,
             active_nav="tips-runs",
         )
-
-
-@app.route("/tips-runs/<int:run_id>/validate", methods=["POST"])
-def tips_run_validate(run_id: int):
-    """§14/§15 — a person validates the period, which makes it final.
-
-    The validator is whoever this request is authenticated as through the
-    ONE existing RF-One login. There is no name field on the form and no
-    way to supply one: an approval RF-One cannot attach to an identified
-    person is refused, because an unsigned approval that looks signed is
-    worse than no approval at all."""
-    with SessionFactory() as session:
-        account = rfone_identity.current_account(session)
-        if account is None:
-            flash(rfone_identity.NOT_IDENTIFIED_MESSAGE, "error")
-            return redirect(url_for("tips_run_report", run_id=run_id))
-        # TIPS_AWS_FINALIZATION_WORKFLOW_001 — the same two gates RF-One
-        # Web's own validation route applies: the RF-One CSRF token, and
-        # TIPS Domain access (being signed in is not authorization).
-        if not rfone_identity.csrf_valid():
-            abort(400, description="Invalid or missing CSRF token.")
-        if not rfone_identity.may_validate_tips(session, account):
-            flash(rfone_identity.NOT_AUTHORIZED_MESSAGE, "error")
-            return redirect(url_for("tips_run_report", run_id=run_id))
-        run, reason = run_svc.validate_run(
-            session, run_id=run_id, account_id=account.id,
-        )
-        if run is None:
-            session.rollback()
-            flash(reason, "error")
-            return redirect(url_for("tips_run_report", run_id=run_id))
-        session.commit()
-        flash(
-            f"Calculation Run {run_id} validated by "
-            f"{rfone_identity.display_name(account)} and is now FINAL. "
-            "It can no longer be modified, and it is the Tips figure Payroll may use for "
-            "this period.",
-            "summary",
-        )
-    return redirect(url_for("tips_run_report", run_id=run_id))
 
 
 @app.route("/calculate-tips/order/<int:order_id>")

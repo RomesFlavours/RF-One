@@ -26,27 +26,22 @@ fact and not something code can arrange:
      sends a cookie by host and ignores the port. Locally (both on
      `localhost`) that already holds. Served from two different hostnames
      it does not, and no shared code can fix it. That is the AWS topology
-     (`rfone-web` and `rfone-tips` are separate App Runner hostnames), so
-     there the validation step is offered by RF-One Web itself
-     (`RF-One Web/tips_validation_routes.py`, TIPS_AWS_FINALIZATION_
-     WORKFLOW_001), on the host the person signed in to — never worked
-     around here with a token in a URL or a duplicated login.
+     (`rfone-web` and `rfone-tips` are separate App Runner hostnames).
 
-Validating also requires Tips authorization (an enabled TIPS Domain access
-row, `may_validate_tips`) and the RF-One CSRF token (`csrf_valid`), exactly
-as RF-One Web requires them.
+Tips does NOT validate periods (TIPS_AWS_FINALIZATION_WORKFLOW_001). The
+one human finalization path is RF-One Web's `/tips/runs/<run_id>`, on the
+host the person signed in to; Tips only links there (`rfone_web_link.py`).
+The identity read here serves one purpose: attributing a change of the
+Tips Validation Mode to the person who made it, when one is signed in.
 
-When no identity can be resolved, every function here returns `None` and
-the caller REFUSES the action. Tips never falls back to a typed-in name and
-never records an unidentified validator: an unsigned approval on a payroll
-figure is worse than a blocked one, because it looks signed.
+When no identity can be resolved, every function here returns `None`.
+Tips never falls back to a typed-in name and never records an invented
+author.
 """
 
 from __future__ import annotations
 
-import secrets
-
-from flask import request, session as flask_session
+from flask import session as flask_session
 
 from rfone_data_store import models as m
 from rfone_data_store import rfone_web_session as shared_session
@@ -73,46 +68,3 @@ def current_account(db_session) -> "m.RFOneAccount | None":
 
 def display_name(account: "m.RFOneAccount | None") -> str:
     return shared_session.account_display_name(account)
-
-
-TIPS_DOMAIN_CODE = "TIPS"
-
-
-def may_validate_tips(db_session, account: "m.RFOneAccount | None") -> bool:
-    """Being signed in is not enough to approve a Tips period: the account
-    must be ACTIVE and hold an enabled TIPS Domain access row — the SAME
-    rule RF-One Web's `require_domain_access("TIPS")` applies
-    (`rfone_web_session.account_may_enter_domain`). Access to another
-    Domain (BANK, COMPENSATION, ...) grants nothing here."""
-    return shared_session.account_may_enter_domain(db_session, account, TIPS_DOMAIN_CODE)
-
-
-def csrf_token() -> str | None:
-    """The CSRF token RF-One Web already issued into the shared session, or
-    `None`. READ-ONLY on purpose: Tips never mints a token (or writes the
-    session at all for this), so there is still exactly one issuer."""
-    return flask_session.get(shared_session.SESSION_CSRF_KEY)
-
-
-def csrf_valid() -> bool:
-    """The same comparison RF-One Web's `auth.csrf_valid` makes."""
-    expected = csrf_token()
-    submitted = request.form.get("csrf_token", "")
-    return bool(expected) and bool(submitted) and secrets.compare_digest(expected, submitted)
-
-
-NOT_AUTHORIZED_MESSAGE = (
-    "Your RF-One account is signed in but is not authorized to validate Tips periods: it needs "
-    "enabled access to the Tips Domain. Ask an RF-One administrator."
-)
-
-
-# The one message the UI shows when an action needs an identified person and
-# there is none. It names the cause and the fix rather than saying "denied".
-NOT_IDENTIFIED_MESSAGE = (
-    "This action records WHO performed it, so it needs an identified RF-One user. "
-    "No RF-One login session was found for this request. Validate this period in RF-One Web "
-    "instead (Home → \"Tips — validate saved periods\"), where you signed in. When Tips runs "
-    "on its own hostname (as on AWS) the RF-One session does not reach it, and Tips will "
-    "not record an unidentified approval."
-)

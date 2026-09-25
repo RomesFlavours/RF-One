@@ -27,6 +27,15 @@
     A saved period records the Business Dates, the operating-day configuration and the Rule
     Versions it was calculated under. Only a FINAL period is a Payroll source.
   </p>
+  {# TIPS_AWS_FINALIZATION_WORKFLOW_001 — periods are validated only in
+     RF-One Web; each row links to the SAME run there. #}
+  <p class="muted" style="font-size:.78rem;">
+    Periods are reviewed and finalized in RF-One Web, where you sign in. Use
+    <strong>Review / Finalize in RF-One</strong> on a row to open that same period there.
+  </p>
+  {% if runs and not rfone_web_base_url() %}
+  <div class="error">{{ rfone_web_not_configured_message }}</div>
+  {% endif %}
 
   {% if not runs %}
     <p class="empty">
@@ -40,7 +49,7 @@
       <tr>
         <th>Run</th><th>Business Dates</th><th>Total Tips + Gratuity</th>
         <th>Total Employee Entitlements</th><th>Control</th><th>State</th>
-        <th>Approved by</th><th>Calculated</th>
+        <th>Approved by</th><th>Calculated</th><th>RF-One</th>
       </tr>
     </thead>
     <tbody>
@@ -83,6 +92,14 @@
         </td>
         <td class="muted" style="font-size:.8rem;">
           {{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '—' }}
+        </td>
+        <td style="font-size:.8rem;">
+          {% set web_url = rfone_web_run_url(run.id) %}
+          {% if web_url %}
+            <a href="{{ web_url }}">{{ 'Open in RF-One' if run.is_final else 'Review / Finalize in RF-One' }}</a>
+          {% else %}
+            <span class="muted">not configured</span>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

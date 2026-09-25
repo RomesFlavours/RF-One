@@ -222,9 +222,20 @@ fatto login:
   stesso `calculation_run_service.validate_run` dell'app Tips — nessuna
   regola di finalizzazione duplicata, nessun ricalcolo.
 - Nessun cookie condiviso fra host, nessun token in URL, nessun nuovo login.
-- Anche la route di validazione dell'app Tips ora richiede accesso TIPS e il
-  token CSRF RF-One (prima bastava essere loggati).
-- **Nessuna nuova variabile d'ambiente.** Prerequisito già esistente da
+- L'app Tips separata è **in sola lettura** per la finalizzazione: il form
+  Validate e la route `POST /tips-runs/<id>/validate` sono stati rimossi
+  (decisione del Product Owner, 2026-09-25). `rfone-web` `/tips/runs/<id>` è
+  l'**unico** percorso umano di finalizzazione.
+- **`RFONE_WEB_BASE_URL`** (servizio `rfone-tips`) = indirizzo base canonico
+  di RF-One Web usato dalla navigazione dell'app Tips separata (es.
+  `https://<host-rfone-web>`, senza `/` finale; non è un segreto). Saved
+  Periods (`/tips-runs`) e il report (`/tips-runs/<id>`) portano a
+  `RFONE_WEB_BASE_URL/tips/runs/<id>` per lo **stesso** run. Se la variabile
+  manca (o contiene credenziali, query o fragment) non viene generato alcun
+  link e la pagina dice che la navigazione verso RF-One Web non è
+  configurata. Il valore può passare a un dominio RF-One definitivo senza
+  modifiche al codice. Codice: `03 Software/Tips/rfone_web_link.py`.
+- Prerequisito già esistente da
   verificare prima del deploy: `rfone-web` e `rfone-tips` devono puntare
   allo **stesso database** (`rfone-tips/database-url`), perché la
   validazione avviene su `rfone-web` e i run li scrive `rfone-tips`.

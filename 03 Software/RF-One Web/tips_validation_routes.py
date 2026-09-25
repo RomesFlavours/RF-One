@@ -22,8 +22,9 @@ every RF-One Web destination already uses —
 
 No new login, no token in a URL, no cross-host cookie, no change to what
 validation means. Every figure and every decision comes from
-`rfone_data_store.tips.calculation_run_service` — the same `validate_run`
-the Tips app calls — so this page cannot validate anything the service
+`rfone_data_store.tips.calculation_run_service` — its `validate_run` is the
+one finalization rule; the Tips app has no validation route of its own and
+links here instead — so this page cannot validate anything the service
 would refuse (unbalanced control, already FINAL, overlapping FINAL
 period), and it never recalculates: the report is read back from the saved
 run exactly as the Tips app reads it.

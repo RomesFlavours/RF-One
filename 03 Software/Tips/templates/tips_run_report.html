@@ -195,25 +195,21 @@
         <div class="error">{{ blocker }}</div>
       {% endfor %}
     {% endif %}
-    {% if not is_identified %}
-      <div class="error">{{ not_identified_message }}</div>
-    {% elif not is_authorized %}
-      <div class="error">{{ not_authorized_message }}</div>
-    {% endif %}
-    {% if not finalization_blockers and is_identified and is_authorized %}
-      <form method="post" action="{{ url_for('tips_run_validate', run_id=run.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
-        <p>
-          You are signed in to RF-One as <strong>{{ identified_as }}</strong>. Validating records
-          your account as the person who approved these figures and makes the period final and
-          immutable.
-        </p>
-        <button type="submit">Validate this period as {{ identified_as }}</button>
-      </form>
-      <p class="muted" style="font-size:.78rem;">
-        There is no name field here on purpose: the validator is who you are signed in as, never
-        who anyone types.
+    {# TIPS_AWS_FINALIZATION_WORKFLOW_001 — this page is read-only for
+       finalization. A person validates in RF-One Web, where they signed
+       in; this links to the SAME run there. #}
+    {% set web_url = rfone_web_run_url(run.id) %}
+    {% if web_url %}
+      <p>
+        <a href="{{ web_url }}"><strong>Open in RF-One Web for validation/finalization</strong></a>
       </p>
+      <p class="muted" style="font-size:.78rem;">
+        Periods are validated in RF-One Web, signed in with your RF-One account. Validating there
+        records you as the person who approved these figures and makes the period final and
+        immutable.
+      </p>
+    {% else %}
+      <div class="error">{{ rfone_web_not_configured_message }}</div>
     {% endif %}
     <p class="muted" style="font-size:.78rem;">
       Until this period is final it is not a Payroll source, however correct its numbers look.

@@ -133,3 +133,26 @@ The wider question — one ingress (A), Tips mounted in RF-One Web (B) or a
 custom domain (C) — stays open (see `03 Software/Infrastructure/README.md`).
 It is **not** a blocker: the current manual finalization workflow on
 `rfone-web` is already operational.
+
+## 12. Follow-up: Saved Periods navigation (after `29c49fe`, not yet deployed)
+
+Resolves §10 in code. Product Owner decisions, 2026-09-25:
+
+- **`RFONE_WEB_BASE_URL`** (option A) is the authoritative RF-One Web base
+  address for standalone Tips (`Tips/rfone_web_link.py`). Saved Periods
+  (`/tips-runs`) shows "Review / Finalize in RF-One" (or "Open in RF-One"
+  for a FINAL run) on every row, and the report (`/tips-runs/<id>`) shows
+  "Open in RF-One Web for validation/finalization"; both lead to
+  `<base>/tips/runs/<id>` for the same run. Without a usable base URL no
+  link is rendered and the page says navigation is not configured.
+- **Standalone Tips is read-only for finalization.** The local Validate
+  form and `POST /tips-runs/<id>/validate` are removed, with the Tips-only
+  helpers that served them (`rfone_identity.may_validate_tips`,
+  `csrf_token`, `csrf_valid`, and their messages). `validate_run`, RF-One
+  Web's routes, the overlap protection and payment eligibility are
+  unchanged. This supersedes the "Tips app's own validation route" in §2.
+- Tests: `Tips/test_tips_saved_periods_navigation_http.py` replaces
+  `Tips/test_tips_validation_authorization_http.py`, which tested the
+  removed route.
+- To go live: set `RFONE_WEB_BASE_URL` on `rfone-tips`, then deploy
+  `rfone-tips` only.
