@@ -42,3 +42,20 @@ IS finalization (§14). There is no separate persisted VALIDATED state.
 
 `RF-One Web/tests/test_tips_validation_http.py` (13 checks) and
 `Tips/test_tips_validation_authorization_http.py` (5 checks).
+
+## Deploy incident (2026-09-25)
+
+The first deploy of `0abc441` crash-looped `rfone-web` (HTTP 502 from about
+15:53 UTC until the rollback completed): `tips_validation_routes.py` imports
+`tips.calculation_run_service`, whose engine imports the Clover connector,
+which needs `clover_explorer` from `03 Software/Clover Data Explorer/`. The
+`rfone-web` image never copied that folder; local tests passed because every
+sibling folder is on disk locally. `rfone-web` was rolled back to its previous
+image (same config and layers as `sha256:d807cc9d…`). No data changed.
+
+Fix: the `rfone-web` Dockerfile/buildspec are now versioned under
+`03 Software/Infrastructure/deploy/rfone-web/` with
+`COPY ["Clover Data Explorer", ...]`, and
+`RF-One Web/tests/test_image_layout_startup.py` imports the app inside the
+image layout rebuilt from those COPY lines (it reproduces the crash without
+the fix).
