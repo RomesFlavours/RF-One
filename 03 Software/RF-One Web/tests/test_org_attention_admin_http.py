@@ -110,8 +110,8 @@ def main() -> int:
             # pointing at /admin/organization instead of the plain Positions
             # list — see test_organization_chart_http.py for full coverage
             # of that page.
-            "admin sees the 'Manage Organization' link on Home",
-            b"Manage Organization" in admin_client.get("/").data,
+            "admin sees the 'Organization' link under Settings on Home",
+            b'href="/admin/organization"' in admin_client.get("/").data,
         )
 
         for path in (

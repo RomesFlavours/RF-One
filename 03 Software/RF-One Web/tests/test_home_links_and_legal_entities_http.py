@@ -85,14 +85,14 @@ def main() -> int:
             s.commit()
 
         # -----------------------------------------------------------------
-        # Home: admin sees "Manage Legal Entities"; plain user does not.
+        # Home: admin sees Settings → "Legal Entities"; plain user does not.
         # -----------------------------------------------------------------
         admin_client = web_app.app.test_client()
         login(admin_client, "admin1", "AdminPass123!")
         resp = admin_client.get("/")
         check(
-            "admin sees 'Manage Legal Entities' on the general Home, linking to /admin/legal-entities",
-            b"Manage Legal Entities" in resp.data and b'href="/admin/legal-entities"' in resp.data,
+            "admin sees 'Legal Entities' under Settings on the general Home, linking to /admin/legal-entities",
+            b"<strong>Legal Entities</strong>" in resp.data and b'href="/admin/legal-entities"' in resp.data,
         )
         check(
             "'Manage Training students' no longer appears on the general Home (even for an admin)",
@@ -103,8 +103,8 @@ def main() -> int:
         login(plain_client, "plain1", "PlainPass123!")
         resp = plain_client.get("/")
         check(
-            "a non-admin does NOT see 'Manage Legal Entities' on the general Home",
-            b"Manage Legal Entities" not in resp.data,
+            "a non-admin does NOT see 'Legal Entities' on the general Home",
+            b"Legal Entities" not in resp.data and b'href="/admin/legal-entities"' not in resp.data,
         )
 
         # -----------------------------------------------------------------

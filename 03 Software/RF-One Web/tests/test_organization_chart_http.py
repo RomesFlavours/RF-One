@@ -98,8 +98,8 @@ def main() -> int:
         anon_client = web_app.app.test_client()
 
         # -- Home Page link authorization --------------------------------------------
-        check("admin sees 'Manage Organization' on Home", b"Manage Organization" in admin_client.get("/").data)
-        check("non-admin does NOT see 'Manage Organization' on Home", b"Manage Organization" not in plain_client.get("/").data)
+        check("admin sees 'Organization' under Settings on Home", b'href="/admin/organization"' in admin_client.get("/").data)
+        check("non-admin does NOT see 'Organization' on Home", b'href="/admin/organization"' not in plain_client.get("/").data)
 
         # -- New pages render, admin-gated --------------------------------------------
         for path in (

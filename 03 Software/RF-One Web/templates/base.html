@@ -2,11 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block page_title %}RF-One{% endblock %}</title>
 {% if brand_logo_filename %}
   <link rel="icon" type="image/png" href="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}?v=2">
 {% endif %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=4">
 {# BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001 — one modal controller for the
    whole application, loaded with `defer` so it is ready before any page
    script runs but never blocks rendering. Every dialog shares it, so a

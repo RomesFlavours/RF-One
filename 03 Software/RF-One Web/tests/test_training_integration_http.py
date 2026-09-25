@@ -307,7 +307,7 @@ def main() -> int:
         fresh_admin_client = web_app.app.test_client()
         login(fresh_admin_client, "admin", "AdminPass123!")
         resp = fresh_admin_client.get("/")
-        check("10a: RF-One Home still works", resp.status_code == 200 and b"Administration" in resp.data)
+        check("10a: RF-One Home still works", resp.status_code == 200 and b'href="/admin/accounts"' in resp.data)
 
         # Run Tips' own regression check in a SEPARATE PROCESS, not this
         # test's own — Tips and RF-One Web are always separate deployments

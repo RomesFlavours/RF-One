@@ -1,11 +1,10 @@
 {% extends "base.html" %}
 {% block page_title %}RF-One{% endblock %}
 {% block content %}
-<div class="btn-row" style="justify-content: flex-end;">
-  <a href="{{ url_for('profile') }}" class="btn btn-secondary">Profile</a>
+<div class="home-logout">
   <form method="post" action="{{ url_for('logout') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="btn-secondary">Log out</button>
+    <button type="submit" class="link-button">Log out</button>
   </form>
 </div>
 
@@ -13,7 +12,7 @@
 
 <h2>Your Domains</h2>
 {% if domains_view %}
-  <div class="domain-grid">
+  <div class="home-stack">
     {% for domain in domains_view %}
       {% if domain.link %}
         <a class="domain-card" href="{{ domain.link }}">
@@ -27,28 +26,31 @@
           <div class="domain-unavailable-label">Non ancora disponibile</div>
         </div>
       {% endif %}
+      {% if domain.code == 'TIPS' and tips_validation_available %}
+        <a class="home-row home-subrow" href="{{ url_for('tips_validation_runs') }}"><strong>Tips</strong> &mdash; validate saved periods</a>
+      {% endif %}
     {% endfor %}
   </div>
 {% else %}
-  <p class="empty">No RF-One Domains are currently assigned to this account.</p>
+  <p class="empty">No operational Domains are currently assigned to this account.</p>
 {% endif %}
 
-{% if tips_validation_available %}
-  <p><a href="{{ url_for('tips_validation_runs') }}">Tips &mdash; validate saved periods</a></p>
-{% endif %}
+<div class="home-stack">
+  {% if bank_available %}
+    <div class="domain-card home-block">
+      <div class="domain-name">Administration</div>
+      <a class="home-row" href="{{ url_for('bank_home') }}"><strong>Bank</strong> &mdash; Import and reconcile bank transactions.</a>
+    </div>
+  {% endif %}
 
-{% if account.is_admin %}
-  <p><a href="{{ url_for('admin_legal_entities') }}">Manage Legal Entities</a></p>
-  <p><a href="{{ url_for('admin_organization') }}">Manage Organization</a> <span class="empty">(system / organization configuration — not an operational page)</span></p>
-{% endif %}
-
-{% if account.is_admin %}
-  <h2>Administration</h2>
-  <div class="domain-grid">
-    <a class="domain-card" href="{{ url_for('admin_accounts') }}">
-      <div class="domain-name">Accounts</div>
-      <div class="domain-description">Create and manage RF-One accounts and their Domain access.</div>
-    </a>
+  <div class="domain-card home-block">
+    <div class="domain-name">Settings</div>
+    {% if account.is_admin %}
+      <a class="home-row" href="{{ url_for('admin_accounts') }}"><strong>Accounts</strong> &mdash; Manage RF-One accounts and Domain access.</a>
+      <a class="home-row" href="{{ url_for('admin_legal_entities') }}"><strong>Legal Entities</strong> &mdash; Manage legal entities.</a>
+      <a class="home-row" href="{{ url_for('admin_organization') }}"><strong>Organization</strong> &mdash; Configure organization settings.</a>
+    {% endif %}
+    <a class="home-row" href="{{ url_for('profile') }}"><strong>Profile</strong> &mdash; Manage your personal account information.</a>
   </div>
-{% endif %}
+</div>
 {% endblock %}

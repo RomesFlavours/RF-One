@@ -246,6 +246,15 @@ def logout():
 # Home
 # ---------------------------------------------------------------------------
 
+# Home presentation rules (Product Owner, 2026-09-25) — not Domain
+# definitions: `domain_registry` is unchanged.
+#   * Selection is Work in progress: its registry name says so and its link
+#     is the provisional `selection_work_in_progress` page. Every other
+#     Domain on Home counts as operational.
+#   * Bank is presented under Administration instead of as a Domain.
+_HOME_WORK_IN_PROGRESS_CODES = frozenset({"SELECTION"})
+_HOME_ADMINISTRATION_CODES = frozenset({"BANK"})
+
 
 @app.route("/", strict_slashes=False)
 @require_login
@@ -258,11 +267,18 @@ def home():
 
         access_rows = account_service.list_domain_access_for_account(db, account.id)
         enabled_codes = {row.domain_code for row in access_rows if row.enabled}
-        domains_view = [d for d in DOMAINS if d.code in enabled_codes]
+        # Home presentation only: operational Domains first, then Work in
+        # progress ones, each group alphabetical. Bank is shown under
+        # Administration, not as a Domain, with the same access rule.
+        domains_view = sorted(
+            (d for d in DOMAINS if d.code in enabled_codes and d.code not in _HOME_ADMINISTRATION_CODES),
+            key=lambda d: (d.code in _HOME_WORK_IN_PROGRESS_CODES, d.display_name.casefold()),
+        )
 
         return render_template(
             "home.html", account=account, domains_view=domains_view,
             tips_validation_available="TIPS" in enabled_codes,
+            bank_available="BANK" in enabled_codes,
         )
 
 

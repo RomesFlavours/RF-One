@@ -299,7 +299,7 @@ def main() -> int:
         resp = no_domain_client.get("/")
         check(
             "account with no Domain access sees the explicit empty-state message",
-            b"No RF-One Domains are currently assigned to this account." in resp.data,
+            b"No operational Domains are currently assigned to this account." in resp.data,
         )
 
     finally:
