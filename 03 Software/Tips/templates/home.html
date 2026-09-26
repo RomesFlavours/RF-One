@@ -1,147 +1,181 @@
 {% extends "base.html" %}
 {% block content %}
 
+{% set active = acquisition.active_run %}
+{% set busy = active is not none %}
+{% set mode_labels = {'SYNC_NOW': 'Sync Now', 'BACKFILL': 'Historical Backfill', 'LIVE_SYNC': 'Live Sync'} %}
+
 {% with messages = get_flashed_messages(with_categories=True) %}
   {% for category, message in messages %}
     {% if category == "error" %}
       <div class="error">{{ message }}</div>
-    {% endif %}
-  {% endfor %}
-
-  <div class="card">
-    <h2>Historical Backfill</h2>
-    <p class="muted" style="font-size:.78rem;">
-      Manual re-import / gap-recovery only — <strong>not</strong> the normal way Clover data reaches
-      RF-One. Live Sync runs independently and continuously, keeping Payments/Orders/Shifts/Refunds
-      current within seconds. Use this only to fill a known gap or recover a specific period.
-    </p>
-    {% if restaurant %}
-    <p class="muted" style="font-size:.85rem;">Restaurant: <strong>{{ restaurant.name }}</strong></p>
-    {% else %}
-    <p class="error">No Restaurant exists in this database yet.</p>
-    {% endif %}
-    <form method="post" action="{{ url_for('run_historical_backfill') }}" id="import-form" onsubmit="return guardImportSubmit()">
-      <div class="form-row">
-        <div>
-          <label for="from_date">From date</label>
-          <input type="date" id="from_date" name="from_date" value="{{ from_date }}" required>
-          {% if no_business_date_data %}
-            <p class="muted" style="font-size:.72rem; margin-top:.25rem;">
-              No Clover Business Date on file yet for this Restaurant — enter a date to start.
-            </p>
-          {% endif %}
-        </div>
-        <div>
-          <label for="through_date">Through date</label>
-          <input type="date" id="through_date" name="through_date" value="{{ through_date }}" required>
-        </div>
-        <div>
-          <button type="submit" id="import-submit-btn" {{ 'disabled' if not restaurant else '' }}>Run Historical Backfill</button>
-        </div>
-      </div>
-    </form>
-    <script>
-      // UI guard only; the authoritative guard is server-side
-      // (ingestion.clover.acquisition.ImportAlreadyRunningError), shared
-      // with Live Sync. This just stops a fast double-click from firing a
-      // second POST from this page at all.
-      function guardImportSubmit() {
-        var btn = document.getElementById('import-submit-btn');
-        if (btn.dataset.submitting === '1') {
-          return false;
-        }
-        btn.dataset.submitting = '1';
-        btn.disabled = true;
-        btn.textContent = 'Importing...';
-        return true;
-      }
-    </script>
-    <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
-      Read-only against Clover — nothing is ever written back. Re-importing the same period refreshes
-      Payments/Orders/Tips/Refunds from Clover's current values rather than creating duplicates.
-    </p>
-  </div>
-
-  {% for category, summary in messages %}
-    {% if category == "summary" %}
-    <div class="card">
-      <h2>Import Summary</h2>
-      <p class="muted" style="font-size:.82rem;">
-        Period: {{ summary.period_start[:10] }} &rarr; {{ summary.period_end[:10] }}
-      </p>
-      <div class="meta-row">
-        <div class="meta-item"><div class="label">Payments imported</div><div class="value">{{ summary.payments_imported }}</div></div>
-        <div class="meta-item"><div class="label">Payments updated</div><div class="value">{{ summary.payments_updated }}</div></div>
-        <div class="meta-item"><div class="label">Orders imported</div><div class="value">{{ summary.orders_imported }}</div></div>
-        <div class="meta-item"><div class="label">Orders updated</div><div class="value">{{ summary.orders_updated }}</div></div>
-      </div>
-      <div class="meta-row">
-        <div class="meta-item"><div class="label">Voluntary tips</div><div class="value">{{ summary.voluntary_tips_count }} (${{ "%.2f"|format(summary.voluntary_tips_total_minor / 100) }})</div></div>
-        <div class="meta-item"><div class="label">Automatic gratuity</div><div class="value">{{ summary.automatic_gratuity_count }} (${{ "%.2f"|format(summary.automatic_gratuity_total_minor / 100) }})</div></div>
-        <div class="meta-item"><div class="label">Zero-tip payments</div><div class="value">{{ summary.zero_tip_payments_count }}</div></div>
-        <div class="meta-item"><div class="label">Missing-tip payments</div><div class="value">{{ summary.missing_tip_amount_payments_count }}</div></div>
-      </div>
-      <div class="meta-row">
-        <div class="meta-item"><div class="label">Split-payment orders</div><div class="value">{{ summary.split_payment_orders_count }}</div></div>
-        <div class="meta-item"><div class="label">Refunds found</div><div class="value">{{ summary.refunds_found }}</div></div>
-        <div class="meta-item"><div class="label">Employee mismatches</div><div class="value">{{ summary.employee_mismatches|length }}</div></div>
-      </div>
-      <div class="meta-row">
-        <div class="meta-item"><div class="label">Employees resolved</div><div class="value">{{ summary.employees_resolved }}</div></div>
-        <div class="meta-item"><div class="label">Shifts/time entries imported</div><div class="value">{{ summary.shifts_imported }}</div></div>
-      </div>
-
-      {% if summary.employee_mismatches %}
-      <h2>Employee mismatches (review)</h2>
-      <div class="table-scroll">
-      <table>
-        <thead><tr><th>Order</th><th>Order Employee</th><th>Payment</th><th>Payment Employee</th></tr></thead>
-        <tbody>
-        {% for mm in summary.employee_mismatches %}
-          <tr>
-            <td>{{ mm.order_source_id }}</td>
-            <td>{{ mm.order_employee_source_id }}</td>
-            <td>{{ mm.payment_source_id }}</td>
-            <td>{{ mm.payment_employee_source_id }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% endif %}
-
-      {% if summary.errors %}
-      <h2>Errors / anomalies</h2>
-      <ul>
-        {% for err in summary.errors %}<li class="muted" style="font-size:.85rem;">{{ err }}</li>{% endfor %}
-      </ul>
-      {% endif %}
-    </div>
+    {% elif category == "info" %}
+      <div class="card" style="border-left:4px solid #2e7d32;"><p style="margin:0;">{{ message }}</p></div>
     {% endif %}
   {% endfor %}
 {% endwith %}
 
-{% if recent_runs %}
+{% if restaurant %}
+<p class="muted" style="font-size:.85rem;">Restaurant: <strong>{{ restaurant.name }}</strong></p>
+{% else %}
+<p class="error">No Restaurant exists in this database yet.</p>
+{% endif %}
+
+{% if busy %}
+<div class="card" id="active-job" data-active-run-id="{{ active.id }}">
+  <h2>Acquisition in progress</h2>
+  <p>
+    <span class="badge warn">{{ active.status }}</span>
+    #{{ active.id }} — {{ mode_labels.get(active.acquisition_mode, active.acquisition_mode or 'Clover acquisition') }},
+    {{ active.source_window_start.strftime('%Y-%m-%d %H:%M') if active.source_window_start else '-' }} &rarr;
+    {{ active.source_window_end.strftime('%Y-%m-%d %H:%M') if active.source_window_end else '-' }} UTC
+  </p>
+  <p class="muted" style="font-size:.8rem;">
+    It runs on its own: you can close or leave this page. A new acquisition for this location can start
+    once this one is COMPLETE or FAILED. This page refreshes itself when it ends.
+  </p>
+</div>
+{% endif %}
+
 <div class="card">
-  <h2>Recent Clover acquisition runs (Historical Backfill + Live Sync)</h2>
+  <h2>Sync Now</h2>
+  <p class="muted" style="font-size:.85rem;">
+    Updates RF-One from the last completed synchronization up to now. No dates to choose.
+  </p>
+  <p style="font-size:.85rem;">
+    Last completed synchronization:
+    {% if acquisition.sync_point %}
+      <strong>{{ acquisition.sync_point.at.strftime('%Y-%m-%d %H:%M') }} UTC</strong>
+      {% if acquisition.sync_point.basis == 'BACKFILL' %}
+        <span class="muted">(no synchronization yet — starts from the end of the latest Historical Backfill)</span>
+      {% endif %}
+    {% else %}
+      <strong>none yet</strong> <span class="muted">— run a Historical Backfill first to set the starting point.</span>
+    {% endif %}
+  </p>
+  <form method="post" action="{{ url_for('clover_sync_now') }}" onsubmit="return guardSubmit('sync-now-btn')">
+    <button type="submit" id="sync-now-btn" {{ 'disabled' if (busy or not acquisition.location_id or not acquisition.sync_point) else '' }}>Sync Now</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Historical Backfill</h2>
+  <p class="muted" style="font-size:.85rem;">
+    Manually recovers or rebuilds one specific historical period — a known gap, a first load, a correction.
+    Not the everyday way to update RF-One (that is Sync Now).
+  </p>
+  <form method="post" action="{{ url_for('run_historical_backfill') }}" id="import-form" onsubmit="return guardSubmit('import-submit-btn')">
+    <div class="form-row">
+      <div>
+        <label for="from_date">From date</label>
+        <input type="date" id="from_date" name="from_date" value="{{ from_date }}" required>
+        {% if no_business_date_data %}
+          <p class="muted" style="font-size:.72rem; margin-top:.25rem;">
+            No Clover Business Date on file yet for this Restaurant — enter a date to start.
+          </p>
+        {% endif %}
+      </div>
+      <div>
+        <label for="through_date">Through date</label>
+        <input type="date" id="through_date" name="through_date" value="{{ through_date }}" required>
+      </div>
+      <div>
+        <button type="submit" id="import-submit-btn" {{ 'disabled' if (busy or not acquisition.location_id) else '' }}>Run Historical Backfill</button>
+      </div>
+    </div>
+  </form>
+  <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
+    Read-only against Clover — nothing is ever written back. Re-acquiring a period updates the Orders,
+    Payments, Tips, Gratuity and Shifts already in RF-One from Clover's current values; nothing is duplicated.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Live Sync</h2>
+  {% set ls = acquisition.live_sync %}
+  {% if ls and ls.active %}
+    <p><span class="badge ok">ACTIVE</span> Last update: {{ ls.last_update.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+  {% elif ls and ls.enabled %}
+    <p><span class="badge warn">ENABLED, NOT RUNNING</span>
+      {% if ls.last_update %}Last update: {{ ls.last_update.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}No cycle has completed yet.{% endif %}</p>
+  {% else %}
+    <p><span class="badge warn">NOT ACTIVE</span></p>
+    <p class="muted" style="font-size:.8rem;">
+      There is no continuous synchronization today — RF-One is updated only by Sync Now and Historical Backfill.
+      Live Sync is prepared: once switched on it will keep RF-One current by re-reading the most recent
+      {{ ((ls.recent_window.total_seconds() // 60)|int) if ls else 120 }} minutes on every cycle.
+    </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Acquisition history</h2>
+  {% if acquisition.runs %}
   <div class="table-scroll">
   <table>
-    <thead><tr><th>Started</th><th>Status</th><th>Window</th><th>Notes</th></tr></thead>
+    <thead><tr>
+      <th>#</th><th>Type</th><th>Status</th><th>Requested period (UTC)</th><th>Started</th><th>Ended</th>
+      <th>Orders</th><th>Payments</th><th>Shifts</th><th>Errors</th>
+    </tr></thead>
     <tbody>
-    {% for run in recent_runs %}
+    {% for run in acquisition.runs %}
       <tr>
-        <td>{{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '-' }}</td>
-        <td><span class="badge {{ 'ok' if run.status == 'COMPLETE' else 'warn' }}">{{ run.status }}</span></td>
-        <td>{{ run.source_window_start.strftime('%Y-%m-%d') if run.source_window_start else '-' }} &rarr;
-            {{ run.source_window_end.strftime('%Y-%m-%d') if run.source_window_end else '-' }}</td>
-        <td class="muted" style="font-size:.78rem;">{{ run.notes }}</td>
+        <td>{{ run.id }}</td>
+        <td>{{ mode_labels.get(run.acquisition_mode, run.acquisition_mode or '-') }}</td>
+        <td>
+          <span class="badge {{ 'ok' if run.status == 'COMPLETE' else 'warn' }}">{{ run.status }}</span>
+          {% if run.status == 'PARTIAL' %}<div class="muted" style="font-size:.7rem;">completed with warnings</div>{% endif %}
+          {% if run.id in acquisition.stale_run_ids %}<div class="muted" style="font-size:.7rem;">no sign of life</div>{% endif %}
+        </td>
+        <td>{{ run.source_window_start.strftime('%Y-%m-%d %H:%M') if run.source_window_start else '-' }} &rarr;
+            {{ run.source_window_end.strftime('%Y-%m-%d %H:%M') if run.source_window_end else '-' }}</td>
+        <td>
+          {% if run.status == 'QUEUED' %}queued {{ run.queued_at.strftime('%Y-%m-%d %H:%M') if run.queued_at else '' }}
+          {% else %}{{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '-' }}{% endif %}
+        </td>
+        <td>{{ run.finished_at.strftime('%Y-%m-%d %H:%M') if run.finished_at else '-' }}</td>
+        <td>{{ run.orders_processed if run.orders_processed is not none else '-' }}</td>
+        <td>{{ run.payments_processed if run.payments_processed is not none else '-' }}</td>
+        <td>{{ run.shifts_processed if run.shifts_processed is not none else '-' }}</td>
+        <td class="muted" style="font-size:.75rem; max-width:22rem;">
+          {% if run.error_summary %}{{ run.error_summary }}{% elif run.status == 'FAILED' %}{{ run.notes }}{% else %}-{% endif %}
+        </td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
+  <p class="muted" style="font-size:.72rem;">Times in UTC. Counts show "-" for acquisitions recorded before counts were tracked.</p>
+  {% else %}
+  <p class="empty">No Clover acquisition recorded for this location yet.</p>
+  {% endif %}
 </div>
-{% endif %}
+
+<script>
+  // UI guard only: the authoritative guard is the server-side lock shared by
+  // every Clover acquisition. This just stops a double-click posting twice.
+  function guardSubmit(buttonId) {
+    var btn = document.getElementById(buttonId);
+    if (btn.dataset.submitting === '1') { return false; }
+    btn.dataset.submitting = '1';
+    btn.disabled = true;
+    btn.textContent = 'Starting...';
+    return true;
+  }
+  // While an acquisition is QUEUED/RUNNING, check every 5 seconds and reload
+  // once it has ended, so COMPLETE/FAILED appear without a click.
+  (function () {
+    var box = document.getElementById('active-job');
+    if (!box) { return; }
+    var runId = box.dataset.activeRunId;
+    setInterval(function () {
+      fetch('{{ url_for("clover_acquisition_status") }}', {cache: 'no-store'})
+        .then(function (r) { return r.json(); })
+        .then(function (s) { if (String(s.active_run_id) !== String(runId)) { window.location.reload(); } })
+        .catch(function () {});
+    }, 5000);
+  })();
+</script>
 
 <div class="card">
   <h2>Imported Orders (the business unit — spec §3)</h2>

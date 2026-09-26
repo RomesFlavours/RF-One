@@ -887,6 +887,23 @@ class IngestionRun(Base):
     # column to NULL, so Correction rows never influence either.
     resource_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
+    # CLOVER_ACQUISITION_JOBS_001 — this table is the one history of Clover
+    # acquisition jobs (Sync Now, Historical Backfill, Live Sync), run in a
+    # process separate from the web request. `acquisition_mode` is the
+    # structured mode (BACKFILL / SYNC_NOW / LIVE_SYNC / CORRECTION) that
+    # "last successful synchronization" is computed from. `status` gains
+    # QUEUED (accepted, holding the Location's lock, not yet picked up);
+    # `queued_at` is when it was accepted, `started_at` when the process
+    # began it, `heartbeat_at` its last sign of life. The `*_processed`
+    # counts and `error_summary` are what the job history shows.
+    acquisition_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    orders_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    payments_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    shifts_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # TIPS_IMPORT_CONCURRENCY_GUARD_001 §5 — the execution token. Non-NULL

@@ -98,6 +98,13 @@ Nessuno script di deploy era presente nel repository; la procedura è stata rico
 
 ---
 
+## Rilascio di `rfone-tips` e runner dei lavori Clover (CLOVER_ACQUISITION_JOBS_001, 2026-09-26)
+
+- `Dockerfile` e `buildspec.yml` di `rfone-tips` sono ora versionati in [`deploy/rfone-tips/`](deploy/rfone-tips/) (copiati invariati dal sorgente già distribuito su `s3://rfone-tips-deploy-418674484214/source.zip`). Lo zip si costruisce da file committati come per `rfone-web`: `03 Software/{RF-One Data Store, Tips, Clover Data Explorer, Shared UI, Training}` più `Dockerfile`/`buildspec.yml` alla radice; progetto CodeBuild `rfone-tips-build`, ECR `rfone-tips:latest`, App Runner `rfone-tips` (`AutoDeploymentsEnabled: false`).
+- **`rfone-tips` non raggiunge Internet**: esce tramite VPC connector e la VPC di default non ha NAT gateway. Per questo Sync Now e Historical Backfill non girano dentro `rfone-tips`, ma come task ECS Fargate separati (IP pubblico, stesso security group ammesso da RDS). Dettagli, risorse e variabili d'ambiente: [`deploy/clover-acquisition-job/README.md`](deploy/clover-acquisition-job/README.md).
+
+---
+
 ## Stato SES (mittente RF-One)
 
 Verificato il 2026-09-11 via `aws sesv2 get-account` / `get-email-identity` / `get-account` (dopo `put-account-details`):

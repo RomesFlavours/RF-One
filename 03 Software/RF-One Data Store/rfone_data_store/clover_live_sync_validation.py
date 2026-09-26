@@ -24,9 +24,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from . import models as m
 from .clover_acquisition_validation import FakeCloverClient
 from .historical_backfill_extractor_validation import _FullCoverageFakeCloverClient
+from .technical.connectors.clover.acquisition_jobs import DEFAULT_LIVE_SYNC_RECENT_WINDOW
 from .technical.connectors.clover.live_sync import (
-    DEFAULT_INITIAL_LOOKBACK,
-    DEFAULT_OVERLAP_BUFFER,
     compute_next_sync_window,
     run_live_sync_cycle,
 )
@@ -54,7 +53,8 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
         try:
             _test_non_clover_location_skips_cleanly(session, result)
             _test_first_ever_cycle_uses_initial_lookback(session, result)
-            _test_subsequent_cycle_resumes_from_checkpoint_with_overlap(session, result)
+            _test_subsequent_cycle_rereads_only_the_recent_window(session, result)
+            _test_stopped_live_sync_catches_up_from_last_successful_sync(session, result)
             _test_backfill_advances_the_same_checkpoint_live_sync_reads(session, result)
             _test_cycle_skips_when_another_acquisition_is_running(session, result)
             _test_live_sync_cycle_populates_provider_mirror(session, result)
@@ -143,41 +143,61 @@ def _test_first_ever_cycle_uses_initial_lookback(session: Session, result: Valid
 
     window = compute_next_sync_window(session, location_id=location.id, now=now)
     result.check(
-        "first-ever cycle (no prior acquisition run at all): period_start = now - initial_lookback, "
+        "first-ever cycle (no prior acquisition run at all): period_start = now - recent window (2h), "
         "period_end = now",
-        window is not None and window[0] == now - DEFAULT_INITIAL_LOOKBACK and window[1] == now,
+        window is not None and window[0] == now - DEFAULT_LIVE_SYNC_RECENT_WINDOW and window[1] == now,
     )
 
 
-def _test_subsequent_cycle_resumes_from_checkpoint_with_overlap(session: Session, result: ValidationResult) -> None:
-    restaurant, location, source_system = _build_fixture(session, merchant_source_id="LIVESYNC2")
-    prior_window_end = datetime(2026, 9, 10, 11, 55, 0, tzinfo=UTC)
-
+def _add_successful_live_sync_run(session: Session, source_system: m.SourceSystem, location: m.Location, end: datetime) -> None:
     session.add(
         m.IngestionRun(
-            source_system_id=source_system.id, location_id=location.id, started_at=prior_window_end,
-            finished_at=prior_window_end, status="COMPLETE",
-            source_window_start=prior_window_end - timedelta(minutes=15), source_window_end=prior_window_end,
+            source_system_id=source_system.id, location_id=location.id, started_at=end,
+            finished_at=end, status="COMPLETE", acquisition_mode="LIVE_SYNC",
+            source_window_start=end - timedelta(minutes=15), source_window_end=end,
             notes="CLOVER_ACQUISITION mode=LIVE_SYNC location_id=%d; payments=0 orders=0 shifts=0 refunds=0" % location.id,
         )
     )
     session.commit()
 
+
+def _test_subsequent_cycle_rereads_only_the_recent_window(session: Session, result: ValidationResult) -> None:
+    """CLOVER_ACQUISITION_JOBS_001 §5 — a running Live Sync re-reads now - 2h
+    -> now every cycle (open Orders, late Payments, recent corrections), not
+    a razor-thin slice from its last checkpoint and not deep history."""
+    restaurant, location, source_system = _build_fixture(session, merchant_source_id="LIVESYNC2")
+    _add_successful_live_sync_run(session, source_system, location, datetime(2026, 9, 10, 11, 55, 0, tzinfo=UTC))
+
     now = datetime(2026, 9, 10, 12, 0, 0, tzinfo=UTC)
     window = compute_next_sync_window(session, location_id=location.id, now=now)
     result.check(
-        "a subsequent cycle resumes from the prior run's own source_window_end, minus the overlap "
-        "buffer — never from scratch, and never a razor's-edge boundary",
-        window is not None and window[0] == prior_window_end - DEFAULT_OVERLAP_BUFFER and window[1] == now,
+        "a subsequent cycle (last sync 5 minutes ago) re-reads exactly the recent window: now - 2h -> now",
+        window is not None and window[0] == now - DEFAULT_LIVE_SYNC_RECENT_WINDOW and window[1] == now,
+    )
+    custom = compute_next_sync_window(session, location_id=location.id, now=now, recent_window=timedelta(minutes=30))
+    result.check(
+        "the recent window is configurable (30 minutes -> now - 30m)",
+        custom is not None and custom[0] == now - timedelta(minutes=30),
+    )
+
+
+def _test_stopped_live_sync_catches_up_from_last_successful_sync(session: Session, result: ValidationResult) -> None:
+    restaurant, location, source_system = _build_fixture(session, merchant_source_id="LIVESYNC2B")
+    last_sync = datetime(2026, 9, 9, 8, 0, 0, tzinfo=UTC)
+    _add_successful_live_sync_run(session, source_system, location, last_sync)
+
+    now = datetime(2026, 9, 10, 12, 0, 0, tzinfo=UTC)
+    window = compute_next_sync_window(session, location_id=location.id, now=now)
+    result.check(
+        "a Live Sync stopped for longer than the recent window restarts from its last successful sync "
+        "(no gap is skipped)",
+        window is not None and window[0] == last_sync and window[1] == now,
     )
 
 
 def _test_backfill_advances_the_same_checkpoint_live_sync_reads(session: Session, result: ValidationResult) -> None:
-    """A manual Historical Backfill through a recent date and a Live Sync
-    cycle both call the exact same `import_clover_period`, populating
-    `source_window_start`/`source_window_end` identically — so a Backfill
-    naturally advances Live Sync's own checkpoint too, with no special-case
-    code needed."""
+    """Before any synchronization exists, a Historical Backfill's own end is
+    the starting point — the modes share one timeline, never two."""
     restaurant, location, source_system = _build_fixture(session, merchant_source_id="LIVESYNC3")
     from .technical.connectors.clover.acquisition import MODE_BACKFILL, import_clover_period
 
@@ -189,12 +209,12 @@ def _test_backfill_advances_the_same_checkpoint_live_sync_reads(session: Session
     )
     session.commit()
 
-    now = datetime(2026, 9, 10, 0, 5, 0, tzinfo=UTC)
+    now = datetime(2026, 9, 10, 6, 0, 0, tzinfo=UTC)
     window = compute_next_sync_window(session, location_id=location.id, now=now)
     result.check(
-        "a Historical Backfill's own source_window_end becomes Live Sync's next checkpoint — the two "
-        "modes share one continuous timeline, never two independent ones",
-        window is not None and window[0] == backfill_end - DEFAULT_OVERLAP_BUFFER and window[1] == now,
+        "with no synchronization yet, a Historical Backfill's own source_window_end is where Live Sync "
+        "starts — the two modes share one continuous timeline, never two independent ones",
+        window is not None and window[0] == backfill_end and window[1] == now,
     )
 
 

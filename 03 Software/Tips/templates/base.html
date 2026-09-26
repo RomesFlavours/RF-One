@@ -32,7 +32,7 @@
   </header>
   <p class="subtitle">{% block page_subtitle %}Clover source-fact ingestion and Tip Distribution Rule configuration — no employee payout is calculated here.{% endblock %}</p>
   <div class="nav-tabs">
-    <a href="{{ url_for('home') }}" class="{{ 'active' if active_nav == 'historical-backfill' else '' }}">Historical Backfill</a>
+    <a href="{{ url_for('home') }}" class="{{ 'active' if active_nav == 'historical-backfill' else '' }}">Clover Acquisition</a>
     <a href="{{ url_for('distribution_rules_home') }}" class="{{ 'active' if active_nav == 'distribution-rules' else '' }}">Distribution Rules</a>
     <a href="{{ url_for('calculate_tips_home') }}" class="{{ 'active' if active_nav == 'calculate-tips' else '' }}">Calculate Tips</a>
     <a href="{{ url_for('host_audit_home') }}" class="{{ 'active' if active_nav == 'host-audit' else '' }}">Explain / Audit Host Tips</a>

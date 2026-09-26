@@ -84,20 +84,24 @@ def _test_ui_button_disabled_on_submit(result: ValidationResult) -> None:
     No browser/JS test runner is available in this environment, so this is
     a static assertion on the shipped template rather than a real
     click-through: it confirms the submit handler that disables the button,
-    relabels it "Importing...", and blocks a second submit from the same
+    relabels it "Starting...", and blocks a second submit from the same
     page is actually present and wired to the form — the same limitation
     documented in `07 Tasks/Reports/TIPS_IMPORT_CONCURRENCY_GUARD_001.md`."""
     if not _TIPS_HOME_TEMPLATE.is_file():
         result.check(f"UI guard: {_TIPS_HOME_TEMPLATE} exists", False)
         return
     html = _TIPS_HOME_TEMPLATE.read_text(encoding="utf-8")
+    # CLOVER_ACQUISITION_JOBS_001: the page has two acquisition forms (Sync
+    # Now, Historical Backfill) sharing one guard; a submit now only starts
+    # a job, hence "Starting..." rather than "Importing...".
     result.check(
-        "UI guard: the import form's submit is wired to a guard handler",
-        'onsubmit="return guardImportSubmit()"' in html and 'id="import-submit-btn"' in html,
+        "UI guard: both acquisition forms' submits are wired to the guard handler",
+        "onsubmit=\"return guardSubmit('import-submit-btn')\"" in html and 'id="import-submit-btn"' in html
+        and "onsubmit=\"return guardSubmit('sync-now-btn')\"" in html and 'id="sync-now-btn"' in html,
     )
     result.check(
-        "UI guard: first submit disables the button and relabels it 'Importing...'",
-        "btn.disabled = true" in html and "Importing..." in html,
+        "UI guard: first submit disables the button and relabels it 'Starting...'",
+        "btn.disabled = true" in html and "Starting..." in html,
     )
     result.check(
         "UI guard: a second submit from the same page (before reload) is blocked",

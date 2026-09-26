@@ -24,14 +24,18 @@ infrastructure exists, a webhook handler can call the exact same
 without any change to the acquisition logic itself — only the trigger
 (a poll tick vs. an inbound webhook call) would differ.
 
-Latency ("seconds, not minutes"): with a short poll interval (default 15s)
-and a narrow, checkpoint-advancing window, a Payment/Order change is
-typically visible in RF-One within one interval of it settling on Clover.
+Window (CLOVER_ACQUISITION_JOBS_001 §5): each cycle re-reads only a small
+recent window — now minus 2 hours by default, configurable — so Orders
+still open, Payments arriving just after, and very recent corrections are
+caught. It is not a deep historical re-scan; see `compute_next_sync_window`.
+
+Not active until enabled: nothing starts this loop automatically. It is to
+be switched on (and `RFONE_CLOVER_LIVE_SYNC_ENABLED` set, so the pages say
+so) when the Product Owner decides the platform is ready (Cognito).
 
 Idempotency: every cycle reuses the exact same upsert-by-source-identity
-primitives as Backfill, and always includes a small overlap buffer in its
-window — a repeated or overlapping poll can only refresh existing rows from
-Clover's current values, never duplicate them.
+primitives as Backfill — a repeated or overlapping poll can only refresh
+existing rows from Clover's current values, never duplicate them.
 
 Concurrency: a cycle uses the SAME Location-scoped `IngestionRun.lock_key`
 Backfill uses — a manual Backfill and a Live Sync cycle can never write
@@ -49,10 +53,8 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from .... import models as m
 from .acquisition import (
     ImportAlreadyRunningError,
     ImportSummary,
@@ -61,68 +63,36 @@ from .acquisition import (
     _resolve_clover_merchant,
     import_clover_period,
 )
+from .acquisition_jobs import compute_live_sync_window
 
 UTC = timezone.utc
 LOG = logging.getLogger("clover_live_sync")
 
 DEFAULT_POLL_INTERVAL_SECONDS = 15.0
-# First-ever cycle (no prior acquisition run at all for this Location):
-# starts this far back rather than the dawn of time. Anything older is
-# Historical Backfill's job, not Live Sync's.
-DEFAULT_INITIAL_LOOKBACK = timedelta(hours=1)
-# Every cycle's window starts this far BEFORE the prior cycle's own
-# period_end — never a razor's edge — tolerating Clover write-then-read
-# latency/clock skew so a Payment that finalizes moments after a prior
-# cycle's fetch is still reliably captured on the very next cycle. Safe by
-# construction: re-touching a slightly wider window than strictly needed can
-# only refresh rows via the existing idempotent upsert, never duplicate them.
-DEFAULT_OVERLAP_BUFFER = timedelta(minutes=2)
 
 
 def compute_next_sync_window(
     session: Session, *, location_id: int, now: datetime | None = None,
-    initial_lookback: timedelta = DEFAULT_INITIAL_LOOKBACK, overlap_buffer: timedelta = DEFAULT_OVERLAP_BUFFER,
+    recent_window: timedelta | None = None,
 ) -> tuple[datetime, datetime] | None:
-    """`[period_start, period_end)` for the next Live Sync cycle.
-    `period_end` is always `now`; `period_start` resumes from the last
-    COMPLETE/PARTIAL acquisition run's own `source_window_end` (Backfill OR
-    a prior Live Sync cycle — both populate this identically, so a manual
-    Backfill through yesterday naturally advances Live Sync's own
-    checkpoint too) minus `overlap_buffer`. On the very first cycle ever for
-    this Location, starts from `now - initial_lookback` instead. Returns
-    `None` if `location_id` is not a Clover-sourced Location at all (the
-    caller should skip it, not error)."""
-    now = now or datetime.now(UTC)
-    merchant = _resolve_clover_merchant(session, location_id)
-    if merchant is None:
+    """`[period_start, period_end]` for the next Live Sync cycle
+    (CLOVER_ACQUISITION_JOBS_001 §5).
+
+    `period_end` is always `now`. `period_start` is `now - recent window`
+    (default 2 hours, `RFONE_CLOVER_LIVE_SYNC_WINDOW_MINUTES`): every cycle
+    re-reads that small recent window so Orders still open, Payments that
+    arrive just after, and very recent corrections are not missed — never a
+    deep historical re-scan. Only when the last successful synchronization
+    is older than that window (Live Sync was stopped) does the cycle start
+    from that point instead, catching up once rather than skipping the gap.
+    The rule itself lives in `acquisition_jobs.compute_live_sync_window`,
+    shared with Sync Now's own "last successful synchronization".
+
+    Returns `None` if `location_id` is not a Clover-sourced Location at all
+    (the caller should skip it, not error)."""
+    if _resolve_clover_merchant(session, location_id) is None:
         return None
-    source_system_id, _merchant_id = merchant
-
-    last_run = session.scalars(
-        select(m.IngestionRun)
-        .where(
-            m.IngestionRun.location_id == location_id,
-            m.IngestionRun.source_system_id == source_system_id,
-            m.IngestionRun.status.in_(("COMPLETE", "PARTIAL")),
-            m.IngestionRun.source_window_end.is_not(None),
-            # The Live Cursor is the whole-Location Backfill/Live Sync
-            # checkpoint only — the Correction/Reconciliation Poller's own
-            # per-resource Modification Cursor rows (`resource_type` set,
-            # correction_sync.py) must never be mistaken for it.
-            m.IngestionRun.resource_type.is_(None),
-        )
-        .order_by(m.IngestionRun.id.desc())
-        .limit(1)
-    ).first()
-
-    if last_run is not None and last_run.source_window_end is not None:
-        checkpoint = last_run.source_window_end
-        checkpoint = checkpoint if checkpoint.tzinfo is not None else checkpoint.replace(tzinfo=UTC)
-        period_start = checkpoint - overlap_buffer
-    else:
-        period_start = now - initial_lookback
-
-    return period_start, now
+    return compute_live_sync_window(session, location_id=location_id, now=now, recent_window=recent_window)
 
 
 def run_live_sync_cycle(
