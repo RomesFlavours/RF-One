@@ -41,6 +41,12 @@ Paid only while a job runs. Logs in CloudWatch `/ecs/rfone-clover-acquisition-jo
 | `RFONE_CLOVER_JOB_ECS_SECURITY_GROUPS` | `sg-0a4d4d094ea0d0fc3` |
 | `AWS_REGION` | `us-east-1` |
 
+The task reads `CLOVER_MERCHANT_ID` from `rfone-tips/clover-merchant-id`; it
+must equal the Location's `source_location_id`. On 2026-09-26 it held a wrong
+value, which made Clover reject Employees/Tenders/Shifts/catalog (401) while
+Payments/Orders still worked — corrected the same day (see
+`07 Tasks/Reports/CLOVER_ACQUISITION_JOBS_001.md` §3).
+
 `RFONE_CLOVER_LIVE_SYNC_ENABLED` stays **unset**: Live Sync is prepared but
 not active until the Product Owner enables it (Cognito).
 
