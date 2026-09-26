@@ -27,10 +27,10 @@ Paid only while a job runs. Logs in CloudWatch `/ecs/rfone-clover-acquisition-jo
 | ECS cluster (Fargate) | `rfone-jobs` |
 | Task definition | [`task-definition.json`](task-definition.json) (family `rfone-clover-acquisition-job`) |
 | Execution role | `rfone-clover-acquisition-job-execution-role` — `AmazonECSTaskExecutionRolePolicy` + [`execution-role-secrets-policy.json`](execution-role-secrets-policy.json) + `logs:CreateLogGroup` |
-| Permission for the web service | [`apprunner-instance-role-runtask-policy.json`](apprunner-instance-role-runtask-policy.json), inline on `rfone-tips-apprunner-instance-role` (policy `rfone-tips-run-clover-acquisition-job`) |
-| ECS API VPC endpoint | `vpce-03dc68cffc4932f8b` (`com.amazonaws.us-east-1.ecs`, private DNS, subnets 1a/1b), security group `sg-0503f48dd3ae94599` `rfone-ecs-endpoint-sg`: 443 only from `sg-0a4d4d094ea0d0fc3`. Needed because `rfone-tips` has no Internet egress, so it could not reach the public ECS API either (first production attempt hung 60 s → 500). About 15 $/month. |
+| Permission for the web service | [`apprunner-instance-role-runtask-policy.json`](apprunner-instance-role-runtask-policy.json), inline on `rfone-web-apprunner-instance-role` (policy `rfone-web-run-clover-acquisition-job`). Since CLOVER_ACQUISITION_IDENTITY_001 only RF-One Web starts jobs (behind the RF-One login and the CLOVER_ACQUISITION access); the permission and launcher variables were removed from `rfone-tips`. |
+| ECS API VPC endpoint | `vpce-03dc68cffc4932f8b` (`com.amazonaws.us-east-1.ecs`, private DNS, subnets 1a/1b), security group `sg-0503f48dd3ae94599` `rfone-ecs-endpoint-sg`: 443 only from `sg-0a4d4d094ea0d0fc3` (the VPC connector shared by `rfone-web` and `rfone-tips`). Needed because `rfone-tips` has no Internet egress, so it could not reach the public ECS API either (first production attempt hung 60 s → 500). About 15 $/month. |
 
-`rfone-tips` environment (App Runner):
+`rfone-web` environment (App Runner) — `rfone-tips` no longer starts jobs:
 
 | Variable | Value |
 |---|---|
@@ -56,5 +56,5 @@ not active until the Product Owner enables it (Cognito).
 2. Build and push the `rfone-tips` image (`deploy/rfone-tips/`, CodeBuild `rfone-tips-build`).
 3. Create the cluster, roles, task definition and ECS endpoint above (ECS's
    own service-linked role `AWSServiceRoleForECS` already existed).
-4. Set the environment variables, redeploy `rfone-tips`.
+4. Set the environment variables on `rfone-web` (the only service that starts jobs), redeploy it; rebuild `rfone-tips` too, since its image is the one the job task runs.
 5. Minimal check: one Sync Now (or a one-day Backfill), watch QUEUED → RUNNING → COMPLETE.

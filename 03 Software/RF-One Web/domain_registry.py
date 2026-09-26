@@ -95,6 +95,21 @@ DOMAINS: tuple[DomainDefinition, ...] = (
         # as every other destination: `require_domain_access("BANK")`.
         link="/bank",
     ),
+    DomainDefinition(
+        code="CLOVER_ACQUISITION",
+        display_name="Clover Acquisition",
+        description="Start Sync Now and Historical Backfill from Clover, and follow their progress.",
+        future_path="/clover-acquisition",
+        # Product Owner decision (CLOVER_ACQUISITION_IDENTITY_001,
+        # 2026-09-26): the access that allows starting a manual Clover
+        # acquisition is a dedicated entry of THIS list, granted account by
+        # account through the existing access screen — not a new role or
+        # hierarchy. It gates a platform capability (the Clover Technical
+        # Connector), not a business Domain; it is listed here because this
+        # list is where RF-One access codes live. Shown on Home under
+        # Administration. `clover_acquisition_routes.py`.
+        link="/clover-acquisition",
+    ),
 )
 
 DOMAINS_BY_CODE: dict[str, DomainDefinition] = {d.code: d for d in DOMAINS}

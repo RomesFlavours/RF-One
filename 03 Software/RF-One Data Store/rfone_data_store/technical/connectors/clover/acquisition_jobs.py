@@ -373,7 +373,7 @@ def default_launcher(session: Session) -> Launcher:
 
 def _enqueue(
     session: Session, *, location_id: int, mode: str, period_start: datetime, period_end: datetime,
-    launcher: Launcher | None,
+    launcher: Launcher | None, requested_by_account_id: int | None,
 ) -> m.IngestionRun:
     merchant = _resolve_clover_merchant(session, location_id)
     if merchant is None:
@@ -387,6 +387,12 @@ def _enqueue(
         period_start=period_start, period_end=period_end, mode=mode, status=STATUS_QUEUED,
     )
     run_id = run.id
+    # CLOVER_ACQUISITION_IDENTITY_001 — who asked, recorded on the job
+    # before anything is launched (the caller has already authenticated
+    # and authorized that account).
+    if requested_by_account_id is not None:
+        run.requested_by_account_id = requested_by_account_id
+        session.commit()
     try:
         (launcher or default_launcher(session))(run_id)
     except Exception as exc:  # noqa: BLE001 — never leave an accepted job holding the lock
@@ -401,11 +407,16 @@ def _enqueue(
 
 def request_sync_now(
     session: Session, *, location_id: int, launcher: Launcher | None = None, now: datetime | None = None,
+    requested_by_account_id: int | None = None,
 ) -> m.IngestionRun:
     """Accept a Sync Now job for `location_id` and start it; returns the
     QUEUED run immediately. Raises `ImportAlreadyRunningError`,
     `NoSyncStartingPointError`, `NotACloverLocationError` or
-    `JobLaunchError`."""
+    `JobLaunchError`.
+
+    This service does not authenticate anyone: a caller exposed to people
+    (RF-One Web) must establish and authorize the account BEFORE calling,
+    and passes it as `requested_by_account_id`."""
     if _resolve_clover_merchant(session, location_id) is None:
         raise NotACloverLocationError(f"location_id={location_id} is not a Clover-sourced Location.")
     # "Already in progress" is the answer that matters while a job runs —
@@ -418,12 +429,13 @@ def request_sync_now(
     return _enqueue(
         session, location_id=location_id, mode=MODE_SYNC_NOW,
         period_start=period_start, period_end=period_end, launcher=launcher,
+        requested_by_account_id=requested_by_account_id,
     )
 
 
 def request_historical_backfill(
     session: Session, *, location_id: int, period_start: datetime, period_end: datetime,
-    launcher: Launcher | None = None,
+    launcher: Launcher | None = None, requested_by_account_id: int | None = None,
 ) -> m.IngestionRun:
     """Accept a Historical Backfill job for exactly `[period_start,
     period_end]` and start it; returns the QUEUED run immediately. Same
@@ -433,6 +445,7 @@ def request_historical_backfill(
     return _enqueue(
         session, location_id=location_id, mode=MODE_BACKFILL,
         period_start=period_start, period_end=period_end, launcher=launcher,
+        requested_by_account_id=requested_by_account_id,
     )
 
 

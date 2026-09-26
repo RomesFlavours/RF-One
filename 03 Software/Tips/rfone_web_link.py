@@ -53,3 +53,13 @@ def tips_run_url(run_id: int) -> str | None:
     if base is None:
         return None
     return f"{base}/tips/runs/{int(run_id)}"
+
+
+def clover_acquisition_url() -> str | None:
+    """RF-One Web's Clover Acquisition page (CLOVER_ACQUISITION_IDENTITY_001),
+    or `None` when not configured. Sync Now and Historical Backfill are
+    started only there, by a signed-in RF-One account."""
+    base = base_url()
+    if base is None:
+        return None
+    return f"{base}/clover-acquisition"

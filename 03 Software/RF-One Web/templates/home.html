@@ -36,10 +36,15 @@
 {% endif %}
 
 <div class="home-stack">
-  {% if bank_available %}
+  {% if bank_available or clover_acquisition_available %}
     <div class="domain-card home-block">
       <div class="domain-name">Administration</div>
+      {% if bank_available %}
       <a class="home-row" href="{{ url_for('bank_home') }}"><strong>Bank</strong> &mdash; Import and reconcile bank transactions.</a>
+      {% endif %}
+      {% if clover_acquisition_available %}
+      <a class="home-row" href="{{ url_for('clover_acquisition_home') }}"><strong>Clover Acquisition</strong> &mdash; Sync Now and Historical Backfill from Clover.</a>
+      {% endif %}
     </div>
   {% endif %}
 

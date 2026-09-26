@@ -5,6 +5,7 @@
   <h1>Log in</h1>
   <form method="post" action="{{ url_for('login') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if next_target %}<input type="hidden" name="next" value="{{ next_target }}">{% endif %}
     <div class="field-row">
       <label for="username">Username</label>
       <input type="text" id="username" name="username" autocomplete="username" required autofocus>

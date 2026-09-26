@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block page_title %}Clover Acquisition · RF-One{% endblock %}
+{% block content %}
+{% set active = acquisition.active_run %}
+{% set busy = active is not none %}
+{% set mode_labels = {'SYNC_NOW': 'Sync Now', 'BACKFILL': 'Historical Backfill', 'LIVE_SYNC': 'Live Sync'} %}
+
+{% macro requested_by(run) -%}
+  {%- if run.requested_by_account_id -%}{{ acquisition.requested_by.get(run.requested_by_account_id, '—') }}
+  {%- elif run.acquisition_mode == 'LIVE_SYNC' -%}System (automatic)
+  {%- else -%}<span class="muted">not recorded</span>{%- endif -%}
+{%- endmacro %}
+
+<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+<h1>Clover Acquisition</h1>
+<p class="muted">Signed in as <strong>{{ identified_as }}</strong>. Every acquisition you start is recorded as requested by you.</p>
+
+{% if not acquisition.location_id %}
+  <p class="error">No Clover-sourced Location is configured for this Restaurant.</p>
+{% endif %}
+
+{% if busy %}
+<div class="card" id="active-job" data-active-run-id="{{ active.id }}">
+  <h2>Acquisition in progress</h2>
+  <p>
+    <span class="badge warn">{{ active.status }}</span>
+    #{{ active.id }} — {{ mode_labels.get(active.acquisition_mode, active.acquisition_mode or 'Clover acquisition') }},
+    {{ active.source_window_start.strftime('%Y-%m-%d %H:%M') if active.source_window_start else '-' }} &rarr;
+    {{ active.source_window_end.strftime('%Y-%m-%d %H:%M') if active.source_window_end else '-' }} UTC
+    — requested by {{ requested_by(active) }}
+  </p>
+  <p class="muted">
+    It runs on its own: you can close or leave this page. A new acquisition for this location can start
+    once this one is COMPLETE or FAILED. This page refreshes itself when it ends.
+  </p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Sync Now</h2>
+  <p class="muted">Updates RF-One from the last completed synchronization up to now. No dates to choose.</p>
+  <p>
+    Last completed synchronization:
+    {% if acquisition.sync_point %}
+      <strong>{{ acquisition.sync_point.at.strftime('%Y-%m-%d %H:%M') }} UTC</strong>
+      {% if acquisition.sync_point.basis == 'BACKFILL' %}
+        <span class="muted">(no synchronization yet — starts from the end of the latest Historical Backfill)</span>
+      {% endif %}
+    {% else %}
+      <strong>none yet</strong> <span class="muted">— run a Historical Backfill first to set the starting point.</span>
+    {% endif %}
+  </p>
+  <form method="post" action="{{ url_for('clover_acquisition_sync_now') }}" onsubmit="return guardSubmit('sync-now-btn')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" id="sync-now-btn" {{ 'disabled' if (busy or not acquisition.location_id or not acquisition.sync_point) else '' }}>Sync Now</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Historical Backfill</h2>
+  <p class="muted">
+    Manually recovers or rebuilds one specific historical period — a known gap, a first load, a correction.
+    Not the everyday way to update RF-One (that is Sync Now).
+  </p>
+  <form method="post" action="{{ url_for('clover_acquisition_backfill') }}" onsubmit="return guardSubmit('backfill-btn')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <label for="from_date">From date</label>
+      <input type="date" id="from_date" name="from_date" value="{{ from_date }}" required>
+    </div>
+    <div class="field-row">
+      <label for="through_date">Through date</label>
+      <input type="date" id="through_date" name="through_date" value="{{ through_date }}" required>
+    </div>
+    <button type="submit" id="backfill-btn" {{ 'disabled' if (busy or not acquisition.location_id) else '' }}>Run Historical Backfill</button>
+  </form>
+  <p class="muted">
+    Read-only against Clover — nothing is ever written back. Re-acquiring a period updates the Orders,
+    Payments, Tips, Gratuity and Shifts already in RF-One from Clover's current values; nothing is duplicated.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Live Sync</h2>
+  {% set ls = acquisition.live_sync %}
+  {% if ls and ls.active %}
+    <p><span class="badge ok">ACTIVE</span> Last update: {{ ls.last_update.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+  {% elif ls and ls.enabled %}
+    <p><span class="badge warn">ENABLED, NOT RUNNING</span>
+      {% if ls.last_update %}Last update: {{ ls.last_update.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}No cycle has completed yet.{% endif %}</p>
+  {% else %}
+    <p><span class="badge warn">NOT ACTIVE</span></p>
+    <p class="muted">
+      There is no continuous synchronization today — RF-One is updated only by Sync Now and Historical Backfill.
+      Live Sync is prepared: once switched on it will run automatically, as a system job, re-reading the most
+      recent {{ ((ls.recent_window.total_seconds() // 60)|int) if ls else 120 }} minutes on every cycle.
+    </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Acquisition history</h2>
+  {% if acquisition.runs %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr>
+      <th>#</th><th>Type</th><th>Requested by</th><th>Status</th><th>Requested period (UTC)</th><th>Started</th><th>Ended</th>
+      <th>Orders</th><th>Payments</th><th>Shifts</th><th>Errors</th>
+    </tr></thead>
+    <tbody>
+    {% for run in acquisition.runs %}
+      <tr>
+        <td>{{ run.id }}</td>
+        <td>{{ mode_labels.get(run.acquisition_mode, run.acquisition_mode or '-') }}</td>
+        <td>{{ requested_by(run) }}</td>
+        <td>
+          <span class="badge {{ 'ok' if run.status == 'COMPLETE' else 'warn' }}">{{ run.status }}</span>
+          {% if run.status == 'PARTIAL' %}<div class="muted">completed with warnings</div>{% endif %}
+          {% if run.id in acquisition.stale_run_ids %}<div class="muted">no sign of life</div>{% endif %}
+        </td>
+        <td>{{ run.source_window_start.strftime('%Y-%m-%d %H:%M') if run.source_window_start else '-' }} &rarr;
+            {{ run.source_window_end.strftime('%Y-%m-%d %H:%M') if run.source_window_end else '-' }}</td>
+        <td>
+          {% if run.status == 'QUEUED' %}queued {{ run.queued_at.strftime('%Y-%m-%d %H:%M') if run.queued_at else '' }}
+          {% else %}{{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '-' }}{% endif %}
+        </td>
+        <td>{{ run.finished_at.strftime('%Y-%m-%d %H:%M') if run.finished_at else '-' }}</td>
+        <td>{{ run.orders_processed if run.orders_processed is not none else '-' }}</td>
+        <td>{{ run.payments_processed if run.payments_processed is not none else '-' }}</td>
+        <td>{{ run.shifts_processed if run.shifts_processed is not none else '-' }}</td>
+        <td class="muted">
+          {% if run.error_summary %}{{ run.error_summary }}{% elif run.status == 'FAILED' %}{{ run.notes }}{% else %}-{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted">Times in UTC. "-" counts: acquisitions recorded before counts were tracked.</p>
+  {% else %}
+  <p class="empty">No Clover acquisition recorded for this location yet.</p>
+  {% endif %}
+</div>
+
+<script>
+  // UI guard only: identity, access and the one-acquisition-per-location
+  // lock are all enforced on the server.
+  function guardSubmit(buttonId) {
+    var btn = document.getElementById(buttonId);
+    if (btn.dataset.submitting === '1') { return false; }
+    btn.dataset.submitting = '1';
+    btn.disabled = true;
+    btn.textContent = 'Starting...';
+    return true;
+  }
+  (function () {
+    var box = document.getElementById('active-job');
+    if (!box) { return; }
+    var runId = box.dataset.activeRunId;
+    setInterval(function () {
+      fetch('{{ url_for("clover_acquisition_status") }}', {cache: 'no-store', credentials: 'same-origin'})
+        .then(function (r) { return r.json(); })
+        .then(function (s) { if (String(s.active_run_id) !== String(runId)) { window.location.reload(); } })
+        .catch(function () {});
+    }, 5000);
+  })();
+</script>
+{% endblock %}

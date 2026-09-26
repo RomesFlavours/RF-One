@@ -903,6 +903,13 @@ class IngestionRun(Base):
     payments_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
     shifts_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # CLOVER_ACQUISITION_IDENTITY_001 — the signed-in RF-One account that
+    # requested a manual acquisition (Sync Now, Historical Backfill). NULL
+    # when no person requested it: older runs, and automatic acquisition
+    # (Live Sync) — never a typed-in name.
+    requested_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id"), nullable=True
+    )
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

@@ -73,9 +73,11 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
     return result
 
 
-# `03 Software/Tips/templates/home.html`, three levels up from this file
+# The acquisition page template, three levels up from this file
 # (`rfone_data_store/`, then `RF-One Data Store/`, then `03 Software/`).
-_TIPS_HOME_TEMPLATE = Path(__file__).resolve().parents[2] / "Tips" / "templates" / "home.html"
+# CLOVER_ACQUISITION_IDENTITY_001 — the acquisition forms moved from the
+# Tips page to RF-One Web's Clover Acquisition page.
+_TIPS_HOME_TEMPLATE = Path(__file__).resolve().parents[2] / "RF-One Web" / "templates" / "clover_acquisition.html"
 
 
 def _test_ui_button_disabled_on_submit(result: ValidationResult) -> None:
@@ -96,7 +98,7 @@ def _test_ui_button_disabled_on_submit(result: ValidationResult) -> None:
     # a job, hence "Starting..." rather than "Importing...".
     result.check(
         "UI guard: both acquisition forms' submits are wired to the guard handler",
-        "onsubmit=\"return guardSubmit('import-submit-btn')\"" in html and 'id="import-submit-btn"' in html
+        "onsubmit=\"return guardSubmit('backfill-btn')\"" in html and 'id="backfill-btn"' in html
         and "onsubmit=\"return guardSubmit('sync-now-btn')\"" in html and 'id="sync-now-btn"' in html,
     )
     result.check(

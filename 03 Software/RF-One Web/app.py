@@ -50,6 +50,7 @@ from compensation_routes import register_compensation_routes  # noqa: E402
 from organizational_responsibility_routes import register_organizational_responsibility_routes  # noqa: E402
 from bank_routes import register_bank_routes  # noqa: E402
 from tips_validation_routes import register_tips_validation_routes  # noqa: E402
+from clover_acquisition_routes import register_clover_acquisition_routes  # noqa: E402
 import training_integration  # noqa: E402
 
 app = Flask(__name__)
@@ -214,10 +215,20 @@ def training_menu():
 # ---------------------------------------------------------------------------
 
 
+def _safe_next(target: str | None) -> str | None:
+    """A post-login destination inside this application only: a local path
+    ("/..."), never another host ("//host", "http://..."), so `next` can
+    never send a person elsewhere (CLOVER_ACQUISITION_IDENTITY_001 §3)."""
+    if not target or not target.startswith("/") or target.startswith("//") or "\\" in target:
+        return None
+    return target
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    next_target = _safe_next(request.values.get("next"))
     if current_account_id() is not None:
-        return redirect(url_for("home"))
+        return redirect(next_target or url_for("home"))
 
     if request.method == "POST":
         require_csrf()
@@ -227,11 +238,11 @@ def login():
             result = account_service.verify_login(db, username, password)
         if result.account is None:
             flash(result.error or "Invalid username or password.", "error")
-            return render_template("login.html"), 401
+            return render_template("login.html", next_target=next_target), 401
         log_in(result.account.id, result.account.session_version)
-        return redirect(url_for("home"))
+        return redirect(next_target or url_for("home"))
 
-    return render_template("login.html")
+    return render_template("login.html", next_target=next_target)
 
 
 @app.route("/logout", methods=["POST"])
@@ -253,7 +264,7 @@ def logout():
 #     Domain on Home counts as operational.
 #   * Bank is presented under Administration instead of as a Domain.
 _HOME_WORK_IN_PROGRESS_CODES = frozenset({"SELECTION"})
-_HOME_ADMINISTRATION_CODES = frozenset({"BANK"})
+_HOME_ADMINISTRATION_CODES = frozenset({"BANK", "CLOVER_ACQUISITION"})
 
 
 @app.route("/", strict_slashes=False)
@@ -279,6 +290,7 @@ def home():
             "home.html", account=account, domains_view=domains_view,
             tips_validation_available="TIPS" in enabled_codes,
             bank_available="BANK" in enabled_codes,
+            clover_acquisition_available="CLOVER_ACQUISITION" in enabled_codes,
         )
 
 
@@ -376,6 +388,22 @@ register_bank_routes(
 register_tips_validation_routes(
     app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
     load_current_account=load_current_account, require_csrf=require_csrf,
+)
+
+
+# ---------------------------------------------------------------------------
+# Clover Acquisition (CLOVER_ACQUISITION_IDENTITY_001) — Sync Now and
+# Historical Backfill, startable only by a signed-in account holding the
+# CLOVER_ACQUISITION access. See `clover_acquisition_routes.py`.
+# ---------------------------------------------------------------------------
+
+# How accepted acquisition jobs are started: `None` = the deployment's
+# configured launcher (`RFONE_CLOVER_JOB_LAUNCHER`); tests replace it.
+clover_job_launcher = None
+
+register_clover_acquisition_routes(
+    app, SessionFactory=SessionFactory, load_current_account=load_current_account,
+    require_csrf=require_csrf, log_out=log_out, get_launcher=lambda: clover_job_launcher,
 )
 
 

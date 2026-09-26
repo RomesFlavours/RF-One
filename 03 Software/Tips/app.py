@@ -1,4 +1,4 @@
-"""RF-One Tips — Clover Acquisition (Sync Now, Historical Backfill), Tip Distribution Rule
+"""RF-One Tips — imported Clover data view, Tip Distribution Rule
 configuration, and Tip Distribution Engine Calculate/Review UI.
 
 TECHNICAL_CONNECTORS_STRUCTURE_001: Clover data acquisition is a Technical
@@ -11,13 +11,10 @@ other Domains) and `rfone_data_store.technical.connectors.clover.live_sync`
 of Restaurant — only Location/Merchant/SourceSystem — so this app resolves
 its Restaurant's own Clover Location (`_resolve_clover_location_id` below,
 via the existing `RestaurantLocation` join) before calling in. What remains
-here, on the Clover acquisition page, is only the UI trigger: "Sync Now"
-(last successful synchronization -> now) and "Historical Backfill" (an
-operator-chosen period, for recovery). Both ask the central service
-`technical.connectors.clover.acquisition_jobs` to start a job and return
-at once — the acquisition runs in a process of its own, never inside a
-request of this app (CLOVER_ACQUISITION_JOBS_001). Live Sync is shown for
-what it really is: prepared, not active until enabled.
+here is only a read-only view of imported Clover rows. Starting an
+acquisition (Sync Now, Historical Backfill) and following its job history
+happen in RF-One Web's Clover Acquisition page, behind the RF-One login and
+the CLOVER_ACQUISITION access (CLOVER_ACQUISITION_IDENTITY_001).
 
 TIP_DISTRIBUTION_ENGINE_001 added the "Calculate Tips" tab (Calculate/Review/
 drill-down), reading `rfone_data_store.tips.distribution_engine` — the ONLY
@@ -62,13 +59,7 @@ from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.database import (  # noqa: E402
     create_configured_engine, create_session_factory, get_database_url,
 )
-from rfone_data_store.technical.connectors.clover.acquisition import (  # noqa: E402
-    ImportAlreadyRunningError, get_order_settlement_time,
-)
-# CLOVER_ACQUISITION_JOBS_001 — the central Clover acquisition service. This
-# app only asks it to start a job and reads the job history back; the
-# acquisition itself never runs inside a request of this app.
-from rfone_data_store.technical.connectors.clover import acquisition_jobs as clover_jobs  # noqa: E402
+from rfone_data_store.technical.connectors.clover.acquisition import get_order_settlement_time  # noqa: E402
 from rfone_data_store.tips import calculation_run_service as run_svc  # noqa: E402
 from rfone_data_store.tips import distribution_engine as engine_svc  # noqa: E402
 from rfone_data_store.tips import distribution_rule_service as rule_svc  # noqa: E402
@@ -97,10 +88,6 @@ UTC = timezone.utc
 _DB_URL = get_database_url()
 _engine = create_configured_engine(_DB_URL)
 SessionFactory = create_session_factory(_engine)
-
-# How accepted Clover acquisition jobs are started. `None` = the deployment's
-# configured launcher (`acquisition_jobs.default_launcher`); tests replace it.
-clover_job_launcher = None
 
 app = Flask(__name__)
 # Only used to flash the import summary across the POST -> redirect -> GET
@@ -289,7 +276,6 @@ def home():
         payments_rows = []
         orders_rows = []
         shifts_rows = []
-        acquisition = _acquisition_view(session, restaurant)
         if restaurant is not None:
             location_ids_subq = select(m.RestaurantLocation.location_id).where(
                 m.RestaurantLocation.restaurant_id == restaurant.id
@@ -374,124 +360,21 @@ def home():
         return render_template(
             "home.html", restaurant=restaurant, from_date=from_date, through_date=through_date,
             no_business_date_data=no_business_date_data,
-            acquisition=acquisition, payments_rows=payments_rows, orders_rows=orders_rows, shifts_rows=shifts_rows,
+            clover_acquisition_url=rfone_web_link.clover_acquisition_url(),
+            payments_rows=payments_rows, orders_rows=orders_rows, shifts_rows=shifts_rows,
             active_nav="historical-backfill",
         )
 
 
-def _acquisition_view(session, restaurant) -> dict:
-    """What the acquisition page shows about Clover acquisition for this
-    Restaurant's Location: the job in progress (if any), the last
-    successful synchronization, Live Sync's real state, and the job
-    history. Recovers a job whose process has died (the existing stale-run
-    recovery), so a dead job is never shown as RUNNING."""
-    view = {
-        "location_id": None, "active_run": None, "sync_point": None, "live_sync": None,
-        "runs": [], "stale_run_ids": set(),
-    }
-    if restaurant is None:
-        return view
-    location_id = _resolve_clover_location_id(session, restaurant.id)
-    if location_id is None:
-        return view
-    clover_jobs.recover_stale_run(session, location_id=location_id)
-    view["location_id"] = location_id
-    view["active_run"] = clover_jobs.get_active_run(session, location_id=location_id)
-    view["sync_point"] = clover_jobs.get_last_successful_sync_point(session, location_id=location_id)
-    view["live_sync"] = clover_jobs.describe_live_sync(session, location_id=location_id)
-    view["runs"] = clover_jobs.list_acquisition_runs(session, location_id=location_id, limit=20)
-    view["stale_run_ids"] = {r.id for r in view["runs"] if clover_jobs.run_is_stale(r)}
-    return view
-
-
-def _clover_location_or_flash(session) -> int | None:
-    restaurant = _default_restaurant(session)
-    if restaurant is None:
-        flash("No Restaurant exists in this database yet — nothing to import into.", "error")
-        return None
-    location_id = _resolve_clover_location_id(session, restaurant.id)
-    if location_id is None:
-        flash("No Clover-sourced Location is configured for this Restaurant — nothing to import.", "error")
-    return location_id
-
-
-def _start_acquisition(request_job) -> None:
-    """Ask the central Clover acquisition service to start a job, and flash
-    the outcome. Returns as soon as the job is accepted — never waits for it."""
-    with SessionFactory() as session:
-        location_id = _clover_location_or_flash(session)
-        if location_id is None:
-            return
-        try:
-            run = request_job(session, location_id)
-        except ImportAlreadyRunningError:
-            flash(
-                "A Clover acquisition is already in progress for this location. A new one can start "
-                "once it is COMPLETE or FAILED — its progress is shown below.", "error",
-            )
-            return
-        except clover_jobs.NoSyncStartingPointError as exc:
-            flash(str(exc), "error")
-            return
-        except clover_jobs.JobLaunchError as exc:
-            flash(f"The acquisition was accepted but could not be started, and has been marked FAILED: {exc}", "error")
-            return
-        flash(f"Acquisition #{run.id} accepted and started. You can leave this page — it continues on its own.", "info")
-
-
-@app.route("/clover-acquisition/sync-now", methods=["POST"])
-def clover_sync_now():
-    """Sync Now — last successful synchronization -> now. No dates: the
-    window is determined by the central service, never by this page."""
-    _start_acquisition(
-        lambda session, location_id: clover_jobs.request_sync_now(
-            session, location_id=location_id, launcher=clover_job_launcher,
-        )
-    )
-    return redirect(url_for("home"))
-
-
-@app.route("/historical-backfill", methods=["POST"])
-def run_historical_backfill():
-    """Historical Backfill — manual recovery or reconstruction of an
-    operator-chosen period; not the day-to-day way data reaches RF-One
-    (that is Sync Now, and Live Sync once enabled). The job is accepted and
-    started in its own process; this request returns at once
-    (CLOVER_ACQUISITION_JOBS_001 §11)."""
-    from_date = request.form.get("from_date") or ""
-    through_date = request.form.get("through_date") or ""
-    start = _parse_date(from_date)
-    end = _parse_date(through_date)
-
-    if start is None or end is None:
-        flash("Both From and Through dates are required.", "error")
-        return redirect(url_for("home"))
-    if end < start:
-        flash("Through date must not be before From date.", "error")
-        return redirect(url_for("home"))
-    # Inclusive through the end of the selected Through day.
-    end = end.replace(hour=23, minute=59, second=59)
-
-    _start_acquisition(
-        lambda session, location_id: clover_jobs.request_historical_backfill(
-            session, location_id=location_id, period_start=start, period_end=end, launcher=clover_job_launcher,
-        )
-    )
-    return redirect(url_for("home", from_date=from_date, through_date=through_date))
-
-
-@app.route("/clover-acquisition/status.json")
-def clover_acquisition_status():
-    """The acquisition page polls this while a job is QUEUED/RUNNING, and
-    reloads itself when that job ends. Read-only apart from the existing
-    stale-run recovery."""
-    with SessionFactory() as session:
-        view = _acquisition_view(session, _default_restaurant(session))
-        active = view["active_run"]
-        return {
-            "active_run_id": active.id if active is not None else None,
-            "active_status": active.status if active is not None else None,
-        }
+# CLOVER_ACQUISITION_IDENTITY_001 — this app no longer starts Clover
+# acquisitions and no longer shows their job history. Sync Now and
+# Historical Backfill start real work on AWS and may be started only by a
+# signed-in RF-One account holding the CLOVER_ACQUISITION access; on AWS the
+# RF-One session never reaches this app's hostname, so it cannot know who is
+# asking. Both actions, and the job history, live in RF-One Web
+# (`/clover-acquisition`); this page links there. Requests to the former
+# action URLs (`/historical-backfill`, `/clover-acquisition/sync-now`) no
+# longer match any route and are refused with no effect.
 
 
 # ---------------------------------------------------------------------------
