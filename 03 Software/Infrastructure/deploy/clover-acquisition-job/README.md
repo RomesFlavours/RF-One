@@ -1,7 +1,7 @@
 # Clover acquisition job runner (AWS)
 
-CLOVER_ACQUISITION_JOBS_001. **Status: proposed, not yet created in AWS** —
-needs Product Owner approval (new AWS resources and permissions).
+CLOVER_ACQUISITION_JOBS_001. **Status: created 2026-09-26** (Product Owner
+approval: ECS Fargate runner, then the ECS API VPC endpoint).
 
 ## Why a separate runner
 
@@ -27,7 +27,8 @@ Paid only while a job runs. Logs in CloudWatch `/ecs/rfone-clover-acquisition-jo
 | ECS cluster (Fargate) | `rfone-jobs` |
 | Task definition | [`task-definition.json`](task-definition.json) (family `rfone-clover-acquisition-job`) |
 | Execution role | `rfone-clover-acquisition-job-execution-role` — `AmazonECSTaskExecutionRolePolicy` + [`execution-role-secrets-policy.json`](execution-role-secrets-policy.json) + `logs:CreateLogGroup` |
-| Permission for the web service | [`apprunner-instance-role-runtask-policy.json`](apprunner-instance-role-runtask-policy.json), inline on `rfone-tips-apprunner-instance-role` |
+| Permission for the web service | [`apprunner-instance-role-runtask-policy.json`](apprunner-instance-role-runtask-policy.json), inline on `rfone-tips-apprunner-instance-role` (policy `rfone-tips-run-clover-acquisition-job`) |
+| ECS API VPC endpoint | `vpce-03dc68cffc4932f8b` (`com.amazonaws.us-east-1.ecs`, private DNS, subnets 1a/1b), security group `sg-0503f48dd3ae94599` `rfone-ecs-endpoint-sg`: 443 only from `sg-0a4d4d094ea0d0fc3`. Needed because `rfone-tips` has no Internet egress, so it could not reach the public ECS API either (first production attempt hung 60 s → 500). About 15 $/month. |
 
 `rfone-tips` environment (App Runner):
 
@@ -47,6 +48,7 @@ not active until the Product Owner enables it (Cognito).
 
 1. RDS snapshot, then `alembic upgrade head` (revision `b8d4e2f7a1c9`, additive).
 2. Build and push the `rfone-tips` image (`deploy/rfone-tips/`, CodeBuild `rfone-tips-build`).
-3. Create the cluster, roles and task definition above.
+3. Create the cluster, roles, task definition and ECS endpoint above (ECS's
+   own service-linked role `AWSServiceRoleForECS` already existed).
 4. Set the environment variables, redeploy `rfone-tips`.
 5. Minimal check: one Sync Now (or a one-day Backfill), watch QUEUED → RUNNING → COMPLETE.

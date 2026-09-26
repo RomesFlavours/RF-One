@@ -365,6 +365,7 @@ def _test_ecs_launcher_request(result: ValidationResult) -> None:
     import boto3
 
     calls: list[dict[str, Any]] = []
+    configs: list[Any] = []
     answers = [{"tasks": [{"taskArn": "arn:task/1"}], "failures": []}, {"tasks": [], "failures": [{"reason": "RESOURCE"}]}]
 
     class _FakeEcs:
@@ -373,7 +374,7 @@ def _test_ecs_launcher_request(result: ValidationResult) -> None:
             return answers[len(calls) - 1]
 
     original = boto3.client
-    boto3.client = lambda service, **kw: _FakeEcs()  # type: ignore[assignment]
+    boto3.client = lambda service, **kw: (configs.append(kw.get("config")), _FakeEcs())[1]  # type: ignore[assignment]
     try:
         launcher = jobs.EcsLauncher(
             cluster="c", task_definition="td", subnets=["s1", "s2"], security_groups=["sg"], region_name="us-east-1",
@@ -393,6 +394,13 @@ def _test_ecs_launcher_request(result: ValidationResult) -> None:
         except RuntimeError:
             surfaced = True
         result.check("ECS launcher: a task ECS refuses to start is reported as an error", surfaced)
+        config = configs[0]
+        result.check(
+            "ECS launcher: bounded timeouts (connect 5s, read 15s, 2 attempts) — an unreachable ECS fails "
+            "the request in seconds, never hangs it until the web server kills it",
+            config is not None and config.connect_timeout == 5 and config.read_timeout == 15
+            and config.retries == {"max_attempts": 2, "mode": "standard"},
+        )
     finally:
         boto3.client = original  # type: ignore[assignment]
 

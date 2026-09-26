@@ -330,8 +330,14 @@ class EcsLauncher:
 
     def __call__(self, run_id: int) -> None:
         import boto3  # lazily: only a deployment that uses ECS needs AWS credentials
+        from botocore.config import Config
 
-        response = boto3.client("ecs", region_name=self._region_name).run_task(
+        # Short, bounded timeouts: this call runs inside the web request that
+        # accepted the job. If ECS cannot be reached, the request must fail
+        # in seconds (the job is then marked FAILED) — never hang until the
+        # web server kills it, which is exactly the failure this replaces.
+        config = Config(connect_timeout=5, read_timeout=15, retries={"max_attempts": 2, "mode": "standard"})
+        response = boto3.client("ecs", region_name=self._region_name, config=config).run_task(
             cluster=self._cluster, taskDefinition=self._task_definition, launchType="FARGATE", count=1,
             networkConfiguration={"awsvpcConfiguration": {
                 "subnets": self._subnets, "securityGroups": self._security_groups,
