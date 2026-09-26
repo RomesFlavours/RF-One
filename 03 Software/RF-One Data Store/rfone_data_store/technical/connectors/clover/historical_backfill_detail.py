@@ -83,6 +83,8 @@ from . import mapping, parser
 from .ingest import CatalogMaps, _modifier_ids_in_group, upsert
 
 
+from .source_guard import require_complete, require_ok
+
 class _PaginatingClient(Protocol):
     merchant_id: str
 
@@ -96,11 +98,28 @@ def _paginate(client: _PaginatingClient, path: str, *, expand: str | None = None
     """Thin wrapper around the same `clover_explorer.pagination.paginate`
     primitive `acquisition.py` already imports — imported lazily here to
     reuse the exact same sys.path bootstrap `acquisition.py` performs,
-    without duplicating it a second time in this file."""
+    without duplicating it a second time in this file.
+
+    CLOVER_ACQUISITION_SAFETY_001: returns Clover's real answer (possibly a
+    real empty list) only when the read succeeded completely; a failed read
+    raises `CloverSourceUnavailableError` — never an empty list that would
+    clear or skip catalog, role or line-item data."""
     from .acquisition import paginate  # local import avoids a circular import at module load time
 
     result = paginate(client, path, extra_params={"expand": expand} if expand else None)
-    return result.elements if result.ok else []
+    return require_complete(result, _source_label(path))
+
+
+def _source_label(path: str) -> str:
+    """The Clover source a person would recognise, from its API path."""
+    if "/line_items" in path:
+        return "Order line items"
+    last = path.rstrip("/").rsplit("/", 1)[-1]
+    return {
+        "categories": "Categories", "modifier_groups": "Modifier Groups", "discounts": "Discounts",
+        "tax_rates": "Tax Rates", "order_types": "Order Types", "items": "Items", "roles": "Roles",
+        "employees": "Employees (roles)",
+    }.get(last, last)
 
 
 def fetch_full_catalog(
@@ -311,10 +330,11 @@ def _resolve_item_override_tax_rate(
     result = client.get(
         f"/v3/merchants/{client.merchant_id}/items/{item_source_id}", params={"expand": "taxRates"},
     )
-    rate = 0.0
-    if getattr(result, "ok", False):
-        rates = (result.data.get("taxRates") or {}).get("elements", [])
-        rate = rates[0]["rate"] / 10_000_000 if rates else 0.0
+    # CLOVER_ACQUISITION_SAFETY_001 — a failed lookup raises; it never
+    # becomes a 0% rate. Only Clover's real empty `taxRates` list means 0%.
+    data = require_ok(result, f"the tax rates of Item {item_source_id[:4]}...")
+    rates = (data.get("taxRates") or {}).get("elements", [])
+    rate = rates[0]["rate"] / 10_000_000 if rates else 0.0
     tax_override_cache[item_source_id] = rate
     return rate
 

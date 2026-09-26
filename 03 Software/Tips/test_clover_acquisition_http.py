@@ -205,8 +205,10 @@ def main() -> int:
     check("C: the failed Sync Now started from the previous successful point",
           _run(failed_id).source_window_start == sync_end)
     page = web.get("/")
-    check("a failed job is shown in the history with its error — never an Internal Server Error",
-          page.status_code == 200 and b"FAILED" in page.data and b"simulated Clover outage" in page.data)
+    check("a failed job is shown in the history with the real reason in plain words — never an Internal Server Error",
+          page.status_code == 200 and b"FAILED" in page.data
+          and b"RF-One could not read Payments from Clover" in page.data and b"HTTP 503" in page.data
+          and b"no RF-One data was changed" in page.data)
     clover.fail_payments = False
     web.post("/clover-acquisition/sync-now")
     retry_id = _latest_run_id()

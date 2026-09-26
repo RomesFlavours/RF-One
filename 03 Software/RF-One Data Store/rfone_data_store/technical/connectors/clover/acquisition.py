@@ -153,6 +153,12 @@ from .... import models as m
 from ....ingestion.common import payload_hash, utc_now
 from . import historical_backfill_detail, mapping
 from .ingest import upsert
+from .source_guard import (
+    CloverAcquisitionError,
+    CloverSourceUnavailableError,
+    require_complete,
+    verify_clover_access,
+)
 
 # Same reuse boundary `enrichment.py` already established: make the
 # existing, already-reviewed read-only Clover client/pagination primitives
@@ -487,8 +493,10 @@ def _fetch_reference_catalogs(
     Live Sync ever calling `/tenders`/`/devices` itself. Returns
     `(employee_by_source_id, tender_by_source_id, device_by_source_id)`."""
     employee_by_source_id: dict[str, int] = {}
+    # CLOVER_ACQUISITION_SAFETY_001 — a failed read raises; it is never an
+    # empty list that would clear existing Employee links.
     result = paginate(client, f"/v3/merchants/{client.merchant_id}/employees")
-    for raw in result.elements if result.ok else []:
+    for raw in require_complete(result, "Employees"):
         values = mapping.map_employee(raw)
         source_id = values.pop("source_employee_id")
         if not source_id:
@@ -507,7 +515,7 @@ def _fetch_reference_catalogs(
     if mode in FULL_SCOPE_MODES:
         tender_by_source_id: dict[str, int] = {}
         result = paginate(client, f"/v3/merchants/{client.merchant_id}/tenders")
-        for raw in result.elements if result.ok else []:
+        for raw in require_complete(result, "Tenders (payment methods)"):
             values = mapping.map_tender(raw)
             source_id = values.pop("source_tender_id")
             if not source_id:
@@ -525,7 +533,7 @@ def _fetch_reference_catalogs(
 
         device_by_source_id: dict[str, int] = {}
         result = paginate(client, f"/v3/merchants/{client.merchant_id}/devices")
-        for raw in result.elements if result.ok else []:
+        for raw in require_complete(result, "Devices"):
             values = mapping.map_device(raw)
             source_id = values.pop("source_device_id")
             if not source_id:
@@ -565,11 +573,9 @@ def _fetch_and_ingest_shifts(
     period before upserting, so a run does not repeatedly rewrite a growing
     history of unrelated older Shifts."""
     result = paginate(client, f"/v3/merchants/{client.merchant_id}/shifts")
-    if not result.ok:
-        return 0
 
     touched = 0
-    for raw in result.elements:
+    for raw in require_complete(result, "Shifts"):
         clock_in = raw.get("inTime")
         if clock_in is None or not (
             int(period_start.astimezone(UTC).timestamp() * 1000)
@@ -1058,6 +1064,16 @@ def import_clover_period(
     try:
         resolved_client = client or get_default_client()
 
+        # CLOVER_ACQUISITION_SAFETY_001 — pre-flight, before any fetch or
+        # write: right merchant for this Location, confirmed by Clover, and
+        # every source this job will read answering. Raises otherwise.
+        location = session.get(m.Location, location_id)
+        verify_clover_access(
+            resolved_client, expected_merchant_id=merchant_id,
+            location_label=f"location '{location.name}' (id {location_id})",
+            full_scope=mode in FULL_SCOPE_MODES,
+        )
+
         start_ms = int(period_start.astimezone(UTC).timestamp() * 1000)
         end_ms = int(period_end.astimezone(UTC).timestamp() * 1000)
 
@@ -1069,16 +1085,18 @@ def import_clover_period(
                 "orderBy": "createdTime ASC",
             },
         )
-        if not payments_result.ok:
-            summary.errors.append(f"Fetching Payments failed: {payments_result.error or 'unknown error'}")
-            # The Payments createdTime scan is what THIS window's checkpoint
-            # certifies as "covered" — if it never succeeded, the window was
-            # never actually scanned and must not be treated as done.
-            summary.window_scan_failed = True
-            _finalize_import_run(ingestion_run, summary, location_id=location_id, mode=mode)
-            session.flush()
-            return summary
-        payments_raw = payments_result.elements
+        # CLOVER_ACQUISITION_SAFETY_001 — raises if the window's Payments
+        # scan did not succeed completely; nothing has been written yet.
+        payments_raw = require_complete(payments_result, "Payments")
+        # Refunds are read here too, before anything is written, so a failed
+        # Refunds scan stops the job before its first write rather than after.
+        refunds_raw = require_complete(
+            paginate(
+                resolved_client, f"/v3/merchants/{merchant_id}/refunds",
+                extra_params={"filter": [f"createdTime>={start_ms}", f"createdTime<={end_ms}"]},
+            ),
+            "Refunds",
+        )
 
         employee_by_source_id, tender_by_source_id, device_by_source_id = _fetch_reference_catalogs(
             resolved_client, session, location_id=location_id, source_system_id=source_system_id,
@@ -1138,8 +1156,12 @@ def import_clover_period(
                 f"/v3/merchants/{merchant_id}/orders/{order_source_id}", params={"expand": order_expand},
             )
             if not order_result.ok:
-                summary.errors.append(f"Fetching Order {order_source_id[:4]}... failed: {order_result.error}")
-                continue
+                # CLOVER_ACQUISITION_SAFETY_001 — an Order the window's
+                # Payments reference is mandatory: never skip it silently.
+                raise CloverSourceUnavailableError(
+                    f"Order {order_source_id[:4]}...", status_code=order_result.status_code,
+                    detail=order_result.error,
+                )
             order_raw = order_result.data
             orders_raw_by_source_id[order_source_id] = order_raw
             order, is_new = _ingest_order(
@@ -1239,33 +1261,24 @@ def import_clover_period(
                         )
                     )
 
-        refunds_result = paginate(
-            resolved_client, f"/v3/merchants/{merchant_id}/refunds",
-            extra_params={"filter": [f"createdTime>={start_ms}", f"createdTime<={end_ms}"]},
-        )
-        if refunds_result.ok:
-            for refund_raw in refunds_result.elements:
-                _ingest_refund(
-                    session, refund_raw, source_system_id=source_system_id,
-                    order_by_source_id=order_by_source_id, payment_by_source_id=payment_by_source_id,
-                    employee_by_source_id=employee_by_source_id, device_by_source_id=device_by_source_id,
-                    ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at,
-                )
-                summary.refunds_found += 1
-        else:
-            summary.errors.append(f"Fetching Refunds failed: {refunds_result.error or 'unknown error'}")
-            # Same reasoning as the Payments case above: Refunds is the other
-            # createdTime-windowed scan this run's checkpoint certifies —
-            # Orders/Payments having already succeeded earlier in this same
-            # cycle must not mask a Refunds-scan failure into a checkpoint
-            # advance that silently skips this window's refunds forever.
-            summary.window_scan_failed = True
+        for refund_raw in refunds_raw:
+            _ingest_refund(
+                session, refund_raw, source_system_id=source_system_id,
+                order_by_source_id=order_by_source_id, payment_by_source_id=payment_by_source_id,
+                employee_by_source_id=employee_by_source_id, device_by_source_id=device_by_source_id,
+                ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at,
+            )
+            summary.refunds_found += 1
     except Exception as exc:  # noqa: BLE001 — a failed run must release the guard, never stay RUNNING forever
         session.rollback()
         ingestion_run.status = "FAILED"
         ingestion_run.finished_at = utc_now()
         ingestion_run.lock_key = None
-        ingestion_run.error_summary = _safe_error_summary(exc)
+        # A Clover read failure carries its own message written for a
+        # person; anything else keeps the type-and-message summary.
+        ingestion_run.error_summary = (
+            str(exc)[:2000] if isinstance(exc, CloverAcquisitionError) else _safe_error_summary(exc)
+        )
         ingestion_run.notes = (
             f"CLOVER_ACQUISITION mode={mode} location_id={location_id}; FAILED: {_safe_error_summary(exc)}"
         )

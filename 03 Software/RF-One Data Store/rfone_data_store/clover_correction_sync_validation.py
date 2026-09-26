@@ -83,11 +83,13 @@ class _CorrectionFakeCloverClient:
             if self.fail_refunds:
                 return _FakeResult(ok=False, error="simulated Refunds list failure", status_code=500)
             return _FakeResult(ok=True, data={"elements": list(self.refunds)})
-        # Everything else (notably `.../orders/{id}/line_items`) is
-        # deliberately unhandled: `historical_backfill_detail.
-        # ingest_order_item_and_modifier_detail` gracefully falls back to the
-        # Order's own nested `lineItems` when this dedicated fetch fails —
-        # exactly the fallback this fake is designed to exercise.
+        # CLOVER_ACQUISITION_SAFETY_001 — a failed line-items read is no
+        # longer silently replaced by the Order's nested `lineItems`; a
+        # healthy Clover answers it (validly empty here), and the engine's
+        # own fallback to the nested `lineItems` applies to that real empty
+        # answer only.
+        if "/line_items" in path:
+            return _FakeResult(ok=True, data={"elements": []})
         return _FakeResult(ok=False, error=f"unhandled path in fake: {path}", status_code=404)
 
 

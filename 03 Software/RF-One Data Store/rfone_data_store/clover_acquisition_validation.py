@@ -96,6 +96,25 @@ class FakeCloverClient:
             # not need to simulate that rejection; it only needs to return
             # the full collection, exactly like the real unfiltered GET does.
             return _collection(self.shifts)
+        # CLOVER_ACQUISITION_SAFETY_001 — a healthy Clover also answers the
+        # merchant itself, the Orders list, and (validly empty) every
+        # catalog collection, the per-order line items and per-item taxes:
+        # the acquisition now requires a real answer from every source it
+        # reads, and treats anything else as a failure.
+        if path == f"/v3/merchants/{self.merchant_id}":
+            return _FakeResult(ok=True, data={"id": self.merchant_id, "name": "Fake merchant"})
+        if path.endswith("/orders"):
+            return _collection(list(self.orders_by_id.values()))
+        if any(path.endswith(f"/{name}") for name in (
+            "categories", "modifier_groups", "discounts", "tax_rates", "order_types", "items", "roles",
+        )):
+            return _collection([])
+        if "/line_items" in path:
+            order_id = path.split("/orders/", 1)[1].split("/line_items", 1)[0]
+            order = self.orders_by_id.get(order_id) or {}
+            return _collection((order.get("lineItems") or {}).get("elements", []))
+        if "/items/" in path:
+            return _FakeResult(ok=True, data={"taxRates": {"elements": []}})
         if "/orders/" in path:
             order_id = path.rsplit("/", 1)[-1]
             order = self.orders_by_id.get(order_id)

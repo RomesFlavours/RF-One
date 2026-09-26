@@ -172,7 +172,7 @@ def _test_backfill_lifecycle_window_and_business_date(session_factory: sessionma
                  final.status == "COMPLETE" and final.lock_key is None and final.finished_at is not None)
     result.check("the job history records orders/payments/shifts processed",
                  final.orders_processed == 1 and final.payments_processed == 1 and final.shifts_processed == 0)
-    payments_call = next(p for path, p in client.calls if path.endswith("/payments"))
+    payments_call = next(p for path, p in client.calls if path.endswith("/payments") and p and "filter" in p)
     result.check("F: Clover was asked for exactly the chosen period",
                  payments_call["filter"] == [f"createdTime>={_ms(start)}", f"createdTime<={_ms(end)}"])
     with session_factory() as s:
