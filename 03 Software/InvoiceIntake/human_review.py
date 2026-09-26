@@ -71,6 +71,7 @@ from rfone_data_store.database import (  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.purchasing import repository as repo  # noqa: E402
 
+import document_acquisition
 import purchased_bridge  # noqa: E402
 import supplier_format_rules  # noqa: E402
 import supplier_format_training as sft  # noqa: E402
@@ -81,7 +82,13 @@ UTC = timezone.utc
 
 HEADER_FIELDS = ("supplier", "document_number", "issue_date", "total_amount")
 LINE_FIELDS = ("description", "normalized_item", "quantity", "unit_of_measure", "unit_price", "line_amount")
-ALL_FIELDS = HEADER_FIELDS + LINE_FIELDS
+# INVOICE_SCAN_ACQUISITION_001: document-level amounts read from the
+# invoice, kept distinct from the invoice total and reviewable like any
+# other field (additive corrections, never overwriting what was read).
+AMOUNT_FIELDS = ("subtotal", "tax", "discount", "shipping", "amount_paid", "balance_due")
+ALL_FIELDS = HEADER_FIELDS + LINE_FIELDS + AMOUNT_FIELDS
+# Which reviewed field resolves a conflicting/unreadable reading.
+_READING_FIELD = {"total": "total_amount", **{f: f for f in AMOUNT_FIELDS}}
 
 # "Close Purchased Human Review Reliability Gaps" §6/§7: the header fields
 # `purchased_bridge._validate_extracted_fields()` actually requires for
@@ -225,6 +232,17 @@ def effective_document_view(session, purchase_document_id: int) -> dict | None:
         ).all()
     )
 
+    # INVOICE_SCAN_ACQUISITION_001 — what the acquisition read for this
+    # document (None for documents acquired before this capability).
+    extraction = document_acquisition.extraction_for_document(document.id)
+    amounts_original = {f: (extraction or {}).get("amounts", {}).get(f) for f in AMOUNT_FIELDS}
+    amounts_effective = {
+        f: repo.effective_field_value(latest, None, f, value) for f, value in amounts_original.items()
+    }
+    if extraction and len(extraction.get("lines", [])) == len(lines_view):
+        for line_view, read_line in zip(lines_view, extraction["lines"]):
+            line_view["read"] = read_line
+
     aliases = repo.list_supplier_aliases(session, document.supplier_id) if supplier else []
     mailbox_provenance = _lookup_mailbox_provenance(document.source_reference)
     source_reference = document.source_reference or ""
@@ -239,6 +257,9 @@ def effective_document_view(session, purchase_document_id: int) -> dict | None:
         "page_range": page_range or None,
         "header_original": header_original,
         "header_effective": header_effective,
+        "amounts_original": amounts_original,
+        "amounts_effective": amounts_effective,
+        "extraction": extraction,
         "lines": lines_view,
         "corrections": corrections,
         "line_additions": repo.list_line_additions(session, document.id),
@@ -288,6 +309,36 @@ def get_review_queue(restaurant_id: int | None = None) -> list[dict]:
         return rows
 
 
+def list_all_documents(restaurant_id: int | None = None) -> list[dict]:
+    """INVOICE_SCAN_ACQUISITION_001: every document, NORMALIZED and HUMAN,
+    most recent first — the automatically accepted ones included."""
+    session_factory = _session_factory()
+    with session_factory() as session:
+        rid = restaurant_id if restaurant_id is not None else purchased_bridge._get_or_create_default_restaurant(session)
+        documents = session.scalars(
+            select(m.PurchaseDocument)
+            .join(m.Supplier, m.Supplier.id == m.PurchaseDocument.supplier_id)
+            .where(m.Supplier.restaurant_id == rid)
+            .order_by(m.PurchaseDocument.id.desc())
+        ).all()
+        rows = []
+        for document in documents:
+            view = effective_document_view(session, document.id)
+            rows.append({
+                "id": document.id,
+                "supplier_name": view["header_effective"]["supplier"],
+                "document_number": view["header_effective"]["document_number"],
+                "issue_date": view["header_effective"]["issue_date"],
+                "total_amount": view["header_effective"]["total_amount"],
+                "balance_due": view["amounts_effective"].get("balance_due"),
+                "functional_status": view["functional_status"],
+                "acquisition_method": document.acquisition_method,
+                "source_reference": document.source_reference,
+                "line_count": len(view["lines"]),
+            })
+        return rows
+
+
 def get_review_detail(purchase_document_id: int) -> dict | None:
     session_factory = _session_factory()
     with session_factory() as session:
@@ -319,6 +370,8 @@ def submit_field_review(
             raise ValueError(f"No PurchaseDocument with id={purchase_document_id!r}")
         if field_name in HEADER_FIELDS:
             original_value = view["header_effective"][field_name]
+        elif field_name in AMOUNT_FIELDS:
+            original_value = view["amounts_effective"][field_name]
         else:
             line_view = next((line for line in view["lines"] if line["id"] == purchase_line_id), None)
             if line_view is None:
@@ -425,17 +478,36 @@ def complete_review(purchase_document_id: int, *, reviewed_by: str) -> dict:
             "total_amount_minor": purchased_bridge._parse_money_minor(view["header_effective"]["total_amount"]),
         }
         repository_lines = [
-            {"source_amount_minor": purchased_bridge._parse_money_minor(line["effective"]["line_amount"])}
+            {
+                "line_type": line["line_type"],
+                "source_amount_minor": purchased_bridge._parse_money_minor(line["effective"]["line_amount"]),
+                "quantity": purchased_bridge._parse_decimal(line["effective"]["quantity"]),
+                "_unit_price_exact": purchased_bridge._parse_decimal(line["effective"]["unit_price"]),
+            }
             for line in view["lines"]
         ]
+        latest_corrections = repo.latest_field_corrections(view["corrections"])
+        # INVOICE_SCAN_ACQUISITION_001: the same exact amount check as at
+        # acquisition, on the EFFECTIVE values. A conflicting or unreadable
+        # reading stays blocking until the reviewer has reviewed that field.
+        reviewed = {key[1] for key in latest_corrections if key[0] is None}
+        extraction = view.get("extraction") or {}
+
+        def unresolved(field_key: str) -> bool:
+            return _READING_FIELD.get(field_key, field_key) not in reviewed
+
+        review_inputs = {
+            "amounts": {**(extraction.get("amounts") or {}), **{k: v for k, v in view["amounts_effective"].items()}},
+            "conflicts": [c for c in extraction.get("conflicts", []) if unresolved(c.split(":", 1)[0].strip())],
+            "unreadable": [u for u in extraction.get("unreadable", []) if unresolved(str(u.get("field")))],
+        }
         # raw_text is not persisted on PurchaseDocument (only used transiently
-        # at initial save) -- the conflicting-totals check is a no-op here,
-        # same degradation already documented for training replay scripts.
+        # at initial save) -- the conflicting-totals text check is a no-op
+        # here; conflicts found at acquisition are carried in review_inputs.
         validation = purchased_bridge._validate_extracted_fields(
-            view["header_effective"]["supplier"], document_header, repository_lines, ""
+            view["header_effective"]["supplier"], document_header, repository_lines, "", review_inputs=review_inputs
         )
 
-        latest_corrections = repo.latest_field_corrections(view["corrections"])
         # Task §6, "AMBIGUOUS IS BLOCKING": a required field left AMBIGUOUS/
         # UNREAD with no corrected_value is unresolved regardless of what
         # `_validate_extracted_fields()` concluded from its (possibly

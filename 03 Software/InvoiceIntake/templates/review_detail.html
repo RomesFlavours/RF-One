@@ -76,6 +76,51 @@
 </div>
 
 <div class="card">
+  <h3>B2. Importi del documento e dati di lettura</h3>
+  {% set ex = view.extraction %}
+  {% if ex %}
+  <p class="hint">Lettura: <strong>{{ ex.acquisition.method }}</strong> &nbsp;·&nbsp; pagine lette {{ ex.acquisition.pages_read }} di {{ ex.acquisition.pages_total }}
+    &nbsp;·&nbsp; pagine di questa fattura: {{ ex.pages }} &nbsp;·&nbsp; file: <code>{{ ex.acquisition.original_filename }}</code></p>
+  {% else %}
+  <p class="hint">Documento acquisito prima della lettura con importi separati: nessun dato di lettura disponibile.</p>
+  {% endif %}
+  <table>
+    <thead><tr><th>Importo</th><th>Letto</th><th>Effettivo</th><th>Pagina / etichetta / confidenza</th>{% if can_correct %}<th>Correggi</th>{% endif %}</tr></thead>
+    <tbody>
+      <tr><td>totale fattura (total_amount)</td><td>{{ view.header_original.total_amount or '—' }}</td><td>{{ view.header_effective.total_amount or '—' }}</td>
+        <td>{% if ex and ex.provenance.total %}p{{ ex.provenance.total.page }} · {{ ex.provenance.total.label or '' }} · {{ ex.provenance.total.confidence or '' }}{% endif %}</td>{% if can_correct %}<td>(sezione B)</td>{% endif %}</tr>
+      {% for field in ['subtotal', 'tax', 'discount', 'shipping', 'amount_paid', 'balance_due'] %}
+      <tr>
+        <td>{{ field }}</td>
+        <td>{{ view.amounts_original[field] or '—' }}</td>
+        <td>{{ view.amounts_effective[field] or '—' }}</td>
+        <td>{% if ex and ex.provenance[field] %}p{{ ex.provenance[field].page }} · {{ ex.provenance[field].label or '' }} · {{ ex.provenance[field].confidence or '' }}{% endif %}</td>
+        {% if can_correct %}
+        <td>
+          <form method="post" action="{{ url_for('review_submit_field', doc_id=doc_id) }}" class="row">
+            <input type="hidden" name="field_name" value="{{ field }}">
+            <select name="classification">
+              <option value="CORRECT">CORRECT</option><option value="INCORRECT">INCORRECT</option>
+              <option value="UNREAD">UNREAD</option><option value="AMBIGUOUS">AMBIGUOUS</option>
+            </select>
+            <input type="text" name="corrected_value" placeholder="valore corretto">
+            <button type="submit" class="secondary">Salva</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if ex %}
+    {% if ex.amounts.fees %}<p class="hint">Altri supplementi letti: {% for f in ex.amounts.fees %}{{ f.label }} {{ f.amount }}{% if not loop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+    {% if ex.conflicts %}<p class="hint"><strong>Letture in conflitto:</strong> {{ ex.conflicts|join('; ') }}</p>{% endif %}
+    {% if ex.unreadable %}<p class="hint"><strong>Valori illeggibili:</strong> {% for u in ex.unreadable %}{{ u.field }} (p{{ u.page }}): "{{ u.raw }}"{% if not loop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+    <p class="hint">Intestazione letta: {% for k, v in ex.header.items() %}{% if k != 'other_fields' %}{{ k }}={{ v }}{% if ex.provenance[k] %} (p{{ ex.provenance[k].page }}, conf. {{ ex.provenance[k].confidence }}){% endif %}{% if not loop.last %}; {% endif %}{% endif %}{% endfor %}</p>
+  {% endif %}
+</div>
+
+<div class="card">
   <h3>C. Lines</h3>
   <table>
     <thead>
@@ -87,7 +132,7 @@
     <tbody>
       {% for line in view.lines %}
       <tr>
-        <td>{% if line.human_added %}<strong>aggiunta manualmente</strong>{% else %}originale estratta{% endif %}</td>
+        <td>{% if line.human_added %}<strong>aggiunta manualmente</strong>{% else %}originale estratta{% if line.read %}<br><span class="hint">p{{ line.read.page or '—' }}{% if line.read.supplier_item_code %} · cod. {{ line.read.supplier_item_code }}{% endif %}{% if line.read.row_text %}<br>"{{ line.read.row_text[:120] }}"{% endif %}</span>{% endif %}{% endif %}</td>
         {% for field in line_fields %}
         <td>{{ line.effective[field] or '—' }}</td>
         {% endfor %}

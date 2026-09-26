@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Documenti acquisiti</h1>
+<p class="subtitle">Tutti i documenti, anche quelli accettati automaticamente (NORMALIZED): originale e dati letti restano consultabili.</p>
+<div class="card">
+  <table>
+    <thead><tr><th>#</th><th>Fornitore</th><th>Numero</th><th>Data</th><th>Totale fattura</th><th>Saldo</th><th>Righe</th><th>Lettura</th><th>Stato</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="{{ url_for('review_detail', doc_id=r.id) }}">#{{ r.id }}</a></td>
+        <td>{{ r.supplier_name or '—' }}</td><td>{{ r.document_number or '—' }}</td><td>{{ r.issue_date or '—' }}</td>
+        <td>{{ r.total_amount or '—' }}</td><td>{{ r.balance_due or '—' }}</td><td>{{ r.line_count }}</td>
+        <td>{{ r.acquisition_method or '—' }}</td><td><strong>{{ r.functional_status }}</strong></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9">Nessun documento.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

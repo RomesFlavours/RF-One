@@ -107,18 +107,36 @@ def test_total_never_confused_with_subtotal(result: Result) -> None:
 
 
 def test_total_avoids_tip_and_payment_lines(result: Result) -> None:
+    # INVOICE_SCAN_ACQUISITION_001: "Amount Due" is what is still to be
+    # paid, not the invoice total — kept distinct, never used as the total.
     text = "Amount Due: $75.50\nTip: $10.00\nAmount Tendered: $85.50\nChange Due: $0.00\n"
+    amounts = invoice_parser.extract_amounts(text)["amounts"]
     result.check(
-        "Amount Due is recognized without being confused by nearby Tip/Payment/Change lines",
-        invoice_parser.guess_total(text) == "75.50",
+        "Amount Due is read as the balance due (75.50), never as the invoice total, not confused with Tip/Change",
+        invoice_parser.guess_total(text) == "" and amounts.get("balance_due") == "75.50",
     )
 
 
-def test_conflicting_totals_detected(result: Result) -> None:
-    text = "Amount Due: $100.00\n...\nBalance Due: $120.00\n"
+def test_total_and_balance_kept_distinct(result: Result) -> None:
+    text = "Total $1,452.00\nPAYMENTS MADE WITH CREDIT CARD WILL BE SUBJECTED TO 3% FEE Balance due $1,394.39\n"
+    amounts = invoice_parser.extract_amounts(text)["amounts"]
     result.check(
-        "two different amounts under equally-authoritative total labels -> conflict detected",
-        invoice_parser.has_conflicting_totals(text) is True,
+        "invoice total 1452.00 and balance due 1394.39 are read and kept distinct (BBC Wine Imports 6855)",
+        amounts.get("total") == "1452.00" and amounts.get("balance_due") == "1394.39",
+    )
+
+
+def test_no_total_without_a_total_label(result: Result) -> None:
+    text = "Item A 1 10.00 10.00\nThank you\n25.00\n"
+    result.check("an unlabelled amount is never taken as the total", invoice_parser.guess_total(text) == "")
+
+
+def test_conflicting_totals_detected(result: Result) -> None:
+    text = "Invoice Total: $100.00\n...\nGrand Total: $120.00\n"
+    balances = invoice_parser.extract_amounts("Amount Due: $100.00\n...\nBalance Due: $120.00\n")
+    result.check(
+        "two different amounts under equally-authoritative total labels -> conflict; same for two balances",
+        invoice_parser.has_conflicting_totals(text) is True and bool(balances["conflicts"]),
     )
 
 
@@ -174,6 +192,8 @@ def main() -> int:
         test_total_never_confused_with_subtotal,
         test_total_avoids_tip_and_payment_lines,
         test_conflicting_totals_detected,
+        test_total_and_balance_kept_distinct,
+        test_no_total_without_a_total_label,
         test_no_conflict_for_ordinary_subtotal_plus_total,
         test_no_conflict_when_same_total_repeated,
         test_plausible_supplier_names_accepted,

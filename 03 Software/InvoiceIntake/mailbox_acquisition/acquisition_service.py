@@ -8,7 +8,7 @@ mailbox (ImapClient)
         -> filter out inline email assets (logos/signatures -- attachment_filter.py)
           -> technical dedup (identity + content hash, AcquisitionStore)
             -> save bytes under uploads/ (same folder app.py's manual upload uses)
-              -> deliver_to_invoice_intake(): ocr_engine -> invoice_splitter -> purchased_bridge
+              -> deliver_to_invoice_intake(): document_acquisition (digital text or AWS Textract) -> purchased_bridge
                 -> Purchased canonical persistence (unchanged pipeline; one or more
                    PurchaseDocument per attachment -- see invoice_splitter.py)
 ```
@@ -44,7 +44,7 @@ import os
 import uuid
 from dataclasses import dataclass, field
 
-import ocr_engine
+import document_acquisition
 import purchased_bridge
 
 from .acquisition_store import TERMINAL_SUCCESS_STATUSES, AcquisitionStore
@@ -101,16 +101,14 @@ def deliver_to_invoice_intake(saved_path: str) -> int:
     docstring for how each one stays traceable back to this exact source
     file via its own `source_reference`."""
 
-    ext = os.path.splitext(saved_path)[1].lower()
-    if ext == ".pdf":
-        pages, method = ocr_engine.extract_pages_from_pdf(saved_path)
-    else:
-        pages = [ocr_engine.extract_from_image(saved_path)]
-        method = "OCR"
-
-    source_file = os.path.basename(saved_path)
-    document_ids = purchased_bridge.save_purchase_documents_from_batch(pages, source_file, method)
-    return document_ids[0]
+    # INVOICE_SCAN_ACQUISITION_001: the same acquisition as manual upload
+    # (digital text or AWS Textract, exact reconciliation, content-hash
+    # dedup). A read failure raises `AcquisitionFailed`, which poll_once()
+    # records as FAILED and retries — never an invoice built from an error.
+    outcome = document_acquisition.acquire_saved_file(saved_path, os.path.basename(saved_path))
+    if not outcome.purchase_document_ids:
+        raise document_acquisition.AcquisitionFailed("the file was read but produced no invoice")
+    return outcome.purchase_document_ids[0]
 
 
 def _save_attachment(content: bytes, original_filename: str) -> str:

@@ -2,36 +2,51 @@
 
 **Nota canonica (Align legacy Invoice Intake with Purchased, evolve di TASK_PURCHASING_004):** Invoice Intake è il processo che alimenta **Purchased** (`01 Domains/Shared Domains/Purchased/README.md`), il Shared Domain proprietario del Purchase Fact (capture + normalize + publish). Il salvataggio finale avviene nel **RF-One Data Store** (`03 Software/RF-One Data Store/`, tramite `purchased_bridge.py`), che persiste il Purchase Document / Purchase Line (`line_type` PRODUCT/SURCHARGE/DISCOUNT) — lo stesso schema introdotto da TASK_PURCHASING_004, riusato as-is (nessuna tabella nuova). **Restaurant/Purchasing consuma** questo Purchase Fact per le proprie decisioni (Purchase Order, Configured Expectation, Physical Receiving, Reconciliation, Alert) — non lo possiede più, e non è mai un prerequisito per crearlo. Il file Excel (`data/PurchaseDocuments.xlsx`) resta disponibile solo come copia di debug/esportazione secondaria. Vedi `03 Software/RF-One Data Store/PURCHASING.md` per i dettagli implementativi.
 
-Piccola web app locale per validare il flusso: carichi una fattura (foto o PDF), l'app la legge, tu correggi/completi i dati (incluso il tipo di riga: Prodotto/Supplemento/Sconto) in una schermata di revisione, e alla conferma il documento viene registrato come Purchase Fact canonico. `purchased_bridge.py` calcola anche lo stato funzionale **NORMALIZED/HUMAN** (Purchased/README.md) e riconosce documenti duplicati/correzioni fornitore (Credit Memo, Corrected Invoice, ecc.) — vedi PURCHASING.md, §5.
+Piccola web app locale: carichi una fattura (foto o PDF), l'app la legge e **salva subito** il documento come Purchase Fact canonico (Purchased), con stato funzionale **NORMALIZED/HUMAN**; ogni verifica o correzione avviene dopo, nella revisione (`/review/<id>`). `purchased_bridge.py` riconosce anche documenti duplicati/correzioni fornitore (Credit Memo, Corrected Invoice, ecc.) — vedi PURCHASING.md, §5.
 
-**Acquisizione via email (`mailbox_acquisition/`):** oltre al caricamento manuale, Invoice Intake acquisisce fatture direttamente dalla casella **`invoices@romesflavours.com`** (mailbox operativa Aruba di Rome's Flavours) — un processo continuo/configurabile che scarica gli allegati documentali di ogni nuovo messaggio e li consegna a questa stessa pipeline (OCR/parser/`purchased_bridge.py`), senza saltarla. Vedi `mailbox_acquisition/README.md` per configurazione e comportamento (idempotenza, provenance, retry).
+**Acquisizione via email (`mailbox_acquisition/`):** oltre al caricamento manuale, Invoice Intake acquisisce fatture dalla casella **`invoices@romesflavours.com`** (Aruba) — un processo avviato a mano che scarica gli allegati e li consegna alla **stessa acquisizione** del caricamento manuale. Vedi `mailbox_acquisition/README.md`.
 
-## Come funziona la lettura
+## Come funziona l'acquisizione (INVOICE_SCAN_ACQUISITION_001)
 
-- **PDF con testo digitale** (fatture generate al computer): il testo viene estratto direttamente, in modo pulito e affidabile.
-- **Foto/scansioni** (jpg, png, PDF scansionati): viene usato OCR locale (Tesseract), gratuito e offline. Su foto storte, sbiadite o con tabelle complesse la qualità di lettura è limitata — è normale dover correggere diversi campi a mano nella schermata di revisione. Per questo la revisione è un passaggio obbligato, non opzionale: coerente con il principio "human validation always prevails" del modulo Purchasing.
+Un file = un'**acquisizione** (`document_acquisition.py`, archivio `data/document_acquisitions.db`), identificata dall'impronta SHA-256 del contenuto:
 
-Testato con i due esempi in `01 Domains/Shared Domains/Administration/Invoice Intake/Invoices/Raw/`: la fattura PDF digitale (`Invoice 6855.pdf`) viene letta quasi perfettamente (fornitore, numero, data, totale, tutte le righe); le foto scattate al telefono vengono lette solo parzialmente e richiedono correzioni manuali.
+| Stato | Significato |
+|---|---|
+| `RECEIVED` | originale conservato in `uploads/`, non ancora letto |
+| `FAILED` | lettura non riuscita (errore del servizio, file illeggibile, una pagina non elaborata). **Nessuna fattura creata**; l'originale resta conservato; pulsante **Riprova** in `/acquisitions` |
+| `ACQUIRED` | ogni fattura trovata nel file è stata salvata come Purchase Document; Purchased decide NORMALIZED o HUMAN |
+
+- **Ricaricare lo stesso identico file** non crea un'altra fattura né un'altra copia del file: vengono mostrati i documenti già creati.
+- **Un nuovo tentativo** rilegge l'originale conservato (stesso record) e salva solo le fatture non ancora salvate (una per indice di fattura nel file): mai due volte la stessa.
+- **Lettura** (`document_reader.py`):
+  - PDF con testo digitale utilizzabile (il parser trova fornitore, un totale etichettato **e** almeno una riga): lettura dal testo, come prima, con divisione multi-fattura di `invoice_splitter.py`.
+  - Ogni altro PDF (scansionato, o con uno strato di testo dello scanner che non dà righe) e ogni immagine (JPG, PNG, TIFF; WEBP/BMP convertiti in PNG in memoria): **AWS Textract `AnalyzeExpense`**, una chiamata per pagina (`providers/textract_provider.py`; le pagine di un PDF sono separate in memoria con pypdfium2, senza rasterizzare e senza OCR locale). Se anche una sola pagina non viene letta l'acquisizione è `FAILED` e l'errore elenca le pagine.
+  - Le pagine sono raggruppate in fatture secondo il numero fattura letto su ciascuna: un numero diverso inizia una nuova fattura, una pagina senza numero continua la precedente.
+- **Dati letti e conservati con l'acquisizione** (consultabili nel dettaglio `/review/<id>`, sezione B2): fornitore (tutte le letture diverse, se più d'una), numero, data, scadenza, destinatario, termini, valuta; righe con codice articolo, descrizione, quantità, unità di misura, prezzo unitario, importo, formato, marca, codice produttore; **importi di documento distinti**: totale fattura, subtotale, imposte, sconto, trasporto, altri supplementi (es. Fuel Charge), importo pagato/accreditato, **saldo residuo** — il saldo non è mai usato come totale. Per Textract, di ogni valore: pagina, posizione (bounding box), etichetta letta, confidenza. Risposta grezza del servizio in `uploads/_provider_mirror/`.
+- **Nulla viene inventato**: un valore vuoto resta assente; un valore che non è ciò che il campo richiede (es. "Totals $ * Total" come subtotale) è elencato come **illeggibile**; due valori diversi per lo stesso importo sono un **conflitto**.
+
+### Quando un documento è da verificare (HUMAN)
+
+Oltre a fornitore/data/totale non riconosciuti (regola precedente), ogni volta che:
+
+- mancano righe: una fattura senza nessuna riga acquisita non è mai completa;
+- una riga non ha importo, o quantità × prezzo unitario ≠ importo;
+- gli importi non tornano **al centesimo** (nessuna tolleranza: è stata eliminata l'accettazione automatica fino al 5%): righe = subtotale; subtotale (o righe) − sconto + imposte + trasporto + supplementi = totale; totale − pagato = saldo; saldo diverso dal totale senza alcun pagamento/credito indicato;
+- ci sono letture in conflitto o valori illeggibili.
+
+Il completamento della revisione applica lo stesso controllo ai valori effettivi (anche subtotale, imposte, sconto, trasporto, pagato e saldo sono correggibili). Un conflitto o un valore illeggibile resta bloccante finché il revisore non si è espresso su quel campo.
+
+Nota: un codice articolo fornitore letto crea/usa il Supplier Product in Purchased; un articolo non ancora classificato genera la segnalazione di Purchased "Unknown or unclassified Supplier Product" (regola esistente di Purchased, non dell'acquisizione), che rende HUMAN il documento finché non viene risolta.
+
+### Pagine
+
+- `/` caricamento · `/acquisitions` stato di ogni file, errori, **Riprova** · `/documents` **tutti** i documenti, anche NORMALIZED · `/review` coda dei soli HUMAN · `/review/<id>` originale + dati letti + correzioni · `/mailbox` canale email.
 
 ## Requisiti
 
-- Python 3.10 o superiore
-- **Tesseract OCR** — necessario per leggere JPG/PNG/TIFF e PDF scansionati (i PDF con testo digitale non ne hanno bisogno, vedi "PDF digitale vs PDF scansionato" sotto). Su Windows, via [winget](https://learn.microsoft.com/windows/package-manager/winget/):
-  ```
-  winget install --id UB-Mannheim.TesseractOCR
-  ```
-  oppure scarica l'installer da [UB-Mannheim/tesseract](https://github.com/UB-Mannheim/tesseract/wiki) — assicurati che `tesseract.exe` sia nel PATH di sistema (il pacchetto winget lo richiede esplicitamente in un secondo momento; se non lo fa in automatico, aggiungi `C:\Program Files\Tesseract-OCR` al PATH utente).
-- **Poppler** — necessario per il fallback OCR sui PDF scansionati (rende ogni pagina come immagine prima di passarla a Tesseract; non serve per PDF con testo digitale). Su Windows, via winget:
-  ```
-  winget install --id oschwartz10612.Poppler
-  ```
-  oppure scarica da [oschwartz10612/poppler-windows](https://github.com/oschwartz10612/poppler-windows/releases) — assicurati che la cartella `bin` (contiene `pdftoppm.exe`) sia nel PATH.
-- Le dipendenze Python già in `requirements.txt` (`pytesseract`, `pdfplumber`, `pdf2image`, ecc.) — `pip install -r requirements.txt`.
-- Le dipendenze di `03 Software/RF-One Data Store/` (SQLAlchemy, Alembic — vedi il suo `requirements.txt`), poiché `purchased_bridge.py` importa `rfone_data_store` da lì
-
-### PDF digitale vs PDF scansionato
-
-`ocr_engine.py` distingue sempre i due casi, senza bisogno di configurazione: un **PDF digitale** (testo incorporato, es. fatture generate al computer) viene letto direttamente con `pdfplumber` — veloce, accurato, non serve Tesseract/Poppler. Solo quando il testo incorporato è assente o insufficiente (**PDF scansionato/fotografato**) scatta il fallback: `pdf2image`/Poppler rasterizza le pagine, poi Tesseract le legge via OCR. Questo comportamento non è stato modificato da questo task.
+- Python 3.10 o superiore e le dipendenze in `requirements.txt` (`pdfplumber` porta con sé `pypdfium2`; `boto3` per Textract).
+- **AWS Textract** per foto e scansioni: credenziali AWS risolte dalla catena standard di `boto3` (in locale `AWS_PROFILE=rfone-dev-login`, `AWS_REGION=us-east-1`); permesso `textract:AnalyzeExpense`. Senza accesso ad AWS, foto e scansioni finiscono in acquisizione `FAILED` (ritentabile), mai in una fattura vuota. Tesseract/Poppler **non** sono più usati dal flusso (`ocr_engine.py`/`tesseract_provider.py` restano nel repository ma non sono chiamati).
+- Le dipendenze di `03 Software/RF-One Data Store/` (SQLAlchemy, Alembic), poiché `purchased_bridge.py` importa `rfone_data_store`.
 
 ## Installazione
 
@@ -47,10 +62,12 @@ pip install -r "../RF-One Data Store/requirements.txt"
 ## Avvio
 
 ```
+set AWS_PROFILE=rfone-dev-login
+set AWS_REGION=us-east-1
 python app.py
 ```
 
-Poi apri il browser su **http://127.0.0.1:5000** — la vista `/mailbox` mostra le fatture acquisite via email.
+Poi apri il browser su **http://127.0.0.1:5000**.
 
 ## Avvio dell'acquisizione email (opzionale)
 
@@ -63,13 +80,11 @@ Richiede `ARUBA_IMAP_USERNAME`/`ARUBA_IMAP_PASSWORD` (vedi `.env.example` alla r
 
 ## Dove finiscono i dati
 
-Ogni fattura confermata viene salvata nel RF-One Data Store (SQLite locale per default: `03 Software/RF-One Data Store/data/rfone.db`, creato/aggiornato automaticamente tramite le migration Alembic esistenti — vedi `03 Software/RF-One Data Store/README.md`). La schermata finale mostra il `PurchaseDocumentId` canonico assegnato e lo stato funzionale **NORMALIZED** o **HUMAN** (Purchased/README.md). **La lettura tramite OCR non implica più HUMAN di per sé** (dal task "Improve Generic Parser and Prepare Supplier Format Training") — la decisione dipende solo dalla completezza/coerenza dei campi estratti: fornitore riconosciuto, data riconosciuta, totale riconosciuto (un totale $0.00 non conta come riconosciuto), nessun totale in conflitto, righe che tornano aritmeticamente con il totale quando presenti. HUMAN quando anche uno solo di questi controlli fallisce, o quando l'identità fattura è in conflitto con un documento già registrato.
+Ogni fattura acquisita viene salvata nel RF-One Data Store (SQLite locale per default: `03 Software/RF-One Data Store/data/rfone.db`, o `RFONE_DATABASE_URL`). La schermata finale mostra il `PurchaseDocumentId` e lo stato NORMALIZED/HUMAN, oppure l'errore di lettura con il pulsante **Riprova**. Gli originali restano in `uploads/`; lo stato delle acquisizioni e i dati letti in `data/document_acquisitions.db`; la risposta grezza di Textract in `uploads/_provider_mirror/`. `uploads/` e `data/` non sono tracciati da Git.
 
-Una fattura già registrata, ricaricata di nuovo (stesso fornitore/numero/data/totale, magari da un altro canale), non crea un secondo Purchase Fact: viene riconosciuto come duplicato e restituito il `PurchaseDocumentId` esistente. Un Credit Memo/Corrected Invoice/Return Credit/Adjustment selezionato come "Tipo documento" viene invece registrato come nuovo documento collegato all'originale (correzione fornitore, mai una riscrittura del fatto precedente).
+Una fattura già registrata arrivata da un altro canale o come file diverso (stesso fornitore/numero/data/totale) non crea un secondo Purchase Fact (duplicato di Purchased). Un Credit Memo/Corrected Invoice/Return Credit/Adjustment viene registrato come nuovo documento collegato all'originale.
 
-`data/PurchaseDocuments.xlsx` continua a essere aggiornato come copia di debug/esportazione secondaria ad ogni salvataggio (append, non sovrascrive) — utile per un controllo visivo rapido, ma non è più la fonte di verità. Se il file è aperto in Excel al momento del salvataggio, il salvataggio canonico nel RF-One Data Store avviene comunque; solo la copia Excel potrebbe fallire silenziosamente (messaggio informativo nella schermata di conferma).
-
-Le immagini/PDF caricati restano salvati in `uploads/` per tracciabilità. **Nota:** `uploads/` e `data/PurchaseDocuments.xlsx` contengono documenti fornitore reali/dati generati e non sono tracciati da Git (vedi `.gitignore` alla radice del repository) — solo i placeholder `.gitkeep` restano versionati.
+`data/PurchaseDocuments.xlsx` **non viene più aggiornato** dal flusso (nessun codice chiama più `excel_store.py`); resta solo come file storico.
 
 ## Riconoscimento fornitore + Supplier Format Training (foundation)
 
@@ -93,10 +108,11 @@ Il riconoscimento del nome fornitore (`purchased_bridge._resolve_supplier_name`)
 
 ## Limiti noti di questo prototipo
 
-- **Il training dei fornitori (supplier training) viene dopo, non prima, di questo passo.** Questo prototipo diventa affidabile solo una volta che Tesseract/Poppler sono realmente installati (vedi "Requisiti" sopra) — senza di essi, ogni documento non digitale finisce comunque HUMAN, per mancanza di campi riconoscibili.
-- Il parsing delle righe (descrizione/quantità/prezzo/importo) è basato su euristiche ed espressioni regolari, non su un modello AI: funziona bene su testo pulito, meno su OCR rumoroso. Lo stesso vale per fornitore/data/numero/totale: l'euristica generica riconosce bene i formati comuni osservati nei documenti reali, ma resta imperfetta su scansioni di bassa qualità o layout insoliti — corretto per design (HUMAN quando incerta), non un bug da correggere qui.
-- Il `line_type` (Prodotto/Supplemento/Sconto) viene proposto con un'euristica su parole chiave nella descrizione (es. "surcharge", "fee" → Supplemento; "discount", "credit" → Sconto) ma è sempre correggibile dall'utente prima del salvataggio.
-- L'OCR/parser non estrae ancora un codice articolo fornitore strutturato, quindi le righe PRODUCT create da qui non alimentano ancora la "Supplier Product memory" (riconoscimento automatico dello stesso Supplier Product a fatture successive) — il modello e il repository lo supportano già pienamente quando un codice è disponibile (es. da Physical Receiving); vedi `03 Software/RF-One Data Store/PURCHASING.md`, "Remaining gaps".
-- Non fa ancora normalizzazione in grammi/costo per grammo né mapping automatico verso gli Ingredienti — è il passo successivo naturale, coerente con `01 Domains/Business Domain/Restaurant/Purchasing/DataDictionary.md`.
-- Non offre ancora una selezione del Restaurant/organizzazione (multi-tenant); riusa l'unico Restaurant esistente nello store o ne crea uno placeholder.
-- Un solo utente alla volta (nessuna gestione concorrenza sul salvataggio).
+- **La lettura di foto e scansioni (AWS Textract) non è perfetta, e per design finisce quasi sempre in revisione (HUMAN)**: osservato su documenti reali (INVOICE_SCAN_ACQUISITION_001) — righe di una foto accorpate o spostate (quantità di una riga su un'altra), subtotali di sezione ("Cooler", "Dry", "TOTAL WEIGHT") letti come righe, più nomi di fornitore letti dallo stesso documento (logo, blocco "remit to"), unità di misura letta solo quando la colonna ha un'etichetta riconoscibile. Il controllo esatto degli importi e il controllo quantità × prezzo le rendono visibili; la correzione resta umana.
+- Una **fattura in più file** (es. pagina 1 e pagina 2 fotografate o scansionate separatamente) non può essere caricata come un'unica fattura: ogni file è un'acquisizione a sé (resta da completare in revisione).
+- La lettura digitale (PDF con testo) non estrae il destinatario ("Bill to/Ship to"); termini e scadenza solo se etichettati. Textract li estrae.
+- Subtotale, imposte, sconto, trasporto, supplementi, pagato e saldo sono conservati con l'acquisizione (`data/document_acquisitions.db`) e consultabili/correggibili in revisione, ma non hanno colonne nel Purchase Fact canonico (fuori perimetro dell'acquisizione).
+- Un codice articolo fornitore letto crea il Supplier Product in Purchased; un articolo non classificato rende HUMAN il documento (regola di Purchased).
+- `/review/login` non è un login reale (Identity & Access congelato): registra solo nome e ruolo dichiarati.
+- Il parsing delle righe digitali resta euristico (espressioni regolari); il `line_type` (Prodotto/Supplemento/Sconto) è proposto per parole chiave e correggibile in revisione.
+- Non fa normalizzazione in grammi/costo per grammo né mapping verso gli Ingredienti; nessuna selezione del Restaurant (multi-tenant); un solo utente alla volta.

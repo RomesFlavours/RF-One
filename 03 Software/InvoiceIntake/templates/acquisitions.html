@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Acquisizioni</h1>
+<p class="subtitle">Un record per file (contenuto identico = stesso record). FAILED = lettura non riuscita, nessuna fattura creata, originale conservato.</p>
+<div class="card">
+  <table>
+    <thead><tr><th>#</th><th>File</th><th>Canale</th><th>Stato</th><th>Tentativi</th><th>Lettura</th><th>Pagine</th><th>Documenti</th><th>Errore</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.id }}</td><td>{{ r.original_filename }}</td><td>{{ r.channel }}</td><td><strong>{{ r.status }}</strong></td>
+        <td>{{ r.attempts }}</td><td>{{ r.method or '—' }}</td><td>{{ r.pages_read or '—' }} / {{ r.pages_total or '—' }}</td>
+        <td>{% for d in r.documents %}<a href="{{ url_for('review_detail', doc_id=d.doc_id) }}">#{{ d.doc_id }}</a> {% endfor %}</td>
+        <td class="hint">{{ r.last_error or '' }}</td>
+        <td>{% if r.status == 'FAILED' %}<form method="post" action="{{ url_for('acquisition_retry', acquisition_id=r.id) }}"><button type="submit" class="secondary">Riprova</button></form>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10">Nessuna acquisizione.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

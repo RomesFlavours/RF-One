@@ -304,28 +304,98 @@ class FieldValidationResult:
     reasons: list[str]
 
 
-def _check_arithmetic_coherence(repository_lines: list[dict], total_amount_minor: int | None) -> bool | None:
-    """True/False when checkable, `None` when not applicable (Task
-    requirement 7, "arithmetic coherent where possible"). Not applicable
-    when there is no total to check against, or no PRODUCT line carried a
-    parsed amount at all (an empty/未-extracted line list must never count
-    against a document — that is a known, separate line-parsing gap, not a
-    coherence failure)."""
+def _money(raw) -> int | None:
+    return _parse_money_minor(raw) if raw not in (None, "") else None
 
-    if total_amount_minor is None:
-        return None
-    line_amounts = [line["source_amount_minor"] for line in repository_lines if line.get("source_amount_minor") is not None]
-    if not line_amounts:
-        return None
-    lines_sum = sum(line_amounts)
-    # Tolerance accounts for tax/fees/allocation not itemized as their own
-    # PRODUCT line amount -- 5%, or at least $1.00 for small documents.
-    tolerance = max(100, abs(total_amount_minor) // 20)
-    return abs(lines_sum - total_amount_minor) <= tolerance
+
+def _reading_reasons(repository_lines: list[dict], total_amount_minor: int | None, review_inputs: dict | None) -> list[str]:
+    """INVOICE_SCAN_ACQUISITION_001 — exact check (to the cent) of
+    the amounts the document actually states, replacing the old automatic
+    acceptance of differences up to 5%. No tolerance is invented: any
+    unexplained difference is a reason for review. Also: an invoice with no
+    line acquired is never complete; a line whose quantity x unit price does
+    not give its amount is flagged; conflicting and unreadable readings are
+    flagged."""
+    inputs = review_inputs or {}
+    amounts = inputs.get("amounts") or {}
+    reasons: list[str] = []
+    for conflict in inputs.get("conflicts") or []:
+        reasons.append(f"conflicting readings — {conflict}")
+    for item in inputs.get("unreadable") or []:
+        where = f" (page {item.get('page')})" if item.get("page") else ""
+        reasons.append(f"unreadable {item.get('field')}{where}: {item.get('raw')!r}")
+
+    if not repository_lines:
+        reasons.append(
+            "no invoice line acquired — lines shown on the original must be read or added before the invoice is complete"
+        )
+        return reasons
+
+    missing_amount = [i + 1 for i, line in enumerate(repository_lines) if line.get("source_amount_minor") is None]
+    if missing_amount:
+        reasons.append(f"line(s) {missing_amount} without an amount")
+    for i, line in enumerate(repository_lines, start=1):
+        for note in line.get("_issues", []):
+            reasons.append(f"line {i}: unreadable {note}")
+        qty, unit_price, amount = line.get("quantity"), line.get("_unit_price_exact"), line.get("source_amount_minor")
+        if qty is not None and unit_price is not None and amount is not None:
+            computed = int((qty * unit_price * 100).quantize(Decimal("1")))
+            if computed != amount:
+                reasons.append(
+                    f"line {i}: quantity {qty} x unit price {unit_price} = {computed / 100:.2f}, "
+                    f"but the amount read is {amount / 100:.2f}"
+                )
+    if missing_amount:
+        return reasons
+
+    def total_of(line_type, absolute=False):
+        values = [line["source_amount_minor"] for line in repository_lines if line["line_type"] == line_type]
+        return sum(abs(v) for v in values) if absolute else sum(values)
+
+    # Signed for goods and charges (a credit memo's lines are negative);
+    # discount lines reduce the goods whatever sign they were read with.
+    goods = total_of("PRODUCT") + total_of("SURCHARGE") - total_of("DISCOUNT", absolute=True)
+    subtotal = _money(amounts.get("subtotal"))
+    tax = _money(amounts.get("tax")) or 0
+    discount = abs(_money(amounts.get("discount")) or 0)
+    shipping = _money(amounts.get("shipping")) or 0
+    fees = sum(_money(fee.get("amount")) or 0 for fee in amounts.get("fees") or [])
+    if subtotal is not None and subtotal != goods:
+        reasons.append(
+            f"lines add up to {goods / 100:.2f} but the document states a subtotal of {subtotal / 100:.2f} "
+            f"(difference {(subtotal - goods) / 100:.2f})"
+        )
+    if total_amount_minor is not None:
+        base = subtotal if subtotal is not None else goods
+        expected = base - discount + tax + shipping + fees
+        if expected != total_amount_minor:
+            parts = [f"{'subtotal' if subtotal is not None else 'lines'} {base / 100:.2f}"]
+            parts += [f"{name} {value / 100:.2f}" for name, value in
+                      (("- discount", discount), ("+ tax", tax), ("+ shipping", shipping), ("+ charges", fees)) if value]
+            reasons.append(
+                f"invoice total {total_amount_minor / 100:.2f} does not match {' '.join(parts)} = {expected / 100:.2f} "
+                f"(unexplained difference {(total_amount_minor - expected) / 100:.2f})"
+            )
+    balance = _money(amounts.get("balance_due"))
+    paid = _money(amounts.get("amount_paid"))
+    if total_amount_minor is not None and balance is not None:
+        if paid is not None:
+            if total_amount_minor - abs(paid) != balance:
+                reasons.append(
+                    f"invoice total {total_amount_minor / 100:.2f} - paid/credited {abs(paid) / 100:.2f} "
+                    f"does not give the balance due {balance / 100:.2f}"
+                )
+        elif balance != total_amount_minor:
+            reasons.append(
+                f"balance due {balance / 100:.2f} differs from the invoice total {total_amount_minor / 100:.2f} "
+                f"by {(total_amount_minor - balance) / 100:.2f} and the document shows no payment or credit amount"
+            )
+    return reasons
 
 
 def _validate_extracted_fields(
-    resolved_supplier_name: str | None, document_header: dict, repository_lines: list[dict], raw_text: str
+    resolved_supplier_name: str | None, document_header: dict, repository_lines: list[dict], raw_text: str,
+    review_inputs: dict | None = None,
 ) -> FieldValidationResult:
     """Replaces the old OCR-implies-HUMAN rule (Task requirement 6, "OCR ≠
     HUMAN automatico"): the decision depends only on the completeness and
@@ -351,9 +421,7 @@ def _validate_extracted_fields(
     if invoice_parser.has_conflicting_totals(raw_text):
         reasons.append("multiple conflicting total-like amounts found in the source text")
 
-    arithmetic_ok = _check_arithmetic_coherence(repository_lines, document_header.get("total_amount_minor"))
-    if arithmetic_ok is False:
-        reasons.append("line amounts do not add up to the stated total")
+    reasons.extend(_reading_reasons(repository_lines, document_header.get("total_amount_minor"), review_inputs))
 
     return FieldValidationResult(is_normalized=not reasons, reasons=reasons)
 
@@ -390,7 +458,8 @@ def _record_conflict_or_correction(
 
 
 def save_purchase_document(
-    header: dict, lines: list[dict], source_file: str, raw_text: str = "", batch_note: str | None = None
+    header: dict, lines: list[dict], source_file: str, raw_text: str = "", batch_note: str | None = None,
+    review_inputs: dict | None = None,
 ) -> int:
     """Maps InvoiceIntake's reviewed header/lines onto the canonical
     Purchased Purchase Fact and persists them. Returns the resulting
@@ -446,6 +515,9 @@ def save_purchase_document(
             "acquisition_method": header.get("acquisition_method") or None,
             "currency": header.get("currency") or None,
             "total_amount_minor": _parse_money_minor(header.get("total_amount")),
+            # INVOICE_SCAN_ACQUISITION_001: recipient and terms as read.
+            "destination_location": header.get("destination_location") or None,
+            "payment_terms": header.get("payment_terms") or None,
             "status": "RECORDED",
             "source_reference": source_file or None,
             "source_provenance": (
@@ -499,6 +571,7 @@ def save_purchase_document(
                 continue  # a fully blank review row, never persisted
 
             line_type = line.get("line_type") or guess_line_type(description)
+            line_number = str(line.get("source_line_number") or "").strip()
             repository_lines.append(
                 {
                     "line_type": line_type,
@@ -507,19 +580,30 @@ def save_purchase_document(
                     "quantity": quantity if line_type == "PRODUCT" else None,
                     "purchase_unit": (line.get("unit") or None) if line_type == "PRODUCT" else None,
                     "unit_price_minor": unit_price_minor if line_type == "PRODUCT" else None,
+                    # INVOICE_SCAN_ACQUISITION_001: further facts read on the line.
+                    "supplier_item_code": (line.get("supplier_item_code") or None) if line_type == "PRODUCT" else None,
+                    "source_line_number": int(line_number) if line_number.isdigit() else None,
+                    "manufacturer_code": line.get("manufacturer_code") or None,
+                    "brand": line.get("brand") or None,
+                    "pack_size": line.get("pack_size") or None,
                     "_unreliable": line_type == "PRODUCT" and not description,
+                    "_unit_price_exact": _parse_decimal(line.get("unit_price")) if line_type == "PRODUCT" else None,
+                    "_issues": list(line.get("unreadable") or []),
                 }
             )
 
         unreliable_line_flags = [entry.pop("_unreliable") for entry in repository_lines]
-        document = repo.record_purchase_document(session, supplier.id, document_header, repository_lines)
+        persist_lines = [{k: v for k, v in entry.items() if not k.startswith("_")} for entry in repository_lines]
+        document = repo.record_purchase_document(session, supplier.id, document_header, persist_lines)
         session.commit()
 
         # --- Functional state (Purchased/README.md, "NORMALIZED / HUMAN") ---
         # Field completeness/coherence only -- acquisition method (OCR vs.
         # digital text) is never a factor (Task requirement 6, "OCR ≠ HUMAN
         # automatico"; see _validate_extracted_fields()'s own docstring).
-        validation = _validate_extracted_fields(resolved_supplier_name, document_header, repository_lines, raw_text)
+        validation = _validate_extracted_fields(
+            resolved_supplier_name, document_header, repository_lines, raw_text, review_inputs=review_inputs
+        )
         if not validation.is_normalized:
             repo.add_validation_log_entry(
                 session,
@@ -636,6 +720,38 @@ def save_purchase_documents_from_batch(pages: list[str], source_file: str, acqui
         )
         document_ids.append(_build_and_save(segment.text, segment_source_file, batch_note))
     return document_ids
+
+
+def save_read_invoice(read_invoice, source_reference: str, acquisition_method: str, batch_note: str | None = None) -> int:
+    """INVOICE_SCAN_ACQUISITION_001 — persists one invoice produced by
+    `document_reader.read_document()` (digital text or AWS Textract) through
+    the same `save_purchase_document()` (same dedup, NORMALIZED/HUMAN,
+    training), passing every document-level amount, conflict and unreadable
+    value so the exact amount check can judge it. The invoice TOTAL is the
+    total read — never the balance due."""
+    h = read_invoice.header
+    receiver = " — ".join(x for x in (h.get("receiver_name"), h.get("receiver_address")) if x) or None
+    header = {
+        "supplier_name": h.get("supplier_name") or "",
+        "document_number": h.get("document_number") or "",
+        "document_type": "Invoice",
+        "issue_date": h.get("issue_date") or "",
+        "acquisition_method": acquisition_method,
+        "currency": h.get("currency") or "",
+        "total_amount": read_invoice.amounts.get("total") or "",
+        "destination_location": receiver,
+        "payment_terms": h.get("payment_terms"),
+    }
+    lines = []
+    for line in read_invoice.lines:
+        entry = dict(line)
+        entry["line_type"] = guess_line_type(entry.get("description", ""))
+        lines.append(entry)
+    return save_purchase_document(
+        header, lines, source_reference, raw_text=read_invoice.raw_text, batch_note=batch_note,
+        review_inputs={"amounts": read_invoice.amounts, "conflicts": read_invoice.conflicts,
+                       "unreadable": read_invoice.unreadable},
+    )
 
 
 def get_saved_document_functional_status(purchase_document_id: int) -> str:

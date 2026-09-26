@@ -38,6 +38,8 @@ from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.purchasing import repository as repo  # noqa: E402
 
 import human_review  # noqa: E402
+import document_acquisition  # noqa: E402
+import document_reader  # noqa: E402
 import ocr_engine  # noqa: E402
 import purchased_bridge  # noqa: E402
 import review_authority  # noqa: E402
@@ -69,9 +71,11 @@ _COMPLETE_HEADER = {
     "currency": "USD",
     "total_amount": "440.00",
 }
+# INVOICE_SCAN_ACQUISITION_001: quantities made coherent with unit price x
+# amount (the new exact per-line check flags 3 x 100.00 != 100.00).
 _HUMAN_LINES = [
-    {"description": "Tomatoes", "quantity": "3", "unit": "case", "unit_price": "100.00", "line_amount": "100.00", "line_type": "PRODUCT"},
-    {"description": "Mozzarella", "quantity": "2", "unit": "case", "unit_price": "300.00", "line_amount": "300.00", "line_type": "PRODUCT"},
+    {"description": "Tomatoes", "quantity": "1", "unit": "case", "unit_price": "100.00", "line_amount": "100.00", "line_type": "PRODUCT"},
+    {"description": "Mozzarella", "quantity": "1", "unit": "case", "unit_price": "300.00", "line_amount": "300.00", "line_type": "PRODUCT"},
     {"description": "Delivery Fee", "quantity": "", "unit": "", "unit_price": "", "line_amount": "40.00", "line_type": "SURCHARGE"},
 ]
 
@@ -610,9 +614,14 @@ def test_manual_upload_uses_shared_split_no_duplicate_logic(result: Result) -> N
         "invoice_splitter" not in imported_modules,
     )
     called_attrs = {node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)}
+    # INVOICE_SCAN_ACQUISITION_001: both channels now share the acquisition
+    # layer (document_acquisition -> document_reader -> invoice_splitter /
+    # Textract -> purchased_bridge.save_read_invoice), one level above the
+    # batch-save function they previously shared.
+    mailbox_source = open(os.path.join(base_dir, "mailbox_acquisition", "acquisition_service.py"), encoding="utf-8").read()
     result.check(
-        "app.py's /upload route calls the shared save_purchase_documents_from_batch (same path mailbox uses)",
-        "save_purchase_documents_from_batch" in called_attrs,
+        "app.py's /upload route and the mailbox channel share the same acquisition path (document_acquisition)",
+        "acquire_bytes" in called_attrs and "document_acquisition.acquire_saved_file" in mailbox_source,
     )
     result.check(
         "app.py no longer calls the old single-document save_purchase_document from /upload",
@@ -631,13 +640,19 @@ def _upload_with_fake_pages(client, pages: list[str], filename: str):
     acquired PDFs are untracked, environment-local artifacts, never a valid
     test dependency)."""
 
-    original = ocr_engine.extract_pages_from_pdf
-    ocr_engine.extract_pages_from_pdf = lambda path: (pages, "OCR")
+    # INVOICE_SCAN_ACQUISITION_001: the shared reader is replaced by its
+    # own digital-text path over these pages (same invoice_splitter), so no
+    # real PDF and no AWS call is needed; the content differs per filename
+    # because identical content is now recognised as already acquired.
+    original = document_reader.read_document
+    document_reader.read_document = lambda path, **kw: document_reader._read_digital(pages)
+    document_acquisition.document_reader.read_document = document_reader.read_document
     try:
-        data = {"invoice_file": (io.BytesIO(b"%PDF-1.4 fake content for manual-upload split testing"), filename)}
+        content = b"%PDF-1.4 fake content for manual-upload split testing " + filename.encode()
+        data = {"invoice_file": (io.BytesIO(content), filename)}
         return client.post("/upload", data=data, content_type="multipart/form-data")
     finally:
-        ocr_engine.extract_pages_from_pdf = original
+        document_reader.read_document = original
 
 
 def _documents_matching_filename(filename: str) -> list["m.PurchaseDocument"]:

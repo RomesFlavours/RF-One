@@ -59,9 +59,11 @@ _DIGITAL_HEADER = {
     "total_amount": "440.00",
 }
 
+# INVOICE_SCAN_ACQUISITION_001: quantities made coherent with unit price x
+# amount (the new exact per-line check flags 3 x 100.00 != 100.00).
 _TWO_GOODS_LINES = [
-    {"description": "Tomatoes", "quantity": "3", "unit": "case", "unit_price": "100.00", "line_amount": "100.00", "line_type": "PRODUCT"},
-    {"description": "Mozzarella", "quantity": "2", "unit": "case", "unit_price": "300.00", "line_amount": "300.00", "line_type": "PRODUCT"},
+    {"description": "Tomatoes", "quantity": "1", "unit": "case", "unit_price": "100.00", "line_amount": "100.00", "line_type": "PRODUCT"},
+    {"description": "Mozzarella", "quantity": "1", "unit": "case", "unit_price": "300.00", "line_amount": "300.00", "line_type": "PRODUCT"},
     {"description": "Delivery Fee", "quantity": "", "unit": "", "unit_price": "", "line_amount": "40.00", "line_type": "SURCHARGE"},
 ]
 
@@ -479,7 +481,7 @@ def test_supplier_format_specialization_applied_end_to_end(result: Result) -> No
     url = create_disposable_test_database_url("purchased_bridge_specialization")
     os.environ["RFONE_DATABASE_URL"] = url
     try:
-        lines = [{"description": "San Benedetto Water", "quantity": "8", "unit": "case", "unit_price": "7.99", "line_amount": "523.72", "line_type": "PRODUCT"}]
+        lines = [{"description": "San Benedetto Water", "quantity": "8", "unit": "case", "unit_price": "", "line_amount": "523.72", "line_type": "PRODUCT"}]
         doc_id = purchased_bridge.save_purchase_document(
             _PRIME_LINE_GENERIC_HEADER, lines, "PL20200630125750_001.pdf", raw_text=_PRIME_LINE_RAW_TEXT
         )
@@ -510,7 +512,7 @@ def test_specialization_does_not_break_duplicate_detection(result: Result) -> No
     url = create_disposable_test_database_url("purchased_bridge_specialization_dup")
     os.environ["RFONE_DATABASE_URL"] = url
     try:
-        lines = [{"description": "San Benedetto Water", "quantity": "8", "unit": "case", "unit_price": "7.99", "line_amount": "523.72", "line_type": "PRODUCT"}]
+        lines = [{"description": "San Benedetto Water", "quantity": "8", "unit": "case", "unit_price": "", "line_amount": "523.72", "line_type": "PRODUCT"}]
         first_id = purchased_bridge.save_purchase_document(
             _PRIME_LINE_GENERIC_HEADER, lines, "PL20200630125750_001.pdf", raw_text=_PRIME_LINE_RAW_TEXT
         )

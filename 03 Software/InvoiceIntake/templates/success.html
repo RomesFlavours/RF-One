@@ -1,8 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card">
+  {% if outcome and outcome.status == 'FAILED' %}
+  <h3 style="margin-top:0;">Lettura non riuscita — nessuna fattura creata</h3>
+  <p><strong>{{ original_name }}</strong>: {{ outcome.error }}</p>
+  <p class="hint">L'originale è conservato. Puoi ritentare: nessuna fattura duplicata verrà creata.</p>
+  <form method="post" action="{{ url_for('acquisition_retry', acquisition_id=outcome.acquisition_id) }}">
+    <button type="submit">Riprova la lettura</button>
+  </form>
+  {% elif outcome and outcome.already_acquired %}
+  <h3 style="margin-top:0;">File già acquisito</h3>
+  <p>Il contenuto di <strong>{{ original_name }}</strong> era già stato acquisito: nessuna nuova fattura creata. Documenti esistenti:</p>
+  {% else %}
   <h3 style="margin-top:0;">Salvato ✓</h3>
-  {% if results|length > 1 %}
+  {% endif %}
+  {% if outcome and outcome.status == 'FAILED' %}{% elif results|length > 1 %}
   <p>File <strong>{{ original_name }}</strong> conteneva più fatture: registrate come {{ results|length }} Purchase Fact (Purchased) distinti.</p>
   {% else %}
   <p>Documento registrato come Purchase Fact (Purchased).</p>

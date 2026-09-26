@@ -3,7 +3,7 @@ import uuid
 
 from flask import Flask, abort, render_template, request, redirect, send_from_directory, session, url_for
 
-import ocr_engine
+import document_acquisition
 import human_review
 import purchased_bridge
 import review_authority
@@ -83,23 +83,59 @@ def upload():
             excel_path=EXCEL_PATH,
         )
 
-    unique_name = f"{uuid.uuid4().hex[:8]}_{file.filename}"
-    saved_path = os.path.join(UPLOAD_DIR, unique_name)
-    file.save(saved_path)
-
-    if ext == ".pdf":
-        pages, method = ocr_engine.extract_pages_from_pdf(saved_path)
-    else:
-        pages = [ocr_engine.extract_from_image(saved_path)]
-        method = "OCR"
-
-    document_ids = purchased_bridge.save_purchase_documents_from_batch(pages, unique_name, method)
+    # INVOICE_SCAN_ACQUISITION_001: the acquisition layer preserves the
+    # original once per distinct content, reads it (digital text or AWS
+    # Textract), and returns either the documents created, the documents
+    # already created for this same file, or a recoverable error — never an
+    # invoice built from an error message.
+    outcome = document_acquisition.acquire_bytes(file.read(), file.filename)
     results = [
         {"doc_id": doc_id, "functional_status": purchased_bridge.get_saved_document_functional_status(doc_id)}
-        for doc_id in document_ids
+        for doc_id in outcome.purchase_document_ids
     ]
+    return render_template("success.html", results=results, original_name=file.filename, outcome=outcome)
 
-    return render_template("success.html", results=results, original_name=file.filename)
+
+@app.route("/acquisitions")
+def acquisitions_list():
+    """Every acquired file with its state (RECEIVED / FAILED / ACQUIRED),
+    attempts, last error, reading method, pages and resulting documents."""
+    store = document_acquisition.AcquisitionStore()
+    try:
+        rows = []
+        for row in store.list_all():
+            rows.append({**dict(row), "documents": [
+                {"doc_id": inv["purchase_document_id"], "source_reference": inv["source_reference"]}
+                for inv in store.invoices(row["id"])
+            ]})
+    finally:
+        store.close()
+    return render_template("acquisitions.html", rows=rows)
+
+
+@app.route("/acquisitions/<int:acquisition_id>/retry", methods=["POST"])
+def acquisition_retry(acquisition_id):
+    """A failed acquisition is read again from its preserved original —
+    same record, no new file, and no invoice saved twice."""
+    try:
+        outcome = document_acquisition.retry(acquisition_id)
+    except ValueError:
+        abort(404)
+    results = [
+        {"doc_id": doc_id, "functional_status": purchased_bridge.get_saved_document_functional_status(doc_id)}
+        for doc_id in outcome.purchase_document_ids
+    ]
+    return render_template("success.html", results=results, original_name=f"acquisition #{acquisition_id}", outcome=outcome)
+
+
+@app.route("/documents")
+def documents_list():
+    """Every acquired document, NORMALIZED and HUMAN alike — a document
+    accepted automatically stays consultable (original + data read)."""
+    _require_action(review_authority.ACTION_VIEW_QUEUE)
+    reviewer_name, reviewer_role = _current_reviewer()
+    return render_template("documents.html", rows=human_review.list_all_documents(),
+                           reviewer_name=reviewer_name, reviewer_role=reviewer_role)
 
 
 @app.route("/mailbox")

@@ -54,19 +54,26 @@ TOTAL_KEYWORDS = [
     "grand total",
     "invoice total",
     "receipt total",
-    "amount due",
-    "balance due",
-    "total due",
     "total amount",
     "total",
 ]
+
+# INVOICE_SCAN_ACQUISITION_001 — what is still to be paid is NOT the
+# invoice total: "Balance due $1,394.39" under "Total $1,452.00" (BBC Wine
+# Imports, invoice 6855) was read as the total. These labels now feed the
+# separate `balance_due` amount and are never used as the total.
+BALANCE_KEYWORDS = ("balance due", "amount due", "total due", "balance")
+PAID_KEYWORDS = ("amount paid", "payments/credits", "payment received", "payments", "paid", "credits applied")
+SUBTOTAL_KEYWORDS = ("subtotal", "sub-total", "sub total")
+TAX_RE = re.compile(r"tax(?!\s*(?:id|#|no|number|exempt))", re.IGNORECASE)
+SHIPPING_KEYWORDS = ("shipping", "freight", "delivery charge", "delivery fee")
 
 # The same subset used by has_conflicting_totals() below — the only labels
 # treated as equally authoritative "this line states the document's total"
 # claims. The bare "total" is deliberately excluded here: it matches
 # Subtotal too (see EXCLUDE_FROM_TOTAL_LINE), so two different "total"-ish
 # lines are expected and not itself a conflict signal.
-STRONG_TOTAL_KEYWORDS = ("grand total", "invoice total", "receipt total", "amount due", "balance due", "total due", "total amount")
+STRONG_TOTAL_KEYWORDS = ("grand total", "invoice total", "receipt total", "total amount")
 
 # A line containing one of these must never be read as "the total" even
 # though it may contain the substring "total" (Subtotal) or look like a
@@ -91,6 +98,11 @@ EXCLUDE_FROM_TOTAL_LINE = (
     "amount tendered",
     "payment amount",
     "change due",
+    # INVOICE_SCAN_ACQUISITION_001: balance/payment lines are never the total.
+    "balance",
+    "amount due",
+    "total due",
+    "paid",
 )
 
 MONEY = r"\$?\s?(\d{1,3}(?:[,.]\d{3})*(?:\.\d{2}))"
@@ -214,6 +226,10 @@ def guess_date(text: str) -> str:
 
 
 def guess_total(text: str) -> str:
+    """The invoice TOTAL, only from a line labelled as a total (never a
+    balance/amount-due/payment line). INVOICE_SCAN_ACQUISITION_001 removed
+    the old fallback "last amount in the text": an unlabelled number is not
+    evidence of the total, so an unrecognized total stays empty."""
     lines = text.splitlines()
     for keyword in TOTAL_KEYWORDS:
         for line in lines:
@@ -221,15 +237,67 @@ def guess_total(text: str) -> str:
             if keyword not in lowered:
                 continue
             if any(excl in lowered for excl in EXCLUDE_FROM_TOTAL_LINE):
-                continue  # a Subtotal/Tax/Tip/Payment line, not the document's actual total
+                continue  # a Subtotal/Tax/Tip/Payment/Balance line, not the document's actual total
             m = re.search(MONEY, line)
             if m:
                 return _clean_number(m.group(1))
-    # fallback: last money-looking number in the whole text
-    all_amounts = re.findall(MONEY, text)
-    if all_amounts:
-        return _clean_number(all_amounts[-1])
     return ""
+
+
+def _labelled_amounts(text: str, keywords, exclude=()) -> list[str]:
+    found = []
+    for line in text.splitlines():
+        lowered = line.lower()
+        if any(k in lowered for k in keywords) and not any(e in lowered for e in exclude):
+            m = re.search(MONEY, line[max(lowered.find(k) for k in keywords if k in lowered):])
+            if m:
+                found.append(_clean_number(m.group(1)))
+    return found
+
+
+def extract_terms_and_due_date(text: str) -> dict:
+    """Payment terms and due date, only from explicitly labelled text."""
+    out = {}
+    m = re.search(r"\bterms\s*[:\-]\s*([^\n]{1,40}?)\s*$", text, re.IGNORECASE | re.MULTILINE)
+    if m:
+        out["payment_terms"] = m.group(1).strip()
+    m = re.search(r"\bdue\s*date\s*[:\-]?\s*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})", text, re.IGNORECASE)
+    if m:
+        out["due_date"] = m.group(1)
+    return out
+
+
+def extract_amounts(text: str) -> dict:
+    """Every document-level amount the text states with an explicit label,
+    kept distinct (INVOICE_SCAN_ACQUISITION_001): total, subtotal, tax,
+    shipping, amount paid, balance due. A label read with two different
+    amounts is reported in `conflicts`, never resolved by choosing one."""
+    amounts: dict = {}
+    conflicts: list[str] = []
+
+    def put(key, values):
+        distinct = sorted(set(values))
+        if len(distinct) == 1:
+            amounts[key] = distinct[0]
+        elif len(distinct) > 1:
+            conflicts.append(f"{key}: different values read {', '.join(distinct)}")
+
+    total = guess_total(text)
+    if total:
+        amounts["total"] = total
+    put("balance_due", _labelled_amounts(text, BALANCE_KEYWORDS, exclude=("balance forward",)))
+    put("amount_paid", _labelled_amounts(text, PAID_KEYWORDS, exclude=("will be", "made with")))
+    put("subtotal", _labelled_amounts(text, SUBTOTAL_KEYWORDS, exclude=("sub total for",)))
+    put("shipping", _labelled_amounts(text, SHIPPING_KEYWORDS, exclude=("ship to", "shipping info", "ship via")))
+    tax_values = []
+    for line in text.splitlines():
+        match = TAX_RE.search(line)
+        if match:
+            m = re.search(MONEY, line[match.end():])
+            if m:
+                tax_values.append(_clean_number(m.group(1)))
+    put("tax", tax_values)
+    return {"amounts": amounts, "conflicts": conflicts}
 
 
 def has_conflicting_totals(text: str) -> bool:
