@@ -1,6 +1,7 @@
 #!/usr/bin/env python
-"""HTTP-level verification for Historical Backfill's "From date" prefill:
-must default to the latest operational `Order.business_date` already on
+"""HTTP-level verification for the "From date" prefill of the Tips home
+"Imported Clover data" view (formerly part of Historical Backfill, whose
+start actions now live in RF-One Web's Clover Acquisition page): must default to the latest operational `Order.business_date` already on
 file for the Restaurant's Clover Location(s) - never `created_at`/
 `modified_at` (ingestion/sync timestamps) - inserted as the exact value
 (never advanced by a day), left editable, and left blank (with a message)

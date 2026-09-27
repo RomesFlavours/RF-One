@@ -88,7 +88,7 @@ Untouched. The persisted calculation is `calculation_run_service.save_calculatio
 
 ### UI — superseded by Payment Control (STEP 12B)
 
-The `/payouts` route/template this section originally described has been **replaced** by `/payment-control` (`03 Software/Tips/templates/payment_control.html`) and `/tips-configuration` (`tips_configuration.html`) — see `Tips Configuration.md` §12 for the current UI. It offers the same read-only readiness summary, per-instruction status/priority/reason, retry, and recipient-linking actions this section described, now against the Payment Cycle model (§6 there) rather than one calculation run at a time, and remains **exception handling / configuration** UI, never a required step of the normal Process.
+The `/payouts` route/template this section originally described has been **replaced** by `/payment-control` (`03 Software/Tips/templates/payment_control.html`) and `/configuration` (`configuration.html`, General Configuration section; the former `/tips-configuration` URL redirects there) — see `Tips Configuration.md` §12 for the current UI. It offers the same read-only readiness summary, per-instruction status/priority/reason, retry, and recipient-linking actions this section described, now against the Payment Cycle model (§6 there) rather than one calculation run at a time, and remains **exception handling / configuration** UI, never a required step of the normal Process.
 
 ---
 

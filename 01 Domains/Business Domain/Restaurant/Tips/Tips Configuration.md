@@ -173,7 +173,7 @@ AUTOMATIC + WITHOUT_APPROVAL   the scheduler opens the cycle when due, and
 
 `/payment-control/cycle/<cycle_id>` is a stable, resolvable deep-link route to one specific Payment Cycle, independent of whichever Restaurant this pilot's single-Restaurant `_default_restaurant()` convention would otherwise show — the concrete target a future Cognito capability (*"Le Tips di Winter Park sono pronte... Vuoi controllarle?"* → opens directly here) can link to. No Cognito capability is implemented by this route; it only makes that future integration possible without a later route/URL redesign.
 
-`/tips-configuration` (`tips_configuration.html`) is where a Restaurant sets both schedules and, for the Payment Schedule, the connector to use (§7) — a `connector_code` left unset, or set to a code not currently registered in `payment_connector.py`, is surfaced as an explicit configuration error the first time Approve & Pay is attempted, never a silent Mercury default.
+`/configuration` (`configuration.html`, **General Configuration** section — the former `/tips-configuration` tab, merged with Distribution Rules into one Tips Configuration page; the old URL still redirects there) is where a Restaurant sets both schedules and, for the Payment Schedule, the connector to use (§7) — a `connector_code` left unset, or set to a code not currently registered in `payment_connector.py`, is surfaced as an explicit configuration error the first time Approve & Pay is attempted, never a silent Mercury default.
 
 ---
 

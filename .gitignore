@@ -158,3 +158,21 @@ desktop.ini
 #     buildspec/IaC definitions themselves, which are legitimate source) ----
 *.deploy.zip
 deploy_build/
+# --- PRE_PUSH_CLEANUP_001 — local real-data artifacts left by recent work ---
+# Timestamped RF-One Data Store backups (pre-*, baseline-*, backup-*) and
+# their .sha256 files: the data/*.db rule above does not match a name that
+# continues after ".db". Previously protected only partly, via the local,
+# non-shared .git/info/exclude.
+03 Software/RF-One Data Store/data/rfone.db.*
+# Real Tips data exported from AWS before a reset, plus its checksum.
+03 Software/RF-One Data Store/data/aws_tips_domain_export_*
+# Invoice reading trials (Textract / Bedrock): real supplier invoices and
+# every artifact carrying their content. The comparison Markdown, the
+# prompt and the trial scripts stay visible so they can be decided on.
+07 Tasks/Invoices/**/*.pdf
+07 Tasks/Invoices/**/*.jpg
+07 Tasks/Invoices/**/*.zip
+07 Tasks/Invoices/**/*.json
+07 Tasks/Invoices/Risultati AI visiva/Risposte modello/*.txt
+# Wine pricing research workbooks (possible real prices/suppliers).
+05 Research/Wine Pricing/*.xlsx

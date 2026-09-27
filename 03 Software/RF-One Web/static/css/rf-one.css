@@ -107,13 +107,6 @@ a:hover { text-decoration: underline; }
    Domain cards (Home page)
    --------------------------------------------------------------------- */
 
-.domain-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
 .domain-card {
   display: block;
   min-width: 180px;
@@ -397,7 +390,6 @@ tbody tr:hover { background: var(--olive-050); }
 .module-identity { min-width: 0; }
 .module-title { font-size: 1.4rem; margin: 0 0 .2rem; color: var(--olive-900); }
 .module-tagline { color: var(--muted); font-size: .82rem; margin: 0; max-width: 70ch; }
-.module-home-link { font-size: .8rem; white-space: nowrap; padding-top: .25rem; }
 
 /* --- Section tabs --- */
 
