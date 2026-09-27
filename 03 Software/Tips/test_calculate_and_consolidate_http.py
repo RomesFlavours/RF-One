@@ -1,21 +1,19 @@
 #!/usr/bin/env python
-"""CALCULATE_AND_CONSOLIDATE_001 — Calculate Tips reduced to two actions.
+"""CALCULATE_AND_CONSOLIDATE_001 + CALCULATE_LOCAL_WINDOW_001 — Calculate Tips:
+an exact local FROM/THROUGH date+time window, then Consolidate.
 
 Proves:
 
-  1. the page is linear: period + Calculate, Totals, Employee Entitlements,
-     Consolidate; no "Run Calculation Now", no "Close this period", no
-     second pair of dates;
-  2. Calculate gives the same figures as before (the former default window,
-     one Business Day from cutoff to cutoff) and as the engine itself, and
-     writes nothing;
-  3. Consolidate saves the period shown, with the result shown, into Saved
-     Periods, without asking for dates again;
-  4. afterwards the page says "Period consolidated MM/DD/YYYY → MM/DD/YYYY"
-     and offers no Consolidate button; posting again saves nothing;
-  5. a result that changed after it was shown is not consolidated;
-  6. the AUDIT review mode is a small indicator, not a card;
-  7. a multi-day range and the drill-down's former window link work.
+  1. From and Through are date + time fields in the Location's local time,
+     opening on the former default (latest Business Date, cutoff to cutoff);
+     the page is linear with two actions only;
+  2. the same window gives the same certified figures as before;
+  3. Total Employee Entitlements and Control Difference are not shown, yet
+     an unbalanced result is reported as an anomaly and cannot be consolidated;
+  4. a window across midnight works and the time is really used;
+  5. Consolidate saves the period and result shown, once, into Saved Periods;
+  6. a result that changed after it was shown is not consolidated;
+  7. the AUDIT review mode is a small indicator.
 
 Throwaway SQLite + Flask test client. Never touches AWS or Clover.
 
@@ -25,6 +23,7 @@ Usage:
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import re
 import sys
@@ -178,72 +177,105 @@ def main() -> int:
 
     client = tips_app.app.test_client()
     runs_before = run_count()
-    html = client.get(f"/calculate-tips?from_date={DAY1}&through_date={DAY1}").get_data(as_text=True)
+    money = lambda c: "${:,.2f}".format(c / 100)  # noqa: E731
 
-    # ---- 1. Linear page, two actions -------------------------------------
+    def tile(page, label):
+        found = re.search(r'<div class="label">' + re.escape(label) + r'</div><div class="value">([^<]*)</div>', page)
+        return found.group(1) if found else None
+
+    def page(start_at, end_at):
+        return client.get(f"/calculate-tips?start_at={start_at}&end_at={end_at}").get_data(as_text=True)
+
+    W1 = ("2026-09-20T04:00", "2026-09-21T04:00")  # Business Date 09/20, cutoff to cutoff
+    html = page(*W1)
+
+    # ---- 1. Date + time, local --------------------------------------------
+    check("1. From is a date + time field", 'type="datetime-local" id="start_at"' in html)
+    check("1. Through is a date + time field", 'type="datetime-local" id="end_at"' in html)
+    check("1. the chosen local times are kept as typed (America/New_York), never UTC",
+          'value="2026-09-20T04:00"' in html and 'value="2026-09-21T04:00"' in html
+          and "America/New_York" in html and "UTC" not in html)
+    default = client.get("/calculate-tips").get_data(as_text=True)
+    check("1. default restored: latest Business Date with Orders, cutoff to cutoff (04:00 -> 04:00)",
+          'value="2026-09-21T04:00"' in default and 'value="2026-09-22T04:00"' in default)
     marks = ['id="calculate"', 'id="totals"', 'id="entitlements"', 'id="consolidate"']
     pos = [html.find(x) for x in marks]
     check("1. period+Calculate, Totals, Employee Entitlements, Consolidate — in that order",
           min(pos) >= 0 and pos == sorted(pos), str(pos))
-    check("1. From and Through inputs, one Calculate button",
-          'id="from_date"' in html and 'id="through_date"' in html and html.count(">Calculate</button>") == 1)
-    check("1. no 'Run Calculation Now'", "Run Calculation Now" not in html)
-    check("1. no 'Close this period' and no second pair of dates",
-          "Close this period" not in html and "First Business Date" not in html and "first_business_date" not in html)
-    consolidate_card = html[html.index('id="consolidate"'):]
-    check("1. one Consolidate button, carrying the period only as hidden values",
-          consolidate_card.count("<button") == 1 and 'type="date"' not in consolidate_card
-          and f'name="from_date" value="{DAY1}"' in consolidate_card)
-    check("1. result status reads CALCULATED, period 09/20/2026 → 09/20/2026",
-          "CALCULATED" in html and "09/20/2026 → 09/20/2026" in html)
+    check("1. one Calculate button; no 'Run Calculation Now', no 'Close this period'",
+          html.count(">Calculate</button>") == 1 and "Run Calculation Now" not in html
+          and "Close this period" not in html and "First Business Date" not in html)
 
-    # ---- 2. Same figures -------------------------------------------------
-    check("2. the Business Date calculation equals the former cutoff-to-cutoff window",
+    # ---- 2. Same certified figures on the same window ----------------------
+    vol, grat, ent, diff, per_emp = before_figures
+    check("2. the window equals the engine on that same window, and the Business Date range",
           before_figures == engine_figures, f"{before_figures} vs {engine_figures}")
-    vol, grat, ent, diff, per_emp = engine_figures
-    money = lambda c: "${:,.2f}".format(c / 100)  # noqa: E731
-    for label, value in (("Voluntary Tips", vol), ("Gratuity", grat), ("Total Tips + Gratuity", vol + grat),
-                         ("Total Employee Entitlements", ent), ("Control Difference", diff)):
-        found = re.search(r'<div class="label">' + re.escape(label) + r'</div><div class="value">([^<]*)</div>', html)
-        check(f"2. Totals: {label} = {money(value)}", found and found.group(1) == money(value),
-              found.group(1) if found else "missing")
+    for label, value in (("Voluntary Tips", vol), ("Gratuity", grat), ("Total Tips + Gratuity", vol + grat)):
+        check(f"2. Totals: {label} = {money(value)}", tile(html, label) == money(value), str(tile(html, label)))
     entitlements = html[html.index('id="entitlements"'):html.index('id="consolidate"')]
-    check("2. every employee's entitlement shown as the engine computes it",
+    check("2. every employee's entitlement as the engine computes it",
           all(money(a) in entitlements for _, a in per_emp) and len(per_emp) == 3, str(per_emp))
     check("2. employees as 'Surname I.'", "Ceban T." in entitlements and "Martini A." in entitlements)
     check("2. Calculate wrote nothing", run_count() == runs_before)
 
-    # ---- 3. Consolidate --------------------------------------------------
+    # ---- 3. Redundant tiles gone, control kept ------------------------------
+    check("3. Total Employee Entitlements is no longer shown", tile(html, "Total Employee Entitlements") is None
+          and "Total Employee Entitlements" not in html)
+    check("3. Control Difference is not shown when the control passes",
+          tile(html, "Control Difference") is None and "balanced" not in html and 'id="control-anomaly"' not in html)
+    real_totals = tips_app.engine_svc.build_operational_totals
+    tips_app.engine_svc.build_operational_totals = lambda result, rows: dataclasses.replace(
+        real_totals(result, rows),
+        service_owner_entitlements_minor=real_totals(result, rows).service_owner_entitlements_minor + 1,
+    )
+    try:
+        broken = page(*W1)
+    finally:
+        tips_app.engine_svc.build_operational_totals = real_totals
+    check("3. an unbalanced result is reported as an anomaly, with the difference",
+          'id="control-anomaly"' in broken and "do not add up" in broken and "$0.01" in broken)
+    check("3. an unbalanced result offers no Consolidate", 'id="consolidate-btn"' not in broken)
+
+    # ---- 4. Across midnight -------------------------------------------------
+    night = page("2026-09-20T17:00", "2026-09-21T02:00")
+    check("4. a window from 17:00 to 02:00 the next day calculates",
+          tile(night, "Voluntary Tips") is not None and 'id="control-anomaly"' not in night)
+    check("4. the 01:00 order after midnight is included (20.00 + 15.00 + 7.00 = $42.00)",
+          tile(night, "Voluntary Tips") == "$42.00", str(tile(night, "Voluntary Tips")))
+    before_midnight = page("2026-09-20T17:00", "2026-09-21T00:30")
+    check("4. ending at 00:30 leaves it out ($35.00): the time is used, not ignored",
+          tile(before_midnight, "Voluntary Tips") == "$35.00", str(tile(before_midnight, "Voluntary Tips")))
+    check("4. a window that is not whole Business Days says why it cannot be consolidated",
+          'id="consolidate-btn"' not in night and "whole Business Days" in night)
+
+    # ---- 5. Consolidate (unchanged) ----------------------------------------
+    consolidate_card = html[html.index('id="consolidate"'):]
+    check("5. one Consolidate button, no date asked again",
+          consolidate_card.count("<button") == 1 and 'type="date' not in consolidate_card
+          and f'name="from_date" value="{DAY1}"' in consolidate_card)
     fp = re.search(r'name="fingerprint" value="([^"]*)"', html).group(1)
     resp = client.post("/calculate-tips/consolidate",
                        data={"from_date": str(DAY1), "through_date": str(DAY1), "fingerprint": fp})
-    check("3. Consolidate returns to the same period", resp.status_code == 302
-          and f"from_date={DAY1}" in resp.headers.get("Location", ""), resp.headers.get("Location", ""))
-    check("3. exactly one Saved Period created", run_count() == runs_before + 1)
+    check("5. exactly one Saved Period created", run_count() == runs_before + 1)
     with tips_app.SessionFactory() as s:
         run = s.scalars(select(m.TipDistributionCalculationRun).order_by(m.TipDistributionCalculationRun.id.desc())).first()
         saved = (run.voluntary_total_minor, run.gratuity_total_minor, run.control_difference_minor,
                  sorted((e.employee_id, e.payable_amount_minor) for e in
                         s.scalars(select(m.TipEntitlement).where(m.TipEntitlement.calculation_run_id == run.id))))
         run_id, run_dates = run.id, (run.first_business_date, run.last_business_date)
-    check("3. saved for the period shown", run_dates == (DAY1, DAY1), str(run_dates))
-    check("3. saved with the result shown (totals and every employee)",
-          saved == (vol, grat, diff, per_emp), f"{saved}")
-    history = client.get("/tips-runs").get_data(as_text=True)
-    check("3. the period appears in Saved Periods", f"/tips-runs/{run_id}" in history)
-
-    # ---- 4. After Consolidate --------------------------------------------
-    after = client.get(f"/calculate-tips?from_date={DAY1}&through_date={DAY1}").get_data(as_text=True)
-    check("4. 'Period consolidated 09/20/2026 → 09/20/2026' is shown",
-          "Period consolidated 09/20/2026 → 09/20/2026" in after and "CONSOLIDATED" in after)
-    check("4. no Consolidate button any more", 'id="consolidate-btn"' not in after)
-    check("4. it links to the Saved Period", f"/tips-runs/{run_id}" in after)
+    check("5. saved for the period and the result shown",
+          run_dates == (DAY1, DAY1) and saved == (vol, grat, diff, per_emp), f"{run_dates} {saved}")
+    check("5. the period appears in Saved Periods", f"/tips-runs/{run_id}" in client.get("/tips-runs").get_data(as_text=True))
+    back = client.get(resp.headers["Location"]).get_data(as_text=True)
+    check("5. back on the same window, 'Period consolidated 09/20/2026 → 09/20/2026', no button",
+          'value="2026-09-20T04:00"' in back and "Period consolidated 09/20/2026 → 09/20/2026" in back
+          and 'id="consolidate-btn"' not in back)
     client.post("/calculate-tips/consolidate",
                 data={"from_date": str(DAY1), "through_date": str(DAY1), "fingerprint": fp})
-    check("4. posting the same result again saves nothing", run_count() == runs_before + 1)
+    check("5. posting the same result again saves nothing", run_count() == runs_before + 1)
 
-    # ---- 5. A result that changed after it was shown ---------------------
-    two_day = client.get(f"/calculate-tips?from_date={DAY1}&through_date={DAY2}").get_data(as_text=True)
+    # ---- 6. A result that changed after it was shown ------------------------
+    two_day = page("2026-09-20T04:00", "2026-09-22T04:00")
     stale_fp = re.search(r'name="fingerprint" value="([^"]*)"', two_day).group(1)
     with tips_app.SessionFactory() as s:  # a Sync lands a new tipped Order on the 21st
         srv = s.scalars(select(m.Employee).where(m.Employee.source_employee_id == "CC-SRV")).one()
@@ -263,22 +295,13 @@ def main() -> int:
         s.commit()
     resp = client.post("/calculate-tips/consolidate",
                        data={"from_date": str(DAY1), "through_date": str(DAY2), "fingerprint": stale_fp})
-    check("5. a result that changed after it was shown is not consolidated", run_count() == runs_before + 1)
-    msg = client.get(resp.headers["Location"]).get_data(as_text=True)
-    check("5. the person is told why", "changed after you calculated it" in msg)
+    check("6. a result that changed after it was shown is not consolidated", run_count() == runs_before + 1)
+    check("6. the person is told why", "changed after you calculated it" in client.get(resp.headers["Location"]).get_data(as_text=True))
 
-    # ---- 6. AUDIT is a small indicator -----------------------------------
-    check("6. AUDIT shown as a small indicator linking to the Host audit",
+    # ---- 7. AUDIT is a small indicator --------------------------------------
+    check("7. AUDIT shown as a small indicator linking to the Host audit",
           "Audit mode" in html and "check Hosts" in html and "Review mode is <strong>AUDIT</strong>" not in html)
-
-    # ---- 7. Multi-day and the former window link -------------------------
-    fresh_two = client.get(f"/calculate-tips?from_date={DAY1}&through_date={DAY2}").get_data(as_text=True)
-    check("7. a two-day range calculates and shows 09/20/2026 → 09/21/2026",
-          "09/20/2026 → 09/21/2026" in fresh_two and 'id="consolidate-btn"' in fresh_two)
-    legacy = client.get("/calculate-tips?start_at=2026-09-20T04:00&end_at=2026-09-21T04:00").get_data(as_text=True)
-    check("7. the drill-down's former window link opens Business Date 09/20/2026",
-          f'id="from_date" name="from_date" value="{DAY1}"' in legacy and "Period consolidated 09/20/2026" in legacy)
-    check("7. no UTC and no Clover employee id on the page", "UTC" not in html and "CC-SRV" not in html)
+    check("7. no Clover employee id on the page", "CC-SRV" not in html)
 
     print()
     print(f"Calculate and Consolidate HTTP tests: {'SUCCESS' if not failed else 'FAILURE'} "

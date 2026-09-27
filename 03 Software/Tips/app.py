@@ -531,17 +531,22 @@ def _restaurant_period_config(session, restaurant):
     return location.timezone, tz, location.operating_day_cutoff_time, True, ""
 
 
-def _default_business_date(session, restaurant):
-    """The Business Date Calculate Tips opens on: the latest one with
-    Orders, or today (local) when none exists yet. `None` when the Branch
-    has no Business Day configuration."""
-    _, tz, _, configured, _ = _restaurant_period_config(session, restaurant)
+def _default_period_local(session, restaurant):
+    """Default Business Day window: the latest Business Date with Orders,
+    from its cutoff time to the SAME time the following day (e.g. 04:00 to
+    04:00 for Winter Park). Returned as local-datetime strings for the
+    form inputs."""
+    _, tz, cutoff, configured, _ = _restaurant_period_config(session, restaurant)
     if not configured:
-        return None
+        return "", ""
     business_date = None
     if restaurant is not None:
         business_date = readiness_svc.get_latest_business_date_with_orders(session, restaurant.id)
-    return business_date or datetime.now(tz).date()
+    if business_date is None:
+        business_date = datetime.now(tz).date()
+    start_local = datetime.combine(business_date, cutoff)
+    end_local = start_local + timedelta(days=1)
+    return start_local.strftime("%Y-%m-%dT%H:%M"), end_local.strftime("%Y-%m-%dT%H:%M")
 
 
 def _parse_local_dt(value: str, tz):
@@ -610,14 +615,23 @@ def _consolidated_run_for(session, restaurant_id, first, last, fingerprint):
     return next((r for r in runs if _fingerprint_of_run(session, r) == fingerprint), None)
 
 
-def _business_dates_from_legacy_window(start_at: str, end_at: str, tz, cutoff):
-    """A link that still carries the former `start_at`/`end_at` window (the
-    order drill-down's breadcrumb) opens the same period when that window is
-    whole Business Days; otherwise `None`."""
+def _business_dates_of_window(start_at: str, end_at: str, tz, cutoff):
+    """CALCULATE_LOCAL_WINDOW_001 — the inclusive Business Date range a local
+    window covers EXACTLY (it starts and ends at the Location's cutoff), or
+    `None`. A Saved Period is a Business Date range, so only such a window
+    can be consolidated as the very result on screen."""
     start, end = _parse_local_dt(start_at, tz), _parse_local_dt(end_at, tz)
     if start is None or end is None or start.time() != cutoff or end.time() != cutoff or end <= start:
         return None
     return start.date(), end.date() - timedelta(days=1)
+
+
+def _window_of_business_dates(first, last, cutoff) -> tuple[str, str]:
+    """The local window of an inclusive Business Date range (cutoff to
+    cutoff), as form values — how a link that names Business Dates opens."""
+    start_local = datetime.combine(first, cutoff)
+    end_local = datetime.combine(last + timedelta(days=1), cutoff)
+    return start_local.strftime("%Y-%m-%dT%H:%M"), end_local.strftime("%Y-%m-%dT%H:%M")
 
 
 def _parse_business_date(value: str | None):
@@ -632,55 +646,55 @@ def _parse_business_date(value: str | None):
 
 @app.route("/calculate-tips")
 def calculate_tips_home():
-    """CALCULATE_AND_CONSOLIDATE_001 — two actions only.
+    """Two actions (CALCULATE_AND_CONSOLIDATE_001), on the exact local window
+    the person chooses (CALCULATE_LOCAL_WINDOW_001).
 
-    CALCULATE: the chosen INCLUSIVE Business Date range, calculated on
-    render by the engine's own `calculate_tips_for_business_dates` — the same
-    call Consolidate saves through, so the figures looked at are the figures
-    consolidated. Writes nothing; repeat it as often as you like.
+    CALCULATE: FROM date+time -> THROUGH date+time in the Location's local
+    time, end exclusive, through the engine's own `calculate_tips` — exactly
+    what this page computed before. Opens on the latest Business Date,
+    cutoff to cutoff. Writes nothing; repeat it as often as you like.
 
-    CONSOLIDATE: shown under the result, carrying that period and the
-    result's fingerprint; no dates asked again. When the same period with
-    the same result is already saved, the page says so instead."""
+    CONSOLIDATE: a Saved Period is a Business Date range, so the result on
+    screen can be consolidated as-is when the window is whole Business Days
+    (cutoff to cutoff); for any other window the page says so. No dates are
+    asked again, and the same period with the same result is saved once."""
     with SessionFactory() as session:
         restaurant = _default_restaurant(session)
         tz_name, tz, cutoff, tz_configured, config_error = _restaurant_period_config(session, restaurant)
 
-        first = _parse_business_date(request.args.get("from_date"))
-        last = _parse_business_date(request.args.get("through_date"))
-        if (first is None or last is None) and tz_configured and request.args.get("start_at"):
-            legacy = _business_dates_from_legacy_window(
-                request.args.get("start_at") or "", request.args.get("end_at") or "", tz, cutoff,
-            )
-            if legacy:
-                first, last = legacy
-        if first is None or last is None:
-            first = last = _default_business_date(session, restaurant)
+        start_at = request.args.get("start_at") or ""
+        end_at = request.args.get("end_at") or ""
+        named_first = _parse_business_date(request.args.get("from_date"))
+        named_last = _parse_business_date(request.args.get("through_date"))
+        if (not start_at or not end_at) and named_first and named_last and cutoff:
+            # A link that names Business Dates (e.g. back from Consolidate).
+            start_at, end_at = _window_of_business_dates(named_first, named_last, cutoff)
+        if not start_at or not end_at:
+            start_at, end_at = _default_period_local(session, restaurant)
 
         result = None
         review_rows = []
         period_error = None
-        start_at = end_at = ""
+        # §2 — refuse before computing anything when the Branch has no
+        # Business Day configuration. No guessed timezone, no guessed cutoff.
+        period = _calculation_period_dt(start_at, end_at, tz) if tz else None
         if restaurant is None:
             period_error = "No Restaurant exists in this database yet."
         elif not tz_configured:
             period_error = config_error
-        elif first is None or last is None:
-            period_error = "Enter a From and Through date."
-        elif last < first:
-            period_error = "Through date cannot be before From date."
+        elif period is None:
+            period_error = "Enter a valid From and Through date and time."
+        elif period[1] <= period[0]:
+            period_error = "Through must be after From."
         else:
-            result = engine_svc.calculate_tips_for_business_dates(
-                session, restaurant_id=restaurant.id, first_business_date=first, last_business_date=last,
+            result = engine_svc.calculate_tips(
+                session, restaurant_id=restaurant.id, period_start=period[0], period_end=period[1],
             )
             if result.blocked_reason:
                 period_error = result.blocked_reason
                 result = None
             else:
                 review_rows = engine_svc.build_employee_review(session, result)
-                # The order drill-down and the Host audit take a local window.
-                start_at = result.period_start.astimezone(tz).strftime("%Y-%m-%dT%H:%M")
-                end_at = result.period_end.astimezone(tz).strftime("%Y-%m-%dT%H:%M")
 
         review_mode = (
             review_mode_svc.get_review_mode(session, restaurant_id=restaurant.id)
@@ -692,16 +706,26 @@ def calculate_tips_home():
             engine_svc.build_operational_totals(result, review_rows)
             if result is not None else None
         )
+        business_dates = (
+            _business_dates_of_window(start_at, end_at, tz, cutoff) if result is not None else None
+        )
+        first, last = business_dates or (None, None)
         fingerprint = _fingerprint_of_calculation(totals, review_rows) if totals is not None else ""
         consolidated_run = (
             _consolidated_run_for(session, restaurant.id, first, last, fingerprint)
-            if result is not None else None
+            if business_dates else None
         )
+
+        def shown(value):
+            parsed = _parse_local_dt(value, tz) if tz else None
+            return parsed.strftime("%m/%d/%Y %H:%M") if parsed else value
+
         return render_template(
             "calculate_tips.html", restaurant=restaurant,
+            start_at=start_at, end_at=end_at,
+            window_label=f"{shown(start_at)} → {shown(end_at)}",
             from_date=first.isoformat() if first else "", through_date=last.isoformat() if last else "",
             first_business_date=first, last_business_date=last,
-            start_at=start_at, end_at=end_at,
             result=result, review_rows=review_rows, period_error=period_error, totals=totals,
             fingerprint=fingerprint, consolidated_run=consolidated_run,
             tz_name=tz_name, tz_configured=tz_configured,
@@ -714,11 +738,11 @@ def calculate_tips_home():
 
 @app.route("/calculate-tips/run", methods=["POST"])
 def calculate_tips_run():
-    """CALCULATE — carries the chosen dates onto the Calculate Tips URL; the
-    calculation itself happens on render and writes nothing."""
+    """CALCULATE — carries the chosen local window onto the Calculate Tips
+    URL; the calculation itself happens on render and writes nothing."""
     return redirect(url_for(
         "calculate_tips_home",
-        from_date=request.form.get("from_date") or "", through_date=request.form.get("through_date") or "",
+        start_at=request.form.get("start_at") or "", end_at=request.form.get("end_at") or "",
     ))
 
 

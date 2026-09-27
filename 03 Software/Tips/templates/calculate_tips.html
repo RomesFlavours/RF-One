@@ -21,18 +21,18 @@
   <form method="post" action="{{ url_for('calculate_tips_run') }}">
     <div class="form-row">
       <div>
-        <label for="from_date">From</label>
-        <input type="date" id="from_date" name="from_date" value="{{ from_date }}" required>
+        <label for="start_at">From</label>
+        <input type="datetime-local" id="start_at" name="start_at" value="{{ start_at }}" required>
       </div>
       <div>
-        <label for="through_date">Through</label>
-        <input type="date" id="through_date" name="through_date" value="{{ through_date }}" required>
+        <label for="end_at">Through</label>
+        <input type="datetime-local" id="end_at" name="end_at" value="{{ end_at }}" required>
       </div>
       <div><button type="submit" {{ 'disabled' if not restaurant else '' }}>Calculate</button></div>
     </div>
   </form>
   <p class="muted" style="font-size:.75rem; margin-top:.6rem;">
-    Business Dates, both included. A Business Date starts at {{ cutoff or 'the Branch cutoff' }} ({{ tz_name or 'local time' }}), not at midnight.
+    Local time ({{ tz_name or 'not configured' }}). Through is excluded. Opens on the latest Business Day, {{ cutoff or 'cutoff' }} to {{ cutoff or 'cutoff' }}.
     Calculate saves nothing and can be repeated freely.
   </p>
 </div>
@@ -49,7 +49,7 @@
       <strong>Period consolidated {{ period_label }}</strong>
     {% else %}
       <span class="badge lg">CALCULATED</span>
-      <strong>{{ period_label }}</strong>
+      <strong>{{ window_label }}</strong>
       <span class="muted" style="font-size:.82rem;">not consolidated yet</span>
     {% endif %}
     {% if audit_mode %}
@@ -70,13 +70,18 @@
     <div class="control-tile sum"><div class="label">Total Tips + Gratuity</div><div class="value">{{ money(totals.gross_minor) }}</div></div>
     <div class="control-tile"><div class="label">Service Owners</div><div class="value">{{ money(totals.service_owner_entitlements_minor) }}</div></div>
     <div class="control-tile"><div class="label">Other Recipients</div><div class="value">{{ money(totals.other_recipient_entitlements_minor) }}</div></div>
-    <div class="control-tile sum"><div class="label">Total Employee Entitlements</div><div class="value">{{ money(totals.total_employee_entitlements_minor) }}</div></div>
-    <div class="control-tile"><div class="label">Control Difference</div><div class="value">{{ money(totals.control_difference_minor) }}</div>
-      <div class="note">{% if totals.control_passes %}<span class="badge ok">balanced</span>{% else %}<span class="badge bad">CONTROL FAILED</span>{% endif %}</div></div>
   </div>
+  {# §11 — the ONE authoritative control stays: Total Employee Entitlements
+     must equal Total Tips + Gratuity. Shown only when it fails. #}
+  {% if not totals.control_passes %}
+  <div class="error" id="control-anomaly" style="margin-top:.8rem;">
+    <strong>Anomaly: the entitlements do not add up to Tips + Gratuity.</strong>
+    Employee entitlements {{ money(totals.total_employee_entitlements_minor) }} against
+    Tips + Gratuity {{ money(totals.gross_minor) }} (difference {{ money(totals.control_difference_minor|abs) }}).
+    This result cannot be consolidated.
+  </div>
+  {% endif %}
   <p class="muted" style="font-size:.75rem; margin-top:.6rem;">
-    {# §11 — the ONE authoritative control. #}
-    Total Tips + Gratuity must equal Total Employee Entitlements.
     {{ result.summary.orders_considered }} order(s); rule version(s) {% if result.rule_version_ids %}{{ result.rule_version_ids|join(', ') }}{% else %}none{% endif %}.
     {% if result.no_eligible_recipient_lines %}
       {{ result.no_eligible_recipient_lines|length }} order(s) had no eligible Host, so their Service Owner keeps 100%.
@@ -154,6 +159,12 @@
   {% if consolidated_run %}
     <p><span class="badge ok lg">CONSOLIDATED</span> <strong>Period consolidated {{ period_label }}</strong></p>
     <p class="muted" style="font-size:.8rem;">This result is saved. Open it in <a href="{{ url_for('tips_run_report', run_id=consolidated_run.id) }}">Saved Periods</a>.</p>
+  {% elif not totals.control_passes %}
+    <p><button type="button" disabled>Consolidate</button>
+      <span class="muted" style="font-size:.8rem;">Not available: the result has an anomaly (see Totals).</span></p>
+  {% elif not first_business_date %}
+    <p><button type="button" disabled>Consolidate</button>
+      <span class="muted" style="font-size:.8rem;">Saved Periods are whole Business Days: choose From and Through at {{ cutoff }} to consolidate.</span></p>
   {% else %}
     <form method="post" action="{{ url_for('calculate_tips_consolidate') }}">
       <input type="hidden" name="from_date" value="{{ from_date }}">
