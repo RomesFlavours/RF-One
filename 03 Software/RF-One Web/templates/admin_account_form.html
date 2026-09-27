@@ -1,7 +1,8 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}{{ "Create account" if mode == "create" else "Edit account" }} · RF-One{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('admin_accounts') }}">&larr; Accounts</a></p>
+{{ breadcrumb([('RF-One', url_for('home')), ('Accounts', url_for('admin_accounts')), ('Create account' if mode == 'create' else 'Edit account', None)]) }}
 <h1>{{ "Create account" if mode == "create" else "Edit account" }}</h1>
 
 <div class="card">

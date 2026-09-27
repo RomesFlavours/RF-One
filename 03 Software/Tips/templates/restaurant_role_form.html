@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set crumbs = [('Distribution Rules', url_for('distribution_rules_home')), ('Roles', url_for('restaurant_roles_home')), ('New Role' if mode == 'create' else 'Edit Role', None)] %}
 {% block content %}
 
 {% with messages = get_flashed_messages(with_categories=True) %}
@@ -7,7 +8,6 @@
   {% endfor %}
 {% endwith %}
 
-<p><a href="{{ url_for('restaurant_roles_home') }}">&larr; Back to Roles</a></p>
 
 <div class="card">
   <h2>{{ "New Role" if mode == "create" else "Edit Role" }}</h2>

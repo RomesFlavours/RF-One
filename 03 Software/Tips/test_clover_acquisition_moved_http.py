@@ -89,8 +89,8 @@ def main() -> int:
 
     os.environ["RFONE_WEB_BASE_URL"] = "https://rfone-web.example"
     page = web.get("/")
-    check("with RFONE_WEB_BASE_URL the page links to RF-One Web's Clover Acquisition",
-          b'href="https://rfone-web.example/clover-acquisition"' in page.data)
+    check("with RFONE_WEB_BASE_URL the page links to RF-One Web's Clover Acquisition (opened from Tips)",
+          b'href="https://rfone-web.example/clover-acquisition?from=tips"' in page.data)
 
     print(f"Clover acquisition moved (Tips) HTTP tests: {'SUCCESS' if not failed else 'FAILURE'} "
           f"({len(passed)} passed, {len(failed)} failed)")

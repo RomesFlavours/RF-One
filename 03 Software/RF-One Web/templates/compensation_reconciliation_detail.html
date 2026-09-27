@@ -1,7 +1,8 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Reconciliation {{ recon.id }} · RF-One{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('compensation_snapshot_detail', snapshot_id=snapshot.id) }}">&larr; Approved Snapshot #{{ snapshot.id }}</a></p>
+{{ breadcrumb([('RF-One', url_for('home')), ('Compensation', url_for('compensation_home')), ('Run #' ~ snapshot.compensation_preparation_run_id, url_for('compensation_run_detail', run_id=snapshot.compensation_preparation_run_id)), ('Approved Snapshot #' ~ snapshot.id, url_for('compensation_snapshot_detail', snapshot_id=snapshot.id)), ('Reconciliation #' ~ recon.id, None)]) }}
 <h1>Reconciliation #{{ recon.id }}</h1>
 <p class="muted">
   Approved Snapshot #{{ snapshot.id }} vs. Payroll Provider result (PayrollRun #{{ payroll_run.id }}, pay date {{ payroll_run.pay_date.date() }})

@@ -1,7 +1,8 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Compensation Run {{ run.id }} · RF-One{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('compensation_home') }}">&larr; Compensation</a></p>
+{{ breadcrumb([('RF-One', url_for('home')), ('Compensation', url_for('compensation_home')), ('Run #' ~ run.id, None)]) }}
 <h1>Compensation run #{{ run.id }} &mdash; {{ legal_entity.legal_name if legal_entity else run.legal_entity_id }}</h1>
 <p class="muted">
   Period {{ run.period_start.date() }} &ndash; {{ run.period_end.date() }} &middot;

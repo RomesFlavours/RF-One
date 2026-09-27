@@ -1,7 +1,8 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Add Training student · RF-One{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+{{ breadcrumb([('RF-One', url_for('home')), ('Training', '/training'), ('Students', url_for('training_trainer_students')), ('Add student', None)]) }}
 <h1>Add Training student</h1>
 <p class="muted">
   Creates an RF-One account with access to Training only (student role) — the password set here is

@@ -13,8 +13,12 @@ card's destination:
   - a relative path (e.g. Training's `/training`) for a Domain genuinely
     mounted inside this application;
   - an absolute URL for a Domain published as its own separate, reachable
-    service (e.g. Tips's own App Runner URL) — never a local path like
-    `/tips` that nothing here serves;
+    service;
+  - Tips is its own App Runner service, published on the SAME host as
+    this application under `/tips/` (one CloudFront entry in front of both,
+    UI_NAVIGATION_AND_LOCAL_TIME_001) so both share the RF-One login.
+    `RFONE_TIPS_URL` overrides that address (e.g. a local Tips on another
+    port);
   - `None` for a Domain not actually published anywhere yet — the Home
     page renders it as a non-clickable "Not yet available" card rather
     than a link to a destination that does not exist.
@@ -22,7 +26,11 @@ card's destination:
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+
+# Where Tips's own home page is served — a path on this host by default.
+TIPS_HOME_URL = (os.environ.get("RFONE_TIPS_URL") or "").strip() or "/tips/"
 
 
 @dataclass(frozen=True)
@@ -47,7 +55,7 @@ DOMAINS: tuple[DomainDefinition, ...] = (
         display_name="Tips",
         description="Tip Distribution Rule configuration and the Tip Distribution Engine.",
         future_path="/tips",
-        link="https://mxgsc3nwha.us-east-1.awsapprunner.com/",  # Tips's own, separate App Runner service
+        link=TIPS_HOME_URL,  # Tips's own App Runner service, same host under /tips/
     ),
     DomainDefinition(
         code="COMPENSATION",

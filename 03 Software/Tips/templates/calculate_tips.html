@@ -174,7 +174,7 @@
     <tbody>
     {% for row in review_rows %}
       <tr>
-        <td>{{ row.display_name or ('Employee #' ~ row.employee_id) }}</td>
+        <td>{{ row.display_name|short_name(empty='Employee #' ~ row.employee_id) }}</td>
         <td>
           {% if row.result_type == 'HOST' %}<span class="badge">Host</span>
           {% elif row.result_type == 'BOTH' %}<span class="badge">Service Owner + Host</span>

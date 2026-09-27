@@ -39,7 +39,8 @@ from auth import (  # noqa: E402
     require_admin, require_csrf, require_login,
 )
 from db import SessionFactory  # noqa: E402
-from domain_registry import DOMAINS  # noqa: E402
+from domain_registry import DOMAINS, TIPS_HOME_URL  # noqa: E402
+from rfone_data_store import display_format  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store import legal_entity_service  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
@@ -86,6 +87,15 @@ app.config.update(
 @app.context_processor
 def inject_csrf():
     return {"csrf_token": get_csrf_token}
+
+
+# UI_NAVIGATION_AND_LOCAL_TIME_001 — RF-One UI Rules
+# (`03 Software/Shared UI/UI Rules.md`): times in the Location's local time,
+# employees as "Surname I.", one shared formatter for every RF-One app.
+app.jinja_env.filters["local_dt"] = display_format.local_datetime
+app.jinja_env.filters["short_name"] = display_format.employee_short_name
+app.jinja_env.globals["zone_label"] = display_format.zone_label
+app.jinja_env.globals["tips_home_url"] = TIPS_HOME_URL
 
 
 # ---------------------------------------------------------------------------

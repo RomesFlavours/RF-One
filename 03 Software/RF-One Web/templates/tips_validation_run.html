@@ -1,10 +1,11 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Tips · Calculation Run {{ run.id }} · RF-One{% endblock %}
 {% block content %}
 {# The saved Calculation Run Report (TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001
    §18), read back from what was persisted — never recalculated — plus the one
    human validation action (§14/§15). Mirrors Tips/templates/tips_run_report.html. #}
-<p><a href="{{ url_for('tips_validation_runs') }}">&larr; Tips &mdash; saved periods</a></p>
+{{ breadcrumb([('RF-One', url_for('home')), ('Tips', tips_home_url), ('Saved periods', url_for('tips_validation_runs')), ('Period #' ~ run.id, None)]) }}
 <h1>
   Calculation Run {{ run.id }}
   {% if run.is_final %}<span class="badge ok">FINAL</span>
@@ -20,7 +21,7 @@
   {% if report.rule_version_ids %}{{ report.rule_version_ids|join(', ') }}{% else %}none applied{% endif %}
 </p>
 <p class="muted">
-  Calculated {{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '—' }} UTC.
+  Calculated {{ run.started_at|local_dt(run.timezone_name, with_zone=True, empty='—') }}.
   This page reads the saved run &mdash; it does not recalculate.
 </p>
 
@@ -64,7 +65,7 @@
         <tbody>
           {% for row in report.employee_rows %}
             <tr>
-              <td>{{ row.display_name }}</td>
+              <td>{{ row.display_name|short_name }}</td>
               <td>{{ row.result_type }}</td>
               <td>${{ "%.2f"|format(row.gross_minor / 100) }}</td>
               <td><strong>${{ "%.2f"|format(row.final_entitlement_minor / 100) }}</strong></td>
@@ -99,11 +100,11 @@
   {% if run.is_final %}
     <p>
       <span class="badge ok">FINAL</span>
-      Finalized {{ run.finalized_at.strftime('%Y-%m-%d %H:%M') if run.finalized_at else '—' }} UTC
+      Finalized {{ run.finalized_at|local_dt(run.timezone_name, with_zone=True, empty='—') }}
       {% if run.finalized_automatically %}
         automatically, under {{ run.validation_mode or 'AUTOMATIC' }} mode. No person validated it.
       {% elif run.validated_by_account %}
-        after validation by <strong>{{ run.validated_by_account.display_name or run.validated_by_account.username }}</strong>.
+        after validation by <strong>{{ (run.validated_by_account.display_name or run.validated_by_account.username)|short_name }}</strong>.
       {% else %}
         &mdash; but no validator is recorded. Treat this run as unexplained.
       {% endif %}

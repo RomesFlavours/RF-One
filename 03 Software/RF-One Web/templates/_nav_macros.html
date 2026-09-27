@@ -1,0 +1,20 @@
+{# RF-One UI Rules §4 (`03 Software/Shared UI/UI Rules.md`,
+   UI_NAVIGATION_AND_LOCAL_TIME_001): every sub-page shows the path that
+   leads to it, each level clickable, instead of a generic "Home" link.
+
+   `items` is a list of (label, href) pairs from RF-One down to the current
+   page. The last item is the current page and is never a link; a level
+   whose address is not configured (href `None`) is shown unlinked. A level is
+   listed only when it is a real page someone can open — a Home card
+   heading such as "Settings" or "Administration" is not a page and never
+   becomes a level. The same macro exists in the Tips app
+   (`Tips/templates/_nav_macros.html`) with the same markup and CSS class. #}
+{% macro breadcrumb(items) %}
+<nav class="breadcrumb" aria-label="You are here">
+  <ol>
+  {%- for label, href in items %}
+    <li>{% if loop.last %}<span aria-current="page">{{ label }}</span>{% elif href %}<a href="{{ href }}">{{ label }}</a>{% else %}<span>{{ label }}</span>{% endif %}</li>
+  {%- endfor %}
+  </ol>
+</nav>
+{% endmacro %}

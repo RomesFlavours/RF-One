@@ -180,6 +180,49 @@ https://<unico-host>/tips/*      -> origin rfone-tips
   certificato). **Non creata**: creare infrastruttura AWS non prevista
   richiede l'approvazione del Product Owner.
 
+### Opzione A adottata (UI_NAVIGATION_AND_LOCAL_TIME_001, 2026-09-27)
+
+Decisione del Product Owner (2026-09-27): **Opzione A**, distribuzione
+CloudFront sugli hostname App Runner attuali. Serve a offrire Sync Now
+direttamente nella tab Clover Acquisition di Tips, con l'identità RF-One.
+
+| Elemento | Valore |
+|---|---|
+| Distribuzione | `E3MIBLH55LEYD8` — `https://dn1l56t5jz22u.cloudfront.net` |
+| Configurazione versionata | [`deploy/rfone-cloudfront/distribution-config.json`](deploy/rfone-cloudfront/distribution-config.json) |
+| Instradamento | `/tips/runs*` → `rfone-web` (validazione dei periodi); `/tips` e `/tips/*` → `rfone-tips`; tutto il resto → `rfone-web` |
+| Cache | `Managed-CachingDisabled`: nessuna pagina viene mai messa in cache |
+| Richiesta all'origine | `Managed-AllViewerExceptHostHeader`: cookie, query string e header passano tutti, tranne `Host` (App Runner risponde solo al proprio hostname) |
+
+**Codice (già nel repository):**
+
+- Tips accetta il prefisso `/tips` (`_TipsPathPrefix` in `Tips/app.py`), così
+  ogni `url_for` lo include. L'hostname proprio di `rfone-tips` continua a
+  funzionare senza prefisso.
+- Il cookie di sessione riemesso da Tips ha gli stessi attributi di RF-One
+  Web: `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`.
+- La card del Domain Tips punta a `/tips/`, sullo stesso host
+  (`RFONE_TIPS_URL` la sovrascrive).
+- `RFONE_WEB_BASE_URL` di `rfone-tips` deve valere
+  `https://dn1l56t5jz22u.cloudfront.net`.
+
+**Prerequisito non ancora soddisfatto — segreto di sessione.** Oggi i due
+servizi hanno segreti diversi: `rfone-web/flask-secret-key` e
+`rfone-tips/flask-secret-key`. `rfone-tips` deve usare
+`rfone-web/flask-secret-key`. Il suo ruolo
+`rfone-tips-apprunner-instance-role` deve quindi poter leggere quel segreto:
+policy [`deploy/rfone-cloudfront/rfone-tips-shared-session-secret-read.json`](deploy/rfone-cloudfront/rfone-tips-shared-session-secret-read.json).
+
+**Ordine obbligatorio:** (1) policy IAM, (2) `rfone-tips` con il segreto di
+`rfone-web` e il nuovo `RFONE_WEB_BASE_URL`, (3) deploy di `rfone-web` e
+`rfone-tips`, (4) da quel momento l'ingresso di RF-One è l'indirizzo
+CloudFront.
+
+Non attivare mai l'ingresso unico con segreti diversi. Tips non saprebbe
+verificare il cookie di RF-One Web e, alla prima scrittura (un messaggio
+flash), lo sostituirebbe con uno firmato col proprio segreto: l'utente
+verrebbe disconnesso da RF-One Web.
+
 ### Opzione B — montare Tips dentro `rfone-web`, come già fatto per Training
 
 RF-One Web monta già Training al proprio interno dietro lo stesso login

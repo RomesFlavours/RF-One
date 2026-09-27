@@ -35,6 +35,9 @@ operationally.
 
 from __future__ import annotations
 
+import secrets
+from collections.abc import MutableMapping
+
 from sqlalchemy.orm import Session
 
 from . import models as m
@@ -50,6 +53,22 @@ SESSION_VERSION_KEY = "rfone_session_version"
 # state-changing POST against the RF-One session must read the SAME token,
 # never mint a second one of its own.
 SESSION_CSRF_KEY = "rfone_csrf_token"
+
+
+
+def csrf_token(session_mapping: MutableMapping) -> str:
+    """The session's RF-One CSRF token, issued on first use.
+
+    RF-One Web (`auth.get_csrf_token`) and Tips both call this, so a form
+    Tips renders for one of RF-One Web's protected POSTs (Sync Now,
+    UI_NAVIGATION_AND_LOCAL_TIME_001) carries the very token RF-One Web
+    checks — one token per session, one way of minting it."""
+    token = session_mapping.get(SESSION_CSRF_KEY)
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session_mapping[SESSION_CSRF_KEY] = token
+    return token
+
 
 # The only account status that may enter a Domain.
 ACTIVE_ACCOUNT_STATUS = "ACTIVE"

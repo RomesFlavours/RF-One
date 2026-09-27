@@ -1,7 +1,8 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}{{ "New Legal Entity" if mode == "create" else "Edit Legal Entity" }} · RF-One{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('admin_legal_entities') }}">&larr; Legal Entities</a></p>
+{{ breadcrumb([('RF-One', url_for('home')), ('Legal Entities', url_for('admin_legal_entities')), ('New Legal Entity' if mode == 'create' else 'Edit Legal Entity', None)]) }}
 <h1>{{ "New Legal Entity" if mode == "create" else "Edit Legal Entity" }}</h1>
 
 <div class="card">

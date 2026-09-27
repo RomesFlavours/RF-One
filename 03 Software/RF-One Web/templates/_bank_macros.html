@@ -11,16 +11,27 @@
    Reconciliation" is a heading, never a link: the previous
    "← Bank Reconciliation" at the top of Review/Export looked like a way
    back to the module but actually led to one specific section (Import),
-   which is exactly the misleading control this replaces. Leaving the
-   module is a separate, explicitly labelled "RF-One Home" link. #}
-
-{% macro module_nav(active) %}
+   which is exactly the misleading control this replaces. Where the reader
+   is, and every level they can go back to, is the breadcrumb path above
+   the header (RF-One UI Rules §4, `_nav_macros.html`). #}
+{% from "_nav_macros.html" import breadcrumb %}
+{% macro module_nav(active, leaf=None) %}
+{%- set sections = {'import': ('Import & Instruments', url_for('bank_home')),
+                    'review': ('Review Transactions', url_for('bank_review')),
+                    'monthly': ('Monthly Sources', url_for('bank_monthly')),
+                    'export': ('Monthly Export', url_for('bank_export')),
+                    'classification': ('Classification', url_for('bank_classification'))} %}
+{%- set section = sections.get(active, (active, None)) %}
+{%- if leaf %}
+{{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', url_for('bank_home')), section, (leaf, None)]) }}
+{%- else %}
+{{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', url_for('bank_home')), (section[0], None)]) }}
+{%- endif %}
 <div class="module-header">
   <div class="module-identity">
     <h1 class="module-title">Bank Reconciliation</h1>
     <p class="module-tagline">Manual CSV import from Chase and First Citizens, normalization into the canonical ledger, duplicate detection, and the monthly Kermali export.</p>
   </div>
-  <a class="module-home-link" href="{{ url_for('home') }}">RF-One Home</a>
 </div>
 
 <nav class="module-tabs" aria-label="Bank Reconciliation sections">

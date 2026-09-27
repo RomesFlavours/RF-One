@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set crumbs = [('Saved Periods', url_for('tips_run_history')), ('Period #' ~ run.id, None)] %}
 {% block page_title %}RF-One · Tips · Calculation Run {{ run.id }}{% endblock %}
 {% block content %}
 
@@ -33,7 +34,7 @@
     {% if report.rule_version_ids %}{{ report.rule_version_ids|join(', ') }}{% else %}none applied{% endif %}
   </p>
   <p class="muted" style="font-size:.78rem;">
-    Calculated {{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '—' }} UTC.
+    Calculated {{ run.started_at|local_dt(run.timezone_name or tz, with_zone=True, empty='—') }}.
     This page reads the saved run &mdash; it does not recalculate, so the figures cannot drift
     after the period was closed.
   </p>
@@ -107,7 +108,7 @@
     <tbody>
       {% for row in report.employee_rows %}
       <tr>
-        <td>{{ row.display_name }}</td>
+        <td>{{ row.display_name|short_name }}</td>
         <td>
           {% if row.result_type == 'HOST' %}<span class="badge">Host</span>
           {% elif row.result_type == 'BOTH' %}<span class="badge">Service Owner + Host</span>
@@ -169,13 +170,13 @@
   {% if run.is_final %}
     <p>
       <span class="badge">FINAL</span>
-      Finalized {{ run.finalized_at.strftime('%Y-%m-%d %H:%M') if run.finalized_at else '—' }} UTC
+      Finalized {{ run.finalized_at|local_dt(run.timezone_name or tz, with_zone=True, empty='—') }}
       {% if run.finalized_automatically %}
         automatically, under {{ run.validation_mode or 'AUTOMATIC' }} mode. No person validated
         it, and none is named, because none did.
       {% elif run.validated_by_account %}
-        after validation by <strong>{{ run.validated_by_account.display_name or run.validated_by_account.username }}</strong>
-        on {{ run.validated_at.strftime('%Y-%m-%d %H:%M') if run.validated_at else '—' }} UTC.
+        after validation by <strong>{{ (run.validated_by_account.display_name or run.validated_by_account.username)|short_name }}</strong>
+        on {{ run.validated_at|local_dt(run.timezone_name or tz, with_zone=True, empty='—') }}.
       {% else %}
         &mdash; but no validator is recorded, which should not be possible for a manually
         finalized run. Treat this run as unexplained.
@@ -217,6 +218,5 @@
   {% endif %}
 </div>
 
-<p><a href="{{ url_for('tips_run_history') }}">&larr; All saved periods</a></p>
 
 {% endblock %}

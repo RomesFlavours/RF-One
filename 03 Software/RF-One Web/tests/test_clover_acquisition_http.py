@@ -196,7 +196,7 @@ def main() -> int:
     check("E: opening the page and polling its status create no job and launch nothing",
           page.status_code == 200 and job_count() == 0 and launcher.run_ids == [])
     check("the page recognises the signed-in RF-One person",
-          b"Signed in as <strong>Clover Operator</strong>" in page.data)
+          b"Signed in as <strong>Operator C.</strong>" in page.data)
     check("Live Sync is shown NOT ACTIVE", b"NOT ACTIVE" in page.data)
 
     # ---- C': CSRF still required for an authorized account -----------------
@@ -219,7 +219,7 @@ def main() -> int:
           and backfill.source_window_end.strftime("%Y-%m-%d %H:%M:%S") == "2026-09-02 23:59:59")
     page = op.get("/clover-acquisition", base_url=HOST)
     check("D: the page shows who requested the job in progress",
-          b"requested by Clover Operator" in page.data and b"Acquisition in progress" in page.data)
+          b"requested by Operator C." in page.data and b"Acquisition in progress" in page.data)
 
     # ---- F: concurrent acquisition still refused ---------------------------
     resp = op.post("/clover-acquisition/sync-now", base_url=HOST, data={"csrf_token": token}, follow_redirects=True)
@@ -239,7 +239,7 @@ def main() -> int:
     page = op.get("/clover-acquisition", base_url=HOST)
     history = page.data.decode("utf-8")
     check("D: the history shows 'Requested by' with the person's RF-One name for both jobs",
-          "<th>Requested by</th>" in history and history.count("<td>Clover Operator</td>") == 2)
+          "<th>Requested by</th>" in history and history.count("<td>Operator C.</td>") == 2)
 
     print(f"Clover acquisition identity HTTP tests: {'SUCCESS' if not failed else 'FAILURE'} "
           f"({len(passed)} passed, {len(failed)} failed)")

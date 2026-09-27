@@ -138,9 +138,12 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
                 f"{path} links every tab to its own section",
                 'href="/bank"' in html and 'href="/bank/review"' in html and 'href="/bank/export"' in html,
             )
+            # RF-One UI Rules §4 (UI_NAVIGATION_AND_LOCAL_TIME_001): the
+            # breadcrumb replaces the separate "RF-One Home" link.
             check(
-                f"{path} offers an unambiguous RF-One Home link",
-                'class="module-home-link"' in html and ">RF-One Home<" in html,
+                f"{path} shows the breadcrumb RF-One > Bank Reconciliation, each level clickable",
+                '<nav class="breadcrumb"' in html and '<a href="/">RF-One</a>' in html
+                and '<a href="/bank">Bank Reconciliation</a>' in html,
             )
             check(
                 f"{path} no longer shows the misleading back-link",
@@ -155,7 +158,8 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
         # nav block itself, since "Monthly Export" also appears in <title>.
         for path in pages:
             html = client.get(path).data.decode("utf-8")
-            nav = html[html.index('<nav class="module-tabs"'):html.index("</nav>")]
+            nav_start = html.index('<nav class="module-tabs"')
+            nav = html[nav_start:html.index("</nav>", nav_start)]
             positions = [nav.index(label) for label in tab_labels]
             check(f"{path} keeps the tabs in the same order", positions == sorted(positions))
 

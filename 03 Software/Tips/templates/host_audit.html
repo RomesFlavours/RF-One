@@ -26,7 +26,7 @@
         <select id="employee_id" name="employee_id" required {{ 'disabled' if not employees else '' }}>
           <option value="">Select...</option>
           {% for e in employees %}
-          <option value="{{ e.id }}" {{ 'selected' if e.id == employee_id else '' }}>{{ e.display_name or ('Employee #' ~ e.id) }}</option>
+          <option value="{{ e.id }}" {{ 'selected' if e.id == employee_id else '' }}>{{ e.display_name|short_name(empty='Employee #' ~ e.id) }}</option>
           {% endfor %}
         </select>
       </div>
@@ -53,7 +53,7 @@
 {% if report %}
 
 <div class="card">
-  <h2>{{ report.host_employee_name }} — Period Summary</h2>
+  <h2>{{ report.host_employee_name|short_name }} — Period Summary</h2>
   <p>Total Host Tips this period: <strong>${{ "%.2f"|format(report.period_total_host_tips_minor / 100) }}</strong></p>
   {% if report.period_reconciliation_ok %}
     <p class="muted" style="font-size:.85rem;">Reconciliation OK — the sum of every line shown below matches the Tip Distribution Engine's own independently-computed total for this period.</p>
@@ -68,7 +68,7 @@
     <tbody>
       {% for rec in report.reconciliations %}
       <tr>
-        <td>{{ rec.period_start.strftime('%Y-%m-%d %H:%M') }} – {{ rec.period_end.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ rec.period_start|local_dt(tz) }} – {{ rec.period_end|local_dt(tz) }}</td>
         <td>${{ "%.2f"|format(rec.line_sum_minor / 100) }}</td>
         <td>${{ "%.2f"|format(rec.engine_reported_inbound_minor / 100) }}</td>
         <td><span class="badge {{ 'ok' if rec.ok else 'bad' }}">{{ 'OK' if rec.ok else 'MISMATCH' }}</span></td>
@@ -81,11 +81,11 @@
 
 {% for group in report.shift_groups %}
 <div class="card">
-  <h3>Shift: {{ group.shift_start.strftime('%Y-%m-%d %H:%M') if group.shift_start else '(no matching Shift record)' }}
-    {% if group.shift_end %} – {{ group.shift_end.strftime('%H:%M') }}{% elif group.shift_start %} – (still open){% endif %}
+  <h3>Shift: {{ group.shift_start|local_dt(tz, empty='(no matching Shift record)') }}
+    {% if group.shift_end %} – {{ group.shift_end|local_dt(tz, '%H:%M') }}{% elif group.shift_start %} – (still open){% endif %}
   </h3>
   <table style="margin-bottom:.75rem;">
-    <tr><td class="muted">Host</td><td>{{ report.host_employee_name }}</td></tr>
+    <tr><td class="muted">Host</td><td>{{ report.host_employee_name|short_name }}</td></tr>
     <tr><td class="muted">Business Date</td><td>{{ group.business_date or '-' }}</td></tr>
     <tr><td class="muted">Role</td><td>{{ group.role_name }}</td></tr>
     <tr><td class="muted">RuleVersion(s) used</td><td>{{ group.rule_version_ids|join(', ') }}</td></tr>
@@ -98,14 +98,14 @@
     <thead>
       <tr>
         <th>Payment Time</th><th>Server</th><th>Order</th><th>Payment</th><th>Tip</th>
-        <th>Host Pool</th><th>Eligible Hosts</th><th>{{ report.host_employee_name }} Allocation</th>
+        <th>Host Pool</th><th>Eligible Hosts</th><th>{{ report.host_employee_name|short_name }} Allocation</th>
       </tr>
     </thead>
     <tbody>
       {% for line in group.lines %}
       <tr>
-        <td>{{ line.settlement_time.strftime('%Y-%m-%d %H:%M') }}</td>
-        <td>{{ line.server_employee_name }}</td>
+        <td>{{ line.settlement_time|local_dt(tz) }}</td>
+        <td>{{ line.server_employee_name|short_name }}</td>
         <td><a href="{{ url_for('calculate_tips_order_drilldown', order_id=line.order_id, start_at=start_at, end_at=end_at) }}">{{ line.clover_order_id or ('#' ~ line.order_id) }}</a></td>
         <td>{{ line.clover_payment_ids|join(', ') or '-' }}</td>
         <td>${{ "%.2f"|format(line.original_tip_amount_minor / 100) }}</td>
@@ -145,7 +145,7 @@
       {% for item in report.unresolved_items %}
       <tr>
         <td>{{ item.business_date or '-' }}</td>
-        <td>{{ item.settlement_time.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ item.settlement_time|local_dt(tz) }}</td>
         <td><a href="{{ url_for('calculate_tips_order_drilldown', order_id=item.order_id, start_at=start_at, end_at=end_at) }}">{{ item.clover_order_id or ('#' ~ item.order_id) }}</a></td>
         <td>{{ item.rule_version_id }}</td>
         <td class="muted" style="font-size:.78rem;">{{ item.detail }}</td>

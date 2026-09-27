@@ -59,6 +59,11 @@ def set_base(value: str | None) -> None:
 
 
 def hrefs(html: str) -> list[str]:
+    # The breadcrumb's first level (RF-One Web's Home, RF-One UI Rules §4)
+    # is not a run action; only the page's own links are counted.
+    if '<nav class="breadcrumb"' in html:
+        start = html.index('<nav class="breadcrumb"')
+        html = html[:start] + html[html.index("</nav>", start):]
     return re.findall(r'href="([^"]*)"', html)
 
 

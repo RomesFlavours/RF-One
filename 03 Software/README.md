@@ -41,6 +41,7 @@ Software is **authoritative for actual runtime behavior** — what the system ac
 
 | Document | Answers |
 |---|---|
+| [Shared UI/UI Rules.md](Shared%20UI/UI%20Rules.md) | How every RF-One screen shows times (Location local time, never UTC), employees ("Surname I."), frequent actions (where needed, calling the one central implementation) and navigation (clickable breadcrumb path on every sub-page)? Standing rules — UI_NAVIGATION_AND_LOCAL_TIME_001. |
 | [User Interaction Architecture.md](User%20Interaction%20Architecture.md) | Which interfaces/devices does RF-One need, what kind of work happens on each, the initial authentication/authorization model, the role of mobile, the role of document/evidence capture, the responsive-web-app delivery decision, and the attention-driven Home principle? Documented — TASK_INTERACTION_001, extended by CORE_IDENTITY_AUTHORITY_SECURITY_ARCHITECTURE. |
 
 **Moved:** `Identity Authority and Security Architecture.md` now lives at [`10 System/Identity & Access/Identity Authority and Security Architecture.md`](../10%20System/Identity%20%26%20Access/Identity%20Authority%20and%20Security%20Architecture.md) — Identity & Access is a system-level capability (neither a Domain nor a Product), not Software-owned architecture; see `10 System/README.md`. The existing software foundation implementing part of it (Acting Identity, Authority, Operational Signature) remains here, in `RF-One Data Store/` (see that document's "Current implementation references" for the exact files) — development is currently **FROZEN**.

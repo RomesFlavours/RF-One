@@ -1,7 +1,8 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Org Chart · RF-One{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('admin_org_positions') }}">&larr; Positions</a></p>
+{{ breadcrumb([('RF-One', url_for('home')), ('Organization', url_for('admin_organization')), ('Positions', url_for('admin_org_positions')), ('Org Chart', None)]) }}
 <h1>Org Chart — ADMIN / CONFIGURATION / TEST HARNESS</h1>
 <p class="empty">A minimal administrative listing, not a diagram — verifies the model is configurable and comprehensible.</p>
 

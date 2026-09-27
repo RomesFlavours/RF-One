@@ -1,8 +1,9 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% import "_org_macros.html" as org_macros %}
 {% block page_title %}Organizational Fallback Policy · RF-One{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('admin_organization') }}">&larr; Organization</a></p>
+{{ breadcrumb([('RF-One', url_for('home')), ('Organization', url_for('admin_organization')), ('Fallback Policy', None)]) }}
 <h1>Organizational Fallback Policy</h1>
 <p class="empty">
   Company configuration, never a Core rule (Core does not fix "Unowned Attention → CEO" universally).

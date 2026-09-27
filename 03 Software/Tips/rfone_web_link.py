@@ -18,7 +18,7 @@ so nothing a person types can become part of the URL.
 from __future__ import annotations
 
 import os
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 ENV_VAR = "RFONE_WEB_BASE_URL"
 
@@ -55,11 +55,41 @@ def tips_run_url(run_id: int) -> str | None:
     return f"{base}/tips/runs/{int(run_id)}"
 
 
+def home_url() -> str | None:
+    """RF-One Web's Home — the first level of every Tips breadcrumb."""
+    base = base_url()
+    return None if base is None else f"{base}/"
+
+
 def clover_acquisition_url() -> str | None:
-    """RF-One Web's Clover Acquisition page (CLOVER_ACQUISITION_IDENTITY_001),
-    or `None` when not configured. Sync Now and Historical Backfill are
-    started only there, by a signed-in RF-One account."""
+    """RF-One Web's full Clover Acquisition page (CLOVER_ACQUISITION_IDENTITY_001),
+    opened from Tips (`from=tips`: its breadcrumb then reads
+    RF-One > Tips > Clover Acquisition), or `None` when not configured."""
     base = base_url()
     if base is None:
         return None
-    return f"{base}/clover-acquisition"
+    return f"{base}/clover-acquisition?from=tips"
+
+
+def clover_sync_now_url() -> str | None:
+    """RF-One Web's ONE Sync Now action (UI_NAVIGATION_AND_LOCAL_TIME_001).
+    The Tips tab's Sync Now form posts here — Tips never starts an
+    acquisition itself; RF-One Web applies its login, access and CSRF gates
+    and calls the central service."""
+    base = base_url()
+    return None if base is None else f"{base}/clover-acquisition/sync-now"
+
+
+def clover_status_url() -> str | None:
+    """RF-One Web's job-status poll, read by the Tips tab while a job runs."""
+    base = base_url()
+    return None if base is None else f"{base}/clover-acquisition/status.json"
+
+
+def login_url(next_path: str) -> str | None:
+    """RF-One Web's login, coming back to `next_path` — a path on the shared
+    host (RF-One Web accepts only local paths as `next`)."""
+    base = base_url()
+    if base is None:
+        return None
+    return f"{base}/login?{urlencode({'next': next_path})}"

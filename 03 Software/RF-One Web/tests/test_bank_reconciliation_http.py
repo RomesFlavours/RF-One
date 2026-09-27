@@ -311,12 +311,15 @@ def main() -> int:
 
         resp = operator_client.get("/bank/classification")
         check("the Classification tab responds 200 for an authorized user", resp.status_code == 200)
+        # Compared inside the tab bar: the breadcrumb above it also names
+        # the current section (RF-One UI Rules §4).
+        tabs = resp.data[resp.data.index(b'<nav class="module-tabs"'):]
         check(
             "every Bank page offers the four tabs in the same order, Classification last",
-            resp.data.index(b"Import &amp; Instruments")
-            < resp.data.index(b"Review Transactions")
-            < resp.data.index(b"Monthly Export")
-            < resp.data.index(b">Classification<"),
+            tabs.index(b"Import &amp; Instruments")
+            < tabs.index(b"Review Transactions")
+            < tabs.index(b"Monthly Export")
+            < tabs.index(b">Classification<"),
         )
 
         csrf = extract_csrf(resp.data)

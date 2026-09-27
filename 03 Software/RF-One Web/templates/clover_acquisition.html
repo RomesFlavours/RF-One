@@ -1,9 +1,12 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Clover Acquisition · RF-One{% endblock %}
 {% block content %}
 {% set active = acquisition.active_run %}
 {% set busy = active is not none %}
 {% set mode_labels = {'SYNC_NOW': 'Sync Now', 'BACKFILL': 'Historical Backfill', 'LIVE_SYNC': 'Live Sync'} %}
+{# RF-One UI Rules §1: every time is the Location's local time, never UTC. #}
+{% set tz = acquisition.tz_name %}
 
 {% macro requested_by(run) -%}
   {%- if run.requested_by_account_id -%}{{ acquisition.requested_by.get(run.requested_by_account_id, '—') }}
@@ -11,9 +14,17 @@
   {%- else -%}<span class="muted">not recorded</span>{%- endif -%}
 {%- endmacro %}
 
-<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+{# RF-One UI Rules §4. Clover Acquisition is an RF-One capability listed on
+   Home; the Tips level appears only when the person actually came from the
+   Tips tab — never presented as a child of Tips otherwise. #}
+{% if from_tips %}
+{{ breadcrumb([('RF-One', url_for('home')), ('Tips', tips_home_url), ('Clover Acquisition', None)]) }}
+{% else %}
+{{ breadcrumb([('RF-One', url_for('home')), ('Clover Acquisition', None)]) }}
+{% endif %}
 <h1>Clover Acquisition</h1>
-<p class="muted">Signed in as <strong>{{ identified_as }}</strong>. Every acquisition you start is recorded as requested by you.</p>
+<p class="muted">Signed in as <strong>{{ identified_as }}</strong>. Every acquisition you start is recorded as requested by you.
+  {% if acquisition.location_id %}Times are {{ acquisition.location_name or 'the location' }} local time ({{ zone_label(tz) }}).{% endif %}</p>
 
 {% if not acquisition.location_id %}
   <p class="error">No Clover-sourced Location is configured for this Restaurant.</p>
@@ -25,8 +36,8 @@
   <p>
     <span class="badge warn">{{ active.status }}</span>
     #{{ active.id }} — {{ mode_labels.get(active.acquisition_mode, active.acquisition_mode or 'Clover acquisition') }},
-    {{ active.source_window_start.strftime('%Y-%m-%d %H:%M') if active.source_window_start else '-' }} &rarr;
-    {{ active.source_window_end.strftime('%Y-%m-%d %H:%M') if active.source_window_end else '-' }} UTC
+    {{ active.source_window_start|local_dt(tz) }} &rarr;
+    {{ active.source_window_end|local_dt(tz, with_zone=True) }}
     — requested by {{ requested_by(active) }}
   </p>
   <p class="muted">
@@ -42,7 +53,7 @@
   <p>
     Last completed synchronization:
     {% if acquisition.sync_point %}
-      <strong>{{ acquisition.sync_point.at.strftime('%Y-%m-%d %H:%M') }} UTC</strong>
+      <strong>{{ acquisition.sync_point.at|local_dt(tz, with_zone=True) }}</strong>
       {% if acquisition.sync_point.basis == 'BACKFILL' %}
         <span class="muted">(no synchronization yet — starts from the end of the latest Historical Backfill)</span>
       {% endif %}
@@ -52,6 +63,7 @@
   </p>
   <form method="post" action="{{ url_for('clover_acquisition_sync_now') }}" onsubmit="return guardSubmit('sync-now-btn')">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if from_tips %}<input type="hidden" name="from" value="tips">{% endif %}
     <button type="submit" id="sync-now-btn" {{ 'disabled' if (busy or not acquisition.location_id or not acquisition.sync_point) else '' }}>Sync Now</button>
   </form>
 </div>
@@ -64,6 +76,7 @@
   </p>
   <form method="post" action="{{ url_for('clover_acquisition_backfill') }}" onsubmit="return guardSubmit('backfill-btn')">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if from_tips %}<input type="hidden" name="from" value="tips">{% endif %}
     <div class="field-row">
       <label for="from_date">From date</label>
       <input type="date" id="from_date" name="from_date" value="{{ from_date }}" required>
@@ -84,10 +97,10 @@
   <h2>Live Sync</h2>
   {% set ls = acquisition.live_sync %}
   {% if ls and ls.active %}
-    <p><span class="badge ok">ACTIVE</span> Last update: {{ ls.last_update.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+    <p><span class="badge ok">ACTIVE</span> Last update: {{ ls.last_update|local_dt(tz, with_zone=True) }}</p>
   {% elif ls and ls.enabled %}
     <p><span class="badge warn">ENABLED, NOT RUNNING</span>
-      {% if ls.last_update %}Last update: {{ ls.last_update.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}No cycle has completed yet.{% endif %}</p>
+      {% if ls.last_update %}Last update: {{ ls.last_update|local_dt(tz, with_zone=True) }}{% else %}No cycle has completed yet.{% endif %}</p>
   {% else %}
     <p><span class="badge warn">NOT ACTIVE</span></p>
     <p class="muted">
@@ -104,7 +117,7 @@
   <div class="table-scroll">
   <table>
     <thead><tr>
-      <th>#</th><th>Type</th><th>Requested by</th><th>Status</th><th>Requested period (UTC)</th><th>Started</th><th>Ended</th>
+      <th>#</th><th>Type</th><th>Requested by</th><th>Status</th><th>Requested period</th><th>Started</th><th>Ended</th>
       <th>Orders</th><th>Payments</th><th>Shifts</th><th>Errors</th>
     </tr></thead>
     <tbody>
@@ -118,13 +131,12 @@
           {% if run.status == 'PARTIAL' %}<div class="muted">completed with warnings</div>{% endif %}
           {% if run.id in acquisition.stale_run_ids %}<div class="muted">no sign of life</div>{% endif %}
         </td>
-        <td>{{ run.source_window_start.strftime('%Y-%m-%d %H:%M') if run.source_window_start else '-' }} &rarr;
-            {{ run.source_window_end.strftime('%Y-%m-%d %H:%M') if run.source_window_end else '-' }}</td>
+        <td>{{ run.source_window_start|local_dt(tz) }} &rarr; {{ run.source_window_end|local_dt(tz) }}</td>
         <td>
-          {% if run.status == 'QUEUED' %}queued {{ run.queued_at.strftime('%Y-%m-%d %H:%M') if run.queued_at else '' }}
-          {% else %}{{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '-' }}{% endif %}
+          {% if run.status == 'QUEUED' %}queued {{ run.queued_at|local_dt(tz, empty='') }}
+          {% else %}{{ run.started_at|local_dt(tz) }}{% endif %}
         </td>
-        <td>{{ run.finished_at.strftime('%Y-%m-%d %H:%M') if run.finished_at else '-' }}</td>
+        <td>{{ run.finished_at|local_dt(tz) }}</td>
         <td>{{ run.orders_processed if run.orders_processed is not none else '-' }}</td>
         <td>{{ run.payments_processed if run.payments_processed is not none else '-' }}</td>
         <td>{{ run.shifts_processed if run.shifts_processed is not none else '-' }}</td>
@@ -136,7 +148,7 @@
     </tbody>
   </table>
   </div>
-  <p class="muted">Times in UTC. "-" counts: acquisitions recorded before counts were tracked.</p>
+  <p class="muted">Times in {{ acquisition.location_name or 'the location' }} local time ({{ zone_label(tz) }}). "-" counts: acquisitions recorded before counts were tracked.</p>
   {% else %}
   <p class="empty">No Clover acquisition recorded for this location yet.</p>
   {% endif %}

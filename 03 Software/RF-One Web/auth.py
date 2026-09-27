@@ -55,11 +55,7 @@ SESSION_FORGOT_PASSWORD_USERNAME_KEY = "rfone_forgot_password_username"
 
 
 def get_csrf_token() -> str:
-    token = flask_session.get(SESSION_CSRF_KEY)
-    if not token:
-        token = secrets.token_urlsafe(32)
-        flask_session[SESSION_CSRF_KEY] = token
-    return token
+    return shared_session.csrf_token(flask_session)
 
 
 def csrf_valid() -> bool:

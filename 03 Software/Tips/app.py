@@ -53,12 +53,16 @@ if _DATA_STORE_DIR not in sys.path:
     sys.path.insert(0, _DATA_STORE_DIR)
 
 from flask import Flask, Response, flash, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
+from flask import session as flask_session  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.database import (  # noqa: E402
     create_configured_engine, create_session_factory, get_database_url,
 )
+from rfone_data_store import display_format  # noqa: E402
+from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
+from rfone_data_store.technical.connectors.clover import acquisition_jobs as clover_jobs  # noqa: E402
 from rfone_data_store.technical.connectors.clover.acquisition import get_order_settlement_time  # noqa: E402
 from rfone_data_store.tips import calculation_run_service as run_svc  # noqa: E402
 from rfone_data_store.tips import distribution_engine as engine_svc  # noqa: E402
@@ -95,6 +99,46 @@ app = Flask(__name__)
 # GLOBAL_INTEGRITY_FIX_002's ActingIdentity work for that concern in
 # Selection, not replicated here since this task does not touch identity).
 app.secret_key = os.environ.get("RFONE_FLASK_SECRET_KEY") or os.urandom(24)
+# UI_NAVIGATION_AND_LOCAL_TIME_001 — Tips is published on the SAME host as
+# RF-One Web, under `/tips/` (one CloudFront entry in front of both App
+# Runner services), so the RF-One session cookie reaches Tips. The cookie is
+# the one RF-One Web issues: whenever Tips writes to it (a flash message,
+# the shared CSRF token) it must re-issue it with exactly RF-One Web's
+# attributes, never weaker ones (see `RF-One Web/app.py`).
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_PATH="/",
+)
+
+# The public path Tips is mounted under on the shared host. A request that
+# arrives as `/tips/...` is served as `/...` with `/tips` as its script
+# root, so every `url_for` link carries the prefix; a request without it
+# (the service's own App Runner hostname, local development) is untouched.
+TIPS_PATH_PREFIX = "/tips"
+
+
+class _TipsPathPrefix:
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "")
+        if path == TIPS_PATH_PREFIX or path.startswith(TIPS_PATH_PREFIX + "/"):
+            environ["SCRIPT_NAME"] = environ.get("SCRIPT_NAME", "") + TIPS_PATH_PREFIX
+            environ["PATH_INFO"] = path[len(TIPS_PATH_PREFIX):] or "/"
+        return self.wsgi_app(environ, start_response)
+
+
+app.wsgi_app = _TipsPathPrefix(app.wsgi_app)
+
+# RF-One UI Rules (`03 Software/Shared UI/UI Rules.md`): local times,
+# "Surname I." — the same shared formatter RF-One Web registers.
+app.jinja_env.filters["local_dt"] = display_format.local_datetime
+app.jinja_env.filters["short_name"] = display_format.employee_short_name
+app.jinja_env.globals["zone_label"] = display_format.zone_label
+app.jinja_env.globals["rfone_web_home_url"] = rfone_web_link.home_url
 app.jinja_env.globals["rfone_web_base_url"] = rfone_web_link.base_url
 app.jinja_env.globals["rfone_web_run_url"] = rfone_web_link.tips_run_url
 app.jinja_env.globals["rfone_web_not_configured_message"] = rfone_web_link.NOT_CONFIGURED_MESSAGE
@@ -221,9 +265,15 @@ def inject_brand_context() -> dict:
     (e.g. `distribution_rule_detail`)."""
     with SessionFactory() as session:
         restaurant = _default_restaurant(session)
+        # RF-One UI Rules §1: `tz` is the Restaurant's Clover Location's
+        # own timezone, the zone every time on a Tips page is shown in
+        # (`|local_dt(tz)`). None -> the formatter says "UTC" honestly.
+        location_id = _resolve_clover_location_id(session, restaurant.id) if restaurant is not None else None
+        location = session.get(m.Location, location_id) if location_id is not None else None
         return {
             "brand_name": restaurant.name if restaurant is not None else "RF-One",
             "brand_logo_filename": _brand_logo_filename(),
+            "tz": location.timezone if location is not None else None,
         }
 
 
@@ -245,6 +295,58 @@ def _parse_date(value: str | None) -> datetime | None:
     if not value:
         return None
     return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC)
+
+
+CLOVER_ACQUISITION_ACCESS_CODE = "CLOVER_ACQUISITION"
+
+
+def _clover_acquisition_panel(session, restaurant) -> dict:
+    """What the Tips "Clover Acquisition" tab shows (UI_NAVIGATION_AND_LOCAL_TIME_001):
+    the last completed synchronization in the Location's local time, whether
+    a job is running, and — for a signed-in account holding the
+    CLOVER_ACQUISITION access — a Sync Now form that posts to RF-One Web's
+    ONE Sync Now action. Read-only here: Tips never starts, recovers or
+    records an acquisition itself."""
+    location_id = _resolve_clover_location_id(session, restaurant.id) if restaurant is not None else None
+    location = session.get(m.Location, location_id) if location_id is not None else None
+    panel = {
+        "location_id": location_id,
+        "tz_name": location.timezone if location is not None else None,
+        "sync_point": None, "active_run": None, "active_requested_by": None,
+        "signed_in": False, "may_sync": False, "csrf_token": None,
+        "sync_now_url": rfone_web_link.clover_sync_now_url(),
+        "status_url": rfone_web_link.clover_status_url(),
+        "full_page_url": rfone_web_link.clover_acquisition_url(),
+        "login_url": rfone_web_link.login_url(url_for("home")),
+    }
+    if location_id is not None:
+        panel["sync_point"] = clover_jobs.get_last_successful_sync_point(session, location_id=location_id)
+        active = clover_jobs.get_active_run(session, location_id=location_id)
+        # A job with no sign of life is not "in progress": RF-One Web's
+        # Sync Now recovers it (FAILED) before starting the new one.
+        if active is not None and not clover_jobs.run_is_stale(active):
+            panel["active_run"] = active
+            if active.requested_by_account_id:
+                panel["active_requested_by"] = display_format.employee_short_name(
+                    shared_session.account_display_name(session.get(m.RFOneAccount, active.requested_by_account_id))
+                )
+    account = rfone_identity.current_account(session)
+    panel["signed_in"] = account is not None
+    panel["may_sync"] = shared_session.account_may_enter_domain(session, account, CLOVER_ACQUISITION_ACCESS_CODE)
+    if panel["may_sync"]:
+        # The SAME per-session token RF-One Web checks on the POST.
+        panel["csrf_token"] = shared_session.csrf_token(flask_session)
+    return panel
+
+
+def _employee_names(session, source_employee_ids) -> dict:
+    """Clover employee id -> "Surname I." (RF-One UI Rules §2). The id stays
+    in the database; it is never what a person reads."""
+    ids = {i for i in source_employee_ids if i}
+    if not ids:
+        return {}
+    employees = session.scalars(select(m.Employee).where(m.Employee.source_employee_id.in_(ids))).all()
+    return {e.source_employee_id: display_format.employee_short_name(e.display_name) for e in employees}
 
 
 @app.route("/")
@@ -357,24 +459,31 @@ def home():
                         }
                     )
 
+        employee_names = _employee_names(
+            session, [r["employee_id"] for r in payments_rows + orders_rows + shifts_rows],
+        )
+        clover = _clover_acquisition_panel(session, restaurant)
         return render_template(
             "home.html", restaurant=restaurant, from_date=from_date, through_date=through_date,
-            no_business_date_data=no_business_date_data,
-            clover_acquisition_url=rfone_web_link.clover_acquisition_url(),
+            no_business_date_data=no_business_date_data, clover=clover, tz=clover["tz_name"],
+            employee_names=employee_names,
             payments_rows=payments_rows, orders_rows=orders_rows, shifts_rows=shifts_rows,
             active_nav="historical-backfill",
         )
 
 
-# CLOVER_ACQUISITION_IDENTITY_001 — this app no longer starts Clover
-# acquisitions and no longer shows their job history. Sync Now and
-# Historical Backfill start real work on AWS and may be started only by a
-# signed-in RF-One account holding the CLOVER_ACQUISITION access; on AWS the
-# RF-One session never reaches this app's hostname, so it cannot know who is
-# asking. Both actions, and the job history, live in RF-One Web
-# (`/clover-acquisition`); this page links there. Requests to the former
-# action URLs (`/historical-backfill`, `/clover-acquisition/sync-now`) no
-# longer match any route and are refused with no effect.
+# CLOVER_ACQUISITION_IDENTITY_001 — this app starts no Clover acquisition
+# and keeps no job history. Sync Now and Historical Backfill start real work
+# on AWS and may be started only by a signed-in RF-One account holding the
+# CLOVER_ACQUISITION access; both, and the job history, live in RF-One Web
+# (`/clover-acquisition`). Requests to the former action URLs
+# (`/historical-backfill`, `/clover-acquisition/sync-now`) match no route
+# here and are refused with no effect.
+#
+# UI_NAVIGATION_AND_LOCAL_TIME_001 — now that Tips shares RF-One Web's host
+# and session, the Clover Acquisition tab shows the last update and a Sync
+# Now button, but the button is a form posting to RF-One Web's ONE Sync Now
+# action (`_clover_acquisition_panel`): no second Sync Now exists here.
 
 
 # ---------------------------------------------------------------------------
@@ -682,9 +791,20 @@ def calculate_tips_order_drilldown(order_id: int):
             flash("That Order is not within the selected period.", "error")
             return redirect(url_for("calculate_tips_home", start_at=start_at, end_at=end_at))
 
+        # RF-One UI Rules §2: people as "Surname I.", never an id.
+        recipient_ids = {a.recipient_employee_id for a in drilldown.allocations if a.recipient_employee_id}
+        recipient_names = {
+            e.id: display_format.employee_short_name(e.display_name)
+            for e in (session.scalars(select(m.Employee).where(m.Employee.id.in_(recipient_ids))).all()
+                      if recipient_ids else [])
+        }
+        order_employee_name = _employee_names(session, [drilldown.order.source_employee_id]).get(
+            drilldown.order.source_employee_id
+        )
         return render_template(
             "order_drilldown.html", restaurant=restaurant, start_at=start_at, end_at=end_at,
-            drilldown=drilldown, active_nav="calculate-tips",
+            drilldown=drilldown, recipient_names=recipient_names, order_employee_name=order_employee_name,
+            active_nav="calculate-tips",
         )
 
 

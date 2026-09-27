@@ -1,8 +1,9 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Organization · RF-One{% endblock %}
 {% block content %}
 <div class="org-chart-wrap">
-<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
+{{ breadcrumb([('RF-One', url_for('home')), ('Organization', None)]) }}
 <h1>Organization</h1>
 <p class="empty">
   <span class="badge">SYSTEM / ORGANIZATION CONFIGURATION</span>

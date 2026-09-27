@@ -1,7 +1,8 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}New Compensation Run · RF-One{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('compensation_home') }}">&larr; Compensation</a></p>
+{{ breadcrumb([('RF-One', url_for('home')), ('Compensation', url_for('compensation_home')), ('New run', None)]) }}
 <h1>New compensation preparation run</h1>
 
 <div class="card">

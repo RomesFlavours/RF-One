@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set crumbs = [('Payment Control', url_for('payment_control_home')), ('Cycle #' ~ open_cycle.id, None)] if (is_deep_link and open_cycle) else [('Payment Control', None)] %}
 {% block content %}
 
 {% with messages = get_flashed_messages(with_categories=True) %}

@@ -289,3 +289,12 @@ button, .btn, select, input[type=text], input[type=number], input[type=date], in
   .responsive-table td[data-label=""]::before { content: none; }
   .responsive-table .table-scroll { overflow-x: visible; }
 }
+
+
+/* RF-One UI Rules §4 — breadcrumb path on every sub-page
+   (`templates/_nav_macros.html`; same rules as RF-One Web). */
+.breadcrumb { margin: 0 0 .9rem; font-size: .85rem; }
+.breadcrumb ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .1rem .35rem; }
+.breadcrumb li { display: inline-flex; align-items: center; }
+.breadcrumb li + li::before { content: "A"; margin-right: .35rem; color: #8a8a8a; }
+.breadcrumb [aria-current="page"] { color: #555; font-weight: 600; }

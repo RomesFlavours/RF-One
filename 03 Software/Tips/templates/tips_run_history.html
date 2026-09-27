@@ -60,8 +60,8 @@
           {% if run.first_business_date %}
             {{ run.first_business_date }} &rarr; {{ run.last_business_date }}
           {% else %}
-            <span class="muted">{{ run.period_start.strftime('%Y-%m-%d %H:%M') }} &rarr;
-            {{ run.period_end.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+            <span class="muted">{{ run.period_start|local_dt(run.timezone_name or tz) }} &rarr;
+            {{ run.period_end|local_dt(run.timezone_name or tz, with_zone=True) }}</span>
           {% endif %}
         </td>
         <td>${{ "%.2f"|format(run.gross_total_minor / 100) }}</td>
@@ -85,13 +85,13 @@
           {% elif run.finalized_automatically %}
             <span class="muted">automatically, no validator</span>
           {% elif run.validated_by_account %}
-            {{ run.validated_by_account.display_name or run.validated_by_account.username }}
+            {{ (run.validated_by_account.display_name or run.validated_by_account.username)|short_name }}
           {% else %}
             <span class="badge warn">unexplained</span>
           {% endif %}
         </td>
         <td class="muted" style="font-size:.8rem;">
-          {{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '—' }}
+          {{ run.started_at|local_dt(tz, empty='—') }}
         </td>
         <td style="font-size:.8rem;">
           {% set web_url = rfone_web_run_url(run.id) %}

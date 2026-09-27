@@ -26,6 +26,14 @@ request has no effect at all: no job row, no Fargate task, no write.
 
 The job records the requesting account (`requested_by_account_id`). The
 acquisition itself — windows, dates, engine, safety checks — is unchanged.
+
+UI_NAVIGATION_AND_LOCAL_TIME_001: RF-One Web and Tips are now published on
+ONE host (CloudFront: RF-One Web at `/`, Tips at `/tips/`), so the RF-One
+session reaches Tips too. Tips's Clover Acquisition tab therefore offers Sync
+Now itself — as a form posting to THIS route, never a second Sync Now: the
+same gates, the same central service, the same one-job-per-location lock.
+`return_to=tips` only chooses where the person lands afterwards (back on the
+Tips tab); it can name nothing but that one known page.
 """
 
 from __future__ import annotations
@@ -35,6 +43,8 @@ from datetime import datetime, timezone
 from flask import abort, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import func, select
 
+from domain_registry import TIPS_HOME_URL
+from rfone_data_store import display_format
 from rfone_data_store import models as m
 from rfone_data_store import rfone_web_session as shared_session
 from rfone_data_store.technical.connectors.clover import acquisition_jobs as clover_jobs
@@ -44,6 +54,16 @@ CLOVER_ACQUISITION_ACCESS_CODE = "CLOVER_ACQUISITION"
 UTC = timezone.utc
 
 SIGN_IN_MESSAGE = "Please sign in to RF-One to use Clover Acquisition. You will come back here afterwards."
+
+# The one page, besides this one, a Clover Acquisition POST may send the
+# person back to (`return_to=tips`): the Tips Clover Acquisition tab.
+RETURN_TIPS = "tips"
+
+
+def _person(account) -> str:
+    """An RF-One account as operational displays name people: "Surname I."
+    (RF-One UI Rules §2)."""
+    return display_format.employee_short_name(shared_session.account_display_name(account))
 
 
 def _default_clover_location_id(db) -> int | None:
@@ -77,6 +97,12 @@ def register_clover_acquisition_routes(
     """`get_launcher` returns the launcher to hand to the service (`None` =
     the deployment's configured one); tests replace it."""
 
+    def _from_tips() -> bool:
+        # `from=tips`: the full page was opened from the Tips tab (breadcrumb
+        # RF-One > Tips > Clover Acquisition); `return_to=tips`: the Tips
+        # tab's own Sync Now form.
+        return RETURN_TIPS in (request.values.get("return_to"), request.values.get("from"))
+
     def _authorized_account(db):
         """(account, None) when the request may act; (None, response)
         otherwise. Nothing is created or started on the refusal paths."""
@@ -84,7 +110,10 @@ def register_clover_acquisition_routes(
         if account is None:
             log_out()
             flash(SIGN_IN_MESSAGE, "error")
-            return None, redirect(url_for("login", next=url_for("clover_acquisition_home")))
+            come_back = url_for("clover_acquisition_home")
+            if _from_tips() and TIPS_HOME_URL.startswith("/"):
+                come_back = TIPS_HOME_URL
+            return None, redirect(url_for("login", next=come_back))
         if not shared_session.account_may_enter_domain(db, account, CLOVER_ACQUISITION_ACCESS_CODE):
             abort(403, description=(
                 "This RF-One account does not have the Clover Acquisition access. "
@@ -94,9 +123,14 @@ def register_clover_acquisition_routes(
 
     def _view(db, location_id: int | None) -> dict:
         view = {"location_id": location_id, "active_run": None, "sync_point": None, "live_sync": None,
-                "runs": [], "stale_run_ids": set(), "requested_by": {}}
+                "runs": [], "stale_run_ids": set(), "requested_by": {}, "tz_name": None, "location_name": None}
         if location_id is None:
             return view
+        # RF-One UI Rules §1: every time on this page is shown in the
+        # Location's own local time (Winter Park -> America/New_York).
+        location = db.get(m.Location, location_id)
+        view["tz_name"] = location.timezone if location is not None else None
+        view["location_name"] = location.name if location is not None else None
         # The existing stale-run recovery: a job whose process died is
         # shown FAILED, never as a phantom RUNNING. Creates nothing.
         clover_jobs.recover_stale_run(db, location_id=location_id)
@@ -109,8 +143,7 @@ def register_clover_acquisition_routes(
         if view["active_run"] is not None and view["active_run"].requested_by_account_id:
             account_ids.add(view["active_run"].requested_by_account_id)
         view["requested_by"] = {
-            account_id: shared_session.account_display_name(db.get(m.RFOneAccount, account_id))
-            for account_id in account_ids
+            account_id: _person(db.get(m.RFOneAccount, account_id)) for account_id in account_ids
         }
         return view
 
@@ -131,9 +164,9 @@ def register_clover_acquisition_routes(
                     latest = db.scalar(select(func.max(m.Order.business_date)).where(m.Order.location_id == location_id))
                 from_date = latest.isoformat() if latest else ""
             return render_template(
-                "clover_acquisition.html", acquisition=acquisition,
-                identified_as=shared_session.account_display_name(account),
+                "clover_acquisition.html", acquisition=acquisition, identified_as=_person(account),
                 from_date=from_date, through_date=request.args.get("through_date") or "",
+                from_tips=_from_tips(),
             )
 
     def _start(request_job) -> None:
@@ -160,7 +193,7 @@ def register_clover_acquisition_routes(
                       "error")
                 return None
             flash(f"Acquisition #{run.id} accepted and started, requested by "
-                  f"{shared_session.account_display_name(account)}. You can leave this page — it continues on "
+                  f"{_person(account)}. You can leave this page — it continues on "
                   "its own.", "info")
             return None
 
@@ -170,7 +203,11 @@ def register_clover_acquisition_routes(
         refusal = _start(lambda db, location_id, account_id: clover_jobs.request_sync_now(
             db, location_id=location_id, launcher=get_launcher(), requested_by_account_id=account_id,
         ))
-        return refusal or redirect(url_for("clover_acquisition_home"))
+        if refusal:
+            return refusal
+        if request.form.get("return_to") == RETURN_TIPS:
+            return redirect(TIPS_HOME_URL)
+        return redirect(url_for("clover_acquisition_home", **({"from": RETURN_TIPS} if _from_tips() else {})))
 
     @app.route("/clover-acquisition/backfill", methods=["POST"])
     def clover_acquisition_backfill():
@@ -183,7 +220,8 @@ def register_clover_acquisition_routes(
             if refusal is not None:
                 return refusal
         start, end = _parse_date(from_date), _parse_date(through_date)
-        back = redirect(url_for("clover_acquisition_home", from_date=from_date, through_date=through_date))
+        back = redirect(url_for("clover_acquisition_home", from_date=from_date, through_date=through_date,
+                                **({"from": RETURN_TIPS} if _from_tips() else {})))
         if start is None or end is None:
             require_csrf()
             flash("Both From and Through dates are required.", "error")

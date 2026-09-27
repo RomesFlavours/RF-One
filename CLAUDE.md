@@ -349,6 +349,27 @@ Never hide unresolved contradictions.
 
 ---
 
+# RF-One UI Rules
+
+**Standing instruction, applied automatically to every RF-One interface
+task.** Full text and implementation pointers:
+`03 Software/Shared UI/UI Rules.md`. In short:
+
+1. Times shown to a person are the Location's local time (its
+   `Location.timezone`), never UTC. UTC stays internal.
+2. Employees in operational displays are "Surname I." ("Ceban T."), never
+   a technical id, unless the full name is genuinely needed.
+3. Frequent actions are available where they are needed, calling the one
+   central implementation — never a copy — so the person does not have to
+   open a sub-page just to perform them.
+4. Every sub-page shows its clickable hierarchical path (breadcrumb)
+   instead of a generic "Home" link; the path reflects the real structure
+   and never invents levels.
+
+Every future UI refinement reuses these rules.
+
+---
+
 # Final Principles
 
 When working on the **Core**, ask first:
