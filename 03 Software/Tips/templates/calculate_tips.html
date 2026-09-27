@@ -1,174 +1,105 @@
 {% extends "base.html" %}
 {% block content %}
 
+{# CALCULATE_AND_CONSOLIDATE_001 — one linear page, two actions:
+   A. period + CALCULATE, B. Totals, C. Employee Entitlements, D. CONSOLIDATE.
+   CALCULATED = a result on screen, recalculable at will, saved nowhere.
+   CONSOLIDATED = that result saved as the period's reference (a Saved Period). #}
+{% macro money(cents) %}${{ "{:,.2f}".format((cents or 0) / 100) }}{% endmacro %}
+{% set period_label = (first_business_date.strftime('%m/%d/%Y') ~ ' → ' ~ last_business_date.strftime('%m/%d/%Y')) if first_business_date and last_business_date else '' %}
+
 {% with messages = get_flashed_messages(with_categories=True) %}
   {% for category, message in messages %}
-    {% if category == "error" %}
-      <div class="error">{{ message }}</div>
-    {% endif %}
-  {% endfor %}
-
-  <div class="card">
-    <h2>Calculate Tips</h2>
-    {% if restaurant %}
-    <p class="muted" style="font-size:.85rem;">Restaurant: <strong>{{ restaurant.name }}</strong></p>
-    {% else %}
-    <p class="error">No Restaurant exists in this database yet.</p>
-    {% endif %}
-    <form method="post" action="{{ url_for('calculate_tips_run') }}">
-      <div class="form-row">
-        <div>
-          <label for="start_at">Start date &amp; time</label>
-          <input type="datetime-local" id="start_at" name="start_at" value="{{ start_at }}" required>
-        </div>
-        <div>
-          <label for="end_at">End date &amp; time</label>
-          <input type="datetime-local" id="end_at" name="end_at" value="{{ end_at }}" required>
-        </div>
-        <div>
-          <button type="submit" {{ 'disabled' if not restaurant else '' }}>Calculate Tips</button>
-        </div>
-      </div>
-    </form>
-    <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
-      Times are in the Restaurant's local timezone (<strong>{{ tz_name }}</strong>){% if not tz_configured %}
-      — this Location has no timezone/business-day cutoff configured yet, so UTC and {{ cutoff }} are assumed{% endif %}.
-      The default window is one Business Day: {{ cutoff }} to {{ cutoff }} the following day.
-      Both bounds are editable, and the end is exclusive.
-    </p>
-    <p class="muted" style="font-size:.78rem;">
-      Tips are calculated on demand from already-imported RF-One facts — never contacts Clover, and nothing
-      is stored. Any period can be calculated as often as you like, including periods that overlap, contain
-      or sit inside one you just calculated.
-    </p>
-
-    <form method="post" action="{{ url_for('tips_configuration_run_calculation_now') }}" style="margin-top:.8rem;">
-      <button type="submit">Run Calculation Now</button>
-    </form>
-    <p class="muted" style="font-size:.78rem; margin-top:.4rem;">
-      The operational calculation — the same gated entry point the automatic scheduler uses. It always
-      targets the latest Business Date, not the window above, and it PERSISTS Tip Entitlements. Clover
-      readiness still decides whether it runs. It reports its outcome on Tips Configuration.
-    </p>
-  </div>
-
-  {% for category, summary in messages %}
-    {% if category == "summary" %}
-    <div class="card"><p>{{ summary }}</p></div>
-    {% endif %}
+    {% if category == "error" %}<div class="error">{{ message }}</div>
+    {% elif category in ("info", "summary") %}<div class="info">{{ message }}</div>{% endif %}
   {% endfor %}
 {% endwith %}
 
-{% if audit_mode and result %}
-<div class="card">
-  <p>Review mode is <strong>AUDIT</strong>: please open “Explain / Audit Host Tips” for each Host below
-  before relying on these results operationally. This affects emphasis only — the numbers are identical
-  in either review mode.</p>
+<div class="card" id="calculate">
+  <h2>Calculate Tips</h2>
+  {% if not restaurant %}<p class="error">No Restaurant exists in this database yet.</p>{% endif %}
+  <form method="post" action="{{ url_for('calculate_tips_run') }}">
+    <div class="form-row">
+      <div>
+        <label for="from_date">From</label>
+        <input type="date" id="from_date" name="from_date" value="{{ from_date }}" required>
+      </div>
+      <div>
+        <label for="through_date">Through</label>
+        <input type="date" id="through_date" name="through_date" value="{{ through_date }}" required>
+      </div>
+      <div><button type="submit" {{ 'disabled' if not restaurant else '' }}>Calculate</button></div>
+    </div>
+  </form>
+  <p class="muted" style="font-size:.75rem; margin-top:.6rem;">
+    Business Dates, both included. A Business Date starts at {{ cutoff or 'the Branch cutoff' }} ({{ tz_name or 'local time' }}), not at midnight.
+    Calculate saves nothing and can be repeated freely.
+  </p>
 </div>
+
+{% if period_error %}
+<div class="card"><p class="empty">{{ period_error }}</p></div>
 {% endif %}
 
 {% if result %}
-<div class="card">
-  {# TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §12 — closing a
-     period is a different act from looking at one. The window above
-     answers "what do these hours look like?" and saves nothing. This form
-     names the OPERATING DAYS, saves the result with the configuration and
-     rules it was computed under, and produces something that can be
-     validated and paid. #}
-  <h2>Close this period</h2>
-  <p class="muted" style="font-size:.85rem;">
-    Calculating above saves nothing &mdash; look as often as you like. Closing a period saves it
-    as a Calculation Run by <strong>Business Date</strong> (the operating day, which starts at the
-    Branch cutoff, not at midnight) so it can be validated and used by Payroll.
-  </p>
-  <form method="post" action="{{ url_for('calculate_tips_close_period') }}">
-    <div class="form-row">
-      <div>
-        <label for="first_business_date">First Business Date</label>
-        <input type="date" id="first_business_date" name="first_business_date" required>
-      </div>
-      <div>
-        <label for="last_business_date">Last Business Date</label>
-        <input type="date" id="last_business_date" name="last_business_date" required>
-      </div>
-      <div><button type="submit">Calculate and save this period</button></div>
-    </div>
-  </form>
-  <p class="muted" style="font-size:.78rem;">
-    Both dates are inclusive. Saved periods are listed under
-    <a href="{{ url_for('tips_run_history') }}">Saved Periods</a>.
-  </p>
-
-  {# TIPS_OPERATIONAL_RESULTS_AND_CALCULATION_FIX_001 §4 — enough to pay
-     from and to reconcile with. Voluntary and Gratuity stay side by side
-     because Clover reports them separately; Gross is their sum, not a
-     replacement for either. #}
-  <h2>Totals</h2>
-  <div class="table-scroll">
-  <table>
-    <thead>
-      <tr><th>Voluntary Tips</th><th>Gratuity</th><th>Total Tips + Gratuity</th>
-          <th>Service Owner Entitlements</th><th>Other Recipient Entitlements</th>
-          <th>Total Employee Entitlements</th><th>Control Difference</th></tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>${{ "%.2f"|format(result.voluntary_total_minor / 100) }}</td>
-        <td>${{ "%.2f"|format(result.gratuity_total_minor / 100) }}</td>
-        <td><strong>${{ "%.2f"|format(totals.gross_minor / 100) }}</strong></td>
-        <td>${{ "%.2f"|format(totals.service_owner_entitlements_minor / 100) }}</td>
-        <td>${{ "%.2f"|format(totals.other_recipient_entitlements_minor / 100) }}</td>
-        <td><strong>${{ "%.2f"|format(totals.total_employee_entitlements_minor / 100) }}</strong></td>
-        <td>
-          <strong>${{ "%.2f"|format(totals.control_difference_minor / 100) }}</strong>
-          {% if totals.control_passes %}<span class="badge">balanced</span>
-          {% else %}<span class="badge warn">CONTROL FAILED</span>{% endif %}
-        </td>
-      </tr>
-    </tbody>
-  </table>
-  </div>
-  <p class="muted" style="font-size:.78rem; margin-top:.6rem;">
-    {# §11 — the ONE authoritative control. #}
-    <strong>Total Tips + Gratuity must equal Total Employee Entitlements exactly.</strong> Every cent
-    collected in the period lands on exactly one employee. A non-zero Control Difference means the run is
-    NOT valid for finalization &mdash; it is reported, never repaired automatically.
-    {% if result.no_eligible_recipient_lines %}
-      {{ result.no_eligible_recipient_lines|length }} order(s) had no eligible Host at Order Open Time,
-      so the Service Owner keeps 100% of their Tips and Gratuity. That outcome is complete and final:
-      nothing was withheld and nothing is outstanding. Open the order drill-down to see which Employees
-      held the Host role and why none of them qualified.
+<div class="card" id="result-status">
+  <div class="status-line {{ 'ready' if consolidated_run else 'not-ready' }}">
+    {% if consolidated_run %}
+      <span class="badge ok lg">CONSOLIDATED</span>
+      <strong>Period consolidated {{ period_label }}</strong>
+    {% else %}
+      <span class="badge lg">CALCULATED</span>
+      <strong>{{ period_label }}</strong>
+      <span class="muted" style="font-size:.82rem;">not consolidated yet</span>
     {% endif %}
-  </p>
-  <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
-    {{ result.summary.orders_considered }} Order(s) considered;
-    {{ result.summary.rules_applied }} rule application(s);
-    {{ result.summary.allocations_produced }} allocation(s).
-    Rule Version(s) applied: {% if result.rule_version_ids %}{{ result.rule_version_ids|join(', ') }}{% else %}none{% endif %}.
-    Service Charges are not Tips and are excluded from the distributable base.
+    {% if audit_mode %}
+      <span class="badge warn" title="Review mode is AUDIT: check each Host in Explain / Audit Host Tips before relying on this result. The numbers are the same in either mode.">
+        Audit mode &middot; <a href="{{ url_for('host_audit_home', start_at=start_at, end_at=end_at) }}">check Hosts</a>
+      </span>
+    {% endif %}
+  </div>
+</div>
+
+{# B. Totals — TIPS_OPERATIONAL_RESULTS_AND_CALCULATION_FIX_001 §4. Voluntary
+   and Gratuity side by side because Clover reports them separately. #}
+<div class="card" id="totals">
+  <h2>Totals</h2>
+  <div class="control-grid">
+    <div class="control-tile"><div class="label">Voluntary Tips</div><div class="value">{{ money(result.voluntary_total_minor) }}</div></div>
+    <div class="control-tile"><div class="label">Gratuity</div><div class="value">{{ money(result.gratuity_total_minor) }}</div></div>
+    <div class="control-tile sum"><div class="label">Total Tips + Gratuity</div><div class="value">{{ money(totals.gross_minor) }}</div></div>
+    <div class="control-tile"><div class="label">Service Owners</div><div class="value">{{ money(totals.service_owner_entitlements_minor) }}</div></div>
+    <div class="control-tile"><div class="label">Other Recipients</div><div class="value">{{ money(totals.other_recipient_entitlements_minor) }}</div></div>
+    <div class="control-tile sum"><div class="label">Total Employee Entitlements</div><div class="value">{{ money(totals.total_employee_entitlements_minor) }}</div></div>
+    <div class="control-tile"><div class="label">Control Difference</div><div class="value">{{ money(totals.control_difference_minor) }}</div>
+      <div class="note">{% if totals.control_passes %}<span class="badge ok">balanced</span>{% else %}<span class="badge bad">CONTROL FAILED</span>{% endif %}</div></div>
+  </div>
+  <p class="muted" style="font-size:.75rem; margin-top:.6rem;">
+    {# §11 — the ONE authoritative control. #}
+    Total Tips + Gratuity must equal Total Employee Entitlements.
+    {{ result.summary.orders_considered }} order(s); rule version(s) {% if result.rule_version_ids %}{{ result.rule_version_ids|join(', ') }}{% else %}none{% endif %}.
+    {% if result.no_eligible_recipient_lines %}
+      {{ result.no_eligible_recipient_lines|length }} order(s) had no eligible Host, so their Service Owner keeps 100%.
+    {% endif %}
   </p>
 </div>
 {% endif %}
 
-<div class="card">
-  {# §3/§5/§7 — an operational PAYMENT sheet. One row per employee who must
-     be paid, Hosts included even when they generated nothing themselves.
-     No Outbound/Inbound pair, and no Order IDs cluttering the amounts: the
-     page answers "how much does each person get?", and order-level proof
-     stays one click away in the drill-down. #}
-  <h2>Payment &mdash; what each employee is owed</h2>
-  {% if period_error %}
-    <p class="empty">{{ period_error }}</p>
-  {% elif not review_rows %}
-    <p class="empty">No Employee activity to review for this period.</p>
+{# C. Employee Entitlements — §3/§5/§7: one row per employee to be paid,
+   order-level proof one click away in the drill-down. #}
+{% if result %}
+<div class="card" id="entitlements">
+  <h2>Employee Entitlements</h2>
+  {% if not review_rows %}
+    <p class="empty">No Employee activity in this period.</p>
   {% else %}
   <div class="table-scroll">
   <table>
     <thead>
       <tr>
-        <th>Employee</th><th>Role / Result</th>
-        <th>Voluntary Tips</th><th>Gratuity</th><th>Gross Tips</th>
-        <th>Distributed Away / Received</th><th>Final Entitlement</th><th>Status</th>
+        <th>Employee</th><th>Role</th>
+        <th class="num">Voluntary Tips</th><th class="num">Gratuity</th><th class="num">Gross Tips</th>
+        <th class="num">Distributed / Received</th><th class="num">Entitlement</th><th>Status</th>
       </tr>
     </thead>
     <tbody>
@@ -180,25 +111,17 @@
           {% elif row.result_type == 'BOTH' %}<span class="badge">Service Owner + Host</span>
           {% else %}<span class="badge">Service Owner</span>{% endif %}
         </td>
-        <td>${{ "%.2f"|format(row.voluntary_tips_minor / 100) }}</td>
-        <td>${{ "%.2f"|format(row.gratuity_minor / 100) }}</td>
-        <td>${{ "%.2f"|format(row.gross_earned_tips_minor / 100) }}</td>
-        <td>
-          {# §12 — Distributed Away is shown only when distribution actually occurred. #}
-          {% if row.result_type == 'HOST' %}
-            + ${{ "%.2f"|format(row.received_minor / 100) }}
-            <span class="muted" style="font-size:.72rem;">received</span>
-          {% elif row.result_type == 'BOTH' %}
-            &minus; ${{ "%.2f"|format(row.distributed_away_minor / 100) }} /
-            + ${{ "%.2f"|format(row.received_minor / 100) }}
-          {% elif row.distributed_away_minor %}
-            &minus; ${{ "%.2f"|format(row.distributed_away_minor / 100) }}
-            <span class="muted" style="font-size:.72rem;">distributed away</span>
-          {% else %}
-            <span class="muted">&mdash;</span>
-          {% endif %}
+        <td class="num">{{ money(row.voluntary_tips_minor) }}</td>
+        <td class="num">{{ money(row.gratuity_minor) }}</td>
+        <td class="num">{{ money(row.gross_earned_tips_minor) }}</td>
+        <td class="num">
+          {# §12 — shown only when distribution actually occurred. #}
+          {% if row.result_type == 'HOST' %}+ {{ money(row.received_minor) }}
+          {% elif row.result_type == 'BOTH' %}&minus; {{ money(row.distributed_away_minor) }} / + {{ money(row.received_minor) }}
+          {% elif row.distributed_away_minor %}&minus; {{ money(row.distributed_away_minor) }}
+          {% else %}<span class="muted">&mdash;</span>{% endif %}
         </td>
-        <td><strong>${{ "%.2f"|format(row.final_entitlement_minor / 100) }}</strong></td>
+        <td class="num"><strong>{{ money(row.final_entitlement_minor) }}</strong></td>
         <td style="font-size:.78rem;">
           {% if row.has_warning %}
             <span class="badge warn" title="{{ row.warning_notes|join(' | ') }}">check</span>
@@ -223,12 +146,24 @@
     </tbody>
   </table>
   </div>
-  <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
-    No manual adjustments are reflected above (out of scope for this version). Click an Order's number to
-    see the atomic detail (Settlement Time, Gross Tip, applied Rule, any pool actually generated, and each
-    recipient's allocation) behind any figure above.
-  </p>
   {% endif %}
 </div>
+
+{# D. Consolidate — the period and result shown above; no dates asked again. #}
+<div class="card" id="consolidate">
+  {% if consolidated_run %}
+    <p><span class="badge ok lg">CONSOLIDATED</span> <strong>Period consolidated {{ period_label }}</strong></p>
+    <p class="muted" style="font-size:.8rem;">This result is saved. Open it in <a href="{{ url_for('tips_run_report', run_id=consolidated_run.id) }}">Saved Periods</a>.</p>
+  {% else %}
+    <form method="post" action="{{ url_for('calculate_tips_consolidate') }}">
+      <input type="hidden" name="from_date" value="{{ from_date }}">
+      <input type="hidden" name="through_date" value="{{ through_date }}">
+      <input type="hidden" name="fingerprint" value="{{ fingerprint }}">
+      <button type="submit" id="consolidate-btn">Consolidate {{ period_label }}</button>
+    </form>
+    <p class="muted" style="font-size:.75rem; margin-top:.4rem;">Saves the result shown above as the reference for this period. It then appears in <a href="{{ url_for('tips_run_history') }}">Saved Periods</a>.</p>
+  {% endif %}
+</div>
+{% endif %}
 
 {% endblock %}

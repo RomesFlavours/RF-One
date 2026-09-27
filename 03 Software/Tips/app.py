@@ -531,22 +531,17 @@ def _restaurant_period_config(session, restaurant):
     return location.timezone, tz, location.operating_day_cutoff_time, True, ""
 
 
-def _default_period_local(session, restaurant):
-    """Default Business Day window: the latest Business Date with Orders,
-    from its cutoff time to the SAME time the following day (e.g. 02:00 to
-    02:00 for Winter Park). Returned as local-datetime strings for the
-    form inputs."""
-    _, tz, cutoff, configured, _ = _restaurant_period_config(session, restaurant)
+def _default_business_date(session, restaurant):
+    """The Business Date Calculate Tips opens on: the latest one with
+    Orders, or today (local) when none exists yet. `None` when the Branch
+    has no Business Day configuration."""
+    _, tz, _, configured, _ = _restaurant_period_config(session, restaurant)
     if not configured:
-        return "", ""
+        return None
     business_date = None
     if restaurant is not None:
         business_date = readiness_svc.get_latest_business_date_with_orders(session, restaurant.id)
-    if business_date is None:
-        business_date = datetime.now(tz).date()
-    start_local = datetime.combine(business_date, cutoff)
-    end_local = start_local + timedelta(days=1)
-    return start_local.strftime("%Y-%m-%dT%H:%M"), end_local.strftime("%Y-%m-%dT%H:%M")
+    return business_date or datetime.now(tz).date()
 
 
 def _parse_local_dt(value: str, tz):
@@ -574,74 +569,55 @@ def _calculation_period_dt(start_at: str, end_at: str, tz) -> tuple[datetime, da
     return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
 
 
-@app.route("/calculate-tips")
-def calculate_tips_home():
-    """Always calculates the selected period ON DEMAND and persists nothing
-    (TIPS_STATELESS_CALCULATION_001). There is no stored run to look up, so
-    any period — repeated, overlapping, narrower or wider than a previous
-    one — simply calculates."""
-    with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
-        tz_name, tz, cutoff, tz_configured, config_error = _restaurant_period_config(session, restaurant)
+def _result_fingerprint(voluntary: int, gratuity: int, control_difference: int, payable_by_employee) -> str:
+    """CALCULATE_AND_CONSOLIDATE_001 — identifies ONE result: its totals and
+    what each employee is owed. The page carries it into Consolidate, and a
+    saved run with the same fingerprint for the same Business Dates is that
+    same result already consolidated."""
+    pairs = ",".join(f"{e}:{a}" for e, a in sorted(payable_by_employee))
+    return f"{voluntary}|{gratuity}|{control_difference}|{pairs}"
 
-        start_at = request.args.get("start_at") or ""
-        end_at = request.args.get("end_at") or ""
-        if not start_at or not end_at:
-            start_at, end_at = _default_period_local(session, restaurant)
 
-        result = None
-        review_rows = []
-        period_error = None
-        # §2 — refuse before computing anything when the Branch has no
-        # Business Day configuration. No guessed timezone, no guessed cutoff.
-        period = _calculation_period_dt(start_at, end_at, tz) if tz else None
-        if restaurant is None:
-            period_error = "No Restaurant exists in this database yet."
-        elif not tz_configured:
-            period_error = config_error
-        elif period is None:
-            period_error = "Enter a valid start and end date/time."
-        elif period[1] <= period[0]:
-            period_error = "End must be after start."
-        else:
-            result = engine_svc.calculate_tips(
-                session, restaurant_id=restaurant.id, period_start=period[0], period_end=period[1],
-            )
-            if result.blocked_reason:
-                period_error = result.blocked_reason
-                result = None
-            else:
-                review_rows = engine_svc.build_employee_review(session, result)
+def _fingerprint_of_calculation(totals, review_rows) -> str:
+    return _result_fingerprint(
+        totals.voluntary_minor, totals.gratuity_minor, totals.control_difference_minor,
+        [(row.employee_id, row.final_entitlement_minor) for row in review_rows],
+    )
 
-        review_mode = (
-            review_mode_svc.get_review_mode(session, restaurant_id=restaurant.id)
-            if restaurant is not None else None
+
+def _fingerprint_of_run(session, run) -> str:
+    entitlements = session.scalars(
+        select(m.TipEntitlement).where(m.TipEntitlement.calculation_run_id == run.id)
+    ).all()
+    return _result_fingerprint(
+        run.voluntary_total_minor or 0, run.gratuity_total_minor or 0, run.control_difference_minor or 0,
+        [(e.employee_id, e.payable_amount_minor) for e in entitlements],
+    )
+
+
+def _consolidated_run_for(session, restaurant_id, first, last, fingerprint):
+    """The saved run that already holds exactly this result for exactly
+    these Business Dates, newest first; `None` when there is none."""
+    runs = session.scalars(
+        select(m.TipDistributionCalculationRun)
+        .where(
+            m.TipDistributionCalculationRun.restaurant_id == restaurant_id,
+            m.TipDistributionCalculationRun.first_business_date == first,
+            m.TipDistributionCalculationRun.last_business_date == last,
         )
-        # §4 — the payment header, derived from the same rows the table
-        # pays from so the two can never disagree.
-        totals = (
-            engine_svc.build_operational_totals(result, review_rows)
-            if result is not None else None
-        )
-        return render_template(
-            "calculate_tips.html", restaurant=restaurant, start_at=start_at, end_at=end_at,
-            result=result, review_rows=review_rows, period_error=period_error, totals=totals,
-            tz_name=tz_name, tz_configured=tz_configured,
-            cutoff=cutoff.strftime("%H:%M") if cutoff else None,
-            config_error=config_error, review_mode=review_mode,
-            audit_mode=(review_mode == m.TIPS_REVIEW_MODE_AUDIT),
-            active_nav="calculate-tips",
-        )
+        .order_by(m.TipDistributionCalculationRun.id.desc())
+    ).all()
+    return next((r for r in runs if _fingerprint_of_run(session, r) == fingerprint), None)
 
 
-@app.route("/calculate-tips/run", methods=["POST"])
-def calculate_tips_run():
-    """The form posts here only to carry the chosen window back onto the
-    Calculate Tips URL — the calculation itself happens on render. Nothing
-    is written, so "recalculate" is simply "ask again"."""
-    start_at = request.form.get("start_at") or ""
-    end_at = request.form.get("end_at") or ""
-    return redirect(url_for("calculate_tips_home", start_at=start_at, end_at=end_at))
+def _business_dates_from_legacy_window(start_at: str, end_at: str, tz, cutoff):
+    """A link that still carries the former `start_at`/`end_at` window (the
+    order drill-down's breadcrumb) opens the same period when that window is
+    whole Business Days; otherwise `None`."""
+    start, end = _parse_local_dt(start_at, tz), _parse_local_dt(end_at, tz)
+    if start is None or end is None or start.time() != cutoff or end.time() != cutoff or end <= start:
+        return None
+    return start.date(), end.date() - timedelta(days=1)
 
 
 def _parse_business_date(value: str | None):
@@ -654,32 +630,125 @@ def _parse_business_date(value: str | None):
     return parsed.date() if parsed else None
 
 
-@app.route("/calculate-tips/close-period", methods=["POST"])
-def calculate_tips_close_period():
-    """§12 — calculate an INCLUSIVE Business Date range and SAVE it as a
-    Calculation Run.
+@app.route("/calculate-tips")
+def calculate_tips_home():
+    """CALCULATE_AND_CONSOLIDATE_001 — two actions only.
 
-    Separate from the Calculate Tips screen's own ad-hoc window on purpose.
-    That screen answers "what do these hours look like?" and persists
-    nothing, which is right for looking. Closing a period is a different
-    act: it names the operating days, records the configuration and rules
-    it was computed under, and produces something that can be validated and
-    paid. Mixing the two would have made every glance at a screen write a
-    payroll record."""
-    first = _parse_business_date(request.form.get("first_business_date"))
-    last = _parse_business_date(request.form.get("last_business_date"))
-    if first is None or last is None:
-        flash("Enter a first and last Business Date (YYYY-MM-DD).", "error")
-        return redirect(url_for("calculate_tips_home"))
-    if last < first:
-        flash("The last Business Date cannot be before the first.", "error")
-        return redirect(url_for("calculate_tips_home"))
+    CALCULATE: the chosen INCLUSIVE Business Date range, calculated on
+    render by the engine's own `calculate_tips_for_business_dates` — the same
+    call Consolidate saves through, so the figures looked at are the figures
+    consolidated. Writes nothing; repeat it as often as you like.
+
+    CONSOLIDATE: shown under the result, carrying that period and the
+    result's fingerprint; no dates asked again. When the same period with
+    the same result is already saved, the page says so instead."""
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        tz_name, tz, cutoff, tz_configured, config_error = _restaurant_period_config(session, restaurant)
+
+        first = _parse_business_date(request.args.get("from_date"))
+        last = _parse_business_date(request.args.get("through_date"))
+        if (first is None or last is None) and tz_configured and request.args.get("start_at"):
+            legacy = _business_dates_from_legacy_window(
+                request.args.get("start_at") or "", request.args.get("end_at") or "", tz, cutoff,
+            )
+            if legacy:
+                first, last = legacy
+        if first is None or last is None:
+            first = last = _default_business_date(session, restaurant)
+
+        result = None
+        review_rows = []
+        period_error = None
+        start_at = end_at = ""
+        if restaurant is None:
+            period_error = "No Restaurant exists in this database yet."
+        elif not tz_configured:
+            period_error = config_error
+        elif first is None or last is None:
+            period_error = "Enter a From and Through date."
+        elif last < first:
+            period_error = "Through date cannot be before From date."
+        else:
+            result = engine_svc.calculate_tips_for_business_dates(
+                session, restaurant_id=restaurant.id, first_business_date=first, last_business_date=last,
+            )
+            if result.blocked_reason:
+                period_error = result.blocked_reason
+                result = None
+            else:
+                review_rows = engine_svc.build_employee_review(session, result)
+                # The order drill-down and the Host audit take a local window.
+                start_at = result.period_start.astimezone(tz).strftime("%Y-%m-%dT%H:%M")
+                end_at = result.period_end.astimezone(tz).strftime("%Y-%m-%dT%H:%M")
+
+        review_mode = (
+            review_mode_svc.get_review_mode(session, restaurant_id=restaurant.id)
+            if restaurant is not None else None
+        )
+        # §4 — the payment header, derived from the same rows the table
+        # pays from so the two can never disagree.
+        totals = (
+            engine_svc.build_operational_totals(result, review_rows)
+            if result is not None else None
+        )
+        fingerprint = _fingerprint_of_calculation(totals, review_rows) if totals is not None else ""
+        consolidated_run = (
+            _consolidated_run_for(session, restaurant.id, first, last, fingerprint)
+            if result is not None else None
+        )
+        return render_template(
+            "calculate_tips.html", restaurant=restaurant,
+            from_date=first.isoformat() if first else "", through_date=last.isoformat() if last else "",
+            first_business_date=first, last_business_date=last,
+            start_at=start_at, end_at=end_at,
+            result=result, review_rows=review_rows, period_error=period_error, totals=totals,
+            fingerprint=fingerprint, consolidated_run=consolidated_run,
+            tz_name=tz_name, tz_configured=tz_configured,
+            cutoff=cutoff.strftime("%H:%M") if cutoff else None,
+            config_error=config_error, review_mode=review_mode,
+            audit_mode=(review_mode == m.TIPS_REVIEW_MODE_AUDIT),
+            active_nav="calculate-tips",
+        )
+
+
+@app.route("/calculate-tips/run", methods=["POST"])
+def calculate_tips_run():
+    """CALCULATE — carries the chosen dates onto the Calculate Tips URL; the
+    calculation itself happens on render and writes nothing."""
+    return redirect(url_for(
+        "calculate_tips_home",
+        from_date=request.form.get("from_date") or "", through_date=request.form.get("through_date") or "",
+    ))
+
+
+@app.route("/calculate-tips/consolidate", methods=["POST"])
+def calculate_tips_consolidate():
+    """CONSOLIDATE the result the page is showing, for the period it shows.
+
+    Saved through the existing `run_svc.save_calculation_run` (a Saved
+    Period, validated and paid exactly as before). That service calculates
+    the period itself; the saved result is then compared with the one the
+    person was looking at, and nothing is kept unless they are identical —
+    a Clover sync in between would otherwise consolidate figures nobody saw.
+    The same period with the same result already saved is not saved again."""
+    first = _parse_business_date(request.form.get("from_date"))
+    last = _parse_business_date(request.form.get("through_date"))
+    shown = request.form.get("fingerprint") or ""
+    back = url_for("calculate_tips_home", from_date=request.form.get("from_date") or "",
+                   through_date=request.form.get("through_date") or "")
+    if first is None or last is None or last < first or not shown:
+        flash("Calculate a period first, then consolidate it.", "error")
+        return redirect(back)
 
     with SessionFactory() as session:
         restaurant = _default_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
-            return redirect(url_for("calculate_tips_home"))
+            return redirect(back)
+        if _consolidated_run_for(session, restaurant.id, first, last, shown) is not None:
+            flash("This result is already consolidated.", "info")
+            return redirect(back)
         run, reason = run_svc.save_calculation_run(
             session, restaurant_id=restaurant.id,
             first_business_date=first, last_business_date=last,
@@ -687,15 +756,15 @@ def calculate_tips_close_period():
         if run is None:
             session.rollback()
             flash(reason, "error")
-            return redirect(url_for("calculate_tips_home"))
+            return redirect(back)
+        if _fingerprint_of_run(session, run) != shown:
+            session.rollback()
+            flash("The data for this period changed after you calculated it. Nothing was consolidated: "
+                  "check the new result below, then consolidate again.", "error")
+            return redirect(back)
         session.commit()
-        run_id = run.id
-        state = run.state
-    flash(
-        f"Business Dates {first} to {last} saved as Calculation Run {run_id} ({state}).",
-        "summary",
-    )
-    return redirect(url_for("tips_run_report", run_id=run_id))
+    flash(f"Period consolidated: {first:%m/%d/%Y} → {last:%m/%d/%Y}.", "info")
+    return redirect(back)
 
 
 @app.route("/tips-runs")
