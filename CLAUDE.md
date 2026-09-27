@@ -370,6 +370,33 @@ Every future UI refinement reuses these rules.
 
 ---
 
+# RF-One Report Standard
+
+**Standing instruction, applied automatically to every RF-One task.** It is
+never to be re-requested from the Product Owner and never needs repeating
+inside an individual command. It governs every Domain, Module, deploy,
+test, import, migration, UAT and any other RF-One work.
+
+Every RF-One task ends with a final **REPORT**. The REPORT must:
+
+- carry the title **REPORT**, clearly visible;
+- be organized in numbered sections;
+- use plain, human, understandable language;
+- use compact tables wherever they make a comparison easier;
+- clearly distinguish **observed facts** from **interpretations** and from
+  **solutions adopted or proposed**;
+- state what was changed and, where relevant, what was deliberately **not**
+  changed;
+- surface problems, missing capabilities, and any decisions the Product
+  Owner still has to make;
+- include the success criteria and the outcome of each;
+- end with the references needed for traceability, backup or restore.
+
+After the REPORT, always emit the RF-One completion **beep**. The beep is
+the absolute last action of the work — **no text may appear after it.**
+
+---
+
 # Final Principles
 
 When working on the **Core**, ask first:
