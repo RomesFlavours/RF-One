@@ -130,7 +130,7 @@
                 {% if instrument.instrument_type == 'CREDIT_CARD' %}
                   {% set holder = cardholders.get(instrument.id) %}
                   {% if holder %}
-                    {{ holder.holder_display_name }}
+                    {{ holder.holder_display_name|short_name }}
                     <span class="cell-note">since {{ holder.valid_from }}</span>
                   {% else %}
                     <span class="muted">Not assigned</span>
@@ -355,7 +355,7 @@
         <tbody>
           {% for audit in assignment_audits %}
             <tr>
-              <td data-label="When" class="col-date">{{ audit.changed_at.strftime('%Y-%m-%d %H:%M') if audit.changed_at else '—' }}</td>
+              <td data-label="When" class="col-date">{{ audit.changed_at|local_dt(tz, empty='—') }}</td>
               <td data-label="Scope" class="col-narrow">{{ audit.scope }}</td>
               <td data-label="Target">
                 {% if audit.scope == 'BATCH' %}
@@ -367,7 +367,7 @@
               <td data-label="From">{{ audit.previous_payment_instrument.display_name if audit.previous_payment_instrument else '—' }}</td>
               <td data-label="To">{{ audit.new_payment_instrument.display_name if audit.new_payment_instrument else audit.new_payment_instrument_id }}</td>
               <td data-label="Rows" class="col-narrow">{{ audit.affected_transaction_count }}</td>
-              <td data-label="By">{{ audit.changed_by_account.username if audit.changed_by_account else '—' }}</td>
+              <td data-label="By">{{ (audit.changed_by_account.display_name or audit.changed_by_account.username)|short_name if audit.changed_by_account else '—' }}</td>
               <td data-label="Reason" class="col-description">{{ audit.reason }}</td>
             </tr>
           {% endfor %}

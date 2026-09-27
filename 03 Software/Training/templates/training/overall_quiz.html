@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}RF-One · Training — Whole-path quiz{% endblock %}
 {% block page_subtitle %}Whole-path quiz{% endblock %}
 {% block content %}
 
-<p><a href="{{ url_for('training.home') }}">&larr; Your training path</a></p>
+{{ breadcrumb([('RF-One', rfone_home_url()), ('Training', url_for('training.home')), ('Whole-path quiz', None)]) }}
 
 <div class="card">
   <h2 style="margin-top:0;">Whole-path quiz</h2>

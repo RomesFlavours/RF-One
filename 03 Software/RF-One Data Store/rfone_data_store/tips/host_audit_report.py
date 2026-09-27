@@ -30,6 +30,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import display_format
 from .. import models as m
 from ..business_date import derive_business_date
 from . import distribution_engine as engine_svc
@@ -340,17 +341,25 @@ def _minor_to_str(minor: int) -> str:
     return f"{minor / 100:.2f}"
 
 
-def report_to_csv_rows(report: HostAuditReport) -> list[dict]:
+def report_to_csv_rows(report: HostAuditReport, *, tz_name: str | None = None) -> list[dict]:
+    """One CSV row per displayed line. Presentation only (RF-One UI Rules,
+    UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001): people as "Surname I." like the
+    screen, instants as ISO-8601 in the Location's local time with their
+    offset (`tz_name`; None keeps UTC). Amounts, columns and rows unchanged."""
+    def when(value):
+        return display_format.to_local(value, tz_name).isoformat() if value is not None else ""
+
+    host = display_format.employee_short_name(report.host_employee_name, empty="")
     rows: list[dict] = []
     for group in report.shift_groups:
         for line in group.lines:
             rows.append({
                 "business_date": line.business_date.isoformat() if line.business_date else "",
-                "host_employee": report.host_employee_name,
-                "shift_start": group.shift_start.isoformat() if group.shift_start else "",
-                "shift_end": group.shift_end.isoformat() if group.shift_end else "",
-                "payment_timestamp": "; ".join(t.isoformat() for t in line.payment_timestamps),
-                "server_employee": line.server_employee_name,
+                "host_employee": host,
+                "shift_start": when(group.shift_start),
+                "shift_end": when(group.shift_end),
+                "payment_timestamp": "; ".join(when(t) for t in line.payment_timestamps),
+                "server_employee": display_format.employee_short_name(line.server_employee_name, empty=""),
                 "clover_order_id": line.clover_order_id or "",
                 "clover_payment_id": "; ".join(line.clover_payment_ids),
                 "original_tip_amount": _minor_to_str(line.original_tip_amount_minor),
@@ -363,9 +372,9 @@ def report_to_csv_rows(report: HostAuditReport) -> list[dict]:
     for item in report.unresolved_items:
         rows.append({
             "business_date": item.business_date.isoformat() if item.business_date else "",
-            "host_employee": report.host_employee_name,
+            "host_employee": host,
             "shift_start": "", "shift_end": "",
-            "payment_timestamp": item.settlement_time.isoformat(),
+            "payment_timestamp": when(item.settlement_time),
             "server_employee": "",
             "clover_order_id": item.clover_order_id or "", "clover_payment_id": "",
             "original_tip_amount": "", "host_share_amount": "", "eligible_host_count": "",

@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}RF-One · Training — {{ pill.title }} final quiz{% endblock %}
 {% block page_subtitle %}Final quiz · {{ pill.title }}{% endblock %}
 {% block content %}
 
-<p><a href="{{ url_for('training.assignment_detail', assignment_id=assignment.id) }}">&larr; Back to the pill</a></p>
+{{ breadcrumb([('RF-One', rfone_home_url()), ('Training', url_for('training.home')), (pill.title, url_for('training.assignment_detail', assignment_id=assignment.id)), ('Final quiz', None)]) }}
 
 <div class="card">
   <h2 style="margin-top:0;">Final quiz — {{ pill.title }}</h2>

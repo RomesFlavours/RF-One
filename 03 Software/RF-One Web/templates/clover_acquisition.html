@@ -85,6 +85,7 @@
       <label for="through_date">Through date</label>
       <input type="date" id="through_date" name="through_date" value="{{ through_date }}" required>
     </div>
+    <p class="muted">Whole local days: From 00:00 through 23:59 of the Through day ({{ zone_label(tz) }}).</p>
     <button type="submit" id="backfill-btn" {{ 'disabled' if (busy or not acquisition.location_id) else '' }}>Run Historical Backfill</button>
   </form>
   <p class="muted">

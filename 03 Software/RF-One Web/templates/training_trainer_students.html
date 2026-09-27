@@ -16,7 +16,7 @@
         <tbody>
           {% for student in students %}
             <tr>
-              <td>{{ student.display_name }}</td>
+              <td>{{ student.display_name|short_name }}</td>
               <td>{{ student.username }}</td>
               <td>
                 <form method="post" action="{{ url_for('training_trainer_reset_student_password', account_id=student.id) }}"

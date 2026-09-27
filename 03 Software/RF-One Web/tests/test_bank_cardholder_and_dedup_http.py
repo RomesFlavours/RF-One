@@ -241,7 +241,8 @@ def main() -> int:
         listing = operator_client.get("/bank").data
         check(
             "the instruments list now shows the current cardholder and settlement account",
-            b"QA Second Holder" in listing and b"Chase Checking 1234" in listing,
+            # RF-One UI Rules §2: the list shows the holder as "Surname I."
+            b"Second Holder Q." in listing and b"Chase Checking 1234" in listing,
         )
         check(
             "the card's Company is derived through its settlement account",

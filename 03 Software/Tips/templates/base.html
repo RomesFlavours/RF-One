@@ -49,7 +49,9 @@
      page sets `crumbs` (before its content) to the (label, href) levels
      below Tips, tab included; every other page gets RF-One > Tips > <tab>. #}
   {% set tab = tab_labels.get(active_nav) %}
-  {% if crumbs is defined %}
+  {% if request.blueprint == 'training' %}
+    {# Training's shared templates draw their own path (RF-One > Training > …). #}
+  {% elif crumbs is defined %}
     {{ breadcrumb([('RF-One', rfone_web_home_url()), ('Tips', url_for('home'))] + crumbs) }}
   {% elif tab %}
     {{ breadcrumb([('RF-One', rfone_web_home_url()), ('Tips', url_for('home')), (tab[0], None)]) }}

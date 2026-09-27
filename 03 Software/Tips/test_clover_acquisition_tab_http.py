@@ -116,6 +116,12 @@ def main() -> int:
         s.add(m.Payment(order_id=order.id, source_system_id=source_system.id, source_payment_id="TAB-PAY-1",
                         employee_id=employee.id, source_employee_id=employee.source_employee_id,
                         created_at=ORDER_AT_UTC, amount=5000, result="SUCCESS", currency="USD"))
+        # 02:30Z on 27 Sept is 22:30 EDT on 26 Sept: it belongs to the LOCAL 26th.
+        late = m.Order(location_id=location.id, source_system_id=source_system.id, source_order_id="TAB-ORDER-LATE",
+                       employee_id=employee.id, source_employee_id=employee.source_employee_id,
+                       created_at=datetime(2026, 9, 27, 2, 30, tzinfo=UTC), state="locked", payment_state="PAID",
+                       currency="USD", total=1000)
+        s.add(late)
         # The last completed synchronization.
         s.add(m.IngestionRun(source_system_id=source_system.id, location_id=location.id, status="COMPLETE",
                              acquisition_mode="SYNC_NOW", started_at=SYNC_END_UTC - timedelta(minutes=3),
@@ -182,6 +188,12 @@ def main() -> int:
     check("5. the Clover employee id is never shown", "CLOVEREMP9XYZ" not in data)
     check("5. Order/Payment times shown in local time (18:40, not 22:40)",
           "2026-09-26 18:40" in data and "22:40" not in data)
+
+    # ---- 8: the date filter uses LOCAL civil days --------------------------------
+    day26 = client.get("/tips/?from_date=2026-09-26&through_date=2026-09-26", base_url=HOST).get_data(as_text=True)
+    day27 = client.get("/tips/?from_date=2026-09-27&through_date=2026-09-27", base_url=HOST).get_data(as_text=True)
+    check("8. an order at 22:30 EDT on 26 Sept is listed under 26 Sept (local day)", "TAB-ORDER-LATE" in day26)
+    check("8. ... and not under 27 Sept, although it is 27 Sept in UTC", "TAB-ORDER-LATE" not in day27)
 
     # ---- 3: without the access / signed out ---------------------------------
     other = tips_app.app.test_client()

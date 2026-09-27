@@ -1,13 +1,14 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}RF-One · Training — Quiz result{% endblock %}
 {% block page_subtitle %}Final quiz result{% endblock %}
 {% block content %}
 
-<p><a href="{{ back_url }}">&larr; Back</a></p>
+{{ breadcrumb([('RF-One', rfone_home_url())] + crumbs + [('Quiz result', None)]) }}
 
 <div class="card">
   <h2 style="margin-top:0;">Score: {{ attempt.points_earned }} / {{ attempt.points_possible }} ({{ percentage }}%)</h2>
-  <p class="muted">Submitted {{ attempt.submitted_at.strftime('%Y-%m-%d %H:%M') }} UTC. Completing this quiz records the activity — it is not a certification of competence.</p>
+  <p class="muted">Submitted {{ attempt.submitted_at|local_dt(tz, with_zone=True) }}. Completing this quiz records the activity — it is not a certification of competence.</p>
 </div>
 
 {% for row in rows %}

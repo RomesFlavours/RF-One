@@ -214,9 +214,12 @@ def main() -> int:
           and launcher.run_ids == [backfill.id])
     check("D: the Backfill job records the requesting RF-One account",
           backfill.requested_by_account_id == operator_id)
-    check("D: the Backfill keeps its date logic (From 00:00:00 through 23:59:59 of the Through day)",
-          backfill.source_window_start.strftime("%Y-%m-%d %H:%M:%S") == "2026-09-01 00:00:00"
-          and backfill.source_window_end.strftime("%Y-%m-%d %H:%M:%S") == "2026-09-02 23:59:59")
+    # UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001: From 00:00:00 through 23:59:59 of
+    # the Through day, as the Location's LOCAL civil days (America/New_York,
+    # EDT = UTC-4), stored as UTC instants.
+    check("D: the Backfill covers whole local days (1 Sept 00:00 EDT -> 2 Sept 23:59:59 EDT, stored in UTC)",
+          backfill.source_window_start.strftime("%Y-%m-%d %H:%M:%S") == "2026-09-01 04:00:00"
+          and backfill.source_window_end.strftime("%Y-%m-%d %H:%M:%S") == "2026-09-03 03:59:59")
     page = op.get("/clover-acquisition", base_url=HOST)
     check("D: the page shows who requested the job in progress",
           b"requested by Operator C." in page.data and b"Acquisition in progress" in page.data)

@@ -1,7 +1,9 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}RF-One · Training — Trainer area{% endblock %}
 {% block page_subtitle %}Trainer area — create students, assign pills, review results.{% endblock %}
 {% block content %}
+{{ breadcrumb([('RF-One', rfone_home_url()), ('Training', None)]) }}
 
 {% with messages = get_flashed_messages(with_categories=True) %}
   {% for category, message in messages %}
@@ -34,7 +36,7 @@
     <tbody>
       {% for row in students %}
       <tr>
-        <td>{{ row.account.acting_identity.display_name }}</td>
+        <td>{{ row.account.acting_identity.display_name|short_name }}</td>
         <td>{{ row.account.username }}</td>
         <td>{{ row.need_count }}</td>
         <td><a href="{{ url_for('training.trainer_student_detail', account_id=row.account.id) }}">Open</a></td>

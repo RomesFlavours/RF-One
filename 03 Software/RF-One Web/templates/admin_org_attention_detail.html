@@ -35,7 +35,7 @@
       <tbody>
         {% for r in routing_history %}
           <tr>
-            <td>{{ r.resolved_at }}</td>
+            <td>{{ r.resolved_at|local_dt(tz) }}</td>
             <td>{{ r.owner_position.name if r.owner_position else "-" }}</td>
             <td>{{ r.resolved_recipient_acting_identity.display_name if r.resolved_recipient_acting_identity else "-" }}</td>
             <td>{{ r.resolution_path or "-" }}</td>

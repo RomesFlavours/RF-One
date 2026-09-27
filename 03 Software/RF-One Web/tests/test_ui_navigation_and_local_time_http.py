@@ -215,6 +215,29 @@ def main() -> int:
     resp = client.post("/clover-acquisition/sync-now", base_url=HOST, data={"return_to": "tips"})
     check("C: without the CSRF token it is refused (400) — Tips cannot bypass the gate", resp.status_code == 400)
 
+    # ---- G: Historical Backfill dates are LOCAL civil days --------------------------
+    # Release the running Sync Now first (the one-job lock is unchanged).
+    with SessionFactory() as s:
+        for run in s.scalars(select(m.IngestionRun).where(m.IngestionRun.status.in_(("QUEUED", "RUNNING")))):
+            run.status, run.lock_key, run.finished_at = "COMPLETE", None, datetime.now(UTC)
+        s.commit()
+    page = client.get("/clover-acquisition", base_url=HOST).get_data(as_text=True)
+    check("G: the Backfill form says the dates are whole local days",
+          "Whole local days" in page and "America/New_York" in page)
+    resp = client.post("/clover-acquisition/backfill", base_url=HOST,
+                       data={"csrf_token": token, "from_date": "2026-09-20", "through_date": "2026-09-26"})
+    with SessionFactory() as s:
+        backfill = s.scalars(select(m.IngestionRun).where(m.IngestionRun.acquisition_mode == "BACKFILL")
+                             .order_by(m.IngestionRun.id.desc())).first()
+    check("G: 20-26 Sept = 20 Sept 00:00 EDT (04:00Z) -> 26 Sept 23:59:59 EDT (27 Sept 03:59:59Z)",
+          backfill is not None
+          and display_format.to_local(backfill.source_window_start, None) == datetime(2026, 9, 20, 4, 0, tzinfo=UTC)
+          and display_format.to_local(backfill.source_window_end, None) == datetime(2026, 9, 27, 3, 59, 59, tzinfo=UTC),
+          f"{backfill.source_window_start if backfill else None} -> {backfill.source_window_end if backfill else None}")
+    history = client.get("/clover-acquisition", base_url=HOST).get_data(as_text=True)
+    check("G: the history shows the chosen local days, not a 4-hour shift",
+          "2026-09-20 00:00 &rarr; 2026-09-26 23:59" in history)
+
     # ---- E: every sub-page shows its path ----------------------------------------------
     templates_dir = os.path.join(APP_DIR, "templates")
     leftovers = [f for f in os.listdir(templates_dir)

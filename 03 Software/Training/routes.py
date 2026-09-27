@@ -25,6 +25,7 @@ from auth import (
 )
 from db import SessionFactory
 from dish_data import get_dish
+from rfone_data_store import display_format
 from rfone_data_store import models as m
 from rfone_data_store.training import service as svc
 
@@ -216,7 +217,7 @@ def final_quiz(assignment_id: int):
         )
 
 
-def _render_attempt_result(attempt: "m.TrainingAttempt", *, back_url: str):
+def _render_attempt_result(attempt: "m.TrainingAttempt", *, crumbs: list):
     questions = json.loads(attempt.questions_json)
     answers = json.loads(attempt.answers_json)
     rows = []
@@ -229,7 +230,7 @@ def _render_attempt_result(attempt: "m.TrainingAttempt", *, back_url: str):
         })
     percentage = round(100 * attempt.points_earned / attempt.points_possible) if attempt.points_possible else 0
     return render_template(
-        "training/attempt_result.html", attempt=attempt, rows=rows, percentage=percentage, back_url=back_url,
+        "training/attempt_result.html", attempt=attempt, rows=rows, percentage=percentage, crumbs=crumbs,
     )
 
 
@@ -241,8 +242,10 @@ def attempt_result(attempt_id: int):
         attempt = svc.get_attempt(db, attempt_id)
         if account is None or attempt is None or attempt.student_account_id != account.id:
             abort(404)
-        back_url = url_for("training.assignment_detail", assignment_id=attempt.assignment_id)
-        return _render_attempt_result(attempt, back_url=back_url)
+        # RF-One UI Rules §4: the path that leads here, not a "Back" link.
+        crumbs = [("Training", url_for("training.home")),
+                  (attempt.assignment.pill.title, url_for("training.assignment_detail", assignment_id=attempt.assignment_id))]
+        return _render_attempt_result(attempt, crumbs=crumbs)
 
 
 # ---------------------------------------------------------------------------
@@ -304,10 +307,10 @@ def overall_attempt_result(attempt_id: int):
         attempt = svc.get_overall_attempt(db, attempt_id)
         if account is None or attempt is None or attempt.student_account_id != account.id:
             abort(404)
-        return _render_overall_attempt_result(db, account.id, attempt, back_url=url_for("training.home"))
+        return _render_overall_attempt_result(db, account.id, attempt, crumbs=[("Training", url_for("training.home"))])
 
 
-def _render_overall_attempt_result(db, student_account_id: int, attempt: "m.TrainingOverallAttempt", *, back_url: str):
+def _render_overall_attempt_result(db, student_account_id: int, attempt: "m.TrainingOverallAttempt", *, crumbs: list):
     questions = json.loads(attempt.questions_json)
     answers = json.loads(attempt.answers_json)
     pills = json.loads(attempt.pills_json)
@@ -337,7 +340,7 @@ def _render_overall_attempt_result(db, student_account_id: int, attempt: "m.Trai
     percentage = round(100 * attempt.points_earned / attempt.points_possible) if attempt.points_possible else 0
     return render_template(
         "training/overall_attempt_result.html", attempt=attempt, rows=rows, percentage=percentage,
-        review_links=review_links, pills=pills, back_url=back_url,
+        review_links=review_links, pills=pills, crumbs=crumbs,
     )
 
 
@@ -539,6 +542,14 @@ def trainer_assign_pills_multiple(need_id: int):
     return redirect(url_for("training.trainer_student_detail", account_id=student_account_id))
 
 
+def _trainer_student_crumbs(db, student_account_id: int) -> list:
+    """Training > <student, "Surname I."> — where a trainer came from."""
+    student = db.get(m.TrainingAccount, student_account_id)
+    name = display_format.employee_short_name(student.acting_identity.display_name) if student else "Student"
+    return [("Training", url_for("training.home")),
+            (name, url_for("training.trainer_student_detail", account_id=student_account_id))]
+
+
 @training_bp.route("/trainer/attempts/<int:attempt_id>")
 @require_trainer
 def trainer_view_attempt(attempt_id: int):
@@ -546,8 +557,7 @@ def trainer_view_attempt(attempt_id: int):
         attempt = svc.get_attempt(db, attempt_id)
         if attempt is None:
             abort(404)
-        back_url = url_for("training.trainer_student_detail", account_id=attempt.student_account_id)
-        return _render_attempt_result(attempt, back_url=back_url)
+        return _render_attempt_result(attempt, crumbs=_trainer_student_crumbs(db, attempt.student_account_id))
 
 
 @training_bp.route("/trainer/overall-attempts/<int:attempt_id>")
@@ -557,5 +567,6 @@ def trainer_view_overall_attempt(attempt_id: int):
         attempt = svc.get_overall_attempt(db, attempt_id)
         if attempt is None:
             abort(404)
-        back_url = url_for("training.trainer_student_detail", account_id=attempt.student_account_id)
-        return _render_overall_attempt_result(db, attempt.student_account_id, attempt, back_url=back_url)
+        return _render_overall_attempt_result(
+            db, attempt.student_account_id, attempt, crumbs=_trainer_student_crumbs(db, attempt.student_account_id),
+        )

@@ -61,6 +61,8 @@ from rfone_data_store.database import (  # noqa: E402
     create_configured_engine, create_session_factory, get_database_url,
 )
 from rfone_data_store import display_format  # noqa: E402
+from rfone_data_store import local_calendar  # noqa: E402
+from rfone_data_store import public_entry  # noqa: E402
 from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
 from rfone_data_store.technical.connectors.clover import acquisition_jobs as clover_jobs  # noqa: E402
 from rfone_data_store.technical.connectors.clover.acquisition import get_order_settlement_time  # noqa: E402
@@ -133,12 +135,25 @@ class _TipsPathPrefix:
 
 app.wsgi_app = _TipsPathPrefix(app.wsgi_app)
 
+
+@app.before_request
+def _send_direct_visits_to_the_official_entry():
+    """A person who reaches Tips's technical App Runner hostname is sent to
+    the same page under `/tips/` on RF-One's official address
+    (`rfone_data_store.public_entry`, UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001)."""
+    target = public_entry.official_redirect(request.method, request.headers, request.full_path,
+                                            prefix=TIPS_PATH_PREFIX)
+    if target is not None:
+        return redirect(target, code=301)
+    return None
+
 # RF-One UI Rules (`03 Software/Shared UI/UI Rules.md`): local times,
 # "Surname I." — the same shared formatter RF-One Web registers.
 app.jinja_env.filters["local_dt"] = display_format.local_datetime
 app.jinja_env.filters["short_name"] = display_format.employee_short_name
 app.jinja_env.globals["zone_label"] = display_format.zone_label
 app.jinja_env.globals["rfone_web_home_url"] = rfone_web_link.home_url
+app.jinja_env.globals["rfone_home_url"] = rfone_web_link.home_url
 app.jinja_env.globals["rfone_web_base_url"] = rfone_web_link.base_url
 app.jinja_env.globals["rfone_web_run_url"] = rfone_web_link.tips_run_url
 app.jinja_env.globals["rfone_web_not_configured_message"] = rfone_web_link.NOT_CONFIGURED_MESSAGE
@@ -383,8 +398,20 @@ def home():
                 m.RestaurantLocation.restaurant_id == restaurant.id
             )
 
-            start = _parse_date(from_date)
-            end = _parse_date(through_date)
+            # UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001: the chosen dates are the
+            # Location's local civil days (00:00 -> 23:59:59), never UTC
+            # days, and never the Tips Business Date. A read-only view.
+            start = end = None
+            first_day, last_day = local_calendar.parse_day(from_date), local_calendar.parse_day(through_date)
+            clover_location_id = _resolve_clover_location_id(session, restaurant.id)
+            clover_location = session.get(m.Location, clover_location_id) if clover_location_id else None
+            if first_day is not None and last_day is not None:
+                try:
+                    start, end = local_calendar.local_days_to_utc(
+                        first_day, last_day, clover_location.timezone if clover_location else None,
+                    )
+                except local_calendar.LocationTimezoneMissingError as exc:
+                    flash(str(exc), "error")
             if start is not None and end is not None:
                 payment_stmt = (
                     select(m.Payment)
@@ -1611,11 +1638,15 @@ def host_audit_export_csv():
         buffer = io.StringIO()
         writer = csv.DictWriter(buffer, fieldnames=audit_svc.CSV_FIELDNAMES)
         writer.writeheader()
-        for row in audit_svc.report_to_csv_rows(report):
+        # RF-One UI Rules: the export mirrors the screen — local times,
+        # "Surname I." — in the Restaurant's Clover Location timezone.
+        location_id = _resolve_clover_location_id(session, restaurant.id)
+        location = session.get(m.Location, location_id) if location_id else None
+        for row in audit_svc.report_to_csv_rows(report, tz_name=location.timezone if location else None):
             writer.writerow(row)
 
         filename = (
-            f"host-tip-audit-{report.host_employee_name}-"
+            f"host-tip-audit-{display_format.employee_short_name(report.host_employee_name)}-"
             f"{request.args.get('start_at')}_{request.args.get('end_at')}.csv"
         ).replace(":", "")
         return Response(

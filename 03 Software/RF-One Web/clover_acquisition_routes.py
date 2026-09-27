@@ -45,6 +45,7 @@ from sqlalchemy import func, select
 
 from domain_registry import TIPS_HOME_URL
 from rfone_data_store import display_format
+from rfone_data_store import local_calendar
 from rfone_data_store import models as m
 from rfone_data_store import rfone_web_session as shared_session
 from rfone_data_store.technical.connectors.clover import acquisition_jobs as clover_jobs
@@ -81,14 +82,6 @@ def _default_clover_location_id(db) -> int | None:
     ).first()
 
 
-def _parse_date(value: str | None) -> datetime | None:
-    # Same date semantics as the Tips app always had: a UTC calendar day.
-    if not value:
-        return None
-    try:
-        return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC)
-    except ValueError:
-        return None
 
 
 def register_clover_acquisition_routes(
@@ -185,6 +178,9 @@ def register_clover_acquisition_routes(
                 flash("A Clover acquisition is already in progress for this location. A new one can start "
                       "once it is COMPLETE or FAILED — its progress is shown below.", "error")
                 return None
+            except local_calendar.LocationTimezoneMissingError as exc:
+                flash(str(exc), "error")
+                return None
             except clover_jobs.NoSyncStartingPointError as exc:
                 flash(str(exc), "error")
                 return None
@@ -211,30 +207,37 @@ def register_clover_acquisition_routes(
 
     @app.route("/clover-acquisition/backfill", methods=["POST"])
     def clover_acquisition_backfill():
-        """The chosen period, From 00:00:00 through 23:59:59 of the Through
-        day (UTC) — exactly the dates semantics the Tips page had."""
+        """The chosen period as the Location's LOCAL civil days: From
+        00:00:00 through 23:59:59 of the Through day, America/New_York for
+        Winter Park (UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001), converted to
+        UTC instants for the unchanged central service. Not the Tips
+        Business Date: the operating-day cutoff plays no part here."""
         from_date = request.form.get("from_date") or ""
         through_date = request.form.get("through_date") or ""
         with SessionFactory() as db:
             _account, refusal = _authorized_account(db)
             if refusal is not None:
                 return refusal
-        start, end = _parse_date(from_date), _parse_date(through_date)
+        first_day, last_day = local_calendar.parse_day(from_date), local_calendar.parse_day(through_date)
         back = redirect(url_for("clover_acquisition_home", from_date=from_date, through_date=through_date,
                                 **({"from": RETURN_TIPS} if _from_tips() else {})))
-        if start is None or end is None:
+        if first_day is None or last_day is None:
             require_csrf()
             flash("Both From and Through dates are required.", "error")
             return back
-        if end < start:
+        if last_day < first_day:
             require_csrf()
             flash("Through date must not be before From date.", "error")
             return back
-        end = end.replace(hour=23, minute=59, second=59)
-        refusal = _start(lambda db, location_id, account_id: clover_jobs.request_historical_backfill(
-            db, location_id=location_id, period_start=start, period_end=end, launcher=get_launcher(),
-            requested_by_account_id=account_id,
-        ))
+        def request_backfill(db, location_id, account_id):
+            location = db.get(m.Location, location_id)
+            start, end = local_calendar.local_days_to_utc(first_day, last_day, location.timezone)
+            return clover_jobs.request_historical_backfill(
+                db, location_id=location_id, period_start=start, period_end=end, launcher=get_launcher(),
+                requested_by_account_id=account_id,
+            )
+
+        refusal = _start(request_backfill)
         return refusal or back
 
     @app.route("/clover-acquisition/status.json")

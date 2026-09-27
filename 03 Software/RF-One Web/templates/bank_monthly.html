@@ -115,7 +115,7 @@
   </h3>
   <p class="cell-note">
     {{ period.period_start }} through {{ period.period_end }}
-    {%- if period.completed_at %} &middot; last completed {{ period.completed_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}
+    {%- if period.completed_at %} &middot; last completed {{ period.completed_at|local_dt(tz) }}{% endif %}
     {%- if not period_is_controlled %} &middot; <strong>historical month</strong>: it is before
     the reconciliation control start, so it was opened on request rather than automatically.
     The ordinary completeness rules apply to it all the same{% endif %}.
@@ -250,7 +250,7 @@
                 {%- if coverage.import_batch.date_range_start %},
                   {{ coverage.import_batch.date_range_start }} to {{ coverage.import_batch.date_range_end }}
                 {%- endif %}<br>
-                imported {{ coverage.import_batch.uploaded_at.strftime('%Y-%m-%d %H:%M') }}
+                imported {{ coverage.import_batch.uploaded_at|local_dt(tz) }}
               </span>
               {% if extra_batches.get(coverage.id) %}
                 <span class="badge warn">OVERLAPPING SOURCE</span>
@@ -272,7 +272,7 @@
               <span class="cell-note">
                 {{ coverage.resolution_note or '' }}<br>
                 effective {{ coverage.resolution_effective_date or 'UNKNOWN' }}
-                {%- if coverage.resolved_at %} &middot; recorded {{ coverage.resolved_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}
+                {%- if coverage.resolved_at %} &middot; recorded {{ coverage.resolved_at|local_dt(tz) }}{% endif %}
                 {%- if coverage.resolved_by %} by {{ coverage.resolved_by.display_name }}{% endif %}
               </span>
             {% else %}

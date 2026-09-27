@@ -41,7 +41,9 @@ from auth import (  # noqa: E402
 from db import SessionFactory  # noqa: E402
 from domain_registry import DOMAINS, TIPS_HOME_URL  # noqa: E402
 from rfone_data_store import display_format  # noqa: E402
+from rfone_data_store import public_entry  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 from rfone_data_store import legal_entity_service  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store import rfone_recovery_service as recovery_service  # noqa: E402
@@ -84,6 +86,17 @@ app.config.update(
 )
 
 
+@app.before_request
+def _send_direct_visits_to_the_official_entry():
+    """A person who reaches this service's technical App Runner hostname is
+    sent to the same page on RF-One's official address
+    (`rfone_data_store.public_entry`, UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001)."""
+    target = public_entry.official_redirect(request.method, request.headers, request.full_path)
+    if target is not None:
+        return redirect(target, code=301)
+    return None
+
+
 @app.context_processor
 def inject_csrf():
     return {"csrf_token": get_csrf_token}
@@ -96,6 +109,28 @@ app.jinja_env.filters["local_dt"] = display_format.local_datetime
 app.jinja_env.filters["short_name"] = display_format.employee_short_name
 app.jinja_env.globals["zone_label"] = display_format.zone_label
 app.jinja_env.globals["tips_home_url"] = TIPS_HOME_URL
+# The first breadcrumb level, named the same in every app hosting shared
+# templates (Training's): RF-One Web's own Home here.
+app.jinja_env.globals["rfone_home_url"] = lambda: url_for("home")
+
+
+@app.context_processor
+def inject_site_timezone():
+    """`tz`: the zone every time on an RF-One Web page is shown in, unless
+    the page sets its own (RF-One UI Rules §1) — the IANA timezone of the
+    Restaurant's own Clover Location, the same Location Tips and Clover
+    Acquisition use. None -> the formatter shows UTC and says so."""
+    with SessionFactory() as db:
+        restaurant = db.scalars(select(m.Restaurant).order_by(m.Restaurant.id)).first()
+        if restaurant is None:
+            return {"tz": None}
+        tz_name = db.scalars(
+            select(m.Location.timezone)
+            .join(m.RestaurantLocation, m.RestaurantLocation.location_id == m.Location.id)
+            .join(m.SourceSystem, m.SourceSystem.id == m.Location.source_system_id)
+            .where(m.RestaurantLocation.restaurant_id == restaurant.id, m.SourceSystem.code == "CLOVER")
+        ).first()
+        return {"tz": tz_name}
 
 
 # ---------------------------------------------------------------------------

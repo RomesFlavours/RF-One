@@ -52,17 +52,33 @@ RF-One > Tips > Clover Acquisition        (when opened from the Tips tab)
 
 ---
 
+## Local days (companion rule, UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001)
+
+A date a person picks, for a Clover Historical Backfill or for the Tips Clover Acquisition data filter, is the Location's **local civil day**: 00:00:00 → 23:59:59 in the Location's timezone. RF-One converts it to UTC internally. The zone's own rules handle EDT/EST changes.
+
+This is not the Tips Business Date, which is the configured operating day (currently 04:00 → 04:00). The operating-day cutoff is never used for these dates.
+
+Implementation: `rfone_data_store/local_calendar.py`.
+
+---
+
 ## Where these rules are applied today
 
-| Rule | RF-One Web | Tips |
-|---|---|---|
-| 1 Local time | Clover Acquisition; Tips saved-period validation | Clover Acquisition tab (imported Orders, Payments, Shifts); Calculate Tips drill-down; Host Audit; Saved Periods and report; rule versions |
-| 2 Surname I. | Clover Acquisition (requested by, signed in as); saved-period validation | imported data tables; Calculate Tips; Host Audit; Saved Periods and report; order drill-down |
-| 3 Inline action | — | Sync Now on the Clover Acquisition tab |
-| 4 Breadcrumb | every sub-page (Accounts, Legal Entities, Organization and its pages, Compensation, Bank, Profile, Tips saved periods, Training trainer pages, Clover Acquisition, work-in-progress pages) | every page |
+| Rule | RF-One Web | Tips | Training (hosted in RF-One Web) |
+|---|---|---|---|
+| 1 Local time | Clover Acquisition; Tips saved-period validation; Bank (instrument audit, monthly sources); Organization attention history | Clover Acquisition tab; Calculate Tips drill-down; Host Audit screen and CSV export; Saved Periods and report; rule versions | quiz and attempt times |
+| 2 Surname I. | Clover Acquisition; saved-period validation; Bank cardholder list and "changed by"; trainer student list | every operational table; Host Audit CSV | trainer student list and breadcrumb |
+| 3 Inline action | — | Sync Now on the Clover Acquisition tab | — |
+| 4 Breadcrumb | every sub-page | every page | every page |
 
-**Not yet aligned (future refinements must apply these rules):**
+**Deliberately kept, with a reason:**
 
-- Bank Reconciliation audit and import timestamps (`bank_home.html`, `bank_monthly.html`) are still shown as stored.
-- Training's own pages keep their own navigation.
-- The Host Audit CSV export keeps full names. It is a data export, not a screen.
+- Full names stay on account administration, Profile, and Organization configuration: they manage identities, not operational reading.
+- Full names stay on Tips Payment Control, to match payees.
+- Full names stay on the Bank card edit page, to assign the right cardholder.
+- A student's own full name stays on the trainer's student page heading.
+- Compensation is outside the scope of UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001 (Product Owner instruction) and is not yet aligned.
+
+**Needs a Product Owner decision before it can be aligned:**
+
+- Validity starts (`valid_from`) of Organization positions and Bank cardholders are printed as stored, with a `+00:00` offset. Whether each is a calendar date or an instant decides how it should be shown. Converting midnight UTC to local time would show "20:00 the day before".

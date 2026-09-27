@@ -1,7 +1,9 @@
 {% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}RF-One · Training{% endblock %}
 {% block page_subtitle %}Staff training — your personal path.{% endblock %}
 {% block content %}
+{{ breadcrumb([('RF-One', rfone_home_url()), ('Training', None)]) }}
 
 {% with messages = get_flashed_messages(with_categories=True) %}
   {% for category, message in messages %}
@@ -40,7 +42,7 @@
       <tbody>
         {% for a in overall_history %}
         <tr>
-          <td><a href="{{ url_for('training.overall_attempt_result', attempt_id=a.id) }}">{{ a.submitted_at.strftime('%Y-%m-%d %H:%M') }} UTC</a></td>
+          <td><a href="{{ url_for('training.overall_attempt_result', attempt_id=a.id) }}">{{ a.submitted_at|local_dt(tz) }}</a></td>
           <td>{{ a.points_earned }} / {{ a.points_possible }}</td>
         </tr>
         {% endfor %}
