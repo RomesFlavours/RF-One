@@ -298,3 +298,15 @@ button, .btn, select, input[type=text], input[type=number], input[type=date], in
 .breadcrumb li { display: inline-flex; align-items: center; }
 .breadcrumb li + li::before { content: "A"; margin-right: .35rem; color: #8a8a8a; }
 .breadcrumb [aria-current="page"] { color: #555; font-weight: 600; }
+
+/* IMPORTED_CLOVER_DATA_CONTROL_001 — summaries meant to be held next to
+   Clover's Orders and Transactions reports: large, aligned figures, few
+   words. */
+.control-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: .8rem; }
+.control-tile { border: 1px solid var(--olive-300); border-radius: 8px; padding: .7rem .9rem; background: var(--olive-050); }
+.control-tile .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.control-tile .value { font-size: 1.9rem; font-weight: 700; color: var(--olive-900); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.control-tile.sum { background: var(--olive-150); border-color: var(--olive-500); }
+.control-tile .note { font-size: .72rem; color: var(--muted); margin-top: .15rem; }
+tr.row-muted td { color: var(--muted); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }

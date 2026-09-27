@@ -65,7 +65,6 @@ from rfone_data_store import local_calendar  # noqa: E402
 from rfone_data_store import public_entry  # noqa: E402
 from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
 from rfone_data_store.technical.connectors.clover import acquisition_jobs as clover_jobs  # noqa: E402
-from rfone_data_store.technical.connectors.clover.acquisition import get_order_settlement_time  # noqa: E402
 from rfone_data_store.tips import calculation_run_service as run_svc  # noqa: E402
 from rfone_data_store.tips import distribution_engine as engine_svc  # noqa: E402
 from rfone_data_store.tips import distribution_rule_service as rule_svc  # noqa: E402
@@ -84,6 +83,7 @@ from rfone_data_store.tips import validation_mode_service as validation_mode_svc
 # RF-One login, read (never issued) here. See `rfone_identity.py` for the
 # whole of the integration and what it needs from the deployment.
 import rfone_identity  # noqa: E402
+import imported_data_view  # noqa: E402
 # TIPS_AWS_FINALIZATION_WORKFLOW_001 — validation lives in RF-One Web only;
 # Tips links there through `RFONE_WEB_BASE_URL`.
 import rfone_web_link  # noqa: E402
@@ -390,8 +390,7 @@ def home():
                 else:
                     no_business_date_data = True
 
-        payments_rows = []
-        orders_rows = []
+        imported = imported_data_view.empty()
         shifts_rows = []
         if restaurant is not None:
             location_ids_subq = select(m.RestaurantLocation.location_id).where(
@@ -413,58 +412,12 @@ def home():
                 except local_calendar.LocationTimezoneMissingError as exc:
                     flash(str(exc), "error")
             if start is not None and end is not None:
-                payment_stmt = (
-                    select(m.Payment)
-                    .join(m.Order, m.Payment.order_id == m.Order.id)
-                    .where(
-                        m.Order.location_id.in_(location_ids_subq),
-                        m.Payment.created_at >= start,
-                        m.Payment.created_at <= end,
-                    )
-                    .order_by(m.Payment.created_at)
+                # IMPORTED_CLOVER_DATA_CONTROL_001 — summaries first (to hold
+                # next to Clover's Orders and Transactions reports), then the
+                # Order and Payment listings. Read-only.
+                imported = imported_data_view.build(
+                    session, location_ids_subq=location_ids_subq, start=start, end=end,
                 )
-                for payment in session.scalars(payment_stmt).all():
-                    tip = session.get(m.PaymentTip, payment.id)
-                    payments_rows.append(
-                        {
-                            "source_payment_id": payment.source_payment_id,
-                            "employee_id": payment.source_employee_id,
-                            "amount": payment.amount,
-                            "tip_present": tip is not None,
-                            "tip_amount": tip.amount if tip is not None else None,
-                            "result": payment.result,
-                            "created_at": payment.created_at,
-                        }
-                    )
-
-                # Task §3/§12 — "Order is the business unit" / "inspect
-                # imported Orders". One row per Order touched in the period,
-                # with its Settlement Time (spec §5) and gratuity total —
-                # never a per-Payment view of the same economic fact.
-                order_stmt = (
-                    select(m.Order)
-                    .where(
-                        m.Order.location_id.in_(location_ids_subq),
-                        m.Order.created_at >= start,
-                        m.Order.created_at <= end,
-                    )
-                    .order_by(m.Order.created_at)
-                )
-                for order in session.scalars(order_stmt).all():
-                    fees = session.scalars(select(m.OrderFee).filter_by(order_id=order.id)).all()
-                    num_payments = len(session.scalars(select(m.Payment).where(m.Payment.order_id == order.id)).all())
-                    orders_rows.append(
-                        {
-                            "source_order_id": order.source_order_id,
-                            "employee_id": order.source_employee_id,
-                            "total": order.total,
-                            "state": order.state,
-                            "payment_state": order.payment_state,
-                            "num_payments": num_payments,
-                            "gratuity_total": sum(f.amount or 0 for f in fees),
-                            "settlement_time": get_order_settlement_time(session, order.id),
-                        }
-                    )
 
                 shift_stmt = (
                     select(m.Shift)
@@ -487,14 +440,14 @@ def home():
                     )
 
         employee_names = _employee_names(
-            session, [r["employee_id"] for r in payments_rows + orders_rows + shifts_rows],
+            session, [r["employee_id"] for r in imported["payments_rows"] + imported["orders_rows"] + shifts_rows],
         )
         clover = _clover_acquisition_panel(session, restaurant)
         return render_template(
             "home.html", restaurant=restaurant, from_date=from_date, through_date=through_date,
             no_business_date_data=no_business_date_data, clover=clover, tz=clover["tz_name"],
             employee_names=employee_names,
-            payments_rows=payments_rows, orders_rows=orders_rows, shifts_rows=shifts_rows,
+            **imported, shifts_rows=shifts_rows,
             active_nav="historical-backfill",
         )
 

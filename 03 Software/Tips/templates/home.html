@@ -99,34 +99,73 @@
       </div>
     </div>
   </form>
-  <p class="muted" style="font-size:.78rem; margin-top:.8rem;">Read-only view of what RF-One already holds. Times are local ({{ zone_label(tz) }}).</p>
+  <p class="muted" style="font-size:.78rem; margin-top:.8rem;">Read-only: shows what RF-One already holds, imports nothing. Days and times are local ({{ zone_label(tz) }}).</p>
+</div>
+
+{# IMPORTED_CLOVER_DATA_CONTROL_001 — summaries first, to hold next to
+   Clover's Orders and Transactions reports; the listings come after.
+   Definitions: Tips/imported_data_view.py. #}
+{% macro money(cents) %}${{ "{:,.2f}".format((cents or 0) / 100) }}{% endmacro %}
+{% macro tile(label, value, extra='', note='') %}
+  <div class="control-tile {{ extra }}"><div class="label">{{ label }}</div><div class="value">{{ value }}</div>{% if note %}<div class="note">{{ note }}</div>{% endif %}</div>
+{% endmacro %}
+{% set period_chosen = from_date and through_date %}
+
+<div class="card" id="orders-summary">
+  <h2>Orders</h2>
+  {% if period_chosen %}
+  <div class="control-grid">
+    {{ tile("All orders", orders_summary.all) }}
+    {{ tile("Completed orders", orders_summary.completed) }}
+    {{ tile("Incomplete orders", orders_summary.incomplete) }}
+    {{ tile("Incomplete order value", money(orders_summary.incomplete_value)) }}
+  </div>
+  {% else %}
+  <p class="empty">Select a From/Through date above.</p>
+  {% endif %}
+</div>
+
+<div class="card" id="transactions-summary">
+  <h2>Transactions</h2>
+  {% if period_chosen %}
+  <div class="control-grid">
+    {{ tile("Payments total", money(payments_summary.total), note="tips excluded") }}
+    {{ tile("Number of payments", payments_summary.count, note=(payments_summary.failed ~ " failed not counted") if payments_summary.failed else "") }}
+    {{ tile("Voluntary Tips", money(payments_summary.voluntary_tips)) }}
+    {{ tile("Gratuity", money(payments_summary.gratuity)) }}
+    {{ tile("Total Tips + Gratuity", money(payments_summary.tips_plus_gratuity), extra="sum") }}
+    {{ tile("Taxes and Fees", money(payments_summary.taxes_and_fees), note="gratuity excluded") }}
+  </div>
+  {% else %}
+  <p class="empty">Select a From/Through date above.</p>
+  {% endif %}
 </div>
 
 <div class="card">
-  <h2>Imported Orders (the business unit — spec §3)</h2>
-  {% if from_date and through_date %}
+  <h2>Orders detail</h2>
+  {% if period_chosen %}
     {% if orders_rows %}
     <div class="table-scroll">
     <table>
-      <thead><tr><th>Order ID</th><th>Order Employee</th><th>Total</th><th>Payments</th><th>Gratuity</th><th>Settlement Time</th><th>State</th><th>Payment State</th></tr></thead>
+      <thead><tr><th>Order ID</th><th>Employee</th><th class="num">Total</th><th class="num">Payments</th><th class="num">Gratuity</th><th>Settlement Time</th><th>State</th><th>Payment State</th></tr></thead>
       <tbody>
       {% for row in orders_rows %}
         <tr>
           <td>{{ row.source_order_id }}</td>
           <td>{{ employee_names.get(row.employee_id, 'Unknown employee' if row.employee_id else '-') }}</td>
-          <td>${{ "%.2f"|format(row.total / 100) if row.total is not none else '-' }}</td>
-          <td>{{ row.num_payments }}{% if row.num_payments > 1 %} <span class="badge warn">split</span>{% endif %}</td>
-          <td>{% if row.gratuity_total %}${{ "%.2f"|format(row.gratuity_total / 100) }}{% else %}<span class="muted">-</span>{% endif %}</td>
-          <td>{{ row.settlement_time|local_dt(tz, empty='(no successful Payment yet)') }}</td>
+          <td class="num">{{ money(row.total) if row.total is not none else '-' }}</td>
+          <td class="num">{{ row.num_payments }}{% if row.num_payments > 1 %} <span class="badge warn">split</span>{% endif %}</td>
+          <td class="num">{% if row.gratuity_total %}{{ money(row.gratuity_total) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+          <td>{{ row.settlement_time|local_dt(tz, empty='(not settled)') }}</td>
           <td>{{ row.state or '-' }}</td>
-          <td>{{ row.payment_state or '-' }}</td>
+          <td>{% if row.payment_state == 'Paid' %}Paid{% else %}<span class="badge warn">{{ row.payment_state }}</span>{% endif %}</td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
     </div>
     {% else %}
-    <p class="empty">No Orders recorded for this Restaurant in the selected period yet.</p>
+    <p class="empty">No Orders in the selected period.</p>
     {% endif %}
   {% else %}
     <p class="empty">Select a From/Through date above to view already-imported Orders for that period.</p>
@@ -134,34 +173,35 @@
 </div>
 
 <div class="card">
-  <h2>Imported source rows (Payments — audit view)</h2>
-  <p class="muted" style="font-size:.78rem;">Payment.employee is preserved here for audit/anomaly detection only — it does not determine tip ownership (Order.employee does; see the Orders table above).</p>
-  {% if from_date and through_date %}
+  <h2>Transactions detail</h2>
+  {% if period_chosen %}
     {% if payments_rows %}
     <div class="table-scroll">
     <table>
-      <thead><tr><th>Payment ID</th><th>Payment Employee</th><th>Amount</th><th>Tip</th><th>Result</th><th>Created</th></tr></thead>
+      <thead><tr><th>Payment</th><th>Order</th><th>Employee</th><th class="num">Amount</th><th class="num">Voluntary Tip</th><th class="num">Gratuity</th><th class="num">Tip + Gratuity</th><th>Time</th><th>Result</th></tr></thead>
       <tbody>
       {% for row in payments_rows %}
-        <tr>
+        <tr{% if not row.success %} class="row-muted"{% endif %}>
           <td>{{ row.source_payment_id }}</td>
+          <td>{{ row.source_order_id or '-' }}</td>
           <td>{{ employee_names.get(row.employee_id, 'Unknown employee' if row.employee_id else '-') }}</td>
-          <td>${{ "%.2f"|format(row.amount / 100) }}</td>
-          <td>
-            {% if row.tip_present %}${{ "%.2f"|format(row.tip_amount / 100) }}{% else %}<span class="muted">(absent)</span>{% endif %}
-          </td>
-          <td>{{ row.result }}</td>
+          <td class="num">{{ money(row.amount) }}</td>
+          <td class="num">{% if row.tip_amount is not none %}{{ money(row.tip_amount) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+          <td class="num">{% if row.gratuity %}{{ money(row.gratuity) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+          <td class="num">{% if row.tip_plus_gratuity is not none %}{{ money(row.tip_plus_gratuity) }}{% else %}<span class="muted">-</span>{% endif %}</td>
           <td>{{ row.created_at|local_dt(tz) }}</td>
+          <td>{% if row.success %}{{ row.result }}{% else %}<span class="badge bad">{{ row.result or 'unknown' }}</span>{% endif %}</td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
     </div>
+    <p class="muted" style="font-size:.75rem;">Employee here is the Payment's employee (audit only; tips follow the Order's employee). Gratuity belongs to the Order and is shown once, on its first successful Payment. Failed attempts count in no total.</p>
     {% else %}
-    <p class="empty">No Payments recorded for this Restaurant in the selected period yet.</p>
+    <p class="empty">No Payments in the selected period.</p>
     {% endif %}
   {% else %}
-    <p class="empty">Select a From/Through date above to view already-imported source rows for that period.</p>
+    <p class="empty">Select a From/Through date above to view already-imported Payments for that period.</p>
   {% endif %}
 </div>
 
