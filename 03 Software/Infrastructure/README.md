@@ -206,22 +206,29 @@ direttamente nella tab Clover Acquisition di Tips, con l'identità RF-One.
 - `RFONE_WEB_BASE_URL` di `rfone-tips` deve valere
   `https://dn1l56t5jz22u.cloudfront.net`.
 
-**Prerequisito non ancora soddisfatto — segreto di sessione.** Oggi i due
-servizi hanno segreti diversi: `rfone-web/flask-secret-key` e
-`rfone-tips/flask-secret-key`. `rfone-tips` deve usare
-`rfone-web/flask-secret-key`. Il suo ruolo
-`rfone-tips-apprunner-instance-role` deve quindi poter leggere quel segreto:
-policy [`deploy/rfone-cloudfront/rfone-tips-shared-session-secret-read.json`](deploy/rfone-cloudfront/rfone-tips-shared-session-secret-read.json).
+**Stato al 2026-09-27: attivo.** Il segreto di sessione è condiviso:
+`rfone-tips` usa ora `rfone-web/flask-secret-key` (prima aveva
+`rfone-tips/flask-secret-key`, che non è più referenziato). Il suo ruolo
+`rfone-tips-apprunner-instance-role` ha la policy inline
+`rfone-tips-shared-session-secret-read`
+([`deploy/rfone-cloudfront/rfone-tips-shared-session-secret-read.json`](deploy/rfone-cloudfront/rfone-tips-shared-session-secret-read.json)).
+`RFONE_WEB_BASE_URL` di `rfone-tips` vale
+`https://dn1l56t5jz22u.cloudfront.net`.
 
-**Ordine obbligatorio:** (1) policy IAM, (2) `rfone-tips` con il segreto di
-`rfone-web` e il nuovo `RFONE_WEB_BASE_URL`, (3) deploy di `rfone-web` e
-`rfone-tips`, (4) da quel momento l'ingresso di RF-One è l'indirizzo
-CloudFront.
+**L'ingresso di RF-One è ora `https://dn1l56t5jz22u.cloudfront.net`.** Gli
+hostname App Runner restano raggiungibili, ma su di essi la sessione non è
+condivisa. Da `vhmsm9mgh8…` il link a Tips (`/tips/`) non porta più a
+Tips.
 
-Non attivare mai l'ingresso unico con segreti diversi. Tips non saprebbe
+Non usare mai l'ingresso unico con segreti diversi. Tips non saprebbe
 verificare il cookie di RF-One Web e, alla prima scrittura (un messaggio
 flash), lo sostituirebbe con uno firmato col proprio segreto: l'utente
 verrebbe disconnesso da RF-One Web.
+
+**Nota di rilascio.** Dopo un `update-service` sulla configurazione, App
+Runner ha applicato le variabili ma ha tenuto l'immagine precedente. È
+servito un `start-deployment` esplicito per caricare il nuovo `:latest`.
+Verificare sempre la versione servita dopo un rilascio.
 
 ### Opzione B — montare Tips dentro `rfone-web`, come già fatto per Training
 
