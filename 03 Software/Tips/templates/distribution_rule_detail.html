@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% set crumbs = [('Distribution Rules', url_for('distribution_rules_home')), ('Rule #' ~ rule.id, None)] %}
+{% set crumbs = [('Configuration', url_for('configuration_home')), ('Rule #' ~ rule.id, None)] %}
 {% block content %}
 
 {% with messages = get_flashed_messages(with_categories=True) %}

@@ -1,7 +1,7 @@
 {% from "_nav_macros.html" import breadcrumb %}
-{% set tab_labels = {'historical-backfill': ('Clover Acquisition', 'home'), 'distribution-rules': ('Distribution Rules', 'distribution_rules_home'),
+{% set tab_labels = {'historical-backfill': ('Clover Acquisition', 'home'), 'configuration': ('Configuration', 'configuration_home'),
                      'calculate-tips': ('Calculate Tips', 'calculate_tips_home'), 'host-audit': ('Explain / Audit Host Tips', 'host_audit_home'),
-                     'tips-runs': ('Saved Periods', 'tips_run_history'), 'tips-configuration': ('Tips Configuration', 'tips_configuration_home'),
+                     'tips-runs': ('Saved Periods', 'tips_run_history'),
                      'payment-control': ('Payment Control', 'payment_control_home')} %}
 <!doctype html>
 <html lang="en">
@@ -11,7 +11,7 @@
 {% if brand_logo_filename %}
   <link rel="icon" type="image/png" href="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}?v=2">
 {% endif %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=4">
 </head>
 <body>
 <div class="wrap">
@@ -38,11 +38,10 @@
   <p class="subtitle">{% block page_subtitle %}Clover source-fact ingestion and Tip Distribution Rule configuration — no employee payout is calculated here.{% endblock %}</p>
   <div class="nav-tabs">
     <a href="{{ url_for('home') }}" class="{{ 'active' if active_nav == 'historical-backfill' else '' }}">Clover Acquisition</a>
-    <a href="{{ url_for('distribution_rules_home') }}" class="{{ 'active' if active_nav == 'distribution-rules' else '' }}">Distribution Rules</a>
+    <a href="{{ url_for('configuration_home') }}" class="{{ 'active' if active_nav == 'configuration' else '' }}">Configuration</a>
     <a href="{{ url_for('calculate_tips_home') }}" class="{{ 'active' if active_nav == 'calculate-tips' else '' }}">Calculate Tips</a>
     <a href="{{ url_for('host_audit_home') }}" class="{{ 'active' if active_nav == 'host-audit' else '' }}">Explain / Audit Host Tips</a>
     <a href="{{ url_for('tips_run_history') }}" class="{{ 'active' if active_nav == 'tips-runs' else '' }}">Saved Periods</a>
-    <a href="{{ url_for('tips_configuration_home') }}" class="{{ 'active' if active_nav == 'tips-configuration' else '' }}">Tips Configuration</a>
     <a href="{{ url_for('payment_control_home') }}" class="{{ 'active' if active_nav == 'payment-control' else '' }}">Payment Control (Mercury Sandbox pilot)</a>
   </div>
   {# RF-One UI Rules §4: RF-One > Tips > <tab> [> deeper levels]. A detail

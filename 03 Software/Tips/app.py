@@ -881,33 +881,47 @@ def calculate_tips_order_drilldown(order_id: int):
         )
 
 
-@app.route("/tips-configuration")
-def tips_configuration_home():
+def _general_configuration_context(session, restaurant) -> dict:
+    """The General Configuration section (formerly the Tips Configuration
+    tab): Review Mode, Validation Mode, Calculation and Payment Schedules."""
+    calc_config = None
+    payment_config = None
+    readiness_state = None
+    review_mode = m.TIPS_REVIEW_MODE_AUDIT
+    if restaurant is not None:
+        calc_config = sched_svc.get_calculation_schedule_effective_at(session, restaurant_id=restaurant.id)
+        payment_config = sched_svc.get_payment_schedule_effective_at(session, restaurant_id=restaurant.id)
+        readiness_state = readiness_svc.describe_readiness(session, restaurant.id)
+        review_mode = review_mode_svc.get_review_mode(session, restaurant_id=restaurant.id)
+    # §16 — a SEPARATE setting from Review Mode above, deliberately. One
+    # decides which report the UI emphasises; this one decides whether a
+    # human has to approve money.
+    validation_mode = (
+        validation_mode_svc.get_validation_mode(session, restaurant_id=restaurant.id)
+        if restaurant is not None else m.TIPS_VALIDATION_MODE_MANUAL
+    )
+    return {
+        "calc_config": calc_config, "payment_config": payment_config, "readiness_state": readiness_state,
+        "review_mode": review_mode, "validation_mode": validation_mode,
+        "validation_modes": m.TIPS_VALIDATION_MODES, "schedule_modes": m.TIPS_SCHEDULE_MODES,
+        "connector_codes": connector_svc.KNOWN_CONNECTOR_CODES,
+    }
+
+
+@app.route("/configuration")
+def configuration_home():
+    """CONFIGURATION_TAB_001 — the one Tips Configuration page: Distribution
+    Rules, then General Configuration. Nothing here changes what either
+    section did on its former tab."""
     with SessionFactory() as session:
         restaurant = _default_restaurant(session)
-        calc_config = None
-        payment_config = None
-        readiness_state = None
-        review_mode = m.TIPS_REVIEW_MODE_AUDIT
-        if restaurant is not None:
-            calc_config = sched_svc.get_calculation_schedule_effective_at(session, restaurant_id=restaurant.id)
-            payment_config = sched_svc.get_payment_schedule_effective_at(session, restaurant_id=restaurant.id)
-            readiness_state = readiness_svc.describe_readiness(session, restaurant.id)
-            review_mode = review_mode_svc.get_review_mode(session, restaurant_id=restaurant.id)
-        # §16 — a SEPARATE setting from Review Mode above, deliberately. One
-        # decides which report the UI emphasises; this one decides whether a
-        # human has to approve money.
-        validation_mode = (
-            validation_mode_svc.get_validation_mode(session, restaurant_id=restaurant.id)
-            if restaurant is not None else m.TIPS_VALIDATION_MODE_MANUAL
-        )
-        return render_template(
-            "tips_configuration.html", restaurant=restaurant, calc_config=calc_config,
-            payment_config=payment_config, readiness_state=readiness_state, review_mode=review_mode,
-            validation_mode=validation_mode, validation_modes=m.TIPS_VALIDATION_MODES,
-            schedule_modes=m.TIPS_SCHEDULE_MODES, connector_codes=connector_svc.KNOWN_CONNECTOR_CODES,
-            active_nav="tips-configuration",
-        )
+        return render_template("configuration.html", **_distribution_rules_base_context(session, restaurant))
+
+
+@app.route("/tips-configuration")
+def tips_configuration_home():
+    """Former tab URL, kept so saved links still work."""
+    return redirect(url_for("configuration_home", _anchor="general-configuration"))
 
 
 @app.route("/tips-configuration/validation-mode", methods=["POST"])
@@ -924,7 +938,7 @@ def tips_configuration_set_validation_mode():
         restaurant = _default_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
-            return redirect(url_for("tips_configuration_home"))
+            return redirect(url_for("configuration_home", _anchor="general-configuration"))
         account = rfone_identity.current_account(session)
         validation_mode = request.form.get("validation_mode") or ""
         try:
@@ -945,7 +959,7 @@ def tips_configuration_set_validation_mode():
         except ValueError as exc:
             session.rollback()
             flash(str(exc), "error")
-        return redirect(url_for("tips_configuration_home"))
+        return redirect(url_for("configuration_home", _anchor="general-configuration"))
 
 
 @app.route("/tips-configuration/review-mode", methods=["POST"])
@@ -954,7 +968,7 @@ def tips_configuration_set_review_mode():
         restaurant = _default_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
-            return redirect(url_for("tips_configuration_home"))
+            return redirect(url_for("configuration_home", _anchor="general-configuration"))
         review_mode = request.form.get("review_mode") or ""
         try:
             review_mode_svc.set_review_mode(session, restaurant_id=restaurant.id, review_mode=review_mode)
@@ -963,7 +977,7 @@ def tips_configuration_set_review_mode():
         except ValueError as exc:
             session.rollback()
             flash(str(exc), "error")
-        return redirect(url_for("tips_configuration_home"))
+        return redirect(url_for("configuration_home", _anchor="general-configuration"))
 
 
 @app.route("/tips-configuration/calculation-schedule", methods=["POST"])
@@ -972,7 +986,7 @@ def tips_configuration_set_calculation_schedule():
         restaurant = _default_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
-            return redirect(url_for("tips_configuration_home"))
+            return redirect(url_for("configuration_home", _anchor="general-configuration"))
         mode = request.form.get("mode") or ""
         interval_days = request.form.get("interval_days", type=int)
         execution_time = _parse_time(request.form.get("execution_time"))
@@ -988,7 +1002,7 @@ def tips_configuration_set_calculation_schedule():
         except sched_svc.ScheduleConfigError as exc:
             session.rollback()
             flash(str(exc), "error")
-    return redirect(url_for("tips_configuration_home"))
+    return redirect(url_for("configuration_home", _anchor="general-configuration"))
 
 
 @app.route("/tips-configuration/payment-schedule", methods=["POST"])
@@ -997,7 +1011,7 @@ def tips_configuration_set_payment_schedule():
         restaurant = _default_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
-            return redirect(url_for("tips_configuration_home"))
+            return redirect(url_for("configuration_home", _anchor="general-configuration"))
         mode = request.form.get("mode") or ""
         interval_days = request.form.get("interval_days", type=int)
         execution_time = _parse_time(request.form.get("execution_time"))
@@ -1018,7 +1032,7 @@ def tips_configuration_set_payment_schedule():
         except sched_svc.ScheduleConfigError as exc:
             session.rollback()
             flash(str(exc), "error")
-    return redirect(url_for("tips_configuration_home"))
+    return redirect(url_for("configuration_home", _anchor="general-configuration"))
 
 
 @app.route("/tips-configuration/run-calculation-now", methods=["POST"])
@@ -1031,7 +1045,7 @@ def tips_configuration_run_calculation_now():
         restaurant = _default_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
-            return redirect(url_for("tips_configuration_home"))
+            return redirect(url_for("configuration_home", _anchor="general-configuration"))
         result = payout_svc.run_calculation_now(session, restaurant_id=restaurant.id)
         session.commit()
         if result.ran:
@@ -1042,7 +1056,7 @@ def tips_configuration_run_calculation_now():
             )
         else:
             flash(result.blocked_reason or "Nothing to calculate.", "error")
-    return redirect(url_for("tips_configuration_home"))
+    return redirect(url_for("configuration_home", _anchor="general-configuration"))
 
 
 # ---------------------------------------------------------------------------
@@ -1384,7 +1398,10 @@ def _distribution_rules_base_context(session, restaurant) -> dict:
             )
     return {
         "restaurant": restaurant, "rules_rows": rules_rows, "roles": roles,
-        "calculation_bases": m.TIP_DISTRIBUTION_CALCULATION_BASES, "active_nav": "distribution-rules",
+        "calculation_bases": m.TIP_DISTRIBUTION_CALCULATION_BASES, "active_nav": "configuration",
+        # CONFIGURATION_TAB_001 — one page: the General Configuration
+        # section renders with every Distribution Rules response too.
+        **_general_configuration_context(session, restaurant),
     }
 
 
@@ -1408,9 +1425,8 @@ def _ai_history_to_json(turns: list["rule_ai_svc.ConversationTurn"]) -> str:
 
 @app.route("/distribution-rules")
 def distribution_rules_home():
-    with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
-        return render_template("distribution_rules_home.html", **_distribution_rules_base_context(session, restaurant))
+    """Former tab URL, kept so saved links still work."""
+    return redirect(url_for("configuration_home", _anchor="distribution-rules"))
 
 
 @app.route("/distribution-rules/ai/interpret", methods=["POST"])
@@ -1426,7 +1442,7 @@ def distribution_rule_ai_interpret():
         base_ctx = _distribution_rules_base_context(session, restaurant)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
-            return redirect(url_for("distribution_rules_home"))
+            return redirect(url_for("configuration_home", _anchor="distribution-rules"))
 
         statement = (request.form.get("statement") or "").strip()
         history = _ai_history_from_json(request.form.get("history_json"))
@@ -1438,14 +1454,14 @@ def distribution_rule_ai_interpret():
             )
         except rule_ai_svc.AIRuleAuthoringUnavailable as exc:
             flash(f"AI rule interpretation is currently unavailable ({exc}). Use the Advanced form below.", "error")
-            return render_template("distribution_rules_home.html", **base_ctx)
+            return render_template("configuration.html", **base_ctx)
 
         new_history = list(history) + [rule_ai_svc.ConversationTurn(role="user", content=statement)]
 
         if result.outcome == rule_ai_svc.OUTCOME_CLARIFICATION_NEEDED:
             new_history.append(rule_ai_svc.ConversationTurn(role="assistant", content=result.clarification.question))
             return render_template(
-                "distribution_rules_home.html", **base_ctx,
+                "configuration.html", **base_ctx,
                 ai_mode="CLARIFICATION", ai_question=result.clarification.question,
                 ai_history_json=_ai_history_to_json(new_history), ai_rule_id=rule_id,
             )
@@ -1455,7 +1471,7 @@ def distribution_rule_ai_interpret():
                 rule_ai_svc.ConversationTurn(role="assistant", content=result.unsupported.unsupported_summary)
             )
             return render_template(
-                "distribution_rules_home.html", **base_ctx,
+                "configuration.html", **base_ctx,
                 ai_mode="UNSUPPORTED", ai_unsupported=result.unsupported,
                 ai_history_json=_ai_history_to_json(new_history), ai_rule_id=rule_id,
             )
@@ -1464,7 +1480,7 @@ def distribution_rule_ai_interpret():
         proposal = result.proposal
         new_history.append(rule_ai_svc.ConversationTurn(role="assistant", content=proposal.human_readable_summary))
         return render_template(
-            "distribution_rules_home.html", **base_ctx,
+            "configuration.html", **base_ctx,
             ai_mode="PROPOSED", ai_proposal=proposal, ai_proposal_json=json.dumps(asdict(proposal)),
             ai_history_json=_ai_history_to_json(new_history), ai_rule_id=rule_id,
         )
@@ -1483,7 +1499,7 @@ def distribution_rule_ai_confirm():
             proposal = rule_ai_svc.RuleProposal(**data)
         except (TypeError, ValueError, json.JSONDecodeError):
             flash("The proposed Rule could not be read back — please describe the Rule again.", "error")
-            return redirect(url_for("distribution_rules_home"))
+            return redirect(url_for("configuration_home", _anchor="distribution-rules"))
 
         created_by = (request.form.get("created_by") or "").strip() or None
         try:
@@ -1492,10 +1508,10 @@ def distribution_rule_ai_confirm():
         except ValueError as exc:
             session.rollback()
             flash(str(exc), "error")
-            return redirect(url_for("distribution_rules_home"))
+            return redirect(url_for("configuration_home", _anchor="distribution-rules"))
 
         flash(f"Rule confirmed: {proposal.human_readable_summary}", "summary")
-        return redirect(url_for("distribution_rules_home"))
+        return redirect(url_for("configuration_home", _anchor="distribution-rules"))
 
 
 @app.route("/distribution-rules/ai/cancel", methods=["POST"])
@@ -1504,7 +1520,7 @@ def distribution_rule_ai_cancel():
     that only exists in a round-tripped hidden field, so this route's only
     job is to discard it and return to a clean state."""
     flash("Cancelled — nothing was created.", "summary")
-    return redirect(url_for("distribution_rules_home"))
+    return redirect(url_for("configuration_home", _anchor="distribution-rules"))
 
 
 @app.route("/distribution-rules/new", methods=["POST"])
@@ -1513,7 +1529,7 @@ def distribution_rule_create():
         restaurant = _default_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
-            return redirect(url_for("distribution_rules_home"))
+            return redirect(url_for("configuration_home", _anchor="distribution-rules"))
 
         source_role_id = request.form.get("source_role_id", type=int)
         recipient_role_id = request.form.get("recipient_role_id", type=int)
@@ -1524,7 +1540,7 @@ def distribution_rule_create():
 
         if not source_role_id or not recipient_role_id or rate is None or effective_from is None:
             flash("Source Role, Recipient Role, Rate, and Effective From are all required.", "error")
-            return redirect(url_for("distribution_rules_home"))
+            return redirect(url_for("configuration_home", _anchor="distribution-rules"))
 
         try:
             rule_svc.create_rule(
@@ -1536,7 +1552,7 @@ def distribution_rule_create():
         except ValueError as exc:
             session.rollback()
             flash(str(exc), "error")
-        return redirect(url_for("distribution_rules_home"))
+        return redirect(url_for("configuration_home", _anchor="distribution-rules"))
 
 
 @app.route("/distribution-rules/<int:rule_id>")
@@ -1544,7 +1560,7 @@ def distribution_rule_detail(rule_id: int):
     with SessionFactory() as session:
         rule = rule_svc.get_rule(session, rule_id)
         if rule is None:
-            return redirect(url_for("distribution_rules_home"))
+            return redirect(url_for("configuration_home", _anchor="distribution-rules"))
         versions = rule_svc.list_versions(session, rule_id)
         roles = list(
             session.scalars(
@@ -1553,7 +1569,7 @@ def distribution_rule_detail(rule_id: int):
         )
         return render_template(
             "distribution_rule_detail.html", rule=rule, versions=versions, roles=roles,
-            calculation_bases=m.TIP_DISTRIBUTION_CALCULATION_BASES, active_nav="distribution-rules",
+            calculation_bases=m.TIP_DISTRIBUTION_CALCULATION_BASES, active_nav="configuration",
         )
 
 
@@ -1562,7 +1578,7 @@ def distribution_rule_new_version(rule_id: int):
     with SessionFactory() as session:
         rule = rule_svc.get_rule(session, rule_id)
         if rule is None:
-            return redirect(url_for("distribution_rules_home"))
+            return redirect(url_for("configuration_home", _anchor="distribution-rules"))
 
         source_role_id = request.form.get("source_role_id", type=int)
         recipient_role_id = request.form.get("recipient_role_id", type=int)
@@ -1611,7 +1627,7 @@ def distribution_rule_toggle_active(rule_id: int):
         if rule is not None:
             rule_svc.set_active(session, rule_id, not rule.is_active)
             session.commit()
-        return redirect(request.form.get("next") or url_for("distribution_rules_home"))
+        return redirect(request.form.get("next") or url_for("configuration_home", _anchor="distribution-rules"))
 
 
 # ---------------------------------------------------------------------------
@@ -1718,7 +1734,7 @@ def restaurant_roles_home():
         restaurant = _default_restaurant(session)
         roles = role_svc.list_roles(session, restaurant.id) if restaurant is not None else []
         return render_template(
-            "restaurant_roles_home.html", restaurant=restaurant, roles=roles, active_nav="distribution-rules",
+            "restaurant_roles_home.html", restaurant=restaurant, roles=roles, active_nav="configuration",
         )
 
 

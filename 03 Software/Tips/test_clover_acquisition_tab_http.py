@@ -175,7 +175,7 @@ def main() -> int:
 
     # ---- 7: prefix and cookie ------------------------------------------------
     check("7. links on the tab carry the /tips prefix",
-          'href="/tips/distribution-rules"' in html and 'href="/tips/"' in html)
+          'href="/tips/configuration"' in html and 'href="/tips/"' in html)
     set_cookie = resp.headers.get("Set-Cookie", "")
     check("7. the re-issued session cookie keeps RF-One Web's attributes",
           all(flag in set_cookie for flag in ("Secure", "HttpOnly", "SameSite=Lax", "Path=/")), set_cookie)
@@ -226,12 +226,12 @@ def main() -> int:
     check("6. the tab shows RF-One > Tips > Clover Acquisition, upper levels clickable",
           f'<a href="{BASE}/">RF-One</a>' in crumbs and '<a href="/tips/">Tips</a>' in crumbs
           and '<span aria-current="page">Clover Acquisition</span>' in crumbs)
-    rules = client.get("/tips/distribution-rules", base_url=HOST).get_data(as_text=True)
-    check("6. a tab page: RF-One > Tips > Distribution Rules",
-          '<span aria-current="page">Distribution Rules</span>' in rules)
+    rules = client.get("/tips/configuration", base_url=HOST).get_data(as_text=True)
+    check("6. a tab page: RF-One > Tips > Configuration",
+          '<span aria-current="page">Configuration</span>' in rules)
     roles = client.get("/tips/roles/new", base_url=HOST).get_data(as_text=True)
-    check("6. a deeper page: RF-One > Tips > Distribution Rules > Roles > New Role, every upper level clickable",
-          '<a href="/tips/distribution-rules">Distribution Rules</a>' in roles
+    check("6. a deeper page: RF-One > Tips > Configuration > Roles > New Role, every upper level clickable",
+          '<a href="/tips/configuration">Configuration</a>' in roles
           and '<a href="/tips/roles">Roles</a>' in roles and '<span aria-current="page">New Role</span>' in roles)
     templates_dir = os.path.join(BASE_DIR, "templates")
     leftovers = [f for f in os.listdir(templates_dir)

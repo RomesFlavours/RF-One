@@ -37,7 +37,7 @@ A frequent action is available on the page where the need arises. The person doe
 Every sub-page shows the hierarchical path that leads to it, and every level of that path is clickable:
 
 ```
-RF-One > Tips > Distribution Rules > Rule #12
+RF-One > Tips > Configuration > Rule #12
 RF-One > Tips > Saved Periods > Period #7
 RF-One > Accounts > Edit account
 RF-One > Clover Acquisition

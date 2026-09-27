@@ -72,7 +72,7 @@ def main() -> int:
         # message with a link to Role management, and the create select
         # boxes are disabled (never a silently empty, submittable select).
         # -----------------------------------------------------------------
-        resp = client.get("/distribution-rules")
+        resp = client.get("/configuration")
         check(
             "with zero Roles, the Distribution Rules page shows a helpful message linking to Role management",
             b"No Roles are defined yet" in resp.data and b'href="/roles/new"' in resp.data,
@@ -159,7 +159,7 @@ def main() -> int:
         # Recipient) on the Distribution Rules create form, and a valid
         # Rule can be saved.
         # -----------------------------------------------------------------
-        resp = client.get("/distribution-rules")
+        resp = client.get("/configuration")
         check(
             "with Roles defined, both role selects are populated (Server and Host each appear twice: "
             "once as a Source option, once as a Recipient option)",
@@ -193,7 +193,7 @@ def main() -> int:
                 and versions[0].recipient_role_id == host_role_id,
             )
 
-        resp = client.get("/distribution-rules")
+        resp = client.get("/configuration")
         check(
             "the newly created Rule appears on the Distribution Rules page with the correct Role names",
             b"Server" in resp.data and b"Host" in resp.data and b"TOTAL_SALES" in resp.data,

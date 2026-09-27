@@ -1,13 +1,5 @@
-{% extends "base.html" %}
-{% block content %}
-
-{% with messages = get_flashed_messages(with_categories=True) %}
-  {% for category, message in messages %}
-    {% if category == "error" %}<div class="error">{{ message }}</div>{% endif %}
-    {% if category == "summary" %}<div class="card"><p>{{ message }}</p></div>{% endif %}
-  {% endfor %}
-{% endwith %}
-
+{# CONFIGURATION_TAB_001 — the Distribution Rules section of the Tips
+   Configuration page (formerly its own tab). Included by configuration.html. #}
 <div class="card">
   <h2>Describe the Tip Distribution Rule</h2>
   {% if restaurant %}
@@ -223,5 +215,3 @@
     A Restaurant may have multiple Rules, and the same Source Role may have more than one Recipient Rule.
   </p>
 </details>
-
-{% endblock %}

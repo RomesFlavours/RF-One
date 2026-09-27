@@ -310,3 +310,7 @@ button, .btn, select, input[type=text], input[type=number], input[type=date], in
 .control-tile .note { font-size: .72rem; color: var(--muted); margin-top: .15rem; }
 tr.row-muted td { color: var(--muted); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* CONFIGURATION_TAB_001 — the two sections of the Tips Configuration page. */
+.section-title { margin: 1.6rem 0 .7rem; padding-bottom: .3rem; border-bottom: 2px solid var(--olive-300); color: var(--olive-900); font-size: 1.15rem; }
+.section-title:first-of-type { margin-top: .4rem; }

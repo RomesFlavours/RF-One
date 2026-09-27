@@ -1,19 +1,6 @@
-{% extends "base.html" %}
-{% block content %}
-
-{% with messages = get_flashed_messages(with_categories=True) %}
-  {% for category, message in messages %}
-    {% if category == "error" %}
-      <div class="error">{{ message }}</div>
-    {% endif %}
-  {% endfor %}
-  {% for category, summary in messages %}
-    {% if category == "summary" %}
-    <div class="card"><p>{{ summary }}</p></div>
-    {% endif %}
-  {% endfor %}
-{% endwith %}
-
+{# CONFIGURATION_TAB_001 — the General Configuration section of the Tips
+   Configuration page (formerly the "Tips Configuration" tab). Included by
+   configuration.html. #}
 {% if not restaurant %}
   <div class="card"><p class="error">No Restaurant exists in this database yet.</p></div>
 {% else %}
@@ -183,4 +170,3 @@
 </div>
 
 {% endif %}
-{% endblock %}
