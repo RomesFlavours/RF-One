@@ -246,14 +246,14 @@ def main() -> int:
     check("E: no RF-One Web template keeps a generic Home link", not leftovers, str(leftovers))
     for path, current in (("/admin/accounts", "Accounts"), ("/admin/legal-entities", "Legal Entities"),
                           ("/admin/organization", "Organization"), ("/profile", "Profile"),
-                          ("/tips/runs", "Saved periods"), ("/compensation", "Compensation"),
+                          ("/tips/runs", "Saved Periods"), ("/compensation", "Compensation"),
                           ("/bank", "Import &amp; Instruments")):
         html = client.get(path, base_url=HOST).get_data(as_text=True)
         nav = crumbs(html)
         check(f"E: {path} shows RF-One > ... > {current}",
               '<a href="/">RF-One</a>' in nav and f'<span aria-current="page">{current}</span>' in nav, nav[:200])
     html = client.get("/tips/runs", base_url=HOST).get_data(as_text=True)
-    check("E: RF-One > Tips > Saved periods — Tips is a clickable level", '<a href="/tips/">Tips</a>' in crumbs(html))
+    check("E: RF-One > Tips > Saved Periods — Tips is a clickable level", '<a href="/tips/">Tips</a>' in crumbs(html))
 
     # ---- F: Tips on the same host ----------------------------------------------------
     tips = next(d for d in DOMAINS if d.code == "TIPS")

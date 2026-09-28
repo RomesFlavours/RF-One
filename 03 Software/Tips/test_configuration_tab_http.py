@@ -4,14 +4,17 @@ one Tips tab, "Configuration".
 
 Proves:
 
-  1. the Tips bar is Clover Acquisition, Configuration, Calculate Tips,
-     Explain / Audit Host Tips, Saved Periods (+ the unchanged Payment
-     Control pilot); no "Distribution Rules" or "Tips Configuration" tab;
+  1. the Tips bar is Clover Acquisition, Calculate Tips, Saved Periods,
+     Payment Control, Configuration (TIPS_NAVIGATION_STANDARD_001 order);
+     no "Distribution Rules" or "Tips Configuration" tab;
   2. Configuration holds Distribution Rules, then General Configuration,
      with their former content;
   3. every former action still works and comes back to Configuration;
   4. the former URLs redirect to the matching section;
-  5. breadcrumbs read RF-One > Tips > Configuration [> ...].
+  5. breadcrumbs read RF-One > Tips > Configuration [> ...];
+  6. the navigation follows Compensation's standard: breadcrumb first,
+     header naming RF-One only, host audit under Calculate Tips, the same
+     '›' separator.
 
 Throwaway SQLite + Flask test client. Never touches AWS or Clover.
 
@@ -87,10 +90,11 @@ def main() -> int:
     # ---- 1. The Tips bar ----------------------------------------------------
     bar = re.search(r'<div class="nav-tabs">(.*?)</div>', html, re.S).group(1)
     tabs = re.findall(r'>([^<]+)</a>', bar)
-    check("1. the bar is Clover Acquisition, Configuration, Calculate Tips, Explain / Audit Host Tips, Saved Periods "
-          "(+ Payment Control, unchanged)",
-          tabs == ["Clover Acquisition", "Configuration", "Calculate Tips", "Explain / Audit Host Tips",
-                   "Saved Periods", "Payment Control (Mercury Sandbox pilot)"], str(tabs))
+    # TIPS_NAVIGATION_STANDARD_001 — the approved order, Configuration last;
+    # Explain / Audit Host Tips is contextual (from Calculate Tips), not a tab.
+    check("1. the bar is Clover Acquisition, Calculate Tips, Saved Periods, Payment Control, Configuration",
+          tabs == ["Clover Acquisition", "Calculate Tips", "Saved Periods",
+                   "Payment Control (Mercury Sandbox pilot)", "Configuration"], str(tabs))
     check("1. no 'Distribution Rules' tab", "Distribution Rules" not in tabs)
     check("1. no 'Tips Configuration' tab", "Tips Configuration" not in tabs and "Tips Configuration" not in html)
     check("1. Configuration is the active tab", 'class="active">Configuration</a>' in bar)
@@ -174,6 +178,22 @@ def main() -> int:
     check("5. roles: RF-One > Tips > Configuration > Roles", '<a href="/configuration">Configuration</a>' in rc)
     check("5. no page names Distribution Rules or Tips Configuration as its own level",
           ">Distribution Rules</a>" not in detail + roles and "Tips Configuration" not in detail + roles)
+
+    # ---- 6. Navigation standard = Compensation (TIPS_NAVIGATION_STANDARD_001)
+    check("6. the breadcrumb comes first, above the Tips menu (as in Compensation)",
+          0 <= html.find('<nav class="breadcrumb"') < html.find('<div class="nav-tabs">'))
+    check("6. the header names RF-One, not 'RF-One · Tips' (no second Tips navigation)",
+          '<span class="brand-suffix">RF-One</span>' in html and "RF-One · Tips</span>" not in html)
+    audit = client.get("/host-audit").get_data(as_text=True)
+    ac = re.search(r'<nav class="breadcrumb".*?</nav>', audit, re.S).group(0)
+    check("6. host audit: RF-One > Tips > Calculate Tips > Explain / Audit Host Tips",
+          '<a href="/calculate-tips">Calculate Tips</a>' in ac
+          and '<span aria-current="page">Explain / Audit Host Tips</span>' in ac, ac)
+    audit_bar = re.search(r'<div class="nav-tabs">(.*?)</div>', audit, re.S).group(1)
+    check("6. host audit highlights Calculate Tips, its parent", 'class="active">Calculate Tips</a>' in audit_bar)
+    css = client.get("/static/css/rf-one.css").get_data(as_text=True)
+    check("6. the breadcrumb separator is the same '›' (\\203A) as RF-One Web",
+          '.breadcrumb li + li::before { content: "\\203A";' in css)
 
     print()
     print(f"Configuration tab HTTP tests: {'SUCCESS' if not failed else 'FAILURE'} "

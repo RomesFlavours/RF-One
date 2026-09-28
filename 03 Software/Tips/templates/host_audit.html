@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set crumbs = [('Calculate Tips', url_for('calculate_tips_home', start_at=start_at or None, end_at=end_at or None)), ('Explain / Audit Host Tips', None)] %}
 {% block content %}
 
 {% with messages = get_flashed_messages(with_categories=True) %}

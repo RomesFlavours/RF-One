@@ -7,11 +7,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block page_title %}RF-One · Tips{% endblock %}</title>
 {% if brand_logo_filename %}
   <link rel="icon" type="image/png" href="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}?v=2">
 {% endif %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=5">
 </head>
 <body>
 <div class="wrap">
@@ -20,10 +21,14 @@
          injected into every template by app.py's `inject_brand_context()`
          context processor, which reads the RF-One `Restaurant.name` already
          resolved elsewhere in this app — never hardcoded here. -->
-    <a href="{{ url_for('home') }}" class="brand">
+    <!-- Same shell header as RF-One Web (Compensation): the suffix names
+         RF-One, never the Domain — the breadcrumb below is what says
+         "Tips". The header links to RF-One Home, like Compensation's; it
+         is decoration, not the navigation (TIPS_NAVIGATION_STANDARD_001). -->
+    <a href="{{ rfone_web_home_url() or url_for('home') }}" class="brand">
       <span class="brand-name-group">
         <span class="brand-wordmark">{{ brand_name }}</span>
-        <span class="brand-suffix">RF-One · Tips</span>
+        <span class="brand-suffix">RF-One</span>
       </span>
     </a>
     <!-- The RF-One product logo — owned by RF-One, not Tips. Served from
@@ -35,18 +40,12 @@
       <img class="brand-logo" src="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}" alt="RF-One">
     {% endif %}
   </header>
-  <p class="subtitle">{% block page_subtitle %}Clover source-fact ingestion and Tip Distribution Rule configuration — no employee payout is calculated here.{% endblock %}</p>
-  <div class="nav-tabs">
-    <a href="{{ url_for('home') }}" class="{{ 'active' if active_nav == 'historical-backfill' else '' }}">Clover Acquisition</a>
-    <a href="{{ url_for('configuration_home') }}" class="{{ 'active' if active_nav == 'configuration' else '' }}">Configuration</a>
-    <a href="{{ url_for('calculate_tips_home') }}" class="{{ 'active' if active_nav == 'calculate-tips' else '' }}">Calculate Tips</a>
-    <a href="{{ url_for('host_audit_home') }}" class="{{ 'active' if active_nav == 'host-audit' else '' }}">Explain / Audit Host Tips</a>
-    <a href="{{ url_for('tips_run_history') }}" class="{{ 'active' if active_nav == 'tips-runs' else '' }}">Saved Periods</a>
-    <a href="{{ url_for('payment_control_home') }}" class="{{ 'active' if active_nav == 'payment-control' else '' }}">Payment Control (Mercury Sandbox pilot)</a>
-  </div>
-  {# RF-One UI Rules §4: RF-One > Tips > <tab> [> deeper levels]. A detail
-     page sets `crumbs` (before its content) to the (label, href) levels
-     below Tips, tab included; every other page gets RF-One > Tips > <tab>. #}
+  <p class="subtitle">{% block page_subtitle %}{% endblock %}</p>
+  {# RF-One UI Rules §4: RF-One > Tips > <tab> [> deeper levels], placed
+     where Compensation places it — first, above the page's own content.
+     A detail page sets `crumbs` (before its content) to the (label, href)
+     levels below Tips, tab included; every other page gets
+     RF-One > Tips > <tab>. #}
   {% set tab = tab_labels.get(active_nav) %}
   {% if request.blueprint == 'training' %}
     {# Training's shared templates draw their own path (RF-One > Training > …). #}
@@ -57,6 +56,18 @@
   {% else %}
     {{ breadcrumb([('RF-One', rfone_web_home_url()), ('Tips', None)]) }}
   {% endif %}
+  {# The Tips menu, in the approved order — Configuration last, on the
+     right. Explain / Audit Host Tips is not a menu entry: it is opened in
+     context from Calculate Tips ("check Hosts", a row's "audit"), and its
+     breadcrumb reads RF-One > Tips > Calculate Tips > Explain / Audit Host
+     Tips (TIPS_NAVIGATION_STANDARD_001). #}
+  <div class="nav-tabs">
+    <a href="{{ url_for('home') }}" class="{{ 'active' if active_nav == 'historical-backfill' else '' }}">Clover Acquisition</a>
+    <a href="{{ url_for('calculate_tips_home') }}" class="{{ 'active' if active_nav in ('calculate-tips', 'host-audit') else '' }}">Calculate Tips</a>
+    <a href="{{ url_for('tips_run_history') }}" class="{{ 'active' if active_nav == 'tips-runs' else '' }}">Saved Periods</a>
+    <a href="{{ url_for('payment_control_home') }}" class="{{ 'active' if active_nav == 'payment-control' else '' }}">Payment Control (Mercury Sandbox pilot)</a>
+    <a href="{{ url_for('configuration_home') }}" class="{{ 'active' if active_nav == 'configuration' else '' }}">Configuration</a>
+  </div>
   {% block content %}{% endblock %}
 </div>
 </body>

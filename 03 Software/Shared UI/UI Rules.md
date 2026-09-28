@@ -48,7 +48,8 @@ RF-One > Tips > Clover Acquisition        (when opened from the Tips tab)
 - A heading on the Home page that is not itself a page (e.g. "Settings", "Administration") is not a level.
 - A general RF-One capability is not presented as a child of a Domain just because that Domain links to it. The Domain level appears only when the person actually came from there (Clover Acquisition: `?from=tips`).
 - The last level is the current page and is not a link. A level whose address is not configured is shown unlinked.
-- Implementation: the `breadcrumb(items)` macro in `templates/_nav_macros.html`, identical in RF-One Web and Tips, plus the `.breadcrumb` style in each app's `rf-one.css`. The Tips `base.html` builds RF-One > Tips > *tab* automatically. A detail page adds its levels by setting `crumbs`.
+- Implementation: the `breadcrumb(items)` macro in `templates/_nav_macros.html`, identical in RF-One Web and Tips, plus the `.breadcrumb` style in each app's `rf-one.css` (identical rules, `›` separator). The Tips `base.html` builds RF-One > Tips > *tab* automatically. A detail page adds its levels by setting `crumbs`.
+- Tips follows the Compensation layout (TIPS_NAVIGATION_STANDARD_001): the header names RF-One only (never "RF-One · Tips") and links to RF-One Home; the breadcrumb comes first; the Tips menu follows, in this order — Clover Acquisition, Calculate Tips, Saved Periods, Payment Control, Configuration (always last). A contextual page is not a menu entry: Explain / Audit Host Tips is opened from Calculate Tips and reads RF-One > Tips > Calculate Tips > Explain / Audit Host Tips.
 
 ---
 

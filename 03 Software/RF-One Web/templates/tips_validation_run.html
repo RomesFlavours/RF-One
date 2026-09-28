@@ -5,7 +5,7 @@
 {# The saved Calculation Run Report (TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001
    §18), read back from what was persisted — never recalculated — plus the one
    human validation action (§14/§15). Mirrors Tips/templates/tips_run_report.html. #}
-{{ breadcrumb([('RF-One', url_for('home')), ('Tips', tips_home_url), ('Saved periods', url_for('tips_validation_runs')), ('Period #' ~ run.id, None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Tips', tips_home_url), ('Saved Periods', url_for('tips_validation_runs')), ('Period #' ~ run.id, None)]) }}
 <h1>
   Calculation Run {{ run.id }}
   {% if run.is_final %}<span class="badge ok">FINAL</span>
