@@ -50,6 +50,7 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as tips_app  # noqa: E402
+from tips_test_session import signed_in_client  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.business_date import resolve_and_persist_order_business_date  # noqa: E402
@@ -175,7 +176,7 @@ def main() -> int:
         engine_figures = figures(new, engine.build_employee_review(s, new))
         s.rollback()
 
-    client = tips_app.app.test_client()
+    client = signed_in_client(tips_app)
     runs_before = run_count()
     money = lambda c: "${:,.2f}".format(c / 100)  # noqa: E731
 

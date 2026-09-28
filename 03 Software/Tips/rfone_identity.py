@@ -31,8 +31,10 @@ fact and not something code can arrange:
 Tips does NOT validate periods (TIPS_AWS_FINALIZATION_WORKFLOW_001). The
 one human finalization path is RF-One Web's `/tips/runs/<run_id>`, on the
 host the person signed in to; Tips only links there (`rfone_web_link.py`).
-The identity read here serves one purpose: attributing a change of the
-Tips Validation Mode to the person who made it, when one is signed in.
+The identity read here serves two purposes: the RF-One login every Tips
+page requires (`app._require_rfone_login`, TIPS_ACCESS_AND_DRILLDOWN_001),
+and attributing a change of the Tips Validation Mode to the person who
+made it.
 
 When no identity can be resolved, every function here returns `None`.
 Tips never falls back to a typed-in name and never records an invented

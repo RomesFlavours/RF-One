@@ -339,7 +339,11 @@ def main() -> int:
             [sys.executable, "-c", tips_check_code], cwd=_TIPS_DIR, env=tips_env,
             capture_output=True, text=True, timeout=30,
         )
-        check("10b: Tips home page still works unmodified", "TIPS_HOME_STATUS 200" in result.stdout, result.stderr[-1500:])
+        # TIPS_ACCESS_AND_DRILLDOWN_001 — Tips pages now require the RF-One
+        # login: signed out, the home is refused (302 to RF-One's login, or
+        # 401 when RF-One Web's address is not configured, as here).
+        check("10b: Tips home page answers, and requires the RF-One login when signed out",
+              re.search(r"TIPS_HOME_STATUS (302|401)\b", result.stdout) is not None, result.stderr[-1500:])
         check("10c: Tips' own /training/menu still works unmodified", "TIPS_TRAINING_MENU_STATUS 200" in result.stdout)
         check(
             "10d: Training's OWN login under Tips is untouched (still rejects a wrong password)",

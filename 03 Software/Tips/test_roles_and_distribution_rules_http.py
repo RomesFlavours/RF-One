@@ -42,6 +42,7 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as tips_app  # noqa: E402
+from tips_test_session import signed_in_client  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')  # not used by Tips - no CSRF here; kept for parity
@@ -65,7 +66,7 @@ def main() -> int:
             s.commit()
             restaurant_id = restaurant.id
 
-        client = tips_app.app.test_client()
+        client = signed_in_client(tips_app)
 
         # -----------------------------------------------------------------
         # Before any Role exists: the create-rule form shows a helpful

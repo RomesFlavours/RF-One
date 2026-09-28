@@ -36,6 +36,7 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as tips_app  # noqa: E402
+from tips_test_session import signed_in_client  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 
 UTC = timezone.utc
@@ -53,7 +54,7 @@ def main() -> int:
             print(f"FAILED: {description}" + (f" ({detail})" if detail else ""))
 
     try:
-        client = tips_app.app.test_client()
+        client = signed_in_client(tips_app)
 
         # -----------------------------------------------------------------
         # No Restaurant at all yet: unaffected by this change (pre-existing

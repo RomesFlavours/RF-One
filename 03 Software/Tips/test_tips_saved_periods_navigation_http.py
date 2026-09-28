@@ -39,6 +39,7 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as tips_app  # noqa: E402
+from tips_test_session import signed_in_client  # noqa: E402
 import rfone_web_link  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
@@ -106,7 +107,7 @@ def main() -> int:
             with tips_app.SessionFactory() as s:
                 return s.get(m.TipDistributionCalculationRun, run_id).state
 
-        client = tips_app.app.test_client()
+        client = signed_in_client(tips_app)
 
         # --- configured -------------------------------------------------
         set_base(BASE)

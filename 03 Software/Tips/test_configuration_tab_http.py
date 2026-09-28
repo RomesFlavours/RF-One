@@ -49,6 +49,7 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as tips_app  # noqa: E402
+from tips_test_session import signed_in_client  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.tips import review_mode_service as review_mode_svc  # noqa: E402
@@ -84,7 +85,7 @@ def main() -> int:
         restaurant_id = restaurant.id
         server_id, host_id = [r.id for r in s.scalars(select(m.RestaurantRole).order_by(m.RestaurantRole.name.desc()))]
 
-    client = tips_app.app.test_client()
+    client = signed_in_client(tips_app)
     html = client.get("/configuration").get_data(as_text=True)
 
     # ---- 1. The Tips bar ----------------------------------------------------

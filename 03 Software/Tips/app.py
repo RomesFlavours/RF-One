@@ -52,7 +52,7 @@ _DATA_STORE_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "RF-One Data Sto
 if _DATA_STORE_DIR not in sys.path:
     sys.path.insert(0, _DATA_STORE_DIR)
 
-from flask import Flask, Response, flash, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
+from flask import Flask, Response, abort, flash, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
 from flask import session as flask_session  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 
@@ -96,10 +96,9 @@ _engine = create_configured_engine(_DB_URL)
 SessionFactory = create_session_factory(_engine)
 
 app = Flask(__name__)
-# Only used to flash the import summary across the POST -> redirect -> GET
-# round trip below — never an Authentication mechanism (Tips has none; see
-# GLOBAL_INTEGRITY_FIX_002's ActingIdentity work for that concern in
-# Selection, not replicated here since this task does not touch identity).
+# The SAME signing secret RF-One Web uses, so Tips can verify the RF-One
+# session cookie it reads (`_require_rfone_login` below). Tips never issues
+# a login of its own; it also signs its flash messages with it.
 app.secret_key = os.environ.get("RFONE_FLASK_SECRET_KEY") or os.urandom(24)
 # UI_NAVIGATION_AND_LOCAL_TIME_001 — Tips is published on the SAME host as
 # RF-One Web, under `/tips/` (one CloudFront entry in front of both App
@@ -146,6 +145,41 @@ def _send_direct_visits_to_the_official_entry():
     if target is not None:
         return redirect(target, code=301)
     return None
+
+
+# TIPS_ACCESS_AND_DRILLDOWN_001 — every Tips page and action requires the
+# RF-One login: the SAME shared session RF-One Web issues, checked with the
+# SAME lookup its `require_login` uses (`rfone_identity.current_account` ->
+# `rfone_web_session.account_for_session`, revocation included). Tips has no
+# login of its own; a visitor without a session is sent to RF-One's login
+# and comes back to the page asked for. This is the common minimum only —
+# every existing, more specific check (e.g. RF-One Web's own TIPS/Clover
+# gates) stays exactly as it is.
+#
+# Left public on purpose, and only these: the stylesheet/images a login
+# redirect itself needs (`static`, `shared_brand_logo`), the public dish
+# guide (`training_menu`), and the Training blueprint, which has its own
+# login. App Runner's health check is TCP, and no job calls Tips over HTTP.
+_PUBLIC_ENDPOINTS = frozenset({"static", "shared_brand_logo", "training_menu"})
+
+
+@app.before_request
+def _require_rfone_login():
+    if request.endpoint is None or request.endpoint in _PUBLIC_ENDPOINTS or request.blueprint == "training":
+        return None
+    with SessionFactory() as db_session:
+        if rfone_identity.current_account(db_session) is not None:
+            return None
+    # Back to the page asked for; after a refused POST, to Tips's first page
+    # (the form's own URL cannot be reopened with a GET).
+    if request.method in ("GET", "HEAD"):
+        next_path = request.script_root + request.full_path.rstrip("?")
+    else:
+        next_path = request.script_root + "/"
+    target = rfone_web_link.login_url(next_path)
+    if target is None:
+        abort(401)
+    return redirect(target)
 
 # RF-One UI Rules (`03 Software/Shared UI/UI Rules.md`): local times,
 # "Surname I." — the same shared formatter RF-One Web registers.
@@ -248,8 +282,8 @@ def training_menu():
 # own database wiring, auth/session helpers, templates) lives in that
 # directory; Training never imports anything from this file. It reuses this
 # same Flask app's `secret_key` (already set above) for its session cookie —
-# not a new session mechanism, and Tips's own routes remain exactly as
-# unauthenticated as before this addition.
+# not a new session mechanism. Training keeps its own login; Tips's own
+# routes require the RF-One login (`_require_rfone_login`).
 if _TRAINING_DIR not in sys.path:
     sys.path.insert(0, _TRAINING_DIR)
 from routes import training_bp  # noqa: E402
@@ -864,16 +898,17 @@ def calculate_tips_order_drilldown(order_id: int):
             flash("That Order is not within the selected period.", "error")
             return redirect(url_for("calculate_tips_home", start_at=start_at, end_at=end_at))
 
+        # `get_order_drilldown` returns a dict (the template reads it with
+        # Jinja's attribute syntax, which falls back to keys; Python does not).
         # RF-One UI Rules §2: people as "Surname I.", never an id.
-        recipient_ids = {a.recipient_employee_id for a in drilldown.allocations if a.recipient_employee_id}
+        recipient_ids = {a.recipient_employee_id for a in drilldown["allocations"] if a.recipient_employee_id}
         recipient_names = {
             e.id: display_format.employee_short_name(e.display_name)
             for e in (session.scalars(select(m.Employee).where(m.Employee.id.in_(recipient_ids))).all()
                       if recipient_ids else [])
         }
-        order_employee_name = _employee_names(session, [drilldown.order.source_employee_id]).get(
-            drilldown.order.source_employee_id
-        )
+        order = drilldown["order"]
+        order_employee_name = _employee_names(session, [order.source_employee_id]).get(order.source_employee_id)
         return render_template(
             "order_drilldown.html", restaurant=restaurant, start_at=start_at, end_at=end_at,
             drilldown=drilldown, recipient_names=recipient_names, order_employee_name=order_employee_name,

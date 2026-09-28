@@ -37,6 +37,7 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as tips_app  # noqa: E402
+from tips_test_session import signed_in_client  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 
@@ -67,7 +68,7 @@ def main() -> int:
         s.add(m.RestaurantLocation(restaurant_id=restaurant.id, location_id=location.id, is_primary=True))
         s.commit()
 
-    web = tips_app.app.test_client()
+    web = signed_in_client(tips_app)
     for path, data in (("/historical-backfill", {"from_date": "2026-09-01", "through_date": "2026-09-02"}),
                        ("/clover-acquisition/sync-now", {})):
         resp = web.post(path, data=data)

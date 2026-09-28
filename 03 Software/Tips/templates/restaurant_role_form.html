@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{# Roles lives under Configuration: its tab stays highlighted (TIPS_ACCESS_AND_DRILLDOWN_001). #}
+{% set active_nav = 'configuration' %}
 {% set crumbs = [('Configuration', url_for('configuration_home')), ('Roles', url_for('restaurant_roles_home')), ('New Role' if mode == 'create' else 'Edit Role', None)] %}
 {% block content %}
 

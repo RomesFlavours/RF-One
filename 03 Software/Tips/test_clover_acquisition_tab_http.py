@@ -201,11 +201,15 @@ def main() -> int:
     page = other.get("/tips/", base_url=HOST).get_data(as_text=True)
     check("3. without the Clover Acquisition access: no Sync Now button, a plain note instead",
           'id="sync-now-btn"' not in page and "requires the Clover Acquisition access" in page)
+    # TIPS_ACCESS_AND_DRILLDOWN_001 — signed out, the tab is not shown at all:
+    # RF-One's login, coming back to the Tips tab.
     anon = tips_app.app.test_client()
-    page = anon.get("/tips/", base_url=HOST).get_data(as_text=True)
-    check("3. signed out: no button, a sign-in link coming back to the Tips tab",
-          'id="sync-now-btn"' not in page and f'href="{BASE}/login?next=%2Ftips%2F"' in page)
-    check("3. the last update is visible to everyone who opens the tab", "2026-09-26 14:05 EDT" in page)
+    resp_anon = anon.get("/tips/", base_url=HOST)
+    page = resp_anon.get_data(as_text=True)
+    check("3. signed out: sent to RF-One's login, coming back to the Tips tab",
+          resp_anon.status_code == 302 and resp_anon.headers["Location"] == f"{BASE}/login?next=%2Ftips%2F",
+          f"{resp_anon.status_code} {resp_anon.headers.get('Location')}")
+    check("3. signed out: no data on the response", "2026-09-26 14:05 EDT" not in page and 'id="sync-now-btn"' not in page)
 
     # ---- 4: a job in progress -------------------------------------------------
     with tips_app.SessionFactory() as s:

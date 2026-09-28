@@ -51,6 +51,7 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as tips_app  # noqa: E402
+from tips_test_session import signed_in_client  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.tips import distribution_engine as engine_svc  # noqa: E402
@@ -145,7 +146,7 @@ def main() -> int:
         engine_o2 = engine_svc._order_gross_tip_components(s, s.get(m.Order, o2.id))
 
     before = table_counts()
-    client = tips_app.app.test_client()
+    client = signed_in_client(tips_app)
     html = client.get("/?from_date=2026-09-26&through_date=2026-09-26").get_data(as_text=True)
 
     # ---- 1. Page order --------------------------------------------------
