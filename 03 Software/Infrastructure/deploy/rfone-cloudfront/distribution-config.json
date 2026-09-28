@@ -2,6 +2,12 @@
   "CallerReference": "rfone-single-entry-UI_NAVIGATION_AND_LOCAL_TIME_001",
   "Comment": "RF-One single entry: rfone-web at /, rfone-tips at /tips/ (shared RF-One session)",
   "Enabled": true,
+  "Aliases": {
+    "Quantity": 1,
+    "Items": [
+      "rfone.romesflavours.com"
+    ]
+  },
   "PriceClass": "PriceClass_100",
   "HttpVersion": "http2and3",
   "IsIPV6Enabled": true,
@@ -13,7 +19,13 @@
         "DomainName": "vhmsm9mgh8.us-east-1.awsapprunner.com",
         "OriginPath": "",
         "CustomHeaders": {
-          "Quantity": 0
+          "Quantity": 1,
+          "Items": [
+            {
+              "HeaderName": "X-RFOne-Entry",
+              "HeaderValue": "cloudfront"
+            }
+          ]
         },
         "CustomOriginConfig": {
           "HTTPPort": 80,
@@ -36,7 +48,13 @@
         "DomainName": "mxgsc3nwha.us-east-1.awsapprunner.com",
         "OriginPath": "",
         "CustomHeaders": {
-          "Quantity": 0
+          "Quantity": 1,
+          "Items": [
+            {
+              "HeaderName": "X-RFOne-Entry",
+              "HeaderValue": "cloudfront"
+            }
+          ]
         },
         "CustomOriginConfig": {
           "HTTPPort": 80,
@@ -87,7 +105,13 @@
       "Quantity": 0
     },
     "FunctionAssociations": {
-      "Quantity": 0
+      "Quantity": 1,
+      "Items": [
+        {
+          "FunctionARN": "arn:aws:cloudfront::418674484214:function/rfone-official-host-redirect",
+          "EventType": "viewer-request"
+        }
+      ]
     }
   },
   "CacheBehaviors": {
@@ -124,7 +148,13 @@
           "Quantity": 0
         },
         "FunctionAssociations": {
-          "Quantity": 0
+          "Quantity": 1,
+          "Items": [
+            {
+              "FunctionARN": "arn:aws:cloudfront::418674484214:function/rfone-official-host-redirect",
+              "EventType": "viewer-request"
+            }
+          ]
         },
         "PathPattern": "/tips/runs*"
       },
@@ -159,7 +189,13 @@
           "Quantity": 0
         },
         "FunctionAssociations": {
-          "Quantity": 0
+          "Quantity": 1,
+          "Items": [
+            {
+              "FunctionARN": "arn:aws:cloudfront::418674484214:function/rfone-official-host-redirect",
+              "EventType": "viewer-request"
+            }
+          ]
         },
         "PathPattern": "/tips"
       },
@@ -194,14 +230,17 @@
           "Quantity": 0
         },
         "FunctionAssociations": {
-          "Quantity": 0
+          "Quantity": 1,
+          "Items": [
+            {
+              "FunctionARN": "arn:aws:cloudfront::418674484214:function/rfone-official-host-redirect",
+              "EventType": "viewer-request"
+            }
+          ]
         },
         "PathPattern": "/tips/*"
       }
     ]
-  },
-  "ViewerCertificate": {
-    "CloudFrontDefaultCertificate": true
   },
   "Restrictions": {
     "GeoRestriction": {
@@ -209,5 +248,11 @@
       "Quantity": 0
     }
   },
-  "DefaultRootObject": ""
+  "DefaultRootObject": "",
+  "ViewerCertificate": {
+    "CloudFrontDefaultCertificate": false,
+    "ACMCertificateArn": "arn:aws:acm:us-east-1:418674484214:certificate/c6b56450-499d-4b87-b0b5-f51d536b91e2",
+    "SSLSupportMethod": "sni-only",
+    "MinimumProtocolVersion": "TLSv1.2_2021"
+  }
 }

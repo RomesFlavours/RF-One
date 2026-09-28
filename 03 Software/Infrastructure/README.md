@@ -230,6 +230,46 @@ Runner ha applicato le variabili ma ha tenuto l'immagine precedente. È
 servito un `start-deployment` esplicito per caricare il nuovo `:latest`.
 Verificare sempre la versione servita dopo un rilascio.
 
+### Dominio ufficiale attivo (2026-09-28)
+
+**L'ingresso ufficiale di RF-One è `https://rfone.romesflavours.com`**
+(decisione del Product Owner, UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001). Sostituisce
+`https://dn1l56t5jz22u.cloudfront.net` come indirizzo proposto alle persone.
+
+| Elemento | Valore |
+|---|---|
+| DNS (Aruba, zona `romesflavours.com`) | `rfone` CNAME `dn1l56t5jz22u.cloudfront.net` |
+| Certificato ACM (us-east-1) | `arn:aws:acm:us-east-1:418674484214:certificate/c6b56450-499d-4b87-b0b5-f51d536b91e2` — validazione DNS (CNAME `_7f4351648f9c0d5180ffb897990f747e.rfone` su Aruba), `ISSUED` il 2026-09-28 |
+| Distribuzione | la stessa `E3MIBLH55LEYD8`: alias `rfone.romesflavours.com`, `sni-only`, `TLSv1.2_2021` |
+| `rfone-web` | `RFONE_PUBLIC_BASE_URL=https://rfone.romesflavours.com` |
+| `rfone-tips` | `RFONE_PUBLIC_BASE_URL` e `RFONE_WEB_BASE_URL` = `https://rfone.romesflavours.com` |
+
+Ogni origin riceve da CloudFront l'header `X-RFOne-Entry: cloudfront`
+(`rfone_data_store/public_entry.py`): una GET/HEAD che arriva a un hostname
+App Runner senza quell'header viene reindirizzata (301) alla stessa pagina sul
+dominio ufficiale.
+
+L'hostname tecnico `dn1l56t5jz22u.cloudfront.net` passa invece per CloudFront e
+riceve l'header, quindi quel redirect non lo copre. Lo copre la CloudFront
+Function **`rfone-official-host-redirect`**
+([`deploy/rfone-cloudfront/official-host-redirect.js`](deploy/rfone-cloudfront/official-host-redirect.js),
+runtime `cloudfront-js-2.0`, stage LIVE), associata in *viewer-request* a tutti
+e quattro i comportamenti della distribuzione:
+
+- `Host` = `dn1l56t5jz22u.cloudfront.net` → 301 verso
+  `https://rfone.romesflavours.com` + stesso path + stessa query string;
+- qualsiasi altro `Host` (quello ufficiale compreso) → prosegue invariato,
+  quindi il redirect non può ripetersi (nessun loop);
+- l'instradamento verso le origin (`/tips/*` ecc.) non cambia.
+
+Limite noto: le CloudFront Function non vedono la query string grezza. Nomi,
+valori (codifica compresa) e ordine dei valori ripetuti si conservano, ma
+l'ordine fra parametri diversi può cambiare, e `?a` diventa `?a=`. Per le app
+RF-One il significato è identico.
+
+Per modificarla: `update-function` con il file versionato, `test-function`
+sullo stage DEVELOPMENT, poi `publish-function`.
+
 ### Opzione B — montare Tips dentro `rfone-web`, come già fatto per Training
 
 RF-One Web monta già Training al proprio interno dietro lo stesso login
