@@ -171,6 +171,41 @@ def main() -> int:
         os.environ.clear()
         os.environ.update(original_environ)
 
+    # --- the shared test isolation (used by the Selection suites) blocks a
+    # real provider client even when a provider is fully configured --------
+    from rfone_data_store.selection.parsing.ai_test_isolation import isolated_ai_client
+
+    for provider, extra in (("BEDROCK", {"RFONE_BEDROCK_MODEL_ID": "us.anthropic.claude-fake-test-model-v1:0"}),
+                            ("ANTHROPIC", {"ANTHROPIC_API_KEY": "fake-test-key"})):
+        with isolated_ai_client() as guard:
+            os.environ["RFONE_AI_PROVIDER"] = provider
+            os.environ.update(extra)
+            try:
+                ai_client.generate_json("irrelevant")
+            except Exception:
+                pass
+        sdk = "boto3" if provider == "BEDROCK" else "anthropic"
+        try:
+            __import__(sdk)
+            sdk_installed = True
+        except ImportError:
+            sdk_installed = False
+        if sdk_installed:
+            result.check(
+                f"Test isolation blocks and records a real {provider} client attempt",
+                len(guard.attempts) == 1,
+            )
+        else:
+            result.check(
+                f"{provider}: the '{sdk}' package is not installed here, so no real call is possible",
+                guard.attempts == [],
+            )
+    result.check(
+        "Test isolation restores the environment it found",
+        all(os.environ.get(name) == original_environ.get(name)
+            for name in ("RFONE_AI_PROVIDER", "RFONE_BEDROCK_MODEL_ID", "ANTHROPIC_API_KEY")),
+    )
+
     if not result.failed:
         print(f"AI client provider-selection tests: SUCCESS ({len(result.passed)}/{len(result.passed)} checks passed)")
         return 0

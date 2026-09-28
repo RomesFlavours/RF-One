@@ -20,6 +20,11 @@ disposable SQLite database is self-provisioned automatically
 operational default (`data/rfone.db`), this refuses to run
 (`UnsafeTestDatabaseError`) instead of risking real data.
 
+The AI client is isolated from this machine's `.env` for the whole run
+(`ai_test_isolation.isolated_ai_client`): no AI provider is configured unless
+a check injects one, and any attempt to reach a real Anthropic/Bedrock
+client is blocked and fails the run.
+
 Usage:
     python test_selection_engine.py
     RFONE_DATABASE_URL=sqlite:///path/to/disposable.db python test_selection_engine.py
@@ -36,6 +41,7 @@ from rfone_data_store.database import (
     redact_database_url,
     resolve_test_database_url,
 )
+from rfone_data_store.selection.parsing.ai_test_isolation import isolated_ai_client
 from rfone_data_store.selection_validation import run_validation
 
 
@@ -46,10 +52,18 @@ def main() -> int:
     engine = create_configured_engine(url)
     try:
         session_factory = create_session_factory(engine)
-        result = run_validation(session_factory)
+        with isolated_ai_client() as ai_guard:
+            result = run_validation(session_factory)
     finally:
         engine.dispose()
         cleanup_disposable_test_database_url(url)
+
+    no_real_ai_call = "no real AI provider call was attempted during the run"
+    if ai_guard.attempts:
+        result.success = False
+        result.checks_failed.append(f"{no_real_ai_call} (attempted: {', '.join(ai_guard.attempts)})")
+    else:
+        result.checks_passed.append(no_real_ai_call)
 
     if result.success:
         print(f"Selection engine (TASK_SELECTION_001) tests: SUCCESS ({len(result.checks_passed)}/{len(result.checks_passed)} checks passed)")

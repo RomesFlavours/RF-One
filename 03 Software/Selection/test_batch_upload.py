@@ -14,7 +14,10 @@ Task 2A replaced the fabricated-fixture DEMO fallback with a real,
 rule-based parser (`rfone_data_store/selection/parsing/deterministic_parser.py`);
 these tests upload real, hand-written résumé text/DOCX fixtures and assert
 the structured candidate data actually comes from that content — never a
-canned fixture — since no AI credentials are configured in this environment.
+canned fixture — since no AI provider is configured for this test: the AI
+client is isolated from this machine's `.env` for the whole run
+(`ai_test_isolation.isolated_ai_client`), and any attempt to reach a real
+Anthropic/Bedrock client is blocked and fails the run.
 
 Runs against a throwaway SQLite database (never the real
 `data/selection.db`) and cleans up every file it writes into `uploads/`
@@ -38,6 +41,7 @@ os.remove(_TEST_DB_PATH)  # let app.py's migration runner create it fresh
 os.environ["RFONE_DATABASE_URL"] = f"sqlite:///{_TEST_DB_PATH.replace(os.sep, '/')}"
 
 import app as selection_app  # noqa: E402
+from rfone_data_store.selection.parsing.ai_test_isolation import isolated_ai_client  # noqa: E402
 
 try:
     import docx as _python_docx
@@ -113,6 +117,28 @@ def _fake_pdf(label: str) -> bytes:
 
 
 def main() -> int:
+    with isolated_ai_client() as ai_guard:
+        checks_passed, checks_failed = _run_checks()
+    no_real_ai_call = "no real AI provider call was attempted during the run"
+    if ai_guard.attempts:
+        checks_failed.append(f"{no_real_ai_call} (attempted: {', '.join(ai_guard.attempts)})")
+    else:
+        checks_passed.append(no_real_ai_call)
+
+    if not checks_failed:
+        print(f"Selection batch upload (Task 2A) tests: SUCCESS ({len(checks_passed)}/{len(checks_passed)} checks passed)")
+        return 0
+
+    print(
+        "Selection batch upload (Task 2A) tests: FAILURE "
+        f"({len(checks_passed)} passed, {len(checks_failed)} failed)"
+    )
+    for description in checks_failed:
+        print(f"  FAILED: {description}")
+    return 1
+
+
+def _run_checks() -> tuple[list[str], list[str]]:
     checks_passed: list[str] = []
     checks_failed: list[str] = []
 
@@ -174,7 +200,7 @@ def main() -> int:
                 profile = selection_app.persistence.to_profile(alpha_candidate)
                 alpha_parsing_mode = alpha_candidate.parsing_mode
             check(
-                "4: parsing_mode is RULE_BASED (no AI credentials configured in this environment) — "
+                "4: parsing_mode is RULE_BASED (no AI provider configured for this test) — "
                 "never DEMO for a real upload",
                 alpha_parsing_mode == "RULE_BASED",
             )
@@ -358,8 +384,8 @@ def main() -> int:
 
         # ---------------------------------------------------------------
         # 5. Task 3D-FIX — automatic Primary Screening through the real
-        #    HTTP routes, with NO AI provider configured in this
-        #    environment (the authentic unavailable-provider path).
+        #    HTTP routes, with NO AI provider configured for this test
+        #    (the authentic unavailable-provider path).
         # ---------------------------------------------------------------
         criterion_response = client.post(
             "/primary-screening-criteria/new",
@@ -471,17 +497,7 @@ def main() -> int:
                 except OSError:
                     pass
 
-    if not checks_failed:
-        print(f"Selection batch upload (Task 2A) tests: SUCCESS ({len(checks_passed)}/{len(checks_passed)} checks passed)")
-        return 0
-
-    print(
-        "Selection batch upload (Task 2A) tests: FAILURE "
-        f"({len(checks_passed)} passed, {len(checks_failed)} failed)"
-    )
-    for description in checks_failed:
-        print(f"  FAILED: {description}")
-    return 1
+    return checks_passed, checks_failed
 
 
 if __name__ == "__main__":
