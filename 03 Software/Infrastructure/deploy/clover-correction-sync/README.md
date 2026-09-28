@@ -40,6 +40,23 @@ see [`../clover-acquisition-job/README.md`](../clover-acquisition-job/README.md)
 - **History:** each cycle writes one `ingestion_runs` row of mode `CORRECTION` (the cycle: status, what it applied, errors) plus one cursor row per resource (`resource_type` orders/payments/refunds: the window scanned). RF-One Web's Clover Acquisition history lists them as **Correction Sync**, the latest cycle and the recent failed ones.
 - **First run:** 24 h back per resource, then it resumes from its own checkpoints.
 
+## Created with
+
+```powershell
+aws logs create-log-group --log-group-name /ecs/rfone-clover-correction-sync   # the execution role may create only the jobs' log group
+aws ecs register-task-definition --cli-input-json file://task-definition.json
+aws ecs create-service --cluster rfone-jobs --service-name rfone-clover-correction-sync `
+  --task-definition rfone-clover-correction-sync:1 --desired-count 1 --launch-type FARGATE `
+  --network-configuration "awsvpcConfiguration={subnets=[<the acquisition jobs' subnets>],securityGroups=[sg-0a4d4d094ea0d0fc3],assignPublicIp=ENABLED}" `
+  --deployment-configuration "maximumPercent=100,minimumHealthyPercent=0"
+```
+
+`maximumPercent=100` / `minimumHealthyPercent=0`: a deployment stops the
+old poller before starting the new one (the shared lock would serialize two
+anyway). A task stopped while it is still booting — before the SIGTERM
+handler exists — runs until ECS kills it after `stopTimeout`; observed on
+2026-09-28 (exit 137 after two complete cycles, no lock left behind).
+
 ## Operate
 
 ```powershell
