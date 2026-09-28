@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% block page_title %}Workweek · RF-One{% endblock %}
+{% block content %}
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
+{{ breadcrumb([('RF-One', url_for('home')), ('Workweek', None)]) }}
+<h1>Workweek</h1>
+<p class="muted">The day each Restaurant's Workweek starts. A week is seven Business Dates and begins at the Location's operating-day cutoff. Every RF-One function that works per week reads this setting. A change applies from a chosen Business Date onwards; earlier weeks keep the start day they had.</p>
+
+{% for row in rows %}
+<div class="card">
+  <h2>{{ row.restaurant.name }}</h2>
+  <p>
+    Current start day:
+    {% if row.current %}<strong>{{ weekday_names[row.current.start_weekday] }}</strong>
+      ({{ weekday_names[row.current.start_weekday] }} &rarr; {{ weekday_names[(row.current.start_weekday + 6) % 7] }})
+    {% else %}<span class="badge warn">not configured</span>{% endif %}
+  </p>
+
+  <form method="post" action="{{ url_for('admin_workweek_set', restaurant_id=row.restaurant.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <label for="start_weekday_{{ row.restaurant.id }}">New start day</label>
+      <select id="start_weekday_{{ row.restaurant.id }}" name="start_weekday" required>
+        {% for name in weekday_names %}<option value="{{ loop.index0 }}">{{ name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field-row">
+      <label for="effective_{{ row.restaurant.id }}">From Business Date (must be that weekday)</label>
+      <input type="date" id="effective_{{ row.restaurant.id }}" name="effective_business_date" required>
+    </div>
+    <button type="submit">Change start day</button>
+  </form>
+
+  {% if row.history %}
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Start day</th><th>Valid from</th><th>Valid to</th><th>Note</th></tr></thead>
+      <tbody>
+        {% for d in row.history %}
+        <tr>
+          <td>{{ weekday_names[d.start_weekday] }}</td>
+          <td>{{ d.valid_from.date() }}</td>
+          <td>{{ d.valid_to.date() if d.valid_to else '—' }}</td>
+          <td>{{ d.notes or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<div class="card"><p class="empty">No Restaurant is configured.</p></div>
+{% endfor %}
+{% endblock %}

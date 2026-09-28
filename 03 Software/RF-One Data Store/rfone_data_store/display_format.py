@@ -78,3 +78,19 @@ def employee_short_name(full_name: str | None, *, empty: str = "-") -> str:
     if len(parts) == 1:
         return parts[0]
     return f"{' '.join(parts[1:])} {parts[0][0].upper()}."
+
+
+def employee_first_name_initial(full_name: str | None, *, empty: str = "-") -> str:
+    """FIRST NAME + surname initial: "Tatiana Ceban" -> "Tatiana C.".
+
+    Used only where the Product Owner asked for it explicitly (Compensation
+    Period Summary, COMPENSATION_PERIOD_SUMMARY_001); everywhere else the
+    standing rule is `employee_short_name`. Same parsing: the first word is
+    the first name, the rest is the surname ("Maria De Luca" -> "Maria D.").
+    A single word is shown as it is."""
+    parts = (full_name or "").split()
+    if not parts:
+        return empty
+    if len(parts) == 1:
+        return parts[0]
+    return f"{parts[0]} {parts[1][0].upper()}."

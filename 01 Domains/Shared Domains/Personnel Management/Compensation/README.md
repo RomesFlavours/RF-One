@@ -100,6 +100,14 @@ This is a **functional** specification only — not a database specification, no
 
 This closes the previous "optional Connector return / manual recording" framing in `PAYROLL_HANDOFF_CONNECTOR.md` for V1 — the manual return path is no longer deferred.
 
+**Period Summary (COMPENSATION_PERIOD_SUMMARY_001, Product Owner request 2026-09-28)** — a read-only comparison view (`Compensation > Period Summary`, `rfone_data_store/payroll_calculation/period_summary.py`): per Employee, for one Location and an inclusive Business Date range, worked hours, overtime hours, Tips + Gratuity and Bonus. It needs no Compensation Term and computes no money from hours.
+
+- Hours come from the acquired Clover Shifts. The official times are the manager override when present, otherwise the raw clock event. Clover has no break record. Shifts are split at boundaries in memory only.
+- Overtime **hours** are, by explicit Product Owner rule for this view, the hours past 40 in each Workweek, taken chronologically. Weeks are never netted. When the first week is partial, its earlier hours still count towards the 40. This is an hours count only; §8's boundary is unchanged, and the statutory/monetary overtime treatment still belongs to the Payroll Provider.
+- Tips + Gratuity are each person's `TipEntitlement.payable_amount_minor` from FINAL Tips runs only (`Finalized Tips Period.md` §7). Runs are summed only when they cover the range exactly once. Otherwise the figure is "not available", never zero and never prorated.
+- Bonus is shown as "to be defined". Employees are shown as first name + surname initial ("Tatiana C."), a Product Owner exception to UI Rule 2 for this screen only. A Shift that carries no Location of its own and is attributed through the Employee's home Location is counted as before, but the page states how many such Shifts it used.
+- The Workweek start is the shared Restaurant setting `WorkweekDefinition`, now editable in `Settings > Workweek` and seeded to Monday (migration `d4a8c2e6f1b3`).
+
 ---
 
 ## Pending

@@ -78,6 +78,7 @@ Implementation: `rfone_data_store/local_calendar.py`.
 - Full names stay on Tips Payment Control, to match payees.
 - Full names stay on the Bank card edit page, to assign the right cardholder.
 - A student's own full name stays on the trainer's student page heading.
+- **Compensation Period Summary** shows **first name + surname initial** ("Tatiana C."), by explicit Product Owner instruction for that screen only (COMPENSATION_PERIOD_SUMMARY_001, 2026-09-28): it is compared line by line with manual figures kept that way. Implementation: `display_format.employee_first_name_initial`, template filter `|first_name_initial`. Every other page keeps rule 2.
 - Compensation is outside the scope of UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001 (Product Owner instruction) and is not yet aligned.
 
 **Needs a Product Owner decision before it can be aligned:**

@@ -50,6 +50,7 @@ from rfone_data_store import rfone_recovery_service as recovery_service  # noqa:
 from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
 from rfone_data_store.technical import ses_email  # noqa: E402
 from compensation_routes import register_compensation_routes  # noqa: E402
+from workweek_settings_routes import register_workweek_settings_routes  # noqa: E402
 from organizational_responsibility_routes import register_organizational_responsibility_routes  # noqa: E402
 from bank_routes import register_bank_routes  # noqa: E402
 from tips_validation_routes import register_tips_validation_routes  # noqa: E402
@@ -107,6 +108,7 @@ def inject_csrf():
 # employees as "Surname I.", one shared formatter for every RF-One app.
 app.jinja_env.filters["local_dt"] = display_format.local_datetime
 app.jinja_env.filters["short_name"] = display_format.employee_short_name
+app.jinja_env.filters["first_name_initial"] = display_format.employee_first_name_initial
 app.jinja_env.globals["zone_label"] = display_format.zone_label
 app.jinja_env.globals["tips_home_url"] = TIPS_HOME_URL
 # The first breadcrumb level, named the same in every app hosting shared
@@ -391,6 +393,13 @@ def selection_work_in_progress():
 register_compensation_routes(
     app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
     load_current_account=load_current_account, require_csrf=require_csrf,
+)
+
+# Settings > Workweek (COMPENSATION_PERIOD_SUMMARY_001) — the shared
+# Restaurant Workweek start, read by every per-week function.
+register_workweek_settings_routes(
+    app, require_admin=require_admin, SessionFactory=SessionFactory,
+    require_csrf=require_csrf, load_current_account=load_current_account,
 )
 
 # ---------------------------------------------------------------------------

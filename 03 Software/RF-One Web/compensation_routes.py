@@ -35,7 +35,9 @@ from rfone_data_store.payroll_calculation import compensation as compensation_he
 from rfone_data_store.payroll_calculation import engine as engine_service
 from rfone_data_store.payroll_calculation import export as export_service
 from rfone_data_store.payroll_calculation import incentives as incentives_service
+from rfone_data_store.payroll_calculation import period_summary as period_summary_service
 from rfone_data_store.payroll_calculation import reconciliation as reconciliation_service
+from rfone_data_store.payroll_calculation.workweek import WEEKDAY_NAMES
 
 UTC = timezone.utc
 
@@ -132,6 +134,46 @@ def register_compensation_routes(
             return render_template(
                 "compensation_home.html", runs=runs, legal_entities=legal_entities,
                 snapshot_by_run=snapshot_by_run,
+            )
+
+    # -----------------------------------------------------------------
+    # Period Summary (COMPENSATION_PERIOD_SUMMARY_001) — read-only: hours,
+    # hours above 40 per Workweek, FINAL Tips + Gratuity, Bonus (to be
+    # defined), per Employee, for one Location and a Business Date range.
+    # All logic lives in `payroll_calculation.period_summary`.
+    # -----------------------------------------------------------------
+
+    @app.route("/compensation/period-summary")
+    @gate
+    def compensation_period_summary():
+        with SessionFactory() as db:
+            locations = period_summary_service.summary_locations(db)
+            location_id = request.args.get("location_id", type=int)
+            if location_id is None and len(locations) == 1:
+                location_id = locations[0].id
+            first = _parse_date(request.args.get("first_business_date"))
+            last = _parse_date(request.args.get("last_business_date"))
+
+            summary = None
+            if request.args.get("first_business_date") or request.args.get("last_business_date"):
+                if location_id is None or first is None or last is None:
+                    flash("Location, first and last Business Date are required.", "error")
+                elif last < first:
+                    flash("The last Business Date cannot be before the first.", "error")
+                elif location_id not in {loc.id for loc in locations}:
+                    flash("Unknown Location.", "error")
+                else:
+                    summary = period_summary_service.build_period_summary(
+                        db, location_id=location_id,
+                        first_business_date=first.date(), last_business_date=last.date(),
+                    )
+
+            return render_template(
+                "compensation_period_summary.html", locations=locations,
+                location_id=location_id, first=first.date() if first else None,
+                last=last.date() if last else None, summary=summary,
+                weekday_names=WEEKDAY_NAMES, TIPS_AVAILABLE=period_summary_service.TIPS_AVAILABLE,
+                overtime_threshold=period_summary_service.OVERTIME_WEEKLY_THRESHOLD_HOURS,
             )
 
     # -----------------------------------------------------------------
