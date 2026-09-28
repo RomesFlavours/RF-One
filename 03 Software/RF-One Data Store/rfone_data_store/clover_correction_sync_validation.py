@@ -17,7 +17,7 @@ fixture for one new, narrow need.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -106,6 +106,11 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
             _test_repeated_cycle_is_idempotent_no_duplicates(session, result)
             _test_reconciliation_status_gates_on_all_cursors(session, result)
             _test_one_bad_record_fails_the_whole_resource_and_self_heals(session, result)
+            # CORRECTION_POLLER_ACTIVATION_001
+            _test_late_tip_like_messick_ceban_is_recovered_and_stays_stable(session, result)
+            _test_unreadable_or_incomplete_clover_answer_never_erases_data(session, result)
+            _test_poller_lock_rows_are_not_the_live_cursor(session, result)
+            _test_cycle_row_carries_outcome_heartbeat_and_history(session, result)
         finally:
             session.rollback()
     return result
@@ -632,3 +637,221 @@ def _test_one_bad_record_fails_the_whole_resource_and_self_heals(session: Sessio
         "Location's per-record failure/retry history",
         other_summary is not None and all(r.status == "COMPLETE" for r in other_summary.results),
     )
+
+
+# ---------------------------------------------------------------------------
+# CORRECTION_POLLER_ACTIVATION_001
+# ---------------------------------------------------------------------------
+
+
+def _timezone_fixture(session: Session, *, merchant_source_id: str) -> tuple[m.Restaurant, m.Location, m.SourceSystem]:
+    """`_build_fixture` plus the Location's timezone and operating-day cutoff,
+    so Business Date resolves exactly as in production (Winter Park)."""
+    restaurant, location, source_system = _build_fixture(session, merchant_source_id=merchant_source_id)
+    location.timezone = "America/New_York"
+    location.operating_day_cutoff_time = time(4, 0)
+    session.flush()
+    return restaurant, location, source_system
+
+
+def _operational_snapshot(session: Session, source_system_id: int, order_ids: list[str], payment_ids: list[str]):
+    """Every operational value a Tips calculation reads for these records."""
+    session.expire_all()
+    orders = session.scalars(select(m.Order).where(
+        m.Order.source_system_id == source_system_id, m.Order.source_order_id.in_(order_ids))).all()
+    payments = session.scalars(select(m.Payment).where(
+        m.Payment.source_system_id == source_system_id, m.Payment.source_payment_id.in_(payment_ids))).all()
+    tips = {p.source_payment_id: session.get(m.PaymentTip, p.id) for p in payments}
+    return (
+        sorted((o.source_order_id, o.id, o.employee_id, o.total, str(o.business_date), o.state) for o in orders),
+        sorted((p.source_payment_id, p.id, p.order_id, p.amount, p.result, p.employee_id) for p in payments),
+        sorted((k, t.amount if t else None, t.source_present if t else None) for k, t in tips.items()),
+    )
+
+
+def _test_late_tip_like_messick_ceban_is_recovered_and_stays_stable(session: Session, result: ValidationResult) -> None:
+    """The real 2026-09-26 case: a card Payment acquired at lunch before its
+    tip existed in Clover (no `tipAmount` yet), the tip added later in
+    Clover (modifiedTime moves, createdTime does not). Scenarios A-H."""
+    from .tips import distribution_engine as engine
+
+    restaurant, location, source_system = _timezone_fixture(session, merchant_source_id="CORR-LATE-TIP")
+    server = m.Employee(location_id=location.id, source_system_id=source_system.id, source_employee_id="LT-EMP",
+                        display_name="Meagan Messick", system_role="EMPLOYEE")
+    session.add(server)
+    session.commit()
+    paid_at = datetime(2026, 9, 26, 17, 43, 43, tzinfo=UTC)        # 13:43 EDT, like P0WYV4E5J8R60
+    order_raw = {
+        "id": "LT-ORDER", "employee": {"id": "LT-EMP"}, "createdTime": _ms(paid_at - timedelta(minutes=30)),
+        "modifiedTime": _ms(paid_at), "state": "locked", "paymentState": "PAID", "currency": "USD",
+        "total": 4473, "lineItems": {"elements": []},
+    }
+    payment_raw = {
+        "id": "LT-PAY", "order": {"id": "LT-ORDER"}, "employee": {"id": "LT-EMP"},
+        "tender": {"id": "LT-TND", "label": "Credit Card"}, "amount": 4473, "taxAmount": 273,
+        "createdTime": _ms(paid_at), "modifiedTime": _ms(paid_at), "result": "SUCCESS",
+        # no "tipAmount": the tip does not exist in Clover yet
+    }
+    client = _CorrectionFakeCloverClient(merchant_id="CORR-LATE-TIP")
+    client.orders.append(order_raw)
+    client.payments.append(payment_raw)
+
+    # A. the Payment already exists in RF-One, without its tip.
+    cs.run_correction_cycle(session, location_id=location.id, client=client, now=paid_at + timedelta(minutes=1))
+    session.expire_all()
+    payment = session.scalars(select(m.Payment).filter_by(source_system_id=source_system.id, source_payment_id="LT-PAY")).one()
+    order = session.get(m.Order, payment.order_id)
+    result.check("A. the Payment exists in RF-One with no tip yet (as on 26/09 at lunch)",
+                 session.get(m.PaymentTip, payment.id) is None)
+    owner_before, business_date_before = order.employee_id, order.business_date
+    result.check("A. its Business Date is 26/09 (Winter Park local, cutoff 04:00)",
+                 str(business_date_before) == "2026-09-26")
+
+    # B. Clover's version gains the tip later: modifiedTime moves, createdTime does not.
+    tipped_at = paid_at + timedelta(hours=3)
+    payment_raw["tipAmount"] = 1000
+    payment_raw["modifiedTime"] = _ms(tipped_at)
+    calls_before = len(client.calls)
+    summary = cs.run_correction_cycle(session, location_id=location.id, client=client, now=tipped_at + timedelta(minutes=1))
+    session.expire_all()
+    payments_result = next(r for r in summary.results if r.resource_type == cs.RESOURCE_PAYMENTS)
+    payment_calls = [c for c in client.calls[calls_before:] if c[0].endswith("/payments")]
+    # C. found through modifiedTime
+    result.check("C. the Poller asks Clover for Payments by modifiedTime and finds the later modification",
+                 payments_result.status == "COMPLETE" and payments_result.records_seen == 1
+                 and payment_calls and any("modifiedTime>=" in f for f in payment_calls[0][1]["filter"]))
+    payments = session.scalars(select(m.Payment).filter_by(source_system_id=source_system.id, source_payment_id="LT-PAY")).all()
+    tip_rows = session.scalars(select(m.PaymentTip).where(m.PaymentTip.payment_id == payment.id)).all()
+    # D, E, F
+    result.check("D. the existing Payment is updated in place with Clover's tip ($10.00)",
+                 len(payments) == 1 and payments[0].id == payment.id and len(tip_rows) == 1 and tip_rows[0].amount == 1000)
+    result.check("E. no duplicate Payment", len(payments) == 1)
+    result.check("F. no duplicate payment_tip", len(tip_rows) == 1)
+    order = session.get(m.Order, payment.order_id)
+    result.check("the Service Owner is unchanged", order.employee_id == owner_before == server.id)
+    result.check("the Business Date is unchanged (26/09)", order.business_date == business_date_before)
+
+    # G. more cycles with no new modification: zero operational change.
+    before = _operational_snapshot(session, source_system.id, ["LT-ORDER"], ["LT-PAY"])
+    cs.run_correction_cycle(session, location_id=location.id, client=client, now=tipped_at + timedelta(minutes=2))
+    cs.run_correction_cycle(session, location_id=location.id, client=client, now=tipped_at + timedelta(minutes=3))
+    after = _operational_snapshot(session, source_system.id, ["LT-ORDER"], ["LT-PAY"])
+    result.check("G. two more cycles without new modifications change no operational value", before == after)
+
+    # H. Calculate Tips reads the updated tip with no other step.
+    start = datetime(2026, 9, 26, 8, 0, tzinfo=UTC)   # 04:00 EDT, the Business Date's start
+    calc = engine.calculate_tips(session, restaurant_id=restaurant.id, period_start=start, period_end=start + timedelta(days=1))
+    session.rollback()
+    result.check("H. Calculate Tips uses the corrected tip automatically ($10.00 voluntary)",
+                 calc.voluntary_total_minor == 1000)
+
+    # Data already right (like the 11 Messick/Ceban Payments after the 26/09
+    # Backfill) re-reported by Clover with the same values: nothing changes.
+    payment_raw["modifiedTime"] = _ms(tipped_at + timedelta(hours=1))
+    before = _operational_snapshot(session, source_system.id, ["LT-ORDER"], ["LT-PAY"])
+    cs.run_correction_cycle(session, location_id=location.id, client=client, now=tipped_at + timedelta(hours=1, minutes=1))
+    result.check("data already corrected (as by the 26/09 Backfill) is re-read without any change",
+                 _operational_snapshot(session, source_system.id, ["LT-ORDER"], ["LT-PAY"]) == before)
+
+
+def _test_unreadable_or_incomplete_clover_answer_never_erases_data(session: Session, result: ValidationResult) -> None:
+    """Scenarios I and J: a Clover failure, or an answer missing a value
+    RF-One already holds, never deletes or zeroes it, and the cursor stays."""
+    restaurant, location, source_system = _timezone_fixture(session, merchant_source_id="CORR-BAD-ANSWER")
+    t0 = datetime(2026, 9, 27, 17, 0, tzinfo=UTC)
+    client = _CorrectionFakeCloverClient(merchant_id="CORR-BAD-ANSWER")
+    client.orders.append({"id": "BA-ORDER", "employee": {"id": "BA-EMP"}, "createdTime": _ms(t0), "modifiedTime": _ms(t0),
+                          "state": "locked", "paymentState": "PAID", "currency": "USD", "total": 5000,
+                          "lineItems": {"elements": []}})
+    client.payments.append({"id": "BA-PAY", "order": {"id": "BA-ORDER"}, "employee": {"id": "BA-EMP"},
+                            "tender": {"id": "BA-TND", "label": "Credit Card"}, "amount": 5000, "taxAmount": 0,
+                            "createdTime": _ms(t0), "modifiedTime": _ms(t0), "result": "SUCCESS", "tipAmount": 1200})
+    cs.run_correction_cycle(session, location_id=location.id, client=client, now=t0 + timedelta(minutes=1))
+    good = _operational_snapshot(session, source_system.id, ["BA-ORDER"], ["BA-PAY"])
+    result.check("I. setup: the Payment is stored with its $12.00 tip", good[2] == [("BA-PAY", 1200, True)])
+
+    def payments_cursor():
+        return cs._latest_cursor_end(session, location_id=location.id, source_system_id=source_system.id,
+                                     resource_type=cs.RESOURCE_PAYMENTS)
+
+    # I. Clover answers with an error.
+    cursor_before = payments_cursor()
+    client.fail_payments = True
+    summary = cs.run_correction_cycle(session, location_id=location.id, client=client, now=t0 + timedelta(minutes=2))
+    client.fail_payments = False
+    result.check("I. a Clover error on Payments: the resource is FAILED",
+                 next(r for r in summary.results if r.resource_type == cs.RESOURCE_PAYMENTS).status == "FAILED")
+    result.check("I. ... and nothing already stored is deleted or zeroed",
+                 _operational_snapshot(session, source_system.id, ["BA-ORDER"], ["BA-PAY"]) == good)
+    result.check("J. ... and the Payments cursor has not advanced", payments_cursor() == cursor_before)
+
+    # I. Clover answers, but without the tip it reported before.
+    del client.payments[0]["tipAmount"]
+    client.payments[0]["modifiedTime"] = _ms(t0 + timedelta(minutes=3))
+    cs.run_correction_cycle(session, location_id=location.id, client=client, now=t0 + timedelta(minutes=4))
+    result.check("I. an answer missing the tip RF-One already holds leaves the tip ($12.00) unchanged",
+                 _operational_snapshot(session, source_system.id, ["BA-ORDER"], ["BA-PAY"]) == good)
+
+    # I. an element Clover returns that cannot be applied at all.
+    client.payments.append({"order": {"id": "BA-ORDER"}, "modifiedTime": _ms(t0 + timedelta(minutes=5))})  # no id
+    cursor_before = payments_cursor()
+    summary = cs.run_correction_cycle(session, location_id=location.id, client=client, now=t0 + timedelta(minutes=6))
+    result.check("I. an unusable Payment element fails the resource without touching stored data",
+                 next(r for r in summary.results if r.resource_type == cs.RESOURCE_PAYMENTS).status == "FAILED"
+                 and _operational_snapshot(session, source_system.id, ["BA-ORDER"], ["BA-PAY"]) == good)
+    result.check("J. ... and the Payments cursor has not advanced", payments_cursor() == cursor_before)
+    order_id = session.scalars(select(m.Order.id).filter_by(source_system_id=source_system.id, source_order_id="BA-ORDER")).one()
+    result.check("I. no phantom Payment was created from the unusable element",
+                 session.scalars(select(m.Payment.source_payment_id).where(m.Payment.order_id == order_id)).all() == ["BA-PAY"])
+
+
+def _test_poller_lock_rows_are_not_the_live_cursor(session: Session, result: ValidationResult) -> None:
+    """The Poller's per-cycle lock row (no resource_type, window ending
+    now) must never pass for a Live Sync / Sync Now / Backfill checkpoint."""
+    from .technical.connectors.clover import acquisition_jobs as jobs
+
+    restaurant, location, source_system = _build_fixture(session, merchant_source_id="CORR-LIVE-CURSOR")
+    now = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)
+    cs.run_correction_cycle(session, location_id=location.id, client=_CorrectionFakeCloverClient("CORR-LIVE-CURSOR"), now=now)
+    live_end, _ = cs._latest_cursor_end(session, location_id=location.id, source_system_id=source_system.id, resource_type=None)
+    result.check("after Correction cycles only, there is still no Live Cursor", live_end is None)
+    status = cs.describe_reconciliation_status(session, location_ids=[location.id], period_end=now - timedelta(hours=1))
+    result.check("so reconciliation is not reported ready on the Poller alone",
+                 not status.ready and "Live Sync" in status.reason)
+    result.check("Sync Now's own starting point ignores the Poller too",
+                 jobs.get_last_successful_sync_point(session, location_id=location.id) is None)
+
+
+def _test_cycle_row_carries_outcome_heartbeat_and_history(session: Session, result: ValidationResult) -> None:
+    from .technical.connectors.clover import acquisition_jobs as jobs
+
+    restaurant, location, source_system = _build_fixture(session, merchant_source_id="CORR-HISTORY")
+    t0 = datetime(2026, 9, 28, 13, 0, tzinfo=UTC)
+    client = _CorrectionFakeCloverClient("CORR-HISTORY")
+    client.orders.append({"id": "H-ORDER", "createdTime": _ms(t0), "modifiedTime": _ms(t0), "state": "open",
+                          "currency": "USD", "total": 100, "lineItems": {"elements": []}})
+    cs.run_correction_cycle(session, location_id=location.id, client=client, now=t0 + timedelta(minutes=1))
+    client.fail_refunds = True
+    cs.run_correction_cycle(session, location_id=location.id, client=client, now=t0 + timedelta(minutes=2))
+    client.fail_refunds = False
+    for minute in (3, 4, 5):
+        cs.run_correction_cycle(session, location_id=location.id, client=client, now=t0 + timedelta(minutes=minute))
+    session.expire_all()
+    cycles = session.scalars(select(m.IngestionRun).where(
+        m.IngestionRun.location_id == location.id, m.IngestionRun.acquisition_mode == cs.MODE_CORRECTION,
+        m.IngestionRun.resource_type.is_(None)).order_by(m.IngestionRun.id)).all()
+    result.check("every cycle leaves one row of type CORRECTION, lock released",
+                 len(cycles) == 5 and all(c.lock_key is None for c in cycles))
+    result.check("a successful cycle row is COMPLETE with what it applied (1 Order)",
+                 cycles[0].status == "COMPLETE" and cycles[0].orders_processed == 1)
+    result.check("a cycle with a failed resource is FAILED on its row, with the reason",
+                 cycles[1].status == "FAILED" and "refunds" in (cycles[1].error_summary or ""))
+    result.check("the cycle row carries a heartbeat (orphan detected in 5 minutes, not 30)",
+                 all(c.heartbeat_at is not None for c in cycles))
+    history = jobs.list_acquisition_runs(session, location_id=location.id)
+    result.check("history lists the latest cycle and the failed one — not every cycle",
+                 [r.id for r in history] == sorted([cycles[-1].id, cycles[1].id], reverse=True))
+    resources = jobs.correction_cycle_resources(session, cycles[1])
+    result.check("each listed cycle shows the windows it scanned, per resource",
+                 [r.resource_type for r in resources] == [cs.RESOURCE_ORDERS, cs.RESOURCE_PAYMENTS, cs.RESOURCE_REFUNDS]
+                 and resources[2].status == "FAILED")

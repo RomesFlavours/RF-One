@@ -98,9 +98,15 @@ LOG = logging.getLogger("clover_acquisition_jobs")
 SUCCESS_STATUSES = ("COMPLETE", "PARTIAL")
 # Runs whose successful end IS a synchronization point.
 SYNC_POINT_MODES = (MODE_SYNC_NOW, MODE_LIVE_SYNC)
-# The modes a person sees in the acquisition history (Correction Poller
-# lock tokens are an internal mutex, not an acquisition of a window).
+# The modes a person sees in the acquisition history.
 HISTORY_MODES = (MODE_BACKFILL, MODE_SYNC_NOW, MODE_LIVE_SYNC)
+# The Correction Poller's per-cycle row (`correction_sync.MODE_CORRECTION`,
+# spelled here to keep this module free of that import). It runs about
+# every minute, so the history lists only its latest finished cycle and its
+# recent failed ones — never one row a minute burying Sync Now and Backfill
+# (CORRECTION_POLLER_ACTIVATION_001).
+MODE_CORRECTION = "CORRECTION"
+CORRECTION_FAILURES_IN_HISTORY = 10
 
 HEARTBEAT_INTERVAL = timedelta(seconds=30)
 
@@ -583,19 +589,45 @@ def recover_stale_run(session: Session, *, location_id: int) -> int | None:
 
 
 def list_acquisition_runs(session: Session, *, location_id: int, limit: int = 20) -> list[m.IngestionRun]:
-    return list(
-        session.scalars(
-            select(m.IngestionRun)
-            .where(
-                m.IngestionRun.location_id == location_id,
-                m.IngestionRun.resource_type.is_(None),
-                m.IngestionRun.notes.like("CLOVER_ACQUISITION%"),
-                or_(m.IngestionRun.acquisition_mode.in_(HISTORY_MODES), m.IngestionRun.acquisition_mode.is_(None)),
-            )
-            .order_by(m.IngestionRun.id.desc())
-            .limit(limit)
-        )
+    """The one acquisition history: Sync Now, Historical Backfill and Live
+    Sync runs, plus the Correction Poller's latest finished cycle and its
+    recent failed cycles, newest first."""
+    base = select(m.IngestionRun).where(
+        m.IngestionRun.location_id == location_id,
+        m.IngestionRun.resource_type.is_(None),
+        m.IngestionRun.notes.like("CLOVER_ACQUISITION%"),
     )
+    runs = list(session.scalars(
+        base.where(or_(m.IngestionRun.acquisition_mode.in_(HISTORY_MODES), m.IngestionRun.acquisition_mode.is_(None)))
+        .order_by(m.IngestionRun.id.desc()).limit(limit)
+    ))
+    corrections = base.where(m.IngestionRun.acquisition_mode == MODE_CORRECTION)
+    latest = session.scalars(
+        corrections.where(m.IngestionRun.status.not_in(ACTIVE_STATUSES)).order_by(m.IngestionRun.id.desc()).limit(1)
+    ).all()
+    failed = session.scalars(
+        corrections.where(m.IngestionRun.status == "FAILED")
+        .order_by(m.IngestionRun.id.desc()).limit(CORRECTION_FAILURES_IN_HISTORY)
+    ).all()
+    merged = {run.id: run for run in [*runs, *latest, *failed]}
+    return sorted(merged.values(), key=lambda run: run.id, reverse=True)
+
+
+def correction_cycle_resources(session: Session, cycle: m.IngestionRun) -> list[m.IngestionRun]:
+    """The Orders/Payments/Refunds cursor rows one Correction cycle wrote —
+    what it scanned (window) and how each resource ended. They are created
+    after the cycle's own row and before it finished, while it held the
+    Location's lock, so no other acquisition's rows can fall in between."""
+    if cycle.acquisition_mode != MODE_CORRECTION:
+        return []
+    query = select(m.IngestionRun).where(
+        m.IngestionRun.location_id == cycle.location_id,
+        m.IngestionRun.resource_type.is_not(None),
+        m.IngestionRun.id > cycle.id,
+    )
+    if cycle.finished_at is not None:
+        query = query.where(m.IngestionRun.started_at <= cycle.finished_at)
+    return list(session.scalars(query.order_by(m.IngestionRun.id).limit(3)))
 
 
 def describe_live_sync(session: Session, *, location_id: int, now: datetime | None = None) -> LiveSyncStatus:
@@ -646,6 +678,7 @@ __all__ = [
     "ImportAlreadyRunningError", "JobLaunchError", "NoSyncStartingPointError", "NotACloverLocationError",
     "EcsLauncher", "SubprocessLauncher", "ThreadLauncher", "SyncPoint", "LiveSyncStatus",
     "compute_live_sync_window", "compute_sync_now_window", "describe_live_sync", "execute_job",
-    "get_active_run", "get_last_successful_sync_point", "list_acquisition_runs", "recover_stale_run",
+    "correction_cycle_resources", "get_active_run", "get_last_successful_sync_point", "list_acquisition_runs",
+    "recover_stale_run",
     "request_historical_backfill", "request_sync_now", "run_is_stale",
 ]

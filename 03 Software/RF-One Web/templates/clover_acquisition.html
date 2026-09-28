@@ -4,13 +4,13 @@
 {% block content %}
 {% set active = acquisition.active_run %}
 {% set busy = active is not none %}
-{% set mode_labels = {'SYNC_NOW': 'Sync Now', 'BACKFILL': 'Historical Backfill', 'LIVE_SYNC': 'Live Sync'} %}
+{% set mode_labels = {'SYNC_NOW': 'Sync Now', 'BACKFILL': 'Historical Backfill', 'LIVE_SYNC': 'Live Sync', 'CORRECTION': 'Correction Sync'} %}
 {# RF-One UI Rules §1: every time is the Location's local time, never UTC. #}
 {% set tz = acquisition.tz_name %}
 
 {% macro requested_by(run) -%}
   {%- if run.requested_by_account_id -%}{{ acquisition.requested_by.get(run.requested_by_account_id, '—') }}
-  {%- elif run.acquisition_mode == 'LIVE_SYNC' -%}System (automatic)
+  {%- elif run.acquisition_mode in ('LIVE_SYNC', 'CORRECTION') -%}System (automatic)
   {%- else -%}<span class="muted">not recorded</span>{%- endif -%}
 {%- endmacro %}
 
@@ -132,7 +132,18 @@
           {% if run.status == 'PARTIAL' %}<div class="muted">completed with warnings</div>{% endif %}
           {% if run.id in acquisition.stale_run_ids %}<div class="muted">no sign of life</div>{% endif %}
         </td>
+        {% if run.acquisition_mode == 'CORRECTION' %}
+        {# A Correction cycle re-reads what Clover MODIFIED in each resource's
+           own window (CORRECTION_POLLER_ACTIVATION_001). #}
+        <td>
+          {% for r in acquisition.correction_resources.get(run.id, []) %}
+            <div>{{ r.resource_type|capitalize }} modified {{ r.source_window_start|local_dt(tz) }} &rarr; {{ r.source_window_end|local_dt(tz) }}
+              {% if r.status != 'COMPLETE' %}<span class="badge warn">{{ r.status }}</span>{% endif %}</div>
+          {% else %}-{% endfor %}
+        </td>
+        {% else %}
         <td>{{ run.source_window_start|local_dt(tz) }} &rarr; {{ run.source_window_end|local_dt(tz) }}</td>
+        {% endif %}
         <td>
           {% if run.status == 'QUEUED' %}queued {{ run.queued_at|local_dt(tz, empty='') }}
           {% else %}{{ run.started_at|local_dt(tz) }}{% endif %}
@@ -149,7 +160,8 @@
     </tbody>
   </table>
   </div>
-  <p class="muted">Times in {{ acquisition.location_name or 'the location' }} local time ({{ zone_label(tz) }}). "-" counts: acquisitions recorded before counts were tracked.</p>
+  <p class="muted">Times in {{ acquisition.location_name or 'the location' }} local time ({{ zone_label(tz) }}). "-" counts: acquisitions recorded before counts were tracked.
+    Correction Sync runs automatically about every minute and re-reads what was modified in Clover after it was first acquired; only its latest cycle and its recent failed ones are listed.</p>
   {% else %}
   <p class="empty">No Clover acquisition recorded for this location yet.</p>
   {% endif %}

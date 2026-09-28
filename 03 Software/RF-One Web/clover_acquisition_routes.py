@@ -116,7 +116,8 @@ def register_clover_acquisition_routes(
 
     def _view(db, location_id: int | None) -> dict:
         view = {"location_id": location_id, "active_run": None, "sync_point": None, "live_sync": None,
-                "runs": [], "stale_run_ids": set(), "requested_by": {}, "tz_name": None, "location_name": None}
+                "runs": [], "stale_run_ids": set(), "requested_by": {}, "tz_name": None, "location_name": None,
+                "correction_resources": {}}
         if location_id is None:
             return view
         # RF-One UI Rules §1: every time on this page is shown in the
@@ -132,6 +133,12 @@ def register_clover_acquisition_routes(
         view["live_sync"] = clover_jobs.describe_live_sync(db, location_id=location_id)
         view["runs"] = clover_jobs.list_acquisition_runs(db, location_id=location_id, limit=20)
         view["stale_run_ids"] = {r.id for r in view["runs"] if clover_jobs.run_is_stale(r)}
+        # CORRECTION_POLLER_ACTIVATION_001 — what each Correction cycle listed
+        # in the history scanned (its per-resource windows and outcomes).
+        view["correction_resources"] = {
+            r.id: clover_jobs.correction_cycle_resources(db, r)
+            for r in view["runs"] if r.acquisition_mode == clover_jobs.MODE_CORRECTION
+        }
         account_ids = {r.requested_by_account_id for r in view["runs"] if r.requested_by_account_id}
         if view["active_run"] is not None and view["active_run"].requested_by_account_id:
             account_ids.add(view["active_run"].requested_by_account_id)

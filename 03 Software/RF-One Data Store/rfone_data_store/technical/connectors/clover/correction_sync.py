@@ -110,12 +110,13 @@ from __future__ import annotations
 
 import argparse
 import logging
+import signal
 import sys
-import time
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from .... import models as m
@@ -226,18 +227,28 @@ def _latest_cursor_end(
     (location, resource_type) — `resource_type=None` selects the plain Live
     Cursor (Backfill/Live Sync), the exact same query shape `live_sync.
     compute_next_sync_window` itself uses. Returns `(None, None)` if no
-    successful run exists yet for this resource at this Location."""
+    successful run exists yet for this resource at this Location.
+
+    The Live Cursor never counts this Poller's own per-cycle lock row
+    (`resource_type` NULL, mode CORRECTION, window ending "now"): that row
+    is a mutex token, not an acquisition of a window, and reading it as the
+    Live Cursor would report Live Sync as current although no Sync Now,
+    Live Sync or Backfill ran (CORRECTION_POLLER_ACTIVATION_001)."""
+    conditions = [
+        m.IngestionRun.location_id == location_id,
+        m.IngestionRun.source_system_id == source_system_id,
+        m.IngestionRun.status.in_(("COMPLETE", "PARTIAL")),
+        m.IngestionRun.source_window_end.is_not(None),
+    ]
+    if resource_type is None:
+        conditions += [
+            m.IngestionRun.resource_type.is_(None),
+            or_(m.IngestionRun.acquisition_mode.is_(None), m.IngestionRun.acquisition_mode != MODE_CORRECTION),
+        ]
+    else:
+        conditions.append(m.IngestionRun.resource_type == resource_type)
     run = session.scalars(
-        select(m.IngestionRun)
-        .where(
-            m.IngestionRun.location_id == location_id,
-            m.IngestionRun.source_system_id == source_system_id,
-            m.IngestionRun.resource_type == resource_type,
-            m.IngestionRun.status.in_(("COMPLETE", "PARTIAL")),
-            m.IngestionRun.source_window_end.is_not(None),
-        )
-        .order_by(m.IngestionRun.id.desc())
-        .limit(1)
+        select(m.IngestionRun).where(*conditions).order_by(m.IngestionRun.id.desc()).limit(1)
     ).first()
     if run is None:
         return None, None
@@ -563,9 +574,17 @@ def _correct_refunds(
 
 @dataclass
 class _CycleLockSummary:
-    """Feeds `_finalize_import_run` for the OUTER per-Location mutex row
-    only — always COMPLETE, since per-resource failures are recorded on
-    their own cursor rows, never on this bookkeeping row."""
+    """Feeds `_finalize_import_run` for the OUTER per-Location mutex row.
+
+    The per-resource cursor rows stay the only checkpoints. This row also
+    carries the cycle's outcome for the acquisition history
+    (CORRECTION_POLLER_ACTIVATION_001): FAILED when any resource failed (via
+    `window_scan_failed`, with that resource's errors), otherwise COMPLETE,
+    and the Orders/Payments/Refunds it applied. Safe because no checkpoint
+    or coverage query reads CORRECTION lock rows (`_latest_cursor_end`,
+    `acquisition_jobs.get_last_successful_sync_point`), and its window stays
+    `now -> now`, so `freshness._is_range_covered` can never read it as an
+    imported range."""
 
     errors: list[str] = field(default_factory=list)
     window_scan_failed: bool = False
@@ -612,6 +631,17 @@ def run_correction_cycle(
 
     resolved_client = client or get_default_client()
     summary = CorrectionCycleSummary(location_id=location_id)
+
+    def beat() -> None:
+        # A lock with a heartbeat is presumed orphaned after 5 minutes of
+        # silence instead of 30 (`acquisition._is_stale`): a poller stopped
+        # mid-cycle (a redeploy) then blocks Sync Now for minutes at most.
+        # Persisted by the next commit (the lock acquisition's own below,
+        # then each resource's `_finish_cursor_run`).
+        lock_run.heartbeat_at = utc_now()
+
+    beat()
+    session.commit()
     try:
         summary.results.append(
             _correct_orders(
@@ -619,12 +649,14 @@ def run_correction_cycle(
                 merchant_id=merchant_id, now=now,
             )
         )
+        beat()
         summary.results.append(
             _correct_payments(
                 session, resolved_client, location_id=location_id, source_system_id=source_system_id,
                 merchant_id=merchant_id, now=now,
             )
         )
+        beat()
         summary.results.append(
             _correct_refunds(
                 session, resolved_client, location_id=location_id, source_system_id=source_system_id,
@@ -646,7 +678,19 @@ def run_correction_cycle(
         session.commit()
         raise
     else:
-        _finalize_import_run(lock_run, _CycleLockSummary(), location_id=location_id, mode=MODE_CORRECTION)
+        touched = {r.resource_type: r.records_touched for r in summary.results}
+        failed = [r for r in summary.results if r.status == "FAILED"]
+        _finalize_import_run(
+            lock_run,
+            _CycleLockSummary(
+                errors=[f"{r.resource_type}: {e}" for r in failed for e in r.errors[:3]],
+                window_scan_failed=bool(failed),
+                orders_updated=touched.get(RESOURCE_ORDERS, 0),
+                payments_updated=touched.get(RESOURCE_PAYMENTS, 0),
+                refunds_found=touched.get(RESOURCE_REFUNDS, 0),
+            ),
+            location_id=location_id, mode=MODE_CORRECTION,
+        )
         session.commit()
 
     return summary
@@ -656,7 +700,15 @@ def _run_forever(
     session_factory: sessionmaker[Session], *, location_id: int, interval_seconds: float,
 ) -> None:  # pragma: no cover — thin process loop, exercised via run_correction_cycle directly in tests
     LOG.info("Starting Clover Correction/Reconciliation loop for location_id=%s (interval=%.0fs).", location_id, interval_seconds)
-    while True:
+    # A stop request (ECS sends SIGTERM on a redeploy or scale-down) ends the
+    # loop BETWEEN cycles, so a cycle is never cut off while it holds the
+    # Location's lock; ECS's stopTimeout leaves time for the cycle in flight.
+    stop = threading.Event()
+    try:
+        signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    except ValueError:  # not the main thread (e.g. an embedding test) — keep the default handler
+        pass
+    while not stop.is_set():
         try:
             with session_factory() as session:
                 summary = run_correction_cycle(session, location_id=location_id)
@@ -668,7 +720,8 @@ def _run_forever(
                         )
         except Exception:  # noqa: BLE001 — one bad cycle must never kill the loop
             LOG.exception("Unhandled error in Correction/Reconciliation cycle — will retry next interval.")
-        time.sleep(interval_seconds)
+        stop.wait(interval_seconds)
+    LOG.info("Stop requested — Correction/Reconciliation loop ended cleanly between cycles.")
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI wrapper
@@ -677,6 +730,11 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--location-id", type=int, required=True)
     parser.add_argument("--interval-seconds", type=float, default=DEFAULT_POLL_INTERVAL_SECONDS)
+    parser.add_argument(
+        "--skip-migrations", action="store_true",
+        help="Do not apply database migrations at start. Used by the AWS service: migrations are a "
+        "separate, snapshotted release step there, never a side effect of a process starting.",
+    )
     parser.add_argument(
         "--once", action="store_true",
         help="Run a single cycle and exit, instead of looping forever — for cron/Task Scheduler-driven "
@@ -687,7 +745,8 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     db_url = get_database_url()
-    run_migrations_to_head(db_url)
+    if not args.skip_migrations:
+        run_migrations_to_head(db_url)
     engine = create_configured_engine(db_url)
     session_factory = create_session_factory(engine)
 

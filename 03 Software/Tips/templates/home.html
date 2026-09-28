@@ -31,8 +31,8 @@
     {% else %}<strong>none yet</strong>{% endif %}
   </p>
   {% if busy %}
-    <p id="sync-in-progress"><span class="badge warn">Sync in progress</span>
-      <span class="muted">#{{ clover.active_run.id }}{% if clover.active_requested_by %}, requested by {{ clover.active_requested_by }}{% endif %}</span></p>
+    <p id="sync-in-progress"><span class="badge warn">{{ 'Correction Sync in progress' if clover.active_run.acquisition_mode == 'CORRECTION' else 'Sync in progress' }}</span>
+      <span class="muted">#{{ clover.active_run.id }}{% if clover.active_requested_by %}, requested by {{ clover.active_requested_by }}{% elif clover.active_run.acquisition_mode == 'CORRECTION' %}, automatic — a few seconds{% endif %}</span></p>
   {% endif %}
   {% if not clover.sync_now_url %}
     <p class="error">
