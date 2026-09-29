@@ -1,0 +1,13 @@
+{
+  "description": "RF-One CloudWatch log retention, approved 2026-09-29. Ordinary operational logs: 30 days. Logs of real-data Clover acquisitions: 90 days.",
+  "logGroups": [
+    { "logGroupName": "/aws/apprunner/rfone-web/07524815436944e3a05c600c5486f951/application", "retentionInDays": 30 },
+    { "logGroupName": "/aws/apprunner/rfone-web/07524815436944e3a05c600c5486f951/service", "retentionInDays": 30 },
+    { "logGroupName": "/aws/apprunner/rfone-tips/f12550d3be8047d0a72e17a91e218d27/application", "retentionInDays": 30 },
+    { "logGroupName": "/aws/apprunner/rfone-tips/f12550d3be8047d0a72e17a91e218d27/service", "retentionInDays": 30 },
+    { "logGroupName": "/aws/codebuild/rfone-web-build", "retentionInDays": 30 },
+    { "logGroupName": "/aws/codebuild/rfone-tips-build", "retentionInDays": 30 },
+    { "logGroupName": "/ecs/rfone-clover-acquisition-job", "retentionInDays": 90 },
+    { "logGroupName": "/ecs/rfone-clover-correction-sync", "retentionInDays": 90 }
+  ]
+}

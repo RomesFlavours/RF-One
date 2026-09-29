@@ -165,6 +165,25 @@ Per modificarla: aggiornare il file, poi `put-bucket-lifecycle-configuration`.
 
 ---
 
+## Retention dei log CloudWatch (dal 2026-09-29)
+
+Definizione canonica:
+[`deploy/rfone-cloudwatch/log-retention.json`](deploy/rfone-cloudwatch/log-retention.json).
+
+| Log group | Retention |
+|---|---|
+| App Runner `rfone-web` e `rfone-tips` (`application`, `service`) | 30 giorni |
+| CodeBuild `rfone-web-build` e `rfone-tips-build` | 30 giorni |
+| ECS `/ecs/rfone-clover-acquisition-job`, `/ecs/rfone-clover-correction-sync` | 90 giorni |
+
+I log operativi ordinari si conservano per meno tempo. I log delle
+acquisizioni di dati reali da Clover restano più a lungo, per poter
+ricostruire un run contestato settimane dopo. I nomi dei log group App
+Runner contengono l'id del servizio: se un servizio viene ricreato, va
+aggiornato il file e reimpostata la retention (`put-retention-policy`).
+
+---
+
 ## Stato SES (mittente RF-One)
 
 Verificato il 2026-09-11 via `aws sesv2 get-account` / `get-email-identity` / `get-account` (dopo `put-account-details`):
