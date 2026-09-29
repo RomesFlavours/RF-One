@@ -49,6 +49,15 @@ Nessuna password o codice viene passato come argomento di comando o scritto su l
 
 ## URL AWS verificati (ricognizione)
 
+**Stato attuale (2026-09-29).** L'unico ingresso operativo di RF-One è
+**`https://rfone.romesflavours.com`** (vedi "Dominio ufficiale attivo" più
+sotto). Gli hostname App Runner (`vhmsm9mgh8…`, `mxgsc3nwha…`) e l'hostname
+tecnico CloudFront `dn1l56t5jz22u.cloudfront.net` restano raggiungibili ma
+**non sono destinati all'uso operativo**: rispondono con un 301 verso la
+stessa pagina del dominio ufficiale. La tabella che segue è la ricognizione
+**storica** del 2026-09-11, quando gli hostname App Runner erano ancora gli
+ingressi: non usarla come elenco degli indirizzi attuali.
+
 Ricognizione eseguita interrogando direttamente AWS App Runner (`aws apprunner list-services --profile rfone-dev-login --region us-east-1`) e poi verificando ogni indirizzo con una richiesta HTTP reale, controllando il contenuto restituito (titolo/pagina), non solo il codice di stato — vedi il report completo in chat per il dettaglio del metodo di verifica di ciascuna riga.
 
 Servizi App Runner trovati in `us-east-1` sul profilo `rfone-dev-login`:
@@ -122,6 +131,12 @@ Verificato il 2026-09-11 via `aws sesv2 get-account` / `get-email-identity` / `g
 
 ## RF-One come applicazione unica: la sessione condivisa fra `rfone-web` e `rfone-tips`
 
+**Stato attuale (2026-09-29).** Il problema descritto qui è risolto:
+l'Opzione A è stata adottata il 2026-09-27 e dal 2026-09-28 l'ingresso unico
+è `https://rfone.romesflavours.com` (vedi "Opzione A adottata" e "Dominio
+ufficiale attivo"). L'analisi che segue, fino a "Raccomandazione", descrive
+la situazione precedente ed è conservata come motivazione della scelta.
+
 **Contesto.** `TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001` §15 stabilisce
 che chi valida un periodo Tips deve essere identificato **dal sistema di
 accesso già esistente in RF-One** — mai un secondo login, mai un accesso
@@ -135,8 +150,8 @@ che RF-One Web ha già stabilito.
 
 **Il blocco è di deployment, non di codice.** Il cookie di sessione Flask è
 firmato e legato all'**host** (il browser ignora la porta, non il
-hostname). Oggi le due parti di RF-One sono pubblicate su due hostname
-distinti:
+hostname). Fino al 2026-09-27 le due parti di RF-One erano pubblicate su due
+hostname distinti:
 
 | Servizio App Runner | Hostname |
 |---|---|
@@ -203,8 +218,8 @@ direttamente nella tab Clover Acquisition di Tips, con l'identità RF-One.
   Web: `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`.
 - La card del Domain Tips punta a `/tips/`, sullo stesso host
   (`RFONE_TIPS_URL` la sovrascrive).
-- `RFONE_WEB_BASE_URL` di `rfone-tips` deve valere
-  `https://dn1l56t5jz22u.cloudfront.net`.
+- `RFONE_WEB_BASE_URL` di `rfone-tips` deve valere l'ingresso ufficiale,
+  oggi `https://rfone.romesflavours.com`.
 
 **Stato al 2026-09-27: attivo.** Il segreto di sessione è condiviso:
 `rfone-tips` usa ora `rfone-web/flask-secret-key` (prima aveva
@@ -212,13 +227,12 @@ direttamente nella tab Clover Acquisition di Tips, con l'identità RF-One.
 `rfone-tips-apprunner-instance-role` ha la policy inline
 `rfone-tips-shared-session-secret-read`
 ([`deploy/rfone-cloudfront/rfone-tips-shared-session-secret-read.json`](deploy/rfone-cloudfront/rfone-tips-shared-session-secret-read.json)).
-`RFONE_WEB_BASE_URL` di `rfone-tips` vale
-`https://dn1l56t5jz22u.cloudfront.net`.
-
-**L'ingresso di RF-One è ora `https://dn1l56t5jz22u.cloudfront.net`.** Gli
-hostname App Runner restano raggiungibili, ma su di essi la sessione non è
-condivisa. Da `vhmsm9mgh8…` il link a Tips (`/tips/`) non porta più a
-Tips.
+Il 2026-09-27 `RFONE_WEB_BASE_URL` di `rfone-tips` valeva
+`https://dn1l56t5jz22u.cloudfront.net`, che era l'ingresso di RF-One. Dal
+2026-09-28 entrambi sono sostituiti dal dominio ufficiale
+`https://rfone.romesflavours.com` (sezione seguente), e l'hostname tecnico
+CloudFront reindirizza lì. Gli hostname App Runner restano raggiungibili ma
+non sono ingressi: reindirizzano anch'essi al dominio ufficiale.
 
 Non usare mai l'ingresso unico con segreti diversi. Tips non saprebbe
 verificare il cookie di RF-One Web e, alla prima scrittura (un messaggio
@@ -298,9 +312,9 @@ codice applicativo e senza introdurre debito: un ingresso unico davanti a
 ciò che già esiste. L'opzione B resta la direzione architetturale corretta
 e può essere affrontata separatamente, come rifattorizzazione dichiarata.
 
-**Decisione richiesta al Product Owner:** quale opzione adottare, e — per
-l'opzione A — se usare una distribuzione CloudFront sugli hostname App
-Runner attuali oppure attestarsi subito su un dominio RF-One definitivo.
+**Decisione presa dal Product Owner (2026-09-27):** Opzione A, prima con
+una distribuzione CloudFront sugli hostname App Runner, poi (2026-09-28) sul
+dominio definitivo `rfone.romesflavours.com`.
 
 ### Sblocco della validazione adottato (TIPS_AWS_FINALIZATION_WORKFLOW_001, 2026-09-25)
 

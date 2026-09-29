@@ -6,7 +6,8 @@ column of blocks.
   * Domains: operational first, Work in progress last, alphabetical within
     each group; Bank is not a Domain on Home.
   * Administration: Bank, for accounts with BANK access.
-  * Settings: Accounts, Legal Entities, Organization (admins), Profile.
+  * Settings, alphabetical: Accounts, Legal Entities, Organization (admins),
+    Profile, Workweek (admins).
   * Profile is no longer a header button; Log out is a text link.
 
 Throwaway SQLite database created before `app.py` is imported; never
@@ -148,10 +149,10 @@ def main() -> int:
         check("Administration contains exactly Bank",
               HREF_RE.findall(admin_part) == ["/bank"] and "<strong>Bank</strong>" in admin_part)
         rows = re.findall(r"<strong>([^<]+)</strong>", settings_part)
-        check("Settings rows are Accounts, Legal Entities, Organization, Profile (alphabetical)",
-              rows == ["Accounts", "Legal Entities", "Organization", "Profile"], f"{rows}")
+        check("Settings rows are Accounts, Legal Entities, Organization, Profile, Workweek (alphabetical)",
+              rows == ["Accounts", "Legal Entities", "Organization", "Profile", "Workweek"], f"{rows}")
         check("Settings links use the existing routes",
-              HREF_RE.findall(settings_part) == ["/admin/accounts", "/admin/legal-entities", "/admin/organization", "/profile"])
+              HREF_RE.findall(settings_part) == ["/admin/accounts", "/admin/legal-entities", "/admin/organization", "/profile", "/admin/workweek"])
         check("Administration and Settings are two distinct blocks",
               body.count('class="domain-card home-block"') == 2)
         check("old separate links are gone",

@@ -55,9 +55,11 @@
       <a class="home-row" href="{{ url_for('admin_accounts') }}"><strong>Accounts</strong> &mdash; Manage RF-One accounts and Domain access.</a>
       <a class="home-row" href="{{ url_for('admin_legal_entities') }}"><strong>Legal Entities</strong> &mdash; Manage legal entities.</a>
       <a class="home-row" href="{{ url_for('admin_organization') }}"><strong>Organization</strong> &mdash; Configure organization settings.</a>
-      <a class="home-row" href="{{ url_for('admin_workweek') }}"><strong>Workweek</strong> &mdash; The day each Restaurant's Workweek starts.</a>
     {% endif %}
     <a class="home-row" href="{{ url_for('profile') }}"><strong>Profile</strong> &mdash; Manage your personal account information.</a>
+    {% if account.is_admin %}
+      <a class="home-row" href="{{ url_for('admin_workweek') }}"><strong>Workweek</strong> &mdash; The day each Restaurant's Workweek starts.</a>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
