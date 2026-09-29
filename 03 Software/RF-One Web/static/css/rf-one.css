@@ -129,6 +129,10 @@ a:hover { text-decoration: underline; }
 }
 .domain-card-unavailable:hover { background: var(--surface); }
 .domain-card-unavailable .domain-name { color: var(--muted); }
+/* Release state on Home: the same green/red pair as `.badge.ok` /
+   `.badge.bad` (ACTIVE / INACTIVE), applied to the whole card. */
+.domain-card-released, .domain-card-released:hover { background: #e7f3ea; border-color: #bcdcc6; }
+.domain-card-unreleased, .domain-card-unreleased:hover { background: #fbeaea; border-color: #e2a8a0; }
 .domain-unavailable-label {
   font-size: .72rem;
   text-transform: uppercase;

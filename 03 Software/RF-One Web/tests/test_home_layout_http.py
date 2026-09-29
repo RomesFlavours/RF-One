@@ -127,9 +127,20 @@ def main() -> int:
         check("Bank is not presented as a Domain",
               DOMAINS_BY_CODE["BANK"].display_name not in domains_part and 'href="/bank"' not in domains_part)
         check("no side-by-side domain grid remains on Home", 'class="domain-grid"' not in body)
-        tips_block = domains_part.split(DOMAINS_BY_CODE["TIPS"].display_name, 1)[1].split('class="domain-card"', 1)[0]
+        tips_block = domains_part.split(DOMAINS_BY_CODE["TIPS"].display_name, 1)[1].split('class="domain-card ', 1)[0]
         check("'Tips — validate saved periods' sits right under the Tips Domain",
               'href="/tips/runs"' in tips_block and "validate saved periods" in tips_block)
+
+        # Release state: operational Domains green, Work in progress red
+        # (same pair as the ACTIVE / INACTIVE badges).
+        card_states = {name: state for state, name in re.findall(
+            r'class="domain-card domain-card-(released|unreleased)"[^>]*>\s*<div class="domain-name">([^<]+)</div>',
+            domains_part)}
+        check("operational Domains are marked released (green)",
+              all(card_states.get(n) == "released" for n in ("Compensation", "Tips", "Training")), f"{card_states}")
+        check("the Work in progress Domain is marked not released (red)",
+              card_states.get("Selection — Work in progress") == "unreleased", f"{card_states}")
+        check("every Domain card carries exactly one release state", len(card_states) == len(names), f"{card_states}")
 
         # --- Administration and Settings -------------------------------------
         admin_part = body.split('<div class="domain-name">Administration</div>', 1)[1].split('<div class="domain-name">Settings</div>', 1)[0]

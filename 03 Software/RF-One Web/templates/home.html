@@ -14,13 +14,14 @@
 {% if domains_view %}
   <div class="home-stack">
     {% for domain in domains_view %}
+      {% set released = domain.link and domain.code not in work_in_progress_codes %}
       {% if domain.link %}
-        <a class="domain-card" href="{{ domain.link }}">
+        <a class="domain-card {{ 'domain-card-released' if released else 'domain-card-unreleased' }}" href="{{ domain.link }}">
           <div class="domain-name">{{ domain.display_name }}</div>
           <div class="domain-description">{{ domain.description }}</div>
         </a>
       {% else %}
-        <div class="domain-card domain-card-unavailable" aria-disabled="true">
+        <div class="domain-card domain-card-unavailable domain-card-unreleased" aria-disabled="true">
           <div class="domain-name">{{ domain.display_name }}</div>
           <div class="domain-description">{{ domain.description }}</div>
           <div class="domain-unavailable-label">Non ancora disponibile</div>
