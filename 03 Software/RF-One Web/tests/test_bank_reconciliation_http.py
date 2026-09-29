@@ -315,8 +315,10 @@ def main() -> int:
         # the current section (RF-One UI Rules §4).
         tabs = resp.data[resp.data.index(b'<nav class="module-tabs"'):]
         check(
-            "every Bank page offers the four tabs in the same order, Classification last",
-            tabs.index(b"Import &amp; Instruments")
+            "every Bank page offers the tabs in the approved order, Classification last",
+            tabs.index(b"Import and Review")
+            < tabs.index(b">Instructions<")
+            < tabs.index(b">Instruments<")
             < tabs.index(b"Review Transactions")
             < tabs.index(b"Monthly Export")
             < tabs.index(b">Classification<"),

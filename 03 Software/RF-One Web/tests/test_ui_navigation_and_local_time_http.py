@@ -247,7 +247,7 @@ def main() -> int:
     for path, current in (("/admin/accounts", "Accounts"), ("/admin/legal-entities", "Legal Entities"),
                           ("/admin/organization", "Organization"), ("/profile", "Profile"),
                           ("/tips/runs", "Saved Periods"), ("/compensation", "Compensation"),
-                          ("/bank", "Import &amp; Instruments")):
+                          ("/bank", "Import and Review")):
         html = client.get(path, base_url=HOST).get_data(as_text=True)
         nav = crumbs(html)
         check(f"E: {path} shows RF-One > ... > {current}",

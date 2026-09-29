@@ -3,7 +3,7 @@
 {% block page_title %}Bank Reconciliation · Edit instrument · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-{{ bank.module_nav('import', 'Edit instrument') }}
+{{ bank.module_nav('instruments', 'Edit instrument') }}
 
 <h2>Edit Payment Instrument</h2>
 
@@ -38,6 +38,7 @@
 <div class="card">
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="return_to" value="instruments">
 
     <div class="field-row">
       <label for="display_name">Display name</label>
@@ -132,7 +133,7 @@
 
     <div class="btn-row">
       <button type="submit">Save instrument</button>
-      <a class="btn btn-secondary" href="{{ url_for('bank_home') }}">Cancel</a>
+      <a class="btn btn-secondary" href="{{ url_for('bank_instruments') }}">Cancel</a>
     </div>
   </form>
 </div>

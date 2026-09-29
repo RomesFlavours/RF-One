@@ -41,11 +41,12 @@ from __future__ import annotations
 import base64
 import calendar
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 
-from flask import Response, abort, flash, redirect, render_template, request, url_for
+from flask import Response, abort, current_app, flash, redirect, render_template, request, url_for
 from sqlalchemy import func, or_, select
 
+from rfone_data_store import display_format
 from rfone_data_store import models as m
 from rfone_data_store.bank_reconciliation import accounting_dedup
 from rfone_data_store.bank_reconciliation import card_configuration
@@ -160,6 +161,128 @@ def _report_missing_accounts(db, covered_months: set[tuple[int, int]]) -> None:
     _flash_control_outcome(outcome)
 
 
+# ---------------------------------------------------------------------------
+# Import and Review (BANK_IMPORT_AND_REVIEW_001) — presentation helpers.
+#
+# `/bank` is the monthly operational page: Import, Check Sources, Automatic
+# WHO, Review Missing, for ONE selected month. Nothing here is a process
+# state: every figure is read from the facts the specialist pages already
+# use, through the same functions.
+# ---------------------------------------------------------------------------
+
+# The only values a POST may carry in `return_to`. Anything else is ignored
+# and the route redirects exactly as it did before, so no caller can turn a
+# Bank form into a redirect to an address of its choosing.
+RETURN_IMPORT_REVIEW = "import_review"
+RETURN_INSTRUMENTS = "instruments"
+
+_MIN_YEAR, _MAX_YEAR = 2000, 2100
+
+
+def _valid_month(year: int | None, month: int | None) -> tuple[int, int] | None:
+    if year is None or month is None:
+        return None
+    if not (_MIN_YEAR <= year <= _MAX_YEAR and 1 <= month <= 12):
+        return None
+    return year, month
+
+
+def _previous_local_month(tz_name: str | None) -> tuple[int, int]:
+    """The calendar month before today, today being the Location's local
+    date (RF-One UI Rules §1). With no usable zone the UTC date is used, as
+    `display_format` does everywhere: a zone is never guessed."""
+    today = display_format.to_local(datetime.now(timezone.utc), tz_name).date()
+    last_of_previous = today.replace(day=1) - timedelta(days=1)
+    return last_of_previous.year, last_of_previous.month
+
+
+def _shift_month(year: int, month: int, delta: int) -> tuple[int, int]:
+    index = year * 12 + (month - 1) + delta
+    return index // 12, index % 12 + 1
+
+
+def _monthly_sources_view(db, period) -> dict:
+    """The selected-month Monthly Sources facts, for `/bank/monthly` and for
+    the Check Sources section of `/bank` alike — one implementation, so the
+    two pages can never disagree about a month.
+
+    An OPEN month re-evaluates on every view, so the screen is never stale;
+    a COMPLETE one is history and is read as-is (`refresh_coverage` leaves
+    it untouched). Commits the refreshed coverage, exactly as the Monthly
+    Sources page always has."""
+    rows, report, extra_batches, still_active_ids = [], None, {}, set()
+    if period is not None:
+        monthly_source.refresh_coverage(db, period)
+        db.commit()
+        rows = monthly_source.coverages(db, period)
+        report = monthly_source.evaluate(db, period)
+        for coverage in rows:
+            covering = monthly_source.batches_covering(
+                db, period=period, instrument_id=coverage.payment_instrument_id,
+            )
+            if len(covering) > 1:
+                extra_batches[coverage.id] = covering[1:]
+        # STILL ACTIVE is offered only where the service would accept it;
+        # the service re-checks on submit either way.
+        still_active_ids = {
+            c.payment_instrument_id for c in rows
+            if monthly_source.still_active_refusal(db, c.payment_instrument) is None
+        }
+    control_config = monthly_source.get_control_config(db)
+    return {
+        "control_config": control_config,
+        "period_is_controlled": (
+            period is not None and control_config is not None
+            and period.period_month >= control_config.control_start_month
+        ),
+        "period": period,
+        "coverages": rows,
+        "report": report,
+        "extra_batches": extra_batches,
+        "still_active_ids": still_active_ids,
+        "EXPECTED": m.COVERAGE_EXPECTED,
+        "NOT_EXPECTED": m.COVERAGE_NOT_EXPECTED,
+        "NEEDS_CONFIRMATION": m.COVERAGE_NEEDS_CONFIRMATION,
+        "RESOLUTIONS": m.COVERAGE_RESOLUTIONS,
+    }
+
+
+# The WHO status of a month's transactions, read from their CURRENT
+# decision and nothing else. Only the WHO is looked at: never the Why, the
+# What or the decision status, which also speaks about purpose.
+WHO_FROM_LEARNED_RULE = "learned_rule"
+WHO_FROM_HUMAN = "human"
+WHO_FROM_OTHER_AUTOMATIC = "other_automatic"
+WHO_MISSING = "missing"
+
+
+def _who_source(explanation) -> str:
+    if explanation is None or explanation.occurrence_id is None:
+        return WHO_MISSING
+    if explanation.decision_source == "HUMAN":
+        return WHO_FROM_HUMAN
+    if explanation.decision_source == "RULE" and explanation.recognition_rule_id is not None:
+        return WHO_FROM_LEARNED_RULE
+    return WHO_FROM_OTHER_AUTOMATIC
+
+
+def _who_status_counts(db, transactions) -> dict[str, int]:
+    """How many of `transactions` have a WHO, and where it came from."""
+    counts = dict.fromkeys(
+        (WHO_FROM_LEARNED_RULE, WHO_FROM_HUMAN, WHO_FROM_OTHER_AUTOMATIC, WHO_MISSING), 0,
+    )
+    explanation_ids = {t.explanation_id for t in transactions if t.explanation_id is not None}
+    explanations = {
+        e.id: e for e in db.scalars(
+            select(m.BankTransactionExplanation)
+            .where(m.BankTransactionExplanation.id.in_(explanation_ids))
+        ).all()
+    } if explanation_ids else {}
+    for txn in transactions:
+        counts[_who_source(explanations.get(txn.explanation_id))] += 1
+    return counts
+
+
 def register_bank_routes(
     app, *, require_domain_access, SessionFactory, load_current_account, require_csrf,
 ):
@@ -186,24 +309,125 @@ def register_bank_routes(
             .order_by(m.LegalEntity.legal_name)
         ).all()
 
+    def _return_redirect(default, *, year: int | None = None, month: int | None = None):
+        """Where a Bank POST goes when it is done.
+
+        `return_to` may name one of two Bank pages and nothing else: Import
+        and Review (for the month given, when it is a real month) or
+        Instruments. Without it — or with any other value — the route's own
+        `default` redirect is returned unchanged."""
+        target = request.form.get("return_to")
+        if target == RETURN_IMPORT_REVIEW:
+            selected = _valid_month(year, month)
+            if selected is None:
+                return redirect(url_for("bank_home"))
+            return redirect(url_for("bank_home", year=selected[0], month=selected[1]))
+        if target == RETURN_INSTRUMENTS:
+            return redirect(url_for("bank_instruments"))
+        return default
+
+    def _form_month() -> dict:
+        """The month an Import and Review form was rendered for, as sent back
+        with the form — used only to choose which month to return to."""
+        return {"year": request.form.get("year", type=int),
+                "month": request.form.get("month", type=int)}
+
+    def _site_timezone() -> str | None:
+        """The zone RF-One Web shows every time in — the `tz` its context
+        processor already provides to templates, read here rather than
+        looked up a second way."""
+        context: dict = {}
+        current_app.update_template_context(context)
+        return context.get("tz")
+
     @app.route("/bank")
     @gate
     def bank_home():
+        """Import and Review — the monthly Bank work for one month."""
+        selected = _valid_month(
+            request.args.get("year", type=int), request.args.get("month", type=int),
+        )
+        year, month = selected or _previous_local_month(_site_timezone())
+        month_start, month_end = monthly_source.period_bounds(year, month)
+        show_all_batches = request.args.get("batches") == "all"
+
         with SessionFactory() as db:
+            instruments = _instruments(db)
+            instruments_by_id = {i.id: i for i in instruments}
+
+            # --- 1 Import: this month's source files, plus any file of any
+            # month that still waits for an action — pending work is never
+            # hidden by the month selector.
             batches = db.scalars(
                 select(m.BankImportBatch).order_by(m.BankImportBatch.uploaded_at.desc())
             ).all()
-            instruments = _instruments(db)
-            legal_entities = _active_legal_entities(db)
-            instruments_by_id = {i.id: i for i in instruments}
-
-            # The concrete reason each batch is in the status it shows, and
-            # the one action that addresses it — computed live, never read
-            # from a stored field. A bare `REQUIRES_REVIEW` with no reason
-            # and no available action was the defect this replaces.
             batch_states = {
                 batch.id: bank_service.compute_batch_review_state(db, batch) for batch in batches
             }
+            month_key = (year, month)
+            month_batches, pending_batches, undated_count = [], [], 0
+            for batch in batches:
+                spanned = _months_spanned(batch)
+                if not spanned:
+                    undated_count += 1
+                state = batch_states.get(batch.id)
+                if show_all_batches or month_key in spanned:
+                    month_batches.append(batch)
+                elif state is not None and state.action is not None:
+                    pending_batches.append(batch)
+
+            # --- 2 Check Sources: the same facts as Monthly Sources.
+            period = monthly_source.get_period(db, year, month)
+            monthly = _monthly_sources_view(db, period)
+
+            # --- 3 Automatic WHO and 4 Review Missing: the month's
+            # transactions as the monthly export sees them.
+            transactions = export_service.in_scope_transactions(db, year, month)
+            who_counts = _who_status_counts(db, transactions)
+            unresolved_count = len(
+                export_service.unresolved_transactions(db, year=year, month=month)
+            )
+
+            previous_year, previous_month = _shift_month(year, month, -1)
+            next_year, next_month = _shift_month(year, month, 1)
+            return render_template(
+                "bank_home.html",
+                year=year, month=month,
+                month_label=date(year, month, 1).strftime("%B %Y"),
+                month_start=month_start, month_end=month_end,
+                previous_year=previous_year, previous_month=previous_month,
+                next_year=next_year, next_month=next_month,
+                is_controlled=monthly_source.is_controlled_month(db, year, month),
+                is_provisional=monthly_source.is_provisional_month(db, year, month),
+                instruments=instruments, instruments_by_id=instruments_by_id,
+                batches=month_batches, pending_batches=pending_batches,
+                month_action_count=sum(
+                    1 for b in month_batches
+                    if batch_states.get(b.id) is not None and batch_states[b.id].action is not None
+                ),
+                batch_states=batch_states, undated_batch_count=undated_count,
+                show_all_batches=show_all_batches, total_batch_count=len(batches),
+                transaction_count=len(transactions), who_counts=who_counts,
+                unresolved_count=unresolved_count,
+                RETURN_IMPORT_REVIEW=RETURN_IMPORT_REVIEW,
+                **monthly,
+            )
+
+    @app.route("/bank/instructions")
+    @gate
+    def bank_instructions():
+        """How the monthly Bank work is done — explanation only, no data."""
+        return render_template("bank_instructions.html")
+
+    @app.route("/bank/instruments")
+    @gate
+    def bank_instruments():
+        """Instruments — the permanent configuration the monthly work relies
+        on: Payment Instruments, saved source rules, the assignment history
+        and the accounting deduplication summary."""
+        with SessionFactory() as db:
+            instruments = _instruments(db)
+            legal_entities = _active_legal_entities(db)
             instrument_warnings = {
                 i.id: bank_service.instrument_export_warning(i) for i in instruments
             }
@@ -245,9 +469,8 @@ def register_bank_routes(
             ).all()
 
             return render_template(
-                "bank_home.html", batches=batches, instruments=instruments,
-                instruments_by_id=instruments_by_id, legal_entities=legal_entities,
-                batch_states=batch_states, instrument_warnings=instrument_warnings,
+                "bank_instruments.html", instruments=instruments,
+                legal_entities=legal_entities, instrument_warnings=instrument_warnings,
                 source_profiles=source_profiles, assignment_audits=assignment_audits,
                 settlement_accounts=settlement_accounts, cardholders=cardholders,
                 derived_companies=derived_companies, card_warnings=card_warnings,
@@ -330,11 +553,11 @@ def register_bank_routes(
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
-                return redirect(url_for("bank_home"))
+                return _return_redirect(redirect(url_for("bank_home")))
         flash(f"Payment Instrument {display_name!r} created.", "info")
         if warning:
             flash(f"{display_name}: {warning}", "error")
-        return redirect(url_for("bank_home"))
+        return _return_redirect(redirect(url_for("bank_home")))
 
     @app.route("/bank/instruments/<int:instrument_id>/edit", methods=["GET", "POST"])
     @gate
@@ -392,7 +615,7 @@ def register_bank_routes(
                 flash(f"Payment Instrument {display_name!r} updated.", "info")
                 if warning:
                     flash(f"{display_name}: {warning}", "error")
-                return redirect(url_for("bank_home"))
+                return _return_redirect(redirect(url_for("bank_home")))
 
             all_instruments = _instruments(db)
             return render_template(
@@ -599,7 +822,7 @@ def register_bank_routes(
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
-        return redirect(url_for("bank_home"))
+        return _return_redirect(redirect(url_for("bank_home")))
 
     # -----------------------------------------------------------------
     # Upload — multiple files, format recognition, instrument confirmation.
@@ -613,7 +836,7 @@ def register_bank_routes(
         uploaded_files = [f for f in request.files.getlist("files") if f and f.filename]
         if not uploaded_files:
             flash("Select at least one CSV file to upload.", "error")
-            return redirect(url_for("bank_home"))
+            return _return_redirect(redirect(url_for("bank_home")), **_form_month())
 
         with SessionFactory() as db:
             account = _current_account(db)
@@ -695,7 +918,7 @@ def register_bank_routes(
 
             _report_missing_accounts(db, covered_months)
 
-        return redirect(url_for("bank_home"))
+        return _return_redirect(redirect(url_for("bank_home")), **_form_month())
 
     @app.route("/bank/batches/<int:batch_id>/resolve-instrument", methods=["POST"])
     @gate
@@ -712,7 +935,7 @@ def register_bank_routes(
         save_profile = bool(request.form.get("save_as_source_profile"))
         if not payment_instrument_id:
             flash("Select a Payment Instrument to resolve this batch.", "error")
-            return redirect(url_for("bank_home"))
+            return _return_redirect(redirect(url_for("bank_home")), **_form_month())
         with SessionFactory() as db:
             account = _current_account(db)
             try:
@@ -732,7 +955,7 @@ def register_bank_routes(
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
-        return redirect(url_for("bank_home"))
+        return _return_redirect(redirect(url_for("bank_home")), **_form_month())
 
     @app.route("/bank/batches/<int:batch_id>/normalize-pending", methods=["POST"])
     @gate
@@ -749,7 +972,7 @@ def register_bank_routes(
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
-                return redirect(url_for("bank_home"))
+                return _return_redirect(redirect(url_for("bank_home")), **_form_month())
         if normalized:
             note = f"Batch #{batch_id}: {normalized} pending row(s) normalized"
             if candidates:
@@ -761,7 +984,7 @@ def register_bank_routes(
                 "still matches no configured Payment Instrument.",
                 "error",
             )
-        return redirect(url_for("bank_home"))
+        return _return_redirect(redirect(url_for("bank_home")), **_form_month())
 
     @app.route("/bank/batches/<int:batch_id>/reprocess", methods=["POST"])
     @gate
@@ -781,7 +1004,7 @@ def register_bank_routes(
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
-        return redirect(url_for("bank_home"))
+        return _return_redirect(redirect(url_for("bank_home")), **_form_month())
 
     @app.route("/bank/source-profiles/<int:profile_id>", methods=["POST"])
     @gate
@@ -804,7 +1027,7 @@ def register_bank_routes(
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
-        return redirect(url_for("bank_home"))
+        return _return_redirect(redirect(url_for("bank_home")))
 
     # -----------------------------------------------------------------
     # Review — filter, resolve duplicates, assign classification.
@@ -1056,48 +1279,14 @@ def register_bank_routes(
                     .order_by(m.BankMonthlySourcePeriod.period_month.desc())
                 ).first()
 
-            rows, report, extra_batches, still_active_ids = [], None, {}, set()
-            if period is not None:
-                # An OPEN month re-evaluates on every view, so the screen is
-                # never stale. A COMPLETE one is history and is read as-is.
-                monthly_source.refresh_coverage(db, period)
-                db.commit()
-                rows = monthly_source.coverages(db, period)
-                report = monthly_source.evaluate(db, period)
-                for coverage in rows:
-                    covering = monthly_source.batches_covering(
-                        db, period=period, instrument_id=coverage.payment_instrument_id,
-                    )
-                    if len(covering) > 1:
-                        extra_batches[coverage.id] = covering[1:]
-                # STILL ACTIVE is offered only where the service would accept
-                # it; the service re-checks on submit either way.
-                still_active_ids = {
-                    c.payment_instrument_id for c in rows
-                    if monthly_source.still_active_refusal(db, c.payment_instrument) is None
-                }
-
-            control_config = monthly_source.get_control_config(db)
+            monthly = _monthly_sources_view(db, period)
             return render_template(
                 "bank_monthly.html",
-                control_config=control_config,
-                period_is_controlled=(
-                    period is not None and control_config is not None
-                    and period.period_month >= control_config.control_start_month
-                ),
-                period=period,
                 periods=monthly_source.list_periods(db),
-                coverages=rows,
-                report=report,
-                extra_batches=extra_batches,
-                still_active_ids=still_active_ids,
                 instruments=db.scalars(
                     select(m.PaymentInstrument).order_by(m.PaymentInstrument.display_name)
                 ).all(),
-                EXPECTED=m.COVERAGE_EXPECTED,
-                NOT_EXPECTED=m.COVERAGE_NOT_EXPECTED,
-                NEEDS_CONFIRMATION=m.COVERAGE_NEEDS_CONFIRMATION,
-                RESOLUTIONS=m.COVERAGE_RESOLUTIONS,
+                **monthly,
             )
 
     @app.route("/bank/monthly/control-start", methods=["POST"])
@@ -1197,12 +1386,14 @@ def register_bank_routes(
         month = request.form.get("month", type=int)
         if not year or not month or not 1 <= month <= 12:
             flash("Enter a year and a month between 1 and 12.", "error")
-            return redirect(url_for("bank_monthly"))
+            return _return_redirect(redirect(url_for("bank_monthly")), **_form_month())
         with SessionFactory() as db:
             period = monthly_source.get_or_create_period(db, year, month)
             monthly_source.refresh_coverage(db, period)
             db.commit()
-        return redirect(url_for("bank_monthly", year=year, month=month))
+        return _return_redirect(
+                redirect(url_for("bank_monthly", year=year, month=month)), year=year, month=month,
+            )
 
     @app.route("/bank/monthly/<int:period_id>/coverage/<int:coverage_id>/resolve", methods=["POST"])
     @gate
@@ -1261,7 +1452,10 @@ def register_bank_routes(
                 flash(str(exc), "error")
             month = period.period_month
         year_s, month_s = month.split("-")
-        return redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s)))
+        return _return_redirect(
+            redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s))),
+            year=int(year_s), month=int(month_s),
+        )
 
     @app.route("/bank/monthly/<int:period_id>/coverage/<int:coverage_id>/clear", methods=["POST"])
     @gate
@@ -1281,7 +1475,10 @@ def register_bank_routes(
                 flash(str(exc), "error")
             month = period.period_month
         year_s, month_s = month.split("-")
-        return redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s)))
+        return _return_redirect(
+            redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s))),
+            year=int(year_s), month=int(month_s),
+        )
 
     @app.route("/bank/monthly/<int:period_id>/complete", methods=["POST"])
     @gate
@@ -1315,7 +1512,10 @@ def register_bank_routes(
                     flash(blocker, "error")
             month = period.period_month
         year_s, month_s = month.split("-")
-        return redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s)))
+        return _return_redirect(
+            redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s))),
+            year=int(year_s), month=int(month_s),
+        )
 
     @app.route("/bank/monthly/<int:period_id>/reopen", methods=["POST"])
     @gate
@@ -1336,7 +1536,10 @@ def register_bank_routes(
                 flash(str(exc), "error")
             month = period.period_month
         year_s, month_s = month.split("-")
-        return redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s)))
+        return _return_redirect(
+            redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s))),
+            year=int(year_s), month=int(month_s),
+        )
 
     @app.route("/bank/transactions/<int:transaction_id>/reassign-instrument", methods=["POST"])
     @gate

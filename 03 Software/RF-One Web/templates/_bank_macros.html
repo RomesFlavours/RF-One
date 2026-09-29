@@ -16,40 +16,36 @@
    the header (RF-One UI Rules §4, `_nav_macros.html`). #}
 {% from "_nav_macros.html" import breadcrumb %}
 {% macro module_nav(active, leaf=None) %}
-{%- set sections = {'import': ('Import & Instruments', url_for('bank_home')),
-                    'review': ('Review Transactions', url_for('bank_review')),
-                    'monthly': ('Monthly Sources', url_for('bank_monthly')),
-                    'export': ('Monthly Export', url_for('bank_export')),
-                    'classification': ('Classification', url_for('bank_classification'))} %}
-{%- set section = sections.get(active, (active, None)) %}
+{#- BANK_IMPORT_AND_REVIEW_001 — the approved order: the monthly work first,
+    its explanation second, the permanent configuration third, then the
+    specialist pages. One list drives both the tabs and the breadcrumb. #}
+{%- set tabs = [('import', 'Import and Review', url_for('bank_home')),
+                ('instructions', 'Instructions', url_for('bank_instructions')),
+                ('instruments', 'Instruments', url_for('bank_instruments')),
+                ('review', 'Review Transactions', url_for('bank_review')),
+                ('monthly', 'Monthly Sources', url_for('bank_monthly')),
+                ('export', 'Monthly Export', url_for('bank_export')),
+                ('classification', 'Classification', url_for('bank_classification'))] %}
+{%- set ns = namespace(section=(active, None)) %}
+{%- for key, label, href in tabs %}{% if key == active %}{% set ns.section = (label, href) %}{% endif %}{% endfor %}
 {%- if leaf %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', url_for('bank_home')), section, (leaf, None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', url_for('bank_home')), ns.section, (leaf, None)]) }}
 {%- else %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', url_for('bank_home')), (section[0], None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', url_for('bank_home')), (ns.section[0], None)]) }}
 {%- endif %}
 <div class="module-header">
   <div class="module-identity">
     <h1 class="module-title">Bank Reconciliation</h1>
-    <p class="module-tagline">Manual CSV import from Chase and First Citizens, normalization into the canonical ledger, duplicate detection, and the monthly Kermali export.</p>
+    <p class="module-tagline">Monthly bank and card reconciliation.</p>
   </div>
 </div>
 
 <nav class="module-tabs" aria-label="Bank Reconciliation sections">
-  <a class="module-tab{% if active == 'import' %} is-active{% endif %}"
-     href="{{ url_for('bank_home') }}"
-     {% if active == 'import' %}aria-current="page"{% endif %}>Import &amp; Instruments</a>
-  <a class="module-tab{% if active == 'review' %} is-active{% endif %}"
-     href="{{ url_for('bank_review') }}"
-     {% if active == 'review' %}aria-current="page"{% endif %}>Review Transactions</a>
-  <a class="module-tab{% if active == 'monthly' %} is-active{% endif %}"
-     href="{{ url_for('bank_monthly') }}"
-     {% if active == 'monthly' %}aria-current="page"{% endif %}>Monthly Sources</a>
-  <a class="module-tab{% if active == 'export' %} is-active{% endif %}"
-     href="{{ url_for('bank_export') }}"
-     {% if active == 'export' %}aria-current="page"{% endif %}>Monthly Export</a>
-  <a class="module-tab{% if active == 'classification' %} is-active{% endif %}"
-     href="{{ url_for('bank_classification') }}"
-     {% if active == 'classification' %}aria-current="page"{% endif %}>Classification</a>
+  {%- for key, label, href in tabs %}
+  <a class="module-tab{% if active == key %} is-active{% endif %}"
+     href="{{ href }}"
+     {% if active == key %}aria-current="page"{% endif %}>{{ label }}</a>
+  {%- endfor %}
 </nav>
 {% endmacro %}
 
