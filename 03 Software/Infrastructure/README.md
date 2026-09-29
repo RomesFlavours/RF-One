@@ -114,6 +114,24 @@ Nessuno script di deploy era presente nel repository; la procedura è stata rico
 
 ---
 
+## Retention delle immagini ECR (dal 2026-09-29)
+
+I repository ECR `rfone-web` e `rfone-tips` hanno la stessa lifecycle
+policy, una sola definizione canonica:
+[`deploy/rfone-ecr/lifecycle-policy.json`](deploy/rfone-ecr/lifecycle-policy.json).
+
+- Seleziona **solo** le immagini non taggate: conserva le 5 più recenti e
+  fa scadere automaticamente le più vecchie.
+- Le immagini taggate (`latest`, `pre-*`) non sono mai selezionate.
+- Scopo: limitare l'accumulo delle immagini di build obsolete, mantenendo i
+  rollback recenti.
+
+Per modificarla: aggiornare il file, verificarne l'effetto con
+`aws ecr start-lifecycle-policy-preview`, poi `put-lifecycle-policy` su
+entrambi i repository.
+
+---
+
 ## Stato SES (mittente RF-One)
 
 Verificato il 2026-09-11 via `aws sesv2 get-account` / `get-email-identity` / `get-account` (dopo `put-account-details`):

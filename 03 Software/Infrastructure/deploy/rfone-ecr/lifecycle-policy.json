@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {
+      "rulePriority": 1,
+      "description": "RF-One: keep the 5 most recent untagged images, expire older untagged ones. Tagged images (latest, pre-*) are never selected.",
+      "selection": {
+        "tagStatus": "untagged",
+        "countType": "imageCountMoreThan",
+        "countNumber": 5
+      },
+      "action": { "type": "expire" }
+    }
+  ]
+}
