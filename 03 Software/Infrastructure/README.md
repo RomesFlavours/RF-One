@@ -293,10 +293,15 @@ direttamente nella tab Clover Acquisition di Tips, con l'identità RF-One.
 
 **Stato al 2026-09-27: attivo.** Il segreto di sessione è condiviso:
 `rfone-tips` usa ora `rfone-web/flask-secret-key` (prima aveva
-`rfone-tips/flask-secret-key`, che non è più referenziato). Il suo ruolo
+`rfone-tips/flask-secret-key`). Il suo ruolo
 `rfone-tips-apprunner-instance-role` ha la policy inline
 `rfone-tips-shared-session-secret-read`
 ([`deploy/rfone-cloudfront/rfone-tips-shared-session-secret-read.json`](deploy/rfone-cloudfront/rfone-tips-shared-session-secret-read.json)).
+Il 2026-09-29 la policy inline `rfone-tips-flask-secret-access` è stata
+rimossa da quel ruolo. Il vecchio secret `rfone-tips/flask-secret-key` è in
+eliminazione programmata (30 giorni di recupero): sparisce definitivamente
+il 2026-10-29. Il secret di sessione in uso per entrambi i servizi è
+`rfone-web/flask-secret-key`.
 Il 2026-09-27 `RFONE_WEB_BASE_URL` di `rfone-tips` valeva
 `https://dn1l56t5jz22u.cloudfront.net`, che era l'ingresso di RF-One. Dal
 2026-09-28 entrambi sono sostituiti dal dominio ufficiale
