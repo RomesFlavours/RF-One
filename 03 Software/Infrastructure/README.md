@@ -153,6 +153,18 @@ Per modificarla: aggiornare il file, poi `put-bucket-lifecycle-configuration`.
 
 ---
 
+## Protezione del database RDS `rfone-dev` (dal 2026-09-29)
+
+- Backup automatici: **7 giorni** di retention (prima 1), finestra
+  invariata `03:51-04:21` UTC. Il ripristino point-in-time copre quindi
+  l'ultima settimana.
+- **Deletion Protection attiva**: l'istanza non può essere eliminata finché
+  la protezione non viene disattivata esplicitamente.
+- Gli snapshot manuali restano quelli creati dalla procedura di rilascio, e
+  si rivedono a mano.
+
+---
+
 ## Stato SES (mittente RF-One)
 
 Verificato il 2026-09-11 via `aws sesv2 get-account` / `get-email-identity` / `get-account` (dopo `put-account-details`):
