@@ -132,6 +132,27 @@ entrambi i repository.
 
 ---
 
+## Retention dei backup di deploy su S3 (dal 2026-09-29)
+
+Il bucket `rfone-tips-deploy-418674484214` ha una lifecycle con una sola
+regola:
+[`deploy/rfone-s3/deploy-bucket-lifecycle.json`](deploy/rfone-s3/deploy-bucket-lifecycle.json).
+
+- Si applica **solo** al prefisso `backups/`: ogni backup scade dopo 90
+  giorni.
+- Gli zip correnti alla radice (`source.zip`, `rfone-web-source.zip`), letti
+  da CodeBuild, e il prefisso `rollback/` sono esclusi per costruzione e non
+  scadono mai.
+- Scopo: tenere in ordine i backup di deploy senza interferire con build e
+  rollback. I sorgenti restano ricostruibili da Git, perché gli zip nascono
+  da file committati.
+- La regola è solo per età, non conserva "gli ultimi N": dopo 90 giorni
+  senza deploy, un servizio non ha più backup su S3.
+
+Per modificarla: aggiornare il file, poi `put-bucket-lifecycle-configuration`.
+
+---
+
 ## Stato SES (mittente RF-One)
 
 Verificato il 2026-09-11 via `aws sesv2 get-account` / `get-email-identity` / `get-account` (dopo `put-account-details`):
