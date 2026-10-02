@@ -62,7 +62,8 @@ from rfone_data_store.bank_reconciliation import recognition  # noqa: E402
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 NEW_REVISION = "e5b1d7c3a9f2"
-HEAD_REVISION = "b9e4c2a7d5f3"
+HEAD_REVISION = "b9e4c2a7d5f3"  # last schema revision rendered offline for PostgreSQL (check 2)
+CURRENT_HEAD = "a7c3e9d5f2b8"  # the single Alembic head a fresh database reaches (check 1)
 PREVIOUS_REVISION = "d4a8c2e6f1b3"
 
 
@@ -215,7 +216,7 @@ def main() -> int:
               and counterparty[0].status == "ACTIVE" and "Supplier is only one possible kind" in (counterparty[0].description or ""))
         check("1. SQLite migration reaches e5b1d7c3a9f2, creates the WHO/entity table and relaxes "
               "the rule WHY to NULL, keeping every named CHECK",
-              revision == HEAD_REVISION and table_sql is not None
+              revision == CURRENT_HEAD and table_sql is not None
               and notnull.get("transaction_reason_id") == 0 and notnull.get("occurrence_id") == 1
               and all(name in rules_sql for name in (
                   "ck_bank_recognition_rule_match_type", "ck_bank_recognition_rule_match_field",

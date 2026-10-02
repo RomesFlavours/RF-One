@@ -40,7 +40,7 @@ from rfone_data_store.database import (
 PL = wci.PROFIT_LOSS
 BS = wci.BALANCE_SHEET
 
-EXPECTED_ACCOUNTS = 136
+EXPECTED_ACCOUNTS = 137
 EXPECTED_CONTRA = {"1590", "3400", "4910", "4920"}
 EXPECTED_REVIEW_SENSITIVE = {"6900", "7880", "8500", "8600"}
 
@@ -72,7 +72,7 @@ def main() -> int:
             # 1-4. Every canonical account states all four semantics
             # =============================================================
             check(
-                "0. the canonical catalog is the expected 136 accounts",
+                "0. the canonical catalog is the expected 137 accounts",
                 len(rows) == EXPECTED_ACCOUNTS and len(canonical) == EXPECTED_ACCOUNTS,
                 detail=f"{len(rows)} stored, {len(canonical)} defined",
             )
@@ -420,7 +420,7 @@ def main() -> int:
             rows_after = s.query(m.BankAccountingClassification).all()
             after_by_code = {row.code: row for row in rows_after}
             check(
-                "25a. the 136-account hierarchy is unchanged — same codes, same names",
+                "25a. the 137-account hierarchy is unchanged — same codes, same names",
                 {row.code for row in rows_after} == set(by_code)
                 and all(after_by_code[c].name == by_code[c].name for c in by_code),
             )
@@ -439,8 +439,8 @@ def main() -> int:
                 detail="; ".join(cc.validate_hierarchy(s)[:3]),
             )
             check(
-                "25e. the statement split is still 93 P&L / 43 Balance Sheet",
-                len([r for r in rows_after if r.statement_type == PL]) == 93
+                "25e. the statement split is still 94 P&L / 43 Balance Sheet",
+                len([r for r in rows_after if r.statement_type == PL]) == 94
                 and len([r for r in rows_after if r.statement_type == BS]) == 43,
             )
 

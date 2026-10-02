@@ -298,8 +298,8 @@ def main() -> int:
             # Structure untouched
             # =============================================================
             check(
-                "the canonical catalog is still the approved 136 accounts",
-                s.query(m.BankAccountingClassification).count() == 136
+                "the canonical catalog is still the approved 137 accounts",
+                s.query(m.BankAccountingClassification).count() == 137
                 and not cc.semantic_problems(s),
             )
             check(

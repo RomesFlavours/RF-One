@@ -11361,7 +11361,7 @@ class BankAccountingClassification(Base):
         WHAT  = the official P&L posting category a transaction falls
                 into. Exactly the rows with `statement_type =
                 PROFIT_LOSS` and `node_type != GROUP` that are active —
-                72 of them, read through
+                73 of them, read through
                 `canonical_catalog.what_catalog`. This is RF-One's P&L
                 language, the structure Kermali is given rather than asked
                 for.
@@ -11819,7 +11819,7 @@ class BankOccurrenceReasonAssociation(Base):
 
     **This is a productivity shortcut, not proof.** The rows record which
     purposes a human has ALREADY confirmed for this counterparty, so the
-    reconciliation dropdown can offer those few instead of all 77. It
+    reconciliation dropdown can offer those few instead of all 81. It
     never establishes the purpose of a NEW transaction — that stays
     BANK_WHO_WHY_INVARIANT_001: identity alone determines nothing, and
     adding a second association never replaces the first."""

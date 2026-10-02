@@ -39,7 +39,7 @@ from __future__ import annotations
 import html
 import re
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -539,6 +539,12 @@ class RecognitionSummary:
     recognitions_unchanged: int = 0
     supplier_outcomes: Counter = field(default_factory=Counter)
     occurrences_used: int = 0
+    # Merge safety (BANK_WHO_WHY_CANONICAL_CATALOG_001): how an existing WHO
+    # was found instead of creating one, and how many were held for a person.
+    resolved_by_name: int = 0
+    resolved_by_alias: int = 0
+    resolved_by_rule: int = 0
+    held_for_review: int = 0
 
 
 def _ensure_occurrence_type(session: Session) -> "m.BankOccurrenceType":
@@ -574,6 +580,160 @@ def build_contexts(session: Session) -> tuple[dict, dict, dict]:
     institutions = {i.id: i.institution for i in instruments}
     types = {i.id: i.instrument_type for i in instruments}
     return registered, entities, {"institution": institutions, "type": types}
+
+
+RESOLVED_BY_NAME = "NAME"
+RESOLVED_BY_ALIAS = "ALIAS"
+RESOLVED_BY_RULE = "RULE"
+
+
+class CanonicalWhoResolver:
+    """Finds the ACTIVE canonical WHO a recognised name already belongs to,
+    before anything is created (BANK_WHO_WHY_CANONICAL_CATALOG_001).
+
+    A canonical WHO may have absorbed many bank spellings: the WHO/WHY
+    import renames a WHO to its clean name, moves every fragment's aliases
+    onto it, records each fragment's old name as an alias, and marks the
+    fragment INACTIVE. Looking a name up by `canonical_name` alone would
+    then miss "Publix" for "PUBLIX", and would hand transactions back to an
+    INACTIVE fragment or recreate one. This resolver reads only what
+    already exists — canonical names, `BankOccurrenceAlias` and WHO-only
+    `BankRecognitionRule` rows — and never invents a link:
+
+    1. an ACTIVE DESCRIPTION rule (auto-apply on) whose WHO is ACTIVE and
+       which matches this transaction within its own direction and
+       instrument scope — the knowledge a person configured;
+    2. exactly one ACTIVE WHO whose name has this identity key;
+    3. exactly one ACTIVE WHO holding an alias with this identity key.
+
+    When none applies but an INACTIVE WHO carries the name, nothing is
+    created and nothing is reactivated: the recognition is held for a
+    person (PROPOSED). Two active candidates are held the same way.
+    Nothing here ever reads or sets a WHY."""
+
+    def __init__(self, session: Session):
+        from . import recognition  # local: recognition imports far more than this module needs
+
+        self._recognition = recognition
+        self.by_id: dict[int, m.BankOccurrence] = {}
+        self.active_by_name: dict[str, m.BankOccurrence] = {}
+        self.active_by_key: dict[str, set[int]] = {}
+        self.inactive_by_key: dict[str, list[m.BankOccurrence]] = {}
+        for occurrence in session.scalars(select(m.BankOccurrence)):
+            self.by_id[occurrence.id] = occurrence
+            key = who_key(occurrence.canonical_name)
+            if occurrence.status == "ACTIVE":
+                self.active_by_name[occurrence.canonical_name] = occurrence
+                self.active_by_key.setdefault(key, set()).add(occurrence.id)
+            else:
+                self.inactive_by_key.setdefault(key, []).append(occurrence)
+        self.alias_owners: dict[str, set[int]] = {}
+        for occurrence_id, alias_key in session.execute(
+            select(m.BankOccurrenceAlias.occurrence_id, m.BankOccurrenceAlias.alias_key)
+        ):
+            if alias_key and self._active(occurrence_id):
+                self.alias_owners.setdefault(alias_key, set()).add(occurrence_id)
+        self.rules = sorted(
+            (rule for rule in session.scalars(select(m.BankRecognitionRule).where(
+                m.BankRecognitionRule.status == "ACTIVE",
+                m.BankRecognitionRule.match_field == recognition.DESCRIPTION,
+                m.BankRecognitionRule.auto_apply_enabled.is_(True),
+            )) if self._active(rule.occurrence_id)),
+            key=recognition._specificity_sort_key,
+        )
+
+    def _active(self, occurrence_id: int | None) -> bool:
+        occurrence = self.by_id.get(occurrence_id)
+        return occurrence is not None and occurrence.status == "ACTIVE"
+
+    def add_created(self, occurrence: "m.BankOccurrence") -> None:
+        self.by_id[occurrence.id] = occurrence
+        self.active_by_name[occurrence.canonical_name] = occurrence
+        self.active_by_key.setdefault(who_key(occurrence.canonical_name), set()).add(occurrence.id)
+
+    def add_alias(self, occurrence_id: int, alias_key: str) -> None:
+        if alias_key and self._active(occurrence_id):
+            self.alias_owners.setdefault(alias_key, set()).add(occurrence_id)
+
+    def by_rule(self, description: str | None, amount_minor: int | None,
+                instrument_id: int | None) -> "tuple[m.BankOccurrence, m.BankRecognitionRule] | None":
+        """The WHO an approved description rule names for this transaction."""
+        if not self.rules or amount_minor is None:
+            return None
+        text = self._recognition.normalize_description_for_recognition(description or "")
+        direction = self._recognition.direction_for_amount(amount_minor)
+        for rule in self.rules:
+            if rule.payment_instrument_id is not None and rule.payment_instrument_id != instrument_id:
+                continue
+            if rule.direction is not None and rule.direction != direction:
+                continue
+            if self._recognition._rule_matches(rule, text):
+                return self.by_id[rule.occurrence_id], rule
+        return None
+
+    def by_identity(self, *names: str | None) -> "tuple[m.BankOccurrence | None, str | None, str | None]":
+        """(active WHO, how it was found, why it was held for a person).
+
+        All three None means the identity is genuinely new and the ordinary
+        creation path may follow."""
+        for name in names:
+            if name and name in self.active_by_name:
+                return self.active_by_name[name], RESOLVED_BY_NAME, None
+        keys = [k for k in dict.fromkeys(who_key(n) for n in names if n) if k]
+        for key in keys:
+            owners = self.active_by_key.get(key, set())
+            if len(owners) == 1:
+                return self.by_id[next(iter(owners))], RESOLVED_BY_NAME, None
+            if len(owners) > 1:
+                return None, None, f"several active WHO share the identity {key!r}"
+        for key in keys:
+            owners = self.alias_owners.get(key, set())
+            if len(owners) == 1:
+                return self.by_id[next(iter(owners))], RESOLVED_BY_ALIAS, None
+            if len(owners) > 1:
+                return None, None, f"the alias {key!r} belongs to several active WHO"
+        for key in keys:
+            inactive = self.inactive_by_key.get(key)
+            if inactive:
+                held = ", ".join(f"#{o.id} {o.canonical_name!r}" for o in inactive)
+                return None, None, (
+                    f"the name matches INACTIVE WHO {held} and no active canonical WHO holds it "
+                    "as an alias; it is neither recreated nor reactivated"
+                )
+        return None, None, None
+
+    def resolve(self, name: str | None, *, description: str | None = None,
+                amount_minor: int | None = None, instrument_id: int | None = None) -> "WhoResolution":
+        """THE canonical WHO resolution, in its one precedence order: an
+        approved description rule, then the active canonical name, then an
+        active alias; otherwise held (inactive or ambiguous) or new.
+
+        Every path that names a WHO from bank text uses this, so WHO
+        recognition and any other classifier can never disagree about which
+        WHO a text belongs to."""
+        ruled = self.by_rule(description, amount_minor, instrument_id) if description is not None else None
+        if ruled is not None:
+            return WhoResolution(occurrence=ruled[0], how=RESOLVED_BY_RULE, rule=ruled[1])
+        if not name:
+            return WhoResolution()
+        occurrence, how, held = self.by_identity(name)
+        return WhoResolution(occurrence=occurrence, how=how, held=held)
+
+
+@dataclass(frozen=True)
+class WhoResolution:
+    """The outcome of `CanonicalWhoResolver.resolve`. Exactly one of three
+    states: an ACTIVE canonical WHO (`occurrence`), held for a person
+    (`held`), or genuinely new (neither) — the only state in which a caller
+    may follow its creation path."""
+    occurrence: "m.BankOccurrence | None" = None
+    how: str | None = None
+    held: str | None = None
+    rule: "m.BankRecognitionRule | None" = None
+
+    @property
+    def is_new(self) -> bool:
+        return self.occurrence is None and self.held is None
 
 
 def recognize_transactions(
@@ -622,25 +782,61 @@ def recognize_transactions(
                for tx_id, result, ctx in first]
 
     occurrence_type = _ensure_occurrence_type(session)
-    occurrences = {o.canonical_name: o for o in session.scalars(select(m.BankOccurrence))}
+    resolver = CanonicalWhoResolver(session)
     aliases = {(a.occurrence_id, a.alias_text, a.source_family)
                for a in session.scalars(select(m.BankOccurrenceAlias))}
     existing = {r.financial_transaction_id: r for r in session.scalars(
         select(m.BankWhoRecognition).where(m.BankWhoRecognition.recognizer_version == RECOGNIZER_VERSION)
     )}
+    sources = {tx_id: (instrument_id, description, amount)
+               for tx_id, instrument_id, description, amount, _fmt in rows}
     used: set[int] = set()
+    final: list[tuple[int, WhoResult]] = []
 
     for tx_id, result in results:
-        summary.transactions += 1
-        summary.by_tier[result.tier] += 1
-        summary.by_family_tier[(result.family, result.tier)] += 1
-        summary.by_parser[result.parser_code] += 1
-
         occurrence_id = None
-        if result.tier == DETERMINISTIC:
-            canonical = who_key(result.name)
-            occurrence = occurrences.get(canonical)
-            if occurrence is None:
+        occurrence = None
+        parser_named = False
+        instrument_id, description, amount = sources[tx_id]
+
+        # STRUCTURAL stays STRUCTURAL: RF-One's own accounts have no external
+        # WHO. Otherwise the one canonical resolution decides — an approved
+        # rule first, then canonical name, then alias.
+        resolution = (
+            resolver.resolve(result.name if result.tier == DETERMINISTIC else None,
+                             description=description, amount_minor=amount, instrument_id=instrument_id)
+            if result.tier != STRUCTURAL else WhoResolution()
+        )
+        if resolution.how == RESOLVED_BY_RULE:
+            occurrence, rule = resolution.occurrence, resolution.rule
+            result = replace(
+                result, tier=DETERMINISTIC, name=occurrence.canonical_name, proposed_name=None,
+                evidence=(f"{result.evidence} WHO from approved recognition rule #{rule.id} "
+                          f"({rule.match_type} {rule.normalized_pattern!r}"
+                          f"{', ' + rule.direction if rule.direction else ''}).").strip(),
+            )
+            summary.resolved_by_rule += 1
+        elif result.tier == DETERMINISTIC:
+            occurrence = resolution.occurrence
+            if occurrence is not None:
+                parser_named = True
+                if resolution.how == RESOLVED_BY_ALIAS:
+                    summary.resolved_by_alias += 1
+                else:
+                    summary.resolved_by_name += 1
+            elif resolution.held is not None:
+                # Never recreate or reactivate a merged/inactive WHO, and
+                # never pick between two active ones: a person decides.
+                result = replace(
+                    result, tier=PROPOSED, proposed_name=result.name,
+                    evidence=f"{result.evidence} Held for review: {resolution.held}.".strip(),
+                )
+                summary.held_for_review += 1
+            else:
+                # 4. A genuinely new identity: the existing creation path,
+                #    always the COUNTERPARTY type — never GENERIC_OPERATIONAL,
+                #    which is configured business knowledge.
+                canonical = who_key(result.name)
                 occurrence = m.BankOccurrence(
                     canonical_name=canonical, occurrence_type_id=occurrence_type.id,
                     optional_notes=(
@@ -650,10 +846,20 @@ def recognize_transactions(
                 )
                 session.add(occurrence)
                 session.flush()
-                occurrences[canonical] = occurrence
+                resolver.add_created(occurrence)
                 summary.occurrences_created += 1
+                parser_named = True
+
+        final.append((tx_id, result))
+        summary.transactions += 1
+        summary.by_tier[result.tier] += 1
+        summary.by_family_tier[(result.family, result.tier)] += 1
+        summary.by_parser[result.parser_code] += 1
+
+        if occurrence is not None:
             occurrence_id = occurrence.id
             used.add(occurrence_id)
+        if parser_named:
             alias_text = normalize_who_name(result.extracted)[:255]
             alias = (occurrence_id, alias_text, result.family)
             if alias not in aliases:
@@ -663,6 +869,7 @@ def recognize_transactions(
                     source="PARSER", first_financial_transaction_id=tx_id,
                 ))
                 aliases.add(alias)
+                resolver.add_alias(occurrence_id, who_key(alias_text)[:255])
                 summary.aliases_created += 1
 
         values = {
@@ -705,4 +912,4 @@ def recognize_transactions(
             }.get(proposal.outcome, proposal.outcome)
             summary.supplier_outcomes[outcome] += 1
         session.flush()
-    return summary, results
+    return summary, final

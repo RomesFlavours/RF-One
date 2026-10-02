@@ -152,7 +152,7 @@ def main() -> int:
             reason_ids = [r.id for r in active_reasons]
 
         check("canonical vocabulary present: 14 management groups", len(groups) == 14, str(len(groups)))
-        check("canonical vocabulary present: 77 active Why", len(active_reasons) == 77,
+        check("canonical vocabulary present: 81 active Why", len(active_reasons) == 81,
               str(len(active_reasons)))
 
         # The catalog modal region: from its own id up to the JSON island

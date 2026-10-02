@@ -38,10 +38,10 @@ from rfone_data_store.database import (
     run_migrations_to_head,
 )
 
-EXPECTED_WHAT = 72
+EXPECTED_WHAT = 73
 EXPECTED_PL_GROUPS = 21
-EXPECTED_PL_NODES = 93
-EXPECTED_ACCOUNTS = 136
+EXPECTED_PL_NODES = 94
+EXPECTED_ACCOUNTS = 137
 EXPECTED_BS_NODES = 43
 
 # The Product Owner's list, written out independently of the query under
@@ -51,7 +51,7 @@ APPROVED_WHAT = set("""
 5100 5210 5220 5230 5240 5300 5400
 6110 6120 6210 6220 6310 6400 6500 6600 6700 6800 6900
 7110 7120 7130 7210 7220 7230 7310 7320
-7410 7420 7430 7440 7450 7500
+7410 7420 7430 7440 7450 7460 7500
 7610 7620 7630 7640 7710 7720 7730 7740 7750
 7810 7820 7830 7840 7850 7860 7870 7880
 7910 7920 7930 7940 7950 7960 7970
@@ -261,9 +261,9 @@ def main() -> int:
                 and len(rc.build_candidates(s)) == 0,
             )
             check(
-                "20b. the canonical WHY catalog is seeded (77 purposes, including the five "
+                "20b. the canonical WHY catalog is seeded (81 purposes, including the five "
                 "structural ones)",
-                s.query(m.BankTransactionReason).count() == 77,
+                s.query(m.BankTransactionReason).count() == 81,
                 detail=str(s.query(m.BankTransactionReason).count()),
             )
             # §8 — every structural Why that settles a liability points at a

@@ -559,8 +559,8 @@ def main() -> int:
             # 19. The catalog did not move
             # =============================================================
             check(
-                "19. the canonical catalog is still the approved 136 accounts",
-                len(accounts) == 136 and not cc.semantic_problems(s),
+                "19. the canonical catalog is still the approved 137 accounts",
+                len(accounts) == 137 and not cc.semantic_problems(s),
                 detail=f"{len(accounts)} accounts",
             )
     finally:

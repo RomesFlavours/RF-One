@@ -254,7 +254,7 @@ def may_receive_automatic_classification(
 # second time: a parallel What table would be the same accounts copied,
 # free to drift, and the drift would be invisible.
 #
-# 72 WHAT + 21 P&L GROUP = 93 P&L nodes. The other 43 canonical accounts
+# 73 WHAT + 21 P&L GROUP = 94 P&L nodes. The other 43 canonical accounts
 # are Balance Sheet, and none of them is WHAT.
 
 WHAT_STATEMENT_TYPE = what_catalog_import.PROFIT_LOSS

@@ -233,7 +233,7 @@ def main() -> int:
         head = conn.execute("SELECT version_num FROM alembic_version").fetchone()[0]
         conn.close()
         check("A. existing decision and allocation rows migrate to source WHY with no Standard lineage",
-              migrated == ([("WHY", None)], [("WHY", None)]) and head == "b9e4c2a7d5f3", f"{migrated} {head}")
+              migrated == ([("WHY", None)], [("WHY", None)]) and head == "a7c3e9d5f2b8", f"{migrated} {head}")
 
         # ================================================ first month of real imports
         upload(bank_csv([

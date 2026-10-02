@@ -38,7 +38,7 @@ from rfone_data_store.database import (
 PL = wci.PROFIT_LOSS
 BS = wci.BALANCE_SHEET
 
-EXPECTED_ACCOUNTS = 136
+EXPECTED_ACCOUNTS = 137
 EQUITY_ROOT = "3000"
 DISPOSAL_ROOT = "8400"
 
@@ -274,23 +274,23 @@ def main() -> int:
             )
 
             # =============================================================
-            # 11-12. The catalog is 136 accounts, and seeding is idempotent
+            # 11-12. The catalog is 137 accounts, and seeding is idempotent
             # =============================================================
             check(
-                "11. the canonical catalog is 136 accounts — 134 plus 8410 and 8420",
+                "11. the canonical catalog is 137 accounts — 134 plus 8410 and 8420, plus 7460 (a7c3e9d5f2b8)",
                 len(rows) == EXPECTED_ACCOUNTS
                 and len(cc.catalog_rows()) == EXPECTED_ACCOUNTS,
                 detail=f"{len(rows)} stored, {len(cc.catalog_rows())} defined",
             )
             check(
-                "11b. the statement split is 93 Profit & Loss / 43 Balance Sheet",
-                len([r for r in rows if r.statement_type == PL]) == 93
+                "11b. the statement split is 94 Profit & Loss / 43 Balance Sheet",
+                len([r for r in rows if r.statement_type == PL]) == 94
                 and len([r for r in rows if r.statement_type == BS]) == 43,
             )
             check(
-                "11c. node types are 32 GROUP / 101 POSTING / 3 POSTING_CATEGORY",
+                "11c. node types are 32 GROUP / 102 POSTING / 3 POSTING_CATEGORY",
                 len([r for r in rows if r.node_type == cc.GROUP]) == 32
-                and len([r for r in rows if r.node_type == cc.POSTING]) == 101
+                and len([r for r in rows if r.node_type == cc.POSTING]) == 102
                 and len([r for r in rows if r.node_type == cc.POSTING_CATEGORY]) == 3,
             )
             check(

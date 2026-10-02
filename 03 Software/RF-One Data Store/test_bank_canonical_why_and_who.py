@@ -37,12 +37,12 @@ from rfone_data_store.database import (
     run_migrations_to_head,
 )
 
-EXPECTED_WHY = 77
-EXPECTED_PL_WHY = 59
-EXPECTED_NON_PL_WHY = 18
+EXPECTED_WHY = 81
+EXPECTED_PL_WHY = 60
+EXPECTED_NON_PL_WHY = 21
 EXPECTED_GROUPS = 14
-EXPECTED_WHAT = 72
-EXPECTED_ACCOUNTS = 136
+EXPECTED_WHAT = 73
+EXPECTED_ACCOUNTS = 137
 
 # §28.17-25 — the mappings the Product Owner named.
 DERIVES_WHAT = (
@@ -311,7 +311,7 @@ def main() -> int:
             dropdown = wc.reasons_for_occurrence(s, amazon.id)
             check(
                 "8. the ordinary WHY dropdown shows ONLY the WHY associated with this WHO "
-                "— four, not the whole catalog of 77",
+                "— four, not the whole catalog of 81",
                 len(dropdown) == 4 and len(dropdown) < len(reasons),
                 detail=str(len(dropdown)),
             )
