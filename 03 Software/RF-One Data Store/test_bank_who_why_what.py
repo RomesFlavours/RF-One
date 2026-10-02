@@ -28,6 +28,7 @@ from rfone_data_store.bank_reconciliation import export as export_service
 from rfone_data_store.bank_reconciliation import recognition
 from rfone_data_store.bank_reconciliation import service as bank_service
 from rfone_data_store import models as m
+from rfone_data_store.bank_reconciliation.testing_support import confirm_decided_rows
 from rfone_data_store.database import (
     create_configured_engine,
     create_session_factory,
@@ -556,7 +557,7 @@ def main() -> int:
             blockers = export_service.compute_export_blockers(s, year=2026, month=9)
             check(
                 "a transaction with no Who blocks the export, naming the transaction",
-                any("Missing Who" in b.reason for b in blockers),
+                any("Needs review" in b.reason for b in blockers),
                 detail="; ".join(b.reason for b in blockers)[:300],
             )
 
@@ -597,6 +598,8 @@ def main() -> int:
             # Deactivating a What must NOT retroactively block a transaction
             # that already carries a valid snapshot of it.
             incomplete_decision.accounting_statement_type_snapshot = "PROFIT_LOSS"
+            # BANK_RECONCILIATION_STANDARDS_001: a person confirms each row.
+            confirm_decided_rows(s, year=2026, month=9)
             s.commit()
             classification_service.set_accounting_classification_active(
                 s, classification_id=ap_settlement.id, active=False,

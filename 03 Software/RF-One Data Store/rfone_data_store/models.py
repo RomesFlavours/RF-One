@@ -11857,6 +11857,41 @@ class BankOccurrenceReasonAssociation(Base):
     transaction_reason: Mapped["BankTransactionReason"] = relationship()
 
 
+class BankOccurrenceReportingEntity(Base):
+    """WHO -> the ReportingEntities it serves, many to many
+    (BANK_CONFIGURATION_001, Product Owner decision D1).
+
+    A configuration fact a human states on the Bank Configuration page:
+    "this counterparty works for these entities". ReportingEntity, not
+    LegalEntity, because it is also the future "For whom" of a
+    transaction. Nothing ever fills it automatically — no pairing is
+    inferred from transactions, accounts, names or history — and a pairing
+    is withdrawn by `active = False`, never deleted."""
+
+    __tablename__ = "bank_occurrence_reporting_entities"
+    __table_args__ = (
+        UniqueConstraint(
+            "occurrence_id", "reporting_entity_id",
+            name="uq_bank_occurrence_reporting_entity",
+        ),
+        Index("ix_bore_occurrence_id", "occurrence_id"),
+        Index("ix_bore_reporting_entity_id", "reporting_entity_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occurrence_id: Mapped[int] = mapped_column(
+        ForeignKey("bank_occurrences.id", name="fk_bore_occurrence_id"), nullable=False
+    )
+    reporting_entity_id: Mapped[int] = mapped_column(
+        ForeignKey("reporting_entities.id", name="fk_bore_reporting_entity_id"), nullable=False
+    )
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("1"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class BankTransactionReason(Base):
     """WHY a bank movement exists — RF-One's OPERATIONAL/MANAGEMENT
     classification of what kind of business purpose a transaction serves
@@ -12091,7 +12126,13 @@ class BankRecognitionRule(Base):
     # Amount — spec §3.3).
     direction: Mapped[str | None] = mapped_column(String(8), nullable=True)
     occurrence_id: Mapped[int] = mapped_column(ForeignKey("bank_occurrences.id"), nullable=False, index=True)
-    transaction_reason_id: Mapped[int] = mapped_column(ForeignKey("bank_transaction_reasons.id"), nullable=False)
+    # The WHY recorded when a rule was learned from a human decision — history,
+    # never what matching resolves. NULL for a WHO-only rule configured on the
+    # Bank Configuration page (BANK_CONFIGURATION_001, decision D2): no WHY is
+    # invented for it, and WHO never determines WHY either way.
+    transaction_reason_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_transaction_reasons.id"), nullable=True
+    )
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE", server_default="ACTIVE")
     auto_apply_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
@@ -12110,6 +12151,104 @@ class BankRecognitionRule(Base):
     occurrence: Mapped["BankOccurrence"] = relationship()
     transaction_reason: Mapped["BankTransactionReason"] = relationship()
     created_from_transaction: Mapped["FinancialTransaction | None"] = relationship()
+
+
+# Where a transaction's accounting destination came from
+# (BANK_RECONCILIATION_STANDARDS_001). Existing rows are WHY: every
+# destination recorded before this existed was derived from the WHY.
+DESTINATION_SOURCE_WHY = "WHY"
+DESTINATION_SOURCE_TRANSACTION = "TRANSACTION"
+DESTINATION_SOURCE_STANDARD = "STANDARD"
+DESTINATION_SOURCES = (DESTINATION_SOURCE_WHY, DESTINATION_SOURCE_TRANSACTION, DESTINATION_SOURCE_STANDARD)
+DESTINATION_SOURCE_CHECK = "accounting_destination_source IN ('WHY', 'TRANSACTION', 'STANDARD')"
+# STANDARD exactly when a Standard is named: provenance and lineage can
+# never contradict each other, and no row can falsely claim a Standard.
+DESTINATION_LINEAGE_CHECK = (
+    "(accounting_destination_source = 'STANDARD' AND reconciliation_standard_id IS NOT NULL) OR "
+    "(accounting_destination_source <> 'STANDARD' AND reconciliation_standard_id IS NULL)"
+)
+
+
+class BankReconciliationStandard(Base):
+    """HUMAN-APPROVED reconciliation knowledge (BANK_RECONCILIATION_STANDARDS_001).
+
+        recognition signature -> WHO -> WHY -> accounting destination -> For Whom
+
+    A person reconciled a transaction and chose "Set as Standard": from then
+    on a transaction with the same signature is completed by RF-One —
+    AUTOMATIC — without another click. It is NOT a confidence score and NOT
+    a `BankRecognitionRule`: a recognition rule stays WHO-only
+    (BANK_WHO_WHY_INVARIANT_001, enforced by its own CHECK); a Standard may
+    carry the WHY only because a human approved this complete combination.
+
+    The signature uses exactly the dimensions a recognition rule uses and is
+    matched by the same function (`recognition._rule_matches`), so there is
+    one recognition semantics, not two. The accounting destination is
+    stored here, not re-read from the WHY, so a later change of the WHY's
+    master mapping never changes what an approved Standard produces.
+
+    Never deleted: `status` INACTIVE retires one, and decisions and
+    allocations it produced keep naming it (`reconciliation_standard_id`).
+    At most one ACTIVE Standard per signature (`ux_brs_active_signature`)."""
+
+    __tablename__ = "bank_reconciliation_standards"
+    __table_args__ = (
+        CheckConstraint(
+            "match_type IN ('EXACT_NORMALIZED_DESCRIPTION', 'CONTAINS_TEXT', 'PREFIX')",
+            name="ck_brs_match_type",
+        ),
+        CheckConstraint("match_field IN ('DESCRIPTION', 'MEMO')", name="ck_brs_match_field"),
+        CheckConstraint("direction IS NULL OR direction IN ('DEBIT', 'CREDIT')", name="ck_brs_direction"),
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_brs_status"),
+        Index("ix_brs_pattern", "normalized_pattern"),
+        Index("ix_brs_occurrence_id", "occurrence_id"),
+        Index(
+            "ux_brs_active_signature",
+            "match_type", "normalized_pattern", "match_field", "payment_instrument_id", "direction",
+            unique=True,
+            sqlite_where=text("status = 'ACTIVE'"),
+            postgresql_where=text("status = 'ACTIVE'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # --- recognition signature
+    match_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    normalized_pattern: Mapped[str] = mapped_column(Text, nullable=False)
+    match_field: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="DESCRIPTION", server_default="DESCRIPTION",
+    )
+    payment_instrument_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payment_instruments.id", name="fk_brs_payment_instrument_id"), nullable=True
+    )
+    direction: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    # --- approved result
+    occurrence_id: Mapped[int] = mapped_column(
+        ForeignKey("bank_occurrences.id", name="fk_brs_occurrence_id"), nullable=False
+    )
+    transaction_reason_id: Mapped[int] = mapped_column(
+        ForeignKey("bank_transaction_reasons.id", name="fk_brs_transaction_reason_id"), nullable=False
+    )
+    accounting_classification_id: Mapped[int] = mapped_column(
+        ForeignKey("bank_accounting_classifications.id", name="fk_brs_accounting_classification_id"),
+        nullable=False,
+    )
+    reporting_entity_id: Mapped[int] = mapped_column(
+        ForeignKey("reporting_entities.id", name="fk_brs_reporting_entity_id"), nullable=False
+    )
+    # --- state and audit
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE", server_default="ACTIVE")
+    approved_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rfone_accounts.id", name="fk_brs_approved_by_account_id"), nullable=True
+    )
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_from_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_transactions.id", name="fk_brs_created_from_transaction_id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class BankTransactionExplanation(Base):
@@ -12169,6 +12308,9 @@ class BankTransactionExplanation(Base):
             "'HUMAN_RECLASSIFIED', 'NEEDS_HUMAN_REVIEW')",
             name="ck_bank_transaction_explanation_decision_status",
         ),
+        CheckConstraint(DESTINATION_SOURCE_CHECK, name="ck_bte_destination_source"),
+        CheckConstraint(DESTINATION_LINEAGE_CHECK, name="ck_bte_standard_lineage"),
+        Index("ix_bte_reconciliation_standard_id", "reconciliation_standard_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -12231,6 +12373,18 @@ class BankTransactionExplanation(Base):
     accounting_classification_code_snapshot: Mapped[str | None] = mapped_column(String(64), nullable=True)
     accounting_classification_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
     accounting_statement_type_snapshot: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Where the accounting destination above came from
+    # (BANK_RECONCILIATION_STANDARDS_001): WHY = derived from the WHY's
+    # mapping; TRANSACTION = chosen by a human for this transaction only;
+    # STANDARD = supplied by `reconciliation_standard_id`. The CHECK
+    # `ck_bte_standard_lineage` keeps the two columns consistent.
+    accounting_destination_source: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=DESTINATION_SOURCE_WHY, server_default=DESTINATION_SOURCE_WHY,
+    )
+    reconciliation_standard_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_reconciliation_standards.id", name="fk_bte_reconciliation_standard_id"),
+        nullable=True,
+    )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(
@@ -13174,8 +13328,10 @@ class BankTransactionAllocation(Base):
     WHY -> WHAT
     -----------
     The accounting destination is DERIVED from the WHY
-    (`BankTransactionReason.accounting_classification`) — never chosen per
-    allocation, and there is no per-allocation accounting override. A P&L
+    (`BankTransactionReason.accounting_classification`) by default. Two
+    recorded exceptions exist (BANK_RECONCILIATION_STANDARDS_001): a P&L WHAT
+    a human chose for this transaction, and a Standard's destination —
+    `accounting_destination_source` says which. A P&L
     WHY yields a WHAT; a non-P&L WHY yields a Balance Sheet destination and
     the allocation legitimately has no WHAT at all. The `*_snapshot`
     columns capture that resolution once, at completion, following the
@@ -13225,6 +13381,9 @@ class BankTransactionAllocation(Base):
             "AND accounting_classification_code_snapshot IS NOT NULL)",
             name="ck_bta_complete_requires_resolution",
         ),
+        CheckConstraint(DESTINATION_SOURCE_CHECK, name="ck_bta_destination_source"),
+        CheckConstraint(DESTINATION_LINEAGE_CHECK, name="ck_bta_standard_lineage"),
+        Index("ix_bta_reconciliation_standard_id", "reconciliation_standard_id"),
         Index("ix_bta_financial_transaction_id", "financial_transaction_id"),
         Index("ix_bta_reporting_entity_id", "reporting_entity_id"),
         Index("ix_bta_transaction_reason_id", "transaction_reason_id"),
@@ -13271,6 +13430,17 @@ class BankTransactionAllocation(Base):
         String(255), nullable=True
     )
     reporting_entity_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # WHY / TRANSACTION / STANDARD, exactly as on `BankTransactionExplanation`
+    # (BANK_RECONCILIATION_STANDARDS_001): whether the destination above was
+    # derived from the WHY, chosen for this transaction, or supplied by the
+    # Standard named in `reconciliation_standard_id`.
+    accounting_destination_source: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=DESTINATION_SOURCE_WHY, server_default=DESTINATION_SOURCE_WHY,
+    )
+    reconciliation_standard_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_reconciliation_standards.id", name="fk_bta_reconciliation_standard_id"),
+        nullable=True,
+    )
 
     # --- Payer versus economic owner, and the derived consequence -------------
     # Snapshotted rather than recomputed at read time so the derivation stays

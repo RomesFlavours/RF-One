@@ -32,6 +32,7 @@ from rfone_data_store.database import (
     run_migrations_to_head,
 )
 from rfone_data_store import models as m
+from rfone_data_store.bank_reconciliation.testing_support import confirm_decided_rows
 
 CHASE_BANK_CSV_A = (
     "Details,Posting Date,Description,Amount,Type,Balance,Check or Slip #\n"
@@ -288,7 +289,7 @@ def main() -> int:
             check(
                 "April 2026 export is blocked by an undecided candidate duplicate and a missing reconciliation decision",
                 any("candidate duplicate" in b.reason for b in april_blockers)
-                and any("Missing Who" in b.reason for b in april_blockers),
+                and any("Needs review" in b.reason for b in april_blockers),
             )
 
             occurrence_type = m.BankOccurrenceType(code="RIDE_SHARE_PROVIDER", name="Ride Share Provider")
@@ -365,6 +366,8 @@ def main() -> int:
                 settlement_bank_account_id=bank_instrument.id, valid_from=date(2026, 1, 1),
             )
             service.recompute_accounting_deduplication(s)
+            # BANK_RECONCILIATION_STANDARDS_001: a person confirms each row.
+            confirm_decided_rows(s, year=2026, month=4)
             s.commit()
 
             final_blockers = export.compute_export_blockers(s, year=2026, month=4)

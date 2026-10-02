@@ -243,7 +243,7 @@ def main() -> int:
         })
         with SessionFactory() as s:
             why_id = s.query(m.BankTransactionReason).filter_by(code="FOOD_PURCHASE").one().id
-            type_id = s.query(m.BankOccurrenceType).one().id
+            type_id = s.query(m.BankOccurrenceType).filter_by(code="SUPPLIER").one().id
 
         # =================================================================
         # Approval

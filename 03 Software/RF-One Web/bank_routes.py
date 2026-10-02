@@ -55,6 +55,7 @@ from rfone_data_store.bank_reconciliation import why_catalog
 from rfone_data_store.bank_reconciliation import receiver_candidates
 from rfone_data_store.bank_reconciliation import what_catalog_import
 from rfone_data_store.bank_reconciliation import classification as classification_service
+from rfone_data_store.bank_reconciliation import configuration as configuration_service
 from rfone_data_store.bank_reconciliation import export as export_service
 from rfone_data_store.bank_reconciliation import matching as matching_service
 from rfone_data_store.bank_reconciliation import monthly_source
@@ -482,47 +483,11 @@ def register_bank_routes(
     # -----------------------------------------------------------------
 
     def _cardholder_candidates(db):
-        """Real people this database can link a cardholder to.
-
-        `ActingIdentity` is filtered to `HUMAN_USER`: a card is held by a
-        person, and a SYSTEM identity is never a valid answer. An Employee
-        already represented by an identity of the same name is dropped, so
-        the list does not show the same human twice under two labels.
-        Returns plain dicts because the modal renders them uniformly and
-        must not care which table each one came from."""
-        identities = db.scalars(
-            select(m.ActingIdentity)
-            .where(
-                m.ActingIdentity.is_active.is_(True),
-                m.ActingIdentity.kind == "HUMAN_USER",
-            )
-            .order_by(m.ActingIdentity.display_name)
-        ).all()
-        employees = db.scalars(
-            select(m.Employee)
-            .where(or_(m.Employee.active.is_(True), m.Employee.active.is_(None)))
-            .order_by(m.Employee.display_name)
-        ).all()
-
-        candidates = [
-            {
-                "kind": "ACTING_IDENTITY", "id": identity.id,
-                "name": identity.display_name, "source": "RF-One identity",
-            }
-            for identity in identities
-        ]
-        seen = {(c["name"] or "").strip().casefold() for c in candidates}
-        for employee in employees:
-            name = (employee.display_name or "").strip()
-            if name and name.casefold() in seen:
-                continue  # same person, already offered as a canonical identity
-            candidates.append({
-                "kind": "EMPLOYEE", "id": employee.id,
-                "name": name or f"Employee {employee.id}", "source": "Employee",
-            })
-            if name:
-                seen.add(name.casefold())
-        return candidates
+        """Real people this database can link a cardholder to — HUMAN_USER
+        identities and employees, each person once. The one implementation
+        lives in the Bank configuration service, shared with the Bank
+        Configuration page."""
+        return configuration_service.cardholder_candidates(db)
 
     def _instrument_form_values(form):
         """The one place the instrument form's fields are read, so the
@@ -2262,3 +2227,18 @@ def register_bank_routes(
                         )
 
         return render_template("bank_export.html", year=year, month=month, blockers=blockers)
+
+    # The real Bank Configuration page (BANK_CONFIGURATION_001).
+    from bank_configuration_routes import register_bank_configuration_routes
+    register_bank_configuration_routes(
+        app, gate=gate, SessionFactory=SessionFactory,
+        load_current_account=load_current_account, require_csrf=require_csrf,
+    )
+
+    # The real Bank Reconciliation page (BANK_RECONCILIATION_001).
+    from bank_reconciliation_routes import register_bank_reconciliation_routes
+    register_bank_reconciliation_routes(
+        app, gate=gate, SessionFactory=SessionFactory,
+        load_current_account=load_current_account, require_csrf=require_csrf,
+        default_month=lambda: _previous_local_month(_site_timezone()),
+    )

@@ -1,0 +1,573 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% block page_title %}Bank Reconciliation · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{#- BANK_RECONCILIATION_001 / BANK_RECONCILIATION_STANDARDS_001 — the approved
+    Reconciliation page on real data. The compact row is the normal working
+    view; every row expands inline, directly below itself, into ONE shared
+    editor for WHO / WHY / WHAT / For Whom. WHAT never appears on the
+    compact row. Statuses: red X Needs review, orange check Automatic (an
+    approved Standard), green check Confirmed (a person). -#}
+{{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', url_for('bank_home')), ('Reconciliation', None)]) }}
+{%- macro status_mark(status, note='') -%}
+{%- if status == 'Confirmed' -%}<span class="rp-st rp-st-confirmed" role="img" aria-label="Confirmed">&#10004;</span><span class="rp-st-text">Confirmed</span>
+{%- elif status == 'Automatic' -%}<span class="rp-st rp-st-automatic" role="img" aria-label="Automatic">&#10003;</span><span class="rp-st-text">Automatic</span>
+{%- else -%}<span class="rp-st rp-st-review" role="img" aria-label="Needs review">&#10007;</span><span class="rp-st-text">Needs review</span>{%- endif -%}
+{%- endmacro %}
+
+<style>
+  .rp-header { display: flex; align-items: center; gap: .75rem 1.25rem; flex-wrap: wrap; margin: .25rem 0 .9rem; }
+  .rp-header h1 { margin: 0; font-size: 1.45rem; }
+  .rp-period { display: inline-flex; align-items: center; gap: .35rem; }
+  .rp-period strong { font-size: 1.05rem; min-width: 7.5rem; text-align: center; }
+  .rp-period button, .rp-config { margin: 0; padding: .25rem .6rem; }
+  .rp-config { margin-left: auto; }
+  .rp-table-wrap { overflow-x: auto; border: 1px solid var(--olive-300, #d6dbc4); border-radius: 6px; }
+  .rp-table { width: 100%; min-width: 1240px; border-collapse: collapse; font-size: .88rem; }
+  .rp-table th { position: sticky; top: 0; background: #eef0e4; text-align: left; font-size: .72rem;
+    text-transform: uppercase; letter-spacing: .03em; padding: .45rem .5rem; white-space: nowrap; }
+  .rp-table td { padding: .35rem .5rem; border-top: 1px solid #e6e8dc; vertical-align: middle; }
+  .rp-table tr.rp-highlight td { background: #fff7d6; transition: background .6s; }
+  .rp-account { white-space: nowrap; width: 11rem; }
+  .rp-date { white-space: nowrap; width: 6.2rem; font-variant-numeric: tabular-nums; }
+  .rp-desc { min-width: 17rem; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .82rem; }
+  .rp-amount { text-align: right; white-space: nowrap; width: 7rem; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .rp-amount.rp-in { color: #2e7d32; }
+  .rp-who { min-width: 15rem; }
+  .rp-who-name { display: block; font-weight: 600; white-space: nowrap; }
+  .rp-who-why { display: block; font-size: .76rem; color: var(--muted, #6b6f5e); }
+  .rp-who-none { color: #a3561a; font-style: italic; }
+  .rp-src { font-size: .68rem; font-weight: 500; color: var(--muted, #6b6f5e); margin-left: .3rem;
+    border: 1px solid #d6dbc4; border-radius: 999px; padding: 0 .35rem; }
+  .rp-src-person { color: #2e7d32; border-color: #bcdcc6; }
+  .rp-btn { margin: 0; padding: .22rem .6rem; font-size: .8rem; white-space: nowrap; }
+  .rp-forwhom select { margin: 0; padding: .2rem .3rem; font-size: .82rem; width: 9.5rem; }
+  .rp-forwhom select.rp-changed { font-weight: 700; border-color: #7a8a3a; }
+  .rp-status .badge { white-space: nowrap; }
+  .rp-status-ready { background: #e7eefb; color: #1f4f9a; border-color: #b9cbeb; }
+  /* WHO modal */
+  .rp-overlay { position: fixed; inset: 0; background: rgba(30, 34, 20, .45); display: flex;
+    align-items: flex-start; justify-content: center; padding: 6vh 1rem; z-index: 50; }
+  .rp-overlay[hidden] { display: none; }
+  .rp-modal { background: #fff; border-radius: 8px; width: min(620px, 100%); max-height: 88vh; overflow: auto;
+    padding: 1rem 1.2rem; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+  .rp-modal h2 { margin: 0 0 .25rem; font-size: 1.15rem; }
+  .rp-context { font-size: .8rem; color: var(--muted, #6b6f5e); margin: 0 0 .8rem; }
+  .rp-context code { font-size: .78rem; }
+  .rp-field { margin: .6rem 0; }
+  .rp-field > label { display: block; font-weight: 600; font-size: .85rem; margin-bottom: .25rem; }
+  #rp-who-search, #rp-new-name, #rp-why-select, #rp-new-default { width: 100%; max-width: none; box-sizing: border-box; margin: 0 0 .35rem; }
+  .rp-who-list { border: 1px solid #d6dbc4; border-radius: 6px; max-height: 12rem; overflow: auto; }
+  .rp-who-option { display: block; width: 100%; text-align: left; background: #fff; border: 0;
+    border-bottom: 1px solid #eef0e4; padding: .4rem .6rem; margin: 0; color: inherit; font-weight: 500; cursor: pointer; }
+  .rp-who-option:hover, .rp-who-option.is-selected { background: #eef3dd; }
+  .rp-who-option.is-selected { font-weight: 700; }
+  .rp-add-who { margin-top: .4rem; }
+  .rp-new-who { border: 1px dashed #b9c28f; border-radius: 6px; padding: .6rem .8rem; margin-top: .6rem; background: #fafbf4; }
+  .rp-new-who textarea { width: 100%; min-height: 4.2rem; }
+  .rp-entities label { display: inline-flex; align-items: center; gap: .3rem; margin-right: 1rem; font-weight: 400; }
+  .rp-modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
+  .rp-period a.btn { margin: 0; padding: .25rem .6rem; }
+  .rp-empty { padding: 1rem; color: var(--muted, #6b6f5e); }
+  .rp-split { font-size: .8rem; color: var(--muted, #6b6f5e); }
+  .rp-why-list { border: 1px solid #d6dbc4; border-radius: 6px; max-height: 9rem; overflow: auto; padding: .25rem .5rem; margin-top: .3rem; }
+  .rp-why-list label { display: flex; align-items: center; gap: .35rem; font-weight: 400; margin: .12rem 0; }
+  .rp-more { font-size: .78rem; color: var(--muted, #6b6f5e); padding: .35rem .6rem; }
+  .rp-src-standard { color: #b35c00; border-color: #f0c896; }
+  /* expand toggle */
+  .rp-x { width: 1.6rem; padding-right: 0 !important; }
+  .rp-expand { margin: 0; padding: .05rem .35rem; font-size: .8rem; background: none; border: 1px solid #d6dbc4; color: inherit; line-height: 1.2; }
+  .rp-expand[aria-expanded="true"] { background: #eef3dd; }
+  /* status marks: shape + colour + text, never colour alone */
+  .rp-status { white-space: nowrap; }
+  .rp-st { display: inline-flex; align-items: center; justify-content: center; width: 1.35rem; height: 1.35rem;
+    border-radius: 50%; font-weight: 700; font-size: .85rem; margin-right: .3rem; vertical-align: middle; }
+  .rp-st-review { color: #fff; background: #c62828; }
+  .rp-st-automatic { color: #d46b00; background: #fff; border: 2px solid #e8890c; }
+  .rp-st-confirmed { color: #fff; background: #2e7d32; }
+  .rp-st-text { font-size: .78rem; vertical-align: middle; }
+  .rp-actions-cell { white-space: nowrap; }
+  .rp-actions-cell .rp-btn + .rp-btn { margin-left: .25rem; }
+  /* inline editor */
+  .rp-editor-row > td { background: #f7f8f1; border-top: 0; padding: .6rem .9rem .8rem; }
+  .rp-editor { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(20rem, 1.4fr); gap: .6rem 1.4rem; }
+  .rp-ed-facts dl { display: grid; grid-template-columns: max-content 1fr; gap: .15rem .7rem; margin: 0; font-size: .82rem; }
+  .rp-ed-facts dt { color: var(--muted, #6b6f5e); }
+  .rp-ed-facts dd { margin: 0; }
+  .rp-ed-facts .rp-mono { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; word-break: break-word; }
+  .rp-ed-standard { margin-top: .5rem; border: 1px solid #f0c896; background: #fff8ee; border-radius: 6px; padding: .4rem .6rem; font-size: .8rem; }
+  .rp-ed-standard strong { color: #b35c00; }
+  .rp-ed-grid { display: grid; grid-template-columns: max-content 1fr; gap: .35rem .6rem; align-items: center; }
+  .rp-ed-grid label { font-weight: 600; font-size: .84rem; }
+  .rp-ed-grid input, .rp-ed-grid select { margin: 0; width: 100%; max-width: none; box-sizing: border-box; }
+  .rp-ed-note { font-size: .8rem; min-height: 1.1em; margin: .4rem 0 0; color: #a3561a; }
+  .rp-ed-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .5rem; }
+  .rp-ed-actions button { margin: 0; }
+</style>
+
+<div class="rp-header">
+  <h1>Bank Reconciliation</h1>
+  <div class="rp-period" aria-label="Period">
+    <a class="btn btn-secondary" aria-label="Previous month" href="{{ url_for('bank_reconciliation', year=previous_month[0], month=previous_month[1]) }}">&lsaquo;</a>
+    <strong>{{ period_label }}</strong>
+    <a class="btn btn-secondary" aria-label="Next month" href="{{ url_for('bank_reconciliation', year=next_month[0], month=next_month[1]) }}">&rsaquo;</a>
+  </div>
+  <a class="btn btn-secondary rp-config" href="{{ url_for('bank_configuration') }}">Configuration</a>
+</div>
+
+<div class="rp-table-wrap">
+  <table class="rp-table" id="rp-table">
+    <thead>
+      <tr>
+        <th class="rp-x"></th><th>Account / Card</th><th>Date</th><th>Description</th><th class="rp-amount">Amount</th>
+        <th>WHO</th><th></th><th>For whom</th><th></th><th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="rp-body">
+      {%- for row in view.rows %}
+      <tr id="t-{{ row.id }}" data-row-id="{{ row.id }}"{% if row.who_id %} data-who="{{ row.who_id }}"{% endif %}{% if row.why_id %} data-why="{{ row.why_id }}"{% endif %}{% if row.what_id %} data-what="{{ row.what_id }}" data-source="{{ row.destination_source }}"{% endif %}{% if row.who_source %} data-who-source="{{ row.who_source }}"{% endif %}{% if row.standard_id %} data-standard="{{ row.standard_id }}"{% endif %} data-status="{{ row.status }}"{% if row.default_for_whom is not none %} data-default="{{ row.default_for_whom }}"{% endif %} data-amount="{{ row.amount_minor }}"{% if row.memo %} data-memo="{{ row.memo }}"{% endif %}>
+<td class="rp-x"><button type="button" class="rp-expand" data-action="expand" aria-expanded="false" aria-label="Expand">&#9656;</button></td>
+<td class="rp-account">{{ row.account }}</td><td class="rp-date" title="{{ row.date }}">{{ row.date_label }}</td><td class="rp-desc">{{ row.description }}</td><td class="rp-amount{{ ' rp-in' if row.amount_minor > 0 else '' }}">{{ '+' if row.amount_minor > 0 else '−' }}{{ '{:,.2f}'.format((row.amount_minor|abs) / 100) }}</td>
+<td class="rp-who">{% if row.who %}<span class="rp-who-name">{{ row.who }}{% if row.who_source == 'standard' %}<span class="rp-src rp-src-standard" title="From an approved Standard">standard</span>{% elif row.who_source == 'auto' %}<span class="rp-src" title="Recognized automatically — not approved">suggested</span>{% else %}<span class="rp-src rp-src-person" title="Chosen by a person">&#10003;</span>{% endif %}</span>{% if row.why %}<span class="rp-who-why">{{ row.why }}</span>{% endif %}{% else %}<span class="rp-who-none">No WHO yet</span>{% endif %}</td>
+<td><button type="button" class="btn-secondary rp-btn" data-action="who">&#9998; WHO</button></td>
+<td class="rp-forwhom">{% if row.split %}<span class="rp-split">Split</span>{% else %}<select data-action="for-whom" aria-label="For whom" data-saved="{{ row.for_whom if row.for_whom is not none else '' }}">{% if row.for_whom is none %}<option value="" selected>Choose…</option>{% endif %}{% for entity in view.entities %}{% if entity.active or entity.id == row.for_whom %}<option value="{{ entity.id }}"{{ ' selected' if entity.id == row.for_whom else '' }}>{{ entity.name }}</option>{% endif %}{% endfor %}</select>{% endif %}</td>
+<td class="rp-actions-cell">{% if not row.split %}{% set done = row.status in ('Confirmed', 'Automatic') %}{% set incomplete = not (row.who and row.why) %}{% if done %}<button type="button" class="btn-secondary rp-btn" data-action="reopen" title="Withdraw this acceptance">Reopen</button>{% endif %}<button type="button" class="rp-btn" data-action="confirm"{% if done %} hidden{% endif %}{% if incomplete %} disabled{% endif %}>Confirm</button><button type="button" class="btn-secondary rp-btn" data-action="standard"{% if done %} hidden{% endif %}{% if incomplete %} disabled{% endif %}>Standard</button>{% endif %}</td>
+<td class="rp-status" data-cell="status">{{ status_mark(row.status) }}</td>
+      </tr>
+      {%- else %}
+      <tr><td colspan="10" class="rp-empty">No bank transactions in {{ period_label }}.</td></tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# ------------------------------------------ the ONE inline editor row #}
+<table hidden><tbody id="rp-editor-home">
+<tr id="rp-editor-row" class="rp-editor-row"><td colspan="10">
+  <div class="rp-editor">
+    <div class="rp-ed-facts">
+      <dl id="rp-ed-facts"></dl>
+      <div class="rp-ed-standard" id="rp-ed-standard" hidden></div>
+    </div>
+    <div>
+      <div class="rp-ed-grid">
+        <label for="rp-ed-who">WHO</label><input type="text" id="rp-ed-who" list="rp-who-names" autocomplete="off" placeholder="Type to search WHO">
+        <label for="rp-ed-why">WHY</label><select id="rp-ed-why"></select>
+        <label for="rp-ed-what">WHAT</label><select id="rp-ed-what"></select>
+        <label for="rp-ed-forwhom">For whom</label><select id="rp-ed-forwhom"></select>
+      </div>
+      <p class="rp-ed-note" id="rp-ed-note" role="status"></p>
+      <div class="rp-ed-actions">
+        <button type="button" id="rp-ed-save">Save — keep Standard unchanged</button>
+        <button type="button" class="btn-secondary" id="rp-ed-save-standard">Save as New Standard</button>
+        <button type="button" class="btn-secondary" id="rp-ed-close">Collapse</button>
+      </div>
+    </div>
+  </div>
+</td></tr>
+</tbody></table>
+<datalist id="rp-who-names"></datalist>
+
+{# ---------------------------------------------------------- WHO modal #}
+<div class="rp-overlay" id="rp-who-modal" hidden>
+  <div class="rp-modal" role="dialog" aria-modal="true" aria-labelledby="rp-modal-title">
+    <h2 id="rp-modal-title">WHO</h2>
+    <p class="rp-context" id="rp-modal-context"></p>
+
+    <div class="rp-field" id="rp-pick-area">
+      <label for="rp-who-search">WHO</label>
+      <input type="search" id="rp-who-search" placeholder="Search WHO" autocomplete="off">
+      <div class="rp-who-list" id="rp-who-list" role="listbox" aria-label="WHO"></div>
+      <button type="button" class="btn-secondary rp-btn rp-add-who" id="rp-add-who">+ Add new WHO</button>
+    </div>
+
+    <div class="rp-new-who" id="rp-new-who" hidden>
+      <div class="rp-field">
+        <label for="rp-new-name">New WHO name</label>
+        <input type="text" id="rp-new-name" autocomplete="off">
+      </div>
+      <div class="rp-field">
+        <label for="rp-new-why-search">Possible WHY</label>
+        <input type="search" id="rp-new-why-search" placeholder="Search WHY" autocomplete="off">
+        <div class="rp-why-list" id="rp-new-whys"></div>
+      </div>
+      <div class="rp-field">
+        <label for="rp-new-default">Default WHY</label>
+        <select id="rp-new-default"></select>
+      </div>
+      <div class="rp-field rp-entities">
+        <label>Entities served</label>
+        {% for entity in view.entities if entity.active %}<label><input type="checkbox" value="{{ entity.id }}" data-new-entity> {{ entity.name }}</label>{% endfor %}
+      </div>
+      <button type="button" class="btn-secondary rp-btn" id="rp-back-to-list">Back to existing WHO</button>
+    </div>
+
+    <div class="rp-field" id="rp-why-area" hidden>
+      <label for="rp-why-select">WHY for this transaction</label>
+      <select id="rp-why-select"></select>
+    </div>
+
+    <div class="rp-modal-actions">
+      <button type="button" class="btn-secondary" id="rp-cancel">Cancel</button>
+      <button type="button" id="rp-confirm-who" disabled>Confirm WHO</button>
+    </div>
+  </div>
+</div>
+
+<form method="post" id="rp-post" hidden><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+<script type="application/json" id="rp-data">{{ {'whos': view.whos, 'whys': view.whys, 'whats': view.whats, 'entities': view.entities, 'destinations': view.destinations, 'standards': view.standards}|tojson }}</script>
+<script>
+(function () {
+  var data = JSON.parse(document.getElementById('rp-data').textContent);
+  var BASE = {{ url_for('bank_reconciliation')|tojson }};
+  var whoById = {}, whoByName = {}, whyById = {}, entityById = {}, isWhat = {};
+  data.whos.forEach(function (w) { whoById[w.id] = w; whoByName[w.name.toLowerCase()] = w; });
+  data.whys.forEach(function (y) { whyById[y.id] = y; });
+  data.entities.forEach(function (e) { entityById[e.id] = e; });
+  data.whats.forEach(function (w) { isWhat[w.id] = true; });
+  var LIST_LIMIT = 80;
+
+  function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+  function money(minor) { return (minor > 0 ? '+' : '−') + (Math.abs(minor) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function rowEl(id) { return document.getElementById('t-' + id); }
+  function num(v) { return v === '' || v == null ? null : Number(v); }
+  // Tooltips are attached once here instead of being repeated on 400 rows.
+  var TIPS = {
+    'rp-st-review': 'Needs review — requires a person; not exportable',
+    'rp-st-automatic': 'Automatic — completed by a Standard a person approved; exportable',
+    'rp-st-confirmed': 'Confirmed — accepted by a person; exportable'
+  };
+  function tip(root) {
+    Object.keys(TIPS).forEach(function (k) { Array.prototype.slice.call(root.querySelectorAll('.' + k)).forEach(function (el) { el.title = TIPS[k]; }); });
+  }
+  function listOf(w, key) { return (w && w[key]) || []; }
+  // A row's facts travel on its own <tr>; nothing about 400 rows is repeated in JSON.
+  function rowOf(tr) {
+    var c = tr.children;
+    return { id: tr.dataset.rowId, who_id: num(tr.dataset.who), why_id: num(tr.dataset.why), what_id: num(tr.dataset.what),
+             source: tr.dataset.source, who_source: tr.dataset.whoSource, standard: tr.dataset.standard,
+             status: tr.dataset.status, default_for_whom: num(tr.dataset['default']), memo: tr.dataset.memo,
+             amount_minor: Number(tr.dataset.amount), account: c[1].textContent, date: c[2].title,
+             date_label: c[2].textContent, description: c[3].textContent };
+  }
+  var MARKS = {
+    'Needs review': '<span class="rp-st rp-st-review" role="img" aria-label="Needs review">&#10007;</span>',
+    'Automatic': '<span class="rp-st rp-st-automatic" role="img" aria-label="Automatic">&#10003;</span>',
+    'Confirmed': '<span class="rp-st rp-st-confirmed" role="img" aria-label="Confirmed">&#10004;</span>'
+  };
+  function setStatus(tr, status, text) {
+    var cell = tr.querySelector('[data-cell="status"]');
+    cell.innerHTML = MARKS[status] + '<span class="rp-st-text">' + esc(text || status) + '</span>';
+    tip(cell);
+  }
+
+  // One shared form posts every row action to that row's own route.
+  function post(tr, action, fields) {
+    var form = document.getElementById('rp-post');
+    Array.prototype.slice.call(form.querySelectorAll('input[data-f]')).forEach(function (i) { i.remove(); });
+    Object.keys(fields).forEach(function (k) {
+      [].concat(fields[k]).forEach(function (v) {
+        var i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = v == null ? '' : v; i.dataset.f = '1'; form.appendChild(i);
+      });
+    });
+    form.action = BASE + '/' + tr.dataset.rowId + '/' + action;
+    form.submit();
+  }
+
+  // ------------------------------------------------------------- For whom
+  // Entities the row's WHO serves are marked ✓, never filtered out.
+  function markServed(tr) {
+    var r = rowOf(tr), sel = tr.querySelector('[data-action="for-whom"]');
+    if (!sel) return;
+    var served = listOf(whoById[r.who_id], 'entities');
+    Array.prototype.slice.call(sel.options).forEach(function (o) {
+      if (!o.value) return;
+      var base = entityById[o.value] ? entityById[o.value].name : o.textContent;
+      o.textContent = base + (served.indexOf(Number(o.value)) !== -1 ? ' ✓' : '');
+    });
+    sel.title = served.length ? '✓ = entities this WHO serves' : '';
+  }
+  function syncRow(tr) {
+    var r = rowOf(tr), sel = tr.querySelector('[data-action="for-whom"]');
+    if (!sel) return;
+    var confirmBtn = tr.querySelector('[data-action="confirm"]'), standardBtn = tr.querySelector('[data-action="standard"]');
+    var reopenBtn = tr.querySelector('[data-action="reopen"]');
+    var changed = sel.value !== sel.dataset.saved;
+    var done = r.status === 'Confirmed' || r.status === 'Automatic';
+    sel.classList.toggle('rp-changed', changed || (r.default_for_whom != null && sel.value !== String(r.default_for_whom)));
+    if (done) {
+      // A changed For whom is not saved — and not exportable — until saved again.
+      confirmBtn.hidden = standardBtn.hidden = !changed; if (reopenBtn) reopenBtn.hidden = changed;
+      if (changed) setStatus(tr, 'Needs review', 'Changed — not saved'); else setStatus(tr, r.status);
+    }
+    var complete = r.who_id && r.why_id;
+    var ok = complete && sel.value;
+    [confirmBtn, standardBtn].forEach(function (b) { b.disabled = !ok; });
+    confirmBtn.title = !r.who_id ? 'Choose a WHO first' : (!r.why_id ? 'Choose a WHY first' : (!sel.value ? 'Choose For whom first' : ''));
+  }
+  Array.prototype.slice.call(document.querySelectorAll('#rp-table tr[data-row-id]')).forEach(function (tr) { markServed(tr); syncRow(tr); });
+  tip(document);
+  Array.prototype.slice.call(document.querySelectorAll('#rp-table [data-action="standard"]')).forEach(function (b) {
+    b.title = 'Confirm, and approve this result as a Standard for future matching transactions';
+  });
+
+  document.getElementById('rp-table').addEventListener('change', function (e) {
+    if (e.target.dataset.action === 'for-whom') syncRow(e.target.closest('tr'));
+  });
+  document.getElementById('rp-table').addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-action]');
+    if (!btn || btn.disabled) return;
+    var tr = btn.closest('tr');
+    var action = btn.dataset.action;
+    if (action === 'who') { openModal(tr.dataset.rowId, btn); return; }
+    if (action === 'expand') { toggleEditor(tr); return; }
+    if (action === 'confirm' || action === 'standard' || action === 'reopen') {
+      var sel = tr.querySelector('[data-action="for-whom"]');
+      btn.disabled = true;
+      post(tr, action, { for_whom_id: sel ? sel.value : '' });
+    }
+  });
+
+  // ---------------------------------------------------------- inline editor
+  var editorRow = document.getElementById('rp-editor-row'), editorHome = document.getElementById('rp-editor-home');
+  var edWho = document.getElementById('rp-ed-who'), edWhy = document.getElementById('rp-ed-why');
+  var edWhat = document.getElementById('rp-ed-what'), edFor = document.getElementById('rp-ed-forwhom');
+  var edNote = document.getElementById('rp-ed-note'), edSave = document.getElementById('rp-ed-save');
+  var edSaveStd = document.getElementById('rp-ed-save-standard');
+  var editing = null, catalogsReady = false;
+  var WHO_SOURCE = { person: 'Chosen by a person', auto: 'Suggested automatically — not approved', standard: 'From an approved Standard' };
+  var DEST_SOURCE = { WHY: 'Derived from the WHY', TRANSACTION: 'Chosen for this transaction', STANDARD: 'From the Standard' };
+
+  // The big catalogs are drawn ONCE, the first time any row is expanded.
+  function buildCatalogs() {
+    if (catalogsReady) return;
+    document.getElementById('rp-who-names').innerHTML = data.whos.map(function (w) { return '<option value="' + esc(w.name) + '">'; }).join('');
+    edWhy.innerHTML = '<option value="">— choose WHY —</option>' + data.whys.map(function (y) { return '<option value="' + y.id + '">' + esc(y.name) + '</option>'; }).join('');
+    edFor.innerHTML = '<option value="">— choose —</option>' + data.entities.filter(function (e) { return e.active; })
+      .map(function (e) { return '<option value="' + e.id + '">' + esc(e.name) + '</option>'; }).join('');
+    catalogsReady = true;
+  }
+  // WHAT = the P&L WHAT, plus — shown truthfully, never converted — the
+  // destination the transaction already has and the chosen WHY's own one.
+  function fillWhat(currentId, whyId, selected) {
+    var extra = [];
+    [currentId, whyId && whyById[whyId] ? whyById[whyId].what : null].forEach(function (id) {
+      if (id != null && !isWhat[id] && extra.indexOf(id) === -1) extra.push(id);
+    });
+    edWhat.innerHTML = '<option value="">— choose WHAT —</option>'
+      + extra.map(function (id) { return '<option value="' + id + '">' + esc(data.destinations[id] || ('Destination ' + id)) + '</option>'; }).join('')
+      + data.whats.map(function (w) { return '<option value="' + w.id + '">' + esc(w.label) + '</option>'; }).join('');
+    edWhat.value = selected != null ? String(selected) : '';
+  }
+  function facts(r) {
+    var items = [['Account / Card', r.account], ['Date', r.date], ['Amount', money(r.amount_minor)],
+                 ['Description', '<span class="rp-mono">' + esc(r.description) + '</span>']];
+    if (r.memo) items.push(['Memo', '<span class="rp-mono">' + esc(r.memo) + '</span>']);
+    items.push(['WHO', r.who_id ? esc(whoById[r.who_id] ? whoById[r.who_id].name : '') + ' — ' + (WHO_SOURCE[r.who_source] || '') : 'None yet']);
+    if (r.what_id) items.push(['Accounting', esc(data.destinations[r.what_id] || '') + ' — ' + (DEST_SOURCE[r.source] || '')]);
+    items.push(['Status', r.status]);
+    return items.map(function (i) { return '<dt>' + i[0] + '</dt><dd>' + (i[0] === 'Description' || i[0] === 'Memo' || i[0] === 'WHO' || i[0] === 'Accounting' ? i[1] : esc(i[1])) + '</dd>'; }).join('');
+  }
+  function standardInfo(r) {
+    var s = r.standard ? data.standards[r.standard] : null, box = document.getElementById('rp-ed-standard');
+    if (!s) { box.hidden = true; box.innerHTML = ''; return; }
+    box.hidden = false;
+    box.innerHTML = '<strong>Completed by an approved Standard</strong><br>'
+      + 'Recognized by: ' + esc(s.match) + ' “' + esc(s.pattern) + '” · ' + esc(s.scope) + ' · ' + esc(s.direction) + '<br>'
+      + 'WHO ' + esc(s.who) + ' · WHY ' + esc(s.why) + ' · WHAT ' + esc(s.what) + ' · For whom ' + esc(s.for_whom) + '<br>'
+      + 'Approved by ' + esc(s.approved_by || '—') + ' on ' + esc(s.approved_at);
+  }
+  function openEditor(tr, values) {
+    buildCatalogs();
+    var r = rowOf(tr);
+    editing = { tr: tr, r: r };
+    tr.parentNode.insertBefore(editorRow, tr.nextSibling);
+    Array.prototype.slice.call(document.querySelectorAll('.rp-expand[aria-expanded="true"]')).forEach(function (b) { b.setAttribute('aria-expanded', 'false'); b.innerHTML = '&#9656;'; });
+    var toggle = tr.querySelector('[data-action="expand"]'); toggle.setAttribute('aria-expanded', 'true'); toggle.innerHTML = '&#9662;';
+    document.getElementById('rp-ed-facts').innerHTML = facts(r);
+    standardInfo(r);
+    var sel = tr.querySelector('[data-action="for-whom"]');
+    var v = values || { who: r.who_id, why: r.why_id, what: r.what_id != null ? r.what_id : (r.why_id && whyById[r.why_id] ? whyById[r.why_id].what : null), for_whom: sel ? num(sel.value) : null };
+    edWho.value = v.who && whoById[v.who] ? whoById[v.who].name : '';
+    edWhy.value = v.why != null ? String(v.why) : '';
+    fillWhat(r.what_id, v.why, v.what);
+    edFor.value = v.for_whom != null ? String(v.for_whom) : '';
+    editing.original = currentValues();
+    editing.original.who = r.who_id; editing.original.why = r.why_id; editing.original.what = r.what_id;
+    editing.original.for_whom = sel && sel.dataset.saved ? num(sel.dataset.saved) : null;
+    syncEditor();
+  }
+  function closeEditor() {
+    if (!editing) return;
+    var toggle = editing.tr.querySelector('[data-action="expand"]'); toggle.setAttribute('aria-expanded', 'false'); toggle.innerHTML = '&#9656;';
+    syncRow(editing.tr);
+    editorHome.appendChild(editorRow); editing = null;
+  }
+  function toggleEditor(tr) { if (editing && editing.tr === tr) closeEditor(); else { if (editing) closeEditor(); openEditor(tr); } }
+  function currentValues() {
+    var w = whoByName[edWho.value.trim().toLowerCase()];
+    return { who: w ? w.id : null, why: num(edWhy.value), what: num(edWhat.value), for_whom: num(edFor.value) };
+  }
+  function syncEditor() {
+    var v = currentValues(), o = editing.original, r = editing.r;
+    var changed = v.who !== o.who || v.why !== o.why || v.what !== o.what || v.for_whom !== o.for_whom;
+    var complete = v.who && v.why && v.what && v.for_whom;
+    edSave.disabled = edSaveStd.disabled = !complete;
+    var note = '';
+    if (edWho.value.trim() && !v.who) note = 'Choose a WHO from the list.';
+    else if (!complete) note = 'WHO, WHY, WHAT and For whom are all needed to save.';
+    else if (changed && (r.status === 'Automatic' || r.status === 'Confirmed'))
+      note = 'Edited — not saved. Until you save, this transaction is Needs review' + (r.status === 'Automatic' ? ' and the Standard is not applied to it.' : '.');
+    else if (changed) note = 'Edited — not saved.';
+    edNote.textContent = note;
+    if (r.status === 'Automatic' || r.status === 'Confirmed') {
+      if (changed) setStatus(editing.tr, 'Needs review', 'Changed — not saved'); else setStatus(editing.tr, r.status);
+    }
+  }
+  edWho.addEventListener('input', syncEditor);
+  edWhy.addEventListener('change', function () {
+    // A new WHY proposes its own destination; the operator may still choose another WHAT.
+    var why = num(edWhy.value);
+    fillWhat(editing.r.what_id, why, why && whyById[why] ? whyById[why].what : null);
+    syncEditor();
+  });
+  edWhat.addEventListener('change', syncEditor);
+  edFor.addEventListener('change', syncEditor);
+  document.getElementById('rp-ed-close').addEventListener('click', closeEditor);
+  function saveEditor(mode) {
+    var v = currentValues();
+    try { sessionStorage.setItem('rp-pending', JSON.stringify({ row: editing.r.id, values: v })); } catch (e) { /* optional */ }
+    edSave.disabled = edSaveStd.disabled = true;
+    post(editing.tr, 'save', { mode: mode, occurrence_id: v.who, why_id: v.why, what_id: v.what, for_whom_id: v.for_whom });
+  }
+  edSave.addEventListener('click', function () { saveEditor('keep'); });
+  edSaveStd.addEventListener('click', function () { saveEditor('standard'); });
+
+  // ------------------------------------------------------------ WHO modal
+  var modal = document.getElementById('rp-who-modal');
+  var list = document.getElementById('rp-who-list');
+  var search = document.getElementById('rp-who-search');
+  var whyArea = document.getElementById('rp-why-area');
+  var whySelect = document.getElementById('rp-why-select');
+  var newArea = document.getElementById('rp-new-who');
+  var pickArea = document.getElementById('rp-pick-area');
+  var newName = document.getElementById('rp-new-name');
+  var newWhys = document.getElementById('rp-new-whys');
+  var newWhySearch = document.getElementById('rp-new-why-search');
+  var newDefault = document.getElementById('rp-new-default');
+  var confirmWho = document.getElementById('rp-confirm-who');
+  var state = { rowId: null, trigger: null, who: null, adding: false };
+
+  // Only the matches are drawn, capped: 1,229 WHO never become 1,229 nodes.
+  function renderList() {
+    var q = search.value.trim().toLowerCase(), shown = 0, total = 0;
+    list.innerHTML = '';
+    data.whos.forEach(function (w) {
+      if (q && w.name.toLowerCase().indexOf(q) === -1) return;
+      total += 1;
+      if (shown >= LIST_LIMIT && w.id !== state.who) return;
+      shown += 1;
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'rp-who-option' + (state.who === w.id ? ' is-selected' : '');
+      b.textContent = w.name + (w.inactive ? ' (inactive)' : ''); b.setAttribute('role', 'option'); b.dataset.whoId = w.id;
+      b.addEventListener('click', function () { chooseWho(w.id, null); });
+      list.appendChild(b);
+    });
+    if (total > shown) {
+      var more = document.createElement('div'); more.className = 'rp-more';
+      more.textContent = (total - shown) + ' more — type to narrow the list';
+      list.appendChild(more);
+    }
+  }
+  // The WHY list is the WHO's possible WHY; its default is only proposed.
+  function fillWhy(whyIds, selected, defaultId) {
+    whySelect.innerHTML = '<option value="">— WHY not decided yet —</option>';
+    whyIds.forEach(function (id) {
+      var o = document.createElement('option');
+      o.value = id; o.textContent = (whyById[id] ? whyById[id].name : id) + (id === defaultId ? ' (default)' : '');
+      whySelect.appendChild(o);
+    });
+    var pick = selected != null && whyIds.indexOf(selected) !== -1 ? selected : defaultId;
+    whySelect.value = pick != null ? String(pick) : '';
+    whyArea.hidden = false;
+  }
+  function chooseWho(id, why) {
+    state.who = id; state.adding = false;
+    var w = whoById[id];
+    fillWhy(listOf(w, 'whys'), why, w && w.default_why != null ? w.default_why : null);
+    renderList(); syncConfirm();
+  }
+  function renderNewWhys() {
+    var q = newWhySearch.value.trim().toLowerCase();
+    Array.prototype.slice.call(newWhys.querySelectorAll('label')).forEach(function (l) { l.hidden = q && l.dataset.hay.indexOf(q) === -1; });
+  }
+  function checkedNewWhys() { return Array.prototype.slice.call(newWhys.querySelectorAll('input:checked')).map(function (c) { return Number(c.value); }); }
+  function renderNewDefault() {
+    var keep = newDefault.value, chosen = checkedNewWhys();
+    newDefault.innerHTML = '<option value="">— No default —</option>';
+    chosen.forEach(function (id) { var o = document.createElement('option'); o.value = id; o.textContent = whyById[id].name; newDefault.appendChild(o); });
+    newDefault.value = chosen.indexOf(Number(keep)) !== -1 ? keep : '';
+    fillWhy(chosen, null, newDefault.value ? Number(newDefault.value) : null);
+    syncConfirm();
+  }
+  function syncConfirm() { confirmWho.disabled = state.adding ? !newName.value.trim() : !state.who; }
+  function openModal(id, trigger) {
+    var r = rowOf(rowEl(id));
+    state = { rowId: id, trigger: trigger, who: r.who_id, adding: false };
+    document.getElementById('rp-modal-context').innerHTML =
+      esc(r.account) + ' &middot; ' + esc(r.date_label) + ' &middot; ' + money(r.amount_minor) + '<br><code>' + esc(r.description) + '</code>';
+    search.value = ''; newArea.hidden = true; pickArea.hidden = false;
+    newName.value = ''; newWhySearch.value = '';
+    newWhys.innerHTML = data.whys.map(function (y) { return '<label data-hay="' + esc(y.name.toLowerCase()) + '"><input type="checkbox" value="' + y.id + '"> ' + esc(y.name) + '</label>'; }).join('');
+    newDefault.innerHTML = '';
+    var forWhom = rowEl(id).querySelector('[data-action="for-whom"]');
+    document.querySelectorAll('[data-new-entity]').forEach(function (c) { c.checked = !!forWhom && c.value === forWhom.value; });
+    if (r.who_id && whoById[r.who_id]) { chooseWho(r.who_id, r.why_id); } else { whyArea.hidden = true; renderList(); syncConfirm(); }
+    modal.hidden = false;
+    search.focus();
+  }
+  function closeModal() { modal.hidden = true; if (state.trigger) state.trigger.focus(); }
+  search.addEventListener('input', renderList);
+  document.getElementById('rp-add-who').addEventListener('click', function () {
+    state.adding = true; state.who = null;
+    pickArea.hidden = true; newArea.hidden = false; whyArea.hidden = true;
+    newName.value = search.value.trim(); newName.focus(); renderNewDefault();
+  });
+  document.getElementById('rp-back-to-list').addEventListener('click', function () {
+    state.adding = false; newArea.hidden = true; pickArea.hidden = false; whyArea.hidden = true;
+    renderList(); syncConfirm();
+  });
+  newName.addEventListener('input', syncConfirm);
+  newWhySearch.addEventListener('input', renderNewWhys);
+  newWhys.addEventListener('change', renderNewDefault);
+  newDefault.addEventListener('change', function () { fillWhy(checkedNewWhys(), null, newDefault.value ? Number(newDefault.value) : null); });
+  document.getElementById('rp-cancel').addEventListener('click', closeModal);
+  modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', function (e) { if (!modal.hidden && e.key === 'Escape') closeModal(); });
+  confirmWho.addEventListener('click', function () {
+    var fields = { why_id: whySelect.value };
+    if (state.adding) {
+      fields.new_who = '1'; fields.new_name = newName.value.trim(); fields.new_default_why_id = newDefault.value;
+      fields.new_why_ids = checkedNewWhys();
+      fields.new_entity_ids = Array.prototype.slice.call(document.querySelectorAll('[data-new-entity]:checked')).map(function (c) { return c.value; });
+    } else {
+      fields.occurrence_id = state.who;
+    }
+    confirmWho.disabled = true;
+    post(rowEl(state.rowId), 'who', fields);
+  });
+
+  // Back on the row that was just worked on; a refused editor save reopens
+  // the editor with the operator's values, so nothing typed is lost.
+  var pending = null;
+  try { pending = JSON.parse(sessionStorage.getItem('rp-pending') || 'null'); sessionStorage.removeItem('rp-pending'); } catch (e) { pending = null; }
+  if (location.hash && document.querySelector(location.hash)) {
+    var tr = document.querySelector(location.hash);
+    tr.classList.add('rp-highlight'); tr.scrollIntoView({ block: 'center' });
+    setTimeout(function () { tr.classList.remove('rp-highlight'); }, 1400);
+    if (pending && document.querySelector('.error') && location.hash === '#t-' + pending.row) openEditor(tr, pending.values);
+  }
+})();
+</script>
+{% endblock %}

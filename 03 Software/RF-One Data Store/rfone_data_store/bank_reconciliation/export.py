@@ -51,6 +51,7 @@ from .. import models as m
 from . import accounting_dedup
 from . import card_configuration
 from . import recognition
+from . import reconciliation_status
 
 KERMALI_COLUMNS = (
     "Account", "Date", "Description", "Amount", "Supplier/Receiving",
@@ -61,6 +62,22 @@ KERMALI_COLUMNS = (
 def month_bounds(year: int, month: int) -> tuple[date, date]:
     last_day = calendar.monthrange(year, month)[1]
     return date(year, month, 1), date(year, month, last_day)
+
+
+def _not_confirmed_duplicate():
+    """The ONE predicate that keeps a transaction in a month's scope unless a
+    human confirmed it as a duplicate.
+
+    Only `duplicate_status == 'CONFIRMED_DUPLICATE'` excludes. A NULL status
+    — rows loaded before the duplicate flow set 'NONE' on every import —
+    means "never judged a duplicate", not "duplicate". A bare
+    `duplicate_status != 'CONFIRMED_DUPLICATE'` is NULL, not TRUE, for those
+    rows in SQL, which silently emptied the month; NULL is therefore kept
+    explicitly."""
+    return or_(
+        m.FinancialTransaction.duplicate_status.is_(None),
+        m.FinancialTransaction.duplicate_status != "CONFIRMED_DUPLICATE",
+    )
 
 
 def in_scope_transactions(session: Session, year: int, month: int) -> list["m.FinancialTransaction"]:
@@ -87,7 +104,7 @@ def in_scope_transactions(session: Session, year: int, month: int) -> list["m.Fi
         select(m.FinancialTransaction).where(
             m.FinancialTransaction.posting_date >= start,
             m.FinancialTransaction.posting_date <= end,
-            m.FinancialTransaction.duplicate_status != "CONFIRMED_DUPLICATE",
+            _not_confirmed_duplicate(),
             accounting_dedup.not_suppressed_filter(),
         ).order_by(m.FinancialTransaction.posting_date, m.FinancialTransaction.id)
     ).all())
@@ -105,7 +122,7 @@ def _unresolved_settlement_transactions(
         select(m.FinancialTransaction).where(
             m.FinancialTransaction.posting_date >= start,
             m.FinancialTransaction.posting_date <= end,
-            m.FinancialTransaction.duplicate_status != "CONFIRMED_DUPLICATE",
+            _not_confirmed_duplicate(),
             m.FinancialTransaction.accounting_status
             == accounting_dedup.UNRESOLVED_NO_SETTLEMENT_ACCOUNT,
         ).order_by(m.FinancialTransaction.posting_date, m.FinancialTransaction.id)
@@ -181,7 +198,7 @@ def _classification_blockers(
         if txn.id in transfer_ids:
             continue
         if txn.explanation_id is None or txn.explanation_id not in resolved_explanation_ids:
-            continue  # already reported as "Missing Who" above
+            continue  # no decided WHO -> WHY -> WHAT to judge (reported as Needs review above)
         explanation = explanations_by_id.get(txn.explanation_id)
         if explanation is None:
             continue
@@ -241,16 +258,32 @@ def _resolution_facts(
     onto a transaction that already has a genuine, confirmed
     FinancialTransactionMatch. The exemption requires BOTH conditions
     together (`_confirmed_internal_transfer_ids`)."""
-    explanation_ids = {t.explanation_id for t in transactions if t.explanation_id is not None}
-    resolved_explanation_ids: set[int] = set()
-    if explanation_ids:
-        resolved_explanation_ids = set(session.scalars(
-            select(m.BankTransactionExplanation.id).where(
-                m.BankTransactionExplanation.id.in_(explanation_ids),
-                m.BankTransactionExplanation.decision_status.in_(recognition.RESOLVED_DECISION_STATUSES),
-            )
-        ).all())
+    # BANK_RECONCILIATION_STANDARDS_001 — "sufficiently resolved" is now the
+    # persisted reconciliation status: AUTOMATIC (completed by an approved
+    # Standard) or CONFIRMED (accepted by a person). A WHO/WHY decision alone,
+    # automatic or human, is NEEDS REVIEW and blocks the export.
+    statuses = reconciliation_status.statuses_for(session, transactions)
+    resolved_explanation_ids = {
+        t.explanation_id for t in transactions
+        if t.explanation_id is not None and statuses[t.id] in reconciliation_status.EXPORTABLE
+    }
     return resolved_explanation_ids, _confirmed_internal_transfer_ids(session, transactions)
+
+
+def _decided_explanation_ids(
+    session: Session, transactions: list["m.FinancialTransaction"],
+) -> set[int]:
+    """Current decisions in a resolved decision status — the rows whose
+    WHO -> WHY -> WHAT snapshot the classification-integrity blockers judge."""
+    explanation_ids = {t.explanation_id for t in transactions if t.explanation_id is not None}
+    if not explanation_ids:
+        return set()
+    return set(session.scalars(
+        select(m.BankTransactionExplanation.id).where(
+            m.BankTransactionExplanation.id.in_(explanation_ids),
+            m.BankTransactionExplanation.decision_status.in_(recognition.RESOLVED_DECISION_STATUSES),
+        )
+    ).all())
 
 
 def unresolved_transactions(
@@ -334,14 +367,17 @@ def compute_export_blockers(session: Session, *, year: int, month: int) -> list[
     unresolved = _unresolved_among(transactions, resolved_explanation_ids, transfer_ids)
     for txn in unresolved:
         blockers.append(ExportBlocker(
-            f"Missing Who: transaction id={txn.id} "
-            f"({txn.posting_date.isoformat()}, {txn.description_original!r}) has no resolved "
-            "Who -> Why -> What decision (Recognition still needs human review)."
+            f"Needs review: transaction id={txn.id} "
+            f"({txn.posting_date.isoformat()}, {txn.description_original!r}) is neither Confirmed "
+            "by a person nor Automatic from an approved Standard (Bank Reconciliation)."
         ))
 
     blockers.extend(_classification_blockers(
         session, transactions=transactions, transfer_ids=transfer_ids,
-        resolved_explanation_ids=resolved_explanation_ids,
+        # The classification-integrity blockers keep judging every decided
+        # row, confirmed or not (BANK_RECONCILIATION_STANDARDS_001 changed
+        # only WHEN a row is done, not what makes a classification complete).
+        resolved_explanation_ids=_decided_explanation_ids(session, transactions),
     ))
 
     # BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001: a transaction whose

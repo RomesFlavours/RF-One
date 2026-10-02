@@ -164,7 +164,8 @@ def main() -> int:
             )
             s.add(checking)
             s.flush()
-            kind = m.BankOccurrenceType(code="COUNTERPARTY", name="Counterparty")
+            kind = (s.query(m.BankOccurrenceType).filter_by(code="COUNTERPARTY").one_or_none()  # seeded by f6c2e8a4b1d7
+                    or m.BankOccurrenceType(code="COUNTERPARTY", name="Counterparty"))
             s.add(kind)
             # Committed, not just flushed: the refusal check below rolls back.
             s.commit()

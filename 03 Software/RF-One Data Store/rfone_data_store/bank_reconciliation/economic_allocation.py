@@ -26,8 +26,13 @@ This module owns four things and nothing else:
 2. **WHY -> accounting destination.** Derived from the Reason, exactly as
    `BankTransactionReason` already defines it: a P&L Reason yields a WHAT,
    a non-P&L Reason yields a Balance Sheet destination and the allocation
-   legitimately has no WHAT at all. There is no per-allocation accounting
-   override — an operator picks the WHY, never the account.
+   legitimately has no WHAT at all. By default the destination is the
+   WHY's own (`accounting_destination_source = WHY`). Since
+   BANK_RECONCILIATION_STANDARDS_001 two explicit, recorded exceptions
+   exist: a P&L WHAT a human chose for this one transaction (TRANSACTION),
+   and the destination an approved Reconciliation Standard supplies
+   (STANDARD, with `reconciliation_standard_id`). The WHY's master mapping
+   is never changed by either.
 
 3. **Payer versus economic owner.** The payer is resolved through the
    SETTLEMENT ACCOUNT by the existing
@@ -334,6 +339,12 @@ class AllocationSpec:
     evidence_kind: str | None = None
     evidence_reference: str | None = None
     notes: str | None = None
+    # BANK_RECONCILIATION_STANDARDS_001. `accounting_classification_id` is an
+    # explicit effective destination; equal to the WHY's own it is still
+    # recorded as WHY-derived, different it is a TRANSACTION exception. With
+    # `reconciliation_standard_id` the destination is the Standard's (STANDARD).
+    accounting_classification_id: int | None = None
+    reconciliation_standard_id: int | None = None
 
 
 class AllocationBalanceError(ValueError):
@@ -414,6 +425,7 @@ def set_allocations(
             "m.ReportingEntity | None",
             "m.BankTransactionReason | None",
             "m.BankAccountingClassification | None",
+            str,
         ]
     ] = []
     for spec in specs:
@@ -432,6 +444,25 @@ def set_allocations(
                 raise ValueError(f"Reporting Entity {spec.reporting_entity_id} does not exist.")
 
         reason, classification = _resolve_reason(session, spec.transaction_reason_id)
+        source = m.DESTINATION_SOURCE_WHY
+        if spec.reconciliation_standard_id is not None:
+            if session.get(m.BankReconciliationStandard, spec.reconciliation_standard_id) is None:
+                raise ValueError(f"Reconciliation Standard {spec.reconciliation_standard_id} does not exist.")
+            if spec.accounting_classification_id is None:
+                raise ValueError("A Standard-produced allocation must state the Standard's destination.")
+            source = m.DESTINATION_SOURCE_STANDARD
+        if spec.accounting_classification_id is not None and (
+            classification is None or spec.accounting_classification_id != classification.id
+            or source == m.DESTINATION_SOURCE_STANDARD
+        ):
+            chosen = session.get(m.BankAccountingClassification, spec.accounting_classification_id)
+            if chosen is None:
+                raise ValueError(f"Accounting destination {spec.accounting_classification_id} does not exist.")
+            if not chosen.is_posting_account:
+                raise ValueError(f"{chosen.code} — {chosen.name} is a reporting group, not a destination.")
+            classification = chosen
+            if source != m.DESTINATION_SOURCE_STANDARD:
+                source = m.DESTINATION_SOURCE_TRANSACTION
 
         if spec.status == COMPLETE:
             if entity is None:
@@ -447,7 +478,7 @@ def set_allocations(
                     "is never chosen per allocation."
                 )
 
-        resolved.append((spec, entity, reason, classification))
+        resolved.append((spec, entity, reason, classification, source))
 
     for row in existing:
         session.delete(row)
@@ -457,7 +488,7 @@ def set_allocations(
     now = datetime.now(timezone.utc)
 
     written: list[m.BankTransactionAllocation] = []
-    for index, (spec, entity, reason, classification) in enumerate(resolved):
+    for index, (spec, entity, reason, classification, source) in enumerate(resolved):
         derivation = derive_intercompany(
             payer=payer,
             economic_owner_legal_entity_id=entity.legal_entity_id if entity else None,
@@ -495,6 +526,8 @@ def set_allocations(
             evidence_kind=spec.evidence_kind,
             evidence_reference=spec.evidence_reference,
             notes=spec.notes,
+            accounting_destination_source=source,
+            reconciliation_standard_id=spec.reconciliation_standard_id,
         )
         session.add(allocation)
         written.append(allocation)
