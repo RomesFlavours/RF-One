@@ -55,6 +55,14 @@ def tips_run_url(run_id: int) -> str | None:
     return f"{base}/tips/runs/{int(run_id)}"
 
 
+def tips_runs_url() -> str | None:
+    """RF-One Web's saved-period validation list (`/tips/runs`), reached from
+    Tips > Saved Periods rather than from RF-One Home, or `None` when not
+    configured."""
+    base = base_url()
+    return None if base is None else f"{base}/tips/runs"
+
+
 def home_url() -> str | None:
     """RF-One Web's Home — the first level of every Tips breadcrumb."""
     base = base_url()

@@ -33,6 +33,9 @@
     Periods are reviewed and finalized in RF-One Web, where you sign in. Use
     <strong>Review / Finalize in RF-One</strong> on a row to open that same period there.
   </p>
+  {% if rfone_web_runs_url() %}
+  <p style="font-size:.85rem;"><a href="{{ rfone_web_runs_url() }}">Validate saved periods</a></p>
+  {% endif %}
   {% if runs and not rfone_web_base_url() %}
   <div class="error">{{ rfone_web_not_configured_message }}</div>
   {% endif %}

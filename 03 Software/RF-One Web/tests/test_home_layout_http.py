@@ -129,8 +129,9 @@ def main() -> int:
               DOMAINS_BY_CODE["BANK"].display_name not in domains_part and 'href="/bank"' not in domains_part)
         check("no side-by-side domain grid remains on Home", 'class="domain-grid"' not in body)
         tips_block = domains_part.split(DOMAINS_BY_CODE["TIPS"].display_name, 1)[1].split('class="domain-card ', 1)[0]
-        check("'Tips — validate saved periods' sits right under the Tips Domain",
-              'href="/tips/runs"' in tips_block and "validate saved periods" in tips_block)
+        check("Home no longer lists 'Tips — validate saved periods' (it lives in Tips > Saved Periods)",
+              'href="/tips/runs"' not in body and "validate saved periods" not in body.lower()
+              and 'class="home-row home-subrow"' not in tips_block)
 
         # Release state: operational Domains green, Work in progress red
         # (same pair as the ACTIVE / INACTIVE badges).

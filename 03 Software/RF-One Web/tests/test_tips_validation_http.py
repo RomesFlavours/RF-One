@@ -205,8 +205,8 @@ def main() -> int:
               and other_host.status_code == 302 and "/login" in other_host.headers["Location"])
 
         home = tips_client.get("/", base_url=WEB_HOST)
-        check("   Home links an authorized user to the Tips validation page",
-              b'href="/tips/runs"' in home.data)
+        check("   Home no longer links to the Tips validation page (reached from Tips > Saved Periods)",
+              b'href="/tips/runs"' not in home.data and b"validate saved periods" not in home.data.lower())
 
         # ---- 3. authorized user opens the report --------------------------
         report = tips_client.get(f"/tips/runs/{run_id}", base_url=WEB_HOST)
