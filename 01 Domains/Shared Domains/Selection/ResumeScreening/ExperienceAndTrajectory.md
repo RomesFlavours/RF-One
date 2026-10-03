@@ -93,6 +93,24 @@ A transition is read only when the Industry Extension **positively** classifies 
 - A transition **from another sector** may be raised only when the role is positively classified as such, and it stays a neutral question backed by the résumé text of that role.
 - Hotel work is hospitality and is never classified as "another sector". The distinction between restaurant work and other hospitality work is a separate matter.
 
+### Declared coordination responsibilities (SELECTION_COORDINATION_EVIDENCE_001)
+
+Decided by the Product Owner on 2026-10-03. Three things stay distinct: the **declared role** (the title), the **responsibilities described in the duties**, and what is **to be explored in the interview**. A duty written in the CV is evidence of what the candidate declares — not an independent check, and not a measure of leadership quality.
+
+A sentence of an experience's duties is kept as evidence only when it describes a responsibility exercised on **other people**:
+
+1. coordinating the team or the service;
+2. assigning tasks, shifts or priorities;
+3. training or onboarding colleagues or new hires;
+4. supervising work, checking completion, giving feedback;
+5. linking management and the team.
+
+Each piece of evidence keeps its original sentence and the experience it was written under; the **area** (supplied by the Industry Extension) and the **number of people** are shown only when the sentence states them, otherwise "to be clarified". Not evidence: managing things rather than people ("managed reservations"), generic self-descriptions ("team player", "leadership skills"), supporting a superior ("assisted the supervisor"), being trained oneself. Delivering training is training even when the trainees are not named ("who was trained is not specified").
+
+The evidence never changes the normalized role (a Server who trained colleagues stays a Server), is never spread over the job's whole duration (a duty has no dates of its own), and adds no months, Indicator, weight or ranking. When the experience's reading is uncertain, the duty is shown but its experience must be verified first. Absence of evidence means "not documented in the CV", never "not capable"; no aptitude or mindset is inferred from generic words.
+
+Interview: one neutral question per evidence (who was involved, which decisions were the candidate's, what the result was); when there is none, a single general question — "Have you had responsibility for coordinating or training other colleagues? Describe a concrete example."
+
 ---
 
 ## Contextual career / age information

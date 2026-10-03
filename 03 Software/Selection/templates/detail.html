@@ -327,6 +327,43 @@
 
 </div>
 
+{#- SELECTION_COORDINATION_EVIDENCE_001 — what the duties DECLARE about
+    coordinating others. Kept apart from the declared role, from Indicators
+    and from any score; no months are counted from it. -#}
+<div class="card">
+  <h2>Declared coordination responsibilities</h2>
+  <p class="muted" style="font-size:.78rem;">
+    Duties the résumé describes as exercised on other people. A written duty is what the candidate declares —
+    not an independent check, and not a measure of leadership quality. It does not change the role, and no
+    duration is attributed to it: a duty has no dates of its own. Nothing found means "not documented in the CV".
+  </p>
+  {% if view.coordination_evidence %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Responsibility</th><th>Experience</th><th>Area</th><th>People</th><th>As written</th></tr></thead>
+    <tbody>
+    {% for e in view.coordination_evidence %}
+      <tr>
+        <td>{{ e.label }}</td>
+        <td>{% if e.attribution_to_verify %}<span class="badge state-low">Reading uncertain &mdash; verify</span> which experience this belongs to
+            {% else %}{{ e.experience_title or '(title not stated)' }}{% if e.experience_employer %} &middot; {{ e.experience_employer }}{% endif %}{% endif %}</td>
+        <td>{{ coordination_area_labels.get(e.area, 'To be clarified') }}</td>
+        <td>{% if e.people_count %}{{ e.people_count }} (declared){% elif e.recipients_stated %}not stated{% else %}<span class="muted">who was trained is not specified</span>{% endif %}</td>
+        <td class="snippet">&ldquo;{{ e.sentence }}&rdquo;</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No coordination responsibility is documented in the CV.</p>
+  {% endif %}
+  <h3 style="font-size:.85rem; margin-top:.6rem;">Interview questions</h3>
+  <ul style="font-size:.85rem;">
+    {% for q in view.coordination_questions %}<li>{{ q }}</li>{% endfor %}
+  </ul>
+</div>
+
 <div class="section-grid">
 
   <div class="card">

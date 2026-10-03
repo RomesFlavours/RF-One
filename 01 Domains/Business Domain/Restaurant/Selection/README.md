@@ -52,7 +52,7 @@ Product Owner decisions of 2026-10-03. **FOH Team Leader is the existing `FOH_SU
 - **Chef de rang** is a dining-room server: `SERVER`, never kitchen.
 - **Unchanged for now:** Head Waiter, Maître, Captain, Lead Server.
 
-A recognized title is the **declared** role. It does not by itself show the coordination duties actually performed; reading those duties is a separate, later step, and the candidate page says so.
+A recognized title is the **declared** role. It does not by itself show the coordination duties actually performed; those are read separately as *declared coordination responsibilities* (`ResumeScreening/ExperienceAndTrajectory.md`). For them, this extension supplies the **area** from the sentence itself — dining room (servers, hosts, runners, bussers, bartenders, table service, dining room, FOH, sala), kitchen, other (warehouse, pickers, drivers, cashiers, store, office…), or to be clarified when the sentence names none or both dining room and kitchen — never from the job title the duty sits under. Coordinating kitchen staff is never FOH Supervisor experience.
 
 ---
 

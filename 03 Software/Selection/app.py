@@ -482,6 +482,7 @@ def candidate_detail(candidate_id: int):
             fit_assessments=fit_assessments, available_requirement_sets=available_requirement_sets,
             application=application, original_cv_available=_original_cv_available(session, candidate),
             active_flags=active_flags, active_nav="candidates",
+            coordination_area_labels=restaurant_industry.COORDINATION_AREA_LABELS,
         )
 
 

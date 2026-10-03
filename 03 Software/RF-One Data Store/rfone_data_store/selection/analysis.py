@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .core import contextual_age, flags as flags_mod, indicators as indicators_mod
+from .core.coordination_evidence import GENERAL_QUESTION, CoordinationEvidence, detect_coordination_evidence
 from .core.experience_analysis import (
     EmploymentGap, EmploymentOverlap, ExperienceBreakdown, TenureStats,
     compute_experience_breakdown, compute_tenure_stats, detect_gaps, detect_overlaps,
@@ -46,6 +47,10 @@ class CandidateAnalysisView:
     target_role: str | None = None
     role_config: RoleConfiguration | None = None  # None: target role to be clarified
     target_role_issue: str | None = None  # TARGET_ROLE_MISSING | TARGET_ROLE_UNSUPPORTED | None
+    # SELECTION_COORDINATION_EVIDENCE_001 — what the duties DECLARE about
+    # coordinating others: never a role change, a month count or a score.
+    coordination_evidence: list[CoordinationEvidence] = field(default_factory=list)
+    coordination_questions: list[str] = field(default_factory=list)
 
     @property
     def target_role_label(self) -> str | None:
@@ -132,6 +137,13 @@ def analyze_candidate(profile: CandidateCVProfile, *, target_role: str | None) -
     )
     flag_list.extend(flags_mod.flag_chronology_questions(profile.work_history))
     view.flags = flag_list
+
+    view.coordination_evidence = detect_coordination_evidence(
+        profile.work_history, area_fn=restaurant_industry.coordination_area,
+    )
+    view.coordination_questions = (
+        [e.question for e in view.coordination_evidence] if view.coordination_evidence else [GENERAL_QUESTION]
+    )
 
     view.indicators = indicators_mod.compute_indicators(
         breakdown, tenure, trajectory_events, information_quality, role_known=role_config is not None,

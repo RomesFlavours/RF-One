@@ -141,6 +141,13 @@ def main() -> int:
                   "into Server" not in page_tl and "move into Server" not in page_tl)
             check("5. FOH Team Leader page: the Team Leader job is the declared role, duties not verified",
                   "Declared role only: the coordination actually performed is not verified" in page_tl)
+            check("5. the page lists the declared coordination responsibility with its experience, area, "
+                  "people and original text, plus a neutral question",
+                  "Declared coordination responsibilities" in page_tl
+                  and "Coordinating the team or the service" in page_tl
+                  and "Dining room (FOH)" in page_tl and "6 (declared)" in page_tl
+                  and "&ldquo;Coordinated a team of 6 servers per shift&rdquo;" in page_tl
+                  and "which decisions were yours to take" in page_tl)
             check("5. the same person's Server application is analysed for Server",
                   "Target role experience (Server)" in page_sv)
             listing = client.get("/").get_data(as_text=True)

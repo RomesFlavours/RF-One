@@ -187,6 +187,42 @@ def leadership_title_context(original_job_title: str | None, responsibilities: s
     return None, LEADERSHIP_NO_CONTEXT
 
 
+# SELECTION_COORDINATION_EVIDENCE_001 — the area a declared coordination
+# duty concerns, read from the sentence only (never from the job title it
+# sits under: "Trained new hires" under a Server job does not say where).
+COORDINATION_AREA_FOH = "FOH"
+COORDINATION_AREA_KITCHEN = "KITCHEN"
+COORDINATION_AREA_OTHER = "OTHER"
+COORDINATION_AREA_LABELS = {
+    COORDINATION_AREA_FOH: "Dining room (FOH)",
+    COORDINATION_AREA_KITCHEN: "Kitchen",
+    COORDINATION_AREA_OTHER: "Other (outside the restaurant floor and kitchen)",
+}
+_FOH_AREA_RE = re.compile(
+    r"\b(servers?|waiters?|waitress(?:es)?|hosts?|hostess(?:es)?|runners?|bussers?|bartenders?|"
+    r"table\s+service|servizio\s+al\s+tavolo|dining\s+room|front\s+of\s+house|foh|sala|camerieri)\b", re.I)
+_OTHER_AREA_RE = re.compile(
+    r"\b(warehouse|magazzino|pickers?|forklift|drivers?|cashiers?|retail|store|stock\s*room|call\s+cent(?:er|re)|"
+    r"office)\b", re.I)
+
+
+def coordination_area(sentence: str, record=None) -> str | None:
+    """FOH / KITCHEN / OTHER when the sentence names it; None (to be
+    clarified) when it names none, or both the dining room and the kitchen."""
+
+    foh = bool(_FOH_AREA_RE.search(sentence))
+    kitchen = bool(_KITCHEN_RE.search(sentence))
+    if foh and kitchen:
+        return None
+    if foh:
+        return COORDINATION_AREA_FOH
+    if kitchen:
+        return COORDINATION_AREA_KITCHEN
+    if _OTHER_AREA_RE.search(sentence):
+        return COORDINATION_AREA_OTHER
+    return None
+
+
 def normalize_title(original_job_title: str | None) -> str | None:
     """Maps a free-text job title to a catalog code by transparent keyword
     matching. Returns None when nothing clearly matches — never guessed."""
