@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block content %}
+
+{#- SELECTION_PRESELECTION_COMPARE_001 — side-by-side view of 2 to 4
+    applications for the same target role. Existing analysis only: no
+    overall score, ranking, weight or automatic recommendation. -#}
+<div class="card">
+  <h2>Compare applications</h2>
+  <p><a href="{{ url_for('applications_home') }}">&larr; Back to the applications</a></p>
+  {% if error %}
+  <div class="error" data-compare-error>{{ error }}</div>
+  {% else %}
+  <p class="muted" style="font-size:.8rem;">
+    Facts and existing Indicators for each application, side by side — no overall score, no ranking, no
+    recommendation. Declared coordination responsibilities are what the CV says, not a measure of leadership
+    quality; "not documented" only means the CV does not mention it. "To be clarified" is never zero.
+    The decision stays with you: open an application to add a note or update its stage and outcome.
+  </p>
+  <div class="table-scroll">
+  <table class="compare-table">
+    <thead>
+      <tr>
+        <th></th>
+        {% for c in columns %}
+        <th>
+          {{ c.full_name }}<br>
+          <span class="muted" style="font-size:.78rem;">Application #{{ c.application_id }} &middot; {{ c.target_role_label }}</span>
+          {% if same_person_as[loop.index0] is not none %}
+          <br><span class="badge" data-same-person>Same person as column {{ same_person_as[loop.index0] + 1 }}</span>
+          {% endif %}
+        </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th>Open</th>
+        {% for c in columns %}
+        <td>
+          <a href="{{ url_for('application_detail', application_id=c.application_id) }}">Application (notes, stage, outcome) &rarr;</a><br>
+          <a href="{{ url_for('candidate_detail', candidate_id=c.candidate_id) }}">Candidate page &rarr;</a><br>
+          {% if cv_available[c.application_id] %}
+          <a href="{{ url_for('candidate_original_cv', candidate_id=c.candidate_id) }}" target="_blank" rel="noopener">Open Original CV &#8599;</a>
+          {% else %}<span class="muted">Original CV unavailable</span>{% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      <tr>
+        <th>Stage &middot; outcome</th>
+        {% for c in columns %}<td>{{ (c.stage or '-')|replace('_',' ')|title }} &middot; {{ c.outcome or 'no outcome yet' }}</td>{% endfor %}
+      </tr>
+      <tr>
+        <th>Direct experience</th>
+        {% for c in columns %}<td>{% if c.direct_months is not none %}{{ c.direct_months }} months{% else %}<span class="muted">to be clarified</span>{% endif %}</td>{% endfor %}
+      </tr>
+      <tr>
+        <th>Propedeutic experience</th>
+        {% for c in columns %}<td>{% if c.propedeutic_months is not none %}{{ c.propedeutic_months }} months{% else %}<span class="muted">to be clarified</span>{% endif %}</td>{% endfor %}
+      </tr>
+      <tr>
+        <th>Stability</th>
+        {% for c in columns %}<td>{% if c.stability in ('Strong', 'Moderate', 'Weak') %}{{ c.stability }}{% else %}<span class="muted">to be clarified</span>{% endif %} <span class="muted" style="font-size:.76rem;">({{ c.stability_detail }})</span></td>{% endfor %}
+      </tr>
+      <tr>
+        <th>Work history</th>
+        {% for c in columns %}
+        <td style="font-size:.82rem;">
+          {% for e in c.experiences %}
+          <div>
+            {% if e.reading_uncertain %}<span class="badge state-low">Reading uncertain &mdash; verify</span>{% else %}{{ e.title or '(title not stated)' }}{% if e.employer %} &middot; {{ e.employer }}{% endif %}{% endif %}
+            <span class="muted">{{ e.start or '?' }} &ndash; {{ e.end or '?' }}{% if e.months is not none %}, {{ e.months }} mo{% endif %}{% if e.category %} &middot; {{ e.category }}{% endif %}</span>
+          </div>
+          {% else %}<span class="muted">No work history found.</span>{% endfor %}
+        </td>
+        {% endfor %}
+      </tr>
+      <tr>
+        <th>Declared coordination responsibilities</th>
+        {% for c in columns %}
+        <td style="font-size:.82rem;">
+          {% for e in c.coordination %}
+          <div>
+            <strong>{{ e.label }}</strong> &middot; {{ coordination_area_labels.get(e.area, 'area to be clarified') }}{% if e.people_count %} &middot; {{ e.people_count }} people (declared){% endif %}<br>
+            <span class="snippet">&ldquo;{{ e.sentence }}&rdquo;</span>
+            {% if e.attribution_to_verify %}<span class="badge state-low">experience to verify</span>{% endif %}
+          </div>
+          {% else %}<span class="muted">Not documented in the CV.</span>{% endfor %}
+          <a href="{{ url_for('candidate_detail', candidate_id=c.candidate_id) }}" style="font-size:.76rem;">see the candidate page</a>
+        </td>
+        {% endfor %}
+      </tr>
+      <tr>
+        <th>Missing or uncertain information</th>
+        {% for c in columns %}
+        <td style="font-size:.82rem;">
+          {% for u in c.uncertain_readings %}<div><span class="badge state-low">uncertain reading</span> {{ u }}</div>{% endfor %}
+          {% for mi in c.missing_information %}<div><span class="badge">to clarify</span> {{ mi }}</div>{% endfor %}
+          {% if not c.uncertain_readings and not c.missing_information %}<span class="muted">None flagged.</span>{% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      <tr>
+        <th>Questions to explore</th>
+        {% for c in columns %}
+        <td style="font-size:.82rem;"><ul style="margin:0; padding-left:1rem;">{% for q in c.questions %}<li>{{ q }}</li>{% endfor %}</ul></td>
+        {% endfor %}
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -8,8 +8,8 @@
       <div class="value">{{ client_name }}</div>
     </div>
     <div class="meta-item">
-      <div class="label">Applications</div>
-      <div class="value">{{ applications|length }}</div>
+      <div class="label">Results</div>
+      <div class="value" data-result-count>{{ applications|length }}</div>
     </div>
     {% if pending_identity_matches %}
     <div class="meta-item">
@@ -46,7 +46,7 @@
       <label>Target role</label>
       <select name="role">
         <option value="">(any)</option>
-        {% for r in target_roles %}<option value="{{ r }}" {{ 'selected' if filters.role == r else '' }}>{{ r }}</option>{% endfor %}
+        {% for r in target_roles %}<option value="{{ r }}" {{ 'selected' if filters.role == r else '' }}>{{ target_role_label(r) }}</option>{% endfor %}
       </select>
     </div>
     <div>
@@ -61,18 +61,76 @@
     <div>
       <label><input type="checkbox" name="repeated" value="1" {{ 'checked' if filters.repeated else '' }}> Repeated applicants only</label>
     </div>
+    {#- SELECTION_PRESELECTION_COMPARE_001 — preselection filters, combinable,
+        none preselected. Unknown data never matches a numeric or stability
+        filter unless "Include data to be clarified" is ticked. -#}
+    <div>
+      <label>Stage</label>
+      <select name="stage">
+        <option value="">(any)</option>
+        {% for st in stages %}<option value="{{ st }}" {{ 'selected' if presel.stage == st else '' }}>{{ st|replace('_',' ')|title }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Outcome</label>
+      <select name="outcome">
+        <option value="">(any)</option>
+        <option value="{{ no_outcome }}" {{ 'selected' if presel.outcome == no_outcome else '' }}>No outcome yet</option>
+        {% for o in outcome_labels %}<option value="{{ o }}" {{ 'selected' if presel.outcome == o else '' }}>{{ o }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Direct experience (months)</label>
+      <input type="number" min="0" name="direct_min" value="{{ presel.direct_min if presel.direct_min is not none else '' }}" placeholder="min" style="width:5rem;">
+      <input type="number" min="0" name="direct_max" value="{{ presel.direct_max if presel.direct_max is not none else '' }}" placeholder="max" style="width:5rem;">
+    </div>
+    <div>
+      <label>Propedeutic experience (months)</label>
+      <input type="number" min="0" name="prop_min" value="{{ presel.propedeutic_min if presel.propedeutic_min is not none else '' }}" placeholder="min" style="width:5rem;">
+      <input type="number" min="0" name="prop_max" value="{{ presel.propedeutic_max if presel.propedeutic_max is not none else '' }}" placeholder="max" style="width:5rem;">
+    </div>
+    <div>
+      <label>Stability</label>
+      {% for st in stability_categories %}<label style="font-weight:normal;"><input type="checkbox" name="stability" value="{{ st }}" {{ 'checked' if st in presel.stability else '' }}> {{ st }}</label>{% endfor %}
+    </div>
+    <div>
+      <label>Declared coordination</label>
+      <select name="coordination">
+        <option value="">(any)</option>
+        <option value="any" {{ 'selected' if presel.coordination == 'any' else '' }}>At least one declared</option>
+        <option value="none" {{ 'selected' if presel.coordination == 'none' else '' }}>Not documented in the CV</option>
+        {% for code, label in coordination_labels.items() %}<option value="{{ code }}" {{ 'selected' if presel.coordination == code else '' }}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Missing or uncertain information</label>
+      <select name="issues">
+        <option value="">(any)</option>
+        <option value="missing" {{ 'selected' if presel.issues == 'missing' else '' }}>Missing information</option>
+        <option value="uncertain" {{ 'selected' if presel.issues == 'uncertain' else '' }}>Uncertain reading</option>
+        <option value="any" {{ 'selected' if presel.issues == 'any' else '' }}>Either</option>
+      </select>
+    </div>
+    <div>
+      <label><input type="checkbox" name="unclear" value="1" {{ 'checked' if presel.include_to_clarify else '' }}> Include data to be clarified</label>
+    </div>
     <button type="submit" class="btn secondary">Apply</button>
-    <a href="{{ url_for('applications_home') }}" class="btn secondary">Clear</a>
+    <a href="{{ url_for('applications_home') }}" class="btn secondary">Clear all filters</a>
   </form>
 </div>
 
 <div class="card">
   <h2>Review Queue</h2>
+  {% if compare_error %}<div class="error">{{ compare_error }}</div>{% endif %}
   {% if applications %}
+  <form method="get" action="{{ url_for('applications_compare') }}" id="compare-form">
+  <p class="muted" style="font-size:.8rem;">Tick 2 to 4 applications for the <strong>same target role</strong> and compare them side by side. "To be clarified" is never zero; "not documented" means the CV does not mention it.</p>
+  <button type="submit" class="btn secondary">Compare selected</button>
   <div class="table-scroll">
   <table>
     <thead>
       <tr>
+        <th>Compare</th>
         <th>Candidate</th>
         <th>Target Role</th>
         <th>Location</th>
@@ -80,6 +138,13 @@
         <th>Source</th>
         <th>Review Priority</th>
         <th>Workflow</th>
+        <th>Stage</th>
+        <th>Outcome</th>
+        <th>Direct exp.</th>
+        <th>Propedeutic exp.</th>
+        <th>Stability</th>
+        <th>Declared coordination</th>
+        <th>Missing / uncertain</th>
         <th>History</th>
         <th>CV</th>
         <th></th>
@@ -87,9 +152,11 @@
     </thead>
     <tbody>
       {% for a in applications %}
+      {% set sm = a.summary %}
       <tr>
+        <td><input type="checkbox" name="ids" value="{{ a.id }}" aria-label="Compare {{ a.full_name }}"></td>
         <td><a href="{{ url_for('application_detail', application_id=a.id) }}">{{ a.full_name }}</a></td>
-        <td>{{ a.target_role }}</td>
+        <td>{{ sm.target_role_label or 'to be clarified' }}</td>
         <td>{{ a.location }}</td>
         <td>{{ a.applied_at.strftime('%Y-%m-%d') if a.applied_at else '-' }}</td>
         <td>{{ a.source }}</td>
@@ -103,6 +170,13 @@
           {% endif %}
         </td>
         <td><span class="badge workflow-{{ a.workflow_status|lower }}">{{ a.workflow_status|replace('_',' ') }}</span></td>
+        <td>{{ (sm.stage or '-')|replace('_',' ')|title }}</td>
+        <td>{{ sm.outcome or 'none yet' }}</td>
+        <td>{% if sm.direct_months is not none %}{{ sm.direct_months }} mo{% else %}<span class="muted">to be clarified</span>{% endif %}</td>
+        <td>{% if sm.propedeutic_months is not none %}{{ sm.propedeutic_months }} mo{% else %}<span class="muted">to be clarified</span>{% endif %}</td>
+        <td>{% if sm.stability in stability_categories %}{{ sm.stability }}{% else %}<span class="muted">to be clarified</span>{% endif %}</td>
+        <td>{% if sm.coordination %}{{ sm.coordination|length }} declared{% else %}<span class="muted">not documented</span>{% endif %}</td>
+        <td>{% if sm.uncertain_readings %}<span class="badge state-low">uncertain reading</span>{% endif %}{% if sm.missing_information %}<span class="badge">missing info</span>{% endif %}{% if not sm.uncertain_readings and not sm.missing_information %}-{% endif %}</td>
         <td>{% if a.prior_count %}<span class="badge">{{ a.prior_count }} prior</span>{% else %}-{% endif %}</td>
         <td>
           {% if a.original_cv_available %}
@@ -117,6 +191,7 @@
     </tbody>
   </table>
   </div>
+  </form>
   {% else %}
   <p class="empty">No Applications match these filters.</p>
   {% endif %}

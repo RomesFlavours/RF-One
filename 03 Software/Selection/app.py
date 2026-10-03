@@ -121,6 +121,8 @@ from rfone_data_store.selection.import_pipeline import (  # noqa: E402
 )
 from rfone_data_store.selection.industry import restaurant as restaurant_industry  # noqa: E402
 from rfone_data_store.selection.industry.restaurant import TARGET_ROLE_CHOICES, target_role_label  # noqa: E402
+from rfone_data_store.selection import preselection  # noqa: E402
+from rfone_data_store.selection.core.coordination_evidence import CATEGORY_LABELS as COORDINATION_LABELS  # noqa: E402
 from rfone_data_store.selection.industry.restaurant_templates import (  # noqa: E402
     seed_default_review_priority_policy, seed_default_selection_outcomes, seed_default_selection_queues,
     seed_romes_flavours_in_person_interview_structure, seed_romes_flavours_phone_interview_questions,
@@ -876,6 +878,11 @@ def applications_home():
             session, restaurant_id=restaurant.id, priority=priority, workflow_status=workflow_status,
             target_role=target_role, repeated_only=repeated_only, sort_by=sort_by,
         )
+        # SELECTION_PRESELECTION_COMPARE_001 — preselection filters, applied
+        # on each application's own analysis; none is preselected.
+        presel = _preselection_filters()
+        summaries = {a.id: preselection.summarize_application(session, a) for a in applications}
+        applications = [a for a in applications if preselection.matches(summaries[a.id], presel)]
         rows = [
             {
                 "id": a.id,
@@ -892,10 +899,12 @@ def applications_home():
                 "workflow_status": a.workflow_status,
                 "prior_count": len(app_svc.list_prior_applications(session, a.id)),
                 "original_cv_available": _original_cv_available(session, a.candidate),
+                "summary": summaries[a.id],
             }
             for a in applications
         ]
-        target_roles = sorted({a.target_role for a in applications if a.target_role})
+        target_roles = sorted({code for code, _ in TARGET_ROLE_CHOICES} | {
+            a.target_role for a in app_svc.list_applications(session, restaurant_id=restaurant.id) if a.target_role})
 
         return render_template(
             "applications_home.html", client_name=restaurant.name, applications=rows, active_nav="applications",
@@ -905,6 +914,66 @@ def applications_home():
                 "repeated": repeated_only, "sort": sort_by,
             },
             pending_identity_matches=len(id_svc.list_pending_matches(session, restaurant_id=restaurant.id)),
+            presel=presel, stages=stgm.STAGES, coordination_labels=COORDINATION_LABELS,
+            stability_categories=preselection.STABILITY_CATEGORIES, no_outcome=preselection.NO_OUTCOME,
+            outcome_labels=[d.name for d in outcome_svc.list_outcome_definitions(session, restaurant_id=restaurant.id)],
+            target_role_label=target_role_label, compare_error=request.args.get("compare_error"),
+        )
+
+
+def _int_arg(name: str) -> int | None:
+    value = (request.args.get(name) or "").strip()
+    return int(value) if value.isdigit() else None
+
+
+def _preselection_filters() -> "preselection.PreselectionFilters":
+    """SELECTION_PRESELECTION_COMPARE_001 — the preselection filters from the
+    query string. Unknown values never satisfy a numeric or stability filter
+    unless `unclear=1` (include data to be clarified) is set explicitly."""
+
+    return preselection.PreselectionFilters(
+        stage=request.args.get("stage") or None,
+        outcome=request.args.get("outcome") or None,
+        direct_min=_int_arg("direct_min"), direct_max=_int_arg("direct_max"),
+        propedeutic_min=_int_arg("prop_min"), propedeutic_max=_int_arg("prop_max"),
+        stability=tuple(v for v in request.args.getlist("stability") if v in preselection.STABILITY_CATEGORIES),
+        coordination=request.args.get("coordination") or None,
+        issues=request.args.get("issues") or None,
+        include_to_clarify=request.args.get("unclear") == "1",
+    )
+
+
+@app.route("/applications/compare")
+def applications_compare():
+    """SELECTION_PRESELECTION_COMPARE_001 — 2 to 4 applications for the same
+    target role side by side, from existing analysis only: no score, rank,
+    weight or recommendation. Each column links to its application (to note
+    or update stage and outcome with the existing functions), its candidate
+    page and the original CV."""
+
+    ids = [int(v) for v in request.args.getlist("ids") if v.isdigit()]
+    with SessionFactory() as session:
+        restaurant = _bootstrap_restaurant(session)
+        try:
+            columns = preselection.comparison(session, ids)
+        except preselection.ComparisonNotAllowed as exc:
+            return render_template(
+                "applications_compare.html", client_name=restaurant.name, error=str(exc), columns=[],
+                active_nav="applications",
+            ), 400
+        first_column_of_person: dict[int, int] = {}
+        same_person_as = []
+        for index, column in enumerate(columns):
+            same_person_as.append(first_column_of_person.get(column.person_id))
+            first_column_of_person.setdefault(column.person_id, index)
+        cv_available = {
+            c.application_id: _original_cv_available(session, persistence.get_candidate(session, c.candidate_id))
+            for c in columns
+        }
+        return render_template(
+            "applications_compare.html", client_name=restaurant.name, error=None, columns=columns,
+            same_person_as=same_person_as, cv_available=cv_available, coordination_area_labels=
+            restaurant_industry.COORDINATION_AREA_LABELS, active_nav="applications",
         )
 
 

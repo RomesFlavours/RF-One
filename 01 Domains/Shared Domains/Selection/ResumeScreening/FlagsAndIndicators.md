@@ -67,6 +67,10 @@ Information Confidence: 87%
 
 No arbitrary weighting between these is defined now. Their relative importance for a given hiring decision is future Client/Role Configuration (`RoleModel.md`, "Role relevance coefficients — not defined here").
 
+**Unknown is not zero (SELECTION_PRESELECTION_COMPARE_001).** Stability is "Unknown" when no job has a computable duration (before, an average of 0 months was read as "Moderate"). For filtering and comparison, direct and propedeutic months are *to be clarified* — never 0 — when the application has no supported target role, when an experience of that kind has no usable dates, or when a reading is uncertain. A value to be clarified never satisfies a numeric or stability filter unless the operator explicitly includes data to be clarified. The absence of declared coordination responsibilities means "not documented in the CV".
+
+**Preselection and comparison.** Applications can be filtered (target role, stage, outcome, direct and propedeutic months, stability, declared coordination, missing or uncertain information) and 2 to 4 applications **for the same target role** compared side by side. Both use only the Indicators, Flags and evidence above: no overall score, ranking, weight or automatic recommendation; the decision stays with the operator.
+
 ---
 
 ## Information Quality

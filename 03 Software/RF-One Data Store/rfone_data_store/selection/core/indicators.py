@@ -28,7 +28,9 @@ def _months_label(months: int) -> str:
 
 
 def _stability_state(tenure: TenureStats) -> str:
-    if tenure.employer_count == 0:
+    if tenure.employer_count == 0 or tenure.dated_job_count == 0:
+        # No job with a computable duration: unknown, not "Moderate" from an
+        # average of 0 (SELECTION_PRESELECTION_COMPARE_001).
         return "Unknown"
     short_ratio = (tenure.jobs_under_6_months / tenure.employer_count) if tenure.employer_count else 0
     if short_ratio >= 0.5:
