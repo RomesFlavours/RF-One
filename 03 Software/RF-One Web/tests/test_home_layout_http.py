@@ -123,8 +123,9 @@ def main() -> int:
         # --- Domains --------------------------------------------------------
         domains_part = body.split("<h2>Your Domains</h2>", 1)[1].split('<div class="domain-name">Administration</div>', 1)[0]
         names = re.findall(r'<div class="domain-name">([^<]+)</div>', domains_part)
-        expected = ["Compensation", "Tips", "Training", "Selection — Work in progress"]
-        check("Domains ordered: operational alphabetical, then Work in progress", names == expected, f"{names}")
+        expected = ["Compensation", "Selection", "Tips", "Training"]
+        check("Domains ordered alphabetically (Selection released: no Work in progress left)",
+              names == expected, f"{names}")
         check("Bank is not presented as a Domain",
               DOMAINS_BY_CODE["BANK"].display_name not in domains_part and 'href="/bank"' not in domains_part)
         check("no side-by-side domain grid remains on Home", 'class="domain-grid"' not in body)
@@ -138,10 +139,9 @@ def main() -> int:
         card_states = {name: state for state, name in re.findall(
             r'class="domain-card domain-card-(released|unreleased)"[^>]*>\s*<div class="domain-name">([^<]+)</div>',
             domains_part)}
-        check("operational Domains are marked released (green)",
-              all(card_states.get(n) == "released" for n in ("Compensation", "Tips", "Training")), f"{card_states}")
-        check("the Work in progress Domain is marked not released (red)",
-              card_states.get("Selection — Work in progress") == "unreleased", f"{card_states}")
+        check("operational Domains, Selection included, are marked released (green)",
+              all(card_states.get(n) == "released" for n in ("Compensation", "Selection", "Tips", "Training")),
+              f"{card_states}")
         check("every Domain card carries exactly one release state", len(card_states) == len(names), f"{card_states}")
 
         # --- Administration and Settings -------------------------------------

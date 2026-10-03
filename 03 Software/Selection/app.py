@@ -36,9 +36,12 @@ b8f1c4a2e6d9_add_selection_resume_screening_schema.py`).
 
 from __future__ import annotations
 
+import io
+import mimetypes
 import os
 import sys
 import uuid
+from urllib.parse import urlencode
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _DATA_STORE_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "RF-One Data Store"))
@@ -57,6 +60,9 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, sen
 from flask import session as flask_session  # noqa: E402
 
 from rfone_data_store import acting_identity_service as acting_id_svc  # noqa: E402
+from rfone_data_store import public_entry  # noqa: E402
+from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
+from rfone_data_store.selection import document_store  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.database import (  # noqa: E402
     create_configured_engine, create_session_factory, get_database_url,
@@ -132,6 +138,8 @@ from rfone_data_store.selection.parsing.dedup import compute_content_hash  # noq
 from rfone_data_store.selection.parsing.text_extraction import SUPPORTED_EXTENSIONS, extract_text  # noqa: E402
 
 ALLOWED_EXT = set(SUPPORTED_EXTENSIONS)
+# SELECTION_AWS_PUBLISH_001 — uploads/ locally, a private S3 bucket when deployed.
+DOCUMENTS = document_store.from_environment(UPLOAD_DIR)
 
 _DB_URL = get_database_url()
 run_migrations_to_head(_DB_URL)
@@ -152,6 +160,91 @@ app = Flask(__name__)
 # selection to survive an app restart.
 app.secret_key = os.environ.get("RFONE_FLASK_SECRET_KEY") or os.urandom(24)
 
+# ---------------------------------------------------------------------------
+# SELECTION_AWS_PUBLISH_001 — publication behind RF-One's own login.
+#
+# With RFONE_SELECTION_REQUIRE_RFONE_LOGIN=1 (the AWS deployment) Selection
+# works like Tips: it is served on RF-One's official host under /selection/
+# (one CloudFront entry), reads the SAME signed session RF-One Web issues
+# (same RFONE_FLASK_SECRET_KEY), and every page, upload and original
+# document requires an RF-One account that may enter the SELECTION Domain —
+# the same rule RF-One Web's `require_domain_access("SELECTION")` applies.
+# The acting identity is then the one tied to that account; choosing or
+# registering an identity by hand (the pre-Authentication stand-in below) is
+# switched off. Without the variable (local development, tests) nothing
+# changes.
+# ---------------------------------------------------------------------------
+RFONE_LOGIN_MODE = os.environ.get("RFONE_SELECTION_REQUIRE_RFONE_LOGIN") == "1"
+SELECTION_DOMAIN_CODE = "SELECTION"
+SELECTION_PATH_PREFIX = "/selection"
+RFONE_ACCOUNT_PROVIDER = "rfone-account"
+
+if RFONE_LOGIN_MODE:
+    # The cookie is RF-One Web's: re-issued with exactly its attributes.
+    app.config.update(
+        SESSION_COOKIE_SECURE=True, SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_PATH="/",
+    )
+
+
+class _SelectionPathPrefix:
+    """A request arriving as /selection/... is served as /... with
+    /selection as its script root, so every url_for link keeps the prefix;
+    a request without it (local development) is untouched."""
+
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "")
+        if path == SELECTION_PATH_PREFIX or path.startswith(SELECTION_PATH_PREFIX + "/"):
+            environ["SCRIPT_NAME"] = environ.get("SCRIPT_NAME", "") + SELECTION_PATH_PREFIX
+            environ["PATH_INFO"] = path[len(SELECTION_PATH_PREFIX):] or "/"
+        return self.wsgi_app(environ, start_response)
+
+
+app.wsgi_app = _SelectionPathPrefix(app.wsgi_app)
+
+
+def _rfone_web_base_url() -> str | None:
+    base = (os.environ.get("RFONE_WEB_BASE_URL") or "").strip().rstrip("/")
+    return base if base.startswith(("https://", "http://")) else None
+
+
+@app.before_request
+def _send_direct_visits_to_the_official_entry():
+    if not RFONE_LOGIN_MODE:
+        return None
+    target = public_entry.official_redirect(request.method, request.headers, request.full_path,
+                                            prefix=SELECTION_PATH_PREFIX)
+    return redirect(target, code=301) if target is not None else None
+
+
+@app.before_request
+def _require_rfone_login_and_selection_access():
+    if not RFONE_LOGIN_MODE or request.endpoint == "static":
+        return None
+    with SessionFactory() as db_session:
+        account = shared_session.account_for_session(
+            db_session, account_id=flask_session.get(shared_session.SESSION_ACCOUNT_KEY),
+            session_version=flask_session.get(shared_session.SESSION_VERSION_KEY),
+        )
+        if account is not None:
+            if not shared_session.account_may_enter_domain(db_session, account, SELECTION_DOMAIN_CODE):
+                abort(403)
+            return None
+    base = _rfone_web_base_url()
+    if base is None:
+        abort(401)
+    next_path = request.script_root + (request.full_path.rstrip("?") if request.method in ("GET", "HEAD") else "/")
+    return redirect(f"{base}/login?{urlencode({'next': next_path})}")
+
+
+@app.context_processor
+def _rfone_navigation():
+    return {"rfone_login_mode": RFONE_LOGIN_MODE,
+            "rfone_home_url": (_rfone_web_base_url() + "/") if RFONE_LOGIN_MODE and _rfone_web_base_url() else None}
+
 
 def _current_identity(session) -> "m.ActingIdentity":
     """GLOBAL_INTEGRITY_FIX_002 / C-1 — the ONE place this app resolves "who
@@ -161,6 +254,22 @@ def _current_identity(session) -> "m.ActingIdentity":
     validating the id against an existing, active `ActingIdentity` row —
     never a raw name read directly from a request form field."""
 
+    if RFONE_LOGIN_MODE:
+        # SELECTION_AWS_PUBLISH_001 — the identity of the RF-One account this
+        # request is authenticated as (checked in `_require_rfone_login_and_
+        # selection_access`), provisioned once per account, never chosen.
+        account = shared_session.account_for_session(
+            session, account_id=flask_session.get(shared_session.SESSION_ACCOUNT_KEY),
+            session_version=flask_session.get(shared_session.SESSION_VERSION_KEY),
+        )
+        if account is None:
+            abort(401)
+        identity = acting_id_svc.get_or_create_identity_for_verified_subject(
+            session, provider=RFONE_ACCOUNT_PROVIDER, subject=str(account.id),
+            display_name=shared_session.account_display_name(account),
+        )
+        session.commit()
+        return identity
     return acting_id_svc.get_current_acting_identity(
         session, requested_identity_id=flask_session.get("acting_identity_id"),
     )
@@ -176,6 +285,8 @@ def identity_switch():
     identity, it only lets an operator pick among identities a
     HUMAN_USER has already registered via `/identity/register`)."""
 
+    if RFONE_LOGIN_MODE:
+        abort(404)  # the identity is the RF-One account's (SELECTION_AWS_PUBLISH_001)
     with SessionFactory() as session:
         if request.method == "POST":
             identity_id = request.form.get("identity_id", type=int)
@@ -200,6 +311,8 @@ def identity_register():
     itself, proof of who is making any given request; it only makes the
     identity selectable via `/identity/switch` above."""
 
+    if RFONE_LOGIN_MODE:
+        abort(404)
     with SessionFactory() as session:
         display_name = (request.form.get("display_name") or "").strip()
         if display_name:
@@ -216,7 +329,7 @@ def _bootstrap_restaurant(session) -> "m.Restaurant":
 
     from sqlalchemy import select
 
-    existing = session.scalars(select(m.Restaurant)).first()
+    existing = session.scalars(select(m.Restaurant).order_by(m.Restaurant.id)).first()
     if existing:
         return existing
     restaurant = m.Restaurant(name="Rome's Flavours", default_currency="USD")
@@ -315,14 +428,15 @@ def _process_one_upload(file_storage, target_role: str) -> dict:
             "error": f"Unsupported format: {ext or '(none)'}. Supported formats: {supported}.",
         }
 
-    unique_name = f"{uuid.uuid4().hex[:8]}_{filename}"
-    saved_path = os.path.join(UPLOAD_DIR, unique_name)
     try:
-        file_storage.save(saved_path)
+        staged = DOCUMENTS.stage(file_storage, filename)
     except Exception:
         return {"filename": filename, "status": "FAILED", "error": "Could not save the uploaded file."}
-
-    raw_text = extract_text(saved_path, ext)
+    try:
+        raw_text = extract_text(staged.local_path, ext)
+    finally:
+        staged.cleanup()
+    saved_path = staged.storage_path
     content_hash = compute_content_hash(raw_text, filename)
 
     with SessionFactory() as session:
@@ -368,6 +482,10 @@ def _process_one_upload(file_storage, target_role: str) -> dict:
 
     if result.status == "FAILED":
         app.logger.warning("Resume import failed for %r: %s", filename, result.error)
+    if result.status in ("FAILED", DUPLICATE):
+        # Not kept as a new document (a failure, or the same document already
+        # stored): nothing is left in the archive without a record.
+        DOCUMENTS.discard(saved_path)
 
     return {
         "filename": filename, "status": status,
@@ -496,7 +614,7 @@ def _original_cv_available(session, candidate: "m.Candidate") -> bool:
     if not candidate.raw_resume_id:
         return False
     raw = session.get(m.RawResume, candidate.raw_resume_id)
-    return bool(raw and raw.storage_path and os.path.isfile(raw.storage_path))
+    return bool(raw and DOCUMENTS.exists(raw.storage_path))
 
 
 @app.route("/candidate/<int:candidate_id>/original-cv")
@@ -513,13 +631,14 @@ def candidate_original_cv(candidate_id: int):
             return render_template("original_cv_unavailable.html", candidate=candidate, active_nav="candidates"), 404
 
         raw = session.get(m.RawResume, candidate.raw_resume_id)
-        storage_path = os.path.normpath(raw.storage_path)
-        # The only files ever referenced here are ones this app itself saved
-        # into UPLOAD_DIR (see `_process_one_upload`) — refuse anything else.
-        if os.path.commonpath([storage_path, UPLOAD_DIR]) != os.path.normpath(UPLOAD_DIR):
+        # Only documents this app stored itself (uploads/ locally, its own
+        # S3 prefix when deployed) are ever served — anything else is refused.
+        content = DOCUMENTS.read(raw.storage_path)
+        if content is None:
             abort(403)
-
-        return send_file(storage_path, as_attachment=False, download_name=raw.original_filename or None)
+        name = raw.original_filename or "resume"
+        return send_file(io.BytesIO(content), as_attachment=False, download_name=name,
+                         mimetype=mimetypes.guess_type(name)[0] or "application/octet-stream")
 
 
 # ---------------------------------------------------------------------------
@@ -3722,10 +3841,12 @@ def public_application_submit(token: str):
                 selection_session=context["session"], restaurant_name="", questions=questions, error=error,
             ), 400
 
-        unique_name = f"{uuid.uuid4().hex[:8]}_{resume_file.filename}"
-        saved_path = os.path.join(UPLOAD_DIR, unique_name)
-        resume_file.save(saved_path)
-        raw_text = extract_text(saved_path, ext)
+        staged = DOCUMENTS.stage(resume_file, resume_file.filename)
+        try:
+            raw_text = extract_text(staged.local_path, ext)
+        finally:
+            staged.cleanup()
+        saved_path = staged.storage_path
         content_hash = compute_content_hash(raw_text, resume_file.filename)
 
         answers = {}

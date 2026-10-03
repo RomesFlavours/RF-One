@@ -310,7 +310,7 @@ def logout():
 #     is the provisional `selection_work_in_progress` page. Every other
 #     Domain on Home counts as operational.
 #   * Bank is presented under Administration instead of as a Domain.
-_HOME_WORK_IN_PROGRESS_CODES = frozenset({"SELECTION"})
+_HOME_WORK_IN_PROGRESS_CODES: frozenset[str] = frozenset()  # Selection released (SELECTION_AWS_PUBLISH_001)
 _HOME_ADMINISTRATION_CODES = frozenset({"BANK", "CLOVER_ACQUISITION"})
 
 

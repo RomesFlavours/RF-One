@@ -74,20 +74,16 @@ DOMAINS: tuple[DomainDefinition, ...] = (
     ),
     DomainDefinition(
         code="SELECTION",
-        display_name="Selection — Work in progress",
-        description="Candidate screening, interviews, and hiring decisions. Work in progress.",
+        display_name="Selection",
+        description="Candidate screening, interviews, and hiring decisions.",
         future_path="/selection",
-        # Deliberately NOT `03 Software/Selection/app.py`'s own URL: that
-        # app has no real authentication (`/identity/switch` is explicitly
-        # documented, in its own code and templates, as "not a login
-        # screen") and stores uploaded résumés on local container disk
-        # (lost on every redeploy) — publishing it directly would expose
-        # real candidate PII with no access control. This points at the
-        # SAME provisional-page mechanism as Compensation
-        # (`selection_work_in_progress`, gated by `require_domain_access
-        # ("SELECTION")`) until Selection has server-side auth safe to put
-        # on AWS. See `03 Software/Infrastructure/README.md` for the full
-        # verification and what remains to connect the real app securely.
+        # SELECTION_AWS_PUBLISH_001 — on RF-One's official host, CloudFront
+        # sends `/selection` and `/selection/*` to the Selection service
+        # (`rfone-selection`), which requires the SAME RF-One login and the
+        # SAME SELECTION Domain access as this app, ties its acting identity
+        # to the account and keeps résumés in a private S3 bucket. This
+        # app's own `/selection` route is only reached when RF-One Web runs
+        # alone (local development). See `03 Software/Infrastructure/README.md`.
         link="/selection",
     ),
     DomainDefinition(

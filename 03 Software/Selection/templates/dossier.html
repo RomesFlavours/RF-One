@@ -119,7 +119,7 @@
     <h3>Take Application In Charge</h3>
     <form method="post" action="{{ url_for('application_take_in_charge', application_id=application.id) }}" class="req-form">
       <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
-      <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a></p>
+      <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong>{% if not rfone_login_mode %} — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a>{% endif %}</p>
       <div class="modal-actions">
         <button type="button" class="btn secondary" onclick="this.closest('dialog').close()">Cancel</button>
         <button type="submit" class="btn">Take In Charge</button>
@@ -130,7 +130,7 @@
     <h3>Reassign Application Ownership</h3>
     <form method="post" action="{{ url_for('application_reassign', application_id=application.id) }}" class="req-form">
       <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
-      <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a></p>
+      <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong>{% if not rfone_login_mode %} — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a>{% endif %}</p>
       <label>New owner</label>
       <select name="new_owner_identity_id" required>
         <option value="">— select a Selezionatore assigned to this Session —</option>
@@ -192,7 +192,7 @@
       <h3>Override Hard Disqualifier — {{ e.criterion_snapshot.name }}</h3>
       <form method="post" action="{{ url_for('primary_screening_override_hard_disqualifier', run_id=summary.primary_screening_run.id, evaluation_id=e.id) }}" class="req-form">
         <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
-        <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a></p>
+        <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong>{% if not rfone_login_mode %} — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a>{% endif %}</p>
         <label>Reason (mandatory — the system-detected disqualifier remains visible in history either way)</label>
         <textarea name="reason" required></textarea>
         <div class="modal-actions">
@@ -275,7 +275,7 @@
       <h3>{{ gap.missing_capability }}</h3>
       <form method="post" action="{{ url_for('trainable_gap_review', gap_id=gap.id) }}" class="req-form">
         <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
-        <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a></p>
+        <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong>{% if not rfone_login_mode %} — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a>{% endif %}</p>
         <label>Selezionatore's initial level (0-4) — select RF-One's own level ({{ gap.rf_one_initial_level }}) to agree without a reason</label>
         <select name="level">
           {% for lvl in initial_levels %}<option value="{{ lvl }}" {{ 'selected' if lvl == gap.effective_initial_level else '' }}>{{ lvl }} — {{ level_descriptions[lvl] }}</option>{% endfor %}
@@ -371,7 +371,7 @@
       </select>
       <label>Reason (required when this changes an existing decision to a different Outcome)</label>
       <input type="text" name="reason">
-      <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a></p>
+      <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong>{% if not rfone_login_mode %} — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a>{% endif %}</p>
       <label>Note (required by some Outcomes)</label>
       <textarea name="note_text"></textarea>
       <div class="modal-actions">
@@ -388,7 +388,7 @@
         <select name="outcome_definition_id">
           {% for d in outcome_definitions %}{% if d.lifecycle_effect == 'ACTIVE' %}<option value="{{ d.id }}">{{ d.name }}</option>{% endif %}{% endfor %}
         </select>
-        <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a></p>
+        <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong>{% if not rfone_login_mode %} — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a>{% endif %}</p>
         <label>Note</label>
         <textarea name="note_text"></textarea>
         <button type="submit" class="btn" style="margin-top:.6rem;">Reopen Application</button>
@@ -411,7 +411,7 @@
         <option value="SCHEDULING">Scheduling — send a link to the candidate scheduling page</option>
         <option value="CONTACT">Contact — send a standard "you'll be contacted" message</option>
       </select>
-      <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong> — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a></p>
+      <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong>{% if not rfone_login_mode %} — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a>{% endif %}</p>
       <button type="submit" class="btn secondary" style="margin-top:.6rem;">Move Stage</button>
     </form>
   </details>

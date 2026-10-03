@@ -273,9 +273,10 @@
   {% if current_identity is defined and current_identity %}
   <div class="identity-banner">
     Acting as <strong>{{ current_identity.display_name }}</strong>
-    <a href="{{ url_for('identity_switch') }}">(switch)</a>
+    {% if not rfone_login_mode %}<a href="{{ url_for('identity_switch') }}">(switch)</a>{% endif %}
   </div>
   {% endif %}
+  {% if rfone_home_url %}<p style="font-size:.85rem; margin:0 0 .3rem;"><a href="{{ rfone_home_url }}">RF-One</a> &rsaquo; Selection</p>{% endif %}
   <h1>RF-One · Selection</h1>
   <p class="subtitle">Resume screening — structured evidence to support the human evaluator, never a hiring decision.</p>
   <div class="nav-tabs">
@@ -300,7 +301,7 @@
     <a href="{{ url_for('application_questions_home') }}" class="{{ 'active' if active_nav == 'application-questions' else '' }}">Application Questions</a>
     <a href="{{ url_for('channel_analytics_home') }}" class="{{ 'active' if active_nav == 'channel-analytics' else '' }}">Channel Analytics</a>
     <a href="{{ url_for('compliance_reviews_home') }}" class="{{ 'active' if active_nav == 'compliance' else '' }}">Compliance Reviews</a>
-    <a href="{{ url_for('identity_switch') }}" class="{{ 'active' if active_nav == 'identity' else '' }}">Acting Identity</a>
+    {% if not rfone_login_mode %}<a href="{{ url_for('identity_switch') }}" class="{{ 'active' if active_nav == 'identity' else '' }}">Acting Identity</a>{% endif %}
   </div>
   {% block content %}{% endblock %}
 </div>
