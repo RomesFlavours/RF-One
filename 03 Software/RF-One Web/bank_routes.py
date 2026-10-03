@@ -248,6 +248,36 @@ def _monthly_sources_view(db, period) -> dict:
     }
 
 
+def _source_attention(coverages) -> list[dict]:
+    """The month's accounts/cards that still need a person, in a few words.
+
+    Exactly the rows `monthly_source.evaluate` turns into blockers: no
+    source file received and no human resolution. Accounts and cards that
+    are already covered or resolved are not listed — the full table stays
+    on Monthly Sources."""
+    items = []
+    for coverage in coverages:
+        if coverage.source_received or coverage.is_resolved:
+            continue
+        instrument = coverage.payment_instrument
+        last_four = instrument.last_four or (
+            instrument.external_account_identifier[-4:]
+            if instrument.external_account_identifier else None
+        )
+        if coverage.resolution == m.RESOLUTION_SOURCE_FILE_MISSING:
+            issue = "source file still owed"
+        elif coverage.expectation == m.COVERAGE_NEEDS_CONFIRMATION:
+            issue = "needs confirmation"
+        else:
+            issue = "source missing"
+        items.append({
+            "label": instrument.display_name + (f" ··{last_four}" if last_four else ""),
+            "institution": coverage.institution_snapshot or instrument.institution,
+            "issue": issue,
+        })
+    return items
+
+
 # The WHO status of a month's transactions, read from their CURRENT
 # decision and nothing else. Only the WHO is looked at: never the Why, the
 # What or the decision status, which also speaks about purpose.
@@ -380,6 +410,7 @@ def register_bank_routes(
             # --- 2 Check Sources: the same facts as Monthly Sources.
             period = monthly_source.get_period(db, year, month)
             monthly = _monthly_sources_view(db, period)
+            source_attention = _source_attention(monthly["coverages"])
 
             # --- 3 Automatic WHO and 4 Review Missing: the month's
             # transactions as the monthly export sees them.
@@ -410,6 +441,7 @@ def register_bank_routes(
                 show_all_batches=show_all_batches, total_batch_count=len(batches),
                 transaction_count=len(transactions), who_counts=who_counts,
                 unresolved_count=unresolved_count,
+                source_attention=source_attention,
                 RETURN_IMPORT_REVIEW=RETURN_IMPORT_REVIEW,
                 **monthly,
             )

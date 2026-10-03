@@ -5,7 +5,7 @@
 {% block content %}
 {{ bank.module_nav('import') }}
 {#- BANK_IMPORT_AND_REVIEW_001 — the monthly Bank work for ONE month, in four
-    steps. Operational only: explanations live on the Instructions tab.
+    compact steps. Operational only: explanations live on the Instructions tab.
     Every form sends the month back with `return_to`, so the operator stays
     on this page and on this month. -#}
 
@@ -118,185 +118,201 @@
   </div>
 {%- endmacro %}
 
-{#- Bank-only layout for this page; the shared rf-one.css is not changed. #}
+{#- Compact operational layout (BANK_IMPORT_AND_REVIEW_COMPACT_001): each step
+    is one horizontal band — number and title, a few figures, only the items
+    that need a person, one or two actions. Detailed tables stay on the
+    specialist pages. Bank-only styles; the shared rf-one.css is unchanged. #}
 <style>
-  .bank-month-bar { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
-  .bank-month-title { margin: 0; flex: 1 1 auto; text-align: center; }
-  .bank-month-picker { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; margin-top: .75rem; }
-  .bank-month-picker select, .bank-month-picker input, .bank-month-picker button { margin: 0; }
-  .bank-files > summary { cursor: pointer; font-weight: 600; margin: .75rem 0 .5rem; }
-  .bank-month-picker label { margin: 0; }
-  .bank-month-status { margin: .6rem 0 0; display: flex; gap: .4rem; flex-wrap: wrap; justify-content: center; }
-  .bank-step > h2 { display: flex; align-items: center; gap: .6rem; }
+  .bank-month-row { display: flex; align-items: center; gap: .6rem 1rem; flex-wrap: wrap;
+    padding: .4rem 0 .8rem; border-bottom: 1px solid var(--olive-300, #d6dbc4); margin-bottom: .9rem; }
+  .bank-month-row .bank-month-title { margin: 0; font-size: 1.35rem; }
+  .bank-month-nav { display: flex; align-items: center; gap: .4rem; }
+  .bank-month-state { color: var(--muted, #6b6f5e); font-size: .9rem; }
+  .bank-month-state strong { color: inherit; }
+  .bank-month-picker { display: inline-flex; align-items: center; gap: .35rem; margin-left: auto; }
+  .bank-month-picker select, .bank-month-picker input, .bank-month-picker button { margin: 0; width: auto; }
+  .bank-month-picker input { width: 5.5rem; }
+  .bank-steps { display: flex; flex-direction: column; gap: .6rem; }
+  .bank-step { display: grid; grid-template-columns: 13rem minmax(0, 1fr) auto; gap: .5rem 1.25rem;
+    align-items: start; padding: .8rem 1rem; margin: 0; min-width: 0; max-width: 100%; box-sizing: border-box; }
+  .bank-step-head { display: flex; align-items: center; gap: .6rem; }
+  .bank-step-head h2 { margin: 0; font-size: 1.05rem; }
   .bank-step-number { display: inline-flex; align-items: center; justify-content: center;
-    width: 1.9rem; height: 1.9rem; border-radius: 50%; background: var(--olive-300, #c9cfb4);
-    font-size: 1rem; font-weight: 700; flex: 0 0 auto; }
-  .bank-step-figure { font-size: 1.05rem; }
-  /* Wide tables scroll inside their own box; the page itself never does. */
-  .bank-month, .bank-step { min-width: 0; max-width: 100%; box-sizing: border-box; }
-  .bank-step .table-scroll { max-width: 100%; overflow-x: auto; }
-  .bank-step .card { min-width: 0; }
-  @media (max-width: 640px) {
-    .bank-month-bar { justify-content: center; }
-    .bank-month-title { order: -1; flex-basis: 100%; }
+    width: 1.8rem; height: 1.8rem; border-radius: 50%; background: var(--olive-300, #c9cfb4);
+    font-weight: 700; flex: 0 0 auto; }
+  .bank-step-body { min-width: 0; }
+  .bank-figures { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; margin: 0; }
+  .bank-figures span strong { font-size: 1.1rem; }
+  .bank-attention { margin: .45rem 0 0; padding: 0; list-style: none; font-size: .9rem; }
+  .bank-attention li { margin: .1rem 0; }
+  .bank-attention .badge { margin-left: .35rem; }
+  .bank-step-actions { display: flex; flex-direction: column; gap: .35rem; align-items: stretch; }
+  .bank-step-actions .btn, .bank-step-actions button { margin: 0; text-align: center; white-space: nowrap; }
+  .bank-upload { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin: .45rem 0 0; }
+  .bank-upload input[type=file] { max-width: 16rem; }
+  .bank-upload select { max-width: 14rem; margin: 0; }
+  .bank-files { grid-column: 1 / -1; min-width: 0; }
+  .bank-files > summary { cursor: pointer; font-weight: 600; }
+  .bank-files .table-scroll { max-width: 100%; overflow-x: auto; }
+  @media (max-width: 760px) {
+    .bank-step { grid-template-columns: minmax(0, 1fr); }
+    .bank-step-actions { flex-direction: row; flex-wrap: wrap; }
+    .bank-month-picker { margin-left: 0; }
   }
 </style>
 
 {# ---------------------------------------------------------------- month #}
-<div class="card bank-month" id="bank-month">
-  <div class="bank-month-bar">
-    <a class="btn btn-secondary btn-inline" rel="prev"
-       href="{{ url_for('bank_home', year=previous_year, month=previous_month) }}">&lsaquo; Previous</a>
+<div class="bank-month-row" id="bank-month">
+  <div class="bank-month-nav">
+    <a class="btn btn-secondary btn-inline" rel="prev" aria-label="Previous month"
+       href="{{ url_for('bank_home', year=previous_year, month=previous_month) }}">&lsaquo;</a>
     <h2 class="bank-month-title">{{ month_label }}</h2>
-    <a class="btn btn-secondary btn-inline" rel="next"
-       href="{{ url_for('bank_home', year=next_year, month=next_month) }}">Next &rsaquo;</a>
+    <a class="btn btn-secondary btn-inline" rel="next" aria-label="Next month"
+       href="{{ url_for('bank_home', year=next_year, month=next_month) }}">&rsaquo;</a>
   </div>
-  <form method="get" action="{{ url_for('bank_home') }}" class="compact-form bank-month-picker">
-    <label for="bank-month-select">Month</label>
-    <select id="bank-month-select" name="month">
+  <span class="bank-month-state">
+    {%- if not control_config %}Not under completeness control
+    {%- elif is_controlled %}Controlled
+    {%- else %}Historical{% endif %}
+    {%- if is_provisional %} &middot; Provisional
+    {%- elif control_config and control_config.validated_through_month %} &middot; Validated{% endif %}
+    &middot; {{ period.status|capitalize if period else 'Not opened' }}
+  </span>
+  <form method="get" action="{{ url_for('bank_home') }}" class="bank-month-picker">
+    <select id="bank-month-select" name="month" aria-label="Month">
       {% for number in range(1, 13) %}
-        <option value="{{ number }}" {{ 'selected' if number == month else '' }}>{{ number }}</option>
+        <option value="{{ number }}" {{ 'selected' if number == month else '' }}>{{ '%02d'|format(number) }}</option>
       {% endfor %}
     </select>
-    <label for="bank-year-input">Year</label>
-    <input type="number" id="bank-year-input" name="year" min="2000" max="2100" value="{{ year }}" required>
-    <button type="submit">Show</button>
+    <input type="number" id="bank-year-input" name="year" min="2000" max="2100" value="{{ year }}" required aria-label="Year">
+    <button type="submit" class="btn-secondary">Go</button>
   </form>
-  <p class="bank-month-status">
-    {% if not control_config %}
-      <span class="badge warn">Not under completeness control</span>
-    {% elif is_controlled %}
-      <span class="badge ok">Controlled</span>
-    {% else %}
-      <span class="badge">Historical</span>
-    {% endif %}
-    {% if is_provisional %}
-      <span class="badge warn">Provisional</span>
-    {% elif control_config and control_config.validated_through_month %}
-      <span class="badge ok">Validated</span>
-    {% endif %}
-    {% if period %}
-      <span class="badge {{ 'ok' if period.status == 'COMPLETE' else ('warn' if period.status == 'INCOMPLETE' else '') }}">{{ period.status }}</span>
-    {% else %}
-      <span class="badge">Not opened</span>
-    {% endif %}
-  </p>
 </div>
 
+<div class="bank-steps">
+
 {# --------------------------------------------------------------- 1 Import #}
+{% set file_actions = month_action_count + (pending_batches|length) %}
 <section class="card bank-step" id="step-import" aria-labelledby="step-import-title">
-  <h2 id="step-import-title"><span class="bank-step-number">1</span> Import</h2>
-  <form method="post" action="{{ url_for('bank_upload') }}" enctype="multipart/form-data" class="compact-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    {{ month_fields() }}
-    <div class="field-row">
-      <label for="files">Bank and card source file(s)</label>
-      <input type="file" id="files" name="files" accept=".csv" multiple required>
-    </div>
-    <div class="field-row">
-      <label for="payment_instrument_id">Payment Instrument &mdash; leave on automatic unless RF-One asks</label>
-      <select id="payment_instrument_id" name="payment_instrument_id">
-        <option value="">Resolve automatically&hellip;</option>
+  <div class="bank-step-head"><span class="bank-step-number">1</span><h2 id="step-import-title">Import</h2></div>
+  <div class="bank-step-body">
+    <p class="bank-figures">
+      <span><strong>{{ batches|length }}</strong> source file(s) cover {{ month_label }}</span>
+      {% if file_actions %}<span><strong>{{ file_actions }}</strong> file(s) require attention</span>{% endif %}
+    </p>
+    <form method="post" action="{{ url_for('bank_upload') }}" enctype="multipart/form-data" class="bank-upload">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {{ month_fields() }}
+      <input type="file" id="files" name="files" accept=".csv" multiple required aria-label="Bank and card source files">
+      <select id="payment_instrument_id" name="payment_instrument_id" aria-label="Payment Instrument">
+        <option value="">Instrument: automatic</option>
         {% for instrument in instruments %}
-          <option value="{{ instrument.id }}">{{ bank.instrument_identity(instrument) }} &mdash; {{ instrument.institution or 'no institution' }}</option>
+          <option value="{{ instrument.id }}">{{ bank.instrument_identity(instrument) }}</option>
         {% endfor %}
       </select>
-    </div>
-    <button type="submit">Upload</button>
-  </form>
-
-  {% if batches %}
-    {#- Collapsed unless one of these files needs an action: long-range
-        historical downloads can cover many months, and the four steps must
-        stay visible together. -#}
-    <details class="bank-files"{{ ' open' if show_all_batches or month_action_count else '' }}>
-      <summary>
-        {% if show_all_batches %}All {{ batches|length }} source file(s){% else %}{{ batches|length }} source file(s) cover {{ month_label }}{% endif %}
-        {%- if month_action_count %} &mdash; <strong>{{ month_action_count }} need an action</strong>{% endif %}
-      </summary>
-      {{ batch_table(batches) }}
-    </details>
-  {% else %}
-    <p class="empty">No source file covers {{ month_label }} yet.</p>
-  {% endif %}
-
-  {% if pending_batches %}
-    <h3>Files from other months waiting for an action</h3>
-    {{ batch_table(pending_batches) }}
-  {% endif %}
-
-  <p class="cell-note">
-    {% if show_all_batches %}
-      <a href="{{ url_for('bank_home', year=year, month=month) }}">Show only {{ month_label }}</a>
-    {% else %}
-      <a href="{{ url_for('bank_home', year=year, month=month, batches='all') }}">All source files ({{ total_batch_count }})</a>
-      {%- if undated_batch_count %} &middot; {{ undated_batch_count }} file(s) without a readable date range{% endif %}
+      <button type="submit">Upload</button>
+    </form>
+  </div>
+  <div class="bank-step-actions">
+    <a class="btn btn-secondary btn-inline" href="#source-files" onclick="document.getElementById('source-files').open = true;">View source files</a>
+  </div>
+  <details class="bank-files" id="source-files"{{ ' open' if show_all_batches else '' }}>
+    <summary>
+      {% if show_all_batches %}All {{ batches|length }} source file(s){% else %}Source files for {{ month_label }}{% endif %}
+      {%- if file_actions %} &mdash; {{ file_actions }} require attention{% endif %}
+    </summary>
+    {% if batches %}{{ batch_table(batches) }}{% else %}<p class="empty">No source file covers {{ month_label }} yet.</p>{% endif %}
+    {% if pending_batches %}
+      <h3>Files from other months waiting for an action</h3>
+      {{ batch_table(pending_batches) }}
     {% endif %}
-  </p>
+    <p class="cell-note">
+      {% if show_all_batches %}
+        <a href="{{ url_for('bank_home', year=year, month=month) }}">Show only {{ month_label }}</a>
+      {% else %}
+        <a href="{{ url_for('bank_home', year=year, month=month, batches='all') }}#source-files">All source files ({{ total_batch_count }})</a>
+        {%- if undated_batch_count %} &middot; {{ undated_batch_count }} file(s) without a readable date range{% endif %}
+      {% endif %}
+    </p>
+  </details>
 </section>
 
 {# -------------------------------------------------------- 2 Check Sources #}
 <section class="card bank-step" id="step-sources" aria-labelledby="step-sources-title">
-  <h2 id="step-sources-title"><span class="bank-step-number">2</span> Check Sources</h2>
-  <p class="cell-note">
-    {% if control_config %}
-      Control start {{ control_config.control_start_month }}
-      &middot; validated through {{ control_config.validated_through_month or 'not set' }}
+  <div class="bank-step-head"><span class="bank-step-number">2</span><h2 id="step-sources-title">Check Sources</h2></div>
+  <div class="bank-step-body">
+    {% if period and report %}
+      <p class="bank-figures">
+        <span>Expected <strong data-source-figure="expected">{{ report.expected }}</strong></span>
+        <span>Received <strong data-source-figure="received">{{ report.received }}</strong></span>
+        <span>Missing / unresolved <strong data-source-figure="missing">{{ report.missing_unresolved if not report.provisional else report.provisional_gaps|length }}</strong></span>
+        <span>Needs confirmation <strong data-source-figure="needs_confirmation">{{ report.needs_confirmation }}</strong></span>
+      </p>
+      {% if source_attention %}
+        <ul class="bank-attention" aria-label="Needs attention">
+          {% for item in source_attention %}
+            <li>{{ item.label }} &mdash; {{ item.issue }}</li>
+          {% endfor %}
+        </ul>
+        {% if report.provisional %}<p class="cell-note">Provisional month: shown, not enforced.</p>{% endif %}
+      {% elif period.status == 'COMPLETE' %}
+        <p class="cell-note">Month completed.</p>
+      {% elif report.can_complete %}
+        <p class="cell-note">Every expected account and card is covered or explained &mdash; ready to complete.</p>
+      {% endif %}
+    {% elif period %}
+      <p class="cell-note">No account or card is configured yet.</p>
     {% else %}
-      Reconciliation control start not configured
+      <p class="cell-note">{{ month_label }} has not been opened for source control yet.</p>
     {% endif %}
-    &middot; <a href="{{ url_for('bank_monthly') }}">Monthly Sources settings</a>
-  </p>
-  {% if period %}
-    {% set monthly_return_to = RETURN_IMPORT_REVIEW %}
-    {% include "_bank_monthly_sources.html" %}
-  {% else %}
-    <p class="empty">{{ month_label }} has not been opened for source completeness.</p>
-    <form method="post" action="{{ url_for('bank_monthly_select') }}" class="compact-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      {{ month_fields() }}
-      <button type="submit">Open {{ month_label }}</button>
-    </form>
-  {% endif %}
+  </div>
+  <div class="bank-step-actions">
+    {% if not period %}
+      <form method="post" action="{{ url_for('bank_monthly_select') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {{ month_fields() }}
+        <button type="submit">Open month</button>
+      </form>
+    {% elif source_attention %}
+      <a class="btn btn-inline" href="{{ url_for('bank_monthly', year=year, month=month) }}">Resolve issues</a>
+    {% else %}
+      <a class="btn btn-secondary btn-inline" href="{{ url_for('bank_monthly', year=year, month=month) }}">Open Monthly Sources</a>
+    {% endif %}
+  </div>
 </section>
 
 {# -------------------------------------------------------- 3 Automatic WHO #}
 <section class="card bank-step" id="step-who" aria-labelledby="step-who-title">
-  <h2 id="step-who-title"><span class="bank-step-number">3</span> Automatic WHO</h2>
-  <div class="coverage-tiles">
-    <div class="coverage-tile">
-      <div class="coverage-tile-value" data-who-count="learned_rule">{{ who_counts.learned_rule }}</div>
-      <div class="coverage-tile-label">WHO from a learned rule</div>
-    </div>
-    <div class="coverage-tile">
-      <div class="coverage-tile-value" data-who-count="human">{{ who_counts.human }}</div>
-      <div class="coverage-tile-label">WHO from a human decision</div>
-    </div>
-    {% if who_counts.other_automatic %}
-    <div class="coverage-tile">
-      <div class="coverage-tile-value" data-who-count="other_automatic">{{ who_counts.other_automatic }}</div>
-      <div class="coverage-tile-label">WHO from another automatic decision</div>
-    </div>
-    {% endif %}
-    <div class="coverage-tile{{ ' coverage-tile-warn' if who_counts.missing else '' }}">
-      <div class="coverage-tile-value" data-who-count="missing">{{ who_counts.missing }}</div>
-      <div class="coverage-tile-label">Without WHO</div>
-    </div>
+  <div class="bank-step-head"><span class="bank-step-number">3</span><h2 id="step-who-title">Automatic WHO</h2></div>
+  <div class="bank-step-body">
+    <p class="bank-figures">
+      <span>Recognized by learned rule <strong data-who-count="learned_rule">{{ who_counts.learned_rule }}</strong></span>
+      <span>Human assigned <strong data-who-count="human">{{ who_counts.human }}</strong></span>
+      {% if who_counts.other_automatic %}<span>Other automatic <strong data-who-count="other_automatic">{{ who_counts.other_automatic }}</strong></span>{% endif %}
+      <span>Without WHO <strong data-who-count="missing">{{ who_counts.missing }}</strong></span>
+    </p>
+    <p class="cell-note">
+      {{ transaction_count }} transaction(s) in {{ month_label }}.
+      Bulk authorization &mdash; pending functional decision.
+    </p>
   </div>
-  <p class="cell-note">
-    {{ transaction_count }} transaction(s) in {{ month_label }}.
-    Bulk authorization &mdash; pending functional decision.
-  </p>
-  <a class="btn btn-secondary btn-inline" href="{{ url_for('bank_review', year=year, month=month) }}">Review {{ month_label }}</a>
+  <div class="bank-step-actions">
+    <a class="btn btn-secondary btn-inline" href="{{ url_for('bank_review', year=year, month=month) }}">Review WHO</a>
+  </div>
 </section>
 
 {# ------------------------------------------------------- 4 Review Missing #}
 <section class="card bank-step" id="step-review" aria-labelledby="step-review-title">
-  <h2 id="step-review-title"><span class="bank-step-number">4</span> Review Missing</h2>
-  <p class="bank-step-figure">
-    <strong data-unresolved-count>{{ unresolved_count }}</strong>
-    transaction(s) still need human review.
-  </p>
-  <a class="btn btn-inline" href="{{ url_for('bank_review', year=year, month=month) }}">Review {{ month_label }}</a>
+  <div class="bank-step-head"><span class="bank-step-number">4</span><h2 id="step-review-title">Review Missing</h2></div>
+  <div class="bank-step-body">
+    <p class="bank-figures">
+      <span><strong data-unresolved-count>{{ unresolved_count }}</strong> transaction(s) require human review</span>
+    </p>
+  </div>
+  <div class="bank-step-actions">
+    <a class="btn btn-inline" href="{{ url_for('bank_review', year=year, month=month) }}">Review transactions</a>
+  </div>
 </section>
+
+</div>
 {% endblock %}

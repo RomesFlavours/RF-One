@@ -257,18 +257,25 @@ def main() -> int:
                     m.BankMonthlyInstrumentCoverage.payment_instrument_id == idle_id,
                 )
             ).one()
-        check("E. Check Sources shows the same six figures as Monthly Sources",
-              summary_row(sources_part) == summary_row(monthly_html) == expected_row,
-              f"{summary_row(sources_part)} {summary_row(monthly_html)} {expected_row}")
-        check("E. the unexplained idle card is named as a blocker on /bank",
-              "Idle Card 9999" in sources_part and "cannot be completed yet" in sources_part)
+        shown_figures = {k: v for k, v in re.findall(r'data-source-figure="(\w+)">(\d+)<', sources_part)}
+        check("E. Check Sources shows the same completeness facts as Monthly Sources",
+              shown_figures == {"expected": expected_row[0], "received": expected_row[1],
+                                "missing": expected_row[5], "needs_confirmation": expected_row[4]}
+              and summary_row(monthly_html) == expected_row,
+              f"{shown_figures} {summary_row(monthly_html)} {expected_row}")
+        check("E. only the account needing attention is listed (the idle card, source missing)",
+              "Idle Card 9999" in sources_part and "source missing" in sources_part
+              and "Chase Checking 0214" not in sources_part)
+        check("E. /bank no longer embeds the Monthly Sources table or its forms",
+              "Accounts and cards for" not in html_aug and "Resolve missing source" not in html_aug
+              and "Accounts and cards for" in monthly_html)
+        check("E. Resolve issues opens Monthly Sources on the same month",
+              'href="/bank/monthly?year=2026&amp;month=8">Resolve issues<' in sources_part)
         check("E. Control Start / Validated Through are configured only on Monthly Sources",
               'name="control_start_date"' not in html_aug
               and 'name="validated_through_month"' not in html_aug
               and 'name="control_start_date"' in monthly_html)
-        check("E. the Monthly forms rendered inside /bank carry return_to=import_review",
-              sources_part.count('name="return_to" value="import_review"') >= 2)
-        check("E. the same forms on Monthly Sources carry no return_to",
+        check("E. the forms on Monthly Sources carry no return_to",
               'name="return_to"' not in monthly_html)
 
         # ------------------------------- F/G/H — Monthly return_to behaviour
@@ -365,13 +372,17 @@ def main() -> int:
         # ----------------------------------- I/J — Automatic WHO section
         html_aug = client.get("/bank?year=2026&month=8").data.decode("utf-8")
         who_part = section(html_aug, "step-who", "step-review")
-        check("I. the Automatic WHO section has no form and no action",
+        check("I. the Automatic WHO section has no form and no write action",
               "<form" not in who_part and 'method="post"' not in who_part)
         check("I. the Automatic WHO section never mentions WHY or WHAT",
               not re.search(r"\b(why|what)\b", re.sub(r"<[^>]+>", " ", who_part), re.I),
               re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", who_part))[:300])
-        check("I. bulk authorization is stated as pending a functional decision",
+        check("I. bulk authorization is still stated as pending a functional decision",
               "Bulk authorization &mdash; pending functional decision" in who_part)
+        check("I. the section offers one action: Review WHO",
+              ">Review WHO<" in who_part)
+        check("I. no disposable prototype route is registered",
+              not any("prototype" in rule.rule for rule in web_app.app.url_map.iter_rules()))
         shown = {k: int(v) for k, v in re.findall(
             r'data-who-count="(\w+)">(\d+)<', who_part)}
         with SessionFactory() as db:
