@@ -30,6 +30,8 @@ RoleConfiguration
 
 A Work History record's `normalized_role` is classified against exactly one `RoleConfiguration` at a time — the one for the `target_role` the candidate is actually being screened for — into one of: `TARGET`, `EQUIVALENT`, `PROPEDEUTIC`, `ADJACENT`, or unclassified (`OTHER`).
 
+The `target_role` is the **application's** target role, not something the résumé decides (SELECTION_FOH_TEAM_LEADER_001): the same person may apply for different roles. When an application has no target role, or one with no Role Configuration, no configuration is assumed — the role-independent analysis is still produced and the target role is shown as to be clarified. A Role Configuration may carry a display name (e.g. "FOH Team Leader" for an industry code) used wherever the target role is named to people.
+
 ---
 
 ## Role relevance coefficients — not defined here

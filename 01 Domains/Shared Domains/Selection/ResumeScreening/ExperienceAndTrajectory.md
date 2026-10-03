@@ -84,6 +84,15 @@ you want to move into serving?"
 
 This becomes a [Flag](FlagsAndIndicators.md) (`ROLE_TRANSITION`, industry extensions may add a more specific detail code such as `BOH_TO_FOH`) carrying exactly this shape: the transition itself, `Motivation: Unknown`, and a suggested, motive-neutral interview question — never a conclusion about the candidate's reasons.
 
+### A transition needs positive evidence (SELECTION_TRANSITION_EVIDENCE_001)
+
+A transition is read only when the Industry Extension **positively** classifies the most recent role into a category (BOH, Management, another sector, …). Decided by the Product Owner on 2026-10-03:
+
+- A **missing or unrecognized** role means "to be clarified" (a `MISSING_INFORMATION` or `TITLE_INCONSISTENCY` question), never "from another sector".
+- A role whose **reading is uncertain** (`structure confidence` LOW, [CandidateCVProfile.md](CandidateCVProfile.md)) produces only the request to verify the reading (`EXTRACTION_UNCERTAIN`) and no conclusion about the career path.
+- A transition **from another sector** may be raised only when the role is positively classified as such, and it stays a neutral question backed by the résumé text of that role.
+- Hotel work is hospitality and is never classified as "another sector". The distinction between restaurant work and other hospitality work is a separate matter.
+
 ---
 
 ## Contextual career / age information

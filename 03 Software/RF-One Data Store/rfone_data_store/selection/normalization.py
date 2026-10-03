@@ -63,9 +63,19 @@ def _normalize_role(record: WorkHistoryRecord) -> None:
     if not record.original_job_title:
         return
 
+    # SELECTION_FOH_TEAM_LEADER_001 — a generic coordination title ("Team
+    # Leader", "Shift Lead", ...) is read on the WHOLE title plus the duties,
+    # before the title is split into segments: it is FOH_SUPERVISOR only with
+    # an explicit dining-room context, otherwise it stays to be clarified.
+    leadership_code, leadership_basis = restaurant_industry.leadership_title_context(
+        record.original_job_title, record.responsibilities,
+    )
+
     segments = restaurant_industry.split_multi_role_title(record.original_job_title)
-    codes: list[str] = []
+    codes: list[str] = [leadership_code] if leadership_code else []
     for segment in segments:
+        if restaurant_industry.is_generic_leadership_title(segment):
+            continue  # decided above, never by keyword alone
         code = restaurant_industry.normalize_title(segment)
         if code and code not in codes:
             codes.append(code)
@@ -80,7 +90,9 @@ def _normalize_role(record: WorkHistoryRecord) -> None:
     record.role_family = " / ".join(dict.fromkeys(f for f in families if f)) or None
     record.multi_role = len(codes) > 1
     record.seniority_level = restaurant_industry.seniority_level_from_title(record.original_job_title)
-    record.title_normalization_confidence = "MEDIUM" if record.multi_role else "HIGH"
+    record.title_normalization_confidence = (
+        "MEDIUM" if record.multi_role or leadership_basis == restaurant_industry.LEADERSHIP_FROM_DUTIES else "HIGH"
+    )
 
 
 def normalize_profile(profile: CandidateCVProfile) -> CandidateCVProfile:

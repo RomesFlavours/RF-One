@@ -10,8 +10,8 @@
       <div class="value">{{ candidate.full_name or '(name not extracted)' }}</div>
     </div>
     <div class="meta-item">
-      <div class="label">Target Role</div>
-      <div class="value">{{ candidate.target_role or '-' }}</div>
+      <div class="label">Target Role (application)</div>
+      <div class="value">{{ view.target_role_label if view.role_config else 'To be clarified' }}</div>
     </div>
     <div class="meta-item">
       <div class="label">Status</div>
@@ -27,6 +27,15 @@
       </div>
     </div>
   </div>
+  {% if view.target_role_issue %}
+  <div class="error" style="font-size:.85rem;">
+    <strong>Target role to be clarified.</strong>
+    {% if view.target_role_issue == 'UNSUPPORTED' %}This application's target role "{{ view.target_role }}" is not one this
+    screening supports (Server, FOH Team Leader).{% else %}This application has no target role recorded.{% endif %}
+    No role is assumed: experience is not classified against a target and no transition question is asked
+    until the target role is set.
+  </div>
+  {% endif %}
   <p class="muted" style="font-size:.8rem;">
     No universal CV score is computed or shown — see separate Indicators below.
     {% if candidate.parsing_mode == 'RULE_BASED' %}This candidate was produced by the real, rule-based text parser (no AI provider credentials configured) — every field below is read directly from this file's own extracted text; a field is left blank rather than guessed whenever it could not be confidently identified.{% elif candidate.parsing_mode not in ('REAL_AI', 'RULE_BASED') %}This candidate was produced by the DEMO/MOCK fixture parser (synthetic test data) — the structured data below is a realistic fixture, not a real extraction of this specific file.{% endif %}
@@ -197,19 +206,37 @@
     {% if work_entries %}
       {% for entry in work_entries %}
       <div class="work-entry">
-        <div class="title">{{ entry.record.original_job_title or '(title not stated)' }}
+        {% set reading_uncertain = entry.record.structure_confidence == 'LOW' %}
+        <div class="title">{{ entry.record.original_job_title or ('(title not determined)' if reading_uncertain else '(title not stated)') }}
           {% if entry.record.normalized_role %}<span class="badge">{{ entry.record.normalized_role }}</span>{% endif %}
-          <span class="badge">{{ entry.category }}</span>
+          {% if entry.category %}<span class="badge" title="Classified for the target role {{ view.target_role_label }}">{{ entry.category }}</span>{% endif %}
           {% if entry.record.multi_role %}<span class="badge" title="Multiple roles identified in this title">multi-role</span>{% endif %}
           {% if entry.record.seniority_level %}<span class="badge">{{ entry.record.seniority_level }}</span>{% endif %}
         </div>
+        {#- SELECTION_FOH_TEAM_LEADER_001 — a recognized title is the DECLARED
+            role; the coordination duties actually performed are not verified. -#}
+        {% if entry.leadership_basis == 'FOH_IN_DUTIES' and entry.record.normalized_role == 'FOH_SUPERVISOR' %}
+        <div class="muted" style="font-size:.75rem;">Generic coordination title read as FOH Supervisor / Team Leader because a duty mentions coordinating dining-room staff or table service. Declared role only: the coordination actually performed is not verified.</div>
+        {% elif entry.record.normalized_role == 'FOH_SUPERVISOR' %}
+        <div class="muted" style="font-size:.75rem;">Declared role: FOH Supervisor / Team Leader. The coordination actually performed is not verified from the title.</div>
+        {% elif entry.leadership_basis in ('NO_FOH_CONTEXT', 'KITCHEN', 'CONFLICTING_DUTIES') %}
+        <div class="muted" style="font-size:.75rem;">Generic coordination title kept as written: not read as FOH Supervisor / Team Leader because {{ 'the title refers to the kitchen' if entry.leadership_basis == 'KITCHEN' else ('the duties mention both dining-room and kitchen staff' if entry.leadership_basis == 'CONFLICTING_DUTIES' else 'the résumé does not tie it to the dining room') }}. To be clarified.</div>
+        {% endif %}
         {% if entry.record.normalized_title or entry.record.role_family %}
         <div class="muted" style="font-size:.78rem;">
           {% if entry.record.normalized_title %}Normalized: {{ entry.record.normalized_title }}{% endif %}
           {% if entry.record.role_family %}{% if entry.record.normalized_title %} &middot; {% endif %}Family: {{ entry.record.role_family }}{% endif %}
         </div>
         {% endif %}
-        <div class="employer">{{ entry.record.employer or '(employer not stated)' }}
+        {#- SELECTION_CV_STRUCTURE_READING_001 — how sure the reader is of this
+            entry's grouping. LOW: a person must check the original résumé. -#}
+        {% if reading_uncertain %}
+        <div style="font-size:.8rem; margin:.2rem 0;"><span class="badge state-low">Reading uncertain &mdash; verify</span>
+          {{ entry.record.structure_note }}</div>
+        {% elif entry.record.structure_note %}
+        <div class="muted" style="font-size:.72rem;">Reading: {{ entry.record.structure_note }}</div>
+        {% endif %}
+        <div class="employer">{{ entry.record.employer or ('(employer not determined)' if reading_uncertain else '(employer not stated)') }}
           &middot;
           {{ entry.record.start_date.strftime('%b %Y') if entry.record.start_date else '?' }} –
           {{ 'Present' if entry.record.is_current else (entry.record.end_date.strftime('%b %Y') if entry.record.end_date else 'unknown') }}
@@ -245,11 +272,15 @@
 
     <h2 style="font-size:.95rem;">Experience breakdown</h2>
     <div class="indicator-list">
-      <div class="indicator-row"><span>Target role experience</span><span>{{ view.breakdown.target_months }} mo</span></div>
+      {% if view.role_config %}
+      <div class="indicator-row"><span>Target role experience ({{ view.target_role_label }})</span><span>{{ view.breakdown.target_months }} mo</span></div>
       <div class="indicator-row"><span>Equivalent role experience</span><span>{{ view.breakdown.equivalent_months }} mo</span></div>
       <div class="indicator-row"><span>Propedeutic experience</span><span>{{ view.breakdown.propedeutic_months }} mo</span></div>
       <div class="indicator-row"><span>Adjacent experience</span><span>{{ view.breakdown.adjacent_months }} mo</span></div>
       <div class="indicator-row"><span>Other / unclassified experience</span><span>{{ view.breakdown.other_months }} mo</span></div>
+      {% else %}
+      <div class="indicator-row"><span>Experience by target role</span><span class="muted">target role to be clarified</span></div>
+      {% endif %}
       <div class="indicator-row"><span>Industry experience</span><span>{{ view.breakdown.industry_months }} mo</span></div>
       <div class="indicator-row"><span><strong>Total career span (overlap-safe)</strong></span><span><strong>{{ view.breakdown.total_span_months }} mo</strong></span></div>
     </div>
@@ -317,7 +348,9 @@
 
   <div class="card">
     <h2>4. Indicators</h2>
-    <p class="muted" style="font-size:.8rem;">Separate dimensions — no combined score. Relative importance is a future Client/Role Configuration decision, not made here.</p>
+    <p class="muted" style="font-size:.8rem;">Separate dimensions — no combined score. Relative importance is a future Client/Role Configuration decision, not made here.
+      {% if view.role_config %}Role-related Indicators refer to the target role <strong>{{ view.target_role_label }}</strong>.{% endif %}
+      Months by role, including Supervisory Responsibility, are counted from the job titles as declared on the résumé: they do not show which coordination duties were actually performed.</p>
     <div class="indicator-list">
       {% for i in view.indicators %}
       <div class="indicator-row">

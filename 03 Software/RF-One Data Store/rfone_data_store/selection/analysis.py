@@ -23,6 +23,7 @@ from .core.flags import Flag
 from .core.indicators import Indicator
 from .core.information_quality import InformationQuality, compute_information_quality
 from .core.profile import CandidateCVProfile
+from .core.role_model import RoleConfiguration
 from .core.trajectory import TrajectoryEvent, TransitionToInvestigate, detect_trajectory, detect_transitions_to_investigate
 from .industry import restaurant as restaurant_industry
 
@@ -41,16 +42,55 @@ class CandidateAnalysisView:
     indicators: list[Indicator] = field(default_factory=list)
     information_quality: InformationQuality | None = None
     derived_age_context: contextual_age.DerivedAgeContext | None = None
+    # SELECTION_FOH_TEAM_LEADER_001 — the application's target role.
+    target_role: str | None = None
+    role_config: RoleConfiguration | None = None  # None: target role to be clarified
+    target_role_issue: str | None = None  # TARGET_ROLE_MISSING | TARGET_ROLE_UNSUPPORTED | None
+
+    @property
+    def target_role_label(self) -> str | None:
+        return self.role_config.label if self.role_config else self.target_role
 
 
-def analyze_candidate(profile: CandidateCVProfile) -> CandidateAnalysisView:
-    role_config = restaurant_industry.ROLE_CONFIGURATIONS.get(
-        profile.target_role or "SERVER", restaurant_industry.ROME_FLAVOURS_SERVER_ROLE_CONFIG
+TARGET_ROLE_MISSING = "MISSING"
+TARGET_ROLE_UNSUPPORTED = "UNSUPPORTED"
+
+
+def _title_clarification(record) -> tuple[str, str] | None:
+    """Restaurant wording for a generic coordination title that could not be
+    tied to the dining room (SELECTION_FOH_TEAM_LEADER_001)."""
+
+    code, basis = restaurant_industry.leadership_title_context(record.original_job_title, record.responsibilities)
+    if code or basis is None:
+        return None
+    reason = {
+        restaurant_industry.LEADERSHIP_KITCHEN: "the title refers to the kitchen",
+        restaurant_industry.LEADERSHIP_CONFLICT: "the duties mention coordinating both dining-room and kitchen staff",
+    }.get(basis, "the résumé does not show whether it was in the dining room")
+    return (
+        f"A generic coordination title, kept as written: {reason}, so it is not read as FOH Supervisor / "
+        "Team Leader. To be clarified.",
+        f'In your role as "{record.original_job_title}", which team did you coordinate, and in which area?',
     )
-    role_config_found = (profile.target_role or "SERVER") in restaurant_industry.ROLE_CONFIGURATIONS
+
+
+def analyze_candidate(profile: CandidateCVProfile, *, target_role: str | None) -> CandidateAnalysisView:
+    """`target_role` is the APPLICATION's target role
+    (SELECTION_FOH_TEAM_LEADER_001) — never the résumé's own field and never
+    a silent default. When it is missing or not a supported role, the
+    role-independent analysis is still produced, the role-related part
+    (direct / propedeutic experience, transitions) is not, and the view says
+    the target role must be clarified."""
+
+    role_config = restaurant_industry.ROLE_CONFIGURATIONS.get(target_role or "")
+    target_role_issue = None if role_config else (TARGET_ROLE_UNSUPPORTED if target_role else TARGET_ROLE_MISSING)
+    # Role-independent months (industry, customer-facing, supervisory) do not
+    # depend on the target: an empty configuration keeps them while
+    # classifying nothing as target, equivalent or propedeutic.
+    analysis_config = role_config or RoleConfiguration(target_role="")
 
     breakdown = compute_experience_breakdown(
-        profile.work_history, role_config,
+        profile.work_history, analysis_config,
         industry_roles=restaurant_industry.INDUSTRY_ROLES,
         customer_facing_roles=restaurant_industry.CUSTOMER_FACING_ROLES,
         commercial_roles=restaurant_industry.COMMERCIAL_ROLES,
@@ -62,15 +102,16 @@ def analyze_candidate(profile: CandidateCVProfile) -> CandidateAnalysisView:
     trajectory_events = detect_trajectory(profile.work_history, seniority_rank_fn=restaurant_industry.seniority_rank)
     transitions = detect_transitions_to_investigate(
         profile.work_history, role_config, role_category_fn=restaurant_industry.role_category
-    )
+    ) if role_config else []
     information_quality = compute_information_quality(profile)
     derived_age = contextual_age.derive_age_context_from_education(profile)
 
     view = CandidateAnalysisView(
-        profile=profile, role_config_found=role_config_found, breakdown=breakdown, tenure=tenure,
+        profile=profile, role_config_found=role_config is not None, breakdown=breakdown, tenure=tenure,
         gaps=gaps, overlaps=overlaps, trajectory_events=trajectory_events,
         transitions_to_investigate=transitions, information_quality=information_quality,
         derived_age_context=derived_age,
+        target_role=target_role, role_config=role_config, target_role_issue=target_role_issue,
     )
 
     flag_list: list[Flag] = []
@@ -82,7 +123,8 @@ def analyze_candidate(profile: CandidateCVProfile) -> CandidateAnalysisView:
     flag_list.extend(
         flags_mod.flag_role_transitions(transitions, detail_type_fn=restaurant_industry.transition_detail_type)
     )
-    flag_list.extend(flags_mod.flag_title_inconsistencies(profile.work_history))
+    flag_list.extend(flags_mod.flag_extraction_uncertain(profile.work_history))
+    flag_list.extend(flags_mod.flag_title_inconsistencies(profile.work_history, clarify_fn=_title_clarification))
     flag_list.extend(
         flags_mod.flag_missing_information(
             has_email=bool(profile.email), has_phone=bool(profile.phone), work_history=profile.work_history,
@@ -91,6 +133,8 @@ def analyze_candidate(profile: CandidateCVProfile) -> CandidateAnalysisView:
     flag_list.extend(flags_mod.flag_chronology_questions(profile.work_history))
     view.flags = flag_list
 
-    view.indicators = indicators_mod.compute_indicators(breakdown, tenure, trajectory_events, information_quality)
+    view.indicators = indicators_mod.compute_indicators(
+        breakdown, tenure, trajectory_events, information_quality, role_known=role_config is not None,
+    )
 
     return view

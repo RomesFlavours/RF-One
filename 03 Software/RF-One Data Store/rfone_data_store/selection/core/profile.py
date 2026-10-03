@@ -70,6 +70,14 @@ class WorkHistoryRecord:
     reason_for_leaving: str | None = None  # Fact only if explicitly stated — never inferred
     evidence_snippet: str | None = None
 
+    # SELECTION_CV_STRUCTURE_READING_001 — how sure the READER is that this
+    # entry's title, employer, dates and duties were grouped correctly
+    # ("HIGH" | "MEDIUM" | "LOW"; None = not assessed, e.g. AI parser or rows
+    # imported before this field existed). About the reading, never the
+    # candidate. LOW means a person must check the original text.
+    structure_confidence: str | None = None
+    structure_note: str | None = None
+
     # Task 2B — date normalization (see EducationRecord's matching fields for
     # the full rationale: `start_date`/`end_date`/`is_current` above are
     # always re-derived from these two raw-text fields, never hand-set).

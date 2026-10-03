@@ -89,6 +89,7 @@ One record per employment:
 | `achievements` | Fact. |
 | `reason for leaving` | Fact, only if explicitly stated — never inferred (see [ExperienceAndTrajectory.md](ExperienceAndTrajectory.md), "Do not infer motive"). |
 | `evidence snippets` | The résumé text this record was built from, preserved whenever practical so the UI can show provenance (`EvidenceModel.md`). |
+| `structure confidence` / `structure note` | About the **reading**, never the candidate (SELECTION_CV_STRUCTURE_READING_001): how sure the résumé reader is that this record's title, employer, dates and duties were grouped correctly — `HIGH` (an explicit clue fixed the grouping), `MEDIUM` (read with the layout convention "title, employer", or a fact is simply absent), `LOW` (the grouping could not be determined: the uncertain fields are left empty, the note quotes the original lines, and a person must check the résumé). Empty = not assessed (AI parser, or records imported before this existed). A missing fact on its own is never `LOW`. |
 
 ---
 

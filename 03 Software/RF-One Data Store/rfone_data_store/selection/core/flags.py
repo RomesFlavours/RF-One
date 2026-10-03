@@ -20,6 +20,9 @@ ROLE_TRANSITION = "ROLE_TRANSITION"
 TITLE_INCONSISTENCY = "TITLE_INCONSISTENCY"
 MISSING_INFORMATION = "MISSING_INFORMATION"
 CHRONOLOGY_QUESTION = "CHRONOLOGY_QUESTION"
+# SELECTION_CV_STRUCTURE_READING_001 — the résumé READER could not group an
+# experience reliably. About the reading, never about the candidate.
+EXTRACTION_UNCERTAIN = "EXTRACTION_UNCERTAIN"
 
 INFO = "INFO"
 REVIEW = "REVIEW"
@@ -116,9 +119,11 @@ def flag_role_transitions(
             Flag(
                 type=flag_type or ROLE_TRANSITION, attention_level=REVIEW,
                 evidence=f"Most recent role: {transition.from_title or transition.from_category} "
-                f"at {transition.from_employer or 'unknown employer'}.",
+                f"at {transition.from_employer or 'unknown employer'}."
+                + (f' Résumé text: "{transition.evidence_snippet}"' if transition.evidence_snippet else ""),
                 explanation=f"Transition from {_display_category(transition.from_category)} into "
-                f"{transition.to_role.replace('_', ' ').title()} — worth understanding the motivation. "
+                f"{transition.to_role_label or transition.to_role.replace('_', ' ').title()} — worth "
+                "understanding the motivation. "
                 "Motivation: Unknown.",
                 confidence="HIGH",
                 suggested_question=transition.suggested_question,
@@ -127,10 +132,28 @@ def flag_role_transitions(
     return flags
 
 
-def flag_title_inconsistencies(work_history: list[WorkHistoryRecord]) -> list[Flag]:
+def flag_title_inconsistencies(
+    work_history: list[WorkHistoryRecord],
+    *,
+    clarify_fn: Callable[[WorkHistoryRecord], tuple[str, str] | None] | None = None,
+) -> list[Flag]:
+    """`clarify_fn` lets an Industry Extension word the question for a title
+    it deliberately left unrecognized (e.g. a generic "Team Leader" with no
+    dining-room context) — returns (explanation, suggested question)."""
+
     flags = []
     for record in work_history:
         if record.original_job_title and not record.normalized_role:
+            specific = clarify_fn(record) if clarify_fn else None
+            if specific:
+                flags.append(
+                    Flag(
+                        type=TITLE_INCONSISTENCY, attention_level=VERIFY,
+                        evidence=f'Job title "{record.original_job_title}" at {record.employer or "unknown employer"}.',
+                        explanation=specific[0], confidence="LOW", suggested_question=specific[1],
+                    )
+                )
+                continue
             flags.append(
                 Flag(
                     type=TITLE_INCONSISTENCY, attention_level=VERIFY,
@@ -161,6 +184,22 @@ def flag_missing_information(
             )
         )
     for record in work_history:
+        # SELECTION_TRANSITION_EVIDENCE_001 — a missing job title is "to be
+        # clarified", never a conclusion. An uncertain reading is already
+        # covered by EXTRACTION_UNCERTAIN, so it is not asked twice.
+        if not record.original_job_title and record.structure_confidence != "LOW":
+            where = record.employer or "one of the listed experiences"
+            flags.append(
+                Flag(
+                    type=MISSING_INFORMATION, attention_level=REVIEW,
+                    evidence=f"No job title recorded for {where}.",
+                    explanation="The role is to be clarified. A missing title says nothing about the "
+                    "candidate's sector or career path.",
+                    confidence="MEDIUM",
+                    suggested_question=f"What was your role at {record.employer or 'this job'}?",
+                )
+            )
+    for record in work_history:
         if record.start_date is None:
             flags.append(
                 Flag(
@@ -169,6 +208,26 @@ def flag_missing_information(
                     explanation="A missing date limits how confidently this role can be placed in the "
                     "candidate's timeline — see Information Quality.",
                     confidence="MEDIUM",
+                )
+            )
+    return flags
+
+
+def flag_extraction_uncertain(work_history: list[WorkHistoryRecord]) -> list[Flag]:
+    """One VERIFY flag per experience the reader marked LOW: a person must
+    compare it with the original résumé before relying on it."""
+
+    flags = []
+    for record in work_history:
+        if record.structure_confidence == "LOW":
+            flags.append(
+                Flag(
+                    type=EXTRACTION_UNCERTAIN, attention_level=VERIFY,
+                    evidence=record.structure_note or "This experience could not be read reliably.",
+                    explanation="The résumé reader could not group this experience's job title, employer, "
+                    "dates and duties with certainty. This is about the reading, not about the candidate: "
+                    "check the original résumé before relying on this experience.",
+                    confidence="LOW",
                 )
             )
     return flags

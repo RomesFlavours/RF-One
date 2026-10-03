@@ -116,8 +116,11 @@ from rfone_data_store.selection.core import signal_model as sigm  # noqa: E402
 from rfone_data_store.selection.core import stage_model as stgm  # noqa: E402
 from rfone_data_store.selection.core import trainable_gap_model as tgm  # noqa: E402
 from rfone_data_store.selection.core.resume_source import LOCAL_UPLOAD  # noqa: E402
-from rfone_data_store.selection.import_pipeline import COMPLETED, PARTIAL, import_one_resume  # noqa: E402
-from rfone_data_store.selection.industry.restaurant import ROME_FLAVOURS_SERVER_ROLE_CONFIG  # noqa: E402
+from rfone_data_store.selection.import_pipeline import (  # noqa: E402
+    COMPLETED, DUPLICATE, PARTIAL, import_one_resume, reading_status,
+)
+from rfone_data_store.selection.industry import restaurant as restaurant_industry  # noqa: E402
+from rfone_data_store.selection.industry.restaurant import TARGET_ROLE_CHOICES, target_role_label  # noqa: E402
 from rfone_data_store.selection.industry.restaurant_templates import (  # noqa: E402
     seed_default_review_priority_policy, seed_default_selection_outcomes, seed_default_selection_queues,
     seed_romes_flavours_in_person_interview_structure, seed_romes_flavours_phone_interview_questions,
@@ -221,7 +224,7 @@ def _bootstrap_restaurant(session) -> "m.Restaurant":
     return restaurant
 
 
-def _candidate_rows(candidates: list["m.Candidate"]) -> list[dict]:
+def _candidate_rows(session, candidates: list["m.Candidate"]) -> list[dict]:
     """Builds the candidate-list table's rows (TASK_SELECTION_002 §9): name,
     location, source, latest/current role, employment-record count, import
     status and information-quality confidence — no universal CV score."""
@@ -229,7 +232,9 @@ def _candidate_rows(candidates: list["m.Candidate"]) -> list[dict]:
     rows = []
     for candidate in candidates:
         profile = persistence.to_profile(candidate)
-        view = analyze_candidate(profile)
+        # SELECTION_FOH_TEAM_LEADER_001 — the APPLICATION's target role.
+        application = app_svc.get_application_for_candidate(session, candidate.id)
+        view = analyze_candidate(profile, target_role=application.target_role if application else None)
 
         current_role = next((w.original_job_title for w in profile.work_history if w.is_current), None)
         if not current_role:
@@ -246,9 +251,10 @@ def _candidate_rows(candidates: list["m.Candidate"]) -> list[dict]:
                 "source_provider": candidate.source_provider or "-",
                 "current_role": current_role or "-",
                 "employment_count": len(profile.work_history),
-                "target_role": candidate.target_role or "-",
-                "direct_months": view.breakdown.direct_role_months,
-                "relevant_months": view.breakdown.relevant_propedeutic_months,
+                "target_role": view.target_role_label or "to be clarified",
+                "target_role_issue": view.target_role_issue,
+                "direct_months": view.breakdown.direct_role_months if view.role_config else None,
+                "relevant_months": view.breakdown.relevant_propedeutic_months if view.role_config else None,
                 "stability": next(i for i in view.indicators if i.name == "Stability").state,
                 "flag_count": len(view.flags),
                 "confidence_pct": view.information_quality.overall_confidence_pct,
@@ -265,12 +271,12 @@ def home():
     with SessionFactory() as session:
         restaurant = _bootstrap_restaurant(session)
         candidates = persistence.list_candidates(session, restaurant_id=restaurant.id)
-        rows = _candidate_rows(candidates)
+        rows = _candidate_rows(session, candidates)
 
         return render_template(
             "home.html",
             client_name=restaurant.name,
-            active_role=ROME_FLAVOURS_SERVER_ROLE_CONFIG.target_role,
+            target_role_choices=TARGET_ROLE_CHOICES,
             candidate_count=len(rows),
             candidates=rows,
             db_url=redact_database_url(_DB_URL),
@@ -278,7 +284,19 @@ def home():
         )
 
 
-def _process_one_upload(file_storage) -> dict:
+def _requested_target_role() -> str | None:
+    """SELECTION_FOH_TEAM_LEADER_001 — the operator must choose the target
+    role for an upload (single or batch): no preselection, no default. Only a
+    supported role is accepted."""
+
+    value = (request.form.get("target_role") or "").strip()
+    return value if value in restaurant_industry.ROLE_CONFIGURATIONS else None
+
+
+TARGET_ROLE_REQUIRED = "Choose the target role (Server or FOH Team Leader) before importing résumés."
+
+
+def _process_one_upload(file_storage, target_role: str) -> dict:
     """Handles exactly one uploaded résumé — file-extension validation,
     saving, real text extraction, then hands off to
     `import_pipeline.import_one_resume` for duplicate-checked
@@ -314,11 +332,33 @@ def _process_one_upload(file_storage) -> dict:
         )
 
         application_id = None
-        if result.status in (COMPLETED, PARTIAL) and result.candidate_id is not None:
+        status, candidate_id, full_name, error = result.status, result.candidate_id, result.full_name, result.error
+        reused_document = False
+        if result.status == DUPLICATE and result.duplicate_of_raw_resume_id is not None:
+            # SELECTION_FOH_TEAM_LEADER_001 — the same résumé for another
+            # target role is a new application reusing the document; for the
+            # same target role it stays a duplicate (nothing created).
+            application, created = app_svc.application_for_known_resume(
+                session, raw_resume_id=result.duplicate_of_raw_resume_id, restaurant_id=restaurant.id,
+                target_role=target_role,
+            )
+            if created:
+                seed_default_review_priority_policy(session, restaurant_id=restaurant.id)  # idempotent
+                sig_svc.generate_resume_stage_signals(session, application.id)
+                session.commit()
+                copy = persistence.get_candidate(session, application.candidate_id)
+                status, error = reading_status(persistence.to_profile(copy))
+                candidate_id, full_name, application_id, reused_document = copy.id, copy.full_name, application.id, True
+            elif application is not None:
+                candidate_id, application_id = application.candidate_id, application.id
+                error = f"Already imported for {target_role_label(target_role)}: no new application created."
+        elif result.status in (COMPLETED, PARTIAL) and result.candidate_id is not None:
             # Task 3C: every successfully imported résumé becomes one
             # Application, resolved/linked to its CandidatePerson (best-
             # effort, by email) — never blocks or fails the upload itself.
-            application = app_svc.create_application(session, candidate_id=result.candidate_id, restaurant_id=restaurant.id)
+            application = app_svc.create_application(
+                session, candidate_id=result.candidate_id, restaurant_id=restaurant.id, target_role=target_role,
+            )
             seed_default_review_priority_policy(session, restaurant_id=restaurant.id)  # idempotent
             sig_svc.generate_resume_stage_signals(session, application.id)
             session.commit()
@@ -328,9 +368,10 @@ def _process_one_upload(file_storage) -> dict:
         app.logger.warning("Resume import failed for %r: %s", filename, result.error)
 
     return {
-        "filename": filename, "status": result.status,
-        "candidate_id": result.candidate_id, "full_name": result.full_name,
-        "parsing_mode": result.parsing_mode, "error": result.error, "application_id": application_id,
+        "filename": filename, "status": status,
+        "candidate_id": candidate_id, "full_name": full_name,
+        "parsing_mode": result.parsing_mode, "error": error, "application_id": application_id,
+        "reused_document": reused_document,
     }
 
 
@@ -344,7 +385,10 @@ def api_upload():
     file = request.files.get("resume_file")
     if not file or file.filename == "":
         return jsonify({"filename": None, "status": "FAILED", "error": "No file received."}), 400
-    return jsonify(_process_one_upload(file))
+    target_role = _requested_target_role()
+    if target_role is None:
+        return jsonify({"filename": file.filename, "status": "FAILED", "error": TARGET_ROLE_REQUIRED}), 400
+    return jsonify(_process_one_upload(file, target_role))
 
 
 @app.route("/upload", methods=["POST"])
@@ -358,7 +402,19 @@ def upload():
     if not files:
         return redirect(url_for("home"))
 
-    results = [_process_one_upload(f) for f in files]
+    target_role = _requested_target_role()
+    if target_role is None:
+        # Nothing is imported: the choice applies to the whole batch.
+        with SessionFactory() as session:
+            restaurant = _bootstrap_restaurant(session)
+            rows = _candidate_rows(session, persistence.list_candidates(session, restaurant_id=restaurant.id))
+        return render_template(
+            "home.html", client_name=restaurant.name, target_role_choices=TARGET_ROLE_CHOICES,
+            candidate_count=len(rows), candidates=rows, db_url=redact_database_url(_DB_URL),
+            error=TARGET_ROLE_REQUIRED, active_nav="candidates",
+        ), 400
+
+    results = [_process_one_upload(f, target_role) for f in files]
 
     if len(results) == 1 and results[0]["status"] in (COMPLETED, PARTIAL):
         return redirect(url_for("candidate_detail", candidate_id=results[0]["candidate_id"]))
@@ -366,12 +422,12 @@ def upload():
     with SessionFactory() as session:
         restaurant = _bootstrap_restaurant(session)
         candidates = persistence.list_candidates(session, restaurant_id=restaurant.id)
-        rows = _candidate_rows(candidates)
+        rows = _candidate_rows(session, candidates)
 
     return render_template(
         "home.html",
         client_name=restaurant.name,
-        active_role=ROME_FLAVOURS_SERVER_ROLE_CONFIG.target_role,
+        target_role_choices=TARGET_ROLE_CHOICES,
         candidate_count=len(rows),
         candidates=rows,
         db_url=redact_database_url(_DB_URL),
@@ -390,14 +446,18 @@ def candidate_detail(candidate_id: int):
             return redirect(url_for("home"))
 
         profile = persistence.to_profile(candidate)
-        view = analyze_candidate(profile)
+        # SELECTION_FOH_TEAM_LEADER_001 — the page, its indicators and its
+        # questions use THIS application's target role; none is assumed.
+        application = app_svc.get_application_for_candidate(session, candidate_id)
+        view = analyze_candidate(profile, target_role=application.target_role if application else None)
 
-        role_config = ROME_FLAVOURS_SERVER_ROLE_CONFIG
         work_entries = [
             {
                 "record": w,
                 "months": months_between(w.start_date, w.end_date if not w.is_current else None),
-                "category": classify_role(w.normalized_role, role_config),
+                "category": classify_role(w.normalized_role, view.role_config) if view.role_config else None,
+                "leadership_basis": restaurant_industry.leadership_title_context(
+                    w.original_job_title, w.responsibilities)[1],
             }
             for w in profile.work_history
         ]
@@ -411,7 +471,6 @@ def candidate_detail(candidate_id: int):
         available_requirement_sets = req_svc.list_requirement_sets(
             session, restaurant_id=candidate.restaurant_id, active_only=True,
         )
-        application = app_svc.get_application_for_candidate(session, candidate_id)
         # Task 5A-ALIGN §12 — a Candidate Flag (e.g. a prior "Training Check
         # Not Passed") must be immediately visible at CV Review too.
         active_flags = flag_svc.list_active_flags_for_application(session, application.id) if application else []

@@ -20,6 +20,9 @@ class Indicator:
     state: str | None = None
 
 
+TARGET_ROLE_TO_CLARIFY = "target role to be clarified"
+
+
 def _months_label(months: int) -> str:
     return f"{months} month{'s' if months != 1 else ''}"
 
@@ -40,12 +43,20 @@ def compute_indicators(
     tenure: TenureStats,
     trajectory_events: list[TrajectoryEvent],
     information_quality: InformationQuality,
+    *,
+    role_known: bool = True,
 ) -> list[Indicator]:
+    """`role_known=False` (SELECTION_FOH_TEAM_LEADER_001): the application has
+    no supported target role, so the two role-relative Indicators are shown
+    as to be clarified instead of a misleading "0 months"."""
+
     progression_observed = any(e.type in (PROMOTION, INCREASE_IN_RESPONSIBILITY) for e in trajectory_events)
 
     return [
-        Indicator("Direct Role Experience", _months_label(breakdown.direct_role_months)),
-        Indicator("Relevant / Propedeutic Experience", _months_label(breakdown.relevant_propedeutic_months)),
+        Indicator("Direct Role Experience",
+                  _months_label(breakdown.direct_role_months) if role_known else TARGET_ROLE_TO_CLARIFY),
+        Indicator("Relevant / Propedeutic Experience",
+                  _months_label(breakdown.relevant_propedeutic_months) if role_known else TARGET_ROLE_TO_CLARIFY),
         Indicator("Industry Experience", _months_label(breakdown.industry_months)),
         Indicator(
             "Stability",

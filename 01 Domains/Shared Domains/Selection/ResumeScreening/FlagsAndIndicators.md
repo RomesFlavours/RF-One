@@ -35,6 +35,7 @@ Flag
 - `TITLE_INCONSISTENCY`
 - `MISSING_INFORMATION`
 - `CHRONOLOGY_QUESTION`
+- `EXTRACTION_UNCERTAIN` — the résumé reader could not group one experience's title, employer, dates and duties with certainty (its `structure confidence` is `LOW`, [CandidateCVProfile.md](CandidateCVProfile.md)). Attention level VERIFY. It is about the reading, never about the candidate: it asks a person to check the original résumé before relying on that experience (SELECTION_CV_STRUCTURE_READING_001).
 
 An Industry Extension may register additional, more specific flag types alongside these — e.g. the Restaurant extension's `BOH_TO_FOH` (`01 Domains/Business Domain/Restaurant/Selection/README.md`) — without Selection Core needing to know about them. Core code only guarantees the `Flag` shape above and the generic types it lists; it never hard-codes an industry-specific type name.
 

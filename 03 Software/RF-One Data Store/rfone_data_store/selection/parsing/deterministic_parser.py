@@ -158,17 +158,7 @@ _DATE_RANGE_RE = re.compile(
 )
 
 
-def _split_into_blocks(lines: list[str]) -> list[list[str]]:
-    """Splits a section's lines into per-entry blocks. Prefers blank-line
-    paragraph breaks (the common case for well-formatted résumés); falls
-    back to splitting right before each date-range match when the whole
-    section is one unbroken block with multiple date ranges in it. The
-    fallback is a known, documented simplification — a title-only line
-    immediately before a date range may end up attached to the previous
-    entry instead of the one it introduces; `evidence_snippet` always keeps
-    the real text either way, so nothing is fabricated, only imperfectly
-    grouped."""
-
+def _split_into_blocks_by_blank_lines(lines: list[str]) -> list[list[str]]:
     blocks: list[list[str]] = []
     current: list[str] = []
     for line in lines:
@@ -180,7 +170,21 @@ def _split_into_blocks(lines: list[str]) -> list[list[str]]:
             current.append(line)
     if current:
         blocks.append(current)
+    return blocks
 
+
+def _split_into_blocks(lines: list[str]) -> list[list[str]]:
+    """Splits a section's lines into per-entry blocks. Prefers blank-line
+    paragraph breaks (the common case for well-formatted résumés); falls
+    back to splitting right before each date-range match when the whole
+    section is one unbroken block with multiple date ranges in it. The
+    fallback is a known, documented simplification — a title-only line
+    immediately before a date range may end up attached to the previous
+    entry instead of the one it introduces; `evidence_snippet` always keeps
+    the real text either way, so nothing is fabricated, only imperfectly
+    grouped."""
+
+    blocks = _split_into_blocks_by_blank_lines(lines)
     if len(blocks) > 1:
         return blocks
 
@@ -199,59 +203,164 @@ def _split_into_blocks(lines: list[str]) -> list[list[str]]:
     return result or blocks
 
 
-def _parse_work_entry(block: list[str]) -> WorkHistoryRecord:
+# SELECTION_CV_STRUCTURE_READING_001 — how sure the reader is that an
+# experience's title, employer, dates and duties were grouped correctly.
+# It is about the READING, never about the candidate: HIGH = an explicit clue
+# fixed the grouping; MEDIUM = read with the parser's long-standing layout
+# convention ("Title, Employer"), or a fact is simply absent; LOW = the
+# grouping could not be determined, so the uncertain fields are left empty
+# and a person has to check the original text (see `structure_note`).
+STRUCTURE_HIGH = "HIGH"
+STRUCTURE_MEDIUM = "MEDIUM"
+STRUCTURE_LOW = "LOW"
+
+_STRIP_CHARS = " \t-–—,|()"
+_ENTRY_BULLET_RE = re.compile(r"^[\-•\*·]\s*")
+_LOCATION_ONLY_RE = re.compile(rf"^\s*{_LOCATION_RE.pattern}\s*$")
+# A title/employer line is short and is neither a bullet, a sentence nor a
+# date line. At most two such lines introduce an entry (title, employer).
+_MAX_HEADER_WORDS = 10
+_MAX_HEADER_LINES = 2
+
+
+def _is_header_like(line: str) -> bool:
+    stripped = line.strip()
+    return bool(
+        stripped and not _ENTRY_BULLET_RE.match(stripped) and not stripped.endswith((".", ";", ":"))
+        and len(stripped.split()) <= _MAX_HEADER_WORDS and not _DATE_RANGE_RE.search(stripped)
+    )
+
+
+def _date_line_remainder(line: str) -> str:
+    match = _DATE_RANGE_RE.search(line)
+    return (line[: match.start()] + line[match.end():]).strip(_STRIP_CHARS) if match else ""
+
+
+def _split_experience_blocks(lines: list[str]) -> list[tuple[list[str], bool]]:
+    """EXPERIENCE only: blank-line paragraphs, then every paragraph holding
+    more than one date range is split again so that each date range starts
+    its own entry. The (up to two) title/employer lines written just above a
+    date line move with it, instead of staying at the end of the previous
+    entry. Returns (block, boundaries_inferred) pairs."""
+
+    result: list[tuple[list[str], bool]] = []
+    for block in _split_into_blocks_by_blank_lines(lines):
+        rows = [l for l in block if l.strip()]
+        anchors = [i for i, l in enumerate(rows) if _DATE_RANGE_RE.search(l)]
+        if len(anchors) <= 1:
+            result.append((block, False))
+            continue
+        starts = [0]
+        for k in range(1, len(anchors)):
+            floor = anchors[k - 1] + 1
+            start = anchors[k]
+            while start - 1 >= floor and anchors[k] - (start - 1) <= _MAX_HEADER_LINES \
+                    and _is_header_like(rows[start - 1]):
+                start -= 1
+            starts.append(start)
+        for k, start in enumerate(starts):
+            end = starts[k + 1] if k + 1 < len(starts) else len(rows)
+            result.append((rows[start:end], True))
+    return result
+
+
+def _resolve_header(parts: list[str], employer_cues: set[int]) -> tuple[str | None, str | None, str, str | None]:
+    """(title, employer, structure_confidence, structure_note) from the
+    lines that introduce an entry. Never guesses: when nothing shows which
+    line is the employer, both stay None and the note quotes the lines."""
+
+    if not parts:
+        return None, None, STRUCTURE_LOW, (
+            "No job title or employer was found before the dates. Check the original text."
+        )
+    if len(parts) == 1:
+        text = parts[0]
+        for sep in (" at ", " @ "):
+            if sep in text:
+                left, right = (s.strip(_STRIP_CHARS) for s in text.split(sep, 1))
+                if left and right:
+                    return left, right, STRUCTURE_HIGH, None
+        for sep in (" – ", " — ", " - ", " | ", ","):
+            if sep in text:
+                left, right = (s.strip(_STRIP_CHARS) for s in text.split(sep, 1))
+                if left and right:
+                    return left, right, STRUCTURE_MEDIUM, (
+                        f'Read as "job title, employer" from "{text}".'
+                    )
+        return text, None, STRUCTURE_MEDIUM, "Only one line introduces this entry: read as the job title."
+    if len(parts) == 2 and len(employer_cues) == 1:
+        employer_idx = next(iter(employer_cues))
+        return parts[1 - employer_idx], parts[employer_idx], STRUCTURE_HIGH, None
+    quoted = " / ".join(f'"{p}"' for p in parts)
+    return None, None, STRUCTURE_LOW, (
+        f"Lines before the dates: {quoted}. It could not be determined which is the job title and "
+        "which the employer, so neither was recorded. Check the original text."
+    )
+
+
+def _parse_work_entry(block: list[str], *, boundaries_inferred: bool = False) -> WorkHistoryRecord:
     non_blank = [l.strip() for l in block if l.strip()]
     evidence_snippet = " ".join(non_blank)[:600] or None
 
-    date_line_idx = None
-    date_match = None
-    for i, line in enumerate(non_blank):
-        m = _DATE_RANGE_RE.search(line)
-        if m:
-            date_line_idx, date_match = i, m
-            break
+    date_lines = [i for i, line in enumerate(non_blank) if _DATE_RANGE_RE.search(line)]
+    date_line_idx = date_lines[0] if date_lines else None
+    date_match = _DATE_RANGE_RE.search(non_blank[date_line_idx]) if date_line_idx is not None else None
 
     start_date_text = end_date_text = None
     if date_match:
         start_date_text = date_match.group("start")
         end_date_text = date_match.group("end")
 
-    header_text = ""
+    # The lines that introduce the entry: everything above the date line
+    # that is not a bullet, plus whatever shares the date line. With no date
+    # line, only the first line (unchanged behaviour).
     if date_line_idx is not None:
-        remainder = (
-            non_blank[date_line_idx][: date_match.start()] + non_blank[date_line_idx][date_match.end():]
-        ).strip(" \t-–—,|()")
-        if remainder:
-            header_text = remainder
-        elif date_line_idx > 0:
-            header_text = non_blank[date_line_idx - 1]
-    elif non_blank:
-        header_text = non_blank[0]
+        header_idx = [i for i in range(date_line_idx) if not _ENTRY_BULLET_RE.match(non_blank[i])]
+        remainder = _date_line_remainder(non_blank[date_line_idx])
+    else:
+        header_idx = [0] if non_blank else []
+        remainder = ""
+    raw_parts = [non_blank[i] for i in header_idx] + ([remainder] if remainder else [])
 
+    # Location: a "City, ST" line of its own belongs to the line above it; a
+    # location written on a line marks that line as the employer's.
     location = None
-    loc_match = _LOCATION_RE.search(header_text) or (
-        _LOCATION_RE.search(non_blank[date_line_idx]) if date_line_idx is not None else None
-    )
-    if loc_match:
-        location = loc_match.group(0)
-        header_text = header_text.replace(location, "").strip(" \t-–—,|()")
+    parts: list[str] = []
+    employer_cues: set[int] = set()
+    for text in raw_parts:
+        if _LOCATION_ONLY_RE.match(text):
+            location = location or text.strip()
+            if parts:
+                employer_cues.add(len(parts) - 1)
+            continue
+        loc_match = _LOCATION_RE.search(text)
+        if loc_match:
+            location = location or loc_match.group(0)
+            text = text.replace(loc_match.group(0), "").strip(_STRIP_CHARS)
+            if text:
+                employer_cues.add(len(parts))
+        if text:
+            parts.append(text)
+    if location is None and date_line_idx is not None:
+        loc_match = _LOCATION_RE.search(non_blank[date_line_idx])
+        location = loc_match.group(0) if loc_match else None
 
-    original_job_title = employer = None
-    for sep in (" at ", " – ", " — ", " - ", " | ", ","):
-        if sep in header_text:
-            left, right = header_text.split(sep, 1)
-            left, right = left.strip(" \t-–—,|()"), right.strip(" \t-–—,|()")
-            if left and right:
-                original_job_title, employer = left, right
-                break
-    if original_job_title is None and header_text:
-        original_job_title = header_text
+    original_job_title, employer, structure_confidence, structure_note = _resolve_header(parts, employer_cues)
+    if date_line_idx is None:
+        structure_confidence = STRUCTURE_MEDIUM if structure_confidence == STRUCTURE_HIGH else structure_confidence
+        structure_note = " ".join(filter(None, [structure_note, "No dates were found for this entry."]))
+    if len(date_lines) > 1:
+        structure_confidence, original_job_title, employer = STRUCTURE_LOW, None, None
+        structure_note = ("This entry contains more than one date range, so several experiences may have "
+                          "been read as one. Check the original text.")
+    elif boundaries_inferred and structure_confidence != STRUCTURE_LOW:
+        structure_confidence = STRUCTURE_MEDIUM
+        structure_note = " ".join(filter(None, [
+            structure_note, "Entries are not separated by blank lines: this one was delimited by its dates."]))
 
-    body_lines = [
-        l for i, l in enumerate(non_blank)
-        if i != date_line_idx and l != header_text and l not in (original_job_title, employer)
-    ]
-    body_lines = [re.sub(r"^[\-•\*·]\s*", "", l) for l in body_lines]
+    used = set(header_idx) | ({date_line_idx} if date_line_idx is not None else set())
+    body_lines = [l for i, l in enumerate(non_blank) if i not in used]
+    body_lines = [_ENTRY_BULLET_RE.sub("", l) for l in body_lines]
 
     achievements = None
     responsibilities_lines = []
@@ -270,6 +379,7 @@ def _parse_work_entry(block: list[str]) -> WorkHistoryRecord:
         start_date_text=start_date_text, end_date_text=end_date_text,
         responsibilities=responsibilities, achievements=achievements,
         reason_for_leaving=None, evidence_snippet=evidence_snippet,
+        structure_confidence=structure_confidence, structure_note=structure_note or None,
     )
 
 
@@ -457,8 +567,8 @@ class DeterministicResumeParser(ResumeParser):
                 text = "\n".join(l.strip() for l in content_lines if l.strip())
                 summary = text or None
             elif section == "EXPERIENCE":
-                for block in _split_into_blocks(content_lines):
-                    entry = _parse_work_entry(block)
+                for block, boundaries_inferred in _split_experience_blocks(content_lines):
+                    entry = _parse_work_entry(block, boundaries_inferred=boundaries_inferred)
                     if entry.original_job_title or entry.employer or entry.start_date_text or entry.evidence_snippet:
                         work_history.append(entry)
             elif section == "EDUCATION":

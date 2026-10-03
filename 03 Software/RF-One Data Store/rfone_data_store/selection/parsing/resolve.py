@@ -42,7 +42,9 @@ def parse_resume(raw_resume: RawResumeRef):
     except ProviderUnavailable:
         profile = DeterministicResumeParser().parse(raw_resume)
 
-    profile.target_role = profile.target_role or "SERVER"
+    # SELECTION_FOH_TEAM_LEADER_001: no silent "SERVER" default any more —
+    # the role being screened for is the APPLICATION's target role, chosen
+    # by the operator at upload; the résumé itself does not decide it.
     normalize_profile(profile)
 
     # Source metadata (TASK_SELECTION_002 §3) — applied uniformly here,

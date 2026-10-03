@@ -174,7 +174,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
         if _python_docx is not None:
             files.insert(1, (BytesIO(_make_docx_bytes(BETA_RESUME_DOCX_PARAGRAPHS)), "candidate_beta.docx"))
 
-        response = client.post("/upload", data={"resume_file": files}, content_type="multipart/form-data")
+        response = client.post("/upload", data={"target_role": "SERVER", "resume_file": files}, content_type="multipart/form-data")
         check("1: batch upload returns HTTP 200", response.status_code == 200)
 
         with selection_app.SessionFactory() as session:
@@ -241,7 +241,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
         )
         good_response = client.post(
             "/api/upload",
-            data={"resume_file": (BytesIO(epsilon_text.encode("utf-8")), "candidate_epsilon.txt")},
+            data={"target_role": "SERVER", "resume_file": (BytesIO(epsilon_text.encode("utf-8")), "candidate_epsilon.txt")},
             content_type="multipart/form-data",
         )
         good_json = good_response.get_json()
@@ -253,7 +253,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
 
         bad_response = client.post(
             "/api/upload",
-            data={"resume_file": (BytesIO(b"whatever"), "candidate_zeta.rtf")},
+            data={"target_role": "SERVER", "resume_file": (BytesIO(b"whatever"), "candidate_zeta.rtf")},
             content_type="multipart/form-data",
         )
         bad_json = bad_response.get_json()
@@ -265,7 +265,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
 
         no_text_response = client.post(
             "/api/upload",
-            data={"resume_file": (BytesIO(_fake_pdf("eta")), "candidate_eta.pdf")},
+            data={"target_role": "SERVER", "resume_file": (BytesIO(_fake_pdf("eta")), "candidate_eta.pdf")},
             content_type="multipart/form-data",
         )
         no_text_json = no_text_response.get_json()
@@ -278,7 +278,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
 
         partial_response = client.post(
             "/api/upload",
-            data={"resume_file": (BytesIO(NO_STRUCTURE_TEXT.encode("utf-8")), "candidate_theta.txt")},
+            data={"target_role": "SERVER", "resume_file": (BytesIO(NO_STRUCTURE_TEXT.encode("utf-8")), "candidate_theta.txt")},
             content_type="multipart/form-data",
         )
         partial_json = partial_response.get_json()
@@ -290,7 +290,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
 
         duplicate_response = client.post(
             "/api/upload",
-            data={"resume_file": (BytesIO(ALPHA_RESUME_TXT.encode("utf-8")), "candidate_alpha.txt")},
+            data={"target_role": "SERVER", "resume_file": (BytesIO(ALPHA_RESUME_TXT.encode("utf-8")), "candidate_alpha.txt")},
             content_type="multipart/form-data",
         )
         duplicate_json = duplicate_response.get_json()

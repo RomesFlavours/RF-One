@@ -10,8 +10,8 @@
       <div class="value">{{ client_name }}</div>
     </div>
     <div class="meta-item">
-      <div class="label">Active Role</div>
-      <div class="value">{{ active_role }}</div>
+      <div class="label">Target Roles</div>
+      <div class="value">{{ target_role_choices | map(attribute=1) | join(' · ') }}</div>
     </div>
     <div class="meta-item">
       <div class="label">Candidates</div>
@@ -26,6 +26,13 @@
       <div class="hint">Each résumé is processed independently — one failed file will not stop the rest.</div>
     </div>
     <input type="file" id="resume_files" name="resume_file" accept=".pdf,.docx,.txt" multiple required>
+    {#- SELECTION_FOH_TEAM_LEADER_001 — mandatory, no preselection; one choice
+        for the whole batch, saved on each application created. -#}
+    <label for="target_role" class="muted" style="font-size:.85rem;">Target role for these applications</label>
+    <select id="target_role" name="target_role" required>
+      <option value="" selected disabled>Choose the target role&hellip;</option>
+      {% for code, label in target_role_choices %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+    </select>
     <button type="submit" id="upload-btn">Import Résumés</button>
   </form>
 
@@ -88,7 +95,7 @@
         <td>{{ c.current_role }}</td>
         <td>{{ c.employment_count }}</td>
         <td>{{ c.target_role }}</td>
-        <td>{{ c.direct_months }} mo</td>
+        <td>{% if c.direct_months is not none %}{{ c.direct_months }} mo{% else %}<span class="muted">to be clarified</span>{% endif %}</td>
         <td><span class="badge state-{{ c.stability|lower|replace(' ', '-') }}">{{ c.stability }}</span></td>
         <td>{{ c.flag_count }}</td>
         <td>{{ c.confidence_pct }}%</td>
@@ -172,15 +179,18 @@
     summaryEl.textContent = done + " / " + total + " processed";
   }
 
-  function uploadOne(file) {
+  var targetRoleEl = document.getElementById("target_role");
+
+  function uploadOne(file, targetRole) {
     var data = new FormData();
     data.append("resume_file", file);
+    data.append("target_role", targetRole);
     return fetch("{{ url_for('api_upload') }}", { method: "POST", body: data })
       .then(function (resp) { return resp.json().catch(function () { return { status: "FAILED", error: "Invalid server response." }; }); })
       .catch(function () { return { status: "FAILED", error: "Network error while uploading." }; });
   }
 
-  function runBatch(files) {
+  function runBatch(files, targetRole) {
     progressWrap.hidden = false;
     listEl.innerHTML = "";
     refreshLink.style.display = "none";
@@ -196,17 +206,18 @@
     files.forEach(function (file, i) {
       chain = chain.then(function () {
         setRow(i, "PROCESSING");
-        return uploadOne(file).then(function (result) {
+        return uploadOne(file, targetRole).then(function (result) {
           var status = result.status || "FAILED";
           var detail = "";
           if (status === "COMPLETED") {
             detail = result.full_name ? "&rarr; " + result.full_name : "";
             if (result.parsing_mode === "RULE_BASED") { detail += " (rule-based)"; }
+            if (result.reused_document) { detail += " — same résumé already imported: new application for this target role"; }
             else if (result.parsing_mode && result.parsing_mode !== "REAL_AI") { detail += " (DEMO/MOCK)"; }
           } else if (status === "PARTIAL") {
             detail = (result.full_name ? "&rarr; " + result.full_name + " — " : "") + (result.error || "partially parsed");
           } else if (status === "DUPLICATE") {
-            detail = "already imported";
+            detail = result.error || "already imported";
           } else if (status === "FAILED") {
             detail = result.error || "could not process this file";
           }
@@ -226,8 +237,9 @@
 
   form.addEventListener("submit", function (e) {
     if (!input.files || !input.files.length) { return; }
+    if (!targetRoleEl.value) { return; }  // the browser's own "required" message is shown
     e.preventDefault();
-    runBatch(Array.prototype.slice.call(input.files));
+    runBatch(Array.prototype.slice.call(input.files), targetRoleEl.value);
   });
 })();
 </script>

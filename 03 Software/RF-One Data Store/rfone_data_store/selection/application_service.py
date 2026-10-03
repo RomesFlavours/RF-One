@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from .. import models as m
 from . import identity_service as identity_svc
+from . import persistence
 from .core import application_model as apm
 from .core import signal_model as sm
 
@@ -84,6 +85,46 @@ def create_application(
         )
 
     return application
+
+
+def application_for_known_resume(
+    session: Session, *, raw_resume_id: int, restaurant_id: int | None, target_role: str,
+) -> tuple[m.Application | None, bool]:
+    """SELECTION_FOH_TEAM_LEADER_001 — a résumé already imported (same
+    document) uploaded again for `target_role`.
+
+    - An application of this document already targets `target_role`:
+      returns `(that application, False)` — a duplicate, nothing created.
+    - Otherwise: a new application for `target_role`, reusing the document
+      (same `RawResume`: file, text, hash) and the facts already extracted
+      from it, copied without re-reading into a new résumé snapshot
+      (`Candidate`), because an application is tied to exactly one snapshot.
+      Returns `(new application, True)`. Earlier applications — their target
+      role, notes, stage and outcome — are not touched. The person is
+      resolved by the existing identity rules: identical email or phone is
+      the same person; otherwise a new person is created with name-match
+      suggestions to verify, never an automatic merge.
+
+    `(None, False)` when no snapshot of the document exists."""
+
+    snapshots = session.scalars(
+        select(m.Candidate).where(m.Candidate.raw_resume_id == raw_resume_id).order_by(m.Candidate.id)
+    ).all()
+    if not snapshots:
+        return None, False
+    snapshot_ids = [c.id for c in snapshots]
+    existing = session.scalars(
+        select(m.Application).where(
+            m.Application.candidate_id.in_(snapshot_ids), m.Application.target_role == target_role,
+        ).order_by(m.Application.id)
+    ).first()
+    if existing is not None:
+        return existing, False
+
+    copy = persistence.save_candidate_profile(
+        session, persistence.to_profile(snapshots[0]), restaurant_id=restaurant_id, raw_resume_id=raw_resume_id,
+    )
+    return create_application(session, candidate_id=copy.id, restaurant_id=restaurant_id, target_role=target_role), True
 
 
 def get_application(session: Session, application_id: int) -> m.Application | None:

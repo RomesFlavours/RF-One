@@ -6069,6 +6069,12 @@ class CandidateWorkHistory(Base):
     multi_role: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     title_normalization_confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
+    # SELECTION_CV_STRUCTURE_READING_001 — how sure the résumé reader is that
+    # this entry's title/employer/dates/duties were grouped correctly
+    # (HIGH | MEDIUM | LOW; NULL = not assessed). About the reading only.
+    structure_confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    structure_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     candidate: Mapped["Candidate"] = relationship(back_populates="work_history")
 
 
