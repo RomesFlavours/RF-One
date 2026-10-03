@@ -11,6 +11,8 @@ place allowed to import both `core` and SQLAlchemy models together.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -143,6 +145,18 @@ def get_candidate(session: Session, candidate_id: int) -> m.Candidate | None:
     return session.get(m.Candidate, candidate_id)
 
 
+def _naive_utc(value: datetime | None) -> datetime | None:
+    """SELECTION_AWS_PUBLISH_001 — résumé dates are calendar dates written
+    without a time zone (normalization.py). PostgreSQL returns them as
+    timezone-aware UTC values, SQLite as naive ones; the analysis compares
+    them with each other and with "today", so they are always handed back in
+    the form they were read in: naive, UTC. The value itself is unchanged."""
+
+    if value is None or value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def to_profile(candidate: m.Candidate) -> CandidateCVProfile:
     """Reconstruct a CandidateCVProfile from persisted rows — used so the
     analysis engine (core/*) always works against the same shape regardless
@@ -173,7 +187,7 @@ def to_profile(candidate: m.Candidate) -> CandidateCVProfile:
         education=[
             EducationRecord(
                 institution=e.institution, program=e.program, qualification=e.qualification,
-                field=e.field, start_date=e.start_date, end_date=e.end_date,
+                field=e.field, start_date=_naive_utc(e.start_date), end_date=_naive_utc(e.end_date),
                 completion_status=e.completion_status, certifications=e.certifications, notes=e.notes,
                 start_date_text=e.start_date_text, end_date_text=e.end_date_text,
                 start_date_precision=e.start_date_precision, end_date_precision=e.end_date_precision,
@@ -184,7 +198,7 @@ def to_profile(candidate: m.Candidate) -> CandidateCVProfile:
         work_history=[
             WorkHistoryRecord(
                 employer=w.employer, location=w.location, original_job_title=w.original_job_title,
-                normalized_role=w.normalized_role, start_date=w.start_date, end_date=w.end_date,
+                normalized_role=w.normalized_role, start_date=_naive_utc(w.start_date), end_date=_naive_utc(w.end_date),
                 is_current=w.is_current, responsibilities=w.responsibilities, achievements=w.achievements,
                 reason_for_leaving=w.reason_for_leaving, evidence_snippet=w.evidence_snippet,
                 start_date_text=w.start_date_text, end_date_text=w.end_date_text,

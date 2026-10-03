@@ -353,6 +353,20 @@ def main() -> int:
                       len(rows) == 1 and rows[0].structure_confidence == "LOW" and bool(rows[0].structure_note))
                 check("6. every stored experience keeps the original text it was read from",
                       all(r.evidence_snippet for r in session.query(m.CandidateWorkHistory).all()))
+                # PostgreSQL hands dates back timezone-aware; SQLite does not.
+                from datetime import datetime, timezone
+                aware = m.Candidate(full_name="Aware Synthetic", work_history=[m.CandidateWorkHistory(
+                    original_job_title="Server", employer="Cafe Campione", is_current=True,
+                    start_date=datetime(2022, 3, 1, tzinfo=timezone.utc), start_date_text="Mar 2022",
+                    end_date_text="Present")])
+                aware_profile = persistence.to_profile(aware)
+                try:
+                    analyze_candidate(aware_profile, target_role="SERVER")
+                    analysed = True
+                except TypeError:
+                    analysed = False
+                check("6. dates read back timezone-aware (PostgreSQL) are analysed like naive ones, value unchanged",
+                      analysed and aware_profile.work_history[0].start_date == datetime(2022, 3, 1))
                 from rfone_data_store.selection.parsing.dedup import compute_content_hash
                 limit = m.RawResume.__table__.c.content_hash.type.length
                 check("6. both content-hash forms fit the column (SQLite does not enforce it; PostgreSQL does)",
