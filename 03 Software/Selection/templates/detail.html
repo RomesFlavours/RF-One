@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_indicator_explanation.html" import explanation %}
 {% block content %}
 
 <a class="back-link" href="{{ url_for('home') }}">&larr; Back to candidate list</a>
@@ -390,13 +391,14 @@
       Months by role, including Supervisory Responsibility, are counted from the job titles as declared on the résumé: they do not show which coordination duties were actually performed.</p>
     <div class="indicator-list">
       {% for i in view.indicators %}
-      <div class="indicator-row">
+      <div class="indicator-row" data-indicator="{{ i.name }}">
         <span>{{ i.name }}</span>
         <span>
           {{ i.raw_value }}
           {% if i.state %}<span class="badge state-{{ i.state|lower|replace(' ', '-') }}">{{ i.state }}</span>{% endif %}
         </span>
       </div>
+      {{ explanation(view.explanations.get(i.name)) }}
       {% endfor %}
     </div>
   </div>

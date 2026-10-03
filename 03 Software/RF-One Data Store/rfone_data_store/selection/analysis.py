@@ -27,6 +27,7 @@ from .core.profile import CandidateCVProfile
 from .core.role_model import RoleConfiguration
 from .core.trajectory import TrajectoryEvent, TransitionToInvestigate, detect_trajectory, detect_transitions_to_investigate
 from .industry import restaurant as restaurant_industry
+from . import indicator_explanations as expl
 
 
 @dataclass
@@ -51,6 +52,8 @@ class CandidateAnalysisView:
     # coordinating others: never a role change, a month count or a score.
     coordination_evidence: list[CoordinationEvidence] = field(default_factory=list)
     coordination_questions: list[str] = field(default_factory=list)
+    # SELECTION_INDICATOR_EXPLANATIONS_001 — keyed by Indicator name.
+    explanations: dict[str, "expl.IndicatorExplanation"] = field(default_factory=dict)
 
     @property
     def target_role_label(self) -> str | None:
@@ -147,6 +150,27 @@ def analyze_candidate(profile: CandidateCVProfile, *, target_role: str | None) -
 
     view.indicators = indicators_mod.compute_indicators(
         breakdown, tenure, trajectory_events, information_quality, role_known=role_config is not None,
+    )
+
+    # SELECTION_INDICATOR_EXPLANATIONS_001 — what each of the four values is
+    # made of. Direct / propedeutic months are shown from the explanation, so
+    # an incomplete total reads "to be clarified" instead of a partial sum.
+    by_name = {i.name: i for i in view.indicators}
+    for name in (expl.DIRECT, expl.PROPEDEUTIC_NAME):
+        explanation = expl.explain_role_months(
+            name, profile.work_history, role_config, display_name_fn=restaurant_industry.display_name_for,
+        )
+        if role_config is not None:
+            by_name[name].raw_value = explanation.value
+        else:
+            explanation.value = by_name[name].raw_value
+        view.explanations[name] = explanation
+    view.explanations[expl.STABILITY] = expl.explain_stability(
+        profile.work_history, tenure, by_name[expl.STABILITY].state, by_name[expl.STABILITY].raw_value,
+    )
+    view.explanations[expl.PROGRESSION] = expl.explain_progression(
+        profile.work_history, trajectory_events, by_name[expl.PROGRESSION].state,
+        by_name[expl.PROGRESSION].raw_value, seniority_rank_fn=restaurant_industry.seniority_rank,
     )
 
     return view

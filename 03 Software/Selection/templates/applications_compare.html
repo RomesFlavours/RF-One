@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_indicator_explanation.html" import explanation %}
 {% block content %}
 
 {#- SELECTION_PRESELECTION_COMPARE_001 — side-by-side view of 2 to 4
@@ -51,15 +52,19 @@
       </tr>
       <tr>
         <th>Direct experience</th>
-        {% for c in columns %}<td>{% if c.direct_months is not none %}{{ c.direct_months }} months{% else %}<span class="muted">to be clarified</span>{% endif %}</td>{% endfor %}
+        {% for c in columns %}<td>{% if c.direct_months is not none %}{{ c.direct_months }} months{% else %}<span class="muted">to be clarified</span>{% endif %}{{ explanation(c.explanations.get('Direct Role Experience')) }}</td>{% endfor %}
       </tr>
       <tr>
         <th>Propedeutic experience</th>
-        {% for c in columns %}<td>{% if c.propedeutic_months is not none %}{{ c.propedeutic_months }} months{% else %}<span class="muted">to be clarified</span>{% endif %}</td>{% endfor %}
+        {% for c in columns %}<td>{% if c.propedeutic_months is not none %}{{ c.propedeutic_months }} months{% else %}<span class="muted">to be clarified</span>{% endif %}{{ explanation(c.explanations.get('Relevant / Propedeutic Experience')) }}</td>{% endfor %}
       </tr>
       <tr>
         <th>Stability</th>
-        {% for c in columns %}<td>{% if c.stability in ('Strong', 'Moderate', 'Weak') %}{{ c.stability }}{% else %}<span class="muted">to be clarified</span>{% endif %} <span class="muted" style="font-size:.76rem;">({{ c.stability_detail }})</span></td>{% endfor %}
+        {% for c in columns %}<td>{% if c.stability in ('Strong', 'Moderate', 'Weak') %}{{ c.stability }}{% else %}<span class="muted">to be clarified</span>{% endif %} <span class="muted" style="font-size:.76rem;">({{ c.stability_detail }})</span>{{ explanation(c.explanations.get('Stability')) }}</td>{% endfor %}
+      </tr>
+      <tr>
+        <th>Career progression</th>
+        {% for c in columns %}{% set p = c.explanations.get('Career Progression') %}<td>{{ p.value }}{% if p.state %} &middot; {{ p.state }}{% endif %}{{ explanation(p) }}</td>{% endfor %}
       </tr>
       <tr>
         <th>Work history</th>

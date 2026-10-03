@@ -30,11 +30,12 @@ from .. import models as m
 from . import application_service as app_svc
 from . import outcome_service as outcome_svc
 from . import persistence
-from .analysis import CandidateAnalysisView, analyze_candidate
+from .analysis import analyze_candidate
 from .core import flags as flags_mod
 from .core.coordination_evidence import CATEGORY_LABELS, CoordinationEvidence
 from .core.experience_analysis import months_between
-from .core.role_model import ADJACENT, EQUIVALENT, PROPEDEUTIC, TARGET, classify_role
+from .core.role_model import classify_role
+from .indicator_explanations import DIRECT, PROPEDEUTIC_NAME, IndicatorExplanation
 from .industry.restaurant import ROLE_CONFIGURATIONS
 
 STABILITY_CATEGORIES = ("Strong", "Moderate", "Weak")  # the existing Indicator states
@@ -82,6 +83,9 @@ class ApplicationSummary:
     stage: str | None
     outcome: str | None
     experiences: list[ExperienceLine] = field(default_factory=list)
+    # SELECTION_INDICATOR_EXPLANATIONS_001 — the same explanations as the
+    # candidate page, so the comparison never explains differently.
+    explanations: dict[str, IndicatorExplanation] = field(default_factory=dict)
 
     @property
     def coordination_categories(self) -> set[str]:
@@ -111,25 +115,6 @@ class PreselectionFilters:
         ])
 
 
-def _role_months(view: CandidateAnalysisView, categories: set[str]) -> int | None:
-    """Months of experience classified in `categories` for the target role,
-    or None when that total cannot be known (see module docstring)."""
-
-    if view.role_config is None:
-        return None
-    total = 0
-    for record in view.profile.work_history:
-        if record.structure_confidence == "LOW":
-            return None
-        if classify_role(record.normalized_role, view.role_config) not in categories:
-            continue
-        months = months_between(record.start_date, record.end_date if not record.is_current else None)
-        if months is None:
-            return None
-        total += months
-    return total
-
-
 def summarize_application(session: Session, application: m.Application) -> ApplicationSummary:
     candidate = application.candidate
     profile = persistence.to_profile(candidate)
@@ -155,14 +140,14 @@ def summarize_application(session: Session, application: m.Application) -> Appli
         application_id=application.id, candidate_id=candidate.id, person_id=application.person_id,
         full_name=candidate.full_name or "(name not extracted)",
         target_role=application.target_role, target_role_label=view.target_role_label,
-        direct_months=_role_months(view, {TARGET, EQUIVALENT}),
-        propedeutic_months=_role_months(view, {PROPEDEUTIC, ADJACENT}),
+        direct_months=view.explanations[DIRECT].total_months,
+        propedeutic_months=view.explanations[PROPEDEUTIC_NAME].total_months,
         stability=stability.state, stability_detail=stability.raw_value,
         coordination=view.coordination_evidence, missing_information=missing, uncertain_readings=uncertain,
         questions=list(dict.fromkeys(q for q in questions if q)),
         stage=application.current_stage,
         outcome=outcome_svc.get_effective_application_outcome(session, application.id).label,
-        experiences=experiences,
+        experiences=experiences, explanations=view.explanations,
     )
 
 

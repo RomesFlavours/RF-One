@@ -191,6 +191,23 @@ def main() -> int:
             check("3. no score, ranking or recommendation is introduced",
                   not re.search(r"\b(rank(ed|ing)? #|score:|recommended|best candidate)\b", page, re.I))
 
+            # --- 3b. explanations: candidate page and comparison agree -----------
+            def blocks(html: str, name: str) -> list[str]:
+                return re.findall(r'<details class="indicator-explanation" data-explanation="'
+                                  + re.escape(name) + r'">.*?</details>', html, re.S)
+
+            names = ("Direct Role Experience", "Relevant / Propedeutic Experience", "Stability", "Career Progression")
+            with selection_app.SessionFactory() as session:
+                cand = {n: session.get(m.Application, ids[n]).candidate_id for n in ("alex", "cal")}
+            alex_page = client.get(f"/candidate/{cand['alex']}").get_data(as_text=True)
+            check("3b. the candidate page and the comparison show the same explanation for the same application",
+                  all(blocks(alex_page, n) and blocks(alex_page, n)[0] == blocks(page, n)[0] for n in names))
+            cal_page = client.get(f"/candidate/{cand['cal']}").get_data(as_text=True)
+            cal_direct = blocks(cal_page, "Direct Role Experience")[0]
+            check("3b. a 'to be clarified' value explains which information is missing, in both views",
+                  "To be clarified:" in cal_direct and "no usable dates" in cal_direct
+                  and cal_direct == blocks(page, "Direct Role Experience")[3])
+
             # --- 4. refused comparisons --------------------------------------
             mixed = compare("alex", "eve")
             missing = compare("eve", "fay")
