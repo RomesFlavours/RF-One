@@ -1,0 +1,42 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadSharedDatabaseUrl",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/database-url-chNZo8"
+    },
+    {
+      "Sid": "ReadSharedRFOneSessionSecret",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-web/flask-secret-key-aRFYYm"
+    },
+    {
+      "Sid": "SelectionResumeDocuments",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion"
+      ],
+      "Resource": "arn:aws:s3:::rfone-selection-documents-418674484214/selection/resumes/*"
+    },
+    {
+      "Sid": "ListVersionsOfSelectionResumes",
+      "Effect": "Allow",
+      "Action": "s3:ListBucketVersions",
+      "Resource": "arn:aws:s3:::rfone-selection-documents-418674484214",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": "selection/resumes/*"
+        }
+      }
+    }
+  ]
+}

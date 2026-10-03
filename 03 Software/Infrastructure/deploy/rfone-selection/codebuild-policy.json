@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Sid": "Logs", "Effect": "Allow", "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
+     "Resource": "arn:aws:logs:us-east-1:418674484214:log-group:/aws/codebuild/rfone-selection-build*"},
+    {"Sid": "S3Source", "Effect": "Allow", "Action": ["s3:GetObject", "s3:GetObjectVersion"],
+     "Resource": "arn:aws:s3:::rfone-tips-deploy-418674484214/rfone-selection-source.zip"},
+    {"Sid": "EcrAuth", "Effect": "Allow", "Action": "ecr:GetAuthorizationToken", "Resource": "*"},
+    {"Sid": "EcrPush", "Effect": "Allow",
+     "Action": ["ecr:BatchCheckLayerAvailability", "ecr:PutImage", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart",
+                "ecr:CompleteLayerUpload", "ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage"],
+     "Resource": "arn:aws:ecr:us-east-1:418674484214:repository/rfone-selection"}
+  ]
+}
