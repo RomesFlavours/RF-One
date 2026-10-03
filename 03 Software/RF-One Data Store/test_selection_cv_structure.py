@@ -353,6 +353,11 @@ def main() -> int:
                       len(rows) == 1 and rows[0].structure_confidence == "LOW" and bool(rows[0].structure_note))
                 check("6. every stored experience keeps the original text it was read from",
                       all(r.evidence_snippet for r in session.query(m.CandidateWorkHistory).all()))
+                from rfone_data_store.selection.parsing.dedup import compute_content_hash
+                limit = m.RawResume.__table__.c.content_hash.type.length
+                check("6. both content-hash forms fit the column (SQLite does not enforce it; PostgreSQL does)",
+                      len(compute_content_hash(AMBIGUOUS, "a.txt")) <= limit
+                      and len(compute_content_hash("", "a-very-ordinary-name.txt")) <= limit, f"limit {limit}")
                 check("6. the full résumé text is kept as received",
                       sorted(r.raw_text for r in raw) == sorted([AMBIGUOUS, SAME_SEPARATE_LINES, INCOMPLETE]))
                 check("5. the uncertainty survives a reload and still raises the VERIFY flag",

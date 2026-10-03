@@ -5886,7 +5886,9 @@ class RawResume(Base):
     # extracted (see `selection/parsing/dedup.py`). Nullable because it is
     # only ever computed by the batch-import path; never used to identify a
     # candidate on its own, only to flag a likely re-upload of the same file.
-    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # 80, not 64: the hash is "text:" or "filename:" + 64 hex characters
+    # (selection/parsing/dedup.py) — SELECTION_AWS_PUBLISH_001, migration d8e2f5a9c3b7.
+    content_hash: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
 
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
