@@ -63,8 +63,12 @@ class FakeS3:
         with open(path, "rb") as handle:
             self.objects[key] = handle.read()
 
-    def delete_object(self, Bucket, Key):
+    def delete_object(self, Bucket, Key, VersionId=None):
+        assert VersionId == "v1", "a discarded document must be deleted version by version"
         self.objects.pop(Key, None)
+
+    def list_object_versions(self, Bucket, Prefix):
+        return {"Versions": [{"Key": k, "VersionId": "v1"} for k in self.objects if k.startswith(Prefix)]}
 
     def head_object(self, Bucket, Key):
         if Key not in self.objects:

@@ -110,11 +110,17 @@ class S3DocumentStore:
                             temporary_dir=temporary_dir)
 
     def discard(self, storage_path: str) -> None:
-        """Removes a document that was stored but not kept (a duplicate or a
-        failed import), so nothing is left without a record pointing to it."""
+        """Removes, for good, a document that was stored but not kept (a
+        duplicate or a failed import): every version of that one key, so the
+        versioned bucket does not keep a hidden copy of a résumé nothing
+        points to."""
         key = self._key(storage_path)
-        if key:
-            self.client.delete_object(Bucket=self.bucket, Key=key)
+        if not key:
+            return
+        listing = self.client.list_object_versions(Bucket=self.bucket, Prefix=key)
+        for item in listing.get("Versions", []) + listing.get("DeleteMarkers", []):
+            if item["Key"] == key:
+                self.client.delete_object(Bucket=self.bucket, Key=key, VersionId=item["VersionId"])
 
     def exists(self, storage_path: str | None) -> bool:
         key = self._key(storage_path)
