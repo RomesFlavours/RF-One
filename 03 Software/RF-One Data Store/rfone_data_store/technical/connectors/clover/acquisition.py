@@ -657,8 +657,21 @@ def _ingest_fee_line_items(
 
     Called exactly ONCE per Order (from the Order-ingestion loop, never from
     the per-Payment loop), so a gratuity line item is counted exactly once
-    regardless of how many Payments settle that Order."""
+    regardless of how many Payments settle that Order.
+
+    The payload's fee lines are the Order's CURRENT fee lines: a gratuity
+    added and later removed in Clover before payment must not survive here.
+    So, whenever the payload carries `lineItems` at all, any stored OrderFee
+    of this Order whose line item is no longer in it is deleted. A payload
+    without the `lineItems` key is not evidence of removal (it may simply
+    not have been expanded) and leaves stored fees untouched."""
     line_items = (order_raw.get("lineItems") or {}).get("elements", [])
+    if "lineItems" in order_raw:
+        current_fee_line_ids = {li.get("id") for li in line_items if li.get("isOrderFee")}
+        for stale in session.scalars(select(m.OrderFee).where(m.OrderFee.order_id == order.id)).all():
+            if stale.source_line_item_id not in current_fee_line_ids:
+                session.delete(stale)
+        session.flush()
     for li_raw in line_items:
         if not li_raw.get("isOrderFee"):
             continue

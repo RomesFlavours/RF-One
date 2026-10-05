@@ -578,6 +578,15 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         if p["id"] == "PAY-A":
             p["tipAmount"] = 1500
             p["modifiedTime"] = _ms(t0 + timedelta(hours=5))
+    # Simulate the server removing ORDER-F's gratuity in Clover after it was
+    # first acquired (real case: Tips reconciliation 2026-09-28..10-05, four
+    # orders kept a removed 18% gratuity). ORDER-G's gratuity stays.
+    order_f_raw = client.orders_by_id["ORDER-F"]
+    order_f_raw["lineItems"]["elements"] = [
+        li for li in order_f_raw["lineItems"]["elements"] if not li.get("isOrderFee")
+    ]
+    order_f_raw["total"] = 5400
+    order_f_raw["modifiedTime"] = _ms(t0 + timedelta(hours=5))
 
     summary2 = import_clover_period(
         session, location_id=location.id, period_start=period_start, period_end=period_end, client=client,
@@ -597,6 +606,19 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         "modified tip on re-import: PaymentTip.amount is REFRESHED from Clover's current value (1000 -> 1500), "
         "the first observation was never treated as final",
         tip_a_after.amount == 1500,
+    )
+
+    fees_f_after = session.scalars(select(m.OrderFee).filter_by(order_id=order_f.id)).all()
+    fees_g_after = session.scalars(select(m.OrderFee).filter_by(order_id=order_g.id)).all()
+    result.check(
+        "removed gratuity on re-import: a gratuity line no longer present in Clover's current Order "
+        "is deleted (ORDER-F has no OrderFee), never kept as a stale amount",
+        fees_f_after == [],
+    )
+    result.check(
+        "removed gratuity on re-import: a gratuity still present in Clover is kept unchanged "
+        "(ORDER-G still exactly one OrderFee of 800)",
+        len(fees_g_after) == 1 and fees_g_after[0].amount == 800,
     )
 
     order_rows_total = session.scalars(select(m.Order).filter_by(source_system_id=source_system.id)).all()
