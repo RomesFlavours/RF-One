@@ -178,6 +178,65 @@ def find_cross_ledger_candidates(
     return results
 
 
+def find_cross_ledger_candidates_for_many(
+    session: Session,
+    transactions: list[m.FinancialTransaction],
+    *,
+    date_tolerance_days: int = DEFAULT_DATE_TOLERANCE_DAYS,
+    require_linked_instrument: bool = True,
+) -> dict[int, list[m.FinancialTransaction]]:
+    """`find_cross_ledger_candidates` for many transactions at once
+    (BANK_TWO_STAGE_REVIEW_001): the same criteria, applied by the same
+    helpers, with two queries in total instead of two per transaction — the
+    Review listed hundreds of rows and spent seconds asking this one row at a
+    time. Only transactions that have candidates appear in the result."""
+    wanted = {-t.amount_minor for t in transactions if _effective_match_moment(t) is not None}
+    if not wanted:
+        return {}
+    by_amount: dict[int, list[m.FinancialTransaction]] = {}
+    amounts = sorted(wanted)
+    for start in range(0, len(amounts), 500):
+        for candidate in session.scalars(select(m.FinancialTransaction).where(
+                m.FinancialTransaction.amount_minor.in_(amounts[start:start + 500])).order_by(m.FinancialTransaction.id)):
+            by_amount.setdefault(candidate.amount_minor, []).append(candidate)
+    pool_ids = [c.id for group in by_amount.values() for c in group]
+    matched: set[int] = set()
+    for start in range(0, len(pool_ids), 500):
+        chunk = pool_ids[start:start + 500]
+        for a_id, b_id in session.execute(
+                select(m.FinancialTransactionMatch.transaction_a_id, m.FinancialTransactionMatch.transaction_b_id)
+                .where(or_(m.FinancialTransactionMatch.transaction_a_id.in_(chunk),
+                           m.FinancialTransactionMatch.transaction_b_id.in_(chunk)))):
+            matched.update((a_id, b_id))
+
+    results: dict[int, list[m.FinancialTransaction]] = {}
+    for transaction in transactions:
+        own_moment = _effective_match_moment(transaction)
+        if own_moment is None:
+            continue
+        window_start = own_moment - timedelta(days=date_tolerance_days)
+        window_end = own_moment + timedelta(days=date_tolerance_days)
+        found = []
+        for candidate in by_amount.get(-transaction.amount_minor, []):
+            if candidate.id == transaction.id or candidate.payment_instrument_id == transaction.payment_instrument_id:
+                continue
+            candidate_moment = _effective_match_moment(candidate)
+            if candidate_moment is None or not (window_start <= candidate_moment <= window_end):
+                continue
+            if not _currencies_compatible(transaction.payment_instrument, candidate.payment_instrument):
+                continue
+            if require_linked_instrument and not _instruments_linked(
+                transaction.payment_instrument, candidate.payment_instrument
+            ):
+                continue
+            if candidate.id in matched:
+                continue
+            found.append(candidate)
+        if found:
+            results[transaction.id] = found
+    return results
+
+
 def create_match(
     session: Session,
     transaction_a: m.FinancialTransaction,

@@ -16,16 +16,17 @@
    the header (RF-One UI Rules §4, `_nav_macros.html`). #}
 {% from "_nav_macros.html" import breadcrumb %}
 {% macro module_nav(active, leaf=None) %}
-{#- BANK_IMPORT_AND_REVIEW_001 — the approved order: the monthly work first,
-    its explanation second, the permanent configuration third, then the
-    specialist pages. One list drives both the tabs and the breadcrumb. #}
+{#- The Product Owner's order (2026-10-05, BANK_SOURCE_AND_IMPORT_REVIEW_001):
+    the monthly work first — import, review, export — then Source (the
+    setup list of expected financial sources, which replaced both
+    Instruments and Monthly Sources), Classification and the explanation.
+    One list drives both the tabs and the breadcrumb. #}
 {%- set tabs = [('import', 'Import and Review', url_for('bank_home')),
-                ('instructions', 'Instructions', url_for('bank_instructions')),
-                ('instruments', 'Instruments', url_for('bank_instruments')),
                 ('review', 'Review Transactions', url_for('bank_review')),
-                ('monthly', 'Monthly Sources', url_for('bank_monthly')),
                 ('export', 'Monthly Export', url_for('bank_export')),
-                ('classification', 'Classification', url_for('bank_classification'))] %}
+                ('source', 'Source', url_for('bank_sources')),
+                ('classification', 'Classification', url_for('bank_classification')),
+                ('instructions', 'Instructions', url_for('bank_instructions'))] %}
 {%- set ns = namespace(section=(active, None)) %}
 {%- for key, label, href in tabs %}{% if key == active %}{% set ns.section = (label, href) %}{% endif %}{% endfor %}
 {%- if leaf %}
@@ -40,7 +41,7 @@
   </div>
 </div>
 
-<nav class="module-tabs" aria-label="Bank Reconciliation sections">
+<nav class="module-tabs module-tabs--equal" style="--tab-count: {{ tabs|length }}" aria-label="Bank Reconciliation sections">
   {%- for key, label, href in tabs %}
   <a class="module-tab{% if active == key %} is-active{% endif %}"
      href="{{ href }}"

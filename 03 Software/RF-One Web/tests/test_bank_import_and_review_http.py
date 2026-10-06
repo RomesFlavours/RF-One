@@ -55,6 +55,7 @@ run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 import app as web_app  # noqa: E402
 import bank_routes  # noqa: E402
 from db import SessionFactory  # noqa: E402
+from _bank_upload_helper import upload_and_confirm  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
@@ -76,9 +77,9 @@ JUNE_CSV = (
     "DEBIT,06/10/2026,JUNE ONLY VENDOR,-10.00,ACH_DEBIT,100.00,\n"
 ).encode("utf-8")
 
-APPROVED_TABS = [
-    "Import and Review", "Instructions", "Instruments", "Review Transactions",
-    "Monthly Sources", "Monthly Export", "Classification",
+APPROVED_TABS = [  # Product Owner order, 2026-10-05 (BANK_SOURCE_AND_IMPORT_REVIEW_001)
+    "Import and Review", "Review Transactions", "Monthly Export", "Source",
+    "Classification", "Instructions",
 ]
 
 
@@ -89,7 +90,7 @@ def extract_csrf(html: bytes) -> str:
 
 
 def tab_labels(html: str) -> list[str]:
-    nav = html[html.index('<nav class="module-tabs"'):]
+    nav = html[html.index('<nav class="module-tabs'):]
     nav = nav[:nav.index("</nav>")]
     return [re.sub(r"\s+", " ", label).strip()
             for label in re.findall(r'class="module-tab[^"]*"[^>]*>([^<]+)</a>', nav)]
@@ -167,8 +168,8 @@ def main() -> int:
         check("A. the Bank tabs are exactly the approved order",
               tab_labels(html) == APPROVED_TABS, str(tab_labels(html)))
         check("A. the same order on every Bank page",
-              all(tab_labels(client.get(p).data.decode("utf-8")) == APPROVED_TABS
-                  for p in ("/bank/instructions", "/bank/instruments", "/bank/review",
+              all(tab_labels(client.get(p, follow_redirects=True).data.decode("utf-8")) == APPROVED_TABS
+                  for p in ("/bank/instructions", "/bank/sources", "/bank/review",
                             "/bank/monthly", "/bank/export")))
 
         # ------------------------------------ B — previous LOCAL month
@@ -210,18 +211,18 @@ def main() -> int:
 
         # ------------------------------ upload through the page (+ return_to)
         csrf = extract_csrf(client.get("/bank?year=2026&month=8").data)
-        resp = client.post("/bank/upload", data={
+        resp = upload_and_confirm(client, {
             "files": (io.BytesIO(AUGUST_CSV), "chase_0214_august.csv"),
             "payment_instrument_id": str(checking_id), "csrf_token": csrf,
             "return_to": "import_review", "year": "2026", "month": "8",
-        }, content_type="multipart/form-data")
+        })
         check("F. an upload from Import and Review returns to the same month",
               resp.status_code == 302 and resp.headers["Location"] == "/bank?year=2026&month=8",
               resp.headers.get("Location", ""))
-        resp = client.post("/bank/upload", data={
+        resp = upload_and_confirm(client, {
             "files": (io.BytesIO(JUNE_CSV), "chase_5555_june.csv"),
             "payment_instrument_id": str(savings_id), "csrf_token": csrf,
-        }, content_type="multipart/form-data")
+        })
         check("G. an upload without return_to redirects exactly as before",
               resp.status_code == 302 and resp.headers["Location"] == "/bank",
               resp.headers.get("Location", ""))
@@ -242,7 +243,7 @@ def main() -> int:
               "chase_0214_august.csv" in all_part and "chase_5555_june.csv" in all_part)
 
         # ----------------------------- E — same completeness facts as Monthly
-        monthly_html = client.get("/bank/monthly?year=2026&month=8").data.decode("utf-8")
+        monthly_html = client.get("/bank/monthly?year=2026&month=8", follow_redirects=True).data.decode("utf-8")
         sources_part = section(html_aug, "step-sources", "step-who")
         with SessionFactory() as db:
             period = monthly_source.get_period(db, 2026, 8)
@@ -263,20 +264,27 @@ def main() -> int:
                                 "missing": expected_row[5], "needs_confirmation": expected_row[4]}
               and summary_row(monthly_html) == expected_row,
               f"{shown_figures} {summary_row(monthly_html)} {expected_row}")
+        attention = sources_part[sources_part.index('aria-label="Needs attention"'):]
+        attention = attention[:attention.index("</ul>")]
         check("E. only the account needing attention is listed (the idle card, source missing)",
-              "Idle Card 9999" in sources_part and "source missing" in sources_part
-              and "Chase Checking 0214" not in sources_part)
-        check("E. /bank no longer embeds the Monthly Sources table or its forms",
-              "Accounts and cards for" not in html_aug and "Resolve missing source" not in html_aug
-              and "Accounts and cards for" in monthly_html)
-        check("E. Resolve issues opens Monthly Sources on the same month",
-              'href="/bank/monthly?year=2026&amp;month=8">Resolve issues<' in sources_part)
-        check("E. Control Start / Validated Through are configured only on Monthly Sources",
-              'name="control_start_date"' not in html_aug
-              and 'name="validated_through_month"' not in html_aug
-              and 'name="control_start_date"' in monthly_html)
-        check("E. the forms on Monthly Sources carry no return_to",
-              'name="return_to"' not in monthly_html)
+              "Idle Card 9999" in attention and "source missing" in attention
+              and "Chase Checking 0214" not in attention)
+        # BANK_SOURCE_AND_IMPORT_REVIEW_001 retired the Monthly Sources page:
+        # its table, resolutions and settings now live in Check Sources, and
+        # the old address lands there.
+        check("E. Check Sources now carries the per-Source table and its resolutions",
+              "Accounts and cards for 2026-08" in sources_part
+              and "Resolve missing source" in sources_part)
+        check("E. the old Monthly Sources address shows the same Import and Review month",
+              "Accounts and cards for 2026-08" in monthly_html
+              and '<h2 class="bank-month-title">August 2026</h2>' in monthly_html)
+        check("E. Resolve issues opens the Source details on the same page",
+              'href="#source-details"' in sources_part and ">Resolve issues<" in sources_part)
+        check("E. Control Start / Validated Through are configured in Check Sources",
+              'name="control_start_date"' in sources_part
+              and 'name="validated_through_month"' in sources_part)
+        check("E. the Check Sources forms come back to Import and Review",
+              'name="return_to" value="import_review"' in sources_part)
 
         # ------------------------------- F/G/H — Monthly return_to behaviour
         csrf = extract_csrf(client.get("/bank?year=2026&month=8").data)
@@ -289,9 +297,9 @@ def main() -> int:
               resp.status_code == 302 and resp.headers["Location"] == "/bank?year=2026&month=8",
               resp.headers.get("Location", ""))
         resp = client.post(clear_url, data={"csrf_token": csrf})
-        check("G. the same action from Monthly Sources keeps its redirect exactly",
+        check("G. without return_to the action now returns to Import and Review, same month",
               resp.status_code == 302
-              and resp.headers["Location"] == "/bank/monthly?year=2026&month=8",
+              and resp.headers["Location"] == "/bank?year=2026&month=8",
               resp.headers.get("Location", ""))
         resp = client.post(f"/bank/monthly/{period_id}/complete", data={
             "csrf_token": csrf, "return_to": "import_review",
@@ -308,8 +316,8 @@ def main() -> int:
         resp = client.post("/bank/monthly/select", data={
             "csrf_token": csrf, "year": "2026", "month": "4",
         })
-        check("G. opening a month from Monthly Sources keeps its redirect exactly",
-              resp.headers.get("Location") == "/bank/monthly?year=2026&month=4",
+        check("G. opening a month without return_to lands on Import and Review for it",
+              resp.headers.get("Location") == "/bank?year=2026&month=4",
               resp.headers.get("Location", ""))
 
         hostile = ["https://evil.example/", "//evil.example", "/bank/../evil", "javascript:alert(1)",
@@ -319,13 +327,12 @@ def main() -> int:
             r = client.post(clear_url, data={"csrf_token": csrf, "return_to": value})
             locations.append(r.headers.get("Location", ""))
         check("H. an unsupported return_to value never becomes the redirect target",
-              all(loc == "/bank/monthly?year=2026&month=8" or loc == "/bank?year=2026&month=8"
-                  for loc in locations) and not any("evil" in loc or "javascript" in loc
+              all(loc == "/bank?year=2026&month=8" for loc in locations) and not any("evil" in loc or "javascript" in loc
                                                    for loc in locations),
               str(locations))
         check("H. only the exact value import_review is accepted (upper-case or padded "
               "variants are refused)",
-              locations[4] == locations[5] == "/bank/monthly?year=2026&month=8", str(locations[4:6]))
+              locations[4] == locations[5] == "/bank?year=2026&month=8", str(locations[4:6]))
         r = client.post("/bank/monthly/select", data={
             "csrf_token": csrf, "year": "2101", "month": "2", "return_to": "import_review",
         })
@@ -418,10 +425,14 @@ def main() -> int:
         check("L. the Review links keep the selected year and month",
               who_part.count('href="/bank/review?year=2026&amp;month=8"') == 1
               and review_part.count('href="/bank/review?year=2026&amp;month=8"') == 1)
+        # BANK_TWO_STAGE_REVIEW_001 — the month's rows are split between the
+        # two Review queues; together they are that month and only that month.
         review = client.get("/bank/review?year=2026&month=8")
+        reconciled = client.get("/bank/review?year=2026&month=8&view=reconciled")
+        both = review.data + reconciled.data
         check("L. the linked Review opens on that month's transactions",
-              review.status_code == 200 and b"AMAZON MKTPLACE PMTS" in review.data
-              and b"JUNE ONLY VENDOR" not in review.data)
+              review.status_code == 200 and reconciled.status_code == 200
+              and b"AMAZON MKTPLACE PMTS" in both and b"JUNE ONLY VENDOR" not in both)
 
         # --------------------------------------------- M — Instructions
         instructions = client.get("/bank/instructions")
@@ -443,15 +454,15 @@ def main() -> int:
         check("M. POST to /bank/instructions is not allowed",
               client.post("/bank/instructions", data={"csrf_token": csrf}).status_code == 405)
 
-        # ------------------------------------------------ N — Instruments
-        instruments_html = client.get("/bank/instruments").data.decode("utf-8")
-        for heading in ("<h2>Payment Instruments</h2>", "<h3>Add a Payment Instrument</h3>",
-                        "<h2>Saved source rules</h2>", "<h2>Instrument assignment history</h2>",
+        # -------------------------------------- N — Source (was Instruments)
+        instruments_html = client.get("/bank/sources").data.decode("utf-8")
+        for heading in ("<h2>Sources</h2>", "+ New Source",
+                        "<h2>File recognition rules</h2>", "<h2>Source assignment history</h2>",
                         "<h2>Accounting deduplication</h2>"):
-            check(f"N. Instruments shows {heading}", heading in instruments_html)
-            check(f"N. /bank no longer shows {heading}", heading not in html_aug)
-        check("N. Instruments forms return to Instruments",
-              instruments_html.count('name="return_to" value="instruments"') >= 2)
+            check(f"N. Source shows {heading}", heading in instruments_html)
+            check(f"N. /bank does not show {heading}", heading not in html_aug)
+        check("N. Source forms return to Source",
+              instruments_html.count('name="return_to" value="sources"') >= 2)
 
         # ------------------------------------- O — instrument actions work
         csrf = extract_csrf(instruments_html.encode("utf-8"))
@@ -459,10 +470,10 @@ def main() -> int:
             "csrf_token": csrf, "institution": "CHASE", "display_name": "Chase Card 1234",
             "instrument_type": "CREDIT_CARD", "last_four": "1234", "return_to": "instruments",
         })
-        check("O. adding an instrument from Instruments returns to Instruments",
-              r.headers.get("Location") == "/bank/instruments", r.headers.get("Location", ""))
-        check("O. the instrument was created and is listed",
-              "Chase Card 1234" in client.get("/bank/instruments").data.decode("utf-8"))
+        check("O. a form still sending the old return_to=instruments returns to Source",
+              r.headers.get("Location") == "/bank/sources", r.headers.get("Location", ""))
+        check("O. the Source was created and is listed",
+              "Chase Card 1234" in client.get("/bank/sources").data.decode("utf-8"))
         r = client.post("/bank/instruments/new", data={
             "csrf_token": csrf, "institution": "CHASE", "display_name": "Chase Card 5678",
             "instrument_type": "CREDIT_CARD", "last_four": "5678",
@@ -470,15 +481,15 @@ def main() -> int:
         check("O. without return_to the add action keeps its old redirect (/bank)",
               r.headers.get("Location") == "/bank", r.headers.get("Location", ""))
         r = client.post("/bank/accounting-dedup/recompute", data={
-            "csrf_token": csrf, "return_to": "instruments",
+            "csrf_token": csrf, "return_to": "sources",
         })
-        check("O. recompute deduplication from Instruments returns to Instruments",
-              r.headers.get("Location") == "/bank/instruments", r.headers.get("Location", ""))
+        check("O. recompute deduplication from Source returns to Source",
+              r.headers.get("Location") == "/bank/sources", r.headers.get("Location", ""))
         edit_html = client.get(f"/bank/instruments/{checking_id}/edit").data.decode("utf-8")
-        check("O. the edit page belongs to Instruments and saves back to it",
+        check("O. the Source settings page belongs to Source and saves back to it",
               "module-tab is-active" in edit_html
-              and re.search(r'module-tab is-active"\s+href="/bank/instruments"', edit_html) is not None
-              and 'name="return_to" value="instruments"' in edit_html,
+              and re.search(r'module-tab is-active"\s+href="/bank/sources"', edit_html) is not None
+              and 'name="return_to" value="sources"' in edit_html,
               "")
 
         # ------------------------------------------ P — no Classification
@@ -494,7 +505,7 @@ def main() -> int:
         body = resp.data.decode("utf-8")
         check("P. /bank renders without ever building Classification candidates",
               resp.status_code == 200, str(resp.status_code))
-        main_content = body[body.index("</nav>", body.index('<nav class="module-tabs"')):]
+        main_content = body[body.index("</nav>", body.index('<nav class="module-tabs')):]
         check("P. no Classification content or link inside /bank (only the tab)",
               "/bank/classification" not in main_content and "Receiver" not in main_content)
     finally:

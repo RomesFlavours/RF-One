@@ -1,7 +1,9 @@
 """RF-One Web — Bank Configuration (BANK_CONFIGURATION_001).
 
 One page, `/bank/configuration`, in the approved order: WHAT, WHY, WHO,
-Accounts & Cards, then Support. Each modal on the page posts to one of the
+Sources (a link only: every Source, including a card's settlement account and
+cardholder, is maintained on `/bank/sources` — BANK_FINAL_RELEASE_BLOCKERS_002),
+then Support. Each modal on the page posts to one of the
 routes below. Every route:
 
 * is behind the BANK gate and `require_csrf()`;
@@ -19,7 +21,7 @@ own collaborators; this module never imports `app.py`.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 
 from flask import abort, flash, redirect, render_template, request, url_for
 
@@ -56,16 +58,6 @@ def _flag(name: str) -> bool:
 
 def _text(name: str) -> str:
     return (request.form.get(name) or "").strip()
-
-
-def _date(name: str) -> date | None:
-    raw = _text(name)
-    if not raw:
-        return None
-    try:
-        return datetime.strptime(raw, "%Y-%m-%d").date()
-    except ValueError:
-        raise ValueError(f"{raw!r} is not a valid date (expected YYYY-MM-DD).") from None
 
 
 def _rules() -> list[config_service.RuleInput]:
@@ -182,31 +174,8 @@ def register_bank_configuration_routes(
     def bank_configuration_who_edit(occurrence_id: int):
         return _save_who(occurrence_id)
 
-    # ------------------------------------------------------ Accounts & Cards
-
-    @app.route("/bank/configuration/account", methods=["POST"])
-    @gate
-    def bank_configuration_account_new():
-        return _apply("cp-accounts", lambda db: config_service.create_account(
-            db, label=_text("label"), instrument_type=_text("instrument_type"),
-            reporting_entity_id=_int("entity_id"), reference=_text("reference") or None,
-            active=_flag("active"),
-        ), lambda instrument: f"{instrument.display_name!r} created.")
-
-    @app.route("/bank/configuration/account/<int:instrument_id>", methods=["POST"])
-    @gate
-    def bank_configuration_account_edit(instrument_id: int):
-        def done(instrument):
-            messages = [f"{instrument.display_name!r} saved."]
-            warning = bank_service.instrument_export_warning(instrument)
-            if warning and instrument.instrument_type != "CREDIT_CARD":
-                messages.append(f"{instrument.display_name}: {warning}")
-            return messages
-        return _apply("cp-accounts", lambda db: config_service.update_account(
-            db, instrument_id=instrument_id, label=_text("label"),
-            instrument_type=_text("instrument_type"), reporting_entity_id=_int("entity_id"),
-            reference=_text("reference") or None,
-        ), done)
+    # Accounts & Cards are no longer edited here (BANK_FINAL_RELEASE_BLOCKERS_002):
+    # every Source is maintained on the Source page (`/bank/sources`).
 
     # --------------------------------------------------------------- Support
 
@@ -252,17 +221,6 @@ def register_bank_configuration_routes(
             db, control_start=_text("control_start"),
             validated_through=_text("validated_through"), account_id=_account_id(db),
         ), lambda messages: messages or ["Control settings unchanged."])
-
-    @app.route("/bank/configuration/card/<int:card_id>", methods=["POST"])
-    @gate
-    def bank_configuration_card(card_id: int):
-        return _apply("cp-dedup", lambda db: config_service.save_card(
-            db, card_id=card_id, settlement_account_id=_int("settlement_account_id"),
-            settlement_valid_from=_date("settlement_valid_from"),
-            holder_kind=_text("holder_kind") or None, holder_id=_int("holder_id"),
-            holder_name=_text("holder_name"), holder_valid_from=_date("holder_valid_from"),
-            account_id=_account_id(db),
-        ), lambda messages: messages or ["Card settings unchanged."])
 
     @app.route("/bank/configuration/dedup/recompute", methods=["POST"])
     @gate

@@ -215,10 +215,11 @@ def main() -> int:
             created = s.scalars(select(m.BankOccurrence).where(m.BankOccurrence.id.not_in(
                 [o.id for o in (gordon, publix, costco, fcb, abc, cheney, wix, giftedd, car_gas, orphan,
                                 twin_a, twin_b)] + list(fragments)))).all()
-            check("21. a genuinely new identity still creates one COUNTERPARTY WHO",
-                  [o.canonical_name for o in created] == ["CHARLIZE IRIZARRY"]
-                  and created[0].occurrence_type_id == counterparty.id and on("new") == created[0].id
-                  and summary.occurrences_created == 1,
+            # BANK_FINAL_CLEANUP_001: structural extraction never creates a raw
+            # WHO. A genuinely new name is held PROPOSED for a person to create.
+            check("21. a genuinely new identity creates NO WHO: it is held PROPOSED with its name",
+                  created == [] and on("new") is None and rec[tx["new"]].tier == wr.PROPOSED
+                  and summary.occurrences_created == 0,
                   detail=str([o.canonical_name for o in created]))
             check("21b. recognition never creates a GENERIC_OPERATIONAL WHO",
                   s.scalar(select(func.count(m.BankOccurrence.id)).where(
@@ -245,7 +246,7 @@ def main() -> int:
                   rec[tx["wix_pattern_debit"]].occurrence_id != giftedd.id)
             check("summary counts the resolutions",
                   summary.resolved_by_alias >= 5 and summary.resolved_by_rule == 1
-                  and summary.held_for_review == 2,
+                  and summary.held_for_review == 3,
                   detail=f"name={summary.resolved_by_name} alias={summary.resolved_by_alias} "
                          f"rule={summary.resolved_by_rule} held={summary.held_for_review}")
 
@@ -258,7 +259,7 @@ def main() -> int:
                   and second.recognitions_created == 0 and second.recognitions_updated == 0
                   and s.scalar(select(func.count(m.BankOccurrence.id))) == occurrences_after
                   and s.scalar(select(func.count(m.BankOccurrenceAlias.id))) == aliases_after
-                  and occurrences_after == occurrences_before + 1)
+                  and occurrences_after == occurrences_before)
     finally:
         engine.dispose()
         cleanup_disposable_test_database_url(url)

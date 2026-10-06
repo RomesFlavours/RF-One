@@ -1,0 +1,102 @@
+{# "Select WHO / WHY" (BANK_MANUAL_WHO_WHY_001, BANK_WHY_NAVIGATION_GROUPS_001).
+
+   ONE popup, included once by Review > To Reconcile and once by Review >
+   Reconciled, with ONE purpose: reconcile THIS transaction by hand — WHO and
+   WHY together, a HUMAN decision, posted to ONE route
+   (`bank_transaction_who_why`). It never teaches recognition: the separate
+   Rule button does that.
+
+   Three columns: WHO | WHY GROUP | WHY. The WHY GROUP is the navigation
+   group of the WHY (`BankReasonGroup`) — it organises the catalog for the
+   operator and has no accounting effect. Every active WHY can be chosen for
+   any WHO; the WHY already associated with the chosen WHO are only MARKED
+   (and counted per group). Choosing one that is not yet associated adds the
+   association when the decision is saved.
+
+   Any element with the class `who-picker-open` opens it, naming its
+   transaction (`data-transaction-id`, `data-transaction-label`) and, when
+   the row already has them, its WHO and WHY (`data-current-occurrence-id`,
+   `data-current-reason-id`).
+
+   The page ships no WHO x WHY matrix: the active WHO list and the grouped
+   WHY catalog are fetched once, on first open; the WHY associated with the
+   ONE chosen WHO when it is chosen. "+ Create New WHY" opens the ONE shared
+   dialog (`_bank_why_create_dialog.html`, also used by the WHO Rule modal);
+   the page including this popup includes that dialog once, after it.
+
+   Optional context: `active_who_ids` (when given and empty, the popup says
+   no WHO exists instead of offering a Confirm that could never work). #}
+{% set who_why_has_who = (active_who_ids|length > 0) if active_who_ids is defined else true %}
+<div id="who-picker" class="org-modal-overlay" hidden aria-hidden="true"
+     data-whos-url="{{ url_for('bank_manual_reconciliation_whos') }}"
+     data-whys-url-template="{{ url_for('bank_manual_reconciliation_whys', occurrence_id=0) }}"
+     data-catalog-url="{{ url_for('bank_manual_reconciliation_why_catalog') }}"
+     data-whats-url="{{ url_for('bank_manual_reconciliation_whats') }}"
+     data-action-template="{{ url_for('bank_transaction_who_why', transaction_id=0) }}">
+  <div class="org-modal-panel who-why-panel" role="dialog" aria-modal="true" aria-labelledby="who-picker-title">
+    <button id="who-picker-close" class="org-modal-close" type="button" aria-label="Cancel" data-modal-close>&times;</button>
+    <div class="modal-header">
+      <h3 id="who-picker-title">Select WHO / WHY</h3>
+    </div>
+    <p class="who-why-subject" id="who-picker-subject"></p>
+
+    <form id="who-picker-form" method="post" action="">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="occurrence_id" id="who-picker-occurrence-id" value="">
+      <input type="hidden" name="transaction_reason_id" id="who-picker-reason-id" value="">
+      <input type="hidden" name="return_to" value="{{ request.full_path.rstrip('?') }}">
+
+      {% if who_why_has_who %}
+      <div class="ww-columns">
+        <section class="ww-col ww-col-who" aria-labelledby="ww-who-title">
+          <h4 class="ww-col-title" id="ww-who-title">WHO</h4>
+          <input type="search" id="who-picker-search" autocomplete="off" placeholder="Search WHO"
+                 aria-label="Search WHO" aria-controls="who-picker-list">
+          <div class="ww-list" id="who-picker-list" role="listbox" aria-label="Active WHO" tabindex="0"></div>
+          <p class="ww-empty" id="who-picker-empty" hidden>No WHO matches this search.</p>
+        </section>
+
+        <section class="ww-col ww-col-group" aria-labelledby="ww-group-title">
+          <h4 class="ww-col-title" id="ww-group-title">WHY GROUP</h4>
+          <input type="search" id="why-group-search" autocomplete="off" placeholder="Search group"
+                 aria-label="Search WHY group" aria-controls="why-group-list">
+          <div class="ww-list" id="why-group-list" role="listbox" aria-label="WHY groups" tabindex="0"></div>
+          <p class="ww-empty" id="why-group-empty" hidden>No group matches this search.</p>
+          <p class="ww-legend"><span class="ww-used">&#9679; n</span> = WHY already used with the selected WHO &middot; grey number = WHY in the group</p>
+        </section>
+
+        <section class="ww-col ww-col-why" id="why-picker" aria-labelledby="ww-why-title">
+          <h4 class="ww-col-title" id="ww-why-title">WHY <span class="ww-col-context" id="why-picker-group"></span></h4>
+          <input type="search" id="why-picker-search" autocomplete="off" placeholder="Search all WHY"
+                 aria-label="Search all WHY" aria-controls="why-picker-list">
+          <div class="ww-list" id="why-picker-list" role="listbox" aria-label="WHY" tabindex="0"></div>
+          <p class="ww-empty" id="why-picker-none" hidden>No WHY matches this search.</p>
+          {#- The shared "Create New WHY" dialog (`_bank_why_create_dialog.html`):
+              the WHY is saved there, added to the chosen WHO, and comes back
+              here SELECTED; Confirm then records it for this transaction. #}
+          <button type="button" class="btn-secondary ww-create-open" id="why-picker-create">+ Create New WHY</button>
+        </section>
+      </div>
+
+      <p class="error" id="who-picker-error" role="alert" hidden></p>
+      <div class="ww-footer">
+        <p class="ww-summary" id="who-picker-summary" aria-live="polite"></p>
+        <div class="who-picker-actions">
+          <button type="button" class="btn-secondary" id="who-picker-cancel" data-modal-close>Cancel</button>
+          <button type="submit" id="who-picker-confirm" disabled>Confirm</button>
+        </div>
+      </div>
+      {% else %}
+      <p class="modal-empty-state">
+        <strong>No WHO configured.</strong><br>
+        Nothing can be reconciled until at least one WHO exists.
+        <a href="{{ url_for('bank_configuration') }}">Open Configuration</a> to create one.
+      </p>
+      <div class="who-picker-actions">
+        <button type="button" class="btn-secondary" id="who-picker-cancel" data-modal-close>Cancel</button>
+      </div>
+      {% endif %}
+    </form>
+  </div>
+</div>
+<script defer src="{{ url_for('static', filename='js/bank-who-why.js') }}?v=4"></script>

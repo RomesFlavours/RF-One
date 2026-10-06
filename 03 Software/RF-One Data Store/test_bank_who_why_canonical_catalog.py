@@ -49,6 +49,7 @@ from rfone_data_store.database import (
 HERE = Path(__file__).resolve().parent
 REVISION = "a7c3e9d5f2b8"
 PREVIOUS = "b9e4c2a7d5f3"
+CURRENT_HEAD = "b7f1c3e5a9d2"  # the single Alembic head of the branch (stale-pin fix, release 2026-10)
 MIGRATION = HERE / "migrations" / "versions" / f"{REVISION}_add_municipal_utilities_and_settlement_whys.py"
 
 APPROVED = {
@@ -153,8 +154,8 @@ def main() -> int:
                       ok and reason.status == "ACTIVE" and reason.reason_group_id is not None,
                       detail=f"{dest.code if dest else None}")
             groups = {r.code: r.reason_group.code for r in reasons.values() if r.reason_group}
-            check("7b. the three settlements are Money Movements, Municipal Utilities is Utilities",
-                  [groups.get(c) for c in APPROVED] == ["MONEY_MOVEMENT"] * 3 + ["UTILITIES"])
+            check("7b. the three settlements are Deposits, Settlements & Liabilities, Municipal Utilities is Utilities",
+                  [groups.get(c) for c in APPROVED] == ["DEPOSITS_SETTLEMENTS"] * 3 + ["UTILITIES"])
             check("7c. no generic 'Incoming' WHY exists",
                   not any("INCOMING" in c or r.name.strip().casefold() == "incoming" for c, r in reasons.items()))
             check("7d. no Food Cost / Operative / Deductable export mapping is invented for the four WHY",
@@ -269,7 +270,7 @@ def main() -> int:
 
     # -------------------------------------------------------------- 11
     heads = ScriptDirectory.from_config(Config(str(HERE / "alembic.ini"))).get_heads()
-    check("11. exactly one Alembic head, and it is a7c3e9d5f2b8", heads == [REVISION], detail=str(heads))
+    check(f"11. exactly one Alembic head, and it is {CURRENT_HEAD}", heads == [CURRENT_HEAD], detail=str(heads))
 
     cleanup_disposable_test_database_url(url)
     print()

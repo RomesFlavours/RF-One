@@ -13,7 +13,7 @@ The one place the three-level chain is defined, validated and resolved:
 
 Because the chain is stored on the vocabulary itself, a human
 reconciling a transaction selects **only the WHO** — WHY and WHAT are
-derived. The associations are configured once (Bank > Classification),
+derived. The associations are configured once (Bank > Configuration),
 never re-selected per transaction.
 
 No parallel model is introduced: `BankOccurrence`, `BankTransactionReason`
@@ -84,7 +84,7 @@ def resolve_chain(session: Session, occurrence: "m.BankOccurrence") -> ResolvedC
             occurrence,
             blocking_reason=(
                 f"Who {occurrence.canonical_name!r} is INACTIVE and cannot be used for a new "
-                "classification. Reactivate it in Bank > Classification, or choose another Who."
+                "classification. Reactivate it in Bank > Configuration, or choose another Who."
             ),
         )
 
@@ -97,7 +97,7 @@ def resolve_chain(session: Session, occurrence: "m.BankOccurrence") -> ResolvedC
             occurrence,
             blocking_reason=(
                 f"Who {occurrence.canonical_name!r} has no default Why. Set one in "
-                "Bank > Classification before using it in reconciliation."
+                "Bank > Configuration before using it in reconciliation."
             ),
         )
     if reason.status != "ACTIVE":
@@ -105,7 +105,7 @@ def resolve_chain(session: Session, occurrence: "m.BankOccurrence") -> ResolvedC
             occurrence, transaction_reason=reason,
             blocking_reason=(
                 f"Who {occurrence.canonical_name!r} points at the INACTIVE Why {reason.name!r}. "
-                "Reactivate that Why, or point this Who at an active one, in Bank > Classification."
+                "Reactivate that Why, or point this Who at an active one, in Bank > Configuration."
             ),
         )
 
@@ -118,7 +118,7 @@ def resolve_chain(session: Session, occurrence: "m.BankOccurrence") -> ResolvedC
             occurrence, transaction_reason=reason,
             blocking_reason=(
                 f"Why {reason.name!r} has no What (accounting classification). Assign one in "
-                "Bank > Classification before using it in reconciliation."
+                "Bank > Configuration before using it in reconciliation."
             ),
         )
     if not what.active:
@@ -126,7 +126,7 @@ def resolve_chain(session: Session, occurrence: "m.BankOccurrence") -> ResolvedC
             occurrence, transaction_reason=reason, accounting_classification=what,
             blocking_reason=(
                 f"Why {reason.name!r} resolves to the INACTIVE What {what.code} — {what.name}. "
-                "Reactivate it, or point the Why at an active What, in Bank > Classification."
+                "Reactivate it, or point the Why at an active What, in Bank > Configuration."
             ),
         )
     if what.statement_type is None:
@@ -134,7 +134,7 @@ def resolve_chain(session: Session, occurrence: "m.BankOccurrence") -> ResolvedC
             occurrence, transaction_reason=reason, accounting_classification=what,
             blocking_reason=(
                 f"What {what.code} — {what.name} is incomplete: it has no statement type "
-                "(Profit & Loss or Balance Sheet) yet. Complete it in Bank > Classification."
+                "(Profit & Loss or Balance Sheet) yet. Complete it in Bank > Configuration."
             ),
         )
 
@@ -432,9 +432,10 @@ def create_transaction_reason(
     session: Session, *, code: str, name: str, accounting_classification_id: int | None,
     description: str | None = None, status: str = "ACTIVE",
 ) -> "m.BankTransactionReason":
-    """A new Why is refused without a What — the requirement that makes
-    "select only the Who" safe, because every Who leads to a Why that
-    already knows its accounting classification."""
+    """A new Why. Its What (accounting destination) is validated when given
+    and may be absent (BANK_WHY_WITHOUT_WHAT_001): Bank reconciliation needs
+    WHO + WHY only; a Why without a destination is shown as such and is never
+    given one by guessing."""
     normalized_code = _normalized_code(code)
     clean_name = (name or "").strip()
     if not clean_name:
@@ -453,7 +454,8 @@ def create_transaction_reason(
         name=clean_name,
         description=(description or "").strip() or None,
         status=status,
-        accounting_classification_id=_require_usable_what(session, accounting_classification_id),
+        accounting_classification_id=(_require_usable_what(session, accounting_classification_id)
+                                      if accounting_classification_id is not None else None),
     )
     session.add(reason)
     session.flush()
@@ -489,10 +491,6 @@ def set_transaction_reason_status(
         raise ValueError(f"Why {transaction_reason_id} does not exist.")
     if status not in ("ACTIVE", "INACTIVE"):
         raise ValueError(f"Why status must be ACTIVE or INACTIVE, got {status!r}.")
-    if status == "ACTIVE" and reason.accounting_classification_id is None:
-        raise ValueError(
-            f"Why {reason.name!r} cannot be activated without a What. Edit it and assign one first."
-        )
     reason.status = status
     session.flush()
     return reason

@@ -16,7 +16,11 @@
     calendar month (local time of the Location); any other month can be chosen there.
   </p>
   <ol>
-    <li><strong>Import</strong> &mdash; upload the month's original bank and card downloads.</li>
+    <li><strong>Import</strong> &mdash; select the month's original bank and card downloads. RF-One
+      first shows the <strong>Import Set Review</strong>: which active Sources the files cover, which
+      are missing, unrecognized or duplicate files, and the period each file covers. Nothing is
+      imported until you choose <strong>Confirm Import</strong>; <strong>Cancel</strong> leaves the
+      Bank data exactly as it was.</li>
     <li><strong>Check Sources</strong> &mdash; confirm that every account and card that should have
       produced a download for the month did, and explain the ones that did not.</li>
     <li><strong>Automatic WHO</strong> &mdash; see how many of the month's transactions already have
@@ -34,7 +38,8 @@
     No spreadsheet is ever consulted.
   </p>
   <p>
-    Leave the Payment Instrument on automatic unless RF-One asks. A file that carries its own
+    The Sources RF-One expects files from are listed on <a href="{{ url_for('bank_sources') }}">Source</a>;
+    only active Sources are expected. Leave the Source on automatic unless RF-One asks. A file that carries its own
     identifier (First Citizens <code>Account Number</code>, Chase <code>Card</code>) always resolves
     by that identifier; a file name is only ever a hint, never authoritative.
   </p>
@@ -89,8 +94,8 @@
   <p>
     Setting the control start for the first time, or moving it earlier, also opens the controlled
     months covered by files already imported &mdash; no file has to be uploaded again. Moving it
-    later changes nothing that already exists. Both settings are on
-    <a href="{{ url_for('bank_monthly') }}">Monthly Sources</a>.
+    later changes nothing that already exists. Both settings are under
+    <a href="{{ url_for('bank_home') }}#completeness-control">Check Sources</a> on Import and Review.
   </p>
 </div>
 
@@ -132,7 +137,7 @@
     <code>AccountHistory.csv</code>, whose name never changes) is resolved once by a human; that
     choice is saved and reused on the next import. A rule is always overridden by a reliable
     identifier inside the file, and disabling one never deletes it. Saved source rules are on
-    <a href="{{ url_for('bank_instruments') }}">Instruments</a>.
+    <a href="{{ url_for('bank_sources') }}">Source</a> (File recognition rules).
   </p>
 </div>
 
@@ -147,8 +152,8 @@
   </p>
   <p>
     A transaction whose card has no settlement account configured for its posting date is not
-    deduplicated and not merged with anything: configure the card's settlement account on
-    <a href="{{ url_for('bank_instruments') }}">Instruments</a>, then recompute.
+    deduplicated and not merged with anything: configure the card's settlement account in its
+    Card settings on <a href="{{ url_for('bank_sources') }}">Source</a>, then recompute.
   </p>
 </div>
 {% endblock %}

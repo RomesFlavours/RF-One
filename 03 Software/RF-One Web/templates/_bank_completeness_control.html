@@ -1,23 +1,14 @@
-{% extends "base.html" %}
-{% import "_bank_macros.html" as bank %}
-{% block page_title %}Bank Reconciliation · Monthly Sources · RF-One{% endblock %}
-{% block wrap_class %}wrap-wide{% endblock %}
-{% block content %}
-{{ bank.module_nav('monthly') }}
-
-<h2>Monthly source completeness</h2>
-
-<p class="muted">
-  Did every bank and card that should have produced an original download this month produce one?
-  See <a href="{{ url_for('bank_instructions') }}#source-completeness">Instructions</a>.
-</p>
-
-<div class="card">
-  <h3>Reconciliation control start</h3>
+{#- Completeness control settings — the Reconciliation Control Start and the
+    Validated-through month. Moved unchanged from the retired Monthly Sources
+    page into Check Sources on Import and Review
+    (BANK_SOURCE_AND_IMPORT_REVIEW_001). Expects: control_config. -#}
+<div class="completeness-control">
   {% if control_config %}
     <p>
       RF-One controls Bank source completeness from <strong>{{ control_config.control_start_month }}</strong>
-      onward.{% if control_config.note %} &mdash; {{ control_config.note }}{% endif %}
+      onward{% if control_config.validated_through_month %}; data validated through
+      <strong>{{ control_config.validated_through_month }}</strong>{% endif %}.
+      {%- if control_config.note %} &mdash; {{ control_config.note }}{% endif %}
     </p>
   {% else %}
     <p class="error">
@@ -60,40 +51,3 @@
   </form>
   {% endif %}
 </div>
-
-<div class="card">
-  <h3>Select or create a month</h3>
-  <form method="post" action="{{ url_for('bank_monthly_select') }}" class="compact-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="field-row">
-      <label for="year">Year</label>
-      <input type="number" id="year" name="year" min="2000" max="2100" required
-             value="{{ period.period_month.split('-')[0] if period else '' }}">
-    </div>
-    <div class="field-row">
-      <label for="month">Month</label>
-      <input type="number" id="month" name="month" min="1" max="12" required
-             value="{{ period.period_month.split('-')[1]|int if period else '' }}">
-    </div>
-    <button type="submit">Select / Create Month</button>
-  </form>
-  {% if periods %}
-    <p class="cell-note">
-      Known months:
-      {% for p in periods %}
-        <a href="{{ url_for('bank_monthly', year=p.period_month.split('-')[0]|int, month=p.period_month.split('-')[1]|int) }}">{{ p.period_month }}</a>
-        <span class="badge {{ 'ok' if p.status == 'COMPLETE' else 'warn' }}">{{ p.status }}</span>{{ '' if loop.last else ' · ' }}
-      {% endfor %}
-    </p>
-  {% endif %}
-</div>
-
-{% if not period %}
-  <p class="empty">
-    No month selected yet. Create one above &mdash; it works for any month, with nothing
-    special-cased.
-  </p>
-{% else %}
-  {% include "_bank_monthly_sources.html" %}
-{% endif %}
-{% endblock %}

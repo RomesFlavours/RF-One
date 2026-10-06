@@ -179,18 +179,26 @@ def _specificity_sort_key(rule: "m.BankRecognitionRule") -> tuple:
     )
 
 
+def active_rules(session: Session) -> list["m.BankRecognitionRule"]:
+    """Every ACTIVE recognition rule — the set `find_candidate_rules`
+    considers. A caller judging many transactions at once (the simple WHO
+    rule's Apply) loads it once and passes it back in."""
+    return list(session.scalars(
+        select(m.BankRecognitionRule).where(m.BankRecognitionRule.status == "ACTIVE")
+    ).all())
+
+
 def find_candidate_rules(
     session: Session, *, normalized_description: str, payment_instrument_id: int, direction: str,
-    normalized_memo: str | None = None,
+    normalized_memo: str | None = None, rules: list["m.BankRecognitionRule"] | None = None,
 ) -> list["m.BankRecognitionRule"]:
     """Only ACTIVE rules are ever considered (spec step 2) — a rule at
     `NEEDS_REVIEW` or `INACTIVE` never matches until a human reactivates
     it. Respects the rule's own instrument scope (step 3) and direction
     scope (step 4). Returned ordered most-specific/highest-priority
-    first."""
-    rules = session.scalars(
-        select(m.BankRecognitionRule).where(m.BankRecognitionRule.status == "ACTIVE")
-    ).all()
+    first. `rules`, when given, must be `active_rules(session)`."""
+    if rules is None:
+        rules = active_rules(session)
     compatible = [
         rule for rule in rules
         if (rule.payment_instrument_id is None or rule.payment_instrument_id == payment_instrument_id)
@@ -697,11 +705,10 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
         # in this same session must be the one used.
         what = (session.get(m.BankAccountingClassification, reason.accounting_classification_id)
                 if reason.accounting_classification_id is not None else None)
-        if what is None:
-            raise ValueError(
-                f"Why {reason.code} — {reason.name} has no accounting destination yet."
-            )
-        if not what.is_posting_account:
+        # BANK_WHY_WITHOUT_WHAT_001 — a WHY with no accounting destination yet
+        # is a complete Bank answer (WHO + WHY); the decision's WHAT stays NULL
+        # until bookkeeping assigns one. Never invented.
+        if what is not None and not what.is_posting_account:
             raise ValueError(
                 f"Why {reason.code} resolves to {what.code}, a reporting group, which "
                 "nothing may be posted to."
@@ -714,7 +721,7 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
         )
         destination_source = m.DESTINATION_SOURCE_WHY
         if (request.accounting_classification_id is not None
-                and request.accounting_classification_id != what.id):
+                and (what is None or request.accounting_classification_id != what.id)):
             chosen = session.get(m.BankAccountingClassification, request.accounting_classification_id)
             if chosen is None:
                 raise ValueError(f"WHAT {request.accounting_classification_id} does not exist.")
@@ -794,7 +801,8 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
     if reason is not None:
         notes_parts.append(
             f"Chosen: Who {occurrence.canonical_name!r} -> Why {reason.name!r} "
-            f"-> What {what.code} ({what.name}, {what.statement_type})."
+            + (f"-> What {what.code} ({what.name}, {what.statement_type})." if what is not None
+               else "-> no accounting destination yet (bookkeeping pending).")
         )
     else:
         notes_parts.append(

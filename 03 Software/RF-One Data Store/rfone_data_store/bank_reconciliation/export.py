@@ -215,7 +215,7 @@ def _classification_blockers(
             blockers.append(ExportBlocker(
                 f"Who without Why: {where} was decided for Who "
                 f"{explanation.occurrence_name_snapshot or explanation.occurrence_id!r} but records no Why. "
-                "Give that Who a default Why in Bank > Classification, then Reclassify this transaction."
+                "Give that Who a default Why in Bank > Configuration, then Reclassify this transaction."
             ))
             continue
         if not explanation.accounting_classification_code_snapshot:
@@ -223,7 +223,7 @@ def _classification_blockers(
                 f"Why without What: {where} was decided for Why "
                 f"{explanation.transaction_reason_name_snapshot or explanation.transaction_reason_id!r} "
                 "but its decision records no What (accounting classification). This is an incomplete "
-                "historical classification — assign the Why a What in Bank > Classification, then "
+                "historical classification — assign the Why a What in Bank > Configuration, then "
                 "Reclassify this transaction."
             ))
             continue
@@ -231,7 +231,7 @@ def _classification_blockers(
             blockers.append(ExportBlocker(
                 f"Incomplete historical classification: {where} carries What "
                 f"{explanation.accounting_classification_code_snapshot} with no statement type "
-                "(Profit & Loss or Balance Sheet). Complete that What in Bank > Classification, "
+                "(Profit & Loss or Balance Sheet). Complete that What in Bank > Configuration, "
                 "then Reclassify this transaction."
             ))
 
@@ -397,8 +397,8 @@ def compute_export_blockers(session: Session, *, year: int, month: int) -> list[
             blockers.append(ExportBlocker(
                 f"No settlement account configured for {name!r} (id={instrument_id}): {count} "
                 "transaction(s) this month have no accounting identity and could not be "
-                "deduplicated. Configure the card's settlement account in Bank > Import & "
-                "Instruments, then recompute."
+                "deduplicated. Configure the card's settlement account in Bank > Source "
+                "(Card settings), then recompute."
             ))
 
     # The Company of a transaction comes from its SETTLEMENT ACCOUNT, never

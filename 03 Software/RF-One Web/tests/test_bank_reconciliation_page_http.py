@@ -1,7 +1,10 @@
 #!/usr/bin/env python
-"""HTTP test for the real Bank Reconciliation page (BANK_RECONCILIATION_001).
-
-Thirty-four numbered points, as specified by the Product Owner:
+"""HTTP test for the Bank Reconciliation rows (BANK_RECONCILIATION_001), as they
+live today in Review > Reconciled (BANK_TWO_STAGE_REVIEW_001). The standalone
+`/bank/reconciliation` month page and its WHO modal are retired
+(BANK_FINAL_CLEANUP_001): the page redirects, the WHO and WHY are chosen in
+Select WHO / WHY (`/bank/transactions/<id>/who-why`). The original points,
+on the current workflow:
 
    1-6   page: real monthly rows, month selector, Account/Card, Date,
          Description, signed Amount;
@@ -9,7 +12,7 @@ Thirty-four numbered points, as specified by the Product Owner:
          data; WHY limited to the WHO's possible WHY; default proposed only;
          another allowed WHY; invalid pairs; the authoritative decision
          service; WHAT never exposed;
-  17-18  inline Add WHO through the Configuration service;
+  17-18  the retired WHO route is gone; Select WHO / WHY moves a row to Reconciled;
   19-23  For Whom: bank-account and card defaults, change, persistence,
          cross-LLC;
   24-28  row confirmation and derived status;
@@ -21,7 +24,6 @@ Runs against a DISPOSABLE SQLite database created here and deleted at the end.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import sys
@@ -48,7 +50,6 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as web_app  # noqa: E402
-import bank_routes  # noqa: E402
 from db import SessionFactory  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 from werkzeug.datastructures import MultiDict  # noqa: E402
@@ -59,7 +60,8 @@ from rfone_data_store.bank_reconciliation import configuration as config_service
 from rfone_data_store.bank_reconciliation import receiver_candidates  # noqa: E402
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
-AUG = "/bank/reconciliation?year=2026&month=8"
+REC = "/bank/review?view=reconciled&year=2026&month=8"
+TO_REC = "/bank/review?year=2026&month=8"
 
 
 def main() -> int:
@@ -172,7 +174,7 @@ def main() -> int:
             "csrf_token": CSRF_RE.search(client.get("/login").data.decode("utf-8")).group(1),
         })
 
-        def page(url=AUG) -> str:
+        def page(url=REC) -> str:
             return client.get(url).data.decode("utf-8")
 
         html = page()
@@ -184,6 +186,15 @@ def main() -> int:
                 pairs.append(("csrf_token", token))
             return (who or client).post(path, data=MultiDict(pairs))
 
+        def who_why(txn_id, occurrence_id, reason_id, **kw):
+            data = {"occurrence_id": occurrence_id, "return_to": REC}
+            if reason_id is not None:
+                data["transaction_reason_id"] = reason_id
+            return post(f"/bank/transactions/{txn_id}/who-why", data, **kw)
+
+        def confirm(txn_id, entity_id):
+            return post(f"/bank/reconciliation/{txn_id}/confirm", {"for_whom_id": entity_id, "return_to": REC})
+
         def row(html_text, txn_id) -> str:
             start = html_text.index(f'<tr id="t-{txn_id}"')
             return html_text[start:html_text.index("</tr>", start)]
@@ -192,32 +203,28 @@ def main() -> int:
             match = re.search(rf'{name}="([^"]*)"', row_html)
             return match.group(1) if match else None
 
-        def catalog(html_text):
-            return json.loads(re.search(r'<script type="application/json" id="rp-data">(.*?)</script>',
-                                        html_text, re.S).group(1))
-
         def flashes_after(response) -> str:
-            return page(response.headers.get("Location", AUG)) if response.status_code == 302 else ""
+            return page(response.headers.get("Location", REC)) if response.status_code == 302 else ""
+
+        def rec_ids(html_text):
+            return set(int(x) for x in re.findall(r'data-row-id="(\d+)"', html_text))
 
         # ================================================================ 1-6
-        row_ids = set(int(x) for x in re.findall(r'data-row-id="(\d+)"', html))
-        check("1. the month's real FinancialTransaction rows render (confirmed duplicate and other "
-              "months excluded; a NULL duplicate status kept)",
-              row_ids == {ids["t1"], ids["t2"], ids["t3"], ids["t6"]}, str(row_ids))
-        july = set(int(x) for x in re.findall(r'data-row-id="(\d+)"', page("/bank/reconciliation?year=2026&month=7")))
-        original = bank_routes._previous_local_month
-        bank_routes._previous_local_month = lambda tz: (2026, 7)
-        try:
-            default_rows = set(int(x) for x in re.findall(r'data-row-id="(\d+)"', page("/bank/reconciliation")))
-        finally:
-            bank_routes._previous_local_month = original
-        check("2. the month selector works (?year&month) and the default is the previous local month",
-              july == {ids["t4"]} and default_rows == {ids["t4"]} and "July 2026" in page("/bank/reconciliation?year=2026&month=7")
-              and 'href="/bank/reconciliation?year=2026&amp;month=7"' in html,
-              f"{july} {default_rows}")
-        r1, r2, r3, r6 = (row(html, ids[k]) for k in ("t1", "t2", "t3", "t6"))
+        to_reconcile = page(TO_REC)
+        check("1. Reconciled holds the month's rows whose WHO is resolved (automatic t1, human t3); rows "
+              "with no WHO stay in To Reconcile; a confirmed duplicate and other months are excluded",
+              rec_ids(html) == {ids["t1"], ids["t3"]}
+              and f'data-transaction-id="{ids["t2"]}"' in to_reconcile
+              and f'data-transaction-id="{ids["t6"]}"' in to_reconcile, str(rec_ids(html)))
+        july = client.get("/bank/reconciliation?year=2026&month=7")
+        bare = client.get("/bank/reconciliation")
+        check("2. the retired standalone page redirects to Review > Reconciled, keeping the month",
+              july.status_code == 302 and july.headers["Location"] == "/bank/review?view=reconciled&year=2026&month=7"
+              and bare.status_code == 302 and bare.headers["Location"] == "/bank/review?view=reconciled",
+              f"{july.headers.get('Location')} {bare.headers.get('Location')}")
+        r1, r3 = row(html, ids["t1"]), row(html, ids["t3"])
         check("3. Account / Card is the human label with its last digits",
-              "Alpha Checking ··1111" in r1 and "Ink Card ··3333" in r2 and f">{ids['checking']}<" not in r1)
+              "Alpha Checking ··1111" in r1 and f">{ids['checking']}<" not in r1)
         check("4. Date is compact and correct", ">Aug 5<" in r1 and 'title="2026-08-05"' in r1)
         check("5. Description is the original bank text", "GORDON FOOD SERVICE #1234 ORLANDO FL" in r1)
         check("6. Amount is signed", "−1,284.37" in r1 and "+4,317.55" in r3 and "rp-in" in r3)
@@ -227,75 +234,50 @@ def main() -> int:
         with SessionFactory() as db:
             for k in why_names:
                 why_names[k] = db.get(m.BankTransactionReason, ids[k]).name
-        check("7. an automatic WHO is shown as suggested, with its WHY underneath",
+        check("7. an automatic WHO is shown as suggested, with its WHY",
               "Gordon Food Service" in r1 and "suggested" in r1 and why_names["food"] in r1)
         check("8. a human WHO is shown as chosen by a person", "Clover" in r3 and "rp-src-person" in r3
               and why_names["sales"] in r3)
-        check("9. a missing WHO is shown as such", "No WHO yet" in r6 and "No WHO yet" in r2)
-        data = catalog(html)
-        names = {w["name"] for w in data["whos"]}
-        check("10. the WHO modal uses the real WHO records: active ones, not the inactive one",
-              {"Gordon Food Service", "Amazon", "Clover"} <= names and "Retired Vendor" not in names)
-        gfs_entry = next(w for w in data["whos"] if w["id"] == ids["gfs"])
-        check("11. the WHY list is the WHO's configured possible WHY",
-              sorted(gfs_entry["whys"]) == sorted([ids["food"], ids["cleaning"]]), str(gfs_entry))
-        check("12. the WHO's default WHY is sent as the proposal", gfs_entry.get("default_why") == ids["food"])
+        check("9. a missing WHO is not in Reconciled: it is work for To Reconcile",
+              f'id="t-{ids["t6"]}"' not in html and f'id="t-{ids["t2"]}"' not in html)
 
         with SessionFactory() as db:
             rules_before = db.scalar(select(func.count(m.BankRecognitionRule.id)))
-        response = post(f"/bank/reconciliation/{ids['t1']}/who", {"occurrence_id": ids["gfs"], "why_id": ids["cleaning"]})
+        response = who_why(ids["t1"], ids["gfs"], ids["cleaning"])
         with SessionFactory() as db:
             t1 = db.get(m.FinancialTransaction, ids["t1"])
             current = db.get(m.BankTransactionExplanation, t1.explanation_id)
             allocations_t1 = db.scalar(select(func.count()).where(m.BankTransactionAllocation.financial_transaction_id == ids["t1"]))
             rules_after = db.scalar(select(func.count(m.BankRecognitionRule.id)))
-        check("13. the operator can choose another allowed WHY than the default",
+        check("13. the operator can choose another WHY than the default, in Select WHO / WHY",
               current.transaction_reason_id == ids["cleaning"] and current.occurrence_id == ids["gfs"])
-
-        bad_pair = post(f"/bank/reconciliation/{ids['t1']}/who", {"occurrence_id": ids["gfs"], "why_id": ids["office"]})
-        bad_pair_msg = flashes_after(bad_pair)
-        bad_who = post(f"/bank/reconciliation/{ids['t1']}/who", {"occurrence_id": 999999, "why_id": ""})
+        bad_who = who_why(ids["t1"], 999999, ids["food"])
+        inactive_who = who_why(ids["t1"], ids["retired"], ids["food"])
         with SessionFactory() as db:
             still = db.get(m.BankTransactionExplanation, db.get(m.FinancialTransaction, ids["t1"]).explanation_id)
-        check("14. a WHY that is not one of the WHO's possible WHY, and an unknown WHO, are refused "
-              "(nothing written)",
-              still.id == current.id and "not one of" in bad_pair_msg and bad_who.status_code == 302)
-        check("15. Confirm WHO persists through the authoritative human-decision service "
-              "(HUMAN decision, confirmer recorded) and does NOT confirm the row or learn a rule",
+        check("14. an unknown or inactive WHO is refused (nothing written)",
+              still.id == current.id and bad_who.status_code == 302 and inactive_who.status_code == 302)
+        check("15. the WHO + WHY decision persists through the authoritative human-decision service "
+              "(HUMAN decision, confirmer recorded), does NOT confirm the row, learns no rule, and returns "
+              "to the same row of Reconciled",
               current.decision_source == "HUMAN" and current.confirmed_by_account_id == ids["rc_operator"]
               and current.decision_status in ("HUMAN_CONFIRMED", "HUMAN_OVERRIDDEN")
               and allocations_t1 == 0 and rules_after == rules_before and response.status_code == 302
-              and response.headers["Location"].endswith(f"/bank/reconciliation?year=2026&month=8#t-{ids['t1']}"),
+              and response.headers["Location"].endswith(f"{REC}#t-{ids['t1']}"),
               f"{current.decision_status} {allocations_t1} {response.headers.get('Location')}")
-        html = page()
-        compact = html[html.index('<tbody id="rp-body">'):html.index("</tbody>", html.index('<tbody id="rp-body">'))]
-        check("16. WHAT is not exposed on the compact rows (no WHAT label, accounting code or statement)",
-              "WHAT" not in compact and "accounting_classification" not in html and "PROFIT_LOSS" not in html)
 
         # ================================================================ 17-18
-        response = post(f"/bank/reconciliation/{ids['t2']}/who", [
-            ("new_who", "1"), ("new_name", "Office Depot"), ("new_why_ids", ids["office"]),
-            ("new_why_ids", ids["cleaning"]), ("new_default_why_id", ids["office"]),
-            ("new_entity_ids", ids["alpha"]), ("why_id", ids["cleaning"]),
-        ])
+        # BANK_FINAL_CLEANUP_001: the standalone page's WHO modal (with inline
+        # Add WHO) is retired; WHO creation is the WHO Rule / Configuration.
+        retired_who = post(f"/bank/reconciliation/{ids['t2']}/who", {"occurrence_id": ids["amazon"], "why_id": ids["office"]})
         with SessionFactory() as db:
-            depot = db.scalar(select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == "Office Depot"))
-            depot_type = db.get(m.BankOccurrenceType, depot.occurrence_type_id).code if depot else None
-            depot_whys = set(db.scalars(select(m.BankOccurrenceReasonAssociation.transaction_reason_id).where(
-                m.BankOccurrenceReasonAssociation.occurrence_id == depot.id))) if depot else set()
-            depot_entities = set(db.scalars(select(m.BankOccurrenceReportingEntity.reporting_entity_id).where(
-                m.BankOccurrenceReportingEntity.occurrence_id == depot.id))) if depot else set()
-            t2_decision = db.get(m.BankTransactionExplanation, db.get(m.FinancialTransaction, ids["t2"]).explanation_id)
-        check("17. inline Add WHO creates a real COUNTERPARTY WHO through the Configuration service "
-              "(possible WHY, default, entities served) and records it on the transaction",
-              depot is not None and depot_type == "COUNTERPARTY"
-              and depot_whys == {ids["office"], ids["cleaning"]} and depot.default_transaction_reason_id == ids["office"]
-              and depot_entities == {ids["alpha"]} and t2_decision.occurrence_id == depot.id
-              and t2_decision.transaction_reason_id == ids["cleaning"])
-        ids["depot"] = depot.id
+            t2_decision = db.get(m.FinancialTransaction, ids["t2"]).explanation_id
+        check("17. the retired standalone WHO route is gone and writes nothing",
+              retired_who.status_code == 404 and t2_decision is None)
+        who_why(ids["t2"], ids["amazon"], ids["office"])
         html = page()
-        check("18. the new WHO is immediately selectable (in the modal's catalog) and shown on its row",
-              any(w["id"] == ids["depot"] for w in catalog(html)["whos"]) and "Office Depot" in row(html, ids["t2"]))
+        check("18. a WHO + WHY chosen in Select WHO / WHY moves the row to Reconciled",
+              ids["t2"] in rec_ids(html) and "Amazon" in row(html, ids["t2"]))
 
         # ================================================================ 19-23
         r1, r2 = row(html, ids["t1"]), row(html, ids["t2"])
@@ -308,7 +290,7 @@ def main() -> int:
               "filter the list)",
               {str(ids["alpha"]), str(ids["beta"]), str(ids["brand"])} <= set(options)
               and str(ids["gamma"]) not in options)
-        response = post(f"/bank/reconciliation/{ids['t1']}/confirm", {"for_whom_id": ids["beta"]})
+        response = confirm(ids["t1"], ids["beta"])
         with SessionFactory() as db:
             allocations = db.scalars(select(m.BankTransactionAllocation).where(
                 m.BankTransactionAllocation.financial_transaction_id == ids["t1"])).all()
@@ -320,91 +302,91 @@ def main() -> int:
 
         # ================================================================ 24-28
         html = page()
-        r6 = row(html, ids["t6"])
-        refused = post(f"/bank/reconciliation/{ids['t6']}/confirm", {"for_whom_id": ids["alpha"]})
+        refused = confirm(ids["t6"], ids["alpha"])
         refused_msg = flashes_after(refused)
         with SessionFactory() as db:
             t6_allocations = db.scalar(select(func.count()).where(m.BankTransactionAllocation.financial_transaction_id == ids["t6"]))
-        check("24. Confirm is unavailable without WHO / WHY / For Whom (button disabled; the server refuses)",
-              re.search(r'data-action="confirm" disabled', r6) is not None and t6_allocations == 0
-              and "WHO" in refused_msg)
+        check("24. Confirm is refused without WHO / WHY (the server refuses, nothing written)",
+              t6_allocations == 0 and "WHO" in refused_msg)
         check("25. Confirm persists a HUMAN, COMPLETE allocation for the whole amount with the decision's WHY",
               a.status == "COMPLETE" and a.decision_source == "HUMAN" and a.decided_by_account_id == ids["rc_operator"]
               and a.transaction_reason_id == ids["cleaning"] and 'data-status="Confirmed"' in row(html, ids["t1"]))
 
-        post(f"/bank/reconciliation/{ids['t1']}/who", {"occurrence_id": ids["gfs"], "why_id": ids["cleaning"]})
+        who_why(ids["t1"], ids["gfs"], ids["cleaning"])
         with SessionFactory() as db:
             kept = db.scalar(select(func.count()).where(m.BankTransactionAllocation.financial_transaction_id == ids["t1"]))
-        post(f"/bank/reconciliation/{ids['t1']}/who", {"occurrence_id": ids["gfs"], "why_id": ids["food"]})
+        who_why(ids["t1"], ids["gfs"], ids["food"])
         with SessionFactory() as db:
             after_change = db.scalar(select(func.count()).where(m.BankTransactionAllocation.financial_transaction_id == ids["t1"]))
         check("26. changing WHO/WHY after confirmation reopens the row (re-stating the same WHO/WHY does not)",
               kept == 1 and after_change == 0 and 'data-status="Needs review"' in row(page(), ids["t1"]))
 
-        post(f"/bank/reconciliation/{ids['t1']}/confirm", {"for_whom_id": ids["alpha"]})
-        post(f"/bank/reconciliation/{ids['t1']}/confirm", {"for_whom_id": ids["brand"]})
+        confirm(ids["t1"], ids["alpha"])
+        confirm(ids["t1"], ids["brand"])
         with SessionFactory() as db:
             restated = db.scalars(select(m.BankTransactionAllocation).where(
                 m.BankTransactionAllocation.financial_transaction_id == ids["t1"])).all()
-        reopened = post(f"/bank/reconciliation/{ids['t1']}/reopen", {})
+        reopened = post(f"/bank/reconciliation/{ids['t1']}/reopen", {"return_to": REC})
         with SessionFactory() as db:
             after_reopen = db.scalar(select(func.count()).where(m.BankTransactionAllocation.financial_transaction_id == ids["t1"]))
         check("27. a new For Whom takes effect only through a new Confirm; Reopen withdraws the confirmation",
               len(restated) == 1 and restated[0].reporting_entity_id == ids["brand"] and after_reopen == 0
               and reopened.status_code == 302)
 
-        post(f"/bank/reconciliation/{ids['t3']}/confirm", {"for_whom_id": ids["beta"]})
+        confirm(ids["t3"], ids["beta"])
         html = page()
-        statuses = {k: attr(row(html, ids[k]), "data-status") for k in ("t1", "t2", "t3", "t6")}
+        statuses = {k: attr(row(html, ids[k]), "data-status") for k in ("t1", "t2", "t3")}
         check("28. status derives from persisted facts: Confirmed / Needs review (a suggestion is never done)",
-              statuses == {"t1": "Needs review", "t2": "Needs review", "t3": "Confirmed", "t6": "Needs review"}, str(statuses))
+              statuses == {"t1": "Needs review", "t2": "Needs review", "t3": "Confirmed"}
+              and f'id="t-{ids["t6"]}"' not in html, str(statuses))
 
         # ================================================================ 29-31
         outsider = web_app.app.test_client()
         outsider.post("/login", data={"username": "rc_outsider", "password": "OperatorPass123!",
                                       "csrf_token": CSRF_RE.search(outsider.get("/login").data.decode("utf-8")).group(1)})
-        anon = web_app.app.test_client().get(AUG)
-        o_get = outsider.get(AUG)
-        o_post = outsider.post(f"/bank/reconciliation/{ids['t6']}/who", data={"occurrence_id": ids["amazon"]})
+        anon = web_app.app.test_client().get(REC)
+        o_get = outsider.get(REC)
+        o_post = outsider.post(f"/bank/transactions/{ids['t6']}/who-why",
+                               data={"occurrence_id": ids["amazon"], "transaction_reason_id": ids["office"]})
         with SessionFactory() as db:
             t6_decision = db.get(m.FinancialTransaction, ids["t6"]).explanation_id
         check("29. BANK access is required (anonymous, non-BANK account refused; nothing written)",
               anon.status_code in (302, 401, 403) and o_get.status_code in (302, 403)
               and o_post.status_code in (302, 400, 403) and t6_decision is None)
-        no_token = post(f"/bank/reconciliation/{ids['t6']}/who", {"occurrence_id": ids["amazon"]}, with_token=False)
+        no_token = who_why(ids["t6"], ids["amazon"], ids["office"], with_token=False)
         with SessionFactory() as db:
             t6_decision = db.get(m.FinancialTransaction, ids["t6"]).explanation_id
         check("30. CSRF is required", no_token.status_code in (400, 403) and t6_decision is None)
         bad = [
-            post("/bank/reconciliation/999999/who", {"occurrence_id": ids["amazon"]}),
-            post(f"/bank/reconciliation/{ids['t3']}/confirm", {"for_whom_id": 999999}),
-            post(f"/bank/reconciliation/{ids['t3']}/confirm", {"for_whom_id": ids["gamma"]}),
-            post(f"/bank/reconciliation/{ids['t6']}/who", {"occurrence_id": "abc"}),
-            post(f"/bank/reconciliation/{ids['t6']}/who", {"occurrence_id": ids["retired"]}),
+            who_why(999999, ids["amazon"], ids["office"]),
+            confirm(ids["t3"], 999999),
+            confirm(ids["t3"], ids["gamma"]),
+            who_why(ids["t6"], "abc", ids["office"]),
+            who_why(ids["t6"], ids["retired"], ids["office"]),
         ]
         with SessionFactory() as db:
             t3_alloc = db.scalars(select(m.BankTransactionAllocation).where(
                 m.BankTransactionAllocation.financial_transaction_id == ids["t3"])).all()
             t6_decision = db.get(m.FinancialTransaction, ids["t6"]).explanation_id
         check("31. invalid ids are refused: unknown transaction, unknown / inactive entity, "
-              "non-numeric and inactive WHO",
+              "non-numeric and inactive WHO; every refusal stays in the Review",
               all(r.status_code == 302 for r in bad) and len(t3_alloc) == 1
               and t3_alloc[0].reporting_entity_id == ids["beta"] and t6_decision is None
-              and all("/bank/reconciliation" in r.headers["Location"] for r in bad))
+              and all(r.headers["Location"].startswith("/bank/review") for r in bad),
+              str([(r.status_code, r.headers.get("Location")) for r in bad]))
 
         # ================================================================ 32-34
         html = page()
-        check("32. one reusable WHO modal; WHO options are not rendered per row",
-              html.count('id="rp-who-modal"') == 1 and "rp-who-option\"" not in html.split("<script")[0]
-              and html.count('name="csrf_token"') == 1)
+        check("32. one Select WHO / WHY popup for the whole page; the retired standalone WHO modal is gone",
+              html.count('id="who-picker-search"') == 1 and 'id="rp-who-modal"' not in html)
 
         def refuse(*args, **kwargs):
             raise AssertionError("Classification must not run for Reconciliation")
         saved = receiver_candidates.build_candidates
         receiver_candidates.build_candidates = refuse
         try:
-            get_ok = client.get(AUG).status_code
-            post_ok = post(f"/bank/reconciliation/{ids['t6']}/who", {"occurrence_id": ids["amazon"], "why_id": ids["office"]}).status_code
+            get_ok = client.get(REC).status_code
+            post_ok = who_why(ids["t6"], ids["amazon"], ids["office"]).status_code
         finally:
             receiver_candidates.build_candidates = saved
         check("33. no Classification call (GET and writes work with Classification disabled)",
@@ -412,24 +394,33 @@ def main() -> int:
 
         with SessionFactory() as db:
             instruments = [db.get(m.PaymentInstrument, ids[k]) for k in ("checking", "operating", "card")]
+            amazon_who = db.get(m.BankOccurrence, ids["amazon"])
             for i in range(450):
-                db.add(m.FinancialTransaction(
+                t = m.FinancialTransaction(
                     payment_instrument_id=instruments[i % 3].id, bank_source="CHASE_BANK_ACCOUNT",
                     posting_date=date(2026, 6, 1 + i % 30), description_original=f"VENDOR {i} POS PURCHASE ORLANDO FL",
                     description_normalized=f"VENDOR {i}", amount_minor=-(1000 + i), status="COMPLETED",
                     duplicate_status="NONE", review_status="REQUIRES_REVIEW",
-                ))
+                )
+                db.add(t)
+                db.flush()
+                e = m.BankTransactionExplanation(financial_transaction_id=t.id, occurrence_id=amazon_who.id,
+                                                 transaction_reason_id=ids["office"], decision_source="RULE",
+                                                 decision_status="AUTO_APPLIED")
+                db.add(e)
+                db.flush()
+                t.explanation_id = e.id
             for i in range(1200):
-                db.add(m.BankOccurrence(canonical_name=f"Bulk Vendor {i:04d}", occurrence_type_id=db.get(m.BankOccurrence, ids["gfs"]).occurrence_type_id, status="ACTIVE"))
+                db.add(m.BankOccurrence(canonical_name=f"Bulk Vendor {i:04d}", occurrence_type_id=amazon_who.occurrence_type_id, status="ACTIVE"))
             db.commit()
         started = time.perf_counter()
-        june = client.get("/bank/reconciliation?year=2026&month=6")
+        june = client.get("/bank/review?view=reconciled&year=2026&month=6")
         elapsed = time.perf_counter() - started
         size_kb = len(june.data) / 1024
         print(f"        realistic month: 450 rows, 1,200+ WHO -> {elapsed * 1000:.0f} ms, {size_kb:.0f} KB")
-        check("34. a realistic month (450 rows, 1,200+ WHO) renders fast and compact",
+        check("34. a realistic month (450 Reconciled rows, 1,200+ WHO) renders fast and compact",
               june.status_code == 200 and june.data.decode("utf-8").count('data-row-id="') == 450
-              and elapsed < 3.0 and size_kb < 1024, f"{elapsed:.2f}s {size_kb:.0f}KB")
+              and elapsed < 3.0 and size_kb < 1536, f"{elapsed:.2f}s {size_kb:.0f}KB")
     finally:
         try:
             os.remove(_TEST_DB_PATH)

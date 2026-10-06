@@ -12,7 +12,6 @@
 {{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', url_for('bank_home')), ('Configuration', None)]) }}
 
 <style>
-<style>
   .cp-header { display: flex; align-items: center; gap: .6rem 1.2rem; flex-wrap: wrap; margin: .25rem 0 .8rem; }
   .cp-header h1 { margin: 0; font-size: 1.45rem; }
   .cp-jump { display: flex; gap: .9rem; font-size: .88rem; }
@@ -61,7 +60,6 @@
   .cp-rules select { margin: 0; }
   .cp-error { color: #a33; font-size: .82rem; min-height: 1em; }
   .cp-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .9rem; }
-</style>
   .cp-f input[type=date] { margin: 0; }
   .cp-note { color: var(--muted, #6b6f5e); font-size: .8rem; margin: .15rem 0 0; }
   .cp-inline { display: flex; gap: .8rem; }
@@ -76,9 +74,9 @@
   <h1>Bank Configuration</h1>
   <nav class="cp-jump" aria-label="Sections">
     <a href="#cp-what">WHAT</a><a href="#cp-why">WHY</a><a href="#cp-who">WHO</a>
-    <a href="#cp-accounts">Accounts &amp; Cards</a><a href="#cp-support">Support</a>
+    <a href="#cp-accounts">Sources</a><a href="#cp-support">Support</a>
   </nav>
-  <a class="btn btn-secondary cp-back" href="{{ url_for('bank_reconciliation') }}">Reconciliation</a>
+  <a class="btn btn-secondary cp-back" href="{{ url_for('bank_review') }}">Review Transactions</a>
 </div>
 
 <section class="cp-block" id="cp-what">
@@ -113,13 +111,14 @@
     <tbody data-list="who"></tbody></table>
 </section>
 
+{#- BANK_FINAL_RELEASE_BLOCKERS_002: bank accounts, cards and every other
+    financial Source — and a card's settlement account and cardholder — are
+    maintained in ONE place, the Source page. This block only points there. -#}
 <section class="cp-block" id="cp-accounts">
   <div class="cp-block-head">
-    <h2><span class="cp-num">4</span>Accounts &amp; Cards</h2><span class="cp-desc">Payment sources. The owning entity is the default "For whom" on Reconciliation.</span>
-    <button type="button" class="cp-btn cp-add" data-add="account">+ Add Account / Card</button>
+    <h2><span class="cp-num">4</span>Sources</h2><span class="cp-desc">Bank accounts, cards and other financial Sources, with each card's settlement account and cardholder.</span>
+    <a class="btn cp-btn cp-add" href="{{ url_for('bank_sources') }}">Manage Sources</a>
   </div>
-  <table class="cp-table"><thead><tr><th>Label</th><th>Type</th><th>Owning entity</th><th class="cp-narrow">Reference</th><th class="cp-narrow">Active</th><th class="cp-narrow"></th></tr></thead>
-    <tbody data-list="account"></tbody></table>
 </section>
 
 <section class="cp-support" id="cp-support">
@@ -127,7 +126,7 @@
   <details id="cp-entities">
     <summary>Entities / LLCs</summary>
     <div>
-      <div class="cp-block-head"><span class="cp-desc">Used by Accounts &amp; Cards, WHO entities served and For whom.</span>
+      <div class="cp-block-head"><span class="cp-desc">Used by WHO entities served and For whom.</span>
         <button type="button" class="cp-btn cp-add" data-add="entity">+ Add Entity</button></div>
       <table class="cp-table"><thead><tr><th>Entity</th><th>Legal name</th><th class="cp-narrow">Active</th><th class="cp-narrow"></th></tr></thead>
         <tbody data-list="entity"></tbody></table>
@@ -155,15 +154,14 @@
     <div class="cp-kv" data-list="control"></div>
   </details>
   <details id="cp-dedup">
-    <summary>Deduplication &amp; card settlement</summary>
+    <summary>Deduplication</summary>
     <div>
       <div class="cp-block-head"><span class="cp-desc">Rows with the same settlement account, posting date, signed amount and payee are one accounting fact.</span>
         <form method="post" action="{{ url_for('bank_configuration_dedup_recompute') }}" class="cp-add" style="margin:0">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="cp-btn btn-secondary">Recompute deduplication</button>
         </form></div>
-      <table class="cp-table"><thead><tr><th>Card</th><th>Settles to</th><th>Cardholder</th><th class="cp-narrow"></th></tr></thead>
-        <tbody data-list="card"></tbody></table>
+      <p class="cp-desc">A card's settlement account and cardholder are set in its Card settings on <a href="{{ url_for('bank_sources') }}">Source</a>.</p>
     </div>
   </details>
 </section>
@@ -217,11 +215,6 @@
                   td(count(o.entities, names('entities', o.entities)), 'cp-narrow'),
                   td(count(o.rules, o.rules.map(function (r) { return r.match + ': ' + r.pattern; })), 'cp-narrow'),
                   td(yes(o.active), 'cp-narrow')], o, 'who'); }); },
-    account: function () { return S.accounts.map(function (a) {
-      var entity = a.entity_name ? esc(a.entity_name) : '—';
-      if (a.derived) entity = '<span title="Derived from the settlement account">' + entity + '</span>';
-      return row([td(esc(accountLabel(a.id))), td(esc(a.type)), td(entity),
-                  td(esc(a.reference), 'cp-narrow'), td(yes(a.active), 'cp-narrow')], a, 'account'); }); },
     entity: function () { return S.entities.map(function (e) {
       return row([td(esc(e.name)), td(esc(e.legal_name || '— (virtual)')), td(yes(e.active), 'cp-narrow')], e, 'entity'); }); },
     source: function () { return S.sources.map(function (s) {
@@ -230,9 +223,6 @@
     bs: function () { return S.balance_sheet_destinations.map(function (d) {
       return '<tr data-id="' + d.id + '">' + td(esc(d.code), 'cp-code') + td(esc(d.name)) + td(esc(d.group || '—'))
         + td(String(d.why_count), 'cp-narrow') + '</tr>'; }); },
-    card: function () { return S.cards.map(function (c) {
-      return '<tr data-id="' + c.account + '">' + td(esc(accountLabel(c.account))) + td(esc(c.settles_to ? accountLabel(c.settles_to) : '—'))
-        + td(esc(c.cardholder || '—')) + '<td class="cp-narrow">' + editBtn('card', c.account) + '</td></tr>'; }); },
   };
   function render(kind) {
     var el = document.querySelector('[data-list="' + kind + '"]');
@@ -244,7 +234,7 @@
     }
     el.innerHTML = RENDER[kind]().join('');
   }
-  ['what', 'why', 'who', 'account', 'entity', 'bs', 'source', 'card', 'control'].forEach(render);
+  ['what', 'why', 'who', 'entity', 'bs', 'source', 'control'].forEach(render);
 
   // D9 — WHO search: an immediate client-side filter on the visible name.
   // Rows keep their data-id, so Edit always opens the WHO that was clicked.
@@ -371,31 +361,6 @@
                       ['rule_active', tr.querySelector('input[type=checkbox]').checked ? '1' : '0']);
         });
         submit(x.id ? '/who/' + x.id : '/who', fields); } },
-    account: { title: 'Account / Card', list: 'accounts', blank: { label: '', type_code: 'BANK_ACCOUNT', entity: null, reference: '', active: true },
-      body: function (x) {
-        var types = [['BANK_ACCOUNT', 'Bank Account'], ['CREDIT_CARD', 'Credit Card']];
-        if (x.type_code === 'PAYPAL') types.push(['PAYPAL', 'PayPal']);
-        return fText('f-label', 'Label', x.label) + fSelect('f-type', 'Type', types, x.type_code)
-          + fSelect('f-entity', 'Owning entity (default "For whom")', legalEntityOptions(x.entity), x.derived ? '' : x.entity)
-          + '<p class="cp-note" id="f-entity-derived" hidden>A card’s owning entity is derived from its settlement account'
-          + (x.id && x.derived ? ': <strong>' + esc(x.entity_name || 'none yet') + '</strong>' : '') + '. Change it under Support › Deduplication &amp; card settlement.</p>'
-          + fText('f-reference', 'Identifying reference / last digits', x.reference)
-          + (x.id ? fActive(x.active, ' disabled', 'Opening and closing an account or card is recorded in Monthly Sources.') : fActive(x.active)); },
-      after: function () {
-        var type = document.getElementById('f-type');
-        var sync = function () {
-          var card = type.value === 'CREDIT_CARD', entity = document.getElementById('f-entity');
-          entity.disabled = card; if (card) entity.value = '';
-          document.getElementById('f-entity-derived').hidden = !card;
-        };
-        type.addEventListener('change', sync); sync();
-      },
-      save: function (x) {
-        if (!val('f-label')) return 'The label is required.';
-        var fields = [['label', val('f-label')], ['instrument_type', val('f-type')], ['reference', val('f-reference')]];
-        if (val('f-type') !== 'CREDIT_CARD') fields.push(['entity_id', val('f-entity')]);
-        if (!x.id) fields.push(['active', flag('f-active')]);
-        submit(x.id ? '/account/' + x.id : '/account', fields); } },
     entity: { title: 'Entity / LLC', list: 'entities', blank: { name: '', legal_name: '', legal: true, active: true },
       body: function (x) {
         var virtual = x.id && !x.legal;
@@ -420,31 +385,6 @@
         if (!/^\d{4}-\d{2}$/.test(val('f-start'))) return 'Use YYYY-MM for the control start.';
         if (val('f-validated') && !/^\d{4}-\d{2}$/.test(val('f-validated'))) return 'Use YYYY-MM for validated through.';
         submit('/control', [['control_start', val('f-start')], ['validated_through', val('f-validated')]]); } },
-    card: { title: 'Card settlement & cardholder', edit: function (id) { return S.cards.filter(function (c) { return same(c.account, id); })[0]; },
-      body: function (x) {
-        var banks = [['', '— Not set —']].concat(S.accounts.filter(function (a) { return a.type_code === 'BANK_ACCOUNT'; }).map(function (a) { return [a.id, accountLabel(a.id)]; }));
-        return '<p class="cp-desc">' + esc(accountLabel(x.account)) + '</p>'
-          + '<div class="cp-inline">' + fSelect('f-settles', 'Settles to', banks, x.settles_to) + fDate('f-settles-from', 'Valid from', x.settles_from || S.today) + '</div>'
-          + '<p class="cp-note">A new settlement account starts a new period from this date; the previous one is kept in the history.</p>'
-          + '<div class="cp-inline">' + fSelect('f-holder-kind', 'Holder type', [['', '— Not set —']].concat(S.holder_kinds), x.holder_kind)
-          + '<div class="cp-f"><label for="f-holder">Cardholder</label><select id="f-holder"></select><input type="text" id="f-holder-name" value="' + esc(x.holder_kind === 'UNLINKED_PERSON' ? x.holder_name : '') + '" placeholder="Full name" hidden></div>'
-          + fDate('f-holder-from', 'Valid from', x.holder_from || S.today) + '</div>'; },
-      after: function (x) {
-        var kind = document.getElementById('f-holder-kind'), holder = document.getElementById('f-holder'), name = document.getElementById('f-holder-name');
-        var sync = function () {
-          var k = kind.value;
-          holder.innerHTML = S.holders.filter(function (h) { return h.kind === k; })
-            .map(function (h) { return '<option value="' + h.id + '"' + (k === x.holder_kind && same(h.id, x.holder_id) ? ' selected' : '') + '>' + esc(h.name) + '</option>'; }).join('');
-          holder.hidden = k === 'UNLINKED_PERSON' || !k; name.hidden = k !== 'UNLINKED_PERSON';
-        };
-        kind.addEventListener('change', sync); sync();
-      },
-      save: function (x) {
-        var fields = [['settlement_account_id', val('f-settles')], ['settlement_valid_from', val('f-settles-from')],
-                      ['holder_kind', val('f-holder-kind')], ['holder_valid_from', val('f-holder-from')]];
-        if (val('f-holder-kind') === 'UNLINKED_PERSON') fields.push(['holder_name', val('f-holder-name')]);
-        else if (val('f-holder-kind')) fields.push(['holder_id', val('f-holder')]);
-        submit('/card/' + x.account, fields); } },
   };
   function ruleRow(r) {
     return '<tr' + (r.id ? ' data-rule-id="' + r.id + '"' : '') + '><td><input type="text" value="' + esc(r.pattern) + '" placeholder="GFS STORE 0123" aria-label="Pattern"></td><td><select aria-label="Match">'

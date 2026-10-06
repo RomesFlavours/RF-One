@@ -50,6 +50,7 @@ run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as web_app  # noqa: E402
 from db import SessionFactory  # noqa: E402
+from _bank_upload_helper import upload_and_confirm  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store.bank_reconciliation import service as bank_service  # noqa: E402
@@ -124,10 +125,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
         # 1. Three-tab navigation, active state, and no misleading link.
         # =================================================================
         pages = {
-            "/bank": "import", "/bank/instruments": "instruments",
+            "/bank": "import", "/bank/sources": "source",
             "/bank/review": "review", "/bank/export": "export",
         }
-        tab_labels = ("Import and Review", "Instruments", "Review Transactions", "Monthly Export")
+        tab_labels = ("Import and Review", "Review Transactions", "Monthly Export", "Source")
         for path in pages:
             html = client.get(path).data.decode("utf-8")
             check(
@@ -159,7 +160,7 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
         # nav block itself, since "Monthly Export" also appears in <title>.
         for path in pages:
             html = client.get(path).data.decode("utf-8")
-            nav_start = html.index('<nav class="module-tabs"')
+            nav_start = html.index('<nav class="module-tabs')
             nav = html[nav_start:html.index("</nav>", nav_start)]
             positions = [nav.index(label) for label in tab_labels]
             check(f"{path} keeps the tabs in the same order", positions == sorted(positions))
@@ -258,14 +259,15 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
 
         # Now that tables actually have rows, check the responsive markup
         # the stacked narrow-viewport layout depends on.
-        home_html = client.get("/bank/instruments").data.decode("utf-8")
-        check("/bank/instruments lists an Edit button per instrument",
-              f'href="/bank/instruments/{card_2915_id}/edit"' in home_html)
+        home_html = client.get("/bank/sources").data.decode("utf-8")
+        check("/bank/sources lists an Edit button per Source (and Card settings for a card)",
+              home_html.count("data-source-edit") >= 1
+              and f'href="/bank/instruments/{card_2915_id}/edit"' in home_html)
         check(
-            "/bank/instruments tables use the compact + stackable table classes",
+            "/bank/sources tables use the compact + stackable table classes",
             'class="table-compact table-stack"' in home_html,
         )
-        check("/bank/instruments table cells carry a data-label for the stacked layout",
+        check("/bank/sources table cells carry a data-label for the stacked layout",
               home_html.count("data-label=") >= 9)
 
         # Edit every editable field at once, including the Legal Entity.
@@ -340,10 +342,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             "legal_entity_id": str(entity_a_id), "currency": "USD",
             "linked_instrument_id": "", "status": "ACTIVE", "csrf_token": csrf,
         })
-        listing = client.get("/bank/instruments").data.decode("utf-8")
+        listing = client.get("/bank/sources").data.decode("utf-8")
         check("the instrument list never shows a full account number",
               "000123456789214" not in listing)
-        check("the instrument list shows only the last four digits", ">9214<" in listing.replace(" ", "").replace("\n", ""))
+        check("the instrument list shows only the last four digits", ">··9214<" in listing.replace(" ", "").replace("\n", ""))
 
         # =================================================================
         # 4. Chase recognition by file name: date and (1)/(2) ignored.
@@ -372,10 +374,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             "05/04/2026,05/05/2026,SYNTHETIC MERCHANT B,Food,Sale,-31.50,\n"
         ).encode("utf-8")
         csrf = csrf_from("/bank")
-        client.post("/bank/upload", data={
+        upload_and_confirm(client, {
             "csrf_token": csrf,
             "files": (io.BytesIO(no_card_csv), "Chase2915_Activity_20260920 (1).csv"),
-        }, content_type="multipart/form-data")
+        })
         with SessionFactory() as s:
             batch = s.scalars(select(m.BankImportBatch).order_by(m.BankImportBatch.id.desc())).first()
             check(
@@ -396,10 +398,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             "XXXX XXXX XXXX 3144,05/08/2026,05/09/2026,SYNTHETIC CARD B ROW TWO,Food,Sale,-30.00,\n",
         )
         csrf = csrf_from("/bank")
-        client.post("/bank/upload", data={
+        upload_and_confirm(client, {
             "csrf_token": csrf,
             "files": (io.BytesIO(mixed_card_csv), "Chase9999_Activity_20260920.csv"),
-        }, content_type="multipart/form-data")
+        })
         with SessionFactory() as s:
             batch = s.scalars(select(m.BankImportBatch).order_by(m.BankImportBatch.id.desc())).first()
             mixed_batch_id = batch.id
@@ -439,10 +441,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             "institution": "First Citizens", "display_name": "First Citizens Operating",
             "instrument_type": "BANK_ACCOUNT", "csrf_token": csrf,
         })
-        client.post("/bank/upload", data={
+        upload_and_confirm(client, {
             "csrf_token": csrf,
             "files": (io.BytesIO(first_citizens_csv(*fc_rows)), "AccountHistory.csv"),
-        }, content_type="multipart/form-data")
+        })
         with SessionFactory() as s:
             fc_one = s.scalars(select(m.PaymentInstrument).where(
                 m.PaymentInstrument.display_name == "First Citizens Operating")).first()
@@ -463,10 +465,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
         ambiguous_csv = first_citizens_csv(
             "XXXXXX7470,06/02/2026,,SYNTHETIC FC SECOND MONTH,75.00,,Posted,5265.00\n",
         )
-        client.post("/bank/upload", data={
+        upload_and_confirm(client, {
             "csrf_token": csrf,
             "files": (io.BytesIO(ambiguous_csv), "AccountHistory.csv"),
-        }, content_type="multipart/form-data")
+        })
         with SessionFactory() as s:
             fc_two_id = s.scalar(select(m.PaymentInstrument.id).where(
                 m.PaymentInstrument.display_name == "First Citizens Payroll"))
@@ -505,10 +507,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             "XXXXXX7470,07/02/2026,,SYNTHETIC FC THIRD MONTH,60.00,,Posted,5205.00\n",
         )
         csrf = csrf_from("/bank")
-        client.post("/bank/upload", data={
+        upload_and_confirm(client, {
             "csrf_token": csrf,
             "files": (io.BytesIO(reuse_csv), "AccountHistory.csv"),
-        }, content_type="multipart/form-data")
+        })
         with SessionFactory() as s:
             reused_batch = s.scalars(
                 select(m.BankImportBatch).order_by(m.BankImportBatch.id.desc())).first()
@@ -537,10 +539,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             "XXXXXX7470,08/02/2026,,SYNTHETIC FC FOURTH MONTH,45.00,,Posted,5160.00\n",
         )
         csrf = csrf_from("/bank")
-        client.post("/bank/upload", data={
+        upload_and_confirm(client, {
             "csrf_token": csrf,
             "files": (io.BytesIO(disabled_csv), "AccountHistory.csv"),
-        }, content_type="multipart/form-data")
+        })
         with SessionFactory() as s:
             after_disable = s.scalars(
                 select(m.BankImportBatch).order_by(m.BankImportBatch.id.desc())).first()
@@ -559,10 +561,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             "DEBIT,05/05/2026,SYNTHETIC IDENTICAL ROW,-42.00,ACH_DEBIT,9000.00,\n",
         )
         csrf = csrf_from("/bank")
-        client.post("/bank/upload", data={
+        upload_and_confirm(client, {
             "csrf_token": csrf,
             "files": (io.BytesIO(dup_csv), "Chase9214_Activity_20260920.csv"),
-        }, content_type="multipart/form-data")
+        })
         with SessionFactory() as s:
             dup_batch = s.scalars(select(m.BankImportBatch).order_by(m.BankImportBatch.id.desc())).first()
             dup_batch_id = dup_batch.id
@@ -645,9 +647,9 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
 
         check("the current assignment is shown after the change",
               b"Chase Card 3144" in client.get("/bank?batches=all").data)
-        html = client.get("/bank/instruments").data.decode("utf-8")
+        html = client.get("/bank/sources").data.decode("utf-8")
         check("the assignment history is visible in the UI",
-              "Instrument assignment history" in html and "card 3144" in html)
+              "Source assignment history" in html and "card 3144" in html)
 
         # A reassignment with no reason is refused.
         csrf = csrf_from("/bank")
@@ -729,10 +731,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
 
         # Re-uploading the identical file is still idempotent after all this.
         csrf = csrf_from("/bank")
-        client.post("/bank/upload", data={
+        upload_and_confirm(client, {
             "csrf_token": csrf,
             "files": (io.BytesIO(dup_csv), "Chase9214_Activity_20260920.csv"),
-        }, content_type="multipart/form-data")
+        })
         with SessionFactory() as s:
             check("re-uploading identical bytes still creates no second batch",
                   s.scalar(select(func.count(m.BankImportBatch.id)).where(

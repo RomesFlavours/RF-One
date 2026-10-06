@@ -1,0 +1,64 @@
+{# Review Transactions — the filters and the two queue tabs
+   (BANK_TWO_STAGE_REVIEW_001), shared by To Reconcile (bank_review.html) and
+   Reconciled (bank_reconciliation.html in review mode). The tabs carry the
+   same month / instrument / batch, so moving between them keeps the context.
+   Needs: review_view, queue_counts, tab_args, instruments, filter_*. #}
+<h2>Review transactions</h2>
+
+<nav class="review-tabs" aria-label="Review queues">
+  <a class="review-tab{% if review_view == 'to_reconcile' %} is-active{% endif %}"
+     href="{{ url_for('bank_review', view='to_reconcile', **tab_args) }}"
+     {% if review_view == 'to_reconcile' %}aria-current="page"{% endif %}>To Reconcile ({{ queue_counts.to_reconcile }})</a>
+  <a class="review-tab{% if review_view == 'reconciled' %} is-active{% endif %}"
+     href="{{ url_for('bank_review', view='reconciled', **tab_args) }}"
+     {% if review_view == 'reconciled' %}aria-current="page"{% endif %}>Reconciled ({{ queue_counts.reconciled }})</a>
+</nav>
+<p class="muted review-tab-help">
+  {% if review_view == 'to_reconcile' %}
+    Transactions whose WHO is not resolved yet. Choose the WHO, or teach RF-One a <strong>Rule</strong>:
+    as soon as a transaction has its WHO it moves to <em>Reconciled</em>.
+  {% else %}
+    Transactions whose WHO is resolved, and transfers between RF-One's own accounts, which need no WHO.
+    Complete WHY and For Whom, then Confirm.
+    <span class="rp-st rp-st-automatic" aria-hidden="true">&#10003;</span> Automatic rows were completed by an approved Standard
+    and need no click; <span class="rp-st rp-st-confirmed" aria-hidden="true">&#10004;</span> Confirmed rows were accepted by a person.
+  {% endif %}
+</p>
+
+<div class="card">
+  <form method="get" class="compact-form filter-row" action="{{ url_for('bank_review') }}">
+    <input type="hidden" name="view" value="{{ review_view }}">
+    <div class="field-row">
+      <label for="year">Year</label>
+      <input type="number" id="year" name="year" value="{{ filter_year or '' }}" min="2000" max="2100">
+    </div>
+    <div class="field-row">
+      <label for="month">Month</label>
+      <input type="number" id="month" name="month" value="{{ filter_month or '' }}" min="1" max="12">
+    </div>
+    <div class="field-row">
+      <label for="payment_instrument_id">Instrument</label>
+      <select id="payment_instrument_id" name="payment_instrument_id">
+        <option value="">All</option>
+        {% for instrument in instruments %}
+          <option value="{{ instrument.id }}" {{ 'selected' if filter_payment_instrument_id == instrument.id else '' }}>{{ instrument.display_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if filter_batch_id %}
+      <input type="hidden" name="batch_id" value="{{ filter_batch_id }}">
+    {% endif %}
+    <button type="submit">Filter</button>
+  </form>
+
+  {% if filter_batch_id %}
+    <p class="muted">
+      Showing only batch #{{ filter_batch_id }}{% if filter_batch %} &mdash; <code>{{ filter_batch.original_file_name }}</code>{% endif %}.
+      <a href="{{ url_for('bank_review', view=review_view, year=filter_year, month=filter_month, payment_instrument_id=filter_payment_instrument_id) }}">Show every batch</a>
+    </p>
+  {% endif %}
+  {% set shown = queue_counts[review_view] %}
+  {% if shown > row_limit %}
+    <p class="muted">Showing the first {{ row_limit }} of {{ shown }} transactions. Choose a month or an instrument to narrow the list.</p>
+  {% endif %}
+</div>

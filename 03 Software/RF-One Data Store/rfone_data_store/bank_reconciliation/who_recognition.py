@@ -49,7 +49,6 @@ from . import accounting_dedup, invoice_evidence
 
 RECOGNIZER_VERSION = "who-v1"
 OCCURRENCE_TYPE_CODE = "COUNTERPARTY"  # the existing generic Who type
-OCCURRENCE_TYPE_NAME = "Counterparty"
 
 DETERMINISTIC = m.WHO_TIER_DETERMINISTIC
 PROPOSED = m.WHO_TIER_PROPOSED
@@ -547,25 +546,6 @@ class RecognitionSummary:
     held_for_review: int = 0
 
 
-def _ensure_occurrence_type(session: Session) -> "m.BankOccurrenceType":
-    existing = session.scalars(
-        select(m.BankOccurrenceType).where(m.BankOccurrenceType.code == OCCURRENCE_TYPE_CODE)
-    ).first()
-    if existing is not None:
-        return existing
-    created = m.BankOccurrenceType(
-        code=OCCURRENCE_TYPE_CODE, name=OCCURRENCE_TYPE_NAME,
-        description=(
-            "The party a bank movement concerns, where the movement's own description "
-            "identifies it. Deliberately generic: Supplier is only one possible kind, and "
-            "a bank line rarely says which."
-        ),
-    )
-    session.add(created)
-    session.flush()
-    return created
-
-
 def build_contexts(session: Session) -> tuple[dict, dict, dict]:
     """(registered last four -> instrument id, legal entity key -> id,
     instrument id -> institution)."""
@@ -741,9 +721,8 @@ def recognize_transactions(
 ) -> tuple[RecognitionSummary, list[tuple[int, WhoResult]]]:
     """Recognise every canonical transaction and persist the outcome.
 
-    Writes only `bank_occurrence_types` (the existing COUNTERPARTY type, if
-    missing), `bank_occurrences`, `bank_occurrence_aliases`,
-    `bank_who_recognitions` and, through the existing resolver,
+    Writes only `bank_occurrence_aliases` (for a name that resolves to an
+    EXISTING WHO), `bank_who_recognitions` and, through the existing resolver,
     `bank_occurrence_suppliers`. Never writes a FinancialTransaction, a raw
     row, a WHY, an allocation or an invoice match. Idempotent: a second run
     finds every row already in place and changes nothing."""
@@ -781,7 +760,6 @@ def recognize_transactions(
     results = [(tx_id, corroborate(result, known_keys, amex_merchants, ctx, masked_companies))
                for tx_id, result, ctx in first]
 
-    occurrence_type = _ensure_occurrence_type(session)
     resolver = CanonicalWhoResolver(session)
     aliases = {(a.occurrence_id, a.alias_text, a.source_family)
                for a in session.scalars(select(m.BankOccurrenceAlias))}
@@ -833,22 +811,18 @@ def recognize_transactions(
                 )
                 summary.held_for_review += 1
             else:
-                # 4. A genuinely new identity: the existing creation path,
-                #    always the COUNTERPARTY type — never GENERIC_OPERATIONAL,
-                #    which is configured business knowledge.
-                canonical = who_key(result.name)
-                occurrence = m.BankOccurrence(
-                    canonical_name=canonical, occurrence_type_id=occurrence_type.id,
-                    optional_notes=(
-                        f"Recognised by {RECOGNIZER_VERSION} from the bank's own text "
-                        f"({result.family}). Identity only: no WHY, no role, no beneficiary."
-                    ),
+                # 4. A genuinely new name. It is NOT turned into a WHO here:
+                #    structural extraction never creates a raw WHO (Product
+                #    Owner decision, BANK_FINAL_CLEANUP_001). The name is held
+                #    as PROPOSED and a person creates the WHO — Select WHO /
+                #    WHY or the WHO Rule — exactly like a General Rule's
+                #    unknown name.
+                result = replace(
+                    result, tier=PROPOSED, proposed_name=result.name,
+                    evidence=(f"{result.evidence} New name: not a known WHO yet; a person "
+                              "creates it.").strip(),
                 )
-                session.add(occurrence)
-                session.flush()
-                resolver.add_created(occurrence)
-                summary.occurrences_created += 1
-                parser_named = True
+                summary.held_for_review += 1
 
         final.append((tx_id, result))
         summary.transactions += 1

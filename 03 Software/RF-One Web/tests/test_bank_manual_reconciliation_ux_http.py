@@ -7,13 +7,11 @@ correct, but `bank_review.html` never wired it. The Why step existed as
 markup that was permanently hidden, "+ New" did nothing, the catalog search
 filtered nothing, and no `transaction_reason_id` was ever submitted.
 
-Two server defects surfaced while wiring it, and are pinned here too:
-
-* `/bank/transactions/<id>/why` called a bare `current_account()`, a name
-  that exists nowhere in `bank_routes.py`, so the route raised NameError on
-  every request. Nothing reached it while the Why step was unwired.
-* the same route performed no `require_csrf()`, unlike every other writing
-  Bank route.
+The WHO + WHY decision is posted to the one manual path,
+`/bank/transactions/<id>/who-why` (Select WHO / WHY,
+BANK_MANUAL_WHO_WHY_001); the former `/bank/transactions/<id>/why` route is
+retired (BANK_FINAL_CLEANUP_001). CSRF is enforced on it like on every other
+writing Bank route.
 
 Uses a disposable SQLite database that is deleted at the end. Never touches
 a real bank file, AWS, or any production database, and never seeds fake
@@ -112,155 +110,71 @@ def main() -> int:
         html = review_resp.data.decode("utf-8")
         js = script_of(html)
 
+        # BANK_MANUAL_WHO_WHY_001 (Product Owner correction) replaced the
+        # earlier popup this file pinned — its grouped catalog, "+ New" that
+        # associated an existing catalog WHY, the derived-result line and the
+        # learning checkbox. The popup is now "Select WHO / WHY": the WHO list,
+        # then the chosen WHO's WHY, "+ Create New WHY" (a real WHY through
+        # Configuration), Confirm and Cancel. Its controller is
+        # static/js/bank-who-why.js; the behaviour is pinned in full by
+        # test_bank_manual_who_why_http.py. The checks below keep this file's
+        # numbering for the guarantees that still hold.
+        js = client.get("/static/js/bank-who-why.js").data.decode("utf-8")
+
         # ---- 18. clean, empty Bank state renders a usable controller ---
         check(
-            "18. on a clean empty Bank the page still renders its controller and no Jinja/500 error",
-            "Traceback" not in html and "jinja2" not in html and "<script>" in html,
+            "18. on a clean empty Bank the page still renders its popup and no Jinja/500 error",
+            "Traceback" not in html and "jinja2" not in html and 'id="who-picker"' in html
+            and "bank-who-why.js" in html,
         )
         check(
             "18b. the controller guards its own absence instead of throwing "
-            "(no Who list, no modal -> early return)",
-            "if (!overlay || !window.RFOneModal) { return; }" in js,
+            "(no popup, no modal controller -> early return)",
+            'if (!overlay || !window.RFOneModal) { return; }' in js,
         )
 
         # ---- 1. no WHO -> WHY unavailable ------------------------------
         check(
-            "1. the Why step starts hidden and only appears once a Who is selected",
-            'id="why-picker" hidden' in html and "whyPicker.hidden = false" in js,
+            "1. with no WHO at all there is no WHY column (the popup says no WHO exists); "
+            "otherwise the grouped WHY catalog is browsable as soon as the popup opens "
+            "(BANK_WHY_NAVIGATION_GROUPS_001)",
+            'id="why-picker"' not in html and "No WHO configured" in html
+            and "Promise.all([loadWhos(), loadCatalog()])" in js,
         )
         check(
-            "1b. clearing/absent Who hides the Why control and blanks the derived result",
-            "function clearSelection()" in js
-            and "if (whyPicker) { whyPicker.hidden = true; }" in js
-            and "clearWhy();" in js,
+            "1b. opening the popup clears any WHY chosen before",
+            "function clearWhy()" in js and "clearWhy();" in js.split("onOpen:", 1)[1].split("initialFocus", 1)[0],
         )
         check(
-            "1c. Confirm requires BOTH a Who and a Why",
-            "confirm.disabled = !(hidden.value && reasonHidden && reasonHidden.value)" in js,
+            "1c. Confirm requires BOTH a WHO and a WHY",
+            "confirmButton.disabled = !(whoHidden.value && whyHidden.value)" in js,
         )
         check(
-            "4/5. the full catalog is not shown before a Who exists",
-            'id="why-catalog-modal" hidden' in html,
-        )
-
-        # ---- 3/5. management groups: modal only ------------------------
-        with SessionFactory() as db:
-            groups = why_catalog.groups(db)
-            catalog = why_catalog.catalog_by_group(db)
-            active_reasons = why_catalog.active_reasons(db)
-            group_names = [g.name for g, _ in catalog if g is not None]
-            reason_ids = [r.id for r in active_reasons]
-
-        check("canonical vocabulary present: 14 management groups", len(groups) == 14, str(len(groups)))
-        check("canonical vocabulary present: 81 active Why", len(active_reasons) == 81,
-              str(len(active_reasons)))
-
-        # The catalog modal region: from its own id up to the JSON island
-        # that follows it. The ordinary step's list is the (JS-filled)
-        # container, which must be free of group names in the markup.
-        # Unescaped, because group names and account labels legitimately
-        # contain "&" and Jinja escapes it — comparing raw names against
-        # escaped markup would fail for a reason that has nothing to do
-        # with the behaviour under test.
-        catalog_block = unescape(
-            html.split('id="why-catalog-modal"', 1)[-1].split('id="why-by-occurrence"', 1)[0]
-        )
-        why_picker_block = unescape(
-            html.split('id="why-picker"', 1)[-1].split('id="why-catalog-modal"', 1)[0]
-        )
-        check(
-            "5. management groups appear ONLY inside the + New modal, never in the ordinary step",
-            all(name in catalog_block for name in group_names)
-            and not any(name in why_picker_block for name in group_names),
-            "missing from modal: %s | leaked into ordinary step: %s" % (
-                [n for n in group_names if n not in catalog_block],
-                [n for n in group_names if n in why_picker_block],
-            ),
-        )
-        check(
-            "6. management groups are rendered inside the modal, in catalog order",
-            [n for n in group_names if n in catalog_block] == group_names,
-        )
-        check(
-            "5b. the ordinary Why list is built only from this Who's associations, never from groups",
-            "WHY_BY_OCCURRENCE[String(occurrenceId)]" in js and "reason_group" not in js,
-        )
-
-        # ---- 7. the modal holds every active canonical WHY -------------
-        check(
-            "7. the modal contains every active canonical Why",
-            all(f'data-reason-id="{rid}"' in catalog_block for rid in reason_ids),
-            f"{sum(1 for rid in reason_ids if f'data-reason-id=' + chr(34) + str(rid) + chr(34) in catalog_block)}/{len(reason_ids)}",
+            "4/5. no WHY catalog is shipped in the page: WHY are loaded for the chosen WHO only",
+            'data-whys-url-template="/bank/manual-reconciliation/whos/0/whys"' in html
+            and "why-catalog-modal" not in html and "why-by-occurrence" not in html,
         )
         check(
             "8. no raw database id is displayed to the operator (ids are attributes only)",
-            ">" + str(reason_ids[0]) + "<" not in catalog_block,
-        )
-
-        # ---- 8. search covers name, code, group, destination -----------
-        with SessionFactory() as db:
-            sample = db.get(m.BankTransactionReason, reason_ids[0])
-            sample_group = db.get(m.BankReasonGroup, sample.reason_group_id) if sample.reason_group_id else None
-            haystack_needles = [sample.name.lower(), sample.code.lower(),
-                                sample.resolution_label.lower()]
-            if sample_group:
-                haystack_needles.append(sample_group.name.lower())
-        row = re.search(r'<li class="why-option"\s+data-reason-id="%d"\s.*?</li>' % sample.id,
-                        catalog_block, re.S)
-        check(
-            "8b. each catalog row's search haystack carries Why name, Why code, group name "
-            "and the resolved account label",
-            row is not None and all(n in row.group(0).lower() for n in haystack_needles),
-            row.group(0)[:300] if row else "row not found",
+            'data-reason-id' not in html,
         )
         check(
-            "8c. the modal has its own search input and filter, separate from the Who search",
-            'id="why-catalog-search"' in html and "function applyCatalogFilter()" in js
-            and "li.dataset.haystack" in js,
-        )
-        check(
-            "8d. filtering hides groups that have nothing left, and says when nothing matches",
-            "group.hidden = !visible" in js and 'id="why-catalog-empty"' in html,
-        )
-
-        # ---- 9. + New opens/closes and refreshes the ordinary list -----
-        check(
-            "9. + New opens the catalog",
-            'id="why-picker-new"' in html and "whyNewButton.addEventListener('click'" in js
-            and "openCatalog()" in js,
-        )
-        check(
-            "9b. choosing a catalog Why selects it, refreshes the short list and closes the modal",
-            "renderKnownWhy(occurrenceId);" in js and "selectWhy(id);" in js
-            and "closeCatalog();" in js,
-        )
-        check(
-            "10. a second Why is ADDED to the Who's list, never replacing the first",
-            "sessionAdded[occurrenceId].indexOf(id) === -1" in js
-            and "sessionAdded[occurrenceId].push(id)" in js,
-        )
-
-        # ---- 13. WHAT is derived and read-only -------------------------
-        check(
-            "13. the derived outcome is shown read-only, with no control that edits it",
-            'id="why-picker-result"' in html and "DERIVED &mdash; READ-ONLY" in html
-            and 'name="accounting_classification_id"' not in html
-            and 'name="what_id"' not in html,
-        )
-        check(
-            "13b. the page states that a wrong Why -> What is fixed centrally, not per transaction",
-            "never chosen per transaction" in html,
+            "13. WHAT is never chosen in the popup (no WHAT control for the transaction; the only WHAT "
+            "field belongs to Create New WHY, i.e. the definition of a new WHY)",
+            'name="accounting_classification_id"' not in html
+            and 'name="what_id"' not in html[html.index('id="who-picker-form"'):html.index("</form>", html.index('id="who-picker-form"'))]
+            and html.count('name="what_id"') == html[html.index('id="why-create-form"'):].count('name="what_id"') == 1,
         )
 
         # ---- 15. CSRF --------------------------------------------------
         check(
-            "15. the Who/Why form carries a CSRF token",
+            "15. the WHO/WHY form carries a CSRF token",
             'name="csrf_token"' in html,
         )
         check(
-            "15b. Confirm posts to the Why endpoint, built from an explicit placeholder",
-            "WHY_ACTION_TEMPLATE" in js and "/transactions/0/" in js
-            and "ACTION_TEMPLATE.replace" in js,
+            "15b. Confirm posts to the WHO/WHY endpoint, built from an explicit placeholder",
+            'data-action-template="/bank/transactions/0/who-why"' in html
+            and 'actionTemplate.replace("/transactions/0/"' in js,
         )
 
         # ===============================================================
@@ -323,16 +237,19 @@ def main() -> int:
             )
         review = client.get("/bank/review").data.decode("utf-8")
         check(
-            "2b. the page says an empty list is a legitimate state and points at + New",
-            'id="why-picker-none"' in review and "No purpose has been confirmed for this Who yet" in review,
+            "2b. a WHO with no WHY yet still browses the whole grouped catalog (its own list only marks), "
+            "and Create New WHY stays available",
+            'id="why-picker-none"' in review and "+ Create New WHY" in review
+            and client.get(f"/bank/manual-reconciliation/whos/{empty_id}/whys").get_json() == []
+            and len(client.get("/bank/manual-reconciliation/why-catalog").get_json()["whys"]) > 0,
         )
         check(
-            "14. the Who's identity alone never resolves a Why (nothing is auto-selected)",
-            "sessionAdded = {};" in script_of(review) and "autoSelect" not in script_of(review),
+            "14. the WHO's identity alone never resolves a WHY (nothing is auto-selected)",
+            "autoSelect" not in js and "list.length === 1" not in js,
         )
 
         # ---- 15c. CSRF is enforced on the Why route --------------------
-        no_csrf = client.post(f"/bank/transactions/{txn_a_id}/why", data={
+        no_csrf = client.post(f"/bank/transactions/{txn_a_id}/who-why", data={
             "occurrence_id": str(amazon_id), "transaction_reason_id": str(pl_id),
         })
         check(
@@ -347,7 +264,7 @@ def main() -> int:
 
         # ---- 11. P&L WHY derives WHAT ---------------------------------
         csrf = extract_csrf(client.get("/bank/review").data)
-        ok = client.post(f"/bank/transactions/{txn_a_id}/why", data={
+        ok = client.post(f"/bank/transactions/{txn_a_id}/who-why", data={
             "occurrence_id": str(amazon_id), "transaction_reason_id": str(pl_id),
             "csrf_token": csrf,
         }, follow_redirects=True)
@@ -369,7 +286,7 @@ def main() -> int:
 
         # ---- 12. non-P&L WHY derives an Accounting Destination --------
         csrf = extract_csrf(client.get("/bank/review").data)
-        client.post(f"/bank/transactions/{txn_b_id}/why", data={
+        client.post(f"/bank/transactions/{txn_b_id}/who-why", data={
             "occurrence_id": str(amazon_id), "transaction_reason_id": str(bs_id),
             "csrf_token": csrf,
         }, follow_redirects=True)
@@ -414,7 +331,7 @@ def main() -> int:
                 .where(m.BankAccountingClassification.id
                        != db.get(m.BankTransactionReason, pl_id).accounting_classification_id)
             ).first()
-        client.post(f"/bank/transactions/{txn_a_id}/why", data={
+        client.post(f"/bank/transactions/{txn_a_id}/who-why", data={
             "occurrence_id": str(amazon_id), "transaction_reason_id": str(pl_id),
             "accounting_classification_id": str(other_what.id),
             "what_id": str(other_what.id),
@@ -439,12 +356,16 @@ def main() -> int:
             check("16b. no other transaction exists to have been affected", others == [])
 
         # ---- 19. the review page still renders with real rows ----------
-        final = client.get("/bank/review")
+        # BANK_TWO_STAGE_REVIEW_001 — a row whose WHO is resolved is listed
+        # under Review > Reconciled, with its Who and Why on the row.
+        final = client.get("/bank/review?view=reconciled")
         check("19. /bank/review still returns 200 with classified rows",
               final.status_code == 200, f"status={final.status_code}")
         check(
-            "19b. the resolved row shows Who / Why / What read-only",
-            b"Who:" in final.data and b"Why:" in final.data and b"What:" in final.data,
+            "19b. the resolved row shows its Who and Why under Reconciled",
+            # BANK_MANUAL_WHO_WHY_001 — WHY is its own column on Reconciled.
+            f'id="t-{txn_a_id}"'.encode() in final.data and b'class="rp-who-name"' in final.data
+            and b'class="rp-why-name"' in final.data,
         )
 
     finally:

@@ -195,7 +195,7 @@ def main() -> int:
 
     def resolve(instrument_key, **data):
         cid = coverage_id_for(ids[instrument_key])
-        page = client.get("/bank/monthly")
+        page = client.get("/bank/monthly?year=2026&month=8", follow_redirects=True)
         payload = {"csrf_token": extract_csrf(page.data)}
         payload.update(data)
         return client.post(f"/bank/monthly/{period_id}/coverage/{cid}/resolve",
@@ -233,7 +233,7 @@ def main() -> int:
           str(report.blockers))
     check("2b. the month cannot be completed while they are unexplained",
           not report.can_complete and report.missing_unresolved >= 8)
-    monthly_page = client.get("/bank/monthly").data.decode()
+    monthly_page = client.get("/bank/monthly?year=2026&month=8", follow_redirects=True).data.decode()
     check("2c. the operator is offered exactly the two decisions",
           'value="SOURCE_FILE_MISSING"' in monthly_page and 'value="CLOSED"' in monthly_page)
 

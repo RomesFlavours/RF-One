@@ -1,0 +1,109 @@
+{# The simple WHO Rule modal (BANK_SIMPLE_WHO_RULE_001).
+
+   ONE modal, included once by Bank > Classification and by Bank > Review
+   Transactions, posting to ONE route (`bank_who_rule_apply`) that calls ONE
+   service (`who_rules.apply_who_rule`). Any element with the class
+   `who-rule-open` opens it; its data attributes preselect the WHO
+   (`data-who-id`, `data-who-name`), name what was clicked (`data-subject`)
+   and, from Review, the transaction (`data-transaction-id`).
+
+   The operator sees only WHO, the Rule sentence, the possible WHY and
+   Apply. No match type, pattern, alias or id is ever shown or asked for:
+   RF-One reads the sentence once and stores the deterministic rule.
+
+   Layout (BANK_WHO_MANUAL_ONLY_001): a wide panel — WHO and Rule on the
+   left, Possible WHY on the right, grouped under the approved WHY navigation
+   groups (`BankReasonGroup`), each group collapsible, one search across all
+   of them. Possible WHY are WHO associations only: Apply never chooses a WHY
+   for a transaction.
+
+   "+ Create New WHY" opens the ONE shared dialog (`_bank_why_create_dialog.html`,
+   also used by Select WHO / WHY); the page including this modal includes
+   that dialog once, after it.
+
+   Needs in the context: `who_rule_why_groups` (the selectable WHY, as
+   [(group name, [WHY])]) and `who_rule_return_to` (the Bank page to come
+   back to, with its anchor). #}
+<div id="who-rule-modal" class="org-modal-overlay" hidden aria-hidden="true"
+     data-options-url="{{ url_for('bank_who_rule_who_options') }}"
+     data-who-url-template="{{ url_for('bank_who_rule_who', occurrence_id=0) }}">
+  <div class="org-modal-panel who-rule-panel" role="dialog" aria-modal="true" aria-labelledby="who-rule-title">
+    <button class="org-modal-close" type="button" aria-label="Cancel" data-modal-close>&times;</button>
+    <div class="modal-header">
+      <h3 id="who-rule-title">Rule</h3>
+    </div>
+    <p class="who-why-subject" id="who-rule-subject"></p>
+
+    <form id="who-rule-form" method="post" action="{{ url_for('bank_who_rule_apply') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="occurrence_id" id="who-rule-occurrence-id" value="">
+      {# Set instead of occurrence_id when the operator chose "Create": the WHO
+         is created by Apply itself, in the same transaction as its rule. #}
+      <input type="hidden" name="new_who_name" id="who-rule-new-who-name" value="">
+      <input type="hidden" name="transaction_id" id="who-rule-transaction-id" value="">
+      <input type="hidden" name="return_to" value="{{ who_rule_return_to }}">
+
+      <div class="who-rule-columns">
+        <section class="who-rule-col who-rule-col-main" aria-label="WHO and Rule">
+          <div class="who-rule-field">
+            <label for="who-rule-who-search">WHO</label>
+            <p class="who-rule-chosen"><strong id="who-rule-who-name">&mdash;</strong>
+              <span class="badge warn" id="who-rule-who-new" hidden>NEW WHO TO CREATE</span></p>
+            <input type="search" id="who-rule-who-search" autocomplete="off"
+                   placeholder="Search a WHO, or type a new one" aria-controls="who-rule-who-results">
+            <div class="who-picker-list" id="who-rule-who-results" role="listbox" aria-label="WHO" hidden></div>
+            <p class="cell-note" id="who-rule-existing" hidden></p>
+          </div>
+
+          <div class="who-rule-field">
+            <label for="who-rule-instruction">Rule</label>
+            {# No `required`: an empty sentence is refused by the modal's own
+               message ("Write the rule."), shown next to it — the browser's
+               native bubble blocked Apply silently (BANK_MANUAL_WHO_WHY_001). #}
+            <textarea id="who-rule-instruction" name="instruction" rows="3" maxlength="500"
+                      placeholder="Dove nella descrizione trovi ABC il WHO è ABC"></textarea>
+            <span class="cell-note">Write where the description shows this WHO, in your own words.</span>
+          </div>
+
+          <div class="who-rule-info">
+            <p><strong>Apply</strong> saves the rule for every future import and gives the WHO to the existing
+              transactions it safely matches. A transaction a person decided is never changed.</p>
+            <p>The rule names the WHO only. It never chooses a WHY.</p>
+          </div>
+        </section>
+
+        <fieldset class="who-rule-col who-rule-whys">
+          <legend>Possible WHY <span class="who-rule-why-count" id="who-rule-why-count"></span></legend>
+          <input type="search" id="who-rule-why-search" autocomplete="off" placeholder="Search WHY in every group"
+                 aria-controls="who-rule-why-list">
+          <div id="who-rule-why-list" class="who-rule-why-list">
+            {%- for group_name, reasons in who_rule_why_groups %}
+            <details class="who-rule-why-group" open data-group="{{ group_name }}" data-group-id="{{ reasons[0].reason_group_id if group_name != 'Other' and reasons[0].reason_group_id else '' }}"><summary><span class="who-rule-why-group-name">{{ group_name }}</span> <span class="who-rule-why-group-meta" data-total="{{ reasons|length }}">{{ reasons|length }}</span></summary><div class="who-rule-why-items">
+              {%- for reason in reasons %}
+              <label class="who-rule-why" data-haystack="{{ (reason.name ~ ' ' ~ reason.code ~ ' ' ~ group_name)|lower }}"><input type="checkbox" name="transaction_reason_id" value="{{ reason.id }}"> <span>{{ reason.name }}</span></label>
+              {%- endfor %}
+            </div></details>
+            {%- endfor %}
+            <p class="ww-empty" id="who-rule-why-empty" hidden>No WHY matches this search.</p>
+          </div>
+          <div class="who-rule-why-tools">
+            {#- The shared "Create New WHY" dialog (`_bank_why_create_dialog.html`):
+                the WHY comes back ticked here, in its group, and is added to the
+                WHO. It stays a POSSIBLE WHY: Apply never gives it to a transaction. #}
+            <button type="button" class="btn-secondary ww-create-open" id="who-rule-why-create">+ Create New WHY</button>
+            <span class="cell-note">The purposes a person may choose for this WHO. Apply never chooses a WHY for a transaction.</span>
+          </div>
+        </fieldset>
+      </div>
+
+      <div class="ww-footer who-rule-footer">
+        <p class="error" id="who-rule-error" role="alert" hidden></p>
+        <div class="who-picker-actions">
+          <button type="submit" id="who-rule-apply">Apply</button>
+          <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+<script defer src="{{ url_for('static', filename='js/bank-who-rule.js') }}?v=5"></script>

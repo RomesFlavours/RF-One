@@ -9,10 +9,10 @@ Thirty numbered points, as specified by the Product Owner:
    8-11  WHY: add/edit, unique generated code, stable code, exactly one WHAT;
   12-18  WHO: COUNTERPARTY creation, possible WHYs, default WHY, WHO never
          determines WHY, entities served, recognition rules, nothing inferred;
-  19-21  Accounts & Cards: bank account entity, derived card entity,
-         lifecycle and reference rules;
-  22-27  Support: entities, source rules, control months, card settlement,
-         cardholder, deduplication action;
+  19-21  Sources are NOT edited here any more: a "Manage Sources" link to
+         /bank/sources, and the old routes are gone (BANK_FINAL_RELEASE_BLOCKERS_002);
+  22-27  Support: entities, source rules, control months, deduplication
+         action (card settlement and cardholder moved to Source);
   28-30  security: BANK access, CSRF, fixed redirects.
 
 Plus the later Product Owner decisions: D10 (COUNTERPARTY seeded by
@@ -31,7 +31,6 @@ import re
 import sqlite3
 import sys
 import tempfile
-from datetime import date
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_DIR = os.path.normpath(os.path.join(BASE_DIR, ".."))
@@ -63,7 +62,7 @@ from rfone_data_store.bank_reconciliation import recognition  # noqa: E402
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 NEW_REVISION = "e5b1d7c3a9f2"
 HEAD_REVISION = "b9e4c2a7d5f3"  # last schema revision rendered offline for PostgreSQL (check 2)
-CURRENT_HEAD = "a7c3e9d5f2b8"  # the single Alembic head a fresh database reaches (check 1)
+CURRENT_HEAD = "b7f1c3e5a9d2"  # the single Alembic head a fresh database reaches (check 1)
 PREVIOUS_REVISION = "d4a8c2e6f1b3"
 
 
@@ -195,9 +194,9 @@ def main() -> int:
         # ---------------------------------------------------- page structure
         order = [html.index(f'id="{s}"') for s in ("cp-what", "cp-why", "cp-who", "cp-accounts", "cp-support")]
         check("0. /bank/configuration responds 200 with the approved block order WHAT, WHY, WHO, "
-              "Accounts & Cards, Support", page.status_code == 200 and order == sorted(order))
-        check("0. the Reconciliation button leads to the real Reconciliation page",
-              'href="/bank/reconciliation"' in html and "/bank/review" not in html)
+              "Sources, Support", page.status_code == 200 and order == sorted(order))
+        check("0. the back button leads to Review Transactions (the standalone Reconciliation page is "
+              "retired)", 'href="/bank/review"' in html and 'href="/bank/reconciliation"' not in html)
 
         # ================================================================ 1-5
         conn = sqlite3.connect(_TEST_DB_PATH)
@@ -404,9 +403,14 @@ def main() -> int:
             after_count = db.scalar(select(func.count(m.BankTransactionReason.id)))
             view_html = client.get("/bank/configuration").data.decode("utf-8")
             assignable_groups = re.findall(r'"assignable": true, "code": "[^"]*", "group"[^}]*"id": %d' % ids["pl_group"], view_html)
-        check("11. a WHY needs exactly one valid posting WHAT: none, a group or an unusable WHAT "
+            no_what = db.scalars(select(m.BankTransactionReason).where(m.BankTransactionReason.name == "No what")).first()
+        # BANK_WHY_WITHOUT_WHAT_001: a WHY may be created without a WHAT (no
+        # destination is invented); a WHAT that is given must still be a valid
+        # posting WHAT — a group or an unusable WHAT is refused.
+        check("11. a WHY without a WHAT is created with no destination; a group or an unusable WHAT "
               "is refused; groups are never offered as assignable",
-              before_count == after_count and not assignable_groups, f"{before_count}->{after_count}")
+              after_count == before_count + 1 and no_what is not None and no_what.accounting_classification_id is None
+              and not assignable_groups, f"{before_count}->{after_count}")
 
         # ================================================================ D11
         import json
@@ -571,65 +575,36 @@ def main() -> int:
               inferred == 0 and "Gordon Food Service" in client.get("/bank/configuration").data.decode("utf-8"))
 
         # ================================================================ 19-21
-        response = post("/bank/configuration/account", {
-            "label": "Gamma Payroll", "instrument_type": "BANK_ACCOUNT", "entity_id": ids["beta"],
-            "reference": "4444", "active": "1"})
+        # BANK_FINAL_RELEASE_BLOCKERS_002: Sources (accounts, cards, card
+        # settlement and cardholder) are maintained ONLY on /bank/sources. Their
+        # behaviour is tested there (test_bank_source_and_import_review_http,
+        # test_bank_cardholder_and_dedup_http, test_bank_final_release_blockers_http).
+        page = client.get("/bank/configuration").data.decode("utf-8")
+        block = page[page.index('id="cp-accounts"'):page.index('id="cp-support"')]
+        check("19. Configuration no longer edits Sources: the block is a 'Manage Sources' link to /bank/sources",
+              'href="/bank/sources"' in block and "Manage Sources" in block
+              and 'data-add="account"' not in page and 'data-list="account"' not in page
+              and 'data-list="card"' not in page)
         with SessionFactory() as db:
-            payroll = db.scalar(select(m.PaymentInstrument).where(m.PaymentInstrument.display_name == "Gamma Payroll"))
-            ids["payroll"] = payroll.id if payroll else None
-            created_ok = payroll is not None and payroll.legal_entity_id == ids["le_beta"] and payroll.last_four == "4444"
-        post(f"/bank/configuration/account/{ids['payroll']}", {
-            "label": "Beta Payroll", "instrument_type": "BANK_ACCOUNT", "entity_id": ids["alpha"], "reference": "4445"})
+            instruments_before = [(i.id, i.display_name, i.status, i.legal_entity_id, i.last_four)
+                                  for i in db.scalars(select(m.PaymentInstrument).order_by(m.PaymentInstrument.id))]
+        attempts = [
+            post("/bank/configuration/account", {"label": "Sneaky", "instrument_type": "BANK_ACCOUNT",
+                                                 "entity_id": ids["beta"], "reference": "4444", "active": "1"}),
+            post(f"/bank/configuration/account/{ids['operating']}", {"label": "Renamed", "instrument_type": "BANK_ACCOUNT",
+                                                                     "entity_id": ids["beta"], "reference": "2222"}),
+            post(f"/bank/configuration/card/{ids['card']}", {"settlement_account_id": ids["checking"],
+                                                             "settlement_valid_from": "2026-01-01"}),
+        ]
         with SessionFactory() as db:
-            payroll = db.get(m.PaymentInstrument, ids["payroll"])
-            edit_ok = payroll.display_name == "Beta Payroll" and payroll.legal_entity_id == ids["le_alpha"] \
-                and payroll.last_four == "4445"
-        check("19. a Bank Account's owning entity is chosen by ReportingEntity name and stored as "
-              "PaymentInstrument.legal_entity_id; label, type and reference edit",
-              response.status_code == 302 and created_ok and edit_ok)
-
-        def account_row(account_id):
-            import json
-            body = client.get("/bank/configuration").data.decode("utf-8")
-            data = json.loads(re.search(r'<script type="application/json" id="cp-data">(.*?)</script>', body, re.S).group(1))
-            return next(a for a in data["accounts"] if a["id"] == account_id)
-
-        unconfigured = account_row(ids["card"])
-        with_entity = post(f"/bank/configuration/account/{ids['card']}", {
-            "label": "Ink Card", "instrument_type": "CREDIT_CARD", "entity_id": ids["alpha"], "reference": "3333"})
-        with_entity_msg = flashes(with_entity)
-        post(f"/bank/configuration/card/{ids['card']}", {
-            "settlement_account_id": ids["checking"], "settlement_valid_from": "2026-01-01",
-            "holder_kind": "", "holder_valid_from": ""})
-        derived = account_row(ids["card"])
-        post(f"/bank/configuration/account/{ids['card']}", {
-            "label": "Ink Business", "instrument_type": "CREDIT_CARD", "reference": "3333"})
-        with SessionFactory() as db:
-            own = db.get(m.PaymentInstrument, ids["card"])
-        check("20. a Credit Card's owning entity is DERIVED from its settlement account (none "
-              "before one exists, never its own value); setting it on the card is refused; "
-              "editing the card leaves its own legal entity untouched",
-              unconfigured["entity_name"] is None and unconfigured["derived"] is True
-              and derived["entity_name"] == "Alpha" and derived["derived"] is True
-              and "comes from its settlement account" in with_entity_msg
-              and own.display_name == "Ink Business" and own.legal_entity_id == ids["le_beta"],
-              f"{unconfigured} {derived}")
-
-        status_attempt = post(f"/bank/configuration/account/{ids['operating']}", {
-            "label": "Beta Operating", "instrument_type": "BANK_ACCOUNT", "entity_id": ids["beta"],
-            "reference": "2222", "active": "0"})
-        virtual_owner = post(f"/bank/configuration/account/{ids['operating']}", {
-            "label": "Beta Operating", "instrument_type": "BANK_ACCOUNT", "entity_id": ids["brand"], "reference": "2222"})
-        virtual_msg = flashes(virtual_owner)
-        bad_reference = post(f"/bank/configuration/account/{ids['operating']}", {
-            "label": "Beta Operating", "instrument_type": "BANK_ACCOUNT", "entity_id": ids["beta"], "reference": "22x"})
-        with SessionFactory() as db:
-            operating = db.get(m.PaymentInstrument, ids["operating"])
-        check("21. the Active state is not edited here (lifecycle belongs to Monthly Sources); a "
-              "virtual entity cannot own an account; a reference must be four digits",
-              status_attempt.status_code == 302 and operating.status == "ACTIVE"
-              and operating.legal_entity_id == ids["le_beta"] and operating.last_four == "2222"
-              and "virtual entity" in virtual_msg and bad_reference.status_code == 302)
+            instruments_after = [(i.id, i.display_name, i.status, i.legal_entity_id, i.last_four)
+                                 for i in db.scalars(select(m.PaymentInstrument).order_by(m.PaymentInstrument.id))]
+            settlements = card_configuration.settlement_history(db, ids["card"])
+        check("20. the former Accounts & Cards and card-settlement routes are gone (404) and write nothing",
+              all(a.status_code == 404 for a in attempts) and instruments_after == instruments_before
+              and not settlements, str([a.status_code for a in attempts]))
+        check("21. the Configuration page data no longer carries a card editor",
+              "S.cards" not in page and "/configuration/card/" not in page)
 
         # ================================================================ 22-27
         post("/bank/configuration/entity", {"name": "Delta", "legal_name": "Delta Pizza, LLC", "active": "1"})
@@ -684,42 +659,8 @@ def main() -> int:
               config is not None and config.control_start_month == "2026-01"
               and config.validated_through_month == "2026-05" and "YYYY-MM" in flashes(bad))
 
-        second = post(f"/bank/configuration/card/{ids['card']}", {
-            "settlement_account_id": ids["operating"], "settlement_valid_from": "2026-06-01",
-            "holder_kind": "", "holder_valid_from": ""})
-        second_msg = flashes(second)
-        earlier = post(f"/bank/configuration/card/{ids['card']}", {
-            "settlement_account_id": ids["checking"], "settlement_valid_from": "2025-12-01",
-            "holder_kind": "", "holder_valid_from": ""})
-        with SessionFactory() as db:
-            history = [(h.settlement_bank_account_id, h.valid_from, h.valid_to)
-                       for h in card_configuration.settlement_history(db, ids["card"])]
-        check("25. card settlement keeps its history with Valid from: the new account opens a "
-              "period and closes the previous one; an earlier date is refused; dedup recomputed",
-              history == [(ids["operating"], date(2026, 6, 1), None),
-                          (ids["checking"], date(2026, 1, 1), date(2026, 6, 1))]
-              and "deduplication recomputed" in second_msg
-              and "must start after" in flashes(earlier), str(history))
-
-        post(f"/bank/configuration/card/{ids['card']}", {
-            "settlement_account_id": ids["operating"], "settlement_valid_from": "2026-06-01",
-            "holder_kind": "UNLINKED_PERSON", "holder_name": "Tatiana Ceban", "holder_valid_from": "2026-02-01"})
-        post(f"/bank/configuration/card/{ids['card']}", {
-            "settlement_account_id": ids["operating"], "settlement_valid_from": "2026-06-01",
-            "holder_kind": "UNLINKED_PERSON", "holder_name": "Pino Miraglia", "holder_valid_from": "2026-07-01"})
-        bad_kind = post(f"/bank/configuration/card/{ids['card']}", {
-            "settlement_account_id": ids["operating"], "holder_kind": "ROBOT", "holder_valid_from": "2026-08-01"})
-        bad_kind_msg = flashes(bad_kind)
-        with SessionFactory() as db:
-            holders = [(h.holder_kind, h.holder_display_name, h.valid_from, h.valid_to)
-                       for h in card_configuration.cardholder_history(db, ids["card"])]
-        page_now = client.get("/bank/configuration").data.decode("utf-8")
-        check("26. cardholder with holder type, holder and Valid from: history kept, previous "
-              "holder closed; the table shows \"Surname I.\"; an unknown type is refused",
-              holders == [("UNLINKED_PERSON", "Pino Miraglia", date(2026, 7, 1), None),
-                          ("UNLINKED_PERSON", "Tatiana Ceban", date(2026, 2, 1), date(2026, 7, 1))]
-              and '"cardholder": "Miraglia P."' in page_now and "Holder kind must be" in bad_kind_msg,
-              str(holders))
+        # 25-26 (card settlement and cardholder history) moved with Sources to
+        # the Source page's Card settings: test_bank_cardholder_and_dedup_http.
 
         get_attempt = client.get("/bank/configuration/dedup/recompute")
         action = post("/bank/configuration/dedup/recompute", {})

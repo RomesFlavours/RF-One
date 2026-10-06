@@ -412,6 +412,42 @@ tbody tr:hover { background: var(--olive-050); }
   color: var(--olive-900); background: white;
   border-color: var(--olive-150); border-bottom: 2px solid white;
 }
+/* Equal-width tabs (Bank): one row of equal columns, every tab the same
+   width and height, its label centred — a longer label wraps inside its own
+   tab instead of widening it. */
+.module-tabs--equal { display: grid; grid-template-columns: repeat(var(--tab-count, 7), minmax(0, 1fr)); }
+.module-tabs--equal .module-tab {
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  padding: .5rem .4rem; line-height: 1.2; min-height: 2.6rem; box-sizing: border-box;
+}
+@media (max-width: 640px) {
+  .module-tabs--equal { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* Classification Learning (BANK_CLASSIFICATION_LEARNING_001). */
+.learning-buttons { display: flex; gap: .4rem; }
+.learning-buttons form { margin: 0; }
+.learning-sub { margin: 1rem 0 .4rem; color: var(--olive-900); }
+.learning-table td { vertical-align: top; font-size: .8rem; }
+.learning-table .badge { white-space: nowrap; }
+
+/* General Rules on Classification (BANK_GENERAL_RULES_001). */
+.general-rules-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.general-rules-head h3 { margin: 0; }
+.general-rules-table .badge { white-space: nowrap; }
+.general-rules-table td { vertical-align: top; }
+.general-rule-actions { width: 11rem; }
+.general-rule-actions form { margin: 0; }
+.general-rule-actions button { display: block; width: 100%; margin: 0 0 .3rem; padding: .4rem .6rem; font-size: .8rem; }
+.general-rule-result { border: 1px solid var(--olive-300); border-radius: var(--radius); padding: .7rem .9rem;
+  margin: .6rem 0; background: var(--olive-050); color: var(--ink); }
+.general-rule-result h4 { margin: 0 0 .4rem; }
+.general-rule-unknown { max-height: 14rem; overflow-y: auto; margin: .3rem 0; font-size: .8rem; }
+.general-rule-form input[type=text], .general-rule-form select { max-width: none; width: 100%; box-sizing: border-box; }
+.general-rule-markers { border: 1px solid var(--olive-150); border-radius: 6px; padding: .5rem .7rem; margin: 0 0 .8rem; }
+.general-rule-markers legend { font-weight: 600; color: var(--olive-900); font-size: .85rem; }
+.general-rule-active { display: flex; align-items: center; gap: .4rem; color: var(--ink); font-size: .85rem; }
+.general-rule-active input { margin: 0; }
 
 /* --- Dense operational tables -------------------------------------- */
 
@@ -512,17 +548,10 @@ tbody tr:hover { background: var(--olive-050); }
 .who-option.is-selected { background: var(--olive-050); box-shadow: inset 3px 0 0 var(--olive-900); }
 .who-option-name { display: block; font-weight: 600; font-size: .88rem; }
 .who-option-type { display: block; font-size: .72rem; color: var(--muted); }
-.who-option-chain { display: block; font-size: .74rem; color: var(--muted); margin-top: .15rem; }
 
 /* A Who whose chain is incomplete stays VISIBLE and says why, rather than
    disappearing from the list and sending the operator hunting for it. */
-.who-option.is-blocked { cursor: not-allowed; background: #fdf3e2; }
-.who-option.is-blocked:hover, .who-option.is-blocked:focus { background: #fdf3e2; }
-.who-option.is-blocked .who-option-name { color: var(--muted); }
-.who-option-blocked { display: block; font-size: .74rem; color: #8a5a10; margin-top: .15rem; }
 
-.who-picker-learn { display: block; font-size: .78rem; color: var(--muted); margin: .6rem 0; }
-.who-picker-learn input { margin-right: .35rem; }
 .who-picker-actions { display: flex; gap: .5rem; margin-top: .8rem; }
 
 .chain { font-size: .78rem; }
@@ -585,3 +614,219 @@ body.modal-open { overflow: hidden; }
 .breadcrumb li { display: inline-flex; align-items: center; }
 .breadcrumb li + li::before { content: "\203A"; margin-right: .35rem; color: #8a8a8a; }
 .breadcrumb [aria-current="page"] { color: #555; font-weight: 600; }
+
+/* The simple WHO Rule (BANK_SIMPLE_WHO_RULE_001): the shared Rule modal,
+   its result card, and the paginated Classification list. */
+.who-rule-field { margin-bottom: .9rem; border: 0; padding: 0; }
+.who-rule-field > label, .who-rule-field > legend { display: block; font-weight: 600; margin-bottom: .25rem; }
+.who-rule-field textarea { width: 100%; box-sizing: border-box; }
+.who-rule-chosen { margin: 0 0 .35rem; }
+.who-rule-why-list { max-height: 14rem; overflow-y: auto; border: 1px solid var(--olive-150); border-radius: 6px;
+  padding: .35rem .5rem; margin-top: .35rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: .1rem .8rem; }
+.who-rule-why { display: block; font-size: .82rem; font-weight: 400; cursor: pointer; }
+.who-rule-why input { margin-right: .35rem; }
+.who-rule-result h3 { margin-top: 0; }
+.who-rule-result-list { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; margin: 0; font-size: .88rem; }
+.who-rule-result-list dt { color: var(--muted); }
+.who-rule-result-list dd { margin: 0; font-weight: 600; }
+.pager { display: flex; gap: 1rem; align-items: center; margin-top: .8rem; }
+.who-rule-combo-heading { margin: .35rem .6rem .1rem; font-weight: 600; }
+#who-rule-who-results .who-option { color: var(--olive-900); }
+#who-rule-who-results .who-option-create .who-option-name { font-weight: 700; }
+
+/* "Select WHO / WHY" (BANK_MANUAL_WHO_WHY_001, BANK_WHY_NAVIGATION_GROUPS_001):
+   one wide popup, three columns WHO | WHY GROUP | WHY.
+
+   Every state sets BOTH its text and its background colour. The options are
+   <button>s, and the global `button` rule paints white text — inheriting it
+   on a light row was the unreadable white-on-white the Product Owner saw.
+   The selected option is a solid dark row with white text AND a left bar,
+   so it is never told apart by colour alone. */
+.who-why-panel.org-modal-panel {
+  width: min(90vw, 1500px); max-width: none; height: min(88vh, 900px); max-height: calc(100vh - 2rem);
+  display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box;
+}
+.who-why-panel form { display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 0; }
+.who-why-subject { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; color: var(--ink);
+  background: var(--olive-050); border: 1px solid var(--olive-150); border-radius: 6px;
+  padding: .35rem .6rem; margin: 0 0 .7rem; word-break: break-word; }
+.ww-columns { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .85fr) minmax(0, 1.35fr);
+  gap: .9rem; flex: 1; min-height: 0; }
+.ww-col { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--olive-300);
+  border-radius: var(--radius); padding: .6rem; background: var(--surface); }
+.ww-col-title { margin: 0 0 .45rem; font-size: .78rem; letter-spacing: .06em; color: var(--olive-900); font-weight: 700; }
+.ww-col-context { letter-spacing: 0; font-weight: 600; color: var(--muted); }
+.who-why-panel .ww-col input[type="search"] { width: 100%; max-width: none; box-sizing: border-box; margin-bottom: .45rem;
+  padding: .45rem .6rem; border: 1px solid var(--olive-300); border-radius: 6px; font: inherit; font-size: .85rem;
+  color: var(--ink); background: var(--surface); }
+.who-why-panel .ww-col input[type="search"]::placeholder { color: var(--muted); opacity: 1; }
+.ww-list { flex: 1; min-height: 6rem; overflow-y: auto; border: 1px solid var(--olive-150); border-radius: 6px;
+  background: var(--surface); }
+.ww-empty, .ww-loading { color: var(--muted); font-size: .82rem; padding: .5rem .7rem; margin: 0; }
+.ww-legend { margin: .4rem 0 0; font-size: .72rem; color: var(--muted); }
+
+.who-why-panel .ww-option {
+  display: block; width: 100%; text-align: left; cursor: pointer; font: inherit; font-size: .86rem;
+  color: var(--ink); background: var(--surface); border: none; border-bottom: 1px solid var(--olive-150);
+  border-radius: 0; padding: .45rem .7rem; box-shadow: none; line-height: 1.3;
+}
+.who-why-panel .ww-option:last-child { border-bottom: none; }
+.who-why-panel .ww-option:hover { color: var(--ink); background: var(--olive-150); }
+.who-why-panel .ww-option:focus { outline: none; }
+.who-why-panel .ww-option:focus-visible { outline: 2px solid var(--olive-500); outline-offset: -2px; }
+.who-why-panel .ww-option.is-selected,
+.who-why-panel .ww-option.is-selected:hover {
+  color: #ffffff; background: var(--olive-700); box-shadow: inset 5px 0 0 var(--olive-900);
+}
+.ww-option-name { display: block; font-weight: 600; }
+.ww-option-note { display: block; font-size: .72rem; color: var(--muted); margin-top: .1rem; }
+.who-why-panel .ww-option.is-selected .ww-option-note { color: #eef2e0; }
+
+.who-why-panel .ww-group { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.ww-group .ww-option-name { flex: 1; }
+.ww-group-meta { display: inline-flex; align-items: center; gap: .35rem; flex: none; }
+.ww-count { min-width: 1.6rem; text-align: center; font-size: .72rem; font-weight: 700; padding: .05rem .4rem;
+  border-radius: 999px; color: var(--olive-900); background: var(--olive-150); }
+.ww-used { font-size: .72rem; font-weight: 700; color: #1d5b2b; }
+.ww-unused { font-size: .72rem; color: var(--muted); }
+.who-why-panel .ww-option.is-selected .ww-count { color: var(--olive-900); background: #ffffff; }
+.who-why-panel .ww-option.is-selected .ww-used,
+.who-why-panel .ww-option.is-selected .ww-unused { color: #ffffff; }
+.ww-badge { display: inline-block; margin-left: .45rem; padding: .02rem .4rem; border-radius: 999px; vertical-align: 1px;
+  font-size: .66rem; font-weight: 700; color: #1d5b2b; background: #e3f1dc; border: 1px solid #9cc79a; }
+.who-why-panel .ww-option.is-selected .ww-badge { color: var(--olive-900); background: #ffffff; border-color: #ffffff; }
+
+.who-why-panel .ww-create-open { margin-top: .5rem; align-self: flex-start; }
+
+.ww-footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  border-top: 1px solid var(--olive-150); margin-top: .8rem; padding-top: .7rem; }
+.ww-footer .who-picker-actions { margin-top: 0; }
+.ww-summary { margin: 0; font-size: .82rem; color: var(--ink); flex: 1; min-width: 14rem; }
+/* A disabled Confirm stays readable: dark text on a light fill, not a
+   half-transparent white-on-olive. */
+.who-why-panel #who-picker-confirm:disabled { opacity: 1; color: #4d5240; background: var(--olive-150); cursor: not-allowed; }
+
+@media (max-width: 1000px) {
+  .ww-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ww-col-why { grid-column: 1 / -1; }
+  .who-why-panel.org-modal-panel { height: auto; overflow-y: auto; }
+  .ww-list { max-height: 38vh; }
+}
+@media (max-width: 640px) {
+  .ww-columns { grid-template-columns: minmax(0, 1fr); }
+  .who-why-panel.org-modal-panel { width: 100%; }
+}
+
+/* Review queues (BANK_TWO_STAGE_REVIEW_001). */
+.review-tabs { display: flex; gap: .4rem; border-bottom: 1px solid var(--olive-150); margin: .4rem 0 .5rem; }
+.review-tab { padding: .45rem .9rem; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0;
+  color: var(--olive-900); font-weight: 600; text-decoration: none; }
+.review-tab.is-active { background: var(--surface); border-color: var(--olive-150); margin-bottom: -1px; }
+.review-tab-help { font-size: .85rem; }
+/* Review filters on one row (Year | Month | Instrument | Filter); wraps only on narrow screens. */
+.filter-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .4rem 1rem; }
+.filter-row .field-row { margin-bottom: 0; }
+.filter-row input[type=number] { width: 6rem; margin-bottom: 0; }
+.filter-row select { width: auto; min-width: 12rem; max-width: 18rem; margin-bottom: 0; }
+.filter-row button { padding: .45rem 1.2rem; font-size: .85rem; line-height: inherit; border: 1px solid transparent; }
+.review-tab-help .rp-st { display: inline-flex; align-items: center; justify-content: center; width: 1.1rem; height: 1.1rem;
+  border-radius: 50%; font-weight: 700; font-size: .72rem; vertical-align: middle; }
+.review-tab-help .rp-st-automatic { color: #d46b00; background: #fff; border: 2px solid #e8890c; }
+.review-tab-help .rp-st-confirmed { color: #fff; background: #2e7d32; }
+
+/* WHO Rule modal, wide (BANK_WHO_MANUAL_ONLY_001): WHO + Rule on the left,
+   Possible WHY on the right grouped by WHY navigation group, the WHY list
+   scrolls inside the panel and Apply / Cancel stay in a fixed footer.
+   Every state sets its text AND background colour (no inherited white
+   button text on a light fill). */
+.who-rule-panel.org-modal-panel {
+  width: min(88vw, 1500px); max-width: none; height: min(86vh, 880px); max-height: calc(100vh - 2rem);
+  display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box;
+}
+.who-rule-panel form { display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 0; }
+.who-rule-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 1rem; flex: 1; min-height: 0; }
+.who-rule-col { min-height: 0; border: 1px solid var(--olive-300); border-radius: var(--radius); padding: .7rem .8rem;
+  background: var(--surface); color: var(--ink); }
+.who-rule-col-main { overflow-y: auto; }
+.who-rule-panel .who-rule-col input[type="search"], .who-rule-panel .who-rule-col textarea {
+  width: 100%; max-width: none; box-sizing: border-box; color: var(--ink); background: var(--surface);
+  padding: .45rem .6rem; border: 1px solid var(--olive-300); border-radius: 6px; font: inherit; font-size: .88rem; }
+.who-rule-panel .who-rule-col input[type="search"]::placeholder { color: var(--muted); opacity: 1; }
+.who-rule-info { font-size: .8rem; color: var(--ink); background: var(--olive-050); border: 1px solid var(--olive-150);
+  border-radius: 6px; padding: .45rem .65rem; }
+.who-rule-info p { margin: .2rem 0; }
+.who-rule-panel .who-rule-whys { display: flex; flex-direction: column; margin: 0; }
+.who-rule-panel .who-rule-whys > legend { font-weight: 700; color: var(--olive-900); padding: 0 .3rem; }
+.who-rule-why-count { font-weight: 600; color: #1d5b2b; }
+.who-rule-panel .who-rule-why-list { display: block; flex: 1; min-height: 8rem; max-height: none; overflow-y: auto;
+  margin: .45rem 0 .35rem; padding: 0; border: 1px solid var(--olive-150); border-radius: 6px; background: var(--surface); }
+.who-rule-why-group { border-bottom: 1px solid var(--olive-150); }
+.who-rule-why-group:last-of-type { border-bottom: none; }
+.who-rule-why-group > summary { display: flex; justify-content: space-between; align-items: center; gap: .5rem;
+  cursor: pointer; padding: .4rem .7rem; font-size: .76rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--olive-900); background: var(--olive-150); position: sticky; top: 0; z-index: 1; }
+.who-rule-why-group > summary:hover { color: var(--olive-900); background: var(--olive-300); }
+.who-rule-why-group-meta { font-size: .7rem; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--olive-900);
+  background: var(--surface); border-radius: 999px; padding: .02rem .45rem; }
+.who-rule-why-group.has-selected > summary .who-rule-why-group-meta { color: #ffffff; background: #1d5b2b; }
+.who-rule-why-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0 .6rem; padding: .3rem .5rem; }
+.who-rule-panel .who-rule-why { display: flex; align-items: center; gap: .4rem; font-size: .84rem; font-weight: 400;
+  color: var(--ink); background: var(--surface); border-radius: 4px; padding: .22rem .35rem; cursor: pointer; }
+.who-rule-panel .who-rule-why:hover { color: var(--ink); background: var(--olive-050); }
+.who-rule-panel .who-rule-why input { margin: 0; flex: none; accent-color: var(--olive-700); }
+.who-rule-panel .who-rule-why.is-checked { color: var(--olive-900); background: #e3f1dc; font-weight: 600;
+  box-shadow: inset 3px 0 0 #1d5b2b; }
+.who-rule-footer .error { margin: 0; flex: 1; }
+.who-rule-panel #who-rule-apply:disabled { opacity: 1; color: #4d5240; background: var(--olive-150); cursor: not-allowed; }
+.who-rule-panel .who-picker-list { max-height: 16rem; overflow-y: auto; }
+@media (max-width: 900px) {
+  .who-rule-panel.org-modal-panel { width: 100%; height: auto; overflow-y: auto; }
+  .who-rule-columns { grid-template-columns: minmax(0, 1fr); }
+  .who-rule-panel .who-rule-why-list { max-height: 45vh; }
+}
+
+/* WHO Classification groups: Needs Rule, Has Rule, Manual Only. */
+#who-classification { scroll-margin-top: .5rem; }
+.who-group-row > th { text-align: left; padding: .55rem .6rem; font-size: .76rem; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--olive-900); background: var(--olive-150); border-top: 2px solid var(--olive-300); }
+.who-group-count { font-weight: 600; letter-spacing: 0; color: var(--olive-700); }
+.who-row-actions { white-space: nowrap; }
+.who-row-actions > * { vertical-align: middle; }
+.who-manual-toggle { margin-left: .35rem; }
+.who-row-actions .who-manual-toggle { font-size: .78rem; padding: .3rem .65rem; }
+.who-manual-badge { color: #8a5a10; background: #fdf3e2; border-color: #ecd6a5; }
+.who-row-actions button:disabled { opacity: 1; color: #4d5240; background: var(--olive-150); cursor: not-allowed; }
+.who-manual-conflict { border-color: #ecd6a5; background: #fdf3e2; color: var(--ink); }
+.who-manual-conflict .who-picker-actions form { margin: 0; }
+/* WHO Classification — Last transaction: the bank's own description first
+   (two lines at most, the whole text on hover), then date · account · amount. */
+.who-last-col { min-width: 22rem; }
+.who-table td[data-label="Type"] { white-space: nowrap; }
+.who-last { min-width: 22rem; max-width: 34rem; }
+.who-last-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  overflow-wrap: anywhere; color: var(--ink); font-size: .82rem; line-height: 1.3; cursor: help;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.who-last-meta { display: block; margin-top: .15rem; color: var(--muted); font-size: .74rem; white-space: nowrap; }
+.who-last-amount { color: var(--ink); font-variant-numeric: tabular-nums; }
+.who-last-amount.is-in { color: var(--ok); }
+@media (max-width: 700px) { .who-last, .who-last-col { min-width: 0; max-width: none; } .who-last-meta { white-space: normal; } }
+/* Create New WHY — the ONE dialog shared by Select WHO / WHY and the WHO Rule
+   modal. It opens ON TOP of the modal that launched it (later in the page and
+   a higher layer), compact, with its three fields always in view. */
+.why-create-overlay { z-index: 60; background: rgba(36, 39, 28, 0.35); }
+.why-create-overlay .why-create-panel { max-width: 560px; margin-top: 4vh; }
+.why-create-panel form { display: flex; flex-direction: column; gap: .75rem; margin: 0; }
+.why-create-field label { color: var(--olive-900); font-weight: 600; font-size: .8rem; }
+.why-create-field input[type="text"], .why-create-field input[type="search"], .why-create-field select {
+  width: 100%; color: var(--ink); background: var(--surface); border: 1px solid var(--olive-300); border-radius: 6px;
+  padding: .4rem .5rem; font-size: .88rem; }
+.why-create-field input::placeholder { color: var(--muted); opacity: 1; }
+.why-create-field select[size] { margin-top: .35rem; padding: .2rem; height: auto; }
+.why-create-field select[size] option { color: var(--ink); background: var(--surface); padding: .2rem .35rem; }
+.why-create-field select[size] option:checked { color: #ffffff; background: #1d5b2b; }
+.why-create-field .cell-note.is-chosen { color: var(--olive-900); font-weight: 600; }
+.why-create-existing { margin: .35rem 0 0; padding: .45rem .6rem; font-size: .8rem; color: var(--olive-900);
+  background: #e3f1dc; border: 1px solid #b9d9ab; border-radius: 6px; }
+.why-create-actions { justify-content: flex-start; }
+.who-rule-why-tools { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-top: .45rem; }
+.who-rule-why-tools .ww-create-open { flex: none; }

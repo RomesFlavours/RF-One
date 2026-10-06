@@ -223,8 +223,13 @@ def main() -> int:
                 if path == "/bank":
                     check(f"{label}: /bank lists the instruments", "Perf Instrument 0" in body and "Perf Instrument 2" in body)
                 elif path == "/bank/classification":
-                    check(f"{label}: /bank/classification shows receiver groups and Whos",
-                          "PAYEE" in body and "Who 1" in body)
+                    # WHO with a rule are listed after those still needing one
+                    # (BANK_WHO_MANUAL_ONLY_001): searched, a ruled WHO shows
+                    # the description its rule recognises.
+                    ruled = client.get("/bank/classification?q=Who 0").data.decode("utf-8", "replace")
+                    check(f"{label}: /bank/classification shows the Whos and the descriptions their rules recognise",
+                          "Who 1" in body and 'class="who-group-row"' in body and "PAYEE" in ruled
+                          and 'data-group="HAS_RULE"' in ruled)
                 else:
                     check(f"{label}: /bank/review shows transactions and the Who picker",
                           "PAYEE" in body and "who-picker" in body)

@@ -7,7 +7,12 @@
 {#- BANK_IMPORT_AND_REVIEW_001 — the monthly Bank work for ONE month, in four
     compact steps. Operational only: explanations live on the Instructions tab.
     Every form sends the month back with `return_to`, so the operator stays
-    on this page and on this month. -#}
+    on this page and on this month.
+
+    BANK_SOURCE_AND_IMPORT_REVIEW_001: Upload no longer imports. It stages
+    the selected files and opens the Import Set Review; only Confirm Import
+    writes. Check Sources carries the whole source-completeness control
+    (formerly the Monthly Sources page). -#}
 
 {%- macro month_fields() -%}
   <input type="hidden" name="return_to" value="{{ RETURN_IMPORT_REVIEW }}">
@@ -20,7 +25,7 @@
     <table class="table-compact table-stack">
       <thead>
         <tr>
-          <th>File</th><th>Format</th><th>Instrument</th><th>Rows</th>
+          <th>File</th><th>Format</th><th>Source</th><th>Rows</th>
           <th>Period</th><th>Status &amp; reason</th><th>Action</th>
         </tr>
       </thead>
@@ -30,7 +35,7 @@
           <tr>
             <td data-label="File" class="col-description">{{ batch.original_file_name }}</td>
             <td data-label="Format">{{ batch.detected_format }}</td>
-            <td data-label="Instrument">
+            <td data-label="Source">
               {% if batch.payment_instrument_id %}
                 {{ instruments_by_id.get(batch.payment_instrument_id).display_name if instruments_by_id.get(batch.payment_instrument_id) else batch.payment_instrument_id }}
               {% else %}
@@ -61,8 +66,8 @@
                   <form method="post" action="{{ url_for('bank_batch_resolve_instrument', batch_id=batch.id) }}" class="compact-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     {{ month_fields() }}
-                    <select name="payment_instrument_id" required aria-label="Payment Instrument for {{ batch.original_file_name }}">
-                      <option value="">Resolve instrument&hellip;</option>
+                    <select name="payment_instrument_id" required aria-label="Source for {{ batch.original_file_name }}">
+                      <option value="">Resolve Source&hellip;</option>
                       {% for instrument in instruments %}
                         <option value="{{ instrument.id }}">{{ bank.instrument_identity(instrument) }}</option>
                       {% endfor %}
@@ -78,7 +83,7 @@
                   </form>
                 {% elif state and state.action == 'REVIEW_ISSUES' %}
                   <a class="btn btn-inline"
-                     href="{{ url_for('bank_review', batch_id=batch.id, status='CANDIDATE_DUPLICATE' if state.candidate_duplicate_count else None) }}">{{ state.action_label }}</a>
+                     href="{{ url_for('bank_review', batch_id=batch.id) }}">{{ state.action_label }}</a>
                 {% elif state and state.action == 'REPROCESS' %}
                   <form method="post" action="{{ url_for('bank_batch_reprocess', batch_id=batch.id) }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -91,11 +96,11 @@
 
                 {% if batch.payment_instrument_id %}
                   <details>
-                    <summary>Change instrument</summary>
+                    <summary>Change Source</summary>
                     <form method="post" action="{{ url_for('bank_batch_resolve_instrument', batch_id=batch.id) }}" class="compact-form">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       {{ month_fields() }}
-                      <select name="payment_instrument_id" required aria-label="New Payment Instrument for {{ batch.original_file_name }}">
+                      <select name="payment_instrument_id" required aria-label="New Source for {{ batch.original_file_name }}">
                         <option value="">Reassign to&hellip;</option>
                         {% for instrument in instruments %}
                           {% if instrument.id != batch.payment_instrument_id %}
@@ -204,13 +209,13 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ month_fields() }}
       <input type="file" id="files" name="files" accept=".csv" multiple required aria-label="Bank and card source files">
-      <select id="payment_instrument_id" name="payment_instrument_id" aria-label="Payment Instrument">
-        <option value="">Instrument: automatic</option>
+      <select id="payment_instrument_id" name="payment_instrument_id" aria-label="Source">
+        <option value="">Source: automatic</option>
         {% for instrument in instruments %}
           <option value="{{ instrument.id }}">{{ bank.instrument_identity(instrument) }}</option>
         {% endfor %}
       </select>
-      <button type="submit">Upload</button>
+      <button type="submit">Upload and review</button>
     </form>
   </div>
   <div class="bank-step-actions">
@@ -274,11 +279,21 @@
         <button type="submit">Open month</button>
       </form>
     {% elif source_attention %}
-      <a class="btn btn-inline" href="{{ url_for('bank_monthly', year=year, month=month) }}">Resolve issues</a>
+      <a class="btn btn-inline" href="#source-details" onclick="document.getElementById('source-details').open = true;">Resolve issues</a>
     {% else %}
-      <a class="btn btn-secondary btn-inline" href="{{ url_for('bank_monthly', year=year, month=month) }}">Open Monthly Sources</a>
+      <a class="btn btn-secondary btn-inline" href="#source-details" onclick="document.getElementById('source-details').open = true;">Source details</a>
     {% endif %}
   </div>
+  {% if period %}
+  <details class="bank-files" id="source-details"{{ ' open' if source_attention and request.args.get('sources') == 'open' else '' }}>
+    <summary>Source details for {{ month_label }}{% if source_attention %} &mdash; {{ source_attention|length }} need a decision{% endif %}</summary>
+    {% include "_bank_monthly_sources.html" %}
+  </details>
+  {% endif %}
+  <details class="bank-files" id="completeness-control">
+    <summary>Completeness control settings</summary>
+    {% include "_bank_completeness_control.html" %}
+  </details>
 </section>
 
 {# -------------------------------------------------------- 3 Automatic WHO #}
@@ -315,4 +330,7 @@
 </section>
 
 </div>
+{% if import_review and staged_token %}
+  {% include "_bank_import_review_modal.html" %}
+{% endif %}
 {% endblock %}

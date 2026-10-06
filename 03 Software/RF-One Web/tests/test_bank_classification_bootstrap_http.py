@@ -2,11 +2,11 @@
 """HTTP-level test for the classification bootstrap
 (BANK_CLASSIFICATION_BOOTSTRAP_001).
 
-Exercises over HTTP: the What catalog import (upload, preview, confirm,
-and the absence of any preview-free path), the Unclassified Receivers
-section with its search, filters, sorting and pagination, group approval
-onto a new and an existing Who, the Assigned / Learned Rules section, the
-invoice boundary, the BANK gate and CSRF, and the standing UI rules.
+Exercises over HTTP the Classification page as the WHO occurrence list
+with its rules, the invoice boundary and the standing UI rules. The former
+What catalog import and receiver-group approval routes are retired with the
+legacy Classification template (BANK_FINAL_CLEANUP_001) and are checked to
+be gone.
 
 Never touches a real bank file, AWS, or any production database.
 """
@@ -44,9 +44,10 @@ from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store.bank_reconciliation import accounting_dedup  # noqa: E402
 from rfone_data_store.bank_reconciliation import card_configuration as cards  # noqa: E402
+from rfone_data_store.bank_reconciliation import classification as classification_service  # noqa: E402
+from rfone_data_store.bank_reconciliation import recognition  # noqa: E402
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
-TOKEN_RE = re.compile(r'name="preview_token" value="([^"]+)"')
 FULL_ACCOUNT_NUMBER = "1122334455667788"
 
 # Deliberately TEST- prefixed: the canonical RF-One chart already owns
@@ -149,179 +150,68 @@ def main() -> int:
             "the canonical accounting catalog is present after the ordinary migration",
             baseline_whats == 137, detail=str(baseline_whats),
         )
+        # BANK_SIMPLE_WHO_RULE_001 — Classification is now the WHO occurrence
+        # list with the shared Rule modal. WHAT / WHY / WHO are maintained in
+        # Configuration, and the receiver review is no longer rendered here.
         check(
-            "the page presents the five sections in order",
-            all(marker in page for marker in (
-                b"A. What", b"B. Why", b"C. Who",
-                b"D. Unclassified Receivers", b"E. Assigned / Learned Rules",
-            ))
-            and page.index(b"A. What") < page.index(b"D. Unclassified Receivers")
-            < page.index(b"E. Assigned / Learned Rules"),
+            "the page is the WHO occurrence list, pointing to Configuration for the vocabulary",
+            b"Search WHO" in page and b'id="who-rule-modal"' in page and b"/bank/configuration" in page
+            and b"A. What" not in page and b"D. Unclassified Receivers" not in page,
         )
-        check("the invoice boundary is stated on the page",
-              b"Suppliers paid by invoice" in page and b"Accounts Payable settlement" in page)
-        check("the page uses the wide, no-horizontal-scroll layout",
-              b"wrap-wide" in page and b"table-stack" in page)
         check("the full account number is never rendered",
               FULL_ACCOUNT_NUMBER.encode() not in page)
 
         # =================================================================
         # Receiver candidates
         # =================================================================
-        check("receiver groups are derived and shown",
-              b"US FOODS INC 4821" in page and b"PUBLIX 1488" in page)
-        check("the accounting duplicate is NOT offered as its own candidate",
-              page.count(b"US FOODS INC 4821") >= 1
-              and b"Transactions represented" in page)
-        check("the summary reports the suppressed copies separately",
-              b"Receiver groups" in page and b"Still unclassified" in page)
-        check("search, status filter, sorting and pagination controls are present",
-              all(marker in page for marker in (
-                  b'name="receiver_q"', b'name="receiver_status"', b'name="receiver_sort"',
-              )) and b"page 1 of" in page)
-
-        filtered = client.get("/bank/classification?receiver_q=publix#receivers").data
-        check("the receiver search filters the groups",
-              b"PUBLIX 1488" in filtered and b"US FOODS INC 4821" not in filtered)
-        by_value = client.get("/bank/classification?receiver_sort=value").data
-        check("sorting by value responds", by_value.count(b"US FOODS INC 4821") >= 1)
+        check("the receiver review is no longer built on the Classification page",
+              b"Receiver groups" not in page and b'name="receiver_q"' not in page)
 
         # =================================================================
-        # What catalog import: preview, then confirm
+        # Retired routes (BANK_FINAL_CLEANUP_001)
         # =================================================================
+        # The What catalog import preview and the receiver-group approval
+        # were reachable only from the retired legacy Classification
+        # template. Their services stay (Data Store test
+        # test_bank_classification_bootstrap.py); the routes are gone.
         csrf = extract_csrf(page)
-        resp = client.post("/bank/classification/what/import", data={
-            "catalog_file": (io.BytesIO(CSV_PLAN), "plan.csv"),
-            "csrf_token": csrf,
-        }, content_type="multipart/form-data")
-        preview = resp.data
-        check("uploading a plan renders a preview", resp.status_code == 200
-              and b"nothing has been imported yet" in preview)
-        check("the preview shows statement type, code, name, parent, level and source",
-              all(marker in preview for marker in (
-                  b"<th>Statement</th>", b"<th>Code</th>", b"<th>Name</th>",
-                  b"<th>Parent</th>", b"<th>Level</th>", b"<th>Source</th>",
-                  b"<th>Anomalies</th>",
-              )))
-        check("the preview reports the Total row as skipped",
-              b"TOTAL" in preview and b"Total cost of goods sold" in preview)
-
         with SessionFactory() as s:
-            # BANK_CANONICAL_ACCOUNTING_CATALOG_001: the migration now seeds the
-            # canonical chart, so "wrote nothing" means "unchanged", not "empty".
-            check("the preview wrote nothing",
-                  s.query(m.BankAccountingClassification).count() == baseline_whats)
-
-        token_match = TOKEN_RE.search(preview.decode("utf-8"))
-        check("the preview carries a confirmation token", token_match is not None)
-        resp = client.post("/bank/classification/what/import/confirm", data={
-            "preview_token": token_match.group(1), "csrf_token": extract_csrf(preview),
-        })
-        check("confirming the preview redirects back", resp.status_code in (302, 303))
-
+            whats_before = s.query(m.BankAccountingClassification).count()
+            whos_before = s.query(m.BankOccurrence).count()
+        retired = [
+            client.post("/bank/classification/what/import", data={
+                "catalog_file": (io.BytesIO(CSV_PLAN), "plan.csv"), "csrf_token": csrf,
+            }, content_type="multipart/form-data"),
+            client.post("/bank/classification/what/import/confirm", data={"csrf_token": csrf}),
+            client.post("/bank/classification/receivers/approve", data={
+                "payee_key": "DEBIT|US FOODS INC 4821", "new_occurrence_name": "US Foods",
+                "csrf_token": csrf,
+            }),
+        ]
         with SessionFactory() as s:
-            codes = {w.code for w in s.query(m.BankAccountingClassification).all()}
-            check("only the account rows were imported, not the Total",
-                  {"TEST-5000", "TEST-5100", "TEST-2100"} <= codes
-                  and "TEST-TOTAL" not in codes
-                  and len(codes) == baseline_whats + 3,
-                  detail=f"{len(codes)} codes, baseline {baseline_whats}")
-            check("the hierarchy survived the import",
-                  s.query(m.BankAccountingClassification).filter_by(code="TEST-5100").one().parent_id
-                  == s.query(m.BankAccountingClassification).filter_by(code="TEST-5000").one().id)
-            cogs_id = s.query(m.BankAccountingClassification).filter_by(code="TEST-5100").one().id
+            check("the retired What-import and receiver-approval routes are gone (404) and write nothing",
+                  all(r.status_code == 404 for r in retired)
+                  and s.query(m.BankAccountingClassification).count() == whats_before
+                  and s.query(m.BankOccurrence).count() == whos_before,
+                  detail=str([r.status_code for r in retired]))
 
-        page = client.get("/bank/classification").data
-        check("the imported catalog appears in the What section",
-              b"TEST-5100" in page and b"Food cost" in page)
-
-        # A Why for the approval below.
-        csrf = extract_csrf(page)
-        client.post("/bank/classification/why/new", data={
-            "code": "FOOD_PURCHASE", "name": "Food purchase",
-            "accounting_classification_id": str(cogs_id), "csrf_token": csrf,
-        })
+        # A WHO a person created, with the exact-description rule a person
+        # approved: the Classification list shows both.
         with SessionFactory() as s:
-            why_id = s.query(m.BankTransactionReason).filter_by(code="FOOD_PURCHASE").one().id
             type_id = s.query(m.BankOccurrenceType).filter_by(code="SUPPLIER").one().id
-
-        # =================================================================
-        # Approval
-        # =================================================================
-        page = client.get("/bank/classification").data
-        csrf = extract_csrf(page)
-        resp = client.post("/bank/classification/receivers/approve", data={
-            "payee_key": "DEBIT|US FOODS INC 4821",
-            "new_occurrence_name": "US Foods", "occurrence_type_id": str(type_id),
-            "default_transaction_reason_id": str(why_id),
-            "learn_description": "on", "csrf_token": csrf,
-        })
-        check("approving a group redirects back to Classification",
-              resp.status_code in (302, 303))
-
-        with SessionFactory() as s:
-            who = s.query(m.BankOccurrence).filter_by(canonical_name="US Foods").one()
-            decided = s.query(m.BankTransactionExplanation).filter(
-                m.BankTransactionExplanation.occurrence_id == who.id,
-                m.BankTransactionExplanation.decision_source == "HUMAN",
-            ).all()
-            check("both transactions of the group were classified in one action",
-                  len(decided) == 2, detail=str(len(decided)))
-            # BANK_FINAL_RELEASE_BLOCKERS_001 — approval names the Who; the
-            # Who's default Why is never applied to the transactions.
-            check("approval records the Who and applies no Why from it",
-                  all(d.transaction_reason_id is None
-                      and d.accounting_classification_code_snapshot is None for d in decided))
-            rules = s.query(m.BankRecognitionRule).all()
-            check("an exact-match rule was recorded for future imports",
-                  len(rules) == 1 and rules[0].match_type == "EXACT_NORMALIZED_DESCRIPTION"
-                  and rules[0].normalized_pattern == "US FOODS INC 4821")
-            copy = s.query(m.FinancialTransaction).filter_by(
-                payment_instrument_id=s.query(m.PaymentInstrument).filter_by(
-                    display_name="HTTP Card").one().id).one()
-            check("the suppressed accounting copy was not classified",
-                  copy.accounting_status == accounting_dedup.DUPLICATE_SUPPRESSED
-                  and copy.explanation_id is None)
+            who = classification_service.create_occurrence(
+                s, canonical_name="US Foods", occurrence_type_id=type_id, default_transaction_reason_id=None)
+            recognition.create_or_reuse_rule(
+                s, match_type="EXACT_NORMALIZED_DESCRIPTION", normalized_pattern="US FOODS INC 4821",
+                occurrence_id=who.id, transaction_reason_id=None, payment_instrument_id=None,
+                direction=None, auto_apply_enabled=True, created_from_transaction_id=None)
+            s.commit()
 
         page = client.get("/bank/classification").data
-        check("the approved group is reported as ASSIGNED",
-              b"ASSIGNED" in page)
-        check("the learned rule is listed in the Assigned / Learned Rules section",
-              b"EXACT_NORMALIZED_DESCRIPTION" in page and b"US FOODS INC 4821" in page)
-
-        # Approving another group onto the SAME existing Who.
-        with SessionFactory() as s:
-            who_id = s.query(m.BankOccurrence).filter_by(canonical_name="US Foods").one().id
-        csrf = extract_csrf(page)
-        resp = client.post("/bank/classification/receivers/approve", data={
-            "payee_key": "DEBIT|PUBLIX 1488", "occurrence_id": str(who_id),
-            "learn_description": "on", "csrf_token": csrf,
-        })
-        with SessionFactory() as s:
-            check("a second group can be approved onto the same existing Who",
-                  s.query(m.BankRecognitionRule).count() == 2)
-
-        # =================================================================
-        # Security
-        # =================================================================
-        ungated = web_app.app.test_client()
-        resp = ungated.get("/login")
-        ungated.post("/login", data={
-            "username": "no_bank_class", "password": "NoBankPass123!",
-            "csrf_token": extract_csrf(resp.data),
-        })
-        check("the import route is behind the BANK domain gate",
-              ungated.post("/bank/classification/what/import").status_code == 403)
-        check("the approval route is behind the BANK domain gate",
-              ungated.post("/bank/classification/receivers/approve").status_code == 403)
-        check("an import without CSRF is refused",
-              client.post("/bank/classification/what/import", data={
-                  "catalog_file": (io.BytesIO(CSV_PLAN), "plan.csv"),
-              }, content_type="multipart/form-data").status_code in (400, 403))
-        check("an approval without CSRF is refused",
-              client.post("/bank/classification/receivers/approve", data={
-                  "payee_key": "DEBIT|PUBLIX 1488",
-              }).status_code in (400, 403))
+        check("the WHO is listed on Classification with a Rule button",
+              b"US Foods" in page and b'class="who-rule-open"' in page and b"table-stack" in page)
+        check("its rule is shown next to its WHO",
+              "is exactly \u201cUS FOODS INC 4821\u201d".encode() in page)
 
         # The modal controller is available on this page too.
         check("the shared modal controller is loaded",

@@ -48,6 +48,7 @@ future change. It is simply not what decides what a 2026 migration does.
 |---|---|---|
 | `b8d3f1a72c64_rfone_restaurant_coa_v1.csv` | `b8d3f1a72c64` | the 134-account catalog as approved at commit `a6fa020`, with that revision's original `Node Type` vocabulary (`CONTRA_ASSET`, `CONTRA_REVENUE`, `POSTING_REVIEW_SENSITIVE`) |
 | `c5f8b2e91a47_account_semantics.csv` | `c5f8b2e91a47` | the same 134 accounts with the four semantic columns as approved at commit `c3124cd` |
+| `e2c6a9f4b7d1_why_navigation_groups.csv` | `e2c6a9f4b7d1` | the 81 canonical WHY with their approved navigation group (15 groups, BANK_WHY_NAVIGATION_GROUPS_001) and the group each had before, for the downgrade |
 
 `d7a4c9e2f318` needs four rows only, so it carries them inline in the revision
 file rather than adding a third snapshot.

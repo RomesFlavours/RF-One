@@ -1,0 +1,58 @@
+{# "Create New WHY" — the ONE creation flow of both reconciliation modals
+   (Select WHO / WHY and the WHO Rule). Included ONCE per page, after the
+   modal(s) it serves, so it opens ON TOP of the modal it was launched from
+   and closes back to it: nothing navigates, nothing reloads.
+
+   Opened only through `RFOneWhyCreate.open({...})` (static/js/bank-why-create.js),
+   which posts to ONE route (`bank_why_create`) and ONE service
+   (`manual_reconciliation.create_why_for_who`): the WHY — or the existing WHY of
+   that name, reused — and the WHO -> WHY association, in one database
+   transaction. The caller decides what to do with the WHY it gets back.
+
+   A new WHY needs its name and its WHY group (`BankReasonGroup`, alphabetical;
+   organisation only). Its WHAT (a P&L WHAT) is OPTIONAL: Bank reconciliation
+   needs WHO + WHY, not bookkeeping (BANK_WHY_WITHOUT_WHAT_001). #}
+<div id="why-create-dialog" class="org-modal-overlay why-create-overlay" hidden aria-hidden="true"
+     data-options-url="{{ url_for('bank_why_create_options') }}"
+     data-create-url="{{ url_for('bank_why_create') }}">
+  <div class="org-modal-panel why-create-panel" role="dialog" aria-modal="true" aria-labelledby="why-create-title">
+    <button class="org-modal-close" type="button" aria-label="Cancel" data-modal-close>&times;</button>
+    <div class="modal-header">
+      <h3 id="why-create-title">Create New WHY</h3>
+    </div>
+    <p class="who-why-subject" id="why-create-context"></p>
+
+    <form id="why-create-form" method="post" action="{{ url_for('bank_why_create') }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="occurrence_id" id="why-create-occurrence-id" value="">
+
+      <div class="why-create-field">
+        <label for="why-create-dialog-name">WHY Name</label>
+        <input type="text" id="why-create-dialog-name" name="name" maxlength="120" autocomplete="off"
+               placeholder="Name of the purpose, e.g. Withdrawal">
+        <p class="why-create-existing" id="why-create-dialog-existing" role="status" hidden></p>
+      </div>
+
+      <div class="why-create-field" id="why-create-dialog-group-field">
+        <label for="why-create-dialog-group">WHY Group</label>
+        <select id="why-create-dialog-group" name="group_id"><option value="">Loading&hellip;</option></select>
+        <span class="cell-note">Where the WHY is listed. It has no accounting effect.</span>
+      </div>
+
+      <div class="why-create-field" id="why-create-dialog-what-field">
+        <label for="why-create-dialog-what-search">WHAT / Accounting destination <span class="why-create-optional">(optional)</span></label>
+        <input type="search" id="why-create-dialog-what-search" autocomplete="off" placeholder="Search WHAT (code or name)"
+               aria-controls="why-create-dialog-what">
+        <select id="why-create-dialog-what" name="what_id" size="7" aria-label="WHAT"></select>
+        <span class="cell-note" id="why-create-dialog-what-chosen">Optional, for bookkeeping later. Not needed to reconcile.</span>
+      </div>
+
+      <p class="error" id="why-create-dialog-error" role="alert" hidden></p>
+      <div class="who-picker-actions why-create-actions">
+        <button type="submit" id="why-create-dialog-save">Save</button>
+        <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script defer src="{{ url_for('static', filename='js/bank-why-create.js') }}?v=3"></script>

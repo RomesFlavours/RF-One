@@ -11654,6 +11654,15 @@ class BankOccurrence(Base):
     )
     capability_evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # BANK_WHO_MANUAL_ONLY_001 — a person decided this WHO is reconciled by
+    # hand when it occurs (an occasional restaurant, ...): it takes no part
+    # in INDIVIDUAL WHO Rule automation — no Rule is offered or applied for
+    # it and Classification Learning proposes none. It says nothing about
+    # General Rules, WHY or manual reconciliation, which stay available.
+    manual_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0"),
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
@@ -11789,16 +11798,16 @@ class BankWhoRecognition(Base):
 
 
 class BankReasonGroup(Base):
-    """A MANAGEMENT grouping of Whys
-    (BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §2) — Kitchen Labor,
-    Product Cost, Occupancy, Money Movements, and so on.
+    """THE grouping of Whys (BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001
+    §2) — since BANK_WHY_NAVIGATION_GROUPS_001 the 15 navigation groups:
+    Food, Beverage & Supplies, Payroll, Rent & Occupancy, and so on.
 
-    Exists to organise the catalog and to let a future Company Panel /
-    Cognito aggregate group -> Why -> Who -> transactions. It is NOT a
-    classification: nothing is ever posted to a group, and ordinary Bank
-    reconciliation never shows one. The operator sees groups in exactly
-    one place — the "+ New" modal, where the full catalog has to be
-    browsable."""
+    Exists to organise the catalog: the operator browses it in the WHY GROUP
+    column of the "Select WHO / WHY" popup, and a future Company Panel /
+    Cognito may aggregate group -> Why -> Who -> transactions. It is NOT a
+    classification: nothing is ever posted to a group, and a group decides
+    nothing about WHAT, destination, export or tax. A superseded group is
+    made inactive, never deleted."""
 
     __tablename__ = "bank_reason_groups"
     __table_args__ = (
@@ -12039,6 +12048,127 @@ class BankTransactionReasonExportMapping(Base):
     )
 
     transaction_reason: Mapped["BankTransactionReason"] = relationship(back_populates="export_mapping")
+
+
+class BankWhyRule(Base):
+    """A deterministic WHY rule of WHO Classification
+    (BANK_CLASSIFICATION_LEARNING_001): for a transaction whose WHO is
+    ALREADY known, conditions on its own bank evidence name the WHY.
+
+    It never chooses a WHO (`occurrence_id` is its required scope), so it
+    does not touch the recognition-rule invariant (a description rule names a
+    WHO, never a purpose). Like a Reconciliation Standard it exists only by
+    explicit human approval; at runtime it is plain matching — no AI call.
+    Conditions are optional and AND-ed: a description phrase (normalised,
+    contained), a direction, an instrument type."""
+
+    __tablename__ = "bank_why_rules"
+    __table_args__ = (
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_bank_why_rule_status"),
+        CheckConstraint("direction IS NULL OR direction IN ('DEBIT', 'CREDIT')", name="ck_bank_why_rule_direction"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occurrence_id: Mapped[int] = mapped_column(ForeignKey("bank_occurrences.id"), nullable=False, index=True)
+    description_contains: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    direction: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    instrument_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    transaction_reason_id: Mapped[int] = mapped_column(ForeignKey("bank_transaction_reasons.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
+    origin: Mapped[str] = mapped_column(String(32), nullable=False, default="PATTERN_DISCOVERY")
+    approved_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    evidence_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class BankLearningRun(Base):
+    """One explicit Classification Learning action — a discovery or a
+    backtest — and its summary (JSON). History, never configuration."""
+
+    __tablename__ = "bank_learning_runs"
+    __table_args__ = (CheckConstraint("kind IN ('DISCOVERY', 'BACKTEST')", name="ck_bank_learning_run_kind"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class BankPatternSuggestion(Base):
+    """A pattern the Classification Learning engine proposed
+    (BANK_CLASSIFICATION_LEARNING_001). Never a rule by itself: approving it
+    creates the rule in its own store (General Rule, WHO Rule, WHY Rule).
+    `fingerprint` identifies the pattern across runs, so a REJECTED pattern
+    is not proposed again unless its evidence materially changes."""
+
+    __tablename__ = "bank_pattern_suggestions"
+    __table_args__ = (
+        UniqueConstraint("fingerprint", name="uq_bank_pattern_suggestion_fingerprint"),
+        CheckConstraint("pattern_type IN ('STRUCTURAL', 'WHO', 'WHY')", name="ck_bank_pattern_suggestion_type"),
+        CheckConstraint("status IN ('SUGGESTED', 'APPROVED', 'REJECTED', 'COVERED')",
+                        name="ck_bank_pattern_suggestion_status"),
+        CheckConstraint("determinism IN ('DETERMINISTIC', 'PROBABILISTIC')",
+                        name="ck_bank_pattern_suggestion_determinism"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    pattern_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    determinism: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="SUGGESTED")
+    proposal: Mapped[str] = mapped_column(Text, nullable=False)      # JSON: what the rule would be
+    evidence: Mapped[str] = mapped_column(Text, nullable=False)      # JSON: counts, examples, explanation
+    evidence_level: Mapped[str] = mapped_column(String(24), nullable=False)
+    previously_rejected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False,
+                                                      server_default=text("0"))
+    rejected_evidence_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    discovery_run_id: Mapped[int | None] = mapped_column(ForeignKey("bank_learning_runs.id"), nullable=True)
+    decided_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    routed_to: Mapped[str | None] = mapped_column(String(64), nullable=True)   # e.g. "general_rule:3"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+GENERAL_RULE_SOURCE_DESCRIPTION = "DESCRIPTION"
+
+
+class BankGeneralRule(Base):
+    """A GENERAL (structural) WHO rule (BANK_GENERAL_RULES_001): it does not
+    name a WHO, it says WHERE a whole family of bank texts carries one — the
+    text BETWEEN two markers of the description, e.g. between
+    "ORIG CO NAME:" and "ORIG ID:" of a Chase ACH line. One General Rule
+    therefore yields many different WHO candidates.
+
+    Deliberately NOT a `BankRecognitionRule`: that one is fixed phrase ->
+    fixed WHO (level 2); this one is structure -> candidate (level 1). A
+    candidate becomes a WHO only through `CanonicalWhoResolver` (an existing
+    active WHO, its alias, or approved recognition knowledge) — a General
+    Rule never creates a WHO and never names a WHY."""
+
+    __tablename__ = "bank_general_rules"
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_bank_general_rule_name"),
+        CheckConstraint("source_field IN ('DESCRIPTION')", name="ck_bank_general_rule_source_field"),
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_bank_general_rule_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    source_field: Mapped[str] = mapped_column(String(16), nullable=False, default=GENERAL_RULE_SOURCE_DESCRIPTION)
+    start_marker: Mapped[str] = mapped_column(String(80), nullable=False)
+    end_marker: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
+    created_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    last_applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class BankRecognitionRule(Base):

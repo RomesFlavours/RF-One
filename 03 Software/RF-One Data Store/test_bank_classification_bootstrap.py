@@ -248,13 +248,13 @@ def main() -> int:
             # =============================================================
             cogs = s.query(m.BankAccountingClassification).filter_by(code="TEST-5100").one()
             payable = s.query(m.BankAccountingClassification).filter_by(code="TEST-2100").one()
-            raises(
-                "12. a Why cannot exist without a What",
-                lambda: classification_service.create_transaction_reason(
-                    s, code="ORPHAN", name="Orphan", accounting_classification_id=None,
-                ),
-                "requires a What",
+            # BANK_WHY_WITHOUT_WHAT_001: Bank reconciliation needs WHO + WHY; a
+            # Why may exist without a What, and none is invented for it.
+            pending_why = classification_service.create_transaction_reason(
+                s, code="PENDING_BOOKKEEPING", name="Pending bookkeeping", accounting_classification_id=None,
             )
+            check("12. a Why may exist without a What (no destination is invented)",
+                  pending_why.id is not None and pending_why.accounting_classification_id is None)
             food_why = classification_service.create_transaction_reason(
                 s, code="FOOD_PURCHASE", name="Food purchase",
                 accounting_classification_id=cogs.id,

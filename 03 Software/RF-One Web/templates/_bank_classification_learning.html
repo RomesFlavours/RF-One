@@ -1,0 +1,92 @@
+{#- CLASSIFICATION LEARNING (BANK_CLASSIFICATION_LEARNING_001), reduced to
+    what needs a human decision (BANK_ACTIONABLE_CLASSIFICATION_LEARNING_001).
+
+    `learning.suggestions` holds only actionable patterns: SUGGESTED and
+    DETERMINISTIC. Patterns RF-One already knows (covered by an active
+    General / WHO / WHY Rule), approved ones (now rules in their own store),
+    rejected ones and probabilistic ones are kept for audit and never listed.
+    The backtest is a development tool and is not on this page. Nothing here
+    is a rule: approval creates the rule in its own store. -#}
+{% set L = learning %}
+<section class="card learning" id="classification-learning" aria-labelledby="learning-title">
+  <div class="general-rules-head">
+    <h3 id="learning-title">Classification Learning</h3>
+    <div class="learning-buttons">
+      <form method="post" action="{{ url_for('bank_learning_discover') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit">Discover Patterns</button>
+      </form>
+    </div>
+  </div>
+
+  {% if L.test_result %}
+    {% set t = L.test_result %}
+    <div class="general-rule-result" role="status">
+      <h4>Test of suggestion #{{ t.id }} <span class="cell-note">{{ t.note }}</span></h4>
+      <dl class="who-rule-result-list">
+        <dt>Matches</dt><dd>{{ t.matches or 0 }} &middot; coverage {{ '%.1f'|format((t.coverage or 0) * 100) }}%</dd>
+        <dt>Correct (human truth)</dt><dd>{{ t.correct_human or 0 }}</dd>
+        <dt>Correct (support truth)</dt><dd>{{ t.correct_support or 0 }}</dd>
+        <dt>Mismatches / false positives</dt><dd>{{ t.false_positives or 0 }}</dd>
+        <dt>No truth to compare</dt><dd>{{ t.unresolved_truth or 0 }}{% if t.matched_unknown_who %} &middot; matched a name that is not a known WHO: {{ t.matched_unknown_who }}{% endif %}</dd>
+        <dt>Precision</dt><dd>{% if t.precision is not none %}{{ '%.1f'|format(t.precision * 100) }}%{% else %}&mdash;{% endif %}
+          {% if t.precision_human is not none %}<span class="cell-note">human only {{ '%.1f'|format(t.precision_human * 100) }}%</span>{% endif %}</dd>
+      </dl>
+      {% if t.exceptions %}<details><summary>Exceptions</summary><ul class="plain general-rule-unknown">{% for x in t.exceptions %}<li>{{ x.description }} ({{ x.provenance }})</li>{% endfor %}</ul></details>{% endif %}
+    </div>
+  {% endif %}
+
+  {% if L.suggestions %}
+    <h4 class="learning-sub">Suggested Patterns</h4>
+    <div class="table-scroll">
+      <table class="table-compact learning-table" id="suggested-patterns">
+        <thead><tr><th>Type</th><th>Pattern</th><th>Target</th><th>Evidence</th><th>Exceptions</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for item in L.suggestions %}
+            {% set s, p, e = item.row, item.proposal, item.evidence %}
+            <tr data-suggestion-id="{{ s.id }}">
+              <td data-label="Type"><span class="badge">{{ s.pattern_type }}</span></td>
+              <td data-label="Pattern">
+                {% if s.pattern_type == 'STRUCTURAL' %}between &ldquo;<code>{{ p.start_marker }}</code>&rdquo; and &ldquo;<code>{{ p.end_marker }}</code>&rdquo;
+                {% elif s.pattern_type == 'WHO' %}description contains &ldquo;<code>{{ p.phrase }}</code>&rdquo;
+                {% else %}WHO = {{ L.who_names.get(p.who_id, p.who_id) }}{% if p.description_contains %} &middot; contains &ldquo;<code>{{ p.description_contains }}</code>&rdquo;{% endif %}{% if p.direction %} &middot; {{ p.direction }}{% endif %}{% if p.instrument_type %} &middot; {{ p.instrument_type }}{% endif %}{% endif %}
+                {% if s.previously_rejected %}<span class="cell-note">Previously rejected &mdash; new evidence available</span>{% endif %}
+                {% if e.conflicts_with %}<span class="cell-note"><span class="badge warn">Conflict</span> {{ e.conflicts_with }}</span>{% endif %}
+                <details><summary>Review</summary>
+                  <p class="cell-note">{{ e.explanation }}</p>
+                  {% if e.examples %}<ul class="plain general-rule-unknown">{% for x in e.examples %}<li>{{ x.description }}{% if x.extracted %} &rarr; <strong>{{ x.extracted }}</strong>{% endif %}</li>{% endfor %}</ul>{% endif %}
+                </details>
+              </td>
+              <td data-label="Target">
+                {% if s.pattern_type == 'STRUCTURAL' %}WHO &rarr; General Rule
+                {% elif s.pattern_type == 'WHO' %}WHO {{ L.who_names.get(p.who_id, p.who_id) }}
+                {% else %}WHY {{ L.why_names.get(p.why_id, p.why_id) }}{% endif %}
+              </td>
+              <td data-label="Evidence">
+                {{ e.matches or 0 }} matches{% if e.distinct_values %} &middot; {{ e.distinct_values }} names{% endif %}
+                <span class="cell-note">{{ e.human_matches or 0 }} confirmed by a person</span>
+              </td>
+              <td data-label="Exceptions">{{ e.conflicts or 0 }}</td>
+              <td data-label="Actions" class="general-rule-actions">
+                <form method="post" action="{{ url_for('bank_learning_test', suggestion_id=s.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn-secondary">Test</button>
+                </form>
+                <form method="post" action="{{ url_for('bank_learning_approve', suggestion_id=s.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit">Approve</button>
+                </form>
+                <form method="post" action="{{ url_for('bank_learning_reject', suggestion_id=s.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn-secondary">Reject</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty" id="learning-empty">No new classification patterns to review.</p>
+  {% endif %}
+</section>

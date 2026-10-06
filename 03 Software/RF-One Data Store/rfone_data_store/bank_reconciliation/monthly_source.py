@@ -545,6 +545,10 @@ def expectation_with_lifecycle_boundary(
     verdict = expectation_for(instrument, period)
     if instrument.effective_end_date is not None:
         return verdict
+    if instrument.status == "ACTIVE":
+        # Reactivated from the Source page: a person said it is alive now,
+        # so an earlier closing decision no longer closes the future.
+        return verdict
     decision = lifecycle_end_decision(session, instrument.id)
     if decision is None:
         return verdict
@@ -942,6 +946,36 @@ def resolve_coverage(
 
     session.flush()
     return coverage
+
+
+def set_source_active(
+    session: Session, *, instrument: "m.PaymentInstrument", active: bool,
+) -> "m.PaymentInstrument":
+    """Set a Source ACTIVE or INACTIVE directly from the Source page
+    (BANK_FINAL_RELEASE_BLOCKERS_002, Product Owner decision).
+
+    The same lifecycle fields the Check Sources resolutions use — no second
+    status model:
+
+      INACTIVE  as a CLOSED resolution: status INACTIVE, end reason CLOSED,
+                end date DERIVED from the last eligible posting date (None
+                means UNKNOWN; nothing is invented);
+      ACTIVE    the Source is alive again: status ACTIVE, end reason and end
+                date cleared. Identity (name, last four, identifier) and any
+                recorded replacement are never touched.
+
+    Months already resolved keep their resolutions; completeness reads the
+    instrument as it is now."""
+    if active:
+        instrument.status = "ACTIVE"
+        instrument.lifecycle_end_reason = None
+        instrument.effective_end_date = None
+    elif instrument.status != "INACTIVE":
+        instrument.status = "INACTIVE"
+        instrument.lifecycle_end_reason = m.RESOLUTION_CLOSED
+        instrument.effective_end_date = last_posting_date(session, instrument.id)
+    session.flush()
+    return instrument
 
 
 def clear_resolution(

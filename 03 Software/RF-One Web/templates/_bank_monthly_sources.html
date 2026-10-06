@@ -1,6 +1,7 @@
-{#- The selected month's source completeness — one partial for Monthly Sources
-    (`/bank/monthly`) and for Check Sources on Import and Review (`/bank`),
-    fed by the same `_monthly_sources_view` (BANK_IMPORT_AND_REVIEW_001).
+{#- The selected month's source completeness, shown by Check Sources on
+    Import and Review (`/bank`) and fed by `_monthly_sources_view`
+    (BANK_IMPORT_AND_REVIEW_001). Since BANK_SOURCE_AND_IMPORT_REVIEW_001
+    this is its only place: the separate Monthly Sources page is retired.
 
     Expects: period (not None), report, coverages, extra_batches,
     still_active_ids, instruments, control_config, period_is_controlled,
@@ -105,9 +106,9 @@
   <h3>Accounts and cards for {{ period.period_month }}</h3>
   {% if not coverages %}
     <p class="empty">
-      No Payment Instrument is configured yet, so there is nothing to expect this month.
+      No Source is configured yet, so there is nothing to expect this month.
       Configure the real accounts and cards in
-      <a href="{{ url_for('bank_instruments') }}">Instruments</a>.
+      <a href="{{ url_for('bank_sources') }}">Source</a>.
     </p>
   {% else %}
   <div class="table-scroll">
@@ -115,7 +116,7 @@
       <thead>
         <tr>
           <th>Institution</th>
-          <th>Instrument</th>
+          <th>Source</th>
           <th>Lifecycle</th>
           <th>Expected</th>
           <th>Source received</th>
@@ -130,7 +131,7 @@
         <tr>
           <td data-label="Institution">{{ coverage.institution_snapshot or instrument.institution or '—' }}</td>
           {# Never the full account/card number — only the last four. #}
-          <td data-label="Instrument">{{ bank.instrument_identity(instrument) }}</td>
+          <td data-label="Source">{{ bank.instrument_identity(instrument) }}</td>
           <td data-label="Lifecycle">
             <span class="cell-note">{{ coverage.lifecycle_label_snapshot or instrument.lifecycle_label }}</span>
           </td>
@@ -198,7 +199,7 @@
                       <option value="">Choose&hellip;</option>
                       <option value="NO_ACTIVITY">No activity &mdash; keep active</option>
                       {% if instrument.id in still_active_ids %}
-                        <option value="STILL_ACTIVE">Still active &mdash; confirm this INACTIVE instrument is alive</option>
+                        <option value="STILL_ACTIVE">Still active &mdash; confirm this INACTIVE Source is alive</option>
                       {% endif %}
                       <option value="CLOSED">Closed</option>
                       <option value="LOST">Lost</option>

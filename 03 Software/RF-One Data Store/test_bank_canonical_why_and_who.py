@@ -40,7 +40,7 @@ from rfone_data_store.database import (
 EXPECTED_WHY = 81
 EXPECTED_PL_WHY = 60
 EXPECTED_NON_PL_WHY = 21
-EXPECTED_GROUPS = 14
+EXPECTED_GROUPS = 15  # the navigation groups (e2c6a9f4b7d1, BANK_WHY_NAVIGATION_GROUPS_001)
 EXPECTED_WHAT = 73
 EXPECTED_ACCOUNTS = 137
 
@@ -328,9 +328,13 @@ def main() -> int:
             )
             grouped = wc.catalog_by_group(s)
             check(
-                "12. the modal groups WHY by management group, in display order",
-                [g.code for g, _ in grouped][:4]
-                == ["KITCHEN_LABOR", "FOH_LABOR", "PEOPLE", "PRODUCT_COST"]
+                "12. the modal groups WHY by management group, groups alphabetical by name and WHY "
+                "alphabetical inside each (Product Owner 2026-10-05; stored display order unchanged)",
+                [g.name for g, _ in grouped] == sorted((g.name for g, _ in grouped), key=str.casefold)
+                and all([r.name for r in items] == sorted((r.name for r in items), key=str.casefold)
+                        for _, items in grouped)
+                and [g.code for g in sorted((g for g, _ in grouped), key=lambda g: g.display_order)][:4]
+                == ["PRODUCT_COST", "PAYROLL", "OCCUPANCY", "UTILITIES"]
                 and len(grouped) == EXPECTED_GROUPS,
                 detail=str([g.code for g, _ in grouped][:4]),
             )

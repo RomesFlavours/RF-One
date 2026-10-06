@@ -123,14 +123,14 @@ def main() -> int:
         # -----------------------------------------------------------------
         # Payment Instruments list.
         # -----------------------------------------------------------------
-        listing = operator_client.get("/bank/instruments").data
+        listing = operator_client.get("/bank/sources").data
         check(
-            "the Payment Instruments list shows the required columns",
+            "the Source list shows the required columns (BANK_SOURCE_AND_IMPORT_REVIEW_001)",
             all(
                 col in listing for col in (
-                    b"<th>Name</th>", b"<th>Institution</th>", b"<th>Type</th>",
-                    b"<th>Last 4</th>", b"<th>Company</th>", b"<th>Settlement Account</th>",
-                    b"<th>Current Cardholder</th>", b"<th>State</th>",
+                    b"<th>Source</th>", b"<th>Institution / Provider</th>", b"<th>Type</th>",
+                    b"<th>Account</th>", b"<th>Owning entity (LLC)</th>",
+                    b"<th>Settlement / Funding</th>", b"<th>State</th>",
                 )
             ),
         )
@@ -238,7 +238,7 @@ def main() -> int:
             FULL_ACCOUNT_NUMBER.encode() not in history_page,
         )
 
-        listing = operator_client.get("/bank/instruments").data
+        listing = operator_client.get("/bank/sources").data
         check(
             "the instruments list now shows the current cardholder and settlement account",
             # RF-One UI Rules §2: the list shows the holder as "Surname I."
@@ -297,8 +297,8 @@ def main() -> int:
             raw_count_after = s.query(m.RawBankTransaction).count()
             transaction_count_after = len(rows)
 
-        summary_page = operator_client.get("/bank/instruments").data
-        check("the Instruments page reports the deduplication summary",
+        summary_page = operator_client.get("/bank/sources").data
+        check("the Source page reports the deduplication summary",
               b"Accounting deduplication" in summary_page
               and b"Canonical transactions" in summary_page
               and b"Duplicate groups" in summary_page

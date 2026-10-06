@@ -1,0 +1,65 @@
+{# The outcome of the last simple WHO Rule Apply (BANK_SIMPLE_WHO_RULE_001),
+   shown once on the page the operator came back to. Plain counts and
+   names — never a database id. #}
+{% if who_rule_result %}
+  {% set r = who_rule_result %}
+  {% if r.error %}
+    <div class="error">{{ r.error }}</div>
+  {% else %}
+    <div class="card who-rule-result" role="status">
+      <h3>{{ 'Rule saved.' if r.rule_created else ('Rule reactivated.' if r.rule_reactivated else 'Rule already in place.') }}</h3>
+      <dl class="who-rule-result-list">
+        <dt>WHO</dt><dd>{{ r.who_name }}</dd>
+        <dt>WHO status</dt><dd>{{ 'Created' if r.who_created else 'Existing' }}</dd>
+        <dt>Rule</dt><dd>Description contains &ldquo;{{ r.pattern }}&rdquo;</dd>
+        <dt>Existing transactions matched</dt><dd>{{ r.matched }}</dd>
+        <dt>Transactions updated</dt><dd>{{ r.updated }}</dd>
+        <dt>Already assigned</dt><dd>{{ r.already }}</dd>
+        <dt>Human conflicts preserved</dt><dd>{{ r.human_conflicts }}</dd>
+        {% if r.other_rule %}<dt>Left to another rule</dt><dd>{{ r.other_rule }}</dd>{% endif %}
+        {% if r.structural %}<dt>Own-account transfers resolved without WHO</dt><dd>{{ r.structural }}</dd>{% endif %}
+        <dt>Historical WHO fragments merged</dt>
+        <dd>
+          {{ r.fragments_merged|length }}
+          {% if r.fragments_merged %}
+            <details><summary>Show</summary><ul class="plain">{% for name in r.fragments_merged %}<li>{{ name }}</li>{% endfor %}</ul></details>
+          {% endif %}
+        </dd>
+        {% if r.fragments_not_merged %}
+          <dt>Other WHO not merged</dt>
+          <dd>
+            {{ r.fragments_not_merged|length }}
+            <details><summary>Why</summary><ul class="plain">{% for name, reason in r.fragments_not_merged %}<li>{{ name }} &mdash; {{ reason }}</li>{% endfor %}</ul></details>
+          </dd>
+        {% endif %}
+        <dt>Possible WHY added</dt>
+        <dd>{% if r.why_added %}{{ r.why_added|join(', ') }}{% else %}&mdash;{% endif %}</dd>
+        <dt>Possible WHY</dt>
+        <dd>{% if r.possible_why %}{{ r.possible_why|join(', ') }}{% else %}&mdash;{% endif %}</dd>
+      </dl>
+      {% if review_view is defined and review_view == 'to_reconcile' and r.updated %}
+        {# BANK_TWO_STAGE_REVIEW_001 — rows with a resolved WHO left this queue. #}
+        <p class="who-rule-moved">
+          WHO assigned to {{ r.updated }} transaction{{ '' if r.updated == 1 else 's' }}:
+          they are now under <strong>Reconciled</strong>.
+          <a class="btn btn-secondary btn-inline" href="{{ url_for('bank_review', view='reconciled', **tab_args) }}">View reconciled transactions</a>
+        </p>
+      {% endif %}
+      {% if r.structural %}
+        {# Own-account movements need no WHO: RF-One itself is the counterparty,
+           so they are resolved and listed under Reconciled — not a failure. #}
+        <p class="who-rule-moved">
+          {{ r.structural }} matching transaction{{ '' if r.structural == 1 else 's' }}
+          {{ 'is a transfer' if r.structural == 1 else 'are transfers' }} between RF-One's own accounts:
+          no WHO is needed, and {{ 'it is' if r.structural == 1 else 'they are' }} under <strong>Reconciled</strong>.
+          {% if review_view is defined and review_view == 'to_reconcile' %}
+            <a class="btn btn-secondary btn-inline" href="{{ url_for('bank_review', view='reconciled', **tab_args) }}">View reconciled transactions</a>
+          {% endif %}
+        </p>
+      {% endif %}
+      {% if r.business_changes == 0 %}
+        <p class="cell-note">Nothing new to change: this rule was already fully applied.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endif %}

@@ -229,7 +229,7 @@ def _canonical_sort_key(txn: "m.FinancialTransaction") -> tuple:
 
 @dataclass
 class DedupOutcome:
-    """What a recompute did, in the terms the Import & Instruments summary
+    """What a recompute did, in the terms the Source page summary
     reports."""
 
     transactions_considered: int = 0
@@ -374,7 +374,7 @@ def recompute_accounting_dedup(
 
 
 def summarize(session: Session) -> DedupOutcome:
-    """Read-only counters for the Import & Instruments page. Computes
+    """Read-only counters for the Source page. Computes
     nothing and writes nothing — it reports what the last recompute
     stored, so the page can never quietly change the data it displays."""
     outcome = DedupOutcome()

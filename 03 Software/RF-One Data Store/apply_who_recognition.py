@@ -2,16 +2,16 @@
 """Recognise the WHO of every canonical bank transaction from its own text
 (BANK_HISTORICAL_WHO_RECOGNITION_001).
 
-Writes only `bank_occurrence_types` (the existing COUNTERPARTY type, if
-missing), `bank_occurrences`, `bank_occurrence_aliases`,
-`bank_who_recognitions` and — through the existing exact-name resolver —
-`bank_occurrence_suppliers`. Never a WHY, a decision, an allocation, an
+Writes only `bank_occurrence_aliases` (for names that resolve to an existing
+WHO), `bank_who_recognitions` and — through the existing exact-name resolver —
+`bank_occurrence_suppliers`. It never creates a WHO: a name that is not a known
+WHO is held as PROPOSED for a person to create (BANK_FINAL_CLEANUP_001). Never a WHY, a decision, an allocation, an
 invoice match or a financial transaction.
 
 The canonical financial manifest is computed before and after; if it
 differs, or the raw/canonical counts move, the run is rolled back.
 
-Merge-safe (BANK_WHO_WHY_CANONICAL_CATALOG_001): before creating a WHO the
+Merge-safe (BANK_WHO_WHY_CANONICAL_CATALOG_001): the
 recognizer resolves the name to the ACTIVE canonical WHO through approved
 description rules, canonical names and aliases. A name that only matches
 an INACTIVE (merged) WHO is never recreated or reactivated — it is held as

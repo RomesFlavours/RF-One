@@ -40,7 +40,7 @@ only read forms and report the outcome.
 | D8 | Entities are shown and chosen by `ReportingEntity.name`. |
 | D9 | The WHO block has a Search field: an immediate client-side filter on the WHO name. |
 | D10 | `COUNTERPARTY` is system reference data, seeded idempotently by migration `f6c2e8a4b1d7` (by code; an existing row is left unchanged; never duplicated). |
-| D11 | **WHAT means the canonical P&L category.** Balance Sheet accounts are never WHAT. The WHAT block and new WHYs use P&L WHAT only. An existing WHY that settles on a Balance Sheet destination keeps it, is shown as "Balance Sheet destination — <name>", and changes only when the operator explicitly chooses a P&L WHAT. Support lists the Balance Sheet destinations read-only (`canonical_catalog.accounting_destinations`, the same list the Classification page shows). |
+| D11 | **WHAT means the canonical P&L category.** Balance Sheet accounts are never WHAT. The WHAT block and new WHYs use P&L WHAT only. An existing WHY that settles on a Balance Sheet destination keeps it, is shown as "Balance Sheet destination — <name>", and changes only when the operator explicitly chooses a P&L WHAT. Support lists the Balance Sheet destinations read-only (`canonical_catalog.accounting_destinations`, the same list the former Classification page showed). |
 
 ## Rules worth knowing
 

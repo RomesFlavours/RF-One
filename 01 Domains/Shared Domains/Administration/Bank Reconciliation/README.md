@@ -6,7 +6,7 @@
 
 *Preserved from an earlier design (TASK_BANK_RECONCILIATION_PAYPAL_001); the Financial Model Convergence work may supersede parts of this foundation. Retained here for its unique conceptual history — see `01 Domains/Domain Architecture.md` §9 item 6 and the Purchased Domain README for related, still-open boundaries.*
 
-**The current implementation specifications are `BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATION_001.md`, `BANK_ECONOMIC_ALLOCATION_FOUNDATION_001.md`, `BANK_INVOICE_EVIDENCE_COLLABORATION_001.md`, `BANK_REPORTING_CONFIGURATION_001.md`, `BANK_CONFIGURATION_001.md`, `BANK_RECONCILIATION_001.md` and `BANK_RECONCILIATION_STANDARDS_001.md` (this folder)** — it supersedes this README's `PaymentInstrumentTransaction`-based schema description below with the canonical `FinancialTransaction`/Bank Recognition Expert System model now on `main`. This README remains for historical/conceptual context only.
+**The current implementation specifications are `BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATION_001.md`, `BANK_ECONOMIC_ALLOCATION_FOUNDATION_001.md`, `BANK_INVOICE_EVIDENCE_COLLABORATION_001.md`, `BANK_REPORTING_CONFIGURATION_001.md`, `BANK_CONFIGURATION_001.md`, `BANK_RECONCILIATION_001.md`, `BANK_RECONCILIATION_STANDARDS_001.md`, `BANK_SIMPLE_WHO_RULE_001.md`, `BANK_TWO_STAGE_REVIEW_001.md`, `BANK_MANUAL_WHO_WHY_001.md`, `BANK_WHY_NAVIGATION_GROUPS_001.md`, `BANK_GENERAL_RULES_001.md`, `BANK_CLASSIFICATION_LEARNING_001.md`, `BANK_WHO_MANUAL_ONLY_001.md`, `BANK_SOURCE_AND_IMPORT_REVIEW_001.md` and `BANK_FINAL_CLEANUP_001.md` (this folder)** — it supersedes this README's `PaymentInstrumentTransaction`-based schema description below with the canonical `FinancialTransaction`/Bank Recognition Expert System model now on `main`. This README remains for historical/conceptual context only.
 
 ---
 
@@ -141,6 +141,8 @@ Importing a bank file is not the same as knowing what its movements are. Classif
 3. **One approval names the Who of the whole group**, writes an append-only snapshot per transaction, and records an exact-match rule so the same receiver is recognised on the next import. It never applies the Who's usual Why: each transaction keeps its own Why question, answered by the automatic engine or a person (BANK_FINAL_RELEASE_BLOCKERS_001). A human decision is never overwritten, and a receiver already classified under two different Who values is reported as ambiguous rather than resolved by guesswork.
 
 Full detail, including the boundary with invoices, is §15 of `BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATION_001.md`.
+
+> **Since BANK_SIMPLE_WHO_RULE_001** the Classification page no longer renders the receiver review: it lists the WHO occurrences and groups them with one plain-language **Rule** (description contains X -> WHO), shared with Review. See `BANK_SIMPLE_WHO_RULE_001.md`.
 
 ## RF-One's own chart of accounts
 

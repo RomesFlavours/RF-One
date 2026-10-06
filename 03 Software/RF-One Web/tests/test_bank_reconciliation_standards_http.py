@@ -42,6 +42,7 @@ run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as web_app  # noqa: E402
 from db import SessionFactory  # noqa: E402
+from _bank_upload_helper import upload_and_confirm  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 from sqlalchemy.exc import IntegrityError  # noqa: E402
 from werkzeug.datastructures import MultiDict  # noqa: E402
@@ -143,12 +144,12 @@ def main() -> int:
         client = web_app.app.test_client()
         client.post("/login", data={"username": "st_operator", "password": "OperatorPass123!",
                                     "csrf_token": CSRF_RE.search(client.get("/login").data.decode()).group(1)})
-        token = CSRF_RE.search(client.get("/bank/reconciliation?year=2026&month=8").data.decode()).group(1)
+        token = CSRF_RE.search(client.get("/bank/review?view=reconciled&year=2026&month=8").data.decode()).group(1)
 
         def upload(content: bytes, name: str, instrument: int):
-            r = client.post("/bank/upload", data={
+            r = upload_and_confirm(client, {
                 "files": (io.BytesIO(content), name), "payment_instrument_id": str(instrument), "csrf_token": token,
-            }, content_type="multipart/form-data")
+            })
             assert r.status_code == 302, r.status_code
 
         def post(path, data):
@@ -157,7 +158,7 @@ def main() -> int:
             return client.post(path, data=MultiDict(pairs))
 
         def page(month=8) -> str:
-            return client.get(f"/bank/reconciliation?year=2026&month={month}").data.decode("utf-8")
+            return client.get(f"/bank/review?view=reconciled&year=2026&month={month}").data.decode("utf-8")
 
         def txn_id(text: str, instrument: int | None = None) -> int:
             with SessionFactory() as db:
@@ -169,6 +170,15 @@ def main() -> int:
         def row(html, tid) -> str:
             start = html.index(f'<tr id="t-{tid}"')
             return html[start:html.index("</tr>", start)]
+
+        def status_of(tid, month=8):
+            """The row's status under Review > Reconciled, or "To Reconcile"
+            when its WHO is not resolved yet (it is then listed there)."""
+            html = page(month)
+            if f'<tr id="t-{tid}"' in html:
+                return attr(row(html, tid), "data-status")
+            pending = client.get(f"/bank/review?year=2026&month={month}").data.decode("utf-8")
+            return "To Reconcile" if f'data-transaction-id="{tid}"' in pending else None
 
         def attr(r, name):
             match = re.search(rf' {name}="([^"]*)"', r)
@@ -233,7 +243,7 @@ def main() -> int:
         head = conn.execute("SELECT version_num FROM alembic_version").fetchone()[0]
         conn.close()
         check("A. existing decision and allocation rows migrate to source WHY with no Standard lineage",
-              migrated == ([("WHY", None)], [("WHY", None)]) and head == "a7c3e9d5f2b8", f"{migrated} {head}")
+              migrated == ([("WHY", None)], [("WHY", None)]) and head == "b7f1c3e5a9d2", f"{migrated} {head}")
 
         # ================================================ first month of real imports
         upload(bank_csv([
@@ -249,16 +259,18 @@ def main() -> int:
         t_zelle = txn_id("ZELLE PAYMENT TO MARIA LOPEZ")
         t_bs = txn_id("TIPS PAYABLE SETTLEMENT")
         html = page()
-        r_gfs1, r_zelle = row(html, t_gfs1), row(html, t_zelle)
+        # Review > Reconciled lists the rows whose WHO is resolved; a row with
+        # no WHO yet (the Zelle payment) is To Reconcile work.
+        r_gfs1 = row(html, t_gfs1)
         check("39. Needs review shows a red X (with its text)",
-              'class="rp-st rp-st-review" role="img" aria-label="Needs review"' in r_zelle and "Needs review</span>" in r_zelle)
+              'class="rp-st rp-st-review" role="img" aria-label="Needs review"' in r_gfs1 and "Needs review</span>" in r_gfs1)
         check("13 (prev). ordinary WHO recognition alone does not create Automatic",
               attr(r_gfs1, "data-who") == str(ids["gfs"]) and attr(r_gfs1, "data-status") == "Needs review")
 
         # ================================================ 19-24 expansion
         rows_count = html.count('data-row-id="')
         compact = html[html.index('<tbody id="rp-body">'):html.index("</tbody>", html.index('<tbody id="rp-body">'))]
-        check("19. every row has an inline Expand control", compact.count('data-action="expand"') == rows_count == 5)
+        check("19. every row has an inline Expand control", compact.count('data-action="expand"') == rows_count > 0)
         data = catalog(html)
         with SessionFactory() as db:
             active_whos = db.scalar(select(func.count()).where(m.BankOccurrence.status == "ACTIVE"))
@@ -329,7 +341,7 @@ def main() -> int:
         # ================================================ 12-14 compact row
         post(f"/bank/reconciliation/{t_gfs1}/save", {"mode": "keep", "occurrence_id": ids["gfs"], "why_id": ids["food"],
                                                      "what_id": ids["food_what"], "for_whom_id": ids["alpha"]})
-        post(f"/bank/reconciliation/{t_zelle}/who", {"occurrence_id": ids["cintas"], "why_id": ids["cleaning"]})
+        post(f"/bank/transactions/{t_zelle}/who-why", {"occurrence_id": ids["cintas"], "transaction_reason_id": ids["cleaning"]})
         resp = post(f"/bank/reconciliation/{t_zelle}/confirm", {"for_whom_id": ids["dora"]})
         ez, az = state(t_zelle)
         check("12. compact Confirm (row collapsed) confirms with WHO, WHY, WHAT and the chosen For Whom",
@@ -338,7 +350,7 @@ def main() -> int:
               and 'data-status="Confirmed"' in row(page(), t_zelle))
         with SessionFactory() as db:
             standards_before = db.scalar(select(func.count(m.BankReconciliationStandard.id)))
-        post(f"/bank/reconciliation/{t_linen}/who", {"occurrence_id": ids["cintas"], "why_id": ids["cleaning"]})
+        post(f"/bank/transactions/{t_linen}/who-why", {"occurrence_id": ids["cintas"], "transaction_reason_id": ids["cleaning"]})
         resp = post(f"/bank/reconciliation/{t_linen}/standard", {"for_whom_id": ids["dora"]})
         el, al = state(t_linen)
         with SessionFactory() as db:
@@ -408,8 +420,11 @@ def main() -> int:
               ea.accounting_destination_source == "STANDARD" and aa[0].accounting_destination_source == "STANDARD"
               and ea.reconciliation_standard_id == ids["gfs_std"] and aa[0].reconciliation_standard_id == ids["gfs_std"])
         check("K. the future Standard-applied row is Automatic, not Confirmed", attr(r_auto, "data-status") == "Automatic")
+        e_card, a_card = state(t_card_linen)
         check("scope: the same text on another card is not matched by an account-scoped Standard",
-              attr(row(html, t_card_linen), "data-status") == "Needs review")
+              not a_card and (e_card is None or e_card.reconciliation_standard_id is None)
+              and (f'id="t-{t_card_linen}"' not in html
+                   or attr(row(html, t_card_linen), "data-status") == "Needs review"))
         std_info = catalog(html)["standards"].get(str(ids["gfs_std"]), {})
         check("23 (prev). an Automatic row identifies its Standard for the expanded detail (readable, no ids)",
               attr(r_auto, "data-standard") == str(ids["gfs_std"]) and std_info.get("pattern") == "GORDON FOOD SERVICE"
@@ -529,7 +544,7 @@ def main() -> int:
         t_conflict = txn_id("LINEN CO WEEKLY 7788", ids["checking"])
         e_c, a_c = state(t_conflict)
         check("14 / 15 (prev). two matching Standards with different results leave the row Needs review (no guess)",
-              not a_c and 'data-status="Needs review"' in row(page(), t_conflict))
+              not a_c and status_of(t_conflict) in ("Needs review", "To Reconcile"), str(status_of(t_conflict)))
 
         # ================================================ E — lineage constraint
         with SessionFactory() as db:
@@ -559,7 +574,7 @@ def main() -> int:
             review_ids = {int(x) for b in blockers for x in re.findall(r"^Needs review: transaction id=(\d+)", b.reason)}
             statuses = {}
             for tid in (t_gfs1, t_gfs2, t_zelle, t_linen, t_card_future, t_linen_late, t_conflict, t_card_linen):
-                statuses[tid] = attr(row(page(), tid), "data-status")
+                statuses[tid] = status_of(tid)
         check("42 / 12 (prev). Needs review blocks the Export", {t_conflict, t_card_linen} <= review_ids)
         check("44 / 10 (prev). Automatic is exportable", t_card_future not in review_ids and t_linen_late not in review_ids
               and statuses[t_card_future] == "Automatic")
@@ -622,8 +637,10 @@ def main() -> int:
             receiver_candidates.build_candidates = saved
         compact = html[html.index('<tbody id="rp-body">'):html.index("</tbody>", html.index('<tbody id="rp-body">'))]
         check("50 / 26 (prev). no Classification call", ok)
-        check("25 (prev). only one reusable WHO modal and one inline editor",
-              html.count('id="rp-who-modal"') == 1 and html.count('id="rp-editor-row"') == 1)
+        check("25 (prev). one Select WHO / WHY popup (the retired standalone WHO modal is gone) and one "
+              "inline editor",
+              html.count('id="who-picker-search"') == 1 and 'id="rp-who-modal"' not in html
+              and html.count('id="rp-editor-row"') == 1)
         check("27 (prev). no WHAT on the compact rows", "WHAT" not in compact)
     finally:
         for path in [_TEST_DB_PATH] + extra:

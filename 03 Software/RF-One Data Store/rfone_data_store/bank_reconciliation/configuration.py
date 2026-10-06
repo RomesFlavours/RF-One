@@ -216,16 +216,33 @@ def generate_reason_code(session: Session, name: str) -> str:
 
 def create_why(
     session: Session, *, name: str, description: str | None, what_id: int | None,
-    active: bool = True,
+    active: bool = True, reason_group_id: int | None = None,
 ) -> "m.BankTransactionReason":
+    """`reason_group_id` places the new WHY in a navigation group
+    (`BankReasonGroup`) — organisation only, no accounting effect. When given
+    it must be an active group.
+
+    BANK_WHY_WITHOUT_WHAT_001 — the WHAT is OPTIONAL: Bank reconciliation
+    needs WHO + WHY, not bookkeeping. A WHY created without one has no
+    accounting destination yet (never an invented one); when a WHAT is given
+    it must be a P&L WHAT, exactly as before."""
     if not (name or "").strip():
         raise ValueError("A WHY requires a name.")
-    _require_pl_what(session, what_id)
-    return classification.create_transaction_reason(
+    if what_id is not None:
+        _require_pl_what(session, what_id)
+    if reason_group_id is not None:
+        group = session.get(m.BankReasonGroup, reason_group_id)
+        if group is None or not group.active:
+            raise ValueError("Choose an active WHY group for the new WHY.")
+    reason = classification.create_transaction_reason(
         session, code=generate_reason_code(session, name), name=name,
         accounting_classification_id=what_id, description=description,
         status=_status(active),
     )
+    if reason_group_id is not None:
+        reason.reason_group_id = reason_group_id
+        session.flush()
+    return reason
 
 
 def _require_pl_what(session: Session, what_id: int | None) -> None:
@@ -253,7 +270,9 @@ def update_why(
     reason = session.get(m.BankTransactionReason, transaction_reason_id)
     if reason is None:
         raise ValueError(f"Why {transaction_reason_id} does not exist.")
-    if what_id is not None and what_id == reason.accounting_classification_id:
+    # Same destination — or none chosen for a WHY that has none yet
+    # (BANK_WHY_WITHOUT_WHAT_001): only the name and description change.
+    if what_id == reason.accounting_classification_id:
         clean_name = (name or "").strip()
         if not clean_name:
             raise ValueError("A Why requires a name.")
@@ -318,7 +337,9 @@ def _set_who_reasons(session: Session, occurrence: "m.BankOccurrence", reason_id
         reason = session.get(m.BankTransactionReason, reason_id)
         if reason is None:
             raise ValueError(f"WHY {reason_id} does not exist.")
-        if reason.status != "ACTIVE" or reason.accounting_classification_id is None:
+        # A WHY needs no WHAT to be a WHO's possible WHY: Bank reconciliation
+        # is WHO + WHY, bookkeeping is optional (BANK_WHY_WITHOUT_WHAT_001).
+        if reason.status != "ACTIVE":
             raise ValueError(f"WHY {reason.name!r} is inactive and cannot be added to a WHO.")
         if row is not None:
             row.active = True

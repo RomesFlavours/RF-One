@@ -182,7 +182,7 @@ def main() -> int:
         })
 
         # ---- the page exists and creates a month ----------------------
-        page = client.get("/bank/monthly")
+        page = client.get("/bank/monthly", follow_redirects=True)
         check("15. /bank/monthly returns 200", page.status_code == 200, str(page.status_code))
         csrf = extract_csrf(page.data)
         client.post("/bank/monthly/select", data={
@@ -206,7 +206,7 @@ def main() -> int:
                   cov[ids["successor"]].expectation == m.COVERAGE_EXPECTED)
 
         # ---- 11. unresolved expected instrument blocks COMPLETE -------
-        page = client.get("/bank/monthly")
+        page = client.get("/bank/monthly", follow_redirects=True)
         csrf = extract_csrf(page.data)
         with SessionFactory() as db:
             period_id = monthly_source.get_period(db, 2026, 8).id
@@ -233,7 +233,7 @@ def main() -> int:
             )
 
         def resolve(coverage_key, **data):
-            page = client.get("/bank/monthly")
+            page = client.get("/bank/monthly", follow_redirects=True)
             with SessionFactory() as db:
                 p = monthly_source.get_period(db, 2026, 8)
                 cid = {c.payment_instrument_id: c.id
@@ -309,7 +309,7 @@ def main() -> int:
 
         # ---- 9. SOURCE FILE MISSING blocks COMPLETE -------------------
         resolve("successor", resolution="SOURCE_FILE_MISSING", note="Issuer has not sent it yet")
-        page = client.get("/bank/monthly")
+        page = client.get("/bank/monthly", follow_redirects=True)
         csrf = extract_csrf(page.data)
         client.post(f"/bank/monthly/{period_id}/complete", data={"csrf_token": csrf},
                     follow_redirects=True)
@@ -327,7 +327,7 @@ def main() -> int:
 
         # ---- 12. everything resolved => COMPLETE allowed --------------
         resolve("successor", resolution="NO_ACTIVITY", note="Confirmed no activity after all")
-        page = client.get("/bank/monthly")
+        page = client.get("/bank/monthly", follow_redirects=True)
         csrf = extract_csrf(page.data)
         client.post(f"/bank/monthly/{period_id}/complete", data={"csrf_token": csrf},
                     follow_redirects=True)
@@ -368,7 +368,7 @@ def main() -> int:
                           db, coverage=c, resolution=m.RESOLUTION_NO_ACTIVITY, note="x")), ValueError))
 
         # ---- 17. reopening keeps the prior audit facts ----------------
-        page = client.get("/bank/monthly")
+        page = client.get("/bank/monthly", follow_redirects=True)
         csrf = extract_csrf(page.data)
         client.post(f"/bank/monthly/{period_id}/reopen",
                     data={"reason": "New statement arrived", "csrf_token": csrf},
@@ -531,7 +531,8 @@ def main() -> int:
         feature_files = [
             os.path.join(_DATA_STORE_DIR, "rfone_data_store", "bank_reconciliation", "monthly_source.py"),
             os.path.join(APP_DIR, "bank_routes.py"),
-            os.path.join(APP_DIR, "templates", "bank_monthly.html"),
+            os.path.join(APP_DIR, "templates", "_bank_monthly_sources.html"),
+            os.path.join(APP_DIR, "templates", "_bank_completeness_control.html"),
             os.path.abspath(__file__),
         ]
         # Naming a forbidden file inside a comment that forbids it is not

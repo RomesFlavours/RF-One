@@ -264,7 +264,7 @@ def main() -> int:
     # =================================================================
     print("\n11. EXPLICIT HISTORICAL REQUEST — a default, not a prohibition")
     # =================================================================
-    page = client.get("/bank/monthly")
+    page = client.get("/bank/monthly", follow_redirects=True)
     resp = client.post("/bank/monthly/select", data={
         "csrf_token": extract_csrf(page.data), "year": 2025, "month": 8,
     }, follow_redirects=True)
@@ -286,7 +286,7 @@ def main() -> int:
               not outcome.can_complete and aug2025.status != "COMPLETE")
         db.rollback()
 
-    body = client.get("/bank/monthly?year=2025&month=8").data.decode()
+    body = client.get("/bank/monthly?year=2025&month=8", follow_redirects=True).data.decode()
     check("11e. the page says plainly that this month is pre-threshold and was opened "
           "on request",
           "historical month" in body and "opened on request" in body)

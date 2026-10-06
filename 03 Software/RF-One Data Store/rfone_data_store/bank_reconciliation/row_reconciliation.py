@@ -33,21 +33,20 @@ The WHAT is never shown on the compact row.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from .. import models as m
 from . import card_configuration
-from . import configuration as config_service
 from . import economic_allocation
 from . import export as export_service
 from . import recognition
 from . import reconciliation_standards as standards_service
 from . import reconciliation_status
 from . import reporting_entity as reporting_entity_service
+from . import who_recognition
 
 NEEDS_REVIEW = reconciliation_status.NEEDS_REVIEW
 AUTOMATIC = reconciliation_status.AUTOMATIC
@@ -95,12 +94,57 @@ def _destination_label(destination: "m.BankAccountingClassification | None") -> 
     return f"{destination.code} — {destination.name}"
 
 
+_OWN_ACCOUNT_FAMILY_LABELS = {
+    who_recognition.F_OWN_LEGAL_ENTITY: "Own legal entity",
+    who_recognition.F_CARD_SETTLEMENT: "Card payment from own funds",
+}
+
+
+def _own_account_labels(session: Session, ids: list[int],
+                        instruments: dict[int, "m.PaymentInstrument"]) -> dict[int, str]:
+    """{transaction id: label} for the own-account movements among `ids` —
+    the ones the model resolves WITHOUT a WHO (`review_queues.
+    own_account_movement`): a confirmed INTERNAL_TRANSFER match, or a
+    STRUCTURAL current recognition. Shown in place of "No WHO yet"; never a
+    WHO. Two queries, whatever the number of rows."""
+    if not ids:
+        return {}
+    labels: dict[int, str] = {}
+    for a_id, b_id in session.execute(
+        select(m.FinancialTransactionMatch.transaction_a_id, m.FinancialTransactionMatch.transaction_b_id)
+        .where(m.FinancialTransactionMatch.match_type == "INTERNAL_TRANSFER",
+               or_(m.FinancialTransactionMatch.transaction_a_id.in_(ids),
+                   m.FinancialTransactionMatch.transaction_b_id.in_(ids)))
+    ):
+        labels[a_id] = labels[b_id] = "Internal transfer (matched)"
+    for recognized in session.scalars(
+        select(m.BankWhoRecognition).where(
+            m.BankWhoRecognition.recognizer_version == who_recognition.RECOGNIZER_VERSION,
+            m.BankWhoRecognition.tier == m.WHO_TIER_STRUCTURAL,
+            m.BankWhoRecognition.financial_transaction_id.in_(ids))
+    ):
+        if recognized.financial_transaction_id in labels:
+            continue
+        other = instruments.get(recognized.internal_payment_instrument_id)
+        labels[recognized.financial_transaction_id] = (
+            f"Internal transfer · {other.display_name}" if other is not None
+            else _OWN_ACCOUNT_FAMILY_LABELS.get(recognized.family, "Own account")
+        )
+    return labels
+
+
 def month_view(session: Session, *, year: int, month: int) -> dict:
     """Everything the page renders for one month, as plain values. A fixed
     number of queries plus one settlement lookup per (card, date) pair; the
     WHO / WHY / WHAT / entity catalogs are sent ONCE for the page's single
     modal and single inline editor."""
-    transactions = export_service.in_scope_transactions(session, year, month)
+    return rows_view(session, export_service.in_scope_transactions(session, year, month))
+
+
+def rows_view(session: Session, transactions: list["m.FinancialTransaction"]) -> dict:
+    """`month_view` for any list of transactions — the Reconciliation page's
+    month, or the Review's Reconciled queue (BANK_TWO_STAGE_REVIEW_001), so
+    both render the SAME rows, statuses and editor from one definition."""
     ids = [t.id for t in transactions]
     explanation_ids = [t.explanation_id for t in transactions if t.explanation_id is not None]
     explanations = {
@@ -117,6 +161,7 @@ def month_view(session: Session, *, year: int, month: int) -> dict:
         ):
             allocations.setdefault(a.financial_transaction_id, []).append(a)
     instruments = {i.id: i for i in session.scalars(select(m.PaymentInstrument))}
+    own_account = _own_account_labels(session, ids, instruments)
     whos = {o.id: o for o in session.scalars(select(m.BankOccurrence))}
     whys = {r.id: r for r in session.scalars(select(m.BankTransactionReason))}
     classifications = {c.id: c for c in session.scalars(select(m.BankAccountingClassification))}
@@ -164,6 +209,7 @@ def month_view(session: Session, *, year: int, month: int) -> dict:
             "who_id": who.id if who else None,
             "who": who.canonical_name if who else None,
             "who_source": who_source,
+            "own_account": own_account.get(t.id) if who is None else None,
             "why_id": why.id if why else None,
             "why": why.name if why else None,
             "what_id": destination.id if destination else None,
@@ -260,15 +306,6 @@ def month_view(session: Session, *, year: int, month: int) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class NewWho:
-    """The minimal inline WHO creation the Reconciliation modal offers."""
-    name: str
-    reason_ids: list[int]
-    default_reason_id: int | None
-    reporting_entity_ids: list[int]
-
-
 def _transaction(session: Session, transaction_id: int) -> "m.FinancialTransaction":
     transaction = session.get(m.FinancialTransaction, transaction_id)
     if transaction is None:
@@ -287,29 +324,26 @@ def _status(session: Session, transaction: "m.FinancialTransaction") -> str:
 
 def record_who(
     session: Session, *, transaction_id: int, occurrence_id: int | None, reason_id: int | None,
-    account_id: int | None, new_who: NewWho | None = None,
+    account_id: int | None, any_active_why: bool = False,
 ) -> "m.BankTransactionExplanation":
-    """The compact row's WHO modal: record WHO — and the WHY the operator
-    chose among that WHO's possible WHY, if any. Never confirms the row.
+    """Record WHO — and the WHY the operator chose — for one transaction.
+    Never confirms the row.
 
-    A new WHO is created through the Configuration service first. A row that
-    was CONFIRMED keeps its confirmation only when WHO and WHY are restated
+    `any_active_why` (the grouped "Select WHO / WHY" popup,
+    BANK_WHY_NAVIGATION_GROUPS_001) accepts ANY active WHY: the HUMAN
+    decision itself then records the WHO -> WHY association
+    (`recognition.record_human_decision`), once.
+
+    A row that was CONFIRMED keeps its confirmation only when WHO and WHY are restated
     unchanged; any other change — and any change to an AUTOMATIC row — removes
     its allocation, so the row is NEEDS REVIEW until saved again."""
     transaction = _transaction(session, transaction_id)
-    if new_who is not None:
-        occurrence = config_service.save_who(
-            session, occurrence_id=None, name=new_who.name, active=True,
-            reason_ids=new_who.reason_ids, default_reason_id=new_who.default_reason_id,
-            reporting_entity_ids=new_who.reporting_entity_ids, rules=[],
-        )
-        occurrence_id = occurrence.id
     if occurrence_id is None:
         raise ValueError("Choose a WHO for this transaction.")
     occurrence = session.get(m.BankOccurrence, occurrence_id)
     if occurrence is None:
         raise ValueError(f"WHO {occurrence_id} does not exist.")
-    if reason_id is not None:
+    if reason_id is not None and not any_active_why:
         allowed = set(session.scalars(
             select(m.BankOccurrenceReasonAssociation.transaction_reason_id).where(
                 m.BankOccurrenceReasonAssociation.occurrence_id == occurrence.id,

@@ -28,11 +28,11 @@ destination is decides whether there is a WHAT at all:
 `catalog_problems` fails loudly on any Why with no destination, two
 destinations, or a destination that is a P&L GROUP.
 
-**Management groups organise the catalog and nothing else.** They are
-shown in the "+ New" modal, where 81 purposes have to be browsable, and
-in a future Company Panel. Ordinary Bank reconciliation never shows one:
-after the Who is chosen the operator sees only the Whys already
-associated with that Who, plus "+ New".
+**Groups organise the catalog and nothing else** (BANK_WHY_NAVIGATION_
+GROUPS_001). They are the WHY GROUP column of the "Select WHO / WHY"
+popup, where every active purpose stays browsable whatever the Who, and
+the shape a future Company Panel may aggregate over. The Whys already
+associated with the chosen Who are only marked there.
 
 The definition lives in `canonical/RFONE_RESTAURANT_WHY_V1.csv`, inside
 the package and under version control, following the same split the
@@ -49,7 +49,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models as m
@@ -279,37 +279,40 @@ def by_code(session: Session, code: str) -> "m.BankTransactionReason | None":
 
 
 def active_reasons(session: Session) -> list["m.BankTransactionReason"]:
-    """Every active Why, ordered by management group then name."""
+    """Every active Why, alphabetical by name (case-insensitive)."""
     return list(session.scalars(
         select(m.BankTransactionReason)
         .where(m.BankTransactionReason.status == "ACTIVE")
-        .order_by(m.BankTransactionReason.name)
+        .order_by(func.lower(m.BankTransactionReason.name), m.BankTransactionReason.id)
     ).all())
 
 
 def groups(session: Session) -> list["m.BankReasonGroup"]:
+    """The active WHY navigation groups as every Bank UI shows them:
+    alphabetical by name, case-insensitive (Product Owner, 2026-10-05). The
+    stored `display_order` is left untouched — the order is chosen here, at
+    presentation, not rewritten in the catalog."""
     return list(session.scalars(
         select(m.BankReasonGroup)
         .where(m.BankReasonGroup.active.is_(True))
-        .order_by(m.BankReasonGroup.display_order, m.BankReasonGroup.code)
+        .order_by(func.lower(m.BankReasonGroup.name), m.BankReasonGroup.code)
     ).all())
 
 
 def catalog_by_group(session: Session) -> list[tuple["m.BankReasonGroup", list]]:
-    """The full active catalog, grouped — the "+ New" modal's content, and
-    the shape a future Company Panel aggregates over.
-
-    Used NOWHERE in ordinary reconciliation: after the Who is chosen the
-    operator sees `reasons_for_occurrence` instead."""
+    """The full active catalog, grouped alphabetically, WHY alphabetical
+    inside each — the shape a future Company Panel aggregates over. (The
+    "Select WHO / WHY" popup reads the same groups through
+    `manual_reconciliation.why_navigation_catalog`.)"""
     reasons = active_reasons(session)
     by_group: dict[int, list] = {}
     for reason in reasons:
         by_group.setdefault(reason.reason_group_id, []).append(reason)
     result = [
-        (group, sorted(by_group.get(group.id, []), key=lambda r: r.name))
+        (group, sorted(by_group.get(group.id, []), key=lambda r: r.name.casefold()))
         for group in groups(session)
     ]
-    ungrouped = sorted(by_group.get(None, []), key=lambda r: r.name)
+    ungrouped = sorted(by_group.get(None, []), key=lambda r: r.name.casefold())
     if ungrouped:
         result.append((None, ungrouped))
     return [(group, items) for group, items in result if items]
@@ -363,12 +366,10 @@ def catalog_problems(session: Session) -> list[str]:
 def reasons_for_occurrence(
     session: Session, occurrence_id: int,
 ) -> list["m.BankTransactionReason"]:
-    """The Whys ALREADY associated with this Who — the whole content of the
-    ordinary reconciliation dropdown (§21).
-
-    Not the catalog. Not the groups. Just the handful a human has already
-    confirmed for this counterparty, which is what makes the dropdown
-    short enough to be useful. The caller adds "+ New" after these."""
+    """The Whys ALREADY associated with this Who (§21): the handful a human
+    has already confirmed for this counterparty. The "Select WHO / WHY"
+    popup MARKS them in the full catalog; the Reconciliation row editor
+    still offers them as its short list."""
     return list(session.scalars(
         select(m.BankTransactionReason)
         .join(
@@ -428,7 +429,7 @@ def occurrences_for_reason(
 
 def associate(
     session: Session, *, occurrence_id: int, transaction_reason_id: int,
-    source: str = "HUMAN",
+    source: str = "HUMAN", confirm: bool = True,
 ) -> "m.BankOccurrenceReasonAssociation":
     """Record that a human confirmed this Why for this Who.
 
@@ -437,7 +438,12 @@ def associate(
     Supplies, and the dropdown then offers both. What is learned is
     "Amazon has been these things", never "Amazon means this thing" —
     which is why this writes an association and not a recognition rule
-    (BANK_WHO_WHY_INVARIANT_001)."""
+    (BANK_WHO_WHY_INVARIANT_001).
+
+    `confirm=False` makes the WHY possible for the WHO without counting a
+    confirmation: "Create New WHY" offers the WHY, and the human event that
+    follows (the reconciliation Confirm, or the WHO Rule Apply) is the one
+    confirmation — one human event, one count (BANK_FINAL_RELEASE_BLOCKERS_002)."""
     occurrence = session.get(m.BankOccurrence, occurrence_id)
     if occurrence is None:
         raise ValueError(f"Who {occurrence_id} does not exist.")
@@ -446,10 +452,8 @@ def associate(
         raise ValueError(f"Why {transaction_reason_id} does not exist.")
     if reason.status != "ACTIVE":
         raise ValueError(f"Why {reason.code} is inactive and cannot be associated.")
-    if reason.accounting_classification_id is None:
-        raise ValueError(
-            f"Why {reason.code} has no accounting destination and cannot be associated."
-        )
+    # BANK_WHY_WITHOUT_WHAT_001 — a WHY without an accounting destination
+    # yet is still a purpose a person may choose for this WHO.
 
     now = datetime.now(UTC)
     existing = session.scalars(
@@ -460,15 +464,18 @@ def associate(
     ).first()
     if existing is not None:
         existing.active = True
-        existing.confirmation_count += 1
-        existing.last_confirmed_at = now
+        if confirm:
+            existing.confirmation_count += 1
+            existing.first_confirmed_at = existing.first_confirmed_at or now
+            existing.last_confirmed_at = now
         session.flush()
         return existing
 
     association = m.BankOccurrenceReasonAssociation(
         occurrence_id=occurrence_id, transaction_reason_id=transaction_reason_id,
-        active=True, confirmation_count=1,
-        first_confirmed_at=now, last_confirmed_at=now, source=source,
+        active=True, confirmation_count=1 if confirm else 0,
+        first_confirmed_at=now if confirm else None, last_confirmed_at=now if confirm else None,
+        source=source,
     )
     session.add(association)
     session.flush()

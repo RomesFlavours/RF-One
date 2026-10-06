@@ -149,12 +149,15 @@ def main() -> int:
             # =============================================================
             # B. WHY -> WHAT
             # =============================================================
-            raises(
-                "a Why cannot be created without a What",
-                lambda: classification_service.create_transaction_reason(
-                    s, code="ORPHAN", name="Orphan reason", accounting_classification_id=None,
-                ),
-                "requires a What",
+            # BANK_WHY_WITHOUT_WHAT_001 / BANK_FINAL_CLEANUP_001: Bank
+            # reconciliation is WHO + WHY; a Why needs no What (bookkeeping is
+            # optional, existing mappings are kept).
+            orphan = classification_service.create_transaction_reason(
+                s, code="ORPHAN", name="Orphan reason", accounting_classification_id=None,
+            )
+            check(
+                "a Why can be created without a What (bookkeeping optional)",
+                orphan.accounting_classification_id is None,
             )
 
             supplier_payment = classification_service.create_transaction_reason(

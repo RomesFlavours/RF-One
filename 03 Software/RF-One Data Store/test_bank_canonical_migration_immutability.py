@@ -186,6 +186,7 @@ def main() -> int:
         "b8d3f1a72c64_rfone_restaurant_coa_v1.csv": 134,
         "c5f8b2e91a47_account_semantics.csv": 134,
         "c4a9e7d21b56_rfone_restaurant_why_v1.csv": 77,
+        "e2c6a9f4b7d1_why_navigation_groups.csv": 81,
     }
     snapshots = sorted(path.name for path in MIGRATION_DATA.glob("*.csv"))
     check(

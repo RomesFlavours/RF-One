@@ -180,6 +180,12 @@ def main() -> int:
             s.flush()
             s.add(m.Supplier(restaurant_id=restaurant.id, name="Gordon Food Serv"))
             s.add(m.Supplier(restaurant_id=restaurant.id, name="Cheney Bros"))
+            # A WHO a person already created. Recognition resolves to existing
+            # WHO only; it never creates one (BANK_FINAL_CLEANUP_001).
+            counterparty = s.scalars(select(m.BankOccurrenceType)
+                                     .where(m.BankOccurrenceType.code == "COUNTERPARTY")).one()
+            s.add(m.BankOccurrence(canonical_name="GORDON FOOD SERV", occurrence_type_id=counterparty.id,
+                                   status="ACTIVE"))
             s.flush()
 
             descriptions = [
@@ -218,9 +224,14 @@ def main() -> int:
 
             check("every transaction gets exactly one recognition row",
                   s.scalar(select(func.count(m.BankWhoRecognition.id))) == len(descriptions))
-            check("two Zelle payments to one person are ONE WHO",
+            zelle = [by_desc[descriptions[0][0]], by_desc[descriptions[1][0]]]
+            check("a new name is NOT made a WHO: both Zelle payments to one person are held PROPOSED "
+                  "under one proposed name, for a person to create",
                   s.scalar(select(func.count(m.BankOccurrence.id))
-                           .where(m.BankOccurrence.canonical_name == "CHARLIZE IRIZARRY")) == 1)
+                           .where(m.BankOccurrence.canonical_name == "CHARLIZE IRIZARRY")) == 0
+                  and all(r.tier == wr.PROPOSED for r in zelle)
+                  and zelle[0].proposed_name == zelle[1].proposed_name
+                  and summary.occurrences_created == 0)
             check("the internal transfer creates no WHO",
                   by_desc[descriptions[2][0]].tier == wr.STRUCTURAL
                   and by_desc[descriptions[2][0]].internal_payment_instrument_id == saving.id)
@@ -229,8 +240,9 @@ def main() -> int:
                            .where(m.BankOccurrence.canonical_name.like("%ANGELI%"))) == 0)
             check("the unregistered card stays UNRESOLVED",
                   by_desc[descriptions[3][0]].tier == wr.UNRESOLVED)
-            check("aliases preserve the source spelling",
-                  s.scalar(select(func.count(m.BankOccurrenceAlias.id))) >= 1)
+            check("an existing WHO recognised from the text gets an alias in the source spelling",
+                  s.scalar(select(func.count(m.BankOccurrenceAlias.id))) >= 1
+                  and summary.resolved_by_name >= 1)
 
             links = s.execute(
                 select(m.BankOccurrence.canonical_name, m.Supplier.name)

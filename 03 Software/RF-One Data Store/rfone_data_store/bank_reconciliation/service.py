@@ -50,10 +50,12 @@ from sqlalchemy.orm import Session
 
 from .. import models as m
 from . import accounting_dedup
+from . import general_rules
 from . import matching
 from . import parsers
 from . import recognition
 from . import reconciliation_standards
+from . import why_rules
 
 # First Citizens' free-text `Status` column values map into the canonical
 # FinancialTransaction.status vocabulary (COMPLETED/PENDING/REVERSED/
@@ -83,6 +85,22 @@ def normalize_description(raw: str) -> str:
     Description"). `description_original` on the normalized row is never
     replaced by this (spec §5: the raw description must never be lost)."""
     return " ".join((raw or "").strip().upper().split())
+
+
+def comparison_description(txn: "m.FinancialTransaction") -> str:
+    """The normalized description a duplicate comparison uses for a stored
+    transaction. Rows retained from the historical load often carry an empty
+    `description_normalized`; for those it is derived from
+    `description_original` with the SAME normalizer, so a re-downloaded file
+    is recognised as a candidate duplicate (BANK_FINAL_RELEASE_BLOCKERS_002).
+    Nothing is written: the stored row keeps exactly what it has."""
+    return txn.description_normalized or normalize_description(txn.description_original or "")
+
+
+def _first_same_description(rows, description_normalized: str):
+    """The first of `rows` (already ordered by id) whose comparison
+    description equals `description_normalized`, or None."""
+    return next((row for row in rows if comparison_description(row) == description_normalized), None)
 
 
 def compute_row_fingerprint(raw_fields: dict) -> str:
@@ -648,18 +666,17 @@ def _recompute_duplicate_state(session: Session, txn: "m.FinancialTransaction") 
         if counterpart is not None and counterpart.payment_instrument_id == txn.payment_instrument_id:
             return False
 
-    earlier = session.scalars(
+    earlier = _first_same_description(session.scalars(
         select(m.FinancialTransaction)
         .where(
             m.FinancialTransaction.payment_instrument_id == txn.payment_instrument_id,
             m.FinancialTransaction.posting_date == txn.posting_date,
             m.FinancialTransaction.amount_minor == txn.amount_minor,
-            m.FinancialTransaction.description_normalized == txn.description_normalized,
             m.FinancialTransaction.id != txn.id,
             m.FinancialTransaction.id < txn.id,
         )
         .order_by(m.FinancialTransaction.id.asc())
-    ).first()
+    ), comparison_description(txn))
 
     if earlier is not None:
         txn.duplicate_status = "CANDIDATE_DUPLICATE"
@@ -1170,7 +1187,8 @@ def update_payment_instrument(
         raise ValueError(
             f"{instrument.display_name}: the lifecycle state ({instrument.status}) is not edited "
             "here. Close it (Closed / Lost / Replaced / Other) or confirm it Still active from "
-            "Monthly Sources, where the end date is derived and the decision recorded."
+            "Check Sources on Import and Review, where the end date is derived and the decision "
+            "recorded."
         )
 
     def pick(passed, current):
@@ -1519,6 +1537,11 @@ def _normalize_rows(
     instrument_cache: dict[int, "m.PaymentInstrument"] = {}
     normalized_count = 0
     candidate_count = 0
+    # BANK_GENERAL_RULES_001 — the active General (structural) Rules and the
+    # canonical resolver, built once for the whole pass.
+    general_context = general_rules.import_context(session)
+    # BANK_CLASSIFICATION_LEARNING_001 — approved deterministic WHY rules.
+    why_context = why_rules.import_context(session)
 
     for row in parsed_rows:
         if row.parse_status == "UNREADABLE":
@@ -1539,16 +1562,15 @@ def _normalize_rows(
             balance_minor=row.balance_minor,
         )
 
-        existing_match = session.scalars(
+        existing_match = _first_same_description(session.scalars(
             select(m.FinancialTransaction)
             .where(
                 m.FinancialTransaction.payment_instrument_id == instrument.id,
                 m.FinancialTransaction.posting_date == row.posting_date,
                 m.FinancialTransaction.amount_minor == row.amount_minor,
-                m.FinancialTransaction.description_normalized == description_normalized,
             )
             .order_by(m.FinancialTransaction.id.asc())
-        ).first()
+        ), description_normalized)
 
         duplicate_status = "NONE"
         duplicate_of_id = None
@@ -1594,6 +1616,13 @@ def _normalize_rows(
         # looked at the row — never re-run for a transaction that already
         # has a decision (that would risk overwriting a human's choice).
         recognition.deduce_for_transaction(session, normalized)
+        # BANK_GENERAL_RULES_001 — when no WHO rule named the WHO, a General
+        # Rule may: the candidate between its markers, resolved only to an
+        # existing canonical WHO (never created), WHY untouched.
+        general_rules.apply_to_new_transaction(session, normalized, general_context)
+        # BANK_CLASSIFICATION_LEARNING_001 — the WHO is known: an approved WHY
+        # rule of that WHO may name the WHY (never the WHO). Plain matching.
+        why_rules.apply_to_new_transaction(session, normalized, why_context)
         # BANK_RECONCILIATION_STANDARDS_001 — a new transaction matching one
         # human-approved Reconciliation Standard is completed by it
         # (AUTOMATIC). Import time only: nothing already imported is touched.

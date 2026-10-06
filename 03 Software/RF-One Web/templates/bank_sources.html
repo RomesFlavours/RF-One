@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Bank Reconciliation · Source · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('source') }}
+{#- Plain text for the modal (set with textContent): the same "name ··last4"
+    as `bank.instrument_identity`, without HTML entities. -#}
+{%- macro settlement_label(account) -%}
+  {%- if account -%}
+    {%- set last4 = account.last_four or (account.external_account_identifier[-4:] if account.external_account_identifier else None) -%}
+    {{- account.display_name ~ (' ··' ~ last4 if last4 else '') -}}
+  {%- endif -%}
+{%- endmacro %}
+{#- BANK_SOURCE_AND_IMPORT_REVIEW_001 — Source is SETUP: the stable list of
+    every source RF-One expects financial data from. It replaces the former
+    Instruments and Monthly Sources pages. One row is one canonical
+    `PaymentInstrument` (the page says Source; the model keeps its name).
+    Whether a period's files are all there is checked at import time, on
+    Import and Review — never here. -#}
+
+<div class="card">
+  <div class="source-list-head">
+    <h2>Sources</h2>
+    <button type="button" id="source-new" data-source-new>+ New Source</button>
+  </div>
+  <p class="muted">
+    What RF-One expects files from. Active Sources are the ones Import and Review expects in
+    every uploaded period; inactive ones are kept for history. This is the one place where
+    Sources are maintained.
+  </p>
+  {% if instruments %}
+    <div class="table-scroll">
+      <table class="table-compact table-stack" id="source-list">
+        <thead>
+          <tr>
+            <th>Source</th><th>Type</th><th>Institution / Provider</th><th>Account</th>
+            <th>Owning entity (LLC)</th><th>Settlement / Funding</th><th>State</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for instrument in instruments %}
+            <tr data-source-id="{{ instrument.id }}">
+              <td data-label="Source">{{ instrument.display_name }}</td>
+              <td data-label="Type" class="col-narrow">{{ {'BANK_ACCOUNT': 'Bank account', 'CREDIT_CARD': 'Credit card', 'PAYPAL': 'PayPal'}.get(instrument.instrument_type, instrument.instrument_type) }}</td>
+              <td data-label="Institution / Provider">{{ instrument.institution or '—' }}</td>
+              <td data-label="Account" class="col-narrow">
+                {# Never the full account number — only its last four digits. #}
+                {%- set last4 = instrument.last_four or (instrument.external_account_identifier[-4:] if instrument.external_account_identifier else None) %}
+                {{ '··' ~ last4 if last4 else '—' }}
+              </td>
+              {# For a card the entity is DERIVED through its settlement
+                 account, never the card's own value and never its holder's
+                 (BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001). #}
+              <td data-label="Owning entity (LLC)">
+                {% set company = derived_companies.get(instrument.id) %}
+                {% if company %}
+                  {{ company.legal_name }}
+                  {% if instrument.instrument_type == 'CREDIT_CARD' %}<span class="cell-note">via settlement account</span>{% endif %}
+                {% else %}
+                  <span class="badge warn">Not configured</span>
+                  <span class="cell-note">{{ card_warnings.get(instrument.id) or instrument_warnings.get(instrument.id) }}</span>
+                {% endif %}
+              </td>
+              <td data-label="Settlement / Funding">
+                {% if instrument.instrument_type == 'CREDIT_CARD' %}
+                  {% set settlement = settlement_accounts.get(instrument.id) %}
+                  {% if settlement %}{{ bank.instrument_identity(settlement) }}{% else %}<span class="badge bad">Not configured</span>{% endif %}
+                  {% set holder = cardholders.get(instrument.id) %}
+                  {% if holder %}<span class="cell-note">Cardholder {{ holder.holder_display_name|short_name }}</span>{% endif %}
+                {% elif instrument.instrument_type == 'PAYPAL' %}
+                  {% set funding = instruments_by_id.get(instrument.linked_instrument_id) %}
+                  {% if funding %}{{ bank.instrument_identity(funding) }}{% else %}<span class="muted">Not linked</span>{% endif %}
+                {% else %}
+                  <span class="muted">n/a</span>
+                {% endif %}
+              </td>
+              <td data-label="State" class="col-narrow">
+                <span class="badge {{ 'ok' if instrument.status == 'ACTIVE' else 'warn' }}">{{ 'Active' if instrument.status == 'ACTIVE' else 'Inactive' }}</span>
+              </td>
+              <td data-label="Actions" class="col-actions">
+                <div class="cell-stack">
+                  <button type="button" class="btn-secondary btn-inline" data-source-edit
+                          data-source='{{ {
+                            "id": instrument.id,
+                            "url": url_for("bank_instrument_edit", instrument_id=instrument.id),
+                            "display_name": instrument.display_name,
+                            "instrument_type": instrument.instrument_type,
+                            "institution": instrument.institution or "",
+                            "last_four": instrument.last_four or "",
+                            "account_hint": ("··" ~ instrument.external_account_identifier[-4:]) if instrument.external_account_identifier else "",
+                            "legal_entity_id": instrument.legal_entity_id or "",
+                            "currency": instrument.currency or "",
+                            "linked_instrument_id": instrument.linked_instrument_id or "",
+                            "status": instrument.status,
+                            "settlement": settlement_label(settlement_accounts.get(instrument.id)),
+                          }|tojson }}'>Edit</button>
+                  {% if instrument.instrument_type == 'CREDIT_CARD' %}
+                    <a class="btn btn-secondary btn-inline" href="{{ url_for('bank_instrument_edit', instrument_id=instrument.id) }}">Card settings</a>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No Source configured yet. Add the first one with <strong>+ New Source</strong>.</p>
+  {% endif %}
+</div>
+
+{#- Supporting configuration, collapsed: kept because it is useful, but it is
+    not what this page is for. -#}
+<details class="card source-more" id="saved-source-rules">
+  <summary><h2>File recognition rules</h2> <span class="muted">({{ source_profiles|length }})</span></summary>
+  <p class="muted">A human's choice for a file that cannot identify its own account, reused on the next import. See <a href="{{ url_for('bank_instructions') }}#saved-source-rules">Instructions</a>.</p>
+  {% if source_profiles %}
+    <div class="table-scroll">
+      <table class="table-compact table-stack">
+        <thead>
+          <tr><th>Format</th><th>File name key</th><th>In-file identifier</th><th>Source</th><th>State</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          {% for profile in source_profiles %}
+            <tr>
+              <td data-label="Format">{{ profile.detected_format }}</td>
+              <td data-label="File name key">{{ profile.file_name_key or '—' }}</td>
+              <td data-label="In-file identifier">{{ profile.account_hint or '—' }}</td>
+              <td data-label="Source">{{ profile.payment_instrument.display_name if profile.payment_instrument else profile.payment_instrument_id }}</td>
+              <td data-label="State" class="col-narrow">
+                <span class="badge {{ 'ok' if profile.status == 'ACTIVE' else 'warn' }}">{{ profile.status }}</span>
+              </td>
+              <td data-label="Action" class="col-actions">
+                <form method="post" action="{{ url_for('bank_source_profile_update', profile_id=profile.id) }}" class="compact-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="return_to" value="sources">
+                  <select name="payment_instrument_id" aria-label="Source for recognition rule {{ profile.id }}">
+                    <option value="">Keep Source</option>
+                    {% for instrument in instruments %}
+                      {% if instrument.id != profile.payment_instrument_id %}
+                        <option value="{{ instrument.id }}">{{ bank.instrument_identity(instrument) }}</option>
+                      {% endif %}
+                    {% endfor %}
+                  </select>
+                  <button type="submit" name="status" value="{{ 'INACTIVE' if profile.status == 'ACTIVE' else 'ACTIVE' }}">{{ 'Disable' if profile.status == 'ACTIVE' else 'Enable' }}</button>
+                  <button type="submit">Save</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No file recognition rule saved yet.</p>
+  {% endif %}
+</details>
+
+<details class="card source-more" id="assignment-history">
+  <summary><h2>Source assignment history</h2> <span class="muted">({{ assignment_audits|length }})</span></summary>
+  {% if assignment_audits %}
+    <div class="table-scroll">
+      <table class="table-compact table-stack">
+        <thead>
+          <tr><th>When</th><th>Scope</th><th>Target</th><th>From</th><th>To</th><th>Rows</th><th>By</th><th>Reason</th></tr>
+        </thead>
+        <tbody>
+          {% for audit in assignment_audits %}
+            <tr>
+              <td data-label="When" class="col-date">{{ audit.changed_at|local_dt(tz, empty='—') }}</td>
+              <td data-label="Scope" class="col-narrow">{{ audit.scope }}</td>
+              <td data-label="Target">
+                {% if audit.scope == 'BATCH' %}
+                  {{ audit.import_batch.original_file_name if audit.import_batch else 'batch #' ~ audit.import_batch_id }}
+                {% else %}
+                  transaction #{{ audit.financial_transaction_id }}
+                {% endif %}
+              </td>
+              <td data-label="From">{{ audit.previous_payment_instrument.display_name if audit.previous_payment_instrument else '—' }}</td>
+              <td data-label="To">{{ audit.new_payment_instrument.display_name if audit.new_payment_instrument else audit.new_payment_instrument_id }}</td>
+              <td data-label="Rows" class="col-narrow">{{ audit.affected_transaction_count }}</td>
+              <td data-label="By">{{ (audit.changed_by_account.display_name or audit.changed_by_account.username)|short_name if audit.changed_by_account else '—' }}</td>
+              <td data-label="Reason" class="col-description">{{ audit.reason }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No Source assignment has been changed yet.</p>
+  {% endif %}
+</details>
+
+<details class="card source-more" id="accounting-deduplication">
+  <summary><h2>Accounting deduplication</h2>{% if dedup.unresolved_transactions or dedup.duplicate_groups %} <span class="badge warn">attention</span>{% endif %}</summary>
+  {# Read-only counters: this panel reports what the last recompute stored
+     and never computes or writes anything itself. #}
+  <p class="muted">
+    One canonical transaction per accounting fact; copies are kept, linked and excluded.
+    See <a href="{{ url_for('bank_instructions') }}#accounting-deduplication">Instructions</a>.
+  </p>
+  <div class="coverage-tiles">
+    <div class="coverage-tile">
+      <div class="coverage-tile-value">{{ dedup.raw_rows_preserved }}</div>
+      <div class="coverage-tile-label">Raw rows preserved</div>
+    </div>
+    <div class="coverage-tile">
+      <div class="coverage-tile-value">{{ dedup.canonical_transactions }}</div>
+      <div class="coverage-tile-label">Canonical transactions</div>
+    </div>
+    <div class="coverage-tile{{ ' coverage-tile-warn' if dedup.duplicate_groups else '' }}">
+      <div class="coverage-tile-value">{{ dedup.duplicate_groups }}</div>
+      <div class="coverage-tile-label">Duplicate groups</div>
+    </div>
+    <div class="coverage-tile{{ ' coverage-tile-warn' if dedup.suppressed_transactions else '' }}">
+      <div class="coverage-tile-value">{{ dedup.suppressed_transactions }}</div>
+      <div class="coverage-tile-label">Excluded from accounting</div>
+    </div>
+    <div class="coverage-tile{{ ' coverage-tile-warn' if dedup.unresolved_transactions else '' }}">
+      <div class="coverage-tile-value">{{ dedup.unresolved_transactions }}</div>
+      <div class="coverage-tile-label">No settlement account</div>
+    </div>
+  </div>
+  {% if dedup.unresolved_transactions %}
+    <p class="muted">
+      {{ dedup.unresolved_transactions }} transaction(s) on {{ dedup.unresolved_cards }} card(s)
+      have no settlement account configured for their posting date. They are <strong>not</strong>
+      deduplicated and <strong>not</strong> merged with anything &mdash; set the card's settlement
+      account in its Card settings, then recompute.
+    </p>
+  {% endif %}
+  <form method="post" action="{{ url_for('bank_recompute_accounting_dedup') }}" class="compact-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="return_to" value="sources">
+    <button type="submit">Recompute accounting deduplication</button>
+  </form>
+</details>
+
+{# ------------------------------------------------ New / Edit Source modal #}
+{#- ONE modal for create and edit. Create posts to `bank_instrument_new`,
+    edit to `bank_instrument_edit` — the two routes that already validate a
+    PaymentInstrument through `service.create_payment_instrument` /
+    `update_payment_instrument`. Saved with fetch: an error stays in the
+    modal; a success closes it and reloads the list. -#}
+<div id="source-dialog" class="org-modal-overlay" hidden aria-hidden="true"
+     data-create-url="{{ url_for('bank_instrument_new') }}">
+  <div class="org-modal-panel source-panel" role="dialog" aria-modal="true" aria-labelledby="source-dialog-title">
+    <button class="org-modal-close" type="button" aria-label="Cancel" data-modal-close>&times;</button>
+    <div class="modal-header"><h3 id="source-dialog-title">New Source</h3></div>
+    <form id="source-form" method="post" action="{{ url_for('bank_instrument_new') }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="sources">
+
+      <div class="field-row">
+        <label for="source-display_name">Source name</label>
+        <input type="text" id="source-display_name" name="display_name" maxlength="255" required placeholder="Chase Checking 0214">
+      </div>
+      <div class="field-row">
+        <label for="source-instrument_type">Type</label>
+        <select id="source-instrument_type" name="instrument_type" required>
+          <option value="BANK_ACCOUNT">Bank account</option>
+          <option value="CREDIT_CARD">Credit card</option>
+          <option value="PAYPAL">PayPal</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="source-institution">Institution / Provider</label>
+        <input type="text" id="source-institution" name="institution" maxlength="64" placeholder="Chase / First Citizens / PayPal">
+      </div>
+      <div class="field-row">
+        <label for="source-last_four">Last 4 digits <span class="cell-note">matched against a <code>Card</code> value or a <code>Chase####_Activity</code> file name</span></label>
+        <input type="text" id="source-last_four" name="last_four" maxlength="4" inputmode="numeric">
+      </div>
+      <div class="field-row">
+        <label for="source-external_account_identifier">Account identifier as written in the file <span class="cell-note">e.g. First Citizens <code>XXXXXX7470</code> &mdash; never the full number</span></label>
+        <input type="text" id="source-external_account_identifier" name="external_account_identifier" maxlength="128">
+        {#- The list never sends the stored identifier to the browser. On Edit
+            the field starts empty and "keep" is sent until the operator types
+            a new value, so the stored one is neither shown nor cleared. #}
+        <input type="hidden" name="keep_external_account_identifier" id="source-keep_external_account_identifier" value="">
+      </div>
+      <div class="field-row" data-source-field="legal_entity">
+        <label for="source-legal_entity_id">Owning entity (LLC)</label>
+        <select id="source-legal_entity_id" name="legal_entity_id">
+          <option value="">Not yet configured</option>
+          {% for legal_entity in legal_entities %}
+            <option value="{{ legal_entity.id }}">{{ legal_entity.legal_name }}</option>
+          {% endfor %}
+        </select>
+        <span class="cell-note" data-source-only="CREDIT_CARD" hidden>A card's entity is derived from its settlement account.</span>
+      </div>
+      <div class="field-row">
+        <label for="source-currency">Currency</label>
+        <input type="text" id="source-currency" name="currency" maxlength="8" placeholder="USD">
+      </div>
+      <div class="field-row" data-source-only="PAYPAL" hidden>
+        <label for="source-linked_instrument_id">Funded by</label>
+        <select id="source-linked_instrument_id" name="linked_instrument_id">
+          <option value="">Not linked</option>
+          {% for other in instruments if other.instrument_type == 'BANK_ACCOUNT' %}
+            <option value="{{ other.id }}">{{ bank.instrument_identity(other) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field-row" data-source-only="CREDIT_CARD" hidden>
+        <label>Settlement account</label>
+        <span class="cell-note" id="source-settlement-note"></span>
+      </div>
+      <div class="field-row" id="source-state-row" hidden>
+        <label for="source-status">State</label>
+        <select id="source-status" name="status" disabled>
+          <option value="ACTIVE">Active</option>
+          <option value="INACTIVE">Inactive</option>
+        </select>
+        <span class="cell-note">Active Sources are expected in every imported period. Inactive keeps the Source for history; its end date is its last posting date.</span>
+      </div>
+
+      <p class="error" id="source-error" role="alert" hidden></p>
+      <div class="who-picker-actions">
+        <button type="submit" id="source-save">Save</button>
+        <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+  .source-list-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  .source-list-head h2 { margin: 0; }
+  .source-list-head button { margin: 0; width: auto; }
+  .source-more > summary { cursor: pointer; list-style: revert; }
+  .source-more > summary h2 { display: inline; font-size: 1.05rem; margin: 0; }
+  .source-panel { width: min(40rem, 100%); }
+  @media (max-width: 760px) { .source-list-head { flex-wrap: wrap; } }
+</style>
+<script defer src="{{ url_for('static', filename='js/bank-source.js') }}?v=1"></script>
+{% endblock %}

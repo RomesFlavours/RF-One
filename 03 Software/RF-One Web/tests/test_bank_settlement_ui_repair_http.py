@@ -250,11 +250,14 @@ def main() -> int:
         check(
             "F1. the transaction id is substituted by an explicit placeholder, not a regex "
             "that silently never matches",
-            b"/transactions/0/" in review and b"ACTION_TEMPLATE.replace" in review,
+            # BANK_MANUAL_WHO_WHY_001: the placeholder now lives in the
+            # popup's data attribute and is replaced by bank-who-why.js.
+            b'data-action-template="/bank/transactions/0/who-why"' in review
+            and b'actionTemplate.replace("/transactions/0/"' in client.get("/static/js/bank-who-why.js").data,
         )
         check(
             "F2. with no Who configured the modal says so",
-            b"No Who configured" in review,
+            b"No WHO configured" in review,
         )
         check(
             "F3. it links to the Classification tab",
@@ -295,7 +298,7 @@ def main() -> int:
         check(
             "F6. with a Who configured, search and Confirm are rendered again",
             b'id="who-picker-search"' in review and b'id="who-picker-confirm"' in review
-            and b"US Foods" in review,
+            and b"US Foods" in client.get("/bank/manual-reconciliation/whos").data,
         )
         check(
             "F7. the empty state is gone once a Who exists",
@@ -359,7 +362,7 @@ def main() -> int:
         )
         check(
             "G3. the edit page carries the Bank module navigation",
-            b"Import and Review" in page and b">Instruments<" in page and b"Classification" in page,
+            b"Import and Review" in page and b">Source<" in page and b"Classification" in page,
         )
 
         ungated = web_app.app.test_client()

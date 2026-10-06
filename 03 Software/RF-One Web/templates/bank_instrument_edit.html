@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% import "_bank_macros.html" as bank %}
-{% block page_title %}Bank Reconciliation · Edit instrument · RF-One{% endblock %}
+{% block page_title %}Bank Reconciliation · Source settings · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-{{ bank.module_nav('instruments', 'Edit instrument') }}
+{{ bank.module_nav('source', instrument.display_name) }}
 
-<h2>Edit Payment Instrument</h2>
+<h2>Source settings &mdash; {{ instrument.display_name }}</h2>
 
 {# Configuration state, stated up front rather than discovered by scrolling. #}
 <p class="config-state-row">
@@ -38,7 +38,7 @@
 <div class="card">
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="return_to" value="instruments">
+    <input type="hidden" name="return_to" value="sources">
 
     <div class="field-row">
       <label for="display_name">Display name</label>
@@ -128,12 +128,12 @@
     <div class="field-row">
       <label>State</label>
       <span><strong>{{ 'Active' if instrument.status == 'ACTIVE' else 'Closed / inactive' }}</strong></span>
-      <span class="cell-note">Not edited here. An instrument is closed (Closed / Lost / Replaced / Other) or confirmed Still active from Monthly Sources, where the end date is derived from its last posting and the decision is recorded. A closed instrument is never used for automatic source recognition, so reusing its last four digits on a new card is not ambiguous.</span>
+      <span class="cell-note">Set Active / Inactive with Edit on the <a href="{{ url_for('bank_sources') }}">Source</a> list, or by a Check Sources decision on Import and Review. The end date is derived from the last posting. A closed instrument is never used for automatic source recognition, so reusing its last four digits on a new card is not ambiguous.</span>
     </div>
 
     <div class="btn-row">
-      <button type="submit">Save instrument</button>
-      <a class="btn btn-secondary" href="{{ url_for('bank_instruments') }}">Cancel</a>
+      <button type="submit">Save Source</button>
+      <a class="btn btn-secondary" href="{{ url_for('bank_sources') }}">Cancel</a>
     </div>
   </form>
 </div>

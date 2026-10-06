@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_nav_macros.html" import breadcrumb %}
+{% import "_bank_macros.html" as bank %}
 {% block page_title %}Bank Reconciliation · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
@@ -9,7 +10,12 @@
     editor for WHO / WHY / WHAT / For Whom. WHAT never appears on the
     compact row. Statuses: red X Needs review, orange check Automatic (an
     approved Standard), green check Confirmed (a person). -#}
-{{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', url_for('bank_home')), ('Reconciliation', None)]) }}
+{#- BANK_TWO_STAGE_REVIEW_001 — these rows and their editor ARE Review >
+    Reconciled: the Review header and tabs, and every row action returns to
+    that tab. The former standalone `/bank/reconciliation` month page, with
+    its own WHO modal, is retired (BANK_FINAL_CLEANUP_001): the WHO and WHY
+    of a transaction are chosen in the one Select WHO / WHY popup. -#}
+{{ bank.module_nav('review') }}
 {%- macro status_mark(status, note='') -%}
 {%- if status == 'Confirmed' -%}<span class="rp-st rp-st-confirmed" role="img" aria-label="Confirmed">&#10004;</span><span class="rp-st-text">Confirmed</span>
 {%- elif status == 'Automatic' -%}<span class="rp-st rp-st-automatic" role="img" aria-label="Automatic">&#10003;</span><span class="rp-st-text">Automatic</span>
@@ -17,12 +23,6 @@
 {%- endmacro %}
 
 <style>
-  .rp-header { display: flex; align-items: center; gap: .75rem 1.25rem; flex-wrap: wrap; margin: .25rem 0 .9rem; }
-  .rp-header h1 { margin: 0; font-size: 1.45rem; }
-  .rp-period { display: inline-flex; align-items: center; gap: .35rem; }
-  .rp-period strong { font-size: 1.05rem; min-width: 7.5rem; text-align: center; }
-  .rp-period button, .rp-config { margin: 0; padding: .25rem .6rem; }
-  .rp-config { margin-left: auto; }
   .rp-table-wrap { overflow-x: auto; border: 1px solid var(--olive-300, #d6dbc4); border-radius: 6px; }
   .rp-table { width: 100%; min-width: 1240px; border-collapse: collapse; font-size: .88rem; }
   .rp-table th { position: sticky; top: 0; background: #eef0e4; text-align: left; font-size: .72rem;
@@ -36,8 +36,11 @@
   .rp-amount.rp-in { color: #2e7d32; }
   .rp-who { min-width: 15rem; }
   .rp-who-name { display: block; font-weight: 600; white-space: nowrap; }
-  .rp-who-why { display: block; font-size: .76rem; color: var(--muted, #6b6f5e); }
   .rp-who-none { color: #a3561a; font-style: italic; }
+  .rp-why { min-width: 11rem; }
+  .rp-why-name { font-weight: 500; }
+  .rp-what { min-width: 10rem; font-size: .8rem; color: var(--muted, #6b6f5e); }
+  .rp-edit { margin-left: .35rem; padding: .05rem .4rem; font-size: .74rem; }
   .rp-src { font-size: .68rem; font-weight: 500; color: var(--muted, #6b6f5e); margin-left: .3rem;
     border: 1px solid #d6dbc4; border-radius: 999px; padding: 0 .35rem; }
   .rp-src-person { color: #2e7d32; border-color: #bcdcc6; }
@@ -46,34 +49,8 @@
   .rp-forwhom select.rp-changed { font-weight: 700; border-color: #7a8a3a; }
   .rp-status .badge { white-space: nowrap; }
   .rp-status-ready { background: #e7eefb; color: #1f4f9a; border-color: #b9cbeb; }
-  /* WHO modal */
-  .rp-overlay { position: fixed; inset: 0; background: rgba(30, 34, 20, .45); display: flex;
-    align-items: flex-start; justify-content: center; padding: 6vh 1rem; z-index: 50; }
-  .rp-overlay[hidden] { display: none; }
-  .rp-modal { background: #fff; border-radius: 8px; width: min(620px, 100%); max-height: 88vh; overflow: auto;
-    padding: 1rem 1.2rem; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
-  .rp-modal h2 { margin: 0 0 .25rem; font-size: 1.15rem; }
-  .rp-context { font-size: .8rem; color: var(--muted, #6b6f5e); margin: 0 0 .8rem; }
-  .rp-context code { font-size: .78rem; }
-  .rp-field { margin: .6rem 0; }
-  .rp-field > label { display: block; font-weight: 600; font-size: .85rem; margin-bottom: .25rem; }
-  #rp-who-search, #rp-new-name, #rp-why-select, #rp-new-default { width: 100%; max-width: none; box-sizing: border-box; margin: 0 0 .35rem; }
-  .rp-who-list { border: 1px solid #d6dbc4; border-radius: 6px; max-height: 12rem; overflow: auto; }
-  .rp-who-option { display: block; width: 100%; text-align: left; background: #fff; border: 0;
-    border-bottom: 1px solid #eef0e4; padding: .4rem .6rem; margin: 0; color: inherit; font-weight: 500; cursor: pointer; }
-  .rp-who-option:hover, .rp-who-option.is-selected { background: #eef3dd; }
-  .rp-who-option.is-selected { font-weight: 700; }
-  .rp-add-who { margin-top: .4rem; }
-  .rp-new-who { border: 1px dashed #b9c28f; border-radius: 6px; padding: .6rem .8rem; margin-top: .6rem; background: #fafbf4; }
-  .rp-new-who textarea { width: 100%; min-height: 4.2rem; }
-  .rp-entities label { display: inline-flex; align-items: center; gap: .3rem; margin-right: 1rem; font-weight: 400; }
-  .rp-modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
-  .rp-period a.btn { margin: 0; padding: .25rem .6rem; }
   .rp-empty { padding: 1rem; color: var(--muted, #6b6f5e); }
   .rp-split { font-size: .8rem; color: var(--muted, #6b6f5e); }
-  .rp-why-list { border: 1px solid #d6dbc4; border-radius: 6px; max-height: 9rem; overflow: auto; padding: .25rem .5rem; margin-top: .3rem; }
-  .rp-why-list label { display: flex; align-items: center; gap: .35rem; font-weight: 400; margin: .12rem 0; }
-  .rp-more { font-size: .78rem; color: var(--muted, #6b6f5e); padding: .35rem .6rem; }
   .rp-src-standard { color: #b35c00; border-color: #f0c896; }
   /* expand toggle */
   .rp-x { width: 1.6rem; padding-right: 0 !important; }
@@ -106,22 +83,15 @@
   .rp-ed-actions button { margin: 0; }
 </style>
 
-<div class="rp-header">
-  <h1>Bank Reconciliation</h1>
-  <div class="rp-period" aria-label="Period">
-    <a class="btn btn-secondary" aria-label="Previous month" href="{{ url_for('bank_reconciliation', year=previous_month[0], month=previous_month[1]) }}">&lsaquo;</a>
-    <strong>{{ period_label }}</strong>
-    <a class="btn btn-secondary" aria-label="Next month" href="{{ url_for('bank_reconciliation', year=next_month[0], month=next_month[1]) }}">&rsaquo;</a>
-  </div>
-  <a class="btn btn-secondary rp-config" href="{{ url_for('bank_configuration') }}">Configuration</a>
-</div>
+{% include "_bank_review_header.html" %}
+{% include "_bank_who_rule_result.html" %}
 
 <div class="rp-table-wrap">
   <table class="rp-table" id="rp-table">
     <thead>
       <tr>
         <th class="rp-x"></th><th>Account / Card</th><th>Date</th><th>Description</th><th class="rp-amount">Amount</th>
-        <th>WHO</th><th></th><th>For whom</th><th></th><th>Status</th>
+        <th>WHO</th><th>WHY</th><th>WHAT</th><th>For whom</th><th></th><th>Status</th>
       </tr>
     </thead>
     <tbody id="rp-body">
@@ -129,14 +99,20 @@
       <tr id="t-{{ row.id }}" data-row-id="{{ row.id }}"{% if row.who_id %} data-who="{{ row.who_id }}"{% endif %}{% if row.why_id %} data-why="{{ row.why_id }}"{% endif %}{% if row.what_id %} data-what="{{ row.what_id }}" data-source="{{ row.destination_source }}"{% endif %}{% if row.who_source %} data-who-source="{{ row.who_source }}"{% endif %}{% if row.standard_id %} data-standard="{{ row.standard_id }}"{% endif %} data-status="{{ row.status }}"{% if row.default_for_whom is not none %} data-default="{{ row.default_for_whom }}"{% endif %} data-amount="{{ row.amount_minor }}"{% if row.memo %} data-memo="{{ row.memo }}"{% endif %}>
 <td class="rp-x"><button type="button" class="rp-expand" data-action="expand" aria-expanded="false" aria-label="Expand">&#9656;</button></td>
 <td class="rp-account">{{ row.account }}</td><td class="rp-date" title="{{ row.date }}">{{ row.date_label }}</td><td class="rp-desc">{{ row.description }}</td><td class="rp-amount{{ ' rp-in' if row.amount_minor > 0 else '' }}">{{ '+' if row.amount_minor > 0 else '−' }}{{ '{:,.2f}'.format((row.amount_minor|abs) / 100) }}</td>
-<td class="rp-who">{% if row.who %}<span class="rp-who-name">{{ row.who }}{% if row.who_source == 'standard' %}<span class="rp-src rp-src-standard" title="From an approved Standard">standard</span>{% elif row.who_source == 'auto' %}<span class="rp-src" title="Recognized automatically — not approved">suggested</span>{% else %}<span class="rp-src rp-src-person" title="Chosen by a person">&#10003;</span>{% endif %}</span>{% if row.why %}<span class="rp-who-why">{{ row.why }}</span>{% endif %}{% else %}<span class="rp-who-none">No WHO yet</span>{% endif %}</td>
-<td><button type="button" class="btn-secondary rp-btn" data-action="who">&#9998; WHO</button></td>
+{%- set who_mark -%}{% if row.who_source == 'standard' %}<span class="rp-src rp-src-standard" title="From an approved Standard">standard</span>{% elif row.who_source == 'auto' %}<span class="rp-src" title="Recognized automatically — not approved">suggested</span>{% else %}<span class="rp-src rp-src-person" title="Chosen by a person">&#10003;</span>{% endif %}{%- endset -%}
+{#- BANK_MANUAL_WHO_WHY_001 — Reconciled shows WHO, WHY and WHAT on the row;
+    WHY (and WHO) are edited in the same "Select WHO / WHY" popup as To
+    Reconcile: a transaction-specific HUMAN decision, never a Rule change. -#}
+{%- set picker_label = row.date ~ ' · ' ~ row.description ~ ' · ' ~ '{:,.2f}'.format(row.amount_minor / 100) %}
+<td class="rp-who">{% if row.who %}<span class="rp-who-name">{{ row.who }}{{ who_mark }}</span>{% elif row.own_account %}<span class="rp-who-name" title="Own-account movement: no external WHO applies">{{ row.own_account }}</span>{% else %}<span class="rp-who-none">No WHO yet</span>{% endif %}<button type="button" class="btn-secondary rp-btn rp-edit who-picker-open" title="Change the WHO of this transaction" aria-label="Change WHO" data-transaction-id="{{ row.id }}" data-transaction-label="{{ picker_label }}" data-current-occurrence-id="{{ row.who_id or '' }}" data-current-reason-id="{{ row.why_id or '' }}">&#9998;</button></td>
+<td class="rp-why" data-cell="why">{% if row.why %}<span class="rp-why-name">{{ row.why }}</span>{% else %}<span class="rp-who-none">WHY needed</span>{% endif %}<button type="button" class="btn-secondary rp-btn rp-edit who-picker-open" title="Choose or create the WHY of this transaction" aria-label="Edit WHY" data-transaction-id="{{ row.id }}" data-transaction-label="{{ picker_label }}" data-current-occurrence-id="{{ row.who_id or '' }}" data-current-reason-id="{{ row.why_id or '' }}">&#9998; WHY</button></td>
+<td class="rp-what" data-cell="what">{{ row.what or '—' }}</td>
 <td class="rp-forwhom">{% if row.split %}<span class="rp-split">Split</span>{% else %}<select data-action="for-whom" aria-label="For whom" data-saved="{{ row.for_whom if row.for_whom is not none else '' }}">{% if row.for_whom is none %}<option value="" selected>Choose…</option>{% endif %}{% for entity in view.entities %}{% if entity.active or entity.id == row.for_whom %}<option value="{{ entity.id }}"{{ ' selected' if entity.id == row.for_whom else '' }}>{{ entity.name }}</option>{% endif %}{% endfor %}</select>{% endif %}</td>
 <td class="rp-actions-cell">{% if not row.split %}{% set done = row.status in ('Confirmed', 'Automatic') %}{% set incomplete = not (row.who and row.why) %}{% if done %}<button type="button" class="btn-secondary rp-btn" data-action="reopen" title="Withdraw this acceptance">Reopen</button>{% endif %}<button type="button" class="rp-btn" data-action="confirm"{% if done %} hidden{% endif %}{% if incomplete %} disabled{% endif %}>Confirm</button><button type="button" class="btn-secondary rp-btn" data-action="standard"{% if done %} hidden{% endif %}{% if incomplete %} disabled{% endif %}>Standard</button>{% endif %}</td>
 <td class="rp-status" data-cell="status">{{ status_mark(row.status) }}</td>
       </tr>
       {%- else %}
-      <tr><td colspan="10" class="rp-empty">No bank transactions in {{ period_label }}.</td></tr>
+      <tr><td colspan="11" class="rp-empty">No transaction with a resolved WHO in this view yet.</td></tr>
       {%- endfor %}
     </tbody>
   </table>
@@ -144,7 +120,7 @@
 
 {# ------------------------------------------ the ONE inline editor row #}
 <table hidden><tbody id="rp-editor-home">
-<tr id="rp-editor-row" class="rp-editor-row"><td colspan="10">
+<tr id="rp-editor-row" class="rp-editor-row"><td colspan="11">
   <div class="rp-editor">
     <div class="rp-ed-facts">
       <dl id="rp-ed-facts"></dl>
@@ -169,53 +145,7 @@
 </tbody></table>
 <datalist id="rp-who-names"></datalist>
 
-{# ---------------------------------------------------------- WHO modal #}
-<div class="rp-overlay" id="rp-who-modal" hidden>
-  <div class="rp-modal" role="dialog" aria-modal="true" aria-labelledby="rp-modal-title">
-    <h2 id="rp-modal-title">WHO</h2>
-    <p class="rp-context" id="rp-modal-context"></p>
-
-    <div class="rp-field" id="rp-pick-area">
-      <label for="rp-who-search">WHO</label>
-      <input type="search" id="rp-who-search" placeholder="Search WHO" autocomplete="off">
-      <div class="rp-who-list" id="rp-who-list" role="listbox" aria-label="WHO"></div>
-      <button type="button" class="btn-secondary rp-btn rp-add-who" id="rp-add-who">+ Add new WHO</button>
-    </div>
-
-    <div class="rp-new-who" id="rp-new-who" hidden>
-      <div class="rp-field">
-        <label for="rp-new-name">New WHO name</label>
-        <input type="text" id="rp-new-name" autocomplete="off">
-      </div>
-      <div class="rp-field">
-        <label for="rp-new-why-search">Possible WHY</label>
-        <input type="search" id="rp-new-why-search" placeholder="Search WHY" autocomplete="off">
-        <div class="rp-why-list" id="rp-new-whys"></div>
-      </div>
-      <div class="rp-field">
-        <label for="rp-new-default">Default WHY</label>
-        <select id="rp-new-default"></select>
-      </div>
-      <div class="rp-field rp-entities">
-        <label>Entities served</label>
-        {% for entity in view.entities if entity.active %}<label><input type="checkbox" value="{{ entity.id }}" data-new-entity> {{ entity.name }}</label>{% endfor %}
-      </div>
-      <button type="button" class="btn-secondary rp-btn" id="rp-back-to-list">Back to existing WHO</button>
-    </div>
-
-    <div class="rp-field" id="rp-why-area" hidden>
-      <label for="rp-why-select">WHY for this transaction</label>
-      <select id="rp-why-select"></select>
-    </div>
-
-    <div class="rp-modal-actions">
-      <button type="button" class="btn-secondary" id="rp-cancel">Cancel</button>
-      <button type="button" id="rp-confirm-who" disabled>Confirm WHO</button>
-    </div>
-  </div>
-</div>
-
-<form method="post" id="rp-post" hidden><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+<form method="post" id="rp-post" hidden><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="return_to" value="{{ return_to }}"></form>
 <script type="application/json" id="rp-data">{{ {'whos': view.whos, 'whys': view.whys, 'whats': view.whats, 'entities': view.entities, 'destinations': view.destinations, 'standards': view.standards}|tojson }}</script>
 <script>
 (function () {
@@ -320,7 +250,6 @@
     if (!btn || btn.disabled) return;
     var tr = btn.closest('tr');
     var action = btn.dataset.action;
-    if (action === 'who') { openModal(tr.dataset.rowId, btn); return; }
     if (action === 'expand') { toggleEditor(tr); return; }
     if (action === 'confirm' || action === 'standard' || action === 'reopen') {
       var sel = tr.querySelector('[data-action="for-whom"]');
@@ -444,120 +373,6 @@
   edSave.addEventListener('click', function () { saveEditor('keep'); });
   edSaveStd.addEventListener('click', function () { saveEditor('standard'); });
 
-  // ------------------------------------------------------------ WHO modal
-  var modal = document.getElementById('rp-who-modal');
-  var list = document.getElementById('rp-who-list');
-  var search = document.getElementById('rp-who-search');
-  var whyArea = document.getElementById('rp-why-area');
-  var whySelect = document.getElementById('rp-why-select');
-  var newArea = document.getElementById('rp-new-who');
-  var pickArea = document.getElementById('rp-pick-area');
-  var newName = document.getElementById('rp-new-name');
-  var newWhys = document.getElementById('rp-new-whys');
-  var newWhySearch = document.getElementById('rp-new-why-search');
-  var newDefault = document.getElementById('rp-new-default');
-  var confirmWho = document.getElementById('rp-confirm-who');
-  var state = { rowId: null, trigger: null, who: null, adding: false };
-
-  // Only the matches are drawn, capped: 1,229 WHO never become 1,229 nodes.
-  function renderList() {
-    var q = search.value.trim().toLowerCase(), shown = 0, total = 0;
-    list.innerHTML = '';
-    data.whos.forEach(function (w) {
-      if (q && w.name.toLowerCase().indexOf(q) === -1) return;
-      total += 1;
-      if (shown >= LIST_LIMIT && w.id !== state.who) return;
-      shown += 1;
-      var b = document.createElement('button');
-      b.type = 'button'; b.className = 'rp-who-option' + (state.who === w.id ? ' is-selected' : '');
-      b.textContent = w.name + (w.inactive ? ' (inactive)' : ''); b.setAttribute('role', 'option'); b.dataset.whoId = w.id;
-      b.addEventListener('click', function () { chooseWho(w.id, null); });
-      list.appendChild(b);
-    });
-    if (total > shown) {
-      var more = document.createElement('div'); more.className = 'rp-more';
-      more.textContent = (total - shown) + ' more — type to narrow the list';
-      list.appendChild(more);
-    }
-  }
-  // The WHY list is the WHO's possible WHY; its default is only proposed.
-  function fillWhy(whyIds, selected, defaultId) {
-    whySelect.innerHTML = '<option value="">— WHY not decided yet —</option>';
-    whyIds.forEach(function (id) {
-      var o = document.createElement('option');
-      o.value = id; o.textContent = (whyById[id] ? whyById[id].name : id) + (id === defaultId ? ' (default)' : '');
-      whySelect.appendChild(o);
-    });
-    var pick = selected != null && whyIds.indexOf(selected) !== -1 ? selected : defaultId;
-    whySelect.value = pick != null ? String(pick) : '';
-    whyArea.hidden = false;
-  }
-  function chooseWho(id, why) {
-    state.who = id; state.adding = false;
-    var w = whoById[id];
-    fillWhy(listOf(w, 'whys'), why, w && w.default_why != null ? w.default_why : null);
-    renderList(); syncConfirm();
-  }
-  function renderNewWhys() {
-    var q = newWhySearch.value.trim().toLowerCase();
-    Array.prototype.slice.call(newWhys.querySelectorAll('label')).forEach(function (l) { l.hidden = q && l.dataset.hay.indexOf(q) === -1; });
-  }
-  function checkedNewWhys() { return Array.prototype.slice.call(newWhys.querySelectorAll('input:checked')).map(function (c) { return Number(c.value); }); }
-  function renderNewDefault() {
-    var keep = newDefault.value, chosen = checkedNewWhys();
-    newDefault.innerHTML = '<option value="">— No default —</option>';
-    chosen.forEach(function (id) { var o = document.createElement('option'); o.value = id; o.textContent = whyById[id].name; newDefault.appendChild(o); });
-    newDefault.value = chosen.indexOf(Number(keep)) !== -1 ? keep : '';
-    fillWhy(chosen, null, newDefault.value ? Number(newDefault.value) : null);
-    syncConfirm();
-  }
-  function syncConfirm() { confirmWho.disabled = state.adding ? !newName.value.trim() : !state.who; }
-  function openModal(id, trigger) {
-    var r = rowOf(rowEl(id));
-    state = { rowId: id, trigger: trigger, who: r.who_id, adding: false };
-    document.getElementById('rp-modal-context').innerHTML =
-      esc(r.account) + ' &middot; ' + esc(r.date_label) + ' &middot; ' + money(r.amount_minor) + '<br><code>' + esc(r.description) + '</code>';
-    search.value = ''; newArea.hidden = true; pickArea.hidden = false;
-    newName.value = ''; newWhySearch.value = '';
-    newWhys.innerHTML = data.whys.map(function (y) { return '<label data-hay="' + esc(y.name.toLowerCase()) + '"><input type="checkbox" value="' + y.id + '"> ' + esc(y.name) + '</label>'; }).join('');
-    newDefault.innerHTML = '';
-    var forWhom = rowEl(id).querySelector('[data-action="for-whom"]');
-    document.querySelectorAll('[data-new-entity]').forEach(function (c) { c.checked = !!forWhom && c.value === forWhom.value; });
-    if (r.who_id && whoById[r.who_id]) { chooseWho(r.who_id, r.why_id); } else { whyArea.hidden = true; renderList(); syncConfirm(); }
-    modal.hidden = false;
-    search.focus();
-  }
-  function closeModal() { modal.hidden = true; if (state.trigger) state.trigger.focus(); }
-  search.addEventListener('input', renderList);
-  document.getElementById('rp-add-who').addEventListener('click', function () {
-    state.adding = true; state.who = null;
-    pickArea.hidden = true; newArea.hidden = false; whyArea.hidden = true;
-    newName.value = search.value.trim(); newName.focus(); renderNewDefault();
-  });
-  document.getElementById('rp-back-to-list').addEventListener('click', function () {
-    state.adding = false; newArea.hidden = true; pickArea.hidden = false; whyArea.hidden = true;
-    renderList(); syncConfirm();
-  });
-  newName.addEventListener('input', syncConfirm);
-  newWhySearch.addEventListener('input', renderNewWhys);
-  newWhys.addEventListener('change', renderNewDefault);
-  newDefault.addEventListener('change', function () { fillWhy(checkedNewWhys(), null, newDefault.value ? Number(newDefault.value) : null); });
-  document.getElementById('rp-cancel').addEventListener('click', closeModal);
-  modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
-  document.addEventListener('keydown', function (e) { if (!modal.hidden && e.key === 'Escape') closeModal(); });
-  confirmWho.addEventListener('click', function () {
-    var fields = { why_id: whySelect.value };
-    if (state.adding) {
-      fields.new_who = '1'; fields.new_name = newName.value.trim(); fields.new_default_why_id = newDefault.value;
-      fields.new_why_ids = checkedNewWhys();
-      fields.new_entity_ids = Array.prototype.slice.call(document.querySelectorAll('[data-new-entity]:checked')).map(function (c) { return c.value; });
-    } else {
-      fields.occurrence_id = state.who;
-    }
-    confirmWho.disabled = true;
-    post(rowEl(state.rowId), 'who', fields);
-  });
-
   // Back on the row that was just worked on; a refused editor save reopens
   // the editor with the operator's values, so nothing typed is lost.
   var pending = null;
@@ -570,4 +385,5 @@
   }
 })();
 </script>
+{% include "_bank_who_why_modal.html" %}{% include "_bank_why_create_dialog.html" %}
 {% endblock %}
