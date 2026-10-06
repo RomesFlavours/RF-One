@@ -11,8 +11,9 @@ Thirty numbered points, as specified by the Product Owner:
          determines WHY, entities served, recognition rules, nothing inferred;
   19-21  Sources are NOT edited here any more: a "Manage Sources" link to
          /bank/sources, and the old routes are gone (BANK_FINAL_RELEASE_BLOCKERS_002);
-  22-27  Support: entities, source rules, control months, deduplication
-         action (card settlement and cardholder moved to Source);
+  22-27  Support: entities; source rules, control months and deduplication
+         are maintained on Source / Check Sources and only linked from here
+         (BANK_FINAL_CLEANUP_001);
   28-30  security: BANK access, CSRF, fixed redirects.
 
 Plus the later Product Owner decisions: D10 (COUNTERPARTY seeded by
@@ -629,44 +630,47 @@ def main() -> int:
               "editable), a virtual entity never becomes an LLC",
               ok_new and ok_edit and "never becomes an LLC" in flashes(virtual_legal))
 
-        post("/bank/configuration/source", {"detected_format": "FIRST_CITIZENS", "file_name_key": "AccountHistory",
-                                            "account_hint": "", "payment_instrument_id": ids["checking"], "active": "1"})
+        # BANK_FINAL_CLEANUP_001 — file recognition rules, the completeness
+        # control and deduplication each have ONE writable place outside
+        # Configuration (Source; Check Sources on Import and Review). Their
+        # behaviour is tested there (test_bank_instrument_assignment_http,
+        # test_bank_reconciliation_control_start_http,
+        # test_bank_cardholder_and_dedup_http).
         with SessionFactory() as db:
-            profile = db.scalar(select(m.BankSourceInstrumentProfile))
-            ids["profile"] = profile.id
-            created_ok = profile.file_name_key == "accounthistory" and profile.payment_instrument_id == ids["checking"]
-        post(f"/bank/configuration/source/{ids['profile']}", {"detected_format": "FIRST_CITIZENS", "file_name_key": "accounthistory",
-                                                              "account_hint": "x-1111", "payment_instrument_id": ids["operating"], "active": "0"})
-        unknown = post("/bank/configuration/source", {"detected_format": "MADE_UP", "file_name_key": "a",
-                                                      "account_hint": "", "payment_instrument_id": ids["checking"], "active": "1"})
-        post("/bank/configuration/source", {"detected_format": "FIRST_CITIZENS", "file_name_key": "accounthistory",
-                                            "account_hint": "x-1111", "payment_instrument_id": ids["checking"], "active": "1"})
+            profiles_before = db.scalar(select(func.count(m.BankSourceInstrumentProfile.id)))
+            config_before = db.get(m.BankReconciliationControlConfig, 1)
+            config_before = (config_before.control_start_month, config_before.validated_through_month) \
+                if config_before is not None else None
+        retired = [
+            post("/bank/configuration/source", {"detected_format": "FIRST_CITIZENS", "file_name_key": "AccountHistory",
+                                                "account_hint": "", "payment_instrument_id": ids["checking"], "active": "1"}),
+            post("/bank/configuration/source/1", {"detected_format": "FIRST_CITIZENS", "file_name_key": "x",
+                                                  "payment_instrument_id": ids["checking"], "active": "0"}),
+            post("/bank/configuration/control", {"control_start": "2026-01", "validated_through": "2026-05"}),
+            post("/bank/configuration/dedup/recompute", {}),
+        ]
         with SessionFactory() as db:
-            profiles = db.scalars(select(m.BankSourceInstrumentProfile)).all()
-            p = profiles[0]
-            edit_ok = (len(profiles) == 1 and p.account_hint == "x-1111" and p.payment_instrument_id == ids["operating"]
-                       and p.status == "INACTIVE")
-        check("23. source rules: add, edit, deactivate; an unknown format and a duplicate are refused",
-              created_ok and edit_ok and unknown.status_code == 302)
-
-        post("/bank/configuration/control", {"control_start": "2026-01", "validated_through": "2026-03"})
-        post("/bank/configuration/control", {"control_start": "2026-01", "validated_through": "2026-05"})
-        bad = post("/bank/configuration/control", {"control_start": "2026-13", "validated_through": "2026-05"})
-        with SessionFactory() as db:
-            config = db.get(m.BankReconciliationControlConfig, 1)
-        check("24. Control start / Validated through are applied through the monthly services; a "
-              "malformed month is refused",
-              config is not None and config.control_start_month == "2026-01"
-              and config.validated_through_month == "2026-05" and "YYYY-MM" in flashes(bad))
-
-        # 25-26 (card settlement and cardholder history) moved with Sources to
-        # the Source page's Card settings: test_bank_cardholder_and_dedup_http.
-
-        get_attempt = client.get("/bank/configuration/dedup/recompute")
-        action = post("/bank/configuration/dedup/recompute", {})
-        check("27. deduplication recompute is an ACTION (POST only) with its outcome reported",
-              get_attempt.status_code == 405 and action.status_code == 302
-              and "Accounting deduplication recomputed" in flashes(action))
+            profiles_after = db.scalar(select(func.count(m.BankSourceInstrumentProfile.id)))
+            config_after = db.get(m.BankReconciliationControlConfig, 1)
+            config_after = (config_after.control_start_month, config_after.validated_through_month) \
+                if config_after is not None else None
+        check("23/24/27. the duplicate Configuration actions are gone (404) and write nothing: source rules, "
+              "control settings, deduplication recompute",
+              all(r.status_code == 404 for r in retired) and profiles_after == profiles_before
+              and config_after == config_before, str([r.status_code for r in retired]))
+        page_now = client.get("/bank/configuration").data.decode("utf-8")
+        elsewhere = page_now[page_now.index('id="cp-elsewhere"'):page_now.index("</details>", page_now.index('id="cp-elsewhere"'))]
+        check("23/24/27. Configuration only links to the authoritative places",
+              'href="/bank/sources#saved-source-rules"' in elsewhere and 'href="/bank#completeness-control"' in elsewhere
+              and 'id="cp-sources"' not in page_now and 'id="cp-control"' not in page_now
+              and 'id="cp-dedup"' not in page_now and "Recompute deduplication" not in page_now)
+        sources_page = client.get("/bank/sources").data.decode("utf-8")
+        home_page = client.get("/bank").data.decode("utf-8")
+        check("23/24/27. the authoritative places offer them: Source (file recognition rules, recompute) and "
+              "Check Sources (control start, validated through)",
+              'id="saved-source-rules"' in sources_page and 'action="/bank/accounting-dedup/recompute"' in sources_page
+              and 'action="/bank/monthly/control-start"' in home_page
+              and ('action="/bank/monthly/validated-through"' in home_page or "Not configured" in home_page))
 
         # ================================================================ 28-30
         anonymous = web_app.app.test_client()

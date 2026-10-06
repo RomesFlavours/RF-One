@@ -38,7 +38,7 @@
   .cp-support details { border-top: 1px solid #e3e6d6; padding: .35rem 0; }
   .cp-support summary { cursor: pointer; font-weight: 600; font-size: .92rem; }
   .cp-support details > div { margin-top: .45rem; }
-  .cp-kv { display: flex; gap: 2rem; align-items: center; font-size: .9rem; }
+  .cp-elsewhere { margin: .5rem 0 .25rem 1.1rem; font-size: .9rem; }
   /* modal */
   .cp-overlay { position: fixed; inset: 0; background: rgba(30, 34, 20, .45); display: flex;
     align-items: flex-start; justify-content: center; padding: 5vh 1rem; z-index: 50; }
@@ -140,29 +140,14 @@
         <tbody data-list="bs"></tbody></table>
     </div>
   </details>
-  <details id="cp-sources">
-    <summary>Source / file recognition</summary>
-    <div>
-      <div class="cp-block-head"><span class="cp-desc">How an incoming file is tied to its Account / Card.</span>
-        <button type="button" class="cp-btn cp-add" data-add="source">+ Add source rule</button></div>
-      <table class="cp-table"><thead><tr><th>Source format</th><th>File name key</th><th>In-file identifier</th><th>Account / Card</th><th class="cp-narrow">Active</th><th class="cp-narrow"></th></tr></thead>
-        <tbody data-list="source"></tbody></table>
-    </div>
-  </details>
-  <details id="cp-control">
-    <summary>Control settings</summary>
-    <div class="cp-kv" data-list="control"></div>
-  </details>
-  <details id="cp-dedup">
-    <summary>Deduplication</summary>
-    <div>
-      <div class="cp-block-head"><span class="cp-desc">Rows with the same settlement account, posting date, signed amount and payee are one accounting fact.</span>
-        <form method="post" action="{{ url_for('bank_configuration_dedup_recompute') }}" class="cp-add" style="margin:0">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="cp-btn btn-secondary">Recompute deduplication</button>
-        </form></div>
-      <p class="cp-desc">A card's settlement account and cardholder are set in its Card settings on <a href="{{ url_for('bank_sources') }}">Source</a>.</p>
-    </div>
+  {#- BANK_FINAL_CLEANUP_001: file recognition, completeness control and
+      deduplication each have ONE place, outside Configuration. -#}
+  <details id="cp-elsewhere">
+    <summary>Maintained elsewhere</summary>
+    <ul class="cp-elsewhere">
+      <li>File recognition rules and accounting deduplication &mdash; <a href="{{ url_for('bank_sources') }}#saved-source-rules">Source</a></li>
+      <li>Completeness control (control start, validated through) &mdash; <a href="{{ url_for('bank_home') }}#completeness-control">Check Sources on Import and Review</a></li>
+    </ul>
   </details>
 </section>
 
@@ -193,7 +178,6 @@
     var d = y.destination || { kind: 'NONE', label: '—' };
     return d.kind === 'WHAT' ? esc(d.label) : '<span class="cp-bs">' + esc(d.label) + '</span>';
   }
-  function accountLabel(id) { var a = byId('accounts', id); return a ? a.label + (a.reference ? ' ··' + a.reference : '') : '—'; }
   function editBtn(kind, id) { return '<button type="button" class="btn-secondary cp-btn" data-edit="' + kind + '" data-id="' + id + '">Edit</button>'; }
   function row(cells, item, kind) {
     return '<tr data-id="' + item.id + '" class="' + (item.active === false ? 'cp-inactive' : '') + '">' + cells.join('') + '<td class="cp-narrow">' + editBtn(kind, item.id) + '</td></tr>';
@@ -217,24 +201,15 @@
                   td(yes(o.active), 'cp-narrow')], o, 'who'); }); },
     entity: function () { return S.entities.map(function (e) {
       return row([td(esc(e.name)), td(esc(e.legal_name || '— (virtual)')), td(yes(e.active), 'cp-narrow')], e, 'entity'); }); },
-    source: function () { return S.sources.map(function (s) {
-      return row([td(esc(s.format)), td('<code>' + esc(s.file_key || '—') + '</code>'), td(esc(s.in_file || '—')),
-                  td(esc(accountLabel(s.account))), td(yes(s.active), 'cp-narrow')], s, 'source'); }); },
     bs: function () { return S.balance_sheet_destinations.map(function (d) {
       return '<tr data-id="' + d.id + '">' + td(esc(d.code), 'cp-code') + td(esc(d.name)) + td(esc(d.group || '—'))
         + td(String(d.why_count), 'cp-narrow') + '</tr>'; }); },
   };
   function render(kind) {
     var el = document.querySelector('[data-list="' + kind + '"]');
-    if (kind === 'control') {
-      el.innerHTML = '<span>Control start <strong>' + esc(S.control.control_start || '—') + '</strong></span>'
-        + '<span>Validated through <strong>' + esc(S.control.validated_through || '—') + '</strong></span>'
-        + '<button type="button" class="btn-secondary cp-btn" data-edit="control" data-id="control">Edit</button>';
-      return;
-    }
     el.innerHTML = RENDER[kind]().join('');
   }
-  ['what', 'why', 'who', 'entity', 'bs', 'source', 'control'].forEach(render);
+  ['what', 'why', 'who', 'entity', 'bs'].forEach(render);
 
   // D9 — WHO search: an immediate client-side filter on the visible name.
   // Rows keep their data-id, so Edit always opens the WHO that was clicked.
@@ -252,7 +227,6 @@
 
   // ----------------------------------------------------------- form helpers
   function fText(id, label, value, attrs) { return '<div class="cp-f"><label for="' + id + '">' + label + '</label><input type="text" id="' + id + '" value="' + esc(value || '') + '" autocomplete="off"' + (attrs || '') + '></div>'; }
-  function fDate(id, label, value) { return '<div class="cp-f"><label for="' + id + '">' + label + '</label><input type="date" id="' + id + '" value="' + esc(value || '') + '"></div>'; }
   function fSelect(id, label, options, value, attrs) {
     return '<div class="cp-f"><label for="' + id + '">' + label + '</label><select id="' + id + '"' + (attrs || '') + '>'
       + options.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(value == null ? '' : value) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('')
@@ -270,11 +244,7 @@
   function checked(name) { return Array.prototype.slice.call(document.querySelectorAll('#f-' + name + ' input:checked')).map(function (c) { return c.value; }); }
   function val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
   function flag(id) { return document.getElementById(id).checked ? '1' : '0'; }
-  function legalEntityOptions(current) {
-    return [['', '— Not set —']].concat(S.entities.filter(function (e) { return e.legal && (e.active || same(e.id, current)); })
-      .map(function (e) { return [e.id, e.name + (e.active ? '' : ' (inactive)')]; }));
-  }
-  function accountOptions() { return S.accounts.map(function (a) { return [a.id, accountLabel(a.id)]; }); }
+
 
   // One POST per Save; the server applies every rule and answers on this page.
   function submit(path, fields) {
@@ -370,21 +340,6 @@
           + fActive(x.active); },
       save: function (x) { if (!val('f-name')) return 'The entity name is required.';
         submit(x.id ? '/entity/' + x.id : '/entity', [['name', val('f-name')], ['legal_name', val('f-legal')], ['active', flag('f-active')]]); } },
-    source: { title: 'Source rule', list: 'sources', blank: { format_code: '', file_key: '', in_file: '', account: null, active: true },
-      body: function (x) { return fSelect('f-format', 'Source format', [['', 'Choose a format…']].concat(S.formats), x.format_code)
-          + fText('f-file', 'File name key', x.file_key)
-          + fText('f-infile', 'In-file identifier', x.in_file) + fSelect('f-account', 'Account / Card', [['', 'Choose…']].concat(accountOptions()), x.account) + fActive(x.active); },
-      save: function (x) { if (!val('f-format')) return 'The source format is required.';
-        if (!val('f-file') && !val('f-infile')) return 'Give a file name key or an in-file identifier.';
-        if (!val('f-account')) return 'Choose the Account / Card.';
-        submit(x.id ? '/source/' + x.id : '/source', [['detected_format', val('f-format')], ['file_name_key', val('f-file')], ['account_hint', val('f-infile')],
-          ['payment_instrument_id', val('f-account')], ['active', flag('f-active')]]); } },
-    control: { title: 'Control settings', edit: function () { return S.control; },
-      body: function (x) { return fText('f-start', 'Control start (YYYY-MM)', x.control_start) + fText('f-validated', 'Validated through (YYYY-MM)', x.validated_through); },
-      save: function () {
-        if (!/^\d{4}-\d{2}$/.test(val('f-start'))) return 'Use YYYY-MM for the control start.';
-        if (val('f-validated') && !/^\d{4}-\d{2}$/.test(val('f-validated'))) return 'Use YYYY-MM for validated through.';
-        submit('/control', [['control_start', val('f-start')], ['validated_through', val('f-validated')]]); } },
   };
   function ruleRow(r) {
     return '<tr' + (r.id ? ' data-rule-id="' + r.id + '"' : '') + '><td><input type="text" value="' + esc(r.pattern) + '" placeholder="GFS STORE 0123" aria-label="Pattern"></td><td><select aria-label="Match">'

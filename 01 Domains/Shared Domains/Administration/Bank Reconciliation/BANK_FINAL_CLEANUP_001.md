@@ -38,8 +38,25 @@ product code. Nothing was redesigned; the approved behaviour is unchanged.
 | Standalone `/bank/reconciliation` month page, its WHO modal and `/bank/reconciliation/<id>/who` (with inline Add WHO, `row_reconciliation.NewWho`) | A second writable manual-WHO path beside Select WHO / WHY | `GET /bank/reconciliation` redirects to Review > Reconciled (same month); the row actions Confirm / Standard / Reopen / Save stay |
 | `/bank/instruments`, `/bank/monthly` pages | Replaced by Source and Check Sources | Bookmark redirects |
 | `/bank/configuration` Accounts & Cards, card settlement editing | Duplicate Source maintenance | "Manage Sources" link |
+| `/bank/configuration` Support: file recognition rules (`/source[/<id>]`), control settings (`/control`), deduplication recompute (`/dedup/recompute`); and the now-unused `configuration.create_account / update_account / owning_entity / save_card / create_source / update_source / update_control` | Second writable implementation of functions owned by Source and Check Sources | A "Maintained elsewhere" link list |
 | Run Backtest button and table | Development tool | Engine and admin-only route kept |
 | Dead CSS (`.who-option-chain`, `.who-option.is-blocked`, `.who-option-blocked`, `.why-option-new .ww-option-note`, the standalone page's `rp-*` modal/header rules), unused imports and helpers | No remaining use | — |
+
+## Authoritative locations of the former Configuration duplicates
+
+| Function | Authoritative page / route |
+|---|---|
+| File recognition rules | Source › File recognition rules (`POST /bank/source-profiles/<id>`: re-point, enable / disable); created by "Reuse for this source" when a file's Source is resolved on Import and Review (`POST /bank/batches/<id>/resolve-instrument`) |
+| Completeness control (control start, validated through) | Import and Review › Check Sources › Completeness control settings (`POST /bank/monthly/control-start`, `POST /bank/monthly/validated-through`) |
+| Accounting deduplication recompute | Source › Accounting deduplication (`POST /bank/accounting-dedup/recompute`) |
+
+## Retired script kept retired
+
+`apply_deterministic_bank_classification.py` was retired by BANK_FINAL_RELEASE_BLOCKERS_001: its `main`
+refuses before reading anything (a WHO's default WHY deciding a transaction is "WHO determines WHY"). It
+follows the repository convention for retired scripts — body kept, `main` refusing, documented — and its
+canonical-WHO helper is still exercised by `test_bank_deterministic_classification_who_safety.py`. It is not
+revived and not part of the Bank product.
 
 ## Decision: structural extraction never creates a raw WHO
 

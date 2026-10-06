@@ -3,7 +3,9 @@
 One page, `/bank/configuration`, in the approved order: WHAT, WHY, WHO,
 Sources (a link only: every Source, including a card's settlement account and
 cardholder, is maintained on `/bank/sources` — BANK_FINAL_RELEASE_BLOCKERS_002),
-then Support. Each modal on the page posts to one of the
+then Support (entities; Balance Sheet destinations, read-only). File
+recognition rules and deduplication live on Source, the completeness control
+in Check Sources — Support only links there (BANK_FINAL_CLEANUP_001). Each modal on the page posts to one of the
 routes below. Every route:
 
 * is behind the BANK gate and `require_csrf()`;
@@ -21,12 +23,10 @@ own collaborators; this module never imports `app.py`.
 
 from __future__ import annotations
 
-from datetime import date
 
-from flask import abort, flash, redirect, render_template, request, url_for
+from flask import flash, redirect, render_template, request, url_for
 
 from rfone_data_store.bank_reconciliation import configuration as config_service
-from rfone_data_store.bank_reconciliation import service as bank_service
 
 
 def _int(name: str) -> int | None:
@@ -84,12 +84,6 @@ def _rules() -> list[config_service.RuleInput]:
 def register_bank_configuration_routes(
     app, *, gate, SessionFactory, load_current_account, require_csrf,
 ):
-    def _account_id(db) -> int:
-        account = load_current_account(db)
-        if account is None:
-            abort(403)
-        return account.id
-
     def _back(section: str):
         return redirect(url_for("bank_configuration", _anchor=section))
 
@@ -116,7 +110,7 @@ def register_bank_configuration_routes(
     def bank_configuration():
         """The single Bank Configuration page."""
         with SessionFactory() as db:
-            view = config_service.configuration_view(db, today=date.today())
+            view = config_service.configuration_view(db)
         return render_template("bank_configuration.html", config=view)
 
     # ------------------------------------------------------------------ WHAT
@@ -194,42 +188,3 @@ def register_bank_configuration_routes(
             legal_name=_text("legal_name"), active=_flag("active"),
         ), lambda entity: f"Entity {entity.name!r} saved.")
 
-    @app.route("/bank/configuration/source", methods=["POST"])
-    @gate
-    def bank_configuration_source_new():
-        def action(db):
-            return config_service.create_source(
-                db, detected_format=_text("detected_format"), file_name_key=_text("file_name_key"),
-                account_hint=_text("account_hint"), payment_instrument_id=_int("payment_instrument_id"),
-                active=_flag("active"), created_by_account_id=_account_id(db),
-            )
-        return _apply("cp-sources", action, lambda profile: f"Source rule #{profile.id} created.")
-
-    @app.route("/bank/configuration/source/<int:profile_id>", methods=["POST"])
-    @gate
-    def bank_configuration_source_edit(profile_id: int):
-        return _apply("cp-sources", lambda db: config_service.update_source(
-            db, profile_id=profile_id, detected_format=_text("detected_format"),
-            file_name_key=_text("file_name_key"), account_hint=_text("account_hint"),
-            payment_instrument_id=_int("payment_instrument_id"), active=_flag("active"),
-        ), lambda profile: f"Source rule #{profile.id} saved.")
-
-    @app.route("/bank/configuration/control", methods=["POST"])
-    @gate
-    def bank_configuration_control():
-        return _apply("cp-control", lambda db: config_service.update_control(
-            db, control_start=_text("control_start"),
-            validated_through=_text("validated_through"), account_id=_account_id(db),
-        ), lambda messages: messages or ["Control settings unchanged."])
-
-    @app.route("/bank/configuration/dedup/recompute", methods=["POST"])
-    @gate
-    def bank_configuration_dedup_recompute():
-        """An ACTION, not a setting: re-derive accounting deduplication from
-        the current transactions and card configuration."""
-        return _apply("cp-dedup", bank_service.recompute_accounting_deduplication, lambda outcome: (
-            f"Accounting deduplication recomputed: {outcome.canonical_transactions} canonical, "
-            f"{outcome.duplicate_groups} duplicate group(s), {outcome.suppressed_transactions} "
-            f"excluded from accounting, {outcome.unresolved_transactions} without a settlement "
-            f"account. {outcome.raw_rows_preserved} raw rows preserved."
-        ))
