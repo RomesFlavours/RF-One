@@ -114,6 +114,19 @@ DOMAINS: tuple[DomainDefinition, ...] = (
         # Administration. `clover_acquisition_routes.py`.
         link="/clover-acquisition",
     ),
+    DomainDefinition(
+        code="WINES",
+        display_name="Wines",
+        description=(
+            "Restaurant wine types, the catalog of purchasable wines, and each Entity's "
+            "Wine lists with their prices."
+        ),
+        future_path="/restaurant/wines",
+        # Restaurant module (RESTAURANT_WINES_FIRST_RELEASE_001) mounted in
+        # this application (`restaurant_wines_routes.py`), gated by
+        # `require_domain_access("WINES")`.
+        link="/restaurant/wines",
+    ),
 )
 
 DOMAINS_BY_CODE: dict[str, DomainDefinition] = {d.code: d for d in DOMAINS}

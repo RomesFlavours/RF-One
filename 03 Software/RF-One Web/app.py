@@ -55,6 +55,7 @@ from organizational_responsibility_routes import register_organizational_respons
 from bank_routes import register_bank_routes  # noqa: E402
 from tips_validation_routes import register_tips_validation_routes  # noqa: E402
 from clover_acquisition_routes import register_clover_acquisition_routes  # noqa: E402
+from restaurant_wines_routes import register_restaurant_wines_routes  # noqa: E402
 import training_integration  # noqa: E402
 
 app = Flask(__name__)
@@ -460,6 +461,18 @@ clover_job_launcher = None
 register_clover_acquisition_routes(
     app, SessionFactory=SessionFactory, load_current_account=load_current_account,
     require_csrf=require_csrf, log_out=log_out, get_launcher=lambda: clover_job_launcher,
+)
+
+
+# ---------------------------------------------------------------------------
+# Restaurant > Wines (RESTAURANT_WINES_FIRST_RELEASE_001) — wine types, the
+# purchasable catalog and each Entity's Wine lists. See
+# `restaurant_wines_routes.py`; gated by `require_domain_access("WINES")`.
+# ---------------------------------------------------------------------------
+
+register_restaurant_wines_routes(
+    app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
+    load_current_account=load_current_account, require_csrf=require_csrf,
 )
 
 

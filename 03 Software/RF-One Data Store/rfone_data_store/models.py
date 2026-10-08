@@ -14207,6 +14207,221 @@ class ReportingEntityDestinationAlias(Base):
         return f"{self.raw_value!r} {where} -> {self.reporting_entity_id}"
 
 
+# ---------------------------------------------------------------------------
+# Restaurant — Wines (RESTAURANT_WINES_FIRST_RELEASE_001)
+#
+# Module of the Restaurant Business Domain: a registry of wine types, the
+# catalog of purchasable wines ("Availability" — what can be bought, never
+# physical stock), and the Wine lists each Entity offers, versioned by
+# effective date. The Entity is the existing `LegalEntity` registry, read
+# only — no parallel list of entities is kept here.
+#
+# Prices reproduce the Product Owner's `Wine.xlsb` exactly; the formula
+# lives in `rfone_data_store/restaurant_wines/pricing.py`. A Wine list row
+# stores the cost and the parameters its prices were calculated with, so a
+# later change to the catalog or to the configuration never silently moves
+# a price already saved.
+# ---------------------------------------------------------------------------
+
+WINE_CATEGORY_RED = "RED"
+WINE_CATEGORY_WHITE = "WHITE"
+WINE_CATEGORY_ROSE = "ROSE"
+WINE_CATEGORIES = (WINE_CATEGORY_RED, WINE_CATEGORY_WHITE, WINE_CATEGORY_ROSE)
+
+WINE_STYLE_STILL = "STILL"
+WINE_STYLE_FRIZZANTE = "FRIZZANTE"
+WINE_STYLE_SPARKLING = "SPARKLING"
+WINE_STYLES = (WINE_STYLE_STILL, WINE_STYLE_FRIZZANTE, WINE_STYLE_SPARKLING)
+
+WINE_AVAILABILITY_AVAILABLE = "AVAILABLE"
+WINE_AVAILABILITY_INCOMING = "INCOMING"
+WINE_AVAILABILITY_UNAVAILABLE = "UNAVAILABLE"
+WINE_AVAILABILITIES = (WINE_AVAILABILITY_AVAILABLE, WINE_AVAILABILITY_INCOMING, WINE_AVAILABILITY_UNAVAILABLE)
+
+
+class WineType(Base):
+    """A commercial wine type ("Amarone", "Pinot Grigio"). Every name it is
+    known by — the standard one and the alternatives — is a `WineTypeName`
+    row; their normalized keys are unique across ALL types, so the same
+    type can never be created twice under two names. Many catalog wines
+    (different labels) may share one type."""
+
+    __tablename__ = "restaurant_wine_types"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    standard_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    names: Mapped[list["WineTypeName"]] = relationship(
+        back_populates="wine_type", cascade="all, delete-orphan", order_by="WineTypeName.id",
+    )
+
+    @property
+    def aliases(self) -> list[str]:
+        return [n.name for n in self.names if not n.is_standard]
+
+
+class WineTypeName(Base):
+    """One name of a `WineType`: exactly one per type is the standard name,
+    the others are alternatives. `name_key` (accents, case, punctuation and
+    spacing removed) is unique across every type."""
+
+    __tablename__ = "restaurant_wine_type_names"
+    __table_args__ = (
+        UniqueConstraint("name_key", name="uq_restaurant_wine_type_names_name_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    wine_type_id: Mapped[int] = mapped_column(ForeignKey("restaurant_wine_types.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    is_standard: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+
+    wine_type: Mapped["WineType"] = relationship(back_populates="names")
+
+
+class Wine(Base):
+    """A purchasable wine in the catalog (Availability). Not a stock record.
+
+    `cost_usd` NULL means the cost is not known yet — distinct from 0.
+    `identity_key` (type, producer, label, vintage, format — normalized) is
+    unique, so the same wine is not catalogued twice; different labels of
+    the same type remain separate wines."""
+
+    __tablename__ = "restaurant_wines"
+    __table_args__ = (
+        UniqueConstraint("identity_key", name="uq_restaurant_wines_identity_key"),
+        CheckConstraint("category IN ('RED', 'WHITE', 'ROSE')", name="ck_restaurant_wines_category"),
+        CheckConstraint("style IN ('STILL', 'FRIZZANTE', 'SPARKLING')", name="ck_restaurant_wines_style"),
+        CheckConstraint(
+            "availability IN ('AVAILABLE', 'INCOMING', 'UNAVAILABLE')", name="ck_restaurant_wines_availability",
+        ),
+        CheckConstraint(
+            "(non_vintage AND vintage_year IS NULL) OR (NOT non_vintage AND vintage_year IS NOT NULL)",
+            name="ck_restaurant_wines_vintage",
+        ),
+        CheckConstraint("bottle_size_ml > 0", name="ck_restaurant_wines_bottle_size"),
+        CheckConstraint("cost_usd IS NULL OR cost_usd >= 0", name="ck_restaurant_wines_cost"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    wine_type_id: Mapped[int] = mapped_column(ForeignKey("restaurant_wine_types.id"), nullable=False, index=True)
+    producer: Mapped[str] = mapped_column(String(160), nullable=False)
+    label_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    vintage_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    non_vintage: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    category: Mapped[str] = mapped_column(String(16), nullable=False)
+    style: Mapped[str] = mapped_column(String(16), nullable=False)
+    denomination: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    region: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    bottle_size_ml: Mapped[int] = mapped_column(Integer, nullable=False, default=750, server_default=text("750"))
+    supplier_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    cost_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    availability: Mapped[str] = mapped_column(String(16), nullable=False, default=WINE_AVAILABILITY_AVAILABLE)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    identity_key: Mapped[str] = mapped_column(String(600), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    wine_type: Mapped["WineType"] = relationship()
+
+    @property
+    def vintage_label(self) -> str:
+        return "NV" if self.non_vintage else str(self.vintage_year)
+
+
+class WinePricingSettings(Base):
+    """The one Wines pricing configuration (row id 1): coefficient A, log
+    base B and the commercial glass divisor G of `Wine.xlsb`. Changing it
+    affects only prices calculated afterwards."""
+
+    __tablename__ = "restaurant_wine_pricing_settings"
+    __table_args__ = (
+        CheckConstraint("coefficient_a > 0", name="ck_restaurant_wine_pricing_a"),
+        CheckConstraint("log_base_b > 1", name="ck_restaurant_wine_pricing_b"),
+        CheckConstraint("glass_divisor_g > 0", name="ck_restaurant_wine_pricing_g"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    coefficient_a: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    log_base_b: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    glass_divisor_g: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class WineList(Base):
+    """One version of an Entity's Wine list, effective from a date. The
+    active version on a day is the one with the latest `effective_from` not
+    after that day; earlier versions are kept, later ones can be prepared
+    in advance. One version per Entity per date."""
+
+    __tablename__ = "restaurant_wine_lists"
+    __table_args__ = (
+        UniqueConstraint("legal_entity_id", "effective_from", name="uq_restaurant_wine_lists_entity_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    legal_entity_id: Mapped[int] = mapped_column(ForeignKey("legal_entities.id"), nullable=False, index=True)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    copied_from_wine_list_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurant_wine_lists.id"), nullable=True
+    )
+    created_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    legal_entity: Mapped["LegalEntity"] = relationship()
+    items: Mapped[list["WineListItem"]] = relationship(
+        back_populates="wine_list", cascade="all, delete-orphan",
+    )
+
+
+class WineListItem(Base):
+    """A wine on one Wine list version, with its commercial data.
+
+    `cost_used` and the three parameters are the ones the calculated prices
+    come from — a snapshot, never re-read from the catalog or configuration
+    implicitly. Calculated and applied prices are kept apart; the
+    `*_manual` flags record an applied price set by hand, which a
+    recalculation leaves alone until it is explicitly restored."""
+
+    __tablename__ = "restaurant_wine_list_items"
+    __table_args__ = (
+        UniqueConstraint("wine_list_id", "wine_id", name="uq_restaurant_wine_list_items_list_wine"),
+        CheckConstraint("value_factor > 0", name="ck_restaurant_wine_list_items_value"),
+        CheckConstraint("cost_used IS NULL OR cost_used >= 0", name="ck_restaurant_wine_list_items_cost"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    wine_list_id: Mapped[int] = mapped_column(ForeignKey("restaurant_wine_lists.id"), nullable=False, index=True)
+    wine_id: Mapped[int] = mapped_column(ForeignKey("restaurant_wines.id"), nullable=False, index=True)
+    cost_used: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    value_factor: Mapped[Decimal] = mapped_column(Numeric(8, 4), nullable=False, default=Decimal("1"))
+    sells_by_glass: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    coefficient_a: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    log_base_b: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    glass_divisor_g: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    calculated_bottle_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    calculated_glass_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    applied_bottle_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    applied_glass_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    bottle_price_manual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    glass_price_manual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    wine_list: Mapped["WineList"] = relationship(back_populates="items")
+    wine: Mapped["Wine"] = relationship()
+
 ALL_MODELS: tuple[type[Base], ...] = (
     ActingIdentity,
     AuthorityGrant,
@@ -14419,4 +14634,10 @@ ALL_MODELS: tuple[type[Base], ...] = (
     SupplierItemCategoryLearning,
     BankEvidenceBypassAuthorization,
     ReportingEntityDestinationAlias,
+    WineType,
+    WineTypeName,
+    Wine,
+    WinePricingSettings,
+    WineList,
+    WineListItem,
 )
