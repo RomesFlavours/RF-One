@@ -1,10 +1,10 @@
 # MyRF — Project Management (v1, minimal)
 
 **Status:** v1 approved by the Product Owner (2026-10-12). Implemented in RF-One Web. Project level added the same
-day (Product Owner request, 2026-10-12).
+day (Product Owner request, 2026-10-12). Task Responsible added on 2026-10-12 (Product Owner request, §3–§5).
 **Module:** MyRF / Project Management.
 **Access code:** `PROJECTS`.
-**Language:** the interface is in Italian. This document, the code and the database are in English.
+**Language:** the interface, this document, the code and the database are in English. Saved content (project names, chapter titles, task descriptions) is shown as entered.
 
 ---
 
@@ -17,6 +17,7 @@ This module is the first, minimal tool for that. A person can:
 - break a Project into **Chapters**, **Tasks** and **child activities**;
 - record the plan (start, duration) and the progress (percentage, actual days) **by hand**;
 - record which tasks must finish first (**prerequisites**);
+- name the person **responsible** for each Task, from the Project's own list of names;
 - read and print the plan as a **Gantt chart**.
 
 The data is **generic**. Nothing in it is specific to restaurants, and it has no mandatory link to a Legal Entity,
@@ -54,6 +55,19 @@ Project
 | Field | Rule |
 |---|---|
 | Name | required |
+| Responsibles | the Project's list of names that can be made responsible for its Tasks (below) |
+
+### Responsible
+
+A name in a Project's list of people who can be responsible for its Tasks.
+
+| Field | Rule |
+|---|---|
+| Project | required. Set automatically: the list belongs to one Project, and a name never moves to another one. |
+| Name | required, at most 200 characters, stored without leading and trailing spaces. Unique within its Project, ignoring upper/lower case and leading/trailing spaces: "Mario Rossi" and " mario rossi " are the same name. |
+
+A Responsible is **only a name**. It is independent of RF-One access accounts and of Employees: it grants no access
+and is not linked to any person record. The same name in two Projects is two separate entries.
 
 ### Chapter
 
@@ -76,6 +90,7 @@ Project
 | Planned days | whole number, at least 1, calendar days |
 | Actual days | empty, or a whole number of 0 or more, entered by hand |
 | Prerequisites | zero or more other Tasks of the same Project, from any of its Chapters |
+| Responsible | optional for now, at most one. A name from the same Project's list. A child activity may have a different Responsible from its parent. Tasks that existed before this field have none until one is assigned. |
 
 **Planned end** = planned start + planned days − 1, in calendar days. It is computed for display, never stored.
 Example: start 1 March, 3 planned days → planned end 3 March.
@@ -111,9 +126,17 @@ Example: start 1 March, 3 planned days → planned end 3 March.
 6. **Deletion:**
    - a Project can be deleted only when it has no Chapters;
    - a Chapter can be deleted only when it has no Tasks;
-   - a Task can be deleted only when it has no child activities.
+   - a Task can be deleted only when it has no child activities;
+   - a Responsible can be deleted only when no Task has it: its Tasks must first be reassigned (or left without a
+     Responsible).
 
-   Deleting a Task also removes its prerequisite links, in both directions.
+   Deleting a Task also removes its prerequisite links, in both directions. Deleting an empty Project also removes
+   its list of Responsibles.
+7. **Responsibles:**
+   - a Task can only have a Responsible of its own Project;
+   - a name is never duplicated within a Project (case and leading/trailing spaces ignored), neither when it is added
+     or renamed in the list nor when it is typed in a Task;
+   - renaming a Responsible changes it everywhere it is shown, because Tasks point to the entry, not to its text.
 
 ---
 
@@ -121,9 +144,22 @@ Example: start 1 March, 3 planned days → planned end 3 March.
 
 | Page | Path | What it does |
 |---|---|---|
-| Projects | `/projects` | The list of Projects, with their number of Chapters and Tasks and their planned period. Create a Project, rename it, delete an empty one, open one. |
-| Plan | `/projects/<id>` | The opened Project: tree of its Chapters → Tasks → child activities, each with dates, days, percentage, prerequisites and warnings. Create and edit Chapters, Tasks and child activities in dialogs. |
-| Gantt | `/projects/<id>/gantt` | Read-only Gantt of the opened Project. Chapters and parent Tasks can be collapsed and expanded on screen. |
+| Projects | `/projects` | The list of Projects, with their number of Chapters and Tasks and their planned period. Create a Project, rename it, delete an empty one, open one, manage its Responsibles. |
+| Plan | `/projects/<id>` | The opened Project: tree of its Chapters → Tasks → child activities, each with its Responsible, dates, days, percentage, prerequisites and warnings. Create and edit Chapters, Tasks and child activities in dialogs. |
+| Gantt | `/projects/<id>/gantt` | Read-only Gantt of the opened Project, with each Task's Responsible. Chapters and parent Tasks can be collapsed and expanded on screen. |
+
+**Responsibles list.** In the Actions column of the Projects list, a person icon (tooltip "Responsible") opens a
+dialog with that Project's names. There a name can be added, renamed or deleted. Each name shows how many Tasks it is
+assigned to. Deleting a name still assigned is refused with a message asking to reassign its Tasks first.
+
+**Responsible in the Task dialog.** The Task and child-activity dialogs have a **Responsible** field: a searchable
+box listing the Project's names. The person either picks an existing name or types a new one; a new name is added to
+the Project's list and assigned to the Task when the Task is saved, in the same step. A typed name equal to an
+existing one (case and leading/trailing spaces ignored) assigns the existing entry instead of creating a duplicate.
+An empty field leaves the Task without a Responsible.
+
+**Responsible on display.** The Responsible's name is shown in the Plan's task rows, in the Gantt and in its print,
+in its own column; a Task without one shows "—".
 
 The opened Project's name is in the page title, in the heading and in the path. Every list and choice on these pages
 — Chapters, Tasks, parents, prerequisites — shows only that Project's data.
@@ -149,7 +185,7 @@ planned end, and fits the available width. Its scale adapts:
 | up to about 18 months | months |
 | longer | quarters |
 
-**Print.** The **Stampa** button opens the browser's print dialog, which also offers "Save as PDF". The print:
+**Print.** The **Print** button opens the browser's print dialog, which also offers "Save as PDF". The print:
 
 - is in landscape;
 - shows the Project's name in its heading;
@@ -164,8 +200,9 @@ Because the timeline is proportional to the page width, a long period is compres
 Navigation follows the RF-One UI Rules (`03 Software/Shared UI/UI Rules.md`):
 
 - the path is `RF-One › Project Management › <Project name> › Gantt` (§4);
-- after Save or Cancel in a dialog the person is back on the same row (§5);
-- a refusal keeps the dialog open, with the values entered and the reason.
+- a refusal keeps the dialog open, with the values entered and the reason;
+- after Save or Cancel in a dialog the person is back on the same row (§5): each row carries a stable `data-rr-key`
+  read by the shared row-return component (`rf-one-row-return.js`).
 
 ---
 
@@ -179,8 +216,8 @@ checks the access on the server, not only the Home link.
 
 ## 7. Data (technical)
 
-Three tables were added by Alembic revision `e3a7c5f9b1d4`. Revision `f5b8d2a4c6e1` added `project` and
-`project_chapter.project_id`:
+On `main`, the four tables are created by Alembic revision `d2f6b9a3e7c1`, which revises `b6e4d2a8c1f9`
+(Restaurant Wines):
 
 | Table | Content |
 |---|---|
@@ -188,6 +225,11 @@ Three tables were added by Alembic revision `e3a7c5f9b1d4`. Revision `f5b8d2a4c6
 | `project_chapter` | id, project_id → `project` (required), title, description, sort_order, created_at, updated_at |
 | `project_task` | id, chapter_id → `project_chapter`, parent_task_id → `project_task` (nullable), title, description, percent_complete (0–100), planned_start_date, planned_duration_days (≥ 1), actual_duration_days (null or ≥ 0), sort_order, created_at, updated_at |
 | `project_task_dependency` | predecessor_task_id → `project_task`, successor_task_id → `project_task`; both together are the primary key; a CHECK forbids a task depending on itself |
+| `project_responsible` | id, project_id → `project` (required), name, name_key (the name trimmed and case-folded; unique together with project_id), created_at, updated_at |
+
+`project_task.responsible_id` → `project_responsible` (nullable) holds the Task's Responsible. Both are added by
+Alembic revision `e8c4a2f6b1d3`, which revises `d2f6b9a3e7c1`. It only adds the table and the empty column: no
+existing row is changed, so every existing Task starts without a Responsible.
 
 The database itself enforces:
 
@@ -199,21 +241,46 @@ The application (`rfone_data_store/projects/service.py`) enforces the rest of §
 
 - same Chapter as the parent, one level;
 - no cycles;
-- prerequisites and Chapter changes only within the Task's Project.
+- prerequisites and Chapter changes only within the Task's Project;
+- a Responsible only from the Task's Project, and no deletion of a Responsible still assigned (the foreign key also
+  prevents it).
 
-**Migration `f5b8d2a4c6e1` and existing data.** Every row already entered is kept:
+**Migrations, existing data and the second line of work.** The module was first built in the Bank worktree
+(`feature/bank-simple-who-rules`), where two revisions created the same schema in two steps on the Bank chain:
 
-- if Chapters exist, they are all linked to one initial Project named **"Progetto da rinominare"**, which can be
-  renamed from the Projects page;
+- `e3a7c5f9b1d4`, after `a1b5c3d7e9f2`, created Chapters, Tasks and prerequisites;
+- `f5b8d2a4c6e1`, after `c3d9e1f5a7b2`, added Projects.
+
+Those revisions are applied to the local working database and are **not rewritten**. Their parents are Bank revisions
+that are not on `main`, so they cannot be on `main` either. `d2f6b9a3e7c1` therefore creates the final schema
+directly, and only what is missing:
+
+| Database | What `d2f6b9a3e7c1` does |
+|---|---|
+| Without the tables (production RDS, a new database) | Creates the four tables |
+| Already holding them, through `e3a7c5f9b1d4` / `f5b8d2a4c6e1` | Nothing |
+| Holding Chapters without `project_id`, through `e3a7c5f9b1d4` only | Adds Projects as `f5b8d2a4c6e1` does |
+
+In the last case every row is kept:
+
+- existing Chapters are linked to one initial Project named **"Progetto da rinominare"**, which can be renamed from
+  the Projects page;
 - their Tasks and prerequisites stay as they were, so they all fall within that Project;
-- if no Chapter exists, no Project is created and the list starts empty.
+- if no Chapter exists, no Project is created.
+
+**The Bank line merged into `main` (BANK_AWS_001, 2026-10-12):**
+
+- merge revision `7b1d4f9a2c6e` joins the two heads (`a3c7e5b9d1f4` and `e8c4a2f6b1d3`);
+- the local database, which already holds the tables, passes through `d2f6b9a3e7c1` without changes;
+- a database that came from `main` — production included — already holds the tables when it reaches `e3a7c5f9b1d4`
+  and `f5b8d2a4c6e1`: both now skip what exists, so nothing is created twice and no row is touched.
 
 The table names are singular, as approved for this module. This differs from the plural convention stated in
 `rfone_data_store/models.py`.
 
 | Code | Where |
 |---|---|
-| Models | `rfone_data_store/models.py` (`Project`, `ProjectChapter`, `ProjectTask`, `ProjectTaskDependency`) |
+| Models | `rfone_data_store/models.py` (`Project`, `ProjectChapter`, `ProjectTask`, `ProjectTaskDependency`, `ProjectResponsible`) |
 | Rules and plan building | `rfone_data_store/projects/service.py` |
 | Routes | `03 Software/RF-One Web/projects_routes.py` |
 | Pages | `templates/projects_list.html`, `templates/projects_plan.html`, `templates/projects_gantt.html`, `templates/_projects_macros.html` |
@@ -232,4 +299,5 @@ The table names are singular, as approved for this module. This differs from the
 - No link to Legal Entity, Restaurant or Location.
 - No prerequisites across Projects, and no moving of Chapters or Tasks between Projects.
 - No manual reordering: rows follow the order in which they were created.
-- No assignee, no history of changes.
+- One Responsible per Task, optional, as a plain name: no link to accounts or Employees, no notifications.
+- No history of changes.

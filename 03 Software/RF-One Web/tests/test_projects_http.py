@@ -103,14 +103,14 @@ def main() -> int:
     page = client.get("/projects")
     html = page.data.decode()
     check("4. /projects is the projects list: path RF-One › Project Management, empty state",
-          page.status_code == 200 and 'class="breadcrumb"' in html and "Nessun progetto" in html)
+          page.status_code == 200 and 'class="breadcrumb"' in html and "No projects yet" in html)
     token = csrf_of(page.data)
     check("5. a POST without CSRF is refused (400)", client.post("/projects", data={"name": "X"}).status_code == 400)
 
     # ------------------------------------------------------------ projects
     blank = client.post("/projects", data={"csrf_token": token, "name": "  "})
     check("6. a project without a name is refused, the dialog stays open",
-          blank.status_code == 422 and dialog_state(blank).get("kind") == "project" and "obbligatorio" in dialog_state(blank)["error"])
+          blank.status_code == 422 and dialog_state(blank).get("kind") == "project" and "required" in dialog_state(blank)["error"])
     created = client.post("/projects", data={"csrf_token": token, "name": "Apertura"})
     with SessionFactory() as s:
         p1 = s.scalar(select(m.Project.id).where(m.Project.name == "Apertura"))
@@ -163,7 +163,7 @@ def main() -> int:
     check("12. the plan shows only the opened project's data",
           "Ricerca immobile" not in html and "Cantiere Orlando" not in html)
     check("13. a task starting on its prerequisite's planned end gets a warning",
-          "prima o nello stesso giorno della fine prevista del propedeutico 1.1" in html)
+          "on or before the planned end date of prerequisite 1.1" in html)
     with SessionFactory() as s:
         child = s.get(m.ProjectTask, task_id("Impianto elettrico"))
         check("14. the child is in its parent's chapter", child.chapter_id == c1 and child.parent_task_id == task_id("Lavori"))
@@ -182,9 +182,9 @@ def main() -> int:
     data = dialog_state(refused)
     check("16. percent 150 refused: 422, dialog reopened with the values and the reason",
           refused.status_code == 422 and data.get("kind") == "task" and data["values"].get("title") == "Troppo"
-          and "tra 0 e 100" in data.get("error", ""))
+          and "between 0 and 100" in data.get("error", ""))
     grandchild = task(p1, "Nipote", c1, "2026-03-12", 1, parent=str(task_id("Impianto elettrico")))
-    check("17. a second level of children is refused", grandchild.status_code == 422 and "un solo livello" in grandchild.data.decode())
+    check("17. a second level of children is refused", grandchild.status_code == 422 and "only one level" in grandchild.data.decode())
     lavori, vini, orlando = task_id("Lavori"), task_id("Carta dei vini"), task_id("Ricerca immobile")
     cycle = client.post(f"/projects/{p1}/tasks/{lavori}", data=MultiDict([
         ("csrf_token", token), ("title", "Lavori"), ("chapter_id", str(c1)), ("parent_task_id", ""),
@@ -192,12 +192,12 @@ def main() -> int:
         ("predecessor_ids", str(task_id("Permessi comunali"))), ("predecessor_ids", str(vini))]))
     cycle_data = dialog_state(cycle)
     check("18. a circular prerequisite is refused; the chosen prerequisites stay selected",
-          cycle.status_code == 422 and "circolare" in cycle_data.get("error", "")
+          cycle.status_code == 422 and "Circular" in cycle_data.get("error", "")
           and sorted(cycle_data["values"]["predecessor_ids"]) == sorted([str(task_id("Permessi comunali")), str(vini)]))
     cross = task(p1, "Inaugurazione", c2, "2027-06-01", 1, preds=[orlando])
     cross_data = dialog_state(cross)
     check("19. a prerequisite from another project is refused, naming that project",
-          cross.status_code == 422 and "stesso progetto" in cross_data.get("error", "")
+          cross.status_code == 422 and "same project" in cross_data.get("error", "")
           and "Secondo locale Orlando" in cross_data.get("error", "") and task_id("Inaugurazione") is None)
     foreign_chapter = task(p1, "Altrove", oc, "2026-05-01", 1)
     check("20. a chapter of another project is refused", foreign_chapter.status_code == 422 and task_id("Altrove") is None)
@@ -207,7 +207,7 @@ def main() -> int:
           and client.post(f"/projects/{p1}/chapters/{oc}/delete", data={"csrf_token": token}).status_code == 404
           and client.get("/projects/9999").status_code == 404 and task_id("Ricerca immobile") == orlando)
     blocked = client.post(f"/projects/{p1}/chapters/{c1}/delete", data={"csrf_token": token}, follow_redirects=True)
-    check("22. deleting a chapter with tasks is refused with a message", "contiene ancora dei task" in blocked.data.decode())
+    check("22. deleting a chapter with tasks is refused with a message", "still contains tasks" in blocked.data.decode())
 
     # ------------------------------------------------------------ list
     listing = client.get("/projects").data.decode()
@@ -240,6 +240,88 @@ def main() -> int:
     check("32. print CSS: landscape, collapsed rows only hidden on screen, colours kept, rows not split",
           "@page { size: landscape" in css and "@media screen {\n  .pm-gantt tr.pm-collapsed { display: none; }" in css
           and "print-color-adjust: exact" in css and "break-inside: avoid" in css)
+
+    # ------------------------------------------------------------ responsibles
+    def responsible_id(project_id, name):
+        with SessionFactory() as s:
+            return s.scalar(select(m.ProjectResponsible.id).where(
+                m.ProjectResponsible.project_id == project_id, m.ProjectResponsible.name == name))
+
+    listing = client.get("/projects").data.decode()
+    check("R1. the projects list has a person icon with the tooltip “Responsible” in Actions",
+          listing.count('title="Responsible"') == 2 and "data-pm-responsibles=" in listing and 'id="pm-responsibles-dialog"' in listing)
+    added = post(f"/projects/{p1}/responsibles", name="  Mario Rossi ")
+    check("R2. a name is added; the list reopens its dialog",
+          added.status_code == 302 and added.headers["Location"].endswith(f"/projects?responsibles={p1}")
+          and responsible_id(p1, "Mario Rossi") is not None
+          and dialog_state(client.get(f"/projects?responsibles={p1}")).get("kind") == "responsibles")
+    dup = post(f"/projects/{p1}/responsibles", name="MARIO rossi")
+    check("R3. a duplicate (case and spaces ignored) is refused, dialog open with the reason",
+          dup.status_code == 422 and "already" in dialog_state(dup).get("error", "") and dialog_state(dup).get("id") == p1)
+    post(f"/projects/{p1}/responsibles", name="Anna")
+    anna = responsible_id(p1, "Anna")
+    dup_rename = post(f"/projects/{p1}/responsibles/{anna}", name=" mario ROSSI")
+    check("R4. renaming to an existing name is refused", dup_rename.status_code == 422 and responsible_id(p1, "Anna") == anna)
+
+    plan_html = client.get(f"/projects/{p1}").data.decode()
+    check("R5. the task dialog has a searchable Responsible field listing only this project's names",
+          'name="responsible_name"' in plan_html and 'list="pm-responsible-options"' in plan_html
+          and '<option value="Mario Rossi">' in plan_html and "<th>Responsible</th>" in plan_html)
+    t_sel = post(f"/projects/{p1}/tasks", title="Insegna", chapter_id=str(c1), planned_start_date="2026-11-03",
+                 planned_duration_days="2", percent_complete="0", responsible_name="mario rossi")
+    t_new = post(f"/projects/{p1}/tasks", title="Arredi", chapter_id=str(c1), planned_start_date="2026-11-04",
+                 planned_duration_days="2", percent_complete="0", responsible_name="Giulia Verdi")
+    with SessionFactory() as s:
+        tasks = {t.title: t for t in s.scalars(select(m.ProjectTask))}
+        giulia = responsible_id(p1, "Giulia Verdi")
+        count = len(list(s.scalars(select(m.ProjectResponsible).where(m.ProjectResponsible.project_id == p1))))
+    check("R6. selecting an existing name assigns it (no duplicate)",
+          t_sel.status_code == 302 and tasks["Insegna"].responsible_id == responsible_id(p1, "Mario Rossi"))
+    check("R7. a new name typed in the combo is created in the project's list and assigned",
+          t_new.status_code == 302 and giulia is not None and tasks["Arredi"].responsible_id == giulia and count == 3)
+    parent = tasks["Insegna"].id
+    child = post(f"/projects/{p1}/tasks", title="Montaggio insegna", parent_task_id=str(parent), chapter_id=str(c1),
+                 planned_start_date="2026-11-04", planned_duration_days="1", percent_complete="0", responsible_name="Anna")
+    with SessionFactory() as s:
+        sub_task = s.scalar(select(m.ProjectTask).where(m.ProjectTask.title == "Montaggio insegna"))
+    check("R8. a subtask can have a different responsible from its parent",
+          child.status_code == 302 and sub_task.responsible_id == anna and tasks["Insegna"].responsible_id != anna)
+
+    mario = responsible_id(p1, "Mario Rossi")
+    post(f"/projects/{p1}/responsibles/{mario}", name="Mario R.")
+    plan_html = client.get(f"/projects/{p1}").data.decode()
+    gantt_html = client.get(f"/projects/{p1}/gantt").data.decode()
+    check("R9. a rename shows everywhere: plan rows, task dialog, Gantt/print",
+          '<td class="pm-resp-cell">Mario R.</td>' in plan_html and '<option value="Mario R.">' in plan_html
+          and '<td class="pm-g-resp">Mario R.</td>' in gantt_html and "Mario Rossi" not in plan_html + gantt_html
+          and "<th>Responsible</th>" in gantt_html)
+    blocked = post(f"/projects/{p1}/responsibles/{mario}/delete")
+    check("R10. deleting a name still assigned is refused, asking to reassign first",
+          blocked.status_code == 422 and "assign" in dialog_state(blocked).get("error", "") and responsible_id(p1, "Mario R.") == mario)
+    post(f"/projects/{p1}/tasks/{parent}", title="Insegna", chapter_id=str(c1), planned_start_date="2026-11-03",
+         planned_duration_days="2", percent_complete="0", responsible_name="Giulia Verdi")
+    deleted = post(f"/projects/{p1}/responsibles/{mario}/delete")
+    with SessionFactory() as s:
+        reassigned = s.get(m.ProjectTask, parent).responsible_id
+    check("R11. after reassignment the name can be deleted",
+          deleted.status_code == 302 and responsible_id(p1, "Mario R.") is None and reassigned == giulia)
+
+    post(f"/projects/{p2}/responsibles", name="Solo Orlando")
+    orlando = responsible_id(p2, "Solo Orlando")
+    other_plan = client.get(f"/projects/{p2}").data.decode()
+    check("R12. another project's dialog never lists this project's names",
+          '<option value="Anna">' not in other_plan and '<option value="Solo Orlando">' in other_plan)
+    check("R13. another project's name is out of scope (404) for rename and delete",
+          post(f"/projects/{p1}/responsibles/{orlando}", name="X").status_code == 404
+          and post(f"/projects/{p1}/responsibles/{orlando}/delete").status_code == 404
+          and responsible_id(p2, "Solo Orlando") == orlando)
+    post(f"/projects/{p1}/tasks", title="Pulizie", chapter_id=str(c1), planned_start_date="2026-11-05",
+         planned_duration_days="1", percent_complete="0", responsible_name="Solo Orlando")
+    with SessionFactory() as s:
+        pulizie = s.scalar(select(m.ProjectTask).where(m.ProjectTask.title == "Pulizie"))
+        owner = s.get(m.ProjectResponsible, pulizie.responsible_id).project_id
+    check("R14. typing another project's name creates this project's own entry, never links across projects",
+          owner == p1 and pulizie.responsible_id != orlando)
 
     print(f"\n{len(passed)} passed, {len(failed)} failed.")
     return 0 if not failed else 1

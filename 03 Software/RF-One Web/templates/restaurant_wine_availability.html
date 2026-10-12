@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% from "_restaurant_wines_macros.html" import wines_header, wine_type_dialog, wines_styles with context %}
+{% block page_title %}Availability · Wines · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-wines.js') }}?v=1"></script>
+{{ wines_styles() }}
+{{ wines_header('availability', 'Availability') }}
+
+<p class="muted" style="font-size:.85rem;margin-top:0">The wines that can be bought: supplier, cost and availability. This is not stock on hand.</p>
+
+<div class="wines-toolbar">
+  <form method="get" action="{{ url_for('restaurant_wine_availability') }}" class="wines-inline" role="search">
+    <input type="search" name="q" value="{{ query }}" placeholder="Type, producer, label, supplier…" aria-label="Search the catalog">
+    <button type="submit" class="btn-secondary">Search</button>
+    {% if query %}<a class="btn btn-secondary" href="{{ url_for('restaurant_wine_availability') }}" data-rf-busy>Clear</a>{% endif %}
+  </form>
+  <div class="wines-toolbar-right">
+    <button type="button" disabled aria-describedby="upload-note">Upload file</button>
+    <span id="upload-note" class="wines-disabled-note">Not available yet: waiting for a sample file.</span>
+    <button type="button" id="wine-new">New wine</button>
+  </div>
+</div>
+
+{% if wines %}
+<div class="table-scroll">
+  <table class="table-compact">
+    <thead>
+      <tr>
+        <th>Type · Label</th><th>Producer</th><th>Vintage</th><th>Category</th><th>Format</th>
+        <th>Supplier</th><th class="col-amount">Cost</th><th>Availability</th><th class="col-narrow"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for w in wines %}
+      <tr>
+        <td><strong>{{ w.type_name }}</strong>{% if w.label_name %} · {{ w.label_name }}{% endif %}
+          {% if w.denomination or w.region %}<span class="cell-note">{{ [w.denomination, w.region]|select|join(' · ') }}</span>{% endif %}</td>
+        <td>{{ w.producer }}</td>
+        <td>{{ w.vintage_label }}</td>
+        <td>{{ w.category_label }} · {{ w.style_label }}</td>
+        <td>{{ w.bottle_size_ml }} ml</td>
+        <td>{{ w.supplier_name or '—' }}</td>
+        <td class="col-amount">{% if w.cost_known %}${{ w.cost_usd }}{% if w.cost_date %}<span class="cell-note">{{ w.cost_date }}</span>{% endif %}{% else %}<span class="badge warn">Cost unknown</span>{% endif %}</td>
+        <td>{{ w.availability_label }}</td>
+        <td><button type="button" class="btn-secondary btn-inline" data-edit-wine="{{ w.id }}">Edit</button></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% elif query %}
+<p class="empty">No wine matches “{{ query }}”.</p>
+{% else %}
+<p class="empty">The catalog is empty. Add the first wine with “New wine”.</p>
+{% endif %}
+
+{# One dialog for both New wine and Edit. #}
+<div id="wine-modal" class="org-modal-overlay" hidden aria-hidden="true">
+  <div class="org-modal-panel wines-modal-wide" role="dialog" aria-modal="true" aria-labelledby="wine-modal-title">
+    <button class="org-modal-close" type="button" aria-label="Close" data-modal-close>&times;</button>
+    <div class="modal-header"><h3 id="wine-modal-title">New wine</h3></div>
+    <form id="wine-form" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="wine_type_id">
+      <div class="wines-grid">
+        <div>
+          <label for="wf-type">Wine type</label>
+          <div class="wines-inline">
+            <input id="wf-type" type="text" list="wf-type-list" autocomplete="off" placeholder="Search a type">
+            <button type="button" id="wf-type-add" class="btn-secondary" title="Add a new wine type" aria-label="Add a new wine type">+</button>
+          </div>
+          <datalist id="wf-type-list"></datalist>
+          <span class="wines-hint" id="wf-type-hint" aria-live="polite"></span>
+        </div>
+        <div><label for="wf-producer">Producer</label><input id="wf-producer" type="text" name="producer" maxlength="160"></div>
+        <div><label for="wf-label">Label name</label><input id="wf-label" type="text" name="label_name" maxlength="200"></div>
+        <div>
+          <label for="wf-vintage">Vintage</label>
+          <input id="wf-vintage" type="number" name="vintage_year" min="1900" max="2100" step="1">
+          <label class="wines-check"><input type="checkbox" name="non_vintage" value="1" id="wf-nv"> Non-vintage</label>
+        </div>
+        <div>
+          <label for="wf-category">Category</label>
+          <select id="wf-category" name="category">
+            <option value="">—</option>
+            {% for code, label in categories.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="wf-style">Style</label>
+          <select id="wf-style" name="style">
+            <option value="">—</option>
+            {% for code, label in styles.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div><label for="wf-denomination">Denomination <span class="muted">(optional)</span></label><input id="wf-denomination" type="text" name="denomination" maxlength="80" placeholder="DOC, DOCG, IGT…"></div>
+        <div><label for="wf-region">Region <span class="muted">(optional)</span></label><input id="wf-region" type="text" name="region" maxlength="80"></div>
+        <div><label for="wf-size">Bottle format (ml)</label><input id="wf-size" type="number" name="bottle_size_ml" min="1" step="1" value="750"></div>
+        <div>
+          <label for="wf-supplier">Supplier</label>
+          <input id="wf-supplier" type="text" name="supplier_name" maxlength="160" list="wf-supplier-list" autocomplete="off">
+          <datalist id="wf-supplier-list">{% for s in suppliers %}<option value="{{ s }}">{% endfor %}</datalist>
+        </div>
+        <div>
+          <label for="wf-cost">Cost per bottle (USD)</label>
+          <input id="wf-cost" type="number" name="cost_usd" min="0" step="0.01" placeholder="Empty = not known yet">
+        </div>
+        <div><label for="wf-cost-date">Cost date</label><input id="wf-cost-date" type="date" name="cost_date"></div>
+        <div>
+          <label for="wf-availability">Availability</label>
+          <select id="wf-availability" name="availability">
+            {% for code, label in availabilities.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <label for="wf-notes">Notes <span class="muted">(optional)</span></label>
+      <textarea id="wf-notes" name="notes" rows="2"></textarea>
+      <div class="error" id="wf-error" hidden></div>
+      <div class="btn-row">
+        <button type="submit">Save wine</button>
+        <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{{ wine_type_dialog() }}
+
+<script type="application/json" id="wines-data">{{ {'wines': wines, 'types': types, 'today': today}|tojson }}</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var data = JSON.parse(document.getElementById("wines-data").textContent);
+  var form = document.getElementById("wine-form");
+  var title = document.getElementById("wine-modal-title");
+  var error = document.getElementById("wf-error");
+  var editingId = null;
+
+  var combo = RFOneWines.typeCombo({
+    input: document.getElementById("wf-type"), hidden: form.elements.wine_type_id,
+    hint: document.getElementById("wf-type-hint"), datalist: document.getElementById("wf-type-list"),
+    types: data.types,
+  });
+
+  var modal = RFOneModal.create({
+    overlay: document.getElementById("wine-modal"),
+    initialFocus: function () { return document.getElementById("wf-type"); },
+  });
+
+  // The "+" opens the type dialog ON TOP of this one; the wine dialog and
+  // what was typed in it stay as they are, and the new type is selected.
+  var typeDialog = RFOneWines.typeDialog({
+    overlay: document.getElementById("wine-type-modal"),
+    createUrl: "{{ url_for('restaurant_wine_type_create') }}",
+    updateUrl: function (id) { return "{{ url_for('restaurant_wine_types') }}/" + id; },
+    onSaved: function (type) { combo.select(type); },
+  });
+  document.getElementById("wf-type-add").addEventListener("click", function () {
+    var typed = document.getElementById("wf-type").value;
+    typeDialog.open(this, null, combo.resolve() ? "" : typed);
+  });
+
+  var nv = document.getElementById("wf-nv");
+  var vintage = document.getElementById("wf-vintage");
+  function syncVintage() { vintage.disabled = nv.checked; if (nv.checked) { vintage.value = ""; } }
+  nv.addEventListener("change", syncVintage);
+
+  var cost = document.getElementById("wf-cost");
+  var costDate = document.getElementById("wf-cost-date");
+  cost.addEventListener("change", function () { if (cost.value !== "" && !costDate.value) { costDate.value = data.today; } });
+
+  function fill(w) {
+    form.reset();
+    editingId = w ? w.id : null;
+    title.textContent = w ? "Edit wine" : "New wine";
+    if (w) {
+      combo.setById(w.wine_type_id);
+      form.elements.producer.value = w.producer;
+      form.elements.label_name.value = w.label_name;
+      vintage.value = w.vintage_year || "";
+      nv.checked = w.non_vintage;
+      form.elements.category.value = w.category;
+      form.elements.style.value = w.style;
+      form.elements.denomination.value = w.denomination;
+      form.elements.region.value = w.region;
+      form.elements.bottle_size_ml.value = w.bottle_size_ml;
+      form.elements.supplier_name.value = w.supplier_name;
+      cost.value = w.cost_usd;
+      costDate.value = w.cost_date;
+      form.elements.availability.value = w.availability;
+      form.elements.notes.value = w.notes;
+    } else {
+      combo.setById(null);
+      form.elements.bottle_size_ml.value = 750;
+    }
+    syncVintage();
+    error.hidden = true;
+  }
+
+  document.getElementById("wine-new").addEventListener("click", function () { fill(null); modal.open(this); });
+  document.querySelectorAll("[data-edit-wine]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var id = Number(button.getAttribute("data-edit-wine"));
+      fill(data.wines.filter(function (w) { return w.id === id; })[0]);
+      modal.open(button);
+    });
+  });
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    combo.resolve();
+    var url = editingId ? "{{ url_for('restaurant_wine_availability') }}/" + editingId
+                        : "{{ url_for('restaurant_wine_create') }}";
+    RFOneWines.post(url, new FormData(form), true).then(function (answer) {
+      if (!answer.ok) { error.textContent = answer.error; error.hidden = false; return; }
+      window.location.reload();
+    });
+  });
+});
+</script>
+{% endblock %}

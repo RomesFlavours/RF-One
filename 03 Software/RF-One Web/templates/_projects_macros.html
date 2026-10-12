@@ -8,18 +8,18 @@
 {% macro project_dialog(create_action, rename_action, origin) %}
 <div class="org-modal-overlay" id="pm-project-dialog" hidden>
   <div class="org-modal-panel pm-dialog" role="dialog" aria-modal="true" aria-labelledby="pm-project-dialog-title">
-    <button type="button" class="org-modal-close" data-modal-close aria-label="Chiudi">&times;</button>
-    <h2 id="pm-project-dialog-title" data-pm-dialog-title>Progetto</h2>
+    <button type="button" class="org-modal-close" data-modal-close aria-label="Close">&times;</button>
+    <h2 id="pm-project-dialog-title" data-pm-dialog-title>Project</h2>
     <div class="error" data-pm-error hidden></div>
     <form method="post" action="{{ create_action }}" data-pm-form
           data-pm-create-action="{{ create_action }}" data-pm-update-action="{{ rename_action }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="from" value="{{ origin }}">
-      <label for="pm-project-name">Nome del progetto</label>
+      <label for="pm-project-name">Project name</label>
       <input type="text" id="pm-project-name" name="name" maxlength="200" required>
       <div class="btn-row">
-        <button type="submit">Salva</button>
-        <button type="button" class="btn-secondary" data-modal-close>Annulla</button>
+        <button type="submit">Save</button>
+        <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
       </div>
     </form>
   </div>
@@ -34,8 +34,13 @@
   {{ task.actual_duration_days if task.actual_duration_days is not none else '—' }}
 {%- endmacro %}
 
+{# The Task's Responsible, read from the Project's list (a rename shows everywhere). #}
+{% macro responsible(task) -%}
+  {% if task.responsible_name %}{{ task.responsible_name }}{% else %}<span class="muted">—</span>{% endif %}
+{%- endmacro %}
+
 {% macro percent_meter(value) -%}
-  <span class="pm-meter" aria-label="{{ value }}% completato"><span class="pm-meter-fill" style="width:{{ value }}%"></span></span>
+  <span class="pm-meter" aria-label="{{ value }}% complete"><span class="pm-meter-fill" style="width:{{ value }}%"></span></span>
   <span class="pm-meter-value">{{ value }}%</span>
 {%- endmacro %}
 
@@ -49,6 +54,7 @@
     "planned_duration_days": task.planned_duration_days,
     "actual_duration_days": task.actual_duration_days,
     "predecessor_ids": task.predecessor_ids,
+    "responsible_name": task.responsible_name,
     "has_children": task.children|length > 0,
   }|tojson|forceescape }}
 {%- endmacro %}

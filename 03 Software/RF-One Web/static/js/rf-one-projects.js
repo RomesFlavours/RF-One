@@ -44,7 +44,7 @@
       form.action = id
         ? form.getAttribute("data-pm-update-action").replace(/\/0\/rename$/, "/" + id + "/rename")
         : form.getAttribute("data-pm-create-action");
-      one("[data-pm-dialog-title]", overlay).textContent = id ? "Rinomina progetto" : "Nuovo progetto";
+      one("[data-pm-dialog-title]", overlay).textContent = id ? "Rename project" : "New project";
       one("#pm-project-name").value = values.name || "";
       var box = one("[data-pm-error]", overlay);
       box.textContent = error || "";
@@ -65,6 +65,96 @@
 
     var state = dialogState();
     if (state && state.kind === "project") { open(state.values || {}, state.id, null, state.error); }
+  }
+
+  // ------------------------------------------------------------------ Responsibles (list)
+
+  function initResponsiblesDialog() {
+    var overlay = document.getElementById("pm-responsibles-dialog");
+    if (!overlay || !window.RFOneModal) { return; }
+    var modal = window.RFOneModal.create({ overlay: overlay, initialFocus: function () { return one("#pm-responsible-new"); } });
+    var list = one("[data-pm-responsible-list]", overlay);
+    var addForm = one("[data-pm-responsible-add]", overlay);
+    var csrf = overlay.getAttribute("data-pm-csrf");
+
+    // "/projects/0/responsibles/0…" → the real ids.
+    function actionFor(attribute, projectId, responsibleId) {
+      return overlay.getAttribute(attribute)
+        .replace(/\/projects\/0\//, "/projects/" + projectId + "/")
+        .replace(/\/responsibles\/0(\/|$)/, "/responsibles/" + responsibleId + "$1");
+    }
+
+    function hidden(name, value) {
+      var input = document.createElement("input");
+      input.type = "hidden"; input.name = name; input.value = value;
+      return input;
+    }
+
+    function row(project, r, values, errorFor) {
+      var li = document.createElement("li");
+      var rename = document.createElement("form");
+      rename.method = "post";
+      rename.className = "pm-responsible-rename";
+      rename.action = actionFor("data-pm-rename-action", project.id, r.id);
+      rename.appendChild(hidden("csrf_token", csrf));
+      var input = document.createElement("input");
+      input.type = "text"; input.name = "name"; input.maxLength = 200; input.required = true;
+      input.autocomplete = "off";
+      input.value = errorFor === r.id && values.name !== undefined ? values.name : r.name;
+      input.setAttribute("aria-label", "Name");
+      var save = document.createElement("button");
+      save.type = "submit"; save.className = "pm-action"; save.textContent = "Rename";
+      rename.appendChild(input); rename.appendChild(save);
+
+      var count = document.createElement("span");
+      count.className = "pm-responsible-count";
+      count.textContent = r.task_count === 1 ? "1 task" : r.task_count + " tasks";
+
+      var remove = document.createElement("form");
+      remove.method = "post";
+      remove.action = actionFor("data-pm-delete-action", project.id, r.id);
+      remove.appendChild(hidden("csrf_token", csrf));
+      var del = document.createElement("button");
+      del.type = "submit"; del.className = "pm-action pm-action-danger"; del.textContent = "Delete";
+      remove.appendChild(del);
+      remove.addEventListener("submit", function (event) {
+        if (!window.confirm("Delete “" + r.name + "” from this project's list?")) { event.preventDefault(); }
+      });
+
+      li.appendChild(rename); li.appendChild(count); li.appendChild(remove);
+      return li;
+    }
+
+    function open(project, trigger, error, values, errorFor) {
+      values = values || {};
+      one("[data-pm-responsibles-project]", overlay).textContent = project.name || "";
+      list.innerHTML = "";
+      (project.responsibles || []).forEach(function (r) { list.appendChild(row(project, r, values, errorFor)); });
+      one("[data-pm-responsible-empty]", overlay).hidden = (project.responsibles || []).length > 0;
+      addForm.action = actionFor("data-pm-create-action", project.id, 0);
+      one("#pm-responsible-new").value = !errorFor && values.name !== undefined ? values.name : "";
+      var box = one("[data-pm-error]", overlay);
+      box.textContent = error || "";
+      box.hidden = !error;
+      modal.open(trigger);
+    }
+
+    function projectFor(id) {
+      var button = one('[data-pm-responsibles][data-pm-project-id="' + id + '"]');
+      return button ? readJson(button.getAttribute("data-pm-responsibles")) : null;
+    }
+
+    all("[data-pm-responsibles]").forEach(function (button) {
+      var project = readJson(button.getAttribute("data-pm-responsibles")) || {};
+      button.setAttribute("data-pm-project-id", project.id);
+      button.addEventListener("click", function () { open(project, button); });
+    });
+
+    var state = dialogState();
+    if (state && state.kind === "responsibles") {
+      var project = projectFor(state.id);
+      if (project) { open(project, null, state.error, state.values, state.responsible_id); }
+    }
   }
 
   function initConfirmations() {
@@ -107,7 +197,7 @@
     // --- chapter
     function openChapter(values, id, trigger, error) {
       setAction(chapterOverlay, id);
-      setTitle(chapterOverlay, id ? "Modifica capitolo" : "Nuovo capitolo");
+      setTitle(chapterOverlay, id ? "Edit chapter" : "New chapter");
       one("#pm-chapter-title").value = values.title || "";
       one("#pm-chapter-description").value = values.description || "";
       showError(chapterOverlay, error);
@@ -120,7 +210,20 @@
     var startInput = one("#pm-task-start");
     var daysInput = one("#pm-task-days");
     var filterInput = one("[data-pm-pred-filter]");
+    var responsibleInput = one("[data-pm-responsible-input]");
+    var responsibleNames = readJson((one("#pm-responsible-names") || {}).textContent || "[]") || [];
     var currentTaskId = null;
+
+    // Same rule as the server: case and leading/trailing spaces are ignored.
+    function nameKey(name) { return (name || "").trim().toLowerCase(); }
+
+    function updateResponsibleNote() {
+      var note = one("[data-pm-responsible-note]");
+      var typed = responsibleInput.value.trim();
+      var known = responsibleNames.some(function (n) { return nameKey(n) === nameKey(typed); });
+      note.textContent = typed && !known ? "“" + typed + "” will be added to this project's responsible list." : "";
+      note.hidden = !note.textContent;
+    }
     var currentHasChildren = false;
 
     function syncParentChapter() {
@@ -166,8 +269,8 @@
       var parts = (startInput.value || "").split("-");
       if (parts.length !== 3 || !(days >= 1)) { out.textContent = ""; return; }
       var end = new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2] + days - 1));
-      out.textContent = "Fine prevista: " + pad(end.getUTCDate()) + "/" + pad(end.getUTCMonth() + 1) + "/"
-        + end.getUTCFullYear() + " (inizio + " + days + " − 1, giorni di calendario)";
+      out.textContent = "Planned end date: " + pad(end.getUTCDate()) + "/" + pad(end.getUTCMonth() + 1) + "/"
+        + end.getUTCFullYear() + " (start + " + days + " − 1, calendar days)";
     }
 
     function hasChildren(id) {
@@ -180,10 +283,12 @@
       currentTaskId = id || null;
       currentHasChildren = id ? (values.has_children !== undefined ? !!values.has_children : hasChildren(id)) : false;
       setAction(taskOverlay, id);
-      setTitle(taskOverlay, id ? "Modifica task" : (values.parent_task_id ? "Nuova attività figlia" : "Nuovo task"));
+      setTitle(taskOverlay, id ? "Edit task" : (values.parent_task_id ? "New subtask" : "New task"));
 
       one("#pm-task-title").value = values.title || "";
       one("#pm-task-description").value = values.description || "";
+      responsibleInput.value = values.responsible_name || "";
+      updateResponsibleNote();
       parentSelect.value = values.parent_task_id ? String(values.parent_task_id) : "";
       if (values.chapter_id) { chapterSelect.value = String(values.chapter_id); }
       else if (chapterSelect.options.length) { chapterSelect.selectedIndex = 0; }
@@ -210,6 +315,7 @@
     }
 
     parentSelect.addEventListener("change", syncParentChapter);
+    responsibleInput.addEventListener("input", updateResponsibleNote);
     startInput.addEventListener("input", updateEndPreview);
     daysInput.addEventListener("input", updateEndPreview);
     if (filterInput) { filterInput.addEventListener("input", filterPredecessors); }
@@ -290,6 +396,7 @@
 
   initConfirmations();
   initProjectDialog();
+  initResponsiblesDialog();
   initPlan();
   initGantt();
 })();

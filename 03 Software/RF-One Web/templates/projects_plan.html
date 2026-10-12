@@ -1,26 +1,26 @@
 {% extends "base.html" %}
 {% from "_nav_macros.html" import breadcrumb %}
-{% from "_projects_macros.html" import fmt, actual_days, percent_meter, task_payload, project_dialog with context %}
+{% from "_projects_macros.html" import fmt, actual_days, responsible, percent_meter, task_payload, project_dialog with context %}
 {% block page_title %}{{ plan.project_name }} · Project Management · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=6">
 {{ breadcrumb([('RF-One', url_for('home')), ('Project Management', url_for('projects_list')), (plan.project_name, None)]) }}
 
 <h1 class="pm-project-title">{{ plan.project_name }}</h1>
-<p class="muted">Progetto · capitoli → task → attività figlie. Giorni di calendario: la fine prevista è inizio + giorni previsti − 1.
-Percentuale e giorni effettivi si inseriscono a mano; nessuna ripianificazione automatica.</p>
+<p class="muted">Project · chapters → tasks → subtasks. Calendar days: the planned end date is start + planned days − 1.
+Completion and actual days are entered manually; nothing is rescheduled automatically.</p>
 
 <div class="btn-row pm-commands">
-  <button type="button" data-pm-new-chapter>Nuovo capitolo</button>
-  {% if plan.chapters %}<button type="button" class="btn-secondary" data-pm-new-task>Nuovo task</button>{% endif %}
+  <button type="button" data-pm-new-chapter>New chapter</button>
+  {% if plan.chapters %}<button type="button" class="btn-secondary" data-pm-new-task>New task</button>{% endif %}
   <a class="btn btn-secondary" href="{{ url_for('projects_gantt', project_id=plan.project_id) }}">Gantt</a>
-  <button type="button" class="btn-secondary" data-pm-rename-project="{{ {'id': plan.project_id, 'name': plan.project_name}|tojson|forceescape }}">Rinomina progetto</button>
+  <button type="button" class="btn-secondary" data-pm-rename-project="{{ {'id': plan.project_id, 'name': plan.project_name}|tojson|forceescape }}">Rename project</button>
 </div>
 
 {% if plan.warning_count %}
-  <p class="pm-warning-summary">⚠ {{ plan.warning_count }} {{ 'task inizia' if plan.warning_count == 1 else 'task iniziano' }}
-  prima o nello stesso giorno della fine prevista di un propedeutico. Nessuna data è stata spostata.</p>
+  <p class="pm-warning-summary">⚠ {{ plan.warning_count }} {{ 'task starts' if plan.warning_count == 1 else 'tasks start' }}
+  on or before the planned end date of a prerequisite. No date has been moved.</p>
 {% endif %}
 
 {% macro task_row(task, chapter) %}
@@ -30,24 +30,25 @@ Percentuale e giorni effettivi si inseriscono a mano; nessuna ripianificazione a
       {% if task.description %}<div class="pm-description">{{ task.description }}</div>{% endif %}
       {% for warning in task.warnings %}<div class="pm-warn-text">⚠ {{ warning }}</div>{% endfor %}
     </td>
+    <td class="pm-resp-cell">{{ responsible(task) }}</td>
     <td>{{ fmt(task.planned_start_date) }}</td>
     <td>{{ fmt(task.planned_end_date) }}</td>
     <td class="num">{{ task.planned_duration_days }}</td>
     <td class="num">{{ actual_days(task) }}</td>
     <td class="pm-percent-cell">{{ percent_meter(task.percent_complete) }}</td>
     <td class="pm-pred-cell">
-      {% for p in task.predecessors %}<span class="pm-pred-chip{{ ' pm-pred-chip-warn' if p in task.conflicting_predecessors }}" title="{{ p.title }} — fine prevista {{ fmt(p.planned_end_date) }}">{{ p.code }}</span>{% endfor %}
+      {% for p in task.predecessors %}<span class="pm-pred-chip{{ ' pm-pred-chip-warn' if p in task.conflicting_predecessors }}" title="{{ p.title }} — planned end date {{ fmt(p.planned_end_date) }}">{{ p.code }}</span>{% endfor %}
     </td>
     <td class="pm-actions">
-      <button type="button" class="pm-action" data-pm-edit-task="{{ task_payload(task) }}">Modifica</button>
+      <button type="button" class="pm-action" data-pm-edit-task="{{ task_payload(task) }}">Edit</button>
       {% if not task.is_child %}
-        <button type="button" class="pm-action" data-pm-new-child="{{ task.id }}" data-pm-chapter="{{ chapter.id }}">+ Figlia</button>
+        <button type="button" class="pm-action" data-pm-new-child="{{ task.id }}" data-pm-chapter="{{ chapter.id }}">+ Subtask</button>
       {% endif %}
       {% if not task.children %}
         <form method="post" action="{{ url_for('projects_task_delete', project_id=plan.project_id, task_id=task.id) }}" class="pm-inline-form"
-              data-pm-confirm="Eliminare «{{ task.code }} {{ task.title }}»? Vengono rimossi anche i suoi legami propedeutici.">
+              data-pm-confirm="Delete “{{ task.code }} {{ task.title }}”? Its prerequisite links are removed too.">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="pm-action pm-action-danger">Elimina</button>
+          <button type="submit" class="pm-action pm-action-danger">Delete</button>
         </form>
       {% endif %}
     </td>
@@ -55,14 +56,14 @@ Percentuale e giorni effettivi si inseriscono a mano; nessuna ripianificazione a
 {% endmacro %}
 
 {% if not plan.chapters %}
-  <p class="modal-empty-state">Nessun capitolo in questo progetto. Inizia con «Nuovo capitolo».</p>
+  <p class="modal-empty-state">No chapters in this project yet. Start with “New chapter”.</p>
 {% else %}
   <div class="table-scroll">
     <table class="pm-tree">
       <thead>
         <tr>
-          <th>Attività</th><th>Inizio prev.</th><th>Fine prev.</th><th class="num">Gg prev.</th><th class="num">Gg eff.</th>
-          <th>Completamento</th><th>Propedeutiche</th><th class="pm-actions-head">Azioni</th>
+          <th>Activity</th><th>Responsible</th><th>Planned start</th><th>Planned end</th><th class="num">Planned days</th><th class="num">Actual days</th>
+          <th>Completion</th><th>Prerequisites</th><th class="pm-actions-head">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -72,24 +73,25 @@ Percentuale e giorni effettivi si inseriscono a mano; nessuna ripianificazione a
               <span class="pm-code">{{ chapter.code }}</span> <strong>{{ chapter.title }}</strong>
               {% if chapter.description %}<div class="pm-description">{{ chapter.description }}</div>{% endif %}
             </td>
+            <td></td>
             <td>{{ fmt(chapter.start) }}</td>
             <td>{{ fmt(chapter.end) }}</td>
             <td></td><td></td><td></td><td></td>
             <td class="pm-actions">
               <button type="button" class="pm-action"
-                      data-pm-edit-chapter="{{ {'id': chapter.id, 'title': chapter.title, 'description': chapter.description or ''}|tojson|forceescape }}">Modifica</button>
+                      data-pm-edit-chapter="{{ {'id': chapter.id, 'title': chapter.title, 'description': chapter.description or ''}|tojson|forceescape }}">Edit</button>
               <button type="button" class="pm-action" data-pm-new-task-in="{{ chapter.id }}">+ Task</button>
               {% if not chapter.tasks %}
                 <form method="post" action="{{ url_for('projects_chapter_delete', project_id=plan.project_id, chapter_id=chapter.id) }}" class="pm-inline-form"
-                      data-pm-confirm="Eliminare il capitolo «{{ chapter.code }} {{ chapter.title }}»?">
+                      data-pm-confirm="Delete the chapter “{{ chapter.code }} {{ chapter.title }}”?">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button type="submit" class="pm-action pm-action-danger">Elimina</button>
+                  <button type="submit" class="pm-action pm-action-danger">Delete</button>
                 </form>
               {% endif %}
             </td>
           </tr>
           {% if not chapter.tasks %}
-            <tr class="pm-empty-row" data-rr-key="chapter-empty:{{ chapter.id }}"><td colspan="8" class="muted">Nessun task in questo capitolo.</td></tr>
+            <tr class="pm-empty-row" data-rr-key="chapter-empty:{{ chapter.id }}"><td colspan="9" class="muted">No tasks in this chapter.</td></tr>
           {% endif %}
           {% for task in chapter.tasks %}
             {{ task_row(task, chapter) }}
@@ -108,20 +110,20 @@ Percentuale e giorni effettivi si inseriscono a mano; nessuna ripianificazione a
 
 <div class="org-modal-overlay" id="pm-chapter-dialog" hidden>
   <div class="org-modal-panel pm-dialog" role="dialog" aria-modal="true" aria-labelledby="pm-chapter-dialog-title">
-    <button type="button" class="org-modal-close" data-modal-close aria-label="Chiudi">&times;</button>
-    <h2 id="pm-chapter-dialog-title" data-pm-dialog-title>Capitolo</h2>
+    <button type="button" class="org-modal-close" data-modal-close aria-label="Close">&times;</button>
+    <h2 id="pm-chapter-dialog-title" data-pm-dialog-title>Chapter</h2>
     <div class="error" data-pm-error hidden></div>
     <form method="post" action="{{ url_for('projects_chapter_create', project_id=plan.project_id) }}" data-pm-form
           data-pm-create-action="{{ url_for('projects_chapter_create', project_id=plan.project_id) }}"
           data-pm-update-action="{{ url_for('projects_chapter_update', project_id=plan.project_id, chapter_id=0) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label for="pm-chapter-title">Titolo</label>
+      <label for="pm-chapter-title">Title</label>
       <input type="text" id="pm-chapter-title" name="title" maxlength="200" required>
-      <label for="pm-chapter-description">Descrizione</label>
+      <label for="pm-chapter-description">Description</label>
       <textarea id="pm-chapter-description" name="description" rows="3"></textarea>
       <div class="btn-row">
-        <button type="submit">Salva</button>
-        <button type="button" class="btn-secondary" data-modal-close>Annulla</button>
+        <button type="submit">Save</button>
+        <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
       </div>
     </form>
   </div>
@@ -129,7 +131,7 @@ Percentuale e giorni effettivi si inseriscono a mano; nessuna ripianificazione a
 
 <div class="org-modal-overlay" id="pm-task-dialog" hidden>
   <div class="org-modal-panel pm-dialog" role="dialog" aria-modal="true" aria-labelledby="pm-task-dialog-title">
-    <button type="button" class="org-modal-close" data-modal-close aria-label="Chiudi">&times;</button>
+    <button type="button" class="org-modal-close" data-modal-close aria-label="Close">&times;</button>
     <h2 id="pm-task-dialog-title" data-pm-dialog-title>Task</h2>
     <div class="error" data-pm-error hidden></div>
     <form method="post" action="{{ url_for('projects_task_create', project_id=plan.project_id) }}" data-pm-form
@@ -137,16 +139,16 @@ Percentuale e giorni effettivi si inseriscono a mano; nessuna ripianificazione a
           data-pm-update-action="{{ url_for('projects_task_update', project_id=plan.project_id, task_id=0) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-      <label for="pm-task-title">Titolo</label>
+      <label for="pm-task-title">Title</label>
       <input type="text" id="pm-task-title" name="title" maxlength="200" required>
-      <label for="pm-task-description">Descrizione</label>
+      <label for="pm-task-description">Description</label>
       <textarea id="pm-task-description" name="description" rows="2"></textarea>
 
       <div class="pm-form-grid">
         <div>
-          <label for="pm-task-parent">Task padre</label>
+          <label for="pm-task-parent">Parent task</label>
           <select id="pm-task-parent" name="parent_task_id">
-            <option value="">— Nessuno: task del capitolo</option>
+            <option value="">— None: a chapter task</option>
             {% for chapter in plan.chapters %}{% if chapter.tasks %}
               <optgroup label="{{ chapter.code }} {{ chapter.title }}">
                 {% for task in chapter.tasks %}
@@ -155,41 +157,52 @@ Percentuale e giorni effettivi si inseriscono a mano; nessuna ripianificazione a
               </optgroup>
             {% endif %}{% endfor %}
           </select>
-          <p class="pm-hint" data-pm-parent-note hidden>Ha delle attività figlie: resta un task del capitolo (è gestito un solo livello).</p>
+          <p class="pm-hint" data-pm-parent-note hidden>It has subtasks: it stays a chapter task (only one level is supported).</p>
         </div>
         <div data-pm-chapter-field>
-          <label for="pm-task-chapter">Capitolo</label>
+          <label for="pm-task-chapter">Chapter</label>
           <select id="pm-task-chapter" name="chapter_id">
             {% for chapter in plan.chapters %}<option value="{{ chapter.id }}">{{ chapter.code }} {{ chapter.title }}</option>{% endfor %}
           </select>
         </div>
-        <p class="pm-hint" data-pm-chapter-note hidden>Un'attività figlia sta sempre nel capitolo del suo task padre.</p>
+        <p class="pm-hint" data-pm-chapter-note hidden>A subtask always belongs to its parent task's chapter.</p>
       </div>
+
+      {# One Responsible, optional: pick a name of this Project or type a new one,
+         which the server adds to the Project's list when the task is saved. #}
+      <label for="pm-task-responsible">Responsible</label>
+      <input type="text" id="pm-task-responsible" name="responsible_name" maxlength="200" list="pm-responsible-options"
+             autocomplete="off" placeholder="Search or type a new name…" data-pm-responsible-input>
+      <datalist id="pm-responsible-options">
+        {% for r in plan.responsibles %}<option value="{{ r.name }}"></option>{% endfor %}
+      </datalist>
+      <script type="application/json" id="pm-responsible-names">{{ plan.responsibles|map(attribute='name')|list|tojson }}</script>
+      <p class="pm-hint" data-pm-responsible-note hidden></p>
 
       <div class="pm-form-grid pm-form-grid-numbers">
         <div>
-          <label for="pm-task-start">Inizio previsto</label>
+          <label for="pm-task-start">Planned start date</label>
           <input type="date" id="pm-task-start" name="planned_start_date" required>
         </div>
         <div>
-          <label for="pm-task-days">Giorni previsti</label>
+          <label for="pm-task-days">Planned days</label>
           <input type="number" id="pm-task-days" name="planned_duration_days" min="1" step="1" required>
         </div>
         <div>
-          <label for="pm-task-actual">Giorni effettivi</label>
-          <input type="number" id="pm-task-actual" name="actual_duration_days" min="0" step="1" placeholder="vuoto">
+          <label for="pm-task-actual">Actual days</label>
+          <input type="number" id="pm-task-actual" name="actual_duration_days" min="0" step="1" placeholder="empty">
         </div>
         <div>
-          <label for="pm-task-percent">Completamento %</label>
+          <label for="pm-task-percent">Completion %</label>
           <input type="number" id="pm-task-percent" name="percent_complete" min="0" max="100" step="1" required>
         </div>
       </div>
       <p class="pm-hint" data-pm-end-preview></p>
 
       <fieldset class="pm-predecessors">
-        <legend>Attività propedeutiche <span class="muted">(devono finire prima che questo task inizi)</span></legend>
+        <legend>Prerequisites <span class="muted">(must finish before this task starts)</span></legend>
         {% if plan.tasks %}
-          <input type="search" class="pm-pred-filter" placeholder="Filtra per codice o titolo…" data-pm-pred-filter aria-label="Filtra attività propedeutiche">
+          <input type="search" class="pm-pred-filter" placeholder="Filter by code or title…" data-pm-pred-filter aria-label="Filter prerequisites">
           <div class="pm-predecessor-list">
             {% for chapter in plan.chapters %}{% if chapter.tasks %}
               <div class="pm-pred-group">
@@ -198,20 +211,20 @@ Percentuale e giorni effettivi si inseriscono a mano; nessuna ripianificazione a
                   <label class="pm-pred-option{{ ' pm-pred-option-child' if task.is_child }}" data-pm-pred-option="{{ task.id }}">
                     <input type="checkbox" name="predecessor_ids" value="{{ task.id }}">
                     <span class="pm-code">{{ task.code }}</span> {{ task.title }}
-                    <span class="muted">· fine {{ fmt(task.planned_end_date) }}</span>
+                    <span class="muted">· ends {{ fmt(task.planned_end_date) }}</span>
                   </label>
                 {% endfor %}
               </div>
             {% endif %}{% endfor %}
           </div>
         {% else %}
-          <p class="muted">Nessun altro task disponibile.</p>
+          <p class="muted">No other tasks available.</p>
         {% endif %}
       </fieldset>
 
       <div class="btn-row">
-        <button type="submit">Salva</button>
-        <button type="button" class="btn-secondary" data-modal-close>Annulla</button>
+        <button type="submit">Save</button>
+        <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
       </div>
     </form>
   </div>
@@ -221,5 +234,5 @@ Percentuale e giorni effettivi si inseriscono a mano; nessuna ripianificazione a
 
 {% if dialog %}<script type="application/json" id="pm-dialog-state">{{ dialog|tojson }}</script>{% endif %}
 <script defer src="{{ url_for('static', filename='js/rf-one-row-return.js') }}?v=1"></script>
-<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=2"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=4"></script>
 {% endblock %}

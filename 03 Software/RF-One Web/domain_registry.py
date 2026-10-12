@@ -165,13 +165,26 @@ DOMAINS: tuple[DomainDefinition, ...] = (
         link="/clover-acquisition",
     ),
     DomainDefinition(
+        code="WINES",
+        display_name="Wines",
+        description=(
+            "Restaurant wine types, the catalog of purchasable wines, and each Entity's "
+            "Wine lists with their prices."
+        ),
+        future_path="/restaurant/wines",
+        # Restaurant module (RESTAURANT_WINES_FIRST_RELEASE_001) mounted in
+        # this application (`restaurant_wines_routes.py`), gated by
+        # `require_domain_access("WINES")`.
+        link="/restaurant/wines",
+    ),
+    DomainDefinition(
         code="PROJECTS",
         display_name="Project Management",
-        description="Chapters, tasks and child activities with prerequisites, and a printable Gantt (MyRF, v1).",
+        description="Projects with their chapters, tasks and subtasks, prerequisites and a printable Gantt (MyRF).",
         future_path="/projects",
-        # MyRF Project Management v1 (Product Owner approval, 2026-10-12):
-        # a Home card granted account by account through the existing
-        # access screen. `projects_routes.py`; see
+        # MyRF Project Management (Product Owner approval, 2026-10-12): a
+        # Home card granted account by account through the existing access
+        # screen. `projects_routes.py`; see
         # `01 Domains/Business Domain/Restaurant/MyRF/Project Management/README.md`.
         link="/projects",
     ),

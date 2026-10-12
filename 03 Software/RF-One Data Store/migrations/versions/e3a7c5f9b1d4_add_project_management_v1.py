@@ -17,6 +17,12 @@ Chained after the head of this line of work (a1b5c3d7e9f2, Bank AI Rules). The I
 here. When the two lines are merged, one merge revision joins their heads.
 
 No existing table or row is changed. Downgrade drops the three tables.
+
+Integration with main (BANK_AWS_001, 2026-10-12): on `main` the same schema is created by d2f6b9a3e7c1 (after the
+Restaurant Wines revision), so a database that comes from `main` - production included - already holds these
+tables when it reaches this revision. This revision therefore creates only what does not exist yet; on a database
+where it ran first (the local working database) nothing changes. Never rerun on such a database: downgrade below
+this revision drops the Project Management tables whoever created them.
 """
 from __future__ import annotations
 
@@ -32,6 +38,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    if "project_chapter" in sa.inspect(op.get_bind()).get_table_names():
+        return                     # created on main by d2f6b9a3e7c1 (see the docstring)
     op.create_table(
         "project_chapter",
         sa.Column("id", sa.Integer(), primary_key=True),

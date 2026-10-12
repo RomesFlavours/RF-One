@@ -1,0 +1,87 @@
+{# Restaurant > Wines (RESTAURANT_WINES_FIRST_RELEASE_001): the header,
+   breadcrumb and section tabs shared by the three Wines pages. #}
+{% from "_nav_macros.html" import breadcrumb %}
+
+{% macro wines_header(active_tab, current_label) %}
+{% if active_tab == 'list' %}
+  {{ breadcrumb([('RF-One', url_for('home')), ('Wines', None)]) }}
+{% else %}
+  {{ breadcrumb([('RF-One', url_for('home')), ('Wines', url_for('restaurant_wines_home')), (current_label, None)]) }}
+{% endif %}
+<div class="module-header">
+  <div class="module-identity">
+    <h1 class="module-title">Wines</h1>
+    <p class="module-tagline">Restaurant wine types, the catalog of wines that can be bought, and each Entity's Wine list.</p>
+  </div>
+</div>
+<nav class="module-tabs" aria-label="Wines sections">
+  <a class="module-tab {{ 'is-active' if active_tab == 'list' }}" href="{{ url_for('restaurant_wines_home') }}" data-rf-busy>Wine List</a>
+  <a class="module-tab {{ 'is-active' if active_tab == 'availability' }}" href="{{ url_for('restaurant_wine_availability') }}" data-rf-busy>Availability</a>
+  <a class="module-tab {{ 'is-active' if active_tab == 'types' }}" href="{{ url_for('restaurant_wine_types') }}" data-rf-busy>Wine Types</a>
+</nav>
+{% endmacro %}
+
+{# The Wine type dialog (standard name + alternative names), driven by
+   RFOneWines.typeDialog. #}
+{% macro wine_type_dialog() %}
+<div id="wine-type-modal" class="org-modal-overlay" hidden aria-hidden="true">
+  <div class="org-modal-panel wines-modal-narrow" role="dialog" aria-modal="true" aria-labelledby="wine-type-modal-title">
+    <button class="org-modal-close" type="button" aria-label="Close" data-modal-close>&times;</button>
+    <div class="modal-header"><h3 id="wine-type-modal-title" data-type-title>New wine type</h3></div>
+    <form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="wt-standard">Standard name</label>
+      <input id="wt-standard" type="text" name="standard_name" maxlength="120" required>
+      <label for="wt-aliases">Alternative names <span class="muted">(optional, one per line)</span></label>
+      <textarea id="wt-aliases" name="aliases" rows="3" placeholder="e.g. Pinot Gris"></textarea>
+      <p class="cell-note">A name already used by another type is refused, so the same type cannot be created twice under different names.</p>
+      <div class="error" data-type-error hidden></div>
+      <div class="btn-row">
+        <button type="submit">Save type</button>
+        <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro wines_styles() %}
+<style>
+  .wines-toolbar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: flex-end; justify-content: space-between; margin-bottom: 1rem; }
+  .wines-toolbar .wines-toolbar-right { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .wines-toolbar select, .wines-toolbar input[type=search] { margin-bottom: 0; min-width: 14rem; }
+  input[type=search] { width: 100%; max-width: 360px; padding: .45rem .6rem; border: 1px solid var(--olive-300); border-radius: 6px; font-size: .85rem; font-family: inherit; margin-bottom: .6rem; }
+  .wines-toolbar input[type=search] { width: auto; }
+  .wines-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0 1rem; }
+  .wines-grid input, .wines-grid select { max-width: 100%; }
+  .wines-inline { display: flex; gap: .4rem; align-items: flex-start; }
+  .wines-inline input { flex: 1; }
+  .wines-inline button { padding: .42rem .75rem; }
+  .wines-check { display: flex; gap: .4rem; align-items: center; font-size: .85rem; color: var(--ink); margin-bottom: 1rem; }
+  .wines-check input { width: auto; margin: 0; }
+  .wines-hint { display: block; font-size: .74rem; color: var(--muted); margin: -.7rem 0 .8rem; min-height: 1em; }
+  .wines-modal-narrow { max-width: 460px; }
+  .wines-modal-wide { max-width: 860px; }
+  .wines-disabled-note { font-size: .74rem; color: var(--muted); max-width: 16rem; }
+  .wines-picker { max-height: 16rem; overflow-y: auto; border: 1px solid var(--olive-150); border-radius: 6px; margin-bottom: 1rem; }
+  .wines-picker label { display: flex; gap: .5rem; align-items: baseline; padding: .4rem .6rem; margin: 0; font-size: .84rem; color: var(--ink); border-bottom: 1px solid var(--olive-150); cursor: pointer; }
+  .wines-picker label:hover { background: var(--olive-050); }
+  .wines-picker input { width: auto; margin: 0; }
+  .wines-picker .is-disabled { color: var(--muted); cursor: not-allowed; }
+  .wines-prices { display: grid; grid-template-columns: auto 1fr 1fr; gap: .3rem .8rem; align-items: center; margin-bottom: 1rem; font-size: .85rem; }
+  .wines-prices input { margin: 0; max-width: 9rem; }
+  .wines-prices .wines-calc { font-variant-numeric: tabular-nums; }
+  .wines-flag { display: block; font-size: .7rem; color: #8a5a10; margin-top: .2rem; }
+  .wines-row-actions { display: flex; flex-wrap: wrap; gap: .3rem; }
+  .wines-row-actions form { margin: 0; }
+  .wines-row-actions button { padding: .3rem .6rem; font-size: .75rem; }
+  .btn-danger { background: var(--bad); }
+  .btn-danger:hover { background: #8a3125; }
+  .wines-versions { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .2rem 0 1rem; font-size: .85rem; }
+  .wines-version { padding: .25rem .6rem; border: 1px solid var(--olive-300); border-radius: 999px; text-decoration: none; color: var(--olive-900); font-size: .8rem; }
+  .wines-version.is-selected { background: var(--olive-700); border-color: var(--olive-700); color: white; }
+  .wines-settings { margin-top: 2rem; font-size: .85rem; }
+  .wines-settings .compact-form { display: flex; flex-wrap: wrap; gap: .6rem; align-items: flex-end; }
+  .wines-settings .compact-form div { display: flex; flex-direction: column; }
+</style>
+{% endmacro %}

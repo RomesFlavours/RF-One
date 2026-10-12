@@ -9,10 +9,13 @@
 * prerequisites may cross Chapters within the same Project, never self,
   never circular;
 * a Task starting on or before a prerequisite's planned end gets a warning,
-  never a refusal.
+  never a refusal;
+* a Task has at most one Responsible, from its own Project's list; a name is
+  unique within a Project ignoring case and leading/trailing spaces, and
+  cannot be deleted while a Task has it.
 
 Every refusal is a `ProjectValidationError` whose message is shown to the
-person as it is (Italian, like the pages).
+person as it is (English, like the pages).
 """
 
 from __future__ import annotations
@@ -56,6 +59,9 @@ class TaskInput:
     planned_duration_days: int
     actual_duration_days: int | None
     predecessor_ids: list[int] = field(default_factory=list)
+    # As typed or picked in the dialog: an existing name of the Project, a new
+    # one (added to its list), or empty for none.
+    responsible_name: str = ""
 
 
 def _text(form: Mapping, name: str) -> str:
@@ -66,12 +72,12 @@ def _whole_number(form: Mapping, name: str, label: str, *, required: bool) -> in
     raw = _text(form, name)
     if not raw:
         if required:
-            raise ProjectValidationError(f"{label}: valore obbligatorio.")
+            raise ProjectValidationError(f"{label}: a value is required.")
         return None
     try:
         return int(raw)
     except ValueError:
-        raise ProjectValidationError(f"{label}: inserire un numero intero (ricevuto «{raw}»).") from None
+        raise ProjectValidationError(f"{label}: enter a whole number (received “{raw}”).") from None
 
 
 def _optional_id(form: Mapping, name: str) -> int | None:
@@ -81,7 +87,7 @@ def _optional_id(form: Mapping, name: str) -> int | None:
     try:
         return int(raw)
     except ValueError:
-        raise ProjectValidationError("Selezione non valida.") from None
+        raise ProjectValidationError("Invalid selection.") from None
 
 
 def task_input_from_form(form) -> TaskInput:
@@ -89,35 +95,36 @@ def task_input_from_form(form) -> TaskInput:
     mapping with `getlist` for the prerequisites)."""
     raw_start = _text(form, "planned_start_date")
     if not raw_start:
-        raise ProjectValidationError("Data di inizio prevista: valore obbligatorio.")
+        raise ProjectValidationError("Planned start date: a value is required.")
     try:
         start = date.fromisoformat(raw_start)
     except ValueError:
-        raise ProjectValidationError(f"Data di inizio prevista non valida («{raw_start}»).") from None
+        raise ProjectValidationError(f"Invalid planned start date (“{raw_start}”).") from None
     raw_predecessors = form.getlist("predecessor_ids") if hasattr(form, "getlist") else form.get("predecessor_ids", [])
     try:
         predecessor_ids = sorted({int(v) for v in raw_predecessors if str(v).strip()})
     except ValueError:
-        raise ProjectValidationError("Selezione delle attività propedeutiche non valida.") from None
+        raise ProjectValidationError("Invalid prerequisite selection.") from None
     return TaskInput(
         title=_text(form, "title"),
         description=_text(form, "description") or None,
         chapter_id=_optional_id(form, "chapter_id"),
         parent_task_id=_optional_id(form, "parent_task_id"),
-        percent_complete=_whole_number(form, "percent_complete", "Percentuale di completamento", required=True),
+        percent_complete=_whole_number(form, "percent_complete", "Completion percentage", required=True),
         planned_start_date=start,
-        planned_duration_days=_whole_number(form, "planned_duration_days", "Giorni previsti", required=True),
-        actual_duration_days=_whole_number(form, "actual_duration_days", "Giorni effettivi", required=False),
+        planned_duration_days=_whole_number(form, "planned_duration_days", "Planned days", required=True),
+        actual_duration_days=_whole_number(form, "actual_duration_days", "Actual days", required=False),
         predecessor_ids=predecessor_ids,
+        responsible_name=_text(form, "responsible_name"),
     )
 
 
 def _clean_title(title: str) -> str:
     title = (title or "").strip()
     if not title:
-        raise ProjectValidationError("Il titolo è obbligatorio.")
+        raise ProjectValidationError("The title is required.")
     if len(title) > TITLE_MAX_LENGTH:
-        raise ProjectValidationError(f"Il titolo può avere al massimo {TITLE_MAX_LENGTH} caratteri.")
+        raise ProjectValidationError(f"The title can be at most {TITLE_MAX_LENGTH} characters long.")
     return title
 
 
@@ -143,7 +150,7 @@ def get_project(session: Session, project_id: int) -> m.Project:
 def _chapter_in(session: Session, project_id: int, chapter_id: int | None) -> m.ProjectChapter:
     chapter = session.get(m.ProjectChapter, chapter_id) if chapter_id is not None else None
     if chapter is None or chapter.project_id != project_id:
-        raise ProjectValidationError("Capitolo non trovato in questo progetto.")
+        raise ProjectValidationError("Chapter not found in this project.")
     return chapter
 
 
@@ -184,6 +191,12 @@ class ProjectSummary:
     task_count: int
     start: date | None
     end: date | None
+    responsibles: list["ResponsibleSummary"] = field(default_factory=list)
+
+    @property
+    def responsibles_payload(self) -> list[dict]:
+        """The list as the Responsibles dialog reads it (`rf-one-projects.js`)."""
+        return [{"id": r.id, "name": r.name, "task_count": r.task_count} for r in self.responsibles]
 
 
 def list_projects(session: Session) -> list[ProjectSummary]:
@@ -204,6 +217,7 @@ def list_projects(session: Session) -> list[ProjectSummary]:
             id=project.id, name=project.name, chapter_count=chapters.get(project.id, 0), task_count=len(rows),
             start=min((t.planned_start_date for t in rows), default=None),
             end=max((planned_end(t.planned_start_date, t.planned_duration_days) for t in rows), default=None),
+            responsibles=list_responsibles(session, project.id),
         ))
     return summaries
 
@@ -211,9 +225,9 @@ def list_projects(session: Session) -> list[ProjectSummary]:
 def _clean_name(name: str) -> str:
     name = (name or "").strip()
     if not name:
-        raise ProjectValidationError("Il nome del progetto è obbligatorio.")
+        raise ProjectValidationError("The project name is required.")
     if len(name) > TITLE_MAX_LENGTH:
-        raise ProjectValidationError(f"Il nome può avere al massimo {TITLE_MAX_LENGTH} caratteri.")
+        raise ProjectValidationError(f"The name can be at most {TITLE_MAX_LENGTH} characters long.")
     return name
 
 
@@ -234,9 +248,105 @@ def rename_project(session: Session, project_id: int, *, name: str) -> m.Project
 def delete_project(session: Session, project_id: int) -> None:
     project = get_project(session, project_id)
     if session.scalar(select(func.count(m.ProjectChapter.id)).where(m.ProjectChapter.project_id == project.id)):
-        raise ProjectValidationError("Il progetto contiene ancora dei capitoli: eliminali prima.")
+        raise ProjectValidationError("The project still contains chapters: delete them first.")
+    # Without chapters there are no tasks, so no name of its list is assigned.
+    session.execute(delete(m.ProjectResponsible).where(m.ProjectResponsible.project_id == project.id))
     session.delete(project)
     session.flush()
+
+
+# ---------------------------------------------------------------- responsibles
+
+
+def responsible_key(name: str) -> str:
+    """Two names are the same when equal ignoring case and leading/trailing spaces."""
+    return (name or "").strip().casefold()
+
+
+@dataclass
+class ResponsibleSummary:
+    id: int
+    name: str
+    task_count: int
+
+
+def list_responsibles(session: Session, project_id: int) -> list[ResponsibleSummary]:
+    """The Project's names, alphabetical, each with the number of Tasks it is assigned to."""
+    rows = session.execute(
+        select(m.ProjectResponsible.id, m.ProjectResponsible.name, func.count(m.ProjectTask.id))
+        .outerjoin(m.ProjectTask, m.ProjectTask.responsible_id == m.ProjectResponsible.id)
+        .where(m.ProjectResponsible.project_id == project_id)
+        .group_by(m.ProjectResponsible.id, m.ProjectResponsible.name)
+    ).all()
+    return sorted((ResponsibleSummary(id=i, name=n, task_count=c) for i, n, c in rows),
+                  key=lambda r: (r.name.casefold(), r.id))
+
+
+def _clean_responsible_name(name: str) -> str:
+    name = (name or "").strip()
+    if not name:
+        raise ProjectValidationError("The responsible's name is required.")
+    if len(name) > TITLE_MAX_LENGTH:
+        raise ProjectValidationError(f"The name can be at most {TITLE_MAX_LENGTH} characters long.")
+    return name
+
+
+def _responsible_with_key(session: Session, project_id: int, key: str) -> m.ProjectResponsible | None:
+    return session.scalar(select(m.ProjectResponsible).where(
+        m.ProjectResponsible.project_id == project_id, m.ProjectResponsible.name_key == key))
+
+
+def _responsible_in(session: Session, project_id: int, responsible_id: int) -> m.ProjectResponsible:
+    responsible = session.get(m.ProjectResponsible, responsible_id)
+    if responsible is None or responsible.project_id != project_id:
+        raise ProjectScopeError(responsible_id)
+    return responsible
+
+
+def create_responsible(session: Session, project_id: int, *, name: str) -> m.ProjectResponsible:
+    project = get_project(session, project_id)
+    name = _clean_responsible_name(name)
+    existing = _responsible_with_key(session, project.id, responsible_key(name))
+    if existing is not None:
+        raise ProjectValidationError(f"“{existing.name}” is already in this project's list.")
+    responsible = m.ProjectResponsible(project_id=project.id, name=name, name_key=responsible_key(name))
+    session.add(responsible)
+    session.flush()
+    return responsible
+
+
+def rename_responsible(session: Session, project_id: int, responsible_id: int, *, name: str) -> m.ProjectResponsible:
+    responsible = _responsible_in(session, project_id, responsible_id)
+    name = _clean_responsible_name(name)
+    existing = _responsible_with_key(session, project_id, responsible_key(name))
+    if existing is not None and existing.id != responsible.id:
+        raise ProjectValidationError(f"“{existing.name}” is already in this project's list.")
+    responsible.name, responsible.name_key = name, responsible_key(name)
+    session.flush()
+    return responsible
+
+
+def delete_responsible(session: Session, project_id: int, responsible_id: int) -> None:
+    responsible = _responsible_in(session, project_id, responsible_id)
+    assigned = session.scalar(select(func.count(m.ProjectTask.id)).where(m.ProjectTask.responsible_id == responsible.id))
+    if assigned:
+        tasks = "1 task" if assigned == 1 else f"{assigned} tasks"
+        raise ProjectValidationError(
+            f"“{responsible.name}” is the responsible of {tasks}: assign those tasks to someone else first.")
+    session.delete(responsible)
+    session.flush()
+
+
+def _resolve_responsible(session: Session, project_id: int, name: str) -> int | None:
+    """The Task dialog's Responsible: empty → none; a name of the Project's list
+    (case and outer spaces ignored) → that entry; any other name → added to
+    the list and used. Only the Task's own Project is ever searched."""
+    if not (name or "").strip():
+        return None
+    existing = _responsible_with_key(session, project_id, responsible_key(name))
+    if existing is not None:
+        return existing.id
+    return create_responsible(session, project_id, name=name).id
 
 
 # ---------------------------------------------------------------- chapters
@@ -267,7 +377,7 @@ def delete_chapter(session: Session, project_id: int, chapter_id: int) -> None:
     check_chapter_scope(session, project_id, chapter_id)
     chapter = session.get(m.ProjectChapter, chapter_id)
     if session.scalar(select(func.count(m.ProjectTask.id)).where(m.ProjectTask.chapter_id == chapter.id)):
-        raise ProjectValidationError("Il capitolo contiene ancora dei task: eliminali o spostali prima.")
+        raise ProjectValidationError("The chapter still contains tasks: delete or move them first.")
     session.delete(chapter)
     session.flush()
 
@@ -309,11 +419,11 @@ def _cycle_path(edges: Iterable[tuple[int, int]], start: int, targets: set[int])
 
 def _validate_numbers(data: TaskInput) -> None:
     if not 0 <= data.percent_complete <= 100:
-        raise ProjectValidationError("La percentuale di completamento deve essere tra 0 e 100.")
+        raise ProjectValidationError("The completion percentage must be between 0 and 100.")
     if data.planned_duration_days < 1:
-        raise ProjectValidationError("I giorni previsti devono essere almeno 1.")
+        raise ProjectValidationError("Planned days must be at least 1.")
     if data.actual_duration_days is not None and data.actual_duration_days < 0:
-        raise ProjectValidationError("I giorni effettivi possono essere vuoti, zero o positivi.")
+        raise ProjectValidationError("Actual days can be empty, zero or positive.")
 
 
 def _resolve_chapter_and_parent(session: Session, project_id: int, task: m.ProjectTask | None,
@@ -323,25 +433,25 @@ def _resolve_chapter_and_parent(session: Session, project_id: int, task: m.Proje
 
     parent = session.get(m.ProjectTask, data.parent_task_id)
     if parent is None or _project_of_tasks(session, [parent.id]).get(parent.id) != project_id:
-        raise ProjectValidationError("Task padre non trovato in questo progetto.")
+        raise ProjectValidationError("Parent task not found in this project.")
     if task is not None:
         if parent.id == task.id:
-            raise ProjectValidationError("Un task non può essere padre di se stesso.")
+            raise ProjectValidationError("A task cannot be its own parent.")
         # A circular hierarchy: the chosen parent sits below this task.
         ancestor, guard = parent, 0
         while ancestor is not None and guard < 1000:
             if ancestor.id == task.id:
-                raise ProjectValidationError("Gerarchia circolare: il task padre scelto dipende già da questo task.")
+                raise ProjectValidationError("Circular hierarchy: the chosen parent task already depends on this task.")
             ancestor = session.get(m.ProjectTask, ancestor.parent_task_id) if ancestor.parent_task_id else None
             guard += 1
         if _children_ids(session, task.id):
             raise ProjectValidationError(
-                "Questo task ha delle attività figlie: non può diventare a sua volta un'attività figlia "
-                "(è gestito un solo livello)."
+                "This task has subtasks: it cannot become a subtask itself "
+                "(only one level is supported)."
             )
     if parent.parent_task_id is not None:
         raise ProjectValidationError(
-            "Il task padre scelto è già un'attività figlia: è gestito un solo livello di attività figlie."
+            "The chosen parent task is already a subtask: only one level of subtasks is supported."
         )
     # A child activity is always in its parent's Chapter.
     return parent.chapter_id, parent.id
@@ -351,10 +461,10 @@ def _validate_predecessors(session: Session, project_id: int, task_id: int | Non
     if not predecessor_ids:
         return
     if task_id is not None and task_id in predecessor_ids:
-        raise ProjectValidationError("Un task non può essere propedeutico a se stesso.")
+        raise ProjectValidationError("A task cannot be its own prerequisite.")
     projects = _project_of_tasks(session, predecessor_ids)
     if set(projects) != set(predecessor_ids):
-        raise ProjectValidationError("Una delle attività propedeutiche scelte non esiste più.")
+        raise ProjectValidationError("One of the chosen prerequisites no longer exists.")
     outside = [i for i, p in projects.items() if p != project_id]
     if outside:
         rows = session.execute(
@@ -364,8 +474,8 @@ def _validate_predecessors(session: Session, project_id: int, task_id: int | Non
             .where(m.ProjectTask.id.in_(outside))
         ).first()
         raise ProjectValidationError(
-            f"Le attività propedeutiche devono appartenere allo stesso progetto: «{rows[0]}» è nel progetto "
-            f"«{rows[1]}»."
+            f"Prerequisites must belong to the same project: “{rows[0]}” is in the project "
+            f"“{rows[1]}”."
         )
     if task_id is None:
         return  # a new task has no successors yet: it cannot close a cycle
@@ -374,8 +484,8 @@ def _validate_predecessors(session: Session, project_id: int, task_id: int | Non
     if path:
         rows = session.execute(select(m.ProjectTask.id, m.ProjectTask.title).where(m.ProjectTask.id.in_(path)))
         titles = {row_id: title for row_id, title in rows}
-        chain = " → ".join(f"«{titles.get(i, i)}»" for i in path + [task_id])
-        raise ProjectValidationError(f"Dipendenza circolare: {chain}.")
+        chain = " → ".join(f"“{titles.get(i, i)}”" for i in path + [task_id])
+        raise ProjectValidationError(f"Circular dependency: {chain}.")
 
 
 def _set_predecessors(session: Session, task_id: int, predecessor_ids: list[int]) -> None:
@@ -391,8 +501,10 @@ def create_task(session: Session, project_id: int, data: TaskInput) -> m.Project
     _validate_numbers(data)
     chapter_id, parent_id = _resolve_chapter_and_parent(session, project_id, None, data)
     _validate_predecessors(session, project_id, None, data.predecessor_ids)
+    responsible_id = _resolve_responsible(session, project_id, data.responsible_name)
     task = m.ProjectTask(
-        chapter_id=chapter_id, parent_task_id=parent_id, title=title, description=data.description,
+        chapter_id=chapter_id, parent_task_id=parent_id, responsible_id=responsible_id,
+        title=title, description=data.description,
         percent_complete=data.percent_complete, planned_start_date=data.planned_start_date,
         planned_duration_days=data.planned_duration_days, actual_duration_days=data.actual_duration_days,
         sort_order=_next_sort_order(session, m.ProjectTask),
@@ -409,6 +521,7 @@ def update_task(session: Session, project_id: int, task_id: int, data: TaskInput
     _validate_numbers(data)
     chapter_id, parent_id = _resolve_chapter_and_parent(session, project_id, task, data)
     _validate_predecessors(session, project_id, task.id, data.predecessor_ids)
+    task.responsible_id = _resolve_responsible(session, project_id, data.responsible_name)
     if chapter_id != task.chapter_id:
         # Children follow their parent: they are always in its Chapter.
         for child_id in _children_ids(session, task.id):
@@ -427,7 +540,7 @@ def update_task(session: Session, project_id: int, task_id: int, data: TaskInput
 def delete_task(session: Session, project_id: int, task_id: int) -> None:
     task = _task_in(session, project_id, task_id)
     if _children_ids(session, task.id):
-        raise ProjectValidationError("Il task ha delle attività figlie: eliminale prima.")
+        raise ProjectValidationError("The task has subtasks: delete them first.")
     session.execute(delete(m.ProjectTaskDependency).where(or_(
         m.ProjectTaskDependency.predecessor_task_id == task.id,
         m.ProjectTaskDependency.successor_task_id == task.id,
@@ -452,6 +565,8 @@ class PlanTask:
     planned_duration_days: int
     planned_end_date: date
     actual_duration_days: int | None
+    responsible_id: int | None = None
+    responsible_name: str = ""  # read from the list at every display, so a rename shows everywhere
     predecessors: list["PlanTask"] = field(default_factory=list)
     # Prerequisites whose planned end is on or after this task's planned
     # start: a warning, never a refusal (nothing is rescheduled).
@@ -494,6 +609,7 @@ class Plan:
     chapters: list[PlanChapter]
     project_id: int | None = None
     project_name: str = ""
+    responsibles: list[ResponsibleSummary] = field(default_factory=list)  # the Project's own list only
 
     @property
     def tasks(self) -> list[PlanTask]:
@@ -529,6 +645,8 @@ def build_plan(session: Session, project_id: int) -> Plan:
     plan_chapters = [PlanChapter(id=c.id, code=str(i), title=c.title, description=c.description)
                      for i, c in enumerate(chapters, start=1)]
     by_chapter = {c.id: c for c in plan_chapters}
+    responsibles = list_responsibles(session, project.id)
+    responsible_names = {r.id: r.name for r in responsibles}
     tasks: dict[int, PlanTask] = {}
     for row in rows:
         tasks[row.id] = PlanTask(
@@ -537,6 +655,7 @@ def build_plan(session: Session, project_id: int) -> Plan:
             planned_start_date=row.planned_start_date, planned_duration_days=row.planned_duration_days,
             planned_end_date=planned_end(row.planned_start_date, row.planned_duration_days),
             actual_duration_days=row.actual_duration_days,
+            responsible_id=row.responsible_id, responsible_name=responsible_names.get(row.responsible_id, ""),
         )
     for row in rows:  # rows are in display order, so children keep it too
         task = tasks[row.id]
@@ -559,8 +678,8 @@ def build_plan(session: Session, project_id: int) -> Plan:
             if task.planned_start_date <= predecessor.planned_end_date:
                 task.conflicting_predecessors.append(predecessor)
                 task.warnings.append(
-                    f"Inizia il {format_date(task.planned_start_date)}, prima o nello stesso giorno della fine "
-                    f"prevista del propedeutico {predecessor.code} «{predecessor.title}» "
+                    f"Starts {format_date(task.planned_start_date)}, on or before the planned end date "
+                    f"of prerequisite {predecessor.code} “{predecessor.title}” "
                     f"({format_date(predecessor.planned_end_date)})."
                 )
-    return Plan(chapters=plan_chapters, project_id=project.id, project_name=project.name)
+    return Plan(chapters=plan_chapters, project_id=project.id, project_name=project.name, responsibles=responsibles)

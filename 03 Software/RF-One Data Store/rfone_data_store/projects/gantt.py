@@ -14,7 +14,7 @@ from datetime import date, timedelta
 
 from .service import Plan, PlanTask
 
-MONTHS_IT = ("gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic")
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 WEEKS_UP_TO_DAYS = 62
 MONTHS_UP_TO_DAYS = 550
 # Past this point of the timeline the percentage label goes before the bar,
@@ -92,12 +92,12 @@ def timeline_for(plan: Plan) -> Timeline | None:
         unit = "month"
         boundary = _month_start(start)
         step = lambda d: _add_months(d, 1)  # noqa: E731
-        label = lambda d: f"{MONTHS_IT[d.month - 1]} {d.strftime('%y')}"  # noqa: E731
+        label = lambda d: f"{MONTHS[d.month - 1]} {d.strftime('%y')}"  # noqa: E731
     else:
         unit = "quarter"
         boundary = date(start.year, (start.month - 1) // 3 * 3 + 1, 1)
         step = lambda d: _add_months(d, 3)  # noqa: E731
-        label = lambda d: f"T{(d.month - 1) // 3 + 1} {d.year}"  # noqa: E731
+        label = lambda d: f"Q{(d.month - 1) // 3 + 1} {d.year}"  # noqa: E731
 
     segments: list[Segment] = []
     while boundary <= end:

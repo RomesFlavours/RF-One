@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% from "_nav_macros.html" import breadcrumb %}
-{% from "_projects_macros.html" import fmt, actual_days %}
+{% from "_projects_macros.html" import fmt, actual_days, responsible %}
 {% block page_title %}Gantt · {{ plan.project_name }} · Project Management · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=6">
 {{ breadcrumb([('RF-One', url_for('home')), ('Project Management', url_for('projects_list')),
                (plan.project_name, url_for('projects_plan', project_id=plan.project_id)), ('Gantt', None)]) }}
 
@@ -25,16 +25,17 @@
     <td class="pm-g-title">
       {% if task.children %}
         <button type="button" class="pm-toggle" data-gantt-toggle="t{{ task.id }}" aria-expanded="true"
-                aria-label="Comprimi o espandi {{ task.code }}">▾</button>
+                aria-label="Collapse or expand {{ task.code }}">▾</button>
       {% else %}<span class="pm-toggle-space"></span>{% endif %}
       <span class="pm-code">{{ task.code }}</span> {{ task.title }}
       {% if task.predecessors %}
-        <div class="pm-g-sub">dopo {% for p in task.predecessors %}{{ p.code }}{{ ', ' if not loop.last }}{% endfor %}</div>
+        <div class="pm-g-sub">after {% for p in task.predecessors %}{{ p.code }}{{ ', ' if not loop.last }}{% endfor %}</div>
       {% endif %}
       {% for p in task.conflicting_predecessors %}
-        <div class="pm-g-sub pm-warn-text">⚠ inizia il {{ fmt(task.planned_start_date) }}, entro la fine prevista di {{ p.code }} ({{ fmt(p.planned_end_date) }})</div>
+        <div class="pm-g-sub pm-warn-text">⚠ starts {{ fmt(task.planned_start_date) }}, on or before the planned end date of {{ p.code }} ({{ fmt(p.planned_end_date) }})</div>
       {% endfor %}
     </td>
+    <td class="pm-g-resp">{{ responsible(task) }}</td>
     <td>{{ fmt(task.planned_start_date) }}</td>
     <td>{{ fmt(task.planned_end_date) }}</td>
     <td class="num">{{ task.planned_duration_days }}</td>
@@ -60,38 +61,38 @@
 {% endmacro %}
 
 {% if not timeline %}
-  <p class="modal-empty-state">Nessun task da mostrare. Crea capitoli e task nel <a href="{{ url_for('projects_plan', project_id=plan.project_id) }}">piano del progetto</a>.</p>
+  <p class="modal-empty-state">No tasks to show. Create chapters and tasks in the <a href="{{ url_for('projects_plan', project_id=plan.project_id) }}">project plan</a>.</p>
 {% else %}
-  {% set unit_label = {'week': 'settimane', 'month': 'mesi', 'quarter': 'trimestri'}[timeline.unit] %}
+  {% set unit_label = {'week': 'weeks', 'month': 'months', 'quarter': 'quarters'}[timeline.unit] %}
   <p class="pm-gantt-meta">
-    Periodo <strong>{{ fmt(timeline.start) }} – {{ fmt(timeline.end) }}</strong> · {{ timeline.days }} giorni di calendario ·
-    scala in {{ unit_label }} · {{ plan.chapters|length }} capitoli, {{ plan.tasks|length }} task
-    {% if plan.warning_count %} · <span class="pm-warn-text">⚠ {{ plan.warning_count }} avvisi</span>{% endif %}
+    Period <strong>{{ fmt(timeline.start) }} – {{ fmt(timeline.end) }}</strong> · {{ timeline.days }} calendar days ·
+    scale in {{ unit_label }} · {{ plan.chapters|length }} {{ 'chapter' if plan.chapters|length == 1 else 'chapters' }}, {{ plan.tasks|length }} {{ 'task' if plan.tasks|length == 1 else 'tasks' }}
+    {% if plan.warning_count %} · <span class="pm-warn-text">⚠ {{ plan.warning_count }} {{ 'warning' if plan.warning_count == 1 else 'warnings' }}</span>{% endif %}
   </p>
 
   <div class="btn-row no-print pm-gantt-commands">
-    <button type="button" class="btn-secondary" data-gantt-expand-all>Espandi tutto</button>
-    <button type="button" class="btn-secondary" data-gantt-collapse-all>Comprimi tutto</button>
-    <button type="button" data-gantt-print>Stampa</button>
+    <button type="button" class="btn-secondary" data-gantt-expand-all>Expand all</button>
+    <button type="button" class="btn-secondary" data-gantt-collapse-all>Collapse all</button>
+    <button type="button" data-gantt-print>Print</button>
   </div>
 
   <p class="pm-gantt-legend">
-    <span class="pm-legend-bar"><span class="pm-legend-fill"></span></span> periodo previsto, riempito fino alla percentuale completata ·
-    <span class="pm-legend-span"></span> durata del capitolo ·
-    giorni effettivi come numero (non c'è una data di inizio effettiva) ·
-    <span class="pm-warn-text">⚠</span> inizia prima o nello stesso giorno della fine prevista di un propedeutico
+    <span class="pm-legend-bar"><span class="pm-legend-fill"></span></span> planned period, filled up to the completion percentage ·
+    <span class="pm-legend-span"></span> chapter span ·
+    actual days shown as a number (there is no actual start date) ·
+    <span class="pm-warn-text">⚠</span> starts on or before the planned end date of a prerequisite
   </p>
 
   <div class="pm-gantt-scroll">
     <table class="pm-gantt">
       <colgroup>
-        <col class="pm-col-title"><col class="pm-col-date"><col class="pm-col-date">
+        <col class="pm-col-title"><col class="pm-col-resp"><col class="pm-col-date"><col class="pm-col-date">
         <col class="pm-col-num"><col class="pm-col-num"><col class="pm-col-num"><col class="pm-col-time">
       </colgroup>
       <thead>
         <tr>
-          <th>Attività</th><th>Inizio</th><th>Fine prev.</th>
-          <th class="num">Gg prev.</th><th class="num">Gg eff.</th><th class="num">%</th>
+          <th>Activity</th><th>Responsible</th><th>Planned start</th><th>Planned end</th>
+          <th class="num">Planned days</th><th class="num">Actual days</th><th class="num">%</th>
           <th class="pm-scale-cell">
             <div class="pm-scale">
               {% for segment in timeline.segments %}
@@ -107,11 +108,12 @@
             <td class="pm-g-title">
               {% if chapter.tasks %}
                 <button type="button" class="pm-toggle" data-gantt-toggle="c{{ chapter.id }}" aria-expanded="true"
-                        aria-label="Comprimi o espandi il capitolo {{ chapter.code }}">▾</button>
+                        aria-label="Collapse or expand chapter {{ chapter.code }}">▾</button>
               {% else %}<span class="pm-toggle-space"></span>{% endif %}
               <span class="pm-code">{{ chapter.code }}</span> <strong>{{ chapter.title }}</strong>
-              {% if not chapter.tasks %}<div class="pm-g-sub">nessun task</div>{% endif %}
+              {% if not chapter.tasks %}<div class="pm-g-sub">no tasks</div>{% endif %}
             </td>
+            <td></td>
             <td>{{ fmt(chapter.start) }}</td>
             <td>{{ fmt(chapter.end) }}</td>
             <td></td><td></td><td></td>
@@ -135,5 +137,5 @@
   </div>
 {% endif %}
 
-<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=2"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=4"></script>
 {% endblock %}

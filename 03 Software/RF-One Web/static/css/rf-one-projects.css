@@ -54,6 +54,20 @@
 .pm-action-danger { background: transparent; color: var(--bad); border: 1px solid #e3b9b2; }
 .pm-action-danger:hover { background: #f8e7e4; color: var(--bad); }
 .pm-inline-form { display: inline; }
+.pm-icon-action { padding: .15rem .4rem; line-height: 0; vertical-align: middle; }
+.pm-icon-action svg { display: inline-block; }
+.pm-resp-cell { font-size: .85rem; max-width: 12rem; }
+
+/* Responsibles dialog (Projects list) */
+.pm-dialog-sub { margin: -.4rem 0 .6rem; }
+.pm-responsible-list { list-style: none; margin: 0 0 1rem; padding: 0; max-height: 50vh; overflow-y: auto; }
+.pm-responsible-list li { display: flex; align-items: center; gap: .5rem; padding: .35rem 0; border-bottom: 1px solid var(--olive-150); }
+.pm-responsible-list form { display: flex; align-items: center; gap: .4rem; margin: 0; }
+.pm-responsible-list .pm-responsible-rename { flex: 1; }
+.pm-responsible-list input[type="text"] { flex: 1; margin: 0; min-width: 8rem; }
+.pm-responsible-count { font-size: .75rem; color: var(--muted); white-space: nowrap; }
+.pm-responsible-line { display: flex; gap: .5rem; align-items: center; }
+.pm-responsible-line input { flex: 1; margin: 0; }
 
 /* ------------------------------------------------------------ dialogs */
 
@@ -89,12 +103,15 @@ label.pm-pred-option input { margin: 0; flex: none; }
 .pm-gantt { table-layout: fixed; min-width: 980px; }
 .pm-gantt th, .pm-gantt td { padding: .3rem .35rem; font-size: .78rem; }
 .pm-gantt td { vertical-align: middle; }
-.pm-col-title { width: 25%; }
+.pm-col-title { width: 17%; }
+.pm-col-resp { width: 8.5%; }
 .pm-col-date { width: 6.6%; }
-.pm-col-num { width: 4.2%; }
+/* Wide enough for "Planned" / "Actual" on one line each, on screen and in print. */
+.pm-col-num { width: 5.4%; }
 .pm-gantt th.num, .pm-gantt td.num { text-align: right; }
 .pm-gantt th.num { white-space: normal; }
 .pm-g-title { overflow-wrap: anywhere; }
+.pm-g-resp, .pm-resp-cell { overflow-wrap: anywhere; }
 .pm-g-chapter > td { background: var(--olive-050); border-top: 2px solid var(--olive-300); }
 .pm-g-task .pm-g-title { padding-left: 1.1rem; }
 .pm-g-child .pm-g-title { padding-left: 2.2rem; }

@@ -17,6 +17,12 @@ Project. If no Chapter exists, no Project is created.
 
 Chained after the current head of this worktree (c3d9e1f5a7b2, Bank AI Rules "Solo WHO").
 Downgrade drops project_chapter.project_id and the project table (Projects are lost, Chapters are kept).
+
+Integration with main (BANK_AWS_001, 2026-10-12): on `main` the same schema is created by d2f6b9a3e7c1 (after the
+Restaurant Wines revision), so a database that comes from `main` - production included - already holds the
+`project` table when it reaches this revision. This revision therefore changes nothing when `project` exists; on a database
+where it ran first (the local working database) nothing changes. Never rerun on such a database: downgrade below
+this revision drops the Project Management tables whoever created them.
 """
 from __future__ import annotations
 
@@ -34,6 +40,8 @@ INITIAL_PROJECT_NAME = "Progetto da rinominare"
 
 
 def upgrade() -> None:
+    if "project" in sa.inspect(op.get_bind()).get_table_names():
+        return                     # created on main by d2f6b9a3e7c1 (see the docstring)
     op.create_table(
         "project",
         sa.Column("id", sa.Integer(), primary_key=True),
