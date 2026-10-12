@@ -32,6 +32,7 @@ from rfone_data_store.projects.gantt import timeline_for
 
 MAIN_PM = "d2f6b9a3e7c1"      # Project Management on main
 BEFORE_PM = "b6e4d2a8c1f9"    # Restaurant Wines
+RESPONSIBLE = "e8c4a2f6b1d3"  # Task Responsible
 
 # The schema e3a7c5f9b1d4 created on the Bank line (chapters without projects), to prove
 # d2f6b9a3e7c1 completes it without losing rows.
@@ -51,11 +52,11 @@ E3A7_SCHEMA = (
 
 
 def task_input(title, *, chapter_id=None, parent_task_id=None, percent=0, start=date(2026, 3, 1), days=1,
-               actual=None, predecessors=()):
+               actual=None, predecessors=(), responsible=""):
     return service.TaskInput(
         title=title, description=None, chapter_id=chapter_id, parent_task_id=parent_task_id,
         percent_complete=percent, planned_start_date=start, planned_duration_days=days,
-        actual_duration_days=actual, predecessor_ids=list(predecessors),
+        actual_duration_days=actual, predecessor_ids=list(predecessors), responsible_name=responsible,
     )
 
 
@@ -209,6 +210,73 @@ def main() -> int:
             empty = service.create_project(s, name="Vuoto")
             service.delete_project(s, empty.id)
             check("24b. an empty project can be deleted", s.get(m.Project, empty.id) is None)
+
+            # ---------------------------------------------------- responsibles
+            def names(project_id):
+                return [r.name for r in service.list_responsibles(s, project_id)]
+
+            mario = service.create_responsible(s, P, name="  Mario Rossi  ")
+            check("R1. a name is stored trimmed in its project's list", names(P) == ["Mario Rossi"] and mario.project_id == P)
+            for label, typed in (("same case", "Mario Rossi"), ("other case + spaces", " mario ROSSI ")):
+                message = refused(service.create_responsible, s, P, name=typed)
+                check(f"R2. duplicate refused ({label})", message is not None and "already" in message, message or "")
+            check("R3. a blank name is refused", refused(service.create_responsible, s, P, name="   ") is not None)
+            anna = service.create_responsible(s, P, name="Anna")
+            check("R4. rename to a name already in the list is refused (case ignored)",
+                  refused(service.rename_responsible, s, P, anna.id, name=" MARIO rossi") is not None)
+            service.rename_responsible(s, P, mario.id, name="mario rossi")
+            check("R5. renaming a name to another case of itself is allowed", names(P) == ["Anna", "mario rossi"])
+            service.rename_responsible(s, P, mario.id, name="Mario Rossi")
+
+            d = service.create_task(s, P, task_input("D", chapter_id=c1.id, responsible="mario ROSSI "))
+            check("R6. a typed name matching the list assigns the existing entry, no duplicate",
+                  d.responsible_id == mario.id and names(P) == ["Anna", "Mario Rossi"])
+            e = service.create_task(s, P, task_input("E", chapter_id=c1.id, responsible="Luca Bianchi"))
+            luca = [r for r in service.list_responsibles(s, P) if r.name == "Luca Bianchi"]
+            check("R7. a new typed name is added to the project's list and assigned",
+                  len(luca) == 1 and e.responsible_id == luca[0].id)
+            sub = service.create_task(s, P, task_input("D.1", parent_task_id=d.id, responsible="Anna"))
+            check("R8. a subtask may have a different responsible from its parent",
+                  sub.responsible_id == anna.id and d.responsible_id == mario.id)
+            check("R9. the responsible is optional", service.create_task(s, P, task_input("F", chapter_id=c1.id)).responsible_id is None)
+
+            service.rename_responsible(s, P, mario.id, name="Mario R.")
+            plan = service.build_plan(s, P)
+            by_title = {t.title: t for t in plan.tasks}
+            check("R10. a rename shows everywhere the name is read (plan)",
+                  by_title["D"].responsible_name == "Mario R." and by_title["D.1"].responsible_name == "Anna"
+                  and "Mario R." in [r.name for r in plan.responsibles])
+            message = refused(service.delete_responsible, s, P, mario.id)
+            check("R11. a name assigned to a task cannot be deleted: reassign first",
+                  message is not None and "assign" in message and s.get(m.ProjectResponsible, mario.id) is not None, message or "")
+            service.update_task(s, P, d.id, task_input("D", chapter_id=c1.id, responsible="Anna"))
+            service.delete_responsible(s, P, mario.id)
+            check("R12. after reassignment it can be deleted",
+                  s.get(m.ProjectResponsible, mario.id) is None and s.get(m.ProjectTask, d.id).responsible_id == anna.id)
+            service.update_task(s, P, e.id, task_input("E", chapter_id=c1.id, responsible=""))
+            check("R13. clearing the field leaves the task without a responsible", s.get(m.ProjectTask, e.id).responsible_id is None)
+
+            # isolation
+            other_anna = service.create_responsible(s, other.id, name="Anna")
+            check("R14. the same name in another project is a separate entry",
+                  other_anna.id != anna.id and names(other.id) == ["Anna"])
+            service.create_responsible(s, other.id, name="Solo Orlando")
+            g = service.create_task(s, P, task_input("G", chapter_id=c1.id, responsible="Solo Orlando"))
+            check("R15. a name of another project is never assigned: the task gets its own project's entry",
+                  s.get(m.ProjectResponsible, g.responsible_id).project_id == P
+                  and names(other.id) == ["Anna", "Solo Orlando"])
+            check("R16. another project's name is out of scope (404) for rename and delete",
+                  out_of_scope(service.rename_responsible, s, P, other_anna.id, name="X")
+                  and out_of_scope(service.delete_responsible, s, P, other_anna.id)
+                  and s.get(m.ProjectResponsible, other_anna.id).name == "Anna")
+            check("R17. the projects list carries each project's own names with task counts",
+                  {x.name: [(r.name, r.task_count) for r in x.responsibles] for x in service.list_projects(s)}["Apertura"]
+                  == [("Anna", 2), ("Luca Bianchi", 0), ("Solo Orlando", 1)])
+            emptied = service.create_project(s, name="Con nomi")
+            service.create_responsible(s, emptied.id, name="Temporaneo")
+            service.delete_project(s, emptied.id)
+            check("R18. deleting an empty project also removes its list",
+                  s.scalar(select(m.ProjectResponsible).where(m.ProjectResponsible.project_id == emptied.id)) is None)
             s.rollback()
 
         # ---------------------------------------------------- database constraints
@@ -294,6 +362,14 @@ def main() -> int:
                 count = conn.execute(text("SELECT COUNT(*) FROM project")).scalar()
             check("38. a new database gets the four tables and no project (the list starts empty)",
                   tables() == {"project", "project_chapter", "project_task", "project_task_dependency"} and count == 0)
+            command.upgrade(cfg, RESPONSIBLE)
+            with engine.connect() as conn:
+                ddl = conn.execute(text("SELECT sql FROM sqlite_master WHERE name = 'project_task'")).scalar() \
+                    if engine.dialect.name == "sqlite" else None
+                has_list = engine.dialect.has_table(conn, "project_responsible")
+            check("38b. the Responsible revision adds the list and the column, keeping project_task's constraints",
+                  has_list and (ddl is None or ("responsible_id" in ddl and "BETWEEN 0 AND 100" in ddl
+                                                and "ck_project_task_not_own_parent" in ddl)), ddl or "")
 
             # A database from the Bank line with e3a7c5f9b1d4 only: chapters without projects, with data.
             command.downgrade(cfg, BEFORE_PM)
@@ -315,6 +391,7 @@ def main() -> int:
             check("39. chapters without projects are linked to one initial project «Progetto da rinominare»",
                   len(projects) == 1 and projects[0][1] == "Progetto da rinominare" and linked == [(projects[0][0],)], str(projects))
             check("40. tasks and prerequisites are kept, inside that project", kept == (2, [(1, 2)]), str(kept))
+            command.upgrade(cfg, RESPONSIBLE)  # the code reads the current schema
             with Session() as s:
                 plan = service.build_plan(s, projects[0][0])
                 service.rename_project(s, projects[0][0], name="Apertura Winter Park")
@@ -323,6 +400,11 @@ def main() -> int:
                       [t.title for t in plan.tasks] == ["Permessi", "Carta vini"]
                       and plan.tasks[1].predecessors[0].title == "Permessi"
                       and s.get(m.Project, projects[0][0]).name == "Apertura Winter Park")
+            command.downgrade(cfg, MAIN_PM)
+            with engine.connect() as conn:
+                gone = not engine.dialect.has_table(conn, "project_responsible")
+                rows_kept = conn.execute(text("SELECT COUNT(*) FROM project_task")).scalar()
+            check("41b. downgrading the Responsible revision removes only the list and the column", gone and rows_kept == 2)
 
             # A database from the Bank line with both revisions (the local 5080 database): nothing changes.
             with engine.begin() as conn:
@@ -337,9 +419,17 @@ def main() -> int:
             check("42. tables already complete (Bank line): the revision changes nothing", before == after and before[0])
 
             command.upgrade(cfg, "head")
+            with engine.connect() as conn:
+                after_responsible = [conn.execute(text(f"SELECT * FROM {t} ORDER BY 1")).fetchall()
+                                     for t in ("project", "project_chapter", "project_task_dependency")]
+                task_rows = conn.execute(text("SELECT id, title, responsible_id FROM project_task ORDER BY id")).fetchall()
+            check("44. the Responsible revision keeps every existing row, tasks start without a responsible",
+                  after_responsible == [after[0], after[1], after[3]]
+                  and [(r[0], r[1]) for r in task_rows] == [(r[0], r[3]) for r in after[2]]  # id, title
+                  and all(r[2] is None for r in task_rows), str(task_rows))
             from alembic.script import ScriptDirectory
             heads = ScriptDirectory.from_config(cfg).get_heads()
-            check("43. one single head after Project Management", heads == [MAIN_PM] or len(heads) == 1, str(heads))
+            check("43. one single head after Project Management", heads == [RESPONSIBLE] , str(heads))
         finally:
             os.environ.pop("ALEMBIC_DATABASE_URL_OVERRIDE", None)
     finally:

@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% from "_nav_macros.html" import breadcrumb %}
-{% from "_projects_macros.html" import fmt, actual_days %}
+{% from "_projects_macros.html" import fmt, actual_days, responsible %}
 {% block page_title %}Gantt · {{ plan.project_name }} · Project Management · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=6">
 {{ breadcrumb([('RF-One', url_for('home')), ('Project Management', url_for('projects_list')),
                (plan.project_name, url_for('projects_plan', project_id=plan.project_id)), ('Gantt', None)]) }}
 
@@ -35,6 +35,7 @@
         <div class="pm-g-sub pm-warn-text">⚠ starts {{ fmt(task.planned_start_date) }}, on or before the planned end date of {{ p.code }} ({{ fmt(p.planned_end_date) }})</div>
       {% endfor %}
     </td>
+    <td class="pm-g-resp">{{ responsible(task) }}</td>
     <td>{{ fmt(task.planned_start_date) }}</td>
     <td>{{ fmt(task.planned_end_date) }}</td>
     <td class="num">{{ task.planned_duration_days }}</td>
@@ -85,12 +86,12 @@
   <div class="pm-gantt-scroll">
     <table class="pm-gantt">
       <colgroup>
-        <col class="pm-col-title"><col class="pm-col-date"><col class="pm-col-date">
+        <col class="pm-col-title"><col class="pm-col-resp"><col class="pm-col-date"><col class="pm-col-date">
         <col class="pm-col-num"><col class="pm-col-num"><col class="pm-col-num"><col class="pm-col-time">
       </colgroup>
       <thead>
         <tr>
-          <th>Activity</th><th>Planned start</th><th>Planned end</th>
+          <th>Activity</th><th>Responsible</th><th>Planned start</th><th>Planned end</th>
           <th class="num">Planned days</th><th class="num">Actual days</th><th class="num">%</th>
           <th class="pm-scale-cell">
             <div class="pm-scale">
@@ -112,6 +113,7 @@
               <span class="pm-code">{{ chapter.code }}</span> <strong>{{ chapter.title }}</strong>
               {% if not chapter.tasks %}<div class="pm-g-sub">no tasks</div>{% endif %}
             </td>
+            <td></td>
             <td>{{ fmt(chapter.start) }}</td>
             <td>{{ fmt(chapter.end) }}</td>
             <td></td><td></td><td></td>
@@ -135,5 +137,5 @@
   </div>
 {% endif %}
 
-<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=3"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=4"></script>
 {% endblock %}

@@ -67,6 +67,96 @@
     if (state && state.kind === "project") { open(state.values || {}, state.id, null, state.error); }
   }
 
+  // ------------------------------------------------------------------ Responsibles (list)
+
+  function initResponsiblesDialog() {
+    var overlay = document.getElementById("pm-responsibles-dialog");
+    if (!overlay || !window.RFOneModal) { return; }
+    var modal = window.RFOneModal.create({ overlay: overlay, initialFocus: function () { return one("#pm-responsible-new"); } });
+    var list = one("[data-pm-responsible-list]", overlay);
+    var addForm = one("[data-pm-responsible-add]", overlay);
+    var csrf = overlay.getAttribute("data-pm-csrf");
+
+    // "/projects/0/responsibles/0…" → the real ids.
+    function actionFor(attribute, projectId, responsibleId) {
+      return overlay.getAttribute(attribute)
+        .replace(/\/projects\/0\//, "/projects/" + projectId + "/")
+        .replace(/\/responsibles\/0(\/|$)/, "/responsibles/" + responsibleId + "$1");
+    }
+
+    function hidden(name, value) {
+      var input = document.createElement("input");
+      input.type = "hidden"; input.name = name; input.value = value;
+      return input;
+    }
+
+    function row(project, r, values, errorFor) {
+      var li = document.createElement("li");
+      var rename = document.createElement("form");
+      rename.method = "post";
+      rename.className = "pm-responsible-rename";
+      rename.action = actionFor("data-pm-rename-action", project.id, r.id);
+      rename.appendChild(hidden("csrf_token", csrf));
+      var input = document.createElement("input");
+      input.type = "text"; input.name = "name"; input.maxLength = 200; input.required = true;
+      input.autocomplete = "off";
+      input.value = errorFor === r.id && values.name !== undefined ? values.name : r.name;
+      input.setAttribute("aria-label", "Name");
+      var save = document.createElement("button");
+      save.type = "submit"; save.className = "pm-action"; save.textContent = "Rename";
+      rename.appendChild(input); rename.appendChild(save);
+
+      var count = document.createElement("span");
+      count.className = "pm-responsible-count";
+      count.textContent = r.task_count === 1 ? "1 task" : r.task_count + " tasks";
+
+      var remove = document.createElement("form");
+      remove.method = "post";
+      remove.action = actionFor("data-pm-delete-action", project.id, r.id);
+      remove.appendChild(hidden("csrf_token", csrf));
+      var del = document.createElement("button");
+      del.type = "submit"; del.className = "pm-action pm-action-danger"; del.textContent = "Delete";
+      remove.appendChild(del);
+      remove.addEventListener("submit", function (event) {
+        if (!window.confirm("Delete “" + r.name + "” from this project's list?")) { event.preventDefault(); }
+      });
+
+      li.appendChild(rename); li.appendChild(count); li.appendChild(remove);
+      return li;
+    }
+
+    function open(project, trigger, error, values, errorFor) {
+      values = values || {};
+      one("[data-pm-responsibles-project]", overlay).textContent = project.name || "";
+      list.innerHTML = "";
+      (project.responsibles || []).forEach(function (r) { list.appendChild(row(project, r, values, errorFor)); });
+      one("[data-pm-responsible-empty]", overlay).hidden = (project.responsibles || []).length > 0;
+      addForm.action = actionFor("data-pm-create-action", project.id, 0);
+      one("#pm-responsible-new").value = !errorFor && values.name !== undefined ? values.name : "";
+      var box = one("[data-pm-error]", overlay);
+      box.textContent = error || "";
+      box.hidden = !error;
+      modal.open(trigger);
+    }
+
+    function projectFor(id) {
+      var button = one('[data-pm-responsibles][data-pm-project-id="' + id + '"]');
+      return button ? readJson(button.getAttribute("data-pm-responsibles")) : null;
+    }
+
+    all("[data-pm-responsibles]").forEach(function (button) {
+      var project = readJson(button.getAttribute("data-pm-responsibles")) || {};
+      button.setAttribute("data-pm-project-id", project.id);
+      button.addEventListener("click", function () { open(project, button); });
+    });
+
+    var state = dialogState();
+    if (state && state.kind === "responsibles") {
+      var project = projectFor(state.id);
+      if (project) { open(project, null, state.error, state.values, state.responsible_id); }
+    }
+  }
+
   function initConfirmations() {
     all("form[data-pm-confirm]").forEach(function (form) {
       form.addEventListener("submit", function (event) {
@@ -120,7 +210,20 @@
     var startInput = one("#pm-task-start");
     var daysInput = one("#pm-task-days");
     var filterInput = one("[data-pm-pred-filter]");
+    var responsibleInput = one("[data-pm-responsible-input]");
+    var responsibleNames = readJson((one("#pm-responsible-names") || {}).textContent || "[]") || [];
     var currentTaskId = null;
+
+    // Same rule as the server: case and leading/trailing spaces are ignored.
+    function nameKey(name) { return (name || "").trim().toLowerCase(); }
+
+    function updateResponsibleNote() {
+      var note = one("[data-pm-responsible-note]");
+      var typed = responsibleInput.value.trim();
+      var known = responsibleNames.some(function (n) { return nameKey(n) === nameKey(typed); });
+      note.textContent = typed && !known ? "“" + typed + "” will be added to this project's responsible list." : "";
+      note.hidden = !note.textContent;
+    }
     var currentHasChildren = false;
 
     function syncParentChapter() {
@@ -184,6 +287,8 @@
 
       one("#pm-task-title").value = values.title || "";
       one("#pm-task-description").value = values.description || "";
+      responsibleInput.value = values.responsible_name || "";
+      updateResponsibleNote();
       parentSelect.value = values.parent_task_id ? String(values.parent_task_id) : "";
       if (values.chapter_id) { chapterSelect.value = String(values.chapter_id); }
       else if (chapterSelect.options.length) { chapterSelect.selectedIndex = 0; }
@@ -210,6 +315,7 @@
     }
 
     parentSelect.addEventListener("change", syncParentChapter);
+    responsibleInput.addEventListener("input", updateResponsibleNote);
     startInput.addEventListener("input", updateEndPreview);
     daysInput.addEventListener("input", updateEndPreview);
     if (filterInput) { filterInput.addEventListener("input", filterPredecessors); }
@@ -290,6 +396,7 @@
 
   initConfirmations();
   initProjectDialog();
+  initResponsiblesDialog();
   initPlan();
   initGantt();
 })();

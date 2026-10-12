@@ -52,8 +52,9 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
     @app.route("/projects")
     @gate
     def projects_list():
+        reopen = request.args.get("responsibles", type=int)
         with SessionFactory() as db:
-            return _render_list(db)
+            return _render_list(db, dialog={"kind": "responsibles", "id": reopen} if reopen else None)
 
     @app.route("/projects", methods=["POST"])
     @gate
@@ -106,6 +107,62 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
             db.commit()
         flash("Project deleted.", "info")
         return redirect(url_for("projects_list"))
+
+    # ------------------------------------------------------------ a project's responsibles
+    # Managed from the Projects list. Every outcome goes back to the list with
+    # the dialog open again: a success through `?responsibles=<id>`, a refusal
+    # re-rendered with the values entered and the reason.
+
+    def _responsibles_back(project_id: int):
+        return redirect(url_for("projects_list", responsibles=project_id))
+
+    def _responsibles_refused(db, project_id: int, error, responsible_id: int | None = None):
+        db.rollback()
+        return _render_list(db, status=422, dialog={
+            "kind": "responsibles", "id": project_id, "responsible_id": responsible_id,
+            "values": request.form.to_dict(), "error": str(error)})
+
+    @app.route("/projects/<int:project_id>/responsibles", methods=["POST"])
+    @gate
+    @scoped
+    def projects_responsible_create(project_id: int):
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                service.create_responsible(db, project_id, name=request.form.get("name", ""))
+            except service.ProjectValidationError as error:
+                return _responsibles_refused(db, project_id, error)
+            db.commit()
+        flash("Responsible added.", "info")
+        return _responsibles_back(project_id)
+
+    @app.route("/projects/<int:project_id>/responsibles/<int:responsible_id>", methods=["POST"])
+    @gate
+    @scoped
+    def projects_responsible_rename(project_id: int, responsible_id: int):
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                service.rename_responsible(db, project_id, responsible_id, name=request.form.get("name", ""))
+            except service.ProjectValidationError as error:
+                return _responsibles_refused(db, project_id, error, responsible_id)
+            db.commit()
+        flash("Responsible renamed.", "info")
+        return _responsibles_back(project_id)
+
+    @app.route("/projects/<int:project_id>/responsibles/<int:responsible_id>/delete", methods=["POST"])
+    @gate
+    @scoped
+    def projects_responsible_delete(project_id: int, responsible_id: int):
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                service.delete_responsible(db, project_id, responsible_id)
+            except service.ProjectValidationError as error:
+                return _responsibles_refused(db, project_id, error)
+            db.commit()
+        flash("Responsible deleted.", "info")
+        return _responsibles_back(project_id)
 
     # ------------------------------------------------------------ a project's plan
 

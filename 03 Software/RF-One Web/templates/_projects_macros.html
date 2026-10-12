@@ -34,6 +34,11 @@
   {{ task.actual_duration_days if task.actual_duration_days is not none else '—' }}
 {%- endmacro %}
 
+{# The Task's Responsible, read from the Project's list (a rename shows everywhere). #}
+{% macro responsible(task) -%}
+  {% if task.responsible_name %}{{ task.responsible_name }}{% else %}<span class="muted">—</span>{% endif %}
+{%- endmacro %}
+
 {% macro percent_meter(value) -%}
   <span class="pm-meter" aria-label="{{ value }}% complete"><span class="pm-meter-fill" style="width:{{ value }}%"></span></span>
   <span class="pm-meter-value">{{ value }}%</span>
@@ -49,6 +54,7 @@
     "planned_duration_days": task.planned_duration_days,
     "actual_duration_days": task.actual_duration_days,
     "predecessor_ids": task.predecessor_ids,
+    "responsible_name": task.responsible_name,
     "has_children": task.children|length > 0,
   }|tojson|forceescape }}
 {%- endmacro %}

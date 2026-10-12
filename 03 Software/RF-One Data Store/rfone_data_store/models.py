@@ -14492,11 +14492,17 @@ class ProjectTask(Base):
         ),
         Index("ix_project_task_chapter_id", "chapter_id"),
         Index("ix_project_task_parent_task_id", "parent_task_id"),
+        Index("ix_project_task_responsible_id", "responsible_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     chapter_id: Mapped[int] = mapped_column(ForeignKey("project_chapter.id"), nullable=False)
     parent_task_id: Mapped[int | None] = mapped_column(ForeignKey("project_task.id"), nullable=True)
+    # Optional, one per Task, always a Responsible of the Task's own Project
+    # (checked by `rfone_data_store.projects.service`).
+    responsible_id: Mapped[int | None] = mapped_column(
+        ForeignKey("project_responsible.id", name="fk_project_task_responsible_id"), nullable=True
+    )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     percent_complete: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
@@ -14504,6 +14510,31 @@ class ProjectTask(Base):
     planned_duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
     actual_duration_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ProjectResponsible(Base):
+    """A name in one Project's list of people responsible for its Tasks.
+    Only a name: independent of access accounts and Employees. `name_key`
+    (trimmed, case-folded) keeps a name unique within its Project."""
+
+    __tablename__ = "project_responsible"
+    __table_args__ = (
+        CheckConstraint("length(trim(name)) > 0", name="ck_project_responsible_name_not_blank"),
+        UniqueConstraint("project_id", "name_key", name="uq_project_responsible_project_name_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("project.id", name="fk_project_responsible_project_id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(200), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -14753,4 +14784,5 @@ ALL_MODELS: tuple[type[Base], ...] = (
     ProjectChapter,
     ProjectTask,
     ProjectTaskDependency,
+    ProjectResponsible,
 )

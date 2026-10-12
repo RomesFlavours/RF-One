@@ -4,7 +4,7 @@
 {% block page_title %}Project Management · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=6">
 {{ breadcrumb([('RF-One', url_for('home')), ('Project Management', None)]) }}
 
 <h1>Project Management</h1>
@@ -38,6 +38,14 @@
               <a class="btn pm-action" href="{{ url_for('projects_gantt', project_id=project.id) }}">Gantt</a>
               <button type="button" class="pm-action"
                       data-pm-rename-project="{{ {'id': project.id, 'name': project.name}|tojson|forceescape }}">Rename</button>
+              <button type="button" class="pm-action pm-icon-action" title="Responsible" aria-label="Responsible"
+                      data-pm-responsibles="{{ {'id': project.id, 'name': project.name,
+                        'responsibles': project.responsibles_payload}|tojson|forceescape }}">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                  <circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+                  <path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </button>
               {% if not project.chapter_count %}
                 <form method="post" action="{{ url_for('projects_project_delete', project_id=project.id) }}" class="pm-inline-form"
                       data-pm-confirm="Delete the project “{{ project.name }}”?">
@@ -55,6 +63,36 @@
 
 {{ project_dialog(url_for('projects_project_create'), url_for('projects_project_rename', project_id=0), 'list') }}
 
+{# A Project's Responsibles: add, rename, delete. `rf-one-projects.js` fills
+   the list from the clicked person icon; every form posts to the server,
+   which sends the person back here with this dialog open again. #}
+<div class="org-modal-overlay" id="pm-responsibles-dialog" hidden
+     data-pm-create-action="{{ url_for('projects_responsible_create', project_id=0) }}"
+     data-pm-rename-action="{{ url_for('projects_responsible_rename', project_id=0, responsible_id=0) }}"
+     data-pm-delete-action="{{ url_for('projects_responsible_delete', project_id=0, responsible_id=0) }}"
+     data-pm-csrf="{{ csrf_token() }}">
+  <div class="org-modal-panel pm-dialog" role="dialog" aria-modal="true" aria-labelledby="pm-responsibles-dialog-title">
+    <button type="button" class="org-modal-close" data-modal-close aria-label="Close">&times;</button>
+    <h2 id="pm-responsibles-dialog-title">Responsible</h2>
+    <p class="muted pm-dialog-sub" data-pm-responsibles-project></p>
+    <div class="error" data-pm-error hidden></div>
+    <p class="pm-hint">Names only, independent of RF-One accounts. A name assigned to a task cannot be deleted until its tasks are reassigned.</p>
+    <ul class="pm-responsible-list" data-pm-responsible-list></ul>
+    <p class="muted" data-pm-responsible-empty hidden>No names yet.</p>
+    <form method="post" class="pm-responsible-add" data-pm-responsible-add>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="pm-responsible-new">Add a name</label>
+      <div class="pm-responsible-line">
+        <input type="text" id="pm-responsible-new" name="name" maxlength="200" required autocomplete="off">
+        <button type="submit">Add</button>
+      </div>
+    </form>
+    <div class="btn-row">
+      <button type="button" class="btn-secondary" data-modal-close>Close</button>
+    </div>
+  </div>
+</div>
+
 {% if dialog %}<script type="application/json" id="pm-dialog-state">{{ dialog|tojson }}</script>{% endif %}
-<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=3"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=4"></script>
 {% endblock %}

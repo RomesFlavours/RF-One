@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% from "_nav_macros.html" import breadcrumb %}
-{% from "_projects_macros.html" import fmt, actual_days, percent_meter, task_payload, project_dialog with context %}
+{% from "_projects_macros.html" import fmt, actual_days, responsible, percent_meter, task_payload, project_dialog with context %}
 {% block page_title %}{{ plan.project_name }} · Project Management · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=6">
 {{ breadcrumb([('RF-One', url_for('home')), ('Project Management', url_for('projects_list')), (plan.project_name, None)]) }}
 
 <h1 class="pm-project-title">{{ plan.project_name }}</h1>
@@ -30,6 +30,7 @@ Completion and actual days are entered manually; nothing is rescheduled automati
       {% if task.description %}<div class="pm-description">{{ task.description }}</div>{% endif %}
       {% for warning in task.warnings %}<div class="pm-warn-text">⚠ {{ warning }}</div>{% endfor %}
     </td>
+    <td class="pm-resp-cell">{{ responsible(task) }}</td>
     <td>{{ fmt(task.planned_start_date) }}</td>
     <td>{{ fmt(task.planned_end_date) }}</td>
     <td class="num">{{ task.planned_duration_days }}</td>
@@ -61,7 +62,7 @@ Completion and actual days are entered manually; nothing is rescheduled automati
     <table class="pm-tree">
       <thead>
         <tr>
-          <th>Activity</th><th>Planned start</th><th>Planned end</th><th class="num">Planned days</th><th class="num">Actual days</th>
+          <th>Activity</th><th>Responsible</th><th>Planned start</th><th>Planned end</th><th class="num">Planned days</th><th class="num">Actual days</th>
           <th>Completion</th><th>Prerequisites</th><th class="pm-actions-head">Actions</th>
         </tr>
       </thead>
@@ -72,6 +73,7 @@ Completion and actual days are entered manually; nothing is rescheduled automati
               <span class="pm-code">{{ chapter.code }}</span> <strong>{{ chapter.title }}</strong>
               {% if chapter.description %}<div class="pm-description">{{ chapter.description }}</div>{% endif %}
             </td>
+            <td></td>
             <td>{{ fmt(chapter.start) }}</td>
             <td>{{ fmt(chapter.end) }}</td>
             <td></td><td></td><td></td><td></td>
@@ -89,7 +91,7 @@ Completion and actual days are entered manually; nothing is rescheduled automati
             </td>
           </tr>
           {% if not chapter.tasks %}
-            <tr class="pm-empty-row" data-rr-key="chapter-empty:{{ chapter.id }}"><td colspan="8" class="muted">No tasks in this chapter.</td></tr>
+            <tr class="pm-empty-row" data-rr-key="chapter-empty:{{ chapter.id }}"><td colspan="9" class="muted">No tasks in this chapter.</td></tr>
           {% endif %}
           {% for task in chapter.tasks %}
             {{ task_row(task, chapter) }}
@@ -166,6 +168,17 @@ Completion and actual days are entered manually; nothing is rescheduled automati
         <p class="pm-hint" data-pm-chapter-note hidden>A subtask always belongs to its parent task's chapter.</p>
       </div>
 
+      {# One Responsible, optional: pick a name of this Project or type a new one,
+         which the server adds to the Project's list when the task is saved. #}
+      <label for="pm-task-responsible">Responsible</label>
+      <input type="text" id="pm-task-responsible" name="responsible_name" maxlength="200" list="pm-responsible-options"
+             autocomplete="off" placeholder="Search or type a new name…" data-pm-responsible-input>
+      <datalist id="pm-responsible-options">
+        {% for r in plan.responsibles %}<option value="{{ r.name }}"></option>{% endfor %}
+      </datalist>
+      <script type="application/json" id="pm-responsible-names">{{ plan.responsibles|map(attribute='name')|list|tojson }}</script>
+      <p class="pm-hint" data-pm-responsible-note hidden></p>
+
       <div class="pm-form-grid pm-form-grid-numbers">
         <div>
           <label for="pm-task-start">Planned start date</label>
@@ -220,5 +233,5 @@ Completion and actual days are entered manually; nothing is rescheduled automati
 {{ project_dialog(url_for('projects_project_create'), url_for('projects_project_rename', project_id=0), 'plan') }}
 
 {% if dialog %}<script type="application/json" id="pm-dialog-state">{{ dialog|tojson }}</script>{% endif %}
-<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=3"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=4"></script>
 {% endblock %}
