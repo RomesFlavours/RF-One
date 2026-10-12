@@ -113,7 +113,7 @@ the misreading).
 read by the release engine (v3–v7) and re-validated today against the AWS For Whom catalogue; they cover
 current rules 1, 3, 4, 5, 6, 7, 8. Rule 2's valid interpretation (#37) names For Whom "RFWP", not an AWS entity
 today. Prerequisite: the interpretation key includes the general AI instructions, and AWS has none yet — the
-local instructions must be on AWS first (data transfer). Files: `%LOCALAPPDATA%\RF-One\Bank	ransfer-review-20261012\`
+local instructions must be on AWS first (data transfer). Files: `%LOCALAPPDATA%\RF-One\Bank\transfer-review-20261012\`
 (`interpretation_reuse.json`, `prepare_interpretation_reuse.py`).
 
 **IAM for the AI Preview (not applied).** Writing the policy was refused by the session's automatic permission
