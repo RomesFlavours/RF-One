@@ -169,6 +169,29 @@ def create_virtual_entity(
     return entity
 
 
+def create_personal_entity(
+    session: Session, *, code: str, name: str, description: str | None = None,
+) -> "m.ReportingEntity":
+    """A PERSONAL entity — a person who owns a Source or benefits from a
+    transaction, e.g. "Personal — Pino" (BANK_SOURCE_EDIT_AND_ENTITIES_001).
+
+    Like a VIRTUAL entity it creates ONE row, in `reporting_entities`, and
+    never a `LegalEntity`: a person is not an LLC, and `legal_entity_id`
+    stays NULL (the database's CHECK keeps it so)."""
+    code = (code or "").strip()
+    name = (name or "").strip()
+    if not code or not name:
+        raise ValueError("A reporting entity needs both a stable code and a name.")
+    _assert_code_available(session, code)
+    entity = m.ReportingEntity(
+        code=code, name=name, entity_type=m.REPORTING_ENTITY_PERSONAL, legal_entity_id=None,
+        reporting_group_id=None, description=description, status="ACTIVE",
+    )
+    session.add(entity)
+    session.flush()
+    return entity
+
+
 def assign_to_group(
     session: Session, *, reporting_entity_id: int, reporting_group_id: int | None,
 ) -> "m.ReportingEntity":

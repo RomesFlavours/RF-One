@@ -14,10 +14,11 @@ Domain-specific authorization logic.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -225,12 +226,37 @@ def list_domain_access_for_account(session: Session, account_id: int) -> list[m.
     )
 
 
+def list_domain_item_access_for_account(session: Session, account_id: int) -> dict[str, set[str]]:
+    """The items granted to `account_id`, by Domain code — meaningful only
+    for a Domain whose access scope is SELECTED."""
+    items: dict[str, set[str]] = {}
+    for row in session.scalars(
+        select(m.RFOneAccountDomainItemAccess).where(m.RFOneAccountDomainItemAccess.account_id == account_id)
+    ):
+        items.setdefault(row.domain_code, set()).add(row.item_code)
+    return items
+
+
 def set_domain_access(
     session: Session, *, account_id: int, domain_code: str, enabled: bool, role_code: str | None,
+    scope: str | None = None, item_codes: Iterable[str] | None = None,
 ) -> m.RFOneAccountDomainAccess:
     """Creates or updates the one `RFOneAccountDomainAccess` row for
     (account_id, domain_code) — never a second row for the same pair (see
-    that model's own unique constraint)."""
+    that model's own unique constraint).
+
+    `scope` None leaves an existing row's scope as it is (a new row gets
+    ALL), so a caller that only switches a Domain on or off never narrows
+    it. SELECTED requires at least one item: an access to "only these
+    items" with no item would be a no-access in disguise. The item list is
+    replaced as a whole when SELECTED, and cleared when the Domain is
+    disabled or opened whole, so a stale selection never comes back."""
+    if scope is not None and scope not in m.DOMAIN_ACCESS_SCOPES:
+        raise ValueError(f"Unknown access scope {scope!r}.")
+    selected_items = sorted({code.strip() for code in (item_codes or ()) if code and code.strip()})
+    if enabled and scope == m.DOMAIN_ACCESS_SCOPE_SELECTED and not selected_items:
+        raise ValueError(f"{domain_code}: choose at least one item, or give no access / access to the whole Domain.")
+
     existing = session.scalars(
         select(m.RFOneAccountDomainAccess).where(
             m.RFOneAccountDomainAccess.account_id == account_id,
@@ -240,10 +266,26 @@ def set_domain_access(
     if existing is None:
         existing = m.RFOneAccountDomainAccess(
             account_id=account_id, domain_code=domain_code, enabled=enabled, role_code=role_code,
+            scope=scope or m.DOMAIN_ACCESS_SCOPE_ALL,
         )
         session.add(existing)
     else:
         existing.enabled = enabled
         existing.role_code = role_code
+        if scope is not None:
+            existing.scope = scope
+
+    if scope is not None or not enabled:
+        session.execute(
+            delete(m.RFOneAccountDomainItemAccess).where(
+                m.RFOneAccountDomainItemAccess.account_id == account_id,
+                m.RFOneAccountDomainItemAccess.domain_code == domain_code,
+            )
+        )
+        if enabled and scope == m.DOMAIN_ACCESS_SCOPE_SELECTED:
+            session.add_all(
+                m.RFOneAccountDomainItemAccess(account_id=account_id, domain_code=domain_code, item_code=code)
+                for code in selected_items
+            )
     session.flush()
     return existing

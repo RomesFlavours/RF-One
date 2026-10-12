@@ -53,6 +53,8 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as web_app  # noqa: E402
+import tempfile as _tempfile  # noqa: E402
+web_app.app.config["BANK_IMPORT_STAGING_DIR"] = _tempfile.mkdtemp(prefix="rfoneweb_staging_")  # never the real staging folder
 import bank_routes  # noqa: E402
 from db import SessionFactory  # noqa: E402
 from _bank_upload_helper import upload_and_confirm  # noqa: E402
@@ -79,8 +81,8 @@ JUNE_CSV = (
 
 APPROVED_TABS = [  # Product Owner order, 2026-10-05 (BANK_SOURCE_AND_IMPORT_REVIEW_001)
     "Import and Review", "Review Transactions", "Monthly Export", "Source",
-    "Classification", "Instructions",
-]
+    "AI Rules", "Configuration", "Instructions",  # AI Rules: BANK_AI_RULES_001
+]  # BANK_RULES_RESET_001: the old "Rules" tab (Classification page) is retired
 
 
 def extract_csrf(html: bytes) -> str:
@@ -485,11 +487,15 @@ def main() -> int:
         })
         check("O. recompute deduplication from Source returns to Source",
               r.headers.get("Location") == "/bank/sources", r.headers.get("Location", ""))
-        edit_html = client.get(f"/bank/instruments/{checking_id}/edit").data.decode("utf-8")
-        check("O. the Source settings page belongs to Source and saves back to it",
-              "module-tab is-active" in edit_html
+        # BANK_SOURCE_EDIT_AND_ENTITIES_001: the former Source settings page
+        # is the Source modal now; an old link lands on Source with it open.
+        old = client.get(f"/bank/instruments/{checking_id}/edit")
+        edit_html = client.get(old.headers.get("Location", "/bank/sources")).data.decode("utf-8")
+        check("O. the Source settings belong to Source (the modal on /bank/sources) and save back to it",
+              old.status_code == 302 and old.headers["Location"].endswith(f"/bank/sources?edit={checking_id}")
               and re.search(r'module-tab is-active"\s+href="/bank/sources"', edit_html) is not None
-              and 'name="return_to" value="sources"' in edit_html,
+              and 'name="return_to" value="sources"' in edit_html
+              and re.search(rf'"open_id":\s*{checking_id}(?![0-9])', edit_html) is not None,
               "")
 
         # ------------------------------------------ P — no Classification

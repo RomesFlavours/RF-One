@@ -7,8 +7,8 @@
    4-5    a missing expected Source is a warning: Confirm Import stays enabled;
    6      a re-downloaded file is reported as duplicate before Confirm, also
           against retained rows whose `description_normalized` is empty;
-   7-10   a WHY is created with Name + Group only, from Select WHO / WHY and
-          from the Rule modal; existing WHY -> WHAT mappings are untouched;
+   7-10   a WHY is created with Name + Group only, from Select WHO / WHY
+          (the Rule modal is retired: 10 = its route is gone); existing WHY -> WHAT mappings are untouched;
    11     create WHY + use it in the same human event = confirmation_count 1;
    12-13  Cancel writes nothing; Confirm imports once, atomically.
 
@@ -47,6 +47,7 @@ run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as web_app  # noqa: E402
 import bank_routes  # noqa: E402
+from _bank_upload_helper import session_state  # noqa: E402
 from db import SessionFactory  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
@@ -56,7 +57,8 @@ from rfone_data_store.bank_reconciliation import monthly_source, why_catalog  # 
 web_app.app.config["BANK_IMPORT_STAGING_DIR"] = _STAGING_DIR
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
-STAGED_RE = re.compile(r"staged=([0-9a-f]{32})")
+# BANK_TWO_PASS_IMPORT_001: an upload opens its import session.
+STAGED_RE = re.compile(r"(?:staged=|/bank/import/)([0-9a-f]{32})")
 HEADER = "Details,Posting Date,Description,Amount,Type,Balance,Check or Slip #\n"
 CHECKING_AUG = (HEADER
     + "DEBIT,08/05/2026,US FOODS INVOICE 1001,-412.50,ACH_DEBIT,9000.00,\n"
@@ -177,6 +179,14 @@ def main() -> int:
                   sv.status == "ACTIVE" and sv.lifecycle_end_reason is None and sv.effective_end_date is None
                   and verdict.verdict == m.COVERAGE_EXPECTED, verdict.verdict)
 
+        def prepare_and_check(token, decision="IMPORT_DISTINCT"):
+            client.get(f"/bank/import/{token}")
+            client.post(f"/bank/import/{token}/check", data={"csrf_token": csrf})
+            for issue in (session_state(client, token).get("check") or {}).get("issues", []):
+                client.post(f"/bank/import/{token}/decide",
+                            data={"csrf_token": csrf, "key": issue["key"], "decision": decision})
+            return client.get(f"/bank/import/{token}").data.decode("utf-8")
+
         # ============================================================ 4-5
         before = counts()
         resp = client.post("/bank/upload", data={
@@ -184,16 +194,14 @@ def main() -> int:
             "payment_instrument_id": str(ids["checking"]),
             "files": [(io.BytesIO(CHECKING_AUG), "checking_aug.csv")]}, content_type="multipart/form-data")
         token = STAGED_RE.search(resp.headers["Location"]).group(1)
-        modal = client.get(resp.headers["Location"]).data.decode("utf-8")
-        modal = modal[modal.index('id="import-review-dialog"'):]
-        missing = modal[modal.index('data-review-row="missing"'):]
-        missing = missing[:missing.index("</tr>")]
-        check("4. a missing expected Source (Savings) is shown clearly", "Chase Savings 5555" in missing, missing)
+        modal = prepare_and_check(token)
+        warnings = modal[modal.index('id="expected-missing"'):] if 'id="expected-missing"' in modal else ""
+        check("4. a missing expected Source (Savings) is shown clearly", "Chase Savings 5555" in warnings[:1500],
+              warnings[:500])
         check("4. ... as a warning, not a blocking issue",
-              "Chase Savings 5555" in modal[modal.index("<h4>Warnings</h4>"):modal.index("<h4>Blocking issues</h4>")]
-              and "None" in modal[modal.index("<h4>Blocking issues</h4>"):][:200])
+              "(not blocking)" in warnings[:300] and re.search(r'data-figure="unresolved">0<', modal) is not None)
         check("5. Confirm Import stays available with a Source missing",
-              re.search(r'id="import-review-confirm"\s*>', modal) is not None)
+              re.search(r'id="import-confirm"\s*>', modal) is not None)
 
         # ============================================================== 12
         client.post(f"/bank/upload/{token}/cancel", data={"csrf_token": csrf})
@@ -204,6 +212,7 @@ def main() -> int:
             "csrf_token": csrf, "payment_instrument_id": str(ids["checking"]),
             "files": [(io.BytesIO(CHECKING_AUG), "checking_aug.csv")]}, content_type="multipart/form-data")
         token = STAGED_RE.search(resp.headers["Location"]).group(1)
+        prepare_and_check(token)
         real_import = bank_routes.bank_service.import_csv
 
         def failing(*args, **kwargs):
@@ -220,6 +229,7 @@ def main() -> int:
             "csrf_token": csrf, "payment_instrument_id": str(ids["checking"]),
             "files": [(io.BytesIO(CHECKING_AUG), "checking_aug.csv")]}, content_type="multipart/form-data")
         token = STAGED_RE.search(resp.headers["Location"]).group(1)
+        prepare_and_check(token)
         client.post(f"/bank/upload/{token}/confirm", data={"csrf_token": csrf})
         client.post(f"/bank/upload/{token}/confirm", data={"csrf_token": csrf})
         after = counts()
@@ -239,20 +249,21 @@ def main() -> int:
             "files": [(io.BytesIO(CHECKING_AUG_REDOWNLOAD), "checking_aug_again.csv")]},
             content_type="multipart/form-data")
         token = STAGED_RE.search(resp.headers["Location"]).group(1)
-        modal = client.get(resp.headers["Location"]).data.decode("utf-8")
-        modal = modal[modal.index('id="import-review-dialog"'):]
+        modal = prepare_and_check(token, decision="EXCLUDE")
+        issues = (session_state(client, token).get("check") or {}).get("issues", [])
         check("6. a re-downloaded file is reported as duplicate BEFORE Confirm, even against rows with an "
               "empty normalized description",
-              "2 transaction(s) look like ones already recorded" in modal, modal[modal.index("<h4>Files</h4>"):][:1500])
-        check("6. the review wrote nothing", counts() == after)
+              [i["kind"] for i in issues] == ["DUPLICATE_STORED", "DUPLICATE_STORED"]
+              and "Same date, description and amount as a transaction already stored." in modal, str(issues)[:500])
+        check("6. the check wrote nothing", counts() == after)
         client.post(f"/bank/upload/{token}/confirm", data={"csrf_token": csrf})
         with SessionFactory() as s:
-            dup = s.scalar(select(func.count()).select_from(m.FinancialTransaction).where(
-                m.FinancialTransaction.duplicate_status == "CANDIDATE_DUPLICATE"))
+            total = s.scalar(select(func.count()).select_from(m.FinancialTransaction))
             stored_empty = s.scalar(select(func.count()).select_from(m.FinancialTransaction).where(
                 m.FinancialTransaction.description_normalized.is_(None)))
-        check("6. after Confirm the two repeated rows are candidate duplicates; the third is new; the "
-              "retained rows were not rewritten", dup == 2 and stored_empty == 2, f"dup={dup} empty={stored_empty}")
+        check("6. after Confirm the two excluded repeats are not imported; the third is new; the "
+              "retained rows were not rewritten",
+              total == after["transactions"] + 1 and stored_empty == 2, f"total={total} empty={stored_empty}")
 
         # ========================================================== 7-11
         def create(name, *, group=None, who_id=None):
@@ -296,20 +307,10 @@ def main() -> int:
         check("11. create WHY + use it in the same human reconciliation = confirmation_count 1",
               association(ids["atm"], why_id) == (True, 1), str(association(ids["atm"], why_id)))
 
-        rule_made = create("Exchange Commission", group=group_id, who_id=ids["zeta"])
-        rule_why = (rule_made.get_json() or {}).get("why", {}).get("id")
-        applied = client.post("/bank/who-rules/apply", headers=fetch, data={
-            "csrf_token": csrf, "occurrence_id": str(ids["zeta"]), "instruction": "Dove nella descrizione trovi ZETA EXCHANGE",
-            "transaction_reason_id": [str(rule_why)]})
-        check("10. Rule modal: a WHY with Name + Group only is created and Apply accepts it",
-              rule_made.status_code == 200 and applied.status_code == 200 and (applied.get_json() or {}).get("ok"),
-              f"{rule_made.data[:200]} {applied.data[:300]}")
-        check("11. Rule modal: create WHY + Apply = confirmation_count 1",
-              association(ids["zeta"], rule_why) == (True, 1), str(association(ids["zeta"], rule_why)))
-        client.post("/bank/who-rules/apply", headers=fetch, data={
-            "csrf_token": csrf, "occurrence_id": str(ids["zeta"]), "instruction": "Dove nella descrizione trovi ZETA EXCHANGE",
-            "transaction_reason_id": [str(rule_why)]})
-        check("11. a second identical Apply counts nothing more", association(ids["zeta"], rule_why) == (True, 1))
+        # BANK_RULES_RESET_001 — the Rule modal (POST /bank/who-rules/apply) is
+        # retired, and its checks 10/11 with it; only its absence is checked.
+        check("10. the retired Rule modal Apply route no longer exists",
+              client.post("/bank/who-rules/apply", headers=fetch, data={"csrf_token": csrf}).status_code == 404)
 
         with SessionFactory() as s:
             whats_after = {r.id: r.accounting_classification_id for r in s.scalars(select(m.BankTransactionReason))

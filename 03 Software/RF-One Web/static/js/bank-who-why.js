@@ -21,12 +21,24 @@
      * the active WHO list and the grouped WHY catalog — once per page;
      * the WHY already associated with the chosen WHO — when it is chosen
        (and cached), only to mark them;
-     * "+ Create New WHY" opens the ONE shared dialog (bank-why-create.js,
+     * "+ New WHY" opens the ONE shared dialog (bank-why-create.js,
        also used by the WHO Rule modal): the WHY is saved there and comes
-       back SELECTED here, already added to the chosen WHO.
+       back SELECTED here, already added to the chosen WHO;
+     * "+ New WHO" opens the Create New WHO dialog (bank-who-create.js,
+       BANK_RECONCILIATION_NEW_WHO_001): the WHO — new, or an existing one
+       the operator chose there — joins the list and comes back SELECTED,
+       keeping the WHY already chosen.
 
    A WHY is never selected for the operator, not even when the WHO has only
-   one: Confirm stays disabled until a WHO AND a WHY are chosen. */
+   one: Confirm stays disabled until a WHO AND a WHY are chosen.
+
+   BANK_REVIEW_BULK_WHO_WHY_001 — on To Reconcile, rows can be ticked. Opening
+   the dialog from a TICKED row opens it for every ticked row (the set is
+   fixed then): nothing is preselected, the subject says "Assign WHO / WHY
+   to N selected transactions", Confirm says "Confirm for N transactions"
+   and posts their ids — each with the decision the page showed — to the
+   one bulk route, which saves all of them or none. An unticked row keeps
+   the single behaviour. Cancel / Escape keep the ticks. */
 
 (function () {
   "use strict";
@@ -41,6 +53,7 @@
   var whoSearch = document.getElementById("who-picker-search");
   var whoList = document.getElementById("who-picker-list");
   var whoEmpty = document.getElementById("who-picker-empty");
+  var whoNoneYet = document.getElementById("who-picker-none-yet");
   var groupSearch = document.getElementById("why-group-search");
   var groupList = document.getElementById("why-group-list");
   var groupEmpty = document.getElementById("why-group-empty");
@@ -49,6 +62,7 @@
   var whyList = document.getElementById("why-picker-list");
   var whyNone = document.getElementById("why-picker-none");
   var createButton = document.getElementById("why-picker-create");
+  var createWhoButton = document.getElementById("who-picker-create");
   var errorBox = document.getElementById("who-picker-error");
   var summary = document.getElementById("who-picker-summary");
   var confirmButton = document.getElementById("who-picker-confirm");
@@ -57,6 +71,9 @@
   var whysTemplate = overlay.dataset.whysUrlTemplate;
   var catalogUrl = overlay.dataset.catalogUrl;
   var actionTemplate = overlay.dataset.actionTemplate;
+  var bulkUrl = overlay.dataset.bulkUrl;
+  var bulkFields = document.getElementById("who-picker-bulk-fields");
+  var confirmLabel = "Confirm";
 
   var OTHER = "other";        // the key of the "Other" entry (WHY in no group)
 
@@ -136,7 +153,10 @@
       button.hidden = !match;
       if (match) { shown += 1; }
     });
-    whoEmpty.hidden = shown !== 0;
+    // No WHO at all is not a search without hits: say how to create one.
+    var none = whoButtons.length === 0;
+    whoNoneYet.hidden = !none;
+    whoEmpty.hidden = none || shown !== 0;
   }
 
   function markWho(id) {
@@ -339,6 +359,31 @@
     }, createButton);
   }
 
+  // ------------------------------------------------------- + New WHO
+  // The dialog opens on top of this popup with the WHO search text as the
+  // name. On Save (or when an existing WHO is chosen there) the WHO joins
+  // this list, alphabetically, and is SELECTED — the WHY already chosen
+  // stays chosen. Cancel leaves this popup exactly as it was.
+  function openCreateWho() {
+    if (!window.RFOneWhoCreate) { showError("+ New WHO is not available on this page."); return; }
+    showError("");
+    window.RFOneWhoCreate.open({
+      name: whoSearch.value.trim(),
+      onSaved: function (who) {
+        if (!whos.filter(function (w) { return String(w.id) === String(who.id); })[0]) {
+          whos.push({ id: who.id, name: who.name });
+          whos.sort(byName);
+          buildWhoList();
+        }
+        whoSearch.value = "";
+        filterWhos();
+        chooseWho(who.id, whyHidden.value || null);
+        var chosen = whoList.querySelector(".who-option.is-selected");
+        if (chosen && chosen.scrollIntoView) { chosen.scrollIntoView({ block: "nearest" }); }
+      },
+    }, createWhoButton);
+  }
+
   // ---------------------------------------------------------- open/close
   function clearWhy() {
     whyHidden.value = "";
@@ -352,6 +397,28 @@
       showError("");
       form.action = actionTemplate.replace("/transactions/0/", "/transactions/" + encodeURIComponent(pending.transactionId) + "/");
       subject.textContent = pending.label || "";
+      if (bulkFields) {
+        bulkFields.innerHTML = "";
+        (pending.bulk || []).forEach(function (item) {
+          var input = document.createElement("input");
+          input.type = "hidden";
+          input.name = "seen";
+          input.value = item.id + ":" + (item.explanationId || "");
+          bulkFields.appendChild(input);
+        });
+      }
+      if (pending.bulk) {
+        // Multiple mode: the bulk route; no WHO / WHY inherited from the row.
+        form.action = bulkUrl;
+        subject.textContent = "Assign WHO / WHY to " + pending.bulk.length + " selected transaction"
+          + (pending.bulk.length === 1 ? "" : "s");
+        pending.whoId = "";
+        pending.whyId = "";
+        confirmLabel = "Confirm for " + pending.bulk.length + " transaction" + (pending.bulk.length === 1 ? "" : "s");
+      } else {
+        confirmLabel = "Confirm";
+      }
+      if (confirmButton) { confirmButton.textContent = confirmLabel; }
       whoHidden.value = "";
       if (!whoList) { return; }
       whoSearch.value = "";
@@ -384,10 +451,88 @@
 
   window.RFOneWhoWhy = { open: open };
 
+  // ------------------------------------------------- ticked rows (To Reconcile)
+  function tickedBoxes() {
+    return Array.prototype.slice.call(document.querySelectorAll(".review-select:checked"));
+  }
+  function syncSelection() {
+    var boxes = Array.prototype.slice.call(document.querySelectorAll(".review-select"));
+    if (!boxes.length) { return; }
+    var count = tickedBoxes().length;
+    var bar = document.getElementById("review-selection");
+    var text = document.getElementById("review-selected-count");
+    if (bar) { bar.hidden = count === 0; }
+    if (text) { text.textContent = count + " transaction" + (count === 1 ? "" : "s") + " selected"; }
+    boxes.forEach(function (box) {
+      var row = box.closest("tr");
+      var button = row && row.querySelector(".who-picker-open");
+      if (button) { button.textContent = box.checked ? "Select WHO / WHY" : (button.dataset.singleLabel || "Select WHO"); }
+    });
+  }
+  document.addEventListener("change", function (event) {
+    if (event.target.classList && event.target.classList.contains("review-select")) { syncSelection(); }
+  });
+  var clearSelection = document.getElementById("review-selection-clear");
+  if (clearSelection) {
+    clearSelection.addEventListener("click", function () {
+      tickedBoxes().forEach(function (box) { box.checked = false; });
+      syncSelection();
+    });
+  }
+  // A page shown again (back / forward, a restored form) starts with no ticks
+  // — except right after a header re-sort (BANK_REVIEW_SORT_001): the ticks
+  // carried by transaction id come back on the rows still shown; the others
+  // are dropped, and the page says how many.
+  var CARRY = "rfone-review-sort-carry";
+  document.addEventListener("click", function (event) {
+    var link = event.target.closest && event.target.closest(".review-sort-link");
+    if (!link) { return; }
+    var ids = tickedBoxes().map(function (box) { return box.dataset.selectId; });
+    try {
+      if (ids.length) { sessionStorage.setItem(CARRY, JSON.stringify({ href: link.href, ids: ids })); }
+      else { sessionStorage.removeItem(CARRY); }
+    } catch (e) { /* no storage: the ticks are simply not carried */ }
+  });
+  window.addEventListener("pageshow", function () {
+    tickedBoxes().forEach(function (box) { box.checked = false; });
+    var note = document.getElementById("review-selection-note");
+    if (note) { note.hidden = true; note.textContent = ""; }
+    var carry = null;
+    try {
+      carry = JSON.parse(sessionStorage.getItem(CARRY) || "null");
+      sessionStorage.removeItem(CARRY);
+    } catch (e) { carry = null; }
+    if (carry && carry.href === window.location.href && Array.isArray(carry.ids)) {
+      var kept = 0;
+      carry.ids.forEach(function (id) {
+        var box = document.querySelector('.review-select[data-select-id="' + String(id).replace(/[^0-9]/g, "") + '"]');
+        if (box) { box.checked = true; kept += 1; }
+      });
+      var dropped = carry.ids.length - kept;
+      if (dropped && note) {
+        note.textContent = dropped + " selected transaction" + (dropped === 1 ? " is" : "s are")
+          + " no longer shown in the first rows of this order and " + (dropped === 1 ? "was" : "were") + " unselected.";
+        note.hidden = false;
+      }
+    }
+    syncSelection();
+  });
+
   document.addEventListener("click", function (event) {
     var trigger = event.target.closest(".who-picker-open");
     if (!trigger) { return; }
     event.preventDefault();
+    var row = trigger.closest("tr");
+    var own = row && row.querySelector(".review-select");
+    if (own && own.checked) {
+      open({
+        transactionId: trigger.dataset.transactionId,
+        bulk: tickedBoxes().map(function (box) {
+          return { id: box.dataset.selectId, explanationId: box.dataset.explanationId };
+        }),
+      }, trigger);
+      return;
+    }
     open({
       transactionId: trigger.dataset.transactionId,
       label: trigger.dataset.transactionLabel || "",
@@ -414,6 +559,7 @@
     if (option) { selectWhy(option.dataset.reasonId); }
   });
   createButton.addEventListener("click", openCreate);
+  if (createWhoButton) { createWhoButton.addEventListener("click", openCreateWho); }
 
   // Up/Down move between the visible options of a list; Enter picks one.
   [whoList, groupList, whyList].forEach(function (list) {
@@ -434,8 +580,17 @@
     showError("");
     if (!whoHidden.value) { showError("Choose the WHO."); return; }
     if (!whyHidden.value) { showError("Choose the WHY."); return; }
+    if (confirmButton.disabled) { return; }
     confirmButton.disabled = true;
     confirmButton.textContent = "Saving…";
+    var bulk = !!pending.bulk;
+    if (bulk && window.RFOneBusy) { window.RFOneBusy.start(); }
+    function restore(message) {
+      if (bulk && window.RFOneBusy) { window.RFOneBusy.stop(); }
+      showError(message);
+      confirmButton.textContent = confirmLabel;
+      sync();
+    }
     fetch(form.action, {
       method: "POST", body: new FormData(form), credentials: "same-origin",
       headers: { "X-Requested-With": "fetch" },
@@ -457,14 +612,10 @@
           }
           return;
         }
-        showError((data && data.error) || "Not saved.");
-        confirmButton.textContent = "Confirm";
-        sync();
+        restore((data && data.error) || "Not saved.");
       })
       .catch(function () {
-        showError("The server did not answer. Reload the page to see whether it was saved.");
-        confirmButton.textContent = "Confirm";
-        sync();
+        restore("The server did not answer. Reload the page to see whether it was saved.");
       });
   });
 })();

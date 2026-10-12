@@ -36,6 +36,7 @@
   var whatChosen = document.getElementById("why-create-dialog-what-chosen");
   var errorBox = document.getElementById("why-create-dialog-error");
   var saveButton = document.getElementById("why-create-dialog-save");
+  var groupNew = document.getElementById("why-group-new");
 
   var options = null;          // {groups, whats, whys} once loaded
   var loading = null;
@@ -143,6 +144,80 @@
   groupSelect.addEventListener("change", function () { showError(""); });
   whatSearch.addEventListener("input", renderWhats);
   whatSelect.addEventListener("change", function () { showError(""); syncWhatChosen(); });
+
+  // ------------------------------------------------ + New WHY Group
+  // BANK_WHY_GROUP_CREATE_001 — a small dialog ON TOP of this one. Save
+  // creates the group (or reuses the active one of that name), adds it to
+  // the selector in alphabetical order and SELECTS it; nothing else in the
+  // New WHY dialog changes. Cancel / Escape close only the group dialog.
+  var groupOverlay = document.getElementById("why-group-dialog");
+  if (groupOverlay && groupNew) {
+    var groupForm = document.getElementById("why-group-form");
+    var groupName = document.getElementById("why-group-name");
+    var groupError = document.getElementById("why-group-error");
+    var groupSave = document.getElementById("why-group-save");
+    var groupModal = window.RFOneModal.create({
+      overlay: groupOverlay,
+      onOpen: function () {
+        groupForm.reset();
+        groupError.hidden = true;
+        groupSave.disabled = false;
+        groupSave.textContent = "Save";
+      },
+      initialFocus: function () { return groupName; },
+    });
+    var showGroupError = function (message) {
+      groupError.textContent = message || "";
+      groupError.hidden = !message;
+    };
+    var busy = function (on) {
+      if (window.RFOneBusy) { if (on) { window.RFOneBusy.start(); } else { window.RFOneBusy.stop(); } }
+    };
+    var addGroupOption = function (group) {
+      var id = String(group.id);
+      if (!Array.prototype.some.call(groupSelect.options, function (o) { return o.value === id; })) {
+        var after = Array.prototype.filter.call(groupSelect.options, function (o) {
+          return o.value && o.textContent.localeCompare(group.name, undefined, { sensitivity: "base" }) > 0;
+        })[0];
+        groupSelect.insertBefore(new Option(group.name, id), after || null);
+        if (options && options.groups) { options.groups.push({ id: group.id, name: group.name }); }
+      }
+      groupSelect.value = id;
+      showError("");
+    };
+    groupNew.addEventListener("click", function () { groupModal.open(groupNew); });
+    groupName.addEventListener("input", function () { showGroupError(""); });
+    groupForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (groupSave.disabled) { return; }
+      if (!groupName.value.trim()) { showGroupError("Write the group name."); groupName.focus(); return; }
+      groupSave.disabled = true;
+      groupSave.textContent = "Saving…";
+      busy(true);
+      var failed = function (message) {
+        busy(false);
+        showGroupError(message);
+        groupSave.disabled = false;
+        groupSave.textContent = "Save";
+      };
+      fetch(groupForm.action, {
+        method: "POST", body: new FormData(groupForm), credentials: "same-origin",
+        headers: { "X-Requested-With": "fetch" },
+      })
+        .then(function (response) {
+          return response.json().catch(function () {
+            return { ok: false, error: "Not saved (HTTP " + response.status + "). Reload the page and try again." };
+          });
+        })
+        .then(function (data) {
+          if (!data || !data.ok) { failed((data && data.error) || "Not saved."); return; }
+          busy(false);
+          addGroupOption(data.group);
+          groupModal.close();
+        })
+        .catch(function () { failed("The server did not answer. Reload the page to see whether the group was saved."); });
+    });
+  }
 
   form.addEventListener("submit", function (event) {
     event.preventDefault();

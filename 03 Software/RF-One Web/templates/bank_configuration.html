@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_nav_macros.html" import breadcrumb %}
+{% import "_bank_macros.html" as bank %}
 {% block page_title %}Bank Configuration · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
@@ -9,7 +9,9 @@
     modal posts to one /bank/configuration/... route; every rule is applied
     by the Bank configuration service, the checks here only spare a round
     trip. -#}
-{{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', url_for('bank_home')), ('Configuration', None)]) }}
+{#- The same Bank menu as every Bank page, Configuration active; it also
+    draws the breadcrumb (RF-One › Bank Reconciliation › Configuration). -#}
+{{ bank.module_nav('configuration') }}
 
 <style>
   .cp-header { display: flex; align-items: center; gap: .6rem 1.2rem; flex-wrap: wrap; margin: .25rem 0 .8rem; }
@@ -103,7 +105,7 @@
     <button type="button" class="cp-btn cp-add" data-add="who">+ Add WHO</button>
   </div>
   <div class="cp-search">
-    <input type="search" id="cp-who-search" placeholder="Search WHO by name" aria-label="Search WHO by name" autocomplete="off">
+    <input type="search" id="cp-who-search" data-rr-state placeholder="Search WHO by name" aria-label="Search WHO by name" autocomplete="off">
     <span class="cp-desc" id="cp-who-count"></span>
   </div>
   <table class="cp-table"><thead><tr><th>WHO</th><th>Default WHY</th><th class="cp-narrow">Possible WHY</th>
@@ -163,8 +165,116 @@
   </div>
 </div>
 
+{#- BANK_WHO_MERGE_001 — merge two WHO: choose the one to keep and the one to
+    absorb; the preview says what moves and asks about any setting that
+    cannot survive for both, before Merge. -#}
+<div class="cp-overlay" id="cp-merge" hidden>
+  <div class="cp-modal" role="dialog" aria-modal="true" aria-labelledby="cp-merge-title">
+    <h2 id="cp-merge-title">Merge WHO</h2>
+    <div class="cp-f"><label for="m-absorb">WHO to absorb (becomes inactive, its name an alias)</label><select id="m-absorb"></select></div>
+    <div class="cp-f"><label for="m-keep">WHO to keep</label><select id="m-keep"></select></div>
+    <p><button type="button" class="btn-secondary cp-btn" id="m-swap">Swap</button></p>
+    <div id="m-preview" class="cp-merge-preview" aria-live="polite"></div>
+    <p class="cp-error" id="m-error"></p>
+    <div class="cp-actions">
+      <button type="button" class="btn-secondary" id="m-cancel">Cancel</button>
+      <button type="button" id="m-confirm" disabled>Merge</button>
+    </div>
+  </div>
+</div>
+
 <form method="post" id="cp-post" hidden><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
 <script type="application/json" id="cp-data">{{ config|tojson }}</script>
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
+<script>
+(function () {
+  // BANK_WHO_MERGE_001 — the Merge dialog.
+  var S = JSON.parse(document.getElementById('cp-data').textContent);
+  var BASE = {{ url_for('bank_configuration')|tojson }};
+  var overlay = document.getElementById('cp-merge');
+  var absorbSel = document.getElementById('m-absorb'), keepSel = document.getElementById('m-keep');
+  var box = document.getElementById('m-preview'), err = document.getElementById('m-error');
+  var confirm = document.getElementById('m-confirm');
+  var csrf = document.querySelector('#cp-post input[name=csrf_token]').value;
+  var current = null;
+  function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+  var active = S.whos.filter(function (o) { return o.active; })
+    .sort(function (a, b) { return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }); });
+  function fill(sel, value) {
+    sel.innerHTML = '<option value="">Choose a WHO…</option>' + active.map(function (o) {
+      return '<option value="' + o.id + '"' + (String(o.id) === String(value) ? ' selected' : '') + '>' + esc(o.name) + '</option>'; }).join('');
+  }
+  function answered() {
+    return current && current.conflicts.every(function (c) { return !!box.querySelector('input[name="m-' + c.key + '"]:checked'); });
+  }
+  function sync() { confirm.disabled = !answered(); }
+  function preview() {
+    current = null; box.innerHTML = ''; err.textContent = ''; sync();
+    if (!absorbSel.value || !keepSel.value) { return; }
+    if (absorbSel.value === keepSel.value) { err.textContent = 'Choose two different WHO.'; return; }
+    var f = new FormData(); f.append('csrf_token', csrf); f.append('keep_id', keepSel.value); f.append('absorb_id', absorbSel.value);
+    box.textContent = 'Checking…';
+    fetch(BASE + '/who/merge/preview', { method: 'POST', body: f, credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) { box.innerHTML = ''; err.textContent = data.error; return; }
+        current = data;
+        var i = data.impact;
+        var html = '<p><strong>' + esc(data.absorb.name) + '</strong> will be absorbed into <strong>' + esc(data.keep.name)
+          + '</strong>. Everything moves to ' + esc(data.keep.name) + '; ' + esc(data.absorb.name)
+          + ' becomes inactive (no longer selectable) and its name an alias of ' + esc(data.keep.name) + '.</p><ul class="cp-merge-impact">'
+          + '<li>' + i.transactions + ' transaction(s) — ' + i.decisions + ' decision(s), reconciled ones included</li>'
+          + '<li>' + i.rules + ' recognition rule(s), ' + i.why_rules + ' WHY rule(s), ' + i.standards + ' Standard(s)</li>'
+          + '<li>' + i.aliases + ' alias(es), ' + i.possible_why + ' possible WHY, ' + i.entities + ' entity(ies) served, '
+          + i.suppliers + ' supplier link(s)</li>'
+          + '<li>' + i.recognitions + ' WHO recognition(s)</li></ul>';
+        data.conflicts.forEach(function (c) {
+          html += '<fieldset class="cp-merge-conflict"><legend>' + esc(c.label) + '</legend>' + c.choices.map(function (ch) {
+            return '<label class="cp-check"><input type="radio" name="m-' + c.key + '" value="' + esc(ch[0]) + '"> ' + esc(ch[1]) + '</label>';
+          }).join('') + '</fieldset>';
+        });
+        box.innerHTML = html;
+        sync();
+      })
+      .catch(function () { box.innerHTML = ''; err.textContent = 'The server did not answer.'; });
+  }
+  function open(absorbId) {
+    fill(absorbSel, absorbId); fill(keepSel, '');
+    box.innerHTML = ''; err.textContent = ''; current = null; sync();
+    overlay.hidden = false; keepSel.focus();
+  }
+  function close() { overlay.hidden = true; }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-merge]');
+    if (b) { open(b.dataset.merge); }
+  });
+  absorbSel.addEventListener('change', preview);
+  keepSel.addEventListener('change', preview);
+  box.addEventListener('change', sync);
+  document.getElementById('m-swap').addEventListener('click', function () {
+    var a = absorbSel.value; absorbSel.value = keepSel.value; keepSel.value = a; preview();
+  });
+  document.getElementById('m-cancel').addEventListener('click', close);
+  document.addEventListener('keydown', function (e) { if (!overlay.hidden && e.key === 'Escape') { close(); } });
+  confirm.addEventListener('click', function () {
+    if (!answered()) { return; }
+    confirm.disabled = true;
+    var form = document.getElementById('cp-post');
+    Array.prototype.slice.call(form.querySelectorAll('input[data-f]')).forEach(function (i) { i.remove(); });
+    var fields = [['keep_id', keepSel.value], ['absorb_id', absorbSel.value]];
+    current.conflicts.forEach(function (c) {
+      var v = box.querySelector('input[name="m-' + c.key + '"]:checked').value;
+      fields.push([c.key === 'default_why' ? 'default_why' : 'manual_only', v]);
+    });
+    fields.forEach(function (f) {
+      var input = document.createElement('input'); input.type = 'hidden'; input.name = f[0]; input.value = f[1]; input.dataset.f = '1';
+      form.appendChild(input);
+    });
+    form.action = BASE + '/who/merge';
+    form.submit();
+  });
+})();
+</script>
 <script>
 (function () {
   var S = JSON.parse(document.getElementById('cp-data').textContent);
@@ -180,7 +290,7 @@
   }
   function editBtn(kind, id) { return '<button type="button" class="btn-secondary cp-btn" data-edit="' + kind + '" data-id="' + id + '">Edit</button>'; }
   function row(cells, item, kind) {
-    return '<tr data-id="' + item.id + '" class="' + (item.active === false ? 'cp-inactive' : '') + '">' + cells.join('') + '<td class="cp-narrow">' + editBtn(kind, item.id) + '</td></tr>';
+    return '<tr data-id="' + item.id + '" data-rr-key="' + kind + ':' + item.id + '" class="' + (item.active === false ? 'cp-inactive' : '') + '">' + cells.join('') + '<td class="cp-narrow">' + editBtn(kind, item.id) + '</td></tr>';
   }
   function td(html, cls) { return '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + html + '</td>'; }
   function count(list, title) { return '<span class="cp-count" title="' + esc(title.join(', ') || 'none') + '">' + list.length + '</span>'; }
@@ -194,13 +304,15 @@
                   td(destinationCell(y)), td(yes(y.active), 'cp-narrow')], y, 'why'); }); },
     who: function () { return S.whos.map(function (o) {
       var def = byId('whys', o.default_why);
+      // BANK_WHO_MERGE_001 — an active WHO can be merged (Merge next to Edit).
+      var merge = o.active ? ' <button type="button" class="btn-secondary cp-btn" data-merge="' + o.id + '">Merge</button>' : '';
       return row([td('<strong>' + esc(o.name) + '</strong>'), td(def ? esc(def.name) : '—'),
                   td(count(o.whys, names('whys', o.whys)), 'cp-narrow'),
                   td(count(o.entities, names('entities', o.entities)), 'cp-narrow'),
                   td(count(o.rules, o.rules.map(function (r) { return r.match + ': ' + r.pattern; })), 'cp-narrow'),
-                  td(yes(o.active), 'cp-narrow')], o, 'who'); }); },
+                  td(yes(o.active), 'cp-narrow')], o, 'who').replace('</td></tr>', merge + '</td></tr>'); }); },
     entity: function () { return S.entities.map(function (e) {
-      return row([td(esc(e.name)), td(esc(e.legal_name || '— (virtual)')), td(yes(e.active), 'cp-narrow')], e, 'entity'); }); },
+      return row([td(esc(e.name)), td(esc(e.legal_name || (e.personal ? '— (personal)' : '— (virtual)'))), td(yes(e.active), 'cp-narrow')], e, 'entity'); }); },
     bs: function () { return S.balance_sheet_destinations.map(function (d) {
       return '<tr data-id="' + d.id + '">' + td(esc(d.code), 'cp-code') + td(esc(d.name)) + td(esc(d.group || '—'))
         + td(String(d.why_count), 'cp-narrow') + '</tr>'; }); },
@@ -223,6 +335,8 @@
     whoCount.textContent = q ? (shown ? shown + ' of ' + whoRows.length : 'No WHO matches') : whoRows.length + ' WHO';
   }
   whoSearch.addEventListener('input', filterWho);
+  // ?who=<name> (Classification's WHO Rules "Edit"): open on that WHO.
+  try { var askedWho = new URLSearchParams(location.search).get('who'); if (askedWho) whoSearch.value = askedWho; } catch (e) {}
   filterWho();
 
   // ----------------------------------------------------------- form helpers
@@ -259,6 +373,32 @@
     form.submit();
   }
 
+  // BANK_WHO_EDIT_SAVE_001 — the WHO modal saves with fetch: on success the
+  // page reloads on the WHO section (the saved values are what the server
+  // stored); on a refusal the reason stays in the modal with every value the
+  // person entered. The global wait cursor / spinner runs meanwhile.
+  function submitJson(path, fields) {
+    var data = new FormData();
+    data.append('csrf_token', document.querySelector('#cp-post input[name=csrf_token]').value);
+    fields.forEach(function (f) { data.append(f[0], f[1] == null ? '' : f[1]); });
+    var save = document.getElementById('cp-save'), errorBox = document.getElementById('cp-modal-error');
+    function failed(message) {
+      if (window.RFOneBusy) { window.RFOneBusy.stop(); }
+      errorBox.textContent = message;
+      save.disabled = false;
+    }
+    errorBox.textContent = '';
+    if (window.RFOneBusy) { window.RFOneBusy.start(); }
+    fetch(BASE + path, { method: 'POST', body: data, credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Not saved (HTTP ' + r.status + '). Reload the page and try again.' }; }); })
+      .then(function (res) {
+        if (!res || !res.ok) { failed((res && res.error) || 'Not saved.'); return; }
+        window.location.replace(res.redirect);
+        window.location.reload();
+      })
+      .catch(function () { failed('The server did not answer. Reload the page to see whether it was saved.'); });
+  }
+
   // ---------------------------------------------------------------- forms
   var FORMS = {
     what: { title: 'WHAT', list: 'whats', blank: { code: '', name: '', group_id: null, active: true },
@@ -274,7 +414,7 @@
         submit(x.id ? '/what/' + x.id : '/what', [['code', val('f-code')], ['name', val('f-name')], ['group_id', val('f-group')], ['active', flag('f-active')]]); } },
     why: { title: 'WHY', list: 'whys', blank: { name: '', description: '', what: null, active: true },
       body: function (x) {
-        var opts = [['', 'Choose a WHAT…']];
+        var opts = [['', x.id && x.what == null ? 'No WHAT yet' : 'Choose a WHAT…']];
         // An existing WHY that settles on a Balance Sheet destination keeps
         // it unless the operator explicitly picks a P&L WHAT (D11).
         var keeps = x.id && x.destination && x.destination.kind !== 'WHAT' && x.what != null;
@@ -287,8 +427,11 @@
           + fActive(x.active); },
       save: function (x) {
         if (!val('f-name')) return 'The WHY name is required.';
-        if (!val('f-what')) return 'Choose the WHAT this WHY belongs to.';
-        submit(x.id ? '/why/' + x.id : '/why', [['name', val('f-name')], ['description', val('f-description')], ['what_id', val('f-what')], ['active', flag('f-active')]]); } },
+        // BANK_WHY_EDIT_SAVE_001 — a WHY that has no WHAT yet (BANK_WHY_WITHOUT_WHAT_001)
+        // can be edited and saved without choosing one; the server keeps its
+        // own rules (a WHAT, once given, is a P&L WHAT and cannot be removed).
+        if (!val('f-what') && !(x.id && x.what == null)) return 'Choose the WHAT this WHY belongs to.';
+        return submitJson(x.id ? '/why/' + x.id : '/why', [['name', val('f-name')], ['description', val('f-description')], ['what_id', val('f-what')], ['active', flag('f-active')]]); } },
     who: { title: 'WHO', list: 'whos', blank: { name: '', whys: [], default_why: null, entities: [], rules: [], active: true },
       body: function (x) {
         var whyItems = S.whys.filter(function (y) { return y.active || x.whys.some(function (id) { return same(id, y.id); }); })
@@ -330,12 +473,12 @@
                       ['rule_match', tr.querySelector('select').value.toUpperCase()],
                       ['rule_active', tr.querySelector('input[type=checkbox]').checked ? '1' : '0']);
         });
-        submit(x.id ? '/who/' + x.id : '/who', fields); } },
+        return submitJson(x.id ? '/who/' + x.id : '/who', fields); } },
     entity: { title: 'Entity / LLC', list: 'entities', blank: { name: '', legal_name: '', legal: true, active: true },
       body: function (x) {
         var virtual = x.id && !x.legal;
         return fText('f-name', 'Entity', x.name)
-          + fText('f-legal', 'Legal name', x.legal_name, virtual ? ' disabled placeholder="Virtual entity — no LLC"' : '')
+          + fText('f-legal', 'Legal name', x.legal_name, virtual ? ' disabled placeholder="' + (x.personal ? 'Personal entity' : 'Virtual entity') + ' — no LLC"' : '')
           + (x.id ? '' : '<p class="cp-note">Leave the legal name empty for a virtual (non-LLC) entity.</p>')
           + fActive(x.active); },
       save: function (x) { if (!val('f-name')) return 'The entity name is required.';
@@ -355,8 +498,9 @@
       var y = byId('whys', id), o = document.createElement('option');
       o.value = id; o.textContent = y.name; sel.appendChild(o);
     });
-    // a WHY no longer allowed for this WHO can no longer be its default
-    sel.value = chosen.indexOf(keep) !== -1 ? keep : '';
+    // a WHY no longer allowed for this WHO can no longer be its default; a
+    // single possible WHY is the default (BANK_WHO_SINGLE_DEFAULT_WHY_001)
+    sel.value = chosen.length === 1 ? chosen[0] : (chosen.indexOf(keep) !== -1 ? keep : '');
   }
 
   // ------------------------------------------------------------ modal flow

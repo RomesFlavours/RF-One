@@ -16,23 +16,17 @@
    the header (RF-One UI Rules §4, `_nav_macros.html`). #}
 {% from "_nav_macros.html" import breadcrumb %}
 {% macro module_nav(active, leaf=None) %}
-{#- The Product Owner's order (2026-10-05, BANK_SOURCE_AND_IMPORT_REVIEW_001):
-    the monthly work first — import, review, export — then Source (the
-    setup list of expected financial sources, which replaced both
-    Instruments and Monthly Sources), Classification and the explanation.
-    One list drives both the tabs and the breadcrumb. #}
-{%- set tabs = [('import', 'Import and Review', url_for('bank_home')),
-                ('review', 'Review Transactions', url_for('bank_review')),
-                ('export', 'Monthly Export', url_for('bank_export')),
-                ('source', 'Source', url_for('bank_sources')),
-                ('classification', 'Classification', url_for('bank_classification')),
-                ('instructions', 'Instructions', url_for('bank_instructions'))] %}
+{#- The tabs are the Bank items of `domain_registry.py` (the Product
+    Owner's order lives there, with its history), limited to the ones this
+    account may use (ACCOUNT_ITEM_ACCESS_001). One list drives both the
+    tabs and the breadcrumb. #}
+{%- set tabs = domain_nav('BANK') %}
 {%- set ns = namespace(section=(active, None)) %}
 {%- for key, label, href in tabs %}{% if key == active %}{% set ns.section = (label, href) %}{% endif %}{% endfor %}
 {%- if leaf %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', url_for('bank_home')), ns.section, (leaf, None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', domain_entry('BANK')), ns.section, (leaf, None)]) }}
 {%- else %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', url_for('bank_home')), (ns.section[0], None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', domain_entry('BANK')), (ns.section[0], None)]) }}
 {%- endif %}
 <div class="module-header">
   <div class="module-identity">
@@ -48,6 +42,8 @@
      {% if active == key %}aria-current="page"{% endif %}>{{ label }}</a>
   {%- endfor %}
 </nav>
+{#- UI Rules §5 (UI_ROW_RETURN_001): back to the row after a row action, on every Bank page. #}
+<script defer src="{{ url_for('static', filename='js/rf-one-row-return.js') }}?v=1"></script>
 {% endmacro %}
 
 

@@ -88,6 +88,14 @@ def save_review(staged: StagedSet, review: dict) -> None:
     _write_manifest(staged.directory, manifest)
 
 
+def save_state(staged: StagedSet, key: str, value) -> None:
+    """Keep a piece of the import session's state with the staged set
+    (BANK_TWO_PASS_IMPORT_001: the Pass 1 / Pass 2 state and the person's
+    decisions), so it survives every request until Confirm or Cancel."""
+    staged.manifest[key] = value
+    _write_manifest(staged.directory, staged.manifest)
+
+
 def load(root: str, token: str | None, *, account_id: int) -> StagedSet | None:
     """The staged set for `token`, if it exists and belongs to `account_id`."""
     if not _valid(token):

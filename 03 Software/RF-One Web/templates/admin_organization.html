@@ -10,13 +10,12 @@
   — configuration, administration, inspection and test only. Normal operation will run through Cognito, not this page.
 </p>
 
+{#- The Organization items of `domain_registry.py` this account may use
+    (ACCOUNT_ITEM_ACCESS_001); the chart is this page itself. #}
 <div class="btn-row">
-  <a class="btn" href="{{ url_for('admin_org_positions') }}">Positions (list)</a>
-  <a class="btn" href="{{ url_for('admin_org_process_ownerships') }}">Process Ownerships</a>
-  <a class="btn" href="{{ url_for('admin_org_fallback_policies') }}">Organizational Fallback Policy</a>
-  <a class="btn" href="{{ url_for('admin_org_coverage_check') }}">Full Coverage Check</a>
-  <a class="btn" href="{{ url_for('admin_org_attention') }}">Attention Items</a>
-  <a class="btn" href="{{ url_for('admin_org_ai_review') }}">AI Consistency Review (boundary)</a>
+  {%- for code, label, href in domain_nav('ORGANIZATION') if code != 'chart' %}
+  <a class="btn" href="{{ href }}">{{ label }}</a>
+  {%- endfor %}
 </div>
 
 <h2>Organizational Coverage</h2>
@@ -39,10 +38,10 @@
   <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.NO_OWNER }}</div><div class="coverage-tile-label">No owner configured</div></div>
   <div class="coverage-tile coverage-tile-warn"><div class="coverage-tile-value">{{ counts.AMBIGUOUS_OWNER }}</div><div class="coverage-tile-label">Ambiguous ownership</div></div>
 </div>
-<p class="empty">Counts are computed live from the database — <a href="{{ url_for('admin_org_coverage_check') }}">click through for per-Process detail</a>.</p>
+<p class="empty">Counts are computed live from the database{% if may_use_item('ORGANIZATION', 'coverage_check') %} — <a href="{{ url_for('admin_org_coverage_check') }}">click through for per-Process detail</a>{% endif %}.</p>
 
 <h2>Organization Chart</h2>
-<p class="empty">Click a Position to view/edit. Click the ⊖/⊕ button to expand/collapse its subordinate Positions. Derived live from the database — never a static diagram.</p>
+<p class="empty">Click a Position to view{% if org_may_administer() %}/edit{% endif %}. Click the ⊖/⊕ button to expand/collapse its subordinate Positions. Derived live from the database — never a static diagram.</p>
 <div id="org-tree-root"><p class="empty">Loading…</p></div>
 </div>
 

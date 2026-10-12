@@ -46,6 +46,8 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as web_app  # noqa: E402
+import tempfile as _tempfile  # noqa: E402
+web_app.app.config["BANK_IMPORT_STAGING_DIR"] = _tempfile.mkdtemp(prefix="rfoneweb_staging_")  # never the real staging folder
 from db import SessionFactory  # noqa: E402
 from _bank_upload_helper import upload_and_confirm  # noqa: E402
 from sqlalchemy import select  # noqa: E402

@@ -1,12 +1,18 @@
 #!/usr/bin/env python
-"""HTTP test for Reconciliation Standards and the inline exception editor
-(BANK_RECONCILIATION_STANDARDS_001).
+"""HTTP test for the inline exception editor and the existing Automatic rows
+(BANK_RECONCILIATION_STANDARDS_001, adapted by BANK_RULES_RESET_001).
 
-The Product Owner's 50 points (transaction WHAT, Standard schema, compact
-row, Automatic, expansion, exceptions, new Standards, conflicts, status,
-Export, regression) plus A-L on accounting-destination provenance and
-Reclassify. "Future" transactions arrive through the real CSV upload, so
-Automatic is proven through the actual import path.
+BANK_RULES_RESET_001 retired Reconciliation Standards as a feature: no
+"Set as Standard" / "Save as New Standard", POST /bank/reconciliation/<id>/
+standard is gone, Save ignores its mode, and an import no longer applies a
+Standard (nor any old rule engine). What stays — and is proven here — is
+the inline editor (transaction WHAT exceptions, Balance Sheet destinations,
+compact Confirm, Reclassify), how Review shows and edits an EXISTING
+Automatic row (built directly with the Standard service, as the former
+engine left it), the lineage constraint, Export and the regressions. The
+former checks about creating, matching and applying Standards (4-9, 13-15,
+32-36, 38, L, scope, conflicts, signature case A) are retired; the ones that
+now have a different expectation say so.
 
 Runs against DISPOSABLE SQLite databases created here and deleted at the end.
 """
@@ -41,6 +47,8 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as web_app  # noqa: E402
+import tempfile as _tempfile  # noqa: E402
+web_app.app.config["BANK_IMPORT_STAGING_DIR"] = _tempfile.mkdtemp(prefix="rfoneweb_staging_")  # never the real staging folder
 from db import SessionFactory  # noqa: E402
 from _bank_upload_helper import upload_and_confirm  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
@@ -243,7 +251,7 @@ def main() -> int:
         head = conn.execute("SELECT version_num FROM alembic_version").fetchone()[0]
         conn.close()
         check("A. existing decision and allocation rows migrate to source WHY with no Standard lineage",
-              migrated == ([("WHY", None)], [("WHY", None)]) and head == "b7f1c3e5a9d2", f"{migrated} {head}")
+              migrated == ([("WHY", None)], [("WHY", None)]) and head == "a3c7e5b9d1f4", f"{migrated} {head}")
 
         # ================================================ first month of real imports
         upload(bank_csv([
@@ -258,14 +266,17 @@ def main() -> int:
         t_linen = txn_id("LINEN CO WEEKLY 7788")
         t_zelle = txn_id("ZELLE PAYMENT TO MARIA LOPEZ")
         t_bs = txn_id("TIPS PAYABLE SETTLEMENT")
+        # BANK_RULES_RESET_001 — the import gives no WHO (no recognition rule
+        # runs at import), so every imported row is To Reconcile work.
+        check("13 (prev). the import makes no automatic decision: the rows are To Reconcile, not Automatic",
+              all(state(t)[0] is None for t in (t_gfs1, t_gfs2, t_linen, t_zelle, t_bs))
+              and status_of(t_gfs1) == "To Reconcile", str(status_of(t_gfs1)))
+        # A person picks WHO + WHY (no For Whom yet): the row is Reconciled work, Needs review.
+        post(f"/bank/transactions/{t_gfs1}/who-why", {"occurrence_id": ids["gfs"], "transaction_reason_id": ids["food"]})
         html = page()
-        # Review > Reconciled lists the rows whose WHO is resolved; a row with
-        # no WHO yet (the Zelle payment) is To Reconcile work.
         r_gfs1 = row(html, t_gfs1)
         check("39. Needs review shows a red X (with its text)",
               'class="rp-st rp-st-review" role="img" aria-label="Needs review"' in r_gfs1 and "Needs review</span>" in r_gfs1)
-        check("13 (prev). ordinary WHO recognition alone does not create Automatic",
-              attr(r_gfs1, "data-who") == str(ids["gfs"]) and attr(r_gfs1, "data-status") == "Needs review")
 
         # ================================================ 19-24 expansion
         rows_count = html.count('data-row-id="')
@@ -348,44 +359,35 @@ def main() -> int:
               az and az[0].decision_source == "HUMAN" and az[0].reporting_entity_id == ids["dora"]
               and ez.decision_source == "HUMAN" and ez.accounting_classification_id == ids["cleaning_what"]
               and 'data-status="Confirmed"' in row(page(), t_zelle))
-        with SessionFactory() as db:
-            standards_before = db.scalar(select(func.count(m.BankReconciliationStandard.id)))
-        post(f"/bank/transactions/{t_linen}/who-why", {"occurrence_id": ids["cintas"], "transaction_reason_id": ids["cleaning"]})
+        # ================================================ retired Standard creation
         resp = post(f"/bank/reconciliation/{t_linen}/standard", {"for_whom_id": ids["dora"]})
-        el, al = state(t_linen)
-        with SessionFactory() as db:
-            std = db.scalar(select(m.BankReconciliationStandard).order_by(m.BankReconciliationStandard.id.desc()))
-            standards_after = db.scalar(select(func.count(m.BankReconciliationStandard.id)))
-        check("13. compact Set as Standard (row collapsed) creates a Standard", standards_after == standards_before + 1, message(resp))
-        check("14 / J / 3 (prev). the row that created the Standard is human CONFIRMED, not Automatic, with source WHY",
-              al[0].decision_source == "HUMAN" and al[0].reconciliation_standard_id is None
-              and el.accounting_destination_source == "WHY" and el.reconciliation_standard_id is None
-              and 'data-status="Confirmed"' in row(page(), t_linen))
-        check("4 (prev). Standard signature: no recognition rule -> EXACT normalized description, this account, this direction",
-              std.match_type == "EXACT_NORMALIZED_DESCRIPTION" and std.normalized_pattern == "LINEN CO WEEKLY 7788"
-              and std.match_field == "DESCRIPTION" and std.payment_instrument_id == ids["checking"] and std.direction == "DEBIT")
-        check("5. Standard persists WHO", std.occurrence_id == ids["cintas"])
-        check("6. Standard persists WHY", std.transaction_reason_id == ids["cleaning"])
-        check("7. Standard persists WHAT", std.accounting_classification_id == ids["cleaning_what"])
-        check("8. Standard persists For Whom", std.reporting_entity_id == ids["dora"])
-        check("9. Standard audit persists (who approved, when, from which transaction, ACTIVE)",
-              std.approved_by_account_id == ids["op"] and std.approved_at is not None
-              and std.created_from_transaction_id == t_linen and std.status == "ACTIVE")
-        ids["linen_std"] = std.id
+        check("13. the retired Set as Standard route is gone (404)", resp.status_code == 404, str(resp.status_code))
 
-        # Case A: the GFS rows carry a recognition rule -> its PREFIX is reused.
-        resp = post(f"/bank/reconciliation/{t_gfs2}/save", {
-            "mode": "standard", "occurrence_id": ids["gfs"], "why_id": ids["food"], "what_id": ids["office_what"],
-            "for_whom_id": ids["alpha"]})
+        # Existing Standards, as a person approved them before the reset —
+        # created with the service, since no page creates one any more.
         with SessionFactory() as db:
-            gfs_std = db.scalar(select(m.BankReconciliationStandard).where(
-                m.BankReconciliationStandard.normalized_pattern == "GORDON FOOD SERVICE"))
-        check("Signature case A: the recognition rule's PREFIX pattern is reused, scoped to account and direction",
-              gfs_std is not None and gfs_std.match_type == "PREFIX" and gfs_std.payment_instrument_id == ids["checking"]
-              and gfs_std.direction == "DEBIT" and gfs_std.accounting_classification_id == ids["office_what"], message(resp))
-        ids["gfs_std"] = gfs_std.id
+            linen_std, _ = reconciliation_standards.create_or_reuse(
+                db, signature=reconciliation_standards.Signature(
+                    "EXACT_NORMALIZED_DESCRIPTION", "LINEN CO WEEKLY 7788", "DESCRIPTION", ids["checking"], "DEBIT"),
+                result=reconciliation_standards.Result(ids["cintas"], ids["cleaning"], ids["cleaning_what"], ids["dora"]),
+                approved_by_account_id=ids["op"], created_from_transaction_id=t_linen)
+            gfs_std, _ = reconciliation_standards.create_or_reuse(
+                db, signature=reconciliation_standards.Signature(
+                    "PREFIX", "GORDON FOOD SERVICE", "DESCRIPTION", ids["checking"], "DEBIT"),
+                result=reconciliation_standards.Result(ids["gfs"], ids["food"], ids["office_what"], ids["alpha"]),
+                approved_by_account_id=ids["op"], created_from_transaction_id=t_gfs2)
+            db.commit()
+            ids.update(linen_std=linen_std.id, gfs_std=gfs_std.id)
 
-        # ================================================ 15-18 / D / K Automatic on the next import
+        def make_automatic(tid):
+            """The Automatic row the former import left: the Standard service
+            completes it directly (the import no longer does)."""
+            with SessionFactory() as db:
+                applied = reconciliation_standards.apply_to_transaction(db, db.get(m.FinancialTransaction, tid))
+                db.commit()
+                return applied.id if applied else None
+
+        # ================================================ 15-18 / D / K existing Automatic rows
         upload(bank_csv([
             ("08/20/2026", "GORDON FOOD SERVICE #9999 ORLANDO", "-400.00"),
             ("08/21/2026", "LINEN CO WEEKLY 7788", "-55.00"),
@@ -405,11 +407,13 @@ def main() -> int:
         t_gfs_auto = txn_id("GORDON FOOD SERVICE #9999 ORLANDO")
         t_card_linen = txn_id("LINEN CO WEEKLY 7788", ids["card"])
         t_card_gfs = txn_id("GORDON FOOD SERVICE #4444 ORLANDO", ids["card"])
+        check("15. the import applies no Standard: a later matching transaction stays undecided",
+              all(state(t)[0] is None and not state(t)[1] for t in [t_gfs_auto] + list(linen_auto)))
+        for tid in [t_gfs_auto] + list(linen_auto):
+            make_automatic(tid)
         ea, aa = state(t_gfs_auto)
         html = page()
         r_auto = row(html, t_gfs_auto)
-        check("15. a later matching transaction becomes Automatic without a click",
-              attr(r_auto, "data-status") == "Automatic")
         check("16 / 40. Automatic shows an orange check (with its text)",
               'rp-st rp-st-automatic' in r_auto and "Automatic</span>" in r_auto)
         check("17. the complete WHO / WHY / WHAT / For Whom of the Standard is applied",
@@ -419,12 +423,7 @@ def main() -> int:
         check("D / 10 / 11. Automatic destination is source STANDARD with lineage on BOTH decision and allocation",
               ea.accounting_destination_source == "STANDARD" and aa[0].accounting_destination_source == "STANDARD"
               and ea.reconciliation_standard_id == ids["gfs_std"] and aa[0].reconciliation_standard_id == ids["gfs_std"])
-        check("K. the future Standard-applied row is Automatic, not Confirmed", attr(r_auto, "data-status") == "Automatic")
-        e_card, a_card = state(t_card_linen)
-        check("scope: the same text on another card is not matched by an account-scoped Standard",
-              not a_card and (e_card is None or e_card.reconciliation_standard_id is None)
-              and (f'id="t-{t_card_linen}"' not in html
-                   or attr(row(html, t_card_linen), "data-status") == "Needs review"))
+        check("K. an existing Standard-applied row is Automatic, not Confirmed", attr(r_auto, "data-status") == "Automatic")
         std_info = catalog(html)["standards"].get(str(ids["gfs_std"]), {})
         check("23 (prev). an Automatic row identifies its Standard for the expanded detail (readable, no ids)",
               attr(r_auto, "data-standard") == str(ids["gfs_std"]) and std_info.get("pattern") == "GORDON FOOD SERVICE"
@@ -440,17 +439,6 @@ def main() -> int:
                 db.rollback()
                 i_refused = "Standard" in str(exc)
         check("I. Reclassify refuses a STANDARD destination", i_refused)
-        with SessionFactory() as db:
-            config_service.update_why(db, transaction_reason_id=ids["cleaning"],
-                                      name=db.get(m.BankTransactionReason, ids["cleaning"]).name, description=None,
-                                      what_id=ids["spare_what"], active=True)
-            db.commit()
-        upload(bank_csv([("08/26/2026", "LINEN CO WEEKLY 7788", "-75.00")]), "chase_0214_aug_c.csv", ids["checking"])
-        t_linen_late = txn_id("LINEN CO WEEKLY 7788", ids["checking"])
-        el2, al2 = state(t_linen_late)
-        check("L. a Standard's destination stays stable when the WHY's master mapping changes later",
-              el2.accounting_classification_id == ids["cleaning_what"] and al2[0].accounting_classification_id == ids["cleaning_what"]
-              and el2.reconciliation_standard_id == ids["linen_std"])
 
         # ================================================ 25-31 exceptions
         with SessionFactory() as db:
@@ -481,70 +469,19 @@ def main() -> int:
               and ew.accounting_classification_id == ids["food_what"] and aw[0].reporting_entity_id == ids["gelati"]
               and 'data-status="Confirmed"' in row(page(), linen_auto[0]))
 
-        # ================================================ 36-38 conflicts
+        # ================================================ 36-38 / 32-35 retired: Save ignores its mode
         with SessionFactory() as db:
             count_before = db.scalar(select(func.count(m.BankReconciliationStandard.id)))
-            decision_before = db.get(m.FinancialTransaction, linen_auto[1]).explanation_id
         resp = post(f"/bank/reconciliation/{linen_auto[1]}/save", {
             "mode": "standard", "occurrence_id": ids["cintas"], "why_id": ids["cleaning"],
             "what_id": ids["cleaning_what"], "for_whom_id": ids["gelati"]})
-        conflict_msg = message(resp)
+        _e, a37 = state(linen_auto[1])
         with SessionFactory() as db:
             count_after = db.scalar(select(func.count(m.BankReconciliationStandard.id)))
-            decision_after = db.get(m.FinancialTransaction, linen_auto[1]).explanation_id
-        check("36. same signature with a different result is refused, and nothing is written",
-              count_after == count_before and decision_after == decision_before
-              and "no distinct recognition pattern" in conflict_msg, conflict_msg)
-        post(f"/bank/reconciliation/{linen_auto[1]}/save", {
-            "mode": "keep", "occurrence_id": ids["cintas"], "why_id": ids["cleaning"],
-            "what_id": ids["cleaning_what"], "for_whom_id": ids["gelati"]})
-        _e, a37 = state(linen_auto[1])
-        check("37. that exception can still be saved individually", a37 and a37[0].reporting_entity_id == ids["gelati"]
-              and 'data-status="Confirmed"' in row(page(), linen_auto[1]))
-        resp = post(f"/bank/reconciliation/{linen_auto[2]}/save", {
-            "mode": "standard", "occurrence_id": ids["cintas"], "why_id": ids["cleaning"],
-            "what_id": ids["cleaning_what"], "for_whom_id": ids["dora"]})
-        with SessionFactory() as db:
-            count_idem = db.scalar(select(func.count(m.BankReconciliationStandard.id)))
-        check("38. same signature with the same result reuses the Standard (idempotent)",
-              count_idem == count_after and 'data-status="Confirmed"' in row(page(), linen_auto[2]), message(resp))
-
-        # ================================================ 32-35 new distinct Standard
-        resp = post(f"/bank/reconciliation/{t_card_gfs}/save", {
-            "mode": "standard", "occurrence_id": ids["gfs"], "why_id": ids["cleaning"],
-            "what_id": ids["spare_what"], "for_whom_id": ids["gelati"]})
-        with SessionFactory() as db:
-            card_std = db.scalar(select(m.BankReconciliationStandard).where(
-                m.BankReconciliationStandard.payment_instrument_id == ids["card"]))
-            s = db.get(m.BankReconciliationStandard, ids["gfs_std"])
-            original_after = (s.occurrence_id, s.transaction_reason_id, s.accounting_classification_id,
-                              s.reporting_entity_id, s.status, s.normalized_pattern)
-        check("32. Save as New Standard leaves the original Standard unchanged", original_after == snapshot_before)
-        check("33. a new Standard is created when the signature is distinguishable (another card)",
-              card_std is not None and card_std.normalized_pattern == "GORDON FOOD SERVICE" and card_std.match_type == "PREFIX",
-              message(resp))
-        check("34. the new Standard stores the complete changed result",
-              card_std is not None and (card_std.occurrence_id, card_std.transaction_reason_id,
-                                        card_std.accounting_classification_id, card_std.reporting_entity_id)
-              == (ids["gfs"], ids["cleaning"], ids["spare_what"], ids["gelati"]))
-        upload(card_csv([("08/28/2026", "GORDON FOOD SERVICE #4545 ORLANDO", "-95.00")]), "chase_3333_aug_b.csv", ids["card"])
-        t_card_future = txn_id("GORDON FOOD SERVICE #4545 ORLANDO", ids["card"])
-        ecf, acf = state(t_card_future)
-        check("35. a future variant becomes Automatic through the new Standard",
-              acf and acf[0].reconciliation_standard_id == card_std.id and 'data-status="Automatic"' in row(page(), t_card_future))
-
-        # ambiguous / conflicting Standards -> Needs review
-        with SessionFactory() as db:
-            reconciliation_standards.create_or_reuse(
-                db, signature=reconciliation_standards.Signature("CONTAINS_TEXT", "WEEKLY", "DESCRIPTION", ids["checking"], "DEBIT"),
-                result=reconciliation_standards.Result(ids["gfs"], ids["food"], ids["food_what"], ids["alpha"]),
-                approved_by_account_id=ids["op"], created_from_transaction_id=None)
-            db.commit()
-        upload(bank_csv([("08/29/2026", "LINEN CO WEEKLY 7788", "-80.00")]), "chase_0214_aug_d.csv", ids["checking"])
-        t_conflict = txn_id("LINEN CO WEEKLY 7788", ids["checking"])
-        e_c, a_c = state(t_conflict)
-        check("14 / 15 (prev). two matching Standards with different results leave the row Needs review (no guess)",
-              not a_c and status_of(t_conflict) in ("Needs review", "To Reconcile"), str(status_of(t_conflict)))
+        check("36-38 / 32-35 (now). Save with mode=standard approves no Standard: it saves this transaction only",
+              count_after == count_before and a37 and a37[0].reporting_entity_id == ids["gelati"]
+              and a37[0].reconciliation_standard_id is None
+              and 'data-status="Confirmed"' in row(page(), linen_auto[1]), message(resp))
 
         # ================================================ E — lineage constraint
         with SessionFactory() as db:
@@ -573,23 +510,19 @@ def main() -> int:
             blockers = export_service.compute_export_blockers(db, year=2026, month=8)
             review_ids = {int(x) for b in blockers for x in re.findall(r"^Needs review: transaction id=(\d+)", b.reason)}
             statuses = {}
-            for tid in (t_gfs1, t_gfs2, t_zelle, t_linen, t_card_future, t_linen_late, t_conflict, t_card_linen):
+            for tid in (t_gfs1, t_gfs2, t_zelle, linen_auto[2], t_linen, t_card_linen):
                 statuses[tid] = status_of(tid)
-        check("42 / 12 (prev). Needs review blocks the Export", {t_conflict, t_card_linen} <= review_ids)
-        check("44 / 10 (prev). Automatic is exportable", t_card_future not in review_ids and t_linen_late not in review_ids
-              and statuses[t_card_future] == "Automatic")
-        check("45 / 11 (prev). Confirmed is exportable", not ({t_gfs1, t_gfs2, t_zelle, t_linen} & review_ids))
+        check("42 / 12 (prev). Needs review blocks the Export", {t_linen, t_card_linen} <= review_ids, str(review_ids))
+        check("44 / 10 (prev). Automatic is exportable", linen_auto[2] not in review_ids
+              and statuses[linen_auto[2]] == "Automatic")
+        check("45 / 11 (prev). Confirmed is exportable", not ({t_gfs1, t_gfs2, t_zelle} & review_ids))
         check("43. an unsaved edit is never persisted: the stored row stays what was approved (browser test covers the "
-              "on-screen Needs review)", statuses[t_linen_late] == "Automatic")
+              "on-screen Needs review)", statuses[linen_auto[2]] == "Automatic")
         # a month where everything is reconciled builds the unchanged workbook
         upload(bank_csv([("09/03/2026", "LINEN CO WEEKLY 7788", "-81.00")]), "chase_0214_sep.csv", ids["checking"])
-        with SessionFactory() as db:
-            # retire the conflicting CONTAINS Standard so September is unambiguous
-            for s in db.scalars(select(m.BankReconciliationStandard).where(m.BankReconciliationStandard.match_type == "CONTAINS_TEXT")):
-                s.status = "INACTIVE"
-            db.commit()
         upload(bank_csv([("09/04/2026", "LINEN CO WEEKLY 7788", "-82.00")]), "chase_0214_sep_b.csv", ids["checking"])
         t_sep1 = txn_id("LINEN CO WEEKLY 7788", ids["checking"])
+        make_automatic(t_sep1)  # an existing Automatic row (the import applies no Standard)
         with SessionFactory() as db:
             sep_first = db.scalar(select(m.FinancialTransaction.id).where(
                 m.FinancialTransaction.posting_date == date(2026, 9, 3)))

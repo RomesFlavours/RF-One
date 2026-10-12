@@ -2,7 +2,7 @@
 {% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}{{ position.name }} · Positions · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Organization', url_for('admin_organization')), ('Positions', url_for('admin_org_positions')), (position.name, None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Organization', domain_entry('ORGANIZATION')), ('Positions', url_for('admin_org_positions')), (position.name, None)]) }}
 <h1>{{ position.name }}</h1>
 {% include "_position_editor_body.html" %}
 {% endblock %}

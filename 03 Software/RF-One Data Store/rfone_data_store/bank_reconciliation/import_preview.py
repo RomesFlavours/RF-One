@@ -137,10 +137,18 @@ def _preview(
         select(m.PaymentInstrument).order_by(m.PaymentInstrument.display_name)
     ).all())
     by_id = {i.id: i for i in instruments}
-    active = [i for i in instruments if i.status == "ACTIVE"]
+    # The Sources a period expects files from: active PAYMENT sources only — a
+    # purchase platform sends no bank file (BANK_PURCHASE_PLATFORM_SOURCE_001).
+    active = [i for i in instruments if i.status == "ACTIVE" and i.is_payment_source]
 
     file_entries: list[dict] = []
     warnings: list[str] = []
+    # BANK_EXPORT_ACTIONABLE_BLOCKERS_001 — a NEW file whose own Source cannot
+    # be identified is a technical problem of that file, so it blocks Confirm:
+    # imported, its rows would belong to no Source and block every month they
+    # touch. A Source the month EXPECTS but that is not in the upload is a
+    # different case and stays a warning (see `periods` below).
+    source_blocking: list[str] = []
     new_batch_ids: set[int] = set()
     # (year, month) -> Source ids this upload brings rows for.
     upload_presence: dict[tuple[int, int], set[int]] = {}
@@ -215,9 +223,11 @@ def _preview(
 
         name = staged.file_name
         if batch.payment_instrument_id is None and not rows_by_source:
-            entry["notes"].append("Not matched to any Source — it would need a manual assignment after import.")
-            if not result.unresolved_row_count:
-                warnings.append(f"{name}: not matched to any Source.")
+            entry["notes"].append("Its Source cannot be identified — choose the Source in the upload form.")
+            source_blocking.append(
+                f"{name}: its Source cannot be identified. Choose its Source in the upload form "
+                "(or register the Source first) and upload it again."
+            )
         if result.unresolved_row_count:
             note = (f"{result.unresolved_row_count} row(s) name an account/card with no Source "
                     f"({result.resolution_detail}).")
@@ -259,7 +269,7 @@ def _preview(
             )
 
     importable = sum(1 for f in file_entries if f["status"] == FILE_NEW)
-    blocking = []
+    blocking = list(source_blocking)
     if not importable:
         blocking.append("No file in this set would import anything new.")
 

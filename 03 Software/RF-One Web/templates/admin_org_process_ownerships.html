@@ -2,7 +2,7 @@
 {% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Process Ownerships · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Organization', url_for('admin_organization')), ('Process Ownerships', None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Organization', domain_entry('ORGANIZATION')), ('Process Ownerships', None)]) }}
 <h1>Process Ownerships — ADMIN / CONFIGURATION / TEST HARNESS</h1>
 
 <div class="card">
@@ -14,7 +14,7 @@
           <tr>
             <td>{{ o.domain }}</td><td>{{ o.module or "-" }}</td><td>{{ o.process_name }}</td>
             <td>{{ o.phase or "(whole process)" }}</td>
-            <td><a href="{{ url_for('admin_org_position_detail', position_id=o.position_id) }}">{{ o.position.name }}</a></td>
+            <td>{% if may_use_item('ORGANIZATION', 'positions') %}<a href="{{ url_for('admin_org_position_detail', position_id=o.position_id) }}">{{ o.position.name }}</a>{% else %}{{ o.position.name }}{% endif %}</td>
             <td>{{ (o.scope_type ~ "=" ~ (o.scope_id if o.scope_id is not none else o.scope_key)) if o.scope_type else "(uses Position's own scope)" }}</td>
           </tr>
         {% else %}
@@ -25,6 +25,7 @@
   </div>
 </div>
 
+{% if org_may_administer() %}
 <div class="card">
   <h2>New Process Ownership</h2>
   <form method="post" action="{{ url_for('admin_org_process_ownership_new') }}">
@@ -57,4 +58,5 @@
     <button type="submit">Create Process Ownership</button>
   </form>
 </div>
+{% endif %}
 {% endblock %}

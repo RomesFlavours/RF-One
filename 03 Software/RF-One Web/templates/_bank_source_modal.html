@@ -1,0 +1,217 @@
+{#- BANK_TWO_PASS_IMPORT_001 — the ONE New / Edit Source modal and the + New
+    Entity dialog, shared by the Source page and the import session (Pass 1
+    opens it on a Source it has just created). Needs the context built by
+    `bank_routes._source_page_context`. -#}
+{% import "_bank_macros.html" as bank %}
+{# ------------------------------------------------ New / Edit Source modal #}
+{#- ONE modal for create and edit. Create posts to `bank_instrument_new`,
+    edit to `bank_instrument_edit` — the two routes that already validate a
+    PaymentInstrument through `service.create_payment_instrument` /
+    `update_payment_instrument`. Saved with fetch: an error stays in the
+    modal; a success closes it and reloads the list. -#}
+<div id="source-dialog" class="org-modal-overlay" hidden aria-hidden="true"
+     data-create-url="{{ url_for('bank_instrument_new') }}">
+  <div class="org-modal-panel source-panel" role="dialog" aria-modal="true" aria-labelledby="source-dialog-title">
+    <button class="org-modal-close" type="button" aria-label="Cancel" data-modal-close>&times;</button>
+    <div class="modal-header"><h3 id="source-dialog-title">New Source</h3></div>
+    <form id="source-form" method="post" action="{{ url_for('bank_instrument_new') }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="sources">
+      {%- if import_token is defined and import_token %}
+      {#- BANK_COMPLETE_SOURCE_ALL_ROWS_001 — in an import session the modal
+          is opened for ONE file: which Source it is (the current one, an
+          existing one, or a new one from the file). The file is sent with
+          the Save, so the server saves the Source and links it in one step. -#}
+      <div class="field-row source-file-row" id="source-file-row" hidden>
+        <label for="source-file-choice">Source of this file <span class="cell-note" id="source-file-name"></span></label>
+        <select id="source-file-choice"></select>
+        <input type="hidden" name="import_token" id="source-import_token" value="{{ import_token }}" disabled>
+        <input type="hidden" name="import_file_index" id="source-import_file_index" value="" disabled>
+      </div>
+      {%- endif %}
+
+      <div class="field-row">
+        <label for="source-display_name">Source name</label>
+        <input type="text" id="source-display_name" name="display_name" maxlength="255" required placeholder="Chase Checking 0214">
+      </div>
+      <div class="field-row">
+        <label for="source-instrument_type">Type</label>
+        <select id="source-instrument_type" name="instrument_type" required>
+          <option value="BANK_ACCOUNT">Bank account</option>
+          <option value="CREDIT_CARD">Credit card</option>
+          <option value="PAYPAL">PayPal</option>
+          <option value="PURCHASE_PLATFORM">Purchase platform</option>
+        </select>
+        <span class="cell-note" data-source-only="PURCHASE_PLATFORM" hidden>A purchase platform (Amazon, Sam's, Instacart, ...) provides orders, receipts, invoices and refunds to link to the movements of the account or card that paid. It is not an account: it receives no bank movements (no duplicated spend); its owner / LLC is optional.</span>
+      </div>
+      <div class="field-row">
+        <label for="source-institution">Institution / Provider</label>
+        <input type="text" id="source-institution" name="institution" maxlength="64" placeholder="Chase / First Citizens / PayPal">
+      </div>
+      <div class="field-row">
+        <label for="source-last_four">Last 4 digits <span class="cell-note">matched against a <code>Card</code> value or a <code>Chase####_Activity</code> file name</span></label>
+        <input type="text" id="source-last_four" name="last_four" maxlength="4" inputmode="numeric">
+      </div>
+      <div class="field-row">
+        <label for="source-external_account_identifier">Account identifier as written in the file <span class="cell-note">e.g. First Citizens <code>XXXXXX7470</code> &mdash; never the full number</span></label>
+        <input type="text" id="source-external_account_identifier" name="external_account_identifier" maxlength="128">
+        {#- The list never sends the stored identifier to the browser. On Edit
+            the field starts empty and "keep" is sent until the operator types
+            a new value, so the stored one is neither shown nor cleared. #}
+        <input type="hidden" name="keep_external_account_identifier" id="source-keep_external_account_identifier" value="">
+      </div>
+      {#- BANK_SOURCE_EDIT_AND_ENTITIES_001 — the owner: one list of the active
+          Entities that may own a Source, companies and people, by name. A
+          card's owner is not chosen: it comes from its settlement account. -#}
+      <div class="field-row" data-source-hide="CREDIT_CARD">
+        <label for="source-owner_entity">Owning entity</label>
+        <div class="source-owner-row">
+          <select id="source-owner_entity" name="owner_entity">
+            <option value="">Not yet configured</option>
+            {% set companies = owner_choices|selectattr('kind', 'equalto', 'Company / LLC')|list %}
+            {% set people = owner_choices|selectattr('kind', 'equalto', 'Personal')|list %}
+            <optgroup label="Companies / LLC" data-kind="Company / LLC">
+              {% for choice in companies %}<option value="{{ choice.value }}">{{ choice.label }}</option>{% endfor %}
+            </optgroup>
+            <optgroup label="Personal" data-kind="Personal">
+              {% for choice in people %}<option value="{{ choice.value }}">{{ choice.label }}</option>{% endfor %}
+            </optgroup>
+          </select>
+          <button type="button" class="btn-secondary" id="entity-new" data-entity-new>+ New Entity</button>
+        </div>
+      </div>
+      <div class="field-row" data-source-only="CREDIT_CARD" hidden>
+        <label>Owning entity</label>
+        <span class="cell-note" id="source-derived-owner"></span>
+      </div>
+      <div class="field-row">
+        <label for="source-currency">Currency</label>
+        <input type="text" id="source-currency" name="currency" maxlength="8" placeholder="USD">
+      </div>
+      <div class="field-row" data-source-only="PAYPAL" hidden>
+        <label for="source-linked_instrument_id">Funded by</label>
+        <select id="source-linked_instrument_id" name="linked_instrument_id">
+          <option value="">Not linked</option>
+          {% for other in instruments if other.instrument_type == 'BANK_ACCOUNT' %}
+            <option value="{{ other.id }}">{{ bank.instrument_identity(other) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {#- A card's settlement account and cardholder: each a dated fact. A
+          change starts on its "from" date and closes the previous period;
+          the history below keeps every period. -#}
+      <fieldset class="source-card" data-source-only="CREDIT_CARD" hidden>
+        <legend>Card</legend>
+        <div class="source-card-grid">
+          <label for="source-settlement_bank_account_id">Settlement / Funding account</label>
+          <select id="source-settlement_bank_account_id" name="settlement_bank_account_id">
+            <option value="">Not configured</option>
+            {% for account in bank_accounts %}<option value="{{ account.id }}">{{ bank.instrument_identity(account) }}</option>{% endfor %}
+          </select>
+          <label for="source-settlement_valid_from">from</label>
+          <input type="date" id="source-settlement_valid_from" name="settlement_valid_from" value="{{ today }}">
+          <label for="source-cardholder">Cardholder</label>
+          <select id="source-cardholder" name="cardholder">
+            <option value="">Not recorded</option>
+            {% for candidate in cardholder_candidates %}
+              <option value="{{ 'identity' if candidate.kind == 'ACTING_IDENTITY' else 'employee' }}:{{ candidate.id }}">{{ candidate.name }} ({{ candidate.source }})</option>
+            {% endfor %}
+            <option value="other">Other person&hellip;</option>
+          </select>
+          <label for="source-cardholder_valid_from">from</label>
+          <input type="date" id="source-cardholder_valid_from" name="cardholder_valid_from" value="{{ today }}">
+        </div>
+        {% if not cardholder_candidates %}<p class="cell-note">No linked people available yet &mdash; choose <strong>Other person</strong> and type the name.</p>{% endif %}
+        <div class="field-row" id="source-cardholder-name-row" hidden>
+          <label for="source-cardholder_name">Cardholder name</label>
+          <input type="text" id="source-cardholder_name" name="cardholder_name" maxlength="255">
+        </div>
+        <p class="cell-note">The Company of a card's transactions comes from its settlement account; the cardholder only says who is accountable. A change starts on its &ldquo;from&rdquo; date; the previous period is kept.</p>
+      </fieldset>
+      <div class="field-row" id="source-state-row" hidden>
+        <label for="source-status">State</label>
+        <select id="source-status" name="status" disabled>
+          <option value="ACTIVE">Active</option>
+          <option value="INACTIVE">Inactive</option>
+        </select>
+        <span class="cell-note">Active Sources are expected in every imported period. Inactive keeps the Source for history; its end date is its last posting date.</span>
+      </div>
+
+      <p class="error" id="source-error" role="alert" hidden></p>
+      <div class="who-picker-actions">
+        <button type="submit" id="source-save">Save</button>
+        <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+      </div>
+    </form>
+    <details class="source-history" id="source-history" hidden>
+      <summary>Card history</summary>
+      <p class="cell-note">Every period is kept. <strong>Correct</strong> fixes a period that was recorded wrongly (it is edited, never deleted).</p>
+      <div id="source-history-body"></div>
+    </details>
+  </div>
+</div>
+
+{#- + New Entity (BANK_SOURCE_EDIT_AND_ENTITIES_001): a small dialog ON TOP of
+    the Source modal. It creates the Entity — or reuses an equivalent active
+    one — and selects it as the owner; the Source itself is saved by its own
+    Save. -#}
+<div id="entity-dialog" class="org-modal-overlay entity-overlay" hidden aria-hidden="true"
+     data-url="{{ url_for('bank_entity_new') }}">
+  <div class="org-modal-panel entity-panel" role="dialog" aria-modal="true" aria-labelledby="entity-dialog-title">
+    <button class="org-modal-close" type="button" aria-label="Cancel" data-modal-close>&times;</button>
+    <div class="modal-header"><h3 id="entity-dialog-title">New Entity</h3></div>
+    <form id="entity-form" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field-row">
+        <label for="entity-name">Name</label>
+        <input type="text" id="entity-name" name="name" maxlength="255" required placeholder="Personal — Pino / RF Gelati, LLC" autocomplete="off">
+      </div>
+      <fieldset class="entity-kind">
+        <legend>Type</legend>
+        <label><input type="radio" name="kind" value="COMPANY" checked> Company / LLC</label>
+        <label><input type="radio" name="kind" value="PERSONAL"> Personal</label>
+      </fieldset>
+      <label class="entity-active"><input type="checkbox" name="active" value="1" checked> Active</label>
+      <p class="error" id="entity-error" role="alert" hidden></p>
+      <div class="who-picker-actions">
+        <button type="submit" id="entity-save">Save</button>
+        <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{#- What the modal script needs besides each row's own data. -#}
+<script type="application/json" id="source-support">{{ {"csrf": csrf_token(), "open_id": open_source_id}|tojson }}</script>
+{%- if import_token is defined and import_token %}
+<script type="application/json" id="source-all">{{ source_edit_data|tojson }}</script>
+{%- endif %}
+
+<style>
+  .source-list-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  .source-list-head h2 { margin: 0; }
+  .source-list-head button { margin: 0; width: auto; }
+  .source-more > summary { cursor: pointer; list-style: revert; }
+  .source-more > summary h2 { display: inline; font-size: 1.05rem; margin: 0; }
+  .source-file-row { background: var(--olive-50, #f7f8f2); border-radius: 6px; padding: .4rem .6rem; }
+  .source-panel { width: min(44rem, 100%); max-height: calc(100vh - 3rem); overflow-y: auto; }
+  .source-owner-row { display: flex; gap: .5rem; align-items: center; }
+  .source-owner-row select { flex: 1; min-width: 0; margin: 0; }
+  .source-owner-row button { width: auto; margin: 0; white-space: nowrap; }
+  .source-card { border: 1px solid var(--olive-150, #e3e6d6); border-radius: 6px; padding: .5rem .8rem .3rem; margin: 0 0 .8rem; }
+  .source-card-grid { display: grid; grid-template-columns: auto minmax(0, 1fr) auto 10.5rem; gap: .4rem .6rem; align-items: center; }
+  .source-card-grid label { margin: 0; }
+  .source-card-grid select, .source-card-grid input { margin: 0; }
+  .source-history { margin-top: .6rem; }
+  .source-history summary { cursor: pointer; font-weight: 600; }
+  .source-history table { font-size: .8rem; }
+  .source-history form { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; margin: .3rem 0; }
+  .source-history form input, .source-history form select { width: auto; margin: 0; font-size: .8rem; }
+  .entity-overlay { z-index: 1100; }
+  .entity-panel { width: min(26rem, 100%); }
+  .entity-kind { border: 0; padding: 0; margin: 0 0 .6rem; display: flex; gap: 1.2rem; }
+  .entity-kind legend { font-weight: 600; margin-bottom: .2rem; }
+  @media (max-width: 640px) { .source-card-grid { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 760px) { .source-list-head { flex-wrap: wrap; } }
+</style>
+<script defer src="{{ url_for('static', filename='js/bank-source.js') }}?v=6"></script>

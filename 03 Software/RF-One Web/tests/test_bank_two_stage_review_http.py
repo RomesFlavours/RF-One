@@ -6,15 +6,21 @@ Proves, on a throwaway database, that:
   their counts are right;
 * To Reconcile holds only transactions whose WHO is not resolved — a raw
   recognizer proposal is not a resolved WHO — and a transaction leaves it the
-  moment its current decision names a WHO: through a Rule (Samuels), a person
-  choosing the WHO, or a future import the Rule recognises;
+  moment its current decision names a WHO (a person choosing the WHO); a
+  newly imported movement gets no automatic WHO;
 * Reconciled holds every WHO-resolved transaction — incomplete ones first —
   with the real statuses: Automatic (orange, exportable without a click),
   Confirmed (green), Needs review; Confirm and Reopen keep their semantics and
   return to the tab;
 * only the selected queue is loaded, quickly, with no Classification rebuild;
-* Classification, Configuration, Standards, Export and the WHO/WHY invariant
-  are unchanged.
+* Configuration, Standards, Export and the WHO/WHY invariant are unchanged.
+
+BANK_RULES_RESET_001 retired the simple WHO Rule (Rule action and modal),
+the Rules page and the application of Reconciliation Standards at import:
+the Rule-flow checks (8b, 11-14, 26-28) and the Classification checks (32,
+34) are retired or reduced, and the Automatic row — no longer produced by an
+import — is built directly with the Standard service, as an existing
+Automatic row left by the former engine, to keep proving how Review shows it.
 
 Never touches a real bank file, AWS, or any production database.
 """
@@ -56,6 +62,7 @@ from rfone_data_store import rfone_account_service as account_service  # noqa: E
 from rfone_data_store.bank_reconciliation import export as export_service  # noqa: E402
 from rfone_data_store.bank_reconciliation import receiver_candidates  # noqa: E402
 from rfone_data_store.bank_reconciliation import recognition  # noqa: E402
+from rfone_data_store.bank_reconciliation import reconciliation_standards  # noqa: E402
 from rfone_data_store.bank_reconciliation import reconciliation_status  # noqa: E402
 from rfone_data_store.bank_reconciliation import review_queues  # noqa: E402
 from rfone_data_store.bank_reconciliation import row_reconciliation  # noqa: E402
@@ -68,7 +75,6 @@ AUG = date(2026, 8, 12)
 JUL = date(2026, 7, 9)
 RECOGNIZED = "Recognised by who-v1 from the bank's own text (CARD_MERCHANT). Identity only."
 CANONICAL = "Canonical WHO from the WHO/WHY import."
-SAMUELS_RULE = "Dove nella descrizione trovi SAMUELS il WHO è Samuels & Son"
 STATEMENTS = [0]
 
 
@@ -185,13 +191,20 @@ def main() -> int:
         row_reconciliation.set_as_standard(s, transaction_id=rows["standard_source"].id,
                                            reporting_entity_id=entity.id, account_id=operator.id)
         s.commit()
-        # A new import the Standard completes: AUTOMATIC.
+        # A new import the Standard completes: AUTOMATIC. BANK_RULES_RESET_001
+        # — the import no longer applies Standards, so the existing Automatic
+        # row (as the former engine left it) is completed by the Standard
+        # service directly.
         upload = bank_service.import_csv(s, file_bytes=csv("PUBLIX SUPER MARKETS 0123", "08/20/2026", "-12.34"),
                                          original_file_name="chase1057_publix.csv", uploaded_by_account_id=None,
                                          payment_instrument_id=card.id)
         s.commit()
         automatic = s.scalars(select(m.FinancialTransaction).where(
             m.FinancialTransaction.import_batch_id == upload.batch.id)).one()
+        check("setup: the import itself completes nothing (no Standard applied at import)",
+              recognition.get_current_explanation(s, financial_transaction_id=automatic.id) is None)
+        reconciliation_standards.apply_to_transaction(s, automatic)
+        s.commit()
         # The import recomputes accounting deduplication; the synthetic copy is
         # marked suppressed afterwards, the way a real duplicate group ends up.
         suppressed_copy = s.get(m.FinancialTransaction, rows["suppressed"].id)
@@ -273,44 +286,15 @@ def main() -> int:
           in_to_reconcile(to_rec_html, "candidate_dup") and not in_reconciled(rec_html, "candidate_dup"))
     check("9c. a suppressed accounting copy stays visible for audit but needs no work (uncounted, no WHO control)",
           "EXCLUDED FROM ACCOUNTING" in to_rec_html and not in_to_reconcile(to_rec_html, "suppressed"))
-    check("26. the Rule action is available on To Reconcile rows",
-          re.search(r'class="who-rule-open" data-transaction-id="%d"' % ids["samuels_1"], to_rec_html) is not None
-          and 'id="who-rule-modal"' in to_rec_html)
+    check("26. the retired Rule action and modal are not on To Reconcile rows",
+          'class="who-rule-open"' not in to_rec_html and 'id="who-rule-modal"' not in to_rec_html)
 
     # ------------------------------------------------------------------
-    # RULE FLOW — Samuels (10-15, 27, 28)
+    # NO RULE FLOW (10, 15) — BANK_RULES_RESET_001: the Samuels Rule checks
+    # (8b, 11-14, 27, 28) are retired with the simple WHO Rule.
     # ------------------------------------------------------------------
     csrf = CSRF_RE.search(to_rec_html).group(1)
-    check("10. Samuels initially appears in To Reconcile", in_to_reconcile(to_rec_html, "samuels_1"))
-    applied = client.post("/bank/who-rules/apply", headers={"X-Requested-With": "fetch"}, data={
-        "csrf_token": csrf, "new_who_name": "Samuels & Son", "instruction": SAMUELS_RULE,
-        "transaction_reason_id": [str(ids["food"])], "transaction_id": str(ids["samuels_1"]),
-        "return_to": f"/bank/review?{MONTH}"})
-    body = applied.get_json()
-    check("11/27. the Samuels Rule is applied from To Reconcile, creating the WHO in the same Apply",
-          applied.status_code == 200 and body["ok"] and body["redirect"] == f"/bank/review?{MONTH}", detail=str(body))
-    after = client.get(body["redirect"]).data.decode()
-    with SessionFactory() as s:
-        samuels = s.scalars(select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == "Samuels & Son")).one()
-        decided = [recognition.get_current_explanation(s, financial_transaction_id=ids[k])
-                   for k in ("samuels_1", "samuels_2", "samuels_july")]
-        check("12. the WHO is assigned to every Samuels transaction, with no WHY chosen",
-              all(d.occurrence_id == samuels.id and d.transaction_reason_id is None for d in decided))
-        associations = [a.transaction_reason_id for a in s.scalars(select(m.BankOccurrenceReasonAssociation).where(
-            m.BankOccurrenceReasonAssociation.occurrence_id == samuels.id))]
-        check("28. possible WHY behaviour unchanged: the chosen WHY is a possible WHY, no default",
-              associations == [ids["food"]] and samuels.default_transaction_reason_id is None)
-        samuels_id = samuels.id
-    check("13. the Samuels transactions disappear from To Reconcile on the reloaded page",
-          not in_to_reconcile(after, "samuels_1") and not in_to_reconcile(after, "samuels_2")
-          and "To Reconcile (3)" in after)
-    check("8b. the result says where they went, with a link to Reconciled",
-          "WHO assigned to" in after and "View reconciled transactions" in after
-          and 'href="/bank/review?view=reconciled&amp;year=2026&amp;month=8"' in after)
-    reconciled_after = client.get(f"/bank/review?{MONTH}&view=reconciled").data.decode()
-    check("14. they appear under Reconciled with the WHO populated",
-          re.search(r'id="t-%d"[^>]*data-who="%d"' % (ids["samuels_1"], samuels_id), reconciled_after) is not None
-          and "Reconciled (6)" in reconciled_after)
+    check("10. Samuels appears in To Reconcile", in_to_reconcile(to_rec_html, "samuels_1"))
     with SessionFactory() as s:
         upload = bank_service.import_csv(s, file_bytes=csv("SAMUELS AND SON SEAFOOD - 1099", "08/25/2026", "-77.00"),
                                          original_file_name="chase1057_samuels.csv", uploaded_by_account_id=None,
@@ -321,8 +305,8 @@ def main() -> int:
             m.FinancialTransaction.import_batch_id == upload.batch.id)).one()
     future_rec = client.get(f"/bank/review?{MONTH}&view=reconciled").data.decode()
     future_to = client.get(f"/bank/review?{MONTH}").data.decode()
-    check("15. a future matching transaction goes straight to Reconciled",
-          f'id="t-{future_id}"' in future_rec and f'data-transaction-id="{future_id}"' not in future_to)
+    check("15. a newly imported transaction gets no automatic WHO: it is To Reconcile, not Reconciled",
+          f'id="t-{future_id}"' not in future_rec and f'data-transaction-id="{future_id}"' in future_to)
 
     # ------------------------------------------------------------------
     # MANUAL FLOW (16-18)
@@ -353,7 +337,7 @@ def main() -> int:
           conf_row is not None and "rp-st-confirmed" in conf_row.group(0))
     check("12b. rows still to accept come before the accepted ones",
           manual_rec.index(f'id="t-{ids["who_no_why"]}"') < manual_rec.index(f'id="t-{ids["confirmed"]}"')
-          and manual_rec.index(f'id="t-{ids["samuels_1"]}"') < manual_rec.index(f'id="t-{ids["automatic"]}"'))
+          and manual_rec.index(f'id="t-{ids["no_who"]}"') < manual_rec.index(f'id="t-{ids["automatic"]}"'))
     with SessionFactory() as s:
         unresolved = {t.id for t in export_service.unresolved_transactions(s, year=2026, month=8)}
     check("23. the Automatic row is exportable without any Confirm",
@@ -397,11 +381,11 @@ def main() -> int:
           to_rec_time < 3.0 and to_rec_statements < 150, detail=f"{to_rec_time:.2f}s {to_rec_statements}")
     check("31. Reconciled answers quickly with a bounded statement count",
           rec_time < 3.0 and rec_statements < 80, detail=f"{rec_time:.2f}s {rec_statements}")
-    classification, classification_time, _ = get("/bank/classification")
-    check("32. no Classification candidate rebuild on Review or Classification (the rebuild is forbidden here)",
-          to_rec.status_code == rec.status_code == classification.status_code == 200)
+    check("32. no Classification candidate rebuild on Review (the rebuild is forbidden here)",
+          to_rec.status_code == rec.status_code == 200)
     check("33. no giant HTML", len(to_rec.data) < 600 * 1024 and len(rec.data) < 600 * 1024)
-    check("34. Classification remains fast", classification_time < 2.0, detail=f"{classification_time:.2f}s")
+    check("34. the retired Classification (Rules) page answers 404",
+          client.get("/bank/classification").status_code == 404)
     receiver_candidates.build_candidates = original_build
 
     # ------------------------------------------------------------------
@@ -416,7 +400,7 @@ def main() -> int:
             sorted(s.execute(select(m.ReportingEntity.id, m.ReportingEntity.status)).all()),
         )
         check("35. Configuration unchanged", config_after == config_before)
-        check("36. Standards unchanged by the Review, the Rule and the queue moves",
+        check("36. Standards unchanged by the Review and the queue moves",
               sorted(s.execute(select(m.BankReconciliationStandard.id, m.BankReconciliationStandard.occurrence_id,
                                       m.BankReconciliationStandard.status)).all()) == standards_before)
         in_scope = export_service.in_scope_transactions(s, 2026, 8)
@@ -425,11 +409,12 @@ def main() -> int:
         exportable = {tid for tid, st in statuses.items() if st in reconciliation_status.EXPORTABLE}
         check("37. Export semantics unchanged: exactly the Automatic/Confirmed rows are not blocked",
               exportable and exportable.isdisjoint(unresolved) and ids["automatic"] in exportable)
-        check("38. WHO/WHY invariant: no description rule determines purpose; the Rule chose no WHY",
+        samuels_2 = recognition.get_current_explanation(s, financial_transaction_id=ids["samuels_2"])
+        check("38. WHO/WHY invariant: no description rule determines purpose; no WHY was invented",
               not s.scalar(select(func.count(m.BankRecognitionRule.id)).where(
                   m.BankRecognitionRule.match_field == recognition.DESCRIPTION,
                   m.BankRecognitionRule.determines_purpose.is_(True)))
-              and recognition.get_current_explanation(s, financial_transaction_id=ids["samuels_2"]).transaction_reason_id is None)
+              and (samuels_2 is None or samuels_2.transaction_reason_id is None))
         counts = review_queues.counts(s, review_queues.ReviewFilters(year=2026, month=8))
         check("4b. the service counts equal the listed rows",
               counts[review_queues.RECONCILED] == len(review_queues.queue(

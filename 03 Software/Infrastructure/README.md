@@ -4,6 +4,15 @@ Local dev-environment tooling. This is **not RF-One product code** and not a Dom
 
 ---
 
+## Bank Local Environment — Avvia / Chiudi Bank su due PC (BANK_LOCAL_ENVIRONMENT_001)
+
+[`Bank Local Environment/`](Bank%20Local%20Environment/README.md): lo stesso ambiente Bank su ASUS2026 e
+MINIPC-KSYR1 — **Configura PC**, **Avvia Bank** (porta 5080), **Chiudi Bank / Cambia PC** (consegna controllata
+del database tramite OneDrive) e l'interpretazione delle AI Rules tramite la sessione Claude Code
+([SESSION_INTERPRETATION.md](Bank%20Local%20Environment/SESSION_INTERPRETATION.md)).
+
+---
+
 ## AWS dev access check/login
 
 **Script:** [`aws-dev-access.ps1`](aws-dev-access.ps1)

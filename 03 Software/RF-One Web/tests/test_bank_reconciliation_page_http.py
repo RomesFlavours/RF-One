@@ -235,8 +235,8 @@ def main() -> int:
             for k in why_names:
                 why_names[k] = db.get(m.BankTransactionReason, ids[k]).name
         check("7. an automatic WHO is shown as suggested, with its WHY",
-              "Gordon Food Service" in r1 and "suggested" in r1 and why_names["food"] in r1)
-        check("8. a human WHO is shown as chosen by a person", "Clover" in r3 and "rp-src-person" in r3
+              "GORDON FOOD SERVICE" in r1 and "suggested" in r1 and why_names["food"] in r1)
+        check("8. a human WHO is shown as chosen by a person", "CLOVER" in r3 and "rp-src-person" in r3
               and why_names["sales"] in r3)
         check("9. a missing WHO is not in Reconciled: it is work for To Reconcile",
               f'id="t-{ids["t6"]}"' not in html and f'id="t-{ids["t2"]}"' not in html)
@@ -277,7 +277,7 @@ def main() -> int:
         who_why(ids["t2"], ids["amazon"], ids["office"])
         html = page()
         check("18. a WHO + WHY chosen in Select WHO / WHY moves the row to Reconciled",
-              ids["t2"] in rec_ids(html) and "Amazon" in row(html, ids["t2"]))
+              ids["t2"] in rec_ids(html) and "AMAZON" in row(html, ids["t2"]))
 
         # ================================================================ 19-23
         r1, r2 = row(html, ids["t1"]), row(html, ids["t2"])
@@ -317,9 +317,15 @@ def main() -> int:
             kept = db.scalar(select(func.count()).where(m.BankTransactionAllocation.financial_transaction_id == ids["t1"]))
         who_why(ids["t1"], ids["gfs"], ids["food"])
         with SessionFactory() as db:
-            after_change = db.scalar(select(func.count()).where(m.BankTransactionAllocation.financial_transaction_id == ids["t1"]))
-        check("26. changing WHO/WHY after confirmation reopens the row (re-stating the same WHO/WHY does not)",
-              kept == 1 and after_change == 0 and 'data-status="Needs review"' in row(page(), ids["t1"]))
+            after_change = db.scalars(select(m.BankTransactionAllocation).where(
+                m.BankTransactionAllocation.financial_transaction_id == ids["t1"])).all()
+        # BANK_REVIEW_FOR_WHOM_001: the acceptance is withdrawn, the For Whom
+        # a person chose is kept (pending, not accounting-complete).
+        check("26. changing WHO/WHY after confirmation reopens the row (re-stating the same WHO/WHY does not); "
+              "the chosen For Whom is kept",
+              kept == 1 and len(after_change) == 1 and after_change[0].status != "COMPLETE"
+              and after_change[0].reporting_entity_id == ids["beta"]
+              and 'data-status="Needs review"' in row(page(), ids["t1"]))
 
         confirm(ids["t1"], ids["alpha"])
         confirm(ids["t1"], ids["brand"])
@@ -328,10 +334,12 @@ def main() -> int:
                 m.BankTransactionAllocation.financial_transaction_id == ids["t1"])).all()
         reopened = post(f"/bank/reconciliation/{ids['t1']}/reopen", {"return_to": REC})
         with SessionFactory() as db:
-            after_reopen = db.scalar(select(func.count()).where(m.BankTransactionAllocation.financial_transaction_id == ids["t1"]))
-        check("27. a new For Whom takes effect only through a new Confirm; Reopen withdraws the confirmation",
-              len(restated) == 1 and restated[0].reporting_entity_id == ids["brand"] and after_reopen == 0
-              and reopened.status_code == 302)
+            after_reopen = db.scalars(select(m.BankTransactionAllocation).where(
+                m.BankTransactionAllocation.financial_transaction_id == ids["t1"])).all()
+        check("27. Confirm records the chosen For Whom; Reopen withdraws the confirmation and keeps the For Whom",
+              len(restated) == 1 and restated[0].reporting_entity_id == ids["brand"]
+              and len(after_reopen) == 1 and after_reopen[0].status != "COMPLETE"
+              and after_reopen[0].reporting_entity_id == ids["brand"] and reopened.status_code == 302)
 
         confirm(ids["t3"], ids["beta"])
         html = page()

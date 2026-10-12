@@ -2,14 +2,14 @@
 {% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Positions · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Organization', url_for('admin_organization')), ('Positions', None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Organization', domain_entry('ORGANIZATION')), ('Positions', None)]) }}
 <h1>Positions — ADMIN / CONFIGURATION / TEST HARNESS</h1>
 <p class="empty">Configuration and inspection only. Not the operational Attention interface — see Attention Items below.</p>
 
 <div class="btn-row">
-  <a class="btn" href="{{ url_for('admin_org_position_new') }}">New Position</a>
-  <a class="btn" href="{{ url_for('admin_org_process_ownerships') }}">Process Ownerships</a>
-  <a class="btn" href="{{ url_for('admin_org_attention') }}">Attention Items</a>
+  {% if org_may_administer() %}<a class="btn" href="{{ url_for('admin_org_position_new') }}">New Position</a>{% endif %}
+  {% if may_use_item('ORGANIZATION', 'process_ownerships') %}<a class="btn" href="{{ url_for('admin_org_process_ownerships') }}">Process Ownerships</a>{% endif %}
+  {% if may_use_item('ORGANIZATION', 'attention') %}<a class="btn" href="{{ url_for('admin_org_attention') }}">Attention Items</a>{% endif %}
 </div>
 
 <div class="card">

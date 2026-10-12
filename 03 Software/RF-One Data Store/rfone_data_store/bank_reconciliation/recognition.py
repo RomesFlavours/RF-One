@@ -139,9 +139,28 @@ def direction_for_amount(amount_minor: int) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _literal_matches(rule: "m.BankRecognitionRule", description: str | None) -> bool:
+    """BANK_WHO_RULE_CONDITIONS_001 — a rule made in the Rule modal: its
+    typed text against the ORIGINAL description, ignoring only letter case
+    and outer spaces of both. Every character is literal (`*`, `%`, `_`,
+    apostrophes are characters, never wildcards). Contains / Starts with /
+    Equals are the existing CONTAINS_TEXT / PREFIX / EXACT types."""
+    pattern = (rule.literal_pattern or "").strip().casefold()
+    if not pattern:
+        return False
+    text = (description or "").strip().casefold()
+    if rule.match_type == EXACT_NORMALIZED_DESCRIPTION:
+        return text == pattern
+    if rule.match_type == PREFIX:
+        return text.startswith(pattern)
+    if rule.match_type == CONTAINS_TEXT:
+        return pattern in text
+    return False
+
+
 def _rule_matches(
     rule: "m.BankRecognitionRule", normalized_description: str,
-    normalized_memo: str | None = None,
+    normalized_memo: str | None = None, *, description: str | None = None,
 ) -> bool:
     """Whether this rule matches, against the text the rule says it reads.
 
@@ -149,7 +168,13 @@ def _rule_matches(
     BANK_MEMO_PURPOSE_CLASSIFICATION_001, and still the default) or MEMO.
     A MEMO rule on a transaction with no memo matches nothing — it is not
     silently retried against the description, because the whole point of a
-    memo rule is that it carries no identity."""
+    memo rule is that it carries no identity.
+
+    A rule with a `literal_pattern` (BANK_WHO_RULE_CONDITIONS_001) reads the
+    ORIGINAL `description` literally; every caller passes it. Every other
+    rule keeps its normalized matching, unchanged."""
+    if getattr(rule, "literal_pattern", None) is not None and rule.match_field != MEMO:
+        return _literal_matches(rule, description if description is not None else normalized_description)
     if rule.match_field == MEMO:
         text = normalized_memo or ""
         if not text:
@@ -191,6 +216,7 @@ def active_rules(session: Session) -> list["m.BankRecognitionRule"]:
 def find_candidate_rules(
     session: Session, *, normalized_description: str, payment_instrument_id: int, direction: str,
     normalized_memo: str | None = None, rules: list["m.BankRecognitionRule"] | None = None,
+    description: str | None = None,
 ) -> list["m.BankRecognitionRule"]:
     """Only ACTIVE rules are ever considered (spec step 2) — a rule at
     `NEEDS_REVIEW` or `INACTIVE` never matches until a human reactivates
@@ -203,7 +229,7 @@ def find_candidate_rules(
         rule for rule in rules
         if (rule.payment_instrument_id is None or rule.payment_instrument_id == payment_instrument_id)
         and (rule.direction is None or rule.direction == direction)
-        and _rule_matches(rule, normalized_description, normalized_memo)
+        and _rule_matches(rule, normalized_description, normalized_memo, description=description)
     ]
     compatible.sort(key=_specificity_sort_key)
     return compatible
@@ -404,7 +430,7 @@ def _propose(session: Session, txn: "m.FinancialTransaction") -> _Proposal:
     candidates = find_candidate_rules(
         session, normalized_description=normalized,
         payment_instrument_id=txn.payment_instrument_id, direction=direction,
-        normalized_memo=normalized_memo,
+        normalized_memo=normalized_memo, description=txn.description_original,
     )
     occurrence_id = rule_id = None
     if not candidates:

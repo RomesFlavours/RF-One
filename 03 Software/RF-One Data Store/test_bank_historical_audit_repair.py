@@ -365,10 +365,13 @@ with _ro(_MIG_DB) as con:
     down_ddl = con.execute(
         "SELECT sql FROM sqlite_master WHERE name='bank_import_batches'").fetchone()[0]
 command.upgrade(cfg, MIGRATION)
+# Back to head before comparing: later revisions may add their own columns
+# to this table (e.g. e7a1c4b9d2f6's `import_log`), so the full cycle
+# head -> PREVIOUS -> head is what must reproduce the head DDL exactly.
+command.upgrade(cfg, "head")
 with _ro(_MIG_DB) as con:
     cycled_ddl = con.execute(
         "SELECT sql FROM sqlite_master WHERE name='bank_import_batches'").fetchone()[0]
-command.upgrade(cfg, "head")
 os.environ.pop("ALEMBIC_DATABASE_URL_OVERRIDE", None)
 check("C2. downgrade restores the original four-format CHECK",
       "'AMEX_QBO'" not in down_ddl and "'FIRST_CITIZENS'" in down_ddl)

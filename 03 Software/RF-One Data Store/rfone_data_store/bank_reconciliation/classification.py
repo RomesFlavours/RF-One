@@ -534,12 +534,25 @@ def _require_usable_why(session: Session, transaction_reason_id: int | None) -> 
         raise ValueError(f"Why {transaction_reason_id} does not exist.")
     if reason.status != "ACTIVE":
         raise ValueError(f"Why {reason.name!r} is inactive and cannot be a Who's default Why.")
-    if reason.accounting_classification_id is None:
-        raise ValueError(
-            f"Why {reason.name!r} has no What yet and cannot be a Who's default Why. "
-            "Assign its What first."
-        )
+    # A WHY with no WHAT yet may be the default (BANK_WHY_WITHOUT_WHAT_001:
+    # reconciliation is WHO + WHY, bookkeeping comes later; Product Owner,
+    # 2026-10-10 — "Rent Veicles" as ACURA PMT's default was refused here).
     return reason.id
+
+
+def normalize_who_name(name: str | None) -> str:
+    """BANK_WHO_UPPERCASE_001 — THE stored form of a WHO name, wherever it is
+    created or edited: outer spaces removed, upper case."""
+    return (name or "").strip().upper()
+
+
+def _name_taken(session: Session, clean_name: str, occurrence_id: int | None = None) -> "m.BankOccurrence | None":
+    """Another WHO whose name is the same once case and outer spaces are
+    ignored — a duplicate is refused, whatever its spelling."""
+    for other in session.scalars(select(m.BankOccurrence)):
+        if other.id != occurrence_id and normalize_who_name(other.canonical_name) == clean_name:
+            return other
+    return None
 
 
 def create_occurrence(
@@ -548,8 +561,10 @@ def create_occurrence(
     status: str = "ACTIVE",
 ) -> "m.BankOccurrence":
     """A new Who is refused without a default Why — which is what lets the
-    Review show one `Select Who` control and derive everything else."""
-    clean_name = (canonical_name or "").strip()
+    Review show one `Select Who` control and derive everything else.
+    The name is stored in upper case without outer spaces, and a WHO that
+    differs only by case or outer spaces is refused (BANK_WHO_UPPERCASE_001)."""
+    clean_name = normalize_who_name(canonical_name)
     if not clean_name:
         raise ValueError("A Who requires a canonical name.")
     if status not in ("ACTIVE", "INACTIVE"):
@@ -557,11 +572,9 @@ def create_occurrence(
     if session.get(m.BankOccurrenceType, occurrence_type_id) is None:
         raise ValueError(f"Who type {occurrence_type_id} does not exist.")
 
-    existing = session.scalars(
-        select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == clean_name)
-    ).first()
+    existing = _name_taken(session, clean_name)
     if existing is not None:
-        raise ValueError(f"A Who named {clean_name!r} already exists.")
+        raise ValueError(f"A Who named {existing.canonical_name!r} already exists.")
 
     occurrence = m.BankOccurrence(
         canonical_name=clean_name,
@@ -585,20 +598,15 @@ def update_occurrence(
     occurrence = session.get(m.BankOccurrence, occurrence_id)
     if occurrence is None:
         raise ValueError(f"Who {occurrence_id} does not exist.")
-    clean_name = (canonical_name or "").strip()
+    clean_name = normalize_who_name(canonical_name)
     if not clean_name:
         raise ValueError("A Who requires a canonical name.")
     if session.get(m.BankOccurrenceType, occurrence_type_id) is None:
         raise ValueError(f"Who type {occurrence_type_id} does not exist.")
 
-    clash = session.scalars(
-        select(m.BankOccurrence).where(
-            m.BankOccurrence.canonical_name == clean_name,
-            m.BankOccurrence.id != occurrence_id,
-        )
-    ).first()
+    clash = _name_taken(session, clean_name, occurrence_id)
     if clash is not None:
-        raise ValueError(f"A Who named {clean_name!r} already exists.")
+        raise ValueError(f"A Who named {clash.canonical_name!r} already exists.")
 
     occurrence.canonical_name = clean_name
     occurrence.occurrence_type_id = occurrence_type_id

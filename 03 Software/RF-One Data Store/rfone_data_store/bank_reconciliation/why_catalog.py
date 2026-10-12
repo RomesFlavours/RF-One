@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -287,6 +288,39 @@ def active_reasons(session: Session) -> list["m.BankTransactionReason"]:
     ).all())
 
 
+def create_group(session: Session, *, name: str | None) -> "tuple[m.BankReasonGroup, bool]":
+    """BANK_WHY_GROUP_CREATE_001 — "+ New WHY Group" from the New WHY
+    dialog: (group, reused). Only the name is asked; the technical `code`
+    follows the catalog's convention (UPPER_SNAKE of the name, made unique)
+    and `display_order` goes after the last one — the UI lists groups
+    alphabetically anyway. The ACTIVE group already called so (case and
+    outer spaces aside) is reused, never duplicated; a name held by an
+    INACTIVE group is refused — no existing group is changed. Only the group
+    is written: no WHY, rule or classification. Flushes, never commits."""
+    clean = (name or "").strip()
+    if not clean:
+        raise ValueError("Write the group name.")
+    if len(clean) > 255:
+        raise ValueError("A group name is at most 255 characters.")
+    wanted = clean.casefold()
+    existing = [g for g in session.scalars(select(m.BankReasonGroup)).all() if g.name.strip().casefold() == wanted]
+    active = next((g for g in existing if g.active), None)
+    if active is not None:
+        return active, True
+    if existing:
+        raise ValueError(f"A WHY group named “{existing[0].name}” exists but is inactive; choose another name.")
+    base = re.sub(r"[^A-Z0-9]+", "_", clean.upper()).strip("_")[:60] or "GROUP"
+    codes = set(session.scalars(select(m.BankReasonGroup.code)).all())
+    code, n = base, 2
+    while code in codes:
+        code, n = f"{base}_{n}", n + 1
+    last = session.scalar(select(func.max(m.BankReasonGroup.display_order))) or 0
+    group = m.BankReasonGroup(code=code, name=clean, display_order=last + 10, active=True)
+    session.add(group)
+    session.flush()
+    return group, False
+
+
 def groups(session: Session) -> list["m.BankReasonGroup"]:
     """The active WHY navigation groups as every Bank UI shows them:
     alphabetical by name, case-insensitive (Product Owner, 2026-10-05). The
@@ -427,6 +461,31 @@ def occurrences_for_reason(
     ).all())
 
 
+def sync_single_default(session: Session, occurrence_id: int) -> bool:
+    """BANK_WHO_SINGLE_DEFAULT_WHY_001 — a WHO with exactly ONE active
+    possible WHY has that WHY as its default WHY. With several, the explicit
+    choice is kept; with none, nothing changes — a WHY with no WHAT yet
+    included. Only the WHO's setting changes: no transaction is touched.
+    True when the default was set."""
+    occurrence = session.get(m.BankOccurrence, occurrence_id)
+    if occurrence is None:
+        return False
+    reasons = list(session.scalars(
+        select(m.BankTransactionReason)
+        .join(m.BankOccurrenceReasonAssociation,
+              m.BankOccurrenceReasonAssociation.transaction_reason_id == m.BankTransactionReason.id)
+        .where(m.BankOccurrenceReasonAssociation.occurrence_id == occurrence_id,
+               m.BankOccurrenceReasonAssociation.active.is_(True),
+               m.BankTransactionReason.status == "ACTIVE")))
+    if len(reasons) != 1:
+        return False
+    if occurrence.default_transaction_reason_id == reasons[0].id:
+        return False
+    occurrence.default_transaction_reason_id = reasons[0].id
+    session.flush()
+    return True
+
+
 def associate(
     session: Session, *, occurrence_id: int, transaction_reason_id: int,
     source: str = "HUMAN", confirm: bool = True,
@@ -469,6 +528,7 @@ def associate(
             existing.first_confirmed_at = existing.first_confirmed_at or now
             existing.last_confirmed_at = now
         session.flush()
+        sync_single_default(session, occurrence_id)
         return existing
 
     association = m.BankOccurrenceReasonAssociation(
@@ -479,4 +539,5 @@ def associate(
     )
     session.add(association)
     session.flush()
+    sync_single_default(session, occurrence_id)
     return association

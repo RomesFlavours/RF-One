@@ -2,7 +2,7 @@
 {% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Scope Interview · {{ position.name }} · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Organization', url_for('admin_organization')), ('Positions', url_for('admin_org_positions')), (position.name, url_for('admin_org_position_detail', position_id=position.id)), ('Scope Interview', None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Organization', domain_entry('ORGANIZATION')), ('Positions', url_for('admin_org_positions')), (position.name, url_for('admin_org_position_detail', position_id=position.id)), ('Scope Interview', None)]) }}
 <h1>Define / Review Scope with Cognito</h1>
 <p class="empty">
   <span class="badge">ADMIN / TEST ONLY</span> —

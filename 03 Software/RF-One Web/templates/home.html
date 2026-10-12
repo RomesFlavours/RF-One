@@ -14,9 +14,11 @@
 {% if domains_view %}
   <div class="home-stack">
     {% for domain in domains_view %}
-      {% set released = domain.link and domain.code not in work_in_progress_codes %}
-      {% if domain.link %}
-        <a class="domain-card {{ 'domain-card-released' if released else 'domain-card-unreleased' }}" href="{{ domain.link }}">
+      {#- The Domain's first item the account may use (ACCOUNT_ITEM_ACCESS_001). #}
+      {% set entry = domain_entry(domain.code) %}
+      {% set released = entry and domain.code not in work_in_progress_codes %}
+      {% if entry %}
+        <a class="domain-card {{ 'domain-card-released' if released else 'domain-card-unreleased' }}" href="{{ entry }}">
           <div class="domain-name">{{ domain.display_name }}</div>
           <div class="domain-description">{{ domain.description }}</div>
         </a>
@@ -38,7 +40,7 @@
     <div class="domain-card home-block">
       <div class="domain-name">Administration</div>
       {% if bank_available %}
-      <a class="home-row" href="{{ url_for('bank_home') }}"><strong>Bank</strong> &mdash; Import and reconcile bank transactions.</a>
+      <a class="home-row" href="{{ domain_entry('BANK') }}"><strong>Bank</strong> &mdash; Import and reconcile bank transactions.</a>
       {% endif %}
       {% if clover_acquisition_available %}
       <a class="home-row" href="{{ url_for('clover_acquisition_home') }}"><strong>Clover Acquisition</strong> &mdash; Sync Now and Historical Backfill from Clover.</a>
@@ -51,8 +53,9 @@
     {% if account.is_admin %}
       <a class="home-row" href="{{ url_for('admin_accounts') }}"><strong>Accounts</strong> &mdash; Manage RF-One accounts and Domain access.</a>
       <a class="home-row" href="{{ url_for('admin_legal_entities') }}"><strong>Legal Entities</strong> &mdash; Manage legal entities.</a>
-      <a class="home-row" href="{{ url_for('admin_organization') }}"><strong>Organization</strong> &mdash; Configure organization settings.</a>
     {% endif %}
+    {#- Organization is no longer here: it is a Domain card above, granted
+        account by account (ACCOUNT_ITEM_ACCESS_001). #}
     <a class="home-row" href="{{ url_for('profile') }}"><strong>Profile</strong> &mdash; Manage your personal account information.</a>
     {% if account.is_admin %}
       <a class="home-row" href="{{ url_for('admin_workweek') }}"><strong>Workweek</strong> &mdash; The day each Restaurant's Workweek starts.</a>

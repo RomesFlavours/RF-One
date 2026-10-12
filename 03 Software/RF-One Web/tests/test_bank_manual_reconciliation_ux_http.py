@@ -114,7 +114,7 @@ def main() -> int:
         # earlier popup this file pinned — its grouped catalog, "+ New" that
         # associated an existing catalog WHY, the derived-result line and the
         # learning checkbox. The popup is now "Select WHO / WHY": the WHO list,
-        # then the chosen WHO's WHY, "+ Create New WHY" (a real WHY through
+        # then the chosen WHO's WHY, "+ New WHY" (a real WHY through
         # Configuration), Confirm and Cancel. Its controller is
         # static/js/bank-who-why.js; the behaviour is pinned in full by
         # test_bank_manual_who_why_http.py. The checks below keep this file's
@@ -135,10 +135,11 @@ def main() -> int:
 
         # ---- 1. no WHO -> WHY unavailable ------------------------------
         check(
-            "1. with no WHO at all there is no WHY column (the popup says no WHO exists); "
-            "otherwise the grouped WHY catalog is browsable as soon as the popup opens "
-            "(BANK_WHY_NAVIGATION_GROUPS_001)",
-            'id="why-picker"' not in html and "No WHO configured" in html
+            "1. with no WHO at all the popup is the same, says no WHO exists yet and offers + New WHO "
+            "to create the first one (BANK_RECONCILIATION_NEW_WHO_001); the grouped WHY catalog is "
+            "browsable as soon as the popup opens (BANK_WHY_NAVIGATION_GROUPS_001)",
+            'id="why-picker"' in html and 'id="who-picker-none-yet"' in html
+            and ">+ New WHO</button>" in html and 'id="who-picker-confirm" disabled' in html
             and "Promise.all([loadWhos(), loadCatalog()])" in js,
         )
         check(
@@ -239,7 +240,7 @@ def main() -> int:
         check(
             "2b. a WHO with no WHY yet still browses the whole grouped catalog (its own list only marks), "
             "and Create New WHY stays available",
-            'id="why-picker-none"' in review and "+ Create New WHY" in review
+            'id="why-picker-none"' in review and "+ New WHY" in review
             and client.get(f"/bank/manual-reconciliation/whos/{empty_id}/whys").get_json() == []
             and len(client.get("/bank/manual-reconciliation/why-catalog").get_json()["whys"]) > 0,
         )

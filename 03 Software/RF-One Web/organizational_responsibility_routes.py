@@ -10,10 +10,20 @@ Cognito Human Interaction capability, or any other operational channel, is
 the intended consumer of `attention_service.list_attention_for_identity`,
 not this admin UI).
 
+Access (ACCOUNT_ITEM_ACCESS_001): these pages are the ORGANIZATION Domain.
+Every page is opened with `require_domain_access("ORGANIZATION")`, which
+also checks the page's item (`domain_registry.py`) — an account granted the
+Domain, admin or not, may consult it (`view`). Every change to the
+organization (create, assign, deactivate, route/acknowledge/resolve, and the
+forms that lead to them) stays reserved to administrators, on top of the
+same Domain access (`administer`): being an administrator never opens the
+Domain by itself. Templates hide the change controls when
+`org_may_administer()` is false; the server refuses them either way.
+
 Same registration pattern `compensation_routes.py` already establishes:
-`require_admin`/`SessionFactory`/`require_csrf` are passed in explicitly by
-`app.py`; this module never imports `app.py` itself, so it stays testable
-and reusable independent of the shell's own auth wiring.
+`require_admin`/`require_domain_access`/`SessionFactory`/`require_csrf` are
+passed in explicitly by `app.py`; this module never imports `app.py` itself,
+so it stays testable and reusable independent of the shell's own auth wiring.
 
 Business logic lives entirely in `organizational_responsibility_service.py`/
 `attention_service.py` (`03 Software/RF-One Data Store`) — every route below
@@ -78,12 +88,30 @@ def _post_redirect(default_endpoint: str, **kwargs):
     return redirect(url_for(default_endpoint, **kwargs))
 
 
-def register_organizational_responsibility_routes(app, *, require_admin, SessionFactory, require_csrf):
+ORGANIZATION_DOMAIN_CODE = "ORGANIZATION"
+
+
+def register_organizational_responsibility_routes(
+    app, *, require_admin, require_domain_access, SessionFactory, require_csrf, load_current_account,
+):
+    view = require_domain_access(ORGANIZATION_DOMAIN_CODE)
+
+    def administer(handler):
+        return view(require_admin(handler))
+
+    def org_may_administer() -> bool:
+        with SessionFactory() as db:
+            account = load_current_account(db)
+            return bool(account is not None and account.is_admin)
+
+    # A template global (like `domain_nav`), so the Position editor body,
+    # also included inside the chart's modal fragment, can read it.
+    app.jinja_env.globals["org_may_administer"] = org_may_administer
 
     # -- Positions ------------------------------------------------------------
 
     @app.route("/admin/org/positions")
-    @require_admin
+    @view
     def admin_org_positions():
         with SessionFactory() as db:
             positions = list(db.scalars(select(m.Position).order_by(m.Position.name)))
@@ -94,7 +122,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
             return render_template("admin_org_positions.html", rows=rows)
 
     @app.route("/admin/org/positions/new", methods=["GET", "POST"])
-    @require_admin
+    @administer
     def admin_org_position_new():
         with SessionFactory() as db:
             positions = list(db.scalars(select(m.Position).order_by(m.Position.name)))
@@ -116,7 +144,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
             return render_template("admin_org_position_form.html", positions=positions)
 
     @app.route("/admin/org/positions/<int:position_id>")
-    @require_admin
+    @view
     def admin_org_position_detail(position_id: int):
         with SessionFactory() as db:
             position = db.get(m.Position, position_id)
@@ -159,7 +187,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
             )
 
     @app.route("/admin/org/positions/<int:position_id>/scopes/new", methods=["POST"])
-    @require_admin
+    @administer
     def admin_org_position_scope_new(position_id: int):
         require_csrf()
         with SessionFactory() as db:
@@ -179,7 +207,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
         return _post_redirect("admin_org_position_detail", position_id=position_id)
 
     @app.route("/admin/org/positions/<int:position_id>/assignments/new", methods=["POST"])
-    @require_admin
+    @administer
     def admin_org_position_assignment_new(position_id: int):
         require_csrf()
         with SessionFactory() as db:
@@ -195,7 +223,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
         return _post_redirect("admin_org_position_detail", position_id=position_id)
 
     @app.route("/admin/org/positions/<int:position_id>/coverages/new", methods=["POST"])
-    @require_admin
+    @administer
     def admin_org_position_coverage_new(position_id: int):
         require_csrf()
         with SessionFactory() as db:
@@ -223,7 +251,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
     # -- Process Ownership ------------------------------------------------------
 
     @app.route("/admin/org/process-ownerships")
-    @require_admin
+    @view
     def admin_org_process_ownerships():
         with SessionFactory() as db:
             ownerships = list(db.scalars(select(m.ProcessOwnership)))
@@ -234,7 +262,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
             )
 
     @app.route("/admin/org/process-ownerships/new", methods=["POST"])
-    @require_admin
+    @administer
     def admin_org_process_ownership_new():
         require_csrf()
         with SessionFactory() as db:
@@ -266,19 +294,19 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
     # second, overlapping page for the same concern.
 
     @app.route("/admin/org/chart")
-    @require_admin
+    @view
     def admin_org_chart():
         return redirect(url_for("admin_organization"))
 
     @app.route("/admin/organization")
-    @require_admin
+    @view
     def admin_organization():
         with SessionFactory() as db:
             check_result = coverage_svc.run_organizational_coverage_check(db)
             return render_template("admin_organization.html", counts=check_result.counts)
 
     @app.route("/admin/organization/graph-data.json")
-    @require_admin
+    @view
     def admin_organization_graph_data():
         from flask import jsonify
 
@@ -331,7 +359,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
             return jsonify({"positions": nodes, "coverage_counts": check_result.counts})
 
     @app.route("/admin/organization/positions/<int:position_id>/fragment")
-    @require_admin
+    @view
     def admin_organization_position_fragment(position_id: int):
         """Same data as `admin_org_position_detail`, rendered WITHOUT the
         page chrome — fetched and injected into the graph page's modal so a
@@ -377,7 +405,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
     # -- Backup Position ----------------------------------------------------------
 
     @app.route("/admin/org/positions/<int:position_id>/backups/new", methods=["POST"])
-    @require_admin
+    @administer
     def admin_org_position_backup_new(position_id: int):
         require_csrf()
         with SessionFactory() as db:
@@ -395,7 +423,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
         return _post_redirect("admin_org_position_detail", position_id=position_id)
 
     @app.route("/admin/org/positions/<int:position_id>/backups/<int:backup_id>/deactivate", methods=["POST"])
-    @require_admin
+    @administer
     def admin_org_position_backup_deactivate(position_id: int, backup_id: int):
         require_csrf()
         with SessionFactory() as db:
@@ -408,7 +436,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
         return _post_redirect("admin_org_position_detail", position_id=position_id)
 
     @app.route("/admin/org/positions/<int:position_id>/backup-required", methods=["POST"])
-    @require_admin
+    @administer
     def admin_org_position_backup_required_toggle(position_id: int):
         require_csrf()
         with SessionFactory() as db:
@@ -422,7 +450,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
     # -- Organizational Fallback Policy -------------------------------------------
 
     @app.route("/admin/org/fallback-policies")
-    @require_admin
+    @view
     def admin_org_fallback_policies():
         with SessionFactory() as db:
             policies = list(db.scalars(select(m.OrganizationalFallbackPolicy)))
@@ -433,7 +461,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
             )
 
     @app.route("/admin/org/fallback-policies/new", methods=["POST"])
-    @require_admin
+    @administer
     def admin_org_fallback_policy_new():
         require_csrf()
         with SessionFactory() as db:
@@ -455,7 +483,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
         return redirect(url_for("admin_org_fallback_policies"))
 
     @app.route("/admin/org/fallback-policies/<int:policy_id>/deactivate", methods=["POST"])
-    @require_admin
+    @administer
     def admin_org_fallback_policy_deactivate(policy_id: int):
         require_csrf()
         with SessionFactory() as db:
@@ -470,7 +498,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
     # -- Organizational Coverage Check --------------------------------------------
 
     @app.route("/admin/org/coverage-check")
-    @require_admin
+    @view
     def admin_org_coverage_check():
         with SessionFactory() as db:
             result = coverage_svc.run_organizational_coverage_check(db)
@@ -484,7 +512,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
     # as canonical Scope).
 
     @app.route("/admin/org/positions/<int:position_id>/interview", methods=["GET", "POST"])
-    @require_admin
+    @administer
     def admin_org_position_interview(position_id: int):
         with SessionFactory() as db:
             position = db.get(m.Position, position_id)
@@ -527,7 +555,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
     # -- AI Consistency Review — test harness, NOT a real AI call (task §16) ----
 
     @app.route("/admin/org/ai-review")
-    @require_admin
+    @view
     def admin_org_ai_review():
         with SessionFactory() as db:
             request_payload = ai_svc.build_ai_consistency_review_request(db)
@@ -543,7 +571,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
     # -- Attention Items (inspection only) ---------------------------------------
 
     @app.route("/admin/org/attention")
-    @require_admin
+    @view
     def admin_org_attention():
         with SessionFactory() as db:
             status_filter = request.args.get("status")
@@ -558,7 +586,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
             )
 
     @app.route("/admin/org/attention/<int:item_id>")
-    @require_admin
+    @view
     def admin_org_attention_detail(item_id: int):
         with SessionFactory() as db:
             item = db.get(m.AttentionItem, item_id)
@@ -571,7 +599,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
             )
 
     @app.route("/admin/org/attention/<int:item_id>/route", methods=["POST"])
-    @require_admin
+    @administer
     def admin_org_attention_route(item_id: int):
         require_csrf()
         with SessionFactory() as db:
@@ -584,7 +612,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
         return redirect(url_for("admin_org_attention_detail", item_id=item_id))
 
     @app.route("/admin/org/attention/<int:item_id>/acknowledge", methods=["POST"])
-    @require_admin
+    @administer
     def admin_org_attention_acknowledge(item_id: int):
         require_csrf()
         with SessionFactory() as db:
@@ -602,7 +630,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
         return redirect(url_for("admin_org_attention_detail", item_id=item_id))
 
     @app.route("/admin/org/attention/<int:item_id>/resolve", methods=["POST"])
-    @require_admin
+    @administer
     def admin_org_attention_resolve(item_id: int):
         require_csrf()
         with SessionFactory() as db:

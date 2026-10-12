@@ -81,6 +81,15 @@ def main() -> int:
             )
             s.commit()
 
+            # Organization is a Domain of its own (ACCOUNT_ITEM_ACCESS_001):
+            # the administrator holds it explicitly, as the migration grants
+            # it to every existing administrator — never through is_admin.
+            account_service.set_domain_access(
+                s, account_id=account_service.get_account_by_username(s, "admin1").id,
+                domain_code="ORGANIZATION", enabled=True, role_code=None,
+            )
+            s.commit()
+
             parent = org_svc.create_position(s, name="TEST/DEMO Parent Position")
             child = org_svc.create_position(s, name="TEST/DEMO Child Position", parent=parent)
             occupant = m.ActingIdentity(kind=m.HUMAN_USER, display_name="TEST/DEMO Occupant")
@@ -98,7 +107,7 @@ def main() -> int:
         anon_client = web_app.app.test_client()
 
         # -- Home Page link authorization --------------------------------------------
-        check("admin sees 'Organization' under Settings on Home", b'href="/admin/organization"' in admin_client.get("/").data)
+        check("admin sees the Organization Domain card on Home", b'href="/admin/organization"' in admin_client.get("/").data)
         check("non-admin does NOT see 'Organization' on Home", b'href="/admin/organization"' not in plain_client.get("/").data)
 
         # -- New pages render, admin-gated --------------------------------------------

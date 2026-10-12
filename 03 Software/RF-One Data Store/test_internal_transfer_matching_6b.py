@@ -581,7 +581,7 @@ def main() -> int:
             header = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
             result.check(
                 "workbook columns are unchanged by Phase 6B (§26)",
-                header == list(export.KERMALI_COLUMNS),
+                header[:12] == list(export.KERMALI_COLUMNS) and header == list(export.EXPORT_COLUMNS),
             )
             data_rows = list(ws.iter_rows(min_row=2, values_only=True))
             descriptions_in_export = {row[2] for row in data_rows}

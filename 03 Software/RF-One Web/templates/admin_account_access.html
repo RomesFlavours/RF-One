@@ -5,29 +5,65 @@
 {{ breadcrumb([('RF-One', url_for('home')), ('Accounts', url_for('admin_accounts')), ('Domain Access', None)]) }}
 <h1>Domain Access</h1>
 <p class="muted">{{ account.display_name }} ({{ account.username }})</p>
+{# ACCOUNT_ITEM_ACCESS_001 — for each Domain: no access, the whole Domain
+   (items added later included), or only the items ticked below it. The
+   items are the Domain's own sections, from `domain_registry.py`. #}
+<p class="muted">The whole Domain includes the items added to it later; selected items do not.</p>
+<style>
+  .access-domain { border: none; border-bottom: 1px solid #e5e5e5; margin: 0; padding: .6rem 0; }
+  .access-domain:last-of-type { border-bottom: none; }
+  .access-domain .access-row { border-bottom: none; padding: .2rem 0; }
+  .access-choice { display: inline-flex; align-items: center; gap: .35rem; margin: 0 1rem 0 0; font-weight: normal; }
+  .access-choice input[type=text] { display: inline-block; width: auto; margin-bottom: 0; }
+  .access-items { list-style: none; margin: .2rem 0 0 1.6rem; padding: 0; display: flex; flex-wrap: wrap; gap: .2rem 0; }
+</style>
 
 <div class="card">
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% for row in domains_view %}
-      <div class="access-row">
-        <span class="access-name">{{ row.domain.display_name }}</span>
-        <label style="display: inline-flex; align-items: center; margin: 0;">
-          <input type="checkbox" name="enabled_{{ row.domain.code }}"
-                 {{ "checked" if row.access and row.access.enabled }}>
-          Enabled
-        </label>
-        <label style="display: inline-flex; align-items: center; gap: .4rem; margin: 0;">
-          Role:
-          <input type="text" name="role_{{ row.domain.code }}"
-                 value="{{ row.access.role_code if row.access and row.access.role_code else '' }}"
-                 placeholder="optional">
-        </label>
-      </div>
+      {% set code = row.domain.code %}
+      <fieldset class="access-domain" data-domain="{{ code }}">
+        <legend class="access-name">{{ row.domain.display_name }}</legend>
+        <div class="access-row">
+          <label class="access-choice"><input type="radio" name="access_{{ code }}" value="none"
+                 {{ "checked" if row.mode == "none" }}> No access</label>
+          <label class="access-choice"><input type="radio" name="access_{{ code }}" value="all"
+                 {{ "checked" if row.mode == "all" }}> Whole Domain</label>
+          {% if row.domain.items %}
+            <label class="access-choice"><input type="radio" name="access_{{ code }}" value="selected"
+                   {{ "checked" if row.mode == "selected" }}> Only selected items</label>
+          {% endif %}
+          <label class="access-choice">
+            Role:
+            <input type="text" name="role_{{ code }}"
+                   value="{{ row.access.role_code if row.access and row.access.role_code else '' }}"
+                   placeholder="optional">
+          </label>
+        </div>
+        {% if row.domain.items %}
+          <ul class="access-items">
+            {% for item in row.domain.items %}
+              <li><label class="access-choice"><input type="checkbox" name="items_{{ code }}" value="{{ item.code }}"
+                     {{ "checked" if item.code in row.selected_items }}> {{ item.label }}</label></li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </fieldset>
     {% endfor %}
     <div class="btn-row">
       <button type="submit">Save</button>
     </div>
   </form>
 </div>
+<script>
+  // Ticking an item means "only selected items" for that Domain.
+  document.querySelectorAll('.access-domain').forEach(function (box) {
+    var selected = box.querySelector('input[type=radio][value=selected]');
+    if (!selected) return;
+    box.querySelectorAll('.access-items input[type=checkbox]').forEach(function (cb) {
+      cb.addEventListener('change', function () { if (cb.checked) selected.checked = true; });
+    });
+  });
+</script>
 {% endblock %}

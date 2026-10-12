@@ -414,6 +414,19 @@ def _set_who_rules(session: Session, occurrence: "m.BankOccurrence", rules: list
             rule = current.get(item.rule_id)
             if rule is None:
                 raise ValueError(f"Recognition rule {item.rule_id} does not belong to this WHO.")
+            if rule.literal_pattern is not None:
+                # BANK_WHO_RULE_CONDITIONS_001 — a rule made in the Rule modal
+                # keeps its literal text: here it may only be (de)activated.
+                if match_type != rule.match_type or pattern != rule.normalized_pattern:
+                    raise ValueError(
+                        f"The rule {rule.literal_pattern!r} was made in the Rule modal with a literal text: "
+                        "change it there (Rules > WHO Rules > Edit), not here.")
+                if item.active:
+                    rule.status = "ACTIVE"
+                elif rule.status == "ACTIVE":
+                    rule.status = "INACTIVE"
+                kept.add(rule.id)
+                continue
             rule.match_type = match_type
             rule.normalized_pattern = pattern
             if item.active:
@@ -481,6 +494,8 @@ def save_who(
         )
     _set_who_entities(session, occurrence, list(dict.fromkeys(reporting_entity_ids)))
     _set_who_rules(session, occurrence, rules)
+    # BANK_WHO_SINGLE_DEFAULT_WHY_001 — one possible WHY is the default.
+    why_catalog.sync_single_default(session, occurrence.id)
     return occurrence
 
 
@@ -489,12 +504,31 @@ def save_who(
 # ---------------------------------------------------------------------------
 
 
+# BANK_SOURCE_EDIT_AND_ENTITIES_001 — the kinds a person chooses when
+# creating an Entity, and how each stored type is named on screen.
+ENTITY_COMPANY = "COMPANY"
+ENTITY_PERSONAL = "PERSONAL"
+ENTITY_KIND_LABELS = {
+    m.REPORTING_ENTITY_LEGAL: "Company / LLC",
+    m.REPORTING_ENTITY_PERSONAL: "Personal",
+    m.REPORTING_ENTITY_VIRTUAL: "Management entity",
+}
+_DASHES = re.compile(r"[\u2010-\u2015\u2212-]")
+
+
+def entity_key(name: str | None) -> str:
+    """The comparison key of an Entity name: case, dashes, punctuation and
+    repeated spaces do not make a different Entity — "Personal — Pino",
+    "Personal - Pino", "PERSONAL — PINO" and "Personal  Pino" are one."""
+    text = _DASHES.sub(" ", unicodedata.normalize("NFKC", name or "")).casefold()
+    return " ".join(re.sub(r"[^\w]+", " ", text).split())
+
+
 def _assert_entity_name_free(session: Session, name: str, *, exclude_id: int | None) -> None:
-    query = select(m.ReportingEntity).where(func.lower(m.ReportingEntity.name) == name.lower())
-    if exclude_id is not None:
-        query = query.where(m.ReportingEntity.id != exclude_id)
-    if session.scalar(query) is not None:
-        raise ValueError(f"An entity named {name!r} already exists.")
+    key = entity_key(name)
+    for entity in session.scalars(select(m.ReportingEntity)):
+        if entity.id != exclude_id and entity_key(entity.name) == key:
+            raise ValueError(f"An entity named {entity.name!r} already exists.")
 
 
 def create_entity(
@@ -555,8 +589,144 @@ def update_entity(
     return entity
 
 
+def find_or_create_entity(
+    session: Session, *, name: str, kind: str, active: bool = True,
+) -> tuple["m.ReportingEntity", bool]:
+    """+ New Entity, from the Source modal (BANK_SOURCE_EDIT_AND_ENTITIES_001):
+    the Entity named `name`, created only when no equivalent exists.
+    Returns (entity, created).
+
+    An ACTIVE Entity whose name has the same `entity_key` — or a company
+    whose LLC carries that legal name — is reused, never duplicated; an
+    INACTIVE one is refused with the way back (reactivate it). A Company /
+    LLC is created exactly as Configuration creates one (a LegalEntity and
+    its LEGAL ReportingEntity); a Personal one is a PERSONAL ReportingEntity
+    and never a LegalEntity."""
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("The entity name is required.")
+    if kind not in (ENTITY_COMPANY, ENTITY_PERSONAL):
+        raise ValueError("Choose the entity type: Company / LLC or Personal.")
+    key = entity_key(name)
+    if not key:
+        raise ValueError("The entity name needs at least one letter or digit.")
+    legal_names = dict(session.execute(select(m.LegalEntity.id, m.LegalEntity.legal_name)).all())
+    for entity in session.scalars(select(m.ReportingEntity).order_by(m.ReportingEntity.id)):
+        if key in (entity_key(entity.name), entity_key(legal_names.get(entity.legal_entity_id))):
+            if entity.status != "ACTIVE":
+                raise ValueError(
+                    f"{entity.name!r} already exists but is inactive. Reactivate it in "
+                    "Configuration (Entities / LLCs) instead of creating it again."
+                )
+            return entity, False
+    if kind == ENTITY_COMPANY:
+        # An LLC already registered without a ReportingEntity gets one —
+        # never a second LegalEntity for the same company.
+        for legal in session.scalars(select(m.LegalEntity).where(m.LegalEntity.status == "ACTIVE")):
+            if entity_key(legal.legal_name) == key:
+                entity = reporting_entity_service.create_legal_entity_reporting_entity(
+                    session, code=_unique_code(session, m.ReportingEntity.code, "RE_" + (_slug(name) or "ENTITY")),
+                    name=name, legal_entity_id=legal.id,
+                )
+                break
+        else:
+            entity = create_entity(session, name=name, legal_name=name, active=True)
+    else:
+        entity = reporting_entity_service.create_personal_entity(
+            session, code=_unique_code(session, m.ReportingEntity.code, "RE_" + (_slug(name) or "PERSONAL")),
+            name=name,
+        )
+    if not active:
+        entity.status = "INACTIVE"
+    session.flush()
+    return entity, True
+
+
 # ---------------------------------------------------------------------------
-# Cardholder candidates — used by the Source page's Card settings
+# Source owner — a company (LegalEntity) or a person (PERSONAL entity)
+# (BANK_SOURCE_EDIT_AND_ENTITIES_001)
+#
+# The Source modal offers ONE list, the active Entities that may own a
+# Source: companies and people, by name. A choice is sent as "re:<id>" (an
+# Entity) or "le:<id>" (an LLC registered without an Entity yet) and stored
+# where ownership already lives: a company in `legal_entity_id`, so every
+# derivation that reads it is unchanged; a person in
+# `owner_reporting_entity_id`.
+# ---------------------------------------------------------------------------
+
+
+def owner_choices(session: Session) -> list[dict]:
+    """The active Entities that may own a Source, alphabetical: companies
+    (LEGAL) and people (PERSONAL). A management (VIRTUAL) entity owns no
+    account. An active LLC with no ReportingEntity yet is offered too, so
+    no existing owner disappears from the list."""
+    choices = [
+        {"value": f"re:{e.id}", "label": e.name, "kind": ENTITY_KIND_LABELS[e.entity_type]}
+        for e in session.scalars(select(m.ReportingEntity).where(
+            m.ReportingEntity.status == "ACTIVE",
+            m.ReportingEntity.entity_type.in_((m.REPORTING_ENTITY_LEGAL, m.REPORTING_ENTITY_PERSONAL))))
+    ]
+    represented = set(session.scalars(select(m.ReportingEntity.legal_entity_id).where(
+        m.ReportingEntity.legal_entity_id.is_not(None))))
+    choices += [
+        {"value": f"le:{legal.id}", "label": legal.legal_name, "kind": ENTITY_KIND_LABELS[m.REPORTING_ENTITY_LEGAL]}
+        for legal in session.scalars(select(m.LegalEntity).where(m.LegalEntity.status == "ACTIVE"))
+        if legal.id not in represented
+    ]
+    return sorted(choices, key=lambda c: (c["label"].casefold(), c["value"]))
+
+
+def owner_values(session: Session, instruments: list["m.PaymentInstrument"]) -> dict[int, str]:
+    """Each Source's own owner, as the modal's select value ("" when none)."""
+    by_legal = dict(session.execute(select(m.ReportingEntity.legal_entity_id, m.ReportingEntity.id).where(
+        m.ReportingEntity.legal_entity_id.is_not(None))).all())
+    values = {}
+    for instrument in instruments:
+        if instrument.owner_reporting_entity_id is not None:
+            values[instrument.id] = f"re:{instrument.owner_reporting_entity_id}"
+        elif instrument.legal_entity_id is not None:
+            entity_id = by_legal.get(instrument.legal_entity_id)
+            values[instrument.id] = f"re:{entity_id}" if entity_id else f"le:{instrument.legal_entity_id}"
+        else:
+            values[instrument.id] = ""
+    return values
+
+
+def resolve_owner(
+    session: Session, value: str | None, *, current: "m.PaymentInstrument | None" = None,
+) -> tuple[int | None, int | None]:
+    """A Source owner choice -> (legal_entity_id, owner_reporting_entity_id).
+    An inactive Entity is refused unless it already owns this Source."""
+    value = (value or "").strip()
+    if not value:
+        return None, None
+    kind, _, raw = value.partition(":")
+    if not raw.isdigit():
+        raise ValueError("The owning entity could not be read; reload the page and try again.")
+    if kind == "le":
+        legal = session.get(m.LegalEntity, int(raw))
+        if legal is None:
+            raise ValueError("The owning company does not exist.")
+        return legal.id, None
+    if kind != "re":
+        raise ValueError("The owning entity could not be read; reload the page and try again.")
+    entity = session.get(m.ReportingEntity, int(raw))
+    if entity is None:
+        raise ValueError("The owning entity does not exist.")
+    if entity.entity_type == m.REPORTING_ENTITY_VIRTUAL:
+        raise ValueError(f"{entity.name!r} is a management entity: it cannot own a Source.")
+    owned_now = current is not None and (
+        current.owner_reporting_entity_id == entity.id
+        or (entity.legal_entity_id is not None and current.legal_entity_id == entity.legal_entity_id))
+    if entity.status != "ACTIVE" and not owned_now:
+        raise ValueError(f"{entity.name!r} is inactive; choose an active entity.")
+    if entity.entity_type == m.REPORTING_ENTITY_LEGAL:
+        return entity.legal_entity_id, None
+    return None, entity.id
+
+
+# ---------------------------------------------------------------------------
+# Cardholder candidates — used by the Source page's Source modal
 # ---------------------------------------------------------------------------
 
 
@@ -674,7 +844,9 @@ def configuration_view(session: Session) -> dict:
         .order_by(m.BankRecognitionRule.id)
     ):
         rules_by_who.setdefault(rule.occurrence_id, []).append({
-            "id": rule.id, "pattern": rule.normalized_pattern,
+            "id": rule.id,
+            # A Rule-modal rule shows its text as typed (BANK_WHO_RULE_CONDITIONS_001).
+            "pattern": rule.literal_pattern if rule.literal_pattern is not None else rule.normalized_pattern,
             "match": MATCH_LABELS.get(rule.match_type, rule.match_type).title(),
             "active": rule.status == "ACTIVE", "status": rule.status,
         })
@@ -689,7 +861,8 @@ def configuration_view(session: Session) -> dict:
     legal_names = dict(session.execute(select(m.LegalEntity.id, m.LegalEntity.legal_name)).all())
     entities = [
         {"id": e.id, "name": e.name, "legal_name": legal_names.get(e.legal_entity_id, ""),
-         "legal": e.legal_entity_id is not None, "active": e.status == "ACTIVE"}
+         "legal": e.legal_entity_id is not None, "active": e.status == "ACTIVE",
+         "personal": e.entity_type == m.REPORTING_ENTITY_PERSONAL}
         for e in session.scalars(select(m.ReportingEntity).order_by(m.ReportingEntity.name))
     ]
 

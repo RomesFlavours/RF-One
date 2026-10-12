@@ -339,6 +339,26 @@ def legal_entity_for(
     return session.get(m.LegalEntity, account.legal_entity_id)
 
 
+def owner_entity_for(
+    session: Session, *, instrument: "m.PaymentInstrument", on_date: date | None,
+) -> "m.ReportingEntity | None":
+    """The Entity that owns this instrument's movements, as a
+    ReportingEntity (BANK_SOURCE_EDIT_AND_ENTITIES_001): the company — the
+    LEGAL ReportingEntity of its LegalEntity — or the person (a PERSONAL
+    owner). Same derivation as `legal_entity_for`: a card resolves through
+    its settlement account, never its own value. None when unconfigured, or
+    when the owning LLC has no ReportingEntity yet."""
+    account = accounting_account_for(session, instrument=instrument, on_date=on_date)
+    if account is None:
+        return None
+    if account.owner_reporting_entity_id is not None:
+        return session.get(m.ReportingEntity, account.owner_reporting_entity_id)
+    if account.legal_entity_id is None:
+        return None
+    return session.scalar(select(m.ReportingEntity).where(
+        m.ReportingEntity.legal_entity_id == account.legal_entity_id))
+
+
 # ---------------------------------------------------------------------------
 # Cardholder — responsibility only
 # ---------------------------------------------------------------------------

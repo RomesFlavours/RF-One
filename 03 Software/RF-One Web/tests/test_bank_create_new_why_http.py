@@ -1,14 +1,16 @@
 """Create New WHY — ONE shared flow for both reconciliation modals.
 
-On a throwaway database migrated to head, proves that Select WHO / WHY and
-the WHO Rule modal create a WHY through the SAME dialog, route and service
+On a throwaway database migrated to head, proves that Select WHO / WHY
+creates a WHY through the shared dialog, route and service
 (`manual_reconciliation.create_why_for_who`): name and WHY group are
 required for a new WHY, its WHAT is optional (BANK_WHY_WITHOUT_WHAT_001); a normalized existing name is reused, never
 duplicated; the WHY is added to the WHO (only if missing) in the same
 database transaction, which is rolled back whole on any failure; the WHY
-comes back to the modal that asked for it (selected in Select WHO / WHY,
-ticked as a Possible WHY in the Rule modal); Confirm and Apply then behave
-exactly as before — the Rule still gives the WHO only, never a WHY.
+comes back to the modal that asked for it (selected in Select WHO / WHY);
+Confirm then behaves exactly as before. BANK_RULES_RESET_001 retired the WHO
+Rule modal (and /bank/classification); its checks 11, 13, 15 and 23 went
+with it, while the kept WHO lookups (/bank/who-rules/who/<id>, who-options)
+are still checked.
 
 The "Withdrawal" case uses a WHAT of this disposable database only: the
 real WHAT of a Withdrawal is the Product Owner's decision.
@@ -140,7 +142,6 @@ def main() -> int:
     csrf = CSRF_RE.search(client.get("/login").data.decode()).group(1)
     client.post("/login", data={"username": "newwhy", "password": "CreateNewWhy123!", "csrf_token": csrf})
     review = client.get(REVIEW_AUG).data.decode()
-    classification = client.get("/bank/classification").data.decode()
     csrf = CSRF_RE.search(review).group(1)
 
     def create(name, *, group=None, what=None, who_id=None):
@@ -166,7 +167,6 @@ def main() -> int:
             return (row.active, row.confirmation_count) if row else None
 
     why_js = open(os.path.join(JS_DIR, "bank-who-why.js"), encoding="utf-8").read()
-    rule_js = open(os.path.join(JS_DIR, "bank-who-rule.js"), encoding="utf-8").read()
     create_js = open(os.path.join(JS_DIR, "bank-why-create.js"), encoding="utf-8").read()
 
     # ------------------------------------------------------------------
@@ -180,14 +180,15 @@ def main() -> int:
         return real_service(*args, **kwargs)
 
     manual_reconciliation.create_why_for_who = spy
-    dialogs = [h.count('id="why-create-dialog"') for h in (review, classification)]
-    check("1. both modals use the SAME dialog, route and service (one dialog per page, both modals call "
-          "RFOneWhyCreate.open, neither posts a WHY itself)",
-          dialogs == [1, 1] and all('data-create-url="/bank/whys/create"' in h for h in (review, classification))
-          and "window.RFOneWhyCreate.open(" in why_js and "window.RFOneWhyCreate.open(" in rule_js
-          and "/bank/whys/create" not in why_js + rule_js and "new_why_name" not in why_js
+    dialogs = [review.count('id="why-create-dialog"')]
+    check("1. Select WHO / WHY uses the shared dialog, route and service (one dialog on the page, the modal "
+          "calls RFOneWhyCreate.open, never posts a WHY itself); the retired Rule modal is gone",
+          dialogs == [1] and 'data-create-url="/bank/whys/create"' in review
+          and "window.RFOneWhyCreate.open(" in why_js
+          and "/bank/whys/create" not in why_js and "new_why_name" not in why_js
           and review.index('id="who-picker"') < review.index('id="why-create-dialog"')
-          and review.index('id="who-rule-modal"') < review.index('id="why-create-dialog"'), str(dialogs))
+          and 'id="who-rule-modal"' not in review
+          and not os.path.exists(os.path.join(JS_DIR, "bank-who-rule.js")), str(dialogs))
 
     blank = create("   ", group=group_a.id, what=test_what_id, who_id=ids["atm"])
     check("2. WHY Name required (blank refused, nothing created)",
@@ -222,7 +223,7 @@ def main() -> int:
     popup = review[review.index('id="who-picker"'):review.index('id="why-create-dialog"')]
     check("6. Create New WHY is available in Select WHO / WHY and opens the shared dialog with the chosen WHO "
           "and the selected group",
-          'id="why-picker-create"' in popup and "+ Create New WHY" in popup
+          'id="why-picker-create"' in popup and "+ New WHY" in popup
           and "whoId: whoHidden.value" in why_js and "groupId: currentGroup" in why_js)
     saved = create("Withdrawal", group=group_a.id, what=test_what_id, who_id=ids["atm"])
     body = saved.get_json()
@@ -275,44 +276,24 @@ def main() -> int:
           and association(ids["atm"], w[0]) == count_before, f"{count_before} -> {association(ids['atm'], w[0])}")
 
     # ------------------------------------------------------------------
-    # RULE MODAL (11-16)
+    # ANOTHER WHO + the kept WHO lookups (12, 14, 16) — BANK_RULES_RESET_001:
+    # the Rule modal checks (11, 13, 15) are retired with the modal.
     # ------------------------------------------------------------------
-    rule_modal = classification[classification.index('id="who-rule-modal"'):classification.index('id="why-create-dialog"')]
-    check("11. Create New WHY is available in the Rule modal (Possible WHY), groups carry their id",
-          'id="who-rule-why-create"' in rule_modal and "+ Create New WHY" in rule_modal
-          and re.search(r'class="who-rule-why-group" open data-group="[^"]+" data-group-id="\d+"', rule_modal) is not None
-          and "whoId: whoId.value" in rule_js)
     rule_why = create("Exchange Commission Test", group=group_b.id, what=test_what_id, who_id=ids["zeta"])
     rb = rule_why.get_json()
-    check("12. from the Rule modal the WHY is created through the same route and added to the WHO",
+    check("12. for another WHO the WHY is created through the same route and added to that WHO",
           rule_why.status_code == 200 and rb["ok"] and not rb["reused"] and rb["associated"]
           and association(ids["zeta"], rb["why"]["id"]) == (True, 0) and calls[-1] == ids["zeta"], str(rb))
-    page = client.get("/bank/classification").data.decode()
-    modal = page[page.index('id="who-rule-modal"'):page.index('id="why-create-dialog"')]
-    group_block = re.search(rf'data-group-id="{group_b.id}">(.*?)</details>', modal, re.S)
-    names = re.findall(r'<span>([^<]+)</span></label>', group_block.group(1)) if group_block else []
-    check("13. the new WHY appears in its group, in alphabetical place (and the dialog inserts it there "
-          "without a reload)",
-          "Exchange Commission Test" in names and names == sorted(names, key=str.casefold)
-          and "function boxFor(why)" in rule_js and "byText(l.textContent.trim(), why.name) > 0" in rule_js, str(names))
     summary = client.get(f"/bank/who-rules/who/{ids['zeta']}").get_json()
-    check("14. it is a Possible WHY of the WHO (ticked when the modal opens; ticked at once on Save)",
-          rb["why"]["id"] in summary["possible_why_ids"] and "box.checked = true" in rule_js)
-    applied = client.post("/bank/who-rules/apply", headers={"X-Requested-With": "fetch"}, data={
-        "csrf_token": csrf, "occurrence_id": ids["zeta"],
-        "instruction": "Dove nella descrizione trovi ZETA EXCHANGE il WHO è Zeta Exchange",
-        "transaction_reason_id": [rb["why"]["id"]], "return_to": "/bank/classification#who-classification"})
-    with SessionFactory() as s:
-        given = [s.get(m.BankTransactionExplanation, s.get(m.FinancialTransaction, i).explanation_id) for i in zeta_txs]
-    check("15. the Rule still gives the WHO only: matching transactions get Zeta Exchange and NO WHY",
-          applied.status_code == 200 and applied.get_json()["ok"]
-          and all(d is not None and d.occurrence_id == ids["zeta"] and d.transaction_reason_id is None for d in given),
-          applied.data.decode()[:200])
-    rule_create = rule_js[rule_js.index("function openCreate"):rule_js.index("// A Manual Only WHO takes no WHO Rule")]
-    check("16. the Rule text, the WHO and the other ticks are kept: the dialog opens on top and touches only "
-          "the WHY list (no form reset, no instruction change, no reload)",
-          "instruction" not in rule_create and "form.reset" not in rule_create and "location" not in rule_create
-          and "form.reset" not in create_js.split("var modal = ")[0])
+    check("14. the kept WHO summary lookup lists it as a Possible WHY of the WHO",
+          rb["why"]["id"] in summary["possible_why_ids"], str(summary))
+    options = client.get("/bank/who-rules/who-options?q=zeta").get_json()
+    ungated = web_app.app.test_client()
+    check("14b. the kept WHO search lookup finds the WHO, behind the BANK gate",
+          any(o["id"] == ids["zeta"] for o in options["matches"])
+          and ungated.get("/bank/who-rules/who-options?q=a").status_code in (302, 401, 403), str(options))
+    check("16. the shared dialog does not reset the form it opens from",
+          "form.reset" not in create_js.split("var modal = ")[0])
 
     # ------------------------------------------------------------------
     # ATOMICITY (17-19)
@@ -370,10 +351,6 @@ def main() -> int:
           "creation (the existing WHY is reused, no duplicate)",
           via_confirm.status_code == 200 and count_named("Withdrawal") == 1
           and "_create_or_reuse_why(session, new_why)" in open(manual_reconciliation.__file__, encoding="utf-8").read())
-    with SessionFactory() as s:
-        rules = s.scalars(select(m.BankRecognitionRule).where(m.BankRecognitionRule.occurrence_id == ids["zeta"])).all()
-    check("23. Rule behaviour unchanged (Apply saved one WHO rule, WHY only associated)",
-          len(rules) == 1 and rules[0].transaction_reason_id is None and rules[0].status == "ACTIVE")
     with SessionFactory() as s:
         whats_after = {r.id: r.accounting_classification_id for r in s.scalars(select(m.BankTransactionReason))}
         money_after = {t.id: (t.amount_minor, t.posting_date, t.accounting_status)

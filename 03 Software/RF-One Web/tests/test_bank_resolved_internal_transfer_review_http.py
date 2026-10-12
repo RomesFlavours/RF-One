@@ -14,11 +14,10 @@ field is empty". Proves, on a throwaway database, that:
 * Reconciled shows it truthfully: no WHO invented, "Internal transfer · <other
   account>" instead of "No WHO yet", the existing WHY and WHAT, status Needs
   review;
-* a description Rule over those rows ("ONLINE TRANSFER") writes no WHO on
-  them, reports them as own-account transfers resolved without WHO, and says
-  they are under Reconciled;
-* a Rule over an ordinary WHO, a person's WHO + WHY + Confirm, and Confirmed
-  status behave as before.
+* a person's WHO + WHY + Confirm, and Confirmed status behave as before.
+
+BANK_RULES_RESET_001 retired the simple WHO Rule (POST /bank/who-rules/apply):
+the former checks 6-8 (the ONLINE TRANSFER and Gordon Rules) went with it.
 
 Never touches a real bank file, AWS, or any production database.
 """
@@ -67,8 +66,6 @@ from rfone_data_store.bank_reconciliation import why_catalog  # noqa: E402
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 AUG = date(2026, 8, 12)
 MONTH = "year=2026&month=8"
-ONLINE_RULE = "Dove nella descrizione trovi ONLINE TRANSFER il WHO è Online Transfer"
-GORDON_RULE = "Dove nella descrizione trovi GORDON FOOD il WHO è Gordon Food Service"
 
 
 def main() -> int:
@@ -171,12 +168,6 @@ def main() -> int:
         own_keys = transfer_keys + ("matched_a", "matched_b")
         check("setup: a transfer WHY with an accounting destination exists",
               transfer_why is not None and transfer_why.accounting_classification_id is not None)
-        transfer_decision_before = {
-            k: (e.occurrence_id, e.transaction_reason_id, e.accounting_classification_id) if e else None
-            for k in own_keys
-            for e in [recognition.get_current_explanation(s, financial_transaction_id=ids[k])]
-        }
-        explanations_before = s.scalar(select(func.count(m.BankTransactionExplanation.id)))
 
         # Counts with the former "WHO named" criterion, for the movement check.
         who_named = s.scalar(select(func.count(m.FinancialTransaction.id)).outerjoin(
@@ -231,54 +222,9 @@ def main() -> int:
           or "transfers between RF-One's own accounts, which need no WHO" in rec)
 
     # ------------------------------------------------------------------
-    # The ONLINE TRANSFER Rule (6, 7)
+    # Unchanged behaviour (9-10). The former Rule checks 6-8 are retired
+    # with the simple WHO Rule (BANK_RULES_RESET_001).
     # ------------------------------------------------------------------
-    csrf = CSRF_RE.search(to_rec).group(1)
-    applied = client.post("/bank/who-rules/apply", headers={"X-Requested-With": "fetch"}, data={
-        "csrf_token": csrf, "new_who_name": "Online Transfer", "instruction": ONLINE_RULE,
-        "transaction_id": str(ids["transfer_bare"]), "return_to": f"/bank/review?{MONTH}"})
-    body = applied.get_json() or {}
-    after = client.get(body.get("redirect") or f"/bank/review?{MONTH}").data.decode()
-    with SessionFactory() as s:
-        decisions_after = {
-            k: (e.occurrence_id, e.transaction_reason_id, e.accounting_classification_id) if e else None
-            for k in own_keys
-            for e in [recognition.get_current_explanation(s, financial_transaction_id=ids[k])]
-        }
-        online = s.scalars(select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == "Online Transfer")).first()
-        named_online = s.scalar(select(func.count(m.BankTransactionExplanation.id)).where(
-            m.BankTransactionExplanation.occurrence_id == (online.id if online else -1)))
-        explanations_after = s.scalar(select(func.count(m.BankTransactionExplanation.id)))
-    check("6. the ONLINE TRANSFER Rule writes no WHO on own-account transfers (no fake WHO)",
-          applied.status_code == 200 and body.get("ok") and named_online == 0
-          and explanations_after == explanations_before, detail=str(body))
-    check("6b. WHY and accounting destination of every own-account row are preserved",
-          decisions_after == transfer_decision_before, detail=f"{transfer_decision_before} -> {decisions_after}")
-    check("7. the Rule result reports them as resolved own-account transfers, under Reconciled — not failures",
-          "Own-account transfers resolved without WHO" in after and "Own accounts, no WHO" not in after
-          and re.search(r"Own-account transfers resolved without WHO</dt><dd>3</dd>", after) is not None
-          and "are transfers between RF-One" in after and "View reconciled transactions" in after,
-          detail=re.findall(r"Own-account[^<]*</dt><dd>\d+", after).__str__())
-    check("7b. after the Rule the own-account rows are still out of To Reconcile, counts unchanged",
-          not any(in_to_reconcile(after, k) for k in transfer_keys) and "To Reconcile (4)" in after)
-
-    # ------------------------------------------------------------------
-    # Unchanged behaviour (8-10)
-    # ------------------------------------------------------------------
-    csrf = CSRF_RE.search(after).group(1)
-    gordon_apply = client.post("/bank/who-rules/apply", headers={"X-Requested-With": "fetch"}, data={
-        "csrf_token": csrf, "occurrence_id": str(ids["gordon"]), "instruction": GORDON_RULE,
-        "transaction_reason_id": [str(ids["food"])], "transaction_id": str(ids["proposal"]),
-        "return_to": f"/bank/review?{MONTH}"})
-    gordon_after = client.get(f"/bank/review?{MONTH}").data.decode()
-    gordon_rec = client.get(f"/bank/review?{MONTH}&view=reconciled").data.decode()
-    with SessionFactory() as s:
-        proposal = recognition.get_current_explanation(s, financial_transaction_id=ids["proposal"])
-    check("8. a Rule over an ordinary WHO still assigns it and moves the row to Reconciled",
-          gordon_apply.status_code == 200 and proposal is not None and proposal.occurrence_id == ids["gordon"]
-          and not in_to_reconcile(gordon_after, "proposal") and in_reconciled(gordon_rec, "proposal")
-          and "WHO assigned to 1 transaction" in gordon_after,
-          detail=str(gordon_apply.get_json()))
 
     with SessionFactory() as s:
         row_reconciliation.record_who(s, transaction_id=ids["manual"], occurrence_id=ids["gordon"],

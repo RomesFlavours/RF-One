@@ -66,9 +66,23 @@ This document does not move or duplicate genuine Core conceptual definitions —
 - `03 Software/RF-One Data Store/migrations/versions/a6aed1d9d2ed_...py`, `4afdc598f407_...py`, `749a28964701_add_attention_routing_resolution_history.py` — the schema migrations
 - `03 Software/RF-One Data Store/rfone_data_store/attention_org_runtime_validation.py` + `test_attention_org_runtime.py` (26 checks), `organizational_coverage_validation.py` + `test_organizational_coverage.py` (20 checks) — service-layer test suites, no Domain package imported
 - `03 Software/RF-One Web/organizational_responsibility_routes.py`, `templates/admin_org*.html`, `templates/admin_organization.html`, `static/js/org-chart.js`, `static/js/org-scope-field.js` — the ADMIN/CONFIGURATION/TEST HARNESS UI, including the interactive Organizational Chart and the Attention Item routing-history table
-- `03 Software/RF-One Web/tests/test_org_attention_admin_http.py` (21 checks), `test_organization_chart_http.py` (49 checks) — HTTP-layer tests
+- `03 Software/RF-One Web/tests/test_org_attention_admin_http.py` (21 checks), `test_organization_chart_http.py` (49 checks), `test_account_item_access_http.py` — HTTP-layer tests
 
-No Domain currently consumes this foundation — by design, per this task's own scope.
+Tips consumes this foundation at runtime: its payment flow creates and routes `AttentionItem` rows (`03 Software/RF-One Data Store/rfone_data_store/tips/payment_cycle_service.py`; see `01 Domains/Business Domain/Restaurant/Tips/Tips Payment Execution.md`). No other Domain does yet.
+
+---
+
+## Organization in RF-One Web: a Domain of its own (ACCOUNT_ITEM_ACCESS_001, 2026-10-12)
+
+The Organization pages, until then an administrators' entry under Settings, are the **ORGANIZATION** access code of RF-One Web (`03 Software/RF-One Web/domain_registry.py`), shown as a Domain card on Home and granted account by account in Settings › Accounts › Access — the whole Domain, or only some of its items: Organization Chart, Positions, Process Ownerships, Organizational Fallback Policy, Full Coverage Check, Attention Items, AI Consistency Review. Pages, services and data are unchanged, and so are the URLs (`/admin/organization`, `/admin/org/...`).
+
+- **Consulting** needs the ORGANIZATION access (and the item, when only some items are granted) — an administrator or not.
+- **Changing** the organization (create, assign, cover, add or deactivate a backup or a policy, route / acknowledge / resolve an Attention Item, and the forms that lead there) stays reserved to administrators, *on top of* the same access: being an administrator never opens the Domain by itself. Non-administrators do not see these controls, and the server refuses them.
+- The migration `a3c7e5b9d1f4` granted ORGANIZATION (whole Domain) to every administrator existing at that time, so nobody lost the access they had.
+
+This is an RF-One Web access code, not a decision about where Organization sits in the Domain taxonomy of `01 Domains/` (no folder was created there).
+
+**Future destination — evaluations.** Organization is where evaluations will live (decided 2026-10-12). Nothing of them exists yet — no page, table or function — and nothing is designed here; when they are specified, they are expected to arrive as further items of the ORGANIZATION Domain.
 
 ---
 

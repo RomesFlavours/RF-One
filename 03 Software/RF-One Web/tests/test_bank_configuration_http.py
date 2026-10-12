@@ -63,7 +63,7 @@ from rfone_data_store.bank_reconciliation import recognition  # noqa: E402
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 NEW_REVISION = "e5b1d7c3a9f2"
 HEAD_REVISION = "b9e4c2a7d5f3"  # last schema revision rendered offline for PostgreSQL (check 2)
-CURRENT_HEAD = "b7f1c3e5a9d2"  # the single Alembic head a fresh database reaches (check 1)
+CURRENT_HEAD = "a3c7e5b9d1f4"  # the single Alembic head a fresh database reaches (check 1)
 PREVIOUS_REVISION = "d4a8c2e6f1b3"
 
 
@@ -281,7 +281,10 @@ def main() -> int:
               and types_after_rerun == types_after_upgrade, f"{types_after_upgrade} {types_after_rerun}")
         check("3. an existing rule survives the upgrade unchanged, WHY included; the new "
               "WHO/entity table starts empty",
-              before == after and after[0][0] == 7 and why_id in after[0] and who_entities == 0,
+              # Later additive columns (e.g. f3b7d9a1c5e8's literal_pattern) start NULL.
+              before == [tuple(row[:len(before[0])]) for row in after]
+              and all(value is None for row in after for value in row[len(before[0]):])
+              and after[0][0] == 7 and why_id in after[0] and who_entities == 0,
               f"{before} -> {after}")
 
         response = post("/bank/configuration/who", [
@@ -289,7 +292,7 @@ def main() -> int:
             ("rule_id", ""), ("rule_pattern", "cintas corp #22"), ("rule_match", "CONTAINS"), ("rule_active", "1"),
         ])
         with SessionFactory() as db:
-            cintas = db.scalar(select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == "Cintas"))
+            cintas = db.scalar(select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == "CINTAS"))
             rule = db.scalar(select(m.BankRecognitionRule).where(m.BankRecognitionRule.occurrence_id == cintas.id)) if cintas else None
             matched = recognition.find_candidate_rules(
                 db, normalized_description=recognition.normalize_description_for_recognition(
@@ -469,7 +472,7 @@ def main() -> int:
         # ================================================================ 12-18
         response = post("/bank/configuration/who", {"name": "Gordon Food Service", "active": "1", "default_why_id": ""})
         with SessionFactory() as db:
-            gfs = db.scalar(select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == "Gordon Food Service"))
+            gfs = db.scalar(select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == "GORDON FOOD SERVICE"))
             gfs_type = db.get(m.BankOccurrenceType, gfs.occurrence_type_id).code if gfs else None
             ids["gfs"] = gfs.id if gfs else None
         check("12. Add WHO creates a COUNTERPARTY, active, with no WHY, no default and no entity",
@@ -524,7 +527,7 @@ def main() -> int:
         with SessionFactory() as db:
             served = {r.reporting_entity_id: r.active for r in db.scalars(select(m.BankOccurrenceReportingEntity).where(
                 m.BankOccurrenceReportingEntity.occurrence_id == ids["gfs"]))}
-            name_kept = db.get(m.BankOccurrence, ids["gfs"]).canonical_name == "Gordon Food Service"
+            name_kept = db.get(m.BankOccurrence, ids["gfs"]).canonical_name == "GORDON FOOD SERVICE"
         check("16. entities served are ReportingEntities; withdrawn = inactive; an inactive or "
               "unknown entity is refused and the whole save is rolled back",
               served == {ids["alpha"]: True, ids["brand"]: False} and name_kept
@@ -573,7 +576,7 @@ def main() -> int:
                 m.BankOccurrenceReportingEntity.occurrence_id != ids["gfs"]))
         check("18. nothing is inferred: only the entities a person ticked exist; Cintas (no entity "
               "chosen) serves none, even though accounts of Alpha exist",
-              inferred == 0 and "Gordon Food Service" in client.get("/bank/configuration").data.decode("utf-8"))
+              inferred == 0 and "GORDON FOOD SERVICE" in client.get("/bank/configuration").data.decode("utf-8"))
 
         # ================================================================ 19-21
         # BANK_FINAL_RELEASE_BLOCKERS_002: Sources (accounts, cards, card

@@ -63,7 +63,9 @@ revived and not part of the Bank product.
 The `who-v1` recognizer (`who_recognition.recognize_transactions`, run only by the manual CLI
 `apply_who_recognition.py`, never at import) no longer creates a `BankOccurrence` for a name that is not a
 known WHO: the name is held as PROPOSED and a person creates the WHO (Select WHO / WHY, WHO Rule,
-Configuration). The General Rule is the one import-time structural WHO path; it never creates a WHO either.
+Configuration). The General Rule is the one import-time structural WHO path. *Amended by
+BANK_GENERAL_RULES_CREATE_WHO_001 (Product Owner, 2026-10-08): a General Rule now creates the WHO of a valid
+extracted name (see `BANK_GENERAL_RULES_001.md`); the `who-v1` recognizer still never does.*
 Existing WHO created by earlier runs are kept.
 
 ## WHY and bookkeeping

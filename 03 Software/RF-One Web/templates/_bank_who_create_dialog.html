@@ -1,0 +1,54 @@
+{# "Create New WHO" (BANK_RECONCILIATION_NEW_WHO_001) — opened by "+ New WHO"
+   in Select WHO / WHY, the way "+ New WHY" opens its dialog: included
+   ONCE per page, after the modal it serves, so it opens ON TOP of it and
+   closes back to it — nothing navigates, nothing reloads, nothing the
+   operator was filling in is lost.
+
+   Opened only through `RFOneWhoCreate.open({...})` (static/js/bank-who-create.js),
+   which posts to ONE route (`bank_who_create`) and ONE service
+   (`manual_reconciliation.create_who`): the WHO as Configuration creates it
+   (a counterparty, active, no WHY, no rule) — or, when the name already is
+   an active WHO, that WHO, reused. While the name is typed, the existing
+   WHO it is (or looks like) are offered through the WHO Rule modal's
+   lookup (`bank_who_rule_who_options`), to be chosen instead.
+
+   Saving does not classify anything: the WHO comes back SELECTED in the
+   calling modal, whose own Confirm records the classification. #}
+<div id="who-create-dialog" class="org-modal-overlay why-create-overlay" hidden aria-hidden="true"
+     data-options-url="{{ url_for('bank_who_rule_who_options') }}">
+  <div class="org-modal-panel why-create-panel" role="dialog" aria-modal="true" aria-labelledby="who-create-title">
+    <button class="org-modal-close" type="button" aria-label="Cancel" data-modal-close>&times;</button>
+    <div class="modal-header">
+      <h3 id="who-create-title">Create New WHO</h3>
+    </div>
+    <p class="who-why-subject">The WHO is created now and selected for this movement; <strong>Confirm</strong> then records the classification. No recognition rule is created.</p>
+
+    <form id="who-create-form" method="post" action="{{ url_for('bank_who_create') }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="why-create-field">
+        <label for="who-create-name">WHO Name</label>
+        <input type="text" id="who-create-name" name="name" maxlength="255" autocomplete="off"
+               placeholder="e.g. Sysco Food Services">
+        <p class="why-create-existing" id="who-create-existing" role="status" hidden></p>
+        <div class="who-create-similar" id="who-create-similar" hidden>
+          <p class="cell-note">Similar WHO already present &mdash; choose one instead of creating a new WHO:</p>
+          <div class="who-create-similar-list" id="who-create-similar-list"></div>
+        </div>
+      </div>
+
+      <p class="error" id="who-create-error" role="alert" hidden></p>
+      <div class="who-picker-actions why-create-actions">
+        <button type="submit" id="who-create-save">Save</button>
+        <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+<style>
+  .who-create-similar { margin-top: .4rem; }
+  .who-create-similar-list { display: flex; flex-wrap: wrap; gap: .3rem; }
+  .who-create-similar-list button { width: auto; margin: 0; }
+</style>
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
+<script defer src="{{ url_for('static', filename='js/bank-who-create.js') }}?v=1"></script>

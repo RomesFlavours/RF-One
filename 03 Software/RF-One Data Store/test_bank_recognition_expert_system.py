@@ -7,8 +7,9 @@ CONVERGENCE_001). No dedicated test suite for `recognition.py` existed on
 the source branch (`feature/bank-reconciliation-mvp`) — this is new,
 focused coverage for the ported Expert System, exercising it directly
 against the canonical `PaymentInstrument`/`FinancialTransaction` models,
-plus confirming that a CSV import (`service.import_csv`) now enters
-Recognition automatically. Phase 4B adds coverage for the canonical
+plus confirming that a CSV import (`service.import_csv`) no longer enters
+Recognition automatically (BANK_RULES_RESET_001: the old rule engines do not
+run at import; only AI rules may decide a new movement). Phase 4B adds coverage for the canonical
 decision unification: `FinancialTransaction.explanation_id` synchronization,
 immutable decision snapshots, and their stability against later Occurrence/
 Export Mapping edits.
@@ -286,7 +287,9 @@ def main() -> int:
                 current is not None and current.id == human_decision.id,
             )
 
-            # --- 13. Newly imported CSV transaction enters Recognition ---------
+            # --- 13. Newly imported CSV transaction: no automatic decision ----
+            # BANK_RULES_RESET_001 — the import no longer runs the learned
+            # recognition rules; with no AI rule the movement stays undecided.
             upload = service.import_csv(
                 s, file_bytes=CHASE_CARD_CSV.encode("utf-8"),
                 original_file_name="chase1057_recognition.csv", uploaded_by_account_id=None,
@@ -299,9 +302,8 @@ def main() -> int:
                 s, financial_transaction_id=imported_txn.id,
             )
             check(
-                "A newly imported CSV transaction enters Recognition automatically",
-                imported_explanation is not None and imported_explanation.decision_source == "RULE"
-                and imported_explanation.occurrence_id == us_foods.id,
+                "A newly imported CSV transaction gets no automatic decision (old rule engines retired)",
+                imported_explanation is None and imported_txn.explanation_id is None,
                 detail="no explanation" if imported_explanation is None else
                        f"{imported_explanation.decision_source}/{imported_explanation.occurrence_id}",
             )

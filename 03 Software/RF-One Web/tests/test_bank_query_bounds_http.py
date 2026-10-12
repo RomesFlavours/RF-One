@@ -208,7 +208,9 @@ def main() -> int:
         client.post("/login", data={"username": "perf_operator", "password": "PerfOperator123!", "csrf_token": csrf})
         # Ceilings far below the number of transactions, Whos or groups; the
         # doubled dataset must stay under the same ones.
-        CEILINGS = {"/bank": 250, "/bank/classification": 150, "/bank/review": 700}
+        # BANK_RULES_RESET_001: /bank/classification (the old Rules page) is
+        # retired, so it is no longer measured.
+        CEILINGS = {"/bank": 250, "/bank/review": 700}
 
         def render(label):
             counts = {}
@@ -222,14 +224,6 @@ def main() -> int:
                       f"{response.status_code} {counts[path]}")
                 if path == "/bank":
                     check(f"{label}: /bank lists the instruments", "Perf Instrument 0" in body and "Perf Instrument 2" in body)
-                elif path == "/bank/classification":
-                    # WHO with a rule are listed after those still needing one
-                    # (BANK_WHO_MANUAL_ONLY_001): searched, a ruled WHO shows
-                    # the description its rule recognises.
-                    ruled = client.get("/bank/classification?q=Who 0").data.decode("utf-8", "replace")
-                    check(f"{label}: /bank/classification shows the Whos and the descriptions their rules recognise",
-                          "Who 1" in body and 'class="who-group-row"' in body and "PAYEE" in ruled
-                          and 'data-group="HAS_RULE"' in ruled)
                 else:
                     check(f"{label}: /bank/review shows transactions and the Who picker",
                           "PAYEE" in body and "who-picker" in body)

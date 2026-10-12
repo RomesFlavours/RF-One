@@ -17,6 +17,10 @@ The defects this pins down, so they cannot come back:
 * an empty candidate list rendered as a blank panel with a dead Confirm
   button instead of saying what was missing.
 
+BANK_SOURCE_EDIT_AND_ENTITIES_001 retired the separate Card settings page:
+the same guarantees are now checked on the ONE Source modal (/bank/sources),
+whose Save also records a card's settlement account and cardholder.
+
 Never touches a real bank file, AWS, or any production database.
 """
 
@@ -122,26 +126,43 @@ def main() -> int:
         # =================================================================
         # A. One canonical settlement control
         # =================================================================
-        page = client.get(f"/bank/instruments/{card_id}/edit").data
+        page = client.get("/bank/sources").data
+        modal = page[page.index(b'id="source-dialog"'):]
+
+        def block_of(marker: bytes) -> bytes:
+            """The modal element that holds `marker`, up to its row's end."""
+            at = modal.index(marker)
+            start = modal.rfind(b"<", 0, modal.rfind(b"data-source-", 0, at))
+            return modal[start:at]
+
+        linked_row = modal[:modal.index(b'name="linked_instrument_id"')]
         check(
-            "A1. a credit card no longer shows the legacy 'Settles to' select",
-            b'name="linked_instrument_id"' not in page,
+            "A1. the legacy 'Settles to' select exists only for PayPal ('Funded by'), never for a card",
+            linked_row.rfind(b'data-source-only="PAYPAL"') > linked_row.rfind(b"</div>"),
         )
         check(
-            "A2. it shows the canonical Settlement Account section instead",
-            b"Settlement account" in page and b"settlement_bank_account_id" in page,
+            "A2. a card has the canonical Settlement / Funding account control instead",
+            b"Settlement / Funding account" in modal and b'name="settlement_bank_account_id"' in modal
+            and b'data-source-only="CREDIT_CARD"' in block_of(b'name="settlement_bank_account_id"'),
         )
         check(
-            "A3. the page states the configuration status up front",
-            b"Missing settlement account" in page,
+            "A3. the Source list states the configuration status up front",
+            b"No settlement account configured" in page,
+        )
+        check(
+            "A4. a bank account offers no settlement account control at all (card-only fieldset)",
+            modal.count(b'name="settlement_bank_account_id"') == 1
+            and b'<fieldset class="source-card" data-source-only="CREDIT_CARD" hidden>' in modal,
         )
 
-        bank_page = client.get(f"/bank/instruments/{checking_id}/edit").data
-        check(
-            "A4. a bank account offers no settlement account control at all",
-            b"settlement_bank_account_id" not in bank_page
-            and b"not applicable" in bank_page,
-        )
+        def card_save(**fields):
+            """The Source modal's one Save for the card: its current fields
+            plus what is being changed."""
+            data = {"display_name": "Repair Card", "institution": "CHASE", "instrument_type": "CREDIT_CARD",
+                    "last_four": "1057", "currency": "USD", "status": "ACTIVE",
+                    "csrf_token": extract_csrf(client.get("/bank/sources").data)}
+            data.update(fields)
+            return client.post(f"/bank/instruments/{card_id}/edit", data=data)
 
         # A5. A legacy post must still be routed through the canonical service.
         csrf = extract_csrf(page)
@@ -169,11 +190,7 @@ def main() -> int:
             )
 
         # A6. Guards.
-        page = client.get(f"/bank/instruments/{card_id}/edit").data
-        resp = client.post(f"/bank/instruments/{card_id}/settlement", data={
-            "settlement_bank_account_id": str(card_id),
-            "valid_from": "2026-01-01", "csrf_token": extract_csrf(page),
-        })
+        resp = card_save(settlement_bank_account_id=str(card_id), settlement_valid_from="2026-01-01")
         with SessionFactory() as s:
             check(
                 "A6. a card cannot settle to itself",
@@ -186,7 +203,7 @@ def main() -> int:
         # D. Modal mechanics
         # =================================================================
         review = client.get("/bank/review").data
-        page = client.get(f"/bank/instruments/{card_id}/edit").data
+        page = client.get("/bank/sources").data
 
         check(
             "D1. the shared modal controller is loaded for every page",
@@ -202,8 +219,9 @@ def main() -> int:
             review.count(b'id="who-picker"') == 1,
         )
         check(
-            "D4. exactly one Cardholder modal instance exists on the edit page",
-            page.count(b'id="cardholder-modal"') == 1,
+            "D4. exactly one Source modal (with the cardholder) and one New Entity dialog exist",
+            page.count(b'id="source-dialog"') == 1 and page.count(b'id="entity-dialog"') == 1
+            and page.count(b'name="cardholder"') == 1,
         )
         check(
             "D5. both modals expose X and Cancel through the shared close hook",
@@ -257,15 +275,15 @@ def main() -> int:
         )
         check(
             "F2. with no Who configured the modal says so",
-            b"No WHO configured" in review,
+            b"No WHO yet" in review,
         )
         check(
-            "F3. it links to the Classification tab",
-            b"/bank/classification" in review,
+            "F3. it offers + New WHO to create the first one, without leaving the page",
+            b">+ New WHO</button>" in review and b'id="who-create-dialog"' in review,
         )
         check(
-            "F4. no unusable Confirm button is rendered when nothing can be selected",
-            b'id="who-picker-confirm"' not in review,
+            "F4. Confirm stays disabled until a WHO (created with + New WHO) and a WHY are chosen",
+            b'id="who-picker-confirm" disabled' in review,
         )
         check(
             "F5. the modal can still be closed",
@@ -308,37 +326,39 @@ def main() -> int:
         # =================================================================
         # E. Cardholder modal
         # =================================================================
-        page = client.get(f"/bank/instruments/{card_id}/edit").data
+        page = client.get("/bank/sources").data
+        holder_select = page[page.index(b'name="cardholder"'):]
+        holder_select = holder_select[:holder_select.index(b"</select>")]
         check(
             "E1. with no person in the database the modal says so rather than showing blank",
             b"No linked people available" in page,
         )
         check(
             "E2. a SYSTEM identity is never offered as a cardholder",
-            b"RF-One System" not in page,
+            b"RF-One System" not in holder_select,
         )
         check(
             "E3. UNLINKED_PERSON stays available by typing a name",
-            b'name="holder_display_name"' in page and b'value="UNLINKED_PERSON"' in page,
+            b'<option value="other">' in holder_select and b'name="cardholder_name"' in page,
         )
 
-        csrf = extract_csrf(page)
-        resp = client.post(f"/bank/instruments/{card_id}/cardholder", data={
-            "holder_kind": "UNLINKED_PERSON", "holder_display_name": "Repair Test Holder",
-            "valid_from": "2026-01-01", "csrf_token": csrf,
-        })
+        resp = card_save(cardholder="other", cardholder_name="Repair Test Holder",
+                         cardholder_valid_from="2026-01-01")
         check("E4. an unlinked person can be saved", resp.status_code in (302, 303))
-        page = client.get(f"/bank/instruments/{card_id}/edit").data
+        page = client.get("/bank/sources").data
+        with SessionFactory() as s:
+            holders = s.query(m.BankCardHolderAssignment).filter_by(credit_card_payment_instrument_id=card_id).all()
         check(
             "E5. the page reflects the new holder and its history",
-            b"Repair Test Holder" in page and b"Cardholder: Repair Test Holder" in page,
+            b"Repair Test Holder" in page and len(holders) == 1
+            and holders[0].holder_kind == "UNLINKED_PERSON" and holders[0].valid_to is None,
         )
 
         # Real people appear once they exist, without duplicating one human.
         with SessionFactory() as s:
             s.add(m.ActingIdentity(kind="HUMAN_USER", display_name="Giulia Rossi"))
             s.commit()
-        page = client.get(f"/bank/instruments/{card_id}/edit").data
+        page = client.get("/bank/sources").data
         check(
             "E6. a real HUMAN_USER identity is offered, with its source named",
             b"Giulia Rossi" in page and b"RF-One identity" in page,
@@ -361,8 +381,10 @@ def main() -> int:
             b"wrap-wide" in page,
         )
         check(
-            "G3. the edit page carries the Bank module navigation",
-            b"Import and Review" in page and b">Source<" in page and b"Classification" in page,
+            "G3. the Source page (with its modal) carries the Bank module navigation",
+            # BANK_RULES_RESET_001: the old "Rules" tab is retired; AI Rules remains.
+            b"Import and Review" in page and b">Source<" in page and b">AI Rules<" in page
+            and b">Rules<" not in page,
         )
 
         ungated = web_app.app.test_client()
@@ -372,13 +394,13 @@ def main() -> int:
             "csrf_token": extract_csrf(resp.data),
         })
         check(
-            "G4. the settlement route stays behind the BANK domain gate",
-            ungated.post(f"/bank/instruments/{card_id}/settlement").status_code == 403,
+            "G4. the Source Save (settlement account) stays behind the BANK domain gate",
+            ungated.post(f"/bank/instruments/{card_id}/edit").status_code == 403,
         )
         check(
             "G5. a settlement post without CSRF is refused",
-            client.post(f"/bank/instruments/{card_id}/settlement", data={
-                "settlement_bank_account_id": str(checking_id), "valid_from": "2026-02-01",
+            client.post(f"/bank/instruments/{card_id}/edit", data={
+                "settlement_bank_account_id": str(checking_id), "settlement_valid_from": "2026-02-01",
             }).status_code in (400, 403),
         )
 

@@ -109,12 +109,55 @@ def account_may_enter_domain(
     being logged in is not, by itself, access to anything.
 
     Lives here, next to the session lookup, so a second app (Tips) checks
-    the same rule rather than a copy of it."""
-    if account is None or account.status != ACTIVE_ACCOUNT_STATUS:
+    the same rule rather than a copy of it.
+
+    An access limited to selected items (scope SELECTED,
+    ACCOUNT_ITEM_ACCESS_001) enters the Domain only while at least one item
+    is selected; which items it may use is `account_may_use_domain_item`."""
+    row = _enabled_domain_access(db_session, account, domain_code)
+    if row is None:
         return False
-    return any(
-        row.domain_code == domain_code and row.enabled
-        for row in account_service.list_domain_access_for_account(db_session, account.id)
+    if row.scope == m.DOMAIN_ACCESS_SCOPE_ALL:
+        return True
+    return bool(account_service.list_domain_item_access_for_account(db_session, account.id).get(domain_code))
+
+
+def account_may_use_domain_item(
+    db_session: Session, account: "m.RFOneAccount | None", domain_code: str, item_code: str,
+) -> bool:
+    """Whether `account` may use one item of `domain_code` (one entry of that
+    Domain's item list in `RF-One Web/domain_registry.py`): yes with the
+    whole Domain (scope ALL — items added later included), otherwise only
+    if that item is among the ones selected for the account."""
+    return bool(allowed_domain_items(db_session, account, domain_code, (item_code,)))
+
+
+def allowed_domain_items(
+    db_session: Session, account: "m.RFOneAccount | None", domain_code: str, item_codes,
+) -> list[str]:
+    """The subset of `item_codes` (in their order) that `account` may use in
+    `domain_code` — the same rule as `account_may_use_domain_item`, for a
+    whole navigation at once."""
+    row = _enabled_domain_access(db_session, account, domain_code)
+    if row is None:
+        return []
+    if row.scope == m.DOMAIN_ACCESS_SCOPE_ALL:
+        return list(item_codes)
+    granted = account_service.list_domain_item_access_for_account(db_session, account.id).get(domain_code, set())
+    return [code for code in item_codes if code in granted]
+
+
+def _enabled_domain_access(
+    db_session: Session, account: "m.RFOneAccount | None", domain_code: str,
+) -> "m.RFOneAccountDomainAccess | None":
+    if account is None or account.status != ACTIVE_ACCOUNT_STATUS:
+        return None
+    return next(
+        (
+            row for row in account_service.list_domain_access_for_account(db_session, account.id)
+            if row.domain_code == domain_code and row.enabled
+        ),
+        None,
     )
 
 

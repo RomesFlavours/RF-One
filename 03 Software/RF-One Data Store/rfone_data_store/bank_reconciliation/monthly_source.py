@@ -633,17 +633,19 @@ def multi_instrument_batches_evidencing(
 
 
 def relevant_instruments(session: Session) -> list["m.PaymentInstrument"]:
-    """Every Payment Instrument RF-One knows about.
+    """Every PAYMENT source RF-One knows about.
 
     Inactive ones are included on purpose: a card closed last year is still
     relevant to a month it was alive for, and the expectation rule — not a
     pre-filter — decides whether it was. Nothing is ever excluded merely
-    for being inactive today.
+    for being inactive today. A purchase platform is a documentary source,
+    not a source of bank files, so no month expects a file from it
+    (BANK_PURCHASE_PLATFORM_SOURCE_001).
     """
     return list(session.scalars(
-        select(m.PaymentInstrument).order_by(
-            m.PaymentInstrument.institution, m.PaymentInstrument.display_name,
-        )
+        select(m.PaymentInstrument)
+        .where(m.PaymentInstrument.instrument_type.in_(m.PAYMENT_SOURCE_TYPES))
+        .order_by(m.PaymentInstrument.institution, m.PaymentInstrument.display_name)
     ).all())
 
 

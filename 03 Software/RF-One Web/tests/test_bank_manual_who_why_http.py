@@ -1,12 +1,12 @@
-"""Manual WHO + WHY reconciliation and Rule recognition (BANK_MANUAL_WHO_WHY_001).
+"""Manual WHO + WHY reconciliation (BANK_MANUAL_WHO_WHY_001).
 
 Proves, on a throwaway database, that:
 
-* a saved WHO Rule ("description contains TABLE TOP LINEN -> WHO TABLE TOP
-  LINEN") gives the WHO to every matching transaction — every description
-  form, every month, and future imports — so they leave To Reconcile and
-  appear in Reconciled with no WHY invented; and the Rule modal can always
-  be sent (no silent native `required` blocker);
+* BANK_RULES_RESET_001 — the simple WHO Rule (Rule modal, POST
+  /bank/who-rules/apply) and the Rules page are retired: Review carries no
+  Rule modal, every TABLE TOP LINEN form stays To Reconcile, and a newly
+  imported movement gets no automatic WHO (the former Rule checks 0-5, 26
+  and 27 are replaced by these);
 * "Select WHO / WHY" reconciles ONE transaction by hand: the full
   alphabetical list of ACTIVE WHO (aliases searchable), the WHY of the chosen
   WHO only, Confirm only with WHO + WHY, a HUMAN decision, no rule created —
@@ -17,8 +17,7 @@ Proves, on a throwaway database, that:
 * Reconciled shows WHO, WHY and WHAT on the row; the WHY is edited there
   (WHAT derived again from the new WHY), the row stays Reconciled and no
   Rule changes;
-* the creatable-WHO Rule, Classification, Standards, Export and the WHO/WHY
-  invariant are unchanged.
+* Standards, Export and the WHO/WHY invariant are unchanged.
 
 Never touches a real bank file, AWS, or any production database.
 """
@@ -66,7 +65,6 @@ from rfone_data_store.bank_reconciliation import why_catalog  # noqa: E402
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 AUG, JUL, SEP = date(2026, 8, 12), date(2026, 7, 9), date(2026, 9, 3)
-TTL_RULE = "description contains TABLE TOP LINEN → WHO TABLE TOP LINEN"
 REVIEW_AUG = "/bank/review?year=2026&month=8"
 RECONCILED_AUG = "/bank/review?view=reconciled&year=2026&month=8"
 
@@ -184,24 +182,13 @@ def main() -> int:
                                            m.BankRecognitionRule.transaction_reason_id)).all())
 
     # ------------------------------------------------------------------
-    # RULE RECOGNITION — TABLE TOP LINEN (1-5)
+    # RETIRED RULE (0-3) — BANK_RULES_RESET_001
     # ------------------------------------------------------------------
-    modal_html = review.split('id="who-rule-modal"', 1)[1].split("</form>", 1)[0]
-    rule_js = client.get("/static/js/bank-who-rule.js").data.decode()
-    check("0. the Rule modal can always be sent: no native `required` blocker, the modal's own message instead",
-          not re.search(r'<textarea[^>]*id="who-rule-instruction"[^>]*required', modal_html)
-          and 'showError("Write the rule.")' in rule_js and "Dove nella descrizione trovi \" + data.name" in rule_js)
-    check("0b. before the Rule every TABLE TOP LINEN form is To Reconcile",
-          all(in_to(review, k) for k in ttl_aug))
-    applied = client.post("/bank/who-rules/apply", headers={"X-Requested-With": "fetch"}, data={
-        "csrf_token": csrf, "occurrence_id": str(ids["ttl"]), "instruction": TTL_RULE,
-        "transaction_id": str(ids["orig"]), "return_to": REVIEW_AUG})
-    check("1a. the Rule is saved from Review", applied.status_code == 200 and applied.get_json()["ok"],
-          detail=str(applied.get_json()))
-    check("1. the Rule gives the WHO to every existing matching form (plain, ACH, ORIG CO NAME, MONDAY ACHSEC:CCD, mixed case)",
-          all(decision(k)[0] == ids["ttl"] for k in ttl_aug), detail=str({k: decision(k) for k in ttl_aug}))
-    check("2. the Rule works across months (July and September)",
-          decision("jul")[0] == ids["ttl"] and decision("sep")[0] == ids["ttl"])
+    check("0. Review carries no Rule modal and no Rule script (the simple WHO Rule is retired)",
+          'id="who-rule-modal"' not in review and "bank-who-rule.js" not in review
+          and client.get("/static/js/bank-who-rule.js").status_code == 404)
+    check("0b. every TABLE TOP LINEN form is To Reconcile (nothing assigns its WHO automatically)",
+          all(in_to(review, k) for k in ttl_aug) and all(decision(k)[0] is None for k in ttl_aug))
     with SessionFactory() as s:
         upload = bank_service.import_csv(
             s, file_bytes=("Details,Posting Date,Description,Amount,Type,Balance,Check or Slip #\n"
@@ -214,21 +201,12 @@ def main() -> int:
             m.FinancialTransaction.import_batch_id == upload.batch.id)).one()
         future_decision = recognition.get_current_explanation(s, financial_transaction_id=future.id)
         future_id = future.id
+    oct_review = client.get("/bank/review?year=2026&month=10").data.decode()
     oct_rec = client.get("/bank/review?view=reconciled&year=2026&month=10").data.decode()
-    check("3. a future import is recognised by the Rule and goes straight to Reconciled",
-          future_decision is not None and future_decision.occurrence_id == ids["ttl"] and f'id="t-{future_id}"' in oct_rec)
+    check("3. a newly imported matching movement gets no automatic decision and is To Reconcile",
+          future_decision is None and f'id="t-{future_id}"' not in oct_rec
+          and f'data-transaction-id="{future_id}"' in oct_review)
     after = client.get(REVIEW_AUG).data.decode()
-    rec = client.get(RECONCILED_AUG).data.decode()
-    check("4. the Rule moves the WHO-resolved rows out of To Reconcile and into Reconciled",
-          not any(f'data-transaction-id="{ids[k]}"' in after for k in ttl_aug) and all(in_rec(rec, k) for k in ttl_aug))
-    with SessionFactory() as s:
-        ttl_whys = why_catalog.reasons_for_occurrence(s, ids["ttl"])
-    check("5. the Rule invents no WHY: every recognised row has no WHY, the WHO gained no possible WHY",
-          all(decision(k)[1] is None for k in list(ttl_aug) + ["jul", "sep"]) and ttl_whys == []
-          and re.search(r'<tr id="t-%d".*?WHY needed' % ids["plain"], rec, re.S) is not None)
-    check("5b. a Rule-resolved row is Needs review on Reconciled and never returns to To Reconcile for its WHY",
-          f'id="t-{ids["plain"]}"' in rec and 'data-status="Needs review"' in re.search(
-              r'<tr id="t-%d"[^>]*>' % ids["plain"], rec).group(0))
     rules_after_rule = rules()
 
     # ------------------------------------------------------------------
@@ -237,7 +215,7 @@ def main() -> int:
     popup = after.split('id="who-picker"', 1)[1]
     check("6a. the popup is 'Select WHO / WHY' with WHO list, WHY step, Create New WHY, Confirm and Cancel only",
           ">Select WHO / WHY<" in popup and 'id="who-picker-list"' in popup and 'id="why-picker"' in popup
-          and "+ Create New WHY" in popup and 'id="who-picker-confirm" disabled' in popup and 'id="who-picker-cancel"' in popup)
+          and "+ New WHY" in popup and 'id="who-picker-confirm" disabled' in popup and 'id="who-picker-cancel"' in popup)
     check("6b. removed from the popup: WHAT choice, For Whom, Learn this description, Rule, Standard, explanations",
           all(token not in popup.split("</form>", 1)[0] for token in (
               "learn_description", "Learn this description", "who-picker-rule", "For whom", "Standard",
@@ -394,8 +372,9 @@ def main() -> int:
         what_b = s.get(m.BankAccountingClassification, ids["why_b_what"])
     check("20. Reconciled shows the WHO on the row", re.search(r'class="rp-who-name">Sysco', row) is not None)
     check("21. Reconciled shows the WHY on the row", f'<span class="rp-why-name">{why_a_name}</span>' in row)
-    check("21b. Reconciled shows WHAT and For Whom columns, and a Rule-resolved row says WHY needed",
-          "<th>WHY</th><th>WHAT</th><th>For whom</th>" in rec and 'class="rp-what"' in row and "WHY needed" in rec)
+    check("21b. Reconciled shows the WHAT column and For Whom under the Source",
+          "<th>WHY</th><th>WHAT</th>" in rec and "Account / Card &middot; For Whom" in rec
+          and 'class="rp-what"' in row and 'class="rp-forwhom"' in row)
     check("22. the WHY is editable from the row (same popup, WHO and WHY preselected)",
           re.search(r'data-cell="why".*?class="btn-secondary rp-btn rp-edit who-picker-open"[^>]*data-current-occurrence-id="%d" data-current-reason-id="%d"'
                     % (ids["sysco"], ids["why_a"]), row, re.S) is not None
@@ -411,7 +390,7 @@ def main() -> int:
           edited.status_code == 200 and edited.get_json()["redirect"].endswith(f"#t-{ids['edit']}")
           and why_now == ids["why_b"] and what_now == ids["why_b_what"]
           and row_after is not None and why_b_name in row_after.group(0) and what_b.name in row_after.group(0))
-    check("24. the Rule is unchanged by WHY edits", rules() == rules_before_edit)
+    check("24. the recognition rules are unchanged by WHY edits", rules() == rules_before_edit)
     check("25. the row remains Reconciled", row_after is not None
           and f'data-transaction-id="{ids["edit"]}"' not in client.get(REVIEW_AUG).data.decode())
     wrong_who = client.post(f"/bank/transactions/{ids['edit']}/who-why", headers={"X-Requested-With": "fetch"},
@@ -426,16 +405,11 @@ def main() -> int:
     # ------------------------------------------------------------------
     # REGRESSION (26-30)
     # ------------------------------------------------------------------
+    # BANK_RULES_RESET_001: the creatable-WHO Rule and the Rules page are retired.
     created_who = client.post("/bank/who-rules/apply", headers={"X-Requested-With": "fetch"}, data={
-        "csrf_token": csrf, "new_who_name": "Brand New Linen Co", "instruction":
-        "Dove nella descrizione trovi BRAND NEW LINEN il WHO è Brand New Linen Co", "return_to": REVIEW_AUG})
-    with SessionFactory() as s:
-        brand = s.scalars(select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == "Brand New Linen Co")).one_or_none()
-    check("26. the creatable-WHO Rule still works", created_who.status_code == 200 and created_who.get_json()["ok"]
-          and brand is not None)
-    classification = client.get("/bank/classification")
-    check("27. Classification still works (Rule button and modal)", classification.status_code == 200
-          and b'class="who-rule-open"' in classification.data and b'id="who-rule-modal"' in classification.data)
+        "csrf_token": csrf, "new_who_name": "Brand New Linen Co", "return_to": REVIEW_AUG})
+    check("26/27. the retired Rule Apply route and Rules page answer 404",
+          created_who.status_code == 404 and client.get("/bank/classification").status_code == 404)
     with SessionFactory() as s:
         standards_after = s.scalar(select(func.count(m.BankReconciliationStandard.id)))
         in_scope = export_service.in_scope_transactions(s, 2026, 8)

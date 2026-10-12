@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_bank_macros.html" as bank %}
+{% import "_bank_review_sort.html" as sorting with context %}
 {% block page_title %}Bank Reconciliation · Review · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
@@ -7,15 +8,22 @@
 
 {% include "_bank_review_header.html" %}
 
-{% include "_bank_who_rule_result.html" %}
 
 <div class="card">
   {% if transactions %}
+    {#- BANK_REVIEW_BULK_WHO_WHY_001 — the rows ticked on this page; ticking
+        writes nothing. Leaving the page (search, filters, tab) clears it. -#}
+    <div class="review-selection" id="review-selection" hidden>
+      <strong id="review-selected-count">0 transactions selected</strong>
+      <button type="button" class="btn-secondary btn-inline" id="review-selection-clear">Clear selection</button>
+    </div>
+    <p class="cell-note review-selection-note" id="review-selection-note" role="status" hidden></p>
     <div class="table-scroll">
       <table class="table-compact table-stack">
         <thead>
           <tr>
-            <th>Instrument</th><th>Date</th><th>Description</th><th>Amount</th><th>Source</th>
+            <th class="col-select"><span class="sr-only">Select</span></th>
+            {{ sorting.sort_th('Instrument', 'instrument') }}{{ sorting.sort_th('Date', 'date') }}{{ sorting.sort_th('Description', 'description') }}{{ sorting.sort_th('Amount', 'amount') }}<th>Source</th>
             <th>Duplicate</th><th>Classification (Who &rarr; Why &rarr; What)</th><th>Internal Transfer</th><th>Review</th>
           </tr>
         </thead>
@@ -27,29 +35,35 @@
             {% set unresolved_settlement = txn.accounting_status == UNRESOLVED_NO_SETTLEMENT_ACCOUNT %}
             {% set counterpart = counterpart_by_transaction_id.get(txn.id) %}
             {% set match_candidates = match_candidates_by_transaction_id.get(txn.id) %}
-            {% set reassignments = reassignments_by_transaction_id.get(txn.id) %}
-            <tr class="{{ 'row-suppressed' if suppressed else '' }}">
-              <td data-label="Instrument">
-                {{ instruments_by_id.get(txn.payment_instrument_id).display_name if instruments_by_id.get(txn.payment_instrument_id) else txn.payment_instrument_id }}
-                {% if reassignments %}
-                  <span class="cell-note">Reassigned {{ reassignments|length }}&times; &mdash; latest: {{ reassignments[0].reason }}</span>
-                {% endif %}
-                <details>
-                  <summary>Reassign</summary>
-                  <form method="post" action="{{ url_for('bank_transaction_reassign_instrument', transaction_id=txn.id) }}" class="compact-form">
+            {% set fw = for_whom_by_transaction_id.get(txn.id, {}) %}
+            <tr id="t-{{ txn.id }}" data-rr-key="txn:{{ txn.id }}" class="{{ 'row-suppressed' if suppressed else '' }}">
+              <td data-label="Select" class="col-select">
+                {%- if not suppressed %}<input type="checkbox" class="review-select" autocomplete="off"
+                       data-select-id="{{ txn.id }}" data-explanation-id="{{ txn.explanation_id or '' }}"
+                       aria-label="Select {{ txn.posting_date }} {{ txn.description_original }}">{% endif -%}
+              </td>
+              {#- BANK_REVIEW_FOR_WHOM_001 — the Source is provenance, set by the
+                  import's file -> Source mapping, and is shown read-only. Under
+                  it, FOR WHOM: the Reporting Entity / LLC that benefited, a
+                  reconciliation decision that can be made at any time. -#}
+              <td data-label="Instrument" class="col-source">
+                <span class="source-name">{{ instruments_by_id.get(txn.payment_instrument_id).display_name if instruments_by_id.get(txn.payment_instrument_id) else txn.payment_instrument_id }}</span>
+                {% if fw.split %}
+                  <span class="cell-note">For Whom: split</span>
+                {% else %}
+                  <form method="post" action="{{ url_for('bank_reconciliation_for_whom', transaction_id=txn.id) }}" class="for-whom-form" data-for-whom-form>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <select name="payment_instrument_id" required aria-label="New instrument for transaction {{ txn.id }}">
-                      <option value="">Move to&hellip;</option>
-                      {% for instrument in instruments %}
-                        {% if instrument.id != txn.payment_instrument_id %}
-                          <option value="{{ instrument.id }}">{{ bank.instrument_identity(instrument) }}</option>
-                        {% endif %}
+                    <input type="hidden" name="return_to" value="{{ review_return_to }}">
+                    <label class="for-whom-label" for="for-whom-{{ txn.id }}">For Whom:</label>
+                    <select id="for-whom-{{ txn.id }}" name="for_whom_id" data-for-whom-select>
+                      {% if fw.for_whom is none %}<option value="" selected>Choose&hellip;</option>{% endif %}
+                      {% for entity in for_whom_entities %}
+                        <option value="{{ entity.id }}"{{ ' selected' if entity.id == fw.for_whom else '' }}>{{ entity.name }}</option>
                       {% endfor %}
                     </select>
-                    <input type="text" name="reason" placeholder="Why? (required)" required maxlength="500" aria-label="Reason for reassigning transaction {{ txn.id }}">
-                    <button type="submit">Reassign</button>
+                    <noscript><button type="submit" class="btn-secondary">Save</button></noscript>
                   </form>
-                </details>
+                {% endif %}
               </td>
               <td data-label="Date" class="col-date">{{ txn.posting_date }}</td>
               <td data-label="Description" class="col-description">{{ txn.description_original }}</td>
@@ -154,14 +168,8 @@
                         title="Reconcile this transaction by hand: choose its WHO and its WHY."
                         data-transaction-id="{{ txn.id }}"
                         data-transaction-label="{{ txn.posting_date }} · {{ txn.description_original }} · {{ "%.2f"|format(txn.amount_minor / 100) }}"
-                        data-current-occurrence-id="{{ explanation.occurrence_id if explanation and explanation.occurrence_id else '' }}">
-                  Select WHO
-                </button>
-                {# BANK_SIMPLE_WHO_RULE_001 — the same Rule modal and the same Apply
-                   as Bank > Classification, preselecting this row's WHO. #}
-                <button type="button" class="who-rule-open" data-transaction-id="{{ txn.id }}"
-                        title="Teach recognition: when the description contains this text, the WHO is this one. Never chooses a WHY."
-                        data-who-id="{{ explanation.occurrence_id if explanation and explanation.occurrence_id in active_who_ids else '' }}">Rule</button>
+                        data-current-occurrence-id="{{ explanation.occurrence_id if explanation and explanation.occurrence_id else '' }}"
+                        data-single-label="Select WHO">Select WHO</button>
                 {% if resolved %}
                   <form method="post" action="{{ url_for('bank_transaction_reclassify', transaction_id=txn.id) }}" class="compact-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -206,7 +214,24 @@
    ONE transaction, WHO + WHY together. The Rule button teaches recognition. #}
 {% include "_bank_who_why_modal.html" %}
 
-{% include "_bank_who_rule_modal.html" %}
 {#- Once per page, after both modals it serves. #}
 {% include "_bank_why_create_dialog.html" %}
+{% include "_bank_who_create_dialog.html" %}
+<style>
+  .review-selection { display: flex; align-items: center; gap: .6rem; margin: 0 0 .5rem; }
+  .review-selection[hidden] { display: none; }
+  .review-selection button { width: auto; margin: 0; }
+  .col-select { width: 1.8rem; text-align: center; }
+  .col-select input { margin: 0; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+<script>
+// BANK_REVIEW_FOR_WHOM_001 — choosing For Whom saves it at once (the form
+// still works without JavaScript through its Save button).
+document.querySelectorAll("[data-for-whom-select]").forEach(function (select) {
+  select.addEventListener("change", function () {
+    if (select.value) { select.form.submit(); }
+  });
+});
+</script>
 {% endblock %}

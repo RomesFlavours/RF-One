@@ -4,12 +4,54 @@
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
 {{ bank.module_nav('export') }}
+{#- BANK_EXPORT_ACTIONABLE_BLOCKERS_001 — the month's export status and what
+    blocks it, GROUPED by what fixes it, each group with its action. A group's
+    transactions are listed only when asked for (`show`). Every figure comes
+    from `export_readiness`, which reads the export's own blockers and the
+    authoritative Review / reconciliation states; nothing is computed here. -#}
 
-<h2>Kermali monthly export</h2>
-<p class="muted">Generates <code>RfBank_YYYY_MM.xlsx</code> — the Monthly Accountant Export. Blocked while any reason below applies.</p>
+{%- macro detail(group, count, view) %}
+  {% if count %}
+    {% if show == group %}
+      {% set rows = readiness.details[group] %}
+      <details class="export-details" id="details-{{ group }}" open>
+        <summary>{{ count }} transaction{{ '' if count == 1 else 's' }}</summary>
+        <p class="cell-note"><a href="{{ url_for('bank_export', year=year, month=month, owner=owner_key) }}">Hide</a>{% if count > rows|length %} &middot; first {{ rows|length }} shown{% endif %}</p>
+        <div class="table-scroll">
+          <table class="table-compact table-stack export-detail-table">
+            <thead><tr><th>Date</th><th>Source</th><th>Description</th><th>Amount</th><th>Why it blocks</th><th></th></tr></thead>
+            <tbody>
+              {% for row in rows %}
+                {% set t = row.transaction %}
+                <tr data-transaction-id="{{ t.id }}">
+                  <td data-label="Date" class="col-date">{{ t.posting_date }}</td>
+                  <td data-label="Source">{{ row.instrument_name }}</td>
+                  <td data-label="Description" class="col-description">{{ t.description_original|truncate(70, True, '…') }}</td>
+                  <td data-label="Amount" class="col-narrow">{{ "%.2f"|format(t.amount_minor / 100) }}</td>
+                  <td data-label="Why it blocks">{{ row.reasons|join('; ') }}</td>
+                  <td data-label=""><a href="{{ url_for('bank_review', year=year, month=month, view=view) }}#t-{{ t.id }}">Open</a></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    {% else %}
+      <a class="export-show" href="{{ url_for('bank_export', year=year, month=month, owner=owner_key, show=group) }}#details-{{ group }}">Show {{ count }} transaction{{ '' if count == 1 else 's' }}</a>
+    {% endif %}
+  {% endif %}
+{%- endmacro %}
+
+<h2>Monthly Accountant Export</h2>
+<p class="muted">
+  One report per <strong>Owning Entity</strong> of the Sources &mdash; a Company or a person &mdash; for the accountant:
+  <code>RfBank_YYYY_MM_&lt;Owner&gt;.xlsx</code>. It contains only the movements of that owner's Sources (a card counts
+  for the owner of the account it settles to), and can be downloaded once nothing below blocks that report.
+  For Whom is kept as it is: a payment for another entity from this owner's account stays in this report.
+</p>
 
 <div class="card">
-  <form method="get" class="compact-form">
+  <form method="get" class="filter-row export-filter">
     <div class="field-row">
       <label for="year">Year</label>
       <input type="number" id="year" name="year" value="{{ year or '' }}" min="2000" max="2100" required>
@@ -18,26 +60,174 @@
       <label for="month">Month</label>
       <input type="number" id="month" name="month" value="{{ month or '' }}" min="1" max="12" required>
     </div>
+    <div class="field-row">
+      <label for="owner">Owning Entity</label>
+      <select id="owner" name="owner" required>
+        <option value="" {{ 'selected' if not owner_key else '' }} disabled>Choose…</option>
+        {% for o in owners %}
+          <option value="{{ o.key }}" {{ 'selected' if o.key == owner_key else '' }}>{{ o.name }} ({{ o.kind }})</option>
+        {% endfor %}
+      </select>
+    </div>
     <button type="submit">Check</button>
   </form>
+</div>
 
-  {% if year and month %}
-    {% if blockers %}
-      <h3>Export blocked &mdash; {{ blockers|length }} reason(s)</h3>
-      <ul class="blocker-list">
-        {% for blocker in blockers %}
-          <li>{{ blocker.reason }}</li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p>No blocking reason found for {{ year }}-{{ "%02d"|format(month) }}.</p>
-      <form method="post">
+{% if readiness %}
+  {% set r = readiness %}
+  {% set source_kind_label = {
+       'UNRESOLVED_SOURCE': 'File with no Source identified',
+       'PARSING_ERRORS': 'File with parsing errors',
+       'NO_SETTLEMENT_ACCOUNT': 'Card with no settlement account',
+       'NO_LEGAL_ENTITY': 'Account with no owner (Company or person)',
+     } %}
+  <div class="card export-status" data-export-status="{{ 'ready' if r.ready else 'not-ready' }}">
+    <div class="export-status-head">
+      <h3>{{ r.owner.name }} <span class="muted">({{ r.owner.kind }})</span> &middot; {{ month_label }}</h3>
+      {% if r.empty %}
+        <span class="badge warn export-verdict" data-export-empty>NO TRANSACTIONS</span>
+      {% elif r.ready %}
+        <span class="badge ok export-verdict">EXPORT READY</span>
+      {% else %}
+        <span class="badge bad export-verdict">EXPORT NOT READY</span>
+      {% endif %}
+    </div>
+    {% if r.empty %}
+      <p class="empty" data-export-empty-text>No transactions for this owner and month</p>
+    {% endif %}
+    <dl class="export-figures">
+      <div><dt>Sources unresolved</dt><dd data-figure="source">{{ r.counts.source }}</dd></div>
+      <div><dt>Transactions to reconcile</dt><dd data-figure="to_reconcile">{{ r.status.to_reconcile }}</dd></div>
+      <div><dt>Reconciled, Needs review</dt><dd data-figure="reconciled">{{ r.status.reconciled }}</dd></div>
+      <div><dt>Automatic</dt><dd data-figure="automatic">{{ r.status['Automatic'] }}</dd></div>
+      <div><dt>Confirmed</dt><dd data-figure="confirmed">{{ r.status['Confirmed'] }}</dd></div>
+      {% if r.counts.other %}<div><dt>Other blockers</dt><dd data-figure="other">{{ r.counts.other }}</dd></div>{% endif %}
+      <div><dt>Transactions in month</dt><dd data-figure="total">{{ r.transaction_count }}</dd></div>
+      <div><dt>Rows in the file</dt><dd data-figure="rows">{{ r.content.count }}</dd></div>
+      {% for currency, total in r.content.totals|dictsort %}
+        <div><dt>Total {{ currency or '(currency not set)' }}</dt><dd data-figure="total-{{ currency or 'none' }}">{{ "{:,.2f}".format(total / 100) }}</dd></div>
+      {% endfor %}
+    </dl>
+
+    {% if r.ready %}
+      <form method="post" class="export-download" id="export-download">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="year" value="{{ year }}">
         <input type="hidden" name="month" value="{{ month }}">
-        <button type="submit">Download RfBank_{{ year }}_{{ "%02d"|format(month) }}.xlsx</button>
+        <input type="hidden" name="owner" value="{{ owner_key }}">
+        <input type="hidden" name="download_token" id="export-download-token" value="">
+        <button type="submit">Download {{ download_name }}</button>
       </form>
     {% endif %}
+  </div>
+
+  {% if not r.ready %}
+    <h3>What blocks the export</h3>
+    <div class="export-groups">
+
+      {% if r.counts.source %}
+        <section class="card export-group" data-group="source">
+          <div class="export-group-head">
+            <h4>A. Source issues <span class="status-count">{{ r.counts.source }}</span></h4>
+            <a class="btn btn-inline" href="{{ url_for('bank_home', year=year, month=month) }}" data-action="fix-sources">Fix Sources</a>
+          </div>
+          <p class="cell-note">A file with no Source, or a Source not fully configured, leaves its transactions with no accounting identity. Fix the file (Import and Review) or the Source; the transactions follow.</p>
+          <ul class="plain export-source-list">
+            {% for issue in r.source_issues %}
+              <li>
+                <strong>{{ issue.label }}</strong> &mdash; {{ source_kind_label.get(issue.kind, issue.kind) }}
+                {% if issue.batch_id %}
+                  <a class="btn btn-secondary btn-inline" href="{{ url_for('bank_home', year=year, month=month) }}#batch-{{ issue.batch_id }}" data-action="fix-file">Fix this file</a>
+                {% elif issue.instrument_id %}
+                  <a class="btn btn-secondary btn-inline" href="{{ url_for('bank_instrument_edit', instrument_id=issue.instrument_id) }}" data-action="open-source">Open Source</a>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+
+      {% if r.counts.to_reconcile %}
+        <section class="card export-group" data-group="to_reconcile">
+          <div class="export-group-head">
+            <h4>B. Transactions to reconcile <span class="status-count">{{ r.counts.to_reconcile }}</span></h4>
+            <a class="btn btn-inline" href="{{ url_for('bank_review', year=year, month=month) }}" data-action="review-transactions">Review Transactions</a>
+          </div>
+          <p class="cell-note">WHO not resolved yet, or a possible duplicate still to decide.</p>
+          {{ detail('to_reconcile', r.counts.to_reconcile, 'to_reconcile') }}
+        </section>
+      {% endif %}
+
+      {% if r.counts.reconciled %}
+        <section class="card export-group" data-group="reconciled">
+          <div class="export-group-head">
+            <h4>C. Reconciled but not ready <span class="status-count">{{ r.counts.reconciled }}</span></h4>
+            <a class="btn btn-inline" href="{{ url_for('bank_review', year=year, month=month, view='reconciled') }}" data-action="review-reconciled">Review Reconciled</a>
+          </div>
+          <p class="cell-note">WHO resolved; WHY, For Whom or the Confirm is still missing (Needs review).</p>
+          {{ detail('reconciled', r.counts.reconciled, 'reconciled') }}
+        </section>
+      {% endif %}
+
+      {% if r.counts.other %}
+        <section class="card export-group" data-group="other">
+          <div class="export-group-head">
+            <h4>D. Other export blockers <span class="status-count">{{ r.counts.other }}</span></h4>
+            <a class="btn btn-inline" href="{{ url_for('bank_review', year=year, month=month, view='reconciled') }}" data-action="review-other">Review Reconciled</a>
+          </div>
+          <p class="cell-note">Accepted rows whose WHO / WHY / WHAT record is incomplete: complete it in Rules, then Reclassify the row.</p>
+          {{ detail('other', r.counts.other, 'reconciled') }}
+        </section>
+      {% endif %}
+
+    </div>
   {% endif %}
-</div>
+
+  {% if r.unattributed %}
+    {#- Sources no owner can be read for: listed for every owner, never assigned,
+        never dropped — and never blocking a report they may not belong to. -#}
+    <section class="card export-group" data-group="unattributed">
+      <div class="export-group-head">
+        <h4>Not attributed to any owner <span class="status-count">{{ r.unattributed|length }}</span></h4>
+        <a class="btn btn-inline btn-secondary" href="{{ url_for('bank_sources') }}">Open Sources</a>
+      </div>
+      <p class="cell-note">These movements are in no owner's report until their Source has an owner. They do not block this report.</p>
+      <ul class="plain export-unattributed-list">
+        {% for u in r.unattributed %}
+          <li data-unattributed="{{ u.instrument_id or u.batch_id }}"><strong>{{ u.label }}</strong> &mdash; {{ u.reason }}{% if u.count %} &middot; {{ u.count }} transaction{{ '' if u.count == 1 else 's' }}{% endif %}
+            {% if u.batch_id %}
+              <a class="btn btn-secondary btn-inline" href="{{ url_for('bank_home', year=year, month=month) }}#batch-{{ u.batch_id }}" data-action="fix-file">Fix this file</a>
+            {% elif u.instrument_id %}
+              <a class="btn btn-secondary btn-inline" href="{{ url_for('bank_sources', edit=u.instrument_id) }}" data-action="open-source">Open Source</a>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+{% endif %}
+
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
+<script>
+// The wait cursor and spinner run on Check and Download (rf-one-busy.js). A
+// download does not leave the page, so the server answers with a one-time
+// cookie and the page stops waiting as soon as the file has arrived.
+(function () {
+  var form = document.getElementById('export-download');
+  if (!form) { return; }
+  form.addEventListener('submit', function () {
+    var token = String(Date.now()) + String(Math.floor(Math.random() * 100000));
+    document.getElementById('export-download-token').value = token;
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries += 1;
+      if (document.cookie.indexOf('bank_export_done=' + token) !== -1 || tries > 600) {
+        clearInterval(timer);
+        document.cookie = 'bank_export_done=; Max-Age=0; path=/';
+        if (window.RFOneBusy) { window.RFOneBusy.stop(); }
+      }
+    }, 300);
+  });
+})();
+</script>
 {% endblock %}

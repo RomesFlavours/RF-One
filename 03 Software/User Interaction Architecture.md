@@ -125,6 +125,13 @@ ADMINISTER
 
 This is intentionally a small, understandable taxonomy — it is not expanded further by this document. A future module that genuinely needs a finer-grained permission is handled through the Module Interaction Readiness Review (Section 8), not by silently growing this list ad hoc.
 
+**Implementation status (ACCOUNT_ITEM_ACCESS_001, 2026-10-12).** RF-One Web implements the first two levels of this hierarchy as an access *perimeter*, not as permissions:
+
+- **Domain** — an account has, per Domain, one of three states: *no access*, *the whole Domain* (which includes the items added to it later), or *only selected items* (which does not). Stored in `rfone_account_domain_access` (`enabled`, `scope` = `ALL`/`SELECTED`) and `rfone_account_domain_item_access`.
+- **Item** — a Domain's functional entries (its sections / pages: Bank's tabs, Organization's pages) are listed once, in `03 Software/RF-One Web/domain_registry.py` (`DomainDefinition.items`). That one list drives the Domain's own navigation, the Domain → items choice in Settings › Accounts › Access, and the server-side check made by `require_domain_access` on every route an item owns (pages and operations alike), so a hidden item is also closed by direct URL. A Domain without items is granted whole or not at all.
+
+Permissions (VIEW / EDIT / APPROVE / ADMINISTER) and Scope (Section 6) are **not** implemented by this perimeter; the constraints that already existed stay as they were (e.g. administrator-only operations, Training's `role_code`, Tips' `AuthorityGrant`).
+
 ---
 
 ## 5. Visibility Principle

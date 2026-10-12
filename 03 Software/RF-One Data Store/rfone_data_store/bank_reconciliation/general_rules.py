@@ -7,17 +7,25 @@
     level 2  WHO RULE       a fixed phrase names one fixed WHO.
                             (`BankRecognitionRule`, `who_rules`)
 
-A candidate is only ever a NAME. It becomes a WHO exclusively through the
-one canonical resolution, `who_recognition.CanonicalWhoResolver.resolve`
+A candidate is a NAME taken from the transaction. It is first resolved by
+the one canonical resolution, `who_recognition.CanonicalWhoResolver.resolve`
 (an approved description rule, then the active canonical name, then an
-active alias) — nothing here creates a WHO, fuzzy-matches a name, or reads
-or writes a WHY. A candidate that resolves to nothing stays a *suggested
-WHO*: the transaction keeps its current decision and stays To Reconcile.
+active alias). BANK_GENERAL_RULES_CREATE_WHO_001 (Product Owner, 2026-10-08,
+superseding the "never creates a WHO" constraint of BANK_GENERAL_RULES_001):
+a valid name that resolves to nothing is CREATED as an active Counterparty
+WHO — through the Configuration service, with the identity checks of the
+WHO registry (`who_rules.check_new_who`: same name / identity key / alias is
+the SAME WHO, never a duplicate; a merged WHO's name or an invalid name is
+refused) — and assigned. Only similar-looking names are never merged.
+A WHO is created only for a transaction that can receive it (none of the
+protections below applies), in the caller's one transaction with its
+assignment. Nothing here fuzzy-matches a name or reads or writes a WHY, and
+no other rule is created.
 
-When a candidate resolves, the transaction's WHO is recorded as a RULE
-decision carrying its current WHY / WHAT unchanged — the same way the simple
-WHO rule records a WHO (`who_rules._apply_to_transaction`) — so it moves to
-Reconciled even while its WHY is still open. Never overwritten:
+The transaction's WHO is recorded as a RULE decision carrying its current
+WHY / WHAT unchanged — the same way the simple WHO rule records a WHO
+(`who_rules._apply_to_transaction`) — so it moves to Reconciled even while
+its WHY is still open. Never overwritten:
 
   * a HUMAN decision;
   * a decision produced by a Reconciliation Standard;
@@ -29,8 +37,9 @@ Reconciled even while its WHY is still open. Never overwritten:
 
 Two entry points write: `apply_rule` (existing transactions, an explicit
 operator action) and `apply_to_new_transaction` (called by the import, right
-after the automatic decision and before Standards). `preview` writes
-nothing. Every function flushes and never commits.
+after the automatic decision and before Standards) — the same
+`_who_for` decides both. `preview` writes nothing and names the WHO Apply
+would create. Every function flushes and never commits.
 """
 
 from __future__ import annotations
@@ -49,6 +58,10 @@ from . import who_recognition as wr
 from .who_rules import _PURPOSE_FIELDS
 
 ACTIVE, INACTIVE = "ACTIVE", "INACTIVE"
+# BANK_GENERAL_RULE_END_001 — the reserved "Ends before" value: extract from
+# after "Starts after" to the end of the field. Recognised in any case, its
+# outer spaces ignored; stored as "END".
+END_MARKER = "END"
 MAX_MARKER = 80
 MAX_NAME = 120
 _SPACES = re.compile(r"\s+")
@@ -59,10 +72,30 @@ _SPACES = re.compile(r"\s+")
 # ---------------------------------------------------------------------------
 
 
+def is_end_marker(marker: str | None) -> bool:
+    """True for the reserved "Ends before" value END (any case, outer spaces
+    ignored)."""
+    return (marker or "").strip().casefold() == END_MARKER.casefold()
+
+
+def describe(start_marker: str, end_marker: str) -> str:
+    """How a rule extracts, in words — for notes and the page."""
+    if is_end_marker(end_marker):
+        return f"after {start_marker!r} to the end of the description"
+    return f"between {start_marker!r} and {end_marker!r}"
+
+
 def extract(text: str | None, start_marker: str, end_marker: str) -> str | None:
-    """The text strictly between `start_marker` and the first `end_marker`
-    after it, case-insensitive, trimmed, inner whitespace collapsed. None
-    when either marker is missing or nothing lies between them."""
+    """THE extraction — Preview, Apply, the import and the match counts all
+    call it. `start_marker` is literal text (an asterisk is an asterisk),
+    found case-insensitively.
+
+    * `end_marker` END: everything after `start_marker` to the end of the
+      field, with ONLY its leading and trailing spaces removed;
+    * any other `end_marker`: the text strictly between `start_marker` and
+      the first `end_marker` after it, trimmed, inner whitespace collapsed.
+
+    None when a marker is missing or nothing is left — never an empty WHO."""
     if not text or not start_marker or not end_marker:
         return None
     upper = text.upper()
@@ -70,6 +103,8 @@ def extract(text: str | None, start_marker: str, end_marker: str) -> str | None:
     if start < 0:
         return None
     begin = start + len(start_marker)
+    if is_end_marker(end_marker):
+        return text[begin:].strip() or None
     end = upper.find(end_marker.upper(), begin)
     if end < 0:
         return None
@@ -107,6 +142,8 @@ def save_rule(session: Session, *, rule_id: int | None, name: str | None, start_
     # Markers keep their inner spacing exactly as written; only the ends are trimmed.
     start_marker = _clean(start_marker, "Starts after", MAX_MARKER)
     end_marker = _clean(end_marker, "Ends before", MAX_MARKER)
+    if is_end_marker(end_marker):
+        end_marker = END_MARKER
     if start_marker.casefold() == end_marker.casefold():
         raise ValueError("Starts after and Ends before must be different markers.")
     clash = session.scalars(select(m.BankGeneralRule).where(m.BankGeneralRule.name == name)).first()
@@ -143,25 +180,57 @@ def set_active(session: Session, *, rule_id: int, active: bool) -> "m.BankGenera
 class GeneralRuleResult:
     rule_name: str
     applied: bool = False
+    extraction: str = ""
     scanned: int = 0
     matches: int = 0
     resolved: int = 0
     newly_assigned: int = 0
     already: int = 0
-    unknown: int = 0
+    unknown: int = 0          # names that cannot become a WHO (refused by the registry checks)
+    created_assigned: int = 0  # transactions given a WHO created (or, in Preview, to be created) by this pass
     protected_human: int = 0
     protected_standard: int = 0
     protected_other_who: int = 0
     own_account: int = 0
     candidates: Counter = field(default_factory=Counter)
     unknown_candidates: Counter = field(default_factory=Counter)
+    refused_reasons: dict = field(default_factory=dict)      # name -> why it cannot become a WHO
+    created_who: Counter = field(default_factory=Counter)    # WHO created (Preview: to create) -> transactions
+    reused_who: Counter = field(default_factory=Counter)     # existing WHO assigned -> transactions
 
     @property
     def protected(self) -> int:
         return self.protected_human + self.protected_standard + self.protected_other_who
 
+    @property
+    def no_match(self) -> int:
+        return self.scanned - self.matches
+
+    def skipped_reasons(self) -> list[tuple[str, int]]:
+        """Why every examined transaction that was NOT updated was left as
+        it is — each reason actually found, with its count."""
+        reasons = [
+            ("No WHO extracted: the “Starts after” marker is not in the description, the end marker "
+             "is missing after it, or nothing lies between them", self.no_match),
+            ("The extracted name cannot become a WHO (too short, too long, or the name of a merged / "
+             "inactive WHO)", self.unknown),
+            ("This WHO is already on the transaction", self.already),
+            ("Protected: classified by a person (manual classification is never overwritten)",
+             self.protected_human),
+            ("Protected: classified by a Reconciliation Standard", self.protected_standard),
+            ("Protected: another WHO is already assigned", self.protected_other_who),
+            ("Own-account movement: no external WHO by design", self.own_account),
+        ]
+        if not self.applied:
+            reasons.append(("Would be updated by Apply (Preview writes nothing)", self.newly_assigned))
+        return [(label, count) for label, count in reasons if count]
+
     def as_dict(self, top: int = 40) -> dict:
+        updated = self.newly_assigned if self.applied else 0
         return {
+            "scope": "Every imported transaction — all periods, all Sources, no page filter.",
+            "updated": updated, "unchanged": self.scanned - updated, "no_match": self.no_match,
+            "skipped_reasons": self.skipped_reasons(), "extraction": self.extraction,
             "rule_name": self.rule_name, "applied": self.applied, "scanned": self.scanned,
             "matches": self.matches, "distinct_candidates": len(self.candidates),
             "resolved": self.resolved, "newly_assigned": self.newly_assigned, "already": self.already,
@@ -170,6 +239,12 @@ class GeneralRuleResult:
             "protected_standard": self.protected_standard, "protected_other_who": self.protected_other_who,
             "own_account": self.own_account,
             "unknown_candidates": self.unknown_candidates.most_common(top),
+            "refused": [(name, count, self.refused_reasons.get(name, ""))
+                        for name, count in self.unknown_candidates.most_common(top)],
+            "who_created": len(self.created_who), "who_reused": len(self.reused_who),
+            "created_assigned": self.created_assigned,
+            "created_names": self.created_who.most_common(top),
+            "reused_names": self.reused_who.most_common(top),
         }
 
 
@@ -178,8 +253,13 @@ class _Context:
     canonical resolver and RF-One's own legal-entity keys."""
 
     def __init__(self, session: Session):
+        self.session = session
         self.resolver = wr.CanonicalWhoResolver(session)
         _registered, self.entities, _lookups = wr.build_contexts(session)
+        # WHO this pass created (or, in Preview, would create), by identity
+        # key: the next transaction with the same name reuses it.
+        self.created: dict[str, "m.BankOccurrence | str"] = {}
+        self.refused: dict[str, str] = {}
 
     def own_entity(self, candidate: str) -> bool:
         return wr.legal_entity_key(wr.normalize_who_name(candidate)) in self.entities
@@ -188,6 +268,56 @@ class _Context:
                 instrument_id: int | None) -> "wr.WhoResolution":
         return self.resolver.resolve(wr.normalize_who_name(candidate), description=txn_description,
                                      amount_minor=amount, instrument_id=instrument_id)
+
+
+def _who_for(ctx: _Context, candidate: str, description: str | None, amount: int | None,
+             instrument_id: int | None, *, write: bool) -> "tuple[m.BankOccurrence | str | None, bool, str | None]":
+    """THE WHO of an extracted name, for Apply, Preview and the import:
+    (WHO, created_now, refusal). The existing WHO when the name resolves or
+    already IS one (registry identity); otherwise a NEW active Counterparty
+    WHO created through the Configuration service — or, with `write` False,
+    the clean name that Apply would create. (None, False, why) when the name
+    cannot become a WHO. Called only for a transaction that can receive it."""
+    from . import configuration
+    from . import who_rules
+
+    key = wr.who_key(candidate)
+    if key in ctx.created:
+        return ctx.created[key], False, None
+    if key in ctx.refused:
+        return None, False, ctx.refused[key]
+    resolution = ctx.resolve(candidate, description, amount, instrument_id)
+    if resolution.occurrence is not None:
+        return resolution.occurrence, False, None
+    try:
+        existing, clean = who_rules.check_new_who(ctx.session, candidate)
+    except ValueError as exc:
+        ctx.refused[key] = str(exc)
+        return None, False, str(exc)
+    if existing is not None:
+        return existing, False, None
+    if not write:
+        ctx.created[key] = clean
+        return clean, True, None
+    occurrence = configuration.save_who(
+        ctx.session, occurrence_id=None, name=clean, active=True, reason_ids=[], default_reason_id=None,
+        reporting_entity_ids=[], rules=[],
+    )
+    ctx.created[key] = occurrence
+    return occurrence, True, None
+
+
+def _protection(current) -> str | None:
+    """Why a transaction's current decision must not be replaced."""
+    if current is None:
+        return None
+    if current.decision_source == "HUMAN":
+        return "human"
+    if current.reconciliation_standard_id is not None:
+        return "standard"
+    if current.occurrence_id is not None:
+        return "other_who"
+    return None
 
 
 def _own_account_ids(session: Session) -> set[int]:
@@ -211,8 +341,8 @@ def _record_who(session: Session, txn: "m.FinancialTransaction", current, occurr
         decision_status=current.decision_status if current is not None else "NEEDS_HUMAN_REVIEW",
         confidence=current.confidence if current is not None else None,
         explanation_notes=(
-            f"{note_prefix} General Rule #{rule.id} {rule.name!r} extracted {candidate!r} between "
-            f"{rule.start_marker!r} and {rule.end_marker!r}; resolved to WHO {occurrence.canonical_name!r} "
+            f"{note_prefix} General Rule #{rule.id} {rule.name!r} extracted {candidate!r} "
+            f"{describe(rule.start_marker, rule.end_marker)}; resolved to WHO {occurrence.canonical_name!r} "
             f"by {how or 'canonical resolution'}. WHO only: "
             + (f"Why, What and status carried over unchanged from decision #{current.id}."
                if current is not None else "no previous decision; the Why stays for a human.")
@@ -226,7 +356,8 @@ def _record_who(session: Session, txn: "m.FinancialTransaction", current, occurr
 
 def _evaluate(session: Session, rule: "m.BankGeneralRule", *, write: bool,
               account_id: int | None) -> GeneralRuleResult:
-    result = GeneralRuleResult(rule_name=rule.name, applied=write)
+    result = GeneralRuleResult(rule_name=rule.name, applied=write,
+                               extraction=describe(rule.start_marker, rule.end_marker))
     ctx = _Context(session)
     own = _own_account_ids(session)
     rows = session.execute(select(
@@ -245,28 +376,39 @@ def _evaluate(session: Session, rule: "m.BankGeneralRule", *, write: bool,
         if tx_id in own or ctx.own_entity(candidate):
             result.own_account += 1
             continue
-        resolution = ctx.resolve(candidate, description, amount, instrument_id)
-        if resolution.occurrence is None:
+        current = explanations.get(explanation_id)
+        # The WHO a protected transaction already has (or would get): a
+        # protected movement is never changed and gets no WHO created for it.
+        protection = _protection(current)
+        if protection is not None:
+            resolution = ctx.resolve(candidate, description, amount, instrument_id)
+            if resolution.occurrence is not None and current.occurrence_id == resolution.occurrence.id:
+                result.already += 1
+            elif protection == "human":
+                result.protected_human += 1
+            elif protection == "standard":
+                result.protected_standard += 1
+            else:
+                result.protected_other_who += 1
+            continue
+        who, created_now, refusal = _who_for(ctx, candidate, description, amount, instrument_id, write=write)
+        if who is None:
             result.unknown += 1
             result.unknown_candidates[candidate] += 1
+            result.refused_reasons[candidate] = refusal or ""
             continue
         result.resolved += 1
-        current = explanations.get(explanation_id)
-        occurrence = resolution.occurrence
-        if current is not None and current.occurrence_id == occurrence.id:
-            result.already += 1
-        elif current is not None and current.decision_source == "HUMAN":
-            result.protected_human += 1
-        elif current is not None and current.reconciliation_standard_id is not None:
-            result.protected_standard += 1
-        elif current is not None and current.occurrence_id is not None:
-            result.protected_other_who += 1
+        result.newly_assigned += 1
+        name = who if isinstance(who, str) else who.canonical_name
+        if created_now or ctx.created.get(wr.who_key(candidate)) is who:
+            result.created_who[name] += 1
+            result.created_assigned += 1
         else:
-            result.newly_assigned += 1
-            if write:
-                _record_who(session, session.get(m.FinancialTransaction, tx_id), current, occurrence, rule,
-                            candidate, resolution.how,
-                            f"General Rule applied to existing transactions by account {account_id}.")
+            result.reused_who[name] += 1
+        if write:
+            _record_who(session, session.get(m.FinancialTransaction, tx_id), current, who, rule,
+                        candidate, "a WHO created from this name" if created_now else None,
+                        f"General Rule applied to existing transactions by account {account_id}.")
     if write:
         rule.last_applied_at = datetime.now(UTC)
         session.flush()
@@ -323,9 +465,10 @@ def apply_to_new_transaction(session: Session, txn: "m.FinancialTransaction",
                              context: ImportContext | None) -> bool:
     """The import step, run right after the automatic decision: when that
     decision names no WHO, the first ACTIVE General Rule whose markers are in
-    the description and whose candidate resolves records the WHO. A WHO a
-    level-2 rule already named is never replaced. True when a WHO was
-    recorded."""
+    the description records the WHO of its candidate — the existing one, or
+    one created from the name exactly as Apply does (`_who_for`). A WHO a
+    level-2 rule already named, a HUMAN or Standard decision and an
+    own-account movement are never changed. True when a WHO was recorded."""
     if context is None:
         return False
     current = recognition.get_current_explanation(session, financial_transaction_id=txn.id)
@@ -338,12 +481,12 @@ def apply_to_new_transaction(session: Session, txn: "m.FinancialTransaction",
             continue
         if context.ctx.own_entity(candidate):
             return False
-        resolution = context.ctx.resolve(candidate, txn.description_original, txn.amount_minor,
-                                         txn.payment_instrument_id)
-        if resolution.occurrence is None:
+        who, created_now, _refusal = _who_for(context.ctx, candidate, txn.description_original, txn.amount_minor,
+                                              txn.payment_instrument_id, write=True)
+        if who is None:
             continue
-        _record_who(session, txn, current, resolution.occurrence, rule, candidate, resolution.how,
-                    "General Rule at import.")
+        _record_who(session, txn, current, who, rule, candidate,
+                    "a WHO created from this name" if created_now else None, "General Rule at import.")
         session.flush()
         return True
     return False

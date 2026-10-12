@@ -2,7 +2,7 @@
 {% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Attention Item #{{ item.id }} · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Organization', url_for('admin_organization')), ('Attention Items', url_for('admin_org_attention')), ('Attention Item #' ~ item.id, None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Organization', domain_entry('ORGANIZATION')), ('Attention Items', url_for('admin_org_attention')), ('Attention Item #' ~ item.id, None)]) }}
 <h1>Attention Item #{{ item.id }}</h1>
 
 <div class="card">
@@ -22,10 +22,12 @@
   {% else %}
     <p class="empty">Not yet routed.</p>
   {% endif %}
+  {% if org_may_administer() %}
   <form method="post" action="{{ url_for('admin_org_attention_route', item_id=item.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit">Re-evaluate routing now</button>
   </form>
+  {% endif %}
   <p class="empty">Re-evaluating never rewrites a prior resolution — it only records a new one below (TASK_ORG_RUNTIME_CONSISTENCY_FIXES §5).</p>
 
   <h3>Routing history (audit trail)</h3>
@@ -48,7 +50,7 @@
     </table>
   </div>
 
-  {% if item.status in ("OPEN", "ACKNOWLEDGED") %}
+  {% if item.status in ("OPEN", "ACKNOWLEDGED") and org_may_administer() %}
   <h3>Actions</h3>
   <form method="post" action="{{ url_for('admin_org_attention_acknowledge', item_id=item.id) }}" class="field-row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

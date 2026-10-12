@@ -1,0 +1,21 @@
+{# BANK_REVIEW_SORT_001 — a sortable header of the Review lists (To Reconcile
+   and Reconciled): Instrument, Date, Description, Amount only. A link (so
+   usable from the keyboard) to the same list with every filter and the
+   search kept: first click ascending, then it alternates. The server sorts
+   (after the filters, before the row limit). Import WITH CONTEXT: needs
+   `review_view` and `tab_args`. #}
+{% macro sort_th(label, key, cls='') -%}
+  {%- if tab_args is defined and review_view is defined -%}
+    {%- set active = tab_args.get('sort') == key %}
+    {%- set ascending = active and tab_args.get('dir') == 'asc' %}
+    {%- set args = dict(tab_args, sort=key, dir=('desc' if ascending else 'asc')) %}
+    <th{% if cls %} class="{{ cls }}"{% endif %}{% if active %} aria-sort="{{ 'ascending' if ascending else 'descending' }}"{% endif %}>
+      <a class="review-sort-link{% if active %} is-active{% endif %}" data-rf-busy data-sort="{{ key }}"
+         href="{{ url_for('bank_review', view=review_view, **args) }}"
+         title="Sort by {{ label }} ({{ 'descending' if ascending else 'ascending' }})">{{ label }}
+        {%- if active %} <span class="review-sort-arrow" aria-hidden="true">{{ '↑' if ascending else '↓' }}</span>{% endif %}</a>
+    </th>
+  {%- else -%}
+    <th{% if cls %} class="{{ cls }}"{% endif %}>{{ label }}</th>
+  {%- endif -%}
+{%- endmacro %}

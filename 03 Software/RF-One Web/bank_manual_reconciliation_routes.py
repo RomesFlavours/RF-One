@@ -21,6 +21,7 @@ from __future__ import annotations
 from flask import flash, jsonify, redirect, request, url_for
 
 from rfone_data_store.bank_reconciliation import manual_reconciliation
+from rfone_data_store.bank_reconciliation import why_catalog
 
 
 def _safe_return(target: str | None) -> str:
@@ -119,6 +120,89 @@ def register_bank_manual_reconciliation_routes(app, *, gate, SessionFactory, loa
                 db.rollback()
                 raise
         return jsonify(payload)
+
+    @app.route("/bank/whys/groups/create", methods=["POST"])
+    @gate
+    def bank_why_group_create():
+        """"+ New WHY Group" (BANK_WHY_GROUP_CREATE_001): create the WHY group
+        — or reuse the active one of that name — and nothing else. Answers
+        JSON for the dialog; never navigates."""
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                group, reused = why_catalog.create_group(db, name=request.form.get("name"))
+                payload = {"ok": True, "reused": reused, "group": {"id": group.id, "name": group.name},
+                           "message": "Existing WHY group found — selected." if reused else "WHY group created."}
+                db.commit()
+            except ValueError as exc:
+                db.rollback()
+                return jsonify({"ok": False, "error": str(exc)}), 400
+            except Exception:
+                db.rollback()
+                raise
+        return jsonify(payload)
+
+    @app.route("/bank/whos/create", methods=["POST"])
+    @gate
+    def bank_who_create():
+        """"+ New WHO" (BANK_RECONCILIATION_NEW_WHO_001): create the WHO — or
+        reuse the active WHO the name already is — in one database
+        transaction. Answers JSON for the dialog; never navigates, never
+        classifies a transaction and never creates a recognition rule."""
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                created = manual_reconciliation.create_who(db, name=request.form.get("name"))
+                who = created.occurrence
+                payload = {
+                    "ok": True, "reused": created.reused,
+                    "who": {"id": who.id, "name": who.canonical_name},
+                    "message": "Existing WHO found — selected." if created.reused else "WHO created.",
+                }
+                db.commit()
+            except ValueError as exc:
+                db.rollback()
+                return jsonify({"ok": False, "error": str(exc)}), 400
+            except Exception:
+                db.rollback()
+                raise
+        return jsonify(payload)
+
+    @app.route("/bank/transactions/who-why/bulk", methods=["POST"])
+    @gate
+    def bank_transactions_who_why_bulk():
+        """BANK_REVIEW_BULK_WHO_WHY_001 — one WHO + WHY for the transactions
+        ticked on To Reconcile: their explicit ids, each with the decision id
+        the page showed (`seen`, "id:decision"). All of them in ONE database
+        transaction, or none. Answers JSON for the dialog."""
+        require_csrf()
+        back = _safe_return(request.form.get("return_to"))
+        items = []
+        try:
+            for raw in request.form.getlist("seen"):
+                tx_text, _, seen_text = raw.partition(":")
+                items.append((int(tx_text), int(seen_text) if seen_text else None))
+        except ValueError:
+            return jsonify({"ok": False, "error": "The selection could not be read. Reload the page."}), 400
+        with SessionFactory() as db:
+            account = load_current_account(db)
+            try:
+                result = manual_reconciliation.reconcile_who_why_bulk(
+                    db, items=items, occurrence_id=_int("occurrence_id"), reason_id=_int("transaction_reason_id"),
+                    account_id=account.id if account is not None else None,
+                )
+                db.commit()
+            except ValueError as exc:
+                db.rollback()
+                return jsonify({"ok": False, "error": str(exc)}), 400
+            except Exception:
+                db.rollback()
+                raise
+        count = result.updated + result.already
+        flash(f"WHO {result.who_name} and WHY {result.why_name} recorded for {count} transaction"
+              f"{'' if count == 1 else 's'}" + (f" ({result.already} already had them)" if result.already else "")
+              + ". They are now under Reconciled.", "success")
+        return jsonify({"ok": True, "redirect": back, "updated": result.updated, "already": result.already})
 
     @app.route("/bank/transactions/<int:transaction_id>/who-why", methods=["POST"])
     @gate

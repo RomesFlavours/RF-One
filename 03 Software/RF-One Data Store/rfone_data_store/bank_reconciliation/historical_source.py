@@ -537,7 +537,7 @@ def discover_indirect_reference_candidates(session: Session) -> CandidateDiscove
     """
     result = CandidateDiscoveryResult()
     instruments = list(session.scalars(select(m.PaymentInstrument)))
-    registered = {lf for lf in (instrument_last_four(i) for i in instruments) if lf}
+    registered = {lf for lf in (instrument_last_four(i) for i in instruments if i.is_payment_source) if lf}
     known_institutions = {i.institution for i in instruments if i.institution}
     posting = dict(session.execute(
         select(m.FinancialTransaction.id, m.FinancialTransaction.posting_date)

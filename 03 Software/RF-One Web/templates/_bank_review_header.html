@@ -2,7 +2,11 @@
    (BANK_TWO_STAGE_REVIEW_001), shared by To Reconcile (bank_review.html) and
    Reconciled (bank_reconciliation.html in review mode). The tabs carry the
    same month / instrument / batch, so moving between them keeps the context.
-   Needs: review_view, queue_counts, tab_args, instruments, filter_*. #}
+   BANK_REVIEW_SEARCH_001 — the free search (`q`) is part of that context: it
+   is ANDed with the filters on the server, before the row limit, and kept by
+   the tabs, the filters and every action (they return to this full address).
+   Needs: review_view, queue_counts, tab_args, instruments, filter_*,
+   search, search_summary. #}
 <h2>Review transactions</h2>
 
 <nav class="review-tabs" aria-label="Review queues">
@@ -48,13 +52,59 @@
     {% if filter_batch_id %}
       <input type="hidden" name="batch_id" value="{{ filter_batch_id }}">
     {% endif %}
+    {% if search %}<input type="hidden" name="q" value="{{ search }}">{% endif %}
+    {% if tab_args.sort %}<input type="hidden" name="sort" value="{{ tab_args.sort }}"><input type="hidden" name="dir" value="{{ tab_args.dir }}">{% endif %}
     <button type="submit">Filter</button>
   </form>
+
+  {#- BANK_REVIEW_SEARCH_001 — Enter or Search runs it (no search while
+      typing); × clears only the search, the filters stay. -#}
+  <form method="get" class="compact-form filter-row review-search" action="{{ url_for('bank_review') }}" role="search">
+    <input type="hidden" name="view" value="{{ review_view }}">
+    {% if filter_year %}<input type="hidden" name="year" value="{{ filter_year }}">{% endif %}
+    {% if filter_month %}<input type="hidden" name="month" value="{{ filter_month }}">{% endif %}
+    {% if filter_payment_instrument_id %}<input type="hidden" name="payment_instrument_id" value="{{ filter_payment_instrument_id }}">{% endif %}
+    {% if filter_batch_id %}<input type="hidden" name="batch_id" value="{{ filter_batch_id }}">{% endif %}
+    {% if tab_args.sort %}<input type="hidden" name="sort" value="{{ tab_args.sort }}"><input type="hidden" name="dir" value="{{ tab_args.dir }}">{% endif %}
+    <div class="field-row review-search-field">
+      <label for="review-search">Search transactions</label>
+      <span class="review-search-box">
+        <button type="submit">Search</button>
+        <input type="text" id="review-search" name="q" value="{{ search or '' }}" placeholder="Description, WHO, WHY, Source" autocomplete="off">
+        {% if search %}<a class="review-search-clear" data-rf-busy aria-label="Clear search" title="Clear search"
+           href="{{ url_for('bank_review', view=review_view, year=filter_year, month=filter_month, payment_instrument_id=filter_payment_instrument_id, batch_id=filter_batch_id, sort=tab_args.sort, dir=tab_args.dir) }}">&times;</a>{% endif %}
+      </span>
+    </div>
+  </form>
+  {% if search_summary %}
+    {% if search_summary.count %}
+      <p class="review-search-result" data-search-count="{{ search_summary.count }}">
+        <strong>{{ search_summary.count }}</strong> transaction{{ '' if search_summary.count == 1 else 's' }} found for &ldquo;{{ search }}&rdquo;
+        &middot; Total:
+        {% for t in search_summary.totals %}<strong data-search-total="{{ t.currency or 'none' }}">{{ "%.2f"|format(t.total_minor / 100) }}</strong> {{ t.currency or '(currency not set)' }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
+      </p>
+    {% else %}
+      <p class="empty review-search-result" data-search-count="0">No transactions match your search</p>
+    {% endif %}
+  {% endif %}
+  <style>
+    .review-search { margin-top: .4rem; }
+    .review-search-field { flex: 1 1 22rem; }
+    .review-search-box { display: flex; align-items: center; gap: .3rem; }
+    .review-search-box input { flex: 1; min-width: 0; margin: 0; }
+    .review-search-box button { width: auto; margin: 0; flex: none; }
+    .review-search-clear { text-decoration: none; font-size: 1.2rem; line-height: 1; padding: 0 .3rem; }
+    .review-search-result { margin: .4rem 0 0; }
+    /* BANK_REVIEW_SORT_001 — a sortable header reads as the header it was. */
+    .review-sort-link { color: inherit; text-decoration: none; cursor: pointer; }
+    .review-sort-link:hover, .review-sort-link:focus-visible { text-decoration: underline; }
+    .review-sort-arrow { font-weight: 700; }
+  </style>
 
   {% if filter_batch_id %}
     <p class="muted">
       Showing only batch #{{ filter_batch_id }}{% if filter_batch %} &mdash; <code>{{ filter_batch.original_file_name }}</code>{% endif %}.
-      <a href="{{ url_for('bank_review', view=review_view, year=filter_year, month=filter_month, payment_instrument_id=filter_payment_instrument_id) }}">Show every batch</a>
+      <a href="{{ url_for('bank_review', view=review_view, year=filter_year, month=filter_month, payment_instrument_id=filter_payment_instrument_id, q=search or None, sort=tab_args.sort, dir=tab_args.dir) }}">Show every batch</a>
     </p>
   {% endif %}
   {% set shown = queue_counts[review_view] %}

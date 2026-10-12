@@ -212,7 +212,7 @@ def main() -> int:
             )
             check(
                 "a Who preserves its type and canonical_name",
-                us_foods.occurrence_type_id == supplier_type.id and us_foods.canonical_name == "US Foods",
+                us_foods.occurrence_type_id == supplier_type.id and us_foods.canonical_name == "US FOODS",
             )
 
             # --- the full chain -------------------------------------------
@@ -257,11 +257,11 @@ def main() -> int:
             check(
                 "Who search matches the name",
                 [o.canonical_name for o in classification_service.list_occurrences(s, search="us foo")]
-                == ["US Foods"],
+                == ["US FOODS"],
             )
             check(
                 "Who search also matches the Who's type",
-                "US Foods" in [
+                "US FOODS" in [
                     o.canonical_name for o in classification_service.list_occurrences(s, search="supplier")
                 ],
             )
@@ -332,7 +332,7 @@ def main() -> int:
             )
             check(
                 "the decision also snapshots the Who and Why by value",
-                decision.occurrence_name_snapshot == "US Foods"
+                decision.occurrence_name_snapshot == "US FOODS"
                 and decision.transaction_reason_name_snapshot == "Supplier invoice payment",
             )
 

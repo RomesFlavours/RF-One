@@ -32,7 +32,7 @@
       <tbody>
         {% for batch in rows %}
           {% set state = batch_states.get(batch.id) %}
-          <tr>
+          <tr id="batch-{{ batch.id }}">
             <td data-label="File" class="col-description">{{ batch.original_file_name }}</td>
             <td data-label="Format">{{ batch.detected_format }}</td>
             <td data-label="Source">
@@ -333,4 +333,17 @@
 {% if import_review and staged_token %}
   {% include "_bank_import_review_modal.html" %}
 {% endif %}
+<script>
+// BANK_EXPORT_ACTIONABLE_BLOCKERS_001 — a link to one file (#batch-<id>, e.g.
+// "Fix this file" on the Monthly Accountant Export) opens the source-file
+// list it lives in and shows that row.
+(function () {
+  var row = /^#batch-\d+$/.test(location.hash) && document.querySelector(location.hash);
+  if (!row) { return; }
+  var holder = row.closest("details");
+  if (holder) { holder.open = true; }
+  row.classList.add("is-target");
+  row.scrollIntoView({ block: "center" });
+})();
+</script>
 {% endblock %}

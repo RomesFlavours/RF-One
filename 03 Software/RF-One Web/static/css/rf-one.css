@@ -830,3 +830,115 @@ body.modal-open { overflow: hidden; }
 .why-create-actions { justify-content: flex-start; }
 .who-rule-why-tools { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-top: .45rem; }
 .who-rule-why-tools .ww-create-open { flex: none; }
+
+/* Review Transactions — For Whom under the Source (BANK_REVIEW_FOR_WHOM_001).
+   The Source is provenance (read-only); For Whom is the beneficiary LLC. */
+.col-source .source-name { display: block; font-weight: 600; }
+.for-whom-form { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; margin: .25rem 0 0; }
+.for-whom-label { font-size: .72rem; color: var(--muted); margin: 0; white-space: nowrap; }
+.for-whom-form select { margin: 0; padding: .15rem .3rem; font-size: .8rem; width: auto; max-width: 12rem; }
+.for-whom-form button { margin: 0; padding: .1rem .5rem; font-size: .78rem; }
+
+/* Monthly Accountant Export (BANK_EXPORT_ACTIONABLE_BLOCKERS_001): status
+   summary, blocker groups with their action, details only on request. */
+.export-filter { margin: 0; }
+.export-status-head { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1rem; }
+.export-status-head h3 { margin: 0; }
+.export-verdict { font-size: .85rem; letter-spacing: .03em; }
+.export-figures { display: flex; flex-wrap: wrap; gap: .4rem 1.6rem; margin: .7rem 0 0; }
+.export-figures div { display: flex; flex-direction: column; }
+.export-figures dt { font-size: .8rem; color: var(--muted, #6b6f5e); }
+.export-figures dd { margin: 0; font-size: 1.15rem; font-weight: 700; }
+.export-download { margin-top: .9rem; }
+.export-groups { display: grid; gap: .6rem; }
+.export-group { margin: 0; }
+.export-group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem 1rem; }
+.export-group-head h4 { margin: 0; }
+.export-source-list li { margin: .3rem 0; overflow-wrap: anywhere; }
+.export-show { font-size: .9rem; }
+.export-details summary { cursor: pointer; font-weight: 600; }
+tr.is-target > td { background: #fdf3e2; }
+
+/* Classification: knowledge first, then the work queue
+   (BANK_CLASSIFICATION_KNOWLEDGE_QUEUE_001). */
+.classification-counts { display: flex; flex-wrap: wrap; gap: .4rem 1.4rem; margin: .2rem 0 .8rem; }
+.classification-counts a { text-decoration: none; color: var(--olive-900); }
+.classification-counts strong { margin-left: .25rem; }
+.classification-search { margin: .4rem 0 .6rem; }
+.manual-only-items li { margin: .25rem 0; }
+/* WHO Rules stay visible but compact: the list scrolls inside its card. */
+.who-rules-scroll { max-height: 24rem; overflow-y: auto; }
+.who-rules-table thead th { position: sticky; top: 0; z-index: 1; }
+.who-rule-actions { display: flex; flex-wrap: nowrap; gap: .4rem; align-items: center; }
+.who-rule-actions form { margin: 0; }
+.who-rule-actions .btn, .who-rule-actions button { width: auto; margin: 0; padding: .25rem .7rem; font-size: .78rem; line-height: 1.3; }
+
+/* Bank > AI Rules (BANK_AI_RULES_001, BANK_AI_RULES_002). */
+.ai-rules-textarea { width: 100%; box-sizing: border-box; font: inherit; }
+.ai-rules-actions { display: flex; align-items: center; gap: .6rem 1rem; margin-top: .5rem; flex-wrap: wrap; }
+.ai-rules-actions button, .ai-rules-period button { width: auto; margin: 0; }
+.ai-rules-period { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .75rem 1rem; margin: .5rem 0 1rem; }
+.ai-rules-period label { display: flex; flex-direction: column; gap: .2rem; }
+.ai-rules-list { max-height: 70vh; overflow-y: auto; }
+.ai-rules-table td { vertical-align: top; }
+.ai-rules-table thead th { position: sticky; top: 0; z-index: 1; }
+.ai-rules-row-action button { width: auto; margin: 0; padding: .25rem .7rem; font-size: .78rem; white-space: nowrap; }
+.ai-rules-drafts li { margin: .4rem 0; }
+.ai-rules-drafts li button { width: auto; margin: 0 .5rem 0 0; padding: .2rem .6rem; font-size: .78rem; }
+.ai-rules-drafts .cell-note { display: block; }
+.ai-rule-panel.org-modal-panel { width: min(92vw, 1400px); max-width: none; box-sizing: border-box; }
+.ai-rule-origin { border: 1px solid var(--olive-300); border-radius: var(--radius); padding: .6rem .8rem;
+  background: var(--olive-050); margin-bottom: .8rem; }
+.ai-rule-origin p { margin: .15rem 0; }
+.ai-rule-label { font-weight: 700; color: var(--olive-900); }
+.ai-rule-panel label[for="ai-rule-text"] { font-weight: 700; display: block; margin-bottom: .3rem; }
+.ai-rule-wait { display: flex; align-items: center; gap: .6rem; margin: .8rem 0; font-weight: 600; }
+.ai-rule-spinner { width: 22px; height: 22px; border-radius: 50%; border: 3px solid rgba(0,0,0,.15);
+  border-top-color: rgba(0,0,0,.6); animation: ai-rule-spin .8s linear infinite; flex: none; }
+@keyframes ai-rule-spin { to { transform: rotate(360deg); } }
+.ai-rule-result { margin-top: .8rem; }
+.ai-rule-result.is-stale .ai-rule-items, .ai-rule-result.is-stale .ai-rule-summary { opacity: .45; }
+.ai-rule-stale { background: #fdf3e2; color: #8a5a10; border: 1px solid #ecd6a5; border-radius: var(--radius);
+  padding: .5rem .7rem; margin-bottom: .6rem; }
+.ai-rule-summary { font-weight: 600; }
+.ai-rule-items td { vertical-align: top; }
+.ai-rule-items tr.ai-rule-origin-row td { background: #eef5e8; }
+.ai-rule-option { display: flex; align-items: center; gap: .4rem; margin: .5rem 0; font-weight: 600; }
+.ai-rule-option input { margin: 0; width: auto; }
+.ai-rule-new-who { border: 1px solid var(--olive-300); border-radius: var(--radius); padding: .6rem .8rem; margin: .6rem 0; background: var(--olive-050); }
+.ai-rule-new-who button { width: auto; margin: 0 .6rem .3rem 0; }
+/* AI Rule window: WHO / WHY pick lists (BANK_AI_RULES_004), side by side, stacked on small screens. */
+.ai-rule-pickers { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .8rem; margin: .6rem 0; }
+.ai-rule-picker { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.ai-rule-picker label { font-weight: 700; }
+.ai-rule-picker-search { width: 100%; box-sizing: border-box; padding: .4rem .55rem; border: 1px solid var(--olive-300); border-radius: var(--radius); font: inherit; }
+.ai-rule-picker-list { max-height: 11rem; overflow-y: auto; border: 1px solid var(--olive-150); border-radius: var(--radius); background: var(--surface); }
+.ai-rule-pick { display: block; width: 100%; margin: 0; text-align: left; background: var(--surface); color: var(--ink); border: none; border-bottom: 1px solid var(--olive-150); border-radius: 0; padding: .3rem .6rem; font-size: .82rem; font-weight: 400; cursor: pointer; }
+.ai-rule-pick:hover, .ai-rule-pick:focus { background: var(--olive-050); color: var(--ink); outline: none; box-shadow: inset 3px 0 0 var(--olive-900); }
+@media (max-width: 700px) { .ai-rule-pickers { grid-template-columns: 1fr; } }
+#ai-rule-interpretation { white-space: pre-line; }
+/* AI Rules: selection, scopes, operative rules (BANK_AI_RULES_006). */
+.ai-selection-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin: .4rem 0; }
+.ai-selection-bar button { width: auto; margin: 0; padding: .25rem .7rem; font-size: .8rem; }
+.ai-rules-table .col-select { width: 2rem; text-align: center; }
+.ai-rules-table .col-select input { width: auto; margin: 0; }
+.visually-hidden-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ai-rule-scopes { border: 1px solid var(--olive-300); border-radius: var(--radius); padding: .4rem .8rem .6rem; margin: .6rem 0; }
+.ai-rule-scopes legend { font-weight: 700; padding: 0 .3rem; }
+.ai-rule-scopes .ai-rule-option { margin: .25rem 0; font-weight: 600; flex-wrap: wrap; }
+.ai-rule-applied { background: #e7f3ea; border: 1px solid #bcdcc6; border-radius: var(--radius); padding: .5rem .7rem; margin: .6rem 0; }
+.ai-rule-plan { font-weight: 600; color: var(--olive-900); }
+.ai-rule-panel .modal-header { display: flex; align-items: center; gap: .6rem; }
+.ai-operative-actions { display: flex; gap: .4rem; align-items: center; flex-wrap: nowrap; }
+.ai-operative-actions form { margin: 0; }
+.ai-operative-actions button { width: auto; margin: 0; padding: .25rem .7rem; font-size: .78rem; }
+
+/* Local Bank environment bar ("Avvia Bank"): PC, database, code, AI mode.
+   A test copy is shown in a strong warning colour. */
+.local-env { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0 0 12px; padding: 6px 12px; border-radius: 6px;
+  background: #eef2f6; border: 1px solid #c9d3de; color: #2c3a48; font-size: 12px; line-height: 1.5; }
+.local-env b { font-weight: 600; margin-right: 4px; }
+.local-env span { overflow-wrap: anywhere; }
+.local-env-test { background: #fff1e0; border: 2px solid #d9480f; color: #7a2a05; }
+.local-env-flag { flex-basis: 100%; font-size: 14px; letter-spacing: .02em; }
+.ai-operative-table tr.ai-rule-just-saved td { background: #e7f3ea; }

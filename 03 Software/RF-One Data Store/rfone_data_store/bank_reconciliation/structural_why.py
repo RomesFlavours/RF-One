@@ -376,6 +376,8 @@ def load_registry(session: Session) -> Registry:
     instruments = {i.id: i for i in session.scalars(select(m.PaymentInstrument))}
     registered: dict[str, InstrumentInfo] = {}
     for instrument in instruments.values():
+        if not instrument.is_payment_source:
+            continue  # a purchase platform is never an own account (BANK_PURCHASE_PLATFORM_SOURCE_001)
         last_four = instrument_last_four(instrument)
         if last_four:
             registered.setdefault(last_four, _info(instrument))

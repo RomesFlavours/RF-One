@@ -1,4 +1,7 @@
 {% import "_org_macros.html" as org_macros %}
+{#- Change controls only for administrators (ACCOUNT_ITEM_ACCESS_001); the
+    server refuses the changes to anyone else either way. #}
+{% set may_administer = org_may_administer() %}
 <p class="empty">{{ position.description or "" }}
   {% if position.parent_position %} — reports to <a href="{{ url_for('admin_org_position_detail', position_id=position.parent_position_id) }}">{{ position.parent_position.name }}</a>{% endif %}
 </p>
@@ -11,7 +14,7 @@
     until {{ active_coverage.valid_to or "(open-ended)" }}
   {% endif %}
 </p>
-<p><a href="{{ url_for('admin_org_position_interview', position_id=position.id) }}" class="btn btn-secondary">DEFINE / REVIEW SCOPE WITH COGNITO (ADMIN / TEST ONLY)</a></p>
+{% if may_administer %}<p><a href="{{ url_for('admin_org_position_interview', position_id=position.id) }}" class="btn btn-secondary">DEFINE / REVIEW SCOPE WITH COGNITO (ADMIN / TEST ONLY)</a></p>{% endif %}
 
 <div class="card">
   <h2>Scope</h2>
@@ -28,12 +31,14 @@
       </tbody>
     </table>
   </div>
+  {% if may_administer %}
   <form method="post" action="{{ url_for('admin_org_position_scope_new', position_id=position.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if in_modal %}<input type="hidden" name="next" value="{{ url_for('admin_organization') }}#position-{{ position.id }}">{% endif %}
     {{ org_macros.scope_field(scope_kinds, restaurants, legal_entities, phases, locations) }}
     <button type="submit">Add Scope</button>
   </form>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -50,6 +55,7 @@
       </tbody>
     </table>
   </div>
+  {% if may_administer %}
   <form method="post" action="{{ url_for('admin_org_position_assignment_new', position_id=position.id) }}" class="field-row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if in_modal %}<input type="hidden" name="next" value="{{ url_for('admin_organization') }}#position-{{ position.id }}">{% endif %}
@@ -60,6 +66,7 @@
     <input type="datetime-local" name="valid_to" placeholder="valid_to (optional)">
     <button type="submit">Assign Occupant</button>
   </form>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -80,6 +87,7 @@
       </tbody>
     </table>
   </div>
+  {% if may_administer %}
   <form method="post" action="{{ url_for('admin_org_position_coverage_new', position_id=position.id) }}" class="field-row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if in_modal %}<input type="hidden" name="next" value="{{ url_for('admin_organization') }}#position-{{ position.id }}">{% endif %}
@@ -95,6 +103,7 @@
     <input type="datetime-local" name="valid_to" placeholder="valid_to (optional)">
     <button type="submit">Create Coverage</button>
   </form>
+  {% endif %}
   <p class="empty">Fill exactly one of the two delegate selectors.</p>
 </div>
 
@@ -112,11 +121,13 @@
             <td>{{ "yes" if b.is_active else "no" }}</td>
             <td>
               {% if b.is_active %}
+              {% if may_administer %}
               <form method="post" action="{{ url_for('admin_org_position_backup_deactivate', position_id=position.id, backup_id=b.id) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% if in_modal %}<input type="hidden" name="next" value="{{ url_for('admin_organization') }}#position-{{ position.id }}">{% endif %}
                 <button type="submit" style="font-size:.78rem;">Deactivate</button>
               </form>
+              {% endif %}
               {% endif %}
             </td>
           </tr>
@@ -126,6 +137,7 @@
       </tbody>
     </table>
   </div>
+  {% if may_administer %}
   <form method="post" action="{{ url_for('admin_org_position_backup_new', position_id=position.id) }}" class="field-row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if in_modal %}<input type="hidden" name="next" value="{{ url_for('admin_organization') }}#position-{{ position.id }}">{% endif %}
@@ -134,11 +146,14 @@
     </select>
     <button type="submit">Add Backup Position</button>
   </form>
+  {% endif %}
+  {% if may_administer %}
   <form method="post" action="{{ url_for('admin_org_position_backup_required_toggle', position_id=position.id) }}" class="field-row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if in_modal %}<input type="hidden" name="next" value="{{ url_for('admin_organization') }}#position-{{ position.id }}">{% endif %}
     <label><input type="checkbox" name="backup_required" {{ "checked" if position.backup_required }} onchange="this.form.submit()"> This Position requires at least one active Backup Position (flagged by the Organizational Coverage Check if missing)</label>
   </form>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -154,7 +169,7 @@
             <td>{{ scope_display(o) if o.scope_type else "(uses this Position's own Scope)" }}</td>
           </tr>
         {% else %}
-          <tr><td colspan="5" class="empty">This Position owns no Process yet. <a href="{{ url_for('admin_org_process_ownerships') }}">Add one</a>.</td></tr>
+          <tr><td colspan="5" class="empty">This Position owns no Process yet.{% if may_administer and may_use_item('ORGANIZATION', 'process_ownerships') %} <a href="{{ url_for('admin_org_process_ownerships') }}">Add one</a>.{% endif %}</td></tr>
         {% endfor %}
       </tbody>
     </table>

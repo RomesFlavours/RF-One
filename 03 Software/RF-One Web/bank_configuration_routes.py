@@ -24,9 +24,10 @@ own collaborators; this module never imports `app.py`.
 from __future__ import annotations
 
 
-from flask import flash, redirect, render_template, request, url_for
+from flask import flash, jsonify, redirect, render_template, request, url_for
 
 from rfone_data_store.bank_reconciliation import configuration as config_service
+from rfone_data_store.bank_reconciliation import who_merge
 
 
 def _int(name: str) -> int | None:
@@ -92,6 +93,10 @@ def register_bank_configuration_routes(
         receives the session and returns what `success` turns into the
         feedback sentence(s)."""
         require_csrf()
+        # BANK_WHO_EDIT_SAVE_001 — a modal saving with fetch gets JSON: a
+        # refusal is shown INSIDE the modal (values kept), never only as a
+        # message on a reloaded page.
+        wants_json = request.headers.get("X-Requested-With") == "fetch"
         with SessionFactory() as db:
             try:
                 result = action(db)
@@ -99,10 +104,14 @@ def register_bank_configuration_routes(
                 db.commit()
             except ValueError as exc:
                 db.rollback()
+                if wants_json:
+                    return jsonify({"ok": False, "error": str(exc)}), 400
                 flash(str(exc), "error")
                 return _back(section)
         for message in ([messages] if isinstance(messages, str) else messages):
             flash(message, "info")
+        if wants_json:
+            return jsonify({"ok": True, "redirect": url_for("bank_configuration", _anchor=section)})
         return _back(section)
 
     @app.route("/bank/configuration")
@@ -157,6 +166,40 @@ def register_bank_configuration_routes(
             reason_ids=_ints("why_ids"), default_reason_id=_int("default_why_id"),
             reporting_entity_ids=_ints("entity_ids"), rules=_rules(),
         ), lambda who: f"WHO {who.canonical_name!r} saved.")
+
+    # BANK_WHO_MERGE_001 — merge two WHO: a preview (writes nothing), then
+    # the merge itself, one database transaction, back to the WHO section.
+    @app.route("/bank/configuration/who/merge/preview", methods=["POST"])
+    @gate
+    def bank_configuration_who_merge_preview():
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                return jsonify(who_merge.preview(db, keep_id=_int("keep_id"), absorb_id=_int("absorb_id")))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
+    @app.route("/bank/configuration/who/merge", methods=["POST"])
+    @gate
+    def bank_configuration_who_merge():
+        manual = request.form.get("manual_only")
+
+        def action(db):
+            account = load_current_account(db)
+            return who_merge.merge(
+                db, keep_id=_int("keep_id"), absorb_id=_int("absorb_id"), default_reason_id=_int("default_why"),
+                manual_only=None if manual in (None, "") else manual == "1",
+                account_id=account.id if account is not None else None)
+
+        def success(result):
+            moved = result.moved
+            return (f"WHO {result.absorb_name!r} merged into {result.keep_name!r}: "
+                    f"{moved.get('decisions', 0)} decision(s), {moved.get('rules', 0)} recognition rule(s), "
+                    f"{moved.get('aliases', 0)} alias(es), {moved.get('possible_why', 0)} possible WHY moved"
+                    + (f"; {result.rules_deactivated} duplicate rule(s) kept inactive" if result.rules_deactivated else "")
+                    + f". {result.absorb_name!r} is now inactive and an alias of {result.keep_name!r}.")
+
+        return _apply("cp-who", action, success)
 
     @app.route("/bank/configuration/who", methods=["POST"])
     @gate

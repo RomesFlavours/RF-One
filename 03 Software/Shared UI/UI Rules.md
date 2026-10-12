@@ -51,6 +51,24 @@ RF-One > Tips > Clover Acquisition        (when opened from the Tips tab)
 - Implementation: the `breadcrumb(items)` macro in `templates/_nav_macros.html`, identical in RF-One Web and Tips, plus the `.breadcrumb` style in each app's `rf-one.css` (identical rules, `›` separator). The Tips `base.html` builds RF-One > Tips > *tab* automatically. A detail page adds its levels by setting `crumbs`.
 - Tips follows the Compensation layout (TIPS_NAVIGATION_STANDARD_001): the header names RF-One only (never "RF-One · Tips") and links to RF-One Home; the breadcrumb comes first; the Tips menu follows, in this order — Clover Acquisition, Calculate Tips, Saved Periods, Payment Control, Configuration (always last). A contextual page is not a menu entry: Explain / Audit Host Tips is opened from Calculate Tips and reads RF-One > Tips > Calculate Tips > Explain / Audit Host Tips.
 
+## 5. After a row action, the person is back on that row
+
+Product Owner standard UI_ROW_RETURN_001 (2026-10-10). When an action is started from a button (or a select) on a list row — Edit, Rule, Disable, Confirm… — the person ends on **the same record, at the same place on the screen**, never at the top of the list.
+
+- **Before** the modal opens or the action runs, the page keeps: the record's stable identity (never its index), its position on screen and in its own scroll container, and the list's search, filters, sort and page.
+- **After** Save, Confirm, Cancel, Esc or closing the modal: the list context is kept, the view returns to that record with the same visual position, and focus goes back to the button that was used, if it is still shown. This holds when the save reloads the page too.
+- A record that **moves** in the sort is shown in its new place; the sort stays correct.
+- A record that **disappears** (deleted, merged, no longer matching the filters): the next remaining row takes its place, else the previous one; an empty list shows its empty state with filters and search unchanged. Filters are never changed to bring a record back.
+- A **refusal** inside a modal keeps the modal open, with the values and the reason. The return happens when the modal is closed.
+- **Multiple selections** follow their own existing rules; nothing new is selected and no hidden selection is kept against those rules.
+- The return belongs to **that action only**. A normal opening of a page (a link, a search, another tab or session) never restores an old position.
+- The busy cursor and spinner (`rf-one-busy.js`) are unchanged.
+
+Implementation: `static/js/rf-one-row-return.js` (RF-One Web), one implementation for every list.
+- A page opts in by marking each row with a stable `data-rr-key`, for example `<tr data-rr-key="who:39">`. A client-side search box whose value must survive a reload carries `data-rr-state` and an `id`. Server-side search, filters, sort and page stay in the URL, which the page's own redirect keeps.
+- The record travels in `sessionStorage` (this tab only). It is used once, by the next load of the same page within a minute of leaving it.
+- The Bank menu macro (`_bank_macros.html` → `module_nav`) loads the script on every Bank page.
+
 ---
 
 ## Local days (companion rule, UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001)
@@ -71,6 +89,9 @@ Implementation: `rfone_data_store/local_calendar.py`.
 | 2 Surname I. | Clover Acquisition; saved-period validation; Bank cardholder list and "changed by"; trainer student list | every operational table; Host Audit CSV | trainer student list and breadcrumb |
 | 3 Inline action | — | Sync Now on the Clover Acquisition tab | — |
 | 4 Breadcrumb | every sub-page | every page | every page |
+| 5 Row return | Bank: Configuration (WHAT, WHY, WHO, Entity); Source (Sources, source profiles); Rules (General Rules, WHO Rules, To classify, Manual Only, pattern suggestions); Review Transactions (To Reconcile, Reconciled) | — (not yet aligned) | — (not yet aligned) |
+
+Rule 5 is defined for every module. Lists outside Bank (Tips, Training, Compensation, Organization, Selection…) adopt it when they are next worked on, by loading `rf-one-row-return.js` and marking their rows. Within Bank, the Import and Review lists (batches, import files) and Monthly Export are not marked yet.
 
 **Deliberately kept, with a reason:**
 

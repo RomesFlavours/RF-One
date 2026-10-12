@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_nav_macros.html" import breadcrumb %}
 {% import "_bank_macros.html" as bank %}
+{% import "_bank_review_sort.html" as sorting with context %}
 {% block page_title %}Bank Reconciliation · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
@@ -29,7 +30,10 @@
     text-transform: uppercase; letter-spacing: .03em; padding: .45rem .5rem; white-space: nowrap; }
   .rp-table td { padding: .35rem .5rem; border-top: 1px solid #e6e8dc; vertical-align: middle; }
   .rp-table tr.rp-highlight td { background: #fff7d6; transition: background .6s; }
-  .rp-account { white-space: nowrap; width: 11rem; }
+  .rp-account { width: 12rem; }
+  .rp-account-name { display: block; white-space: nowrap; }
+  .rp-forwhom { display: flex; align-items: center; gap: .3rem; margin-top: .2rem; }
+  .rp-forwhom-label { font-size: .72rem; color: var(--muted, #6b6f5e); white-space: nowrap; }
   .rp-date { white-space: nowrap; width: 6.2rem; font-variant-numeric: tabular-nums; }
   .rp-desc { min-width: 17rem; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .82rem; }
   .rp-amount { text-align: right; white-space: nowrap; width: 7rem; font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -84,21 +88,20 @@
 </style>
 
 {% include "_bank_review_header.html" %}
-{% include "_bank_who_rule_result.html" %}
 
 <div class="rp-table-wrap">
   <table class="rp-table" id="rp-table">
     <thead>
       <tr>
-        <th class="rp-x"></th><th>Account / Card</th><th>Date</th><th>Description</th><th class="rp-amount">Amount</th>
-        <th>WHO</th><th>WHY</th><th>WHAT</th><th>For whom</th><th></th><th>Status</th>
+        <th class="rp-x"></th>{{ sorting.sort_th('Account / Card &middot; For Whom'|safe, 'instrument') }}{{ sorting.sort_th('Date', 'date') }}{{ sorting.sort_th('Description', 'description') }}{{ sorting.sort_th('Amount', 'amount', 'rp-amount') }}
+        <th>WHO</th><th>WHY</th><th>WHAT</th><th></th><th>Status</th>
       </tr>
     </thead>
     <tbody id="rp-body">
       {%- for row in view.rows %}
-      <tr id="t-{{ row.id }}" data-row-id="{{ row.id }}"{% if row.who_id %} data-who="{{ row.who_id }}"{% endif %}{% if row.why_id %} data-why="{{ row.why_id }}"{% endif %}{% if row.what_id %} data-what="{{ row.what_id }}" data-source="{{ row.destination_source }}"{% endif %}{% if row.who_source %} data-who-source="{{ row.who_source }}"{% endif %}{% if row.standard_id %} data-standard="{{ row.standard_id }}"{% endif %} data-status="{{ row.status }}"{% if row.default_for_whom is not none %} data-default="{{ row.default_for_whom }}"{% endif %} data-amount="{{ row.amount_minor }}"{% if row.memo %} data-memo="{{ row.memo }}"{% endif %}>
+      <tr id="t-{{ row.id }}" data-row-id="{{ row.id }}" data-rr-key="txn:{{ row.id }}"{% if row.who_id %} data-who="{{ row.who_id }}"{% endif %}{% if row.why_id %} data-why="{{ row.why_id }}"{% endif %}{% if row.what_id %} data-what="{{ row.what_id }}" data-source="{{ row.destination_source }}"{% endif %}{% if row.who_source %} data-who-source="{{ row.who_source }}"{% endif %}{% if row.standard_id %} data-standard="{{ row.standard_id }}"{% endif %} data-status="{{ row.status }}"{% if row.default_for_whom is not none %} data-default="{{ row.default_for_whom }}"{% endif %} data-amount="{{ row.amount_minor }}"{% if row.memo %} data-memo="{{ row.memo }}"{% endif %}>
 <td class="rp-x"><button type="button" class="rp-expand" data-action="expand" aria-expanded="false" aria-label="Expand">&#9656;</button></td>
-<td class="rp-account">{{ row.account }}</td><td class="rp-date" title="{{ row.date }}">{{ row.date_label }}</td><td class="rp-desc">{{ row.description }}</td><td class="rp-amount{{ ' rp-in' if row.amount_minor > 0 else '' }}">{{ '+' if row.amount_minor > 0 else '−' }}{{ '{:,.2f}'.format((row.amount_minor|abs) / 100) }}</td>
+<td class="rp-account"><span class="rp-account-name">{{ row.account }}</span>{#- BANK_REVIEW_FOR_WHOM_001: For Whom under the Source; choosing it saves it. -#}<span class="rp-forwhom">{% if row.split %}<span class="rp-split">For Whom: split</span>{% else %}<label class="rp-forwhom-label" for="rp-for-whom-{{ row.id }}">For Whom:</label><select id="rp-for-whom-{{ row.id }}" data-action="for-whom" aria-label="For Whom" data-saved="{{ row.for_whom if row.for_whom is not none else '' }}">{% if row.for_whom is none %}<option value="" selected>Choose…</option>{% endif %}{% for entity in view.entities %}{% if entity.active or entity.id == row.for_whom %}<option value="{{ entity.id }}"{{ ' selected' if entity.id == row.for_whom else '' }}>{{ entity.name }}</option>{% endif %}{% endfor %}</select>{% endif %}</span></td><td class="rp-date" title="{{ row.date }}">{{ row.date_label }}</td><td class="rp-desc">{{ row.description }}</td><td class="rp-amount{{ ' rp-in' if row.amount_minor > 0 else '' }}">{{ '+' if row.amount_minor > 0 else '−' }}{{ '{:,.2f}'.format((row.amount_minor|abs) / 100) }}</td>
 {%- set who_mark -%}{% if row.who_source == 'standard' %}<span class="rp-src rp-src-standard" title="From an approved Standard">standard</span>{% elif row.who_source == 'auto' %}<span class="rp-src" title="Recognized automatically — not approved">suggested</span>{% else %}<span class="rp-src rp-src-person" title="Chosen by a person">&#10003;</span>{% endif %}{%- endset -%}
 {#- BANK_MANUAL_WHO_WHY_001 — Reconciled shows WHO, WHY and WHAT on the row;
     WHY (and WHO) are edited in the same "Select WHO / WHY" popup as To
@@ -107,12 +110,11 @@
 <td class="rp-who">{% if row.who %}<span class="rp-who-name">{{ row.who }}{{ who_mark }}</span>{% elif row.own_account %}<span class="rp-who-name" title="Own-account movement: no external WHO applies">{{ row.own_account }}</span>{% else %}<span class="rp-who-none">No WHO yet</span>{% endif %}<button type="button" class="btn-secondary rp-btn rp-edit who-picker-open" title="Change the WHO of this transaction" aria-label="Change WHO" data-transaction-id="{{ row.id }}" data-transaction-label="{{ picker_label }}" data-current-occurrence-id="{{ row.who_id or '' }}" data-current-reason-id="{{ row.why_id or '' }}">&#9998;</button></td>
 <td class="rp-why" data-cell="why">{% if row.why %}<span class="rp-why-name">{{ row.why }}</span>{% else %}<span class="rp-who-none">WHY needed</span>{% endif %}<button type="button" class="btn-secondary rp-btn rp-edit who-picker-open" title="Choose or create the WHY of this transaction" aria-label="Edit WHY" data-transaction-id="{{ row.id }}" data-transaction-label="{{ picker_label }}" data-current-occurrence-id="{{ row.who_id or '' }}" data-current-reason-id="{{ row.why_id or '' }}">&#9998; WHY</button></td>
 <td class="rp-what" data-cell="what">{{ row.what or '—' }}</td>
-<td class="rp-forwhom">{% if row.split %}<span class="rp-split">Split</span>{% else %}<select data-action="for-whom" aria-label="For whom" data-saved="{{ row.for_whom if row.for_whom is not none else '' }}">{% if row.for_whom is none %}<option value="" selected>Choose…</option>{% endif %}{% for entity in view.entities %}{% if entity.active or entity.id == row.for_whom %}<option value="{{ entity.id }}"{{ ' selected' if entity.id == row.for_whom else '' }}>{{ entity.name }}</option>{% endif %}{% endfor %}</select>{% endif %}</td>
-<td class="rp-actions-cell">{% if not row.split %}{% set done = row.status in ('Confirmed', 'Automatic') %}{% set incomplete = not (row.who and row.why) %}{% if done %}<button type="button" class="btn-secondary rp-btn" data-action="reopen" title="Withdraw this acceptance">Reopen</button>{% endif %}<button type="button" class="rp-btn" data-action="confirm"{% if done %} hidden{% endif %}{% if incomplete %} disabled{% endif %}>Confirm</button><button type="button" class="btn-secondary rp-btn" data-action="standard"{% if done %} hidden{% endif %}{% if incomplete %} disabled{% endif %}>Standard</button>{% endif %}</td>
+<td class="rp-actions-cell">{% if not row.split %}{% set done = row.status in ('Confirmed', 'Automatic') %}{% set incomplete = not (row.who and row.why) %}{% if done %}<button type="button" class="btn-secondary rp-btn" data-action="reopen" title="Withdraw this acceptance">Reopen</button>{% endif %}<button type="button" class="rp-btn" data-action="confirm"{% if done %} hidden{% endif %}{% if incomplete %} disabled{% endif %}>Confirm</button>{% endif %}</td>
 <td class="rp-status" data-cell="status">{{ status_mark(row.status) }}</td>
       </tr>
       {%- else %}
-      <tr><td colspan="11" class="rp-empty">No transaction with a resolved WHO in this view yet.</td></tr>
+      <tr><td colspan="10" class="rp-empty">No transaction with a resolved WHO in this view yet.</td></tr>
       {%- endfor %}
     </tbody>
   </table>
@@ -120,7 +122,7 @@
 
 {# ------------------------------------------ the ONE inline editor row #}
 <table hidden><tbody id="rp-editor-home">
-<tr id="rp-editor-row" class="rp-editor-row"><td colspan="11">
+<tr id="rp-editor-row" class="rp-editor-row"><td colspan="10">
   <div class="rp-editor">
     <div class="rp-ed-facts">
       <dl id="rp-ed-facts"></dl>
@@ -135,8 +137,7 @@
       </div>
       <p class="rp-ed-note" id="rp-ed-note" role="status"></p>
       <div class="rp-ed-actions">
-        <button type="button" id="rp-ed-save">Save — keep Standard unchanged</button>
-        <button type="button" class="btn-secondary" id="rp-ed-save-standard">Save as New Standard</button>
+        <button type="button" id="rp-ed-save">Save</button>
         <button type="button" class="btn-secondary" id="rp-ed-close">Collapse</button>
       </div>
     </div>
@@ -221,29 +222,34 @@
   function syncRow(tr) {
     var r = rowOf(tr), sel = tr.querySelector('[data-action="for-whom"]');
     if (!sel) return;
-    var confirmBtn = tr.querySelector('[data-action="confirm"]'), standardBtn = tr.querySelector('[data-action="standard"]');
+    var confirmBtn = tr.querySelector('[data-action="confirm"]');
     var reopenBtn = tr.querySelector('[data-action="reopen"]');
     var changed = sel.value !== sel.dataset.saved;
     var done = r.status === 'Confirmed' || r.status === 'Automatic';
     sel.classList.toggle('rp-changed', changed || (r.default_for_whom != null && sel.value !== String(r.default_for_whom)));
     if (done) {
       // A changed For whom is not saved — and not exportable — until saved again.
-      confirmBtn.hidden = standardBtn.hidden = !changed; if (reopenBtn) reopenBtn.hidden = changed;
+      confirmBtn.hidden = !changed; if (reopenBtn) reopenBtn.hidden = changed;
       if (changed) setStatus(tr, 'Needs review', 'Changed — not saved'); else setStatus(tr, r.status);
     }
     var complete = r.who_id && r.why_id;
     var ok = complete && sel.value;
-    [confirmBtn, standardBtn].forEach(function (b) { b.disabled = !ok; });
+    confirmBtn.disabled = !ok;
     confirmBtn.title = !r.who_id ? 'Choose a WHO first' : (!r.why_id ? 'Choose a WHY first' : (!sel.value ? 'Choose For whom first' : ''));
   }
   Array.prototype.slice.call(document.querySelectorAll('#rp-table tr[data-row-id]')).forEach(function (tr) { markServed(tr); syncRow(tr); });
   tip(document);
-  Array.prototype.slice.call(document.querySelectorAll('#rp-table [data-action="standard"]')).forEach(function (b) {
-    b.title = 'Confirm, and approve this result as a Standard for future matching transactions';
-  });
 
+  // BANK_REVIEW_FOR_WHOM_001 — choosing For Whom saves it at once (beneficiary
+  // only; a Confirmed row then needs a new Confirm, as any material change).
   document.getElementById('rp-table').addEventListener('change', function (e) {
-    if (e.target.dataset.action === 'for-whom') syncRow(e.target.closest('tr'));
+    if (e.target.dataset.action !== 'for-whom') return;
+    var tr = e.target.closest('tr');
+    syncRow(tr);
+    if (e.target.value && e.target.value !== e.target.dataset.saved) {
+      e.target.disabled = true;
+      post(tr, 'for-whom', { for_whom_id: e.target.value });
+    }
   });
   document.getElementById('rp-table').addEventListener('click', function (e) {
     var btn = e.target.closest('button[data-action]');
@@ -251,7 +257,7 @@
     var tr = btn.closest('tr');
     var action = btn.dataset.action;
     if (action === 'expand') { toggleEditor(tr); return; }
-    if (action === 'confirm' || action === 'standard' || action === 'reopen') {
+    if (action === 'confirm' || action === 'reopen') {
       var sel = tr.querySelector('[data-action="for-whom"]');
       btn.disabled = true;
       post(tr, action, { for_whom_id: sel ? sel.value : '' });
@@ -263,7 +269,6 @@
   var edWho = document.getElementById('rp-ed-who'), edWhy = document.getElementById('rp-ed-why');
   var edWhat = document.getElementById('rp-ed-what'), edFor = document.getElementById('rp-ed-forwhom');
   var edNote = document.getElementById('rp-ed-note'), edSave = document.getElementById('rp-ed-save');
-  var edSaveStd = document.getElementById('rp-ed-save-standard');
   var editing = null, catalogsReady = false;
   var WHO_SOURCE = { person: 'Chosen by a person', auto: 'Suggested automatically — not approved', standard: 'From an approved Standard' };
   var DEST_SOURCE = { WHY: 'Derived from the WHY', TRANSACTION: 'Chosen for this transaction', STANDARD: 'From the Standard' };
@@ -367,11 +372,10 @@
   function saveEditor(mode) {
     var v = currentValues();
     try { sessionStorage.setItem('rp-pending', JSON.stringify({ row: editing.r.id, values: v })); } catch (e) { /* optional */ }
-    edSave.disabled = edSaveStd.disabled = true;
+    edSave.disabled = true;
     post(editing.tr, 'save', { mode: mode, occurrence_id: v.who, why_id: v.why, what_id: v.what, for_whom_id: v.for_whom });
   }
   edSave.addEventListener('click', function () { saveEditor('keep'); });
-  edSaveStd.addEventListener('click', function () { saveEditor('standard'); });
 
   // Back on the row that was just worked on; a refused editor save reopens
   // the editor with the operator's values, so nothing typed is lost.
@@ -385,5 +389,5 @@
   }
 })();
 </script>
-{% include "_bank_who_why_modal.html" %}{% include "_bank_why_create_dialog.html" %}
+{% include "_bank_who_why_modal.html" %}{% include "_bank_why_create_dialog.html" %}{% include "_bank_who_create_dialog.html" %}
 {% endblock %}

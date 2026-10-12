@@ -213,7 +213,7 @@ def main() -> int:
             s.commit()
 
             def who(name: str, default_why: str | None = None):
-                existing = s.query(m.BankOccurrence).filter_by(canonical_name=name).first()
+                existing = s.query(m.BankOccurrence).filter_by(canonical_name=name.strip().upper()).first()
                 if existing is not None:
                     return existing
                 return classification_service.create_occurrence(
@@ -290,7 +290,7 @@ def main() -> int:
                 "7. the same WHY may belong to many WHO — Food Purchases reaches both",
                 {o.canonical_name for o in
                  wc.occurrences_for_reason(s, reasons["FOOD_PURCHASES"].id)}
-                == {"Amazon", "Costco"},
+                == {"AMAZON", "COSTCO"},  # WHO names are stored upper case (BANK_WHO_UPPERCASE_001)
             )
             check(
                 "20§. re-associating an existing pair counts a confirmation rather than "

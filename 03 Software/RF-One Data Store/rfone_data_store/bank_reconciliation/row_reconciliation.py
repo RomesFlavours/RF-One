@@ -45,7 +45,6 @@ from . import export as export_service
 from . import recognition
 from . import reconciliation_standards as standards_service
 from . import reconciliation_status
-from . import reporting_entity as reporting_entity_service
 from . import who_recognition
 
 NEEDS_REVIEW = reconciliation_status.NEEDS_REVIEW
@@ -69,21 +68,54 @@ def default_for_whom(
 ) -> "m.ReportingEntity | None":
     """The proposed For Whom of an undecided transaction — only a default.
 
-    Bank Account: the ReportingEntity of its own LegalEntity. Credit Card:
-    the ReportingEntity of the LegalEntity its settlement account belongs to
-    on that date, never the card's own value (Configuration decision D3)."""
+    Bank Account: the Entity that owns it — the ReportingEntity of its own
+    LegalEntity, or its PERSONAL owner (BANK_SOURCE_EDIT_AND_ENTITIES_001).
+    Credit Card: the owner of its settlement account on that date, never the
+    card's own value (Configuration decision D3). One derivation:
+    `card_configuration.owner_entity_for`."""
     if instrument is None:
         return None
-    if instrument.instrument_type == card_configuration.CREDIT_CARD:
-        legal = card_configuration.legal_entity_for(session, instrument=instrument, on_date=on_date)
-        legal_entity_id = legal.id if legal is not None else None
-    else:
-        legal_entity_id = instrument.legal_entity_id
-    if legal_entity_id is None:
-        return None
-    return reporting_entity_service.reporting_entity_for_legal_entity(
-        session, legal_entity_id=legal_entity_id,
-    )
+    return card_configuration.owner_entity_for(session, instrument=instrument, on_date=on_date)
+
+
+def for_whom_values(
+    session: Session, transactions: list["m.FinancialTransaction"],
+    instruments: dict[int, "m.PaymentInstrument"] | None = None,
+    allocations: dict[int, list] | None = None,
+) -> dict[int, dict]:
+    """Each transaction's FOR WHOM, as both Review tabs show it
+    (BANK_REVIEW_FOR_WHOM_001): `for_whom` — the beneficiary a person chose
+    (stored on its single allocation), else the default from the Source's
+    ownership — `default_for_whom`, and `split` (several allocations: For
+    Whom is per line, not per row). One definition for To Reconcile and
+    Reconciled."""
+    if instruments is None:
+        instruments = {i.id: i for i in session.scalars(select(m.PaymentInstrument))}
+    if allocations is None:
+        allocations = {}
+        ids = [t.id for t in transactions]
+        if ids:
+            for a in session.scalars(
+                select(m.BankTransactionAllocation)
+                .where(m.BankTransactionAllocation.financial_transaction_id.in_(ids))
+                .order_by(m.BankTransactionAllocation.allocation_index)
+            ):
+                allocations.setdefault(a.financial_transaction_id, []).append(a)
+    default_cache: dict[tuple, int | None] = {}
+    out: dict[int, dict] = {}
+    for t in transactions:
+        instrument = instruments.get(t.payment_instrument_id)
+        on_date = t.posting_date or t.transaction_date
+        key = (t.payment_instrument_id,
+               on_date if instrument is not None and instrument.instrument_type == card_configuration.CREDIT_CARD else None)
+        if key not in default_cache:
+            entity = default_for_whom(session, instrument, on_date)
+            default_cache[key] = entity.id if entity is not None else None
+        row_allocations = allocations.get(t.id, [])
+        stored = row_allocations[0].reporting_entity_id if len(row_allocations) == 1 else None
+        out[t.id] = {"for_whom": stored if stored is not None else default_cache[key],
+                     "default_for_whom": default_cache[key], "split": len(row_allocations) > 1}
+    return out
 
 
 def _destination_label(destination: "m.BankAccountingClassification | None") -> str:
@@ -168,24 +200,17 @@ def rows_view(session: Session, transactions: list["m.FinancialTransaction"]) ->
     entities = list(session.scalars(select(m.ReportingEntity).order_by(m.ReportingEntity.name)))
     entity_names = {e.id: e.name for e in entities}
 
-    default_cache: dict[tuple, int | None] = {}
+    for_whom_by_id = for_whom_values(session, transactions, instruments, allocations)
     used_standard_ids: set[int] = set()
     rows = []
     for t in transactions:
         instrument = instruments.get(t.payment_instrument_id)
         on_date = t.posting_date or t.transaction_date
-        key = (t.payment_instrument_id,
-               on_date if instrument is not None and instrument.instrument_type == card_configuration.CREDIT_CARD else None)
-        if key not in default_cache:
-            entity = default_for_whom(session, instrument, on_date)
-            default_cache[key] = entity.id if entity is not None else None
-        default_id = default_cache[key]
-
         explanation = explanations.get(t.explanation_id)
         row_allocations = allocations.get(t.id, [])
         status = reconciliation_status.status_of(t, explanation, row_allocations)
-        stored_for_whom = row_allocations[0].reporting_entity_id if len(row_allocations) == 1 else None
-        for_whom = stored_for_whom if stored_for_whom is not None else default_id
+        for_whom = for_whom_by_id[t.id]["for_whom"]
+        default_id = for_whom_by_id[t.id]["default_for_whom"]
         who = whos.get(explanation.occurrence_id) if explanation and explanation.occurrence_id else None
         why = whys.get(explanation.transaction_reason_id) if explanation and explanation.transaction_reason_id else None
         destination = (classifications.get(explanation.accounting_classification_id)
@@ -335,8 +360,9 @@ def record_who(
     (`recognition.record_human_decision`), once.
 
     A row that was CONFIRMED keeps its confirmation only when WHO and WHY are restated
-    unchanged; any other change — and any change to an AUTOMATIC row — removes
-    its allocation, so the row is NEEDS REVIEW until saved again."""
+    unchanged; any other change — and any change to an AUTOMATIC row — withdraws
+    its acceptance, so the row is NEEDS REVIEW until confirmed again. The For
+    Whom a person chose is kept (BANK_REVIEW_FOR_WHOM_001)."""
     transaction = _transaction(session, transaction_id)
     if occurrence_id is None:
         raise ValueError("Choose a WHO for this transaction.")
@@ -377,9 +403,84 @@ def record_who(
     if reason_id is not None:
         transaction.review_status = "REVIEWED"
     if _allocations(session, transaction.id) and not (was_confirmed and unchanged):
-        economic_allocation.clear_allocations(session, financial_transaction_id=transaction.id)
+        _withdraw_acceptance(session, transaction)
     session.flush()
     return explanation
+
+
+def _withdraw_acceptance(session: Session, transaction: "m.FinancialTransaction") -> int:
+    """Withdraw a row's acceptance but keep its For Whom.
+
+    A single COMPLETE allocation (Confirmed or Automatic) becomes a single
+    NEEDS_OPERATOR allocation for the same beneficiary, so the person's For
+    Whom survives a WHO / WHY change or a Reopen; an allocation that is
+    already pending is left exactly as it is. A row with no beneficiary, or a
+    split, is cleared as before. Returns the number of COMPLETE allocations
+    withdrawn."""
+    allocations = _allocations(session, transaction.id)
+    if len(allocations) == 1 and allocations[0].reporting_entity_id is not None:
+        current = allocations[0]
+        if current.status != economic_allocation.COMPLETE:
+            return 0
+        economic_allocation.set_allocations(
+            session, financial_transaction_id=transaction.id,
+            specs=[economic_allocation.AllocationSpec(
+                amount_minor=transaction.amount_minor, reporting_entity_id=current.reporting_entity_id,
+                status=m.ALLOCATION_NEEDS_OPERATOR, decision_source=current.decision_source,
+                decided_by_account_id=current.decided_by_account_id,
+                notes="For Whom kept; the row awaits a new Confirm.",
+            )],
+        )
+        return 1
+    return economic_allocation.clear_allocations(session, financial_transaction_id=transaction.id)
+
+
+def set_for_whom(
+    session: Session, *, transaction_id: int, reporting_entity_id: int | None, account_id: int | None,
+) -> str:
+    """Record FOR WHOM — the Reporting Entity / LLC that economically
+    benefited — for one transaction (BANK_REVIEW_FOR_WHOM_001).
+
+    It changes ONLY the beneficiary: never the Source / Instrument (that is
+    provenance, set by the import), the WHO, the WHY, the amount or the date,
+    and it creates no Rule or Standard. It may be set at any time, before
+    WHO / WHY are resolved too: the choice is kept as a pending (not yet
+    accounting-complete) allocation for the whole amount, which Confirm then
+    completes.
+
+    A Confirmed or Automatic row whose beneficiary changes is no longer the
+    result that was accepted: like any other material change it returns to
+    NEEDS REVIEW with the new For Whom, and needs a new Confirm. Choosing the
+    same beneficiary again changes nothing.
+
+    Returns "unchanged", "saved" or "reopened"."""
+    transaction = _transaction(session, transaction_id)
+    if reporting_entity_id is None:
+        raise ValueError("Choose For Whom.")
+    entity = session.get(m.ReportingEntity, reporting_entity_id)
+    if entity is None:
+        raise ValueError(f"Entity {reporting_entity_id} does not exist.")
+    if entity.status != "ACTIVE":
+        raise ValueError(f"Entity {entity.name!r} is inactive.")
+    allocations = _allocations(session, transaction.id)
+    if len(allocations) > 1:
+        raise ValueError(
+            "This transaction is split across several allocations; For Whom is set on each line where it was split."
+        )
+    current = allocations[0] if allocations else None
+    if current is not None and current.reporting_entity_id == entity.id:
+        return "unchanged"
+    was_accepted = current is not None and current.status == economic_allocation.COMPLETE
+    economic_allocation.set_allocations(
+        session, financial_transaction_id=transaction.id,
+        specs=[economic_allocation.AllocationSpec(
+            amount_minor=transaction.amount_minor, reporting_entity_id=entity.id,
+            status=m.ALLOCATION_NEEDS_OPERATOR, decision_source="HUMAN", decided_by_account_id=account_id,
+            notes="For Whom chosen on Review Transactions; the row is confirmed separately.",
+        )],
+    )
+    session.flush()
+    return "reopened" if was_accepted else "saved"
 
 
 def _accept(
@@ -501,9 +602,9 @@ def set_as_standard(
 
 def reopen_row(session: Session, *, transaction_id: int) -> int:
     """Withdraw a row's acceptance (CONFIRMED or AUTOMATIC). The decision is
-    untouched; no Standard is changed."""
+    untouched, the For Whom is kept; no Standard is changed."""
     transaction = _transaction(session, transaction_id)
     allocations = _allocations(session, transaction.id)
     if len(allocations) > 1:
         raise ValueError("This transaction is split across several allocations; reopen it where it was split.")
-    return economic_allocation.clear_allocations(session, financial_transaction_id=transaction.id)
+    return _withdraw_acceptance(session, transaction)

@@ -52,6 +52,7 @@ run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as web_app  # noqa: E402
 import bank_routes  # noqa: E402
+from _bank_upload_helper import confirm_leave_outs, create_missing_sources, session_state  # noqa: E402
 from db import SessionFactory  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
@@ -62,7 +63,7 @@ from rfone_data_store.bank_reconciliation import parsers  # noqa: E402
 web_app.app.config["BANK_IMPORT_STAGING_DIR"] = _STAGING_DIR
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
-STAGED_RE = re.compile(r"staged=([0-9a-f]{32})")
+STAGED_RE = re.compile(r"(?:staged=|/bank/import/)([0-9a-f]{32})")
 HEADER = "Details,Posting Date,Description,Amount,Type,Balance,Check or Slip #\n"
 
 CHECKING_AUG = (HEADER
@@ -78,7 +79,8 @@ SAVINGS_JUL_AUG = (HEADER
 NOT_A_BANK_FILE = b"name,email\nalice,alice@example.com\n"
 
 APPROVED_TABS = ["Import and Review", "Review Transactions", "Monthly Export", "Source",
-                 "Classification", "Instructions"]
+                 "AI Rules", "Configuration", "Instructions"]  # AI Rules: BANK_AI_RULES_001
+# BANK_RULES_RESET_001: the old "Rules" tab (/bank/classification) is retired.
 
 
 def extract_csrf(html: bytes) -> str:
@@ -257,15 +259,26 @@ def main() -> int:
               resp.headers.get("Location"))
 
         pages = ("/bank", "/bank/review", "/bank/export", "/bank/sources",
-                 "/bank/classification", "/bank/instructions")
+                 "/bank/ai-rules", "/bank/configuration", "/bank/instructions")
         labels = {p: tab_labels(client.get(p).data.decode("utf-8")) for p in pages}
-        check("9. every Bank page shows exactly the six approved tabs, Source among them",
+        check("9. every Bank page shows exactly the approved tabs, Source among them",
               all(v == APPROVED_TABS for v in labels.values()), str(labels))
         all_html = "".join(client.get(p).data.decode("utf-8") for p in pages)
         check("9. no tab is called Instruments or Monthly Sources any more",
               ">Instruments</a>" not in all_html and ">Monthly Sources</a>" not in all_html)
 
-        # =========================================================== PREVIEW
+        # =========================================================== SESSION
+        # BANK_TWO_PASS_IMPORT_001 — `/bank/upload` stages the set and opens its
+        # import session; nothing reaches the Bank data before Confirm.
+        def run_passes(token, decision="EXCLUDE"):
+            create_missing_sources(client, token, csrf)
+            confirm_leave_outs(client, token, csrf)
+            client.post(f"/bank/import/{token}/check", data={"csrf_token": csrf})
+            for issue in (session_state(client, token).get("check") or {}).get("issues", []):
+                client.post(f"/bank/import/{token}/decide",
+                            data={"csrf_token": csrf, "key": issue["key"], "decision": decision})
+            return client.get(f"/bank/import/{token}").data.decode("utf-8")
+
         before = counts()
         resp = client.post("/bank/upload", data={
             "csrf_token": csrf, "return_to": "import_review", "year": "2026", "month": "8",
@@ -277,40 +290,34 @@ def main() -> int:
         }, content_type="multipart/form-data")
         token_match = STAGED_RE.search(resp.headers.get("Location", ""))
         token = token_match.group(1) if token_match else ""
-        check("10. upload answers with the review of the staged set, on the same month",
-              resp.status_code == 302 and resp.headers["Location"].startswith("/bank?year=2026&month=8&staged="),
+        check("10. upload opens the import session of the staged set",
+              resp.status_code == 302 and resp.headers["Location"] == f"/bank/import/{token}",
               resp.headers.get("Location"))
-        check("16. the review is read-only: nothing authoritative was written",
+        check("16. staging is read-only: nothing authoritative was written",
               counts() == before, f"{before} -> {counts()}")
         check("10. the files are held outside the database, in the staging area",
               token in staged_dirs(), str(staged_dirs()))
-
-        review_html = client.get(resp.headers["Location"]).data.decode("utf-8")
-        modal = review_html[review_html.index('id="import-review-dialog"'):] if 'id="import-review-dialog"' in review_html else ""
-        check("10. one Import Set Review modal opens with Confirm Import and Cancel",
-              bool(modal) and "Confirm Import" in modal and 'id="import-review-cancel"' in modal)
-        check("10. the summary counts uploaded and recognized files",
-              'data-review="files">3<' in modal and 'data-review="recognized">2<' in modal
-              and 'data-review="importable">1<' in modal, modal[:1500])
-        check("11. expected = the ACTIVE Sources only (inactive Old Card is not expected)",
-              'data-review="expected">3<' in modal, modal[:1500])
-        missing_row = modal[modal.index('data-review-row="missing"'):]
-        missing_row = missing_row[:missing_row.index("</tr>")]
-        check("12. the missing Sources of the period are named",
-              "2026-08" in missing_row and "Chase Savings 5555 (Reserve)" in missing_row
-              and "Amex Business 3001" in missing_row and "Chase Checking" not in missing_row,
-              missing_row)
-        unrec_row = modal[modal.index('data-review-row="unrecognized"'):]
-        check("13. the unrecognized file is named",
-              "contacts.csv" in unrec_row[:unrec_row.index("</tr>")])
-        dup_row = modal[modal.index('data-review-row="duplicates"'):]
+        page = client.get(f"/bank/import/{token}").data.decode("utf-8")
+        check("10. one session page with Confirm Import and Cancel, listing every file",
+              "Confirm Import" in page and "Cancel import" in page and page.count('data-file-status=') == 3)
+        check("13. the unrecognized file is named, as not a known layout",
+              "contacts.csv" in page and 'data-file-status="UNRECOGNIZED"' in page and "Not a known layout" in page)
+        page = run_passes(token)
+        state = session_state(client, token)
+        check("10. the account comes from the file name: both Chase0214 files go to Chase Checking 0214",
+              [f["source_id"] for f in state["files"] if f["kind"] == "BANK"] == [checking_id, checking_id])
+        warnings = page[page.index('id="expected-missing"'):] if 'id="expected-missing"' in page else ""
+        check("11/12. the missing expected Sources of the period are named (ACTIVE only: not the inactive "
+              "Old Card, not the checking in the upload)",
+              "August 2026" in warnings and "Chase Savings 5555 (Reserve)" in warnings
+              and "Amex Business 3001" in warnings[:warnings.index("</ul>")]
+              and "Old Card" not in warnings[:warnings.index("</ul>")]
+              and "Chase Checking" not in warnings[:warnings.index("</ul>")],
+              warnings[:600])
         check("14. the duplicate file in the set is named (same content, whatever its name)",
-              "Chase0214_Activity_20260905 (1).csv" in dup_row[:dup_row.index("</tr>")]
-              and 'data-review-file="DUPLICATE_IN_SET"' in modal)
-        check("15. the period the files actually cover is shown, per file and per month",
-              'data-review="period">2026-08-05 &rarr; 2026-08-20<' in modal
-              and 'data-review-period="2026-08"' in modal)
-        check("16. still nothing written after showing the review", counts() == before)
+              "Same content as Chase0214_Activity_20260905.csv" in page)
+        check("15. the period each file covers is shown", 'data-file-period="0">2026-08-05 &rarr; 2026-08-20<' in page)
+        check("16. still nothing written after both passes", counts() == before)
 
         # ============================================================ CANCEL
         resp = client.post(f"/bank/upload/{token}/cancel", data={"csrf_token": csrf})
@@ -320,9 +327,9 @@ def main() -> int:
               resp.status_code == 302 and resp.headers["Location"] == "/bank?year=2026&month=8",
               resp.headers.get("Location"))
         check("17. the staged files are removed", token not in staged_dirs(), str(staged_dirs()))
-        after_cancel = client.get(f"/bank?year=2026&month=8&staged={token}").data.decode("utf-8")
-        check("17. a cancelled set cannot be shown again", 'id="import-review-dialog"' not in after_cancel)
-        resp = client.post(f"/bank/upload/{token}/confirm", data={"csrf_token": csrf})
+        gone = client.get(f"/bank/import/{token}")
+        check("17. a cancelled set cannot be shown again", gone.status_code == 302 and "/bank/import/" not in gone.headers["Location"])
+        client.post(f"/bank/upload/{token}/confirm", data={"csrf_token": csrf})
         check("17. ... nor confirmed afterwards", counts() == before)
 
         # --------------------------------------- a file spanning two months
@@ -331,9 +338,9 @@ def main() -> int:
             "files": [(io.BytesIO(SAVINGS_JUL_AUG), "savings_jul_aug.csv")],
         }, content_type="multipart/form-data")
         span_token = STAGED_RE.search(resp.headers["Location"]).group(1)
-        span_html = client.get(resp.headers["Location"]).data.decode("utf-8")
+        span_html = run_passes(span_token)
         check("15. a file covering two months is shown covering both — no monthly shape forced",
-              'data-review-period="2026-07"' in span_html and 'data-review-period="2026-08"' in span_html)
+              'data-file-period="0">2026-07-28 &rarr; 2026-08-09<' in span_html)
         client.post(f"/bank/upload/{span_token}/cancel", data={"csrf_token": csrf})
         check("16. still nothing written", counts() == before)
 
@@ -345,11 +352,10 @@ def main() -> int:
         foreign_token = STAGED_RE.search(resp.headers["Location"]).group(1)
         other = login("si_other")
         other_csrf = extract_csrf(other.get("/bank").data)
-        other_view = other.get(f"/bank?staged={foreign_token}").data.decode("utf-8")
+        other_view = other.get(f"/bank/import/{foreign_token}")
         other.post(f"/bank/upload/{foreign_token}/confirm", data={"csrf_token": other_csrf})
         check("13. another account can neither see nor confirm someone else's staged set",
-              'id="import-review-dialog"' not in other_view and counts() == before
-              and foreign_token in staged_dirs())
+              other_view.status_code == 302 and counts() == before and foreign_token in staged_dirs())
         client.post(f"/bank/upload/{foreign_token}/cancel", data={"csrf_token": csrf})
 
         # ------------------------------------------- failure rolls back whole
@@ -361,6 +367,7 @@ def main() -> int:
             ],
         }, content_type="multipart/form-data")
         fail_token = STAGED_RE.search(resp.headers["Location"]).group(1)
+        run_passes(fail_token)
         real_import = bank_routes.bank_service.import_csv
         calls = {"n": 0}
 
@@ -394,14 +401,11 @@ def main() -> int:
             ],
         }, content_type="multipart/form-data")
         ok_token = STAGED_RE.search(resp.headers["Location"]).group(1)
-        ok_html = client.get(resp.headers["Location"]).data.decode("utf-8")
-        ok_modal = ok_html[ok_html.index('id="import-review-dialog"'):]
-        missing_row = ok_modal[ok_modal.index('data-review-row="missing"'):]
-        missing_row = missing_row[:missing_row.index("</tr>")]
-        check("A. a complete set: every expected Source present, Missing = None",
-              ">None<" in missing_row and "Chase" not in missing_row, missing_row)
+        ok_html = run_passes(ok_token)
+        check("A. a complete set: every expected Source present, no missing-Source warning",
+              'id="expected-missing"' not in ok_html)
         check("A. nothing blocks a complete set: Confirm Import is enabled",
-              re.search(r'id="import-review-confirm"\s*>', ok_modal) is not None)
+              re.search(r'id="import-confirm"\s*>', ok_html) is not None)
         check("16. still nothing written before Confirm", counts() == before)
 
         resp = client.post(f"/bank/upload/{ok_token}/confirm", data={"csrf_token": csrf})
@@ -439,7 +443,7 @@ def main() -> int:
                       select(m.RawBankTransaction).where(
                           m.RawBankTransaction.import_batch_id == checking_batch.id)).all()))
             parsed = parsers.parse_csv_bytes(CHECKING_AUG)
-            check("27. the parser's result is unchanged by the review step "
+            check("27. the parser's result is unchanged by the session "
                   "(rows and range as the parser reads them)",
                   checking_batch.row_count == len(parsed.rows) == 3
                   and checking_batch.date_range_start == date(2026, 8, 5)
@@ -451,22 +455,29 @@ def main() -> int:
             "files": [(io.BytesIO(CHECKING_AUG), "renamed_checking.csv")],
         }, content_type="multipart/form-data")
         again_token = STAGED_RE.search(resp.headers["Location"]).group(1)
-        again = client.get(resp.headers["Location"]).data.decode("utf-8")
-        again = again[again.index('id="import-review-dialog"'):]
+        client.get(f"/bank/import/{again_token}")
+        client.post(f"/bank/import/{again_token}/assign",
+                    data={"csrf_token": csrf, "file_index": "0", "source": str(checking_id)})
+        client.post(f"/bank/import/{again_token}/check", data={"csrf_token": csrf})
+        again = client.get(f"/bank/import/{again_token}").data.decode("utf-8")
+        issues = (session_state(client, again_token).get("check") or {}).get("issues", [])
         check("D. an already-imported file is recognized by content, even renamed",
-              'data-review-file="ALREADY_IMPORTED"' in again and "renamed_checking.csv" in again)
-        check("D. a set with nothing new is blocked: Confirm Import is disabled",
-              "No file in this set would import anything new." in again
-              and re.search(r'id="import-review-confirm"\s+disabled', again) is not None)
+              f"This exact file was already imported (batch #{checking_batch.id})" in again
+              and len(issues) == 3 and all(i["exclusion_only"] for i in issues))
+        client.post(f"/bank/import/{again_token}/decide",
+                    data={"csrf_token": csrf, "key": issues[0]["key"], "decision": "IMPORT_DISTINCT"})
+        check("D. its rows cannot be authorized as distinct operations: Confirm stays disabled",
+              re.search(r'id="import-confirm"\s+disabled', client.get(f"/bank/import/{again_token}").data.decode("utf-8")) is not None)
         client.post(f"/bank/upload/{again_token}/cancel", data={"csrf_token": csrf})
         check("D. and cancelling it changes nothing", counts() == after)
 
         # ======================================================== REGRESSION
         for path, label in (("/bank/review?year=2026&month=8", "24. Review Transactions"),
-                            ("/bank/classification", "25. Classification"),
                             ("/bank/export", "26. Monthly Export")):
             r = client.get(path)
             check(f"{label} still answers 200", r.status_code == 200, str(r.status_code))
+        check("25. the retired Classification (Rules) page answers 404",
+              client.get("/bank/classification").status_code == 404)
         review = client.get("/bank/review?year=2026&month=8").data.decode("utf-8")
         check("24. Review lists the confirmed import's transactions", "US FOODS INVOICE 1001" in review)
 

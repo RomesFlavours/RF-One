@@ -365,8 +365,23 @@ task.** Full text and implementation pointers:
 4. Every sub-page shows its clickable hierarchical path (breadcrumb)
    instead of a generic "Home" link; the path reflects the real structure
    and never invents levels.
+5. After an action started from a list row (Edit, Save, Cancel, Confirm…)
+   the person is back on that same record, at the same place on screen,
+   with focus on the button used — never at the top of the list, also
+   after a reload (`rf-one-row-return.js`, rows marked `data-rr-key`).
 
 Every future UI refinement reuses these rules.
+
+---
+
+# Bank Local Environment
+
+The local Bank working environment (both PCs) is run ONLY through
+`03 Software/Infrastructure/Bank Local Environment/` (Configura PC, Avvia
+Bank, Chiudi Bank / Cambia PC) — never by an ad-hoc launcher or by opening
+a database inside OneDrive. When the Product Owner asks to **interpret the
+AI Rules waiting** («Interpreta le AI Rules in attesa»), follow
+`SESSION_INTERPRETATION.md` in that folder.
 
 ---
 

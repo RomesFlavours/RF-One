@@ -210,7 +210,7 @@ def main() -> int:
     check("6. the popup has three columns: WHO | WHY GROUP | WHY",
           popup.count('class="ww-col ') == 3
           and [t.strip() for t in re.findall(r'class="ww-col-title"[^>]*>([A-Z ]+)', popup)] == ["WHO", "WHY GROUP", "WHY"]
-          and 'id="why-group-list"' in popup and 'id="why-group-search"' in popup and "+ Create New WHY" in popup)
+          and 'id="why-group-list"' in popup and 'id="why-group-search"' in popup and "+ New WHY" in popup)
     catalog = client.get("/bank/manual-reconciliation/why-catalog").get_json()
     check("8. the catalog request gives the groups alphabetically, with their WHY counts",
           [(g["name"], g["count"]) for g in catalog["groups"]]

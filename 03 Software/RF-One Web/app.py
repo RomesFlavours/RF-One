@@ -31,7 +31,7 @@ _DATA_STORE_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "RF-One Data Sto
 if _DATA_STORE_DIR not in sys.path:
     sys.path.insert(0, _DATA_STORE_DIR)
 
-from flask import Flask, abort, flash, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
+from flask import Flask, abort, flash, g, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
 
 import auth  # noqa: E402
 from auth import (  # noqa: E402
@@ -39,7 +39,7 @@ from auth import (  # noqa: E402
     require_admin, require_csrf, require_login,
 )
 from db import SessionFactory  # noqa: E402
-from domain_registry import DOMAINS, TIPS_HOME_URL  # noqa: E402
+from domain_registry import DOMAINS, DOMAINS_BY_CODE, TIPS_HOME_URL  # noqa: E402
 from rfone_data_store import display_format  # noqa: E402
 from rfone_data_store import public_entry  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
@@ -55,6 +55,7 @@ from organizational_responsibility_routes import register_organizational_respons
 from bank_routes import register_bank_routes  # noqa: E402
 from tips_validation_routes import register_tips_validation_routes  # noqa: E402
 from clover_acquisition_routes import register_clover_acquisition_routes  # noqa: E402
+from projects_routes import register_projects_routes  # noqa: E402
 import training_integration  # noqa: E402
 
 app = Flask(__name__)
@@ -101,6 +102,28 @@ def _send_direct_visits_to_the_official_entry():
 @app.context_processor
 def inject_csrf():
     return {"csrf_token": get_csrf_token}
+
+
+@app.context_processor
+def inject_local_environment():
+    """`local_env`: which PC, database, code and AI mode this page runs on —
+    only when the server was started by the local Bank environment
+    ("Avvia Bank", 03 Software/Infrastructure/Bank Local Environment), which
+    sets RFONE_LOCAL_ENV_*; None everywhere else (AWS, tests)."""
+    pc = os.environ.get("RFONE_LOCAL_ENV_PC")
+    if not pc:
+        return {"local_env": None}
+    from rfone_data_store.bank_reconciliation import ai_rules
+    provider, model = ai_rules.active_ai_description()
+    mode = ai_rules.ai_mode()
+    return {"local_env": {
+        "pc": pc, "kind": os.environ.get("RFONE_LOCAL_ENV_KIND", "WORK"),
+        "label": os.environ.get("RFONE_LOCAL_ENV_LABEL", ""), "db": os.environ.get("RFONE_LOCAL_ENV_DB", ""),
+        "generation": os.environ.get("RFONE_LOCAL_ENV_GENERATION", ""),
+        "code": os.environ.get("RFONE_LOCAL_ENV_CODE", ""),
+        "ai": ("SESSIONE Claude Code (VS Code) — nessuna chiamata a provider AI" if mode == ai_rules.AI_MODE_SESSION
+               else f"PROVIDER {provider} · {model or 'nessun modello configurato'}"),
+    }}
 
 
 # UI_NAVIGATION_AND_LOCAL_TIME_001 — RF-One UI Rules
@@ -353,7 +376,14 @@ def require_domain_access(domain_code: str):
     matching `require_admin`'s own convention). This is what makes the
     Home filtering meaningful — a Domain link is never itself the access
     control (task: "Il collegamento nella Home filtrato per Domain non
-    protegge da solo la destinazione")."""
+    protegge da solo la destinazione").
+
+    ACCOUNT_ITEM_ACCESS_001: when the requested path belongs to one of the
+    Domain's items (`domain_registry`), the account must also be allowed
+    that item — the same rule the navigation uses to hide it, so a hidden
+    item is closed by direct URL too, for its pages and its operations."""
+    domain = DOMAINS_BY_CODE.get(domain_code)
+
     def decorator(view):
         @wraps(view)
         @require_login
@@ -366,9 +396,53 @@ def require_domain_access(domain_code: str):
                 # The one Domain rule, shared with Tips (`rfone_web_session`).
                 if not shared_session.account_may_enter_domain(db, account, domain_code):
                     abort(403)
+                item = domain.item_for_path(request.path) if domain else None
+                if item is not None and not shared_session.account_may_use_domain_item(
+                    db, account, domain_code, item.code,
+                ):
+                    abort(403)
             return view(*args, **kwargs)
+        # Lets a test prove that every route of an item is gated.
+        wrapped.rfone_domain_gate = domain_code
         return wrapped
     return decorator
+
+
+def _allowed_items(domain_code: str):
+    """The current account's usable items of `domain_code`, in registry
+    order — computed once per request."""
+    cache = g.setdefault("rfone_allowed_items", {})
+    if domain_code not in cache:
+        domain = DOMAINS_BY_CODE[domain_code]
+        with SessionFactory() as db:
+            allowed = set(shared_session.allowed_domain_items(
+                db, load_current_account(db), domain_code, [i.code for i in domain.items],
+            ))
+        cache[domain_code] = [i for i in domain.items if i.code in allowed]
+    return cache[domain_code]
+
+
+def domain_entry(domain_code: str) -> str | None:
+    """Where a Domain is entered from Home or a breadcrumb: its first usable
+    item (the Domain's own landing page when the whole Domain is granted),
+    or the registry `link` for a Domain without items."""
+    domain = DOMAINS_BY_CODE[domain_code]
+    if not domain.items:
+        return domain.link
+    items = _allowed_items(domain_code)
+    return url_for(items[0].endpoint) if items else None
+
+
+# Template globals, not a context processor, so imported macro files
+# (`_bank_macros.html`) see them too: `domain_nav(code)` — (item code, label,
+# URL) of the items the account may use, for a Domain's own navigation;
+# `may_use_item(code, item)`; `domain_entry(code)`. All read the one item
+# list in `domain_registry`.
+app.jinja_env.globals.update(
+    domain_nav=lambda code: [(i.code, i.label, url_for(i.endpoint)) for i in _allowed_items(code)],
+    may_use_item=lambda code, item: any(i.code == item for i in _allowed_items(code)),
+    domain_entry=domain_entry,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -405,15 +479,17 @@ register_workweek_settings_routes(
 )
 
 # ---------------------------------------------------------------------------
-# Admin — Organizational Responsibility + Attention Management (TASK_
-# ATTENTION_ORG_RUNTIME §12). ADMIN / CONFIGURATION / TEST HARNESS only —
-# never the eventual end-user Attention Inbox (task explicitly forbids
-# building that here; see `organizational_responsibility_routes.py`'s own
-# module docstring for the full boundary statement).
+# Organization — Organizational Responsibility + Attention Management (TASK_
+# ATTENTION_ORG_RUNTIME §12). Since ACCOUNT_ITEM_ACCESS_001 its own Domain
+# (`require_domain_access("ORGANIZATION")`, per item); every change stays
+# reserved to administrators. Never the eventual end-user Attention Inbox
+# (see `organizational_responsibility_routes.py`'s own module docstring for
+# the full boundary statement).
 # ---------------------------------------------------------------------------
 
 register_organizational_responsibility_routes(
-    app, require_admin=require_admin, SessionFactory=SessionFactory, require_csrf=require_csrf,
+    app, require_admin=require_admin, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
+    require_csrf=require_csrf, load_current_account=load_current_account,
 )
 
 
@@ -460,6 +536,16 @@ clover_job_launcher = None
 register_clover_acquisition_routes(
     app, SessionFactory=SessionFactory, load_current_account=load_current_account,
     require_csrf=require_csrf, log_out=log_out, get_launcher=lambda: clover_job_launcher,
+)
+
+
+# ---------------------------------------------------------------------------
+# MyRF Project Management v1 — Plan and read-only Gantt. Gated by
+# `require_domain_access("PROJECTS")` + CSRF; see `projects_routes.py`.
+# ---------------------------------------------------------------------------
+
+register_projects_routes(
+    app, require_domain_access=require_domain_access, SessionFactory=SessionFactory, require_csrf=require_csrf,
 )
 
 
@@ -584,25 +670,61 @@ def admin_account_access(account_id: int):
 
         if request.method == "POST":
             require_csrf()
-            for domain in DOMAINS:
-                enabled = request.form.get(f"enabled_{domain.code}") == "on"
-                role_code = request.form.get(f"role_{domain.code}", "").strip() or None
-                account_service.set_domain_access(
-                    db, account_id=account.id, domain_code=domain.code, enabled=enabled, role_code=role_code,
-                )
-                if domain.code == "TRAINING":
-                    # Explicit, authorized sync point (task: "assegnano o
-                    # modificano il ruolo TRAINING di un account già
-                    # collegato") — same transaction as the access change
-                    # itself, committed together below.
-                    training_integration.sync_training_role_if_linked(db, account.id, role_code)
+            try:
+                for domain in DOMAINS:
+                    # ACCOUNT_ITEM_ACCESS_001: none / the whole Domain / only
+                    # the selected items (offered only for a Domain with items).
+                    # The earlier form's `enabled_<CODE>=on` still means the whole Domain.
+                    legacy = _ACCESS_ALL if request.form.get(f"enabled_{domain.code}") == "on" else _ACCESS_NONE
+                    mode = request.form.get(f"access_{domain.code}", legacy)
+                    if mode == _ACCESS_SELECTED and not domain.items:
+                        mode = _ACCESS_NONE
+                    role_code = request.form.get(f"role_{domain.code}", "").strip() or None
+                    item_codes = [
+                        code for code in request.form.getlist(f"items_{domain.code}") if domain.item(code) is not None
+                    ]
+                    account_service.set_domain_access(
+                        db, account_id=account.id, domain_code=domain.code, enabled=mode != _ACCESS_NONE,
+                        role_code=role_code,
+                        scope=m.DOMAIN_ACCESS_SCOPE_SELECTED if mode == _ACCESS_SELECTED else m.DOMAIN_ACCESS_SCOPE_ALL,
+                        item_codes=item_codes,
+                    )
+                    if domain.code == "TRAINING":
+                        # Explicit, authorized sync point (task: "assegnano o
+                        # modificano il ruolo TRAINING di un account già
+                        # collegato") — same transaction as the access change
+                        # itself, committed together below.
+                        training_integration.sync_training_role_if_linked(db, account.id, role_code)
+            except ValueError as exc:
+                db.rollback()
+                flash(f"Nothing saved. {exc}", "error")
+                return redirect(url_for("admin_account_access", account_id=account_id))
             db.commit()
             flash("Domain access updated.", "info")
             return redirect(url_for("admin_accounts"))
 
         access_by_code = {row.domain_code: row for row in account_service.list_domain_access_for_account(db, account.id)}
-        domains_view = [{"domain": d, "access": access_by_code.get(d.code)} for d in DOMAINS]
+        items_by_code = account_service.list_domain_item_access_for_account(db, account.id)
+        domains_view = []
+        for d in DOMAINS:
+            access = access_by_code.get(d.code)
+            if access is None or not access.enabled:
+                mode = _ACCESS_NONE
+            elif access.scope == m.DOMAIN_ACCESS_SCOPE_SELECTED and d.items:
+                mode = _ACCESS_SELECTED
+            else:
+                mode = _ACCESS_ALL
+            domains_view.append({
+                "domain": d, "access": access, "mode": mode,
+                "selected_items": items_by_code.get(d.code, set()) if mode == _ACCESS_SELECTED else set(),
+            })
         return render_template("admin_account_access.html", account=account, domains_view=domains_view)
+
+
+# The three access choices of the Access screen (ACCOUNT_ITEM_ACCESS_001).
+_ACCESS_NONE = "none"
+_ACCESS_ALL = "all"
+_ACCESS_SELECTED = "selected"
 
 
 # ---------------------------------------------------------------------------

@@ -223,6 +223,122 @@ def create_why_for_who(session: Session, *, new_why: NewWhy, occurrence_id: int 
     return CreatedWhy(reason=reason, reused=reused, associated=associated)
 
 
+@dataclass
+class CreatedWho:
+    occurrence: "m.BankOccurrence"
+    reused: bool       # the typed name already IS this active WHO
+
+
+def create_who(session: Session, *, name: str | None) -> CreatedWho:
+    """"+ New WHO" from Select WHO / WHY (BANK_RECONCILIATION_NEW_WHO_001):
+    the WHO is created exactly as Configuration creates one — through
+    `configuration.save_who`, a COUNTERPARTY, active, with no WHY, no
+    default WHY, no Entity and no recognition rule — after the same checks
+    the WHO Rule modal applies (`who_rules`): an empty, too-short or
+    too-long name is refused, a name whose identity already is an active WHO
+    REUSES that WHO (never a duplicate), a name held by a merged WHO is
+    refused. Look-alike names are only offered on screen, never decided.
+
+    Nothing is decided for any transaction: the modal selects the WHO and
+    its Confirm records the classification. Flushes, never commits."""
+    from . import who_rules
+
+    existing, clean = who_rules.check_new_who(session, name)
+    if existing is not None:
+        return CreatedWho(occurrence=existing, reused=True)
+    occurrence = config_service.save_who(
+        session, occurrence_id=None, name=clean, active=True, reason_ids=[],
+        default_reason_id=None, reporting_entity_ids=[], rules=[],
+    )
+    return CreatedWho(occurrence=occurrence, reused=False)
+
+
+@dataclass
+class BulkWhoWhyResult:
+    who_name: str
+    why_name: str
+    updated: int
+    already: int
+
+
+BULK_LIMIT = 500
+
+
+def reconcile_who_why_bulk(
+    session: Session, *, items: list[tuple[int, int | None]], occurrence_id: int | None,
+    reason_id: int | None, account_id: int | None,
+) -> BulkWhoWhyResult:
+    """BANK_REVIEW_BULK_WHO_WHY_001 — the SAME WHO and WHY, chosen once in
+    Select WHO / WHY, for each transaction the person ticked on To Reconcile:
+    `items` = (transaction id, the decision id the page showed when the
+    dialog opened). Each one is recorded exactly as a single Confirm does
+    (`reconcile_who_why`: a HUMAN decision, WHAT from the WHY, its For Whom
+    kept). No rule is created; nothing beyond these ids is touched.
+
+    Everything is checked before anything is written; ANY transaction that
+    cannot take it — gone, no longer To Reconcile, a suppressed copy, a
+    possible duplicate still to decide, a For Whom split into lines, or a
+    decision changed since the dialog opened — refuses the whole request,
+    naming each one and why. A transaction that already carries this exact
+    HUMAN WHO + WHY (a repeated request) is counted, not written again.
+    Flushes, never commits: the caller commits once, or rolls back."""
+    from . import accounting_dedup
+    from . import review_queues
+
+    ids = list(dict.fromkeys(tx_id for tx_id, _seen in items))
+    if not ids:
+        raise ValueError("Select at least one transaction.")
+    if len(ids) > BULK_LIMIT:
+        raise ValueError(f"At most {BULK_LIMIT} transactions can be reconciled at once.")
+    if occurrence_id is None:
+        raise ValueError("Choose the WHO.")
+    who = session.get(m.BankOccurrence, occurrence_id)
+    if who is None or who.status != "ACTIVE":
+        raise ValueError("Choose an active WHO.")
+    if reason_id is None:
+        raise ValueError("Choose the WHY.")
+    reason = session.get(m.BankTransactionReason, reason_id)
+    if reason is None or reason.status != "ACTIVE":
+        raise ValueError("Choose an active WHY.")
+
+    seen = dict(items)
+    open_ids = review_queues.to_reconcile_ids(session, ids)
+    problems, pending, already = [], [], 0
+    for tx_id in ids:
+        txn = session.get(m.FinancialTransaction, tx_id)
+        if txn is None:
+            problems.append(f"#{tx_id}: it no longer exists")
+            continue
+        label = f"#{tx_id} ({txn.posting_date} · {txn.description_original})"
+        current = (session.get(m.BankTransactionExplanation, txn.explanation_id)
+                   if txn.explanation_id is not None else None)
+        if (current is not None and current.decision_source == "HUMAN" and current.occurrence_id == who.id
+                and current.transaction_reason_id == reason.id):
+            already += 1
+            continue
+        if tx_id not in open_ids:
+            problems.append(f"{label}: it is no longer To Reconcile")
+        elif txn.accounting_status == accounting_dedup.DUPLICATE_SUPPRESSED:
+            problems.append(f"{label}: it is an excluded duplicate copy")
+        elif txn.duplicate_status == "CANDIDATE_DUPLICATE":
+            problems.append(f"{label}: a possible duplicate still to decide")
+        elif seen.get(tx_id) != txn.explanation_id:
+            problems.append(f"{label}: its classification changed after the dialog was opened")
+        elif len(row_reconciliation._allocations(session, tx_id)) > 1:
+            problems.append(f"{label}: its For Whom is split into several lines — reconcile it on its own")
+        else:
+            pending.append(tx_id)
+    if problems:
+        raise ValueError("Nothing was saved. These transactions cannot take this WHO / WHY together: "
+                         + "; ".join(problems) + ".")
+    for tx_id in pending:
+        reconcile_who_why(session, transaction_id=tx_id, occurrence_id=who.id, reason_id=reason.id,
+                          account_id=account_id)
+    session.flush()
+    return BulkWhoWhyResult(who_name=who.canonical_name, why_name=reason.name, updated=len(pending),
+                            already=already)
+
+
 def reconcile_who_why(
     session: Session, *, transaction_id: int, occurrence_id: int | None, reason_id: int | None,
     account_id: int | None, new_why: NewWhy | None = None,

@@ -427,7 +427,7 @@ def main() -> int:
             check(
                 "18. approving a candidate creates the Who and classifies the whole group",
                 outcome.transactions_classified == 2
-                and s.query(m.BankOccurrence).filter_by(canonical_name="US Foods").count() == 1,
+                and s.query(m.BankOccurrence).filter_by(canonical_name="US FOODS").count() == 1,
             )
             # BANK_FINAL_RELEASE_BLOCKERS_001 — this used to assert the Why and
             # What were derived from the Who. They are not: "US FOODS INC 4821"
@@ -440,7 +440,7 @@ def main() -> int:
                 "21. approval records the Who; the Who's default Why is NOT applied",
                 len(approved_rows) == 2
                 and all(
-                    e.occurrence_name_snapshot == "US Foods"
+                    e.occurrence_name_snapshot == "US FOODS"
                     and e.transaction_reason_id is None
                     and e.accounting_classification_code_snapshot is None
                     for e in approved_rows
@@ -458,7 +458,7 @@ def main() -> int:
             first_decision = recognition.get_current_explanation(
                 s, financial_transaction_id=a1.id,
             )
-            us_foods_who = s.query(m.BankOccurrence).filter_by(canonical_name="US Foods").one()
+            us_foods_who = s.query(m.BankOccurrence).filter_by(canonical_name="US FOODS").one()
             why_decision = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=a1.id, occurrence_id=us_foods_who.id,
@@ -469,14 +469,14 @@ def main() -> int:
             s.commit()
             check(
                 "22. the person's Why decision carries the full Who/Why/What snapshot",
-                why_decision.occurrence_name_snapshot == "US Foods"
+                why_decision.occurrence_name_snapshot == "US FOODS"
                 and why_decision.transaction_reason_name_snapshot == "Food purchase"
                 and why_decision.accounting_classification_code_snapshot == "TEST-5100"
                 and why_decision.accounting_statement_type_snapshot == wci.PROFIT_LOSS,
             )
             check(
                 "22a. the Who-only approval row was left as it was",
-                first_decision.occurrence_name_snapshot == "US Foods"
+                first_decision.occurrence_name_snapshot == "US FOODS"
                 and first_decision.transaction_reason_id is None
                 and first_decision.accounting_classification_code_snapshot is None,
             )
@@ -520,7 +520,7 @@ def main() -> int:
             )
 
             # 19-20. An existing Who, several groups at once.
-            us_foods = s.query(m.BankOccurrence).filter_by(canonical_name="US Foods").one()
+            us_foods = s.query(m.BankOccurrence).filter_by(canonical_name="US FOODS").one()
             multi = rc.approve_candidates(
                 s, payee_keys=["DEBIT|PUBLIX 1488", "DEBIT|PUBLIX 1661"],
                 occurrence_id=us_foods.id, learn_description=True,

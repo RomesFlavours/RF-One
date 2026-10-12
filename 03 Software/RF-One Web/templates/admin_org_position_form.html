@@ -2,7 +2,7 @@
 {% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}New Position · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Organization', url_for('admin_organization')), ('Positions', url_for('admin_org_positions')), ('New Position', None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Organization', domain_entry('ORGANIZATION')), ('Positions', url_for('admin_org_positions')), ('New Position', None)]) }}
 <h1>New Position</h1>
 <div class="card">
   <form method="post">

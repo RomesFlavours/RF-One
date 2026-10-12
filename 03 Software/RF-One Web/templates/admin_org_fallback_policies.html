@@ -3,7 +3,7 @@
 {% import "_org_macros.html" as org_macros %}
 {% block page_title %}Organizational Fallback Policy · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Organization', url_for('admin_organization')), ('Fallback Policy', None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Organization', domain_entry('ORGANIZATION')), ('Fallback Policy', None)]) }}
 <h1>Organizational Fallback Policy</h1>
 <p class="empty">
   Company configuration, never a Core rule (Core does not fix "Unowned Attention → CEO" universally).
@@ -19,10 +19,10 @@
         {% for p in policies %}
           <tr>
             <td>{{ scope_display(p) }}</td>
-            <td><a href="{{ url_for('admin_org_position_detail', position_id=p.fallback_position_id) }}">{{ p.fallback_position.name }}</a></td>
+            <td>{% if may_use_item('ORGANIZATION', 'positions') %}<a href="{{ url_for('admin_org_position_detail', position_id=p.fallback_position_id) }}">{{ p.fallback_position.name }}</a>{% else %}{{ p.fallback_position.name }}{% endif %}</td>
             <td>{{ "yes" if p.is_active else "no" }}</td>
             <td>
-              {% if p.is_active %}
+              {% if p.is_active and org_may_administer() %}
               <form method="post" action="{{ url_for('admin_org_fallback_policy_deactivate', policy_id=p.id) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" style="font-size:.78rem;">Deactivate</button>
@@ -37,6 +37,7 @@
     </table>
   </div>
 
+  {% if org_may_administer() %}
   <h2>New Fallback Policy</h2>
   <form method="post" action="{{ url_for('admin_org_fallback_policy_new') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -49,5 +50,6 @@
     {{ org_macros.scope_field(scope_kinds, [], [], []) }}
     <button type="submit">Set Fallback Policy</button>
   </form>
+  {% endif %}
 </div>
 {% endblock %}

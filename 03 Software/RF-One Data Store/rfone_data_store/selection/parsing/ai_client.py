@@ -23,6 +23,7 @@ import os
 PROVIDER_ANTHROPIC = "ANTHROPIC"
 PROVIDER_BEDROCK = "BEDROCK"
 DEFAULT_PROVIDER = PROVIDER_ANTHROPIC
+ANTHROPIC_MODEL = "claude-sonnet-5"
 
 
 class AIProviderUnavailable(Exception):
@@ -98,7 +99,7 @@ def _generate_json_anthropic(prompt: str) -> dict:
     try:
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
-            model="claude-sonnet-5",
+            model=ANTHROPIC_MODEL,
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -161,6 +162,18 @@ _PROVIDERS = {
     PROVIDER_ANTHROPIC: _generate_json_anthropic,
     PROVIDER_BEDROCK: _generate_json_bedrock,
 }
+
+
+def active_provider_description() -> tuple[str, str | None]:
+    """(provider, model) that `generate_json` would use now — read from the
+    same configuration, never a secret, nothing called. Lets a consumer show
+    and record which AI answered (BANK_AI_RULES_001)."""
+    provider = _active_provider()
+    if provider == PROVIDER_BEDROCK:
+        return provider, _read_env_or_dotenv("RFONE_BEDROCK_MODEL_ID")
+    if provider == PROVIDER_ANTHROPIC:
+        return provider, ANTHROPIC_MODEL
+    return provider, None
 
 
 def generate_json(prompt: str) -> dict:

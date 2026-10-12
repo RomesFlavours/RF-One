@@ -80,6 +80,7 @@ def signature_for(session: Session, transaction: "m.FinancialTransaction") -> Si
             normalized_description=recognition.normalize_description_for_recognition(transaction.description_original),
             payment_instrument_id=transaction.payment_instrument_id, direction=direction,
             normalized_memo=recognition.normalize_memo_for_recognition(transaction.source_memo),
+            description=transaction.description_original,
         )
         if len(candidates) == 1:
             rule = candidates[0]

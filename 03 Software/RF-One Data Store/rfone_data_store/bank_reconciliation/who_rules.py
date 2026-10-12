@@ -52,7 +52,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from sqlalchemy import case, func, select, union
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from .. import models as m
 from . import recognition
@@ -200,6 +200,50 @@ _PURPOSE_FIELDS = (
 )
 
 
+# BANK_WHO_RULE_CONDITIONS_001 — the Rule modal's three conditions, each the
+# existing match type of the same meaning (never turned into another one).
+CONDITION_CONTAINS, CONDITION_STARTS_WITH, CONDITION_EQUALS = "CONTAINS", "STARTS_WITH", "EQUALS"
+CONDITION_MATCH_TYPES = {
+    CONDITION_CONTAINS: recognition.CONTAINS_TEXT,
+    CONDITION_STARTS_WITH: recognition.PREFIX,
+    CONDITION_EQUALS: recognition.EXACT_NORMALIZED_DESCRIPTION,
+}
+MATCH_TYPE_CONDITIONS = {match_type: condition for condition, match_type in CONDITION_MATCH_TYPES.items()}
+_CONDITION_WORDS = {recognition.CONTAINS_TEXT: "contains", recognition.PREFIX: "starts with",
+                    recognition.EXACT_NORMALIZED_DESCRIPTION: "equals"}
+
+
+def instrument_label(instrument: "m.PaymentInstrument | None") -> str:
+    """'Sapphire Preferred ··1562' — the Source's name and its identifier
+    (`_bank_macros.instrument_identity`), never repeated when the name
+    already ends with it."""
+    if instrument is None:
+        return "—"
+    digits = instrument.last_four or (instrument.external_account_identifier or "")[-4:]
+    name = instrument.display_name or ""
+    return f"{name} ··{digits}" if digits and not name.endswith(digits) else name
+
+
+def rule_text(rule: "m.BankRecognitionRule", session: Session | None = None) -> str:
+    """How a rule reads on screen: 'contains “ACME”'. A literal rule shows
+    its text as typed; every other rule its stored pattern, as before.
+    BANK_WHO_RULE_INSTRUMENT_001 — a literal rule limited to one Source adds
+    'AND Instrument = …' (named when a session is given)."""
+    if rule.literal_pattern is not None:
+        text = f"{_CONDITION_WORDS.get(rule.match_type, rule.match_type)} “{rule.literal_pattern}”"
+        if rule.payment_instrument_id is not None:
+            instrument = session.get(m.PaymentInstrument, rule.payment_instrument_id) if session else None
+            text += f" AND Instrument = {instrument_label(instrument) if instrument else rule.payment_instrument_id}"
+        return text
+    words = {recognition.CONTAINS_TEXT: "contains", recognition.PREFIX: "starts with",
+             recognition.EXACT_NORMALIZED_DESCRIPTION: "is exactly"}
+    return f"{words.get(rule.match_type, rule.match_type)} “{rule.normalized_pattern}”"
+
+
+def _same_literal(a: str | None, b: str | None) -> bool:
+    return (a or "").strip().casefold() == (b or "").strip().casefold()
+
+
 @dataclass
 class WhoRuleResult:
     """What one Apply did, in the operator's terms. No database id is
@@ -207,9 +251,11 @@ class WhoRuleResult:
     who_name: str
     phrase: str
     pattern: str
+    rule_text: str = ""           # "contains “ACME”" — how the saved rule reads
     who_created: bool = False
     rule_created: bool = False
     rule_reactivated: bool = False
+    rule_updated: bool = False    # a reopened Rule-modal rule changed in place
     matched: int = 0
     updated: int = 0
     already: int = 0
@@ -227,13 +273,16 @@ class WhoRuleResult:
     @property
     def business_changes(self) -> int:
         return (int(self.who_created) + int(self.rule_created) + int(self.rule_reactivated)
+                + int(self.rule_updated)
                 + self.transactions_written
                 + len(self.fragments_merged) + len(self.why_added))
 
     def as_dict(self) -> dict:
         return {
             "who_name": self.who_name, "phrase": self.phrase, "pattern": self.pattern,
+            "rule_text": self.rule_text or f"contains “{self.pattern}”",
             "who_created": self.who_created, "rule_created": self.rule_created, "rule_reactivated": self.rule_reactivated,
+            "rule_updated": self.rule_updated,
             "matched": self.matched, "updated": self.updated, "already": self.already,
             "human_conflicts": self.human_conflicts, "other_rule": self.other_rule,
             "structural": self.structural, "fragments_merged": list(self.fragments_merged),
@@ -268,7 +317,7 @@ def existing_identity(session: Session, name: str | None) -> "tuple[m.BankOccurr
     return occurrence, held
 
 
-def _new_who(session: Session, name: str | None) -> "tuple[m.BankOccurrence | None, str]":
+def check_new_who(session: Session, name: str | None) -> "tuple[m.BankOccurrence | None, str]":
     """Validate a WHO the operator asked to create, WITHOUT creating it.
 
     Returns (existing ACTIVE WHO to reuse, name) when the identity already
@@ -289,13 +338,20 @@ def _new_who(session: Session, name: str | None) -> "tuple[m.BankOccurrence | No
         raise ValueError(
             f"“{clean}” cannot be created: {held}. Choose an existing WHO instead."
         )
-    exact = session.scalar(select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == clean))
-    if exact is not None:
+    # BANK_WHO_UPPERCASE_001 — the name is stored in upper case; any other
+    # WHO with the same name (case / outer spaces aside) is not a new one.
+    from .classification import normalize_who_name
+    upper = normalize_who_name(clean)
+    same = next((o for o in session.scalars(select(m.BankOccurrence))
+                 if normalize_who_name(o.canonical_name) == upper), None)
+    if same is not None and same.status == "ACTIVE":
+        return same, same.canonical_name
+    if same is not None:
         raise ValueError(
-            f"A WHO named “{clean}” already exists but is inactive (merged). "
+            f"A WHO named “{same.canonical_name}” already exists but is inactive (merged). "
             "Choose its active WHO instead."
         )
-    return None, clean
+    return None, upper
 
 
 def _require_active_whys(session: Session, reason_ids: list[int]) -> list["m.BankTransactionReason"]:
@@ -374,6 +430,88 @@ def _save_rule(session: Session, who: "m.BankOccurrence", pattern: str,
     return rule
 
 
+def _literal_rules(session: Session, match_type: str):
+    return session.scalars(select(m.BankRecognitionRule).where(
+        m.BankRecognitionRule.match_type == match_type,
+        m.BankRecognitionRule.literal_pattern.is_not(None),
+        m.BankRecognitionRule.match_field == recognition.DESCRIPTION,
+        m.BankRecognitionRule.determines_purpose.is_(False),
+        m.BankRecognitionRule.direction.is_(None),
+    ).order_by(m.BankRecognitionRule.id)).all()
+
+
+def _refuse_conflicting_literal(session: Session, who: "m.BankOccurrence | None", match_type: str,
+                                text: str, editing: "m.BankRecognitionRule | None",
+                                instrument_id: int | None = None) -> None:
+    """The same principle as `_refuse_conflicting_rule`: one condition on one
+    text cannot recognise two WHO. An ACTIVE rule of another WHO with the
+    same condition, text (case / outer spaces aside) AND instrument refuses
+    the save. The same text on another instrument — or one rule for All
+    instruments and one for a single instrument — is not refused here: when
+    both match a transaction for different WHO, the engine's existing rule
+    leaves that WHO to a person."""
+    for clash in _literal_rules(session, match_type):
+        if clash.status != "ACTIVE" or not _same_literal(clash.literal_pattern, text):
+            continue
+        if clash.payment_instrument_id != instrument_id:
+            continue
+        if (who is not None and clash.occurrence_id == who.id) or (editing is not None and clash.id == editing.id):
+            continue
+        other = session.get(m.BankOccurrence, clash.occurrence_id)
+        scope = (f" on {instrument_label(session.get(m.PaymentInstrument, instrument_id))}"
+                 if instrument_id is not None else "")
+        raise ValueError(
+            f"Descriptions that {_CONDITION_WORDS[match_type]} “{text.strip()}”{scope} are already recognised as WHO "
+            f"“{other.canonical_name if other else '?'}”. One text cannot recognise two WHO: "
+            "change that WHO's rule first, or choose another text."
+        )
+
+
+def _save_literal_rule(session: Session, who: "m.BankOccurrence", match_type: str, text: str,
+                       editing: "m.BankRecognitionRule | None", created_from_transaction_id: int | None,
+                       result: WhoRuleResult, instrument_id: int | None = None) -> "m.BankRecognitionRule":
+    """A WHO-only rule with its condition and its text exactly as typed
+    (`literal_pattern`). Reopened (`editing`), the same rule is changed in
+    place; saved again for the same WHO with the same condition and text, the
+    existing rule is reused — never a duplicate."""
+    pattern = recognition.normalize_description_for_recognition(text)
+    same = next((r for r in _literal_rules(session, match_type)
+                 if r.occurrence_id == who.id and _same_literal(r.literal_pattern, text)
+                 and r.payment_instrument_id == instrument_id
+                 and (editing is None or r.id != editing.id)), None)
+    rule = same or editing
+    if rule is not None:
+        changed = False
+        if rule is editing:
+            # A reopened rule takes the condition, text and WHO now chosen;
+            # the same rule saved again keeps its text exactly as first typed.
+            changed = ((rule.match_type, rule.literal_pattern, rule.occurrence_id, rule.payment_instrument_id)
+                       != (match_type, text, who.id, instrument_id))
+            rule.match_type, rule.literal_pattern, rule.normalized_pattern = match_type, text, pattern
+            rule.occurrence_id = who.id
+            rule.payment_instrument_id = instrument_id
+        if rule.status != "ACTIVE" or not rule.auto_apply_enabled:
+            rule.status = "ACTIVE"
+            rule.auto_apply_enabled = True
+            result.rule_reactivated = True
+        elif changed and rule is editing:
+            result.rule_updated = True
+        session.flush()
+        return rule
+    rule = m.BankRecognitionRule(
+        match_type=match_type, normalized_pattern=pattern, literal_pattern=text,
+        match_field=recognition.DESCRIPTION, determines_purpose=False,
+        payment_instrument_id=instrument_id, direction=None, occurrence_id=who.id,
+        transaction_reason_id=None, priority=0, status="ACTIVE", auto_apply_enabled=True,
+        human_confirmations=1, human_contradictions=0,
+        created_from_transaction_id=created_from_transaction_id,
+    )
+    session.add(rule)
+    session.flush()
+    result.rule_created = True
+    return rule
+
+
 def _save_possible_whys(session: Session, who: "m.BankOccurrence",
                         reasons: list["m.BankTransactionReason"], result: WhoRuleResult) -> None:
     """B. Additive upsert of WHO -> possible WHY. An association already
@@ -442,7 +580,9 @@ def _plan_transactions(session: Session, who: "m.BankOccurrence",
     matching = []
     for tx_id, instrument_id, description, memo, amount, explanation_id, fmt in rows:
         normalized = recognition.normalize_description_for_recognition(description or "")
-        if recognition._rule_matches(rule, normalized):
+        if rule.payment_instrument_id is not None and rule.payment_instrument_id != instrument_id:
+            continue
+        if recognition._rule_matches(rule, normalized, description=description):
             matching.append((tx_id, instrument_id, description, memo, amount, explanation_id, normalized, fmt))
     if not matching:
         return []
@@ -475,6 +615,7 @@ def _plan_transactions(session: Session, who: "m.BankOccurrence",
             session, normalized_description=normalized, payment_instrument_id=instrument_id,
             direction=recognition.direction_for_amount(amount),
             normalized_memo=recognition.normalize_memo_for_recognition(memo), rules=rules,
+            description=description,
         )
         agreed = {c.occurrence_id for c in candidates} == {who.id}
         if agreed:
@@ -521,7 +662,8 @@ def _plan_fragments(session: Session, who: "m.BankOccurrence", rule: "m.BankReco
             select(m.BankOccurrence).where(m.BankOccurrence.status == "ACTIVE",
                                            m.BankOccurrence.id != who.id))
         if recognition._rule_matches(
-            rule, recognition.normalize_description_for_recognition(occurrence.canonical_name))
+            rule, recognition.normalize_description_for_recognition(occurrence.canonical_name),
+            description=occurrence.canonical_name)
     ]
     if not candidates:
         return [], []
@@ -630,6 +772,7 @@ def _merge_fragment(session: Session, who: "m.BankOccurrence", fragment: "m.Bank
             ))
             linked.add(link.supplier_id)
 
+    why_catalog.sync_single_default(session, who.id)
     fragment.status = "INACTIVE"
     note = (f"Merged into '{who.canonical_name}' (#{who.id}) by WHO rule #{rule.id} "
             f"(description contains {rule.normalized_pattern!r}).")
@@ -692,6 +835,8 @@ def apply_who_rule(
     session: Session, *, occurrence_id: int | None, instruction: str | None,
     transaction_reason_ids: list[int] | None = None, applied_by_account_id: int | None = None,
     created_from_transaction_id: int | None = None, new_who_name: str | None = None,
+    condition: str | None = None, match_text: str | None = None, rule_id: int | None = None,
+    instrument_id: int | None = None,
 ) -> WhoRuleResult:
     """THE Apply — Classification and Review both call this, and nothing
     else writes a simple WHO rule. Validates everything before writing
@@ -706,30 +851,62 @@ def apply_who_rule(
     every check has passed and inside the same database transaction as the
     rule and its application — so a refusal or failure anywhere leaves
     neither a WHO without its rule nor a rule without its WHO. A name whose
-    identity already exists reuses that WHO instead of creating a duplicate."""
+    identity already exists reuses that WHO instead of creating a duplicate.
+
+    BANK_WHO_RULE_CONDITIONS_001 — with a `condition` (CONTAINS, STARTS_WITH,
+    EQUALS) the Rule modal sends the rule itself instead of a sentence: the
+    condition and `match_text`, kept exactly as typed and matched literally
+    on the description. `rule_id` names a rule of that kind being reopened.
+    Everything after the rule — possible WHY, fragments, existing
+    transactions — is the same Apply."""
     from . import configuration
+
+    if condition is not None:
+        match_type = CONDITION_MATCH_TYPES.get((condition or "").upper())
+        if match_type is None:
+            raise ValueError("Choose the condition: Contains, Starts with or Equals.")
+        if not (match_text or "").strip():
+            raise ValueError("Write the text to match: an empty text cannot recognise a WHO.")
+        if len(match_text) > 500:
+            raise ValueError("The text to match is at most 500 characters.")
+        editing = None
+        if rule_id:
+            editing = session.get(m.BankRecognitionRule, rule_id)
+            if editing is None or editing.literal_pattern is None:
+                raise ValueError("This rule cannot be edited here; change it in Configuration.")
+        # BANK_WHO_RULE_INSTRUMENT_001 — "AND Instrument": the Source the
+        # import assigned to the transaction (payment_instrument_id); None
+        # means All instruments.
+        if instrument_id is not None:
+            instrument = session.get(m.PaymentInstrument, instrument_id)
+            if instrument is None or not instrument.is_payment_source:
+                raise ValueError("Choose an existing instrument, or All instruments.")
 
     if occurrence_id:
         who, new_name = _require_active_who(session, occurrence_id), None
         who_label = who.canonical_name
     else:
-        who, new_name = _new_who(session, new_who_name)
+        who, new_name = check_new_who(session, new_who_name)
         who_label = who.canonical_name if who is not None else new_name
     if who is not None and who.manual_only:
         raise ValueError(
             f"WHO “{who.canonical_name}” is Manual Only: it is reconciled by hand and takes no WHO Rule. "
-            "Remove Manual Only in Classification first if it should have one."
+            "Remove Manual Only in Rules first if it should have one."
         )
-    parsed = parse_rule_instruction(instruction)
-    if parsed.stated_who and wr.who_key(parsed.stated_who) not in {
-            wr.who_key(who_label), wr.who_key(new_who_name or who_label)}:
-        raise ValueError(
-            f"The rule says the WHO is “{parsed.stated_who}”, but the "
-            f"{'new' if who is None else 'selected'} WHO is “{who_label}”. "
-            "Choose that WHO, or rewrite the rule."
-        )
+    if condition is None:
+        parsed = parse_rule_instruction(instruction)
+        if parsed.stated_who and wr.who_key(parsed.stated_who) not in {
+                wr.who_key(who_label), wr.who_key(new_who_name or who_label)}:
+            raise ValueError(
+                f"The rule says the WHO is “{parsed.stated_who}”, but the "
+                f"{'new' if who is None else 'selected'} WHO is “{who_label}”. "
+                "Choose that WHO, or rewrite the rule."
+            )
     reasons = _require_active_whys(session, list(transaction_reason_ids or []))
-    _refuse_conflicting_rule(session, who, parsed.normalized_pattern)
+    if condition is None:
+        _refuse_conflicting_rule(session, who, parsed.normalized_pattern)
+    else:
+        _refuse_conflicting_literal(session, who, match_type, match_text, editing, instrument_id)
 
     created = False
     if who is None:
@@ -738,9 +915,17 @@ def apply_who_rule(
             default_reason_id=None, reporting_entity_ids=[], rules=[],
         )
         created = True
-    result = WhoRuleResult(who_name=who.canonical_name, phrase=parsed.phrase,
-                           pattern=parsed.normalized_pattern, who_created=created)
-    rule = _save_rule(session, who, parsed.normalized_pattern, created_from_transaction_id, result)
+    if condition is None:
+        result = WhoRuleResult(who_name=who.canonical_name, phrase=parsed.phrase,
+                               pattern=parsed.normalized_pattern, who_created=created)
+        rule = _save_rule(session, who, parsed.normalized_pattern, created_from_transaction_id, result)
+    else:
+        result = WhoRuleResult(who_name=who.canonical_name, phrase=match_text,
+                               pattern=recognition.normalize_description_for_recognition(match_text),
+                               who_created=created)
+        rule = _save_literal_rule(session, who, match_type, match_text, editing,
+                                  created_from_transaction_id, result, instrument_id)
+    result.rule_text = rule_text(rule, session)
     _save_possible_whys(session, who, reasons, result)
 
     plan = _plan_transactions(session, who, rule)
@@ -1008,14 +1193,16 @@ def occurrence_page(session: Session, *, search: str = "", page: int = 1, show_i
             held.setdefault(occurrence_id, set()).add(tx_id)
         labels = {recognition.CONTAINS_TEXT: "contains", recognition.PREFIX: "starts with",
                   recognition.EXACT_NORMALIZED_DESCRIPTION: "is exactly"}
-        for occurrence_id, match_type, pattern in session.execute(
+        for occurrence_id, match_type, pattern, literal in session.execute(
                 select(m.BankRecognitionRule.occurrence_id, m.BankRecognitionRule.match_type,
-                       m.BankRecognitionRule.normalized_pattern)
+                       m.BankRecognitionRule.normalized_pattern, m.BankRecognitionRule.literal_pattern)
                 .where(m.BankRecognitionRule.occurrence_id.in_(ids),
                        m.BankRecognitionRule.status == "ACTIVE",
                        m.BankRecognitionRule.match_field == recognition.DESCRIPTION)
                 .order_by(m.BankRecognitionRule.id)):
-            rules.setdefault(occurrence_id, []).append(f"{labels.get(match_type, match_type)} “{pattern}”")
+            rules.setdefault(occurrence_id, []).append(
+                f"{_CONDITION_WORDS.get(match_type, match_type)} “{literal}”" if literal is not None
+                else f"{labels.get(match_type, match_type)} “{pattern}”")
 
     curated, alias_owners = _curated_index(session) if (ids and not show_inactive) else ({}, {})
     manual = set(session.scalars(select(m.BankOccurrence.id).where(
@@ -1163,7 +1350,8 @@ def who_summary(session: Session, occurrence_id: int) -> dict | None:
         "id": who.id, "name": who.canonical_name, "active": who.status == "ACTIVE",
         "manual_only": bool(who.manual_only),
         "possible_why_ids": [reason.id for reason in reasons],
-        "rules": [f"{'contains' if r.match_type == recognition.CONTAINS_TEXT else r.match_type.lower()} "
+        "rules": [rule_text(r, session) if r.literal_pattern is not None else
+                  f"{'contains' if r.match_type == recognition.CONTAINS_TEXT else r.match_type.lower()} "
                   f"“{r.normalized_pattern}”" for r in rules],
     }
 
@@ -1195,3 +1383,222 @@ def selectable_why_groups(session: Session) -> list[tuple[str, list["m.BankTrans
     if by_group.get(None):
         result.append(("Other", by_group[None]))
     return result
+
+
+# ---------------------------------------------------------------------------
+# 5. Classification: knowledge first, then the work queue
+#    (BANK_CLASSIFICATION_KNOWLEDGE_QUEUE_001)
+#
+# The Classification tab is not the WHO catalog (that is Configuration). It
+# shows what RF-One already KNOWS — General Rules, and the WHO Rules below —
+# and then only the WHO still waiting for a person (TO CLASSIFY). Every list
+# here is read with a bounded number of queries, never one per WHO.
+# ---------------------------------------------------------------------------
+
+_MATCH_LABELS = {recognition.CONTAINS_TEXT: "contains", recognition.PREFIX: "starts with",
+                 recognition.EXACT_NORMALIZED_DESCRIPTION: "is exactly"}
+
+
+@dataclass(frozen=True)
+class WhoRuleRow:
+    """One ACTIVE fixed WHO Rule: a description pattern naming one WHO."""
+    rule_id: int
+    pattern: str            # "contains “ACME”"
+    who_id: int
+    who_name: str
+    who_active: bool
+    possible_why: int       # the WHO's active possible WHY
+    matches: int            # transactions whose current decision cites this rule
+    # BANK_WHO_RULE_CONDITIONS_001 — a rule made in the Rule modal reopens
+    # there with its condition and text; any other keeps its Configuration path.
+    condition: str = ""
+    match_text: str | None = None
+    instrument_id: int | None = None
+
+
+def who_rule_rows(session: Session, *, search: str = "") -> list[WhoRuleRow]:
+    """Every ACTIVE WHO Rule (DESCRIPTION scope), alphabetical by WHO, then
+    pattern; `search` matches the WHO name or the pattern. Three queries."""
+    query = (
+        select(m.BankRecognitionRule, m.BankOccurrence)
+        .join(m.BankOccurrence, m.BankOccurrence.id == m.BankRecognitionRule.occurrence_id)
+        .where(m.BankRecognitionRule.status == "ACTIVE",
+               m.BankRecognitionRule.match_field == recognition.DESCRIPTION)
+    )
+    needle = (search or "").strip().upper()
+    if needle:
+        query = query.where(func.upper(m.BankOccurrence.canonical_name).contains(needle)
+                            | func.upper(m.BankRecognitionRule.normalized_pattern).contains(needle)
+                            | func.upper(m.BankRecognitionRule.literal_pattern).contains(needle))
+    pairs = session.execute(query.order_by(
+        func.upper(m.BankOccurrence.canonical_name), m.BankRecognitionRule.normalized_pattern,
+        m.BankRecognitionRule.id)).all()
+    if not pairs:
+        return []
+    rule_ids = [rule.id for rule, _ in pairs]
+    matches = dict(session.execute(
+        select(m.BankTransactionExplanation.recognition_rule_id, func.count(m.FinancialTransaction.id))
+        .join(m.FinancialTransaction, m.FinancialTransaction.explanation_id == m.BankTransactionExplanation.id)
+        .where(m.BankTransactionExplanation.recognition_rule_id.in_(rule_ids))
+        .group_by(m.BankTransactionExplanation.recognition_rule_id)).all())
+    whys = dict(session.execute(
+        select(m.BankOccurrenceReasonAssociation.occurrence_id, func.count(m.BankTransactionReason.id))
+        .join(m.BankTransactionReason,
+              m.BankTransactionReason.id == m.BankOccurrenceReasonAssociation.transaction_reason_id)
+        .where(m.BankOccurrenceReasonAssociation.active.is_(True), m.BankTransactionReason.status == "ACTIVE",
+               m.BankOccurrenceReasonAssociation.occurrence_id.in_({who.id for _, who in pairs}))
+        .group_by(m.BankOccurrenceReasonAssociation.occurrence_id)).all())
+    return [WhoRuleRow(
+        rule_id=rule.id,
+        pattern=(rule_text(rule, session) if rule.literal_pattern is not None
+                 else f"{_MATCH_LABELS.get(rule.match_type, rule.match_type)} “{rule.normalized_pattern}”"),
+        who_id=who.id, who_name=who.canonical_name, who_active=who.status == "ACTIVE",
+        possible_why=whys.get(who.id, 0), matches=matches.get(rule.id, 0),
+        condition=MATCH_TYPE_CONDITIONS.get(rule.match_type, "") if rule.literal_pattern is not None else "",
+        match_text=rule.literal_pattern,
+        instrument_id=rule.payment_instrument_id if rule.literal_pattern is not None else None,
+    ) for rule, who in pairs]
+
+
+def disable_who_rule(session: Session, *, rule_id: int) -> "m.BankRecognitionRule":
+    """Disable one WHO Rule — kept for history, never deleted, exactly as
+    Configuration and Manual Only disable one. Transactions it already
+    recognised keep their decision. Flushes, never commits."""
+    rule = session.get(m.BankRecognitionRule, rule_id)
+    if rule is None or rule.match_field != recognition.DESCRIPTION:
+        raise ValueError("This WHO Rule does not exist.")
+    if rule.status != "ACTIVE":
+        raise ValueError("This WHO Rule is already disabled.")
+    rule.status = "INACTIVE"
+    rule.auto_apply_enabled = False
+    session.flush()
+    return rule
+
+
+@dataclass(frozen=True)
+class QueueRow:
+    """One WHO still waiting for a person."""
+    id: int
+    name: str
+    open_transactions: int      # its transactions with no WHO decided yet
+    suggested_who_id: int
+    suggested_who_name: str
+    rule_target_manual_only: bool
+    last_transaction: LastTransaction | None
+
+
+@dataclass(frozen=True)
+class QueuePage:
+    rows: list[QueueRow]
+    total: int
+    page: int
+    pages: int
+
+
+def _open_transactions_by_who():
+    """(WHO id, open transaction count): the WHO a recognition proposes for
+    transactions whose WHO is not resolved yet — the To Reconcile condition
+    of Review (`review_queues`): in the books' scope, no decision naming a
+    WHO, and not an own-account movement (which has no WHO by design).
+
+    A transaction leaves as soon as ANY authoritative mechanism names its
+    WHO — a WHO Rule, a General Rule, Select WHO, a Standard — because each
+    of them records a decision that names it."""
+    from . import accounting_dedup, review_queues
+    from . import export as export_service  # local: only this query needs the export scope
+
+    # An alias: `own_account_movement` correlates its own BankWhoRecognition
+    # subquery to the transaction, never to this outer recognition.
+    held = aliased(m.BankWhoRecognition)
+    return (
+        select(held.occurrence_id.label("occurrence_id"),
+               func.count(func.distinct(m.FinancialTransaction.id)).label("open_count"))
+        .join(m.FinancialTransaction, m.FinancialTransaction.id == held.financial_transaction_id)
+        .outerjoin(m.BankTransactionExplanation,
+                   m.BankTransactionExplanation.id == m.FinancialTransaction.explanation_id)
+        .where(held.occurrence_id.is_not(None),
+               held.recognizer_version == wr.RECOGNIZER_VERSION,
+               m.BankTransactionExplanation.occurrence_id.is_(None),
+               ~review_queues.own_account_movement(),
+               export_service._not_confirmed_duplicate(),
+               accounting_dedup.not_suppressed_filter())
+        .group_by(held.occurrence_id)
+        .subquery()
+    )
+
+
+def _queue_conditions(open_counts):
+    """TO CLASSIFY: an ACTIVE WHO, not Manual Only, with no ACTIVE WHO Rule,
+    holding at least one open transaction."""
+    return (m.BankOccurrence.status == "ACTIVE",
+            m.BankOccurrence.manual_only.is_not(True),
+            ~_has_active_who_rule(),
+            open_counts.c.open_count > 0)
+
+
+def classification_queue(session: Session, *, search: str = "", page: int = 1,
+                         page_size: int = CLASSIFICATION_PAGE_SIZE) -> QueuePage:
+    """The TO CLASSIFY queue, most open transactions first (then by name):
+    only the WHO still waiting for a person. Bounded queries: the queue, then
+    the page's latest transactions and the Rule preselection."""
+    open_counts = _open_transactions_by_who()
+    conditions = list(_queue_conditions(open_counts))
+    needle = (search or "").strip()
+    if needle:
+        conditions.append(func.upper(m.BankOccurrence.canonical_name).contains(needle.upper()))
+    # One execution of the open-transaction aggregate: the queue's (id, name,
+    # count) tuples only — the queue itself, never the resolved WHO — paged here.
+    queued = session.execute(
+        select(m.BankOccurrence.id, m.BankOccurrence.canonical_name, open_counts.c.open_count)
+        .join(open_counts, open_counts.c.occurrence_id == m.BankOccurrence.id).where(*conditions)
+        .order_by(open_counts.c.open_count.desc(), func.upper(m.BankOccurrence.canonical_name),
+                  m.BankOccurrence.id)).all()
+    total = len(queued)
+    pages = max((total + page_size - 1) // page_size, 1)
+    page = min(max(page, 1), pages)
+    found = queued[(page - 1) * page_size:page * page_size]
+    ids = [row.id for row in found]
+    curated, alias_owners = _curated_index(session) if ids else ({}, {})
+    manual = set(session.scalars(select(m.BankOccurrence.id).where(
+        m.BankOccurrence.manual_only.is_(True)))) if ids else set()
+    last = latest_transactions(session, ids)
+    rows = []
+    for row in found:
+        suggested = suggest_canonical(row.canonical_name, row.id, curated, alias_owners)
+        rows.append(QueueRow(
+            id=row.id, name=row.canonical_name, open_transactions=row.open_count,
+            suggested_who_id=suggested, suggested_who_name=curated.get(suggested, row.canonical_name),
+            rule_target_manual_only=suggested in manual, last_transaction=last.get(row.id),
+        ))
+    return QueuePage(rows=rows, total=total, page=page, pages=pages)
+
+
+def manual_only_rows(session: Session, *, search: str = "") -> list["m.BankOccurrence"]:
+    """The ACTIVE Manual Only WHO, alphabetical — shown only on request."""
+    query = select(m.BankOccurrence).where(m.BankOccurrence.status == "ACTIVE",
+                                           m.BankOccurrence.manual_only.is_(True))
+    if (search or "").strip():
+        query = query.where(func.upper(m.BankOccurrence.canonical_name).contains(search.strip().upper()))
+    return list(session.scalars(query.order_by(func.upper(m.BankOccurrence.canonical_name))))
+
+
+def classification_counts(session: Session, *, to_classify: int | None = None) -> dict[str, int]:
+    """The headline counts: active General Rules, active WHO Rules, the
+    TO CLASSIFY queue, Manual Only WHO. `to_classify` may be passed when the
+    caller already counted the unfiltered queue."""
+    if to_classify is None:
+        open_counts = _open_transactions_by_who()
+        to_classify = session.scalar(
+            select(func.count(m.BankOccurrence.id))
+            .join(open_counts, open_counts.c.occurrence_id == m.BankOccurrence.id)
+            .where(*_queue_conditions(open_counts))) or 0
+    return {
+        "general_rules": session.scalar(select(func.count(m.BankGeneralRule.id))
+                                        .where(m.BankGeneralRule.status == "ACTIVE")) or 0,
+        "who_rules": session.scalar(select(func.count(m.BankRecognitionRule.id)).where(
+            m.BankRecognitionRule.status == "ACTIVE",
+            m.BankRecognitionRule.match_field == recognition.DESCRIPTION)) or 0,
+        "to_classify": to_classify,
+        "manual_only": session.scalar(select(func.count(m.BankOccurrence.id)).where(
+            m.BankOccurrence.status == "ACTIVE", m.BankOccurrence.manual_only.is_(True))) or 0,
+    }

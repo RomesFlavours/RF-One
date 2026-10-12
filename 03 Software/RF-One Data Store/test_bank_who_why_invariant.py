@@ -169,7 +169,7 @@ def main() -> int:
                 )
 
             def who_for(name: str, why):
-                existing = s.query(m.BankOccurrence).filter_by(canonical_name=name).first()
+                existing = s.query(m.BankOccurrence).filter_by(canonical_name=name.strip().upper()).first()
                 if existing is not None:
                     return existing
                 return classification_service.create_occurrence(
@@ -349,7 +349,7 @@ def main() -> int:
                     d.transaction_reason_id
                     for d in s.query(m.BankTransactionExplanation).all()
                     if d.transaction_reason_id is not None
-                    and "Mario Rossi" in (d.occurrence_name_snapshot or "")
+                    and "MARIO ROSSI" in (d.occurrence_name_snapshot or "")  # stored upper case
                 }) >= 2,
             )
 

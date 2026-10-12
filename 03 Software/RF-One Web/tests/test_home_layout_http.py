@@ -6,8 +6,9 @@ column of blocks.
   * Domains: operational first, Work in progress last, alphabetical within
     each group; Bank is not a Domain on Home.
   * Administration: Bank, for accounts with BANK access.
-  * Settings, alphabetical: Accounts, Legal Entities, Organization (admins),
-    Profile, Workweek (admins).
+  * Settings, alphabetical: Accounts, Legal Entities (admins), Profile,
+    Workweek (admins). Organization is a Domain card since
+    ACCOUNT_ITEM_ACCESS_001, shown to the accounts granted ORGANIZATION.
   * Profile is no longer a header button; Log out is a text link.
 
 Throwaway SQLite database created before `app.py` is imported; never
@@ -88,7 +89,7 @@ def main() -> int:
                 s, username="plain1", display_name="Plain One", password="PlainPass123!", status="ACTIVE",
             )
             s.flush()
-            for code in ("TRAINING", "TIPS", "COMPENSATION", "SELECTION", "BANK"):
+            for code in ("TRAINING", "TIPS", "COMPENSATION", "SELECTION", "BANK", "ORGANIZATION"):
                 account_service.set_domain_access(
                     s, account_id=admin.id, domain_code=code, enabled=True,
                     role_code="trainer" if code == "TRAINING" else None,
@@ -123,7 +124,7 @@ def main() -> int:
         # --- Domains --------------------------------------------------------
         domains_part = body.split("<h2>Your Domains</h2>", 1)[1].split('<div class="domain-name">Administration</div>', 1)[0]
         names = re.findall(r'<div class="domain-name">([^<]+)</div>', domains_part)
-        expected = ["Compensation", "Selection", "Tips", "Training"]
+        expected = ["Compensation", "Organization", "Selection", "Tips", "Training"]
         check("Domains ordered alphabetically (Selection released: no Work in progress left)",
               names == expected, f"{names}")
         check("Bank is not presented as a Domain",
@@ -140,7 +141,7 @@ def main() -> int:
             r'class="domain-card domain-card-(released|unreleased)"[^>]*>\s*<div class="domain-name">([^<]+)</div>',
             domains_part)}
         check("operational Domains, Selection included, are marked released (green)",
-              all(card_states.get(n) == "released" for n in ("Compensation", "Selection", "Tips", "Training")),
+              all(card_states.get(n) == "released" for n in ("Compensation", "Organization", "Selection", "Tips", "Training")),
               f"{card_states}")
         check("every Domain card carries exactly one release state", len(card_states) == len(names), f"{card_states}")
 
@@ -150,10 +151,12 @@ def main() -> int:
         check("Administration contains exactly Bank",
               HREF_RE.findall(admin_part) == ["/bank"] and "<strong>Bank</strong>" in admin_part)
         rows = re.findall(r"<strong>([^<]+)</strong>", settings_part)
-        check("Settings rows are Accounts, Legal Entities, Organization, Profile, Workweek (alphabetical)",
-              rows == ["Accounts", "Legal Entities", "Organization", "Profile", "Workweek"], f"{rows}")
+        check("Settings rows are Accounts, Legal Entities, Profile, Workweek (alphabetical)",
+              rows == ["Accounts", "Legal Entities", "Profile", "Workweek"], f"{rows}")
         check("Settings links use the existing routes",
-              HREF_RE.findall(settings_part) == ["/admin/accounts", "/admin/legal-entities", "/admin/organization", "/profile", "/admin/workweek"])
+              HREF_RE.findall(settings_part) == ["/admin/accounts", "/admin/legal-entities", "/profile", "/admin/workweek"])
+        check("Organization is a Domain card, no longer a Settings row",
+              'href="/admin/organization"' in domains_part and "/admin/organization" not in settings_part)
         check("Administration and Settings are two distinct blocks",
               body.count('class="domain-card home-block"') == 2)
         check("old separate links are gone",

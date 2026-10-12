@@ -54,6 +54,8 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as web_app  # noqa: E402
+import tempfile as _tempfile  # noqa: E402
+web_app.app.config["BANK_IMPORT_STAGING_DIR"] = _tempfile.mkdtemp(prefix="rfoneweb_staging_")  # never the real staging folder
 from db import SessionFactory  # noqa: E402
 from _bank_upload_helper import upload_and_confirm  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
@@ -256,12 +258,13 @@ def main() -> int:
             resp.data.count(b'id="who-picker"') == 1,
         )
         check(
-            "with no Who configured the picker states it and points at Classification",
-            b"No WHO configured" in resp.data and b"/bank/classification" in resp.data,
+            "with no Who configured the picker says so and offers + New WHO to create the first one",
+            b"No WHO yet" in resp.data and b">+ New WHO</button>" in resp.data
+            and b'id="who-create-dialog"' in resp.data,
         )
         check(
-            "with no Who configured no unusable Confirm button is rendered",
-            b'id="who-picker-confirm"' not in resp.data,
+            "with no Who configured Confirm stays disabled until a WHO and a WHY are chosen",
+            b'id="who-picker-confirm" disabled' in resp.data,
         )
         check(
             "the picker can always be closed, even when empty",
@@ -276,10 +279,14 @@ def main() -> int:
         # Export is blocked (no resolved reconciliation decision) before
         # the human confirms Occurrence/Reason.
         # -----------------------------------------------------------------
-        resp = operator_client.get("/bank/export?year=2026&month=5")
+        # BANK_EXPORT_BY_OWNER_001 — the report is per Owning Entity.
+        with SessionFactory() as s:
+            owner_keys = [o.key for o in export_service.owner_choices(s)]
+        OWNER = owner_keys[0]
+        resp = operator_client.get(f"/bank/export?year=2026&month=5&owner={OWNER}")
         check(
             "export page shows a blocking reason before a reconciliation decision is recorded",
-            b"Export blocked" in resp.data and b"Needs review" in resp.data,
+            b"EXPORT NOT READY" in resp.data and b'data-group="to_reconcile"' in resp.data,
         )
 
         # -----------------------------------------------------------------
@@ -303,24 +310,32 @@ def main() -> int:
                 "csrf_token": extract_csrf(resp.data),
             },
         )
+        # BANK_RULES_RESET_001 — the Classification ("Rules") tab and its page
+        # /bank/classification are retired; the gate and the tab order are
+        # checked on Bank Configuration instead.
         check(
-            "the Classification tab is behind the BANK domain gate (403 without access)",
-            ungated_client.get("/bank/classification").status_code == 403,
+            "Bank Configuration is behind the BANK domain gate (403 without access)",
+            ungated_client.get("/bank/configuration").status_code == 403,
+        )
+        check(
+            "the retired Classification page answers 404 for an authorized user",
+            operator_client.get("/bank/classification").status_code == 404,
         )
 
-        resp = operator_client.get("/bank/classification")
-        check("the Classification tab responds 200 for an authorized user", resp.status_code == 200)
+        resp = operator_client.get("/bank/configuration")
         # Compared inside the tab bar: the breadcrumb above it also names
         # the current section (RF-One UI Rules §4).
-        tabs = resp.data[resp.data.index(b'<nav class="module-tabs'):]
+        tabs = resp.data[resp.data.index(b'<nav class="module-tabs'):resp.data.index(b"</nav>", resp.data.index(b'<nav class="module-tabs'))]
         check(
-            "every Bank page offers the tabs in the approved order, Instructions last",
+            "every Bank page offers the tabs in the approved order, Instructions last (no Rules tab)",
             tabs.index(b"Import and Review")
             < tabs.index(b"Review Transactions")
             < tabs.index(b"Monthly Export")
             < tabs.index(b">Source<")
-            < tabs.index(b">Classification<")
-            < tabs.index(b">Instructions<"),
+            < tabs.index(b">AI Rules<")
+            < tabs.index(b">Configuration<")
+            < tabs.index(b">Instructions<")
+            and b">Rules<" not in tabs,
         )
 
         # BANK_FINAL_CLEANUP_001 — the vocabulary (WHAT / WHY / WHO) is
@@ -371,12 +386,12 @@ def main() -> int:
                 orphan_who.default_transaction_reason_id is None,
             )
 
-        resp = operator_client.get("/bank/classification")
-        # BANK_SIMPLE_WHO_RULE_001 — Classification lists the Who with its
-        # Rule button; the Who -> Why -> What vocabulary lives in Configuration.
+        # A Who just created is maintained in Configuration and offered by the
+        # WHO picker (checked below). The former Classification-queue half of
+        # this check is retired with the page (BANK_RULES_RESET_001).
         check(
-            "the Classification tab lists the new Who with a Rule button",
-            b"US Foods" in resp.data and b'class="who-rule-open"' in resp.data,
+            "a new Who is listed in Bank Configuration",
+            b"US FOODS" in operator_client.get("/bank/configuration").data,
         )
 
         # -----------------------------------------------------------------
@@ -388,7 +403,7 @@ def main() -> int:
             # chosen WHO's WHY on demand (no WHO x WHY matrix in the page).
             "the WHO / WHY popup loads its WHO list and each WHO's WHY on demand",
             b'data-whos-url="/bank/manual-reconciliation/whos"' in resp.data
-            and b"US Foods" in operator_client.get("/bank/manual-reconciliation/whos").data,
+            and b"US FOODS" in operator_client.get("/bank/manual-reconciliation/whos").data,
         )
         check(
             "once a Who exists the picker renders its search field and Confirm button",
@@ -482,13 +497,14 @@ def main() -> int:
         with SessionFactory() as s:
             confirm_decided_rows(s, year=2026, month=5)
             s.commit()
-        resp = operator_client.get("/bank/export?year=2026&month=5")
-        check("export page shows no blocking reason once the decision is resolved", b"Export blocked" not in resp.data)
+        resp = operator_client.get(f"/bank/export?year=2026&month=5&owner={OWNER}")
+        check("export page shows no blocking reason once the decision is resolved",
+              b"EXPORT READY" in resp.data and b"EXPORT NOT READY" not in resp.data)
 
-        resp = operator_client.get("/bank/export?year=2026&month=5")
+        resp = operator_client.get(f"/bank/export?year=2026&month=5&owner={OWNER}")
         csrf = extract_csrf(resp.data)
         resp = operator_client.post(
-            "/bank/export", data={"year": "2026", "month": "5", "csrf_token": csrf},
+            "/bank/export", data={"year": "2026", "month": "5", "owner": OWNER, "csrf_token": csrf},
         )
         check("export download responds 200", resp.status_code == 200)
         check(
@@ -496,8 +512,8 @@ def main() -> int:
             resp.mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         check(
-            "export download filename follows RfBank_YYYY_MM.xlsx",
-            "RfBank_2026_05.xlsx" in resp.headers.get("Content-Disposition", ""),
+            "export download filename follows RfBank_YYYY_MM_<Owner>.xlsx",
+            "RfBank_2026_05_" in resp.headers.get("Content-Disposition", ""),
         )
 
         import openpyxl
@@ -506,7 +522,7 @@ def main() -> int:
         header = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
         check(
             "downloaded workbook's header matches the 12 required columns in order",
-            header == list(export_service.KERMALI_COLUMNS),
+            header[:12] == list(export_service.KERMALI_COLUMNS),
         )
         data_row = next(ws.iter_rows(min_row=2, max_row=2, values_only=True))
         check("downloaded workbook's Date cell is a real date", hasattr(data_row[1], "year"))

@@ -84,36 +84,44 @@ def register_bank_reconciliation_routes(
             account_id=_account_id(db),
         ), "Transaction confirmed.")
 
-    @app.route("/bank/reconciliation/<int:transaction_id>/standard", methods=["POST"])
-    @gate
-    def bank_reconciliation_standard(transaction_id: int):
-        """Compact-row Set as Standard: confirm this row and approve its
-        current result as a Standard for future matching imports."""
-        return _apply(transaction_id, lambda db: recon_service.set_as_standard(
-            db, transaction_id=transaction_id, reporting_entity_id=_int("for_whom_id"),
-            account_id=_account_id(db),
-        ), "Transaction confirmed and set as Standard: future matching transactions will be Automatic.")
-
     @app.route("/bank/reconciliation/<int:transaction_id>/save", methods=["POST"])
     @gate
     def bank_reconciliation_save(transaction_id: int):
-        """The expanded editor: Save — keep Standard unchanged (mode=keep) or
-        Save as New Standard (mode=standard)."""
-        mode = request.form.get("mode")
-        if mode not in ("keep", "standard"):
-            mode = "keep"
-        message = ("Transaction saved and a Standard approved for this variant." if mode == "standard"
-                   else "Transaction saved. Every Standard is unchanged.")
+        """The expanded editor: Save. BANK_RULES_RESET_001 — Reconciliation
+        Standards were removed: a save never approves one."""
         return _apply(transaction_id, lambda db: recon_service.save_row(
             db, transaction_id=transaction_id, occurrence_id=_int("occurrence_id"),
             reason_id=_int("why_id"), destination_id=_int("what_id"),
             reporting_entity_id=_int("for_whom_id"), account_id=_account_id(db),
-            as_standard=mode == "standard",
-        ), message)
+            as_standard=False,
+        ), "Transaction saved.")
+
+    @app.route("/bank/reconciliation/<int:transaction_id>/for-whom", methods=["POST"])
+    @gate
+    def bank_reconciliation_for_whom(transaction_id: int):
+        """FOR WHOM, from either Review tab (BANK_REVIEW_FOR_WHOM_001): the
+        Reporting Entity / LLC that benefited. Changes the beneficiary only —
+        never the Source, WHO, WHY, amount or date."""
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                outcome = recon_service.set_for_whom(
+                    db, transaction_id=transaction_id, reporting_entity_id=_int("for_whom_id"),
+                    account_id=_account_id(db),
+                )
+                db.commit()
+                flash({"unchanged": "For Whom unchanged.",
+                       "saved": "For Whom saved.",
+                       "reopened": "For Whom changed. The transaction needs a new confirmation."}[outcome],
+                      "info")
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+            return _back_to_row(db, transaction_id)
 
     @app.route("/bank/reconciliation/<int:transaction_id>/reopen", methods=["POST"])
     @gate
     def bank_reconciliation_reopen(transaction_id: int):
         return _apply(transaction_id, lambda db: recon_service.reopen_row(
             db, transaction_id=transaction_id,
-        ), "Transaction reopened. It needs a new confirmation.")
+        ), "Transaction reopened. It needs a new confirmation; its For Whom is kept.")

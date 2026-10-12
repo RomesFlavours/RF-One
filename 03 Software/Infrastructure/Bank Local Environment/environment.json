@@ -1,0 +1,33 @@
+{
+  "_comment": "The local Bank environment, identical on every PC. Machine-specific values live in machines/<COMPUTERNAME>.json and nowhere else.",
+  "python_version": "3.12",
+  "requirements_lock": "requirements.lock.txt",
+  "profiles": {
+    "work": {
+      "label": "Bank — ambiente di lavoro",
+      "kind": "WORK",
+      "port": 5080,
+      "handoff_dir": "{onedrive}\\AI-RF-ONE\\RF-One Bank Handoff",
+      "local_dir": "{localappdata}\\RF-One\\Bank"
+    },
+    "test": {
+      "label": "Bank — COPIA DI PROVA",
+      "kind": "TEST",
+      "port": 5082,
+      "handoff_dir": "{onedrive}\\AI-RF-ONE\\RF-One Bank Handoff TEST",
+      "local_dir": "{localappdata}\\RF-One\\Bank TEST"
+    }
+  },
+  "ai_mode": "SESSION",
+  "_comment_claude_code_cli": "SESSION mode only: \"auto\" = a Preview interprets a new rule by itself through the Claude Code CLI installed on this PC (same login as the VS Code session, no AWS); \"off\" = the Preview waits for the session as before (BANK_AI_RULES_012).",
+  "claude_code_cli": "auto",
+  "code_paths": [
+    "03 Software/RF-One Web",
+    "03 Software/RF-One Data Store/rfone_data_store",
+    "03 Software/RF-One Data Store/migrations",
+    "03 Software/RF-One Data Store/alembic.ini",
+    "03 Software/Infrastructure/Bank Local Environment"
+  ],
+  "code_excludes": ["__pycache__", "/tests/", ".pyc", "/data/", "/machines/"],
+  "sync_wait_seconds": 600
+}

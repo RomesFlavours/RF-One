@@ -553,6 +553,8 @@ def build_contexts(session: Session) -> tuple[dict, dict, dict]:
     instruments = list(session.scalars(select(m.PaymentInstrument)))
     registered = {}
     for instrument in instruments:
+        if not instrument.is_payment_source:
+            continue  # a purchase platform is never an own account (BANK_PURCHASE_PLATFORM_SOURCE_001)
         last_four = instrument_last_four(instrument)
         if last_four:
             registered.setdefault(last_four, instrument.id)
@@ -647,7 +649,7 @@ class CanonicalWhoResolver:
                 continue
             if rule.direction is not None and rule.direction != direction:
                 continue
-            if self._recognition._rule_matches(rule, text):
+            if self._recognition._rule_matches(rule, text, description=description):
                 return self.by_id[rule.occurrence_id], rule
         return None
 
