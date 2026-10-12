@@ -67,6 +67,29 @@ _Updated during the session; the latest state is at the bottom of each subsectio
   dataset is a different one. The transfer therefore **replaces** Bank data on AWS — comparison in the
   session report; awaiting the Product Owner's decision.
 
+### 2.5 Deployed 2026-10-12 (software only)
+
+| Step | Result |
+|---|---|
+| Release commit | `1a35771` on `origin/release/bank-aws` (contains `main` @ `d3632a8`) |
+| Online source before (backup) | `s3://rfone-tips-deploy-418674484214/backups/rfone-web-source-pre-bank-aws-001-20261012t224445z.zip` — identical, file by file, to `main` @ `d3632a8` |
+| New source | `rfone-web-source.zip` from committed files of `1a35771` (786 files, sha256 `5a943880…65de91`) |
+| RDS snapshot (recovery point) | `rfone-dev-pre-bank-aws-001-20261012t224514z` (available 22:45 UTC) |
+| CodeBuild | `rfone-web-build:ba9569be-4cc6-4d62-a994-9c55d260466e` SUCCEEDED; ECR `rfone-web:latest` `sha256:c6fa933e3250cbaebc17507e747f128336e3f1e7e219a7ceb2f886d8e3e4f8ea` |
+| Migrations on RDS | `e8c4a2f6b1d3` → `7b1d4f9a2c6e` (25 revisions). Data effects, identical to the rehearsal: 117 WHO names upper-cased (0 collisions), WHY groups reorganized (6 new, 5 deactivated, 39 WHY moved), 1 ORGANIZATION access row; no row deleted anywhere; 252 of 260 existing tables unchanged |
+| App Runner | `start-deployment` `22abc07369e0477aaebb1d3939e4ad76` SUCCEEDED 22:55 UTC; clean worker boot |
+| Smoke (official host, technical account `release-smoke-20260925`, restored to INACTIVE + previous access + rotated password) | 200 on Home, `/bank` (4.4 s), review, export, AI Rules, configuration, Projects (Responsible field present), Wines, Organization |
+
+Removed by the Bank line on purpose (were online): `bank_classification.html`, `bank_instruments.html`,
+`bank_instrument_edit.html`, `bank_monthly.html` (`/bank/monthly` now redirects to `/bank#step-sources`).
+
+**Not done yet:** AI configuration of `rfone-web` (§2.3, waiting for decision 1) and the Bank data transfer (§2.4,
+waiting for decision 2). The AI Rules header on AWS still reads the unconfigured default "ANTHROPIC · claude-sonnet-5":
+a Preview of a new rule text there ends FAILED ("No ANTHROPIC_API_KEY configured") until decision 1.
+
+**Rollback:** code — restore the backup zip above to `rfone-web-source.zip`, rebuild, redeploy; database — the
+snapshot above (the migrations are additive except the three data effects listed).
+
 ## 3. Procedures used
 
 - Release of `rfone-web`: `03 Software/Infrastructure/README.md` § "Procedura di rilascio di `rfone-web`".
