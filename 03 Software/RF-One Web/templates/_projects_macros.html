@@ -1,0 +1,54 @@
+{# MyRF Project Management — small shared pieces of the Projects, Plan and
+   Gantt pages (`projects_routes.py`). Dates are calendar dates, shown
+   dd/mm/yyyy. Import `with context` where `project_dialog` is used: it needs
+   `csrf_token`. #}
+
+{# Create / rename a Project. `origin` ("list" or "plan") says where the
+   person goes back after a rename. #}
+{% macro project_dialog(create_action, rename_action, origin) %}
+<div class="org-modal-overlay" id="pm-project-dialog" hidden>
+  <div class="org-modal-panel pm-dialog" role="dialog" aria-modal="true" aria-labelledby="pm-project-dialog-title">
+    <button type="button" class="org-modal-close" data-modal-close aria-label="Chiudi">&times;</button>
+    <h2 id="pm-project-dialog-title" data-pm-dialog-title>Progetto</h2>
+    <div class="error" data-pm-error hidden></div>
+    <form method="post" action="{{ create_action }}" data-pm-form
+          data-pm-create-action="{{ create_action }}" data-pm-update-action="{{ rename_action }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="from" value="{{ origin }}">
+      <label for="pm-project-name">Nome del progetto</label>
+      <input type="text" id="pm-project-name" name="name" maxlength="200" required>
+      <div class="btn-row">
+        <button type="submit">Salva</button>
+        <button type="button" class="btn-secondary" data-modal-close>Annulla</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro fmt(value) -%}
+  {{ value.strftime('%d/%m/%Y') if value else '' }}
+{%- endmacro %}
+
+{% macro actual_days(task) -%}
+  {{ task.actual_duration_days if task.actual_duration_days is not none else '—' }}
+{%- endmacro %}
+
+{% macro percent_meter(value) -%}
+  <span class="pm-meter" aria-label="{{ value }}% completato"><span class="pm-meter-fill" style="width:{{ value }}%"></span></span>
+  <span class="pm-meter-value">{{ value }}%</span>
+{%- endmacro %}
+
+{# The task as the edit dialog reads it (`rf-one-projects.js`). #}
+{% macro task_payload(task) -%}
+  {{ {
+    "id": task.id, "title": task.title, "description": task.description or "",
+    "chapter_id": task.chapter_id, "parent_task_id": task.parent_task_id,
+    "percent_complete": task.percent_complete,
+    "planned_start_date": task.planned_start_date.isoformat(),
+    "planned_duration_days": task.planned_duration_days,
+    "actual_duration_days": task.actual_duration_days,
+    "predecessor_ids": task.predecessor_ids,
+    "has_children": task.children|length > 0,
+  }|tojson|forceescape }}
+{%- endmacro %}

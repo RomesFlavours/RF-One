@@ -14422,6 +14422,115 @@ class WineListItem(Base):
     wine_list: Mapped["WineList"] = relationship(back_populates="items")
     wine: Mapped["Wine"] = relationship()
 
+
+# ---------------------------------------------------------------------------
+# MyRF — Project Management
+# (`01 Domains/Business Domain/Restaurant/MyRF/Project Management/README.md`)
+#
+# Project → Chapter → Task → child activity, generic data with no link to
+# Legal Entity, Restaurant or Location. Table names are singular as approved
+# for this module. A Task's Project is its Chapter's Project, never stored on
+# the Task. The database enforces value ranges and self-references; the
+# one-level hierarchy, same-Chapter children, same-Project prerequisites and
+# acyclic prerequisites are enforced by `rfone_data_store/projects/service.py`.
+# ---------------------------------------------------------------------------
+
+
+class Project(Base):
+    __tablename__ = "project"
+    __table_args__ = (
+        CheckConstraint("length(trim(name)) > 0", name="ck_project_name_not_blank"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ProjectChapter(Base):
+    __tablename__ = "project_chapter"
+    __table_args__ = (
+        CheckConstraint("length(trim(title)) > 0", name="ck_project_chapter_title_not_blank"),
+        Index("ix_project_chapter_project_id", "project_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ProjectTask(Base):
+    """A Task, or a child activity when `parent_task_id` is set. The planned
+    end (start + planned days − 1, calendar days) is computed, never stored.
+    Percentage and actual days are entered by hand; nothing is derived."""
+
+    __tablename__ = "project_task"
+    __table_args__ = (
+        CheckConstraint("length(trim(title)) > 0", name="ck_project_task_title_not_blank"),
+        CheckConstraint("percent_complete BETWEEN 0 AND 100", name="ck_project_task_percent_range"),
+        CheckConstraint("planned_duration_days >= 1", name="ck_project_task_planned_days_positive"),
+        CheckConstraint(
+            "actual_duration_days IS NULL OR actual_duration_days >= 0",
+            name="ck_project_task_actual_days_not_negative",
+        ),
+        CheckConstraint(
+            "parent_task_id IS NULL OR parent_task_id <> id", name="ck_project_task_not_own_parent"
+        ),
+        Index("ix_project_task_chapter_id", "chapter_id"),
+        Index("ix_project_task_parent_task_id", "parent_task_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chapter_id: Mapped[int] = mapped_column(ForeignKey("project_chapter.id"), nullable=False)
+    parent_task_id: Mapped[int | None] = mapped_column(ForeignKey("project_task.id"), nullable=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    percent_complete: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    planned_start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    planned_duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    actual_duration_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ProjectTaskDependency(Base):
+    """`predecessor_task_id` should finish before `successor_task_id`
+    starts (finish-to-start). Informational only: nothing is rescheduled."""
+
+    __tablename__ = "project_task_dependency"
+    __table_args__ = (
+        CheckConstraint(
+            "predecessor_task_id <> successor_task_id", name="ck_project_task_dependency_not_self"
+        ),
+        Index("ix_project_task_dependency_successor", "successor_task_id"),
+    )
+
+    predecessor_task_id: Mapped[int] = mapped_column(ForeignKey("project_task.id"), primary_key=True)
+    successor_task_id: Mapped[int] = mapped_column(ForeignKey("project_task.id"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 ALL_MODELS: tuple[type[Base], ...] = (
     ActingIdentity,
     AuthorityGrant,
@@ -14640,4 +14749,8 @@ ALL_MODELS: tuple[type[Base], ...] = (
     WinePricingSettings,
     WineList,
     WineListItem,
+    Project,
+    ProjectChapter,
+    ProjectTask,
+    ProjectTaskDependency,
 )

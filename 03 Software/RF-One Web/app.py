@@ -56,6 +56,7 @@ from bank_routes import register_bank_routes  # noqa: E402
 from tips_validation_routes import register_tips_validation_routes  # noqa: E402
 from clover_acquisition_routes import register_clover_acquisition_routes  # noqa: E402
 from restaurant_wines_routes import register_restaurant_wines_routes  # noqa: E402
+from projects_routes import register_projects_routes  # noqa: E402
 import training_integration  # noqa: E402
 
 app = Flask(__name__)
@@ -473,6 +474,17 @@ register_clover_acquisition_routes(
 register_restaurant_wines_routes(
     app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
     load_current_account=load_current_account, require_csrf=require_csrf,
+)
+
+
+# ---------------------------------------------------------------------------
+# MyRF Project Management — Projects, a Project's plan and its read-only
+# Gantt. Gated by `require_domain_access("PROJECTS")` + CSRF; see
+# `projects_routes.py`.
+# ---------------------------------------------------------------------------
+
+register_projects_routes(
+    app, require_domain_access=require_domain_access, SessionFactory=SessionFactory, require_csrf=require_csrf,
 )
 
 

@@ -127,6 +127,17 @@ DOMAINS: tuple[DomainDefinition, ...] = (
         # `require_domain_access("WINES")`.
         link="/restaurant/wines",
     ),
+    DomainDefinition(
+        code="PROJECTS",
+        display_name="Project Management",
+        description="Projects with their chapters, tasks and child activities, prerequisites and a printable Gantt (MyRF).",
+        future_path="/projects",
+        # MyRF Project Management (Product Owner approval, 2026-10-12): a
+        # Home card granted account by account through the existing access
+        # screen. `projects_routes.py`; see
+        # `01 Domains/Business Domain/Restaurant/MyRF/Project Management/README.md`.
+        link="/projects",
+    ),
 )
 
 DOMAINS_BY_CODE: dict[str, DomainDefinition] = {d.code: d for d in DOMAINS}

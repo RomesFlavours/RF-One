@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% from "_projects_macros.html" import fmt, project_dialog with context %}
+{% block page_title %}Project Management · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=4">
+{{ breadcrumb([('RF-One', url_for('home')), ('Project Management', None)]) }}
+
+<h1>Project Management</h1>
+<p class="muted">Ogni progetto ha i suoi capitoli, task, propedeutiche e il suo Gantt.</p>
+
+<div class="btn-row pm-commands">
+  <button type="button" data-pm-new-project>Nuovo progetto</button>
+</div>
+
+{% if not projects %}
+  <p class="modal-empty-state">Nessun progetto. Inizia con «Nuovo progetto».</p>
+{% else %}
+  <div class="table-scroll">
+    <table class="pm-tree pm-project-list">
+      <thead>
+        <tr>
+          <th>Progetto</th><th class="num">Capitoli</th><th class="num">Task</th>
+          <th>Inizio prev.</th><th>Fine prev.</th><th class="pm-actions-head">Azioni</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for project in projects %}
+          <tr data-rr-key="project:{{ project.id }}">
+            <td class="pm-title-cell"><a class="pm-project-link" href="{{ url_for('projects_plan', project_id=project.id) }}">{{ project.name }}</a></td>
+            <td class="num">{{ project.chapter_count }}</td>
+            <td class="num">{{ project.task_count }}</td>
+            <td>{{ fmt(project.start) }}</td>
+            <td>{{ fmt(project.end) }}</td>
+            <td class="pm-actions">
+              <a class="btn pm-action" href="{{ url_for('projects_plan', project_id=project.id) }}">Apri</a>
+              <a class="btn pm-action" href="{{ url_for('projects_gantt', project_id=project.id) }}">Gantt</a>
+              <button type="button" class="pm-action"
+                      data-pm-rename-project="{{ {'id': project.id, 'name': project.name}|tojson|forceescape }}">Rinomina</button>
+              {% if not project.chapter_count %}
+                <form method="post" action="{{ url_for('projects_project_delete', project_id=project.id) }}" class="pm-inline-form"
+                      data-pm-confirm="Eliminare il progetto «{{ project.name }}»?">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="pm-action pm-action-danger">Elimina</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+{{ project_dialog(url_for('projects_project_create'), url_for('projects_project_rename', project_id=0), 'list') }}
+
+{% if dialog %}<script type="application/json" id="pm-dialog-state">{{ dialog|tojson }}</script>{% endif %}
+<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=2"></script>
+{% endblock %}
