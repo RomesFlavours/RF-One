@@ -90,6 +90,66 @@ a Preview of a new rule text there ends FAILED ("No ANTHROPIC_API_KEY configured
 **Rollback:** code — restore the backup zip above to `rfone-web-source.zip`, rebuild, redeploy; database — the
 snapshot above (the migrations are additive except the three data effects listed).
 
+### 2.6 Session 2026-10-12 (evening): main, AI, data transfer preparation
+
+**Main.** `origin/main` had no commit after the release (`d3632a8`), so aligning it is a pure fast-forward to
+`930c641`; RDS (`7b1d4f9a2c6e`) equals the release's single Alembic head. The push to `main` was refused by the
+session's automatic permission check; it has to be run by the Product Owner (or after allowing it):
+`git push origin 930c641:refs/heads/main`. The working folder of `main` (`RF One/`) holds someone's uncommitted
+Invoice Intake work: its migrations `b3f9d2c6e4a1` / `540ee75caa65` hang off old revisions and, once committed,
+must be re-chained after `7b1d4f9a2c6e` (otherwise a second head).
+
+**Rule 6 (PayPal WHO) with Opus 4.6.** Rejected by the validator: "“only if the WHO differs” needs a WHO assigned
+by the rule". Opus 4.6 represents "Se il WHO cambia, imposta “Da confermare”; altrimenti conserva lo stato" as
+`only_if_who_differs: true` (= apply the rule only when the WHO differs — a different instruction), with the WHO
+inside the two format branches; the validator correctly refuses it. Opus 4.6 also reads the "IND NAME:"
+delimiter case-sensitively (`end_case: as_written`) although the rule says to ignore case. Opus 5.5's valid
+interpretation (local #36, structured-v7) uses `status: to_confirm` (applied only when the WHO changes) and
+`end_case: ignore`. Fix without touching the rule text: reuse the saved Opus 5.5 interpretation (below), and ask
+for Opus 5.5 access on Bedrock for future rule texts. Not recommended: relaxing the validator (it would accept
+the misreading).
+
+**Reuse of local interpretations** (prepared, nothing written): 13 of 37 local interpretations are valid,
+read by the release engine (v3–v7) and re-validated today against the AWS For Whom catalogue; they cover
+current rules 1, 3, 4, 5, 6, 7, 8. Rule 2's valid interpretation (#37) names For Whom "RFWP", not an AWS entity
+today. Prerequisite: the interpretation key includes the general AI instructions, and AWS has none yet — the
+local instructions must be on AWS first (data transfer). Files: `%LOCALAPPDATA%\RF-One\Bank	ransfer-review-20261012\`
+(`interpretation_reuse.json`, `prepare_interpretation_reuse.py`).
+
+**IAM for the AI Preview (not applied).** Writing the policy was refused by the session's automatic permission
+check as a permission grant. Minimal inline policy for `rfone-web-apprunner-instance-role` (the Converse API
+needs only `bedrock:InvokeModel`):
+
+```json
+{"Version": "2012-10-17", "Statement": [{"Sid": "InvokeBankAiRulesModel", "Effect": "Allow",
+  "Action": "bedrock:InvokeModel",
+  "Resource": ["arn:aws:bedrock:us-east-1:418674484214:inference-profile/us.anthropic.claude-opus-4-6-v1",
+               "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-6-v1",
+               "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-opus-4-6-v1",
+               "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-opus-4-6-v1"]}]}
+```
+
+Then on `rfone-web`: `RFONE_AI_PROVIDER=BEDROCK`, `RFONE_BEDROCK_MODEL_ID=us.anthropic.claude-opus-4-6-v1`
+(an `update-service` must resend every existing env var and secret), redeploy, real Preview check.
+
+**Data transfer comparison** (read-only; files in the folder above):
+
+| | Count |
+|---|---|
+| AWS movements before 2026 (kept by the plan) | 9,318 (2018-12-10 → 2025-12-31) |
+| AWS 2026 / local 2026 | 3,360 / 3,234 |
+| Matched (date + amount + description) | 3,104 |
+| AWS 2026 absent locally | 256 — Amex 193 (no local Source), RFWP checking 42 (38 in Jan), RF Saving 14 (no local Source), Freedom 5, Business 1, Sapphire 1; 83 carry a WHO/WHY decision |
+| Local 2026 absent on AWS | 130 — all September 2026 (imported after the 2026-09-25 AWS copy) |
+| Duplicates (same Source, date, amount, text) | AWS 13 groups / 27 rows (11 groups: local holds one copy, AWS two); local 0 |
+
+Source differences: local "Ink RFCO ··3144" holds the movements AWS splits between "Business Anthony ··2270"
+(168) and "Ink Giovanna ··3144" (52); local "Ink RFCO ··2270" and "FirstCitizen Debit 0632" have no movements;
+AWS "Amex ··1002", "RF Saving", "Chase-2915" (inactive) have no local counterpart. Legal Entity ids differ
+(local 1 = Mount Dora, 2 = Angeli e Demoni/WP, 3 = Gelati; AWS 1 = Winter Park, 2 = Mount Dora, 3 = Gelati)
+and Reporting Entities differ entirely (local RE_RFWP / RE_RFMD_LLC / RE_RFCO / RE_PINO_PERSONAL; AWS
+RE_ANGELI_E_DEMONI_LLC / RE_RF_MOUNT_DORA_LLC / RE_RF_GELATI_LLC). Nothing deleted or replaced.
+
 ## 3. Procedures used
 
 - Release of `rfone-web`: `03 Software/Infrastructure/README.md` § "Procedura di rilascio di `rfone-web`".
