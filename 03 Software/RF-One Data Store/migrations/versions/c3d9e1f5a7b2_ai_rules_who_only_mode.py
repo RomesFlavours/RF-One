@@ -28,7 +28,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     for table in ("bank_ai_rule_previews", "bank_ai_rule_applications"):
         with op.batch_alter_table(table) as batch:
-            batch.add_column(sa.Column("who_only", sa.Boolean(), nullable=False, server_default=sa.text("0")))
+            batch.add_column(sa.Column("who_only", sa.Boolean(), nullable=False, server_default=sa.false()))
 
 
 def downgrade() -> None:

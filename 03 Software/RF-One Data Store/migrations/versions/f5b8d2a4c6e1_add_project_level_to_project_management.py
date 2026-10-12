@@ -16,14 +16,12 @@ Chapter is linked to it; Tasks, child activities and prerequisites are untouched
 Project. If no Chapter exists, no Project is created.
 
 Chained after the current head of this worktree (c3d9e1f5a7b2, Bank AI Rules "Solo WHO").
-Downgrade drops project_chapter.project_id and the project table (Projects are lost, Chapters are kept).
+Downgrade is a no-op: after the merge 7b1d4f9a2c6e the table belongs to d2f6b9a3e7c1 (BANK_AWS_001).
 
 Integration with main (BANK_AWS_001, 2026-10-12): on `main` the same schema is created by d2f6b9a3e7c1 (after the
 Restaurant Wines revision), so a database that comes from `main` - production included - already holds the
 `project` table when it reaches this revision. This revision therefore changes nothing when `project` exists; on a database
-where it ran first (the local working database) nothing changes. Never rerun on such a database: downgrade below
-this revision drops the Project Management tables whoever created them.
-"""
+where it ran first (the local working database) nothing changes. """
 from __future__ import annotations
 
 from typing import Sequence, Union
@@ -68,8 +66,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("project_chapter") as batch:
-        batch.drop_index("ix_project_chapter_project_id")
-        batch.drop_constraint("fk_project_chapter_project_id", type_="foreignkey")
-        batch.drop_column("project_id")
-    op.drop_table("project")
+    # BANK_AWS_001: after the merge 7b1d4f9a2c6e these tables belong to main's d2f6b9a3e7c1, whose downgrade
+    # drops them; dropping them here too broke every downgrade below the merge (the other branch then
+    # found them gone). Nothing to undo here.
+    pass

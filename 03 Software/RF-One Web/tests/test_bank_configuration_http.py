@@ -63,7 +63,7 @@ from rfone_data_store.bank_reconciliation import recognition  # noqa: E402
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 NEW_REVISION = "e5b1d7c3a9f2"
 HEAD_REVISION = "b9e4c2a7d5f3"  # last schema revision rendered offline for PostgreSQL (check 2)
-CURRENT_HEAD = "a3c7e5b9d1f4"  # the single Alembic head a fresh database reaches (check 1)
+CURRENT_HEAD = "7b1d4f9a2c6e"  # the single Alembic head a fresh database reaches (check 1)
 PREVIOUS_REVISION = "d4a8c2e6f1b3"
 
 

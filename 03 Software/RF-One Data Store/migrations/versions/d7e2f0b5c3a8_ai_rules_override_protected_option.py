@@ -33,7 +33,7 @@ def upgrade() -> None:
     for table in TABLES:
         with op.batch_alter_table(table) as batch:
             batch.add_column(sa.Column("override_protected", sa.Boolean(), nullable=False,
-                                       server_default=sa.text("0")))
+                                       server_default=sa.false()))
 
 
 def downgrade() -> None:

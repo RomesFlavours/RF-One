@@ -51,7 +51,7 @@ def upgrade() -> None:
         sa.Column("proposal", sa.Text(), nullable=False),
         sa.Column("evidence", sa.Text(), nullable=False),
         sa.Column("evidence_level", sa.String(length=24), nullable=False),
-        sa.Column("previously_rejected", sa.Boolean(), server_default=sa.text("0"), nullable=False),
+        sa.Column("previously_rejected", sa.Boolean(), server_default=sa.false(), nullable=False),
         sa.Column("rejected_evidence_size", sa.Integer(), nullable=True),
         sa.Column("discovery_run_id", sa.Integer(), nullable=True),
         sa.Column("decided_by_account_id", sa.Integer(), nullable=True),

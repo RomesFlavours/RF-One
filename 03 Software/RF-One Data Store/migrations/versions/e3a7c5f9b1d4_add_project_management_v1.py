@@ -16,13 +16,13 @@ Chained after the head of this line of work (a1b5c3d7e9f2, Bank AI Rules). The I
 (b3f9d2c6e4a1) exists only in the main worktree, uncommitted, on d8e2f5a9c3b7: it is neither modified nor required
 here. When the two lines are merged, one merge revision joins their heads.
 
-No existing table or row is changed. Downgrade drops the three tables.
+No existing table or row is changed. 
 
 Integration with main (BANK_AWS_001, 2026-10-12): on `main` the same schema is created by d2f6b9a3e7c1 (after the
 Restaurant Wines revision), so a database that comes from `main` - production included - already holds these
 tables when it reaches this revision. This revision therefore creates only what does not exist yet; on a database
-where it ran first (the local working database) nothing changes. Never rerun on such a database: downgrade below
-this revision drops the Project Management tables whoever created them.
+where it ran first (the local working database) nothing changes. Downgrade is a no-op: the tables belong to d2f6b9a3e7c1
+(BANK_AWS_001), whose downgrade drops them.
 """
 from __future__ import annotations
 
@@ -84,9 +84,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_project_task_dependency_successor", table_name="project_task_dependency")
-    op.drop_table("project_task_dependency")
-    op.drop_index("ix_project_task_parent_task_id", table_name="project_task")
-    op.drop_index("ix_project_task_chapter_id", table_name="project_task")
-    op.drop_table("project_task")
-    op.drop_table("project_chapter")
+    # BANK_AWS_001: after the merge 7b1d4f9a2c6e these tables belong to main's d2f6b9a3e7c1, whose downgrade
+    # drops them; dropping them here too broke every downgrade below the merge (the other branch then
+    # found them gone). Nothing to undo here.
+    pass

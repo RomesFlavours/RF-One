@@ -54,9 +54,9 @@ def upgrade() -> None:
         SELECT a.occurrence_id, MIN(a.transaction_reason_id), COUNT(*), MIN(r.accounting_classification_id)
         FROM bank_occurrence_reason_associations a
         JOIN bank_transaction_reasons r ON r.id = a.transaction_reason_id
-        WHERE a.active = 1 AND r.status = 'ACTIVE'
+        WHERE a.active = :active AND r.status = 'ACTIVE'
         GROUP BY a.occurrence_id
-    """)).all()
+    """), {"active": True}).all()  # bound, not `= 1`: PostgreSQL has no boolean = integer
     for occurrence_id, reason_id, count, what_id in single:
         if count != 1 or what_id is None:
             continue

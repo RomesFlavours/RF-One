@@ -28,11 +28,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     with op.batch_alter_table("bank_ai_rule_drafts") as batch:
-        batch.add_column(sa.Column("create_missing_who", sa.Boolean(), nullable=False, server_default=sa.text("0")))
+        batch.add_column(sa.Column("create_missing_who", sa.Boolean(), nullable=False, server_default=sa.false()))
     with op.batch_alter_table("bank_ai_rule_previews") as batch:
         batch.add_column(sa.Column("method", sa.String(8), nullable=False, server_default="AI"))
         batch.add_column(sa.Column("interpretation", sa.Text(), nullable=True))
-        batch.add_column(sa.Column("create_missing_who", sa.Boolean(), nullable=False, server_default=sa.text("0")))
+        batch.add_column(sa.Column("create_missing_who", sa.Boolean(), nullable=False, server_default=sa.false()))
 
 
 def downgrade() -> None:
