@@ -121,7 +121,7 @@ def main() -> int:
               and 'class="btn-secondary">Log out' not in html)
 
         # --- Domains --------------------------------------------------------
-        domains_part = body.split("<h2>Your Domains</h2>", 1)[1].split('<div class="domain-name">Administration</div>', 1)[0]
+        domains_part = body.split("<h2>MyRFOne</h2>", 1)[1].split('<div class="domain-name">Administration</div>', 1)[0]
         names = re.findall(r'<div class="domain-name">([^<]+)</div>', domains_part)
         expected = ["Compensation", "Selection", "Tips", "Training"]
         check("Domains ordered alphabetically (Selection released: no Work in progress left)",
