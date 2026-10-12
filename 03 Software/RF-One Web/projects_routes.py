@@ -68,7 +68,7 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
                     error, kind="project", action=url_for("projects_project_create"), item_id=None))
             db.commit()
             project_id = project.id
-        flash("Progetto creato.", "info")
+        flash("Project created.", "info")
         return redirect(url_for("projects_plan", project_id=project_id))
 
     @app.route("/projects/<int:project_id>/rename", methods=["POST"])
@@ -88,7 +88,7 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
                     return _render_plan(db, project_id, dialog=dialog, status=422)
                 return _render_list(db, dialog=dialog, status=422)
             db.commit()
-        flash("Nome del progetto salvato.", "info")
+        flash("Project name saved.", "info")
         return redirect(url_for("projects_plan", project_id=project_id) if back_to_plan else url_for("projects_list"))
 
     @app.route("/projects/<int:project_id>/delete", methods=["POST"])
@@ -104,7 +104,7 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
                 flash(str(error), "error")
                 return redirect(url_for("projects_list"))
             db.commit()
-        flash("Progetto eliminato.", "info")
+        flash("Project deleted.", "info")
         return redirect(url_for("projects_list"))
 
     # ------------------------------------------------------------ a project's plan
@@ -141,7 +141,7 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
                 return _refused(db, project_id, error, kind="chapter", item_id=None,
                                 action=url_for("projects_chapter_create", project_id=project_id))
             db.commit()
-        flash("Capitolo creato.", "info")
+        flash("Chapter created.", "info")
         return _back_to_plan(project_id)
 
     @app.route("/projects/<int:project_id>/chapters/<int:chapter_id>", methods=["POST"])
@@ -157,7 +157,7 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
                 return _refused(db, project_id, error, kind="chapter", item_id=chapter_id,
                                 action=url_for("projects_chapter_update", project_id=project_id, chapter_id=chapter_id))
             db.commit()
-        flash("Capitolo salvato.", "info")
+        flash("Chapter saved.", "info")
         return _back_to_plan(project_id)
 
     @app.route("/projects/<int:project_id>/chapters/<int:chapter_id>/delete", methods=["POST"])
@@ -173,7 +173,7 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
                 flash(str(error), "error")
                 return _back_to_plan(project_id)
             db.commit()
-        flash("Capitolo eliminato.", "info")
+        flash("Chapter deleted.", "info")
         return _back_to_plan(project_id)
 
     @app.route("/projects/<int:project_id>/tasks", methods=["POST"])
@@ -188,7 +188,7 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
                 return _refused(db, project_id, error, kind="task", item_id=None,
                                 action=url_for("projects_task_create", project_id=project_id))
             db.commit()
-        flash("Task creato.", "info")
+        flash("Task created.", "info")
         return _back_to_plan(project_id)
 
     @app.route("/projects/<int:project_id>/tasks/<int:task_id>", methods=["POST"])
@@ -203,7 +203,7 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
                 return _refused(db, project_id, error, kind="task", item_id=task_id,
                                 action=url_for("projects_task_update", project_id=project_id, task_id=task_id))
             db.commit()
-        flash("Task salvato.", "info")
+        flash("Task saved.", "info")
         return _back_to_plan(project_id)
 
     @app.route("/projects/<int:project_id>/tasks/<int:task_id>/delete", methods=["POST"])
@@ -219,7 +219,7 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
                 flash(str(error), "error")
                 return _back_to_plan(project_id)
             db.commit()
-        flash("Task eliminato.", "info")
+        flash("Task deleted.", "info")
         return _back_to_plan(project_id)
 
     # ------------------------------------------------------------ Gantt

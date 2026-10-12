@@ -44,7 +44,7 @@
       form.action = id
         ? form.getAttribute("data-pm-update-action").replace(/\/0\/rename$/, "/" + id + "/rename")
         : form.getAttribute("data-pm-create-action");
-      one("[data-pm-dialog-title]", overlay).textContent = id ? "Rinomina progetto" : "Nuovo progetto";
+      one("[data-pm-dialog-title]", overlay).textContent = id ? "Rename project" : "New project";
       one("#pm-project-name").value = values.name || "";
       var box = one("[data-pm-error]", overlay);
       box.textContent = error || "";
@@ -107,7 +107,7 @@
     // --- chapter
     function openChapter(values, id, trigger, error) {
       setAction(chapterOverlay, id);
-      setTitle(chapterOverlay, id ? "Modifica capitolo" : "Nuovo capitolo");
+      setTitle(chapterOverlay, id ? "Edit chapter" : "New chapter");
       one("#pm-chapter-title").value = values.title || "";
       one("#pm-chapter-description").value = values.description || "";
       showError(chapterOverlay, error);
@@ -166,8 +166,8 @@
       var parts = (startInput.value || "").split("-");
       if (parts.length !== 3 || !(days >= 1)) { out.textContent = ""; return; }
       var end = new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2] + days - 1));
-      out.textContent = "Fine prevista: " + pad(end.getUTCDate()) + "/" + pad(end.getUTCMonth() + 1) + "/"
-        + end.getUTCFullYear() + " (inizio + " + days + " − 1, giorni di calendario)";
+      out.textContent = "Planned end date: " + pad(end.getUTCDate()) + "/" + pad(end.getUTCMonth() + 1) + "/"
+        + end.getUTCFullYear() + " (start + " + days + " − 1, calendar days)";
     }
 
     function hasChildren(id) {
@@ -180,7 +180,7 @@
       currentTaskId = id || null;
       currentHasChildren = id ? (values.has_children !== undefined ? !!values.has_children : hasChildren(id)) : false;
       setAction(taskOverlay, id);
-      setTitle(taskOverlay, id ? "Modifica task" : (values.parent_task_id ? "Nuova attività figlia" : "Nuovo task"));
+      setTitle(taskOverlay, id ? "Edit task" : (values.parent_task_id ? "New subtask" : "New task"));
 
       one("#pm-task-title").value = values.title || "";
       one("#pm-task-description").value = values.description || "";

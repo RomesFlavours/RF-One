@@ -4,7 +4,7 @@
 day (Product Owner request, 2026-10-12).
 **Module:** MyRF / Project Management.
 **Access code:** `PROJECTS`.
-**Language:** the interface is in Italian. This document, the code and the database are in English.
+**Language:** the interface, this document, the code and the database are in English. Saved content (project names, chapter titles, task descriptions) is shown as entered.
 
 ---
 
@@ -149,7 +149,7 @@ planned end, and fits the available width. Its scale adapts:
 | up to about 18 months | months |
 | longer | quarters |
 
-**Print.** The **Stampa** button opens the browser's print dialog, which also offers "Save as PDF". The print:
+**Print.** The **Print** button opens the browser's print dialog, which also offers "Save as PDF". The print:
 
 - is in landscape;
 - shows the Project's name in its heading;

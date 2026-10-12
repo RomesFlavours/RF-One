@@ -89,9 +89,10 @@ label.pm-pred-option input { margin: 0; flex: none; }
 .pm-gantt { table-layout: fixed; min-width: 980px; }
 .pm-gantt th, .pm-gantt td { padding: .3rem .35rem; font-size: .78rem; }
 .pm-gantt td { vertical-align: middle; }
-.pm-col-title { width: 25%; }
+.pm-col-title { width: 23%; }
 .pm-col-date { width: 6.6%; }
-.pm-col-num { width: 4.2%; }
+/* Wide enough for "Planned" / "Actual" on one line each, on screen and in print. */
+.pm-col-num { width: 5.4%; }
 .pm-gantt th.num, .pm-gantt td.num { text-align: right; }
 .pm-gantt th.num { white-space: normal; }
 .pm-g-title { overflow-wrap: anywhere; }

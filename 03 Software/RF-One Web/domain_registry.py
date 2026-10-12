@@ -130,7 +130,7 @@ DOMAINS: tuple[DomainDefinition, ...] = (
     DomainDefinition(
         code="PROJECTS",
         display_name="Project Management",
-        description="Projects with their chapters, tasks and child activities, prerequisites and a printable Gantt (MyRF).",
+        description="Projects with their chapters, tasks and subtasks, prerequisites and a printable Gantt (MyRF).",
         future_path="/projects",
         # MyRF Project Management (Product Owner approval, 2026-10-12): a
         # Home card granted account by account through the existing access

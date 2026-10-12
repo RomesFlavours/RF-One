@@ -125,7 +125,7 @@ def main() -> int:
                   refused(service.create_task, s, P, task_input("A.1.1", parent_task_id=child.id)) is not None)
             b = service.create_task(s, P, task_input("B", chapter_id=c1.id, start=date(2026, 3, 3), days=2))
             message = refused(service.update_task, s, P, a.id, task_input("A", parent_task_id=b.id, days=3))
-            check("9. a task with children cannot become a child", message is not None and "figlie" in message, message or "")
+            check("9. a task with children cannot become a child", message is not None and "subtasks" in message, message or "")
             check("10. a task cannot be its own parent",
                   refused(service.update_task, s, P, b.id, task_input("B", parent_task_id=b.id)) is not None)
             service.update_task(s, P, a.id, task_input("A", chapter_id=c2.id, start=date(2026, 3, 1), days=3, percent=40, actual=2))
@@ -142,7 +142,7 @@ def main() -> int:
             service.update_task(s, P, b.id, task_input("B", chapter_id=c1.id, start=date(2026, 3, 3), days=2, predecessors=[a.id]))
             message = refused(service.update_task, s, P, a.id, task_input("A", chapter_id=c1.id, days=3, predecessors=[c_task.id]))
             check("14. a circular prerequisite (A → B → C → A) is refused, naming the chain",
-                  message is not None and "circolare" in message and "«C»" in message, message or "")
+                  message is not None and "Circular" in message and "“C”" in message, message or "")
             check("15. a missing prerequisite is refused",
                   refused(service.update_task, s, P, b.id, task_input("B", chapter_id=c1.id, predecessors=[9999])) is not None)
 
@@ -151,7 +151,7 @@ def main() -> int:
             ot = service.create_task(s, other.id, task_input("Ricerca immobile", chapter_id=oc.id))
             message = refused(service.create_task, s, P, task_input("X", chapter_id=c1.id, predecessors=[ot.id]))
             check("P1. a prerequisite from another project is refused, naming it",
-                  message is not None and "stesso progetto" in message and "Secondo locale (Orlando)" in message, message or "")
+                  message is not None and "same project" in message and "Secondo locale (Orlando)" in message, message or "")
             check("P2. ... also when editing a task",
                   refused(service.update_task, s, P, b.id, task_input("B", chapter_id=c1.id, predecessors=[a.id, ot.id])) is not None)
             check("P3. a chapter of another project cannot be chosen for a task",
@@ -253,10 +253,10 @@ def main() -> int:
             week = timeline_for(plan_of((date(2026, 3, 4), 10), (date(2026, 3, 10), 20)))
             check("29. up to ~2 months the scale is weeks", week.unit == "week" and week.days == 26)
             month = timeline_for(plan_of((date(2026, 1, 15), 30), (date(2026, 6, 1), 60)))
-            check("30. up to ~18 months the scale is months", month.unit == "month" and month.segments[0].label == "gen 26")
+            check("30. up to ~18 months the scale is months", month.unit == "month" and month.segments[0].label == "Jan 26")
             long_plan = plan_of((date(2026, 1, 1), 30), (date(2027, 6, 1), 400))
             quarter = timeline_for(long_plan)
-            check("31. a long period (> 18 months) uses quarters", quarter.unit == "quarter" and quarter.segments[0].label == "T1 2026")
+            check("31. a long period (> 18 months) uses quarters", quarter.unit == "quarter" and quarter.segments[0].label == "Q1 2026")
             for name, tl in (("week", week), ("month", month), ("quarter", quarter)):
                 total = sum(seg.width for seg in tl.segments)
                 check(f"32. {name}: the scale covers exactly 100% of the timeline", abs(total - 100) < 0.01, f"{total}")
