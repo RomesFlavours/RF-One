@@ -1582,6 +1582,22 @@ def reprocess_batch(
 # ---------------------------------------------------------------------------
 
 
+def distinct_proof(balance_a: int | None, reference_a: str | None,
+                   balance_b: int | None, reference_b: str | None) -> str | None:
+    """BANK_POSSIBLE_DUPLICATES_001 — why two rows with the same date,
+    description and amount are proven DISTINCT movements, or None when nothing
+    proves it (they then stay a possible duplicate, "Da verificare"). Proof is
+    a fact the bank itself states: a running balance present on both rows and
+    different, or a bank reference present on both and different. Never a
+    guess: a missing value proves nothing."""
+    if balance_a is not None and balance_b is not None and balance_a != balance_b:
+        return "the running balance differs"
+    ref_a, ref_b = (reference_a or "").strip(), (reference_b or "").strip()
+    if ref_a and ref_b and ref_a != ref_b:
+        return "the bank reference differs"
+    return None
+
+
 def _normalize_rows(
     session: Session, batch: "m.BankImportBatch",
     parsed_rows: list["parsers.ParsedBankRow"], raw_objs: list["m.RawBankTransaction"],
@@ -1647,7 +1663,8 @@ def _normalize_rows(
 
         duplicate_status = "NONE"
         duplicate_of_id = None
-        if existing_match is not None:
+        if existing_match is not None and distinct_proof(
+                row.balance_minor, row.reference, existing_match.balance_minor, existing_match.reference) is None:
             duplicate_status = "CANDIDATE_DUPLICATE"
             duplicate_of_id = existing_match.id
             candidate_count += 1

@@ -466,8 +466,10 @@ def main() -> int:
               and len(issues) == 3 and all(i["exclusion_only"] for i in issues))
         client.post(f"/bank/import/{again_token}/decide",
                     data={"csrf_token": csrf, "key": issues[0]["key"], "decision": "IMPORT_DISTINCT"})
-        check("D. its rows cannot be authorized as distinct operations: Confirm stays disabled",
-              re.search(r'id="import-confirm"\s+disabled', client.get(f"/bank/import/{again_token}").data.decode("utf-8")) is not None)
+        # BANK_POSSIBLE_DUPLICATES_001: a byte-identical file no longer blocks Confirm — its rows are
+        # already stored, so they are left out by default — but they still cannot become distinct operations.
+        check("D. its rows cannot be authorized as distinct operations (the decision is refused)",
+              issues[0]["key"] not in (session_state(client, again_token).get("decisions") or {}))
         client.post(f"/bank/upload/{again_token}/cancel", data={"csrf_token": csrf})
         check("D. and cancelling it changes nothing", counts() == after)
 

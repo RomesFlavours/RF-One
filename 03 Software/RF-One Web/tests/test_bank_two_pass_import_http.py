@@ -309,7 +309,8 @@ def main() -> int:
         page = client.get(f"/bank/import/{token}").data.decode("utf-8")
         check("the log shows each row with its decisions and the Confirm summary",
               "Confirm exclusion" in page and "Import anyway: distinct operation" in page
-              and 'id="import-confirm" disabled' in page and re.search(r'data-figure="unresolved">4<', page))
+              # BANK_POSSIBLE_DUPLICATES_001: only the unreadable row must be decided.
+              and 'id="import-confirm" disabled' in page and re.search(r'data-figure="unresolved">1<', page))
 
         # Confirm refused while rows are undecided: nothing written.
         resp = client.post(f"/bank/upload/{token}/confirm", data={"csrf_token": csrf()})

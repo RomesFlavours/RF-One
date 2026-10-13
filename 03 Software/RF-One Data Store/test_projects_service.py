@@ -410,6 +410,8 @@ def main() -> int:
             with engine.begin() as conn:
                 conn.execute(text("DELETE FROM alembic_version"))
                 conn.execute(text("INSERT INTO alembic_version (version_num) VALUES (:v)"), {"v": BEFORE_PM})
+                # After the merge 7b1d4f9a2c6e (BANK_AWS_001) a Bank-line database also has the Bank head applied.
+                conn.execute(text("INSERT INTO alembic_version (version_num) VALUES (:v)"), {"v": "a3c7e5b9d1f4"})
                 before = [conn.execute(text(f"SELECT * FROM {t} ORDER BY 1")).fetchall()
                           for t in ("project", "project_chapter", "project_task", "project_task_dependency")]
             command.upgrade(cfg, MAIN_PM)
@@ -429,7 +431,7 @@ def main() -> int:
                   and all(r[2] is None for r in task_rows), str(task_rows))
             from alembic.script import ScriptDirectory
             heads = ScriptDirectory.from_config(cfg).get_heads()
-            check("43. one single head after Project Management", heads == [RESPONSIBLE] , str(heads))
+            check("43. one single head after Project Management (the BANK_AWS_001 merge)", heads == ["7b1d4f9a2c6e"], str(heads))
         finally:
             os.environ.pop("ALEMBIC_DATABASE_URL_OVERRIDE", None)
     finally:

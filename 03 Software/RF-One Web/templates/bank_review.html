@@ -70,11 +70,16 @@
               <td data-label="Amount" class="col-amount">{{ "%.2f"|format(txn.amount_minor / 100) }}</td>
               <td data-label="Source">{{ txn.bank_source }}</td>
               <td data-label="Duplicate">
-                <span class="badge {{ 'bad' if txn.duplicate_status == 'CANDIDATE_DUPLICATE' else ('warn' if txn.duplicate_status == 'CONFIRMED_DUPLICATE' else 'ok') }}">{{ txn.duplicate_status }}</span>
                 {% if txn.duplicate_status == 'CANDIDATE_DUPLICATE' %}
-                  {% if txn.duplicate_of_transaction_id %}
-                    <span class="cell-note">Same instrument, date, description and amount as transaction #{{ txn.duplicate_of_transaction_id }}.</span>
-                  {% endif %}
+                  {#- BANK_POSSIBLE_DUPLICATES_001 — kept and flagged, never removed automatically. -#}
+                  <span class="badge bad">Da verificare</span>
+                  <span class="cell-note">Possible duplicate{% if txn.duplicate_of_transaction_id %} of
+                    <a href="{{ url_for('bank_review', q=txn.description_original, year=txn.posting_date.year, month=txn.posting_date.month) }}">#{{ txn.duplicate_of_transaction_id }}</a>{% endif %}:
+                    same date, description and amount.</span>
+                {% else %}
+                  <span class="badge {{ 'warn' if txn.duplicate_status == 'CONFIRMED_DUPLICATE' else 'ok' }}">{{ txn.duplicate_status }}</span>
+                {% endif %}
+                {% if txn.duplicate_status == 'CANDIDATE_DUPLICATE' %}
                   <form method="post" action="{{ url_for('bank_transaction_duplicate_decision', transaction_id=txn.id) }}" class="compact-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" name="decision" value="CONFIRMED_DISTINCT">Distinct</button>

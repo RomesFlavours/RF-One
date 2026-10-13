@@ -153,11 +153,10 @@ def unresolved_issues(state: dict) -> list[dict]:
     decisions = state.get("decisions") or {}
     out = []
     for issue in check.get("issues", []):
-        decision = decisions.get(issue["key"])
-        if issue.get("exclusion_only"):
-            if decision != import_session.DECISION_EXCLUDE:
-                out.append(issue)
-        elif decision not in (import_session.DECISION_EXCLUDE, import_session.DECISION_DISTINCT):
+        # BANK_POSSIBLE_DUPLICATES_001 — a possible duplicate has a default
+        # (imported, "Da verificare"); only an unreadable row must be decided.
+        decision = import_session.effective_decision(issue, decisions)
+        if decision is None or (issue.get("exclusion_only") and decision != import_session.DECISION_EXCLUDE):
             out.append(issue)
     return out
 
@@ -244,8 +243,10 @@ def register_bank_import_session_routes(app, *, gate, SessionFactory, require_cs
             ready, why_not = ready_to_confirm(state, incomplete=incomplete)
             decisions = state.get("decisions") or {}
             issues = (state.get("check") or {}).get("issues", [])
-            excluded = sum(1 for i in issues if decisions.get(i["key"]) == import_session.DECISION_EXCLUDE)
-            distinct = sum(1 for i in issues if decisions.get(i["key"]) == import_session.DECISION_DISTINCT)
+            effective = [import_session.effective_decision(i, decisions) for i in issues]
+            excluded = effective.count(import_session.DECISION_EXCLUDE)
+            distinct = effective.count(import_session.DECISION_DISTINCT)
+            to_verify = effective.count(import_session.DECISION_TO_VERIFY)
             total_rows = sum(f["rows"] for f in (state.get("check") or {}).get("files", []))
             return render_template(
                 "bank_import_session.html", token=token, state=state, sources_by_id=by_id,
@@ -253,7 +254,7 @@ def register_bank_import_session_routes(app, *, gate, SessionFactory, require_cs
                 pass1_done=pass1_complete(state) and not incomplete, incomplete=incomplete,
                 source_missing=source_missing, row_modal=row_modal, import_token=token,
                 unresolved=len(unresolved_issues(state)), leave_outs_open=len(unconfirmed_leave_outs(state)),
-                excluded_count=excluded, distinct_count=distinct, total_rows=total_rows,
+                excluded_count=excluded, distinct_count=distinct, to_verify_count=to_verify, total_rows=total_rows,
                 rows_to_import=total_rows - excluded, options=staged.manifest.get("options") or {},
                 **source_page_context(db, all_instruments, open_source_id=request.args.get("edit", type=int)),
             )
@@ -345,7 +346,8 @@ def register_bank_import_session_routes(app, *, gate, SessionFactory, require_cs
             return _gone()
         state = ensure_state(staged)
         decision = request.form.get("decision")
-        if decision not in (import_session.DECISION_EXCLUDE, import_session.DECISION_DISTINCT):
+        if decision not in (import_session.DECISION_EXCLUDE, import_session.DECISION_DISTINCT,
+                            import_session.DECISION_TO_VERIFY):
             flash("Choose a decision.", "error")
             return _back(token, "pass-2")
         key = request.form.get("key")

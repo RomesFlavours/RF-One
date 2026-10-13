@@ -16,12 +16,17 @@ A possible duplicate is found with ONE key, and only this key:
 
 never the Source, account, card or currency. Each row is compared with the
 transactions already stored AND with the earlier rows of the same upload,
-across files. Nothing is written: the result is a log the person resolves
-(confirm the exclusion, or import as a distinct operation) before Confirm.
+across files. Nothing is written: the result is a log the person MAY resolve
+(confirm the exclusion, or import as a distinct operation). A running balance
+or bank reference that differs proves two movements: no question
+(BANK_POSSIBLE_DUPLICATES_001).
 
 CONFIRM — `import_confirmed` imports each file with its Source, leaving out
-the excluded rows, marking the authorized repeats CONFIRMED_DISTINCT, and
-keeping the decisions in the batch's import log. The caller commits once.
+the excluded rows, marking the authorized repeats CONFIRMED_DISTINCT and
+every undecided possible duplicate CANDIDATE_DUPLICATE ("Da verificare" in
+the Review, linked to the movement it may repeat) — a possible duplicate
+never blocks the import (Product Owner, 2026-10-13). The decisions are kept
+in the batch's import log. The caller commits once.
 
 Purchase files (PayPal activity, Amazon Business orders) are RECOGNISED and
 shown, never read by a bank parser: their importers do not exist yet, so they
@@ -72,6 +77,7 @@ ISSUE_DUPLICATE_UPLOAD = "DUPLICATE_IN_UPLOAD"
 ISSUE_UNREADABLE = "UNREADABLE"
 DECISION_EXCLUDE = "EXCLUDE"
 DECISION_DISTINCT = "IMPORT_DISTINCT"
+DECISION_TO_VERIFY = "IMPORT_TO_VERIFY"   # BANK_POSSIBLE_DUPLICATES_001: the default for a possible duplicate
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +290,7 @@ def check_rows(session: Session, files: list[dict]) -> dict:
     instruments = {i.id: i for i in session.scalars(select(m.PaymentInstrument))}
     seen: dict[tuple, dict] = {}
     issues: list[RowIssue] = []
+    proven_distinct: list[dict] = []
     per_file: list[dict] = []
     present_by_month: dict[tuple[int, int], set[int]] = {}
     sha_seen: dict[str, str] = {}
@@ -338,8 +345,23 @@ def check_rows(session: Session, files: list[dict]) -> dict:
             here = {"file_index": entry["index"], "file_name": entry["file_name"], "row_number": row.row_number,
                     "source": source.display_name if source else "—", "format": parsed.detected_format,
                     "card": row.account_hint, "date": original_date, "description": row.description or "",
-                    "amount": original_amount}
+                    "amount": original_amount, "balance_minor": row.balance_minor, "reference": row.reference}
             stored = stored_by_key.get(key, [])
+            # BANK_POSSIBLE_DUPLICATES_001 — a running balance or bank reference
+            # that differs proves two movements: kept as distinct, logged, no question.
+            proof = None
+            if stored:
+                proof = bank_service.distinct_proof(row.balance_minor, row.reference,
+                                                    stored[0].balance_minor, stored[0].reference)
+            elif key in seen:
+                proof = bank_service.distinct_proof(row.balance_minor, row.reference,
+                                                    seen[key]["balance_minor"], seen[key]["reference"])
+            if proof:
+                proven_distinct.append({"file_index": entry["index"], "file_name": entry["file_name"],
+                                        "row_number": row.row_number, "date": original_date,
+                                        "description": row.description or "", "amount": original_amount,
+                                        "reason": f"Same date, description and amount, but {proof}: a distinct movement."})
+                continue
             if stored:
                 t = stored[0]
                 other = instruments.get(t.payment_instrument_id)
@@ -375,7 +397,8 @@ def check_rows(session: Session, files: list[dict]) -> dict:
                     entry["index"], entry["file_name"], row.row_number, ISSUE_DUPLICATE_UPLOAD,
                     original_date, row.description or "", original_amount,
                     "Same date, description and amount as an earlier row of this upload.",
-                    match={"origin": "upload", "file": first["file_name"], "row_number": first["row_number"],
+                    match={"origin": "upload", "file_index": first["file_index"],
+                           "file": first["file_name"], "row_number": first["row_number"],
                            "source": first["source"], "date": first["date"],
                            "description": first["description"], "amount": first["amount"]},
                     differences=differences))
@@ -395,12 +418,30 @@ def check_rows(session: Session, files: list[dict]) -> dict:
         if view["missing"]:
             expected_missing.append({"month": view["month"], "label": view["label"],
                                      "controlled": view["controlled"], "missing": view["missing"]})
-    return {"files": per_file, "issues": [i.as_dict() for i in issues], "expected_missing": expected_missing}
+    return {"files": per_file, "issues": [i.as_dict() for i in issues], "expected_missing": expected_missing,
+            "proven_distinct": proven_distinct}
 
 
 # ---------------------------------------------------------------------------
 # Confirm — import with the person's decisions
 # ---------------------------------------------------------------------------
+
+def effective_decision(issue: dict, decisions: dict[str, str]) -> str | None:
+    """BANK_POSSIBLE_DUPLICATES_001 (Product Owner, 2026-10-13) — a possible
+    duplicate never blocks the import. The person's decision when there is
+    one; otherwise a possible duplicate is imported and marked "Da verificare"
+    (IMPORT_TO_VERIFY), and a row of a byte-identical file — whose content is
+    already stored — adds nothing (EXCLUDE). An unreadable row has no default:
+    it is decided one by one (None)."""
+    decision = decisions.get(issue["key"])
+    if decision is not None:
+        return decision
+    if issue["kind"] == ISSUE_UNREADABLE:
+        return None
+    if issue.get("exclusion_only"):
+        return DECISION_EXCLUDE
+    return DECISION_TO_VERIFY
+
 
 def import_confirmed(
     session: Session, *, files: list[dict], issues: list[dict], decisions: dict[str, str],
@@ -408,27 +449,65 @@ def import_confirmed(
 ) -> list["bank_service.ImportResult"]:
     """Import every BANK file with its Source, honouring every decision:
     EXCLUDE leaves the row out (kept in the import log and in the stored
-    original file), IMPORT_DISTINCT saves it as a distinct operation. Refuses
-    if any issue is undecided. Nothing is committed here."""
-    undecided = [i for i in issues if decisions.get(i["key"]) not in (DECISION_EXCLUDE, DECISION_DISTINCT)]
-    invalid = [i for i in issues if i.get("exclusion_only") and decisions.get(i["key"]) != DECISION_EXCLUDE]
+    original file), IMPORT_DISTINCT saves it as a distinct operation,
+    IMPORT_TO_VERIFY (the default for a possible duplicate) saves it as a
+    CANDIDATE_DUPLICATE linked to the movement it may repeat — "Da verificare"
+    in the Review, never deleted, merged or confirmed automatically. Refuses
+    only for an undecided unreadable row. Nothing is committed here."""
+    effective = {i["key"]: effective_decision(i, decisions) for i in issues}
+    undecided = [i for i in issues if effective[i["key"]] is None]
+    invalid = [i for i in issues if i.get("exclusion_only") and effective[i["key"]] != DECISION_EXCLUDE]
     if undecided or invalid:
         raise ValueError(f"{len(undecided) + len(invalid)} row(s) still need a decision before Confirm Import.")
     by_file: dict[int, list[dict]] = {}
     for issue in issues:
         by_file.setdefault(issue["file_index"], []).append(issue)
     results = []
+    batch_by_file: dict[int, tuple[int, bool]] = {}
     for entry in files:
         file_issues = by_file.get(entry["index"], [])
-        excluded = {i["row_number"] for i in file_issues if decisions[i["key"]] == DECISION_EXCLUDE}
-        distinct = {i["row_number"] for i in file_issues if decisions[i["key"]] == DECISION_DISTINCT}
+        excluded = {i["row_number"] for i in file_issues if effective[i["key"]] == DECISION_EXCLUDE}
+        distinct = {i["row_number"] for i in file_issues if effective[i["key"]] == DECISION_DISTINCT}
         log = {"source_id": entry["source_id"], "decisions": [
             {**{k: i[k] for k in ("row_number", "kind", "date", "description", "amount", "reason", "match")},
-             "decision": decisions[i["key"]]} for i in file_issues]}
-        results.append(bank_service.import_csv(
+             "decision": effective[i["key"]]} for i in file_issues]}
+        result = bank_service.import_csv(
             session, file_bytes=entry["content"], original_file_name=entry["file_name"],
             uploaded_by_account_id=uploaded_by_account_id, payment_instrument_id=entry["source_id"],
             excluded_row_numbers=excluded, distinct_row_numbers=distinct,
             import_log=json.dumps(log, default=str),
-        ))
+        )
+        results.append(result)
+        batch_by_file[entry["index"]] = (result.batch.id, result.created)
+    _mark_to_verify(session, [i for i in issues if effective[i["key"]] == DECISION_TO_VERIFY], batch_by_file)
     return results
+
+
+def _mark_to_verify(session: Session, issues: list[dict], batch_by_file: dict[int, tuple[int, bool]]) -> None:
+    """Each possible duplicate imported without a decision becomes a
+    CANDIDATE_DUPLICATE linked to the movement it may repeat — also on another
+    Source, which the import's own same-Source search cannot see."""
+    def txn_of(file_index, row_number):
+        batch_id, created = batch_by_file.get(file_index, (None, False))
+        if batch_id is None or not created:
+            return None
+        return session.scalars(select(m.FinancialTransaction).where(
+            m.FinancialTransaction.import_batch_id == batch_id,
+            m.FinancialTransaction.source_row_number == row_number)).first()
+
+    touched = set()
+    for issue in issues:
+        txn = txn_of(issue["file_index"], issue["row_number"])
+        if txn is None:
+            continue
+        match = issue.get("match") or {}
+        other = (session.get(m.FinancialTransaction, match["transaction_id"]) if match.get("origin") == "database"
+                 else txn_of(match.get("file_index"), match.get("row_number")))
+        txn.duplicate_status = "CANDIDATE_DUPLICATE"
+        if other is not None and other.id != txn.id:
+            txn.duplicate_of_transaction_id = other.id
+        touched.add(txn.import_batch_id)
+    session.flush()
+    for batch_id in touched:
+        bank_service._refresh_batch_status(session, session.get(m.BankImportBatch, batch_id))
+    session.flush()

@@ -150,8 +150,17 @@
       </div>
     {% endif %}
 
-    <h4>Rows to resolve before Confirm ({{ check.issues|length }})</h4>
+    <h4>Possible duplicates and unreadable rows ({{ check.issues|length }})</h4>
+    <p class="cell-note">A possible duplicate never blocks the import: without your decision it is imported and marked
+      <strong>Da verificare</strong> in the Review, linked to the movement it may repeat &mdash; never deleted, merged or
+      confirmed automatically. Only an unreadable row must be decided here.</p>
     {% if not check.issues %}<p class="empty">No row needs a decision.</p>{% endif %}
+    {% if check.proven_distinct %}
+      <details class="import-log" id="proven-distinct">
+        <summary>Same date, description and amount, proven distinct by the bank&rsquo;s own data ({{ check.proven_distinct|length }})</summary>
+        <ul>{% for p in check.proven_distinct %}<li>{{ p.file_name }}, row {{ p.row_number }} &mdash; {{ p.date }} · {{ p.description }} · {{ p.amount }}: {{ p.reason }}</li>{% endfor %}</ul>
+      </details>
+    {% endif %}
     {% for fs in check.files %}
       {% set rows = check.issues|selectattr('file_index', 'equalto', fs.index)|list %}
       {% if rows %}
@@ -159,7 +168,7 @@
           <summary><strong>{{ fs.file_name }}</strong> &mdash; {{ rows|length }} row{{ '' if rows|length == 1 else 's' }}</summary>
           {% if rows|rejectattr('kind', 'equalto', 'UNREADABLE')|list %}
             <div class="import-bulk">
-              {% for value, label in (('EXCLUDE', 'Confirm exclusion of every possible duplicate in this file'), ('IMPORT_DISTINCT', 'Import every one as a distinct operation')) %}
+              {% for value, label in (('IMPORT_TO_VERIFY', 'Import every one, marked Da verificare'), ('EXCLUDE', 'Confirm exclusion of every possible duplicate in this file'), ('IMPORT_DISTINCT', 'Import every one as a distinct operation')) %}
                 <form method="post" action="{{ url_for('bank_import_decide', token=token) }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="scope" value="file:{{ fs.index }}">
@@ -198,6 +207,7 @@
                         <input type="hidden" name="key" value="{{ issue.key }}">
                         <label><input type="radio" name="decision" value="EXCLUDE" {{ 'checked' if decision == 'EXCLUDE' else '' }}> {{ 'Exclude this row' if issue.kind == 'UNREADABLE' else 'Confirm exclusion' }}</label>
                         {% if not issue.exclusion_only %}
+                          <label><input type="radio" name="decision" value="IMPORT_TO_VERIFY" {{ 'checked' if decision in (none, 'IMPORT_TO_VERIFY') else '' }}> Import, marked Da verificare (default)</label>
                           <label><input type="radio" name="decision" value="IMPORT_DISTINCT" {{ 'checked' if decision == 'IMPORT_DISTINCT' else '' }}> Import anyway: distinct operation</label>
                         {% elif issue.kind == 'UNREADABLE' %}
                           <span class="cell-note">An unreadable row cannot be imported as it is.</span>
@@ -226,6 +236,7 @@
       <div><dt>Rows to import</dt><dd data-figure="to_import">{{ rows_to_import }}</dd></div>
       <div><dt>Exclusions confirmed</dt><dd data-figure="excluded">{{ excluded_count }}</dd></div>
       <div><dt>Distinct operations authorized</dt><dd data-figure="distinct">{{ distinct_count }}</dd></div>
+      <div><dt>Imported, marked Da verificare</dt><dd data-figure="to_verify">{{ to_verify_count }}</dd></div>
       <div><dt>Still to resolve</dt><dd data-figure="unresolved">{{ unresolved }}</dd></div>
       <div><dt>Files left out (confirmed)</dt><dd data-figure="left_out">{{ files|selectattr('status', 'in', ['HELD', 'EXCLUDED'])|list|length }}</dd></div>
       <div><dt>Files to confirm</dt><dd data-figure="leave_outs_open">{{ leave_outs_open }}</dd></div>
