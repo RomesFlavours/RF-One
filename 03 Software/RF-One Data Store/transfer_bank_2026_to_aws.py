@@ -132,7 +132,9 @@ def table_hash(conn, table, where="") -> str:
 
 def coerce(conn, table, row: dict) -> dict:
     """SQLite gives booleans as 0/1 and timestamps as text; let PostgreSQL see real types."""
-    types = TYPES.setdefault(table, {c["name"]: str(c["type"]).upper() for c in sa.inspect(conn).get_columns(table)})
+    if table not in TYPES:  # reflected once per table (setdefault would reflect on every row)
+        TYPES[table] = {c["name"]: str(c["type"]).upper() for c in sa.inspect(conn).get_columns(table)}
+    types = TYPES[table]
     out = {}
     for k, v in row.items():
         if k not in types:

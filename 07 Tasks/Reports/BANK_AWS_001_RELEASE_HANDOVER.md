@@ -189,6 +189,24 @@ State checked first (nothing repeated blindly): RDS `7b1d4f9a2c6e`; no AI config
 - **Not done:** the definitive transfer — waits for the local data freeze (Product Owner asked to be told first).
   Preview with a real AI call online — waits for the IAM policy (refused again by the automatic check; manual path §2.7).
 
+### 2.9 Definitive Bank transfer — DONE (2026-10-13)
+
+- Product Owner: local data frozen; on matched movements the LOCAL state prevails, empty WHO/WHY included (no
+  `--fill-from-aws`); local wins the one WHY conflict; previous AWS decisions kept as history; AWS-only movements and
+  classifications and all history before 2026 kept; the 7 possible duplicates stay "Da verificare"; other Domains unchanged.
+- Frozen local copy: `%LOCALAPPDATA%\RF-One\Bank\transfer-final-20261013\rfone_local_final.db`, sha256 `c2839215cde1a746…`.
+- Corrected rehearsal on a disposable clone (`rfone_pgval_final_20261013t222553`, dropped): 11/11 checks.
+- RDS snapshot before the transfer: `rfone-dev-pre-bank-transfer-20261013t224939z`.
+- Live run (`transfer_bank_2026_to_aws.py --target live --apply --confirm-live`, commit `8c26b65`, REPEATABLE READ):
+  committed 2026-10-13 ~23:14 UTC, 11/11 checks — 3,104 matched + 130 added; 121 matched AWS decisions kept only as
+  history; 403/403 previous AWS decisions kept; 256 AWS-only movements unchanged; 12 WHO, 17 WHY added; 7 possible
+  duplicates Da verificare; history and other Domains unchanged.
+- Live counts after: 12,808 movements (9,318 before 2026, 3,490 in 2026); 8 AI rules, 37 interpretations, 1 set of
+  general instructions. Authenticated smoke on https://rfone.romesflavours.com: 200 on every page.
+- **Local Bank:** the transfer has been taken — local changes made from now on do NOT reach AWS.
+- Still open: Bedrock IAM policy (manual), then Bedrock settings on `rfone-web` and the real Preview check; main fast-forward (manual).
+  Policy file ready: `%LOCALAPPDATA%\RF-One\Bank\transfer-final-20261013\rfone-web-bedrock-invoke-policy.json`.
+
 ## 3. Procedures used
 
 - Release of `rfone-web`: `03 Software/Infrastructure/README.md` § "Procedura di rilascio di `rfone-web`".
