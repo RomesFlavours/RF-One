@@ -150,6 +150,22 @@ AWS "Amex ··1002", "RF Saving", "Chase-2915" (inactive) have no local counterp
 and Reporting Entities differ entirely (local RE_RFWP / RE_RFMD_LLC / RE_RFCO / RE_PINO_PERSONAL; AWS
 RE_ANGELI_E_DEMONI_LLC / RE_RF_MOUNT_DORA_LLC / RE_RF_GELATI_LLC). Nothing deleted or replaced.
 
+### 2.7 Session 2026-10-12 (night): transfer proposal, interpreter, blocks
+
+- Transfer proposal: `07 Tasks/Reports/BANK_AWS_DATA_TRANSFER_PLAN_001.md` (entities, Sources incl. the 3144/2270
+  split by the file's `Card` column, movements, repeated rows, decisions, AI). No data changed.
+- Interpreter clarifications for Opus 4.6: branch `feature/bank-ai-interpreter-precision` @ `0db13e1` (8/8 valid
+  twice on the real rules; AI Rules tests green). Not merged, not deployed.
+- Invoice Intake (other session, not modified): `b3f9d2c6e4a1` is applied only to `RF One/.../data/rfone.db`;
+  `540ee75caa65` nowhere; RDS has none. Integration when it is committed on the new main: one NEW merge revision
+  with down_revision (`540ee75caa65`, `7b1d4f9a2c6e`), rehearsed on PostgreSQL before RDS.
+- Blocked by the session's automatic permission check (authorized by the Product Owner, not bypassed) — manual path:
+  1. main: `git push origin release/bank-aws:refs/heads/main` (fast-forward from `d3632a8`).
+  2. IAM: `aws iam put-role-policy --profile rfone-dev-login --role-name rfone-web-apprunner-instance-role
+     --policy-name rfone-web-bedrock-invoke-bank-ai-rules --policy-document file://<policy of §2.6>`.
+  3. Then `python enable_bedrock_on_rfone_web.py --apply` (in the transfer-review folder; dry run without
+     `--apply`, verified), then a real Preview check on AWS by a session.
+
 ## 3. Procedures used
 
 - Release of `rfone-web`: `03 Software/Infrastructure/README.md` § "Procedura di rilascio di `rfone-web`".
