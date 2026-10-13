@@ -166,6 +166,29 @@ RE_ANGELI_E_DEMONI_LLC / RE_RF_MOUNT_DORA_LLC / RE_RF_GELATI_LLC). Nothing delet
   3. Then `python enable_bedrock_on_rfone_web.py --apply` (in the transfer-review folder; dry run without
      `--apply`, verified), then a real Preview check on AWS by a session.
 
+### 2.8 Session 2026-10-13: possible duplicates, transfer rehearsal, second deploy
+
+State checked first (nothing repeated blindly): RDS `7b1d4f9a2c6e`; no AI config on `rfone-web`; IAM policy absent.
+
+- **main** fast-forwarded `d3632a8..57f2698` (allowed once). A second fast-forward to `0576ea1` was refused by the
+  automatic permission check: main is 3 commits behind the release — manual: `git push origin release/bank-aws:refs/heads/main`.
+- **Possible duplicates** (Product Owner, 2026-10-13, BANK_POSSIBLE_DUPLICATES_001): never block an import or the
+  transfer; without a decision a possible duplicate is imported as CANDIDATE_DUPLICATE, linked to the movement it
+  may repeat (also on another Source), shown "Da verificare" in the Review; never deleted, merged or confirmed
+  automatically; a running balance or bank reference that differs proves distinct movements. Commit `ed0bc82`.
+- **Interpreter clarifications** merged (`0576ea1`).
+- **Second deploy** of `rfone-web` from `0576ea1`: source backup `backups/rfone-web-source-pre-bank-aws-001b-20261013t215144z.zip`,
+  CodeBuild `rfone-web-build:26b807d3-…` SUCCEEDED, image `sha256:f5857090…49f7`, App Runner `c312126ac28149ab9e2d84d06bac4ab9`
+  SUCCEEDED; authenticated smoke 200 on every page, no error in the log. No migration (none in this code).
+- **Transfer tool** `03 Software/RF-One Data Store/transfer_bank_2026_to_aws.py`, rehearsed with `--apply` on a disposable
+  clone of live (`rfone_pgval_transfer_20261013t210308`, dropped): 3,104 matched, 130 added; history before 2026, other
+  Domains, every AWS movement and decision unchanged; every local current decision current on AWS; AI work carried
+  (11 invalidated interpretations kept as history under a non-matching key); 147 WHY kept from AWS where the local
+  decision had none (default `--fill-from-aws`); 1 WHY conflict, local kept; 7 possible duplicates marked Da verificare;
+  8/8 rules reuse a valid Opus 5.5 interpretation with the AWS For Whom catalogue; app smoke 200 on the clone.
+- **Not done:** the definitive transfer — waits for the local data freeze (Product Owner asked to be told first).
+  Preview with a real AI call online — waits for the IAM policy (refused again by the automatic check; manual path §2.7).
+
 ## 3. Procedures used
 
 - Release of `rfone-web`: `03 Software/Infrastructure/README.md` § "Procedura di rilascio di `rfone-web`".
