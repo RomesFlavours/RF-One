@@ -17,9 +17,9 @@ the local 3144 card split by each row's `Card` column; WHO by name; WHY, groups,
 Possible duplicates (Product Owner, 2026-10-13): nothing is deleted or merged; the AWS repeats that
 no balance proves distinct become CANDIDATE_DUPLICATE ("Da verificare"), linked to the first row.
 
-Matched movement, local WHO/WHY empty but AWS set (an open Product Owner point): `--fill-from-aws`
-(default) keeps the AWS value in the new current decision; `--no-fill-from-aws` takes the local
-decision as it is. The local value wins a conflict.
+Matched movement (Product Owner, 2026-10-13): the LOCAL state prevails, also when its WHO or WHY is
+empty and when it has no decision at all; the AWS decision stays in the history, never deleted. The
+local value wins a conflict. `--fill-from-aws` (not the Product Owner's choice) is kept only to compare.
 
 Safety: AWS account, database and Alembic revision checked; the local file is read from a COPY that
 this tool upgrades itself; one transaction; every check below must hold before COMMIT, otherwise
@@ -374,6 +374,16 @@ def run(local_path: str, target: str, apply: bool, fill_from_aws: bool) -> dict:
                 if is_current:
                     A.execute(sa.text("update financial_transactions set explanation_id=:e where id=:t"),
                               {"e": expl_map[e["id"]], "t": ft_map[ft_local]})
+            # Local state prevails, also when it is empty (Product Owner, 2026-10-13): a matched AWS movement the
+            # local Bank has not decided gets no current decision; its AWS decision stays in the history.
+            cleared = 0
+            if not fill_from_aws:
+                for lt_id, a in matched.items():
+                    if lt_id not in current_local and a["explanation_id"] is not None:
+                        A.execute(sa.text("update financial_transactions set explanation_id=NULL where id=:t"),
+                                  {"t": a["id"]})
+                        cleared += 1
+            report["matched_aws_decision_kept_as_history_only"] = cleared
 
             # ---- possible duplicates on AWS: kept; those no balance proves distinct are "Da verificare"
             from rfone_data_store.bank_reconciliation.service import distinct_proof
@@ -445,6 +455,25 @@ def run(local_path: str, target: str, apply: bool, fill_from_aws: bool) -> dict:
                         (want_why and cur[0]["transaction_reason_id"] != want_why):
                     mismatch.append(ae)
             check("every local current decision is the current decision on AWS", not mismatch, mismatch[:10])
+            if not fill_from_aws:
+                exact = []
+                for lt_id, a in matched.items():
+                    cur = rows(A, "select e.occurrence_id o, e.transaction_reason_id r from financial_transactions t "
+                                  "left join bank_transaction_explanations e on e.id=t.explanation_id where t.id=:i", i=a["id"])[0]
+                    le_ = lq("select occurrence_id o, transaction_reason_id r from bank_transaction_explanations where id=?",
+                             current_local[lt_id])[0] if lt_id in current_local else {"o": None, "r": None}
+                    if (cur["o"], cur["r"]) != (om(le_["o"]), wm(le_["r"])):
+                        exact.append(a["id"])
+                check("matched movements: WHO and WHY exactly the local ones, empty included", not exact, exact[:10])
+                prev = {a["explanation_id"] for a in matched.values() if a["explanation_id"]}
+                kept = rows(A, "select count(*) n from bank_transaction_explanations where id = any(:ids)", ids=list(prev))[0]["n"]
+                check("the previous AWS decisions of the matched movements are kept as history", kept == len(prev),
+                      f"{kept}/{len(prev)}")
+            aws_only_ids = [t["id"] for b in aws_by_key.values() for t in b]
+            check("AWS-only 2026 movements keep their decision",
+                  all(rows(A, "select explanation_id e from financial_transactions where id=:i", i=i)[0]["e"] == t_e
+                      for i, t_e in ((t["id"], t["explanation_id"]) for b in aws_by_key.values() for t in b)),
+                  len(aws_only_ids))
             check("other Domains' tables unchanged",
                   all(table_hash(A, t) == h for t, h in before_other.items()),
                   [t for t, h in before_other.items() if table_hash(A, t) != h][:10])
@@ -485,13 +514,14 @@ def main() -> int:
     p.add_argument("--target", required=True, help="'live' or a disposable rfone_pgval_* database")
     p.add_argument("--apply", action="store_true")
     p.add_argument("--confirm-live", action="store_true")
-    p.add_argument("--no-fill-from-aws", action="store_true")
+    p.add_argument("--fill-from-aws", action="store_true",
+                   help="NOT the Product Owner's choice (2026-10-13): kept only for comparison")
     a = p.parse_args()
     if a.target == "live" and a.apply and not a.confirm_live:
         print("REFUSED: writing to the live database also requires --confirm-live.")
         return 2
     try:
-        report = run(a.local, a.target, a.apply, fill_from_aws=not a.no_fill_from_aws)
+        report = run(a.local, a.target, a.apply, fill_from_aws=a.fill_from_aws)
     except Refusal as exc:
         print("REFUSED:", exc)
         return 2
