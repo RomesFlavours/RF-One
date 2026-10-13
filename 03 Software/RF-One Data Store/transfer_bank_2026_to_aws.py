@@ -156,7 +156,9 @@ def run(local_path: str, target: str, apply: bool, fill_from_aws: bool) -> dict:
     if lq("select version_num from alembic_version")[0]["version_num"] != REVISION:
         raise Refusal("the local copy is not at the release revision")
 
-    engine = sa.create_engine(target_url(target))
+    # REPEATABLE READ: one consistent snapshot for the whole transfer, so the before/after checks are not
+    # confused by other Domains committing meanwhile on live (Clover jobs, Tips) — their rows are never touched.
+    engine = sa.create_engine(target_url(target), isolation_level="REPEATABLE READ")
     report: dict = {"target": target, "applied": False, "checks": []}
     with engine.connect() as A:
         trans = A.begin()
