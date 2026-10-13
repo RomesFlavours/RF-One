@@ -1048,6 +1048,7 @@ Assignments (null = left unchanged):
         upper case; A is matched ignoring case; "start_at": where A must be ("beginning" of the description, or
         "anywhere" in it); "end_case": whether B is matched as written or ignoring case. A or B missing, B not after
         A, or nothing between them: the rule does not change the movement.
+        When the rule says, in general, to ignore upper/lower case in its comparisons ("Ignora maiuscole e minuscole nei confronti"), that holds for B too: "end_case": "ignore".
      or {{"mode": "before_final_number", "start": "A", "start_at": "beginning" | "anywhere"}}
         the WHO is the text after A and before the description's FINAL NUMBER (the last block made only of digits,
         preceded by a space — see "ends_with_number"), spaces trimmed and collapsed, upper case; other numbers inside
@@ -1087,8 +1088,10 @@ Assignments (null = left unchanged):
 - "status": {{"mode": "to_confirm"}} — a movement whose WHO, WHY or For Whom this rule changes is set to
      "Da confermare" (to be confirmed by a person), even if it was confirmed before — or null (status left as it
      is). A movement on which nothing changes keeps its status.
+     "If the WHO changes, set 'Da confermare'; otherwise keep the status" ("Se il WHO cambia, imposta 'Da confermare'; altrimenti conserva lo stato") IS exactly this "status" — nothing else is needed.
 - "only_if_who_differs": true — when the movement already has the WHO this rule assigns (case and spaces aside),
      the rule changes NOTHING on it (no WHO, WHY, For Whom or status change). Otherwise false.
+     Use it ONLY when the rule says to leave a movement untouched when it already has that WHO ("solo se il WHO è diverso", "se ha già quel WHO non modificare nulla"); a status that changes only when the WHO changes is "status", not this. It needs a rule-level "who" (not only WHOs inside branches).
 - "replace_existing": true — a different WHO / WHY / For Whom already decided by another rule or an earlier
      automatic decision is replaced. Otherwise false (such a value is a conflict, left as it is). RF-One ALWAYS
      protects, and shows separately: decisions made manually or by a Reconciliation Standard, own-account
