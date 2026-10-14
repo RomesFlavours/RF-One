@@ -126,3 +126,27 @@ not contain the Bank code unless the clean Bank is being reinstalled (§5).
 - CodeBuild `rfone-web-build:862f40e7-1b84-4229-8102-a02cd3a15ec8`; ECR `rfone-web` `sha256:222ec5e4288be646905b77055ff3672d1afe2d5f043941f5296c4cea0cdbe40f`.
 - App Runner `rfone-web`: `UPDATE_SERVICE` `6b6ba24a218a4653a081ed840a43dba1`, `START_DEPLOYMENT` `5564abe753844e81b3744fc969cf7ee0`.
 - Previous release: `07 Tasks/Reports/BANK_AWS_001_RELEASE_HANDOVER.md` (on `release/bank-aws` / `origin/main`).
+
+## 8. R0, R1, R2 closed (2026-10-14, ~03:00 UTC)
+
+**R0 + R1 — `rfone-selection` and `rfone-tips` rebuilt from this branch @ `53ddf4a`.** Their application folders
+(Selection, Tips, Training, Clover Data Explorer, Shared UI) are identical to what was live (only two `.md` files
+differ); the Data Store is the one already live in `rfone-web` (Bank removed, chain up to `84354dc654ce`, Projects /
+Wines / item access already released). Compensation `f63bf66` is not included. No `bank_reconciliation/`, no PayPal
+connector in either image.
+
+| Step | Result |
+|---|---|
+| Boot check before deploy | Both apps imported in the image layout (from the zips uploaded below) against a disposable `rfone_pgval_bootcheck_*` at `84354dc654ce`, requests through the official-entry header: Selection 302 to login, Tips 302 to login, Tips dish guide 200; Alembic, schema and every row unchanged by boot and requests; database dropped |
+| Source backups | `backups/rfone-selection-source-pre-bank-removal-20261014t025601z.zip`, `backups/rfone-tips-source-pre-bank-removal-20261014t025601z.zip` |
+| Builds | `rfone-selection-build:01783370-a0f0-4742-bb85-891cd1d67802` SUCCEEDED → `sha256:386fa2ef…0c95`; `rfone-tips-build:acaa8f67-b10c-4a2f-b38b-af56874538d1` SUCCEEDED → `sha256:7f53fe79…4258` |
+| Deploys | `start-deployment` Selection `0e84f7cba0cc4f7a908cdead62258091`, Tips `4deaa51875f1431b913cdeb050544833`: SUCCEEDED, both RUNNING. Logs: clean boot 02:58 UTC; Selection's boot-time Alembic ran no revision; RDS still `84354dc654ce`, 224 tables |
+
+**R2 — signed-in check.** Technical account `release-smoke-20260925` made ACTIVE for the check only, with access to
+TRAINING, TIPS, COMPENSATION, SELECTION, CLOVER_ACQUISITION, WINES, PROJECTS, ORGANIZATION (no admin). 200 on Home,
+Tips, Compensation, Selection, Clover Acquisition, Wines, Projects, Organization; `/training` returns to Home with a
+message because this account has no Training identity (expected behavior of `training_integration.py`); no Bank
+link on any page; `/bank`, `/bank/review`, `/bank/ai-rules`, `/bank/export` → 404. Afterwards: logout; account
+restored identical (INACTIVE, previous password hash, only the previous TIPS row, disabled) except
+`session_version` 22 → 24, so the test cookie is revoked (verified: it now redirects to login). No other table
+changed during the check.
