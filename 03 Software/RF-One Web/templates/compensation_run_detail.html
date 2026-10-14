@@ -45,15 +45,100 @@
   {% endif %}
 </div>
 
-{% if not employee_rows %}
+{% if run_hours.problems or run_hours.unattributed %}
   <div class="card">
-    <p class="empty">No Employee holds an HOURLY Compensation Term for this Legal Entity effective during this period yet{{ " (SALARIED Employees are listed separately below, and are not calculable in V1)" if salaried_rows else "" }}.</p>
+    <h2>Legal Entity / Restaurant problems</h2>
+    {% for problem in run_hours.problems %}
+      <p><span class="badge bad">problem</span> {{ problem }}</p>
+    {% endfor %}
+    {% if run_hours.unattributed %}
+      <p class="muted">These Shifts of the period belong to no Legal Entity, so no Compensation Run can count them. Link the Restaurant (or Location) to its Legal Entity &mdash; RF-One never guesses it.</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Location</th><th>Restaurant</th><th>Why</th><th>Shifts</th><th>Employees</th></tr></thead>
+          <tbody>
+            {% for u in run_hours.unattributed %}
+              <tr>
+                <td>{{ u.location_name }}</td>
+                <td>{{ u.restaurant_name or '—' }}</td>
+                <td>{{ u.reason }}</td>
+                <td>{{ u.shifts }}</td>
+                <td>{{ u.employees }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
   </div>
 {% endif %}
 
+<div class="card" id="period-hours">
+  <h2>Hours worked in the period</h2>
+  <p class="muted">
+    Business Dates {{ run_hours.first_business_date }} &ndash; {{ run_hours.last_business_date }}
+    {% if run_hours.location_names %}&middot; Locations: {{ run_hours.location_names|join(', ') }}{% endif %}.
+    Everyone with Clover Shifts in the period appears here, with or without a Compensation Term (SALARIED people are listed separately below).
+    In each Workweek the first 40 hours are Regular and the rest are Overtime; the overtime amount
+    is determined by the Payroll Provider.
+  </p>
+  {% if run_hours.provisional %}
+    <p><span class="badge warn">PROVISIONAL &mdash; period still open</span> The period has not ended yet: the hours shown are complete up to now and will grow.</p>
+  {% endif %}
+  {% for warning in run_hours.hours_warnings %}
+    <p><span class="badge warn">hours</span> {{ warning }}</p>
+  {% endfor %}
+  {% if not run_hours.tips_available %}
+    <p><span class="badge warn">tips</span> Tips not available: {{ run_hours.tips_unavailable_reason }}</p>
+  {% endif %}
+  {% if run_hours.rows %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Employee</th><th>Regular Hours</th><th>Overtime Hours</th><th>Total Hours</th>
+            <th>Hourly Wage</th><th>Bonus</th><th>Tips</th><th>Hours</th><th>Compensation data</th><th>Missing / to check</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in run_hours.rows %}
+            <tr id="hours-{{ p.employee_id }}">
+              <td><a href="#employee-{{ p.employee_id }}">{{ p.display_name|short_name if p.display_name else ('Employee ' ~ p.employee_id) }}</a></td>
+              <td>{{ p.regular_hours if p.regular_hours is not none else 'NOT AVAILABLE' }}</td>
+              <td>{{ p.overtime_hours if p.overtime_hours is not none else 'NOT AVAILABLE' }}</td>
+              <td>{{ p.total_hours }}</td>
+              <td>
+                {% if p.hourly_wage is not none %}${{ p.hourly_wage }}/hr
+                {% elif p.hourly_rates %}{% for rate in p.hourly_rates %}${{ rate }}/hr{{ ', ' if not loop.last }}{% endfor %}
+                {% else %}MISSING{% endif %}
+              </td>
+              <td>{{ ('$' ~ p.bonus) if p.bonus is not none else '—' }}</td>
+              <td>{{ ('$' ~ p.tips) if p.tips is not none else 'NOT AVAILABLE' }}</td>
+              <td><span class="badge {{ 'ok' if p.hours_status == HOURS_COMPLETE else 'warn' }}">{{ 'COMPLETE' if p.hours_status == HOURS_COMPLETE else 'INCOMPLETE' }}</span></td>
+              <td><span class="badge {{ 'ok' if p.data_status == DATA_COMPLETE else 'warn' }}">{{ 'COMPLETE' if p.data_status == DATA_COMPLETE else 'INCOMPLETE' }}</span></td>
+              <td class="muted">
+                {% for reason in p.hours_reasons %}<div>Hours: {{ reason }}</div>{% endfor %}
+                {% for reason in p.data_reasons %}<div>{{ reason }}</div>{% endfor %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No Employee has Clover Shifts in this period at a Location of this Legal Entity.</p>
+  {% endif %}
+</div>
+
 {% for row in employee_rows %}
   <div class="card" id="employee-{{ row.employee_id }}">
-    <h2>{{ row.employee.display_name if row.employee else ('Employee ' ~ row.employee_id) }}</h2>
+    <h2>{{ row.display_name or ('Employee ' ~ row.employee_id) }}</h2>
+    <p class="muted">
+      Regular {{ row.person.regular_hours if row.person.regular_hours is not none else 'NOT AVAILABLE' }} h &middot;
+      Overtime {{ row.person.overtime_hours if row.person.overtime_hours is not none else 'NOT AVAILABLE' }} h &middot;
+      Total {{ row.person.total_hours }} h
+      {% if row.person.location_names %}&middot; {{ row.person.location_names|join(', ') }}{% endif %}
+    </p>
 
     {% set calc = row.calculation %}
     {% if calc %}
@@ -126,7 +211,12 @@
       {% endif %}
     </div>
 
-    {% if editable %}
+    {% if editable and not row.terms %}
+      <div class="subsection">
+        <h2>Calculate / Recalculate</h2>
+        <p class="muted">Hourly wage MISSING: there is no HOURLY Compensation Term for this person, this Legal Entity and this period, so pay cannot be calculated or saved yet. The hours above are shown regardless.</p>
+      </div>
+    {% elif editable %}
       <div class="subsection">
         <h2>Calculate / Recalculate</h2>
         <form method="post" action="{{ url_for('compensation_calculate_employee', run_id=run.id, employee_id=row.employee_id) }}" class="compact-form">
@@ -161,6 +251,27 @@
   </div>
 {% endfor %}
 
+{% if calculated_without_hours %}
+  <div class="card">
+    <h2>Calculated, but no Shift hours in this period</h2>
+    <p class="muted">These calculations were saved earlier; no Clover Shift of this period at a Location of this Legal Entity supports them. They would still be part of an approval, so they are shown, never hidden.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Employee</th><th>Hours</th><th>Gross Pay</th></tr></thead>
+        <tbody>
+          {% for row in calculated_without_hours %}
+            <tr>
+              <td>{{ row.employee.display_name if row.employee else ('Employee ' ~ row.employee_id) }}</td>
+              <td>{{ row.calculation.regular_hours }}</td>
+              <td>${{ row.calculation.gross_pay }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+
 {% if salaried_rows %}
   <div class="card">
     <h2>SALARIED Employees &mdash; not supported in V1</h2>
@@ -172,14 +283,15 @@
     </p>
     <div class="table-scroll">
       <table>
-        <thead><tr><th>Employee</th><th>Function</th><th>Salaried amount / period</th></tr></thead>
+        <thead><tr><th>Employee</th><th>Function</th><th>Salaried amount / period</th><th>Shift hours (informational)</th></tr></thead>
         <tbody>
           {% for row in salaried_rows %}
             {% for term in row.terms %}
               <tr>
-                <td>{{ row.employee.display_name if row.employee else ('Employee ' ~ row.employee_id) }}</td>
+                <td>{{ row.display_name or ('Employee ' ~ row.employee_id) }}</td>
                 <td>{{ term.function_label }}</td>
                 <td>${{ '%.2f'|format(term.salaried_period_amount_minor / 100) }} <span class="badge warn">TO COMPLETE OUTSIDE RF-ONE</span></td>
+                <td>{{ (row.informational_hours ~ ' h') if row.informational_hours is not none else 'no Shift in the period' }}</td>
               </tr>
             {% endfor %}
           {% endfor %}

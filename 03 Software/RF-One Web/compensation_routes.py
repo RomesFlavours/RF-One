@@ -32,6 +32,7 @@ from sqlalchemy import select
 from rfone_data_store import models as m
 from rfone_data_store.payroll_calculation import approval as approval_service
 from rfone_data_store.payroll_calculation import compensation as compensation_helpers
+from rfone_data_store.payroll_calculation import compensation_period as compensation_period_service
 from rfone_data_store.payroll_calculation import engine as engine_service
 from rfone_data_store.payroll_calculation import export as export_service
 from rfone_data_store.payroll_calculation import incentives as incentives_service
@@ -42,10 +43,6 @@ from rfone_data_store.payroll_calculation.workweek import WEEKDAY_NAMES
 UTC = timezone.utc
 
 _EARNING_LINE_SLOTS = 3  # static form rows — no JS-driven dynamic add/remove in this shell
-
-
-def _as_naive(value: datetime) -> datetime:
-    return value.replace(tzinfo=None) if value.tzinfo is not None else value
 
 
 def _parse_date(value: str | None) -> datetime | None:
@@ -64,38 +61,6 @@ def _parse_decimal(value: str | None) -> Decimal | None:
         return Decimal(value.strip())
     except InvalidOperation:
         return None
-
-
-def _terms_for_run(
-    db, run: m.CompensationPreparationRun, *, compensation_basis: str,
-) -> list[m.EmployeeCompensationTerm]:
-    """Every `EmployeeCompensationTerm` of the given basis for this run's
-    Legal Entity that is effective at some point during the run's period."""
-    terms = db.scalars(
-        select(m.EmployeeCompensationTerm).where(
-            m.EmployeeCompensationTerm.legal_entity_id == run.legal_entity_id,
-            m.EmployeeCompensationTerm.compensation_basis == compensation_basis,
-        )
-    ).all()
-    period_start, period_end = _as_naive(run.period_start), _as_naive(run.period_end)
-    active = []
-    for term in terms:
-        valid_from = _as_naive(term.valid_from)
-        valid_to = _as_naive(term.valid_to) if term.valid_to is not None else period_end
-        if valid_from < period_end and valid_to > period_start:
-            active.append(term)
-    return active
-
-
-def _eligible_terms_for_run(db, run: m.CompensationPreparationRun) -> list[m.EmployeeCompensationTerm]:
-    """Every HOURLY `EmployeeCompensationTerm` for this run's Legal Entity
-    that is effective at some point during the run's period — engine.py
-    only supports HOURLY terms today. SALARIED terms are a known,
-    declared V1 limit — see `_terms_for_run(..., compensation_basis=
-    compensation_helpers.SALARIED)`, surfaced separately and explicitly in
-    `compensation_run_detail` (task: never a silent gap, never a computed
-    zero for an unsupported basis)."""
-    return _terms_for_run(db, run, compensation_basis=compensation_helpers.HOURLY)
 
 
 def register_compensation_routes(
@@ -224,11 +189,11 @@ def register_compensation_routes(
                 abort(404)
             legal_entity = db.get(m.LegalEntity, run.legal_entity_id)
 
-            eligible_terms = _eligible_terms_for_run(db, run)
-            terms_by_employee: dict[int, list[m.EmployeeCompensationTerm]] = {}
-            for term in eligible_terms:
-                terms_by_employee.setdefault(term.employee_id, []).append(term)
-
+            # Who is in the run: every Employee with Shifts in the period at a
+            # Location of this Legal Entity (`compensation_period`). A
+            # Compensation Term is only the source of the wage — never a
+            # condition for appearing here.
+            run_hours = compensation_period_service.build_run_hours(db, run)
             calculations = db.scalars(
                 select(m.EmployeePayrollCalculation).where(
                     m.EmployeePayrollCalculation.calculation_run_id == run.id
@@ -236,55 +201,40 @@ def register_compensation_routes(
             ).all()
             calc_by_employee = {c.employee_id: c for c in calculations}
 
-            employee_ids = sorted(set(terms_by_employee) | set(calc_by_employee))
-            employees = {e.id: e for e in db.scalars(
-                select(m.Employee).where(m.Employee.id.in_(employee_ids))
-            ).all()} if employee_ids else {}
-
-            incentives_by_employee = {
-                employee_id: incentives_service.list_incentive_contributions(
-                    db, calculation_run_id=run.id, employee_id=employee_id,
+            employee_rows = []
+            for person in run_hours.rows:
+                contributions = incentives_service.list_incentive_contributions(
+                    db, calculation_run_id=run.id, employee_id=person.employee_id,
                 )
-                for employee_id in employee_ids
-            }
+                employee_rows.append({
+                    "person": person,
+                    "employee_id": person.employee_id,
+                    "display_name": person.display_name,
+                    "terms": person.hourly_terms,
+                    "calculation": calc_by_employee.get(person.employee_id),
+                    "incentive_contributions": contributions,
+                    "recognized_incentive_preview": incentives_service.calculate_recognized_incentive(contributions),
+                })
 
-            employee_rows = [
-                {
-                    "employee": employees.get(employee_id),
-                    "employee_id": employee_id,
-                    "terms": terms_by_employee.get(employee_id, []),
-                    "calculation": calc_by_employee.get(employee_id),
-                    "incentive_contributions": incentives_by_employee.get(employee_id, []),
-                    "recognized_incentive_preview": incentives_service.calculate_recognized_incentive(
-                        incentives_by_employee.get(employee_id, [])
-                    ),
-                }
-                for employee_id in employee_ids
+            # A calculation saved earlier for someone with no Shift hours in
+            # this period is still part of what approval would snapshot, so it
+            # stays visible — never hidden.
+            in_run = {person.employee_id for person in run_hours.rows}
+            orphan_ids = sorted(set(calc_by_employee) - in_run)
+            orphan_employees = {e.id: e for e in db.scalars(
+                select(m.Employee).where(m.Employee.id.in_(orphan_ids))
+            ).all()} if orphan_ids else {}
+            calculated_without_hours = [
+                {"employee_id": employee_id, "employee": orphan_employees.get(employee_id),
+                 "calculation": calc_by_employee[employee_id]}
+                for employee_id in orphan_ids
             ]
 
             # SALARIED is a declared V1 limit (engine.py only computes
-            # HOURLY) — surfaced explicitly and separately here, never
-            # silently omitted and never given a computed/zero value (task:
-            # "impedisci che un calcolo non supportato produca uno zero o
-            # un totale apparentemente valido").
-            salaried_terms = _terms_for_run(db, run, compensation_basis=compensation_helpers.SALARIED)
-            salaried_employee_ids = sorted({t.employee_id for t in salaried_terms})
-            salaried_employees = {
-                e.id: e for e in db.scalars(
-                    select(m.Employee).where(m.Employee.id.in_(salaried_employee_ids))
-                ).all()
-            } if salaried_employee_ids else {}
-            salaried_terms_by_employee: dict[int, list[m.EmployeeCompensationTerm]] = {}
-            for term in salaried_terms:
-                salaried_terms_by_employee.setdefault(term.employee_id, []).append(term)
-            salaried_rows = [
-                {
-                    "employee": salaried_employees.get(employee_id),
-                    "employee_id": employee_id,
-                    "terms": salaried_terms_by_employee[employee_id],
-                }
-                for employee_id in salaried_employee_ids
-            ]
+            # HOURLY) — listed separately from the Compensation Term, with or
+            # without Shifts, never with Regular/Overtime and never with a
+            # computed/zero value (`compensation_period.SalariedRow`).
+            salaried_rows = run_hours.salaried
 
             snapshot = approval_service.get_approved_snapshot_by_run(db, run.id)
             editable = run.status in ("OPEN", "CALCULATED")
@@ -294,7 +244,10 @@ def register_compensation_routes(
                 "compensation_run_detail.html", run=run, legal_entity=legal_entity,
                 employee_rows=employee_rows, snapshot=snapshot, editable=editable,
                 earning_line_slots=range(_EARNING_LINE_SLOTS), salaried_rows=salaried_rows,
-                not_yet_calculated_count=not_yet_calculated_count,
+                not_yet_calculated_count=not_yet_calculated_count, run_hours=run_hours,
+                calculated_without_hours=calculated_without_hours,
+                HOURS_COMPLETE=compensation_period_service.HOURS_COMPLETE,
+                DATA_COMPLETE=compensation_period_service.DATA_COMPLETE,
             )
 
     @app.route("/compensation/runs/<int:run_id>/employees/<int:employee_id>/calculate", methods=["POST"])
