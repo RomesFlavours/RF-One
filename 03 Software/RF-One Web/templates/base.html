@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}?v=2">
 {% endif %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=22">
-{# BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001 — one modal controller for the
+{# One modal controller for the
    whole application, loaded with `defer` so it is ready before any page
    script runs but never blocks rendering. Every dialog shares it, so a
    fix to open/close, Escape, backdrop, focus restore or scroll locking
@@ -32,18 +32,6 @@
       <img class="brand-logo" src="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}" alt="RF-One">
     {% endif %}
   </header>
-
-  {% if local_env %}
-    {# Local Bank environment ("Avvia Bank"): which PC, database, code and AI
-       mode this page runs on; a test copy is impossible to miss. #}
-    <div class="local-env {{ 'local-env-test' if local_env.kind == 'TEST' else '' }}" role="status">
-      {% if local_env.kind == 'TEST' %}<strong class="local-env-flag">COPIA DI PROVA — non è il database di lavoro</strong>{% endif %}
-      <span><b>PC</b> {{ local_env.pc }}</span>
-      <span><b>Database</b> {{ local_env.db }}{% if local_env.generation %} · generazione {{ local_env.generation }}{% endif %}</span>
-      <span><b>Codice</b> {{ local_env.code }}</span>
-      <span><b>AI</b> {{ local_env.ai }}</span>
-    </div>
-  {% endif %}
 
   <p class="subtitle">{% block page_subtitle %}{% endblock %}</p>
 

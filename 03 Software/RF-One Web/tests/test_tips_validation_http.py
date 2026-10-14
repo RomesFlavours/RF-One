@@ -13,7 +13,7 @@ Proves, with a real login and a real CALCULATED run produced by the one
 calculation service (`save_calculation_run`):
 
    1. an unauthenticated user cannot validate;
-   2. an authenticated user without TIPS access (BANK only) cannot validate;
+   2. an authenticated user without TIPS access (WINES only) cannot validate;
    3. an authorized user can open the run and validate it...
    4. ...which makes it FINAL, attributed to that user;
    5. a CALCULATED run is not payable;
@@ -134,15 +134,15 @@ def main() -> int:
             validator = account_service.create_account(
                 s, username="tips-validator", display_name="Tips Validator", password=PASSWORD,
             )
-            bank_only = account_service.create_account(
-                s, username="bank-only", display_name="Bank Only", password=PASSWORD,
+            wines_only = account_service.create_account(
+                s, username="wines-only", display_name="Wines Only", password=PASSWORD,
             )
             s.flush()
             account_service.set_domain_access(
                 s, account_id=validator.id, domain_code="TIPS", enabled=True, role_code=None,
             )
             account_service.set_domain_access(
-                s, account_id=bank_only.id, domain_code="BANK", enabled=True, role_code=None,
+                s, account_id=wines_only.id, domain_code="WINES", enabled=True, role_code=None,
             )
             s.commit()
             validator_id = validator.id
@@ -182,15 +182,15 @@ def main() -> int:
               and resp_post.status_code == 302 and "/login" in resp_post.headers["Location"]
               and run_state(run_id) == m.TIPS_RUN_STATE_CALCULATED)
 
-        # ---- 2. authenticated, not authorized (BANK is not TIPS) ----------
-        bank_client = logged_in_client("bank-only")
-        home = bank_client.get("/", base_url=WEB_HOST)
+        # ---- 2. authenticated, not authorized (WINES is not TIPS) ---------
+        other_client = logged_in_client("wines-only")
+        home = other_client.get("/", base_url=WEB_HOST)
         csrf = extract_csrf(home.data)
-        resp_get = bank_client.get(f"/tips/runs/{run_id}", base_url=WEB_HOST)
-        resp_post = bank_client.post(
+        resp_get = other_client.get(f"/tips/runs/{run_id}", base_url=WEB_HOST)
+        resp_post = other_client.post(
             f"/tips/runs/{run_id}/validate", base_url=WEB_HOST, data={"csrf_token": csrf},
         )
-        check("2. an authenticated user with BANK but no TIPS access is refused (403) and cannot validate",
+        check("2. an authenticated user with WINES but no TIPS access is refused (403) and cannot validate",
               home.status_code == 200 and resp_get.status_code == 403 and resp_post.status_code == 403
               and b"validate saved periods" not in home.data
               and run_state(run_id) == m.TIPS_RUN_STATE_CALCULATED)

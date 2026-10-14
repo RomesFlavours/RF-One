@@ -24,15 +24,13 @@ card's destination:
     than a link to a destination that does not exist.
 
 `items` (ACCOUNT_ITEM_ACCESS_001) is the ONE list of a Domain's functional
-items — the sections its own navigation shows (Bank's tabs, Organization's
-pages). The same list drives that navigation, the item choices in
+items — the sections its own navigation shows (Organization's pages). The same list drives that navigation, the item choices in
 Settings › Accounts › Access, and the check made on every route of the
 Domain (`require_domain_access`), so an item hidden from someone is also
 closed to them by direct URL. An item owns the URL paths listed in
 `paths` (that path, or anything below it) and `exact_paths` (that path
 only); a Domain path no item owns is a helper shared by the whole Domain
-(e.g. Bank's WHO/WHY pickers, used from several sections) and needs only
-the Domain. A Domain without items is granted whole or not at all.
+(e.g. a picker used from several sections) and needs only the Domain. A Domain without items is granted whole or not at all.
 """
 
 from __future__ import annotations
@@ -115,39 +113,6 @@ DOMAINS: tuple[DomainDefinition, ...] = (
         # app's own `/selection` route is only reached when RF-One Web runs
         # alone (local development). See `03 Software/Infrastructure/README.md`.
         link="/selection",
-    ),
-    DomainDefinition(
-        code="BANK",
-        display_name="Bank Reconciliation",
-        description=(
-            "Manual CSV import from Chase and First Citizens, normalization into the canonical "
-            "PaymentInstrument/FinancialTransaction ledger, and duplicate detection (V1)."
-        ),
-        future_path="/bank",
-        # A real operational application inside RF-One Web itself
-        # (`bank_routes.py`), genuinely mounted here — gated the same way
-        # as every other destination: `require_domain_access("BANK")`.
-        link="/bank",
-        # The Bank tabs, in the Product Owner's order (2026-10-05,
-        # BANK_SOURCE_AND_IMPORT_REVIEW_001): the monthly work first —
-        # import, review, export — then Source, AI Rules, Configuration and
-        # the explanation. `_bank_macros.html` `module_nav` renders exactly
-        # this list. Not owned by any item (shared by the whole Domain):
-        # the WHO/WHY pickers and creation dialogs (/bank/whos, /bank/whys,
-        # /bank/who-rules, /bank/manual-reconciliation), used from several tabs.
-        items=(
-            DomainItem("import", "Import and Review", "bank_home", exact_paths=("/bank",),
-                       paths=("/bank/upload", "/bank/import", "/bank/batches", "/bank/monthly")),
-            DomainItem("review", "Review Transactions", "bank_review",
-                       paths=("/bank/review", "/bank/reconciliation", "/bank/transactions")),
-            DomainItem("export", "Monthly Export", "bank_export", paths=("/bank/export",)),
-            DomainItem("source", "Source", "bank_sources",
-                       paths=("/bank/sources", "/bank/source-profiles", "/bank/instruments", "/bank/entities",
-                              "/bank/accounting-dedup")),
-            DomainItem("ai_rules", "AI Rules", "bank_ai_rules", paths=("/bank/ai-rules",)),
-            DomainItem("configuration", "Configuration", "bank_configuration", paths=("/bank/configuration",)),
-            DomainItem("instructions", "Instructions", "bank_instructions", paths=("/bank/instructions",)),
-        ),
     ),
     DomainDefinition(
         code="CLOVER_ACQUISITION",

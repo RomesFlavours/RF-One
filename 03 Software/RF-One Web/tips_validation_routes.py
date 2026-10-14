@@ -16,7 +16,7 @@ the person actually signed in, behind the same three server-side gates
 every RF-One Web destination already uses —
 
   * `require_domain_access("TIPS")` — an ACTIVE account holding an enabled
-    TIPS access row (BANK or any other Domain grants nothing here);
+    TIPS access row (any other Domain grants nothing here);
   * `require_csrf()` on the one state-changing POST;
   * the validator is the signed-in account, never a typed name.
 

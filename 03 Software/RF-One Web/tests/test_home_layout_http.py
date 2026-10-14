@@ -4,8 +4,9 @@
 column of blocks.
 
   * Domains: operational first, Work in progress last, alphabetical within
-    each group; Bank is not a Domain on Home.
-  * Administration: Bank, for accounts with BANK access.
+    each group.
+  * Administration: Clover Acquisition, for accounts with CLOVER_ACQUISITION
+    access.
   * Settings, alphabetical: Accounts, Legal Entities (admins), Profile,
     Workweek (admins). Organization is a Domain card since
     ACCOUNT_ITEM_ACCESS_001, shown to the accounts granted ORGANIZATION.
@@ -89,18 +90,20 @@ def main() -> int:
                 s, username="plain1", display_name="Plain One", password="PlainPass123!", status="ACTIVE",
             )
             s.flush()
-            for code in ("TRAINING", "TIPS", "COMPENSATION", "SELECTION", "BANK", "ORGANIZATION"):
+            for code in ("TRAINING", "TIPS", "COMPENSATION", "SELECTION", "CLOVER_ACQUISITION", "ORGANIZATION"):
                 account_service.set_domain_access(
                     s, account_id=admin.id, domain_code=code, enabled=True,
                     role_code="trainer" if code == "TRAINING" else None,
                 )
             ti.create_and_link_training_identity(s, rfone_account_id=admin.id, role_code="trainer")
             account_service.set_domain_access(s, account_id=plain.id, domain_code="TIPS", enabled=True, role_code=None)
-            bank_only = account_service.create_account(
-                s, username="bank1", display_name="Bank One", password="BankPass123!", status="ACTIVE",
+            clover_only = account_service.create_account(
+                s, username="clover1", display_name="Clover One", password="CloverPass123!", status="ACTIVE",
             )
             s.flush()
-            account_service.set_domain_access(s, account_id=bank_only.id, domain_code="BANK", enabled=True, role_code=None)
+            account_service.set_domain_access(
+                s, account_id=clover_only.id, domain_code="CLOVER_ACQUISITION", enabled=True, role_code=None,
+            )
             s.commit()
 
         admin_client = web_app.app.test_client()
@@ -127,8 +130,9 @@ def main() -> int:
         expected = ["Compensation", "Organization", "Selection", "Tips", "Training"]
         check("Domains ordered alphabetically (Selection released: no Work in progress left)",
               names == expected, f"{names}")
-        check("Bank is not presented as a Domain",
-              DOMAINS_BY_CODE["BANK"].display_name not in domains_part and 'href="/bank"' not in domains_part)
+        check("Clover Acquisition is not presented as a Domain",
+              DOMAINS_BY_CODE["CLOVER_ACQUISITION"].display_name not in domains_part
+              and 'href="/clover-acquisition"' not in domains_part)
         check("no side-by-side domain grid remains on Home", 'class="domain-grid"' not in body)
         tips_block = domains_part.split(DOMAINS_BY_CODE["TIPS"].display_name, 1)[1].split('class="domain-card ', 1)[0]
         check("Home no longer lists 'Tips — validate saved periods' (it lives in Tips > Saved Periods)",
@@ -148,8 +152,9 @@ def main() -> int:
         # --- Administration and Settings -------------------------------------
         admin_part = body.split('<div class="domain-name">Administration</div>', 1)[1].split('<div class="domain-name">Settings</div>', 1)[0]
         settings_part = body.split('<div class="domain-name">Settings</div>', 1)[1]
-        check("Administration contains exactly Bank",
-              HREF_RE.findall(admin_part) == ["/bank"] and "<strong>Bank</strong>" in admin_part)
+        check("Administration contains exactly Clover Acquisition",
+              HREF_RE.findall(admin_part) == ["/clover-acquisition"]
+              and "<strong>Clover Acquisition</strong>" in admin_part)
         rows = re.findall(r"<strong>([^<]+)</strong>", settings_part)
         check("Settings rows are Accounts, Legal Entities, Profile, Workweek (alphabetical)",
               rows == ["Accounts", "Legal Entities", "Profile", "Workweek"], f"{rows}")
@@ -166,35 +171,36 @@ def main() -> int:
         check("no duplicated link on Home", len(hrefs) == len(set(hrefs)), f"{hrefs}")
 
         # --- Every destination still opens ------------------------------------
-        for path in ("/compensation", "/training", "/selection", "/bank", "/tips/runs",
+        for path in ("/compensation", "/training", "/selection", "/clover-acquisition", "/tips/runs",
                      "/admin/accounts", "/admin/legal-entities", "/admin/organization", "/profile"):
             r = admin_client.get(path, follow_redirects=True)
             check(f"{path} opens (200)", r.status_code == 200, str(r.status_code))
         check("Tips Domain keeps its existing link",
               f'href="{DOMAINS_BY_CODE["TIPS"].link}"' in body)
 
-        # --- Non-admin without BANK -------------------------------------------
+        # --- Non-admin without CLOVER_ACQUISITION -------------------------------
         plain_client = web_app.app.test_client()
         login(plain_client, "plain1", "PlainPass123!")
         plain_body = content_of(plain_client.get("/").data.decode("utf-8"))
         plain_settings = plain_body.split('<div class="domain-name">Settings</div>', 1)[1]
-        check("without BANK access there is no Administration block",
-              "Administration" not in plain_body and 'href="/bank"' not in plain_body)
+        check("without CLOVER_ACQUISITION access there is no Administration block",
+              "Administration" not in plain_body and 'href="/clover-acquisition"' not in plain_body)
         check("a non-admin's Settings contain only Profile",
               re.findall(r"<strong>([^<]+)</strong>", plain_settings) == ["Profile"])
 
-        # --- BANK-only account ----------------------------------------------------
-        bank_client = web_app.app.test_client()
-        login(bank_client, "bank1", "BankPass123!")
-        bank_body = content_of(bank_client.get("/").data.decode("utf-8"))
-        check("a BANK-only account sees 'No operational Domains are currently assigned to this account.'",
-              "No operational Domains are currently assigned to this account." in bank_body
-              and "No RF-One Domains" not in bank_body)
-        check("a BANK-only account still has Bank under Administration",
-              '<div class="domain-name">Administration</div>' in bank_body and 'href="/bank"' in bank_body)
-        bank_hrefs = HREF_RE.findall(bank_body)
-        check("BANK-only Home: Profile under Settings, no duplicate links",
-              bank_hrefs == ["/bank", "/profile"], f"{bank_hrefs}")
+        # --- CLOVER_ACQUISITION-only account ---------------------------------------
+        clover_client = web_app.app.test_client()
+        login(clover_client, "clover1", "CloverPass123!")
+        clover_body = content_of(clover_client.get("/").data.decode("utf-8"))
+        check("a CLOVER_ACQUISITION-only account sees 'No operational Domains are currently assigned to this account.'",
+              "No operational Domains are currently assigned to this account." in clover_body
+              and "No RF-One Domains" not in clover_body)
+        check("a CLOVER_ACQUISITION-only account still has Clover Acquisition under Administration",
+              '<div class="domain-name">Administration</div>' in clover_body
+              and 'href="/clover-acquisition"' in clover_body)
+        clover_hrefs = HREF_RE.findall(clover_body)
+        check("CLOVER_ACQUISITION-only Home: Profile under Settings, no duplicate links",
+              clover_hrefs == ["/clover-acquisition", "/profile"], f"{clover_hrefs}")
 
         # --- Log out ------------------------------------------------------------
         csrf = extract_csrf(plain_client.get("/").data)

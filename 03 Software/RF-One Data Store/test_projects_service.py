@@ -23,6 +23,7 @@ from rfone_data_store import models as m
 from rfone_data_store.database import (
     cleanup_disposable_test_database_url,
     create_configured_engine,
+    create_disposable_test_database_url,
     create_session_factory,
     redact_database_url,
     resolve_test_database_url,
@@ -345,7 +346,15 @@ def main() -> int:
         here = Path(__file__).resolve().parent
         cfg = Config(str(here / "alembic.ini"))
         cfg.set_main_option("script_location", str(here / "migrations"))
-        os.environ["ALEMBIC_DATABASE_URL_OVERRIDE"] = url
+        # The Bank removal (84354dc654ce) cannot be downgraded, so the history below it is exercised on a
+        # database of its own, built up to the revision just before it.
+        engine.dispose()
+        history_url = create_disposable_test_database_url("projects_history")
+        cleanup_disposable_test_database_url(history_url)  # emptied, then rebuilt up to the Bank merge
+        os.environ["ALEMBIC_DATABASE_URL_OVERRIDE"] = history_url
+        command.upgrade(cfg, "7b1d4f9a2c6e")
+        engine = create_configured_engine(history_url)
+        Session = create_session_factory(engine)
         try:
             engine.dispose()
 
@@ -431,9 +440,11 @@ def main() -> int:
                   and all(r[2] is None for r in task_rows), str(task_rows))
             from alembic.script import ScriptDirectory
             heads = ScriptDirectory.from_config(cfg).get_heads()
-            check("43. one single head after Project Management (the BANK_AWS_001 merge)", heads == ["7b1d4f9a2c6e"], str(heads))
+            check("43. one single head after Project Management (the Bank removal)", heads == ["84354dc654ce"], str(heads))
         finally:
             os.environ.pop("ALEMBIC_DATABASE_URL_OVERRIDE", None)
+            engine.dispose()
+            cleanup_disposable_test_database_url(history_url)
     finally:
         engine.dispose()
         cleanup_disposable_test_database_url(url)

@@ -105,7 +105,7 @@ def account_may_enter_domain(
     The ONE Domain authorization rule RF-One Web's `require_domain_access`
     applies to every destination: an ACTIVE account holding an ENABLED
     `RFOneAccountDomainAccess` row for exactly that Domain. Access to one
-    Domain never implies access to another (BANK does not open TIPS), and
+    Domain never implies access to another (WINES does not open TIPS), and
     being logged in is not, by itself, access to anything.
 
     Lives here, next to the session lookup, so a second app (Tips) checks

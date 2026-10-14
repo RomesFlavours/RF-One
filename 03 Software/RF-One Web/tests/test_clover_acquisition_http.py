@@ -9,7 +9,7 @@ Proves:
      launch;
   B. a direct POST without a session (even carrying a made-up CSRF token)
      is refused server-side;
-  C. signed in WITHOUT the access (BANK only): refused (403); no job, no launch;
+  C. signed in WITHOUT the access (WINES only): refused (403); no job, no launch;
      signed in WITH the access but without CSRF: refused (400), no job;
   D. signed in WITH the access: Backfill and Sync Now accepted, each job
      records the requesting account, the page shows "Requested by";
@@ -121,12 +121,12 @@ def main() -> int:
         s.add(m.RestaurantLocation(restaurant_id=restaurant.id, location_id=location.id, is_primary=True))
         operator = account_service.create_account(s, username="clover-operator", display_name="Clover Operator",
                                                   password=PASSWORD)
-        bank_only = account_service.create_account(s, username="bank-only", display_name="Bank Only",
-                                                   password=PASSWORD)
+        wines_only = account_service.create_account(s, username="wines-only", display_name="Wines Only",
+                                                    password=PASSWORD)
         s.flush()
         account_service.set_domain_access(s, account_id=operator.id, domain_code="CLOVER_ACQUISITION",
                                           enabled=True, role_code=None)
-        account_service.set_domain_access(s, account_id=bank_only.id, domain_code="BANK", enabled=True,
+        account_service.set_domain_access(s, account_id=wines_only.id, domain_code="WINES", enabled=True,
                                           role_code=None)
         s.commit()
         operator_id = operator.id
@@ -158,21 +158,21 @@ def main() -> int:
     check("A/B: no job was created and nothing was launched", job_count() == 0 and launcher.run_ids == [])
 
     # ---- C: signed in without the access -----------------------------------
-    bank = web_app.app.test_client()
-    login(bank, "bank-only")
-    home = bank.get("/", base_url=HOST)
+    other = web_app.app.test_client()
+    login(other, "wines-only")
+    home = other.get("/", base_url=HOST)
     check("H: Home does not offer Clover Acquisition to an account without the access",
           home.status_code == 200 and b"Clover Acquisition" not in home.data)
     token = csrf(home.data)
     check("C: the page is refused (403) to a signed-in account without the access",
-          bank.get("/clover-acquisition", base_url=HOST).status_code == 403)
+          other.get("/clover-acquisition", base_url=HOST).status_code == 403)
     for path, data in (("/clover-acquisition/sync-now", {"csrf_token": token}),
                        ("/clover-acquisition/backfill",
                         {"csrf_token": token, "from_date": "2026-09-01", "through_date": "2026-09-02"})):
         check(f"C: POST {path} refused (403) without the access",
-              bank.post(path, base_url=HOST, data=data).status_code == 403)
+              other.post(path, base_url=HOST, data=data).status_code == 403)
     check("C: the status endpoint answers 403 without the access",
-          bank.get("/clover-acquisition/status.json", base_url=HOST).status_code == 403)
+          other.get("/clover-acquisition/status.json", base_url=HOST).status_code == 403)
     check("C: no job was created and nothing was launched", job_count() == 0 and launcher.run_ids == [])
 
     # ---- G: back to the requested function after signing in ---------------

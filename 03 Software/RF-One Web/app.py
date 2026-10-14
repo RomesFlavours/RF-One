@@ -52,7 +52,6 @@ from rfone_data_store.technical import ses_email  # noqa: E402
 from compensation_routes import register_compensation_routes  # noqa: E402
 from workweek_settings_routes import register_workweek_settings_routes  # noqa: E402
 from organizational_responsibility_routes import register_organizational_responsibility_routes  # noqa: E402
-from bank_routes import register_bank_routes  # noqa: E402
 from tips_validation_routes import register_tips_validation_routes  # noqa: E402
 from clover_acquisition_routes import register_clover_acquisition_routes  # noqa: E402
 from restaurant_wines_routes import register_restaurant_wines_routes  # noqa: E402
@@ -103,28 +102,6 @@ def _send_direct_visits_to_the_official_entry():
 @app.context_processor
 def inject_csrf():
     return {"csrf_token": get_csrf_token}
-
-
-@app.context_processor
-def inject_local_environment():
-    """`local_env`: which PC, database, code and AI mode this page runs on —
-    only when the server was started by the local Bank environment
-    ("Avvia Bank", 03 Software/Infrastructure/Bank Local Environment), which
-    sets RFONE_LOCAL_ENV_*; None everywhere else (AWS, tests)."""
-    pc = os.environ.get("RFONE_LOCAL_ENV_PC")
-    if not pc:
-        return {"local_env": None}
-    from rfone_data_store.bank_reconciliation import ai_rules
-    provider, model = ai_rules.active_ai_description()
-    mode = ai_rules.ai_mode()
-    return {"local_env": {
-        "pc": pc, "kind": os.environ.get("RFONE_LOCAL_ENV_KIND", "WORK"),
-        "label": os.environ.get("RFONE_LOCAL_ENV_LABEL", ""), "db": os.environ.get("RFONE_LOCAL_ENV_DB", ""),
-        "generation": os.environ.get("RFONE_LOCAL_ENV_GENERATION", ""),
-        "code": os.environ.get("RFONE_LOCAL_ENV_CODE", ""),
-        "ai": ("SESSIONE Claude Code (VS Code) — nessuna chiamata a provider AI" if mode == ai_rules.AI_MODE_SESSION
-               else f"PROVIDER {provider} · {model or 'nessun modello configurato'}"),
-    }}
 
 
 # UI_NAVIGATION_AND_LOCAL_TIME_001 — RF-One UI Rules
@@ -333,9 +310,10 @@ def logout():
 #   * Selection is Work in progress: its registry name says so and its link
 #     is the provisional `selection_work_in_progress` page. Every other
 #     Domain on Home counts as operational.
-#   * Bank is presented under Administration instead of as a Domain.
+#   * Clover Acquisition is presented under Administration instead of as a
+#     Domain.
 _HOME_WORK_IN_PROGRESS_CODES: frozenset[str] = frozenset()  # Selection released (SELECTION_AWS_PUBLISH_001)
-_HOME_ADMINISTRATION_CODES = frozenset({"BANK", "CLOVER_ACQUISITION"})
+_HOME_ADMINISTRATION_CODES = frozenset({"CLOVER_ACQUISITION"})
 
 
 @app.route("/", strict_slashes=False)
@@ -350,8 +328,8 @@ def home():
         access_rows = account_service.list_domain_access_for_account(db, account.id)
         enabled_codes = {row.domain_code for row in access_rows if row.enabled}
         # Home presentation only: operational Domains first, then Work in
-        # progress ones, each group alphabetical. Bank is shown under
-        # Administration, not as a Domain, with the same access rule.
+        # progress ones, each group alphabetical. Clover Acquisition is shown
+        # under Administration, not as a Domain, with the same access rule.
         domains_view = sorted(
             (d for d in DOMAINS if d.code in enabled_codes and d.code not in _HOME_ADMINISTRATION_CODES),
             key=lambda d: (d.code in _HOME_WORK_IN_PROGRESS_CODES, d.display_name.casefold()),
@@ -362,7 +340,6 @@ def home():
             # Released = operational (see the rules above): the card's colour
             # follows this, never a per-Domain choice in the template.
             work_in_progress_codes=_HOME_WORK_IN_PROGRESS_CODES,
-            bank_available="BANK" in enabled_codes,
             clover_acquisition_available="CLOVER_ACQUISITION" in enabled_codes,
         )
 
@@ -434,8 +411,8 @@ def domain_entry(domain_code: str) -> str | None:
     return url_for(items[0].endpoint) if items else None
 
 
-# Template globals, not a context processor, so imported macro files
-# (`_bank_macros.html`) see them too: `domain_nav(code)` — (item code, label,
+# Template globals, not a context processor, so imported macro files see
+# them too: `domain_nav(code)` — (item code, label,
 # URL) of the items the account may use, for a Domain's own navigation;
 # `may_use_item(code, item)`; `domain_entry(code)`. All read the one item
 # list in `domain_registry`.
@@ -491,22 +468,6 @@ register_workweek_settings_routes(
 register_organizational_responsibility_routes(
     app, require_admin=require_admin, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
     require_csrf=require_csrf, load_current_account=load_current_account,
-)
-
-
-# ---------------------------------------------------------------------------
-# Bank Reconciliation — Canonical Financial Model Convergence (Phases 1-6B,
-# FINANCIAL_MODEL_CONVERGENCE_001). Manual CSV import (Chase, First
-# Citizens) and PayPal acquisition, normalized into the canonical
-# PaymentInstrument/FinancialTransaction ledger; the Bank Recognition
-# Expert System, Kermali Monthly Accountant Export, and automatic
-# cross-ledger internal-transfer matching (Phase 6B). Gated the same way
-# as every other destination here: `require_domain_access("BANK")`.
-# ---------------------------------------------------------------------------
-
-register_bank_routes(
-    app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
-    load_current_account=load_current_account, require_csrf=require_csrf,
 )
 
 

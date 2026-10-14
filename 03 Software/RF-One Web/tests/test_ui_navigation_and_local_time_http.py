@@ -137,7 +137,7 @@ def main() -> int:
         operator = account_service.create_account(s, username="nav-operator", display_name="Tatiana Ceban",
                                                   password=PASSWORD, is_admin=True)
         s.flush()
-        for code in ("CLOVER_ACQUISITION", "TIPS", "BANK", "COMPENSATION", "ORGANIZATION"):
+        for code in ("CLOVER_ACQUISITION", "TIPS", "COMPENSATION", "ORGANIZATION"):
             account_service.set_domain_access(s, account_id=operator.id, domain_code=code, enabled=True, role_code=None)
         s.add(m.IngestionRun(source_system_id=source_system.id, location_id=location.id, status="COMPLETE",
                              acquisition_mode="SYNC_NOW", started_at=SYNC_END_UTC - timedelta(minutes=3),
@@ -246,8 +246,7 @@ def main() -> int:
     check("E: no RF-One Web template keeps a generic Home link", not leftovers, str(leftovers))
     for path, current in (("/admin/accounts", "Accounts"), ("/admin/legal-entities", "Legal Entities"),
                           ("/admin/organization", "Organization"), ("/profile", "Profile"),
-                          ("/tips/runs", "Saved Periods"), ("/compensation", "Compensation"),
-                          ("/bank", "Import and Review")):
+                          ("/tips/runs", "Saved Periods"), ("/compensation", "Compensation")):
         html = client.get(path, base_url=HOST).get_data(as_text=True)
         nav = crumbs(html)
         check(f"E: {path} shows RF-One > ... > {current}",
