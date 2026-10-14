@@ -1,0 +1,234 @@
+{
+ "note": "Plans of every ACTIVE AI rule over every in-scope movement (scope ALL), with create_missing_who off/on, computed on a COPY of the live DB with the snapshot code (old) and the Phase 1 code (new). Item-level lists are omitted (they hold real descriptions); 'sha' is the SHA-256 of the full item list.",
+ "identical": true,
+ "old": {
+  "_rows": 3234,
+  "rule1_cmw0": {
+   "matched": 517,
+   "by_outcome": {
+    "UNCHANGED": 517
+   },
+   "sha": "b5b095a2c57bff0d"
+  },
+  "rule1_cmw1": {
+   "matched": 517,
+   "by_outcome": {
+    "UNCHANGED": 517
+   },
+   "sha": "b5b095a2c57bff0d"
+  },
+  "rule2_cmw0": {
+   "matched": 804,
+   "by_outcome": {
+    "UNCHANGED": 634,
+    "UPDATED": 170
+   },
+   "sha": "66b2bf5c9ed7ea63"
+  },
+  "rule2_cmw1": {
+   "matched": 804,
+   "by_outcome": {
+    "UNCHANGED": 634,
+    "UPDATED": 170
+   },
+   "sha": "66b2bf5c9ed7ea63"
+  },
+  "rule3_cmw0": {
+   "matched": 144,
+   "by_outcome": {
+    "UNCHANGED": 144
+   },
+   "sha": "648aea332f94618f"
+  },
+  "rule3_cmw1": {
+   "matched": 144,
+   "by_outcome": {
+    "UNCHANGED": 144
+   },
+   "sha": "648aea332f94618f"
+  },
+  "rule4_cmw0": {
+   "matched": 38,
+   "by_outcome": {
+    "UNRESOLVED": 38
+   },
+   "sha": "57af1dbf75a9e862"
+  },
+  "rule4_cmw1": {
+   "matched": 38,
+   "by_outcome": {
+    "UPDATED": 38
+   },
+   "sha": "d973adfb5a91dd5b"
+  },
+  "rule5_cmw0": {
+   "matched": 0,
+   "by_outcome": {},
+   "sha": "4f53cda18c2baa0c"
+  },
+  "rule5_cmw1": {
+   "matched": 0,
+   "by_outcome": {},
+   "sha": "4f53cda18c2baa0c"
+  },
+  "rule6_cmw0": {
+   "matched": 99,
+   "by_outcome": {
+    "UNCHANGED": 5,
+    "UNRESOLVED": 94
+   },
+   "sha": "518b06ea03fa78b3"
+  },
+  "rule6_cmw1": {
+   "matched": 99,
+   "by_outcome": {
+    "UNCHANGED": 5,
+    "UPDATED": 94
+   },
+   "sha": "bab32f218325d1df"
+  },
+  "rule7_cmw0": {
+   "matched": 90,
+   "by_outcome": {
+    "UNCHANGED": 90
+   },
+   "sha": "2e1c41fe87cbe767"
+  },
+  "rule7_cmw1": {
+   "matched": 90,
+   "by_outcome": {
+    "UNCHANGED": 90
+   },
+   "sha": "2e1c41fe87cbe767"
+  },
+  "rule8_cmw0": {
+   "matched": 89,
+   "by_outcome": {
+    "UNCHANGED": 89
+   },
+   "sha": "c9cf93ee2e941337"
+  },
+  "rule8_cmw1": {
+   "matched": 89,
+   "by_outcome": {
+    "UNCHANGED": 89
+   },
+   "sha": "c9cf93ee2e941337"
+  }
+ },
+ "new": {
+  "_rows": 3234,
+  "rule1_cmw0": {
+   "matched": 517,
+   "by_outcome": {
+    "UNCHANGED": 517
+   },
+   "sha": "b5b095a2c57bff0d"
+  },
+  "rule1_cmw1": {
+   "matched": 517,
+   "by_outcome": {
+    "UNCHANGED": 517
+   },
+   "sha": "b5b095a2c57bff0d"
+  },
+  "rule2_cmw0": {
+   "matched": 804,
+   "by_outcome": {
+    "UNCHANGED": 634,
+    "UPDATED": 170
+   },
+   "sha": "66b2bf5c9ed7ea63"
+  },
+  "rule2_cmw1": {
+   "matched": 804,
+   "by_outcome": {
+    "UNCHANGED": 634,
+    "UPDATED": 170
+   },
+   "sha": "66b2bf5c9ed7ea63"
+  },
+  "rule3_cmw0": {
+   "matched": 144,
+   "by_outcome": {
+    "UNCHANGED": 144
+   },
+   "sha": "648aea332f94618f"
+  },
+  "rule3_cmw1": {
+   "matched": 144,
+   "by_outcome": {
+    "UNCHANGED": 144
+   },
+   "sha": "648aea332f94618f"
+  },
+  "rule4_cmw0": {
+   "matched": 38,
+   "by_outcome": {
+    "UNRESOLVED": 38
+   },
+   "sha": "57af1dbf75a9e862"
+  },
+  "rule4_cmw1": {
+   "matched": 38,
+   "by_outcome": {
+    "UPDATED": 38
+   },
+   "sha": "d973adfb5a91dd5b"
+  },
+  "rule5_cmw0": {
+   "matched": 0,
+   "by_outcome": {},
+   "sha": "4f53cda18c2baa0c"
+  },
+  "rule5_cmw1": {
+   "matched": 0,
+   "by_outcome": {},
+   "sha": "4f53cda18c2baa0c"
+  },
+  "rule6_cmw0": {
+   "matched": 99,
+   "by_outcome": {
+    "UNCHANGED": 5,
+    "UNRESOLVED": 94
+   },
+   "sha": "518b06ea03fa78b3"
+  },
+  "rule6_cmw1": {
+   "matched": 99,
+   "by_outcome": {
+    "UNCHANGED": 5,
+    "UPDATED": 94
+   },
+   "sha": "bab32f218325d1df"
+  },
+  "rule7_cmw0": {
+   "matched": 90,
+   "by_outcome": {
+    "UNCHANGED": 90
+   },
+   "sha": "2e1c41fe87cbe767"
+  },
+  "rule7_cmw1": {
+   "matched": 90,
+   "by_outcome": {
+    "UNCHANGED": 90
+   },
+   "sha": "2e1c41fe87cbe767"
+  },
+  "rule8_cmw0": {
+   "matched": 89,
+   "by_outcome": {
+    "UNCHANGED": 89
+   },
+   "sha": "c9cf93ee2e941337"
+  },
+  "rule8_cmw1": {
+   "matched": 89,
+   "by_outcome": {
+    "UNCHANGED": 89
+   },
+   "sha": "c9cf93ee2e941337"
+  }
+ }
+}

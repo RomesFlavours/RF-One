@@ -8,6 +8,8 @@
 
 **The current implementation specifications are `BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATION_001.md`, `BANK_ECONOMIC_ALLOCATION_FOUNDATION_001.md`, `BANK_INVOICE_EVIDENCE_COLLABORATION_001.md`, `BANK_REPORTING_CONFIGURATION_001.md`, `BANK_CONFIGURATION_001.md`, `BANK_RECONCILIATION_001.md`, `BANK_RECONCILIATION_STANDARDS_001.md`, `BANK_SIMPLE_WHO_RULE_001.md`, `BANK_TWO_STAGE_REVIEW_001.md`, `BANK_MANUAL_WHO_WHY_001.md`, `BANK_WHY_NAVIGATION_GROUPS_001.md`, `BANK_GENERAL_RULES_001.md`, `BANK_CLASSIFICATION_LEARNING_001.md`, `BANK_WHO_MANUAL_ONLY_001.md`, `BANK_SOURCE_AND_IMPORT_REVIEW_001.md`, `BANK_FINAL_CLEANUP_001.md`, `BANK_EXPORT_BY_OWNER_001.md` and `BANK_AI_RULES_001.md` (this folder)** — it supersedes this README's `PaymentInstrumentTransaction`-based schema description below with the canonical `FinancialTransaction`/Bank Recognition Expert System model now on `main`. This README remains for historical/conceptual context only.
 
+> **Current state (2026-10-13).** Since `BANK_RULES_RESET_001.md` Bank classifies only through **AI Rules** (`BANK_AI_RULES_001.md`) and by a person; `BANK_OLD_RULES_REMOVAL_001.md` removes the residues of the old rule system (Phase 1 done, Phase 2 — file deletions, model and migration — pending). Superseded, kept as history: `BANK_SIMPLE_WHO_RULE_001.md`, `BANK_GENERAL_RULES_001.md`, `BANK_CLASSIFICATION_LEARNING_001.md`, `BANK_WHO_MANUAL_ONLY_001.md`, `BANK_RECONCILIATION_STANDARDS_001.md` (the inline exception editor remains), and in part `BANK_RECONCILIATION_001.md` and `BANK_FINAL_CLEANUP_001.md`. Where the sections below describe recognition rules, the automatic WHY engine, learned rules, General Rules or Standards, they describe the retired system.
+
 ---
 
 ## Purpose

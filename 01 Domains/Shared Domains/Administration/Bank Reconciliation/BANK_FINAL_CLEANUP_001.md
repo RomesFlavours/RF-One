@@ -2,6 +2,7 @@
 
 **Task:** BANK_FINAL_CLEANUP_001
 **Status:** Implemented on `feature/bank-simple-who-rules`. Not deployed.
+**Superseded in part (2026-10-13, BANK_RULES_RESET_001 / BANK_OLD_RULES_REMOVAL_001):** the WHO Rule and General Rule paths it names as authoritative were removed with the old rule system; the rest stands.
 **Module:** Domain / Shared Domains / Administration / Bank Reconciliation
 **Schema:** no migration.
 

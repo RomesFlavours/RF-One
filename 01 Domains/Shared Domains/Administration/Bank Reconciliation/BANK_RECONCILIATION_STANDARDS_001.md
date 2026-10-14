@@ -2,6 +2,7 @@
 
 **Task:** BANK_RECONCILIATION_STANDARDS_001
 **Status:** Implemented on `feature/bank-new-reconciliation` — schema, services, page, Export alignment, tests. Not deployed.
+**Superseded (2026-10-13, BANK_RULES_RESET_001 / BANK_OLD_RULES_REMOVAL_001):** Reconciliation Standards were removed (Set as Standard, Save as New Standard, application at import, the STANDARD destination, the Standard lineage of decisions and allocations). The inline exception editor (a P&L WHAT chosen for one transaction, TRANSACTION) remains. The status Automatic, which only a Standard produced, was removed as well (Product Owner decision, 2026-10-14). Kept as the historical record of what was built; it no longer describes current behaviour.
 **Module:** Domain / Shared Domains / Administration / Bank Reconciliation
 **Migration:** `b9e4c2a7d5f3` (revises `f6c2e8a4b1d7`)
 **Builds on:** `BANK_RECONCILIATION_001.md`, `BANK_ECONOMIC_ALLOCATION_FOUNDATION_001.md`

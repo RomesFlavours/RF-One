@@ -1,0 +1,4575 @@
+{
+ "acquisition_source_definitions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "name",
+   "description",
+   "is_active",
+   "display_order",
+   "created_at"
+  ]
+ },
+ "acting_identities": {
+  "rows": 1,
+  "sha": "445f6b9ec344d915",
+  "cols": [
+   "id",
+   "kind",
+   "display_name",
+   "is_active",
+   "authentication_provider",
+   "external_subject_id",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "alembic_version": {
+  "rows": 1,
+  "sha": "78f4ce8655917454",
+  "cols": [
+   "version_num"
+  ]
+ },
+ "application_notes": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "note_text",
+   "created_at",
+   "context_type",
+   "context_id",
+   "event_type",
+   "reported_by",
+   "original_source",
+   "stage_at_time",
+   "session_id"
+  ]
+ },
+ "application_ownerships": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "session_id",
+   "owner_name",
+   "assigned_by",
+   "reason",
+   "stage_at_time",
+   "previous_ownership_id",
+   "is_active",
+   "started_at",
+   "ended_at",
+   "acting_identity_id",
+   "assigned_by_identity_id"
+  ]
+ },
+ "application_question_answers": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "question_definition_id",
+   "question_version",
+   "raw_answer",
+   "answered_at"
+  ]
+ },
+ "application_question_definitions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "session_id",
+   "target_role",
+   "question_text",
+   "response_type",
+   "is_required",
+   "display_order",
+   "related_criterion_id",
+   "answer_level_map",
+   "is_active",
+   "version",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "application_queue_movements": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "previous_queue_id",
+   "new_queue_id",
+   "source",
+   "reason",
+   "originating_outcome_decision_id",
+   "performed_by",
+   "created_at"
+  ]
+ },
+ "application_stage_transitions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "previous_stage",
+   "new_stage",
+   "performed_by",
+   "created_at",
+   "performed_by_identity_id"
+  ]
+ },
+ "applications": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "person_id",
+   "candidate_id",
+   "restaurant_id",
+   "requirement_set_id",
+   "target_role",
+   "applied_at",
+   "outcome",
+   "review_priority_system",
+   "review_priority_effective",
+   "review_priority_origin",
+   "review_priority_override_reason",
+   "review_priority_overridden_at",
+   "notes",
+   "created_at",
+   "updated_at",
+   "review_priority_reasons",
+   "workflow_status",
+   "workflow_status_reason",
+   "workflow_status_updated_at",
+   "identity_origin",
+   "identity_confirmed_at",
+   "current_stage",
+   "lifecycle_state",
+   "current_queue_id",
+   "session_id",
+   "rule_set_version_id",
+   "acquisition_source_id",
+   "acquisition_source_other_text",
+   "channel_publication_id"
+  ]
+ },
+ "approved_compensation_snapshots": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "compensation_preparation_run_id",
+   "legal_entity_id",
+   "period_start",
+   "period_end",
+   "approved_by",
+   "approved_at",
+   "created_at"
+  ]
+ },
+ "approved_employee_compensation_results": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "snapshot_id",
+   "employee_id",
+   "source_employee_calculation_id",
+   "regular_hours",
+   "regular_pay",
+   "tips_amount",
+   "bonus_amount",
+   "gross_pay",
+   "created_at",
+   "incentive_recognized_amount",
+   "tip_credit_makeup_amount"
+  ]
+ },
+ "approved_employee_earning_lines": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "approved_employee_result_id",
+   "employee_id",
+   "source_earning_line_id",
+   "work_date",
+   "compensation_term_id",
+   "hours",
+   "hourly_rate_used",
+   "regular_pay",
+   "created_at"
+  ]
+ },
+ "approved_incentive_contribution_lines": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "approved_employee_result_id",
+   "employee_id",
+   "source_contribution_id",
+   "label",
+   "amount",
+   "created_at"
+  ]
+ },
+ "assessment_item_definitions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "section_id",
+   "item_type",
+   "title_or_question",
+   "instruction",
+   "scenario",
+   "objective",
+   "linked_requirement_ids",
+   "linked_signal_definition_ids",
+   "importance",
+   "mandatory_within_selection_process",
+   "evidence_expected",
+   "evidence_positive",
+   "evidence_contrary",
+   "evidence_insufficient",
+   "selezionatore_instructions",
+   "display_order",
+   "is_active",
+   "version",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "assessment_item_instances": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "plan_id",
+   "source_type",
+   "source_item_definition_id",
+   "source_phone_question_instance_id",
+   "consistency_thread_id",
+   "section_name",
+   "section_kind",
+   "section_display_order",
+   "title_or_question",
+   "instruction",
+   "scenario",
+   "objective",
+   "linked_requirement_ids",
+   "linked_signal_definition_ids",
+   "importance",
+   "mandatory_within_selection_process",
+   "selezionatore_instructions",
+   "display_order",
+   "reason_for_inclusion",
+   "status",
+   "raw_response",
+   "selezionatore_note",
+   "confidence",
+   "started_at",
+   "completed_at",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "attention_items": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "source_domain",
+   "source_module",
+   "source_process_name",
+   "source_phase",
+   "source_reference",
+   "reason",
+   "detail",
+   "proposed_action",
+   "priority",
+   "status",
+   "scope_type",
+   "scope_id",
+   "scope_key",
+   "resolved_process_owner_position_id",
+   "resolved_recipient_acting_identity_id",
+   "routing_unresolved_reason",
+   "acknowledged_at",
+   "acknowledged_by_identity_id",
+   "resolved_at",
+   "resolved_by_identity_id",
+   "created_at",
+   "resolution_path"
+  ]
+ },
+ "attention_routing_resolutions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "attention_item_id",
+   "resolved_at",
+   "owner_position_id",
+   "resolved_recipient_acting_identity_id",
+   "resolution_path",
+   "unresolved_reason"
+  ]
+ },
+ "authority_grants": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "acting_identity_id",
+   "domain",
+   "module",
+   "action",
+   "scope_type",
+   "scope_id",
+   "granted_by_identity_id",
+   "granted_at",
+   "revoked_at"
+  ]
+ },
+ "bank_accounting_classifications": {
+  "rows": 137,
+  "sha": "9f46e23e47ff81f9",
+  "cols": [
+   "id",
+   "code",
+   "name",
+   "statement_type",
+   "parent_id",
+   "description",
+   "active",
+   "created_at",
+   "updated_at",
+   "node_type",
+   "is_contra",
+   "review_sensitive",
+   "normal_balance"
+  ]
+ },
+ "bank_ai_instructions": {
+  "rows": 1,
+  "sha": "466880eed54c5a80",
+  "cols": [
+   "id",
+   "instructions",
+   "created_by_account_id",
+   "created_at"
+  ]
+ },
+ "bank_ai_rule_application_items": {
+  "rows": 1840,
+  "sha": "a958142f507ea20c",
+  "cols": [
+   "id",
+   "application_id",
+   "financial_transaction_id",
+   "outcome",
+   "who_before",
+   "why_before",
+   "who_after",
+   "why_after",
+   "explanation_id",
+   "note",
+   "for_whom_before",
+   "for_whom_after"
+  ]
+ },
+ "bank_ai_rule_applications": {
+  "rows": 8,
+  "sha": "6fd06ed7c7126b8b",
+  "cols": [
+   "id",
+   "rule_id",
+   "version_id",
+   "mode",
+   "preview_id",
+   "import_batch_id",
+   "examined",
+   "updated",
+   "unchanged",
+   "protected",
+   "conflicts",
+   "unresolved",
+   "errors",
+   "who_created",
+   "status",
+   "error_message",
+   "created_by_account_id",
+   "started_at",
+   "finished_at",
+   "only_unsettled",
+   "excluded_ai_settled",
+   "who_only"
+  ]
+ },
+ "bank_ai_rule_batch_results": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "prompt_hash",
+   "items_json",
+   "created_at"
+  ]
+ },
+ "bank_ai_rule_drafts": {
+  "rows": 1,
+  "sha": "9762a4a7ab315e4d",
+  "cols": [
+   "id",
+   "rule_text",
+   "status",
+   "origin_transaction_id",
+   "origin_posting_date",
+   "origin_description",
+   "origin_amount_minor",
+   "created_by_account_id",
+   "created_at",
+   "updated_at",
+   "create_missing_who",
+   "ai_rule_id",
+   "override_protected",
+   "only_unsettled"
+  ]
+ },
+ "bank_ai_rule_interpretations": {
+  "rows": 37,
+  "sha": "8ce577b475e8f86c",
+  "cols": [
+   "id",
+   "cache_key",
+   "rule_text",
+   "instructions_snapshot",
+   "raw_answer",
+   "spec",
+   "rejection_reason",
+   "provider",
+   "model",
+   "created_at"
+  ]
+ },
+ "bank_ai_rule_preview_items": {
+  "rows": 3786,
+  "sha": "8a01ecbee181fae8",
+  "cols": [
+   "id",
+   "preview_id",
+   "financial_transaction_id",
+   "verdict",
+   "is_origin",
+   "posting_date",
+   "description",
+   "amount_minor",
+   "currency",
+   "source_label",
+   "current_who_name",
+   "current_why_name",
+   "reason",
+   "proposed_who_name",
+   "proposed_who_id",
+   "proposed_who_is_new",
+   "proposed_why_name",
+   "proposed_why_id",
+   "proposed_why_is_new",
+   "plan",
+   "plan_note",
+   "to_verify",
+   "current_for_whom_name",
+   "proposed_for_whom_name",
+   "proposed_for_whom_id",
+   "extracted_who_name"
+  ]
+ },
+ "bank_ai_rule_previews": {
+  "rows": 17,
+  "sha": "3bba1119e5a34063",
+  "cols": [
+   "id",
+   "draft_id",
+   "rule_text",
+   "origin_transaction_id",
+   "date_from",
+   "date_to",
+   "examined_count",
+   "match_count",
+   "doubt_count",
+   "ai_calls",
+   "provider",
+   "model",
+   "status",
+   "error_message",
+   "created_by_account_id",
+   "started_at",
+   "finished_at",
+   "method",
+   "interpretation",
+   "create_missing_who",
+   "scope",
+   "scope_key",
+   "planned_updates",
+   "unchanged_count",
+   "protected_count",
+   "conflict_count",
+   "unresolved_count",
+   "override_protected",
+   "only_unsettled",
+   "excluded_ai_settled",
+   "who_only"
+  ]
+ },
+ "bank_ai_rule_versions": {
+  "rows": 13,
+  "sha": "016568cc25015c73",
+  "cols": [
+   "id",
+   "rule_id",
+   "version_no",
+   "rule_text",
+   "create_missing_who",
+   "method",
+   "spec",
+   "interpretation_id",
+   "instructions_snapshot",
+   "created_by_account_id",
+   "created_at",
+   "override_protected"
+  ]
+ },
+ "bank_ai_rules": {
+  "rows": 8,
+  "sha": "8bba16b5ae9663a9",
+  "cols": [
+   "id",
+   "title",
+   "status",
+   "apply_future",
+   "origin_transaction_id",
+   "origin_description",
+   "last_applied_at",
+   "created_by_account_id",
+   "created_at",
+   "updated_at",
+   "deleted_at",
+   "deleted_by_account_id"
+  ]
+ },
+ "bank_ai_test_results": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "run_id",
+   "financial_transaction_id",
+   "posting_date",
+   "description",
+   "amount_minor",
+   "currency",
+   "source_label",
+   "current_who_name",
+   "current_why_name",
+   "proposed_who_name",
+   "proposed_who_id",
+   "proposed_who_is_new",
+   "proposed_why_name",
+   "proposed_why_id",
+   "proposed_why_is_new",
+   "to_verify",
+   "rationale",
+   "doubt"
+  ]
+ },
+ "bank_ai_test_runs": {
+  "rows": 2,
+  "sha": "a9a3492580b99e3b",
+  "cols": [
+   "id",
+   "instruction_id",
+   "instructions_snapshot",
+   "provider",
+   "model",
+   "date_from",
+   "date_to",
+   "only_unclassified",
+   "requested_size",
+   "status",
+   "error_message",
+   "created_by_account_id",
+   "started_at",
+   "finished_at"
+  ]
+ },
+ "bank_card_holder_assignments": {
+  "rows": 8,
+  "sha": "4515cca400d016e4",
+  "cols": [
+   "id",
+   "credit_card_payment_instrument_id",
+   "holder_kind",
+   "holder_acting_identity_id",
+   "holder_employee_id",
+   "holder_display_name",
+   "valid_from",
+   "valid_to",
+   "notes",
+   "created_by_account_id",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "bank_card_settlement_accounts": {
+  "rows": 7,
+  "sha": "3b7895592e9d3457",
+  "cols": [
+   "id",
+   "credit_card_payment_instrument_id",
+   "settlement_bank_account_id",
+   "valid_from",
+   "valid_to",
+   "notes",
+   "created_by_account_id",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "bank_evidence_bypass_authorizations": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "financial_transaction_id",
+   "reason",
+   "missing_document_note",
+   "occurrence_id",
+   "occurrence_name_snapshot",
+   "capability_snapshot",
+   "authorized_by_account_id",
+   "authorized_by_name",
+   "authorized_at"
+  ]
+ },
+ "bank_historical_instrument_candidate_evidence": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "candidate_id",
+   "evidence_key",
+   "evidence_kind",
+   "raw_bank_transaction_id",
+   "financial_transaction_id",
+   "first_observed_date",
+   "last_observed_date",
+   "occurrences",
+   "created_at"
+  ]
+ },
+ "bank_historical_instrument_candidates": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "institution",
+   "last_four",
+   "discovery",
+   "evidence",
+   "first_seen_date",
+   "last_seen_date",
+   "occurrence_count",
+   "resolution",
+   "resolution_note",
+   "resolution_effective_date",
+   "resolved_payment_instrument_id",
+   "resolved_at",
+   "resolved_by_account_id",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "bank_import_batches": {
+  "rows": 13,
+  "sha": "e24c982ba04ec026",
+  "cols": [
+   "id",
+   "detected_format",
+   "payment_instrument_id",
+   "original_file_name",
+   "raw_file_bytes",
+   "sha256",
+   "uploaded_at",
+   "uploaded_by_account_id",
+   "row_count",
+   "date_range_start",
+   "date_range_end",
+   "status",
+   "error_summary",
+   "overlap_warning",
+   "import_log"
+  ]
+ },
+ "bank_instrument_assignment_audits": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "scope",
+   "import_batch_id",
+   "financial_transaction_id",
+   "previous_payment_instrument_id",
+   "new_payment_instrument_id",
+   "reason",
+   "affected_transaction_count",
+   "changed_by_account_id",
+   "changed_at"
+  ]
+ },
+ "bank_instrument_identity_audits": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "payment_instrument_id",
+   "field_name",
+   "previous_value",
+   "new_value",
+   "reason",
+   "source_evidence",
+   "changed_by_account_id",
+   "changed_at"
+  ]
+ },
+ "bank_invoice_matches": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "financial_transaction_id",
+   "purchase_document_id",
+   "matched_amount_minor",
+   "status",
+   "match_method",
+   "confidence",
+   "match_basis",
+   "difference_minor",
+   "difference_kind",
+   "difference_note",
+   "decided_by_account_id",
+   "decided_at",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "bank_monthly_instrument_coverages": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "period_id",
+   "payment_instrument_id",
+   "expectation",
+   "expectation_basis",
+   "import_batch_id",
+   "resolution",
+   "resolution_note",
+   "resolution_effective_date",
+   "resolved_at",
+   "resolved_by_account_id",
+   "instrument_display_name_snapshot",
+   "institution_snapshot",
+   "last_four_snapshot",
+   "instrument_status_snapshot",
+   "lifecycle_label_snapshot",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "bank_monthly_source_periods": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "period_month",
+   "period_start",
+   "period_end",
+   "status",
+   "created_at",
+   "completed_at",
+   "completed_by_account_id",
+   "audit_log"
+  ]
+ },
+ "bank_occurrence_aliases": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "occurrence_id",
+   "alias_text",
+   "alias_key",
+   "source_family",
+   "source",
+   "first_financial_transaction_id",
+   "created_at"
+  ]
+ },
+ "bank_occurrence_reason_associations": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "occurrence_id",
+   "transaction_reason_id",
+   "active",
+   "confirmation_count",
+   "first_confirmed_at",
+   "last_confirmed_at",
+   "source",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "bank_occurrence_reporting_entities": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "occurrence_id",
+   "reporting_entity_id",
+   "active",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "bank_occurrence_suppliers": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "occurrence_id",
+   "supplier_id",
+   "link_source",
+   "notes",
+   "created_at"
+  ]
+ },
+ "bank_occurrence_types": {
+  "rows": 1,
+  "sha": "7f031cf0c4d2347f",
+  "cols": [
+   "id",
+   "code",
+   "name",
+   "description",
+   "status",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "bank_occurrences": {
+  "rows": 95,
+  "sha": "91d9a35132730a7b",
+  "cols": [
+   "id",
+   "canonical_name",
+   "occurrence_type_id",
+   "status",
+   "optional_notes",
+   "created_at",
+   "updated_at",
+   "default_transaction_reason_id",
+   "category_capability",
+   "capability_source",
+   "capability_established_at",
+   "capability_evidence"
+  ]
+ },
+ "bank_reason_groups": {
+  "rows": 20,
+  "sha": "978c958e68d41311",
+  "cols": [
+   "id",
+   "code",
+   "name",
+   "display_order",
+   "active",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "bank_reconciliation_control_configs": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "control_start_month",
+   "note",
+   "updated_by_account_id",
+   "created_at",
+   "updated_at",
+   "validated_through_month"
+  ]
+ },
+ "bank_source_instrument_profiles": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "detected_format",
+   "file_name_key",
+   "account_hint",
+   "payment_instrument_id",
+   "status",
+   "created_from_batch_id",
+   "created_by_account_id",
+   "notes",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "bank_transaction_allocations": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "financial_transaction_id",
+   "allocation_index",
+   "amount_minor",
+   "reporting_entity_id",
+   "transaction_reason_id",
+   "accounting_classification_id",
+   "accounting_classification_code_snapshot",
+   "accounting_classification_name_snapshot",
+   "accounting_statement_type_snapshot",
+   "transaction_reason_name_snapshot",
+   "reporting_entity_name_snapshot",
+   "payer_legal_entity_id",
+   "payer_kind",
+   "economic_owner_legal_entity_id",
+   "intercompany_outcome",
+   "intercompany_due_from_code_snapshot",
+   "intercompany_due_to_code_snapshot",
+   "intercompany_notes",
+   "status",
+   "decision_source",
+   "decided_by_account_id",
+   "decided_at",
+   "evidence_kind",
+   "evidence_reference",
+   "notes",
+   "created_at",
+   "updated_at",
+   "accounting_destination_source"
+  ]
+ },
+ "bank_transaction_explanations": {
+  "rows": 1646,
+  "sha": "e062b2a3567a73db",
+  "cols": [
+   "id",
+   "financial_transaction_id",
+   "occurrence_id",
+   "transaction_reason_id",
+   "decision_source",
+   "decision_status",
+   "confidence",
+   "explanation_notes",
+   "confirmed_by_account_id",
+   "confirmed_at",
+   "created_at",
+   "updated_at",
+   "occurrence_name_snapshot",
+   "food_cost_snapshot",
+   "operative_snapshot",
+   "deductible_snapshot",
+   "what_label_snapshot",
+   "transaction_reason_name_snapshot",
+   "accounting_classification_id",
+   "accounting_classification_code_snapshot",
+   "accounting_classification_name_snapshot",
+   "accounting_statement_type_snapshot",
+   "accounting_destination_source"
+  ]
+ },
+ "bank_transaction_reason_export_mappings": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "bank_transaction_reason_id",
+   "food_cost",
+   "operative",
+   "deductible",
+   "what_label",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "bank_transaction_reasons": {
+  "rows": 98,
+  "sha": "f73e5926928e1c33",
+  "cols": [
+   "id",
+   "code",
+   "name",
+   "description",
+   "status",
+   "created_at",
+   "updated_at",
+   "accounting_classification_id",
+   "reason_group_id"
+  ]
+ },
+ "candidate_certifications": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "candidate_id",
+   "name",
+   "issuer",
+   "date_text"
+  ]
+ },
+ "candidate_communications": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "template_snapshot_id",
+   "trigger_event",
+   "channel_sms_used",
+   "channel_email_used",
+   "recipient_phone",
+   "recipient_email",
+   "rendered_sms_text",
+   "rendered_email_subject",
+   "rendered_email_body",
+   "language_used",
+   "sms_status",
+   "sms_provider_ref",
+   "email_status",
+   "email_provider_ref",
+   "is_reminder",
+   "reminder_sequence_number",
+   "parent_communication_id",
+   "awaiting_response",
+   "response_received_at",
+   "response_inbound_id",
+   "reminder_policy_id",
+   "final_deadline_at",
+   "reminders_sent_count",
+   "no_response_stop_applied",
+   "no_response_stop_outcome_decision_id",
+   "related_outcome_decision_id",
+   "related_stage_transition_id",
+   "performed_by",
+   "created_at"
+  ]
+ },
+ "candidate_education": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "candidate_id",
+   "institution",
+   "program",
+   "qualification",
+   "field",
+   "start_date",
+   "end_date",
+   "completion_status",
+   "certifications",
+   "notes",
+   "start_date_text",
+   "end_date_text",
+   "start_date_precision",
+   "end_date_precision",
+   "date_normalization_confidence"
+  ]
+ },
+ "candidate_flags": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "person_id",
+   "restaurant_id",
+   "name",
+   "description",
+   "originating_application_id",
+   "originating_outcome_decision_id",
+   "reason",
+   "scope",
+   "role_scope",
+   "location_scope",
+   "operational_effect",
+   "note",
+   "start_date",
+   "expires_at",
+   "is_active",
+   "created_at",
+   "created_by"
+  ]
+ },
+ "candidate_languages": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "candidate_id",
+   "language",
+   "proficiency"
+  ]
+ },
+ "candidate_persons": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "full_name",
+   "primary_email",
+   "primary_phone",
+   "created_at",
+   "updated_at",
+   "primary_phone_normalized",
+   "normalized_name"
+  ]
+ },
+ "candidate_scheduling_tokens": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "token",
+   "application_id",
+   "interview_stage",
+   "expires_at",
+   "is_active",
+   "created_at"
+  ]
+ },
+ "candidate_skills": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "candidate_id",
+   "skill"
+  ]
+ },
+ "candidate_work_history": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "candidate_id",
+   "employer",
+   "location",
+   "original_job_title",
+   "normalized_role",
+   "start_date",
+   "end_date",
+   "is_current",
+   "responsibilities",
+   "achievements",
+   "reason_for_leaving",
+   "evidence_snippet",
+   "start_date_text",
+   "end_date_text",
+   "start_date_precision",
+   "end_date_precision",
+   "date_normalization_confidence",
+   "normalized_title",
+   "role_family",
+   "seniority_level",
+   "multi_role",
+   "title_normalization_confidence",
+   "structure_confidence",
+   "structure_note"
+  ]
+ },
+ "candidates": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "raw_resume_id",
+   "full_name",
+   "email",
+   "phone",
+   "location",
+   "languages",
+   "target_role",
+   "declared_availability",
+   "source",
+   "source_file",
+   "parsing_mode",
+   "parser_provider",
+   "declared_age_context",
+   "derived_age_context_range",
+   "derived_age_context_rationale",
+   "derived_age_context_confidence",
+   "status",
+   "created_at",
+   "updated_at",
+   "source_provider",
+   "summary",
+   "linkedin_url",
+   "other_profile_url",
+   "other_sections_text"
+  ]
+ },
+ "categories": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "location_id",
+   "source_system_id",
+   "source_category_id",
+   "name"
+  ]
+ },
+ "channel_definitions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "name",
+   "is_connected",
+   "supports_publish",
+   "supports_update",
+   "supports_pause",
+   "supports_stop",
+   "supports_metrics",
+   "supports_cost_tracking",
+   "is_paid",
+   "default_acquisition_source_id",
+   "is_active",
+   "display_order",
+   "created_at"
+  ]
+ },
+ "channel_publications": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "variant_version_id",
+   "channel_id",
+   "placement_label",
+   "is_connected",
+   "status",
+   "publish_date",
+   "external_link",
+   "cost_amount_cents",
+   "cost_currency",
+   "notes",
+   "created_by",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "channel_tracking_links": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "channel_publication_id",
+   "token",
+   "is_active",
+   "created_at"
+  ]
+ },
+ "communication_reminder_policies": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "location_label",
+   "role",
+   "stage",
+   "trigger_event",
+   "reminder_count",
+   "first_reminder_delay_hours",
+   "reminder_interval_hours",
+   "final_deadline_hours",
+   "auto_stop_enabled",
+   "auto_stop_outcome_definition_id",
+   "is_active",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "communication_template_snapshots": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "template_id",
+   "version",
+   "restaurant_id",
+   "location_label",
+   "role",
+   "stage",
+   "trigger_event",
+   "outcome_definition_id",
+   "purpose",
+   "language",
+   "sms_text",
+   "email_subject",
+   "email_body",
+   "was_active",
+   "created_at"
+  ]
+ },
+ "communication_templates": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "location_label",
+   "role",
+   "stage",
+   "trigger_event",
+   "outcome_definition_id",
+   "purpose",
+   "language",
+   "sms_text",
+   "email_subject",
+   "email_body",
+   "is_active",
+   "version",
+   "notes",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "compensation_export_confirmations": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "snapshot_id",
+   "communicated_by",
+   "communicated_at",
+   "reference",
+   "note",
+   "created_at"
+  ]
+ },
+ "compensation_reconciliation_lines": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "reconciliation_id",
+   "employee_id",
+   "component_label",
+   "rfone_value",
+   "provider_value",
+   "status",
+   "note",
+   "resolution_status",
+   "resolved_by",
+   "resolved_at",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "compensation_reconciliations": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "snapshot_id",
+   "payroll_run_id",
+   "created_by",
+   "created_at"
+  ]
+ },
+ "compliance_dispositions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "review_id",
+   "action",
+   "final_text",
+   "performed_by",
+   "reason",
+   "decided_at",
+   "performed_by_identity_id"
+  ]
+ },
+ "compliance_reviews": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "object_type",
+   "object_id",
+   "object_version",
+   "reviewed_text",
+   "engine_version",
+   "reviewed_at"
+  ]
+ },
+ "compliance_warnings": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "review_id",
+   "category",
+   "severity",
+   "explanation",
+   "suggested_rewrite",
+   "created_at"
+  ]
+ },
+ "configured_expectations": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "supplier_product_id",
+   "acceptable_configurations",
+   "status",
+   "approved_by_employee_id",
+   "last_updated"
+  ]
+ },
+ "consistency_statements": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "thread_id",
+   "source_stage",
+   "source_reference",
+   "source_date",
+   "raw_statement",
+   "normalized_interpretation",
+   "created_at"
+  ]
+ },
+ "consistency_threads": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "topic",
+   "importance",
+   "comparison_status",
+   "explanation",
+   "confidence",
+   "selezionatore_resolution",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "devices": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "location_id",
+   "source_system_id",
+   "source_device_id",
+   "name",
+   "model",
+   "device_type"
+  ]
+ },
+ "discount_definitions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "location_id",
+   "source_system_id",
+   "source_discount_id",
+   "name",
+   "percentage",
+   "amount",
+   "active"
+  ]
+ },
+ "employee_assignments": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "employee_id",
+   "restaurant_id",
+   "operational_area_id",
+   "restaurant_role_id",
+   "location_id",
+   "physical_area_id",
+   "valid_from",
+   "valid_to",
+   "assignment_source",
+   "source_note",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "employee_compensation_terms": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "employee_id",
+   "legal_entity_id",
+   "function_label",
+   "restaurant_role_id",
+   "compensation_basis",
+   "hourly_rate_minor",
+   "salaried_period_amount_minor",
+   "valid_from",
+   "valid_to",
+   "source_note",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "employee_external_payment_accounts": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "employee_id",
+   "provider",
+   "provider_recipient_id",
+   "is_active",
+   "created_at"
+  ]
+ },
+ "employee_payroll_calculation_earning_lines": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "employee_payroll_calculation_id",
+   "work_date",
+   "compensation_term_id",
+   "regular_hours",
+   "hourly_rate_used",
+   "regular_pay",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "employee_payroll_calculations": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "calculation_run_id",
+   "employee_id",
+   "regular_hours",
+   "regular_pay",
+   "tips_amount",
+   "bonus_amount",
+   "gross_pay",
+   "created_at",
+   "updated_at",
+   "incentive_recognized_amount",
+   "tip_credit_makeup_amount"
+  ]
+ },
+ "employee_payroll_results": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "payroll_run_id",
+   "employee_id",
+   "compensation_term_id",
+   "source_pay_frequency_label",
+   "review_status",
+   "source_note",
+   "created_at"
+  ]
+ },
+ "employee_source_roles": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "employee_id",
+   "source_role_id",
+   "source_system_id",
+   "observed_at"
+  ]
+ },
+ "employees": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "location_id",
+   "source_system_id",
+   "source_employee_id",
+   "display_name",
+   "custom_id",
+   "system_role",
+   "active",
+   "source_created_at",
+   "source_modified_at"
+  ]
+ },
+ "evidence_items": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "requirement_assessment_id",
+   "source_type",
+   "source_stage",
+   "source_reference",
+   "evidence_text",
+   "evidence_classification",
+   "evidence_relationship",
+   "confidence",
+   "explanation",
+   "is_system_generated",
+   "created_at"
+  ]
+ },
+ "expected_supplier_credits": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "alert_id",
+   "purchase_document_id",
+   "purchase_line_id",
+   "rejected_quantity",
+   "expected_amount_minor",
+   "status",
+   "created_at",
+   "resolved_at"
+  ]
+ },
+ "financial_transaction_matches": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "transaction_a_id",
+   "transaction_b_id",
+   "match_type",
+   "match_method",
+   "match_basis",
+   "matched_amount_minor",
+   "confirmed_by",
+   "created_at"
+  ]
+ },
+ "financial_transactions": {
+  "rows": 3234,
+  "sha": "d9aed0b52e204c90",
+  "cols": [
+   "id",
+   "payment_instrument_id",
+   "source_system_id",
+   "external_transaction_id",
+   "bank_source",
+   "posting_date",
+   "transaction_date",
+   "transaction_datetime",
+   "description_original",
+   "description_normalized",
+   "amount_minor",
+   "native_transaction_type",
+   "reference",
+   "balance_minor",
+   "status",
+   "import_batch_id",
+   "source_row_number",
+   "fingerprint",
+   "occurrence_index_in_batch",
+   "occurrence_count_in_batch",
+   "duplicate_status",
+   "duplicate_of_transaction_id",
+   "review_status",
+   "gross_amount_minor",
+   "fee_amount_minor",
+   "net_amount_minor",
+   "counterparty_name",
+   "counterparty_identifier",
+   "related_external_transaction_id",
+   "classification",
+   "created_at",
+   "updated_at",
+   "explanation_id",
+   "payee_normalized",
+   "payee_normalization_version",
+   "accounting_dedup_key",
+   "accounting_status",
+   "accounting_canonical_transaction_id",
+   "accounting_dedup_reason",
+   "accounting_settlement_account_id",
+   "source_memo",
+   "source_memo_field"
+  ]
+ },
+ "fit_assessments": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "candidate_id",
+   "requirement_set_snapshot_id",
+   "requirement_set_id",
+   "current_stage",
+   "status",
+   "notes",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "in_person_interview_plans": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "person_id",
+   "candidate_id",
+   "restaurant_id",
+   "requirement_set_snapshot_id",
+   "fit_assessment_id",
+   "phone_interview_plan_id",
+   "status",
+   "notes",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "in_person_interview_section_definitions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "target_role",
+   "name",
+   "section_kind",
+   "description",
+   "display_order",
+   "is_active",
+   "version",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "inbound_communications": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "channel",
+   "raw_text",
+   "received_at",
+   "source",
+   "classification_system",
+   "classification_confidence",
+   "classification_effective",
+   "classification_corrected_by",
+   "classification_corrected_at",
+   "classification_correction_reason",
+   "related_outgoing_communication_id",
+   "alert_required",
+   "alert_reason",
+   "alert_acknowledged_by",
+   "alert_acknowledged_at",
+   "notes"
+  ]
+ },
+ "incentive_contributions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "calculation_run_id",
+   "employee_id",
+   "label",
+   "amount",
+   "source_note",
+   "created_by",
+   "created_at"
+  ]
+ },
+ "ingestion_runs": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "source_system_id",
+   "location_id",
+   "started_at",
+   "finished_at",
+   "status",
+   "source_window_start",
+   "source_window_end",
+   "notes",
+   "lock_key",
+   "resource_type",
+   "acquisition_mode",
+   "queued_at",
+   "heartbeat_at",
+   "orders_processed",
+   "payments_processed",
+   "shifts_processed",
+   "error_summary",
+   "requested_by_account_id"
+  ]
+ },
+ "interview_appointments": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "interview_stage",
+   "scheduling_window_id",
+   "slot_start_at",
+   "slot_end_at",
+   "status",
+   "candidate_selected_at",
+   "confirmed_at",
+   "previous_appointment_id",
+   "cancellation_reason",
+   "notes",
+   "created_at",
+   "slot_ordinal"
+  ]
+ },
+ "interview_scheduling_windows": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "session_id",
+   "interview_stage",
+   "window_date",
+   "start_time",
+   "end_time",
+   "slot_duration_minutes",
+   "capacity_per_slot",
+   "timezone",
+   "is_active",
+   "created_by",
+   "notes",
+   "created_at"
+  ]
+ },
+ "item_categories": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "item_id",
+   "category_id"
+  ]
+ },
+ "item_modifiers": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "item_id",
+   "modifier_id"
+  ]
+ },
+ "items": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "location_id",
+   "source_system_id",
+   "source_item_id",
+   "name",
+   "sku",
+   "code",
+   "current_price",
+   "price_without_vat",
+   "price_type",
+   "item_type",
+   "item_nature",
+   "active",
+   "source_created_at",
+   "source_modified_at"
+  ]
+ },
+ "job_posting_channel_variant_versions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "variant_id",
+   "version",
+   "title_override",
+   "variant_text",
+   "source",
+   "reason",
+   "author",
+   "approved_by",
+   "approved_at",
+   "created_at"
+  ]
+ },
+ "job_posting_channel_variants": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "job_posting_id",
+   "channel_id",
+   "status",
+   "current_version",
+   "approved_version_id",
+   "created_by",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "job_posting_versions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "job_posting_id",
+   "version",
+   "title",
+   "company_description",
+   "branch_description",
+   "role_summary",
+   "responsibilities",
+   "minimum_requirements",
+   "preferred_experience",
+   "availability_expectations",
+   "schedule_description",
+   "compensation_description",
+   "benefits_description",
+   "location_context",
+   "application_instructions",
+   "other_info",
+   "source",
+   "reason",
+   "author",
+   "approved_by",
+   "approved_at",
+   "created_at"
+  ]
+ },
+ "job_postings": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "session_id",
+   "restaurant_id",
+   "location_label",
+   "role",
+   "rule_set_version_id",
+   "status",
+   "current_version",
+   "approved_version_id",
+   "created_by",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "legal_entities": {
+  "rows": 3,
+  "sha": "d70dc9ff88e104e7",
+  "cols": [
+   "id",
+   "legal_name",
+   "status",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "locations": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "merchant_id",
+   "source_system_id",
+   "source_location_id",
+   "name",
+   "timezone",
+   "currency",
+   "active",
+   "operating_day_cutoff_time"
+  ]
+ },
+ "merchants": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "source_system_id",
+   "source_merchant_id",
+   "name",
+   "active"
+  ]
+ },
+ "missing_evidence_answers": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "question_id",
+   "raw_answer",
+   "answered_at"
+  ]
+ },
+ "missing_evidence_questionnaires": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "primary_screening_run_id",
+   "token",
+   "status",
+   "created_at",
+   "completed_at"
+  ]
+ },
+ "missing_evidence_questions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "questionnaire_id",
+   "criterion_id",
+   "question_text",
+   "display_order",
+   "created_at"
+  ]
+ },
+ "modifier_groups": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "location_id",
+   "source_system_id",
+   "source_modifier_group_id",
+   "name"
+  ]
+ },
+ "modifiers": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "location_id",
+   "modifier_group_id",
+   "source_system_id",
+   "source_modifier_id",
+   "name",
+   "alternate_name",
+   "price_delta",
+   "active"
+  ]
+ },
+ "operational_area_roles": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "operational_area_id",
+   "restaurant_role_id"
+  ]
+ },
+ "operational_areas": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "name",
+   "code",
+   "description",
+   "active"
+  ]
+ },
+ "operational_signatures": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "acting_identity_id",
+   "actor_kind",
+   "action",
+   "domain",
+   "module",
+   "scope_type",
+   "scope_id",
+   "object_type",
+   "object_id",
+   "before_state",
+   "after_state",
+   "applicable_version",
+   "authority_used",
+   "reason",
+   "assurance_level",
+   "occurred_at",
+   "recorded_at",
+   "corrects_signature_id"
+  ]
+ },
+ "order_discounts": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "order_id",
+   "discount_definition_id",
+   "source_system_id",
+   "source_discount_id",
+   "name_raw",
+   "percentage",
+   "amount",
+   "raw_shape_json"
+  ]
+ },
+ "order_fees": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "order_id",
+   "source_system_id",
+   "source_fee_id",
+   "source_line_item_id",
+   "fee_type",
+   "name_raw",
+   "amount",
+   "percentage",
+   "note_raw"
+  ]
+ },
+ "order_item_discounts": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "order_item_id",
+   "discount_definition_id",
+   "source_system_id",
+   "source_discount_id",
+   "name_raw",
+   "percentage",
+   "amount",
+   "raw_shape_json"
+  ]
+ },
+ "order_item_modifiers": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "order_item_id",
+   "modifier_id",
+   "source_system_id",
+   "source_modification_id",
+   "name_raw",
+   "amount"
+  ]
+ },
+ "order_item_taxes": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "order_item_id",
+   "tax_rate_id",
+   "amount",
+   "rate_applied",
+   "source_system_id",
+   "source_tax_reference"
+  ]
+ },
+ "order_items": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "order_id",
+   "item_id",
+   "source_system_id",
+   "source_line_item_id",
+   "created_at",
+   "source_name",
+   "quantity",
+   "quantity_decimal_digits",
+   "unit_name",
+   "historical_unit_price",
+   "guest_number",
+   "guest_label_raw",
+   "item_code_raw",
+   "is_revenue",
+   "is_order_fee",
+   "printed",
+   "refunded_flag",
+   "exchanged_flag",
+   "line_item_info_json"
+  ]
+ },
+ "order_types": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "location_id",
+   "source_system_id",
+   "source_order_type_id",
+   "name",
+   "min_order_amount",
+   "max_order_amount",
+   "configured_fee",
+   "average_order_time",
+   "active"
+  ]
+ },
+ "orders": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "location_id",
+   "table_service_id",
+   "source_system_id",
+   "source_order_id",
+   "source_employee_id",
+   "employee_id",
+   "order_type_id",
+   "device_id",
+   "device_source_id",
+   "client_created_at",
+   "created_at",
+   "modified_at",
+   "state",
+   "payment_state",
+   "pay_type",
+   "currency",
+   "subtotal",
+   "discount_total",
+   "tax_total",
+   "total",
+   "title_raw",
+   "note",
+   "test_mode",
+   "manual_transaction",
+   "tax_removed",
+   "is_vat",
+   "business_date"
+  ]
+ },
+ "organizational_fallback_policies": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "scope_type",
+   "scope_id",
+   "scope_key",
+   "fallback_position_id",
+   "is_active",
+   "created_at"
+  ]
+ },
+ "overtime_rules": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "rule_code",
+   "name",
+   "jurisdiction_level",
+   "jurisdiction_code",
+   "rule_scope",
+   "threshold_hours",
+   "threshold_day_number",
+   "total_rate_multiplier",
+   "regular_rate_method",
+   "overlap_method",
+   "employee_classification",
+   "industry_code",
+   "effective_from",
+   "effective_to",
+   "status",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "payment_instruments": {
+  "rows": 13,
+  "sha": "09769c40eb2fd616",
+  "cols": [
+   "id",
+   "legal_entity_id",
+   "instrument_type",
+   "provider",
+   "display_name",
+   "institution",
+   "last_four",
+   "external_account_identifier",
+   "currency",
+   "linked_instrument_id",
+   "source_system_id",
+   "status",
+   "created_at",
+   "updated_at",
+   "effective_start_date",
+   "effective_end_date",
+   "lifecycle_end_reason",
+   "replaced_by_instrument_id",
+   "owner_reporting_entity_id"
+  ]
+ },
+ "payment_tips": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "payment_id",
+   "amount",
+   "source_present"
+  ]
+ },
+ "payments": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "order_id",
+   "source_system_id",
+   "source_payment_id",
+   "employee_id",
+   "source_employee_id",
+   "tender_id",
+   "device_id",
+   "device_source_id",
+   "client_created_at",
+   "created_at",
+   "modified_at",
+   "amount",
+   "tax_amount_source",
+   "cash_tendered",
+   "cashback_amount",
+   "result",
+   "offline",
+   "currency"
+  ]
+ },
+ "payroll_calculation_runs": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "legal_entity_id",
+   "period_start",
+   "period_end",
+   "status",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "payroll_earning_facts": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "employee_payroll_result_id",
+   "earning_type",
+   "source_label",
+   "quantity",
+   "unit",
+   "rate_minor",
+   "amount_minor",
+   "paid_to_employee",
+   "excluded_from_taxable_wages",
+   "sequence",
+   "created_at"
+  ]
+ },
+ "payroll_employer_liability_facts": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "employee_payroll_result_id",
+   "liability_type",
+   "source_label",
+   "amount_minor",
+   "created_at"
+  ]
+ },
+ "payroll_execution_configurations": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "provider",
+   "valid_from",
+   "valid_to",
+   "source_note",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "payroll_import_issues": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "import_run_id",
+   "issue_type",
+   "severity",
+   "details",
+   "status",
+   "created_at"
+  ]
+ },
+ "payroll_import_runs": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "source_system_id",
+   "payroll_run_id",
+   "source_file_name",
+   "source_file_hash",
+   "supersedes_import_run_id",
+   "imported_at",
+   "mode",
+   "status",
+   "employees_represented_count",
+   "unresolved_employee_count",
+   "notes",
+   "acquisition_method"
+  ]
+ },
+ "payroll_payment_facts": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "employee_payroll_result_id",
+   "pay_date",
+   "payment_method",
+   "payment_amount_minor",
+   "provider_payment_reference",
+   "sequence",
+   "created_at"
+  ]
+ },
+ "payroll_provider_employee_identities": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "source_system_id",
+   "restaurant_id",
+   "external_employee_key",
+   "external_display_reference",
+   "employee_id",
+   "mapping_status",
+   "resolution_method",
+   "resolved_at",
+   "notes",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "payroll_runs": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "source_system_id",
+   "payroll_schedule_id",
+   "period_start",
+   "period_end",
+   "pay_date",
+   "run_type",
+   "provider_reference",
+   "status",
+   "superseded_by_payroll_run_id",
+   "created_at",
+   "updated_at",
+   "payment_execution_provider"
+  ]
+ },
+ "payroll_schedules": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "schedule_type",
+   "code",
+   "name",
+   "active",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "person_match_candidates": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "source_person_id",
+   "suggested_person_id",
+   "confidence",
+   "match_basis",
+   "status",
+   "reviewed_at",
+   "review_note",
+   "created_at"
+  ]
+ },
+ "phone_interview_plans": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "person_id",
+   "candidate_id",
+   "restaurant_id",
+   "requirement_set_snapshot_id",
+   "fit_assessment_id",
+   "status",
+   "notes",
+   "escape_route_activated_at",
+   "escape_route_reason",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "phone_interview_question_definitions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "target_role",
+   "question_text",
+   "objective",
+   "linked_requirement_ids",
+   "linked_signal_definition_ids",
+   "importance",
+   "is_sine_qua_non",
+   "mandatory_within_selection_process",
+   "assessment_stages",
+   "follow_up_guidance",
+   "is_courtesy",
+   "display_order",
+   "is_active",
+   "version",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "phone_interview_question_instances": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "plan_id",
+   "source_type",
+   "source_question_definition_id",
+   "parent_question_instance_id",
+   "question_text",
+   "objective",
+   "linked_requirement_ids",
+   "linked_signal_definition_ids",
+   "importance",
+   "is_sine_qua_non",
+   "mandatory_within_selection_process",
+   "display_order",
+   "reason_for_inclusion",
+   "status",
+   "gate_evaluation",
+   "answer_text",
+   "selezionatore_note",
+   "carried_forward_reason",
+   "asked_at",
+   "answered_at",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "physical_areas": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "name",
+   "area_type",
+   "description",
+   "active"
+  ]
+ },
+ "physical_tables": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "location_id",
+   "table_number",
+   "name",
+   "seat_capacity",
+   "area",
+   "indoor_outdoor",
+   "section",
+   "active",
+   "physical_area_id"
+  ]
+ },
+ "position_assignments": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "position_id",
+   "acting_identity_id",
+   "valid_from",
+   "valid_to",
+   "created_at"
+  ]
+ },
+ "position_backups": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "covered_position_id",
+   "backup_position_id",
+   "sequence",
+   "is_active",
+   "created_at"
+  ]
+ },
+ "position_scopes": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "position_id",
+   "scope_type",
+   "scope_id",
+   "scope_key",
+   "created_at"
+  ]
+ },
+ "position_temporary_coverages": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "covered_position_id",
+   "delegate_position_id",
+   "delegate_acting_identity_id",
+   "granted_by_identity_id",
+   "valid_from",
+   "valid_to",
+   "revoked_at",
+   "created_at"
+  ]
+ },
+ "positions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "name",
+   "description",
+   "parent_position_id",
+   "is_active",
+   "created_at",
+   "updated_at",
+   "backup_required"
+  ]
+ },
+ "primary_screening_criteria": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "name",
+   "description",
+   "category",
+   "target_role",
+   "location_label",
+   "coefficient",
+   "direction",
+   "is_hard_disqualifier",
+   "hard_disqualifier_trigger_level",
+   "level_descriptions",
+   "evidence_sources_allowed",
+   "evaluation_guidance",
+   "evidence_positive",
+   "evidence_contrary",
+   "evidence_insufficient",
+   "auto_evaluation_signal_definition_id",
+   "auto_evaluation_level_map",
+   "display_order",
+   "is_active",
+   "version",
+   "created_at",
+   "updated_at",
+   "required_for_phone_review",
+   "missing_evidence_question_text",
+   "missing_evidence_answer_level_map"
+  ]
+ },
+ "primary_screening_criterion_evaluations": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "run_id",
+   "criterion_snapshot_id",
+   "status",
+   "system_level",
+   "effective_level",
+   "confidence",
+   "evidence_source",
+   "evidence_text",
+   "explanation",
+   "origin",
+   "override_reason",
+   "overridden_at",
+   "contribution",
+   "is_active_hard_disqualifier",
+   "hard_disqualifier_overridden",
+   "hard_disqualifier_override_reason",
+   "hard_disqualifier_overridden_at",
+   "created_at",
+   "updated_at",
+   "evidence_items"
+  ]
+ },
+ "primary_screening_criterion_snapshots": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "criterion_id",
+   "version",
+   "restaurant_id",
+   "name",
+   "description",
+   "category",
+   "target_role",
+   "location_label",
+   "coefficient",
+   "direction",
+   "is_hard_disqualifier",
+   "hard_disqualifier_trigger_level",
+   "level_descriptions",
+   "evidence_sources_allowed",
+   "evaluation_guidance",
+   "evidence_positive",
+   "evidence_contrary",
+   "evidence_insufficient",
+   "auto_evaluation_signal_definition_id",
+   "auto_evaluation_level_map",
+   "was_active",
+   "created_at",
+   "required_for_phone_review",
+   "missing_evidence_question_text",
+   "missing_evidence_answer_level_map"
+  ]
+ },
+ "primary_screening_runs": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "restaurant_id",
+   "priority_index",
+   "has_active_hard_disqualifier",
+   "explanation",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "process_ownerships": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "domain",
+   "module",
+   "process_name",
+   "phase",
+   "position_id",
+   "scope_type",
+   "scope_id",
+   "scope_key",
+   "created_at"
+  ]
+ },
+ "profile_bootstrap_runs": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "source_system_id",
+   "started_at",
+   "completed_at",
+   "status",
+   "mode",
+   "notes"
+  ]
+ },
+ "project": {
+  "rows": 1,
+  "sha": "8978b3ab08c0ab3e",
+  "cols": [
+   "id",
+   "name",
+   "sort_order",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "project_chapter": {
+  "rows": 1,
+  "sha": "e93bd2ca336eaf56",
+  "cols": [
+   "id",
+   "title",
+   "description",
+   "sort_order",
+   "created_at",
+   "updated_at",
+   "project_id"
+  ]
+ },
+ "project_task": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "chapter_id",
+   "parent_task_id",
+   "title",
+   "description",
+   "percent_complete",
+   "planned_start_date",
+   "planned_duration_days",
+   "actual_duration_days",
+   "sort_order",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "project_task_dependency": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "predecessor_task_id",
+   "successor_task_id",
+   "created_at"
+  ]
+ },
+ "purchase_documents": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "supplier_id",
+   "purchase_order_id",
+   "document_number",
+   "document_type",
+   "issue_date",
+   "delivery_date",
+   "destination_location",
+   "customer_account_reference",
+   "acquisition_method",
+   "currency",
+   "total_amount_minor",
+   "payment_terms",
+   "status",
+   "source_reference",
+   "source_provenance",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "purchase_line_classifications": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "purchase_line_id",
+   "purchase_document_id",
+   "transaction_reason_id",
+   "reporting_entity_id",
+   "accounting_classification_id",
+   "accounting_classification_code_snapshot",
+   "accounting_statement_type_snapshot",
+   "transaction_reason_name_snapshot",
+   "decision_source",
+   "status",
+   "confidence",
+   "evidence",
+   "learning_id",
+   "is_override",
+   "decided_by_account_id",
+   "decided_at",
+   "created_at"
+  ]
+ },
+ "purchase_lines": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "purchase_document_id",
+   "line_type",
+   "source_line_number",
+   "raw_description",
+   "source_amount_minor",
+   "supplier_product_id",
+   "supplier_item_code",
+   "supplier_category_code",
+   "source_section",
+   "manufacturer_code",
+   "brand",
+   "quantity",
+   "purchase_unit",
+   "pack_count",
+   "pack_size",
+   "product_variant",
+   "grade",
+   "unit_price_minor",
+   "economic_classification",
+   "created_at"
+  ]
+ },
+ "purchase_order_lines": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "purchase_order_id",
+   "supplier_product_id",
+   "item_description",
+   "quantity",
+   "created_at"
+  ]
+ },
+ "purchase_orders": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "supplier_id",
+   "order_date",
+   "status",
+   "notes",
+   "created_at"
+  ]
+ },
+ "purchased_field_corrections": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "purchase_document_id",
+   "purchase_line_id",
+   "field_name",
+   "classification",
+   "original_value",
+   "corrected_value",
+   "reviewed_by",
+   "reviewed_at"
+  ]
+ },
+ "purchased_line_additions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "purchase_document_id",
+   "purchase_line_id",
+   "added_by",
+   "added_at"
+  ]
+ },
+ "purchasing_alerts": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "trigger",
+   "purchase_document_id",
+   "purchase_line_id",
+   "supplier_product_id",
+   "purchase_order_line_id",
+   "receiving_record_id",
+   "receiving_line_id",
+   "comparison_basis",
+   "expected_configuration",
+   "observed_configuration",
+   "reconciliation_context",
+   "responsible_user_employee_id",
+   "status",
+   "human_decision",
+   "decided_by_employee_id",
+   "decided_at",
+   "created_at"
+  ]
+ },
+ "purchasing_validation_log_entries": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "purchase_document_id",
+   "purchase_line_id",
+   "severity",
+   "message",
+   "suggested_action",
+   "human_decision",
+   "status",
+   "created_at",
+   "resolved_at"
+  ]
+ },
+ "raw_bank_transactions": {
+  "rows": 3234,
+  "sha": "47226bb9b07b8cf4",
+  "cols": [
+   "id",
+   "import_batch_id",
+   "row_number",
+   "raw_fields",
+   "row_fingerprint",
+   "parse_status",
+   "anomalies",
+   "normalized_transaction_id"
+  ]
+ },
+ "raw_resumes": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "source_type",
+   "original_filename",
+   "storage_path",
+   "raw_text",
+   "uploaded_at",
+   "content_hash"
+  ]
+ },
+ "receiving_lines": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "receiving_record_id",
+   "purchase_order_line_id",
+   "purchase_line_id",
+   "supplier_product_id",
+   "raw_description",
+   "observed_quantity",
+   "observed_pack_count",
+   "observed_pack_size",
+   "observed_unit",
+   "observed_brand",
+   "observed_variant",
+   "observed_grade",
+   "damaged_quantity",
+   "photo_evidence",
+   "capture_method",
+   "created_at"
+  ]
+ },
+ "receiving_records": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "supplier_id",
+   "purchase_order_id",
+   "purchase_document_id",
+   "location_id",
+   "receiving_user_employee_id",
+   "receiving_timestamp",
+   "capture_method",
+   "source_provenance",
+   "status",
+   "created_at"
+  ]
+ },
+ "refunds": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "source_system_id",
+   "source_refund_id",
+   "order_id",
+   "payment_id",
+   "employee_id",
+   "device_id",
+   "device_source_id",
+   "created_at",
+   "amount",
+   "tax_amount",
+   "tip_amount",
+   "status",
+   "voided"
+  ]
+ },
+ "reporting_entities": {
+  "rows": 4,
+  "sha": "4b8b5ba38ed42933",
+  "cols": [
+   "id",
+   "code",
+   "name",
+   "entity_type",
+   "legal_entity_id",
+   "reporting_group_id",
+   "description",
+   "status",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "reporting_entity_destination_aliases": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "normalized_key",
+   "raw_value",
+   "scope",
+   "supplier_id",
+   "reporting_entity_id",
+   "confirmation_source",
+   "evidence",
+   "status",
+   "confirmed_by_account_id",
+   "confirmed_at",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "reporting_groups": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "code",
+   "name",
+   "description",
+   "status",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "requirement_assessments": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "fit_assessment_id",
+   "requirement_snapshot_item_id",
+   "stage",
+   "system_status",
+   "effective_status",
+   "confidence",
+   "notes",
+   "origin",
+   "override_reason",
+   "overridden_at",
+   "display_order",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "requirement_set_snapshots": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "requirement_set_id",
+   "version",
+   "restaurant_id",
+   "source_template_id",
+   "name",
+   "description",
+   "location_label",
+   "target_role",
+   "was_active",
+   "created_at"
+  ]
+ },
+ "requirement_sets": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "source_template_id",
+   "name",
+   "description",
+   "location_label",
+   "target_role",
+   "version",
+   "is_active",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "requirement_snapshot_items": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "snapshot_id",
+   "source_requirement_id",
+   "name",
+   "description",
+   "category",
+   "criticality",
+   "trainability",
+   "assessment_stages",
+   "evidence_positive",
+   "evidence_contrary",
+   "evidence_insufficient",
+   "guidance_notes",
+   "display_order",
+   "was_active"
+  ]
+ },
+ "requirement_template_items": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "template_id",
+   "name",
+   "description",
+   "category",
+   "criticality",
+   "trainability",
+   "assessment_stages",
+   "evidence_positive",
+   "evidence_contrary",
+   "evidence_insufficient",
+   "guidance_notes",
+   "display_order",
+   "is_active"
+  ]
+ },
+ "requirement_templates": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "name",
+   "description",
+   "intended_role",
+   "is_active",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "requirements": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "requirement_set_id",
+   "name",
+   "description",
+   "category",
+   "criticality",
+   "trainability",
+   "assessment_stages",
+   "evidence_positive",
+   "evidence_contrary",
+   "evidence_insufficient",
+   "guidance_notes",
+   "display_order",
+   "is_active",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "restaurant_locations": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "location_id",
+   "valid_from",
+   "valid_to",
+   "is_primary"
+  ]
+ },
+ "restaurant_profile_reconciliation_issues": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "bootstrap_run_id",
+   "restaurant_id",
+   "issue_type",
+   "severity",
+   "employee_id",
+   "source_role_id",
+   "restaurant_role_id",
+   "mapping_id",
+   "details",
+   "status",
+   "detected_at"
+  ]
+ },
+ "restaurant_profile_source_controls": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "source_system_id",
+   "managed_from",
+   "status",
+   "snapshot_note",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "restaurant_roles": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "name",
+   "code",
+   "description",
+   "active"
+  ]
+ },
+ "restaurants": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "name",
+   "legal_name",
+   "status",
+   "default_currency",
+   "default_timezone",
+   "created_at",
+   "updated_at",
+   "legal_entity_id"
+  ]
+ },
+ "review_priority_policies": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "name",
+   "is_active",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "review_priority_policy_rules": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "policy_id",
+   "signal_definition_id",
+   "observed_status",
+   "contribution",
+   "is_active"
+  ]
+ },
+ "rfone_account_domain_access": {
+  "rows": 8,
+  "sha": "74294b7644127b57",
+  "cols": [
+   "id",
+   "account_id",
+   "domain_code",
+   "role_code",
+   "enabled",
+   "created_at",
+   "updated_at",
+   "scope"
+  ]
+ },
+ "rfone_account_domain_item_access": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "account_id",
+   "domain_code",
+   "item_code",
+   "created_at"
+  ]
+ },
+ "rfone_account_verification_codes": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "account_id",
+   "purpose",
+   "target_email",
+   "code_hmac",
+   "attempts_used",
+   "request_ip",
+   "expires_at",
+   "consumed_at",
+   "invalidated_at",
+   "created_at"
+  ]
+ },
+ "rfone_accounts": {
+  "rows": 1,
+  "sha": "fcf785ffa7ba5172",
+  "cols": [
+   "id",
+   "username",
+   "display_name",
+   "password_hash",
+   "status",
+   "is_admin",
+   "created_at",
+   "updated_at",
+   "email",
+   "email_verified_at",
+   "session_version"
+  ]
+ },
+ "rfone_training_identity_links": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "rfone_account_id",
+   "training_account_id",
+   "created_at"
+  ]
+ },
+ "selection_authority_levels": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "level_key",
+   "level_order",
+   "label",
+   "assigned_holders",
+   "is_active",
+   "created_at"
+  ]
+ },
+ "selection_case_memories": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "person_id",
+   "version",
+   "is_current",
+   "previous_case_memory_id",
+   "reopening_event_reference",
+   "closed_at",
+   "outcome_decision_id",
+   "lifecycle_state_at_closure",
+   "essential_facts",
+   "selection_signals_summary",
+   "final_stage_snapshot_id",
+   "stage_snapshot_ids",
+   "materially_impactful_pattern_versions",
+   "materially_impactful_rules",
+   "rf_one_final_judgment",
+   "selezionatore_final_decision",
+   "skill_findings",
+   "training_burden_estimate",
+   "trainable_gaps",
+   "selection_effort_id",
+   "notes_reference",
+   "learning_trace_reference",
+   "evidence_reference",
+   "created_at"
+  ]
+ },
+ "selection_downstream_outcome_feedback": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "case_memory_id",
+   "source_domain",
+   "source_record_reference",
+   "feedback_type",
+   "observed_fact",
+   "evidence_reference",
+   "classification",
+   "provenance",
+   "created_at"
+  ]
+ },
+ "selection_efforts": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "stages_traversed_count",
+   "repeated_stages_count",
+   "interviewer_time_minutes",
+   "tests_administered_count",
+   "followups_count",
+   "preparation_notes",
+   "interactions_count",
+   "point_of_exit",
+   "final_outcome",
+   "effort_elements",
+   "computed_at"
+  ]
+ },
+ "selection_governance_requirements": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "action_type",
+   "required_authority_level_id",
+   "requires_higher_approval",
+   "is_active",
+   "created_at"
+  ]
+ },
+ "selection_learning_traces": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "person_id",
+   "stage",
+   "event_type",
+   "event_data",
+   "source_reference",
+   "explanation",
+   "provenance",
+   "created_at"
+  ]
+ },
+ "selection_outcome_decisions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "outcome_definition_snapshot_id",
+   "reason",
+   "is_reopen_event",
+   "performed_by",
+   "created_at",
+   "performed_by_identity_id"
+  ]
+ },
+ "selection_outcome_definition_snapshots": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "definition_id",
+   "version",
+   "restaurant_id",
+   "name",
+   "description",
+   "lifecycle_effect",
+   "is_reopenable",
+   "requires_note",
+   "requires_reason",
+   "reason_choices",
+   "target_queue_label",
+   "creates_reminder",
+   "reminder_days",
+   "future_contact_policy",
+   "creates_candidate_flag",
+   "candidate_flag_name",
+   "candidate_flag_scope",
+   "candidate_flag_operational_effect",
+   "candidate_flag_default_reason",
+   "candidate_flag_expires_after_days",
+   "was_active",
+   "created_at",
+   "target_queue_id",
+   "authority_label",
+   "driven_by"
+  ]
+ },
+ "selection_outcome_definitions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "name",
+   "description",
+   "lifecycle_effect",
+   "is_reopenable",
+   "requires_note",
+   "requires_reason",
+   "reason_choices",
+   "target_queue_label",
+   "creates_reminder",
+   "reminder_days",
+   "future_contact_policy",
+   "creates_candidate_flag",
+   "candidate_flag_name",
+   "candidate_flag_scope",
+   "candidate_flag_operational_effect",
+   "candidate_flag_default_reason",
+   "candidate_flag_expires_after_days",
+   "is_active",
+   "version",
+   "display_order",
+   "created_at",
+   "updated_at",
+   "target_queue_id",
+   "authority_label",
+   "driven_by"
+  ]
+ },
+ "selection_pattern_case_comparisons": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "pattern_definition_id",
+   "pattern_definition_snapshot_id",
+   "application_id",
+   "classification",
+   "dimensions_compared",
+   "supporting_evidence_references",
+   "explanation",
+   "internal_numeric_value",
+   "provenance",
+   "created_at"
+  ]
+ },
+ "selection_pattern_definition_snapshots": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "definition_id",
+   "version",
+   "restaurant_id",
+   "name",
+   "description",
+   "scope",
+   "applicability_context",
+   "status",
+   "maturity",
+   "persistence_type",
+   "signature",
+   "creation_provenance",
+   "was_active",
+   "created_at"
+  ]
+ },
+ "selection_pattern_definitions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "name",
+   "description",
+   "scope",
+   "applicability_context",
+   "status",
+   "maturity",
+   "persistence_type",
+   "signature",
+   "creation_provenance",
+   "created_by",
+   "required_authority_level_id",
+   "is_active",
+   "version",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "selection_pattern_examples": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "pattern_definition_id",
+   "definition_version_at_capture",
+   "example_type",
+   "case_reference",
+   "description",
+   "reason",
+   "provenance",
+   "created_at"
+  ]
+ },
+ "selection_pattern_observations": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "pattern_definition_id",
+   "pattern_definition_snapshot_id",
+   "application_id",
+   "person_id",
+   "stage",
+   "stage_occurrence_index",
+   "observation_status",
+   "superseded_by_id",
+   "role",
+   "relevance",
+   "explanation",
+   "evidence_references",
+   "rule_references",
+   "provenance",
+   "created_at"
+  ]
+ },
+ "selection_queues": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "name",
+   "description",
+   "is_active",
+   "display_order",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "selection_reminders": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "outcome_decision_id",
+   "due_date",
+   "note_text",
+   "is_resolved",
+   "created_at"
+  ]
+ },
+ "selection_rule_change_impacts": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "rule_change_id",
+   "application_id",
+   "recalculation_status",
+   "review_status",
+   "recalculated_at",
+   "notes",
+   "created_at"
+  ]
+ },
+ "selection_rule_changes": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "session_id",
+   "previous_version_id",
+   "new_version_id",
+   "rules_changed_summary",
+   "reason",
+   "scope",
+   "performed_by",
+   "created_at",
+   "performed_by_identity_id"
+  ]
+ },
+ "selection_rule_set_versions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "session_id",
+   "version",
+   "requirement_set_id",
+   "requirement_set_snapshot_id",
+   "primary_screening_criterion_snapshot_ids",
+   "signal_definition_ids",
+   "review_priority_policy_id",
+   "outcome_definition_ids",
+   "phone_interview_question_definition_ids",
+   "in_person_interview_section_definition_ids",
+   "change_summary",
+   "created_from_version_id",
+   "created_by",
+   "confirmed_by",
+   "confirmed_at",
+   "confirmation_note",
+   "created_at",
+   "confirmed_by_identity_id"
+  ]
+ },
+ "selection_session_assignments": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "session_id",
+   "selezionatore_name",
+   "authority_level_id",
+   "is_active",
+   "assigned_at",
+   "deactivated_at",
+   "acting_identity_id"
+  ]
+ },
+ "selection_sessions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "name",
+   "restaurant_id",
+   "location_label",
+   "target_role",
+   "start_date",
+   "planned_end_date",
+   "actual_close_date",
+   "status",
+   "created_by",
+   "notes",
+   "created_at",
+   "updated_at",
+   "current_rule_set_version_id"
+  ]
+ },
+ "selection_stage_pattern_deltas": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "stage_snapshot_id",
+   "pattern_definition_id",
+   "delta_type",
+   "explanation",
+   "created_at"
+  ]
+ },
+ "selection_stage_pattern_snapshots": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "stage",
+   "stage_occurrence_index",
+   "observation_ids",
+   "pattern_definition_versions",
+   "rule_versions",
+   "evidence_references",
+   "resulting_priority_interpretation",
+   "explanation",
+   "rf_one_judgment",
+   "selector_action",
+   "divergence_occurred",
+   "divergence_category",
+   "note_required",
+   "selector_note",
+   "previous_snapshot_id",
+   "created_at"
+  ]
+ },
+ "shifts": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "employee_id",
+   "source_system_id",
+   "source_shift_id",
+   "clock_in",
+   "clock_out",
+   "override_in_employee_id",
+   "override_in_time",
+   "override_out_employee_id",
+   "override_out_time",
+   "server_banking",
+   "source_created_at",
+   "source_modified_at",
+   "location_id"
+  ]
+ },
+ "signal_definitions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "name",
+   "description",
+   "signal_family",
+   "signal_subtype",
+   "assessment_stages",
+   "evidence_sources_allowed",
+   "detection_guidance",
+   "evidence_positive",
+   "evidence_contrary",
+   "evidence_insufficient",
+   "is_active",
+   "version",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "signal_evidence_items": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "signal_observation_id",
+   "source_type",
+   "source_stage",
+   "source_reference",
+   "evidence_text",
+   "evidence_classification",
+   "evidence_relationship",
+   "confidence",
+   "explanation",
+   "is_system_generated",
+   "created_at"
+  ]
+ },
+ "signal_observations": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "signal_definition_id",
+   "status",
+   "confidence",
+   "rationale",
+   "detected_pattern",
+   "origin",
+   "override_reason",
+   "overridden_at",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "source_records": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "ingestion_run_id",
+   "source_system_id",
+   "entity_type",
+   "source_id",
+   "retrieved_at",
+   "payload_hash",
+   "raw_path",
+   "raw_json"
+  ]
+ },
+ "source_role_mappings": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "source_system_id",
+   "source_role_id",
+   "restaurant_role_id",
+   "valid_from",
+   "valid_to",
+   "mapping_status",
+   "mapping_source",
+   "notes",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "source_roles": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "location_id",
+   "source_system_id",
+   "source_role_id",
+   "name",
+   "source_system_role"
+  ]
+ },
+ "source_systems": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "code",
+   "name",
+   "active"
+  ]
+ },
+ "supplier_aliases": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "supplier_id",
+   "alias_name",
+   "source",
+   "created_at"
+  ]
+ },
+ "supplier_credit_references": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "expected_supplier_credit_id",
+   "purchase_document_id",
+   "purchase_line_id",
+   "applied_amount_minor",
+   "note",
+   "created_at"
+  ]
+ },
+ "supplier_item_category_learnings": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "supplier_id",
+   "identity_kind",
+   "identity_value",
+   "supplier_product_id",
+   "transaction_reason_id",
+   "confirmation_count",
+   "status",
+   "contradiction_note",
+   "first_confirmed_at",
+   "last_confirmed_at",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "supplier_products": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "supplier_id",
+   "supplier_code",
+   "supplier_name",
+   "packaging",
+   "economic_classification",
+   "ingredient_id",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "suppliers": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "name",
+   "status",
+   "acquisition_methods",
+   "notes",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "table_service_employees": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "table_service_id",
+   "employee_id"
+  ]
+ },
+ "table_service_physical_tables": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "table_service_id",
+   "physical_table_id"
+  ]
+ },
+ "table_services": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "location_id",
+   "opened_at",
+   "closed_at",
+   "declared_guest_count",
+   "derived_guest_count",
+   "declared_guest_count_source",
+   "reconstruction_status",
+   "reconstruction_confidence",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "tax_rates": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "location_id",
+   "source_system_id",
+   "source_tax_rate_id",
+   "name",
+   "rate",
+   "active"
+  ]
+ },
+ "tenders": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "location_id",
+   "source_system_id",
+   "source_tender_id",
+   "label",
+   "source_type",
+   "active"
+  ]
+ },
+ "tip_distribution_calculation_runs": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "period_start",
+   "period_end",
+   "started_at",
+   "completed_at",
+   "status",
+   "notes",
+   "first_business_date",
+   "last_business_date",
+   "timezone_name",
+   "operating_day_cutoff_time",
+   "rule_version_ids",
+   "voluntary_total_minor",
+   "gratuity_total_minor",
+   "service_owner_entitlements_minor",
+   "other_recipient_entitlements_minor",
+   "distributed_minor",
+   "control_difference_minor",
+   "state",
+   "validation_mode",
+   "validated_at",
+   "validated_by_account_id",
+   "finalized_at",
+   "finalized_by_account_id",
+   "finalized_automatically"
+  ]
+ },
+ "tip_distribution_rule_versions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "rule_id",
+   "version_number",
+   "source_role_id",
+   "recipient_role_id",
+   "calculation_base",
+   "rate",
+   "effective_from",
+   "effective_to",
+   "created_by",
+   "created_at",
+   "eligibility_mode",
+   "distribution_method",
+   "no_eligible_recipient_behavior",
+   "transaction_scope",
+   "source_semantics",
+   "status"
+  ]
+ },
+ "tip_distribution_rules": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "is_active",
+   "created_at"
+  ]
+ },
+ "tip_entitlements": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "calculation_run_id",
+   "restaurant_id",
+   "business_date",
+   "employee_id",
+   "gross_amount_minor",
+   "outbound_amount_minor",
+   "inbound_amount_minor",
+   "payable_amount_minor",
+   "tip_payment_instruction_id",
+   "created_at",
+   "voluntary_amount_minor",
+   "gratuity_amount_minor",
+   "result_type"
+  ]
+ },
+ "tip_payment_cycles": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "period_start",
+   "period_end",
+   "status",
+   "triggered_by",
+   "started_at",
+   "approved_at",
+   "approved_by_identity_id",
+   "notes"
+  ]
+ },
+ "tip_payment_instructions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "payment_cycle_id",
+   "employee_id",
+   "amount_minor",
+   "idempotency_key",
+   "status",
+   "provider",
+   "provider_account_id",
+   "provider_recipient_id",
+   "provider_transaction_id",
+   "provider_status",
+   "posted_at",
+   "failure_class",
+   "reason_for_failure",
+   "priority",
+   "attention_item_id",
+   "submitted_at",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "tip_policies": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "location_id",
+   "name",
+   "code",
+   "status",
+   "valid_from",
+   "valid_to",
+   "source_note",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "tip_policy_components": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "tip_policy_id",
+   "sequence",
+   "recipient_basis",
+   "restaurant_role_id",
+   "share_percentage",
+   "split_method",
+   "no_eligible_behavior",
+   "active"
+  ]
+ },
+ "tips_calculation_schedule_configs": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "mode",
+   "interval_days",
+   "execution_time",
+   "anchor_date",
+   "valid_from",
+   "valid_to",
+   "created_by",
+   "created_at",
+   "review_mode"
+  ]
+ },
+ "tips_payment_schedule_configs": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "mode",
+   "interval_days",
+   "execution_time",
+   "anchor_date",
+   "mercury_source_account_id",
+   "valid_from",
+   "valid_to",
+   "created_by",
+   "created_at",
+   "auto_approval_mode",
+   "connector_code"
+  ]
+ },
+ "tips_validation_mode_configs": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "validation_mode",
+   "updated_by_account_id",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "trainable_gaps": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "application_id",
+   "candidate_id",
+   "fit_assessment_id",
+   "requirement_assessment_id",
+   "missing_capability",
+   "trainability",
+   "source_fit_status",
+   "importance",
+   "rf_one_initial_level",
+   "selezionatore_initial_level",
+   "effective_initial_level",
+   "confidence",
+   "origin",
+   "override_reason",
+   "overridden_at",
+   "overridden_by",
+   "status",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "training_accounts": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "acting_identity_id",
+   "username",
+   "role",
+   "password_hash",
+   "failed_login_attempts",
+   "locked_until",
+   "created_by_account_id",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "training_assignments": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "need_id",
+   "pill_id",
+   "assigned_by_account_id",
+   "assigned_at",
+   "first_opened_at"
+  ]
+ },
+ "training_attempts": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "assignment_id",
+   "student_account_id",
+   "pill_id",
+   "pill_content_version",
+   "quiz_version",
+   "questions_json",
+   "answers_json",
+   "points_earned",
+   "points_possible",
+   "submission_token",
+   "submitted_at"
+  ]
+ },
+ "training_needs": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "student_account_id",
+   "text",
+   "origin",
+   "created_by_account_id",
+   "created_at"
+  ]
+ },
+ "training_overall_attempts": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "student_account_id",
+   "pills_json",
+   "questions_json",
+   "answers_json",
+   "points_earned",
+   "points_possible",
+   "submission_token",
+   "submitted_at"
+  ]
+ },
+ "training_pills": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "slug",
+   "title",
+   "learning_objectives",
+   "content_version",
+   "created_at",
+   "updated_at"
+  ]
+ },
+ "training_questions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "pill_id",
+   "kind",
+   "category",
+   "position",
+   "version",
+   "prompt",
+   "options_json",
+   "correct_index",
+   "explanation"
+  ]
+ },
+ "workweek_definitions": {
+  "rows": 0,
+  "sha": "e3b0c44298fc1c14",
+  "cols": [
+   "id",
+   "restaurant_id",
+   "start_weekday",
+   "valid_from",
+   "valid_to",
+   "notes",
+   "created_at"
+  ]
+ },
+ "_alembic": [
+  [
+   "d2b6f8a4c0e7"
+  ]
+ ]
+}

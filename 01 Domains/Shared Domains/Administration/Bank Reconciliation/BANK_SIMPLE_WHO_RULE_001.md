@@ -2,6 +2,7 @@
 
 **Task:** BANK_SIMPLE_WHO_RULE_001
 **Status:** Implemented on `feature/bank-simple-who-rules` — service, shared modal, Classification page, Review integration, tests. Not committed, not deployed.
+**Superseded (2026-10-13, BANK_RULES_RESET_001 / BANK_OLD_RULES_REMOVAL_001):** the WHO Rule (modal, Apply, Classification page, `who_rules.apply_who_rule`) was removed; only the read-only WHO lookup used by the "new WHO" dialog remains (`who_rules.who_options`). Kept as the historical record of what was built; it no longer describes current behaviour.
 **Module:** Domain / Shared Domains / Administration / Bank Reconciliation
 **Schema:** no migration. Uses `BankRecognitionRule`, `BankOccurrenceReasonAssociation`, `BankOccurrenceAlias`, `BankWhoRecognition`, `BankTransactionExplanation` as they are.
 

@@ -364,9 +364,10 @@ can execute is previewed and applied on the whole scope with no size limit.
 
 A later application of the same rule may replace its own earlier output; repeating an application changes nothing.
 
-**Per il futuro** — the import runs every ACTIVE rule enabled for the future (code-executable only) right after the
-General Rules and before the WHY rules and the Standards; rules that match one new movement with incompatible values
-are all logged as conflicts and none is applied. A rule the code cannot execute cannot be enabled for the future.
+**Per il futuro** — the import runs every ACTIVE rule enabled for the future (code-executable only); since
+BANK_RULES_RESET_001 it is the only automatic classification at import (the General Rules, WHY rules and Standards it
+once ran between were removed). Rules that match one new movement with incompatible values are all logged as
+conflicts and none is applied. A rule the code cannot execute cannot be enabled for the future.
 
 **Log.** Each application (`bank_ai_rule_applications`: rule, version, mode EXISTING_ALL / SELECTED / IMPORT,
 preview, import batch, counts, WHO created) and each movement it matched (`bank_ai_rule_application_items`: outcome,

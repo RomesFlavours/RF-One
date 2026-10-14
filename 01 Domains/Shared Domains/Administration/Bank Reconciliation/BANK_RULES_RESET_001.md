@@ -17,8 +17,9 @@ Product Owner decision, 2026-10-12. Classification in Bank is now done only by *
 At import, the only automatic classification left is the operative AI rules enabled "Per il futuro". The service
 modules (`who_rules`, `general_rules`, `why_rules`, `recognition`, `reconciliation_standards`,
 `pattern_discovery`…) remain as libraries — the AI engine and the manual reconciliation use parts of them — but no
-page, route or import step executes their rules. Kept by decision: a manual confirmation still records a learned
-recognition rule (Configuration > WHO shows them); such rules are no longer applied anywhere.
+page, route or import step executes their rules. *Correction (2026-10-13):* this said that a manual confirmation still
+recorded a learned recognition rule; it did not — every product path confirmed with `learn_description=False`. The
+libraries themselves were then removed by BANK_OLD_RULES_REMOVAL_001.
 
 ## Reset (data, one transaction)
 

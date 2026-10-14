@@ -2,6 +2,7 @@
 
 **Task:** BANK_RECONCILIATION_001
 **Status:** Implemented on `feature/bank-new-reconciliation` — service, page, tests. No schema change. Not deployed.
+**Superseded (2026-10-13, BANK_RULES_RESET_001 / BANK_OLD_RULES_REMOVAL_001):** partly: Set as Standard and the AUTOMATIC status it led to were removed with the Reconciliation Standards (only NEEDS REVIEW and CONFIRMED remain); Confirm, Save and Reopen remain as described. Kept as the historical record of what was built; it no longer describes current behaviour.
 **Module:** Domain / Shared Domains / Administration / Bank Reconciliation
 **UI specification:** the approved disposable prototype (BANK_RECONCILIATION_PROTOTYPE_001), reviewed by the Product Owner and deliberately not part of the product or the repository; the real page is `/bank/reconciliation`
 **Builds on:** `BANK_CONFIGURATION_001.md`, `BANK_ECONOMIC_ALLOCATION_FOUNDATION_001.md` (this folder)
