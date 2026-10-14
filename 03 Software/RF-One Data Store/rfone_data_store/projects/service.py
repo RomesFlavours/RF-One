@@ -12,7 +12,9 @@
   never a refusal;
 * a Task has at most one Responsible, from its own Project's list; a name is
   unique within a Project ignoring case and leading/trailing spaces, and
-  cannot be deleted while a Task has it.
+  cannot be deleted while a Task has it;
+* ↑ / ↓ move a Task among its Chapter's Tasks, a subtask among its parent's
+  children; only the order changes, children follow their parent.
 
 Every refusal is a `ProjectValidationError` whose message is shown to the
 person as it is (English, like the pages).
@@ -547,6 +549,43 @@ def delete_task(session: Session, project_id: int, task_id: int) -> None:
     )))
     session.delete(task)
     session.flush()
+
+
+MOVE_DIRECTIONS = ("up", "down")
+
+
+def move_task(session: Session, project_id: int, task_id: int, direction: str) -> m.ProjectTask:
+    """One place up or down among its siblings: the Tasks of the same Chapter
+    for a Task, the children of the same parent for a subtask. Only the order
+    (`sort_order`) changes — never Chapter, parent, dates, Responsible or
+    prerequisites. A parent's children are listed under it, so they follow it.
+    The first sibling cannot go up, the last cannot go down."""
+    if direction not in MOVE_DIRECTIONS:
+        raise ProjectValidationError("Invalid move.")
+    task = _task_in(session, project_id, task_id)
+    if task.parent_task_id is None:
+        same_group = (m.ProjectTask.chapter_id == task.chapter_id) & m.ProjectTask.parent_task_id.is_(None)
+    else:
+        same_group = m.ProjectTask.parent_task_id == task.parent_task_id
+    siblings = list(session.scalars(
+        select(m.ProjectTask).where(same_group).order_by(m.ProjectTask.sort_order, m.ProjectTask.id)))
+    at = siblings.index(task)
+    other = at - 1 if direction == "up" else at + 1
+    if not 0 <= other < len(siblings):
+        raise ProjectValidationError(
+            "It is already the first of its group." if direction == "up" else "It is already the last of its group.")
+    # The group's own values, made strictly increasing (rows created before
+    # may share one), are handed out again in the new order: the display
+    # order of every other sibling is unchanged.
+    slots = [siblings[0].sort_order]
+    for sibling in siblings[1:]:
+        slots.append(max(sibling.sort_order, slots[-1] + 1))
+    siblings[at], siblings[other] = siblings[other], siblings[at]
+    for sibling, slot in zip(siblings, slots):
+        if sibling.sort_order != slot:
+            sibling.sort_order = slot
+    session.flush()
+    return task
 
 
 # ---------------------------------------------------------------- the plan as read

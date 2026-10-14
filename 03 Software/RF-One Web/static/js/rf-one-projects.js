@@ -6,7 +6,8 @@
    with the values entered and the reason (`#pm-dialog-state`). The rules
    themselves are checked on the server; here a task is only kept from
    choosing itself as parent or prerequisite, and a task with children from
-   becoming a child (one level).
+   becoming a child (one level). The ↑ / ↓ buttons are plain forms; here they
+   only get the waiting state and the guard against repeated clicks.
 
    Gantt: collapse / expand of Chapters and parent Tasks — a screen-only
    view, the print always shows every row — and the Print button. */
@@ -351,6 +352,43 @@
     }
   }
 
+  // ------------------------------------------------------------------ Plan: ↑ / ↓
+
+  // One move at a time: from the first submit until the page reloads every
+  // arrow is disabled and the clicked one shows that it is saving. The
+  // direction travels in a hidden field, so disabling the button does not
+  // change what is sent. After the reload the shared row return
+  // (`rf-one-row-return.js`) brings the moved row back where it was on screen.
+  function initMoves() {
+    var table = one(".pm-tree");
+    if (!table) { return; }
+    var moving = false;
+
+    function lock(button) {
+      table.classList.add("pm-moving");
+      table.setAttribute("aria-busy", "true");
+      all(".pm-move-button", table).forEach(function (b) { b.disabled = true; });
+      button.classList.add("pm-move-saving");
+      button.textContent = "…";
+      button.title = "Saving…";
+    }
+
+    table.addEventListener("submit", function (event) {
+      var form = event.target;
+      if (!form.hasAttribute("data-pm-move")) { return; }
+      if (moving) { event.preventDefault(); return; }
+      moving = true;
+      // Disabled only after the submission has collected its fields.
+      var button = form.querySelector(".pm-move-button");
+      setTimeout(function () { lock(button); }, 0);
+    });
+
+    // Back to this page from the browser's history without a reload: show the saved order.
+    window.addEventListener("pageshow", function (event) {
+      if (event.persisted && moving) { window.location.reload(); }
+    });
+  }
+
   // ------------------------------------------------------------------ Gantt
 
   function initGantt() {
@@ -398,5 +436,6 @@
   initProjectDialog();
   initResponsiblesDialog();
   initPlan();
+  initMoves();
   initGantt();
 })();

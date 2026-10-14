@@ -4,7 +4,7 @@
 {% block page_title %}{{ plan.project_name }} · Project Management · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=7">
 {{ breadcrumb([('RF-One', url_for('home')), ('Project Management', url_for('projects_list')), (plan.project_name, None)]) }}
 
 <h1 class="pm-project-title">{{ plan.project_name }}</h1>
@@ -23,10 +23,24 @@ Completion and actual days are entered manually; nothing is rescheduled automati
   on or before the planned end date of a prerequisite. No date has been moved.</p>
 {% endif %}
 
-{% macro task_row(task, chapter) %}
+{# ↑ / ↓ at the far right of Actions: one place among the same Chapter's Tasks,
+   or among the same parent's subtasks. Only the order changes. #}
+{% macro move_buttons(task, is_first, is_last) %}
+  <span class="pm-move">
+    {% for direction, arrow, tip, edge in [('up', '↑', 'Move up', is_first), ('down', '↓', 'Move down', is_last)] %}
+      <form method="post" action="{{ url_for('projects_task_move', project_id=plan.project_id, task_id=task.id) }}" class="pm-inline-form" data-pm-move>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="direction" value="{{ direction }}">
+        <button type="submit" class="pm-action pm-move-button" title="{{ tip }}" aria-label="{{ tip }}"{{ ' disabled' if edge }}>{{ arrow }}</button>
+      </form>
+    {% endfor %}
+  </span>
+{% endmacro %}
+
+{% macro task_row(task, chapter, is_first, is_last) %}
   <tr class="pm-task-row{{ ' pm-child-row' if task.is_child }}" data-rr-key="task:{{ task.id }}">
     <td class="pm-title-cell">
-      <span class="pm-code">{{ task.code }}</span> <span class="pm-title">{{ task.title }}</span>
+      <span class="{{ 'pm-name pm-name-parent' if task.children else 'pm-name' }}"><span class="pm-code">{{ task.code }}</span> <span class="pm-title">{{ task.title }}</span></span>
       {% if task.description %}<div class="pm-description">{{ task.description }}</div>{% endif %}
       {% for warning in task.warnings %}<div class="pm-warn-text">⚠ {{ warning }}</div>{% endfor %}
     </td>
@@ -51,6 +65,7 @@ Completion and actual days are entered manually; nothing is rescheduled automati
           <button type="submit" class="pm-action pm-action-danger">Delete</button>
         </form>
       {% endif %}
+      {{ move_buttons(task, is_first, is_last) }}
     </td>
   </tr>
 {% endmacro %}
@@ -94,8 +109,8 @@ Completion and actual days are entered manually; nothing is rescheduled automati
             <tr class="pm-empty-row" data-rr-key="chapter-empty:{{ chapter.id }}"><td colspan="9" class="muted">No tasks in this chapter.</td></tr>
           {% endif %}
           {% for task in chapter.tasks %}
-            {{ task_row(task, chapter) }}
-            {% for child in task.children %}{{ task_row(child, chapter) }}{% endfor %}
+            {{ task_row(task, chapter, loop.first, loop.last) }}
+            {% for child in task.children %}{{ task_row(child, chapter, loop.first, loop.last) }}{% endfor %}
           {% endfor %}
         {% endfor %}
       </tbody>
@@ -234,5 +249,5 @@ Completion and actual days are entered manually; nothing is rescheduled automati
 
 {% if dialog %}<script type="application/json" id="pm-dialog-state">{{ dialog|tojson }}</script>{% endif %}
 <script defer src="{{ url_for('static', filename='js/rf-one-row-return.js') }}?v=1"></script>
-<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=4"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=5"></script>
 {% endblock %}

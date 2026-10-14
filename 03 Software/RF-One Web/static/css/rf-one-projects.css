@@ -12,6 +12,9 @@
 
 .num { text-align: right; white-space: nowrap; }
 .pm-code { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: .2rem; }
+/* A Task with at least one subtask: number and title in bold, in the Plan, the
+   Gantt and their print. The description and the notes below stay normal. */
+.pm-name-parent, .pm-name-parent .pm-code { font-weight: 700; }
 .pm-warn-text { color: #8a5a10; font-size: .78rem; }
 .pm-warning-summary {
   background: #fdf3e2; border: 1px solid #ecd6a5; color: #8a5a10; border-radius: 6px;
@@ -54,6 +57,16 @@
 .pm-action-danger { background: transparent; color: var(--bad); border: 1px solid #e3b9b2; }
 .pm-action-danger:hover { background: #f8e7e4; color: var(--bad); }
 .pm-inline-form { display: inline; }
+/* ↑ / ↓ always last in Actions, so they line up on every row. */
+.pm-move { display: inline-flex; gap: .15rem; margin-left: .35rem; vertical-align: middle; }
+.pm-move .pm-move-button { margin-left: 0; padding: .15rem .4rem; min-width: 1.6rem; line-height: 1.1; }
+.pm-move-button:disabled, .pm-move-button:disabled:hover {
+  background: transparent; color: var(--olive-300); border: 1px solid var(--olive-150); cursor: default;
+}
+/* While a move is being saved: every arrow is locked and the page shows it is waiting. */
+.pm-tree.pm-moving { cursor: progress; }
+.pm-tree.pm-moving .pm-move-button { pointer-events: none; }
+.pm-move-button.pm-move-saving:disabled { color: var(--olive-900); background: var(--olive-300); cursor: progress; }
 .pm-icon-action { padding: .15rem .4rem; line-height: 0; vertical-align: middle; }
 .pm-icon-action svg { display: inline-block; }
 .pm-resp-cell { font-size: .85rem; max-width: 12rem; }

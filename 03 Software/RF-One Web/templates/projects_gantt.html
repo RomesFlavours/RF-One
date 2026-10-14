@@ -4,7 +4,7 @@
 {% block page_title %}Gantt · {{ plan.project_name }} · Project Management · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=7">
 {{ breadcrumb([('RF-One', url_for('home')), ('Project Management', url_for('projects_list')),
                (plan.project_name, url_for('projects_plan', project_id=plan.project_id)), ('Gantt', None)]) }}
 
@@ -27,7 +27,7 @@
         <button type="button" class="pm-toggle" data-gantt-toggle="t{{ task.id }}" aria-expanded="true"
                 aria-label="Collapse or expand {{ task.code }}">▾</button>
       {% else %}<span class="pm-toggle-space"></span>{% endif %}
-      <span class="pm-code">{{ task.code }}</span> {{ task.title }}
+      <span class="{{ 'pm-name pm-name-parent' if task.children else 'pm-name' }}"><span class="pm-code">{{ task.code }}</span> {{ task.title }}</span>
       {% if task.predecessors %}
         <div class="pm-g-sub">after {% for p in task.predecessors %}{{ p.code }}{{ ', ' if not loop.last }}{% endfor %}</div>
       {% endif %}
@@ -137,5 +137,5 @@
   </div>
 {% endif %}
 
-<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=4"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=5"></script>
 {% endblock %}

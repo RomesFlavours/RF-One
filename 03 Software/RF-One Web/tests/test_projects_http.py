@@ -236,7 +236,8 @@ def main() -> int:
           "Ricerca immobile" in other and "Permessi" not in other and "Gantt — Secondo locale Orlando" in other)
     check("31. Gantt: Print button; commands hidden in print",
           "data-gantt-print" in g and 'class="btn-row no-print pm-gantt-commands"' in g)
-    css = web_app.app.test_client().get("/static/css/rf-one-projects.css").data.decode()
+    # Line endings depend on the checkout (CRLF on Windows): compare without them.
+    css = web_app.app.test_client().get("/static/css/rf-one-projects.css").data.decode().replace("\r\n", "\n")
     check("32. print CSS: landscape, collapsed rows only hidden on screen, colours kept, rows not split",
           "@page { size: landscape" in css and "@media screen {\n  .pm-gantt tr.pm-collapsed { display: none; }" in css
           and "print-color-adjust: exact" in css and "break-inside: avoid" in css)
@@ -322,6 +323,109 @@ def main() -> int:
         owner = s.get(m.ProjectResponsible, pulizie.responsible_id).project_id
     check("R14. typing another project's name creates this project's own entry, never links across projects",
           owner == p1 and pulizie.responsible_id != orlando)
+
+    # ------------------------------------------------------------ bold parents and ↑ / ↓
+    client.post("/projects", data={"csrf_token": token, "name": "Ordine"})
+    with SessionFactory() as s:
+        p3 = s.scalar(select(m.Project.id).where(m.Project.name == "Ordine"))
+    post(f"/projects/{p3}/chapters", title="Staff")
+    post(f"/projects/{p3}/chapters", title="Kitchen")
+    with SessionFactory() as s:
+        staff, kitchen = (s.scalar(select(m.ProjectChapter.id).where(m.ProjectChapter.title == t)) for t in ("Staff", "Kitchen"))
+    task(p3, "Hiring", staff, "2026-05-01", 3)
+    hiring = task_id("Hiring")
+    for title in ("Interviews", "Contracts", "Onboarding"):
+        task(p3, title, staff, "2026-05-02", 1, parent=str(hiring))
+    task(p3, "Uniforms", staff, "2026-05-01", 2, preds=[task_id("Contracts")])
+    task(p3, "Appliances", kitchen, "2026-05-01", 4)
+    task(p3, "Fridge", kitchen, "2026-05-02", 1, parent=str(task_id("Appliances")))
+    ids = {t: task_id(t) for t in ("Hiring", "Interviews", "Contracts", "Onboarding", "Uniforms", "Appliances", "Fridge")}
+
+    def rows(page: str) -> list[str]:
+        """Task titles in the order the page shows them, with their codes."""
+        return re.findall(r'<span class="pm-code">([\d.]+)</span> (?:<span class="pm-title">)?([^<]+)', page)
+
+    def actions_of(page: str, title: str) -> str:
+        row = re.search(r'data-rr-key="task:%d">.*?</tr>' % ids[title], page, re.S).group(0)
+        return row[row.index('class="pm-actions"'):]
+
+    plan3 = client.get(f"/projects/{p3}").data.decode()
+    check("B1. plan: number and title in bold for tasks with subtasks only, description outside the bold",
+          '<span class="pm-name pm-name-parent"><span class="pm-code">1.1</span> <span class="pm-title">Hiring</span></span>' in plan3
+          and '<span class="pm-name pm-name-parent"><span class="pm-code">2.1</span> <span class="pm-title">Appliances</span></span>' in plan3
+          and plan3.count("pm-name-parent") == 2
+          and '<span class="pm-name"><span class="pm-code">1.2</span> <span class="pm-title">Uniforms</span></span>' in plan3)
+    gantt3 = client.get(f"/projects/{p3}/gantt").data.decode()
+    check("B2. Gantt (and its print): the same tasks in bold",
+          '<span class="pm-name pm-name-parent"><span class="pm-code">1.1</span> Hiring</span>' in gantt3
+          and '<span class="pm-name pm-name-parent"><span class="pm-code">2.1</span> Appliances</span>' in gantt3
+          and gantt3.count("pm-name-parent") == 2)
+    css = web_app.app.test_client().get("/static/css/rf-one-projects.css").data.decode()
+    check("B3. the bold rule covers number and title", ".pm-name-parent, .pm-name-parent .pm-code { font-weight: 700; }" in css)
+
+    hiring_actions = actions_of(plan3, "Hiring")
+    check("M1. every task and subtask row ends its Actions with ↑ “Move up” and ↓ “Move down”",
+          all(actions_of(plan3, t).count('title="Move up"') == 1 and actions_of(plan3, t).count('title="Move down"') == 1
+              for t in ids)
+          and re.search(r'title="Move down"[^>]*>↓</button>\s*</form>\s*</span>\s*</td>', hiring_actions) is not None
+          and hiring_actions.index("Edit") < hiring_actions.index("Move up"))
+
+    def disabled(title: str, tip: str) -> bool:
+        return re.search(r'title="%s" aria-label="%s" disabled>' % (tip, tip), actions_of(plan3, title)) is not None
+
+    check("M2. ↑ disabled on the first and ↓ on the last of each group (chapter tasks, subtasks)",
+          disabled("Hiring", "Move up") and not disabled("Hiring", "Move down")
+          and disabled("Uniforms", "Move down") and not disabled("Uniforms", "Move up")
+          and disabled("Interviews", "Move up") and disabled("Onboarding", "Move down")
+          and not disabled("Contracts", "Move up") and not disabled("Contracts", "Move down")
+          and disabled("Appliances", "Move up") and disabled("Appliances", "Move down")
+          and disabled("Fridge", "Move up") and disabled("Fridge", "Move down"))
+
+    def move(title: str, direction: str, project=None):
+        return post(f"/projects/{project or p3}/tasks/{ids[title]}/move", direction=direction)
+
+    def fields():
+        with SessionFactory() as s:
+            out = {}
+            for t in s.scalars(select(m.ProjectTask).where(m.ProjectTask.id.in_(ids.values()))):
+                deps = sorted(s.scalars(select(m.ProjectTaskDependency.predecessor_task_id)
+                                        .where(m.ProjectTaskDependency.successor_task_id == t.id)))
+                out[t.id] = (t.chapter_id, t.parent_task_id, t.planned_start_date, t.planned_duration_days,
+                             t.percent_complete, t.responsible_id, deps)
+            return out
+
+    before = fields()
+    moved = move("Hiring", "down")
+    plan3 = client.get(f"/projects/{p3}").data.decode()  # a refresh: read back from the database
+    check("M3. a parent moves down with all its children; codes follow the new order",
+          moved.status_code == 302 and moved.headers["Location"].endswith(f"/projects/{p3}")
+          and rows(plan3)[:5] == [("1.1", "Uniforms"), ("1.2", "Hiring"), ("1.2.1", "Interviews"),
+                                  ("1.2.2", "Contracts"), ("1.2.3", "Onboarding")])
+    check("M4. Gantt and print show the same order",
+          rows(client.get(f"/projects/{p3}/gantt").data.decode())[:5] == rows(plan3)[:5])
+    move("Onboarding", "up")
+    plan3 = client.get(f"/projects/{p3}").data.decode()
+    check("M5. a subtask moves among its parent's children only",
+          rows(plan3)[:5] == [("1.1", "Uniforms"), ("1.2", "Hiring"), ("1.2.1", "Interviews"),
+                              ("1.2.2", "Onboarding"), ("1.2.3", "Contracts")])
+    check("M6. a prerequisite keeps its task and shows its new code",
+          re.search(r'<span class="pm-pred-chip[^"]*" title="Contracts[^"]*">1\.2\.3</span>', plan3) is not None)
+    edge = client.post(f"/projects/{p3}/tasks/{ids['Uniforms']}/move", data={"csrf_token": token, "direction": "up"},
+                       follow_redirects=True)
+    check("M7. moving past the edge of a group is refused with a message; nothing changes",
+          "already the first of its group" in edge.data.decode() and rows(edge.data.decode())[:5] == rows(plan3)[:5]
+          and move("Fridge", "down").status_code == 302 and rows(client.get(f"/projects/{p3}").data.decode()) == rows(plan3))
+    check("M8. only the order changed: ids, chapter, parent, dates, percentage, responsible, prerequisites kept",
+          fields() == before)
+    check("M9. CSRF required; another project's task answers 404; without PROJECTS 403",
+          client.post(f"/projects/{p3}/tasks/{ids['Hiring']}/move", data={"direction": "up"}).status_code == 400
+          and move("Hiring", "up", project=p1).status_code == 404
+          and outsider.post(f"/projects/{p3}/tasks/{ids['Hiring']}/move",
+                            data={"csrf_token": csrf_of(outsider.get("/").data), "direction": "up"}).status_code == 403
+          and rows(client.get(f"/projects/{p3}").data.decode()) == rows(plan3))
+    check("M10. the waiting state and the guard against repeated clicks are on the page",
+          "data-pm-move" in plan3 and "rf-one-row-return.js" in plan3
+          and "pm-moving" in web_app.app.test_client().get("/static/js/rf-one-projects.js").data.decode())
 
     print(f"\n{len(passed)} passed, {len(failed)} failed.")
     return 0 if not failed else 1

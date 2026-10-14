@@ -4,7 +4,7 @@
 {% block page_title %}Project Management · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-projects.css') }}?v=7">
 {{ breadcrumb([('RF-One', url_for('home')), ('Project Management', None)]) }}
 
 <h1>Project Management</h1>
@@ -95,5 +95,5 @@
 
 {% if dialog %}<script type="application/json" id="pm-dialog-state">{{ dialog|tojson }}</script>{% endif %}
 <script defer src="{{ url_for('static', filename='js/rf-one-row-return.js') }}?v=1"></script>
-<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=4"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=5"></script>
 {% endblock %}

@@ -280,6 +280,23 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
         flash("Task deleted.", "info")
         return _back_to_plan(project_id)
 
+    @app.route("/projects/<int:project_id>/tasks/<int:task_id>/move", methods=["POST"])
+    @gate
+    @scoped
+    def projects_task_move(project_id: int, task_id: int):
+        """↑ / ↓ in the Actions column. No message on success: the row itself
+        is the feedback, and the row return keeps it where it was on screen."""
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                service.move_task(db, project_id, task_id, request.form.get("direction", ""))
+            except service.ProjectValidationError as error:
+                db.rollback()
+                flash(str(error), "error")
+                return _back_to_plan(project_id)
+            db.commit()
+        return _back_to_plan(project_id)
+
     # ------------------------------------------------------------ Gantt
 
     @app.route("/projects/<int:project_id>/gantt")

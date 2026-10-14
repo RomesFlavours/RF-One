@@ -2,6 +2,7 @@
 
 **Status:** v1 approved by the Product Owner (2026-10-12). Implemented in RF-One Web. Project level added the same
 day (Product Owner request, 2026-10-12). Task Responsible added on 2026-10-12 (Product Owner request, §3–§5).
+Bold parent Tasks and ↑ / ↓ reordering added on 2026-10-14 (Product Owner request, §4 rule 8, §5).
 **Module:** MyRF / Project Management.
 **Access code:** `PROJECTS`.
 **Language:** the interface, this document, the code and the database are in English. Saved content (project names, chapter titles, task descriptions) is shown as entered.
@@ -137,6 +138,14 @@ Example: start 1 March, 3 planned days → planned end 3 March.
    - a name is never duplicated within a Project (case and leading/trailing spaces ignored), neither when it is added
      or renamed in the list nor when it is typed in a Task;
    - renaming a Responsible changes it everywhere it is shown, because Tasks point to the entry, not to its text.
+8. **Order (↑ / ↓):**
+   - a Task moves one place among the Tasks of its own Chapter; a child activity moves one place among the children
+     of its own parent;
+   - moving a parent Task moves its children with it (they are always listed under it);
+   - a move changes only the order: never the Chapter, the parent, the dates, the Responsible or the prerequisites;
+   - the first of a group cannot move up and the last cannot move down;
+   - the order is saved in the database (`project_task.sort_order`), so it is the same after a refresh, in the Plan,
+     in the Gantt and in their print.
 
 ---
 
@@ -165,7 +174,17 @@ The opened Project's name is in the page title, in the heading and in the path. 
 — Chapters, Tasks, parents, prerequisites — shows only that Project's data.
 
 **Numbering.** Each row has a code: Chapter `1`, Task `1.2`, child activity `1.2.1`. Codes follow the display order
-and are not stored. Prerequisites are shown by code and title.
+and are not stored, so after a move they are renumbered while ids and prerequisite links stay the same. Prerequisites
+are shown by code and title, always with the current code.
+
+**Tasks with child activities.** A Task with at least one child activity shows its code and title in **bold**, in the
+Plan, in the Gantt and in their print. Its description stays in normal type.
+
+**Reordering.** At the far right of the Actions column of every Task and child-activity row there are two compact
+buttons, ↑ (tooltip "Move up") and ↓ (tooltip "Move down"), following rule 8 of §4. ↑ is disabled on the first row of
+its group and ↓ on the last. While a move is being saved, every arrow is disabled and the clicked one shows "…", so a
+repeated click sends nothing. After the save the page reloads with the moved row at the same place on the screen
+(row return, below). A move past the edge of a group, sent anyway, is refused with a message and changes nothing.
 
 **Gantt rows:**
 
@@ -201,8 +220,8 @@ Navigation follows the RF-One UI Rules (`03 Software/Shared UI/UI Rules.md`):
 
 - the path is `RF-One › Project Management › <Project name> › Gantt` (§4);
 - a refusal keeps the dialog open, with the values entered and the reason;
-- after Save or Cancel in a dialog the person is back on the same row (§5): each row carries a stable `data-rr-key`
-  read by the shared row-return component (`rf-one-row-return.js`).
+- after Save or Cancel in a dialog, and after ↑ / ↓, the person is back on the same row (§5): each row carries a
+  stable `data-rr-key` read by the shared row-return component (`rf-one-row-return.js`).
 
 ---
 
@@ -275,6 +294,11 @@ In the last case every row is kept:
 - a database that came from `main` — production included — already holds the tables when it reaches `e3a7c5f9b1d4`
   and `f5b8d2a4c6e1`: both now skip what exists, so nothing is created twice and no row is touched.
 
+**Order.** ↑ / ↓ reuse `project_task.sort_order`, which already existed: no migration was needed, and the order shown
+before the change is the initial one. A new Task gets the next value, so it goes last in its group. A move hands the
+group's own values out again in the new order; values shared by older rows are first made strictly increasing
+without changing their order.
+
 The table names are singular, as approved for this module. This differs from the plural convention stated in
 `rfone_data_store/models.py`.
 
@@ -282,7 +306,7 @@ The table names are singular, as approved for this module. This differs from the
 |---|---|
 | Models | `rfone_data_store/models.py` (`Project`, `ProjectChapter`, `ProjectTask`, `ProjectTaskDependency`, `ProjectResponsible`) |
 | Rules and plan building | `rfone_data_store/projects/service.py` |
-| Routes | `03 Software/RF-One Web/projects_routes.py` |
+| Routes | `03 Software/RF-One Web/projects_routes.py` (↑ / ↓: `POST /projects/<id>/tasks/<task id>/move`, field `direction` = `up` / `down`) |
 | Pages | `templates/projects_list.html`, `templates/projects_plan.html`, `templates/projects_gantt.html`, `templates/_projects_macros.html` |
 | Style and print | `static/css/rf-one-projects.css` |
 | Script | `static/js/rf-one-projects.js` |
@@ -298,6 +322,6 @@ The table names are singular, as approved for this module. This differs from the
 - One level of child activities.
 - No link to Legal Entity, Restaurant or Location.
 - No prerequisites across Projects, and no moving of Chapters or Tasks between Projects.
-- No manual reordering: rows follow the order in which they were created.
+- Chapters cannot be reordered; Tasks move one place at a time (↑ / ↓), never to another Chapter or parent.
 - One Responsible per Task, optional, as a plain name: no link to accounts or Employees, no notifications.
 - No history of changes.

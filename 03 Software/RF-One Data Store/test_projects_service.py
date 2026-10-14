@@ -280,6 +280,68 @@ def main() -> int:
                   s.scalar(select(m.ProjectResponsible).where(m.ProjectResponsible.project_id == emptied.id)) is None)
             s.rollback()
 
+        # ---------------------------------------------------- ↑ / ↓ order
+        with Session() as s:
+            P = service.create_project(s, name="Ordine").id
+            ch = service.create_chapter(s, P, title="Uno", description=None)
+            ch2 = service.create_chapter(s, P, title="Due", description=None)
+            hiring = service.create_task(s, P, task_input("Hiring", chapter_id=ch.id, responsible="Anna", start=date(2026, 4, 1)))
+            kids = [service.create_task(s, P, task_input(t, parent_task_id=hiring.id)) for t in ("K1", "K2", "K3")]
+            solo = service.create_task(s, P, task_input("Solo", chapter_id=ch.id, predecessors=[kids[0].id]))
+            last = service.create_task(s, P, task_input("Last", chapter_id=ch.id))
+            elsewhere = service.create_task(s, P, task_input("Elsewhere", chapter_id=ch2.id))
+            # Rows created before may share a sort_order: the move still works and keeps the rest in place.
+            solo.sort_order = last.sort_order
+            s.commit()
+            ids = {t.title: t.id for t in [hiring, *kids, solo, last, elsewhere]}
+
+            def layout() -> list[tuple[str, str, list[str]]]:
+                plan = service.build_plan(s, P)
+                return [(t.code, t.title, [c.title for c in t.children]) for c in plan.chapters for t in c.tasks]
+
+            def fields(title):
+                t = s.get(m.ProjectTask, ids[title])
+                deps = sorted(s.scalars(select(m.ProjectTaskDependency.predecessor_task_id)
+                                        .where(m.ProjectTaskDependency.successor_task_id == t.id)))
+                return (t.id, t.chapter_id, t.parent_task_id, t.planned_start_date, t.planned_duration_days,
+                        t.percent_complete, t.responsible_id, deps)
+
+            before = {title: fields(title) for title in ids}
+            check("O1. initial order is the creation order",
+                  layout() == [("1.1", "Hiring", ["K1", "K2", "K3"]), ("1.2", "Solo", []), ("1.3", "Last", []),
+                               ("2.1", "Elsewhere", [])])
+            service.move_task(s, P, ids["Hiring"], "down")
+            s.commit()
+            check("O2. a parent moves down one place and its children follow it, renumbered",
+                  layout()[:2] == [("1.1", "Solo", []), ("1.2", "Hiring", ["K1", "K2", "K3"])]
+                  and [t.code for t in service.build_plan(s, P).chapters[0].tasks[1].children] == ["1.2.1", "1.2.2", "1.2.3"])
+            service.move_task(s, P, ids["K3"], "up")
+            s.commit()
+            check("O3. a subtask moves among its parent's children only",
+                  layout()[1] == ("1.2", "Hiring", ["K1", "K3", "K2"]))
+            check("O4. the first of a group cannot go up, the last cannot go down (Tasks and subtasks)",
+                  refused(service.move_task, s, P, ids["Solo"], "up") == "It is already the first of its group."
+                  and refused(service.move_task, s, P, ids["Last"], "down") == "It is already the last of its group."
+                  and refused(service.move_task, s, P, ids["K1"], "up") is not None
+                  and refused(service.move_task, s, P, ids["K2"], "down") is not None
+                  and refused(service.move_task, s, P, ids["Elsewhere"], "up") is not None
+                  and refused(service.move_task, s, P, ids["Elsewhere"], "down") is not None)
+            s.rollback()
+            check("O5. the last Task of a chapter never jumps into the next chapter",
+                  layout()[3] == ("2.1", "Elsewhere", []) and layout()[2] == ("1.3", "Last", []))
+            check("O6. only the order changes: ids, chapter, parent, dates, percentage, responsible, prerequisites kept",
+                  {title: fields(title) for title in ids} == before)
+            check("O7. an invalid direction is refused", refused(service.move_task, s, P, ids["Solo"], "left") == "Invalid move.")
+            check("O8. a Task of another project is out of scope",
+                  out_of_scope(service.move_task, s, P + 1000, ids["Solo"], "down"))
+        with Session() as s:  # a new session = a page reload: the order was saved
+            check("O9. the new order is read back from the database",
+                  [(t.title, [c.title for c in t.children]) for t in service.build_plan(s, P).chapters[0].tasks]
+                  == [("Solo", []), ("Hiring", ["K1", "K3", "K2"]), ("Last", [])])
+            plan = service.build_plan(s, P)
+            check("O10. a prerequisite keeps pointing to the same task, shown with its new code",
+                  [(p.title, p.code) for p in plan.chapters[0].tasks[0].predecessors] == [("K1", "1.2.1")])
+
         # ---------------------------------------------------- database constraints
         def violates(values: dict, table=m.ProjectTask) -> bool:
             with Session() as s:
