@@ -111,8 +111,7 @@ def main() -> int:
                     # Two decisions in its history: the current one counts, once.
                     for _ in range(2):
                         recognition._create_decision_row(
-                            s, t, occurrence_id=who.id, transaction_reason_id=why.id, recognition_rule_id=None,
-                            decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
+                            s, t, occurrence_id=who.id, transaction_reason_id=why.id, decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
                             explanation_notes="seed", accounting_classification_id=why.accounting_classification_id,
                             accounting_destination_source=m.DESTINATION_SOURCE_WHY)
                 return t

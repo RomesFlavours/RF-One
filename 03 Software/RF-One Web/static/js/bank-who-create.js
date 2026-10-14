@@ -58,7 +58,7 @@
     return button;
   }
 
-  // What the typed name already is, or looks like (the WHO Rule lookup).
+  // What the typed name already is, or looks like (the WHO lookup).
   function lookup() {
     var text = nameInput.value.trim();
     var seq = ++lookupSeq;

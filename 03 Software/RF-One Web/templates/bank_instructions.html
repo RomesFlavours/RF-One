@@ -107,15 +107,14 @@
     transaction by itself.
   </p>
   <p>
-    When a person confirms a WHO in Review, RF-One can learn that the same bank description means
-    the same WHO. On the next import that learned rule supplies the WHO automatically. It recognises
-    the counterparty only, and leaves the purpose of each transaction to that transaction's own
-    evidence, or to a person.
+    A WHO is given to a transaction by a person in Review, or automatically by an AI rule
+    (<a href="{{ url_for('bank_ai_rules') }}">AI Rules</a>). Confirming a WHO in Review does not
+    teach RF-One any rule.
   </p>
   <p>
     Automatic WHO on Import and Review shows, for the month, how many transactions have a WHO from a
-    learned rule, from a human decision, or none yet. Bulk authorization of automatic WHO completion
-    is not available: it is pending a functional decision.
+    human decision, from an automatic decision (an AI rule), or none yet. Bulk authorization of
+    automatic WHO completion is not available: it is pending a functional decision.
   </p>
 </div>
 

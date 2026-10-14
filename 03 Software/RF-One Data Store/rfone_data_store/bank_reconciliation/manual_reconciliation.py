@@ -248,7 +248,7 @@ def create_who(session: Session, *, name: str | None) -> CreatedWho:
         return CreatedWho(occurrence=existing, reused=True)
     occurrence = config_service.save_who(
         session, occurrence_id=None, name=clean, active=True, reason_ids=[],
-        default_reason_id=None, reporting_entity_ids=[], rules=[],
+        default_reason_id=None, reporting_entity_ids=[],
     )
     return CreatedWho(occurrence=occurrence, reused=False)
 

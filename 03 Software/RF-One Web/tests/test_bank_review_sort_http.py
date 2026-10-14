@@ -101,8 +101,7 @@ def main() -> int:
                 s.flush()
                 if with_who:
                     recognition._create_decision_row(
-                        s, t, occurrence_id=who.id, transaction_reason_id=None, recognition_rule_id=None,
-                        decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
+                        s, t, occurrence_id=who.id, transaction_reason_id=None, decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
                         explanation_notes="seed", accounting_destination_source=m.DESTINATION_SOURCE_WHY)
                 return t
 

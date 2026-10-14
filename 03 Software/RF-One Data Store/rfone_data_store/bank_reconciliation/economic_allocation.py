@@ -27,12 +27,12 @@ This module owns four things and nothing else:
    `BankTransactionReason` already defines it: a P&L Reason yields a WHAT,
    a non-P&L Reason yields a Balance Sheet destination and the allocation
    legitimately has no WHAT at all. By default the destination is the
-   WHY's own (`accounting_destination_source = WHY`). Since
-   BANK_RECONCILIATION_STANDARDS_001 two explicit, recorded exceptions
-   exist: a P&L WHAT a human chose for this one transaction (TRANSACTION),
-   and the destination an approved Reconciliation Standard supplies
-   (STANDARD, with `reconciliation_standard_id`). The WHY's master mapping
-   is never changed by either.
+   WHY's own (`accounting_destination_source = WHY`). One explicit,
+   recorded exception exists (BANK_RECONCILIATION_STANDARDS_001): a P&L
+   WHAT a human chose for this one transaction (TRANSACTION). The WHY's
+   master mapping is never changed by it. (The Reconciliation Standards'
+   destination, STANDARD, was retired with the old rule system,
+   BANK_RULES_RESET_001.)
 
 3. **Payer versus economic owner.** The payer is resolved through the
    SETTLEMENT ACCOUNT by the existing
@@ -341,10 +341,8 @@ class AllocationSpec:
     notes: str | None = None
     # BANK_RECONCILIATION_STANDARDS_001. `accounting_classification_id` is an
     # explicit effective destination; equal to the WHY's own it is still
-    # recorded as WHY-derived, different it is a TRANSACTION exception. With
-    # `reconciliation_standard_id` the destination is the Standard's (STANDARD).
+    # recorded as WHY-derived, different it is a TRANSACTION exception.
     accounting_classification_id: int | None = None
-    reconciliation_standard_id: int | None = None
 
 
 class AllocationBalanceError(ValueError):
@@ -445,15 +443,8 @@ def set_allocations(
 
         reason, classification = _resolve_reason(session, spec.transaction_reason_id)
         source = m.DESTINATION_SOURCE_WHY
-        if spec.reconciliation_standard_id is not None:
-            if session.get(m.BankReconciliationStandard, spec.reconciliation_standard_id) is None:
-                raise ValueError(f"Reconciliation Standard {spec.reconciliation_standard_id} does not exist.")
-            if spec.accounting_classification_id is None:
-                raise ValueError("A Standard-produced allocation must state the Standard's destination.")
-            source = m.DESTINATION_SOURCE_STANDARD
         if spec.accounting_classification_id is not None and (
             classification is None or spec.accounting_classification_id != classification.id
-            or source == m.DESTINATION_SOURCE_STANDARD
         ):
             chosen = session.get(m.BankAccountingClassification, spec.accounting_classification_id)
             if chosen is None:
@@ -461,8 +452,7 @@ def set_allocations(
             if not chosen.is_posting_account:
                 raise ValueError(f"{chosen.code} — {chosen.name} is a reporting group, not a destination.")
             classification = chosen
-            if source != m.DESTINATION_SOURCE_STANDARD:
-                source = m.DESTINATION_SOURCE_TRANSACTION
+            source = m.DESTINATION_SOURCE_TRANSACTION
 
         if spec.status == COMPLETE:
             if entity is None:
@@ -527,7 +517,6 @@ def set_allocations(
             evidence_reference=spec.evidence_reference,
             notes=spec.notes,
             accounting_destination_source=source,
-            reconciliation_standard_id=spec.reconciliation_standard_id,
         )
         session.add(allocation)
         written.append(allocation)

@@ -1,7 +1,7 @@
 """RF-One Web — Bank Reconciliation row actions (BANK_RECONCILIATION_001).
 
 The reconciliation rows are Review > Reconciled (BANK_TWO_STAGE_REVIEW_001):
-the row editor posts here to Confirm, Standard, Reopen and Save. The former
+the row editor posts here to Confirm, Reopen and Save. The former
 standalone `/bank/reconciliation` month page and its own WHO modal are
 retired (BANK_FINAL_CLEANUP_001): `/bank/reconciliation` now redirects to
 Review > Reconciled for the same month, and the WHO and WHY of a transaction
@@ -93,7 +93,6 @@ def register_bank_reconciliation_routes(
             db, transaction_id=transaction_id, occurrence_id=_int("occurrence_id"),
             reason_id=_int("why_id"), destination_id=_int("what_id"),
             reporting_entity_id=_int("for_whom_id"), account_id=_account_id(db),
-            as_standard=False,
         ), "Transaction saved.")
 
     @app.route("/bank/reconciliation/<int:transaction_id>/for-whom", methods=["POST"])

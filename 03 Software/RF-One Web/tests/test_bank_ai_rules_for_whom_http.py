@@ -166,7 +166,7 @@ def main() -> int:
         def decide(t, who, why, source="RULE"):
             recognition._create_decision_row(
                 s, t, occurrence_id=who.id if who else None, transaction_reason_id=why.id if why else None,
-                recognition_rule_id=None, decision_source=source, decision_status="AUTO_APPLIED",
+                decision_source=source, decision_status="AUTO_APPLIED",
                 confidence=None, explanation_notes="test setup")
 
         def allocate(t, entity, source="HUMAN", status=m.ALLOCATION_NEEDS_OPERATOR, notes="test setup", why=None):

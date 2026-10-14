@@ -19,6 +19,10 @@ on the current workflow:
   29-31  security;
   32-34  performance: one modal, no Classification, a realistic month.
 
+BANK_OLD_RULES_REMOVAL_001: check 15 no longer counts bank_recognition_rules
+("learns no rule") — the table is gone, so no rule can be learned; the rest of
+check 15 and every other check are unchanged.
+
 Runs against a DISPOSABLE SQLite database created here and deleted at the end.
 """
 
@@ -57,7 +61,6 @@ from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store.bank_reconciliation import card_configuration  # noqa: E402
 from rfone_data_store.bank_reconciliation import configuration as config_service  # noqa: E402
-from rfone_data_store.bank_reconciliation import receiver_candidates  # noqa: E402
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 REC = "/bank/review?view=reconciled&year=2026&month=8"
@@ -120,16 +123,16 @@ def main() -> int:
             food, cleaning, office, sales = (w.id for w in whys)
             gfs = config_service.save_who(db, occurrence_id=None, name="Gordon Food Service", active=True,
                                           reason_ids=[food, cleaning], default_reason_id=food,
-                                          reporting_entity_ids=[alpha.id], rules=[])
+                                          reporting_entity_ids=[alpha.id])
             amazon = config_service.save_who(db, occurrence_id=None, name="Amazon", active=True,
                                              reason_ids=[office], default_reason_id=office,
-                                             reporting_entity_ids=[], rules=[])
+                                             reporting_entity_ids=[])
             clover = config_service.save_who(db, occurrence_id=None, name="Clover", active=True,
                                              reason_ids=[sales], default_reason_id=sales,
-                                             reporting_entity_ids=[beta.id], rules=[])
+                                             reporting_entity_ids=[beta.id])
             retired = config_service.save_who(db, occurrence_id=None, name="Retired Vendor", active=False,
                                               reason_ids=[], default_reason_id=None,
-                                              reporting_entity_ids=[], rules=[])
+                                              reporting_entity_ids=[])
 
             def txn(instrument, day, text, minor, month=8, duplicate=None):
                 t = m.FinancialTransaction(
@@ -159,8 +162,7 @@ def main() -> int:
             from rfone_data_store.bank_reconciliation import recognition
             recognition.record_human_decision(db, recognition.HumanDecisionRequest(
                 transaction_id=t3.id, occurrence_id=clover.id, transaction_reason_id=sales,
-                confirmed_by_account_id=ids["rc_operator"], learn_description=False,
-            ))
+                confirmed_by_account_id=ids["rc_operator"], ))
             db.commit()
             ids.update(alpha=alpha.id, beta=beta.id, brand=brand.id, gamma=gamma.id,
                        checking=checking.id, operating=operating.id, card=card.id,
@@ -241,14 +243,11 @@ def main() -> int:
         check("9. a missing WHO is not in Reconciled: it is work for To Reconcile",
               f'id="t-{ids["t6"]}"' not in html and f'id="t-{ids["t2"]}"' not in html)
 
-        with SessionFactory() as db:
-            rules_before = db.scalar(select(func.count(m.BankRecognitionRule.id)))
         response = who_why(ids["t1"], ids["gfs"], ids["cleaning"])
         with SessionFactory() as db:
             t1 = db.get(m.FinancialTransaction, ids["t1"])
             current = db.get(m.BankTransactionExplanation, t1.explanation_id)
             allocations_t1 = db.scalar(select(func.count()).where(m.BankTransactionAllocation.financial_transaction_id == ids["t1"]))
-            rules_after = db.scalar(select(func.count(m.BankRecognitionRule.id)))
         check("13. the operator can choose another WHY than the default, in Select WHO / WHY",
               current.transaction_reason_id == ids["cleaning"] and current.occurrence_id == ids["gfs"])
         bad_who = who_why(ids["t1"], 999999, ids["food"])
@@ -258,11 +257,11 @@ def main() -> int:
         check("14. an unknown or inactive WHO is refused (nothing written)",
               still.id == current.id and bad_who.status_code == 302 and inactive_who.status_code == 302)
         check("15. the WHO + WHY decision persists through the authoritative human-decision service "
-              "(HUMAN decision, confirmer recorded), does NOT confirm the row, learns no rule, and returns "
+              "(HUMAN decision, confirmer recorded), does NOT confirm the row, and returns "
               "to the same row of Reconciled",
               current.decision_source == "HUMAN" and current.confirmed_by_account_id == ids["rc_operator"]
               and current.decision_status in ("HUMAN_CONFIRMED", "HUMAN_OVERRIDDEN")
-              and allocations_t1 == 0 and rules_after == rules_before and response.status_code == 302
+              and allocations_t1 == 0 and response.status_code == 302
               and response.headers["Location"].endswith(f"{REC}#t-{ids['t1']}"),
               f"{current.decision_status} {allocations_t1} {response.headers.get('Location')}")
 
@@ -388,16 +387,10 @@ def main() -> int:
         check("32. one Select WHO / WHY popup for the whole page; the retired standalone WHO modal is gone",
               html.count('id="who-picker-search"') == 1 and 'id="rp-who-modal"' not in html)
 
-        def refuse(*args, **kwargs):
-            raise AssertionError("Classification must not run for Reconciliation")
-        saved = receiver_candidates.build_candidates
-        receiver_candidates.build_candidates = refuse
-        try:
-            get_ok = client.get(REC).status_code
-            post_ok = who_why(ids["t6"], ids["amazon"], ids["office"]).status_code
-        finally:
-            receiver_candidates.build_candidates = saved
-        check("33. no Classification call (GET and writes work with Classification disabled)",
+        # (receiver_candidates (the old Classification) is retired, BANK_OLD_RULES_REMOVAL_001: GET and writes must still work.)
+        get_ok = client.get(REC).status_code
+        post_ok = who_why(ids["t6"], ids["amazon"], ids["office"]).status_code
+        check("33. no Classification needed (GET and writes work without it)",
               get_ok == 200 and post_ok == 302)
 
         with SessionFactory() as db:

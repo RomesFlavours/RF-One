@@ -1,7 +1,7 @@
-/* "Create New WHY" — the ONE creation flow of both reconciliation modals.
+/* "Create New WHY" — the ONE creation flow of the Select WHO / WHY modal.
 
    One script for the one dialog in `_bank_why_create_dialog.html`. The
-   Select WHO / WHY popup and the WHO Rule modal both call
+   Select WHO / WHY popup calls
 
      RFOneWhyCreate.open({
        whoId, whoName,      // the WHO the WHY is added to (optional)

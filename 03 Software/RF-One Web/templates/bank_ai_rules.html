@@ -9,14 +9,13 @@
 {#- BANK_AI_RULES_002 … 006 — every movement of a period; from one of them the
     operator writes a rule in natural language, previews it on a scope and
     keeps it as a draft, saves it as an operative rule, or saves and applies
-    it. Manual and Standard classifications stay protected; traditional
-    Rules and Standards are never changed. -#}
+    it. Manual and confirmed classifications stay protected. -#}
 <p class="muted">
   Choose a period, then open <strong>AI Rules</strong> on a movement to write a rule in your own words, using that
   movement as the example. <strong>Preview</strong> shows what the rule would do; <strong>Save Draft</strong> only
   keeps it; <strong>Salva</strong> makes it operative without touching existing movements; <strong>Salva e
-  Applica</strong> applies it to the chosen scope after its preview. Manual and Standard classifications are never
-  changed, and existing Rules and Standards keep working exactly as before.
+  Applica</strong> applies it to the chosen scope after its preview. Manual and confirmed classifications are never
+  changed.
 </p>
 
 <form method="get" action="{{ url_for('bank_ai_rules') }}" class="ai-rules-period" id="ai-rules-period" aria-label="Period">
@@ -208,7 +207,7 @@
         Crea WHO mancanti <span class="cell-note">a WHO extracted by this rule but missing from the list is created when the rule is applied</span></label>
       {#- BANK_AI_RULES_011 — explicit, per rule, off by default, recorded with the rule's version and its previews. -#}
       <label class="ai-rule-option"><input type="checkbox" name="override_protected" id="ai-rule-override-protected">
-        Sostituisci anche WHO/WHY manuali, Standard o confermati <span class="cell-note">this rule only: For Whom is kept, the movement becomes “Da confermare” and the override is recorded; every other rule keeps the protections</span></label>
+        Sostituisci anche WHO/WHY manuali o confermati <span class="cell-note">this rule only: For Whom is kept, the movement becomes “Da confermare” and the override is recorded; every other rule keeps the protections</span></label>
 
       {#- BANK_AI_RULES_006 — where the rule applies. The first two are
           alternatives; "Per il futuro" combines with either. None preselected. -#}
@@ -223,7 +222,7 @@
         {#- BANK_AI_RULES_013 — selected by default; Preview and Apply use the same choice. -#}
         <label class="ai-rule-option"><input type="checkbox" name="only_unsettled" id="ai-rule-only-unsettled" checked>
           Solo movimenti non ancora sistemati da regole AI
-          <span class="cell-note">leaves out the movements whose current classification was saved by an AI rule; manual and Standard protections apply either way</span></label>
+          <span class="cell-note">leaves out the movements whose current classification was saved by an AI rule; manual and confirmed protections apply either way</span></label>
         {#- BANK_AI_RULES_018 — a run mode, not a rule option: Preview and Apply use the same choice. -#}
         <label class="ai-rule-option"><input type="checkbox" name="who_only" id="ai-rule-who-only">
           Solo WHO

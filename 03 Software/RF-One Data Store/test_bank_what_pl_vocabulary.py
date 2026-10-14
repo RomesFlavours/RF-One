@@ -20,6 +20,10 @@ The vocabulary is DERIVED from the canonical catalog, never stored a
 second time: this suite asserts the derivation and the boundary, not a
 copied list.
 
+BANK_OLD_RULES_REMOVAL_001: check 20 no longer counts recognition rules —
+their table is gone, so "zero rules" holds by construction. Every other
+check and all numbering are unchanged.
+
 Never touches AWS, RDS, a production database, Clover, ADP or Mercury.
 """
 
@@ -29,7 +33,6 @@ import sys
 
 from rfone_data_store import models as m
 from rfone_data_store.bank_reconciliation import canonical_catalog as cc
-from rfone_data_store.bank_reconciliation import receiver_candidates as rc
 from rfone_data_store.database import (
     create_configured_engine,
     create_session_factory,
@@ -256,9 +259,7 @@ def main() -> int:
                 and s.query(m.RawBankTransaction).count() == 0
                 and s.query(m.BankTransactionExplanation).count() == 0
                 and s.query(m.BankOccurrence).count() == 0
-                and s.query(m.BankRecognitionRule).count() == 0
-                and s.query(m.BankImportBatch).count() == 0
-                and len(rc.build_candidates(s)) == 0,
+                and s.query(m.BankImportBatch).count() == 0,
             )
             check(
                 "20b. the canonical WHY catalog is seeded (81 purposes, including the five "

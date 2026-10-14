@@ -11,6 +11,11 @@ Proves, on a throwaway database, that `POST /bank/whys/groups/create`:
   and a post without CSRF;
 * the new group is offered to New WHY, which can save a WHY in it.
 
+BANK_OLD_RULES_REMOVAL_001: the counts behind checks 3, 4, 6 and 8 no longer
+include bank_recognition_rules (the table is gone, so "no rule" holds by
+construction); everything else in those checks, and every other check, is
+unchanged.
+
 Never touches a real bank file, AWS, or any production database.
 """
 
@@ -71,7 +76,7 @@ def main() -> int:
         def counts():
             with SessionFactory() as s:
                 return {t.__tablename__: s.scalar(select(func.count()).select_from(t)) for t in (
-                    m.BankReasonGroup, m.BankTransactionReason, m.BankRecognitionRule,
+                    m.BankReasonGroup, m.BankTransactionReason,
                     m.BankTransactionExplanation, m.BankOccurrenceReasonAssociation)}
 
         client = web_app.app.test_client()
@@ -103,7 +108,7 @@ def main() -> int:
         check("2. the group is created from its name; the code follows the catalog convention",
               body.get("ok") and not body["reused"] and shape == ("BUSINESS_TRAVEL", "Business Travel", True)
               and group.display_order == last, str((body, shape)))
-        check("3. only the group is written: no WHY, rule, classification or association",
+        check("3. only the group is written: no WHY, classification or association",
               after["bank_reason_groups"] == before["bank_reason_groups"] + 1
               and all(after[k] == before[k] for k in after if k != "bank_reason_groups"), str((before, after)))
         for typed in ("business travel", "  BUSINESS TRAVEL  "):

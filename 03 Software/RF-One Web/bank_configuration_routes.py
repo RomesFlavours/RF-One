@@ -61,27 +61,6 @@ def _text(name: str) -> str:
     return (request.form.get(name) or "").strip()
 
 
-def _rules() -> list[config_service.RuleInput]:
-    ids = request.form.getlist("rule_id")
-    patterns = request.form.getlist("rule_pattern")
-    matches = request.form.getlist("rule_match")
-    actives = request.form.getlist("rule_active")
-    if not (len(ids) == len(patterns) == len(matches) == len(actives)):
-        raise ValueError("The recognition rules were sent incompletely; reload the page and try again.")
-    rules = []
-    for rule_id, pattern, match, active in zip(ids, patterns, matches, actives):
-        if not pattern.strip():
-            continue  # an empty row the person added and left blank
-        try:
-            parsed_id = int(rule_id) if rule_id.strip() else None
-        except ValueError:
-            raise ValueError(f"Unknown recognition rule {rule_id!r}.") from None
-        rules.append(config_service.RuleInput(
-            rule_id=parsed_id, pattern=pattern, match=match, active=active == "1",
-        ))
-    return rules
-
-
 def register_bank_configuration_routes(
     app, *, gate, SessionFactory, load_current_account, require_csrf,
 ):
@@ -164,7 +143,7 @@ def register_bank_configuration_routes(
         return _apply("cp-who", lambda db: config_service.save_who(
             db, occurrence_id=occurrence_id, name=_text("name"), active=_flag("active"),
             reason_ids=_ints("why_ids"), default_reason_id=_int("default_why_id"),
-            reporting_entity_ids=_ints("entity_ids"), rules=_rules(),
+            reporting_entity_ids=_ints("entity_ids"),
         ), lambda who: f"WHO {who.canonical_name!r} saved.")
 
     # BANK_WHO_MERGE_001 — merge two WHO: a preview (writes nothing), then
@@ -182,22 +161,19 @@ def register_bank_configuration_routes(
     @app.route("/bank/configuration/who/merge", methods=["POST"])
     @gate
     def bank_configuration_who_merge():
-        manual = request.form.get("manual_only")
 
         def action(db):
             account = load_current_account(db)
             return who_merge.merge(
                 db, keep_id=_int("keep_id"), absorb_id=_int("absorb_id"), default_reason_id=_int("default_why"),
-                manual_only=None if manual in (None, "") else manual == "1",
                 account_id=account.id if account is not None else None)
 
         def success(result):
             moved = result.moved
             return (f"WHO {result.absorb_name!r} merged into {result.keep_name!r}: "
-                    f"{moved.get('decisions', 0)} decision(s), {moved.get('rules', 0)} recognition rule(s), "
+                    f"{moved.get('decisions', 0)} decision(s), "
                     f"{moved.get('aliases', 0)} alias(es), {moved.get('possible_why', 0)} possible WHY moved"
-                    + (f"; {result.rules_deactivated} duplicate rule(s) kept inactive" if result.rules_deactivated else "")
-                    + f". {result.absorb_name!r} is now inactive and an alias of {result.keep_name!r}.")
+                    f". {result.absorb_name!r} is now inactive and an alias of {result.keep_name!r}.")
 
         return _apply("cp-who", action, success)
 

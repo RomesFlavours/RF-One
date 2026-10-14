@@ -915,11 +915,16 @@ WHO_NAMING = ("fixed",) + WHO_EXTRACTIONS
 # "ends_with_number": once trimmed, the description ends with a space and a
 # block made ONLY of digits ("… Cleaning 30541248046"; never "JPM99cxov680").
 FINAL_NUMBER_RE = re.compile(r"\s(\d+)$")
-OVERRIDE_LABEL = "Sostituisci anche WHO/WHY manuali, Standard o confermati"
+OVERRIDE_LABEL = "Sostituisci anche WHO/WHY manuali o confermati"
+# The SAME option as the AI interpretation prompt names it. Kept with its
+# former wording on purpose (BANK_OLD_RULES_REMOVAL_001): the prompt text is
+# changed only after the Product Owner approves the before/after comparison
+# (07 Tasks/Reports/BANK_OLD_RULES_REMOVAL_001/AI_PROMPT_BEFORE_AFTER.md).
+PROMPT_OVERRIDE_LABEL = "Sostituisci anche WHO/WHY manuali, Standard o confermati"
 MAX_FOR_WHOM_NAMES = 10
 PROTECTIONS_TEXT = (
-    "PROTECTED by RF-One, never changed: manual decisions, Reconciliation Standards, own-account movements (no WHO), "
-    "a For Whom chosen by a person or by a Standard, a movement whose For Whom is accounting-complete (confirmed); "
+    "PROTECTED by RF-One, never changed: manual decisions, own-account movements (no WHO), "
+    "a For Whom chosen by a person, a movement whose For Whom is accounting-complete (confirmed); "
     "a For Whom whose origin is uncertain is kept, with the reason. A For Whom written by a rule is automatic: "
     "updated like a WHO / WHY")
 TO_VERIFY = "Da verificare"
@@ -1096,7 +1101,7 @@ Assignments (null = left unchanged):
      accounting-complete (confirmed), and a For Whom whose origin is uncertain (kept, with the reason). An
      instruction to keep manual / Standard classifications is represented by these protections — say so in the
      coverage. An instruction that EXPLICITLY authorizes replacing WHO / WHY also when manual, Standard or confirmed
-     is represented by the rule option "{OVERRIDE_LABEL}" (set by the operator on the rule, off by default,
+     is represented by the rule option "{PROMPT_OVERRIDE_LABEL}" (set by the operator on the rule, off by default,
      recorded) together with "replace_existing" — say so in the coverage; it is not an element of this structure.
 
 Structure:
@@ -2093,7 +2098,7 @@ def _active_rule_specs(session: Session, exclude_rule_id: int | None = None) -> 
     return found
 
 
-FW_NONE, FW_HUMAN, FW_STANDARD, FW_AUTOMATIC, FW_UNCERTAIN = "NONE", "HUMAN", "STANDARD", "AUTOMATIC", "UNCERTAIN"
+FW_NONE, FW_HUMAN, FW_AUTOMATIC, FW_UNCERTAIN = "NONE", "HUMAN", "AUTOMATIC", "UNCERTAIN"
 
 
 @dataclass
@@ -2102,10 +2107,9 @@ class ForWhomState:
     (BANK_AI_RULES_010), read from its allocations:
 
       NONE        no allocation;
-      HUMAN       chosen by a person (decision source HUMAN, no Standard);
-      STANDARD    written by a Reconciliation Standard;
+      HUMAN       chosen by a person (decision source HUMAN);
       AUTOMATIC   one line written by a rule (decision source RULE, no
-                  Standard, no document evidence) — may be updated;
+                  document evidence) — may be updated;
       UNCERTAIN   anything else: a split, a line with no decision source
                   (e.g. pending evidence), a line from document evidence —
                   kept, with `reason`.
@@ -2131,9 +2135,7 @@ def for_whom_state(allocations: list, names: dict[int, str], prefix: str | None)
     a = allocations[0]
     name = (names.get(a.reporting_entity_id) or a.reporting_entity_name_snapshot) if a.reporting_entity_id else None
     state = ForWhomState(FW_UNCERTAIN, a.reporting_entity_id, name, complete)
-    if a.reconciliation_standard_id is not None:
-        state.provenance = FW_STANDARD
-    elif a.decision_source == "HUMAN":
+    if a.decision_source == "HUMAN":
         state.provenance = FW_HUMAN
     elif a.decision_source == "RULE" and not a.evidence_kind:
         state.provenance = FW_AUTOMATIC
@@ -2166,6 +2168,18 @@ class Plan:
         return self.outcome, self.note, self.who_after, self.why_after
 
 
+def own_account_ids(session: Session) -> set[int]:
+    """The movements between two of RF-One's own accounts — both sides of
+    every matched internal transfer. They have no WHO by design, so a rule
+    never gives them one. (The structural WHO recognitions this once also
+    read belonged to the old rule system, retired by BANK_RULES_RESET_001.)"""
+    own: set[int] = set()
+    for a, b in session.execute(select(m.FinancialTransactionMatch.transaction_a_id,
+                                       m.FinancialTransactionMatch.transaction_b_id)):
+        own.update((a, b))
+    return own
+
+
 class Planner:
     """Plans, for one movement a rule matched, what applying would do —
     never writing anything:
@@ -2194,10 +2208,9 @@ class Planner:
 
     def __init__(self, session: Session, *, rule_id: int | None = None, preload: bool = True,
                  other_rules: bool = True):
-        from . import general_rules
         self.session = session
         self.prefix = rule_note_prefix(rule_id)
-        self.own = general_rules._own_account_ids(session) if preload else None
+        self.own = own_account_ids(session) if preload else None
         self.allocations: dict[int, list] | None = None
         if preload:
             self.allocations = {}
@@ -2205,7 +2218,6 @@ class Planner:
                                      .order_by(m.BankTransactionAllocation.allocation_index)):
                 self.allocations.setdefault(a.financial_transaction_id, []).append(a)
         self.others = _active_rule_specs(session, exclude_rule_id=rule_id) if other_rules else []
-        self.recognition_rules: dict[int, str] | None = None
         self.who_status = _WhoStatus(session)
         self.why_catalog = _WhyCatalog(_catalog(session)[1])
         self.entities = EntityCatalog(session)
@@ -2213,11 +2225,7 @@ class Planner:
     def is_own(self, txn_id: int) -> bool:
         if self.own is not None:
             return txn_id in self.own
-        from . import who_recognition as wr
-        return bool(self.session.scalar(select(func.count(m.BankWhoRecognition.id)).where(
-            m.BankWhoRecognition.financial_transaction_id == txn_id,
-            m.BankWhoRecognition.recognizer_version == wr.RECOGNIZER_VERSION,
-            m.BankWhoRecognition.tier == wr.STRUCTURAL))) or bool(self.session.scalar(
+        return bool(self.session.scalar(
             select(func.count(m.FinancialTransactionMatch.id)).where(or_(
                 m.FinancialTransactionMatch.transaction_a_id == txn_id,
                 m.FinancialTransactionMatch.transaction_b_id == txn_id))))
@@ -2252,8 +2260,6 @@ class Planner:
         written = re.match(r"AI Rule #(\d+) ", (current.explanation_notes or "") if current is not None else "")
         if written and f"AI Rule #{written.group(1)} " != self.prefix:
             overlaps.append(f"current WHO / WHY written by AI rule #{written.group(1)}")
-        elif current is not None and current.decision_source == "RULE" and current.recognition_rule_id:
-            overlaps.append(f"current WHO written by {self.recognition_rule_text(current.recognition_rule_id)}")
         for other_id, spec in self.others:
             ex = execute(spec, row)
             if ex.outcome != "MATCH" or not ex.assigns:
@@ -2270,14 +2276,6 @@ class Planner:
             if target.for_whom_set and other.for_whom_set and other.for_whom_id != target.for_whom_id:
                 notes.append(f"AI rule #{other_id} assigns For Whom {other.for_whom_name}")
         return notes, overlaps
-
-    def recognition_rule_text(self, rule_id: int) -> str:
-        """A traditional WHO rule, named for an overlap note."""
-        if self.recognition_rules is None:
-            self.recognition_rules = {
-                r.id: f"WHO rule #{r.id} ({r.match_type} “{r.normalized_pattern}”)"
-                for r in self.session.scalars(select(m.BankRecognitionRule))}
-        return self.recognition_rules.get(rule_id, f"WHO rule #{rule_id}")
 
     def plan(self, row: Row, target: Target, *, create_missing_who: bool) -> tuple[str, str, str | None, str | None]:
         """(outcome, note, WHO after, WHY after)."""
@@ -2312,15 +2310,7 @@ class Planner:
             if not override:
                 return keep(PROTECTED, "Protected: classified manually.")
             overridden.append("a manual classification")
-        if current is not None and current.reconciliation_standard_id is not None:
-            if not override:
-                return keep(PROTECTED, "Protected: completed by a Reconciliation Standard.")
-            overridden.append("a Reconciliation Standard")
         split = len(self.allocations_of(row.id)) > 1
-        if fw.provenance == FW_STANDARD:
-            if not override or split:
-                return keep(PROTECTED, "Protected: For Whom written by a Reconciliation Standard.")
-            overridden.append("a Standard's completion")
         if fw.complete:
             # An accepted For Whom: changing WHO / WHY / status would undo that acceptance.
             who_did = "confirmed by a person" if fw.provenance == FW_HUMAN else "accounting-complete"
@@ -2712,7 +2702,7 @@ def create_missing_whos(session: Session, *, preview_id: int) -> dict:
             continue
         occurrence = configuration.save_who(
             session, occurrence_id=None, name=clean, active=True, reason_ids=[], default_reason_id=None,
-            reporting_entity_ids=[], rules=[])
+            reporting_entity_ids=[])
         session.flush()
         created.append(occurrence.canonical_name)
     return {"ok": True, "created": created, "already_present": present, "errors": errors,

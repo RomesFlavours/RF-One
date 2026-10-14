@@ -5,9 +5,14 @@
 Proves the catalog itself — seeded, idempotent, structurally sound, free
 of people and vendors — and the accounting rules that depend on it: that
 sales tax, tips, card settlements, internal transfers and loan advances
-produce no P&L effect, that a mixed supplier is never auto-classified, and
-that every derived P&L total is computed from the hierarchy rather than
-from a fake posting account.
+produce no P&L effect, and that every derived P&L total is computed from
+the hierarchy rather than from a fake posting account.
+
+BANK_OLD_RULES_REMOVAL_001: checks 24/24b/24c/25 (deterministic description
+recognition, mixed suppliers, rule destinations, historical cost-type map),
+27 (the receiver-candidate list) and 28 (a candidate approval skipping a
+human decision) went with the old rule system they exercised. The other
+numbers are unchanged.
 
 Never touches AWS, RDS, a production database, or a real bank file.
 """
@@ -21,8 +26,6 @@ from rfone_data_store import models as m
 from rfone_data_store.bank_reconciliation import accounting_dedup
 from rfone_data_store.bank_reconciliation import canonical_catalog as cc
 from rfone_data_store.bank_reconciliation import classification as classification_service
-from rfone_data_store.bank_reconciliation import deterministic_rules as dr
-from rfone_data_store.bank_reconciliation import receiver_candidates as rc
 from rfone_data_store.bank_reconciliation import recognition
 from rfone_data_store.bank_reconciliation import what_catalog_import as wci
 from rfone_data_store.database import (
@@ -245,8 +248,7 @@ def main() -> int:
                     # The human chooses the Why explicitly; a Who's default is
                     # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
                     transaction_reason_id=s.get(m.BankOccurrence, who.id).default_transaction_reason_id,
-                        confirmed_by_account_id=None, learn_description=False,
-                    ),
+                        confirmed_by_account_id=None, ),
                 )
                 s.commit()
                 check(
@@ -262,46 +264,11 @@ def main() -> int:
                 "2600" not in cc.subtree_codes(s, "4000"),
             )
 
-            # =============================================================
-            # 24-25. Deterministic recognition and its refusals
-            # =============================================================
-            check(
-                "25. a foreign transaction fee is recognised deterministically as 7230",
-                (dr.match("FOREIGN TRANSACTION FEE") or None)
-                and dr.match("FOREIGN TRANSACTION FEE").account_code == "7230",
-            )
-            for supplier in (
-                "COSTCO WHOLESALE 1234", "SAMS CLUB COM", "IC INSTACART",
-                "AMAZON MKTPL 5Q4M20ZT1", "PUBLIX 1488", "CHENEY BROTHERS",
-                "PRIME LINE DISTRIBUTORS",
-            ):
-                check(
-                    f"24. {supplier.split()[0]} is never auto-classified to COGS",
-                    dr.match(supplier) is None and dr.is_mixed_supplier(supplier),
-                )
-            check(
-                "24b. an unrecognised description is REVIEW_REQUIRED, never Miscellaneous",
-                dr.match("SOME SHOP NOBODY CONFIGURED") is None,
-            )
-            check(
-                "24c. the review-sensitive accounts are never a rule destination",
-                not dr.destination_problems(s),
-                detail="; ".join(dr.destination_problems(s)[:3]),
-            )
-            check(
-                "historical Kermali mappings point only at real canonical accounts",
-                all(code in by_code for code in dr.HISTORICAL_COST_TYPE_MAP.values()),
-            )
-            check(
-                "ambiguous historical cost types are reported, never mapped",
-                "Company Cars" in dr.HISTORICAL_UNRESOLVED
-                and "Incoming" in dr.HISTORICAL_UNRESOLVED
-                and "Personal Deductable" in dr.HISTORICAL_UNRESOLVED
-                and not (set(dr.HISTORICAL_UNRESOLVED) & set(dr.HISTORICAL_COST_TYPE_MAP)),
-            )
+            # 24-25 (deterministic recognition) went with
+            # BANK_OLD_RULES_REMOVAL_001.
 
             # =============================================================
-            # 26-28. Existing behaviour is untouched
+            # 26. Existing behaviour is untouched
             # =============================================================
             original = txn(20, -5000, "DUPLICATED MOVEMENT")
             copy = txn(20, -5000, "DUPLICATED MOVEMENT")
@@ -313,44 +280,7 @@ def main() -> int:
                 original.accounting_status == accounting_dedup.CANONICAL
                 and copy.accounting_status == accounting_dedup.DUPLICATE_SUPPRESSED,
             )
-            check(
-                "27. a suppressed copy is not offered for classification",
-                copy.id not in {
-                    tid for c in rc.build_candidates(s) for tid in c.transaction_ids
-                },
-            )
-
-            protected = txn(21, -7777, "HUMAN DECIDED MOVEMENT")
-            s.commit()
-            accounting_dedup.recompute_accounting_dedup(s)
-            s.commit()
-            why = account_why("7810", "CLEANING", "Recurring restaurant cleaning service")
-            keeper = who_for("Get Better Cleaning", why)
-            first = recognition.record_human_decision(
-                s, recognition.HumanDecisionRequest(
-                    transaction_id=protected.id, occurrence_id=keeper.id,
-                    # The human chooses the Why explicitly; a Who's default is
-                    # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
-                    transaction_reason_id=s.get(m.BankOccurrence, keeper.id).default_transaction_reason_id,
-                    confirmed_by_account_id=None, learn_description=False,
-                ),
-            )
-            s.commit()
-            other_why = account_why("7880", "MISC", "Unclassified residual")
-            other = who_for("Someone Else", other_why)
-            again = rc.approve_candidates(
-                s, payee_keys=["DEBIT|HUMAN DECIDED MOVEMENT"],
-                occurrence_id=other.id, learn_description=False,
-            )
-            s.commit()
-            check(
-                "28. an existing human decision is never overwritten",
-                again.transactions_skipped_human == 1
-                and again.transactions_classified == 0
-                and recognition.get_current_explanation(
-                    s, financial_transaction_id=protected.id
-                ).id == first.id,
-            )
+            # 27-28 (receiver candidates) went with BANK_OLD_RULES_REMOVAL_001.
 
             # 29. The importer preview still writes nothing.
             before_count = s.query(m.BankAccountingClassification).count()

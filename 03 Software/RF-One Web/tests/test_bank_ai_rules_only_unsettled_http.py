@@ -114,10 +114,10 @@ def main() -> int:
         publix = s.scalar(select(m.BankOccurrence.id).where(m.BankOccurrence.canonical_name == "PUBLIX"))
         acme_one = s.scalar(select(m.BankOccurrence.id).where(m.BankOccurrence.canonical_name == "ACME ONE"))
         recognition._create_decision_row(s, s.get(m.FinancialTransaction, ids["manual"]), occurrence_id=publix,
-                                         transaction_reason_id=None, recognition_rule_id=None, decision_source="HUMAN",
+                                         transaction_reason_id=None, decision_source="HUMAN",
                                          decision_status="HUMAN_CONFIRMED", confidence=None, explanation_notes="manual")
         recognition._create_decision_row(s, s.get(m.FinancialTransaction, ids["same"]), occurrence_id=acme_one,
-                                         transaction_reason_id=why.id, recognition_rule_id=None, decision_source="RULE",
+                                         transaction_reason_id=why.id, decision_source="RULE",
                                          decision_status="AUTO_APPLIED", confidence=None, explanation_notes="earlier")
         s.commit()
 
@@ -177,7 +177,7 @@ def main() -> int:
         settled_mid = ai_rules.ai_settled(s)
         publix = s.scalar(select(m.BankOccurrence.id).where(m.BankOccurrence.canonical_name == "PUBLIX"))
         recognition._create_decision_row(s, s.get(m.FinancialTransaction, ids["changed"]), occurrence_id=publix,
-                                         transaction_reason_id=None, recognition_rule_id=None, decision_source="HUMAN",
+                                         transaction_reason_id=None, decision_source="HUMAN",
                                          decision_status="HUMAN_CONFIRMED", confidence=None, explanation_notes="fixed")
         s.commit()
         settled = ai_rules.ai_settled(s)

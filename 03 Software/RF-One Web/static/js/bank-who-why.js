@@ -21,8 +21,8 @@
      * the active WHO list and the grouped WHY catalog — once per page;
      * the WHY already associated with the chosen WHO — when it is chosen
        (and cached), only to mark them;
-     * "+ New WHY" opens the ONE shared dialog (bank-why-create.js,
-       also used by the WHO Rule modal): the WHY is saved there and comes
+     * "+ New WHY" opens the ONE shared dialog (bank-why-create.js):
+       the WHY is saved there and comes
        back SELECTED here, already added to the chosen WHO;
      * "+ New WHO" opens the Create New WHO dialog (bank-who-create.js,
        BANK_RECONCILIATION_NEW_WHO_001): the WHO — new, or an existing one

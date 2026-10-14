@@ -9,8 +9,8 @@ code can execute never needs a new AI call to be applied — and may be:
     movements of the database or exactly the SELECTED ones, only on the
     strength of a COMPLETED preview of the same text, scope, selection and
     option; the plan is recomputed on the current data at that moment;
-  * applied by the import to new movements ("Per il futuro"), right after the
-    General Rules and before the WHY rules and the Standards — only rules the
+  * applied by the import to new movements ("Per il futuro") — the only
+    automatic classification at import (BANK_RULES_RESET_001); only rules the
     code can execute.
 
 What is written: for each movement planned UPDATED (see `ai_rules.Planner`)
@@ -18,8 +18,8 @@ one new decision row through `recognition._create_decision_row` — the ONE
 place decisions are created, append-only — setting ONLY the fields the rule
 names (a WHO-only rule keeps the WHY, its WHAT and status); and, with "Crea
 WHO mancanti", the WHO it needs, created by the WHO service once per name
-(existing names and aliases reused). Never a WHY, never a traditional rule
-or a Standard. Manual and Standard decisions are protected; differing values
+(existing names and aliases reused). Never a WHY. Manual decisions are
+protected; differing values
 decided elsewhere are conflicts, reported and left as they are. Every
 application is logged (`BankAiRuleApplication` and its items: outcome, WHO/WHY
 before and after).
@@ -215,7 +215,7 @@ class _WhoMaker:
         if existing is None:
             existing = configuration.save_who(
                 self.session, occurrence_id=None, name=clean, active=True, reason_ids=[], default_reason_id=None,
-                reporting_entity_ids=[], rules=[])
+                reporting_entity_ids=[])
             self.session.flush()
             self.created.append(existing.canonical_name)
         self.ids[key] = existing.id
@@ -239,7 +239,6 @@ def _write(session: Session, txn: "m.FinancialTransaction", current, target: ai_
         status = current.decision_status if current is not None else "NEEDS_HUMAN_REVIEW"
     row = recognition._create_decision_row(
         session, txn, occurrence_id=occurrence_id, transaction_reason_id=reason_id,
-        recognition_rule_id=(current.recognition_rule_id if current is not None and not target.who_set else None),
         decision_source="RULE",
         decision_status=status,
         confidence=current.confidence if current is not None else None,

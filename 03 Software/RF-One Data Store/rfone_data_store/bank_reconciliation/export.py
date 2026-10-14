@@ -293,7 +293,7 @@ BLOCKER_PARSING_ERRORS = "PARSING_ERRORS"              # a batch that did not pa
 BLOCKER_NO_SETTLEMENT_ACCOUNT = "NO_SETTLEMENT_ACCOUNT"  # a card with no settlement account
 BLOCKER_NO_LEGAL_ENTITY = "NO_LEGAL_ENTITY"            # an account with no Company/Legal Entity
 BLOCKER_CANDIDATE_DUPLICATE = "CANDIDATE_DUPLICATE"    # a transaction awaiting a duplicate decision
-BLOCKER_NEEDS_REVIEW = "NEEDS_REVIEW"                  # a transaction neither Confirmed nor Automatic
+BLOCKER_NEEDS_REVIEW = "NEEDS_REVIEW"                  # a transaction not Confirmed
 BLOCKER_CLASSIFICATION = "CLASSIFICATION"              # a decided transaction with an incomplete WHO/WHY/WHAT
 SOURCE_BLOCKERS = (BLOCKER_UNRESOLVED_SOURCE, BLOCKER_PARSING_ERRORS,
                    BLOCKER_NO_SETTLEMENT_ACCOUNT, BLOCKER_NO_LEGAL_ENTITY)
@@ -438,10 +438,11 @@ def _resolution_facts(
     onto a transaction that already has a genuine, confirmed
     FinancialTransactionMatch. The exemption requires BOTH conditions
     together (`_confirmed_internal_transfer_ids`)."""
-    # BANK_RECONCILIATION_STANDARDS_001 — "sufficiently resolved" is now the
-    # persisted reconciliation status: AUTOMATIC (completed by an approved
-    # Standard) or CONFIRMED (accepted by a person). A WHO/WHY decision alone,
-    # automatic or human, is NEEDS REVIEW and blocks the export.
+    # BANK_RECONCILIATION_STANDARDS_001 — "sufficiently resolved" is the
+    # persisted reconciliation status: an exportable one
+    # (`reconciliation_status.EXPORTABLE`, today CONFIRMED — accepted by a
+    # person). A WHO/WHY decision alone, automatic or human, is NEEDS REVIEW
+    # and blocks the export.
     statuses = reconciliation_status.statuses_for(session, transactions)
     resolved_explanation_ids = {
         t.explanation_id for t in transactions
@@ -582,7 +583,7 @@ def compute_export_blockers(session: Session, *, year: int, month: int,
         blockers.append(ExportBlocker(
             f"Needs review: transaction id={txn.id} "
             f"({txn.posting_date.isoformat()}, {txn.description_original!r}) is neither Confirmed "
-            "by a person nor Automatic from an approved Standard (Bank Reconciliation).",
+            "by a person (Bank Reconciliation).",
             kind=BLOCKER_NEEDS_REVIEW, transaction_id=txn.id,
         ))
 

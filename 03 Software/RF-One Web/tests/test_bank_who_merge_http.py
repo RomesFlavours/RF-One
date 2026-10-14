@@ -6,9 +6,9 @@ Proves, on a throwaway database, that:
 * a merge preview says what moves and asks about two different default WHY,
   writing nothing; the merge refuses without that choice; with it, EVERY
   reference to the absorbed WHO moves to the kept one (decisions of
-  reconciled transactions, rules, aliases, possible WHY, entities,
-  Standards, recognitions, suggestions) without duplicates or loss; the
-  absorbed WHO is inactive, not selectable, and its name finds the kept WHO;
+  reconciled transactions, aliases, possible WHY, entities) without
+  duplicates or loss; the absorbed WHO is inactive, not selectable, and its
+  name finds the kept WHO;
 * a WHO with one possible WHY (with a WHAT) gets it as default; with two the
   explicit choice stays; no transaction is touched;
 * WHO names are stored upper case without outer spaces wherever they are
@@ -17,6 +17,16 @@ Proves, on a throwaway database, that:
   collisions without merging them;
 * the old Rules page (/bank/classification) is retired (BANK_RULES_RESET_001):
   it answers 404 and the Bank menu has no Rules tab.
+
+BANK_OLD_RULES_REMOVAL_001: a merge no longer moves or counts recognition
+rules, WHY rules, Standards, WHO recognitions or learning suggestions (that
+rule system was removed from the product). So the fixtures that seeded
+BankRecognitionRule / BankPatternSuggestion rows are gone, check 7 no longer
+expects an impact "rules" count (it asserts the current impact keys instead),
+check 9 covers only the references a merge still moves, check 13 keeps only
+"entity not duplicated" (the rule-move part went), and check 14 keeps only
+"the chosen default WHY stays" (the suggestion part went). Check numbers are
+unchanged.
 
 Never touches a real bank file, AWS, or any production database.
 """
@@ -63,8 +73,9 @@ from rfone_data_store.bank_reconciliation import why_catalog  # noqa: E402
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 AUG = date(2026, 8, 12)
-REFS = (m.BankTransactionExplanation, m.BankWhoRecognition, m.BankRecognitionRule, m.BankWhyRule,
-        m.BankReconciliationStandard, m.BankOccurrenceAlias, m.BankOccurrenceReasonAssociation,
+# The references a merge moves (BANK_OLD_RULES_REMOVAL_001: rules, WHY rules,
+# Standards and WHO recognitions are no longer moved, so not listed).
+REFS = (m.BankTransactionExplanation, m.BankOccurrenceAlias, m.BankOccurrenceReasonAssociation,
         m.BankOccurrenceReportingEntity, m.BankOccurrenceSupplier, m.BankEvidenceBypassAuthorization)
 
 
@@ -116,7 +127,7 @@ def main() -> int:
             again = manual_reconciliation.create_who(s, name="Amazon Mktp")
             s.commit()
             absorb = config_service.save_who(s, occurrence_id=None, name=" amazon.com ", active=True, reason_ids=[],
-                                             default_reason_id=None, reporting_entity_ids=[], rules=[])
+                                             default_reason_id=None, reporting_entity_ids=[])
             s.commit()
             absorb_id = absorb.id
             names = {o.id: o.canonical_name for o in s.scalars(select(m.BankOccurrence))}
@@ -127,14 +138,14 @@ def main() -> int:
         with SessionFactory() as s:
             try:
                 config_service.save_who(s, occurrence_id=absorb_id, name="Amazon Mktp", active=True, reason_ids=[],
-                                        default_reason_id=None, reporting_entity_ids=[], rules=[])
+                                        default_reason_id=None, reporting_entity_ids=[])
                 s.commit()
                 dup = False
             except ValueError:
                 s.rollback()
                 dup = True
             renamed = config_service.save_who(s, occurrence_id=absorb_id, name="amazon.com", active=True,
-                                              reason_ids=[], default_reason_id=None, reporting_entity_ids=[], rules=[])
+                                              reason_ids=[], default_reason_id=None, reporting_entity_ids=[])
             s.commit()
         check("3. a rename that differs only by case from another WHO is refused; a rename is upper case",
               dup and renamed.canonical_name == "AMAZON.COM")
@@ -168,14 +179,8 @@ def main() -> int:
                 s.add(m.BankOccurrenceAlias(occurrence_id=who_id, alias_text="AMZN MKTP US", alias_key="AMZN MKTP US",
                                             source_family="CARD_MERCHANT", source="HUMAN"))
                 s.add(m.BankOccurrenceReportingEntity(occurrence_id=who_id, reporting_entity_id=ids["entity"]))
-                s.add(m.BankRecognitionRule(match_type="CONTAINS_TEXT", normalized_pattern="AMAZON", match_field="DESCRIPTION",
-                                            determines_purpose=False, occurrence_id=who_id, priority=0, status="ACTIVE",
-                                            auto_apply_enabled=True, human_confirmations=1, human_contradictions=0))
             s.add(m.BankOccurrenceAlias(occurrence_id=absorb_id, alias_text="AMAZON.COM*AB12", alias_key="AMAZON COM AB12",
                                         source_family="CARD_MERCHANT", source="PARSER"))
-            s.add(m.BankRecognitionRule(match_type="PREFIX", normalized_pattern="AMAZON COM", match_field="DESCRIPTION",
-                                        determines_purpose=False, occurrence_id=absorb_id, priority=0, status="ACTIVE",
-                                        auto_apply_enabled=True, human_confirmations=1, human_contradictions=0))
             txs = []
             for i in range(3):
                 t = m.FinancialTransaction(
@@ -187,17 +192,12 @@ def main() -> int:
                 s.add(t)
                 s.flush()
                 recognition._create_decision_row(
-                    s, t, occurrence_id=absorb_id, transaction_reason_id=None, recognition_rule_id=None,
-                    decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
+                    s, t, occurrence_id=absorb_id, transaction_reason_id=None, decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
                     explanation_notes="first", accounting_destination_source=m.DESTINATION_SOURCE_WHY)
                 recognition._create_decision_row(
-                    s, t, occurrence_id=absorb_id, transaction_reason_id=ids["why_b"], recognition_rule_id=None,
-                    decision_source="HUMAN", decision_status="HUMAN_CONFIRMED", confidence=None,
+                    s, t, occurrence_id=absorb_id, transaction_reason_id=ids["why_b"], decision_source="HUMAN", decision_status="HUMAN_CONFIRMED", confidence=None,
                     explanation_notes="reconciled", accounting_destination_source=m.DESTINATION_SOURCE_WHY)
                 txs.append(t.id)
-            s.add(m.BankPatternSuggestion(fingerprint="f" * 64, pattern_type="WHO", determinism="DETERMINISTIC",
-                                          status="SUGGESTED", proposal=json.dumps({"phrase": "AMAZON", "who_id": absorb_id}),
-                                          evidence="{}", evidence_level="STRONG"))
             s.commit()
             reconciled_before = review_queues.reconciled_ids(s, review_queues.ReviewFilters())
             snapshots = sorted(e.occurrence_name_snapshot or "" for e in s.scalars(select(m.BankTransactionExplanation).where(
@@ -222,7 +222,8 @@ def main() -> int:
             "csrf_token": csrf, "keep_id": keep_id, "absorb_id": absorb_id}).get_json()
         check("7. the preview names both WHO, the impact, and asks which default WHY stays; nothing written",
               prev["keep"]["name"] == "AMAZON MKTP" and prev["absorb"]["name"] == "AMAZON.COM"
-              and prev["impact"]["transactions"] == 3 and prev["impact"]["decisions"] == 6 and prev["impact"]["rules"] == 2
+              and prev["impact"]["transactions"] == 3 and prev["impact"]["decisions"] == 6
+              and set(prev["impact"]) == {"transactions", "decisions", "aliases", "possible_why", "entities", "suppliers"}
               and [c["key"] for c in prev["conflicts"]] == ["default_why"] and refs(absorb_id) == before, str(prev))
         resp = client.post("/bank/configuration/who/merge", data={"csrf_token": csrf, "keep_id": keep_id, "absorb_id": absorb_id})
         check("8. without the default-WHY choice the merge is refused, nothing written",
@@ -230,7 +231,7 @@ def main() -> int:
         resp = client.post("/bank/configuration/who/merge", data={
             "csrf_token": csrf, "keep_id": keep_id, "absorb_id": absorb_id, "default_why": ids["why_b"]})
         after = refs(absorb_id)
-        check("9. every reference left the absorbed WHO (decisions, rules, aliases, WHY, entities, …)",
+        check("9. every reference left the absorbed WHO (decisions, aliases, WHY, entities, …)",
               all(v == 0 for v in after.values()), str(after))
         with SessionFactory() as s:
             keep, gone = s.get(m.BankOccurrence, keep_id), s.get(m.BankOccurrence, absorb_id)
@@ -243,11 +244,8 @@ def main() -> int:
                 m.BankOccurrenceAlias.occurrence_id == keep_id)))
             assoc = {a.transaction_reason_id: a.confirmation_count for a in s.scalars(select(m.BankOccurrenceReasonAssociation).where(
                 m.BankOccurrenceReasonAssociation.occurrence_id == keep_id))}
-            rules = sorted((r.match_type, r.normalized_pattern, r.status) for r in s.scalars(select(m.BankRecognitionRule).where(
-                m.BankRecognitionRule.occurrence_id == keep_id)))
             entities = s.scalar(select(func.count()).select_from(m.BankOccurrenceReportingEntity).where(
                 m.BankOccurrenceReportingEntity.occurrence_id == keep_id))
-            suggestion = json.loads(s.scalars(select(m.BankPatternSuggestion)).first().proposal)
             reconciled_after = review_queues.reconciled_ids(s, review_queues.ReviewFilters())
             resolved, _name = who_rules.check_new_who(s, "amazon.com")
         check("10. reconciled transactions now name the kept WHO, keep their WHY, stay reconciled; history and snapshots intact",
@@ -258,11 +256,10 @@ def main() -> int:
                                  ("AMAZON.COM", "MERGED_WHO_NAME")]), str(aliases))
         check("12. possible WHY merged, one row per WHY, confirmations added",
               set(assoc) == {ids["why_a"], ids["why_b"], ids["why_c"]} and assoc[ids["why_c"]] == 2, str((assoc, assoc_before)))
-        check("13. rules moved; the same rule twice stays once active (the other kept inactive); entity not duplicated",
-              rules == [("CONTAINS_TEXT", "AMAZON", "ACTIVE"), ("CONTAINS_TEXT", "AMAZON", "INACTIVE"),
-                        ("PREFIX", "AMAZON COM", "ACTIVE")] and entities == 1, str(rules))
-        check("14. the chosen default WHY stays; the pending suggestion now names the kept WHO",
-              keep.default_transaction_reason_id == ids["why_b"] and suggestion["who_id"] == keep_id)
+        check("13. entity not duplicated",
+              entities == 1, str(entities))
+        check("14. the chosen default WHY stays",
+              keep.default_transaction_reason_id == ids["why_b"])
         check("15. the absorbed WHO is inactive (not selectable) and its name finds the kept WHO",
               gone.status == "INACTIVE" and "Merged into 'AMAZON MKTP'" in (gone.optional_notes or "")
               and resolved is not None and resolved.id == keep_id

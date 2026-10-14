@@ -2,7 +2,7 @@
 application.
 
 Since that task a WHO/WHY decision alone leaves a transaction NEEDS REVIEW;
-the Monthly Export runs only when every row is CONFIRMED or AUTOMATIC. Tests
+the Monthly Export runs only when every row is CONFIRMED. Tests
 written before it reach "fully resolved" through decisions alone, so they
 call `confirm_decided_rows` at that point: it performs, for each decided row,
 exactly the row confirmation the Reconciliation page performs — one HUMAN,

@@ -26,7 +26,6 @@ from rfone_data_store import models as m
 from rfone_data_store.bank_reconciliation import accounting_dedup
 from rfone_data_store.bank_reconciliation import canonical_catalog as cc
 from rfone_data_store.bank_reconciliation import classification as classification_service
-from rfone_data_store.bank_reconciliation import deterministic_rules as dr
 from rfone_data_store.bank_reconciliation import recognition
 from rfone_data_store.bank_reconciliation import what_catalog_import as wci
 from rfone_data_store.database import (
@@ -211,8 +210,7 @@ def main() -> int:
                     # The human chooses the Why explicitly; a Who's default is
                     # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
                     transaction_reason_id=s.get(m.BankOccurrence, cleaner.id).default_transaction_reason_id,
-                    confirmed_by_account_id=None, learn_description=False,
-                ),
+                    confirmed_by_account_id=None, ),
             )
             s.commit()
             check(
@@ -230,28 +228,13 @@ def main() -> int:
             # =============================================================
             # 7-8. Review-sensitive: never a fallback, always selectable
             # =============================================================
-            check(
-                "7a. an unrecognised description is REVIEW_REQUIRED, never Miscellaneous",
-                dr.match("SOMETHING NOBODY EVER CONFIGURED") is None,
-            )
-            check(
-                "7b. no deterministic rule points at a review-sensitive account",
-                not dr.destination_problems(s),
-                detail="; ".join(dr.destination_problems(s)[:3]),
-            )
+            # 7a, 7b and 7d checked the deterministic description matching of the
+            # old rule system, retired by BANK_OLD_RULES_REMOVAL_001.
             check(
                 "7c. no review-sensitive account may be reached automatically",
                 not any(
                     cc.may_receive_automatic_classification(row)
                     for row in cc.review_sensitive_accounts(s)
-                ),
-            )
-            check(
-                "7d. the residual accounts are not silently reachable through "
-                "applicable_rules either",
-                not (
-                    {rule.account_code for rule in dr.applicable_rules(s)}
-                    & EXPECTED_REVIEW_SENSITIVE
                 ),
             )
 
@@ -268,8 +251,7 @@ def main() -> int:
                     # The human chooses the Why explicitly; a Who's default is
                     # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
                     transaction_reason_id=s.get(m.BankOccurrence, misc_who.id).default_transaction_reason_id,
-                    confirmed_by_account_id=None, learn_description=False,
-                ),
+                    confirmed_by_account_id=None, ),
             )
             s.commit()
             check(

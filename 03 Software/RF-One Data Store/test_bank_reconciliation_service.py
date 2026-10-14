@@ -334,8 +334,7 @@ def main() -> int:
                     s, recognition.HumanDecisionRequest(
                         transaction_id=txn.id, occurrence_id=occurrence.id,
                         transaction_reason_id=occurrence.default_transaction_reason_id,
-                        confirmed_by_account_id=None, learn_description=False,
-                    ),
+                        confirmed_by_account_id=None, ),
                 )
                 txn.review_status = "REVIEWED"
             s.commit()

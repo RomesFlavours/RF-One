@@ -3,7 +3,7 @@ BANK_RECONCILIATION_STANDARDS_001).
 
 Per bank transaction the page shows Account / Card, Date, Description,
 Amount, WHO (WHY underneath), For Whom and one of exactly three statuses —
-NEEDS REVIEW, AUTOMATIC, CONFIRMED — defined once in
+NEEDS REVIEW, CONFIRMED — defined once in
 `reconciliation_status`. Every row expands inline into an editor for WHO,
 WHY, WHAT and For Whom. Nothing here is a new model:
 
@@ -13,22 +13,19 @@ Row fact       Authoritative storage / service
 Transaction    `FinancialTransaction`, month scope = `export.in_scope_
                transactions`
 WHO, WHY,      the CURRENT `BankTransactionExplanation`, written by
-destination    `recognition.record_human_decision` (human) or by a
-               Standard (`reconciliation_standards.apply_to_transaction`);
-               `accounting_destination_source` says WHY / TRANSACTION /
-               STANDARD
+destination    `recognition.record_human_decision` (human) or by an AI
+               rule (`ai_rule_operations`); `accounting_destination_source`
+               says WHY / TRANSACTION
 For Whom,      `BankTransactionAllocation`, written by
 row status     `economic_allocation.set_allocations`
-Standard       `BankReconciliationStandard` (`reconciliation_standards`)
 New WHO        `configuration.save_who`, the Bank Configuration service
 =============  ==========================================================
 
-Confirm, Set as Standard and the editor's two Save actions all end the same
-way: a HUMAN decision (WHO, WHY, destination) and a HUMAN, COMPLETE
-allocation (For Whom) — CONFIRMED. Set as Standard / Save as New Standard
-additionally create or reuse a Standard, which completes FUTURE matching
-imports (AUTOMATIC). A Standard is never modified by editing a transaction.
-The WHAT is never shown on the compact row.
+Confirm and the editor's Save both end the same way: a HUMAN decision (WHO,
+WHY, destination) and a HUMAN, COMPLETE allocation (For Whom) — CONFIRMED.
+Reconciliation Standards (Set as Standard, Save as New Standard) were retired
+with the old rule system (BANK_RULES_RESET_001). The WHAT is never shown on
+the compact row.
 """
 
 from __future__ import annotations
@@ -43,12 +40,9 @@ from . import card_configuration
 from . import economic_allocation
 from . import export as export_service
 from . import recognition
-from . import reconciliation_standards as standards_service
 from . import reconciliation_status
-from . import who_recognition
 
 NEEDS_REVIEW = reconciliation_status.NEEDS_REVIEW
-AUTOMATIC = reconciliation_status.AUTOMATIC
 CONFIRMED = reconciliation_status.CONFIRMED
 
 
@@ -126,19 +120,12 @@ def _destination_label(destination: "m.BankAccountingClassification | None") -> 
     return f"{destination.code} — {destination.name}"
 
 
-_OWN_ACCOUNT_FAMILY_LABELS = {
-    who_recognition.F_OWN_LEGAL_ENTITY: "Own legal entity",
-    who_recognition.F_CARD_SETTLEMENT: "Card payment from own funds",
-}
-
-
-def _own_account_labels(session: Session, ids: list[int],
-                        instruments: dict[int, "m.PaymentInstrument"]) -> dict[int, str]:
+def _own_account_labels(session: Session, ids: list[int]) -> dict[int, str]:
     """{transaction id: label} for the own-account movements among `ids` —
     the ones the model resolves WITHOUT a WHO (`review_queues.
-    own_account_movement`): a confirmed INTERNAL_TRANSFER match, or a
-    STRUCTURAL current recognition. Shown in place of "No WHO yet"; never a
-    WHO. Two queries, whatever the number of rows."""
+    own_account_movement`): a confirmed INTERNAL_TRANSFER match. Shown in
+    place of "No WHO yet"; never a WHO. One query, whatever the number of
+    rows."""
     if not ids:
         return {}
     labels: dict[int, str] = {}
@@ -149,19 +136,6 @@ def _own_account_labels(session: Session, ids: list[int],
                    m.FinancialTransactionMatch.transaction_b_id.in_(ids)))
     ):
         labels[a_id] = labels[b_id] = "Internal transfer (matched)"
-    for recognized in session.scalars(
-        select(m.BankWhoRecognition).where(
-            m.BankWhoRecognition.recognizer_version == who_recognition.RECOGNIZER_VERSION,
-            m.BankWhoRecognition.tier == m.WHO_TIER_STRUCTURAL,
-            m.BankWhoRecognition.financial_transaction_id.in_(ids))
-    ):
-        if recognized.financial_transaction_id in labels:
-            continue
-        other = instruments.get(recognized.internal_payment_instrument_id)
-        labels[recognized.financial_transaction_id] = (
-            f"Internal transfer · {other.display_name}" if other is not None
-            else _OWN_ACCOUNT_FAMILY_LABELS.get(recognized.family, "Own account")
-        )
     return labels
 
 
@@ -193,15 +167,13 @@ def rows_view(session: Session, transactions: list["m.FinancialTransaction"]) ->
         ):
             allocations.setdefault(a.financial_transaction_id, []).append(a)
     instruments = {i.id: i for i in session.scalars(select(m.PaymentInstrument))}
-    own_account = _own_account_labels(session, ids, instruments)
+    own_account = _own_account_labels(session, ids)
     whos = {o.id: o for o in session.scalars(select(m.BankOccurrence))}
     whys = {r.id: r for r in session.scalars(select(m.BankTransactionReason))}
     classifications = {c.id: c for c in session.scalars(select(m.BankAccountingClassification))}
     entities = list(session.scalars(select(m.ReportingEntity).order_by(m.ReportingEntity.name)))
-    entity_names = {e.id: e.name for e in entities}
 
     for_whom_by_id = for_whom_values(session, transactions, instruments, allocations)
-    used_standard_ids: set[int] = set()
     rows = []
     for t in transactions:
         instrument = instruments.get(t.payment_instrument_id)
@@ -215,13 +187,8 @@ def rows_view(session: Session, transactions: list["m.FinancialTransaction"]) ->
         why = whys.get(explanation.transaction_reason_id) if explanation and explanation.transaction_reason_id else None
         destination = (classifications.get(explanation.accounting_classification_id)
                        if explanation and explanation.accounting_classification_id else None)
-        standard_id = row_allocations[0].reconciliation_standard_id if status == AUTOMATIC else None
-        if standard_id is not None:
-            used_standard_ids.add(standard_id)
         if who is None:
             who_source = None
-        elif status == AUTOMATIC:
-            who_source = "standard"
         else:
             who_source = "person" if explanation.decision_source == "HUMAN" else "auto"
         rows.append({
@@ -244,7 +211,6 @@ def rows_view(session: Session, transactions: list["m.FinancialTransaction"]) ->
             "default_for_whom": default_id,
             "split": len(row_allocations) > 1,
             "status": status,
-            "standard_id": standard_id,
             "memo": t.source_memo or "",
         })
 
@@ -283,29 +249,6 @@ def rows_view(session: Session, transactions: list["m.FinancialTransaction"]) ->
             entry["inactive"] = True
         who_catalog.append(entry)
 
-    standards = {}
-    if used_standard_ids:
-        accounts = {a.id: a.display_name for a in session.scalars(
-            select(m.RFOneAccount).where(m.RFOneAccount.id.in_(
-                select(m.BankReconciliationStandard.approved_by_account_id)
-                .where(m.BankReconciliationStandard.id.in_(used_standard_ids)))))}
-        for s in session.scalars(select(m.BankReconciliationStandard)
-                                 .where(m.BankReconciliationStandard.id.in_(used_standard_ids))):
-            standards[s.id] = {
-                "pattern": s.normalized_pattern,
-                "match": {"EXACT_NORMALIZED_DESCRIPTION": "Exact", "CONTAINS_TEXT": "Contains",
-                          "PREFIX": "Prefix"}.get(s.match_type, s.match_type),
-                "scope": account_label(instruments.get(s.payment_instrument_id))
-                if s.payment_instrument_id else "Any account or card",
-                "direction": {"DEBIT": "Money out", "CREDIT": "Money in"}.get(s.direction, "Either direction"),
-                "who": whos[s.occurrence_id].canonical_name if s.occurrence_id in whos else "",
-                "why": whys[s.transaction_reason_id].name if s.transaction_reason_id in whys else "",
-                "what": _destination_label(classifications.get(s.accounting_classification_id)),
-                "for_whom": entity_names.get(s.reporting_entity_id, ""),
-                "approved_by": accounts.get(s.approved_by_account_id, ""),
-                "approved_at": s.approved_at.date().isoformat() if s.approved_at else "",
-            }
-
     return {
         "rows": rows,
         "entities": [{"id": e.id, "name": e.name, "active": e.status == "ACTIVE"} for e in entities],
@@ -322,7 +265,6 @@ def rows_view(session: Session, transactions: list["m.FinancialTransaction"]) ->
                for r in whys.values() if r.status == "ACTIVE" and r.accounting_classification_id in classifications},
             **{str(r["what_id"]): r["what"] for r in rows if r["what_id"] is not None},
         },
-        "standards": {str(k): v for k, v in standards.items()},
     }
 
 
@@ -360,7 +302,7 @@ def record_who(
     (`recognition.record_human_decision`), once.
 
     A row that was CONFIRMED keeps its confirmation only when WHO and WHY are restated
-    unchanged; any other change — and any change to an AUTOMATIC row — withdraws
+    unchanged; any other change withdraws
     its acceptance, so the row is NEEDS REVIEW until confirmed again. The For
     Whom a person chose is kept (BANK_REVIEW_FOR_WHOM_001)."""
     transaction = _transaction(session, transaction_id)
@@ -396,8 +338,6 @@ def record_who(
             transaction_id=transaction.id, occurrence_id=occurrence.id,
             transaction_reason_id=reason_id, confirmed_by_account_id=account_id,
             accounting_classification_id=keep_destination,
-            # The approved modal offers no learning choice, so none is made.
-            learn_description=False,
         ),
     )
     if reason_id is not None:
@@ -515,7 +455,7 @@ def _accept(
         recognition.HumanDecisionRequest(
             transaction_id=transaction.id, occurrence_id=occurrence.id,
             transaction_reason_id=reason_id, confirmed_by_account_id=account_id,
-            accounting_classification_id=destination_id, learn_description=False,
+            accounting_classification_id=destination_id,
         ),
     )
     economic_allocation.set_allocations(
@@ -552,56 +492,22 @@ def confirm_row(
 def save_row(
     session: Session, *, transaction_id: int, occurrence_id: int | None, reason_id: int | None,
     destination_id: int | None, reporting_entity_id: int | None, account_id: int | None,
-    as_standard: bool,
-) -> "m.BankReconciliationStandard | None":
-    """The expanded editor's Save (`as_standard` False: keep every Standard
-    unchanged) and Save as New Standard (`as_standard` True). Both accept the
-    transaction as CONFIRMED with exactly the values given; the WHY may be
-    any active WHY and the WHAT any P&L WHAT (or the destination the
-    transaction already has). Save as New Standard then creates — or reuses,
-    when identical — a Standard with a signature distinct from any ACTIVE
-    Standard giving a different result; otherwise it refuses and nothing is
-    written, so the operator can save the exception individually."""
+) -> None:
+    """The expanded editor's Save: accept the transaction as CONFIRMED with
+    exactly the values given; the WHY may be any active WHY and the WHAT any
+    P&L WHAT (or the destination the transaction already has). (Save as New
+    Standard was retired with the old rule system, BANK_RULES_RESET_001.)"""
     transaction = _transaction(session, transaction_id)
-    signature = standards_service.signature_for(session, transaction) if as_standard else None
     if reason_id is not None:
         reason = session.get(m.BankTransactionReason, reason_id)
         if reason is None:
             raise ValueError(f"WHY {reason_id} does not exist.")
     _accept(session, transaction, occurrence_id=occurrence_id, reason_id=reason_id,
             destination_id=destination_id, reporting_entity_id=reporting_entity_id, account_id=account_id)
-    if not as_standard:
-        return None
-    explanation = recognition.get_current_explanation(session, financial_transaction_id=transaction.id)
-    standard, _created = standards_service.create_or_reuse(
-        session, signature=signature,
-        result=standards_service.Result(
-            occurrence_id=explanation.occurrence_id, transaction_reason_id=explanation.transaction_reason_id,
-            accounting_classification_id=explanation.accounting_classification_id,
-            reporting_entity_id=reporting_entity_id,
-        ),
-        approved_by_account_id=account_id, created_from_transaction_id=transaction.id,
-    )
-    return standard
-
-
-def set_as_standard(
-    session: Session, *, transaction_id: int, reporting_entity_id: int | None, account_id: int | None,
-) -> "m.BankReconciliationStandard":
-    """Compact-row Set as Standard: the current values, as shown."""
-    transaction = _transaction(session, transaction_id)
-    current = recognition.get_current_explanation(session, financial_transaction_id=transaction.id)
-    if current is None or current.occurrence_id is None or current.transaction_reason_id is None:
-        raise ValueError("A Standard needs a WHO and a WHY. Complete the row first.")
-    return save_row(
-        session, transaction_id=transaction.id, occurrence_id=current.occurrence_id,
-        reason_id=current.transaction_reason_id, destination_id=current.accounting_classification_id,
-        reporting_entity_id=reporting_entity_id, account_id=account_id, as_standard=True,
-    )
 
 
 def reopen_row(session: Session, *, transaction_id: int) -> int:
-    """Withdraw a row's acceptance (CONFIRMED or AUTOMATIC). The decision is
+    """Withdraw a row's acceptance (CONFIRMED). The decision is
     untouched, the For Whom is kept; no Standard is changed."""
     transaction = _transaction(session, transaction_id)
     allocations = _allocations(session, transaction.id)

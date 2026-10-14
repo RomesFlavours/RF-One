@@ -15,7 +15,7 @@ capabilities are general.
 * "only if the WHO differs": the same WHO (case and spaces aside) changes
   nothing — WHY and status kept;
 * "replace_existing": a different WHO decided by another rule is replaced;
-  manual and Standard decisions stay PROTECTED, never executed;
+  manual decisions stay PROTECTED, never executed;
 * "Da confermare": a changed movement's decision is NEEDS_HUMAN_REVIEW
   (not a resolved decision status);
 * an interpretation must account for every instruction (coverage): one with
@@ -26,6 +26,12 @@ capabilities are general.
   rule — a saved interpretation from a Claude Code session is reused with no
   AI call and shown as such;
 * the preview writes nothing on movements.
+
+BANK_OLD_RULES_REMOVAL_001: Reconciliation Standards were removed from the
+product, so the Standard-protected movement ("Pagamento a Mario Rossi REF7")
+and its Standard fixture went with them. Checks 9 and 18 keep only their
+manual (HUMAN) part - the Standard half of each went with the Standards. No
+check number was removed.
 
 Never touches a real bank file, AWS, or any production database.
 """
@@ -134,13 +140,6 @@ def main() -> int:
         publix = m.BankOccurrence(canonical_name="PUBLIX", occurrence_type_id=counterparty.id, status="ACTIVE")
         s.add_all([mario, luigi, publix])
         s.flush()
-        standard = m.BankReconciliationStandard(
-            match_type="CONTAINS_TEXT", normalized_pattern="PAGAMENTO A MARIO ROSSI REF7", match_field="DESCRIPTION",
-            occurrence_id=publix.id, transaction_reason_id=why_other.id,
-            accounting_classification_id=why_other.accounting_classification_id, reporting_entity_id=entity.id,
-            status="ACTIVE", approved_at=datetime.now(timezone.utc))
-        s.add(standard)
-        s.flush()
         seq = [0]
 
         def tx(day, description):
@@ -155,13 +154,11 @@ def main() -> int:
             s.flush()
             return t
 
-        def decide(t, who, why, source="RULE", standard_id=None):
-            extra = (dict(reconciliation_standard_id=standard_id, accounting_destination_source=m.DESTINATION_SOURCE_STANDARD,
-                          accounting_classification_id=why.accounting_classification_id) if standard_id else {})
+        def decide(t, who, why, source="RULE"):
             recognition._create_decision_row(
                 s, t, occurrence_id=who.id if who else None, transaction_reason_id=why.id if why else None,
-                recognition_rule_id=None, decision_source=source, decision_status="AUTO_APPLIED",
-                confidence=None, explanation_notes="test setup", **extra)
+                decision_source=source, decision_status="AUTO_APPLIED",
+                confidence=None, explanation_notes="test setup")
 
         t = {
             "none": tx(2, "Bonifico: PAGAMENTO A  Mario   Rossi ref 001"),
@@ -169,7 +166,6 @@ def main() -> int:
             "diff": tx(4, "Pagamento a Mario Rossi REF2"),
             "same": tx(5, "Pagamento a  mario rossi REF3"),
             "human": tx(6, "Pagamento a Mario Rossi REF4"),
-            "standard": tx(7, "Pagamento a Mario Rossi REF7"),
             "order": tx(8, "REF5 Pagamento a Mario Rossi"),
             "empty": tx(9, "Pagamento a REF6"),
             "nodefault": tx(10, "Pagamento a Luigi Verdi Ref8"),
@@ -178,7 +174,6 @@ def main() -> int:
         decide(t["diff"], publix, why_other)
         decide(t["same"], mario, why_other)
         decide(t["human"], publix, why_other, source="HUMAN")
-        decide(t["standard"], publix, why_other, standard_id=standard.id)
         decide(t["nodefault"], None, why_other)
         s.commit()
         ids = {k: v.id for k, v in t.items()}
@@ -247,9 +242,8 @@ def main() -> int:
           and by["diff"]["proposed_why"] == why_default_name, detail=str(by["diff"]))
     check("8. the same WHO (case and spaces aside) → UNCHANGED: WHY and status kept",
           by["same"]["plan"] == "UNCHANGED" and "Same WHO" in by["same"]["plan_note"], detail=str(by["same"]))
-    check("9. manual and Standard decisions are PROTECTED, never executed",
-          by["human"]["plan"] == "PROTECTED" and "manually" in by["human"]["plan_note"]
-          and by["standard"]["plan"] == "PROTECTED" and "Standard" in by["standard"]["plan_note"])
+    check("9. manual decisions are PROTECTED, never executed",
+          by["human"]["plan"] == "PROTECTED" and "manually" in by["human"]["plan_note"])
     lines = p.get("interpretation_lines") or []
     check("10. the window lists what is represented: extraction options, default WHY, status, only-if, replace, "
           "protections, every instruction",
@@ -338,9 +332,9 @@ def main() -> int:
     check("17. applied: default WHY assigned; no default → WHY empty; replaced WHO",
           current["none"].transaction_reason_id == why_default_id and current["nodefault"].transaction_reason_id is None
           and current["new"].transaction_reason_id is None and current["diff"].transaction_reason_id == why_default_id)
-    check("18. applied: same WHO, manual and Standard movements are untouched (same decision)",
+    check("18. applied: same WHO and manual movements are untouched (same decision)",
           after["same"] == before["same"] and after["human"] == before["human"]
-          and after["standard"] == before["standard"] and current["same"].decision_status == "AUTO_APPLIED")
+          and current["same"].decision_status == "AUTO_APPLIED")
 
     print(f"\n{len(passed)} passed, {len(failed)} failed.")
     return 0 if not failed else 1

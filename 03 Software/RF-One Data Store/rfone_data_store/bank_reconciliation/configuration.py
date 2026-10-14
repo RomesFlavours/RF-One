@@ -21,8 +21,6 @@ the page needs on top of them:
 * a new WHY gets a stable code generated from its name (D7);
 * a new WHO is a COUNTERPARTY (D5);
 * WHO -> served ReportingEntities (D1), stated by a human, never inferred;
-* WHO-only recognition rules (D2): they recognise the WHO and store no WHY,
-  because WHO never determines WHY;
 * entities are shown and chosen by `ReportingEntity.name` (D8).
 
 Every function flushes and never commits: the caller owns the transaction,
@@ -33,7 +31,6 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -42,7 +39,6 @@ from .. import legal_entity_service
 from .. import models as m
 from . import canonical_catalog
 from . import classification
-from . import recognition
 from . import reporting_entity as reporting_entity_service
 from . import why_catalog
 
@@ -52,14 +48,6 @@ from . import why_catalog
 
 STATEMENT_LABELS = {"PROFIT_LOSS": "P&L", "BALANCE_SHEET": "Balance Sheet"}
 PROFIT_LOSS = "PROFIT_LOSS"
-
-# The page's three match words, mapped once onto the stored match types.
-MATCH_TYPES = {
-    "EXACT": recognition.EXACT_NORMALIZED_DESCRIPTION,
-    "CONTAINS": recognition.CONTAINS_TEXT,
-    "PREFIX": recognition.PREFIX,
-}
-MATCH_LABELS = {stored: word for word, stored in MATCH_TYPES.items()}
 
 COUNTERPARTY_TYPE_CODE = "COUNTERPARTY"
 
@@ -264,17 +252,8 @@ def update_why(
 
 
 # ---------------------------------------------------------------------------
-# WHO — BankOccurrence, its WHYs, its entities, its recognition rules
+# WHO — BankOccurrence, its WHYs, its entities
 # ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class RuleInput:
-    """One row of the WHO modal's recognition-rule table."""
-    rule_id: int | None
-    pattern: str
-    match: str          # EXACT | CONTAINS | PREFIX
-    active: bool
 
 
 def counterparty_type_id(session: Session) -> int:
@@ -357,102 +336,10 @@ def _set_who_entities(
     session.flush()
 
 
-def _who_rules(session: Session, occurrence_id: int) -> list["m.BankRecognitionRule"]:
-    """The WHO's description rules — the ones that recognise it. MEMO rules
-    carry purpose wording, not identity, and are not edited here."""
-    return list(session.scalars(
-        select(m.BankRecognitionRule)
-        .where(
-            m.BankRecognitionRule.occurrence_id == occurrence_id,
-            m.BankRecognitionRule.match_field == recognition.DESCRIPTION,
-        )
-        .order_by(m.BankRecognitionRule.id)
-    ))
-
-
-def _set_who_rules(session: Session, occurrence: "m.BankOccurrence", rules: list[RuleInput]) -> None:
-    """Create, edit and (de)activate the WHO's recognition rules.
-
-    A new rule is WHO-only (D2): DESCRIPTION scope, `determines_purpose`
-    false, no WHY stored, no instrument or direction scope. A rule removed
-    from the list is DEACTIVATED, never deleted — decisions may already
-    cite it. A pattern that another WHO already recognises with the same
-    match is refused: the two rules would contradict each other."""
-    current = {rule.id: rule for rule in _who_rules(session, occurrence.id)}
-    seen: set[tuple[str, str]] = set()
-    kept: set[int] = set()
-    for item in rules:
-        pattern = recognition.normalize_description_for_recognition(item.pattern)
-        if not pattern:
-            raise ValueError("A recognition rule needs a text or code pattern.")
-        match_type = MATCH_TYPES.get((item.match or "").upper())
-        if match_type is None:
-            raise ValueError(f"Match must be Exact, Contains or Prefix, got {item.match!r}.")
-        if (match_type, pattern) in seen:
-            raise ValueError(f"The rule {MATCH_LABELS[match_type].title()} {pattern!r} is listed twice.")
-        seen.add((match_type, pattern))
-
-        if item.active:
-            clash = session.scalar(
-                select(m.BankRecognitionRule).where(
-                    m.BankRecognitionRule.match_type == match_type,
-                    m.BankRecognitionRule.normalized_pattern == pattern,
-                    m.BankRecognitionRule.match_field == recognition.DESCRIPTION,
-                    m.BankRecognitionRule.status == "ACTIVE",
-                    m.BankRecognitionRule.occurrence_id != occurrence.id,
-                )
-            )
-            if clash is not None:
-                other = session.get(m.BankOccurrence, clash.occurrence_id)
-                raise ValueError(
-                    f"{MATCH_LABELS[match_type].title()} {pattern!r} already recognises WHO "
-                    f"{other.canonical_name if other else clash.occurrence_id!r}. One text cannot "
-                    "recognise two WHOs; change or deactivate that rule first."
-                )
-
-        if item.rule_id is not None:
-            rule = current.get(item.rule_id)
-            if rule is None:
-                raise ValueError(f"Recognition rule {item.rule_id} does not belong to this WHO.")
-            if rule.literal_pattern is not None:
-                # BANK_WHO_RULE_CONDITIONS_001 — a rule made in the Rule modal
-                # keeps its literal text: here it may only be (de)activated.
-                if match_type != rule.match_type or pattern != rule.normalized_pattern:
-                    raise ValueError(
-                        f"The rule {rule.literal_pattern!r} was made in the Rule modal with a literal text: "
-                        "change it there (Rules > WHO Rules > Edit), not here.")
-                if item.active:
-                    rule.status = "ACTIVE"
-                elif rule.status == "ACTIVE":
-                    rule.status = "INACTIVE"
-                kept.add(rule.id)
-                continue
-            rule.match_type = match_type
-            rule.normalized_pattern = pattern
-            if item.active:
-                rule.status = "ACTIVE"
-            elif rule.status == "ACTIVE":
-                rule.status = "INACTIVE"
-            kept.add(rule.id)
-        else:
-            session.add(m.BankRecognitionRule(
-                match_type=match_type, normalized_pattern=pattern,
-                match_field=recognition.DESCRIPTION, determines_purpose=False,
-                payment_instrument_id=None, direction=None,
-                occurrence_id=occurrence.id, transaction_reason_id=None,
-                priority=0, status=_status(item.active), auto_apply_enabled=True,
-                human_confirmations=0, created_from_transaction_id=None,
-            ))
-    for rule_id, rule in current.items():
-        if rule_id not in kept and rule.status == "ACTIVE":
-            rule.status = "INACTIVE"
-    session.flush()
-
-
 def save_who(
     session: Session, *, occurrence_id: int | None, name: str, active: bool,
     reason_ids: list[int], default_reason_id: int | None,
-    reporting_entity_ids: list[int], rules: list[RuleInput],
+    reporting_entity_ids: list[int],
 ) -> "m.BankOccurrence":
     """Create (`occurrence_id` None) or edit a WHO with everything the modal
     shows. The default WHY, when given, must be one of the possible WHYs:
@@ -493,7 +380,6 @@ def save_who(
             optional_notes=occurrence.optional_notes,
         )
     _set_who_entities(session, occurrence, list(dict.fromkeys(reporting_entity_ids)))
-    _set_who_rules(session, occurrence, rules)
     # BANK_WHO_SINGLE_DEFAULT_WHY_001 — one possible WHY is the default.
     why_catalog.sync_single_default(session, occurrence.id)
     return occurrence
@@ -837,23 +723,10 @@ def configuration_view(session: Session) -> dict:
         .where(m.BankOccurrenceReportingEntity.active.is_(True))
     ):
         entities_by_who.setdefault(occurrence_id, []).append(entity_id)
-    rules_by_who: dict[int, list[dict]] = {}
-    for rule in session.scalars(
-        select(m.BankRecognitionRule)
-        .where(m.BankRecognitionRule.match_field == recognition.DESCRIPTION)
-        .order_by(m.BankRecognitionRule.id)
-    ):
-        rules_by_who.setdefault(rule.occurrence_id, []).append({
-            "id": rule.id,
-            # A Rule-modal rule shows its text as typed (BANK_WHO_RULE_CONDITIONS_001).
-            "pattern": rule.literal_pattern if rule.literal_pattern is not None else rule.normalized_pattern,
-            "match": MATCH_LABELS.get(rule.match_type, rule.match_type).title(),
-            "active": rule.status == "ACTIVE", "status": rule.status,
-        })
     whos = [
         {"id": o.id, "name": o.canonical_name, "whys": reasons_by_who.get(o.id, []),
          "default_why": o.default_transaction_reason_id,
-         "entities": entities_by_who.get(o.id, []), "rules": rules_by_who.get(o.id, []),
+         "entities": entities_by_who.get(o.id, []),
          "active": o.status == "ACTIVE"}
         for o in session.scalars(select(m.BankOccurrence).order_by(m.BankOccurrence.canonical_name))
     ]

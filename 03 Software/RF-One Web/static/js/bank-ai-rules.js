@@ -249,7 +249,7 @@
       return "“Solo movimenti non ancora sistemati da regole AI” changed after Preview #" + previewed.id;
     }
     if (overrideProtected.checked !== previewed.overrideProtected) {
-      return "“Sostituisci anche WHO/WHY manuali, Standard o confermati” changed after Preview #" + previewed.id;
+      return "“Sostituisci anche WHO/WHY manuali o confermati” changed after Preview #" + previewed.id;
     }
     if (scopeSignature() !== previewed.scope) {
       var was = previewed.scope.split(":")[0];
@@ -487,7 +487,7 @@
       data.doubts + " doubtful (never applied)." +
       // BANK_AI_RULES_011 — the explicit override option and the other rules on the same movements.
       (data.override_protected ? " Option “" + data.override_label + "” ON: " + (data.overridden || 0) +
-        " manual / Standard / confirmed movement(s) would be overridden (For Whom kept, “Da confermare”)." : "") +
+        " manual / confirmed movement(s) would be overridden (For Whom kept, “Da confermare”)." : "") +
       (data.overlaps ? " Overlap with other rules: " + data.overlaps + " movement(s) (" +
         Object.keys(data.overlap_rules || {}).map(function (id) {
           return (id.indexOf("WHO ") === 0 ? "WHO rule #" + id.slice(4) : "AI rule #" + id) + ": " +

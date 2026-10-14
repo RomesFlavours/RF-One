@@ -99,7 +99,6 @@
       <div><dt>Sources unresolved</dt><dd data-figure="source">{{ r.counts.source }}</dd></div>
       <div><dt>Transactions to reconcile</dt><dd data-figure="to_reconcile">{{ r.status.to_reconcile }}</dd></div>
       <div><dt>Reconciled, Needs review</dt><dd data-figure="reconciled">{{ r.status.reconciled }}</dd></div>
-      <div><dt>Automatic</dt><dd data-figure="automatic">{{ r.status['Automatic'] }}</dd></div>
       <div><dt>Confirmed</dt><dd data-figure="confirmed">{{ r.status['Confirmed'] }}</dd></div>
       {% if r.counts.other %}<div><dt>Other blockers</dt><dd data-figure="other">{{ r.counts.other }}</dd></div>{% endif %}
       <div><dt>Transactions in month</dt><dd data-figure="total">{{ r.transaction_count }}</dd></div>

@@ -13,6 +13,10 @@ Proves, on a throwaway database, that `POST /bank/transactions/who-why/bulk`:
   without CSRF are refused too;
 * the page offers the ticks on To Reconcile only.
 
+BANK_OLD_RULES_REMOVAL_001: check 3 no longer counts bank_recognition_rules
+("no rule created") — the table is gone, so no rule can be created; the rest of
+check 3 and every other check are unchanged.
+
 Never touches a real bank file, AWS, or any production database.
 """
 
@@ -147,8 +151,7 @@ def main() -> int:
 
         def counts():
             with SessionFactory() as s:
-                return (s.scalar(select(func.count(m.BankTransactionExplanation.id))),
-                        s.scalar(select(func.count(m.BankRecognitionRule.id))))
+                return (s.scalar(select(func.count(m.BankTransactionExplanation.id))),)
 
         client = web_app.app.test_client()
         csrf = CSRF_RE.search(client.get("/login").data.decode()).group(1)
@@ -178,8 +181,8 @@ def main() -> int:
               and all((state(k)["who"], state(k)["why"], state(k)["what"], state(k)["source"])
                       == (ids["who"], ids["why"], ids["what"], "HUMAN") for k in ("t1", "t2", "t3")),
               str([state(k) for k in ("t1", "t2", "t3")]))
-        check("3. the fourth (not ticked) is unchanged; no rule created",
-              state("t4") == t4_before and after[1] == before[1] and after[0] == before[0] + 3)
+        check("3. the fourth (not ticked) is unchanged; three explanations written",
+              state("t4") == t4_before and after[0] == before[0] + 3)
         check("4. each keeps its own For Whom", state("t2")["for_whom"] == [ids["entity_a"]]
               and state("t3")["for_whom"] == [ids["entity_b"]] and state("t1")["for_whom"] == [], str(
                   (state("t2"), state("t3"))))

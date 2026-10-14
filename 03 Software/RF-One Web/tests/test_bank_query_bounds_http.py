@@ -3,8 +3,7 @@ or What (BANK_PERFORMANCE_N_PLUS_ONE_001).
 
 Builds a realistic synthetic Bank state: several instruments and batches,
 thousands of transactions, hundreds of Whos with aliases and Why
-associations, hundreds of receiver groups with exact recognition rules,
-human Why decisions, and cross-ledger matches (one of them on the same
+associations, hundreds of receiver groups, human Why decisions, and cross-ledger matches (one of them on the same
 instrument, which the batch review must count as invalid).
 
 For each optimized path it checks that:
@@ -12,6 +11,11 @@ For each optimized path it checks that:
 2. the page renders (200) and shows the expected business content;
 3. the SQL statement count stays under a ceiling that does not grow with the
    data — checked by rendering again after the dataset has been doubled.
+
+BANK_OLD_RULES_REMOVAL_001: the recognition rules are gone, so the fixture
+no longer creates exact rules and the receiver-candidate checks (rule Who
+suggestion; candidates summary) went with them — the receiver_candidates
+module is no longer used by any Bank page.
 
 Never touches a real bank file, AWS, or any production database.
 """
@@ -50,7 +54,6 @@ from db import SessionFactory  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store.bank_reconciliation import classification as classification_service  # noqa: E402
-from rfone_data_store.bank_reconciliation import receiver_candidates as rc  # noqa: E402
 from rfone_data_store.bank_reconciliation import recognition  # noqa: E402
 from rfone_data_store.bank_reconciliation import service as bank_service  # noqa: E402
 from rfone_data_store.bank_reconciliation import why_catalog  # noqa: E402
@@ -148,20 +151,13 @@ def main() -> int:
                 s.add(m.BankOccurrenceReasonAssociation(occurrence_id=who.id,
                                                         transaction_reason_id=reasons[w % len(reasons)].id))
             s.flush()
-            for p in range(0, payees, 3):  # exact rules for a third of the payees
-                recognition.create_or_reuse_rule(
-                    s, match_type=recognition.EXACT_NORMALIZED_DESCRIPTION, normalized_pattern=f"{tag} PAYEE {p}",
-                    occurrence_id=created[p % whos].id, transaction_reason_id=reasons[0].id,
-                    payment_instrument_id=None, direction=None, auto_apply_enabled=True,
-                    created_from_transaction_id=None)
             txns = s.scalars(select(m.FinancialTransaction).where(
                 m.FinancialTransaction.import_batch_id.in_([b.id for b in new_batches])).order_by(
                 m.FinancialTransaction.id)).all()
             for t in txns[:: max(len(txns) // 150, 1)]:   # human Why decisions
                 recognition.record_human_decision(s, recognition.HumanDecisionRequest(
                     transaction_id=t.id, occurrence_id=created[t.id % whos].id,
-                    transaction_reason_id=reasons[t.id % 5].id, confirmed_by_account_id=None,
-                    learn_description=False))
+                    transaction_reason_id=reasons[t.id % 5].id, confirmed_by_account_id=None))
             # one match on the SAME instrument (invalid) and one across
             # instruments (valid); the schema orders every pair (a < b)
             s.add_all([
@@ -182,14 +178,6 @@ def main() -> int:
             old = {b.id: old_invalid_match_count(s, b) for b in all_batches}
             check(f"{label}: invalid-match count per batch equals the former per-transaction algorithm "
                   f"(total {sum(new.values())})", new == old and sum(new.values()) > 0, f"{new} vs {old}")
-            candidates = rc.build_candidates(s)
-            check(f"{label}: summary from the page's candidates equals summary built on its own",
-                  rc.summary(s, candidates) == rc.summary(s))
-            rules = {r.normalized_pattern: r for r in s.scalars(select(m.BankRecognitionRule)).all()}
-            suggested = [c for c in candidates if c.status == rc.STATUS_UNCLASSIFIED and c.payee_normalized in rules]
-            check(f"{label}: every unclassified group with an exact rule gets that rule's Who as suggestion "
-                  f"({len(suggested)} groups)",
-                  suggested and all(c.suggested_occurrence_id == rules[c.payee_normalized].occurrence_id for c in suggested))
             whats = s.scalars(select(m.BankAccountingClassification)).all()
             check(f"{label}: bulk What usage equals the per-What usage for all {len(whats)} Whats",
                   classification_service.accounting_classification_usages(s)

@@ -4,20 +4,29 @@
 To Reconcile means "the business meaning is still unresolved", not "the WHO
 field is empty". Proves, on a throwaway database, that:
 
-* an ordinary transaction with no WHO (or only a recognizer proposal) stays
-  To Reconcile;
-* an own-account movement — STRUCTURAL WHO recognition (registered RF-One
-  instrument) or a confirmed INTERNAL_TRANSFER match — is NOT To Reconcile
-  and IS under Reconciled, with or without a decision, and the counts move
-  by exactly those rows;
+* an ordinary transaction with no WHO stays To Reconcile;
+* an own-account movement — a confirmed INTERNAL_TRANSFER match — is NOT To
+  Reconcile and IS under Reconciled, with or without a decision, and the
+  counts move by exactly those rows;
 * an open duplicate question still keeps it To Reconcile;
-* Reconciled shows it truthfully: no WHO invented, "Internal transfer · <other
-  account>" instead of "No WHO yet", the existing WHY and WHAT, status Needs
+* Reconciled shows it truthfully: no WHO invented, "Internal transfer
+  (matched)" instead of "No WHO yet", the existing WHY and WHAT, status Needs
   review;
 * a person's WHO + WHY + Confirm, and Confirmed status behave as before.
 
 BANK_RULES_RESET_001 retired the simple WHO Rule (POST /bank/who-rules/apply):
 the former checks 6-8 (the ONLINE TRANSFER and Gordon Rules) went with it.
+
+BANK_OLD_RULES_REMOVAL_001 removed the structural WHO recognitions: a
+STRUCTURAL BankWhoRecognition no longer makes a row an own-account movement,
+only a confirmed INTERNAL_TRANSFER match does. The transfer rows (with a WHY,
+bare, with an open duplicate question) are therefore re-expressed as one side
+of such a match, each with its counterpart on the savings account; checks 2,
+3, 3c, 5, 5b and 10 keep their intent on those rows. Check 1b (a DETERMINISTIC
+recognizer proposal alone is not a resolved WHO) went with the recognizer.
+Check 4's counts follow the new fixture (10 rows: 3 To Reconcile, 7
+Reconciled) and check 5 expects the label the product now shows, "Internal
+transfer (matched)", instead of "Internal transfer · <other account>".
 
 Never touches a real bank file, AWS, or any production database.
 """
@@ -60,7 +69,6 @@ from rfone_data_store.bank_reconciliation import recognition  # noqa: E402
 from rfone_data_store.bank_reconciliation import reconciliation_status  # noqa: E402
 from rfone_data_store.bank_reconciliation import review_queues  # noqa: E402
 from rfone_data_store.bank_reconciliation import row_reconciliation  # noqa: E402
-from rfone_data_store.bank_reconciliation import who_recognition as wr  # noqa: E402
 from rfone_data_store.bank_reconciliation import why_catalog  # noqa: E402
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
@@ -116,8 +124,7 @@ def main() -> int:
         why_catalog.associate(s, occurrence_id=gordon.id, transaction_reason_id=food.id, source="HUMAN")
         seq = [0]
 
-        def tx(description, *, instrument=checking, structural_to=None, deterministic=None, why=None,
-               duplicate="NONE"):
+        def tx(description, *, instrument=checking, why=None, duplicate="NONE"):
             seq[0] += 1
             t = m.FinancialTransaction(
                 payment_instrument_id=instrument.id, bank_source="CHASE_BANK_ACCOUNT", import_batch_id=batch.id,
@@ -127,45 +134,39 @@ def main() -> int:
                 fingerprint=f"own-transfer-{seq[0]}", classification="UNKNOWN")
             s.add(t)
             s.flush()
-            if structural_to is not None:
-                s.add(m.BankWhoRecognition(
-                    financial_transaction_id=t.id, recognizer_version=wr.RECOGNIZER_VERSION, tier=wr.STRUCTURAL,
-                    family=wr.F_INTERNAL_TRANSFER, parser_code="ONLINE_TRANSFER",
-                    internal_payment_instrument_id=structural_to.id, referenced_last_four=structural_to.last_four,
-                    evidence="registered RF-One instrument"))
-            if deterministic is not None:
-                s.add(m.BankWhoRecognition(
-                    financial_transaction_id=t.id, recognizer_version=wr.RECOGNIZER_VERSION, tier=wr.DETERMINISTIC,
-                    family="ACH_ORIGINATOR", parser_code="ACH", extracted_name=deterministic.canonical_name,
-                    occurrence_id=deterministic.id, evidence="ach originator"))
             if why is not None:
                 # The structural WHY engine's own RULE decision: a WHY and its
                 # destination, deliberately no WHO.
                 recognition._create_decision_row(
-                    s, t, occurrence_id=None, transaction_reason_id=why.id, recognition_rule_id=None,
-                    decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence="HIGH",
+                    s, t, occurrence_id=None, transaction_reason_id=why.id, decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence="HIGH",
                     explanation_notes="structural WHY", accounting_classification_id=why.accounting_classification_id)
             s.flush()
             return t
 
+        # BANK_OLD_RULES_REMOVAL_001: an own-account movement is ONLY a
+        # confirmed INTERNAL_TRANSFER match now, so every transfer row is one
+        # side of such a match, with its other side on the savings account.
         rows = {
             "no_who": tx("SOME UNKNOWN PAYEE 4477"),
-            "proposal": tx("GORDON FOOD SERVICE ACH 01", deterministic=gordon),
-            "transfer_why": tx("ONLINE TRANSFER TO CHK ...0002 TRANSACTION#: 1", structural_to=savings, why=transfer_why),
-            "transfer_bare": tx("ONLINE TRANSFER TO CHK ...0002 TRANSACTION#: 2", structural_to=savings),
-            "transfer_dup": tx("ONLINE TRANSFER TO CHK ...0002 TRANSACTION#: 3", structural_to=savings,
-                               duplicate="CANDIDATE_DUPLICATE"),
+            "transfer_why": tx("ONLINE TRANSFER TO CHK ...0002 TRANSACTION#: 1", why=transfer_why),
+            "transfer_why_in": tx("ONLINE TRANSFER FROM CHK ...0001 TRANSACTION#: 1", instrument=savings),
+            "transfer_bare": tx("ONLINE TRANSFER TO CHK ...0002 TRANSACTION#: 2"),
+            "transfer_bare_in": tx("ONLINE TRANSFER FROM CHK ...0001 TRANSACTION#: 2", instrument=savings),
+            "transfer_dup": tx("ONLINE TRANSFER TO CHK ...0002 TRANSACTION#: 3", duplicate="CANDIDATE_DUPLICATE"),
+            "transfer_dup_in": tx("ONLINE TRANSFER FROM CHK ...0001 TRANSACTION#: 3", instrument=savings),
             "matched_a": tx("TRANSFER OUT TO RESERVE"),
             "matched_b": tx("TRANSFER IN FROM CHECKING", instrument=savings),
             "manual": tx("CORNER HARDWARE 55"),
         }
-        s.add(m.FinancialTransactionMatch(transaction_a_id=rows["matched_a"].id, transaction_b_id=rows["matched_b"].id,
-                                          match_method="HUMAN", match_basis="test", matched_amount_minor=1007))
+        for a_key, b_key in (("transfer_why", "transfer_why_in"), ("transfer_bare", "transfer_bare_in"),
+                             ("transfer_dup", "transfer_dup_in"), ("matched_a", "matched_b")):
+            s.add(m.FinancialTransactionMatch(transaction_a_id=rows[a_key].id, transaction_b_id=rows[b_key].id,
+                                              match_method="HUMAN", match_basis="test",
+                                              matched_amount_minor=-rows[a_key].amount_minor))
         s.commit()
         ids = {k: t.id for k, t in rows.items()}
         ids.update(gordon=gordon.id, food=food.id, entity=entity.id, savings=savings.id)
         transfer_keys = ("transfer_why", "transfer_bare")
-        own_keys = transfer_keys + ("matched_a", "matched_b")
         check("setup: a transfer WHY with an accounting destination exists",
               transfer_why is not None and transfer_why.accounting_classification_id is not None)
 
@@ -190,9 +191,9 @@ def main() -> int:
 
     check("1. an ordinary transaction with no WHO stays To Reconcile",
           in_to_reconcile(to_rec, "no_who") and not in_reconciled(rec, "no_who"))
-    check("1b. a recognizer proposal alone is still not a resolved WHO",
-          in_to_reconcile(to_rec, "proposal") and not in_reconciled(rec, "proposal"))
-    check("2. a recognised own-account transfer with no WHO is NOT To Reconcile (with or without a WHY)",
+    # Check 1b (a recognizer proposal alone is not a resolved WHO) went with
+    # BANK_OLD_RULES_REMOVAL_001: the WHO recognizer no longer exists.
+    check("2. a matched own-account transfer with no WHO is NOT To Reconcile (with or without a WHY)",
           not any(in_to_reconcile(to_rec, k) for k in transfer_keys))
     check("3. the same transfers ARE under Reconciled", all(in_reconciled(rec, k) for k in transfer_keys))
     check("3b. both sides of a confirmed INTERNAL_TRANSFER match are under Reconciled",
@@ -200,19 +201,20 @@ def main() -> int:
           and not in_to_reconcile(to_rec, "matched_a"))
     check("3c. an own-account transfer whose duplicate question is open stays To Reconcile",
           in_to_reconcile(to_rec, "transfer_dup") and not in_reconciled(rec, "transfer_dup"))
-    # 8 rows in scope; 0 WHO named; 4 own-account movements resolved.
+    # 10 rows in scope; 0 WHO named; 7 own-account movements resolved (the
+    # 8th matched row, transfer_dup, still has its duplicate question open).
     check("4. counts move by exactly the own-account rows and stay consistent",
-          who_named == 0 and counts == {"to_reconcile": 4, "reconciled": 4}
+          who_named == 0 and counts == {"to_reconcile": 3, "reconciled": 7}
           and sum(counts.values()) == len(rows)
-          and "To Reconcile (4)" in to_rec and "Reconciled (4)" in rec, detail=str(counts))
+          and "To Reconcile (3)" in to_rec and "Reconciled (7)" in rec, detail=str(counts))
 
     row_html = re.search(r'<tr id="t-%d".*?</tr>' % ids["transfer_why"], rec, re.S).group(0)
     bare_html = re.search(r'<tr id="t-%d".*?</tr>' % ids["transfer_bare"], rec, re.S).group(0)
     matched_html = re.search(r'<tr id="t-%d".*?</tr>' % ids["matched_a"], rec, re.S).group(0)
-    check("5. Reconciled shows the transfer truthfully: the other own account, the existing WHY and WHAT",
-          "Internal transfer · Reserve Savings" in row_html and "No WHO yet" not in row_html
+    check("5. Reconciled shows the transfer truthfully: an internal transfer, the existing WHY and WHAT",
+          "Internal transfer (matched)" in row_html and "No WHO yet" not in row_html
           and str(escape(transfer_why.name)) in row_html and "data-what=" in row_html
-          and "Internal transfer · Reserve Savings" in bare_html and "WHY needed" in bare_html
+          and "Internal transfer (matched)" in bare_html and "WHY needed" in bare_html
           and "Internal transfer (matched)" in matched_html,
           detail=f"{transfer_why.name!r}: {row_html[row_html.find('rp-who'):][:600]!r}")
     check("5b. its status is the truthful one (Needs review) and no WHO is shown on the row",

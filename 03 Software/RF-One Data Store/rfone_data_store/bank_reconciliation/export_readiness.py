@@ -7,7 +7,7 @@ module only reads that same list and the month's authoritative states and
 arranges them for a person to act on:
 
     status        the month's counts — To Reconcile (the Review tab),
-                  Reconciled but Needs review, Automatic, Confirmed — from
+                  Reconciled but Needs review, Confirmed — from
                   `review_queues` and `reconciliation_status`, never a
                   second status model;
     groups        the blockers grouped by what fixes them, each with a
@@ -190,7 +190,6 @@ def readiness(session: Session, *, year: int, month: int, detail: str | None = N
     status_counts = {
         TO_RECONCILE: sum(1 for t in transactions if t.id not in reconciled),
         RECONCILED: counts[RECONCILED],
-        reconciliation_status.AUTOMATIC: sum(1 for v in statuses.values() if v == reconciliation_status.AUTOMATIC),
         reconciliation_status.CONFIRMED: sum(1 for v in statuses.values() if v == reconciliation_status.CONFIRMED),
     }
     return Readiness(

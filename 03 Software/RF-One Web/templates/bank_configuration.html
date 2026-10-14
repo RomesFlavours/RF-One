@@ -55,11 +55,6 @@
   .cp-checklist { border: 1px solid #d6dbc4; border-radius: 6px; max-height: 9.5rem; overflow: auto; padding: .3rem .5rem; margin-top: .3rem; }
   .cp-checklist .cp-check { display: flex; margin: .15rem 0; }
   .cp-checklist .cp-what { color: var(--muted, #6b6f5e); font-size: .75rem; margin-left: .3rem; }
-  .cp-rules { width: 100%; border-collapse: collapse; font-size: .84rem; margin-top: .3rem; }
-  .cp-rules td, .cp-rules th { padding: .2rem .3rem; text-align: left; }
-  .cp-rules th { font-size: .7rem; text-transform: uppercase; color: var(--muted, #6b6f5e); }
-  .cp-rules input[type=text] { width: 100%; margin: 0; font-family: ui-monospace, Consolas, monospace; }
-  .cp-rules select { margin: 0; }
   .cp-error { color: #a33; font-size: .82rem; min-height: 1em; }
   .cp-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .9rem; }
   .cp-f input[type=date] { margin: 0; }
@@ -101,7 +96,7 @@
 
 <section class="cp-block" id="cp-who">
   <div class="cp-block-head">
-    <h2><span class="cp-num">3</span>WHO</h2><span class="cp-desc">Counterparties: their possible WHY, default WHY, entities served and recognition rules.</span>
+    <h2><span class="cp-num">3</span>WHO</h2><span class="cp-desc">Counterparties: their possible WHY, default WHY and entities served.</span>
     <button type="button" class="cp-btn cp-add" data-add="who">+ Add WHO</button>
   </div>
   <div class="cp-search">
@@ -109,7 +104,7 @@
     <span class="cp-desc" id="cp-who-count"></span>
   </div>
   <table class="cp-table"><thead><tr><th>WHO</th><th>Default WHY</th><th class="cp-narrow">Possible WHY</th>
-    <th class="cp-narrow">Entities served</th><th class="cp-narrow">Recognition rules</th><th class="cp-narrow">Active</th><th class="cp-narrow"></th></tr></thead>
+    <th class="cp-narrow">Entities served</th><th class="cp-narrow">Active</th><th class="cp-narrow"></th></tr></thead>
     <tbody data-list="who"></tbody></table>
 </section>
 
@@ -224,10 +219,8 @@
           + '</strong>. Everything moves to ' + esc(data.keep.name) + '; ' + esc(data.absorb.name)
           + ' becomes inactive (no longer selectable) and its name an alias of ' + esc(data.keep.name) + '.</p><ul class="cp-merge-impact">'
           + '<li>' + i.transactions + ' transaction(s) — ' + i.decisions + ' decision(s), reconciled ones included</li>'
-          + '<li>' + i.rules + ' recognition rule(s), ' + i.why_rules + ' WHY rule(s), ' + i.standards + ' Standard(s)</li>'
           + '<li>' + i.aliases + ' alias(es), ' + i.possible_why + ' possible WHY, ' + i.entities + ' entity(ies) served, '
-          + i.suppliers + ' supplier link(s)</li>'
-          + '<li>' + i.recognitions + ' WHO recognition(s)</li></ul>';
+          + i.suppliers + ' supplier link(s)</li></ul>';
         data.conflicts.forEach(function (c) {
           html += '<fieldset class="cp-merge-conflict"><legend>' + esc(c.label) + '</legend>' + c.choices.map(function (ch) {
             return '<label class="cp-check"><input type="radio" name="m-' + c.key + '" value="' + esc(ch[0]) + '"> ' + esc(ch[1]) + '</label>';
@@ -264,7 +257,7 @@
     var fields = [['keep_id', keepSel.value], ['absorb_id', absorbSel.value]];
     current.conflicts.forEach(function (c) {
       var v = box.querySelector('input[name="m-' + c.key + '"]:checked').value;
-      fields.push([c.key === 'default_why' ? 'default_why' : 'manual_only', v]);
+      fields.push(['default_why', v]);
     });
     fields.forEach(function (f) {
       var input = document.createElement('input'); input.type = 'hidden'; input.name = f[0]; input.value = f[1]; input.dataset.f = '1';
@@ -309,7 +302,6 @@
       return row([td('<strong>' + esc(o.name) + '</strong>'), td(def ? esc(def.name) : '—'),
                   td(count(o.whys, names('whys', o.whys)), 'cp-narrow'),
                   td(count(o.entities, names('entities', o.entities)), 'cp-narrow'),
-                  td(count(o.rules, o.rules.map(function (r) { return r.match + ': ' + r.pattern; })), 'cp-narrow'),
                   td(yes(o.active), 'cp-narrow')], o, 'who').replace('</td></tr>', merge + '</td></tr>'); }); },
     entity: function () { return S.entities.map(function (e) {
       return row([td(esc(e.name)), td(esc(e.legal_name || (e.personal ? '— (personal)' : '— (virtual)'))), td(yes(e.active), 'cp-narrow')], e, 'entity'); }); },
@@ -335,7 +327,7 @@
     whoCount.textContent = q ? (shown ? shown + ' of ' + whoRows.length : 'No WHO matches') : whoRows.length + ' WHO';
   }
   whoSearch.addEventListener('input', filterWho);
-  // ?who=<name> (Classification's WHO Rules "Edit"): open on that WHO.
+  // ?who=<name>: open on that WHO.
   try { var askedWho = new URLSearchParams(location.search).get('who'); if (askedWho) whoSearch.value = askedWho; } catch (e) {}
   filterWho();
 
@@ -432,20 +424,16 @@
         // own rules (a WHAT, once given, is a P&L WHAT and cannot be removed).
         if (!val('f-what') && !(x.id && x.what == null)) return 'Choose the WHAT this WHY belongs to.';
         return submitJson(x.id ? '/why/' + x.id : '/why', [['name', val('f-name')], ['description', val('f-description')], ['what_id', val('f-what')], ['active', flag('f-active')]]); } },
-    who: { title: 'WHO', list: 'whos', blank: { name: '', whys: [], default_why: null, entities: [], rules: [], active: true },
+    who: { title: 'WHO', list: 'whos', blank: { name: '', whys: [], default_why: null, entities: [], active: true },
       body: function (x) {
         var whyItems = S.whys.filter(function (y) { return y.active || x.whys.some(function (id) { return same(id, y.id); }); })
           .map(function (y) { return { id: y.id, label: y.name, note: (y.destination || {}).label }; });
         var entItems = S.entities.filter(function (e) { return e.active || x.entities.some(function (id) { return same(id, e.id); }); })
           .map(function (e) { return { id: e.id, label: e.name }; });
-        var rules = x.rules.map(function (r) { return ruleRow(r); }).join('');
         return fText('f-name', 'WHO name', x.name)
           + fChecklist('whys', 'Possible WHY', whyItems, x.whys, true)
           + '<div class="cp-f"><label for="f-default">Default WHY</label><select id="f-default"></select></div>'
           + fChecklist('entities', 'Entities / LLCs served', entItems, x.entities, false)
-          + '<div class="cp-f"><span class="cp-flabel">Recognition rules</span>'
-          + '<table class="cp-rules"><thead><tr><th>Text / code pattern</th><th>Match</th><th>Active</th><th></th></tr></thead><tbody id="f-rules">' + rules + '</tbody></table>'
-          + '<button type="button" class="btn-secondary cp-btn" id="f-add-rule">+ Add recognition rule</button></div>'
           + fActive(x.active); },
       after: function (x) {
         var sync = function () { syncDefault(x.default_why); };
@@ -454,13 +442,6 @@
           var q = e.target.value.toLowerCase();
           document.querySelectorAll('#f-whys .cp-check').forEach(function (l) { l.hidden = q && l.dataset.hay.indexOf(q) === -1; });
         });
-        document.getElementById('f-add-rule').addEventListener('click', function () {
-          document.getElementById('f-rules').insertAdjacentHTML('beforeend', ruleRow({ id: null, pattern: '', match: 'Exact', active: true }));
-          var inputs = document.querySelectorAll('#f-rules input[type=text]'); inputs[inputs.length - 1].focus();
-        });
-        document.getElementById('f-rules').addEventListener('click', function (e) {
-          if (e.target.matches('[data-remove-rule]')) e.target.closest('tr').remove();
-        });
         syncDefault(x.default_why);
       },
       save: function (x) {
@@ -468,11 +449,6 @@
         var fields = [['name', val('f-name')], ['default_why_id', val('f-default')], ['active', flag('f-active')]];
         checked('whys').forEach(function (id) { fields.push(['why_ids', id]); });
         checked('entities').forEach(function (id) { fields.push(['entity_ids', id]); });
-        Array.prototype.slice.call(document.querySelectorAll('#f-rules tr')).forEach(function (tr) {
-          fields.push(['rule_id', tr.dataset.ruleId || ''], ['rule_pattern', tr.querySelector('input[type=text]').value.trim()],
-                      ['rule_match', tr.querySelector('select').value.toUpperCase()],
-                      ['rule_active', tr.querySelector('input[type=checkbox]').checked ? '1' : '0']);
-        });
         return submitJson(x.id ? '/who/' + x.id : '/who', fields); } },
     entity: { title: 'Entity / LLC', list: 'entities', blank: { name: '', legal_name: '', legal: true, active: true },
       body: function (x) {
@@ -484,12 +460,6 @@
       save: function (x) { if (!val('f-name')) return 'The entity name is required.';
         submit(x.id ? '/entity/' + x.id : '/entity', [['name', val('f-name')], ['legal_name', val('f-legal')], ['active', flag('f-active')]]); } },
   };
-  function ruleRow(r) {
-    return '<tr' + (r.id ? ' data-rule-id="' + r.id + '"' : '') + '><td><input type="text" value="' + esc(r.pattern) + '" placeholder="GFS STORE 0123" aria-label="Pattern"></td><td><select aria-label="Match">'
-      + ['Exact', 'Contains', 'Prefix'].map(function (m) { return '<option' + (m === r.match ? ' selected' : '') + '>' + m + '</option>'; }).join('')
-      + '</select></td><td><input type="checkbox"' + (r.active ? ' checked' : '') + ' aria-label="Active"></td>'
-      + '<td><button type="button" class="btn-secondary cp-btn" data-remove-rule>Remove</button></td></tr>';
-  }
   function syncDefault(current) {
     var chosen = checked('whys'), sel = document.getElementById('f-default');
     var keep = sel.value || (current == null ? '' : String(current));

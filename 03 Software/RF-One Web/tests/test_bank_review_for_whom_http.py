@@ -7,6 +7,10 @@ Reassign. Under it, FOR WHOM — the Reporting Entity / LLC that benefited —
 is a reconciliation decision, editable in To Reconcile (before WHO / WHY)
 and in Reconciled, changing the beneficiary and nothing else.
 
+BANK_OLD_RULES_REMOVAL_001: the check "11. no Rule and no Standard is
+created" is removed — the old rule and Standard tables no longer exist, so
+nothing can be created there; every other check (and its number) is unchanged.
+
 Runs against a DISPOSABLE SQLite database created here and deleted at the end.
 """
 
@@ -90,7 +94,7 @@ def main() -> int:
                              .order_by(m.BankTransactionReason.id)).first()
             gfs = config_service.save_who(db, occurrence_id=None, name="Gordon Food Service", active=True,
                                           reason_ids=[why.id], default_reason_id=why.id,
-                                          reporting_entity_ids=[], rules=[])
+                                          reporting_entity_ids=[])
 
             def txn(instrument, day, text, minor):
                 t = m.FinancialTransaction(
@@ -106,7 +110,7 @@ def main() -> int:
             db.commit()
             recognition.record_human_decision(db, recognition.HumanDecisionRequest(
                 transaction_id=t3.id, occurrence_id=gfs.id, transaction_reason_id=why.id,
-                confirmed_by_account_id=operator.id, learn_description=False))
+                confirmed_by_account_id=operator.id))
             db.commit()
             ids.update(wp=wp.id, md=md.id, brand=brand.id, old=old.id, checking=checking.id, card=card.id,
                        gfs=gfs.id, why=why.id, t1=t1.id, t2=t2.id, t3=t3.id, operator=operator.id)
@@ -149,11 +153,6 @@ def main() -> int:
                         "for_whom": [x.reporting_entity_id for x in a], "alloc_status": [x.status for x in a],
                         "status": reconciliation_status.statuses_for(s, [t])[t.id]}
 
-        def rule_counts():
-            with SessionFactory() as s:
-                return (s.scalar(select(func.count(m.BankRecognitionRule.id))),
-                        s.scalar(select(func.count(m.BankReconciliationStandard.id))))
-
         # ================================================================ 1-6
         c1, c2 = source_cell(page, ids["t1"]), source_cell(page, ids["t2"])
         check("1. no Reassign control in Review (no Reassign / Move to / Why? (required))",
@@ -171,7 +170,7 @@ def main() -> int:
               selected(c1) == ids["wp"] and selected(c2) == ids["wp"], f"{selected(c1)} {selected(c2)}")
 
         # ================================================================ 7-12 (To Reconcile)
-        before, rules_before = snapshot(ids["t1"]), rule_counts()
+        before = snapshot(ids["t1"])
         resp = set_for_whom(ids["t1"], ids["md"])
         after = snapshot(ids["t1"])
         check("7/12. in To Reconcile, before any WHO / WHY, For Whom is saved",
@@ -182,7 +181,8 @@ def main() -> int:
         check("8-11. the Source, WHO, WHY, amount and date are unchanged",
               (after["instrument"], after["who"], after["why"], after["amount"], after["date"], after["explanation"])
               == (before["instrument"], before["who"], before["why"], before["amount"], before["date"], before["explanation"]))
-        check("11. no Rule and no Standard is created", rule_counts() == rules_before)
+        # BANK_OLD_RULES_REMOVAL_001: "11. no Rule and no Standard is created"
+        # is gone with the old rule / Standard tables — it holds by construction.
         check("12. the row stays To Reconcile (still needs its WHO), status Needs review",
               after["status"] == "Needs review" and f'data-transaction-id="{ids["t1"]}"' in client.get(TO_REC).data.decode())
         check("6. the stored For Whom is displayed (not the default)",
