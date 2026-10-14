@@ -483,3 +483,5 @@ Decisione del Product Owner: Bank è stato tolto da AWS come se non fosse mai st
 Conservati (condivisi o punti di ripristino): `legal_entities` (anche la riga 3, Gelati), snapshot RDS, zip di backup su S3, immagini ECR precedenti, log CloudWatch. `rfone-tips` e `rfone-selection` non sono stati ridistribuiti: le loro immagini contengono ancora, inattivo, il codice Bank del Data Store condiviso.
 
 **Ripristino:** codice — rimettere il backup zip su `rfone-web-source.zip`, build, `start-deployment`; database — lo snapshot sopra (la migrazione non ha `downgrade`).
+
+**Revisione RDS e deploy (vedi `07 Tasks/Reports/BANK_AWS_REMOVAL_001_HANDOVER.md`):** RDS è a `84354dc654ce`. Pubblicare su AWS solo da un ramo la cui catena di migrazioni contiene `84354dc654ce` — oggi `release/remove-bank-aws`; `origin/main` (head `7b1d4f9a2c6e`) e il `main` locale non sono allineati. `rfone-selection` esegue le migrazioni a ogni avvio: con l'immagine attuale (catena del 2026-10-03) una nuova istanza non parte — va ricostruito da un ramo allineato.
