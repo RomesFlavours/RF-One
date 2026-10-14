@@ -207,6 +207,19 @@ State checked first (nothing repeated blindly): RDS `7b1d4f9a2c6e`; no AI config
 - Still open: Bedrock IAM policy (manual), then Bedrock settings on `rfone-web` and the real Preview check; main fast-forward (manual).
   Policy file ready: `%LOCALAPPDATA%\RF-One\Bank\transfer-final-20261013\rfone-web-bedrock-invoke-policy.json`.
 
+### 2.10 AI on AWS — ACTIVE (2026-10-13)
+
+- IAM inline policy `rfone-web-bedrock-invoke-bank-ai-rules` (bedrock:InvokeModel on Opus 4.6 only) applied by the
+  Product Owner from a terminal (the `!` prefix does not run commands in the VS Code extension); verified on AWS.
+- `rfone-web` settings `RFONE_AI_PROVIDER=BEDROCK`, `RFONE_BEDROCK_MODEL_ID=us.anthropic.claude-opus-4-6-v1`
+  (every other env var and secret kept): App Runner `UPDATE_SERVICE` `6ce8070116a34ff1a2ea79d580c2e8de` SUCCEEDED.
+  AI Rules header online: "BEDROCK · us.anthropic.claude-opus-4-6-v1".
+- Real Preview through https://rfone.romesflavours.com (technical account, restored): a new rule text (PUBLIX, Solo WHO,
+  September 2026) — 1st Preview HTTP 200 in 6.9 s, a real Claude call: new interpretation #38, provider BEDROCK,
+  valid; 2nd Preview of the same text 0.6 s, interpretation reused, no new row. Both: 7 movements matched, nothing
+  applied. Test previews #1–#2 remain on AWS as Preview history (no rule saved).
+- Remaining manual step: main fast-forward.
+
 ## 3. Procedures used
 
 - Release of `rfone-web`: `03 Software/Infrastructure/README.md` § "Procedura di rilascio di `rfone-web`".
