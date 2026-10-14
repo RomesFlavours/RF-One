@@ -83,14 +83,35 @@ def main() -> int:
             merchant = m.Merchant(name="Verification Merchant")
             s.add(merchant)
             s.flush()
-            location = m.Location(merchant_id=merchant.id, name="Verification Location")
+            from datetime import datetime, time, timedelta, timezone
+            from zoneinfo import ZoneInfo
+
+            from rfone_data_store.payroll_calculation import workweek as ww
+
+            # A configured Location linked to the Legal Entity's Restaurant:
+            # who is in a run comes from Clover Shifts there, never from
+            # Compensation Terms.
+            location = m.Location(
+                merchant_id=merchant.id, name="Verification Location",
+                timezone="America/New_York", operating_day_cutoff_time=time(4, 0),
+            )
             s.add(location)
             s.flush()
+            s.add(m.RestaurantLocation(restaurant_id=restaurant.id, location_id=location.id, is_primary=True))
+            ww.set_workweek_start(
+                s, restaurant_id=restaurant.id, start_weekday=0,
+                effective_from=datetime(2000, 1, 1, tzinfo=timezone.utc),
+            )
             employee = m.Employee(location_id=location.id, display_name="Alex Verification")
             s.add(employee)
             s.flush()
 
-            from datetime import datetime, timezone
+            def add_shifts(emp, days, hours):
+                for day in days:  # 10:00 local, on the week of Monday 7 September 2026
+                    start = datetime(2026, 9, day, 10, tzinfo=ZoneInfo("America/New_York")).astimezone(timezone.utc)
+                    s.add(m.Shift(employee_id=emp.id, clock_in=start, clock_out=start + timedelta(hours=hours)))
+
+            add_shifts(employee, (7, 8, 9, 10, 11), 9)  # 45 h -> 40 Regular + 5 Overtime
             term = m.EmployeeCompensationTerm(
                 employee_id=employee.id, legal_entity_id=legal_entity.id, function_label="Server",
                 compensation_basis="HOURLY", hourly_rate_minor=2000,
@@ -111,6 +132,22 @@ def main() -> int:
                 valid_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
             )
             s.add(salaried_term)
+            add_shifts(salaried_employee, (7,), 8)
+
+            # Shifts but no Compensation Term at all: must still be in the run.
+            no_term_employee = m.Employee(location_id=location.id, display_name="Nina Noterm")
+            s.add(no_term_employee)
+            s.flush()
+            add_shifts(no_term_employee, (8, 9), 6)
+            # A Compensation Term but no Shift in the period: not in the run.
+            idle_employee = m.Employee(location_id=location.id, display_name="Ivan Idle")
+            s.add(idle_employee)
+            s.flush()
+            s.add(m.EmployeeCompensationTerm(
+                employee_id=idle_employee.id, legal_entity_id=legal_entity.id, function_label="Server",
+                compensation_basis="HOURLY", hourly_rate_minor=1500,
+                valid_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            ))
             s.commit()
 
             legal_entity_id = legal_entity.id
@@ -189,6 +226,21 @@ def main() -> int:
 
         resp = operator_client.get(f"/compensation/runs/{run_id}")
         check("run detail page shows the eligible Employee", b"Alex Verification" in resp.data)
+        page = resp.data.decode("utf-8")
+        alex_hours = page.split(f'id="hours-{employee_id}"', 1)[-1].split("</tr>", 1)[0]
+        check(
+            "run detail shows Alex's real hours from Shifts: 40.00 Regular / 5.00 Overtime / 45.00 Total, $20.00/hr",
+            "40.00" in alex_hours and "5.00" in alex_hours and "45.00" in alex_hours and "$20.00/hr" in alex_hours,
+            detail=alex_hours[:400],
+        )
+        check(
+            "an Employee with Shifts but no Compensation Term is in the run, Hourly Wage MISSING",
+            "Nina Noterm" in page and "Hourly wage missing" in page and "MISSING" in page,
+        )
+        check("an Employee with a Compensation Term but no Shift in the period is not in the run",
+              "Ivan Idle" not in page)
+        check("the SALARIED Employee is not an hourly row, and their Shift hours are informational only",
+              f'id="hours-{salaried_employee_id}"' not in page and "8.00 h" in page)
         check(
             "run detail page shows the SALARIED Employee explicitly, flagged as not supported "
             "in V1 (never silently omitted, never given a computed/placeholder value)",
