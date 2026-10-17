@@ -1,0 +1,6 @@
+{"Version": "2012-10-17", "Statement": [{"Sid": "InvokeBankAiRulesModel", "Effect": "Allow",
+  "Action": "bedrock:InvokeModel",
+  "Resource": ["arn:aws:bedrock:us-east-1:418674484214:inference-profile/us.anthropic.claude-opus-4-6-v1",
+               "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-6-v1",
+               "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-opus-4-6-v1",
+               "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-opus-4-6-v1"]}]}
