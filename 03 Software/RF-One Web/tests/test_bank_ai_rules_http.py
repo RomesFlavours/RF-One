@@ -204,9 +204,9 @@ def main() -> int:
     check("2b. each movement has an AI Rules button carrying its data and current WHO/WHY",
           page.count('class="btn-secondary ai-rule-open"') == september_count
           and re.search(r'ai-rule-open" data-transaction=\'[^\']*&#34;who&#34;: &#34;PUBLIX&#34;', page) is not None)
-    check("2c. the window has Preview, Save Draft, Crea WHO mancanti and Inserisci nuovi WHO in elenco",
+    check("2c. the window has Preview, Save Draft, Create missing WHO and Add the new WHO to the list",
           'id="ai-rule-modal"' in page and 'id="ai-rule-preview-button"' in page and "Save Draft" in page
-          and "Crea WHO mancanti" in page and "Inserisci nuovi WHO in elenco" in page and 'id="ai-rule-stale"' in page)
+          and "Create missing WHO?" in page and "Add the new WHO to the list" in page and 'id="ai-rule-stale"' in page)
     who_picks = re.findall(r'class="ai-rule-pick" role="option" data-kind="WHO" data-name="([^"]+)"', page)
     why_picks = re.findall(r'class="ai-rule-pick" role="option" data-kind="WHY" data-name="([^"]+)"', page)
     with SessionFactory() as s:

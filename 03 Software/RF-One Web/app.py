@@ -121,8 +121,8 @@ def inject_local_environment():
         "label": os.environ.get("RFONE_LOCAL_ENV_LABEL", ""), "db": os.environ.get("RFONE_LOCAL_ENV_DB", ""),
         "generation": os.environ.get("RFONE_LOCAL_ENV_GENERATION", ""),
         "code": os.environ.get("RFONE_LOCAL_ENV_CODE", ""),
-        "ai": ("SESSIONE Claude Code (VS Code) — nessuna chiamata a provider AI" if mode == ai_rules.AI_MODE_SESSION
-               else f"PROVIDER {provider} · {model or 'nessun modello configurato'}"),
+        "ai": ("SESSION Claude Code (VS Code) — no call to an AI provider" if mode == ai_rules.AI_MODE_SESSION
+               else f"PROVIDER {provider} · {model or 'no model configured'}"),
     }}
 
 

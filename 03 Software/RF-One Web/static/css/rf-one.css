@@ -736,6 +736,37 @@ tr.is-target > td { background: #fdf3e2; }
 
 /* Bank > AI Rules (BANK_AI_RULES_001, BANK_AI_RULES_002). */
 .ai-rules-textarea { width: 100%; box-sizing: border-box; font: inherit; }
+/* BANK_AI_RULES_022 — the rule's Title above its text, and as the list's main identifier. */
+.ai-rule-title-row { display: flex; gap: .5rem; align-items: center; margin-bottom: .6rem; }
+.ai-rule-title-row input { flex: 1; min-width: 0; box-sizing: border-box; font: inherit; }
+.ai-operative-rule .ai-rule-name { display: block; }
+/* BANK_AI_RULES_023 — the rules' search, as in Bank Reconciliation, with Search to the right of the field. */
+.ai-rules-search { margin: .2rem 0 .6rem; }
+.ai-rules-search .review-search-field { flex: 1 1 22rem; max-width: 40rem; }
+.ai-rules-search .review-search-box { display: flex; align-items: center; gap: .3rem; }
+.ai-rules-search .review-search-box input { flex: 1; min-width: 0; max-width: none; margin: 0; }
+.ai-rules-search .review-search-box button { width: auto; margin: 0; flex: none; }
+.ai-rules-operative .review-search-result { margin: 0 0 .5rem; }
+/* BANK_AI_RULES_024 — the movements' search, above their list. */
+.ai-txn-search + .review-search-result { margin: 0 0 .5rem; }
+/* BANK_AI_RULES_026 — Rewrite with AI, beside the rule's text. */
+.ai-rule-text-row { display: flex; gap: .5rem; align-items: flex-start; }
+.ai-rule-text-row textarea { flex: 1; min-width: 0; }
+.ai-rule-rewrite-actions { display: flex; flex-direction: column; gap: .35rem; flex: none; }
+.ai-rule-rewrite-actions button { width: auto; margin: 0; white-space: nowrap; }
+.ai-rule-rewrite-status { margin: .35rem 0 .6rem; padding: .4rem .6rem; border-radius: 4px; font-size: .9rem; }
+.ai-rule-rewrite-status.is-ok { background: #e7f4ea; color: #1d5b2c; }
+.ai-rule-rewrite-status.is-refused { background: #fdf3e2; color: #6b4a0f; }
+.ai-rule-rewrite-status ul { margin: .25rem 0 0 1.1rem; padding: 0; }
+/* AI Rule window: conflicts with the other active rules — about OTHER rules, never this text. */
+.ai-rule-conflicts { margin: .35rem 0 .6rem; padding: .5rem .7rem; border: 1px solid #e3b4ab; border-left: 4px solid var(--bad); border-radius: 4px; background: #fbeeeb; color: #5e2219; font-size: .9rem; }
+.ai-rule-conflicts h4 { margin: 0 0 .3rem; font-size: .95rem; }
+.ai-rule-conflicts .ai-conflict { margin: .4rem 0; padding-top: .35rem; border-top: 1px dashed #e3b4ab; }
+.ai-rule-conflicts .ai-conflict:first-of-type { border-top: none; padding-top: 0; }
+.ai-rule-conflicts p { margin: .15rem 0; }
+.ai-rule-conflicts .ai-conflict-message { font-weight: 600; }
+.ai-rule-not-applied { margin-left: .3rem; }
+@media (max-width: 640px) { .ai-rule-text-row { flex-direction: column; } .ai-rule-rewrite-actions { flex-direction: row; } }
 .ai-rules-actions { display: flex; align-items: center; gap: .6rem 1rem; margin-top: .5rem; flex-wrap: wrap; }
 .ai-rules-actions button, .ai-rules-period button { width: auto; margin: 0; }
 .ai-rules-period { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .75rem 1rem; margin: .5rem 0 1rem; }
@@ -787,6 +818,10 @@ tr.is-target > td { background: #fdf3e2; }
 .ai-rule-scopes { border: 1px solid var(--olive-300); border-radius: var(--radius); padding: .4rem .8rem .6rem; margin: .6rem 0; }
 .ai-rule-scopes legend { font-weight: 700; padding: 0 .3rem; }
 .ai-rule-scopes .ai-rule-option { margin: .25rem 0; font-weight: 600; flex-wrap: wrap; }
+/* AI Rule window: the option boxes A–F, one per choice, stacked vertically. */
+.ai-rule-option-boxes { display: flex; flex-direction: column; gap: .5rem; margin: .6rem 0; }
+.ai-rule-option-boxes .ai-rule-scopes { margin: 0; }
+.ai-rule-option-boxes .ai-rule-scopes > .cell-note { margin: .3rem 0 0; }
 .ai-rule-applied { background: #e7f3ea; border: 1px solid #bcdcc6; border-radius: var(--radius); padding: .5rem .7rem; margin: .6rem 0; }
 .ai-rule-plan { font-weight: 600; color: var(--olive-900); }
 .ai-rule-panel .modal-header { display: flex; align-items: center; gap: .6rem; }

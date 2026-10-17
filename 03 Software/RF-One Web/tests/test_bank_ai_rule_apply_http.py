@@ -198,13 +198,14 @@ def main() -> int:
     client.post("/login", data={"username": "ai_apply", "password": "AiApply123!", "csrf_token": csrf})
     page = client.get("/bank/ai-rules?date_from=2026-09-01&date_to=2026-09-30").data.decode()
     csrf = CSRF_RE.search(page).group(1)
-    check("1. the window has Save Draft, Salva and Salva e Applica (disabled until a scope is chosen), the three scopes "
-          "with none preselected, and row selection",
+    check("1. the window has Save Draft, Save and Save and Apply (disabled until a scope is chosen), the existing-"
+          "transactions choice on “No existing transactions”, new transactions off, and row selection",
           "Save Draft" in page and 'id="ai-rule-save"' in page
-          and re.search(r'<button type="button" id="ai-rule-save-apply" disabled>Salva e Applica</button>', page)
-          and all(f'name="{n}" id' in page for n in ("scope_all", "scope_selected", "scope_future"))
-          and not re.search(r'name="scope_(all|selected|future)"[^>]*checked', page)
-          and page.count('class="ai-rule-select"') == len(ids) and "Seleziona tutte nel periodo" in page)
+          and re.search(r'<button type="button" id="ai-rule-save-apply" disabled>Save and Apply</button>', page)
+          and '<input type="radio" name="scope_existing" value="none" id="ai-scope-none" checked>' in page
+          and all(f'name="scope_existing" value="{v}" id="ai-scope-{v}">' in page for v in ("all", "selected"))
+          and '<input type="checkbox" name="scope_future" id="ai-scope-future">' in page
+          and page.count('class="ai-rule-select"') == len(ids) and "Select all in the period" in page)
 
     def post(path, **data):
         form = {"csrf_token": csrf, "origin_transaction_id": str(ids["free"]), "date_from": "2026-09-01",
@@ -326,7 +327,7 @@ def main() -> int:
     status, judged = post("/bank/ai-rules/save", rule_text=JUDGED, scope_future="on")
     # BANK_AI_RULES_009: a rule the code cannot execute is never operative (with or without “Per il futuro”).
     check("12. a rule the code cannot execute is refused (never operative, so never “Per il futuro”)",
-          status == 400 and "non è valida" in judged["error"])
+          status == 400 and "is not valid" in judged["error"])
     status, future = post("/bank/ai-rules/save-apply", rule_id=str(rule_id), scope_future="on")
     check("12b. Salva e Applica with only “Per il futuro”: saved and enabled, history untouched",
           future["ok"] and future["apply_future"] and not future["applied"] and state()["decisions"] == after_z["decisions"])

@@ -295,7 +295,7 @@ def main() -> int:
     check("7. no For Whom yet: WHO, WHY and For Whom change, status → Da confermare; current and proposed For Whom shown",
           by["none"]["plan"] == "UPDATED" and by["none"]["proposed_for_whom"] == "RFA" and by["none"]["for_whom"] is None
           and "WHO, WHY and For Whom would change" in by["none"]["plan_note"]
-          and "status → Da confermare" in by["none"]["plan_note"], detail=str(by["none"]))
+          and "status → To confirm" in by["none"]["plan_note"], detail=str(by["none"]))
     check("8. any case and leading spaces, name followed by other data → For Whom proposed",
           by["lower"]["proposed_for_whom"] == "RFA" and "For Whom" in by["lower"]["plan_note"], detail=str(by["lower"]))
     check("9. a longer name, no “IND NAME:”, another name: For Whom unchanged (WHO / WHY still change), the reason said",
@@ -304,7 +304,7 @@ def main() -> int:
           detail=str([by[k]["reason"] for k in ("longer", "missing", "other_name")]))
     check("10. only For Whom differs: UPDATED for For Whom alone, status → Da confermare",
           by["only_fw"]["plan"] == "UPDATED" and by["only_fw"]["plan_note"].startswith("For Whom would change")
-          and "status → Da confermare" in by["only_fw"]["plan_note"] and by["only_fw"]["proposed_for_whom"] == "RFB",
+          and "status → To confirm" in by["only_fw"]["plan_note"] and by["only_fw"]["proposed_for_whom"] == "RFB",
           detail=str(by["only_fw"]))
     check("11. everything already as the rule says (For Whom chosen by a person, same entity): UNCHANGED",
           by["same_all"]["plan"] == "UNCHANGED" and by["same_all"]["for_whom"] == "RFA", detail=str(by["same_all"]))
@@ -335,7 +335,7 @@ def main() -> int:
           and "decided by another rule" in noreplace[ids["auto_other"]]["plan_note"])
     blocked = preview(RULE_OTHER)
     check("20. an OTHER interpretation blocks the preview (no partial execution)",
-          not blocked.get("ok") and "Bloccata" in (blocked.get("error") or "") and not blocked.get("match_items"))
+          not blocked.get("ok") and "Blocked" in (blocked.get("error") or "") and not blocked.get("match_items"))
 
     # ------------------------------------------- applying (throwaway database)
     with SessionFactory() as s:

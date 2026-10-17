@@ -154,7 +154,7 @@ def main() -> int:
     # ---------------------------------------------------- not enabled: as before
     waiting = preview(RULE)
     check("1. not enabled: SESSION mode waits for the session, the CLI is not asked",
-          not waiting.get("ok") and (waiting.get("error") or "").startswith(ai_rules.SESSION_WAIT_MARKER)
+          not waiting.get("ok") and (waiting.get("error") or "").startswith(ai_rules.SESSION_WAIT_SHOWN)
           and not calls and not claude_code_cli.available())
 
     # ---------------------------------------------------- enabled
@@ -165,7 +165,7 @@ def main() -> int:
     try:
         page = client.get(page_url).data.decode()
         check("2. enabled: the page names the local Claude Code CLI as the interpreter (no AWS)",
-              'data-ai-provider="CLAUDE_CODE_CLI"' in page and "nessun provider AWS" in page)
+              'data-ai-provider="CLAUDE_CODE_CLI"' in page and "no AWS provider" in page)
         count_before = interpretations()
         one = preview(RULE)
         check("3. ONE request: the CLI is asked once with the exact prompt, the preview is COMPLETED by code",
@@ -184,7 +184,7 @@ def main() -> int:
               and again.get("interpretation_reused"))
         partial = preview(RULE_PARTIAL)
         check("6. a partial answer is BLOCKED with its reason, never executed in part",
-              not partial.get("ok") and "Bloccata" in (partial.get("error") or "")
+              not partial.get("ok") and "Blocked" in (partial.get("error") or "")
               and "festivo" in (partial.get("error") or "") and not partial.get("match_items"))
         count_before = interpretations()
         error = preview(RULE_ERROR)

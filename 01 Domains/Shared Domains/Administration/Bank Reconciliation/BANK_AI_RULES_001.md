@@ -205,6 +205,107 @@ Manual decisions, Standard decisions and own-account movements stay PROTECTED as
 migration `c6d1e9a4f2b7`, additive). The import applies a rule's For Whom to new movements; two rules assigning
 different For Whom to one movement are a conflict.
 
+## Rewrite with AI: ambiguity is never resolved (BANK_AI_RULES_027)
+
+* A rule that can be read in more than one way with different results (e.g. `"PUBLIX" o "COSTCO" e "FL"`: does "FL"
+  apply to both names or only to COSTCO?) is **not** rewritten, even when the interpreter alone could run one of the
+  readings: the text stays, "Rewritten and validated" is not shown, and the window lists the missing information.
+* An informal wording with one reading only (arrows, abbreviations, missing verbs, word order) may be rewritten, as
+  long as no condition, exception or assignment has to be invented.
+* Enforced by code, not only asked: with a rewrite the AI must return its own check — `ambiguities` (points with more
+  than one reading) and `invented` (what its text adds) — and both must be present and empty; otherwise nothing is
+  replaced (`ai_rule_rewrite.rewrite_rule`). Test: `test_bank_ai_rule_rewrite_http.py` (11–15).
+
+## Rewrite with AI (BANK_AI_RULES_026)
+
+A **Rewrite with AI** button beside the rule's text (`POST /bank/ai-rules/rewrite`,
+`ai_rule_rewrite.rewrite_rule`). It rewrites and verifies only: it never saves, changes or applies a rule.
+
+1. The **original** text goes through the interpreter first (its saved interpretation when there is one). When the
+   interpreter itself names an instruction it cannot represent — e.g. a Source "uguale a" (only contains / does not
+   contain exist) — nothing is rewritten and that part is reported; it is never turned into "contiene".
+2. ONE AI call rewrites the text in clear natural language, using exactly the elements the interpreter accepts:
+   the prompt includes `ai_rules.interpreter_capabilities()`, the very description the interpreter is given (no
+   separate list). The AI may answer UNSUPPORTED (the part is named) or AMBIGUOUS (what to clarify).
+3. The rewritten text goes through the SAME interpreter and checks as Preview (`_interpret`, `validate_interpretation`:
+   mandatory coverage, nothing unsupported, every text copied from the rule, active entities). Its interpretation is
+   kept like a Preview's, so a later Preview of that text needs no new AI call.
+4. RF-One code checks faithfulness: every WHO / WHY name assigned is written character for character in the original;
+   every other text is in the original; when the original has a valid interpretation, the rewritten one must execute
+   exactly the same way.
+
+Only then does the window replace the text and show **Rewritten and validated**, offering **Undo rewrite** (the
+previous text, exactly). Any later change of the text removes the indication; the rewrite, and Undo, also void a
+previous Preview. While it works the window shows the state and accepts no second request (one rewrite at a time on
+the server too). Refused, ambiguous, failed: the text is never changed, and the reason is shown.
+Test: `RF-One Web/tests/test_bank_ai_rule_rewrite_http.py`.
+
+## The selection follows the movements' search (BANK_AI_RULES_025)
+
+Supersedes the "Unchanged: the selection" point of BANK_AI_RULES_024.
+
+* **Perimeter.** With a movements' search active, the movements one may operate on are those the list shows: the
+  period, "Classificazione" and the search together. On the page, every selected movement outside them leaves the
+  selection (`bank-ai-rules.js`, `applySearchPerimeter`), also those of other periods; **Select all** selects only
+  the movements found; the counter reads "N selected among the M found — Preview and Apply operate only on these".
+* **For good.** Emptying or changing the search never brings an excluded movement back into the selection.
+* **Server.** With "Solo le transazioni selezionate" and a search, Preview and Salva e Applica recompute the same
+  perimeter from the period, Classificazione and search the window sends (`ai_rules.selected_within_search`) and
+  keep only the selected movements within it, whatever the page sent; none within it → refused. Without a search,
+  the selection works exactly as before (it may span periods).
+* **Unchanged.** *Search rules* never touches the selection; "Tutte le transazioni esistenti" and the period
+  Preview are not limited by the search; the rule engine is untouched. Test:
+  `RF-One Web/tests/test_bank_ai_rules_txn_search_http.py` (13–16).
+
+## Searching the movements (BANK_AI_RULES_024)
+
+* **Where.** Above the list of movements: **Search transactions**, with **Search** to the right of the field on the
+  same row (GET `q`). Enter or Search runs it, never while typing.
+* **Same logic as Bank Reconciliation.** `ai_rules.search_filter` applies the very condition of Bank
+  Reconciliation's search (`review_queues._search_condition`, BANK_REVIEW_SEARCH_001): the text, literally and in
+  any case, in the description, the current WHO, the current WHY or the Source's name.
+* **With the other filters.** It narrows the movements the period and "Classificazione" show; empty, they all come
+  back. It is independent of *Search rules* (`rule_q`); every form of the page keeps both searches.
+* **Unchanged.** The selection (the movements Classificazione excludes still leave it; the search never removes a
+  selected movement), the Preview scope and every application. Test:
+  `RF-One Web/tests/test_bank_ai_rules_txn_search_http.py`.
+
+## Searching the rules (BANK_AI_RULES_023)
+
+* **Where.** In *Operative AI Rules*, under the heading: a **Search rules** field with **Search** to its right, on
+  the same row — the same GET search as Bank Reconciliation (`rule_q`). Enter or Search runs it, never while typing.
+* **What it matches.** The rule's name (the Title, or the automatic summary) and its content (the current
+  version's text), ignoring case and repeated spaces (`ai_rule_operations.search_rules`, read only). The badge
+  reads "N of M" and a line says how many rules were found; no match says so.
+* **Empty search** shows every rule again.
+* **Nothing else changes.** The period and "Classificazione" filters (which act on the movements) keep their
+  values and keep working; the search is kept by the period form, by General AI instructions and by Disable /
+  Activate / Delete. Rules, drafts, previews and applications behave as before. The drafts list is not filtered.
+  Test: `RF-One Web/tests/test_bank_ai_rules_search_http.py`.
+
+## The rule's Title (BANK_AI_RULES_022)
+
+* **Where.** In the AI Rule window a **Title** field stands above the rule text: optional, typed and changed by
+  the user, one line, at most 200 characters (`bank_ai_rules.user_title`, `bank_ai_rule_drafts.user_title` —
+  migration `a6e2c8f4b0d9`, additive, NULL for every existing rule).
+* **List.** In *Operative AI Rules* the Title is the rule's main identifier; the progressive number `#id` stays
+  as the secondary reference, next to the automatic summary of the text. A rule without a Title shows
+  "No title". The drafts list and the Delete confirmation name the rule by its Title too.
+* **Order of the list.** Alphabetical by Title, A→Z, ignoring case (and repeated spaces); rules without a Title
+  come last, by their automatic summary. It is recomputed at every page load, so it holds after a rule is
+  created, renamed or changed. It is the display order only: it does not change the rules' priority or the order
+  in which they are executed.
+* **Not part of a version.** The Title is a property of the rule, not of its versions. It is distinct from
+  `bank_ai_rules.title`, which remains the automatic summary of the current text, rewritten at each new version.
+* **Changing only the Title.** For an operative rule opened as it is, **Salva titolo** (and **Salva**, when the
+  Title is the only thing changed in the window) calls `POST /bank/ai-rules/rules/<id>/title`
+  (`ai_rule_operations.set_title`): no interpretation and no AI call, no new version, no application, no
+  change of status or "Per il futuro", nothing written on movements. This holds even when the general
+  instructions changed since the last save — a case in which Salva would reinterpret the rule.
+* **Existing rules.** A Title is added by opening the rule (Open), typing it and pressing **Salva titolo**.
+* Save Draft keeps the Title; Salva and Salva e Applica write the Title typed in the window together with the
+  rest. A deleted rule's Title cannot be changed. Test: `RF-One Web/tests/test_bank_ai_rule_title_http.py`.
+
 ## Structured-v7: cleaning the extracted WHO, exact formats (BANK_AI_RULES_021)
 
 General engine capabilities, written by the interpretation and executed by RF-One code
@@ -412,10 +513,79 @@ the key.
 
 Right under the rule field, two lists side by side (one under the other on small screens): **WHO** — the active
 WHO by canonical name (upper case) — and **WHY** — every available WHY — both alphabetical, each with its own
-search. A click writes `WHO "NAME"` or `WHY "name"` (exact catalog names) into the rule at the last cursor
+search. A click writes `WHO = "NAME"` or `WHY = "name"` (exact catalog names) into the rule at the last cursor
 position of the field — at the end when none is known — never replacing the text, then puts the cursor back in
 the field. Like any change of the rule, it marks the previous preview Superseded. The lists only compose text:
 no catalog or classification changes.
+
+## Option boxes of the AI Rule window
+
+The rule's options sit in boxes stacked vertically, each titled with the choice it asks for; no option is outside a
+box. Alternatives are radio buttons of one group (choosing one clears the other); independent, combinable options
+are checkboxes. The whole window follows the interface language (English today; there is no user-selectable
+language yet); WHO and WHY keep their names. The names of earlier documents are given for traceability.
+
+| Box | Title | Control | Choices | Sent to the server as | Earlier name |
+|---|---|---|---|---|---|
+| A | Which existing transactions should the rule apply to? | radio, default *No existing transactions* | No existing transactions · All existing transactions, in the whole database · Only the selected transactions (with the number selected) | nothing · `scope_all=on` · `scope_selected=on` | (period) · *Tutte le transazioni esistenti* · *Solo le transazioni selezionate* |
+| B | Apply the rule to new transactions too? | checkbox | Apply automatically to transactions imported from now on — combines with any choice of A | `scope_future=on` | *Per il futuro* |
+| C | Which AI classifications may be updated? | radio, default the first | Only transactions not yet classified by AI rules · Also include transactions already classified by AI rules | `only_unsettled=on` · `only_unsettled=off` | *Solo movimenti non ancora sistemati da regole AI* |
+| D | Allow replacing manual or confirmed classifications? | checkbox, off by default | Allow this rule to replace manual or confirmed WHO and WHY | `override_protected=on` | *Sostituisci anche WHO/WHY manuali o confermati* |
+| E | Which parts of the rule should be applied? | radio, default the first | Apply every part of the rule · Apply only WHO | `who_only=off` · `who_only=on` | *Solo WHO* |
+| F | Create missing WHO? | checkbox | Create the WHO extracted by the rule that are not in the catalog | `create_missing_who=on` | *Crea WHO mancanti* |
+
+**Defaults of a NEW rule** (Product Owner decision; every choice stays changeable): A *All existing
+transactions, in the whole database*; B on; C *Only transactions not yet classified by AI rules*; **D on**
+(explicitly decided); E *Apply every part of the rule*; F on. A draft or an existing rule reopens with its own saved
+settings (F, D and C as saved; B as the rule's *New imports*), never with these defaults; A and E, which are not
+kept with a rule, reopen on *No existing transactions* and *Apply every part of the rule*. The defaults column of
+the table above describes this reopening.
+
+A NEW rule's *Rule, in your own words* field starts with this editable model text (a value, not a placeholder),
+for the operator to fill the description, WHO and WHY between the empty quotes:
+`Se la descrizione contiene "", allora il WHO è "" e il WHY è "".`
+A draft or an existing rule opens with its own text.
+
+With *No existing transactions* the Preview covers the period on screen and nothing is applied to it, as before.
+C explains that manual or confirmed classifications stay protected either way, and that replacing them depends
+only on D. D explains, as before, that For Whom is kept, the movement goes back to "To confirm" (the status value
+`Da confermare` of the interpretation is unchanged) and the replacement is recorded, for this rule only. The
+buttons are *Preview*, *Save Draft*, *Save* (earlier *Salva*), *Save and Apply* (*Salva e Applica*), *Save title*
+(*Salva titolo*) and *Add the new WHO to the list* (*Inserisci nuovi WHO in elenco*). The server's fields, values,
+defaults and behaviour are unchanged; saved drafts and rules reopen with the same choices.
+
+The rest of the page follows the same language: the *Classification* filter (All / Without WHO / With WHO but
+without WHY — the keys `all`, `no_who`, `no_why` are unchanged), the *Select all…* row selection, the delete
+confirmation, the AI provider description and the local environment bar. The preview's messages (conditions
+checked by the code, extracted WHO, "To confirm", "To verify", doubts, blocked interpretations) are in English.
+Never translated: the operator's own words (rule texts and titles, quoted instructions), catalog names (WHO, WHY,
+Sources) and internal values (the stored status `Da confermare`, the stored session wait marker
+`In attesa della sessione Claude Code`, shown as "Waiting for the Claude Code session", and the session command
+«Interpreta le AI Rules in attesa», quoted as the words to type).
+
+## Conflicts with the other active rules, said before applying
+
+Two ACTIVE rules that match the same movement and assign it a different WHO or WHY are a **conflict between
+rules**: the movement is planned as CONFLICT and nothing is changed on it (BANK_AI_RULES_011, unchanged). The
+window now says it **before** applying, as a conflict between rules, never as a problem of the rule's text:
+
+* **Where.** At *Rewrite with AI* (next to the rewrite's own outcome, whatever it is: a clear text is still
+  rewritten; the operator is never asked to rewrite a clear rule because of another rule), at *Preview*, and at
+  *Save and Apply* — before it, from the current Preview, the person confirms or cancels; after it, in the result.
+  *Save* reports it too.
+* **What.** For each conflicting rule: its id and Title; the overlapping conditions (this rule's, and the other
+  rule's with its branch); WHO and WHY assigned by each rule; how many movements and an example movement, when one
+  exists. One sentence sums it up, e.g. "Rule #104 ‘SHELL’ assigns WHO = SHELL, while rule #92 ‘WAWA-SHELL’ assigns
+  WHO = COMPANY CAR to the movements where the description contains “SHELL”." (`ai_rules.rule_conflicts`).
+* **How it is found.** On every in-scope movement, with the same execution and the same WHO / WHY identity as the
+  Planner, so what is said is what Save and Apply would report. When no movement shows it yet, two "description
+  contains" rules whose texts overlap are reported too, without an example.
+* **Never resolved automatically.** No rule is changed, disabled or preferred; which one to change is the
+  operator's decision.
+
+**Saved, not applied.** A version saved but never applied to the existing transactions (Save, or Save and Apply
+for new imports only) is said so: a *Saved, not applied to existing transactions* badge in *Operative AI Rules*,
+in the window's badge when the rule is opened, and in the Save message.
 
 ## What became of the first version (BANK_AI_RULES_001)
 

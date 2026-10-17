@@ -29,7 +29,7 @@ Options (append to the command, e.g. `run.ps1 start --migrate`):
 | `start --accept-code` | The code differs from the code the database was closed with, on purpose (you changed it). Without it, a difference means OneDrive has not finished syncing the code. |
 | `start --ai PROVIDER` | Use the AI provider (`RFONE_AI_PROVIDER`, e.g. AWS Bedrock) instead of the Claude Code session — explicit only. |
 | `close --check` | Only verify again that OneDrive delivered the last close. |
-| `--profile test` | The same procedure on the TEST copy: port 5082, `RF-One Bank Handoff TEST`, and the page says **COPIA DI PROVA**. |
+| `--profile test` | The same procedure on the TEST copy: port 5082, `RF-One Bank Handoff TEST`, and the page says **TEST COPY**. |
 
 ## Where things are
 
@@ -97,7 +97,7 @@ The default AI mode is **SESSION** (`environment.json`): the Preview button neve
 ## The page header
 
 Every page served by *Avvia Bank* shows a bar with the **PC**, the **database path and generation**, the **code
-version** (branch@commit · code fingerprint) and the **AI mode**; on the test profile it says **COPIA DI PROVA**
+version** (branch@commit · code fingerprint) and the **AI mode**; on the test profile it says **TEST COPY**
 in a warning colour. Servers not started by *Avvia Bank* (AWS, tests) show no bar.
 
 ## Verification
@@ -114,6 +114,6 @@ in a warning colour. Servers not started by *Avvia Bank* (AWS, tests) show no ba
    correct `machines/MINIPC-KSYR1.json` (the only per-PC file).
 2. **Stato Bank.cmd** (`--profile test`): manifest and lease visible, no conflict copies.
 3. Test round trip: `run.ps1 --profile test start` → open http://127.0.0.1:5082/bank (bar: MINIPC-KSYR1,
-   COPIA DI PROVA, AI SESSIONE) → `run.ps1 --profile test close` → **SINCRONIZZAZIONE COMPLETATA** → on
+   TEST COPY, AI SESSION) → `run.ps1 --profile test close` → **SINCRONIZZAZIONE COMPLETATA** → on
    ASUS2026 `run.ps1 --profile test start` takes the new generation (SHA-256 verified).
 4. Only then: first adoption of the work database on MINIPC-KSYR1 (its current `rfone.db`, server stopped).

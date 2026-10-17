@@ -156,10 +156,10 @@ def main() -> int:
             f"not the one of Preview #{preview['preview_id']}", preview_id=preview["preview_id"],
             rule_text=RULE + " Altro.")
     refused("2c. scope changed after the preview: names both scopes, nothing written",
-            f"Preview #{preview['preview_id']} was made for “Tutte le transazioni esistenti”",
+            f"Preview #{preview['preview_id']} was made for “All existing transactions”",
             preview_id=preview["preview_id"], scope_all=None, scope_selected="on", selected_ids=f"{ids[0]}")
     refused("2d. “Crea WHO mancanti” changed after the preview: says so, nothing written",
-            "“Crea WHO mancanti” is off now", preview_id=preview["preview_id"], create_missing_who=None)
+            "“Create missing WHO” is off now", preview_id=preview["preview_id"], create_missing_who=None)
     status, selected_preview = post("/bank/ai-rules/preview", scope_all=None, scope_selected="on",
                                     selected_ids=f"{ids[0]},{ids[1]}")
     before = counts()
@@ -175,7 +175,7 @@ def main() -> int:
         waiting = s.scalar(select(func.max(m.BankAiRulePreview.id)))
     before = counts()
     refused("2f. a preview that did not complete (waiting for the session): says so with its message",
-            f"Preview #{waiting} did not complete (FAILED): In attesa della sessione", preview_id=waiting,
+            f"Preview #{waiting} did not complete (FAILED): Waiting for the Claude Code session", preview_id=waiting,
             rule_text=RULE + "\r\nNuova riga.")
 
     # --------------------------------------------- same text, option, scope: applies

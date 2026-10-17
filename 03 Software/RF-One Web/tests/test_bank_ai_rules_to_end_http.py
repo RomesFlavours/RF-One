@@ -146,7 +146,7 @@ def main() -> int:
     check("5. existing WHO → its default WHY is proposed", off[ids["airbnb"]]["proposed_who"] == "AIRBNB HMSSZ842DA"
           and off[ids["airbnb"]]["proposed_why"] == why_name and off[ids["airbnb"]]["plan"] == "UPDATED")
     check("6. WHO not in the list and “Crea WHO mancanti” off: not applied, said so",
-          off[ids["temu"]]["plan"] == "UNRESOLVED" and "Crea WHO mancanti" in off[ids["temu"]]["plan_note"])
+          off[ids["temu"]]["plan"] == "UNRESOLVED" and "Create missing WHO" in off[ids["temu"]]["plan_note"])
     lines = p_off.get("interpretation_lines") or []
     check("7. the window shows the extraction as it is: up to the END of the description, nothing removed",
           any("up to the END of the description" in x and "“PAYPAL” or “PYPAL”" in x and "“*”" in x for x in lines),

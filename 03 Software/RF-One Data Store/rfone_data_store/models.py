@@ -12133,6 +12133,8 @@ class BankAiRuleDraft(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     rule_text: Mapped[str] = mapped_column(Text, nullable=False)
+    # BANK_AI_RULES_022 — the Title typed above the text; carried to the rule when it is saved as operative.
+    user_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="DRAFT")
     origin_transaction_id: Mapped[int | None] = mapped_column(
         ForeignKey("financial_transactions.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -12199,7 +12201,11 @@ class BankAiRule(Base):
     __table_args__ = (CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_bank_ai_rule_status"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # The automatic summary of the current text, rewritten at each new version.
     title: Mapped[str] = mapped_column(String(200), nullable=False)
+    # BANK_AI_RULES_022 — the Title the user writes: the rule's main identifier in the list (the number stays the
+    # secondary reference). Optional. Not part of a version: changing it never reinterprets or reapplies the rule.
+    user_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
     apply_future: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     origin_transaction_id: Mapped[int | None] = mapped_column(

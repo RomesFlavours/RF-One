@@ -253,7 +253,7 @@ def main() -> int:
           and doubts == {ids["empty"]}, detail=str(sorted(k for k, v in ids.items() if v in items)))
     check("7. WHO, WHY: the extracted WHO and its default WHY; inner numbers kept; Da confermare",
           by["plain"]["proposed_who"] == "MARIO ROSSI" and by["plain"]["plan"] == "UPDATED"
-          and "status → Da confermare" in by["plain"]["plan_note"]
+          and "status → To confirm" in by["plain"]["plan_note"]
           and by["inner_number"]["proposed_who"] == "STUDIO 54 DESIGN", detail=str(by["plain"]))
     check("8. option OFF (default): manual and confirmed are PROTECTED",
           by["manual"]["plan"] == "PROTECTED"
@@ -267,8 +267,8 @@ def main() -> int:
     p_on = preview(override_protected="on")
     on = {k: {i["id"]: i for i in p_on.get("match_items", [])}.get(v) for k, v in ids.items()}
     check("11. option ON: manual and confirmed are replaced — the override named, Da confermare",
-          all(on[k]["plan"] == "UPDATED" and "OVERRIDES" in on[k]["plan_note"] and "Sostituisci anche" in
-              on[k]["plan_note"] and "status → Da confermare" in on[k]["plan_note"]
+          all(on[k]["plan"] == "UPDATED" and "OVERRIDES" in on[k]["plan_note"] and "Allow this rule to replace" in
+              on[k]["plan_note"] and "status → To confirm" in on[k]["plan_note"]
               for k in ("manual", "confirmed")) and p_on.get("override_protected")
           and p_on.get("overridden") == 2, detail=str({k: on[k]["plan_note"] for k in ("manual", "confirmed")}))
     check("12. option ON, a confirmed movement already as the rule says: UNCHANGED, still confirmed",
@@ -296,7 +296,7 @@ def main() -> int:
             refused = str(exc)
         s.rollback()
     check("16. a preview made with the option OFF cannot authorize applying the rule with the option ON",
-          refused is not None and "Sostituisci anche" in refused, detail=str(refused))
+          refused is not None and "Allow this rule to replace" in refused, detail=str(refused))
     p_rule = preview(override_protected="on", rule_id=str(rule_id))
     with SessionFactory() as s:
         rule = s.get(m.BankAiRule, rule_id)

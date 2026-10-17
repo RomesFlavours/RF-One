@@ -2,21 +2,59 @@
 
    Opened from a movement's "AI Rules" button (the movement is the rule's
    example), from a saved draft, or from an operative rule. Preview posts the
-   rule and its scope — the period shown, "Tutte le transazioni esistenti"
-   or "Solo le transazioni selezionate" — and shows the matches, the doubtful
+   rule and its scope — the period shown, "All existing transactions" or
+   "Only the selected transactions" — and shows the matches, the doubtful
    cases and what applying would do to each (updated, unchanged, protected,
    conflict, unresolved). Any change of the text, the options, the scope or
    the selection marks that preview Superseded.
 
-   Save Draft keeps the rule only. Salva makes it operative without touching
-   existing movements ("Per il futuro" enables it for new imports). Salva e
-   Applica — disabled while no scope is chosen — applies it on the strength of
+   Save Draft keeps the rule only. Save makes it operative without touching
+   existing movements ("Apply automatically to transactions imported from now
+   on" enables it for new imports). Save and Apply — disabled while no scope is chosen — applies it on the strength of
    a current preview of the same text and scope: when there is none, it runs
    the preview first, says why, and the next press applies that preview.
    When the server refuses a preview, its precise reason is shown.
 
    The selection of movements is a set of precise ids, kept across period
    changes (this browser tab); a period change never adds any. */
+
+// "Search transactions" keeps the page where it was: the search reloads the
+// page (GET, so the text and the filters stay in the URL), and the field comes
+// back at the same height on the screen, with the focus — with or without
+// results, search after search. Recorded for this tab only, used once, by the
+// next load of this page within a minute; any other opening is left alone.
+(function () {
+  "use strict";
+
+  var STORE = "rfone-ai-txn-search-position";
+  var MAX_AGE_MS = 60000;
+  var searchForm = document.querySelector(".ai-txn-search");
+  var field = document.getElementById("ai-txn-search");
+  if (!searchForm || !field) { return; }
+
+  function storage() { try { return window.sessionStorage; } catch (e) { return null; } }
+
+  searchForm.addEventListener("submit", function () {
+    var store = storage();
+    if (!store) { return; }
+    try {
+      store.setItem(STORE, JSON.stringify({ path: window.location.pathname, top: field.getBoundingClientRect().top,
+                                            at: Date.now() }));
+    } catch (e) { /* storage full or blocked: the page simply opens at the top */ }
+  });
+
+  var store = storage();
+  var saved = null;
+  try { saved = store && JSON.parse(store.getItem(STORE) || "null"); } catch (e) { saved = null; }
+  if (store) { try { store.removeItem(STORE); } catch (e) { /* nothing to clean */ } }
+  if (!saved || saved.path !== window.location.pathname || Date.now() - saved.at > MAX_AGE_MS) { return; }
+
+  function place() { window.scrollBy(0, field.getBoundingClientRect().top - saved.top); }
+  place();
+  try { field.focus({ preventScroll: true }); } catch (e) { /* older browsers: focus without it */ }
+  // Late layout (fonts, images) can move the field: place it again once everything is loaded.
+  if (document.readyState === "complete") { place(); } else { window.addEventListener("load", place); }
+})();
 
 (function () {
   "use strict";
@@ -26,15 +64,28 @@
 
   var form = document.getElementById("ai-rule-form");
   var text = document.getElementById("ai-rule-text");
+  var userTitle = document.getElementById("ai-rule-user-title");
+  var rewriteButton = document.getElementById("ai-rule-rewrite");
+  var undoRewriteButton = document.getElementById("ai-rule-rewrite-undo");
+  var rewriteStatus = document.getElementById("ai-rule-rewrite-status");
+  var conflictsBox = document.getElementById("ai-rule-conflicts");
+  var previewedConflicts = [];  // the conflicts with other active rules found by the current Preview
+  var beforeRewrite = null;  // BANK_AI_RULES_026 — the text Undo rewrite restores
+  var validatedText = null;  // the text "Rewritten and validated" refers to
+  var saveTitleButton = document.getElementById("ai-rule-save-title");
   var createMissing = document.getElementById("ai-rule-create-missing");
   var overrideProtected = document.getElementById("ai-rule-override-protected");
+  // Radio pairs: each option is the "on" radio of its group, the alternative is the other one.
   var onlyUnsettled = document.getElementById("ai-rule-only-unsettled");
+  var includeAiSettled = document.getElementById("ai-rule-include-ai-settled");
   var whoOnly = document.getElementById("ai-rule-who-only");
+  var allParts = document.getElementById("ai-rule-all-parts");
   var originId = document.getElementById("ai-rule-origin-id");
   var draftId = document.getElementById("ai-rule-draft-id");
   var ruleId = document.getElementById("ai-rule-rule-id");
   var previewIdInput = document.getElementById("ai-rule-preview-id");
   var selectedInput = document.getElementById("ai-rule-selected-ids");
+  var scopeNone = document.getElementById("ai-scope-none");
   var scopeAll = document.getElementById("ai-scope-all");
   var scopeSelected = document.getElementById("ai-scope-selected");
   var scopeFuture = document.getElementById("ai-scope-future");
@@ -60,6 +111,7 @@
   var periodCount = parseInt(overlay.getAttribute("data-period-count"), 10) || 0;
   var previewed = null;      // the last valid preview: {id, text, createMissing, scope, newWho}
   var busy = false;
+  var loaded = null;         // BANK_AI_RULES_022 — the operative rule as opened: {title, text, options}
 
   var modal = window.RFOneModal.create({ overlay: overlay, initialFocus: function () { return text; } });
 
@@ -69,7 +121,7 @@
   var rowBoxes = Array.prototype.slice.call(document.querySelectorAll(".ai-rule-select"));
   var periodBox = document.getElementById("ai-select-period");
 
-  // BANK_AI_RULES_019 — with a "Classificazione" filter, the movements of the
+  // BANK_AI_RULES_019 — with a "Classification" filter, the movements of the
   // period it excludes leave the selection (also those an application just
   // made no longer match); changing the filter reloads the list, with a spinner.
   (function applyClassificationFilter() {
@@ -80,6 +132,19 @@
     var changed = false;
     excluded.forEach(function (id) { if (selection.delete(String(id))) { changed = true; } });
     if (changed) { try { window.sessionStorage.setItem(STORE, JSON.stringify(Array.from(selection))); } catch (e) { /* ignore */ } }
+  })();
+  // BANK_AI_RULES_025 — with a movements' search, the selection is limited to
+  // its results (period, Classification and search, as listed): the others
+  // leave it for good — emptying or changing the search never brings them back.
+  (function applySearchPerimeter() {
+    var search = document.querySelector(".ai-txn-search[data-search-active='1']");
+    if (!search) { return; }
+    var inPerimeter = new Set(rowBoxes.map(function (box) { return box.value; }));
+    var changed = false;
+    Array.from(selection).forEach(function (id) {
+      if (!inPerimeter.has(String(id))) { selection.delete(id); changed = true; }
+    });
+    if (changed) { saveSelection(); }
   })();
   (function filterLoading() {
     var periodForm = document.getElementById("ai-rules-period");
@@ -156,7 +221,7 @@
   }
   refreshSelection();
 
-  // BANK_AI_RULES_020 — with a "Classificazione" filter, the selected movements
+  // BANK_AI_RULES_020 — with a "Classification" filter, the selected movements
   // of OTHER periods are checked on the server too: those that do not satisfy
   // the filter leave the selection; the compatible ones stay.
   (function checkOtherPeriods() {
@@ -199,20 +264,17 @@
     if (scopeAll.checked) { parts.push("Preview and apply: every movement in the database."); }
     else if (scopeSelected.checked) { parts.push("Preview and apply: the " + selection.size + " selected movement(s)."); }
     else { parts.push("Preview: the " + periodCount + " movement(s) of the period shown (nothing is applied to them)."); }
-    if (scopeFuture.checked) { parts.push("Per il futuro: new imported movements, from Salva on."); }
+    if (scopeFuture.checked) { parts.push("New transactions: applied automatically to imports, from Save on."); }
     scopeNote.textContent = parts.join(" ");
     saveApplyButton.disabled = busy || !(scopeAll.checked || scopeSelected.checked || scopeFuture.checked);
   }
 
-  scopeAll.addEventListener("change", function () {
-    if (scopeAll.checked) { scopeSelected.checked = false; }
-    describeScope();
-    markStale();
-  });
-  scopeSelected.addEventListener("change", function () {
-    if (scopeSelected.checked) { scopeAll.checked = false; }
-    describeScope();
-    markStale();
+  // One radio group: the browser itself unchecks the other choices.
+  [scopeNone, scopeAll, scopeSelected].forEach(function (radio) {
+    radio.addEventListener("change", function () {
+      describeScope();
+      markStale();
+    });
   });
   scopeFuture.addEventListener("change", describeScope);
 
@@ -240,16 +302,16 @@
     if (previewed === null) { return "there is no Preview of this rule in this window yet"; }
     if (ruleText(text.value) !== previewed.text) { return "the rule text changed after Preview #" + previewed.id; }
     if (createMissing.checked !== previewed.createMissing) {
-      return "“Crea WHO mancanti” changed after Preview #" + previewed.id;
+      return "“Create missing WHO” changed after Preview #" + previewed.id;
     }
     if (whoOnly.checked !== previewed.whoOnly) {
-      return "“Solo WHO” changed after Preview #" + previewed.id;
+      return "“Which parts of the rule should be applied?” changed after Preview #" + previewed.id;
     }
     if (onlyUnsettled.checked !== previewed.onlyUnsettled) {
-      return "“Solo movimenti non ancora sistemati da regole AI” changed after Preview #" + previewed.id;
+      return "“Which AI classifications may be updated?” changed after Preview #" + previewed.id;
     }
     if (overrideProtected.checked !== previewed.overrideProtected) {
-      return "“Sostituisci anche WHO/WHY manuali o confermati” changed after Preview #" + previewed.id;
+      return "“Allow this rule to replace manual or confirmed WHO and WHY” changed after Preview #" + previewed.id;
     }
     if (scopeSignature() !== previewed.scope) {
       var was = previewed.scope.split(":")[0];
@@ -260,6 +322,19 @@
   }
 
   function isCurrent() { return staleReason() === ""; }
+
+  // BANK_AI_RULES_022 — what makes a version: the Title is not part of it.
+  function optionsState() {
+    return { title: userTitle.value.trim(), text: ruleText(text.value), createMissing: createMissing.checked,
+             overrideProtected: overrideProtected.checked, future: scopeFuture.checked };
+  }
+
+  function onlyTitleChanged() {
+    if (!loaded || !ruleId.value) { return false; }
+    var now = optionsState();
+    return now.text === loaded.text && now.createMissing === loaded.createMissing &&
+      now.overrideProtected === loaded.overrideProtected && now.future === loaded.future && now.title !== loaded.title;
+  }
 
   function refreshCreateWho() {
     createWhoButton.disabled = busy || !isCurrent() || !previewed.createMissing || !previewed.newWho;
@@ -276,26 +351,103 @@
     draftStatus.textContent = "";
     newWhoBox.hidden = true;
     createWhoResult.textContent = "";
+    beforeRewrite = null;
+    validatedText = null;
+    undoRewriteButton.hidden = true;
+    rewriteStatus.hidden = true;
+    conflictsBox.hidden = true;
+    previewedConflicts = [];
   }
 
-  function openFor(transaction, rule, draft, withCreate, operative, withOverride, withOnlyUnsettled) {
+  // --- Conflicts with the other active rules ------------------------------
+  // Found by the server (ai_rules.rule_conflicts) at Rewrite with AI, Preview and Save / Save and Apply. A
+  // conflict is about ANOTHER rule, never a problem of this text: shown on its own, never resolved here.
+  function conflictLines(list) {
+    return (list || []).map(function (c) {
+      return c.message + (c.example ? " Example: " + (c.example.date || "") + " · " + c.example.description +
+        " · " + c.example.amount + " (" + c.count + " movement(s))." : " No movement shows it yet: the conditions overlap.");
+    });
+  }
+
+  function showConflicts(list, when) {
+    conflictsBox.textContent = "";
+    if (!list || !list.length) { conflictsBox.hidden = true; return; }
+    var head = document.createElement("h4");
+    head.textContent = "Conflict with " + (list.length === 1 ? "another active rule" : list.length + " other active rules") +
+      " (" + when + ") — not a problem of this rule's text";
+    conflictsBox.appendChild(head);
+    list.forEach(function (c) {
+      var box = document.createElement("div");
+      box.className = "ai-conflict";
+      var label = "rule #" + c.rule_id + (c.rule_title ? " ‘" + c.rule_title + "’" : "");
+      var lines = [
+        ["ai-conflict-message", c.message],
+        ["", "Overlapping conditions — this rule: " + c.this.conditions + "; " + label +
+              (c.other.branch && c.other.branch.indexOf("branch") === 0 ? " (" + c.other.branch + ")" : "") + ": " +
+              c.other.conditions + "."],
+        ["", "This rule assigns WHO = " + (c.this.who || "unchanged") + ", WHY = " + (c.this.why || "unchanged") +
+              " · " + label + " assigns WHO = " + (c.other.who || "unchanged") + ", WHY = " + (c.other.why || "unchanged") + "."],
+        ["", c.example ? "Example movement: " + (c.example.date || "") + " · " + c.example.description + " · " +
+              c.example.amount + " — " + c.count + " movement(s) affected." : "No existing movement shows it yet: the conditions overlap."]
+      ];
+      lines.forEach(function (line) {
+        var para = document.createElement("p");
+        if (line[0]) { para.className = line[0]; }
+        para.textContent = line[1];
+        box.appendChild(para);
+      });
+      conflictsBox.appendChild(box);
+    });
+    var foot = document.createElement("p");
+    foot.textContent = "Where both rules apply, the movements are NOT changed (Conflict). Nothing is resolved " +
+      "automatically: change or disable one of the two rules if you decide so.";
+    conflictsBox.appendChild(foot);
+    conflictsBox.hidden = false;
+  }
+
+  // The choices a NEW rule starts with (boxes A–F), as decided by the Product Owner; every one can be changed.
+  // A draft or an existing rule reopens with its own saved settings instead.
+  var NEW_RULE_DEFAULTS = { scope: "all", future: true, onlyUnsettled: true, override: true, whoOnly: false,
+                            createMissing: true };
+  // The editable model text a NEW rule starts with (a real value, not a placeholder): the operator replaces the
+  // description, WHO and WHY between the empty quotes. Drafts and existing rules keep their own text.
+  var NEW_RULE_TEXT = 'Se la descrizione contiene "", allora il WHO è "" e il WHY è "".';
+
+  function openFor(transaction, rule, draft, withCreate, operative, withOverride, withOnlyUnsettled, title, isNew) {
     reset();
     showOrigin(transaction);
-    text.value = rule || "";
+    text.value = isNew ? NEW_RULE_TEXT : rule || "";
+    userTitle.value = title || "";
     draftId.value = draft || "";
     ruleId.value = operative && operative.rule_id ? operative.rule_id : "";
     createMissing.checked = !!withCreate;
     overrideProtected.checked = !!withOverride;
-    onlyUnsettled.checked = withOnlyUnsettled === undefined ? true : !!withOnlyUnsettled;   // default: selected
-    whoOnly.checked = false;
-    scopeAll.checked = false;
-    scopeSelected.checked = false;
+    var unsettledOnly = withOnlyUnsettled === undefined ? true : !!withOnlyUnsettled;   // default: selected
+    onlyUnsettled.checked = unsettledOnly;
+    includeAiSettled.checked = !unsettledOnly;
+    allParts.checked = true;           // a run mode, never kept with the rule
+    scopeNone.checked = true;          // never preselects an application to existing transactions
     scopeFuture.checked = !!(operative && operative.apply_future);
+    if (isNew) {
+      (NEW_RULE_DEFAULTS.scope === "all" ? scopeAll : NEW_RULE_DEFAULTS.scope === "selected" ? scopeSelected
+        : scopeNone).checked = true;
+      scopeFuture.checked = NEW_RULE_DEFAULTS.future;
+      onlyUnsettled.checked = NEW_RULE_DEFAULTS.onlyUnsettled;
+      includeAiSettled.checked = !NEW_RULE_DEFAULTS.onlyUnsettled;
+      overrideProtected.checked = NEW_RULE_DEFAULTS.override;
+      whoOnly.checked = NEW_RULE_DEFAULTS.whoOnly;
+      allParts.checked = !NEW_RULE_DEFAULTS.whoOnly;
+      createMissing.checked = NEW_RULE_DEFAULTS.createMissing;
+    }
     operativeBadge.hidden = !(operative && operative.rule_id);
     operativeBadge.textContent = operative && operative.rule_id
       ? "Operative rule #" + operative.rule_id + (operative.version_no ? " v" + operative.version_no : "") +
-        (operative.status === "INACTIVE" ? " (disabled)" : "") : "";
+        (operative.status === "INACTIVE" ? " (disabled)" : "") +
+        (operative.applied_to_existing === false ? " · saved, not yet applied to existing transactions" : "") : "";
     resetPickers();
+    // BANK_AI_RULES_022 — "Save title" only for an operative rule opened as it is (not a draft of a change).
+    loaded = operative && operative.rule_id && !draft ? optionsState() : null;
+    saveTitleButton.hidden = !loaded;
     previewButton.disabled = !transaction.id;
     draftButton.disabled = !transaction.id && !draft;
     describeScope();
@@ -320,11 +472,17 @@
     previewButton.disabled = on;
     draftButton.disabled = on;
     saveButton.disabled = on;
+    saveTitleButton.disabled = on;
+    rewriteButton.disabled = on;
+    undoRewriteButton.disabled = on;
+    userTitle.readOnly = on;
     text.readOnly = on;
     createMissing.disabled = on;
     overrideProtected.disabled = on;
     onlyUnsettled.disabled = on;
+    includeAiSettled.disabled = on;
     whoOnly.disabled = on;
+    allParts.disabled = on;
     describeScope();
     refreshCreateWho();
   }
@@ -368,7 +526,7 @@
   function toVerify() {
     var badge = document.createElement("span");
     badge.className = "badge warn";
-    badge.textContent = "Da verificare";
+    badge.textContent = "To verify";
     return badge;
   }
 
@@ -459,6 +617,8 @@
 
   function showPreview(data) {
     var newWho = (data.new_who_names || []).length;
+    previewedConflicts = data.rule_conflicts || [];
+    showConflicts(previewedConflicts, "found by Preview");
     previewed = { id: data.preview_id, text: ruleText(data.rule_text), createMissing: !!data.create_missing_who,
                   overrideProtected: !!data.override_protected, onlyUnsettled: !!data.only_unsettled,
                   whoOnly: !!data.who_only,
@@ -471,7 +631,7 @@
       data.examined + " movements examined (" + (SCOPE_LABEL[data.scope] || "the period shown") +
       (data.scope === "PERIOD" ? ", " + (data.date_from || "…") + " – " + (data.date_to || "…") : "") + ") · " +
       data.matches + " matches · " + data.doubts + " doubtful · " +
-      (data.who_only ? "MODE “Solo WHO”: only WHO is applied (WHY, default WHY and For Whom left as they are) · " : "") +
+      (data.who_only ? "MODE “Apply only WHO”: only WHO is applied (WHY, default WHY and For Whom left as they are) · " : "") +
       // BANK_AI_RULES_013 — what the option left out.
       (data.only_unsettled ? (data.excluded_ai_settled || 0) + " excluded because already settled by AI rules" +
         (data.excluded_ai_settled ? " (" + Object.keys(data.excluded_by_rule || {}).map(function (id) {
@@ -487,7 +647,7 @@
       data.doubts + " doubtful (never applied)." +
       // BANK_AI_RULES_011 — the explicit override option and the other rules on the same movements.
       (data.override_protected ? " Option “" + data.override_label + "” ON: " + (data.overridden || 0) +
-        " manual / confirmed movement(s) would be overridden (For Whom kept, “Da confermare”)." : "") +
+        " manual / confirmed movement(s) would be overridden (For Whom kept, “To confirm”)." : "") +
       (data.overlaps ? " Overlap with other rules: " + data.overlaps + " movement(s) (" +
         Object.keys(data.overlap_rules || {}).map(function (id) {
           return (id.indexOf("WHO ") === 0 ? "WHO rule #" + id.slice(4) : "AI rule #" + id) + ": " +
@@ -521,7 +681,7 @@
       "The starting transaction is not among the matches of this scope.";
     document.getElementById("ai-rule-match-count").textContent = data.matches;
     document.getElementById("ai-rule-doubt-count").textContent = data.doubts;
-    var whoNewLabel = data.create_missing_who ? "Nuovo WHO da creare" : "New — suggestion only";
+    var whoNewLabel = data.create_missing_who ? "New WHO to create" : "New — suggestion only";
     fill(document.getElementById("ai-rule-matches"), data.match_items, whoNewLabel, !!data.for_whom_rule);
     fill(document.getElementById("ai-rule-doubts"), data.doubt_items, whoNewLabel, !!data.for_whom_rule);
     newWhoBox.hidden = !data.create_missing_who;
@@ -535,7 +695,12 @@
   // is never sent.
   function formBody() {
     selectedInput.value = scopeSelected.checked ? selectedIds().join(",") : "";
-    return new FormData(form);
+    var body = new FormData(form);
+    // The "existing transactions" radio group is sent as the fields the server reads.
+    body.delete("scope_existing");
+    if (scopeAll.checked) { body.set("scope_all", "on"); }
+    if (scopeSelected.checked) { body.set("scope_selected", "on"); }
+    return body;
   }
 
   function post(url, body, done) {
@@ -580,12 +745,17 @@
   });
 
   function markStale() {
+    if (validatedText !== null && text.value !== validatedText) {   // any change at all
+      validatedText = null;                    // BANK_AI_RULES_026 — no longer the validated text
+      rewriteStatus.hidden = true;
+    }
     if (previewed !== null) { stale.hidden = isCurrent(); }
     result.classList.toggle("is-stale", !stale.hidden);
     draftStatus.textContent = "";
     refreshCreateWho();
   }
   text.addEventListener("input", markStale);
+  text.addEventListener("input", function () { conflictsBox.hidden = true; });
   createMissing.addEventListener("change", markStale);
   overrideProtected.addEventListener("change", markStale);
   onlyUnsettled.addEventListener("change", markStale);
@@ -637,7 +807,7 @@
     picker.addEventListener("click", function (event) {
       var pick = event.target.closest(".ai-rule-pick");
       if (!pick) { return; }
-      insertIntoRule(pick.getAttribute("data-kind") + " \"" + pick.getAttribute("data-name") + "\"");
+      insertIntoRule(pick.getAttribute("data-kind") + " = \"" + pick.getAttribute("data-name") + "\"");
     });
   });
 
@@ -649,7 +819,79 @@
     });
   }
 
-  // --- Save Draft / Salva / Salva e Applica -------------------------------
+  // --- Rewrite with AI (BANK_AI_RULES_026) -------------------------------
+  // Rewrites and verifies only: the server returns a text ONLY when Preview's
+  // interpreter and checks accepted it; otherwise the text is left untouched.
+  function showRewrite(kind, message, details) {
+    rewriteStatus.className = "ai-rule-rewrite-status " + (kind === "ok" ? "is-ok" : "is-refused");
+    rewriteStatus.textContent = message;
+    if (details && details.length && kind !== "ok") {
+      var list = document.createElement("ul");
+      details.forEach(function (d) {
+        if (!d) { return; }
+        var li = document.createElement("li");
+        li.textContent = d;
+        list.appendChild(li);
+      });
+      rewriteStatus.appendChild(list);
+    }
+    rewriteStatus.hidden = false;
+  }
+
+  function invalidatePreview() {
+    previewed = null;
+    if (!result.hidden) { stale.hidden = false; result.classList.add("is-stale"); }
+    previewIdInput.value = "";
+    refreshCreateWho();
+  }
+
+  rewriteButton.addEventListener("click", function () {
+    if (busy) { return; }                      // never two requests at once
+    errorBox.hidden = true;
+    var original = text.value;
+    if (!ruleText(original)) { showRewrite("refused", "Write the rule before asking to rewrite it."); return; }
+    var body = new FormData();
+    body.append("csrf_token", form.querySelector("input[name='csrf_token']").value);
+    body.append("rule_text", original);
+    body.append("origin_transaction_id", originId.value);
+    body.append("rule_id", ruleId.value);
+    body.append("user_title", userTitle.value);
+    rewriteStatus.hidden = true;
+    conflictsBox.hidden = true;
+    setBusy(true, "Rewriting with AI and verifying with the interpreter…");
+    post(rewriteButton.getAttribute("data-rewrite-url"), body, function (data) {
+      showConflicts(data && data.conflicts, "found by Rewrite with AI");
+      if (!data || !data.ok || !data.text) {
+        showRewrite("refused", (data && data.message) || "Rewrite failed. The text was not changed.",
+                    data && data.details);
+        return;                                 // the original text is left exactly as it was
+      }
+      if (text.value !== original) {
+        showRewrite("refused", "The text was changed during the rewrite: the rewritten version was not inserted.");
+        return;
+      }
+      beforeRewrite = original;
+      text.value = data.text;
+      validatedText = text.value;
+      invalidatePreview();
+      markStale();
+      undoRewriteButton.hidden = false;
+      showRewrite("ok", data.message || "Rewritten and validated");
+    }).then(function () { setBusy(false); });
+  });
+
+  undoRewriteButton.addEventListener("click", function () {
+    if (busy || beforeRewrite === null) { return; }
+    text.value = beforeRewrite;
+    beforeRewrite = null;
+    validatedText = null;
+    undoRewriteButton.hidden = true;
+    rewriteStatus.hidden = true;
+    invalidatePreview();
+    markStale();
+  });
+
+  // --- Save Draft / Save / Save and Apply ---------------------------------
   draftButton.addEventListener("click", function () {
     if (busy) { return; }
     errorBox.hidden = true;
@@ -666,7 +908,11 @@
   function savedMessage(data) {
     return "Rule #" + data.rule_id + " saved as operative (version " + data.version_no +
       (data.new_version ? ", new" : ", unchanged") + "; executed by " + (data.method === "CODE" ? "code" : "the AI") +
-      "). Per il futuro: " + (data.apply_future ? "on — new imported movements." : "off.");
+      "). New transactions: " + (data.apply_future ? "applied automatically to imports." : "not applied.") +
+      (data.applied_to_existing === false ? " Version " + data.version_no + " is saved but NOT yet applied to the " +
+        "existing transactions: use Save and Apply to apply it." : "") +
+      ((data.rule_conflicts || []).length ? " CONFLICT with other active rules — where both apply, nothing is " +
+        "changed: " + conflictLines(data.rule_conflicts).join(" ") : "");
   }
 
   function afterSave(data) {
@@ -707,8 +953,39 @@
     if (row) { row.classList.add("ai-rule-just-saved"); row.scrollIntoView({ block: "center" }); }
   })();
 
+  // BANK_AI_RULES_022 — only the Title: no interpretation, no new version, nothing applied.
+  function saveTitle() {
+    if (busy || !ruleId.value) { return; }
+    errorBox.hidden = true;
+    var body = new FormData();
+    body.append("csrf_token", form.querySelector("input[name='csrf_token']").value);
+    body.append("user_title", userTitle.value);
+    var url = overlay.getAttribute("data-rule-title-template").replace("/rules/0/", "/rules/" + ruleId.value + "/");
+    setBusy(true, "Saving the title…");
+    post(url, body, function (data) {
+      if (!data.ok) { showError(data.error || "The title could not be saved."); return; }
+      userTitle.value = data.user_title;
+      if (loaded) { loaded.title = data.user_title; }
+      draftStatus.textContent = "Title of rule #" + data.rule_id + " saved. The rule was not reinterpreted or " +
+        "reapplied; no movement was changed.";
+      var row = document.querySelector("#ai-operative-rules tr[data-rule-id='" + data.rule_id + "']");
+      var name = row && row.querySelector(".ai-rule-name");
+      if (name) {
+        var shown = document.createElement(data.user_title ? "strong" : "em");
+        shown.className = data.user_title ? "ai-rule-name" : "muted ai-rule-name";
+        shown.textContent = data.user_title || "No title";
+        name.replaceWith(shown);
+      }
+    }).then(function () { setBusy(false); });
+  }
+  saveTitleButton.addEventListener("click", saveTitle);
+  userTitle.addEventListener("keydown", function (event) {
+    if (event.key === "Enter") { event.preventDefault(); }     // never a Preview from the Title field
+  });
+
   saveButton.addEventListener("click", function () {
     if (busy) { return; }
+    if (onlyTitleChanged()) { saveTitle(); return; }
     errorBox.hidden = true;
     var body = formBody();
     setBusy(true, "Saving the rule…");
@@ -744,9 +1021,16 @@
           showError("Preview #" + data.preview_id + " cannot be applied: " + still + ".");
         } else {
           showApplied("New Preview #" + data.preview_id + " (" + reason + "). Check the planned changes, then press " +
-                      "Salva e Applica to apply this Preview.");
+                      "Save and Apply to apply this Preview.");
         }
       });
+      return;
+    }
+    if (historical && previewedConflicts.length && !window.confirm(
+        "Conflict with other active rules:\n\n" + conflictLines(previewedConflicts).join("\n\n") +
+        "\n\nThe movements where both rules apply will NOT be changed (Conflict); nothing is resolved " +
+        "automatically. Apply the rule to the other movements anyway?")) {
+      showConflicts(previewedConflicts, "checked before Save and Apply: not applied");
       return;
     }
     var body = formBody();
@@ -824,16 +1108,16 @@
   document.addEventListener("submit", function (event) {
     var form = event.target.closest && event.target.closest(".ai-rule-delete-form");
     if (!form) { return; }
-    var message = "Eliminare la regola AI " + form.getAttribute("data-rule-name") + "?\n\n" +
-      "Non verrà più eseguita. Le classificazioni già applicate ai movimenti NON vengono modificate e la loro " +
-      "provenienza resta registrata.";
+    var message = "Delete the AI rule " + form.getAttribute("data-rule-name") + "?\n\n" +
+      "It will no longer be executed. The classifications it already applied to the movements are NOT changed " +
+      "and their origin stays recorded.";
     if (!window.confirm(message)) { event.preventDefault(); }
   });
 
   document.addEventListener("click", function (event) {
     var button = event.target.closest && event.target.closest(".ai-rule-open");
     if (button) {
-      openFor(JSON.parse(button.getAttribute("data-transaction")), "", "", false, null);
+      openFor(JSON.parse(button.getAttribute("data-transaction")), "", "", false, null, false, undefined, "", true);
       return;
     }
     var draftOpen = event.target.closest && event.target.closest(".ai-rule-draft-open");
@@ -841,14 +1125,18 @@
       getJson(overlay.getAttribute("data-draft-get-template").replace(/\/0$/, "/" + draftOpen.getAttribute("data-draft-id")),
         function (data) {
           openFor(data.origin, data.rule_text, data.draft_id, data.create_missing_who,
-                  data.rule_id ? { rule_id: data.rule_id } : null, data.override_protected, data.only_unsettled);
+                  data.rule_id ? { rule_id: data.rule_id } : null, data.override_protected, data.only_unsettled,
+                  data.user_title);
         }, "The draft could not be opened; reload the page.");
       return;
     }
     var ruleOpen = event.target.closest && event.target.closest(".ai-rule-operative-open");
     if (ruleOpen) {
       getJson(overlay.getAttribute("data-rule-get-template").replace(/\/0$/, "/" + ruleOpen.getAttribute("data-rule-id")),
-        function (data) { openFor(data.origin, data.rule_text, "", data.create_missing_who, data, data.override_protected); },
+        function (data) {
+          openFor(data.origin, data.rule_text, "", data.create_missing_who, data, data.override_protected, undefined,
+                  data.user_title);
+        },
         "The rule could not be opened; reload the page.");
     }
   });

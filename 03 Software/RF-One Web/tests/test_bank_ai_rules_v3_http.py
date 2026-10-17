@@ -229,7 +229,7 @@ def main() -> int:
           and ids["empty"] not in items and ids["unrelated"] not in items)
     check("4. WHO absent → UPDATED: WHO assigned, the WHO's default WHY, status → Da confermare",
           by["none"]["plan"] == "UPDATED" and by["none"]["proposed_why"] == why_default_name
-          and "status → Da confermare" in by["none"]["plan_note"], detail=str(by["none"]))
+          and "status → To confirm" in by["none"]["plan_note"], detail=str(by["none"]))
     check("5. a new WHO (no default WHY) → UPDATED with the WHY emptied",
           by["new"]["plan"] == "UPDATED" and by["new"]["proposed_who"] == "NUOVA DITTA" and by["new"]["proposed_who_is_new"]
           and not by["new"]["proposed_why"] and "has no default WHY: WHY empty" in by["new"]["plan_note"],
@@ -267,7 +267,7 @@ def main() -> int:
         b = preview(rule)
         check(f"13. {label}: BLOCKED with the reason, no simplified version, no movement sent to the AI",
               not b.get("ok") and b.get("status") == "FAILED" and needle in (b.get("error") or "")
-              and "Bloccata" in (b.get("error") or "") and not b.get("match_items")
+              and "Blocked" in (b.get("error") or "") and not b.get("match_items")
               and not any("MOVEMENTS (" in x for x in prompts), detail=str(b.get("error")))
     check("14. validation: a default WHY with no WHO, and an unknown status, are rejected",
           ai_rules.validate_interpretation({**FULL, "who": None}, RULE)[0] is None
@@ -298,7 +298,7 @@ def main() -> int:
         check("15b. SESSION mode, no saved interpretation: the preview waits for the session — no AI call, the "
               "instruction to give the session, the provider is the session",
               not waiting.get("ok") and waiting.get("ai_calls") == 0 and not prompts
-              and (waiting.get("error") or "").startswith(ai_rules.SESSION_WAIT_MARKER)
+              and (waiting.get("error") or "").startswith(ai_rules.SESSION_WAIT_SHOWN)
               and f"Preview #{waiting.get('preview_id')}" in waiting.get("error")
               and "Interpreta le AI Rules in attesa" in waiting.get("error")
               and waiting.get("provider") == "CLAUDE_CODE_SESSION" and "CLAUDE_CODE_SESSION" in page,
