@@ -465,3 +465,23 @@ fatto login:
   validazione avviene su `rfone-web` e i run li scrive `rfone-tips`.
 - L'account che valida deve avere l'accesso al Domain **TIPS** abilitato
   (`/admin/accounts/<id>/access`); l'accesso BANK non basta.
+
+---
+
+## Bank rimosso da AWS (BANK_AWS_REMOVAL_001, 2026-10-14)
+
+Decisione del Product Owner: Bank è stato tolto da AWS come se non fosse mai stato pubblicato; gli altri Domain restano invariati, con dati e strutture.
+
+| Componente | Azione |
+|---|---|
+| Codice `rfone-web` | Ricostruito da `release/remove-bank-aws` @ `617e867` (= `0576ea1`, il codice che era online, meno Bank). Backup del sorgente precedente: `backups/rfone-web-source-pre-bank-removal-20261014t021533z.zip`. CodeBuild `rfone-web-build:862f40e7-…` SUCCEEDED, ECR `sha256:222ec5e4…`, App Runner `start-deployment` `5564abe7…` SUCCEEDED. `/bank*` → 404 |
+| Variabili `rfone-web` | Tolte `RFONE_AI_PROVIDER`, `RFONE_BEDROCK_MODEL_ID` (le leggeva solo Bank); tutte le altre variabili e i segreti invariati (`UPDATE_SERVICE` `6b6ba24a…`). Nota: `update-service` non ripubblica l'immagine — serve sempre anche `start-deployment` |
+| RDS `rfone-dev` / `rfone` | Migrazione `84354dc654ce`: eliminate le 53 tabelle Bank (tutte `bank_*`, `financial_transactions`, `raw_bank_transactions`, `financial_transaction_matches`, `payment_instruments`, `reporting_entities`, `reporting_groups`, `reporting_entity_destination_aliases`, `purchase_line_classifications`, `supplier_item_category_learnings`) e le 4 righe di accesso `BANK`; nessun CASCADE; impronta (conteggio + hash) di tutte le altre 224 tabelle identica prima e dopo, salvo le esecuzioni Clover in corso (`ingestion_runs`). Snapshot prima: `rfone-dev-pre-bank-removal-20261014t021458z` |
+| IAM | Eliminata la policy inline `rfone-web-bedrock-invoke-bank-ai-rules` di `rfone-web-apprunner-instance-role` |
+| Rete | Eliminati l'endpoint `bedrock-runtime` `vpce-0010040e932d4ab8f` e il suo security group `sg-0e917f65f52ad30ad` (creati per BANK_AWS_001) |
+
+Conservati (condivisi o punti di ripristino): `legal_entities` (anche la riga 3, Gelati), snapshot RDS, zip di backup su S3, immagini ECR precedenti, log CloudWatch. `rfone-tips` e `rfone-selection` non sono stati ridistribuiti: le loro immagini contengono ancora, inattivo, il codice Bank del Data Store condiviso.
+
+**Ripristino:** codice — rimettere il backup zip su `rfone-web-source.zip`, build, `start-deployment`; database — lo snapshot sopra (la migrazione non ha `downgrade`).
+
+**Revisione RDS e deploy (vedi `07 Tasks/Reports/BANK_AWS_REMOVAL_001_HANDOVER.md`):** RDS è a `84354dc654ce`. Pubblicare su AWS solo da un ramo la cui catena di migrazioni contiene `84354dc654ce` — oggi `release/remove-bank-aws`; `origin/main` (head `7b1d4f9a2c6e`) e il `main` locale non sono allineati. `rfone-selection` esegue le migrazioni a ogni avvio: con l'immagine attuale (catena del 2026-10-03) una nuova istanza non parte — va ricostruito da un ramo allineato.
