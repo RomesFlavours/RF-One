@@ -194,3 +194,52 @@ The merge itself — "the latest `PurchasedFieldCorrection` per (line, field) ov
 - **`raw_text` is not persisted on `PurchaseDocument`** — Human Review's re-validation therefore cannot re-check conflicting-totals against the original source text (only against the effective header/line values) — a pre-existing gap, not introduced by this task.
 - **AMBIGUOUS/UNREAD blocking is header-only** ("Close Purchased Human Review Reliability Gaps" §6): `_unresolved_required_field_reasons()` guards `supplier`/`issue_date`/`total_amount` only, matching what the model actually requires today. A per-line field (e.g. a specific line's `line_amount` marked AMBIGUOUS with no correction) is NOT individually required, so it cannot block NORMALIZED the same way — its raw value still silently feeds the aggregate line-arithmetic-coherence check. Deliberately not extended here (no per-line field is "required per il modello" today, and inventing that requirement was out of this task's scope) — a future task should decide whether an AMBIGUOUS/UNREAD line-level amount ought to exclude that line from the arithmetic check, or block by itself.
 - **Add Missing Line has no per-field granularity** ("Close Purchased Human Review Reliability Gaps" §3): `add_manual_purchase_line()` takes the whole line at once (description/quantity/UOM/unit price/line amount) — a reviewer cannot mark just the added line's quantity as still-AMBIGUOUS while confirming the rest; a follow-up `PurchasedFieldCorrection` against the new line's id works exactly like it would for any other line, but the initial creation call is all-or-nothing.
+
+---
+
+## 13. Invoice Intake data model ("Invoice Intake data model", 2026-10-10)
+
+Product Owner command of 2026-10-10: prepare the database for the agreed invoice data. Migration `b3f9d2c6e4a1` (revises `d8e2f5a9c3b7`), purely additive. Database only — no UI, no reading engine, no AI call. Tests: `test_invoice_intake_data_model.py`.
+
+### Decisions recorded
+
+1. **Reuse, no parallel model.** Supplier (`suppliers`), invoice number/date (`purchase_documents`), supplier item code and original description (`purchase_lines`), the product card identity (`supplier_products`, key `(supplier_id, supplier_code)`), human corrections (`purchased_field_corrections`) and anomaly flags (`purchasing_validation_log_entries`) are the existing tables, extended where needed.
+2. **Charges are not a new table.** A charge is a `purchase_lines` row with `line_type` SURCHARGE/DISCOUNT: name in `raw_description`, signed amount in `source_amount_minor`, linked to the invoice. The existing non-goods allocation (`get_purchased_lines_with_allocation`) reads them unchanged; the allocation is not changed by this task.
+3. **Read values stay on the line, and only read values.** New `purchase_lines` columns, all nullable: `piece_content_value`/`piece_content_unit` (nominal content of one piece), `actual_weight_value`/`actual_weight_unit` (catch weight delivered, distinct from nominal), `unit_price_basis` (what the unit price refers to). With the existing `quantity`/`purchase_unit` (invoiced quantity and unit), `pack_count` (pieces per package), `pack_size` (package content as printed), `unit_price_minor` and `source_amount_minor` (line amount) they cover the agreed line data. `record_purchase_document()` accepts the five new keys.
+4. **Quantity and package content stay separate.** "Qty 2" + "6 per case" is stored as `quantity=2, purchase_unit=CASE, pack_count=6`. A total of 12 bottles is never stored on the line; it can only exist as a CALCULATED derived value whose inputs show that the invoiced unit is the package.
+5. **Value provenance — four kinds, never mixed in one column:**
+
+   | Provenance | Where |
+   |---|---|
+   | Read on the invoice | the `purchase_lines` column itself (immutable) |
+   | Taken from the product card | `purchased_line_derived_values`, `provenance = PRODUCT_CARD`, with `packaging_id` of the exact version used |
+   | Calculated | `purchased_line_derived_values`, `provenance = CALCULATED`, with `calculation_formula` and `calculation_inputs` (each input names its own provenance) |
+   | Entered or confirmed by a person | `purchased_field_corrections` (existing): keeps `original_value` next to `corrected_value` |
+
+6. **Missing is NULL, never zero.** Every new value column is nullable; a derived row must carry a value (CheckConstraint), so "no value" is never written as 0.
+7. **A standard weight is never an actual weight.** CheckConstraint on `purchased_line_derived_values`: a PRODUCT_CARD value cannot use `field_name` `actual_weight`/`actual_weight_value`; a card weight is recorded as `nominal_weight`. On the line, `actual_weight_*` only holds what was printed (an unprinted unit stays NULL).
+8. **Uncertain or conflicting data** is flagged in `purchasing_validation_log_entries` with the new nullable `field_name`, `issue_type` (UNCERTAIN / CONFLICT / MISSING / UNREADABLE, free string) and `observed_values` (JSON, the competing readings).
+9. **Product card standard values are versioned.** `supplier_product_packagings`: package unit, pieces per package, piece unit, nominal piece content + unit, sale unit, price basis unit, `is_variable_weight`. A packaging change inserts a new `version` and marks the previous one SUPERSEDED (`superseded_by_packaging_id`); derived values point at the version they used, so earlier invoices never change. `supplier_product_unit_conversions` holds the equivalences of one version (1 `from_unit` = `factor` `to_unit`), with `is_nominal` for estimates such as the weight of a catch-weight case.
+10. **Automatic feeding and human completion.** `origin = INVOICE_READ` (automatic, from a complete and coherent reading — must name `source_purchase_line_id`, CheckConstraint) or `origin = HUMAN` (`confirmed_by`/`confirmed_at`). Status PROPOSED / ACTIVE / SUPERSEDED. Distinct from `configured_expectations`, which remains the human-approved reference for configuration-deviation Alerts (Rule 20).
+11. **Source files and pages.** `purchase_document_sources`: one row per original file of an invoice (`sequence`), with SHA-256 `content_hash` (same identity as InvoiceIntake's acquisition store), filename, storage reference, channel, `acquisition_reference`, per-file `acquisition_status` (RECEIVED / ACQUIRED / FAILED) and the page range of that file belonging to the invoice. Covers an invoice split over several files. `PurchaseDocument.source_reference` is kept for existing callers.
+12. **Verification status stays derived.** NORMALIZED / HUMAN remains `get_document_functional_status()`, not a column — Purchased/README.md admits only those two functional states.
+
+### Tables and columns added
+
+| Table | Columns |
+|---|---|
+| `purchase_lines` (+5) | `piece_content_value`, `piece_content_unit`, `actual_weight_value`, `actual_weight_unit`, `unit_price_basis` |
+| `purchasing_validation_log_entries` (+3) | `field_name`, `issue_type`, `observed_values` |
+| `purchase_document_sources` (new) | `purchase_document_id`, `sequence`, `content_hash`, `original_filename`, `storage_reference`, `channel`, `acquisition_reference`, `acquisition_status`, `page_from`, `page_to`, `file_page_count` |
+| `supplier_product_packagings` (new) | `supplier_product_id`, `version`, `status`, `package_unit`, `pieces_per_package`, `piece_unit`, `piece_content_value`, `piece_content_unit`, `sale_unit`, `price_basis_unit`, `is_variable_weight`, `origin`, `source_purchase_line_id`, `confirmed_by`, `confirmed_at`, `superseded_by_packaging_id`, `superseded_at`, `notes` |
+| `supplier_product_unit_conversions` (new) | `packaging_id`, `from_unit`, `to_unit`, `factor`, `is_nominal`, `origin` |
+| `purchased_line_derived_values` (new) | `purchase_document_id`, `purchase_line_id`, `field_name`, `value_numeric`, `value_text`, `unit`, `provenance`, `packaging_id`, `calculation_formula`, `calculation_inputs`, `created_by` |
+
+### Not done here (open)
+
+- No reading engine writes the new columns yet: `purchased_bridge.py`/`document_reader.py` are unchanged, so new InvoiceIntake documents still leave them NULL.
+- No repository API yet for packagings, conversions or derived values, and no "effective value with provenance" read function; the Human Review UI does not show them.
+- When an automatic (INVOICE_READ) packaging may become ACTIVE without a person, and what makes a reading "complete and coherent", is a policy still to be decided.
+- Units are free strings; no unit vocabulary or normalization (grams, cost per gram) is defined.
+- `unit_price_minor` stays in cents (two decimals), as before.
+- Generic `Product`/`Ingredient` tables still do not exist (§12): the product card is anchored on `supplier_products`.

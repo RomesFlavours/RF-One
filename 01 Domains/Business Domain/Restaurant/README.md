@@ -89,6 +89,7 @@ Human validation has priority over AI assumptions.
 - Server Performance — Restaurant-specific specialization of Personnel Management/Performance for the Server role: Quality of Sale, Opportunity Capture, Concurrent Service Load, coaching model, KPI framework (see [Server Performance/README.md](Server%20Performance/README.md), TASK_SERVER_PERFORMANCE_001)
 - Service Copilot — real-time in-service assistance fed by Server Performance (see [Service Copilot/README.md](Service%20Copilot/README.md), TASK_SERVER_PERFORMANCE_001)
 - Dining Intelligence — shared consumption-understanding module (Dining Session Profile, Customer Consumption Profile, food/drink correlations) consumed by Server Performance, Service Copilot and future Menu/Marketing capabilities (see [Dining Intelligence/README.md](Dining%20Intelligence/README.md), TASK_SERVER_PERFORMANCE_001)
+- MyRF — Server Tablet (Draft 0.1, Italian) — first operational scope of MyRF for Servers: menu and wine consultation, sales support and tablet order capture with Clover integration; Clover capabilities still to be verified (see [MyRF/Server Tablet/README.md](MyRF/Server%20Tablet/README.md))
 - Recipes (planned)
 - Inventory (planned)
 - Production (planned)

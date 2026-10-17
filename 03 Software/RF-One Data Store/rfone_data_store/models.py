@@ -5402,6 +5402,29 @@ class PurchaseLine(Base):
     product_variant: Mapped[str | None] = mapped_column(String(255), nullable=True)
     grade: Mapped[str | None] = mapped_column(String(128), nullable=True)
     unit_price_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Invoice Intake line measures ("Invoice Intake data model"). Like every
+    # other column on this row they hold ONLY what was read on the invoice —
+    # a value taken from the product card, calculated, or entered by a
+    # person never lands here (see `PurchasedLineDerivedValue` and
+    # `PurchasedFieldCorrection`). NULL means "not printed / not read",
+    # never zero. `quantity` + `purchase_unit` stay the invoiced quantity
+    # and its unit; `pack_count` stays the pieces per package; `pack_size`
+    # stays the package content exactly as printed. "Qty 2" with
+    # "6 bottles per case" is stored as quantity=2, purchase_unit=CASE,
+    # pack_count=6 — 12 bottles is never stored here.
+    # Nominal content of ONE piece (e.g. 750 ML per bottle, 2.5 LB per
+    # salami), when the invoice states it.
+    piece_content_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    piece_content_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Actual (catch) weight delivered, when printed — distinct from the
+    # nominal content above. The unit stays NULL when the invoice prints
+    # the number without one (an inferred "LB" is not a read value).
+    actual_weight_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    actual_weight_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # What `unit_price_minor` refers to (CASE, BOTTLE, LB, ...), only when
+    # the invoice states it; NULL when the basis is not printed.
+    unit_price_basis: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # FOOD / DRINK / SUPPLIES / OTHER, once known and human-confirmed — a
     # persisted fact per Purchase Line (Purchasing/DataDictionary.md), not
     # merely inherited live from SupplierProduct.economic_classification.
@@ -5739,6 +5762,14 @@ class PurchasingValidationLogEntry(Base):
 
     severity: Mapped[str] = mapped_column(String(16), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
+    # Field-level flag ("Invoice Intake data model"): which field is
+    # uncertain or in conflict, what kind of issue it is, and the competing
+    # values as read. All NULL for a document-level entry. `issue_type`
+    # vocabulary: UNCERTAIN / CONFLICT / MISSING / UNREADABLE — a free
+    # string, like the other evolving vocabularies of this schema.
+    field_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    issue_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    observed_values: Mapped[list | None] = mapped_column(JSON, nullable=True)
     suggested_action: Mapped[str | None] = mapped_column(Text, nullable=True)
     human_decision: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -5844,6 +5875,269 @@ class PurchasedLineAddition(Base):
     )
     added_by: Mapped[str] = mapped_column(String(255), nullable=False)
     added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+# ---------------------------------------------------------------------------
+# Invoice Intake data model — source files, product card packaging, derived
+# values ("Invoice Intake data model", see PURCHASING.md §13)
+#
+# Value provenance is never mixed in one column. A line value is:
+#   read on the invoice      -> the `purchase_lines` column itself (immutable);
+#   taken from the product   -> `PurchasedLineDerivedValue`, PRODUCT_CARD,
+#     card                      pointing at the exact packaging version used;
+#   calculated               -> `PurchasedLineDerivedValue`, CALCULATED, with
+#                               the formula and the inputs it used;
+#   entered/confirmed by a   -> `PurchasedFieldCorrection` (existing; keeps
+#     person                    the original extracted value).
+# Uncertain or conflicting values are flagged in
+# `PurchasingValidationLogEntry` (field_name / issue_type / observed_values).
+# Missing values stay NULL everywhere; nothing here defaults them to zero.
+# ---------------------------------------------------------------------------
+
+
+class PurchaseDocumentSource(Base):
+    """One original file (and its pages) a Purchase Document was read from.
+
+    `PurchaseDocument.source_reference` keeps its single-string form for
+    existing callers; this table adds the structured version, which also
+    covers an invoice spread over several files (page 1 and page 2
+    photographed separately). `content_hash` (SHA-256) is the same identity
+    InvoiceIntake's acquisition store uses; `acquisition_reference` points
+    at that store's record. Acquisition status (RECEIVED / ACQUIRED /
+    FAILED) belongs to the file; the document's verification status stays
+    the derived NORMALIZED / HUMAN of Purchased (`repository.
+    get_document_functional_status`) — not a column, by Purchased's own
+    two-state rule."""
+
+    __tablename__ = "purchase_document_sources"
+    __table_args__ = (
+        UniqueConstraint("purchase_document_id", "sequence", name="uq_purchase_document_sources_document_sequence"),
+        CheckConstraint(
+            "acquisition_status IN ('RECEIVED', 'ACQUIRED', 'FAILED')",
+            name="ck_purchase_document_sources_acquisition_status",
+        ),
+        CheckConstraint(
+            "page_from IS NULL OR page_to IS NULL OR page_from <= page_to",
+            name="ck_purchase_document_sources_page_range",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    purchase_document_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_documents.id"), nullable=False, index=True
+    )
+    # Order of this file within the invoice (1, 2, ...).
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    original_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Where the preserved original is stored (e.g. InvoiceIntake `uploads/`
+    # name) — a reference, never the content.
+    storage_reference: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # MANUAL_UPLOAD / MAILBOX / ... — free string.
+    channel: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    acquisition_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    acquisition_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Pages of this file that belong to this invoice (1-based, inclusive).
+    page_from: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    page_to: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    file_page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class SupplierProductPackaging(Base):
+    """Product card standard values for one Supplier Product: package,
+    pieces per package, nominal content of one piece, the unit the supplier
+    sells/invoices by and the unit its price refers to.
+
+    Versioned, never edited in place: a packaging change inserts a new
+    version and marks the previous one SUPERSEDED. Derived line values
+    point at the exact version they used, so a later change never alters
+    what earlier invoices show. Fed either automatically from a complete,
+    coherent invoice reading (`origin = INVOICE_READ`, which must name the
+    `source_purchase_line_id`) or by a person (`origin = HUMAN`).
+    PROPOSED / ACTIVE / SUPERSEDED: when an automatic proposal may become
+    ACTIVE without a person is a policy of the reading engine, not fixed
+    here.
+
+    Distinct from `ConfiguredExpectation`: that is the human-approved
+    reference for deviation Alerts (Purchasing Rule 20); this is reference
+    data for completing values an invoice does not print."""
+
+    __tablename__ = "supplier_product_packagings"
+    __table_args__ = (
+        UniqueConstraint("supplier_product_id", "version", name="uq_supplier_product_packagings_product_version"),
+        CheckConstraint(
+            "status IN ('PROPOSED', 'ACTIVE', 'SUPERSEDED')",
+            name="ck_supplier_product_packagings_status",
+        ),
+        CheckConstraint(
+            "origin IN ('INVOICE_READ', 'HUMAN')", name="ck_supplier_product_packagings_origin"
+        ),
+        CheckConstraint(
+            "origin <> 'INVOICE_READ' OR source_purchase_line_id IS NOT NULL",
+            name="ck_supplier_product_packagings_invoice_read_requires_line",
+        ),
+        CheckConstraint(
+            "pieces_per_package IS NULL OR pieces_per_package > 0",
+            name="ck_supplier_product_packagings_pieces_positive",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    supplier_product_id: Mapped[int] = mapped_column(
+        ForeignKey("supplier_products.id"), nullable=False, index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    # Units are free strings (CASE, BOX, BOTTLE, EACH, LB, KG, ML, ...).
+    package_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    pieces_per_package: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    piece_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Nominal weight or volume of one piece — never an actual weight.
+    piece_content_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    piece_content_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sale_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    price_basis_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # True for catch-weight items: the delivered weight varies and must be
+    # read from each invoice; the nominal content is only an estimate.
+    is_variable_weight: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+
+    origin: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_purchase_line_id: Mapped[int | None] = mapped_column(
+        ForeignKey("purchase_lines.id"), nullable=True
+    )
+    # Free text, like `PurchasedFieldCorrection.reviewed_by` (Identity &
+    # Access is frozen).
+    confirmed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    superseded_by_packaging_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplier_product_packagings.id"), nullable=True
+    )
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    conversions: Mapped[list["SupplierProductUnitConversion"]] = relationship(
+        back_populates="packaging"
+    )
+
+
+class SupplierProductUnitConversion(Base):
+    """One equivalence of a packaging version: 1 `from_unit` = `factor`
+    `to_unit` (e.g. 1 CASE = 6 BOTTLE; 1 BOTTLE = 750 ML). Belongs to a
+    packaging version, so it changes only together with a new version.
+    `is_nominal` marks an equivalence that is an estimate (e.g. 1 CASE ≈
+    40 LB for a catch-weight item) and must never stand in for a weight
+    read on the invoice."""
+
+    __tablename__ = "supplier_product_unit_conversions"
+    __table_args__ = (
+        UniqueConstraint(
+            "packaging_id", "from_unit", "to_unit", name="uq_supplier_product_unit_conversions_units"
+        ),
+        CheckConstraint("factor > 0", name="ck_supplier_product_unit_conversions_factor_positive"),
+        CheckConstraint(
+            "origin IN ('INVOICE_READ', 'HUMAN', 'CALCULATED')",
+            name="ck_supplier_product_unit_conversions_origin",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    packaging_id: Mapped[int] = mapped_column(
+        ForeignKey("supplier_product_packagings.id"), nullable=False, index=True
+    )
+    from_unit: Mapped[str] = mapped_column(String(16), nullable=False)
+    to_unit: Mapped[str] = mapped_column(String(16), nullable=False)
+    factor: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    is_nominal: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    origin: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    packaging: Mapped[SupplierProductPackaging] = relationship(back_populates="conversions")
+
+
+class PurchasedLineDerivedValue(Base):
+    """A line value that was NOT read on the invoice: either taken from the
+    product card (`PRODUCT_CARD`, with the exact packaging version) or
+    calculated (`CALCULATED`, with the formula and the inputs used, each
+    input naming its own provenance). Values entered or confirmed by a
+    person stay in `PurchasedFieldCorrection`.
+
+    Append-only: the latest row per (line, field_name) is current; earlier
+    rows stay. `field_name` uses the line column names where one exists
+    (`piece_content_value`, `pack_count`, ...) plus derived-only names
+    such as `total_pieces` or `nominal_weight`.
+
+    A product-card value can never be recorded as `actual_weight`
+    (structural CheckConstraint): a standard weight is nominal, not read.
+    A calculated quantity such as `total_pieces` (quantity × pieces per
+    package) is only valid when its inputs show that the invoiced unit is
+    the package — "Qty 2" and "6 per case" alone do not make 12."""
+
+    __tablename__ = "purchased_line_derived_values"
+    __table_args__ = (
+        CheckConstraint(
+            "provenance IN ('PRODUCT_CARD', 'CALCULATED')",
+            name="ck_purchased_line_derived_values_provenance",
+        ),
+        CheckConstraint(
+            "provenance <> 'PRODUCT_CARD' OR packaging_id IS NOT NULL",
+            name="ck_purchased_line_derived_values_product_card_requires_packaging",
+        ),
+        CheckConstraint(
+            "provenance <> 'CALCULATED' OR (calculation_formula IS NOT NULL AND calculation_inputs IS NOT NULL)",
+            name="ck_purchased_line_derived_values_calculated_requires_inputs",
+        ),
+        CheckConstraint(
+            "NOT (provenance = 'PRODUCT_CARD' AND field_name IN ('actual_weight', 'actual_weight_value'))",
+            name="ck_purchased_line_derived_values_no_standard_actual_weight",
+        ),
+        CheckConstraint(
+            "value_numeric IS NOT NULL OR value_text IS NOT NULL",
+            name="ck_purchased_line_derived_values_has_value",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Denormalized from the line, like `PurchaseLineClassification`.
+    purchase_document_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_documents.id"), nullable=False, index=True
+    )
+    purchase_line_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_lines.id"), nullable=False, index=True
+    )
+    field_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    value_numeric: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    value_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    provenance: Mapped[str] = mapped_column(String(16), nullable=False)
+    packaging_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplier_product_packagings.id"), nullable=True
+    )
+    calculation_formula: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # e.g. [{"field": "quantity", "provenance": "INVOICE_READ", "value": "2"},
+    #       {"field": "pieces_per_package", "provenance": "PRODUCT_CARD",
+    #        "packaging_id": 7, "value": "6"}]
+    calculation_inputs: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 

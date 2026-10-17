@@ -44,6 +44,17 @@ Invoice Intake acquires source documents from more than one channel. As of
 
 Both channels converge on the same downstream pipeline and the same Purchased canonical persistence — see "Ownership" above and `03 Software/InvoiceIntake/mailbox_acquisition/README.md`.
 
+## Data model (Product Owner command, 2026-10-10)
+
+The database now holds the agreed invoice data — `03 Software/RF-One Data Store/PURCHASING.md` §13 records the decisions and the tables. In short:
+
+- invoiced quantity and package content are kept separate ("Qty 2" and "6 per case" never become 12 by themselves);
+- every completed or transformed value states whether it was read on the invoice, taken from the product card (with the exact packaging version), calculated (with its inputs) or entered/confirmed by a person, and the original extracted value is kept;
+- product card standard values (package, pieces per package, nominal weight/volume, sale unit, conversions) are versioned, so a packaging change never alters earlier invoices;
+- missing data stays empty, never zero; uncertain or conflicting data is flagged; a standard weight is never recorded as an actual weight.
+
+This is consistent with `CROSS_DOMAIN_INVOICE_INTAKE_AGENT_001.md` §8 ("never invents missing values"): the extracted values themselves are never filled with a default; a product-card value lives beside them, labelled as such.
+
 ## Related
 
 - `03 Software/InvoiceIntake/` — the current runtime prototype (upload → OCR

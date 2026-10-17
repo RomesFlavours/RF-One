@@ -370,6 +370,19 @@ Every future UI refinement reuses these rules.
 
 ---
 
+# Bank Local Environment
+
+The local Bank working environment (both PCs) is run ONLY through
+`03 Software/Infrastructure/Bank Local Environment/` (Configura PC, Avvia
+Bank, Chiudi Bank / Cambia PC) — never by an ad-hoc launcher or by opening
+a database inside OneDrive. Until it is merged, it lives in the worktree
+`AI-RF-ONE/rf-one-bank-simple-who-rules` (branch
+`feature/bank-simple-who-rules`). When the Product Owner asks to **interpret
+the AI Rules waiting** («Interpreta le AI Rules in attesa»), follow
+`SESSION_INTERPRETATION.md` in that folder.
+
+---
+
 # RF-One Report Standard
 
 **Standing instruction, applied automatically to every RF-One task.** It is
@@ -394,6 +407,32 @@ Every RF-One task ends with a final **REPORT**. The REPORT must:
 
 After the REPORT, always emit the RF-One completion **beep**. The beep is
 the absolute last action of the work — **no text may appear after it.**
+
+---
+
+# RF-One Blocked Alert
+
+**Standing instruction, valid for every session.** Whenever work stops
+because of an error, a permission block, a required confirmation, or any
+other obstacle Claude cannot resolve on its own:
+
+1. Immediately emit **3 beeps** (PowerShell):
+
+   ```powershell
+   [console]::beep(1000,300); Start-Sleep -Milliseconds 200; [console]::beep(1000,300); Start-Sleep -Milliseconds 200; [console]::beep(1000,400)
+   ```
+
+2. Write **BLOCCATO**, the precise reason, and the minimum action needed
+   to resume.
+3. Never sit waiting without alerting the Product Owner.
+
+This alert is distinct from the Report Standard's single completion beep:
+here the text in step 2 deliberately follows the beeps.
+
+If the block concerns login, network or the extension itself and prevents
+the session from running commands at all, the beeps cannot be emitted:
+state that limit and propose an external check — never claim the
+notification is guaranteed.
 
 ---
 
