@@ -14,7 +14,12 @@ Proves, on a throwaway database migrated to head, that:
   WHY association, an existing one is left as it is (idempotent);
 * a new WHY needs a group, is filed under it, reuses an existing WHY of the
   same name, and leaves nothing behind when the save fails;
-* Configuration's own WHY creation, Rules and Standards are unchanged.
+* Configuration's own WHY creation is unchanged.
+
+BANK_OLD_RULES_REMOVAL_001: the old recognition rules and Reconciliation
+Standards were removed from the product, so checks 32 ("no Rule is created")
+and 37 ("Standards unchanged"), which only counted those tables, went with
+them. The other numbers are unchanged.
 
 The browser behaviour (search, selection, contrast) is verified separately on
 a disposable local server. Never touches a real bank file, AWS, or any
@@ -174,8 +179,6 @@ def main() -> int:
         ids.update(plumber=plumber.id, repair=reasons["EQUIPMENT_REPAIR"].id,
                    repair_what=reasons["EQUIPMENT_REPAIR"].accounting_classification_id,
                    facility=all_groups["FACILITY"].id, retired=all_groups["PEOPLE"].id)
-        rules_before = s.scalar(select(func.count(m.BankRecognitionRule.id)))
-        standards_before = s.scalar(select(func.count(m.BankReconciliationStandard.id)))
         whats = [c for c in s.scalars(select(m.BankAccountingClassification).order_by(
             m.BankAccountingClassification.code)) if c.is_what]
         ids["what"] = next(c.id for c in whats if c.code == "7310")
@@ -284,11 +287,7 @@ def main() -> int:
                                                what_id=ids["what"], active=True)
         configured_group = configured.reason_group_id
         s.rollback()
-        rules_after = s.scalar(select(func.count(m.BankRecognitionRule.id)))
-        standards_after = s.scalar(select(func.count(m.BankReconciliationStandard.id)))
     check("35. Configuration's WHY creation is unchanged (a group stays optional there)", configured_group is None)
-    check("32. no Rule is created by Select WHO / WHY", rules_after == rules_before)
-    check("37. Standards unchanged", standards_after == standards_before)
     check("33. the confirmed rows left To Reconcile",
           all(f'data-transaction-id="{ids[k]}"' not in client.get(REVIEW_AUG).data.decode() for k in ("first", "new")))
 

@@ -131,7 +131,8 @@ def main() -> int:
     page = client.get("/bank/ai-rules?date_from=2026-09-01&date_to=2026-09-30").data.decode()
     csrf = CSRF_RE.search(page).group(1)
     check("1. the page offers “Solo WHO”, off by default",
-          '<input type="checkbox" name="who_only" id="ai-rule-who-only">' in page)
+          '<input type="radio" name="who_only" value="off" id="ai-rule-all-parts" checked>' in page
+          and '<input type="radio" name="who_only" value="on" id="ai-rule-who-only">' in page)
 
     def save(rule, create):
         with SessionFactory() as s:
@@ -163,7 +164,7 @@ def main() -> int:
           bool(wo.get("who_only")) and wo_items[ids["acme"]]["plan"] == "UPDATED"
           and not wo_items[ids["acme"]]["proposed_why"] and not wo_items[ids["acme"]].get("proposed_for_whom"),
           detail=str(wo_items[ids["acme"]]))
-    check("4. the mode is said in the interpretation", any(x.startswith("MODE “Solo WHO”")
+    check("4. the mode is said in the interpretation", any(x.startswith("MODE “Apply only WHO”")
                                                             for x in wo.get("interpretation_lines") or []))
     with SessionFactory() as s:
         try:
@@ -174,7 +175,7 @@ def main() -> int:
             refused = str(exc)
         s.rollback()
     check("5. applying “Solo WHO” on a preview made without it is refused, saying why",
-          refused is not None and "Solo WHO" in refused, detail=str(refused))
+          refused is not None and "Apply only WHO" in refused, detail=str(refused))
 
     with SessionFactory() as s:
         application = ai_rule_operations.apply_rule(s, rule=s.get(m.BankAiRule, full_id), scope="ALL",

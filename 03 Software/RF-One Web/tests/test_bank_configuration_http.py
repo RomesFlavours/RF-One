@@ -4,11 +4,11 @@
 Thirty numbered points, as specified by the Product Owner:
 
    1-5   schema: the SQLite migration, the PostgreSQL path, existing rules
-         surviving, a WHO-only rule with no WHY, WHO/entity pair uniqueness;
+         surviving, WHO/entity pair uniqueness;
    6-7   WHAT: add/edit with metadata derived from the group; refusals;
    8-11  WHY: add/edit, unique generated code, stable code, exactly one WHAT;
   12-18  WHO: COUNTERPARTY creation, possible WHYs, default WHY, WHO never
-         determines WHY, entities served, recognition rules, nothing inferred;
+         determines WHY, entities served, nothing inferred;
   19-21  Sources are NOT edited here any more: a "Manage Sources" link to
          /bank/sources, and the old routes are gone (BANK_FINAL_RELEASE_BLOCKERS_002);
   22-27  Support: entities; source rules, control months and deduplication
@@ -20,6 +20,18 @@ Plus the later Product Owner decisions: D10 (COUNTERPARTY seeded by
 migration, idempotently) and D11 (WHAT = P&L WHAT only; an existing WHY on a
 Balance Sheet destination is labelled truthfully and never reclassified).
 D9 (WHO search) is a client-side filter, exercised by the browser test.
+
+BANK_OLD_RULES_REMOVAL_001: Configuration > WHO no longer edits recognition
+rules, so check 4 (a WHO-only rule created from the WHO form) and check 17
+(Exact / Contains / Prefix rules edited from the WHO form) went with them.
+The same task dropped the bank_recognition_rules table at d2b6f8a4c0e7 (the
+new head), so: check 1 now verifies the head revision and the WHO/entity table
+only (the rule-table schema no longer exists at head); check 2 is unchanged (it
+renders the historical PostgreSQL path, which still relaxes the rule WHY);
+check 3 now verifies the legacy rule at the last revision that still has the
+table (a3c7e5b9d1f4), then empties it as BANK_RULES_RESET_001 did before the
+upgrade to head; check 15 no longer reads rule WHYs. The other numbers are
+unchanged.
 
 Runs against DISPOSABLE SQLite databases created here and deleted at the end.
 """
@@ -58,12 +70,12 @@ from sqlalchemy.exc import IntegrityError  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store.bank_reconciliation import card_configuration  # noqa: E402
-from rfone_data_store.bank_reconciliation import recognition  # noqa: E402
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 NEW_REVISION = "e5b1d7c3a9f2"
 HEAD_REVISION = "b9e4c2a7d5f3"  # last schema revision rendered offline for PostgreSQL (check 2)
-CURRENT_HEAD = "7b1d4f9a2c6e"  # the single Alembic head a fresh database reaches (check 1)
+CURRENT_HEAD = "d2b6f8a4c0e7"  # the single Alembic head a fresh database reaches (check 1)
+LAST_RULES_REVISION = "a3c7e5b9d1f4"  # last revision with bank_recognition_rules (check 3)
 PREVIOUS_REVISION = "d4a8c2e6f1b3"
 
 
@@ -202,9 +214,6 @@ def main() -> int:
         # ================================================================ 1-5
         conn = sqlite3.connect(_TEST_DB_PATH)
         revision = conn.execute("SELECT version_num FROM alembic_version").fetchone()[0]
-        notnull = {row[1]: row[3] for row in conn.execute("PRAGMA table_info(bank_recognition_rules)")}
-        rules_sql = conn.execute(
-            "SELECT sql FROM sqlite_master WHERE name='bank_recognition_rules'").fetchone()[0]
         table_sql = conn.execute(
             "SELECT sql FROM sqlite_master WHERE name='bank_occurrence_reporting_entities'").fetchone()
         conn.close()
@@ -214,15 +223,9 @@ def main() -> int:
         check("D10. a fresh migrated database holds exactly one COUNTERPARTY WHO type, seeded by migration",
               len(counterparty) == 1 and counterparty[0].name == "Counterparty"
               and counterparty[0].status == "ACTIVE" and "Supplier is only one possible kind" in (counterparty[0].description or ""))
-        check("1. SQLite migration reaches e5b1d7c3a9f2, creates the WHO/entity table and relaxes "
-              "the rule WHY to NULL, keeping every named CHECK",
-              revision == CURRENT_HEAD and table_sql is not None
-              and notnull.get("transaction_reason_id") == 0 and notnull.get("occurrence_id") == 1
-              and all(name in rules_sql for name in (
-                  "ck_bank_recognition_rule_match_type", "ck_bank_recognition_rule_match_field",
-                  "ck_bank_recognition_rule_purpose_scope", "ck_bank_recognition_rule_direction",
-                  "ck_bank_recognition_rule_status")),
-              f"{revision} {notnull} {rules_sql[:200]}")
+        check("1. SQLite migration reaches the head and creates the WHO/entity table",
+              revision == CURRENT_HEAD and table_sql is not None,
+              f"{revision} {table_sql}")
 
         buffer = io.StringIO()
         pg_error = ""
@@ -260,10 +263,17 @@ def main() -> int:
         conn.commit()
         before = conn.execute("SELECT * FROM bank_recognition_rules").fetchall()
         conn.close()
-        _upgrade(old_url, "head")
+        _upgrade(old_url, LAST_RULES_REVISION)
         conn = sqlite3.connect(old_path)
         after = conn.execute("SELECT * FROM bank_recognition_rules").fetchall()
         who_entities = conn.execute("SELECT COUNT(*) FROM bank_occurrence_reporting_entities").fetchone()[0]
+        # BANK_RULES_RESET_001 emptied the old rule tables before d2b6f8a4c0e7 drops them
+        # (that revision refuses while they hold a row).
+        conn.execute("DELETE FROM bank_recognition_rules")
+        conn.commit()
+        conn.close()
+        _upgrade(old_url, "head")
+        conn = sqlite3.connect(old_path)
         types_after_upgrade = conn.execute("SELECT id, code, name, description FROM bank_occurrence_types").fetchall()
         conn.close()
         from alembic import command
@@ -287,25 +297,13 @@ def main() -> int:
               and after[0][0] == 7 and why_id in after[0] and who_entities == 0,
               f"{before} -> {after}")
 
-        response = post("/bank/configuration/who", [
-            ("name", "Cintas"), ("active", "1"), ("default_why_id", ""),
-            ("rule_id", ""), ("rule_pattern", "cintas corp #22"), ("rule_match", "CONTAINS"), ("rule_active", "1"),
-        ])
+        # The Cintas WHO is the fixture for checks 5 and 18. Check 4 (a
+        # WHO-only recognition rule from this form) went with
+        # BANK_OLD_RULES_REMOVAL_001.
+        post("/bank/configuration/who", [("name", "Cintas"), ("active", "1"), ("default_why_id", "")])
         with SessionFactory() as db:
             cintas = db.scalar(select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == "CINTAS"))
-            rule = db.scalar(select(m.BankRecognitionRule).where(m.BankRecognitionRule.occurrence_id == cintas.id)) if cintas else None
-            matched = recognition.find_candidate_rules(
-                db, normalized_description=recognition.normalize_description_for_recognition(
-                    "POS DEBIT CINTAS CORP 22 ORLANDO"),
-                payment_instrument_id=ids["checking"], direction="DEBIT",
-            ) if rule else []
             ids["cintas"] = cintas.id if cintas else None
-        check("4. a WHO-only rule is stored with NO WHY (NULL), description scope, never "
-              "determining purpose — and it still recognises its WHO",
-              rule is not None and rule.transaction_reason_id is None and rule.match_field == "DESCRIPTION"
-              and rule.determines_purpose is False and rule.normalized_pattern == "CINTAS CORP 22"
-              and [r.id for r in matched] == [rule.id],
-              f"{response.status_code} {rule and (rule.transaction_reason_id, rule.normalized_pattern)}")
 
         with SessionFactory() as db:
             db.add(m.BankOccurrenceReportingEntity(occurrence_id=ids["cintas"], reporting_entity_id=ids["alpha"]))
@@ -509,12 +507,10 @@ def main() -> int:
             whys_now = {r.id: (r.code, r.name, r.description, r.status, r.accounting_classification_id)
                         for r in db.scalars(select(m.BankTransactionReason))
                         if r.id in baseline_whys and r.id != ids["bs_why"]}
-            rule_whys = db.scalars(select(m.BankRecognitionRule.transaction_reason_id)).all()
         check("15. a WHO may have no WHY at all; saving WHOs never creates, changes or implies a "
-              "WHY (existing WHYs untouched, rules carry no WHY)",
+              "WHY (existing WHYs untouched)",
               gfs_row.default_transaction_reason_id is None
-              and whys_now == {k: v for k, v in baseline_whys.items() if k != ids["bs_why"]}
-              and all(w is None for w in rule_whys), str(rule_whys))
+              and whys_now == {k: v for k, v in baseline_whys.items() if k != ids["bs_why"]})
 
         post(gfs_url, [("name", "Gordon Food Service"), ("active", "1"), ("default_why_id", ""),
                        ("entity_ids", ids["alpha"]), ("entity_ids", ids["brand"])])
@@ -533,43 +529,8 @@ def main() -> int:
               served == {ids["alpha"]: True, ids["brand"]: False} and name_kept
               and inactive_entity.status_code == 302 and missing_entity.status_code == 302, str(served))
 
-        post(gfs_url, [
-            ("name", "Gordon Food Service"), ("active", "1"), ("default_why_id", ""),
-            ("rule_id", ""), ("rule_pattern", "gordon food service"), ("rule_match", "PREFIX"), ("rule_active", "1"),
-            ("rule_id", ""), ("rule_pattern", "GFS STORE 0123"), ("rule_match", "EXACT"), ("rule_active", "1"),
-            ("rule_id", ""), ("rule_pattern", "gfs mkt"), ("rule_match", "CONTAINS"), ("rule_active", "0"),
-        ])
-        with SessionFactory() as db:
-            rules = {r.normalized_pattern: r for r in db.scalars(select(m.BankRecognitionRule).where(
-                m.BankRecognitionRule.occurrence_id == ids["gfs"]))}
-            created = {p: (r.match_type, r.status, r.transaction_reason_id) for p, r in rules.items()}
-            prefix_id = rules["GORDON FOOD SERVICE"].id if "GORDON FOOD SERVICE" in rules else None
-            exact_id = rules["GFS STORE 0123"].id if "GFS STORE 0123" in rules else None
-        post(gfs_url, [
-            ("name", "Gordon Food Service"), ("active", "1"), ("default_why_id", ""),
-            ("rule_id", prefix_id), ("rule_pattern", "GORDON FOOD SVC"), ("rule_match", "PREFIX"), ("rule_active", "1"),
-        ])
-        clash = post(f"/bank/configuration/who/{ids['cintas']}", [
-            ("name", "Cintas"), ("active", "1"), ("default_why_id", ""),
-            ("rule_id", ""), ("rule_pattern", "GORDON FOOD SVC"), ("rule_match", "PREFIX"), ("rule_active", "1"),
-        ])
-        bad_match = post(gfs_url, [("name", "Gordon Food Service"), ("active", "1"), ("default_why_id", ""),
-                                   ("rule_id", ""), ("rule_pattern", "X"), ("rule_match", "REGEX"), ("rule_active", "1")])
-        with SessionFactory() as db:
-            after_rules = {r.id: (r.normalized_pattern, r.status) for r in db.scalars(select(m.BankRecognitionRule).where(
-                m.BankRecognitionRule.occurrence_id == ids["gfs"]))}
-            cintas_rules = db.scalar(select(func.count()).where(m.BankRecognitionRule.occurrence_id == ids["cintas"]))
-        check("17. recognition rules: Exact / Contains / Prefix created WHY-less, patterns "
-              "normalised, edited in place, removed = INACTIVE (never deleted); a text another "
-              "WHO recognises and an unknown match are refused",
-              created.get("GORDON FOOD SERVICE") == ("PREFIX", "ACTIVE", None)
-              and created.get("GFS STORE 0123") == ("EXACT_NORMALIZED_DESCRIPTION", "ACTIVE", None)
-              and created.get("GFS MKT") == ("CONTAINS_TEXT", "INACTIVE", None)
-              and after_rules.get(prefix_id) == ("GORDON FOOD SVC", "ACTIVE")
-              and after_rules.get(exact_id) == ("GFS STORE 0123", "INACTIVE")
-              and len(after_rules) == 3 and cintas_rules == 1
-              and "already recognises WHO" in flashes(clash) and bad_match.status_code == 302,
-              f"{created} {after_rules}")
+        # Check 17 (recognition rules edited from the WHO form) went with
+        # BANK_OLD_RULES_REMOVAL_001.
 
         with SessionFactory() as db:
             inferred = db.scalar(select(func.count()).select_from(m.BankOccurrenceReportingEntity).where(

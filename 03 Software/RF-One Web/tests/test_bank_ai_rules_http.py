@@ -21,7 +21,13 @@ application itself never simulates an answer.
   incomplete preview is FAILED, never shown as complete;
 * "Crea WHO mancanti" / "Inserisci nuovi WHO in elenco": missing WHO created
   once, existing and merged names reused; drafts keep origin and option;
-* nothing is written to movements, decisions, allocations, rules or Standards.
+* nothing is written to movements, decisions, allocations or WHY.
+
+BANK_OLD_RULES_REMOVAL_001: the old rule tables (recognition rules, General
+Rules, Reconciliation Standards, WHO recognitions) were removed from the
+product, so check 11 no longer counts them; it still verifies that movements,
+decisions, allocations, WHY and WHO -> WHY associations are unchanged. No
+check number was removed.
 
 Never touches a real bank file, AWS, or any production database.
 """
@@ -171,8 +177,7 @@ def main() -> int:
         with SessionFactory() as s:
             return [s.scalar(select(func.count(model.id))) for model in (
                 m.FinancialTransaction, m.BankTransactionExplanation, m.BankTransactionAllocation,
-                m.BankTransactionReason, m.BankRecognitionRule, m.BankGeneralRule, m.BankReconciliationStandard,
-                m.BankWhoRecognition, m.BankOccurrenceReasonAssociation)] + [sorted(s.execute(select(
+                m.BankTransactionReason, m.BankOccurrenceReasonAssociation)] + [sorted(s.execute(select(
                     m.FinancialTransaction.id, m.FinancialTransaction.explanation_id)).all())]
 
     def who_names():
@@ -199,9 +204,9 @@ def main() -> int:
     check("2b. each movement has an AI Rules button carrying its data and current WHO/WHY",
           page.count('class="btn-secondary ai-rule-open"') == september_count
           and re.search(r'ai-rule-open" data-transaction=\'[^\']*&#34;who&#34;: &#34;PUBLIX&#34;', page) is not None)
-    check("2c. the window has Preview, Save Draft, Crea WHO mancanti and Inserisci nuovi WHO in elenco",
+    check("2c. the window has Preview, Save Draft, Create missing WHO and Add the new WHO to the list",
           'id="ai-rule-modal"' in page and 'id="ai-rule-preview-button"' in page and "Save Draft" in page
-          and "Crea WHO mancanti" in page and "Inserisci nuovi WHO in elenco" in page and 'id="ai-rule-stale"' in page)
+          and "Create missing WHO?" in page and "Add the new WHO to the list" in page and 'id="ai-rule-stale"' in page)
     who_picks = re.findall(r'class="ai-rule-pick" role="option" data-kind="WHO" data-name="([^"]+)"', page)
     why_picks = re.findall(r'class="ai-rule-pick" role="option" data-kind="WHY" data-name="([^"]+)"', page)
     with SessionFactory() as s:
@@ -511,8 +516,8 @@ def main() -> int:
           reopened["rule_text"] == ZELLE_RULE and reopened["origin"]["id"] == ids["z_giovanna_1"]
           and reopened["create_missing_who"] is True)
 
-    check("11. movements, decisions, allocations, WHY, rules and Standards are unchanged", facts() == before,
-          detail=f"{before[:9]} -> {facts()[:9]}")
+    check("11. movements, decisions, allocations and WHY are unchanged", facts() == before,
+          detail=f"{before[:5]} -> {facts()[:5]}")
     check("11b. extraction outcomes of a WHO between two texts",
           ai_rules.extract_between("ZELLE PAYMENT TO  a  b JPM1", {"starts_with": "Zelle payment to", "end_marker": "JPM"})
           == ("MATCH", "A B")

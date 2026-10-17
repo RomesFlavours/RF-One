@@ -9,7 +9,7 @@ is replaced INSIDE THIS TEST ONLY by a stand-in that interprets the rules. Inven
 * WHO "before_final_number": the text after the start text (any case, leading spaces ignored) and before the
   final number, trimmed, upper case, other numbers kept; no final number / nothing between → not changed;
 * "not_contains JPM" excludes those descriptions;
-* the option "Sostituisci anche WHO/WHY manuali, Standard o confermati": OFF by default — manual, Standard and
+* the option "Sostituisci anche WHO/WHY manuali, Standard o confermati": OFF by default — manual and
   confirmed movements stay PROTECTED; ON for this rule only — they are replaced, "Da confermare", the override
   is named in the note and in the decision, a confirmation is withdrawn with For Whom kept; another rule
   without the option still sees them protected; the option is part of the preview key (apply needs a preview
@@ -17,6 +17,12 @@ is replaced INSIDE THIS TEST ONLY by a stand-in that interprets the rules. Inven
 * overlaps: a movement whose current WHO was written by another AI rule, or matched by another active AI rule,
   is shown;
 * the preview writes nothing.
+
+BANK_OLD_RULES_REMOVAL_001: Reconciliation Standards were removed from the product, so the Standard-protected
+movement ("Pay to Mario Rossi 7") and its Standard fixture went with them. Checks 6, 8, 11 and 17 no longer
+include it (check 11 now expects 2 overridden movements — manual and confirmed — instead of 3; check 17 no longer
+asserts that the override cleared the Standard link). Their manual / confirmed / For Whom parts are unchanged. No
+check number was removed.
 
 Never touches a real bank file, AWS, or any production database.
 """
@@ -127,13 +133,6 @@ def main() -> int:
         publix = m.BankOccurrence(canonical_name="PUBLIX", occurrence_type_id=counterparty.id, status="ACTIVE")
         s.add_all([mario, publix])
         s.flush()
-        standard = m.BankReconciliationStandard(
-            match_type="CONTAINS_TEXT", normalized_pattern="PAY TO MARIO ROSSI 7", match_field="DESCRIPTION",
-            occurrence_id=publix.id, transaction_reason_id=why_other.id,
-            accounting_classification_id=why_other.accounting_classification_id, reporting_entity_id=entity.id,
-            status="ACTIVE", approved_at=datetime.now(timezone.utc))
-        s.add(standard)
-        s.flush()
         seq = [0]
 
         def tx(day, description):
@@ -148,14 +147,12 @@ def main() -> int:
             s.flush()
             return t
 
-        def decide(t, who, why, source="RULE", standard_id=None, notes="test setup"):
-            extra = (dict(reconciliation_standard_id=standard_id, accounting_destination_source=m.DESTINATION_SOURCE_STANDARD,
-                          accounting_classification_id=why.accounting_classification_id) if standard_id else {})
+        def decide(t, who, why, source="RULE", notes="test setup"):
             recognition._create_decision_row(
                 s, t, occurrence_id=who.id if who else None, transaction_reason_id=why.id if why else None,
-                recognition_rule_id=None, decision_source=source,
+                decision_source=source,
                 decision_status="HUMAN_CONFIRMED" if source == "HUMAN" else "AUTO_APPLIED",
-                confidence=None, explanation_notes=notes, **extra)
+                confidence=None, explanation_notes=notes)
 
         t = {
             "plain": tx(1, "  pay to Mario Rossi 30541248046  "),
@@ -167,13 +164,11 @@ def main() -> int:
             "empty": tx(7, "Pay to 12345"),
             "not_start": tx(8, "Bonifico Pay to Mario Rossi 12345"),
             "manual": tx(9, "Pay to Mario Rossi 9001"),
-            "standard": tx(10, "Pay to Mario Rossi 7"),
             "confirmed": tx(11, "Pay to Mario Rossi 9002"),
             "confirmed_same": tx(12, "Pay to Mario Rossi 9003"),
             "other_rule": tx(13, "Pay to Mario Rossi 9004"),
         }
         decide(t["manual"], publix, why_other, source="HUMAN")
-        decide(t["standard"], publix, why_other, standard_id=standard.id)
         decide(t["confirmed"], publix, why_other, source="HUMAN")
         economic_allocation.set_allocations(s, financial_transaction_id=t["confirmed"].id, specs=[
             economic_allocation.AllocationSpec(amount_minor=t["confirmed"].amount_minor, reporting_entity_id=entity.id,
@@ -253,15 +248,15 @@ def main() -> int:
     doubts = {i["id"] for i in p.get("doubt_items", [])}
     check("6. matches: the final-number format only; mixed code, XREF, no number, glued, not at the start excluded; "
           "nothing between is doubtful",
-          p.get("ok") and set(items) == {ids[k] for k in ("plain", "inner_number", "manual", "standard", "confirmed",
+          p.get("ok") and set(items) == {ids[k] for k in ("plain", "inner_number", "manual", "confirmed",
                                                          "confirmed_same", "other_rule")}
           and doubts == {ids["empty"]}, detail=str(sorted(k for k, v in ids.items() if v in items)))
     check("7. WHO, WHY: the extracted WHO and its default WHY; inner numbers kept; Da confermare",
           by["plain"]["proposed_who"] == "MARIO ROSSI" and by["plain"]["plan"] == "UPDATED"
-          and "status → Da confermare" in by["plain"]["plan_note"]
+          and "status → To confirm" in by["plain"]["plan_note"]
           and by["inner_number"]["proposed_who"] == "STUDIO 54 DESIGN", detail=str(by["plain"]))
-    check("8. option OFF (default): manual, Standard and confirmed are PROTECTED",
-          by["manual"]["plan"] == "PROTECTED" and by["standard"]["plan"] == "PROTECTED"
+    check("8. option OFF (default): manual and confirmed are PROTECTED",
+          by["manual"]["plan"] == "PROTECTED"
           and by["confirmed"]["plan"] == "PROTECTED" and not p.get("override_protected") and p.get("overridden") == 0)
     check("9. a WHO written by another AI rule is replaced (replace_existing) and shown as an overlap",
           by["other_rule"]["plan"] == "UPDATED" and "written by AI rule #77" in by["other_rule"]["plan_note"]
@@ -271,11 +266,11 @@ def main() -> int:
     # ------------------------------------------------------------- option ON
     p_on = preview(override_protected="on")
     on = {k: {i["id"]: i for i in p_on.get("match_items", [])}.get(v) for k, v in ids.items()}
-    check("11. option ON: manual, Standard and confirmed are replaced — the override named, Da confermare",
-          all(on[k]["plan"] == "UPDATED" and "OVERRIDES" in on[k]["plan_note"] and "Sostituisci anche" in
-              on[k]["plan_note"] and "status → Da confermare" in on[k]["plan_note"]
-              for k in ("manual", "standard", "confirmed")) and p_on.get("override_protected")
-          and p_on.get("overridden") == 3, detail=str({k: on[k]["plan_note"] for k in ("manual", "standard", "confirmed")}))
+    check("11. option ON: manual and confirmed are replaced — the override named, Da confermare",
+          all(on[k]["plan"] == "UPDATED" and "OVERRIDES" in on[k]["plan_note"] and "Allow this rule to replace" in
+              on[k]["plan_note"] and "status → To confirm" in on[k]["plan_note"]
+              for k in ("manual", "confirmed")) and p_on.get("override_protected")
+          and p_on.get("overridden") == 2, detail=str({k: on[k]["plan_note"] for k in ("manual", "confirmed")}))
     check("12. option ON, a confirmed movement already as the rule says: UNCHANGED, still confirmed",
           on["confirmed_same"]["plan"] == "UNCHANGED", detail=on["confirmed_same"]["plan_note"])
     check("13. option ON: a confirmed movement's note says the confirmation is withdrawn and For Whom kept",
@@ -301,7 +296,7 @@ def main() -> int:
             refused = str(exc)
         s.rollback()
     check("16. a preview made with the option OFF cannot authorize applying the rule with the option ON",
-          refused is not None and "Sostituisci anche" in refused, detail=str(refused))
+          refused is not None and "Allow this rule to replace" in refused, detail=str(refused))
     p_rule = preview(override_protected="on", rule_id=str(rule_id))
     with SessionFactory() as s:
         rule = s.get(m.BankAiRule, rule_id)
@@ -311,12 +306,11 @@ def main() -> int:
         current = {k: recognition.get_current_explanation(s, financial_transaction_id=v) for k, v in ids.items()}
         allocations = {k: economic_allocation.get_allocations(s, financial_transaction_id=v) for k, v in ids.items()}
         counts = (application.updated, application.unchanged, application.protected, application.errors)
-    check("17. applied with the option: manual / Standard / confirmed now MARIO ROSSI + default WHY, Da confermare, "
+    check("17. applied with the option: manual / confirmed now MARIO ROSSI + default WHY, Da confermare, "
           "the override written in the decision",
           all(current[k].occurrence_id is not None and current[k].transaction_reason_id == why_default_id
               and current[k].decision_status == "NEEDS_HUMAN_REVIEW" and "OVERRIDES" in current[k].explanation_notes
-              and current[k].reconciliation_standard_id is None
-              for k in ("manual", "standard", "confirmed")), detail=str(counts))
+              for k in ("manual", "confirmed")), detail=str(counts))
     check("18. the confirmed movement keeps its For Whom, its confirmation withdrawn (pending again)",
           len(allocations["confirmed"]) == 1 and allocations["confirmed"][0].reporting_entity_id == entity_id
           and allocations["confirmed"][0].status == m.ALLOCATION_NEEDS_OPERATOR)
@@ -330,7 +324,7 @@ def main() -> int:
         txn = s.get(m.FinancialTransaction, decide_ids)
         publix_id = s.scalar(select(m.BankOccurrence.id).where(m.BankOccurrence.canonical_name == "PUBLIX"))
         recognition._create_decision_row(s, txn, occurrence_id=publix_id, transaction_reason_id=why_default_id,
-                                         recognition_rule_id=None, decision_source="HUMAN",
+                                         decision_source="HUMAN",
                                          decision_status="HUMAN_CONFIRMED", confidence=None,
                                          explanation_notes="manual again")
         s.commit()

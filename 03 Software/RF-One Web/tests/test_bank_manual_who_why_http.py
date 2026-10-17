@@ -17,7 +17,14 @@ Proves, on a throwaway database, that:
 * Reconciled shows WHO, WHY and WHAT on the row; the WHY is edited there
   (WHAT derived again from the new WHY), the row stays Reconciled and no
   Rule changes;
-* Standards, Export and the WHO/WHY invariant are unchanged.
+* Export is unchanged.
+
+BANK_OLD_RULES_REMOVAL_001: the old rule system's tables are gone, so the
+checks that only counted them are removed — 14b (manual Confirm creates no
+recognition Rule), 24 (recognition rules unchanged by WHY edits), 28
+(Standards unchanged) and 30 (no rule determines a purpose or names a WHY):
+each now holds by construction. Every other check, and its number, is
+unchanged.
 
 Never touches a real bank file, AWS, or any production database.
 """
@@ -154,7 +161,6 @@ def main() -> int:
                    edit=edit_row.id, ttl=ttl.id, sysco=sysco.id, zeta=zeta.id, acme=acme.id, inactive=inactive.id,
                    why_a=why_a.id, why_b=why_b.id, why_a_what=why_a.accounting_classification_id,
                    why_b_what=why_b.accounting_classification_id, checking=checking.id)
-        standards_before = s.scalar(select(func.count(m.BankReconciliationStandard.id)))
 
     client = web_app.app.test_client()
     client.get("/login")
@@ -174,12 +180,6 @@ def main() -> int:
             e = recognition.get_current_explanation(s, financial_transaction_id=ids[key])
             return (e.occurrence_id, e.transaction_reason_id, e.decision_source,
                     e.accounting_classification_id) if e else (None, None, None, None)
-
-    def rules():
-        with SessionFactory() as s:
-            return sorted(s.execute(select(m.BankRecognitionRule.id, m.BankRecognitionRule.normalized_pattern,
-                                           m.BankRecognitionRule.occurrence_id, m.BankRecognitionRule.status,
-                                           m.BankRecognitionRule.transaction_reason_id)).all())
 
     # ------------------------------------------------------------------
     # RETIRED RULE (0-3) — BANK_RULES_RESET_001
@@ -207,7 +207,6 @@ def main() -> int:
           future_decision is None and f'id="t-{future_id}"' not in oct_rec
           and f'data-transaction-id="{future_id}"' in oct_review)
     after = client.get(REVIEW_AUG).data.decode()
-    rules_after_rule = rules()
 
     # ------------------------------------------------------------------
     # MANUAL POPUP (6-14)
@@ -275,7 +274,8 @@ def main() -> int:
     reconciled_secs = time.perf_counter() - started
     check("14. the transaction leaves To Reconcile and appears in Reconciled",
           f'data-transaction-id="{ids["manual"]}"' not in after_manual and in_rec(rec_manual, "manual"))
-    check("14b. manual Confirm creates no recognition Rule", rules() == rules_after_rule)
+    # BANK_OLD_RULES_REMOVAL_001: 14b ("manual Confirm creates no recognition Rule") is gone
+    # with bank_recognition_rules — it holds by construction.
 
     # ------------------------------------------------------------------
     # CREATE NEW WHY (15-19)
@@ -379,7 +379,6 @@ def main() -> int:
           re.search(r'data-cell="why".*?class="btn-secondary rp-btn rp-edit who-picker-open"[^>]*data-current-occurrence-id="%d" data-current-reason-id="%d"'
                     % (ids["sysco"], ids["why_a"]), row, re.S) is not None
           and rec.count('id="who-picker"') == 1 and "bank-who-why.js" in rec)
-    rules_before_edit = rules()
     edited = client.post(f"/bank/transactions/{ids['edit']}/who-why", headers={"X-Requested-With": "fetch"},
                          data={"csrf_token": csrf, "occurrence_id": str(ids["sysco"]),
                                "transaction_reason_id": str(ids["why_b"]), "return_to": RECONCILED_AUG})
@@ -390,7 +389,8 @@ def main() -> int:
           edited.status_code == 200 and edited.get_json()["redirect"].endswith(f"#t-{ids['edit']}")
           and why_now == ids["why_b"] and what_now == ids["why_b_what"]
           and row_after is not None and why_b_name in row_after.group(0) and what_b.name in row_after.group(0))
-    check("24. the recognition rules are unchanged by WHY edits", rules() == rules_before_edit)
+    # BANK_OLD_RULES_REMOVAL_001: 24 ("the recognition rules are unchanged by WHY edits") is
+    # gone with bank_recognition_rules — it holds by construction.
     check("25. the row remains Reconciled", row_after is not None
           and f'data-transaction-id="{ids["edit"]}"' not in client.get(REVIEW_AUG).data.decode())
     wrong_who = client.post(f"/bank/transactions/{ids['edit']}/who-why", headers={"X-Requested-With": "fetch"},
@@ -411,21 +411,16 @@ def main() -> int:
     check("26/27. the retired Rule Apply route and Rules page answer 404",
           created_who.status_code == 404 and client.get("/bank/classification").status_code == 404)
     with SessionFactory() as s:
-        standards_after = s.scalar(select(func.count(m.BankReconciliationStandard.id)))
         in_scope = export_service.in_scope_transactions(s, 2026, 8)
         statuses = reconciliation_status.statuses_for(s, in_scope)
         unresolved = {t.id for t in export_service.unresolved_transactions(s, year=2026, month=8)}
-        description_rules_with_purpose = s.scalar(select(func.count(m.BankRecognitionRule.id)).where(
-            m.BankRecognitionRule.match_field == recognition.DESCRIPTION,
-            m.BankRecognitionRule.determines_purpose.is_(True)))
-        rules_with_why = s.scalar(select(func.count(m.BankRecognitionRule.id)).where(
-            m.BankRecognitionRule.transaction_reason_id.is_not(None)))
-    check("28. Standards unchanged", standards_after == standards_before)
+    # BANK_OLD_RULES_REMOVAL_001: 28 ("Standards unchanged") is gone with
+    # bank_reconciliation_standards — it holds by construction.
     check("29. Export semantics unchanged: a WHO + WHY row without For Whom is Needs review and still blocks the export",
           statuses[ids["manual"]] == reconciliation_status.NEEDS_REVIEW and ids["manual"] in unresolved
           and all(st in reconciliation_status.EXPORTABLE for tid, st in statuses.items() if tid not in unresolved))
-    check("30. WHO/WHY invariant: no rule determines a purpose or names a WHY",
-          not description_rules_with_purpose and not rules_with_why)
+    # BANK_OLD_RULES_REMOVAL_001: 30 ("WHO/WHY invariant: no rule determines a purpose or
+    # names a WHY") is gone with bank_recognition_rules — it holds by construction.
 
     print(f"  WHO list: {who_list_secs * 1000:.0f} ms ({len(whos)} WHO, {len(whos_response.data) / 1024:.1f} KB); "
           f"WHY list: {why_list_secs * 1000:.0f} ms; Confirm: {confirm_secs * 1000:.0f} ms; "

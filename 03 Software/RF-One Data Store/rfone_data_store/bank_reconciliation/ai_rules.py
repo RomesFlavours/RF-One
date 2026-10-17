@@ -285,7 +285,7 @@ def _rows(session: Session, transactions: list["m.FinancialTransaction"]) -> lis
 # BANK_AI_RULES_019 — the "Classificazione" filter of the AI Rules list: the
 # WHO / WHY CURRENTLY on the movement (its current decision), never a WHO's
 # default WHY. A movement with no decision has no WHO.
-CLASSIFICATION_FILTERS = {"all": "Tutte", "no_who": "Senza WHO", "no_why": "Con WHO ma senza WHY"}
+CLASSIFICATION_FILTERS = {"all": "All", "no_who": "Without WHO", "no_why": "With WHO but without WHY"}
 
 
 def classification_filter(rows: list[Row], key: str) -> list[Row]:
@@ -295,6 +295,48 @@ def classification_filter(rows: list[Row], key: str) -> list[Row]:
         return [r for r in rows if r.explanation is not None and r.explanation.occurrence_id is not None
                 and r.explanation.transaction_reason_id is None]
     return rows
+
+
+def search_filter(session: Session, rows: list[Row], text: str | None) -> list[Row]:
+    """BANK_AI_RULES_024 — the movements' search of the list, with the SAME
+    condition as Bank Reconciliation's search (`review_queues._search_condition`,
+    BANK_REVIEW_SEARCH_001): the text, literally and in any case, in the
+    description, the current WHO, the current WHY or the Source's name. An
+    empty text keeps every row. Read only; it never touches the selection,
+    the Preview scope or an application."""
+    text = (text or "").strip()
+    if not text or not rows:
+        return list(rows)
+    from .review_queues import _search_condition
+    matching: set[int] = set()
+    ids = [r.id for r in rows]
+    for start in range(0, len(ids), 500):
+        matching.update(session.scalars(
+            select(m.FinancialTransaction.id)
+            .outerjoin(m.BankTransactionExplanation,
+                       m.BankTransactionExplanation.id == m.FinancialTransaction.explanation_id)
+            .where(m.FinancialTransaction.id.in_(ids[start:start + 500]), _search_condition(text))))
+    return [r for r in rows if r.id in matching]
+
+
+def selected_within_search(session: Session, selected_ids: list[int] | None, *, date_from: date | None,
+                           date_to: date | None, cls: str | None, search: str | None) -> list[int]:
+    """BANK_AI_RULES_025 — with a movements' search active, the selected
+    movements a Preview or an application may operate on are ONLY those within
+    the list's perimeter: the period, "Classificazione" and the search, as the
+    page shows them. Without a search, the selection is returned unchanged.
+    Raises when no selected movement is within the perimeter. Read only."""
+    selected = sorted(set(selected_ids or []))
+    if not (search or "").strip():
+        return selected
+    rows = period_rows(session, date_from=date_from, date_to=date_to)
+    rows = classification_filter(rows, cls if cls in CLASSIFICATION_FILTERS else "all")
+    perimeter = {r.id for r in search_filter(session, rows, search)}
+    kept = [i for i in selected if i in perimeter]
+    if not kept:
+        raise AiRuleError("None of the selected movements is among the results of the current search, period and "
+                          "Classificazione: select them in the list, then try again.")
+    return kept
 
 
 def ids_matching_classification(session: Session, ids: list[int], key: str) -> list[int]:
@@ -349,7 +391,7 @@ def scope_rows(session: Session, *, scope: str, date_from: date | None, date_to:
     if scope == SCOPE_SELECTED:
         ids = sorted(set(selected_ids or []))
         if not ids:
-            raise AiRuleError("Select at least one movement for “Solo le transazioni selezionate”.")
+            raise AiRuleError("Select at least one movement for “Only the selected transactions”.")
         transactions = []
         for start in range(0, len(ids), 500):
             transactions += list(session.scalars(query.where(m.FinancialTransaction.id.in_(ids[start:start + 500]))))
@@ -362,12 +404,12 @@ def scope_rows(session: Session, *, scope: str, date_from: date | None, date_to:
 
 
 # BANK_AI_RULES_013 — "Solo movimenti non ancora sistemati da regole AI".
-ONLY_UNSETTLED_LABEL = "Solo movimenti non ancora sistemati da regole AI"
+ONLY_UNSETTLED_LABEL = "Only transactions not yet classified by AI rules"
 # BANK_AI_RULES_018 — "Solo WHO": a Preview / application that executes ONLY
 # the WHO part of the rules (WHY, the WHO's default WHY and For Whom are left
 # as they are; conflicts are about the WHO only). The rule itself is not
 # changed: its other instructions stay for a later phase.
-WHO_ONLY_LABEL = "Solo WHO"
+WHO_ONLY_LABEL = "Apply only WHO"
 
 
 def who_only_exec(ex: "Exec") -> "Exec":
@@ -433,7 +475,7 @@ def scope_key(*, rule_text: str, scope: str, selected_ids: list[int] | None, cre
                           .encode("utf-8")).hexdigest()
 
 
-_SCOPE_WORDS = {SCOPE_ALL: "“Tutte le transazioni esistenti”", SCOPE_SELECTED: "“Solo le transazioni selezionate”",
+_SCOPE_WORDS = {SCOPE_ALL: "“All existing transactions”", SCOPE_SELECTED: "“Only the selected transactions”",
                 SCOPE_PERIOD: "the period shown"}
 
 
@@ -446,14 +488,14 @@ def preview_problem(preview, *, rule_text: str, scope: str, selected_ids: list[i
         return "there is no Preview of this rule: press Preview, check it, then apply."
     if preview.status != "COMPLETED":
         return (f"Preview #{preview.id} did not complete ({preview.status})"
-                + (f": {preview.error_message}" if preview.error_message else "."))
+                + (f": {shown_message(preview.error_message)}" if preview.error_message else "."))
     if (preview.rule_text or "").strip() != (rule_text or "").strip():
         return f"the rule text is not the one of Preview #{preview.id}: it changed after that Preview."
     if preview.scope != scope:
         return (f"Preview #{preview.id} was made for {_SCOPE_WORDS.get(preview.scope, preview.scope)}, "
                 f"the rule is now applied to {_SCOPE_WORDS.get(scope, scope)}.")
     if bool(preview.create_missing_who) != bool(create_missing_who):
-        return (f"“Crea WHO mancanti” is {'on' if create_missing_who else 'off'} now, it was "
+        return (f"“Create missing WHO” is {'on' if create_missing_who else 'off'} now, it was "
                 f"{'on' if preview.create_missing_who else 'off'} in Preview #{preview.id}.")
     if bool(preview.override_protected) != bool(override_protected):
         return (f"“{OVERRIDE_LABEL}” is {'on' if override_protected else 'off'} now, it was "
@@ -487,7 +529,8 @@ def row_for(session: Session, transaction_id: int | None) -> Row | None:
 def save_draft(session: Session, *, draft_id: int | None, rule_text: str | None,
                origin_transaction_id: int | None, account_id: int | None,
                create_missing_who: bool = False, ai_rule_id: int | None = None,
-               override_protected: bool = False, only_unsettled: bool = True) -> "m.BankAiRuleDraft":
+               override_protected: bool = False, only_unsettled: bool = True,
+               user_title: str | None = None) -> "m.BankAiRuleDraft":
     rule_text = (rule_text or "").strip()
     if not rule_text:
         raise AiRuleError("Write the rule before saving it as a draft.")
@@ -506,6 +549,7 @@ def save_draft(session: Session, *, draft_id: int | None, rule_text: str | None,
         session.add(draft)
     else:
         draft.rule_text = rule_text
+    draft.user_title = " ".join((user_title or "").split())[:200] or None    # BANK_AI_RULES_022
     draft.create_missing_who = bool(create_missing_who)
     draft.override_protected = bool(override_protected)
     draft.only_unsettled = bool(only_unsettled)
@@ -706,7 +750,7 @@ def normalize_who(name: str | None) -> str | None:
 
 # BANK_AI_RULES_016 — an extracted WHO that is not a WHO yet may be an
 # existing WHO followed by abbreviations, suffixes or codes.
-WHO_DOUBT = "Dubbio sul WHO"
+WHO_DOUBT = "Doubt about the WHO"
 MIN_SUBJECT_CHARS = 5          # a name whose last word continues glued into a longer word
 MIN_WHOLE_WORD_CHARS = 3       # a name matched by whole words, followed only by suffixes or codes
 REUSED_EXACT, REUSED_IDENTITY, REUSED_SUBJECT = "EXACT", "IDENTITY", "SUBJECT"
@@ -790,8 +834,8 @@ class _WhoStatus:
                         self.how[name] = REUSED_SUBJECT
                     elif subjects:
                         names = ", ".join(sorted(n for _i, n in subjects))
-                        self.cache[name] = (None, name, f"{WHO_DOUBT}: “{name}” può essere uno di più WHO esistenti "
-                                                        f"({names}); nessuno è scelto automaticamente")
+                        self.cache[name] = (None, name, f"{WHO_DOUBT}: “{name}” can be one of several existing WHO "
+                                                        f"({names}); none is chosen automatically")
                     else:
                         self.cache[name] = (None, normalize_who(clean), None)
             except ValueError as exc:
@@ -856,10 +900,10 @@ def _resolve(item: dict, who_status: _WhoStatus, why_catalog: _WhyCatalog) -> di
     note = None
     if who_id is not None and extracted and normalize_who(who_name) != extracted:
         if who_status.how.get(extracted) == REUSED_SUBJECT:
-            note = (f"Testo estratto “{extracted}” → WHO esistente {who_name} riutilizzato (stesso soggetto: "
-                    "il nome del WHO seguito da abbreviazioni, suffissi o codici).")
+            note = (f"Extracted text “{extracted}” → existing WHO {who_name} reused (same subject: "
+                    "the WHO's name followed by abbreviations, suffixes or codes).")
         else:
-            note = f"“{extracted}” è già il WHO {who_name} (stessa identità nell’elenco WHO: nome unito o alias)."
+            note = f"“{extracted}” is already the WHO {who_name} (same identity in the WHO list: merged name or alias)."
     why_code = str(item.get("why_code") or "").strip()
     why_name = str(item.get("why_name") or "").strip()[:255] or None
     why_id = why_catalog.resolve(why_code) or why_catalog.resolve(why_name)
@@ -915,19 +959,26 @@ WHO_NAMING = ("fixed",) + WHO_EXTRACTIONS
 # "ends_with_number": once trimmed, the description ends with a space and a
 # block made ONLY of digits ("… Cleaning 30541248046"; never "JPM99cxov680").
 FINAL_NUMBER_RE = re.compile(r"\s(\d+)$")
-OVERRIDE_LABEL = "Sostituisci anche WHO/WHY manuali, Standard o confermati"
+OVERRIDE_LABEL = "Allow this rule to replace manual or confirmed WHO and WHY"
+# The SAME option as the AI interpretation prompt names it. Kept with its
+# former wording on purpose (BANK_OLD_RULES_REMOVAL_001): the prompt text is
+# changed only after the Product Owner approves the before/after comparison
+# (07 Tasks/Reports/BANK_OLD_RULES_REMOVAL_001/AI_PROMPT_BEFORE_AFTER.md).
+PROMPT_OVERRIDE_LABEL = "Sostituisci anche WHO/WHY manuali, Standard o confermati"
 MAX_FOR_WHOM_NAMES = 10
 PROTECTIONS_TEXT = (
-    "PROTECTED by RF-One, never changed: manual decisions, Reconciliation Standards, own-account movements (no WHO), "
-    "a For Whom chosen by a person or by a Standard, a movement whose For Whom is accounting-complete (confirmed); "
+    "PROTECTED by RF-One, never changed: manual decisions, own-account movements (no WHO), "
+    "a For Whom chosen by a person, a movement whose For Whom is accounting-complete (confirmed); "
     "a For Whom whose origin is uncertain is kept, with the reason. A For Whom written by a rule is automatic: "
     "updated like a WHO / WHY")
-TO_VERIFY = "Da verificare"
+TO_VERIFY = "To verify"
 # "Da confermare" (BANK_AI_RULES_008): the decision is NOT in a resolved
 # state (`recognition.RESOLVED_DECISION_STATUSES`), so it blocks the export
 # and shows as unresolved; with no human allocation, the derived
 # reconciliation status (`reconciliation_status`) is "Needs review".
 TO_CONFIRM = "Da confermare"
+# How the status is named on screen (the value above stays as it is in the rule's interpretation).
+TO_CONFIRM_LABEL = "To confirm"
 TO_CONFIRM_DECISION_STATUS = "NEEDS_HUMAN_REVIEW"
 START_AT = ("beginning", "anywhere")
 END_CASE = ("as_written", "ignore")
@@ -998,32 +1049,45 @@ def active_ai_description() -> tuple[str, str | None]:
     """(provider, model) the page shows: in SESSION mode, never a provider."""
     if ai_mode() == AI_MODE_SESSION:
         if claude_code_cli.available():
-            return claude_code_cli.PROVIDER, (f"{claude_code_cli.model()} — Claude Code CLI su questo PC (stesso login "
-                                              "della sessione VS Code), automatico; nessun provider AWS")
-        return SESSION_PROVIDER, "sessione Claude Code in VS Code — nessuna chiamata a un provider AI"
+            return claude_code_cli.PROVIDER, (f"{claude_code_cli.model()} — Claude Code CLI on this PC (same login "
+                                              "as the VS Code session), automatic; no AWS provider")
+        return SESSION_PROVIDER, "Claude Code session in VS Code — no call to an AI provider"
     return ai_client.active_provider_description()
 
 
 def session_wait_message(preview_id: int | str) -> str:
+    """The STORED wait message: it begins with SESSION_WAIT_MARKER, by which the
+    session tooling finds the previews waiting for it (bank_local_env
+    session_ai). Never shown as it is: see `shown_message`."""
     return (f"{SESSION_WAIT_MARKER} (Preview #{preview_id}): questa regola non ha ancora un'interpretazione. "
             "Nella sessione Claude Code di VS Code scrivi «Interpreta le AI Rules in attesa». Quando la sessione "
             "conferma, premi di nuovo Preview: la regola sarà eseguita dal codice, senza chiamate AI. "
             "Nessun provider AI (AWS) è stato chiamato.")
 
 
-def _interpretation_prompt(rule_text: str, example: str, instructions: str | None) -> str:
-    general = f"\nGENERAL AI INSTRUCTIONS OF THE OPERATOR (context):\n{instructions}\n" if instructions else ""
-    return f"""An operator of a bank reconciliation tool wrote this classification rule for bank and card movements:
+SESSION_WAIT_SHOWN = "Waiting for the Claude Code session"
+_SESSION_WAIT_PREVIEW = re.compile(r"\s*\(Preview #([^)]*)\)")
 
-RULE:
-{rule_text}
 
-EXAMPLE movement description the rule was written from:
-{example}
-{general}
-Translate the rule into conditions and assignments that a program will execute on every movement. Use ONLY:
+def shown_message(message: str | None) -> str | None:
+    """A stored preview message as the page shows it. The session wait keeps its
+    stored marker (what the session tooling looks for) and is shown in the
+    interface language; every other message is shown as it is."""
+    if not message or not message.startswith(SESSION_WAIT_MARKER):
+        return message
+    found = _SESSION_WAIT_PREVIEW.match(message[len(SESSION_WAIT_MARKER):])
+    return (f"{SESSION_WAIT_SHOWN} (Preview #{found.group(1) if found else '?'}): this rule has no interpretation "
+            "yet. In the Claude Code session in VS Code, write “Interpreta le AI Rules in attesa”. When the session "
+            "confirms, press Preview again: the rule will be executed by the code, with no AI call. No AI provider "
+            "(AWS) was called.")
 
-Conditions (a list: all must hold):
+
+def interpreter_capabilities() -> str:
+    """The conditions, assignments and structure the interpreter accepts —
+    the ONE description of them, given to the AI both to interpret a rule
+    (`_interpretation_prompt`) and to rewrite one (BANK_AI_RULES_026,
+    `rewrite_prompt`), and kept in step with `validate_interpretation`."""
+    return f"""Conditions (a list: all must hold):
 - {{"field": "description", "op": "contains" | "not_contains" | "starts_with", "value": "TEXT"}}  (case ignored;
      starts_with: the description's leading spaces ignored)
 - {{"field": "description", "op": "starts_with_word" | "not_starts_with_word", "value": "TEXT"}}  the description
@@ -1099,7 +1163,7 @@ Assignments (null = left unchanged):
      accounting-complete (confirmed), and a For Whom whose origin is uncertain (kept, with the reason). An
      instruction to keep manual / Standard classifications is represented by these protections — say so in the
      coverage. An instruction that EXPLICITLY authorizes replacing WHO / WHY also when manual, Standard or confirmed
-     is represented by the rule option "{OVERRIDE_LABEL}" (set by the operator on the rule, off by default,
+     is represented by the rule option "{PROMPT_OVERRIDE_LABEL}" (set by the operator on the rule, off by default,
      recorded) together with "replace_existing" — say so in the coverage; it is not an element of this structure.
 
 Structure:
@@ -1110,7 +1174,22 @@ Structure:
   With NO "otherwise" and nothing assigned outside the branches, a movement where no branch holds is not matched
   (e.g. "apply only to these two formats": one branch per format, no rule-level condition needed).
   Each branch: {{"conditions": [...], "who": ..., "why": ..., "for_whom": ...}}.
-- "coverage": EVERY instruction of the rule, one entry each, in the rule's order:
+"""
+
+
+def _interpretation_prompt(rule_text: str, example: str, instructions: str | None) -> str:
+    general = f"\nGENERAL AI INSTRUCTIONS OF THE OPERATOR (context):\n{instructions}\n" if instructions else ""
+    return f"""An operator of a bank reconciliation tool wrote this classification rule for bank and card movements:
+
+RULE:
+{rule_text}
+
+EXAMPLE movement description the rule was written from:
+{example}
+{general}
+Translate the rule into conditions and assignments that a program will execute on every movement. Use ONLY:
+
+{interpreter_capabilities()}- "coverage": EVERY instruction of the rule, one entry each, in the rule's order:
   {{"instruction": "the instruction, quoted or closely paraphrased from the rule",
     "represented_by": "the element(s) above that carry it out"}}
 - "unsupported": the instructions no element above can carry out (an empty list when there is none).
@@ -1920,7 +1999,7 @@ def describe_spec(spec: dict, who_status: _WhoStatus, why_catalog: _WhyCatalog,
         lines.append("ONLY IF the movement's WHO differs (case and spaces aside): with the same WHO nothing changes "
                      "— no WHO, WHY, For Whom or status change")
     if spec.get("status"):
-        lines.append(f"STATUS: a movement whose WHO, WHY or For Whom this rule changes becomes “{TO_CONFIRM}” "
+        lines.append(f"STATUS: a movement whose WHO, WHY or For Whom this rule changes becomes “{TO_CONFIRM_LABEL}” "
                      f"(decision not resolved: {TO_CONFIRM_DECISION_STATUS}; reconciliation status Needs review); "
                      "a movement on which nothing changes keeps its status")
     if spec.get("replace_existing"):
@@ -1939,17 +2018,17 @@ def _match_reason(spec: dict, ex: "Exec | None" = None) -> str:
     parts = [_condition_text(c, quote=False) for c in spec["conditions"]]
     who = spec.get("who")
     if who and who["mode"] == "between":
-        parts.append(f"WHO estratto tra “{who['start']}” e “{who['end']}”")
+        parts.append(f"WHO extracted between “{who['start']}” and “{who['end']}”")
     if who and who["mode"] == "before_final_number":
-        parts.append(f"WHO estratto tra “{who['start']}” e il numero finale")
+        parts.append(f"WHO extracted between “{who['start']}” and the final number")
     if who and who["mode"] == "to_end":
-        parts.append("WHO estratto dopo " + " / ".join(f"“{s}”" for s in who["starts"])
-                     + (f" e il primo “{who['after']}”" if who.get("after") else "") + " fino a fine descrizione")
+        parts.append("WHO extracted after " + " / ".join(f"“{s}”" for s in who["starts"])
+                     + (f" and the first “{who['after']}”" if who.get("after") else "") + " up to the end of the description")
     if not parts:
-        parts.append("nessuna condizione oltre all'estrazione")
-    text = "Condizioni verificate dal codice: " + "; ".join(parts) + "."
+        parts.append("no condition besides the extraction")
+    text = "Conditions checked by the code: " + "; ".join(parts) + "."
     if ex is not None and ex.branch:
-        text += f" Ramo: {ex.branch}."
+        text += f" Branch: {ex.branch}."
     if ex is not None:
         for kind, reason in (("WHO", ex.who_verify), ("WHY", ex.why_verify), ("For Whom", ex.for_whom_verify)):
             if reason:
@@ -2096,7 +2175,7 @@ def _active_rule_specs(session: Session, exclude_rule_id: int | None = None) -> 
     return found
 
 
-FW_NONE, FW_HUMAN, FW_STANDARD, FW_AUTOMATIC, FW_UNCERTAIN = "NONE", "HUMAN", "STANDARD", "AUTOMATIC", "UNCERTAIN"
+FW_NONE, FW_HUMAN, FW_AUTOMATIC, FW_UNCERTAIN = "NONE", "HUMAN", "AUTOMATIC", "UNCERTAIN"
 
 
 @dataclass
@@ -2105,10 +2184,9 @@ class ForWhomState:
     (BANK_AI_RULES_010), read from its allocations:
 
       NONE        no allocation;
-      HUMAN       chosen by a person (decision source HUMAN, no Standard);
-      STANDARD    written by a Reconciliation Standard;
+      HUMAN       chosen by a person (decision source HUMAN);
       AUTOMATIC   one line written by a rule (decision source RULE, no
-                  Standard, no document evidence) — may be updated;
+                  document evidence) — may be updated;
       UNCERTAIN   anything else: a split, a line with no decision source
                   (e.g. pending evidence), a line from document evidence —
                   kept, with `reason`.
@@ -2134,9 +2212,7 @@ def for_whom_state(allocations: list, names: dict[int, str], prefix: str | None)
     a = allocations[0]
     name = (names.get(a.reporting_entity_id) or a.reporting_entity_name_snapshot) if a.reporting_entity_id else None
     state = ForWhomState(FW_UNCERTAIN, a.reporting_entity_id, name, complete)
-    if a.reconciliation_standard_id is not None:
-        state.provenance = FW_STANDARD
-    elif a.decision_source == "HUMAN":
+    if a.decision_source == "HUMAN":
         state.provenance = FW_HUMAN
     elif a.decision_source == "RULE" and not a.evidence_kind:
         state.provenance = FW_AUTOMATIC
@@ -2169,6 +2245,18 @@ class Plan:
         return self.outcome, self.note, self.who_after, self.why_after
 
 
+def own_account_ids(session: Session) -> set[int]:
+    """The movements between two of RF-One's own accounts — both sides of
+    every matched internal transfer. They have no WHO by design, so a rule
+    never gives them one. (The structural WHO recognitions this once also
+    read belonged to the old rule system, retired by BANK_RULES_RESET_001.)"""
+    own: set[int] = set()
+    for a, b in session.execute(select(m.FinancialTransactionMatch.transaction_a_id,
+                                       m.FinancialTransactionMatch.transaction_b_id)):
+        own.update((a, b))
+    return own
+
+
 class Planner:
     """Plans, for one movement a rule matched, what applying would do —
     never writing anything:
@@ -2197,10 +2285,9 @@ class Planner:
 
     def __init__(self, session: Session, *, rule_id: int | None = None, preload: bool = True,
                  other_rules: bool = True):
-        from . import general_rules
         self.session = session
         self.prefix = rule_note_prefix(rule_id)
-        self.own = general_rules._own_account_ids(session) if preload else None
+        self.own = own_account_ids(session) if preload else None
         self.allocations: dict[int, list] | None = None
         if preload:
             self.allocations = {}
@@ -2208,7 +2295,6 @@ class Planner:
                                      .order_by(m.BankTransactionAllocation.allocation_index)):
                 self.allocations.setdefault(a.financial_transaction_id, []).append(a)
         self.others = _active_rule_specs(session, exclude_rule_id=rule_id) if other_rules else []
-        self.recognition_rules: dict[int, str] | None = None
         self.who_status = _WhoStatus(session)
         self.why_catalog = _WhyCatalog(_catalog(session)[1])
         self.entities = EntityCatalog(session)
@@ -2216,11 +2302,7 @@ class Planner:
     def is_own(self, txn_id: int) -> bool:
         if self.own is not None:
             return txn_id in self.own
-        from . import who_recognition as wr
-        return bool(self.session.scalar(select(func.count(m.BankWhoRecognition.id)).where(
-            m.BankWhoRecognition.financial_transaction_id == txn_id,
-            m.BankWhoRecognition.recognizer_version == wr.RECOGNIZER_VERSION,
-            m.BankWhoRecognition.tier == wr.STRUCTURAL))) or bool(self.session.scalar(
+        return bool(self.session.scalar(
             select(func.count(m.FinancialTransactionMatch.id)).where(or_(
                 m.FinancialTransactionMatch.transaction_a_id == txn_id,
                 m.FinancialTransactionMatch.transaction_b_id == txn_id))))
@@ -2255,8 +2337,6 @@ class Planner:
         written = re.match(r"AI Rule #(\d+) ", (current.explanation_notes or "") if current is not None else "")
         if written and f"AI Rule #{written.group(1)} " != self.prefix:
             overlaps.append(f"current WHO / WHY written by AI rule #{written.group(1)}")
-        elif current is not None and current.decision_source == "RULE" and current.recognition_rule_id:
-            overlaps.append(f"current WHO written by {self.recognition_rule_text(current.recognition_rule_id)}")
         for other_id, spec in self.others:
             ex = execute(spec, row)
             if ex.outcome != "MATCH" or not ex.assigns:
@@ -2273,14 +2353,6 @@ class Planner:
             if target.for_whom_set and other.for_whom_set and other.for_whom_id != target.for_whom_id:
                 notes.append(f"AI rule #{other_id} assigns For Whom {other.for_whom_name}")
         return notes, overlaps
-
-    def recognition_rule_text(self, rule_id: int) -> str:
-        """A traditional WHO rule, named for an overlap note."""
-        if self.recognition_rules is None:
-            self.recognition_rules = {
-                r.id: f"WHO rule #{r.id} ({r.match_type} “{r.normalized_pattern}”)"
-                for r in self.session.scalars(select(m.BankRecognitionRule))}
-        return self.recognition_rules.get(rule_id, f"WHO rule #{rule_id}")
 
     def plan(self, row: Row, target: Target, *, create_missing_who: bool) -> tuple[str, str, str | None, str | None]:
         """(outcome, note, WHO after, WHY after)."""
@@ -2300,7 +2372,7 @@ class Planner:
             return keep(UNRESOLVED, (f"{target.who_error}: not applied." if target.who_error.startswith(WHO_DOUBT)
                                      else f"WHO cannot be created: {target.who_error}"))
         if target.who_set and target.who_new and not create_missing_who:
-            return keep(UNRESOLVED, f"WHO {target.who_name} is not in the WHO list and “Crea WHO mancanti” is off.")
+            return keep(UNRESOLVED, f"WHO {target.who_name} is not in the WHO list and “Create missing WHO” is off.")
         if target.why_set and not target.why_clear and target.why_id is None:
             return keep(UNRESOLVED, f"WHY “{target.why_name}” is not in the WHY list (a WHY is never created).")
         if target.for_whom_set and target.for_whom_id is None:
@@ -2315,15 +2387,7 @@ class Planner:
             if not override:
                 return keep(PROTECTED, "Protected: classified manually.")
             overridden.append("a manual classification")
-        if current is not None and current.reconciliation_standard_id is not None:
-            if not override:
-                return keep(PROTECTED, "Protected: completed by a Reconciliation Standard.")
-            overridden.append("a Reconciliation Standard")
         split = len(self.allocations_of(row.id)) > 1
-        if fw.provenance == FW_STANDARD:
-            if not override or split:
-                return keep(PROTECTED, "Protected: For Whom written by a Reconciliation Standard.")
-            overridden.append("a Standard's completion")
         if fw.complete:
             # An accepted For Whom: changing WHO / WHY / status would undo that acceptance.
             who_did = "confirmed by a person" if fw.provenance == FW_HUMAN else "accounting-complete"
@@ -2400,10 +2464,149 @@ class Planner:
             note += (f"; OVERRIDES {' and '.join(overridden)} (rule option “{OVERRIDE_LABEL}”)"
                      + ("; confirmation withdrawn, For Whom kept" if fw.complete else ""))
         if target.to_confirm or overridden:
-            note += f"; status → {TO_CONFIRM}"
+            note += f"; status → {TO_CONFIRM_LABEL}"
         return Plan(UPDATED, note + "." + also, who_after, why_after, fw.name, for_whom_after, tuple(changes),
                     overridden=tuple(overridden), withdraw_acceptance=bool(overridden and fw.complete),
                     overlaps=tuple(overlaps))
+
+
+# ---------------------------------------------------------------------------
+# Conflicts with the other active rules
+# ---------------------------------------------------------------------------
+# A rule and another ACTIVE rule that both match the same movement and assign
+# it a different WHO or WHY: the Planner reports such a movement as CONFLICT
+# and changes nothing (BANK_AI_RULES_011). These helpers say it BEFORE the
+# rule is applied — at Rewrite with AI, Preview and Save and Apply — as a
+# conflict between rules, distinct from a problem of the rule's own text.
+# Read only: nothing is resolved, no rule is changed or disabled.
+
+def rule_label(rule_id: int | None, title: str | None) -> str:
+    """How a rule is named in a conflict: "Rule #104 ‘SHELL’", or "This rule"
+    for a rule not saved yet."""
+    name = " ".join((title or "").split())
+    if rule_id:
+        return f"Rule #{rule_id}" + (f" ‘{name}’" if name else "")
+    return "This rule" + (f" ‘{name}’" if name else "")
+
+
+def _rule_paths(spec: dict) -> list[tuple[list[dict], dict | None, dict | None, str | None]]:
+    """(conditions, WHO assignment, WHY assignment, branch) of every way the
+    rule can assign: the rule itself, or each of its branches."""
+    branches = spec.get("branches") or []
+    if not branches:
+        return [(list(spec["conditions"]), spec.get("who"), spec.get("why"), None)]
+    return [(list(spec["conditions"]) + list(b["conditions"]), b.get("who") or spec.get("who"),
+             b.get("why") or spec.get("why"), f"branch {i}" if b["conditions"] else "otherwise")
+            for i, b in enumerate(branches, start=1)]
+
+
+def _matched_conditions(spec: dict, ex: Exec) -> list[dict]:
+    """The conditions that made the rule assign on one movement: the rule's
+    and those of the branch that applied."""
+    conditions = list(spec["conditions"])
+    found = re.match(r"branch (\d+)$", ex.branch or "")
+    if found:
+        conditions += (spec.get("branches") or [])[int(found.group(1)) - 1]["conditions"]
+    return conditions
+
+
+def _conditions_text(conditions: list[dict]) -> str:
+    return " and ".join(_condition_text(c, quote=False) for c in conditions) or "any movement"
+
+
+def _fixed_name(assignment: dict | None) -> str | None:
+    return assignment["name"] if assignment and assignment.get("mode") == "fixed" else None
+
+
+def _static_overlap(a: list[dict], b: list[dict]) -> bool:
+    """Two sets of conditions that can hold on the same movement, judged on the
+    text alone: every condition is "the description contains" and, for each
+    pair, one text contains the other (any case)."""
+    if not a or not b or any(c["field"] != "description" or c["op"] != "contains" for c in a + b):
+        return False
+    return all(x["value"].casefold() in y["value"].casefold() or y["value"].casefold() in x["value"].casefold()
+               for x in a for y in b)
+
+
+def rule_conflicts(session: Session, spec: dict | None, *, rule_id: int | None = None, title: str | None = None,
+                   rows: list[Row] | None = None) -> list[dict]:
+    """The other ACTIVE rules that assign a different WHO or WHY to movements
+    this rule also assigns: one entry per rule, with the overlapping
+    conditions, what each rule assigns, how many movements and an example.
+    Found on the movements in scope; when none shows it, two "description
+    contains" rules whose texts overlap are reported too, without an example.
+    Read only."""
+    if not spec or not spec_usable(spec):
+        return []
+    others = _active_rule_specs(session, exclude_rule_id=rule_id)
+    if not others:
+        return []
+    planner = Planner(session, rule_id=rule_id, preload=False, other_rules=False)
+    if rows is None:
+        rows = scope_rows(session, scope=SCOPE_ALL, date_from=None, date_to=None)
+    titles = {r.id: (r.user_title or r.title) for r in session.scalars(
+        select(m.BankAiRule).where(m.BankAiRule.id.in_([rid for rid, _s in others])))}
+    own = rule_label(rule_id, title)
+    found: dict[int, dict] = {}
+    for row in rows:
+        ex = execute(spec, row)
+        if ex.outcome != "MATCH" or not (ex.who or ex.why):
+            continue
+        mine = planner.target_of(ex)
+        for other_id, other_spec in others:
+            oex = execute(other_spec, row)
+            if oex.outcome != "MATCH" or not (oex.who or oex.why):
+                continue
+            theirs = planner.target_of(oex)
+            fields = []
+            if mine.who_set and theirs.who_set and mine.who_key() != theirs.who_key():
+                fields.append("WHO")
+            if mine.why_set and theirs.why_set and mine.why_key() != theirs.why_key():
+                fields.append("WHY")
+            if not fields:
+                continue
+            entry = found.get(other_id)
+            if entry is None:
+                entry = found[other_id] = dict(
+                    rule_id=other_id, rule_title=titles.get(other_id) or "", fields=fields, count=0,
+                    this=dict(who=mine.who_name if mine.who_set else None, why=mine.why_name if mine.why_set else None,
+                              conditions=_conditions_text(_matched_conditions(spec, ex))),
+                    other=dict(who=theirs.who_name if theirs.who_set else None,
+                               why=theirs.why_name if theirs.why_set else None,
+                               conditions=_conditions_text(_matched_conditions(other_spec, oex)), branch=oex.branch),
+                    example=dict(id=row.txn.id, date=row.txn.posting_date.isoformat() if row.txn.posting_date else None,
+                                 description=row.txn.description_original,
+                                 amount=f"{row.txn.amount_minor / 100:.2f}"))
+            entry["count"] += 1
+    # Text-only overlap of two "description contains" rules no movement shows yet.
+    for other_id, other_spec in others:
+        if other_id in found:
+            continue
+        for conds, who, why, _branch in _rule_paths(spec):
+            for oconds, owho, owhy, obranch in _rule_paths(other_spec):
+                if not _static_overlap(conds, oconds):
+                    continue
+                fields = []
+                if _fixed_name(who) and _fixed_name(owho) and normalize_who(_fixed_name(who)) != normalize_who(_fixed_name(owho)):
+                    fields.append("WHO")
+                if _fixed_name(why) and _fixed_name(owhy) and _fixed_name(why).casefold() != _fixed_name(owhy).casefold():
+                    fields.append("WHY")
+                if fields and other_id not in found:
+                    found[other_id] = dict(
+                        rule_id=other_id, rule_title=titles.get(other_id) or "", fields=fields, count=0,
+                        this=dict(who=_fixed_name(who), why=_fixed_name(why), conditions=_conditions_text(conds)),
+                        other=dict(who=_fixed_name(owho), why=_fixed_name(owhy), conditions=_conditions_text(oconds),
+                                   branch=obranch),
+                        example=None)
+    result = []
+    for entry in sorted(found.values(), key=lambda e: e["rule_id"]):
+        def said(side: dict) -> str:
+            return " and ".join(f"{f} = {side[f.lower()]}" for f in entry["fields"])
+        other = rule_label(entry["rule_id"], entry["rule_title"])
+        entry["message"] = (f"{own} assigns {said(entry['this'])}, while {other[0].lower() + other[1:]}"
+                            f" assigns {said(entry['other'])} to the movements where {entry['other']['conditions']}.")
+        result.append(entry)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -2416,7 +2619,8 @@ def preview_rule(session: Session, *, rule_text: str | None, origin_transaction_
                  scope: str = SCOPE_PERIOD, selected_ids: list[int] | None = None, ai_rule_id: int | None = None,
                  generate: Callable[[str], dict] | None = None,
                  allow_ai_batches: bool = False, override_protected: bool = False,
-                 only_unsettled: bool = False, who_only: bool = False) -> "m.BankAiRulePreview":
+                 only_unsettled: bool = False, who_only: bool = False,
+                 title: str | None = None) -> "m.BankAiRulePreview":
     """Evaluate the rule on every movement of the scope — the displayed
     period, ALL the in-scope movements, or the SELECTED ones — and plan what
     applying would do to each match. The rule is interpreted once (or the
@@ -2513,7 +2717,7 @@ def preview_rule(session: Session, *, rule_text: str | None, origin_transaction_
                 verdict = MATCH if ex.assigns or not ex.to_verify else DOUBT
                 found.append((row, verdict, _match_reason(spec, ex), ex.who, ex.why, ex.to_verify, ex))
             elif ex.outcome == "EMPTY":
-                found.append((row, DOUBT, "Nessun testo tra i due delimitatori: nessun WHO da estrarre.", None, None,
+                found.append((row, DOUBT, "No text between the two delimiters: no WHO to extract.", None, None,
                               None, None))
             elif ex.outcome == "UNKNOWN":
                 found.append((row, DOUBT, ex.note, None, None, "RULE", None))
@@ -2521,9 +2725,9 @@ def preview_rule(session: Session, *, rule_text: str | None, origin_transaction_
     elif not allow_ai_batches:
         preview.provider, preview.model = interpretation.provider, interpretation.model
         return finish("FAILED", (
-            "Bloccata: l'interpretazione non rappresenta tutte le istruzioni della regola "
-            f"({interpretation.rejection_reason or 'nessuna forma eseguibile'}). Nessuna versione semplificata è "
-            "eseguita e nessuna valutazione AI movimento per movimento è avviata automaticamente."))
+            "Blocked: the interpretation does not represent every instruction of the rule "
+            f"({interpretation.rejection_reason or 'no executable form'}). No simplified version is "
+            "executed and no movement-by-movement AI evaluation is started automatically."))
     else:
         if len(rows) > MAX_PERIOD_MOVEMENTS:
             return finish("FAILED", (
@@ -2622,6 +2826,12 @@ def preview_rule(session: Session, *, rule_text: str | None, origin_transaction_
     preview.unresolved_count = counts[UNRESOLVED]
     info.update(overlaps=overlap_count, overlap_rules=overlap_rules, overridden=overridden_count,
                 who_reused=who_reused)
+    # Conflicts with the other active rules on EVERY in-scope movement, whatever this Preview's scope: what
+    # Save and Apply (and the import) would report as CONFLICT, said as a conflict between rules.
+    if ai_rule_id and not title:
+        saved_rule = session.get(m.BankAiRule, ai_rule_id)
+        title = saved_rule.user_title if saved_rule is not None else None
+    info.update(rule_conflicts=rule_conflicts(session, info.get("spec"), rule_id=ai_rule_id, title=title))
     return finish("COMPLETED")
 
 
@@ -2652,7 +2862,7 @@ def preview_as_dict(preview: "m.BankAiRulePreview") -> dict:
     new_names = sorted({i.proposed_who_name for i in preview.items
                         if i.verdict == MATCH and i.proposed_who_is_new and i.proposed_who_name})
     return dict(
-        ok=preview.status == "COMPLETED", preview_id=preview.id, status=preview.status, error=preview.error_message,
+        ok=preview.status == "COMPLETED", preview_id=preview.id, status=preview.status, error=shown_message(preview.error_message),
         rule_text=preview.rule_text, examined=preview.examined_count, matches=preview.match_count,
         doubts=preview.doubt_count, ai_calls=preview.ai_calls, provider=preview.provider, model=preview.model,
         method=preview.method, interpretation_lines=info.get("lines") or [],
@@ -2669,6 +2879,7 @@ def preview_as_dict(preview: "m.BankAiRulePreview") -> dict:
         overridden=info.get("overridden") or 0, who_reused=info.get("who_reused") or 0,
         only_unsettled=bool(preview.only_unsettled), only_unsettled_label=ONLY_UNSETTLED_LABEL,
         excluded_ai_settled=preview.excluded_ai_settled or 0, excluded_by_rule=info.get("excluded_by_rule") or {},
+        rule_conflicts=info.get("rule_conflicts") or [],
         scope=preview.scope, scope_key=preview.scope_key,
         planned_updates=preview.planned_updates, unchanged=preview.unchanged_count,
         protected=preview.protected_count, conflicts=preview.conflict_count, unresolved=preview.unresolved_count,
@@ -2700,7 +2911,7 @@ def create_missing_whos(session: Session, *, preview_id: int) -> dict:
     if preview.status != "COMPLETED":
         raise AiRuleError("Only a completed preview can add WHO to the list.")
     if not preview.create_missing_who:
-        raise AiRuleError("“Crea WHO mancanti” was not active for this preview.")
+        raise AiRuleError("“Create missing WHO” was not active for this preview.")
     names = list(dict.fromkeys(normalize_who(i.proposed_who_name) for i in preview.items
                                if i.verdict == MATCH and i.proposed_who_name))
     created, present, errors = [], [], []
@@ -2715,7 +2926,7 @@ def create_missing_whos(session: Session, *, preview_id: int) -> dict:
             continue
         occurrence = configuration.save_who(
             session, occurrence_id=None, name=clean, active=True, reason_ids=[], default_reason_id=None,
-            reporting_entity_ids=[], rules=[])
+            reporting_entity_ids=[])
         session.flush()
         created.append(occurrence.canonical_name)
     return {"ok": True, "created": created, "already_present": present, "errors": errors,

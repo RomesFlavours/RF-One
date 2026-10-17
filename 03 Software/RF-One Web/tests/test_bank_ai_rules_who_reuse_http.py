@@ -136,7 +136,7 @@ def main() -> int:
           "it was reused",
           katom.get("proposed_who") == "KATOM" and not katom.get("proposed_who_is_new")
           and katom.get("extracted_who") == "KATOMRESTAU PAY" and katom.get("proposed_why") == why_name
-          and "WHO esistente KATOM riutilizzato" in (katom.get("reason") or "") and p.get("who_reused") == 1,
+          and "existing WHO KATOM reused" in (katom.get("reason") or "") and p.get("who_reused") == 1,
           detail=str({k: katom.get(k) for k in ("proposed_who", "extracted_who", "proposed_why", "reason")}))
     exact = items.get(ids["exact"]) or {}
     check("4. an exact WHO first (“EXACTCO PAY” exists): it is the one used, nothing “reused”",

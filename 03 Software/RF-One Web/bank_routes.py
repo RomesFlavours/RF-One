@@ -278,8 +278,9 @@ def _source_attention(coverages) -> list[dict]:
 
 # The WHO status of a month's transactions, read from their CURRENT
 # decision and nothing else. Only the WHO is looked at: never the Why, the
-# What or the decision status, which also speaks about purpose.
-WHO_FROM_LEARNED_RULE = "learned_rule"
+# What or the decision status, which also speaks about purpose. (The
+# "learned rule" source went with the old rule system, BANK_RULES_RESET_001:
+# an automatic WHO now comes from an AI rule.)
 WHO_FROM_HUMAN = "human"
 WHO_FROM_OTHER_AUTOMATIC = "other_automatic"
 WHO_MISSING = "missing"
@@ -290,15 +291,13 @@ def _who_source(explanation) -> str:
         return WHO_MISSING
     if explanation.decision_source == "HUMAN":
         return WHO_FROM_HUMAN
-    if explanation.decision_source == "RULE" and explanation.recognition_rule_id is not None:
-        return WHO_FROM_LEARNED_RULE
     return WHO_FROM_OTHER_AUTOMATIC
 
 
 def _who_status_counts(db, transactions) -> dict[str, int]:
     """How many of `transactions` have a WHO, and where it came from."""
     counts = dict.fromkeys(
-        (WHO_FROM_LEARNED_RULE, WHO_FROM_HUMAN, WHO_FROM_OTHER_AUTOMATIC, WHO_MISSING), 0,
+        (WHO_FROM_HUMAN, WHO_FROM_OTHER_AUTOMATIC, WHO_MISSING), 0,
     )
     explanation_ids = {t.explanation_id for t in transactions if t.explanation_id is not None}
     explanations = {

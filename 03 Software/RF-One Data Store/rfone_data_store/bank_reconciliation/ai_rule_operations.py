@@ -9,8 +9,8 @@ code can execute never needs a new AI call to be applied — and may be:
     movements of the database or exactly the SELECTED ones, only on the
     strength of a COMPLETED preview of the same text, scope, selection and
     option; the plan is recomputed on the current data at that moment;
-  * applied by the import to new movements ("Per il futuro"), right after the
-    General Rules and before the WHY rules and the Standards — only rules the
+  * applied by the import to new movements ("Per il futuro") — the only
+    automatic classification at import (BANK_RULES_RESET_001); only rules the
     code can execute.
 
 What is written: for each movement planned UPDATED (see `ai_rules.Planner`)
@@ -18,8 +18,8 @@ one new decision row through `recognition._create_decision_row` — the ONE
 place decisions are created, append-only — setting ONLY the fields the rule
 names (a WHO-only rule keeps the WHY, its WHAT and status); and, with "Crea
 WHO mancanti", the WHO it needs, created by the WHO service once per name
-(existing names and aliases reused). Never a WHY, never a traditional rule
-or a Standard. Manual and Standard decisions are protected; differing values
+(existing names and aliases reused). Never a WHY. Manual decisions are
+protected; differing values
 decided elsewhere are conflicts, reported and left as they are. Every
 application is logged (`BankAiRuleApplication` and its items: outcome, WHO/WHY
 before and after).
@@ -60,10 +60,53 @@ def current_version(rule: "m.BankAiRule") -> "m.BankAiRuleVersion | None":
     return rule.versions[-1] if rule.versions else None
 
 
+def applied_versions(session: Session) -> set[int]:
+    """The rule versions applied at least once to EXISTING movements (Save and
+    Apply on all or on selected ones — never the import)."""
+    return set(session.scalars(select(m.BankAiRuleApplication.version_id).where(
+        m.BankAiRuleApplication.mode.in_((MODE_ALL, MODE_SELECTED)))))
+
+
+def applied_to_existing(session: Session, version: "m.BankAiRuleVersion | None") -> bool:
+    """Was this version ever applied to existing movements? A version only
+    saved (Save, or Save and Apply for new imports only) was not."""
+    return version is not None and version.id in applied_versions(session)
+
+
+def conflicts_of(session: Session, rule: "m.BankAiRule") -> list[dict]:
+    """The saved rule's conflicts with the other active rules (`ai_rules.rule_conflicts`). Read only."""
+    version = current_version(rule)
+    spec = json.loads(version.spec) if version is not None and version.spec else None
+    return ai_rules.rule_conflicts(session, spec, rule_id=rule.id, title=rule.user_title)
+
+
 def rules(session: Session) -> list["m.BankAiRule"]:
-    """The rules of the page: every rule not deleted."""
-    return list(session.scalars(select(m.BankAiRule).where(m.BankAiRule.deleted_at.is_(None))
-                                .order_by(m.BankAiRule.status, m.BankAiRule.id.desc())))
+    """The rules of the page: every rule not deleted, in DISPLAY order only —
+    by Title A→Z ignoring case; rules without a Title last, by their automatic
+    summary. The execution order (import, application) does not use this list."""
+    found = session.scalars(select(m.BankAiRule).where(m.BankAiRule.deleted_at.is_(None))).all()
+
+    def display_key(rule: "m.BankAiRule") -> tuple:
+        title = " ".join((rule.user_title or "").split()).casefold()
+        return (not title, title, " ".join((rule.title or "").split()).casefold(), rule.id)
+
+    return sorted(found, key=display_key)
+
+
+def search_rules(rules_: list["m.BankAiRule"], query: str | None) -> list["m.BankAiRule"]:
+    """BANK_AI_RULES_023 — the rules whose name (the Title, or the automatic
+    summary) or content (the current version's text) contains the query,
+    ignoring case. An empty query keeps every rule. Read only."""
+    needle = " ".join((query or "").split()).casefold()
+    if not needle:
+        return list(rules_)
+
+    def haystack(rule: "m.BankAiRule") -> str:
+        version = current_version(rule)
+        return " ".join(" ".join(part.split()) for part in (rule.user_title or "", rule.title or "",
+                                                            version.rule_text if version else "")).casefold()
+
+    return [rule for rule in rules_ if needle in haystack(rule)]
 
 
 def delete_rule(session: Session, *, rule_id: int, account_id: int | None) -> "m.BankAiRule":
@@ -101,7 +144,8 @@ class SaveResult:
 
 def save_rule(session: Session, *, rule_id: int | None, rule_text: str | None, create_missing_who: bool,
               apply_future: bool, origin_transaction_id: int | None, account_id: int | None,
-              generate=None, draft_id: int | None = None, override_protected: bool = False) -> SaveResult:
+              generate=None, draft_id: int | None = None, override_protected: bool = False,
+              user_title: str | None = None) -> SaveResult:
     """Save the rule as OPERATIVE (active). The interpretation is the saved
     one for this text and these instructions, or a new one (one AI call).
 
@@ -130,15 +174,15 @@ def save_rule(session: Session, *, rule_id: int | None, rule_text: str | None, c
             session, rule_text, (origin.description_original if origin else rule.origin_description), instructions,
             generate or ai_rules.default_generate(), ai_rules._Limiter(1), ai_rules._Calls())
     except ai_rules.SessionInterpretationNeeded as exc:
-        raise AiRuleError("Questa regola non ha ancora un'interpretazione: premi Preview e fai interpretare la regola "
-                          "dalla sessione Claude Code, poi salva di nuovo.") from exc
+        raise AiRuleError("This rule has no interpretation yet: press Preview, have the rule interpreted "
+                          "by the Claude Code session, then save again.") from exc
     except ai_client.AIProviderUnavailable as exc:
         raise AiRuleError(f"The AI could not interpret the rule: {exc}") from exc
     if not interpretation.spec or not ai_rules.spec_usable(json.loads(interpretation.spec)):
-        raise InterpretationInvalid("Non salvata come operativa: l'interpretazione di questo testo non è valida ("
-                          f"{interpretation.rejection_reason or 'nessuna forma eseguibile'}). Correggi il testo, "
-                          "premi Preview e fai interpretare la regola, poi salva di nuovo."
-                          + (" La versione operativa attuale resta invariata." if rule is not None else ""))
+        raise InterpretationInvalid("Not saved as operative: the interpretation of this text is not valid ("
+                          f"{interpretation.rejection_reason or 'no executable form'}). Correct the text, "
+                          "press Preview and have the rule interpreted, then save again."
+                          + (" The current operative version stays unchanged." if rule is not None else ""))
     created = rule is None
     if created:
         rule = m.BankAiRule(title=" ".join(rule_text.split())[:200], status="ACTIVE", apply_future=bool(apply_future),
@@ -162,6 +206,8 @@ def save_rule(session: Session, *, rule_id: int | None, rule_text: str | None, c
             created_by_account_id=account_id)
         session.add(version)
         rule.title = " ".join(rule_text.split())[:200]
+    if user_title is not None:                  # BANK_AI_RULES_022 — never part of a version; None keeps it
+        rule.user_title = clean_title(user_title)
     rule.apply_future = bool(apply_future)
     rule.status = "ACTIVE"
     session.flush()
@@ -181,6 +227,24 @@ def remove_draft(session: Session, draft_id: int | None) -> bool:
     session.delete(draft)
     session.flush()
     return True
+
+
+def clean_title(title: str | None) -> str | None:
+    """BANK_AI_RULES_022 — a Title on one line, at most 200 characters; empty is no Title."""
+    title = " ".join((title or "").split())[:200]
+    return title or None
+
+
+def set_title(session: Session, *, rule_id: int, title: str | None) -> "m.BankAiRule":
+    """Change ONLY the rule's Title (BANK_AI_RULES_022): no new version, no
+    interpretation, no application — its text, options, status and every
+    classification stay as they are."""
+    rule = session.get(m.BankAiRule, rule_id)
+    if rule is None or rule.deleted_at is not None:
+        raise AiRuleError("This rule no longer exists (it was deleted); reload the page.")
+    rule.user_title = clean_title(title)
+    session.flush()
+    return rule
 
 
 def set_status(session: Session, *, rule_id: int, active: bool) -> "m.BankAiRule":
@@ -215,7 +279,7 @@ class _WhoMaker:
         if existing is None:
             existing = configuration.save_who(
                 self.session, occurrence_id=None, name=clean, active=True, reason_ids=[], default_reason_id=None,
-                reporting_entity_ids=[], rules=[])
+                reporting_entity_ids=[])
             self.session.flush()
             self.created.append(existing.canonical_name)
         self.ids[key] = existing.id
@@ -239,7 +303,6 @@ def _write(session: Session, txn: "m.FinancialTransaction", current, target: ai_
         status = current.decision_status if current is not None else "NEEDS_HUMAN_REVIEW"
     row = recognition._create_decision_row(
         session, txn, occurrence_id=occurrence_id, transaction_reason_id=reason_id,
-        recognition_rule_id=(current.recognition_rule_id if current is not None and not target.who_set else None),
         decision_source="RULE",
         decision_status=status,
         confidence=current.confidence if current is not None else None,
@@ -380,7 +443,7 @@ def apply_rule(session: Session, *, rule: "m.BankAiRule", scope: str, selected_i
     if version is None or rule.status != "ACTIVE":
         raise AiRuleError("Only an active rule can be applied.")
     if scope not in (ai_rules.SCOPE_ALL, ai_rules.SCOPE_SELECTED):
-        raise AiRuleError("Choose “Tutte le transazioni esistenti” or “Solo le transazioni selezionate”.")
+        raise AiRuleError("Choose “All existing transactions” or “Only the selected transactions”.")
     if version.spec and not ai_rules.spec_usable(json.loads(version.spec)):
         raise AiRuleError("This rule's saved interpretation is outdated (it read “Personal” as “owner is a "
                           "Person”): press Salva to interpret it again, then preview and apply.")

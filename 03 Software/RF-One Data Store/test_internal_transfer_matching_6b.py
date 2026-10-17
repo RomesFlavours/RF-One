@@ -441,8 +441,7 @@ def main() -> int:
             s.flush()
             explanation_before = service.record_recognition_decision(
                 s, transaction_id=pre_recognized_bank.id, occurrence_id=occurrence.id,
-                confirmed_by_account_id=None, learn_description=False,
-            )
+                confirmed_by_account_id=None, )
             s.commit()
             explanation_before_id = explanation_before.id
 
@@ -561,8 +560,7 @@ def main() -> int:
                     s, recognition.HumanDecisionRequest(
                         transaction_id=txn.id, occurrence_id=occurrence.id,
                         transaction_reason_id=occurrence.default_transaction_reason_id,
-                        confirmed_by_account_id=None, learn_description=False,
-                    ),
+                        confirmed_by_account_id=None, ),
                 )
                 txn.review_status = "REVIEWED"
             # BANK_RECONCILIATION_STANDARDS_001: a person confirms each row.

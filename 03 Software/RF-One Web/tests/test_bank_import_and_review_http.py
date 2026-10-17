@@ -14,7 +14,9 @@ are separate tabs. This file pins down:
        page, changes nothing without it, and can never name an arbitrary
        address;
   I/J. Automatic WHO is read-only, WHO-only, and counts the persisted
-       decisions;
+       decisions (since BANK_OLD_RULES_REMOVAL_001 only human /
+       other_automatic / missing: the learned-rule counter went with the
+       recognition rules);
   K/L. Review Missing uses the Export's unresolved definition and links to
        Review for the same month;
   M/N/O. Instructions and Instruments hold what moved off `/bank`, and the
@@ -63,7 +65,6 @@ from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store.bank_reconciliation import export as export_service  # noqa: E402
 from rfone_data_store.bank_reconciliation import monthly_source  # noqa: E402
-from rfone_data_store.bank_reconciliation import receiver_candidates  # noqa: E402
 from rfone_data_store.bank_reconciliation import recognition  # noqa: E402
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
@@ -363,19 +364,17 @@ def main() -> int:
             db.flush()
             recognition.record_human_decision(db, recognition.HumanDecisionRequest(
                 transaction_id=txns["US FOODS INVOICE 1001"].id, occurrence_id=us_foods.id,
-                confirmed_by_account_id=operator_id, learn_description=False,
-            ))
+                confirmed_by_account_id=operator_id, ))
             reason_id = db.scalars(select(m.BankTransactionReason.id)).first()
             amazon_txn = txns["AMAZON MKTPLACE PMTS"]
-            recognition.create_or_reuse_rule(
-                db, match_type=recognition.EXACT_NORMALIZED_DESCRIPTION,
-                normalized_pattern=recognition.normalize_description_for_recognition(
-                    amazon_txn.description_original),
-                occurrence_id=amazon.id, transaction_reason_id=reason_id,
-                payment_instrument_id=None, direction=None, auto_apply_enabled=True,
-                created_from_transaction_id=None,
+            # An automatic (non-human) WHO, written directly as a RULE
+            # decision row (BANK_OLD_RULES_REMOVAL_001: recognition rules
+            # no longer exist to produce it).
+            recognition._create_decision_row(
+                db, amazon_txn, occurrence_id=amazon.id, transaction_reason_id=reason_id,
+                decision_source="RULE", decision_status="AUTO_APPLIED",
+                confidence=None, explanation_notes="test setup: automatic WHO",
             )
-            recognition.redecide_for_transaction(db, amazon_txn)
             db.commit()
 
         # ----------------------------------- I/J — Automatic WHO section
@@ -396,22 +395,22 @@ def main() -> int:
             r'data-who-count="(\w+)">(\d+)<', who_part)}
         with SessionFactory() as db:
             scope = export_service.in_scope_transactions(db, 2026, 8)
-            expected = {"learned_rule": 0, "human": 0, "other_automatic": 0, "missing": 0}
+            # BANK_OLD_RULES_REMOVAL_001: the "learned_rule" counter is gone;
+            # every automatic WHO counts as other_automatic.
+            expected = {"human": 0, "other_automatic": 0, "missing": 0}
             for t in scope:
                 e = db.get(m.BankTransactionExplanation, t.explanation_id) if t.explanation_id else None
                 if e is None or e.occurrence_id is None:
                     expected["missing"] += 1
                 elif e.decision_source == "HUMAN":
                     expected["human"] += 1
-                elif e.recognition_rule_id is not None:
-                    expected["learned_rule"] += 1
                 else:
                     expected["other_automatic"] += 1
         check("J. the WHO counts equal the persisted current decisions",
-              shown.get("learned_rule") == expected["learned_rule"] == 1
+              set(shown) == set(expected)
               and shown.get("human") == expected["human"] == 1
               and shown.get("missing") == expected["missing"] == 1
-              and shown.get("other_automatic", 0) == expected["other_automatic"] == 0,
+              and shown.get("other_automatic") == expected["other_automatic"] == 1,
               f"shown={shown} expected={expected}")
 
         # ------------------------------------ K/L — Review Missing section
@@ -499,17 +498,10 @@ def main() -> int:
               "")
 
         # ------------------------------------------ P — no Classification
-        def refuse(*_args, **_kwargs):
-            raise AssertionError("build_candidates must not run for /bank")
-
-        original = receiver_candidates.build_candidates
-        receiver_candidates.build_candidates = refuse
-        try:
-            resp = client.get("/bank?year=2026&month=8")
-        finally:
-            receiver_candidates.build_candidates = original
+        # (receiver_candidates (the old Classification) is retired, BANK_OLD_RULES_REMOVAL_001: there is nothing left to forbid; /bank must still render.)
+        resp = client.get("/bank?year=2026&month=8")
         body = resp.data.decode("utf-8")
-        check("P. /bank renders without ever building Classification candidates",
+        check("P. /bank renders without any Classification",
               resp.status_code == 200, str(resp.status_code))
         main_content = body[body.index("</nav>", body.index('<nav class="module-tabs')):]
         check("P. no Classification content or link inside /bank (only the tab)",

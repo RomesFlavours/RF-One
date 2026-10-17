@@ -69,7 +69,6 @@ def controls(session) -> dict:
         "financial_transactions": _table_sha256(session, "financial_transactions"),
         "payment_instruments_except_birth": _table_sha256(session, "payment_instruments", BIRTH_COLUMNS),
         "batches_table": _table_sha256(session, "bank_import_batches"),
-        "who_recognitions": count(m.BankWhoRecognition),
         "explanations": count(m.BankTransactionExplanation),
         "allocations": count(m.BankTransactionAllocation),
     }

@@ -424,31 +424,6 @@ tbody tr:hover { background: var(--olive-050); }
   .module-tabs--equal { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
-/* Classification Learning (BANK_CLASSIFICATION_LEARNING_001). */
-.learning-buttons { display: flex; gap: .4rem; }
-.learning-buttons form { margin: 0; }
-.learning-sub { margin: 1rem 0 .4rem; color: var(--olive-900); }
-.learning-table td { vertical-align: top; font-size: .8rem; }
-.learning-table .badge { white-space: nowrap; }
-
-/* General Rules on Classification (BANK_GENERAL_RULES_001). */
-.general-rules-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.general-rules-head h3 { margin: 0; }
-.general-rules-table .badge { white-space: nowrap; }
-.general-rules-table td { vertical-align: top; }
-.general-rule-actions { width: 11rem; }
-.general-rule-actions form { margin: 0; }
-.general-rule-actions button { display: block; width: 100%; margin: 0 0 .3rem; padding: .4rem .6rem; font-size: .8rem; }
-.general-rule-result { border: 1px solid var(--olive-300); border-radius: var(--radius); padding: .7rem .9rem;
-  margin: .6rem 0; background: var(--olive-050); color: var(--ink); }
-.general-rule-result h4 { margin: 0 0 .4rem; }
-.general-rule-unknown { max-height: 14rem; overflow-y: auto; margin: .3rem 0; font-size: .8rem; }
-.general-rule-form input[type=text], .general-rule-form select { max-width: none; width: 100%; box-sizing: border-box; }
-.general-rule-markers { border: 1px solid var(--olive-150); border-radius: 6px; padding: .5rem .7rem; margin: 0 0 .8rem; }
-.general-rule-markers legend { font-weight: 600; color: var(--olive-900); font-size: .85rem; }
-.general-rule-active { display: flex; align-items: center; gap: .4rem; color: var(--ink); font-size: .85rem; }
-.general-rule-active input { margin: 0; }
-
 /* --- Dense operational tables -------------------------------------- */
 
 .table-compact { table-layout: auto; }
@@ -546,8 +521,6 @@ tbody tr:hover { background: var(--olive-050); }
 .who-option:hover, .who-option:focus { background: var(--olive-050); outline: none; }
 .who-option:focus { box-shadow: inset 3px 0 0 var(--olive-900); }
 .who-option.is-selected { background: var(--olive-050); box-shadow: inset 3px 0 0 var(--olive-900); }
-.who-option-name { display: block; font-weight: 600; font-size: .88rem; }
-.who-option-type { display: block; font-size: .72rem; color: var(--muted); }
 
 /* A Who whose chain is incomplete stays VISIBLE and says why, rather than
    disappearing from the list and sending the operator hunting for it. */
@@ -614,25 +587,6 @@ body.modal-open { overflow: hidden; }
 .breadcrumb li { display: inline-flex; align-items: center; }
 .breadcrumb li + li::before { content: "\203A"; margin-right: .35rem; color: #8a8a8a; }
 .breadcrumb [aria-current="page"] { color: #555; font-weight: 600; }
-
-/* The simple WHO Rule (BANK_SIMPLE_WHO_RULE_001): the shared Rule modal,
-   its result card, and the paginated Classification list. */
-.who-rule-field { margin-bottom: .9rem; border: 0; padding: 0; }
-.who-rule-field > label, .who-rule-field > legend { display: block; font-weight: 600; margin-bottom: .25rem; }
-.who-rule-field textarea { width: 100%; box-sizing: border-box; }
-.who-rule-chosen { margin: 0 0 .35rem; }
-.who-rule-why-list { max-height: 14rem; overflow-y: auto; border: 1px solid var(--olive-150); border-radius: 6px;
-  padding: .35rem .5rem; margin-top: .35rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: .1rem .8rem; }
-.who-rule-why { display: block; font-size: .82rem; font-weight: 400; cursor: pointer; }
-.who-rule-why input { margin-right: .35rem; }
-.who-rule-result h3 { margin-top: 0; }
-.who-rule-result-list { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; margin: 0; font-size: .88rem; }
-.who-rule-result-list dt { color: var(--muted); }
-.who-rule-result-list dd { margin: 0; font-weight: 600; }
-.pager { display: flex; gap: 1rem; align-items: center; margin-top: .8rem; }
-.who-rule-combo-heading { margin: .35rem .6rem .1rem; font-weight: 600; }
-#who-rule-who-results .who-option { color: var(--olive-900); }
-#who-rule-who-results .who-option-create .who-option-name { font-weight: 700; }
 
 /* "Select WHO / WHY" (BANK_MANUAL_WHO_WHY_001, BANK_WHY_NAVIGATION_GROUPS_001):
    one wide popup, three columns WHO | WHY GROUP | WHY.
@@ -731,88 +685,11 @@ body.modal-open { overflow: hidden; }
 .filter-row button { padding: .45rem 1.2rem; font-size: .85rem; line-height: inherit; border: 1px solid transparent; }
 .review-tab-help .rp-st { display: inline-flex; align-items: center; justify-content: center; width: 1.1rem; height: 1.1rem;
   border-radius: 50%; font-weight: 700; font-size: .72rem; vertical-align: middle; }
-.review-tab-help .rp-st-automatic { color: #d46b00; background: #fff; border: 2px solid #e8890c; }
 .review-tab-help .rp-st-confirmed { color: #fff; background: #2e7d32; }
 
-/* WHO Rule modal, wide (BANK_WHO_MANUAL_ONLY_001): WHO + Rule on the left,
-   Possible WHY on the right grouped by WHY navigation group, the WHY list
-   scrolls inside the panel and Apply / Cancel stay in a fixed footer.
-   Every state sets its text AND background colour (no inherited white
-   button text on a light fill). */
-.who-rule-panel.org-modal-panel {
-  width: min(88vw, 1500px); max-width: none; height: min(86vh, 880px); max-height: calc(100vh - 2rem);
-  display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box;
-}
-.who-rule-panel form { display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 0; }
-.who-rule-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 1rem; flex: 1; min-height: 0; }
-.who-rule-col { min-height: 0; border: 1px solid var(--olive-300); border-radius: var(--radius); padding: .7rem .8rem;
-  background: var(--surface); color: var(--ink); }
-.who-rule-col-main { overflow-y: auto; }
-.who-rule-panel .who-rule-col input[type="search"], .who-rule-panel .who-rule-col textarea {
-  width: 100%; max-width: none; box-sizing: border-box; color: var(--ink); background: var(--surface);
-  padding: .45rem .6rem; border: 1px solid var(--olive-300); border-radius: 6px; font: inherit; font-size: .88rem; }
-.who-rule-panel .who-rule-col input[type="search"]::placeholder { color: var(--muted); opacity: 1; }
-.who-rule-info { font-size: .8rem; color: var(--ink); background: var(--olive-050); border: 1px solid var(--olive-150);
-  border-radius: 6px; padding: .45rem .65rem; }
-.who-rule-info p { margin: .2rem 0; }
-.who-rule-panel .who-rule-whys { display: flex; flex-direction: column; margin: 0; }
-.who-rule-panel .who-rule-whys > legend { font-weight: 700; color: var(--olive-900); padding: 0 .3rem; }
-.who-rule-why-count { font-weight: 600; color: #1d5b2b; }
-.who-rule-panel .who-rule-why-list { display: block; flex: 1; min-height: 8rem; max-height: none; overflow-y: auto;
-  margin: .45rem 0 .35rem; padding: 0; border: 1px solid var(--olive-150); border-radius: 6px; background: var(--surface); }
-.who-rule-why-group { border-bottom: 1px solid var(--olive-150); }
-.who-rule-why-group:last-of-type { border-bottom: none; }
-.who-rule-why-group > summary { display: flex; justify-content: space-between; align-items: center; gap: .5rem;
-  cursor: pointer; padding: .4rem .7rem; font-size: .76rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
-  color: var(--olive-900); background: var(--olive-150); position: sticky; top: 0; z-index: 1; }
-.who-rule-why-group > summary:hover { color: var(--olive-900); background: var(--olive-300); }
-.who-rule-why-group-meta { font-size: .7rem; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--olive-900);
-  background: var(--surface); border-radius: 999px; padding: .02rem .45rem; }
-.who-rule-why-group.has-selected > summary .who-rule-why-group-meta { color: #ffffff; background: #1d5b2b; }
-.who-rule-why-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0 .6rem; padding: .3rem .5rem; }
-.who-rule-panel .who-rule-why { display: flex; align-items: center; gap: .4rem; font-size: .84rem; font-weight: 400;
-  color: var(--ink); background: var(--surface); border-radius: 4px; padding: .22rem .35rem; cursor: pointer; }
-.who-rule-panel .who-rule-why:hover { color: var(--ink); background: var(--olive-050); }
-.who-rule-panel .who-rule-why input { margin: 0; flex: none; accent-color: var(--olive-700); }
-.who-rule-panel .who-rule-why.is-checked { color: var(--olive-900); background: #e3f1dc; font-weight: 600;
-  box-shadow: inset 3px 0 0 #1d5b2b; }
-.who-rule-footer .error { margin: 0; flex: 1; }
-.who-rule-panel #who-rule-apply:disabled { opacity: 1; color: #4d5240; background: var(--olive-150); cursor: not-allowed; }
-.who-rule-panel .who-picker-list { max-height: 16rem; overflow-y: auto; }
-@media (max-width: 900px) {
-  .who-rule-panel.org-modal-panel { width: 100%; height: auto; overflow-y: auto; }
-  .who-rule-columns { grid-template-columns: minmax(0, 1fr); }
-  .who-rule-panel .who-rule-why-list { max-height: 45vh; }
-}
-
-/* WHO Classification groups: Needs Rule, Has Rule, Manual Only. */
-#who-classification { scroll-margin-top: .5rem; }
-.who-group-row > th { text-align: left; padding: .55rem .6rem; font-size: .76rem; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--olive-900); background: var(--olive-150); border-top: 2px solid var(--olive-300); }
-.who-group-count { font-weight: 600; letter-spacing: 0; color: var(--olive-700); }
-.who-row-actions { white-space: nowrap; }
-.who-row-actions > * { vertical-align: middle; }
-.who-manual-toggle { margin-left: .35rem; }
-.who-row-actions .who-manual-toggle { font-size: .78rem; padding: .3rem .65rem; }
-.who-manual-badge { color: #8a5a10; background: #fdf3e2; border-color: #ecd6a5; }
-.who-row-actions button:disabled { opacity: 1; color: #4d5240; background: var(--olive-150); cursor: not-allowed; }
-.who-manual-conflict { border-color: #ecd6a5; background: #fdf3e2; color: var(--ink); }
-.who-manual-conflict .who-picker-actions form { margin: 0; }
-/* WHO Classification — Last transaction: the bank's own description first
-   (two lines at most, the whole text on hover), then date · account · amount. */
-.who-last-col { min-width: 22rem; }
-.who-table td[data-label="Type"] { white-space: nowrap; }
-.who-last { min-width: 22rem; max-width: 34rem; }
-.who-last-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-  overflow-wrap: anywhere; color: var(--ink); font-size: .82rem; line-height: 1.3; cursor: help;
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
-.who-last-meta { display: block; margin-top: .15rem; color: var(--muted); font-size: .74rem; white-space: nowrap; }
-.who-last-amount { color: var(--ink); font-variant-numeric: tabular-nums; }
-.who-last-amount.is-in { color: var(--ok); }
-@media (max-width: 700px) { .who-last, .who-last-col { min-width: 0; max-width: none; } .who-last-meta { white-space: normal; } }
-/* Create New WHY — the ONE dialog shared by Select WHO / WHY and the WHO Rule
-   modal. It opens ON TOP of the modal that launched it (later in the page and
-   a higher layer), compact, with its three fields always in view. */
+/* Create New WHY — the ONE dialog Select WHO / WHY opens. It opens ON TOP of
+   the modal that launched it (later in the page and a higher layer), compact,
+   with its three fields always in view. */
 .why-create-overlay { z-index: 60; background: rgba(36, 39, 28, 0.35); }
 .why-create-overlay .why-create-panel { max-width: 560px; margin-top: 4vh; }
 .why-create-panel form { display: flex; flex-direction: column; gap: .75rem; margin: 0; }
@@ -828,8 +705,6 @@ body.modal-open { overflow: hidden; }
 .why-create-existing { margin: .35rem 0 0; padding: .45rem .6rem; font-size: .8rem; color: var(--olive-900);
   background: #e3f1dc; border: 1px solid #b9d9ab; border-radius: 6px; }
 .why-create-actions { justify-content: flex-start; }
-.who-rule-why-tools { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-top: .45rem; }
-.who-rule-why-tools .ww-create-open { flex: none; }
 
 /* Review Transactions — For Whom under the Source (BANK_REVIEW_FOR_WHOM_001).
    The Source is provenance (read-only); For Whom is the beneficiary LLC. */
@@ -859,22 +734,39 @@ body.modal-open { overflow: hidden; }
 .export-details summary { cursor: pointer; font-weight: 600; }
 tr.is-target > td { background: #fdf3e2; }
 
-/* Classification: knowledge first, then the work queue
-   (BANK_CLASSIFICATION_KNOWLEDGE_QUEUE_001). */
-.classification-counts { display: flex; flex-wrap: wrap; gap: .4rem 1.4rem; margin: .2rem 0 .8rem; }
-.classification-counts a { text-decoration: none; color: var(--olive-900); }
-.classification-counts strong { margin-left: .25rem; }
-.classification-search { margin: .4rem 0 .6rem; }
-.manual-only-items li { margin: .25rem 0; }
-/* WHO Rules stay visible but compact: the list scrolls inside its card. */
-.who-rules-scroll { max-height: 24rem; overflow-y: auto; }
-.who-rules-table thead th { position: sticky; top: 0; z-index: 1; }
-.who-rule-actions { display: flex; flex-wrap: nowrap; gap: .4rem; align-items: center; }
-.who-rule-actions form { margin: 0; }
-.who-rule-actions .btn, .who-rule-actions button { width: auto; margin: 0; padding: .25rem .7rem; font-size: .78rem; line-height: 1.3; }
-
 /* Bank > AI Rules (BANK_AI_RULES_001, BANK_AI_RULES_002). */
 .ai-rules-textarea { width: 100%; box-sizing: border-box; font: inherit; }
+/* BANK_AI_RULES_022 — the rule's Title above its text, and as the list's main identifier. */
+.ai-rule-title-row { display: flex; gap: .5rem; align-items: center; margin-bottom: .6rem; }
+.ai-rule-title-row input { flex: 1; min-width: 0; box-sizing: border-box; font: inherit; }
+.ai-operative-rule .ai-rule-name { display: block; }
+/* BANK_AI_RULES_023 — the rules' search, as in Bank Reconciliation, with Search to the right of the field. */
+.ai-rules-search { margin: .2rem 0 .6rem; }
+.ai-rules-search .review-search-field { flex: 1 1 22rem; max-width: 40rem; }
+.ai-rules-search .review-search-box { display: flex; align-items: center; gap: .3rem; }
+.ai-rules-search .review-search-box input { flex: 1; min-width: 0; max-width: none; margin: 0; }
+.ai-rules-search .review-search-box button { width: auto; margin: 0; flex: none; }
+.ai-rules-operative .review-search-result { margin: 0 0 .5rem; }
+/* BANK_AI_RULES_024 — the movements' search, above their list. */
+.ai-txn-search + .review-search-result { margin: 0 0 .5rem; }
+/* BANK_AI_RULES_026 — Rewrite with AI, beside the rule's text. */
+.ai-rule-text-row { display: flex; gap: .5rem; align-items: flex-start; }
+.ai-rule-text-row textarea { flex: 1; min-width: 0; }
+.ai-rule-rewrite-actions { display: flex; flex-direction: column; gap: .35rem; flex: none; }
+.ai-rule-rewrite-actions button { width: auto; margin: 0; white-space: nowrap; }
+.ai-rule-rewrite-status { margin: .35rem 0 .6rem; padding: .4rem .6rem; border-radius: 4px; font-size: .9rem; }
+.ai-rule-rewrite-status.is-ok { background: #e7f4ea; color: #1d5b2c; }
+.ai-rule-rewrite-status.is-refused { background: #fdf3e2; color: #6b4a0f; }
+.ai-rule-rewrite-status ul { margin: .25rem 0 0 1.1rem; padding: 0; }
+/* AI Rule window: conflicts with the other active rules — about OTHER rules, never this text. */
+.ai-rule-conflicts { margin: .35rem 0 .6rem; padding: .5rem .7rem; border: 1px solid #e3b4ab; border-left: 4px solid var(--bad); border-radius: 4px; background: #fbeeeb; color: #5e2219; font-size: .9rem; }
+.ai-rule-conflicts h4 { margin: 0 0 .3rem; font-size: .95rem; }
+.ai-rule-conflicts .ai-conflict { margin: .4rem 0; padding-top: .35rem; border-top: 1px dashed #e3b4ab; }
+.ai-rule-conflicts .ai-conflict:first-of-type { border-top: none; padding-top: 0; }
+.ai-rule-conflicts p { margin: .15rem 0; }
+.ai-rule-conflicts .ai-conflict-message { font-weight: 600; }
+.ai-rule-not-applied { margin-left: .3rem; }
+@media (max-width: 640px) { .ai-rule-text-row { flex-direction: column; } .ai-rule-rewrite-actions { flex-direction: row; } }
 .ai-rules-actions { display: flex; align-items: center; gap: .6rem 1rem; margin-top: .5rem; flex-wrap: wrap; }
 .ai-rules-actions button, .ai-rules-period button { width: auto; margin: 0; }
 .ai-rules-period { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .75rem 1rem; margin: .5rem 0 1rem; }
@@ -926,6 +818,10 @@ tr.is-target > td { background: #fdf3e2; }
 .ai-rule-scopes { border: 1px solid var(--olive-300); border-radius: var(--radius); padding: .4rem .8rem .6rem; margin: .6rem 0; }
 .ai-rule-scopes legend { font-weight: 700; padding: 0 .3rem; }
 .ai-rule-scopes .ai-rule-option { margin: .25rem 0; font-weight: 600; flex-wrap: wrap; }
+/* AI Rule window: the option boxes A–F, one per choice, stacked vertically. */
+.ai-rule-option-boxes { display: flex; flex-direction: column; gap: .5rem; margin: .6rem 0; }
+.ai-rule-option-boxes .ai-rule-scopes { margin: 0; }
+.ai-rule-option-boxes .ai-rule-scopes > .cell-note { margin: .3rem 0 0; }
 .ai-rule-applied { background: #e7f3ea; border: 1px solid #bcdcc6; border-radius: var(--radius); padding: .5rem .7rem; margin: .6rem 0; }
 .ai-rule-plan { font-weight: 600; color: var(--olive-900); }
 .ai-rule-panel .modal-header { display: flex; align-items: center; gap: .6rem; }

@@ -2,6 +2,7 @@
 
 **Task:** BANK_GENERAL_RULES_001 (Product Owner decision, 2026-10-05)
 **Status:** Implemented on `feature/bank-simple-who-rules` — model, migration, service, import step, Classification UI, tests. Not committed, not deployed.
+**Superseded (2026-10-13, BANK_RULES_RESET_001 / BANK_OLD_RULES_REMOVAL_001):** General Rules (page, routes, import step, `general_rules`) were removed; the table `bank_general_rules` is empty and is to be dropped. Kept as the historical record of what was built; it no longer describes current behaviour.
 **Module:** Domain / Shared Domains / Administration / Bank Reconciliation
 **Schema:** migration `f4a8c2d6e9b3` — new table `bank_general_rules`, seeded with the Chase ACH rule.
 **Amended by:** BANK_GENERAL_RULE_END_001 (2026-10-08 — `END` as end marker; an explained Apply) and

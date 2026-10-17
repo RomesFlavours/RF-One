@@ -10,6 +10,12 @@ is still decided by `export.compute_export_blockers` alone. Import refuses a
 file whose own Source cannot be identified; a missing EXPECTED Source stays
 a warning.
 
+Check 7 changed with BANK_OLD_RULES_REMOVAL_001: the Reconciliation
+Standards that produced an "Automatic" row are removed and nothing produces
+that status any more (`reconciliation_status.status_of` never returns it),
+so the fixture no longer has an Automatic row; by Product Owner decision the
+Export no longer shows an Automatic figure at all, and check 7 says so.
+
 Runs against a DISPOSABLE SQLite database created here and deleted at the end.
 """
 
@@ -56,7 +62,6 @@ from rfone_data_store.bank_reconciliation import export as export_service  # noq
 from rfone_data_store.bank_reconciliation import export_readiness  # noqa: E402
 from rfone_data_store.bank_reconciliation import import_preview  # noqa: E402
 from rfone_data_store.bank_reconciliation import recognition  # noqa: E402
-from rfone_data_store.bank_reconciliation import reconciliation_standards  # noqa: E402
 from rfone_data_store.bank_reconciliation import row_reconciliation  # noqa: E402
 from rfone_data_store.bank_reconciliation import service as bank_service  # noqa: E402
 
@@ -107,7 +112,7 @@ def main() -> int:
             ).order_by(m.BankTransactionReason.id)).first()
             gfs = config_service.save_who(db, occurrence_id=None, name="Gordon Food Service", active=True,
                                           reason_ids=[why.id], default_reason_id=why.id,
-                                          reporting_entity_ids=[], rules=[])
+                                          reporting_entity_ids=[])
 
             def txn(day, text, minor, month=7):
                 t = m.FinancialTransaction(
@@ -121,13 +126,12 @@ def main() -> int:
             def decide(t):
                 recognition.record_human_decision(db, recognition.HumanDecisionRequest(
                     transaction_id=t.id, occurrence_id=gfs.id, transaction_reason_id=why.id,
-                    confirmed_by_account_id=operator.id, learn_description=False))
+                    confirmed_by_account_id=operator.id))
 
             t_open1 = txn(3, "ZELLE PAYMENT TO MARIA LOPEZ", -30000)        # To Reconcile
             t_open2 = txn(4, "ONLINE TRANSFER 99812", -12000)               # To Reconcile
             t_review = txn(5, "GORDON FOOD SERVICE #1 ORLANDO", -10000)     # Reconciled, Needs review
             t_conf = txn(6, "GORDON FOOD SERVICE #2 ORLANDO", -20000)       # Confirmed
-            t_auto = txn(7, "GORDON FOOD SERVICE WEEKLY 7731", -40000)      # Automatic
             t_june = txn(9, "GORDON FOOD SERVICE #3 ORLANDO", -5000, month=6)  # June: Confirmed
             db.commit()
             for t in (t_review, t_conf, t_june):
@@ -136,12 +140,6 @@ def main() -> int:
             for t in (t_conf, t_june):
                 row_reconciliation.confirm_row(db, transaction_id=t.id, reporting_entity_id=wp.id,
                                                account_id=operator.id)
-            standard, _ = reconciliation_standards.create_or_reuse(
-                db, signature=reconciliation_standards.signature_for(db, t_auto),
-                result=reconciliation_standards.Result(gfs.id, why.id, why.accounting_classification_id, wp.id),
-                approved_by_account_id=operator.id, created_from_transaction_id=None,
-            )
-            reconciliation_standards.apply_to_transaction(db, t_auto)
             db.commit()
 
             # A LEGACY batch whose Source was never identified (imported
@@ -152,7 +150,7 @@ def main() -> int:
             )
             db.commit()
             ids.update(wp=wp.id, checking=checking.id, savings=savings.id, open1=t_open1.id, open2=t_open2.id,
-                       review=t_review.id, conf=t_conf.id, auto=t_auto.id, june=t_june.id,
+                       review=t_review.id, conf=t_conf.id, june=t_june.id,
                        legacy_batch=legacy.batch.id, legacy_instrument=legacy.batch.payment_instrument_id or 0)
 
         check("fixture: the legacy batch has no Source", ids["legacy_instrument"] == 0)
@@ -203,7 +201,10 @@ def main() -> int:
               in page.split('data-group="unattributed"')[1].split("</section>")[0])
         check("5. Transactions to reconcile = 2", figure(page, "to_reconcile") == 2, figure(page, "to_reconcile"))
         check("6. Reconciled but Needs review = 1", figure(page, "reconciled") == 1, figure(page, "reconciled"))
-        check("7. Automatic = 1", figure(page, "automatic") == 1, figure(page, "automatic"))
+        # BANK_OLD_RULES_REMOVAL_001: nothing produces Automatic any more and,
+        # by Product Owner decision, the Export no longer shows that figure.
+        check("7. no Automatic figure is shown (the status was retired)",
+              'data-figure="automatic"' not in page and ">Automatic<" not in page)
         check("8. Confirmed = 1", figure(page, "confirmed") == 1, figure(page, "confirmed"))
         _, review_tab = get("/bank/review?year=2026&month=7")
         check("5. the count equals the Review tab's own To Reconcile count",

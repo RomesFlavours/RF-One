@@ -9,8 +9,8 @@
     Reconciliation page on real data. The compact row is the normal working
     view; every row expands inline, directly below itself, into ONE shared
     editor for WHO / WHY / WHAT / For Whom. WHAT never appears on the
-    compact row. Statuses: red X Needs review, orange check Automatic (an
-    approved Standard), green check Confirmed (a person). -#}
+    compact row. Statuses: red X Needs review, green check Confirmed (a
+    person). -#}
 {#- BANK_TWO_STAGE_REVIEW_001 — these rows and their editor ARE Review >
     Reconciled: the Review header and tabs, and every row action returns to
     that tab. The former standalone `/bank/reconciliation` month page, with
@@ -19,7 +19,6 @@
 {{ bank.module_nav('review') }}
 {%- macro status_mark(status, note='') -%}
 {%- if status == 'Confirmed' -%}<span class="rp-st rp-st-confirmed" role="img" aria-label="Confirmed">&#10004;</span><span class="rp-st-text">Confirmed</span>
-{%- elif status == 'Automatic' -%}<span class="rp-st rp-st-automatic" role="img" aria-label="Automatic">&#10003;</span><span class="rp-st-text">Automatic</span>
 {%- else -%}<span class="rp-st rp-st-review" role="img" aria-label="Needs review">&#10007;</span><span class="rp-st-text">Needs review</span>{%- endif -%}
 {%- endmacro %}
 
@@ -55,7 +54,6 @@
   .rp-status-ready { background: #e7eefb; color: #1f4f9a; border-color: #b9cbeb; }
   .rp-empty { padding: 1rem; color: var(--muted, #6b6f5e); }
   .rp-split { font-size: .8rem; color: var(--muted, #6b6f5e); }
-  .rp-src-standard { color: #b35c00; border-color: #f0c896; }
   /* expand toggle */
   .rp-x { width: 1.6rem; padding-right: 0 !important; }
   .rp-expand { margin: 0; padding: .05rem .35rem; font-size: .8rem; background: none; border: 1px solid #d6dbc4; color: inherit; line-height: 1.2; }
@@ -65,7 +63,6 @@
   .rp-st { display: inline-flex; align-items: center; justify-content: center; width: 1.35rem; height: 1.35rem;
     border-radius: 50%; font-weight: 700; font-size: .85rem; margin-right: .3rem; vertical-align: middle; }
   .rp-st-review { color: #fff; background: #c62828; }
-  .rp-st-automatic { color: #d46b00; background: #fff; border: 2px solid #e8890c; }
   .rp-st-confirmed { color: #fff; background: #2e7d32; }
   .rp-st-text { font-size: .78rem; vertical-align: middle; }
   .rp-actions-cell { white-space: nowrap; }
@@ -77,8 +74,6 @@
   .rp-ed-facts dt { color: var(--muted, #6b6f5e); }
   .rp-ed-facts dd { margin: 0; }
   .rp-ed-facts .rp-mono { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; word-break: break-word; }
-  .rp-ed-standard { margin-top: .5rem; border: 1px solid #f0c896; background: #fff8ee; border-radius: 6px; padding: .4rem .6rem; font-size: .8rem; }
-  .rp-ed-standard strong { color: #b35c00; }
   .rp-ed-grid { display: grid; grid-template-columns: max-content 1fr; gap: .35rem .6rem; align-items: center; }
   .rp-ed-grid label { font-weight: 600; font-size: .84rem; }
   .rp-ed-grid input, .rp-ed-grid select { margin: 0; width: 100%; max-width: none; box-sizing: border-box; }
@@ -99,10 +94,10 @@
     </thead>
     <tbody id="rp-body">
       {%- for row in view.rows %}
-      <tr id="t-{{ row.id }}" data-row-id="{{ row.id }}" data-rr-key="txn:{{ row.id }}"{% if row.who_id %} data-who="{{ row.who_id }}"{% endif %}{% if row.why_id %} data-why="{{ row.why_id }}"{% endif %}{% if row.what_id %} data-what="{{ row.what_id }}" data-source="{{ row.destination_source }}"{% endif %}{% if row.who_source %} data-who-source="{{ row.who_source }}"{% endif %}{% if row.standard_id %} data-standard="{{ row.standard_id }}"{% endif %} data-status="{{ row.status }}"{% if row.default_for_whom is not none %} data-default="{{ row.default_for_whom }}"{% endif %} data-amount="{{ row.amount_minor }}"{% if row.memo %} data-memo="{{ row.memo }}"{% endif %}>
+      <tr id="t-{{ row.id }}" data-row-id="{{ row.id }}" data-rr-key="txn:{{ row.id }}"{% if row.who_id %} data-who="{{ row.who_id }}"{% endif %}{% if row.why_id %} data-why="{{ row.why_id }}"{% endif %}{% if row.what_id %} data-what="{{ row.what_id }}" data-source="{{ row.destination_source }}"{% endif %}{% if row.who_source %} data-who-source="{{ row.who_source }}"{% endif %} data-status="{{ row.status }}"{% if row.default_for_whom is not none %} data-default="{{ row.default_for_whom }}"{% endif %} data-amount="{{ row.amount_minor }}"{% if row.memo %} data-memo="{{ row.memo }}"{% endif %}>
 <td class="rp-x"><button type="button" class="rp-expand" data-action="expand" aria-expanded="false" aria-label="Expand">&#9656;</button></td>
 <td class="rp-account"><span class="rp-account-name">{{ row.account }}</span>{#- BANK_REVIEW_FOR_WHOM_001: For Whom under the Source; choosing it saves it. -#}<span class="rp-forwhom">{% if row.split %}<span class="rp-split">For Whom: split</span>{% else %}<label class="rp-forwhom-label" for="rp-for-whom-{{ row.id }}">For Whom:</label><select id="rp-for-whom-{{ row.id }}" data-action="for-whom" aria-label="For Whom" data-saved="{{ row.for_whom if row.for_whom is not none else '' }}">{% if row.for_whom is none %}<option value="" selected>Choose…</option>{% endif %}{% for entity in view.entities %}{% if entity.active or entity.id == row.for_whom %}<option value="{{ entity.id }}"{{ ' selected' if entity.id == row.for_whom else '' }}>{{ entity.name }}</option>{% endif %}{% endfor %}</select>{% endif %}</span></td><td class="rp-date" title="{{ row.date }}">{{ row.date_label }}</td><td class="rp-desc">{{ row.description }}</td><td class="rp-amount{{ ' rp-in' if row.amount_minor > 0 else '' }}">{{ '+' if row.amount_minor > 0 else '−' }}{{ '{:,.2f}'.format((row.amount_minor|abs) / 100) }}</td>
-{%- set who_mark -%}{% if row.who_source == 'standard' %}<span class="rp-src rp-src-standard" title="From an approved Standard">standard</span>{% elif row.who_source == 'auto' %}<span class="rp-src" title="Recognized automatically — not approved">suggested</span>{% else %}<span class="rp-src rp-src-person" title="Chosen by a person">&#10003;</span>{% endif %}{%- endset -%}
+{%- set who_mark -%}{% if row.who_source == 'auto' %}<span class="rp-src" title="Recognized automatically — not approved">suggested</span>{% else %}<span class="rp-src rp-src-person" title="Chosen by a person">&#10003;</span>{% endif %}{%- endset -%}
 {#- BANK_MANUAL_WHO_WHY_001 — Reconciled shows WHO, WHY and WHAT on the row;
     WHY (and WHO) are edited in the same "Select WHO / WHY" popup as To
     Reconcile: a transaction-specific HUMAN decision, never a Rule change. -#}
@@ -110,7 +105,7 @@
 <td class="rp-who">{% if row.who %}<span class="rp-who-name">{{ row.who }}{{ who_mark }}</span>{% elif row.own_account %}<span class="rp-who-name" title="Own-account movement: no external WHO applies">{{ row.own_account }}</span>{% else %}<span class="rp-who-none">No WHO yet</span>{% endif %}<button type="button" class="btn-secondary rp-btn rp-edit who-picker-open" title="Change the WHO of this transaction" aria-label="Change WHO" data-transaction-id="{{ row.id }}" data-transaction-label="{{ picker_label }}" data-current-occurrence-id="{{ row.who_id or '' }}" data-current-reason-id="{{ row.why_id or '' }}">&#9998;</button></td>
 <td class="rp-why" data-cell="why">{% if row.why %}<span class="rp-why-name">{{ row.why }}</span>{% else %}<span class="rp-who-none">WHY needed</span>{% endif %}<button type="button" class="btn-secondary rp-btn rp-edit who-picker-open" title="Choose or create the WHY of this transaction" aria-label="Edit WHY" data-transaction-id="{{ row.id }}" data-transaction-label="{{ picker_label }}" data-current-occurrence-id="{{ row.who_id or '' }}" data-current-reason-id="{{ row.why_id or '' }}">&#9998; WHY</button></td>
 <td class="rp-what" data-cell="what">{{ row.what or '—' }}</td>
-<td class="rp-actions-cell">{% if not row.split %}{% set done = row.status in ('Confirmed', 'Automatic') %}{% set incomplete = not (row.who and row.why) %}{% if done %}<button type="button" class="btn-secondary rp-btn" data-action="reopen" title="Withdraw this acceptance">Reopen</button>{% endif %}<button type="button" class="rp-btn" data-action="confirm"{% if done %} hidden{% endif %}{% if incomplete %} disabled{% endif %}>Confirm</button>{% endif %}</td>
+<td class="rp-actions-cell">{% if not row.split %}{% set done = row.status == 'Confirmed' %}{% set incomplete = not (row.who and row.why) %}{% if done %}<button type="button" class="btn-secondary rp-btn" data-action="reopen" title="Withdraw this acceptance">Reopen</button>{% endif %}<button type="button" class="rp-btn" data-action="confirm"{% if done %} hidden{% endif %}{% if incomplete %} disabled{% endif %}>Confirm</button>{% endif %}</td>
 <td class="rp-status" data-cell="status">{{ status_mark(row.status) }}</td>
       </tr>
       {%- else %}
@@ -126,7 +121,6 @@
   <div class="rp-editor">
     <div class="rp-ed-facts">
       <dl id="rp-ed-facts"></dl>
-      <div class="rp-ed-standard" id="rp-ed-standard" hidden></div>
     </div>
     <div>
       <div class="rp-ed-grid">
@@ -147,7 +141,7 @@
 <datalist id="rp-who-names"></datalist>
 
 <form method="post" id="rp-post" hidden><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="return_to" value="{{ return_to }}"></form>
-<script type="application/json" id="rp-data">{{ {'whos': view.whos, 'whys': view.whys, 'whats': view.whats, 'entities': view.entities, 'destinations': view.destinations, 'standards': view.standards}|tojson }}</script>
+<script type="application/json" id="rp-data">{{ {'whos': view.whos, 'whys': view.whys, 'whats': view.whats, 'entities': view.entities, 'destinations': view.destinations}|tojson }}</script>
 <script>
 (function () {
   var data = JSON.parse(document.getElementById('rp-data').textContent);
@@ -166,7 +160,6 @@
   // Tooltips are attached once here instead of being repeated on 400 rows.
   var TIPS = {
     'rp-st-review': 'Needs review — requires a person; not exportable',
-    'rp-st-automatic': 'Automatic — completed by a Standard a person approved; exportable',
     'rp-st-confirmed': 'Confirmed — accepted by a person; exportable'
   };
   function tip(root) {
@@ -177,14 +170,13 @@
   function rowOf(tr) {
     var c = tr.children;
     return { id: tr.dataset.rowId, who_id: num(tr.dataset.who), why_id: num(tr.dataset.why), what_id: num(tr.dataset.what),
-             source: tr.dataset.source, who_source: tr.dataset.whoSource, standard: tr.dataset.standard,
+             source: tr.dataset.source, who_source: tr.dataset.whoSource,
              status: tr.dataset.status, default_for_whom: num(tr.dataset['default']), memo: tr.dataset.memo,
              amount_minor: Number(tr.dataset.amount), account: c[1].textContent, date: c[2].title,
              date_label: c[2].textContent, description: c[3].textContent };
   }
   var MARKS = {
     'Needs review': '<span class="rp-st rp-st-review" role="img" aria-label="Needs review">&#10007;</span>',
-    'Automatic': '<span class="rp-st rp-st-automatic" role="img" aria-label="Automatic">&#10003;</span>',
     'Confirmed': '<span class="rp-st rp-st-confirmed" role="img" aria-label="Confirmed">&#10004;</span>'
   };
   function setStatus(tr, status, text) {
@@ -225,7 +217,7 @@
     var confirmBtn = tr.querySelector('[data-action="confirm"]');
     var reopenBtn = tr.querySelector('[data-action="reopen"]');
     var changed = sel.value !== sel.dataset.saved;
-    var done = r.status === 'Confirmed' || r.status === 'Automatic';
+    var done = r.status === 'Confirmed';
     sel.classList.toggle('rp-changed', changed || (r.default_for_whom != null && sel.value !== String(r.default_for_whom)));
     if (done) {
       // A changed For whom is not saved — and not exportable — until saved again.
@@ -270,8 +262,8 @@
   var edWhat = document.getElementById('rp-ed-what'), edFor = document.getElementById('rp-ed-forwhom');
   var edNote = document.getElementById('rp-ed-note'), edSave = document.getElementById('rp-ed-save');
   var editing = null, catalogsReady = false;
-  var WHO_SOURCE = { person: 'Chosen by a person', auto: 'Suggested automatically — not approved', standard: 'From an approved Standard' };
-  var DEST_SOURCE = { WHY: 'Derived from the WHY', TRANSACTION: 'Chosen for this transaction', STANDARD: 'From the Standard' };
+  var WHO_SOURCE = { person: 'Chosen by a person', auto: 'Suggested automatically — not approved' };
+  var DEST_SOURCE = { WHY: 'Derived from the WHY', TRANSACTION: 'Chosen for this transaction' };
 
   // The big catalogs are drawn ONCE, the first time any row is expanded.
   function buildCatalogs() {
@@ -303,15 +295,6 @@
     items.push(['Status', r.status]);
     return items.map(function (i) { return '<dt>' + i[0] + '</dt><dd>' + (i[0] === 'Description' || i[0] === 'Memo' || i[0] === 'WHO' || i[0] === 'Accounting' ? i[1] : esc(i[1])) + '</dd>'; }).join('');
   }
-  function standardInfo(r) {
-    var s = r.standard ? data.standards[r.standard] : null, box = document.getElementById('rp-ed-standard');
-    if (!s) { box.hidden = true; box.innerHTML = ''; return; }
-    box.hidden = false;
-    box.innerHTML = '<strong>Completed by an approved Standard</strong><br>'
-      + 'Recognized by: ' + esc(s.match) + ' “' + esc(s.pattern) + '” · ' + esc(s.scope) + ' · ' + esc(s.direction) + '<br>'
-      + 'WHO ' + esc(s.who) + ' · WHY ' + esc(s.why) + ' · WHAT ' + esc(s.what) + ' · For whom ' + esc(s.for_whom) + '<br>'
-      + 'Approved by ' + esc(s.approved_by || '—') + ' on ' + esc(s.approved_at);
-  }
   function openEditor(tr, values) {
     buildCatalogs();
     var r = rowOf(tr);
@@ -320,7 +303,6 @@
     Array.prototype.slice.call(document.querySelectorAll('.rp-expand[aria-expanded="true"]')).forEach(function (b) { b.setAttribute('aria-expanded', 'false'); b.innerHTML = '&#9656;'; });
     var toggle = tr.querySelector('[data-action="expand"]'); toggle.setAttribute('aria-expanded', 'true'); toggle.innerHTML = '&#9662;';
     document.getElementById('rp-ed-facts').innerHTML = facts(r);
-    standardInfo(r);
     var sel = tr.querySelector('[data-action="for-whom"]');
     var v = values || { who: r.who_id, why: r.why_id, what: r.what_id != null ? r.what_id : (r.why_id && whyById[r.why_id] ? whyById[r.why_id].what : null), for_whom: sel ? num(sel.value) : null };
     edWho.value = v.who && whoById[v.who] ? whoById[v.who].name : '';
@@ -347,15 +329,15 @@
     var v = currentValues(), o = editing.original, r = editing.r;
     var changed = v.who !== o.who || v.why !== o.why || v.what !== o.what || v.for_whom !== o.for_whom;
     var complete = v.who && v.why && v.what && v.for_whom;
-    edSave.disabled = edSaveStd.disabled = !complete;
+    edSave.disabled = !complete;
     var note = '';
     if (edWho.value.trim() && !v.who) note = 'Choose a WHO from the list.';
     else if (!complete) note = 'WHO, WHY, WHAT and For whom are all needed to save.';
-    else if (changed && (r.status === 'Automatic' || r.status === 'Confirmed'))
-      note = 'Edited — not saved. Until you save, this transaction is Needs review' + (r.status === 'Automatic' ? ' and the Standard is not applied to it.' : '.');
+    else if (changed && r.status === 'Confirmed')
+      note = 'Edited — not saved. Until you save, this transaction is Needs review.';
     else if (changed) note = 'Edited — not saved.';
     edNote.textContent = note;
-    if (r.status === 'Automatic' || r.status === 'Confirmed') {
+    if (r.status === 'Confirmed') {
       if (changed) setStatus(editing.tr, 'Needs review', 'Changed — not saved'); else setStatus(editing.tr, r.status);
     }
   }

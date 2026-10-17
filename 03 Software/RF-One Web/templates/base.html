@@ -7,7 +7,7 @@
 {% if brand_logo_filename %}
   <link rel="icon" type="image/png" href="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}?v=2">
 {% endif %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=22">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=28">
 {# BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001 — one modal controller for the
    whole application, loaded with `defer` so it is ready before any page
    script runs but never blocks rendering. Every dialog shares it, so a
@@ -37,10 +37,10 @@
     {# Local Bank environment ("Avvia Bank"): which PC, database, code and AI
        mode this page runs on; a test copy is impossible to miss. #}
     <div class="local-env {{ 'local-env-test' if local_env.kind == 'TEST' else '' }}" role="status">
-      {% if local_env.kind == 'TEST' %}<strong class="local-env-flag">COPIA DI PROVA — non è il database di lavoro</strong>{% endif %}
+      {% if local_env.kind == 'TEST' %}<strong class="local-env-flag">TEST COPY — not the working database</strong>{% endif %}
       <span><b>PC</b> {{ local_env.pc }}</span>
-      <span><b>Database</b> {{ local_env.db }}{% if local_env.generation %} · generazione {{ local_env.generation }}{% endif %}</span>
-      <span><b>Codice</b> {{ local_env.code }}</span>
+      <span><b>Database</b> {{ local_env.db }}{% if local_env.generation %} · generation {{ local_env.generation }}{% endif %}</span>
+      <span><b>Code</b> {{ local_env.code }}</span>
       <span><b>AI</b> {{ local_env.ai }}</span>
     </div>
   {% endif %}

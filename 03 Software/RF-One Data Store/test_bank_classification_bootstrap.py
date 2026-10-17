@@ -10,12 +10,17 @@ Covers the service layer:
 * deterministic technical codes when the plan carries none;
 * preview writing nothing, confirmation writing exactly what was previewed,
   re-import idempotent, a code with a different meaning a conflict;
-* receiver candidates built only from canonical, non-transfer, non-copy
-  transactions, grouped on the exact normalized payee, with similar
-  descriptions suggested but never merged;
-* approval creating or reusing a Who, deriving Why and What, writing
-  append-only snapshots, recording an exact rule, skipping human
-  decisions, refusing ambiguity, and behaving atomically.
+* a WHO decision never applying the Who's default Why, a Why decision
+  writing the full Who/Why/What snapshot, decisions appending and never
+  rewriting.
+
+BANK_OLD_RULES_REMOVAL_001: the receiver-candidate checks (13-20, 23-27,
+24b, 26b, 27b, 34 — grouping, bulk approval, learned exact rules,
+ambiguity, the candidate summary) went with the old rule system. Check 21
+now uses the WHO step of the Bank Review. Check 22c ("a human decision
+learns no recognition rule") was then retired too, at migration
+d2b6f8a4c0e7, when the recognition-rule table itself was dropped — the
+invariant now holds by construction. The other numbers are unchanged.
 
 Never touches AWS, RDS, a production database, or a real bank file.
 """
@@ -28,10 +33,9 @@ from datetime import date
 
 from rfone_data_store import models as m
 from rfone_data_store.bank_reconciliation import accounting_dedup
-from rfone_data_store.bank_reconciliation import card_configuration as cards
 from rfone_data_store.bank_reconciliation import classification as classification_service
-from rfone_data_store.bank_reconciliation import receiver_candidates as rc
 from rfone_data_store.bank_reconciliation import recognition
+from rfone_data_store.bank_reconciliation import service
 from rfone_data_store.bank_reconciliation import what_catalog_import as wci
 from rfone_data_store.database import (
     create_configured_engine,
@@ -266,7 +270,10 @@ def main() -> int:
             s.commit()
 
             # =============================================================
-            # 13-17. Candidates
+            # 13-20, 23-27, 34. Receiver candidates and their approval went
+            # with BANK_OLD_RULES_REMOVAL_001 (the receiver-candidate list,
+            # bulk approval, learned exact rules and ambiguity detection
+            # belonged to the old rule system).
             # =============================================================
             entity = m.LegalEntity(legal_name="Bootstrap LLC", status="ACTIVE")
             s.add(entity)
@@ -276,23 +283,7 @@ def main() -> int:
                 display_name="Checking", institution="CHASE", last_four="0001",
                 currency="USD",
             )
-            paypal = m.PaymentInstrument(
-                legal_entity_id=entity.id, instrument_type="PAYPAL",
-                display_name="PayPal", currency="USD",
-            )
-            s.add_all([checking, paypal])
-            s.flush()
-            paypal.linked_instrument_id = checking.id
-            card = m.PaymentInstrument(
-                legal_entity_id=None, instrument_type="CREDIT_CARD",
-                display_name="Card", institution="CHASE", last_four="1057",
-            )
-            s.add(card)
-            s.flush()
-            cards.assign_settlement_account(
-                s, credit_card_payment_instrument_id=card.id,
-                settlement_bank_account_id=checking.id, valid_from=date(2026, 1, 1),
-            )
+            s.add(checking)
             s.commit()
 
             def txn(instrument, day, amount, description, month=5):
@@ -307,164 +298,59 @@ def main() -> int:
                 return row
 
             a1 = txn(checking, 1, -10000, "US FOODS INC #4821")
-            a2 = txn(checking, 2, -20000, "US Foods Inc. *4821")   # same payee once normalized
-            b1 = txn(checking, 3, -5000, "PUBLIX 1488")
-            b2 = txn(checking, 4, -6000, "PUBLIX 1661")            # similar, NOT the same
-            copy = txn(card, 1, -10000, "US FOODS INC #4821")      # accounting duplicate of a1
-            transfer_out = txn(checking, 9, -7000, "ONLINE TRANSFER")
-            transfer_in = m.FinancialTransaction(
-                payment_instrument_id=paypal.id, posting_date=date(2026, 5, 9),
-                description_original="ONLINE TRANSFER", description_normalized="ONLINE TRANSFER",
-                amount_minor=7000, status="COMPLETED", duplicate_status="NONE",
-                external_transaction_id="PP-TRANSFER-1",
-            )
-            s.add(transfer_in)
-            s.flush()
+            a2 = txn(checking, 2, -20000, "US Foods Inc. *4821")
             s.commit()
-
             accounting_dedup.recompute_accounting_dedup(s)
             s.commit()
 
-            from rfone_data_store.bank_reconciliation import matching
-            matching.confirm_match(s, transfer_out.id, transfer_in.id, confirmed_by="tester")
-            s.commit()
-
-            candidates = rc.build_candidates(s)
-            by_payee = {c.payee_normalized: c for c in candidates}
-
-            check(
-                "16. transactions with the same exact normalized payee form ONE group",
-                "US FOODS INC 4821" in by_payee
-                and by_payee["US FOODS INC 4821"].transaction_count == 2
-                and set(by_payee["US FOODS INC 4821"].transaction_ids) == {a1.id, a2.id},
-                detail=str(sorted(by_payee)),
-            )
-            check(
-                "14. the suppressed accounting copy is not a candidate of its own",
-                copy.accounting_status == accounting_dedup.DUPLICATE_SUPPRESSED
-                and copy.id not in by_payee["US FOODS INC 4821"].transaction_ids,
-            )
-            check(
-                "15. a confirmed internal transfer is excluded entirely",
-                "ONLINE TRANSFER" not in by_payee,
-            )
-            check(
-                "13. only canonical transactions are represented",
-                all(
-                    s.get(m.FinancialTransaction, tid).accounting_status
-                    == accounting_dedup.CANONICAL
-                    for c in candidates for tid in c.transaction_ids
-                ),
-            )
-            check(
-                "17. similar descriptions are suggested, never merged",
-                "PUBLIX 1488" in by_payee and "PUBLIX 1661" in by_payee
-                and by_payee["PUBLIX 1488"].similar
-                and by_payee["PUBLIX 1488"].similar[0].payee_normalized == "PUBLIX 1661",
-            )
-            check(
-                "17b. the suggestion explains itself",
-                "numeric" in by_payee["PUBLIX 1488"].similar[0].reason.lower(),
-            )
-            check(
-                "the group reports period, totals, company and instrument",
-                by_payee["US FOODS INC 4821"].first_date == date(2026, 5, 1)
-                and by_payee["US FOODS INC 4821"].total_minor == -30000
-                and by_payee["US FOODS INC 4821"].absolute_total_minor == 30000
-                and "Bootstrap LLC" in by_payee["US FOODS INC 4821"].legal_entity_names,
-            )
-
-            # =============================================================
-            # 18-27. Approval
-            # =============================================================
             supplier_type = m.BankOccurrenceType(code="SUPPLIER", name="Supplier")
             s.add(supplier_type)
             s.commit()
-
-            # BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §20 — a Who may now
-            # be CREATED with zero Whys, so the refusal no longer comes from
-            # `create_occurrence`. The property this check exists for is
-            # unchanged and still enforced: bulk approval resolves the chain
-            # BEFORE writing any decision row, and a Who that cannot resolve a
-            # What stops the whole operation.
-            # BANK_FINAL_RELEASE_BLOCKERS_001 — approval names the WHO only and
-            # never consults the Who's default chain, so a Who with no default
-            # Why is no longer refused: its transactions get the Who and keep
-            # their own open Why, and no description rule is learned (a rule's
-            # stored reason would have nothing to be filed under). Rolled back
-            # so the rest of this test starts from the same state.
-            no_default = rc.approve_candidates(
-                s, payee_keys=["DEBIT|US FOODS INC 4821"],
-                new_occurrence_name="Broken", occurrence_type_id=supplier_type.id,
-                default_transaction_reason_id=None, learn_description=True,
-            )
-            no_default_rows = s.query(m.BankTransactionExplanation).filter(
-                m.BankTransactionExplanation.financial_transaction_id.in_([a1.id, a2.id]),
-                m.BankTransactionExplanation.decision_source == "HUMAN",
-            ).all()
-            check(
-                "26. a Who with no default Why records the Who and applies no Why",
-                no_default.transactions_classified == 2 and len(no_default_rows) == 2
-                and all(e.transaction_reason_id is None
-                        and e.accounting_classification_code_snapshot is None
-                        for e in no_default_rows)
-                and not no_default.rules_created,
-            )
-            s.rollback()
-            check(
-                "26b. the rolled-back approval left nothing behind",
-                s.query(m.BankTransactionExplanation).filter(
-                    m.BankTransactionExplanation.decision_source == "HUMAN"
-                ).count() == 0,
-            )
-
-            outcome = rc.approve_candidates(
-                s, payee_keys=["DEBIT|US FOODS INC 4821"],
-                new_occurrence_name="US Foods", occurrence_type_id=supplier_type.id,
-                default_transaction_reason_id=food_why.id, learn_description=True,
+            us_foods_who = classification_service.create_occurrence(
+                s, canonical_name="US Foods", occurrence_type_id=supplier_type.id,
+                default_transaction_reason_id=food_why.id,
             )
             s.commit()
-            check(
-                "18. approving a candidate creates the Who and classifies the whole group",
-                outcome.transactions_classified == 2
-                and s.query(m.BankOccurrence).filter_by(canonical_name="US FOODS").count() == 1,
-            )
-            # BANK_FINAL_RELEASE_BLOCKERS_001 — this used to assert the Why and
-            # What were derived from the Who. They are not: "US FOODS INC 4821"
-            # names a supplier, not what was bought.
-            approved_rows = s.query(m.BankTransactionExplanation).filter(
+
+            # 21. A person names the WHO only (the Bank Review WHO step).
+            for row in (a1, a2):
+                service.record_recognition_decision(
+                    s, transaction_id=row.id, occurrence_id=us_foods_who.id,
+                    confirmed_by_account_id=None,
+                )
+            s.commit()
+            # BANK_FINAL_RELEASE_BLOCKERS_001 — the Why and What are never
+            # derived from the Who: "US FOODS INC 4821" names a supplier, not
+            # what was bought.
+            who_rows = s.query(m.BankTransactionExplanation).filter(
                 m.BankTransactionExplanation.financial_transaction_id.in_([a1.id, a2.id]),
                 m.BankTransactionExplanation.decision_source == "HUMAN",
             ).all()
             check(
-                "21. approval records the Who; the Who's default Why is NOT applied",
-                len(approved_rows) == 2
+                "21. a WHO decision records the Who; the Who's default Why is NOT applied",
+                len(who_rows) == 2
                 and all(
                     e.occurrence_name_snapshot == "US FOODS"
                     and e.transaction_reason_id is None
                     and e.accounting_classification_code_snapshot is None
-                    for e in approved_rows
+                    for e in who_rows
                 ),
             )
             check(
-                "21b. ...and the approved transactions stay in review until their Why is decided",
+                "21b. ...and those transactions stay in review until their Why is decided",
                 all(s.get(m.FinancialTransaction, t).review_status != "REVIEWED"
                     for t in (a1.id, a2.id)),
             )
-            # These transactions were created directly rather than imported,
-            # so approval writes their FIRST decision — the append-only
-            # property is asserted by adding a second one and checking the
-            # first survives untouched beside it.
+            # The append-only property is asserted by adding further decisions
+            # and checking the first survives untouched beside them.
             first_decision = recognition.get_current_explanation(
                 s, financial_transaction_id=a1.id,
             )
-            us_foods_who = s.query(m.BankOccurrence).filter_by(canonical_name="US FOODS").one()
             why_decision = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=a1.id, occurrence_id=us_foods_who.id,
                     transaction_reason_id=food_why.id,
-                    confirmed_by_account_id=None, learn_description=False,
-                ),
+                    confirmed_by_account_id=None, ),
             )
             s.commit()
             check(
@@ -475,7 +361,7 @@ def main() -> int:
                 and why_decision.accounting_statement_type_snapshot == wci.PROFIT_LOSS,
             )
             check(
-                "22a. the Who-only approval row was left as it was",
+                "22a. the Who-only row was left as it was",
                 first_decision.occurrence_name_snapshot == "US FOODS"
                 and first_decision.transaction_reason_id is None
                 and first_decision.accounting_classification_code_snapshot is None,
@@ -498,114 +384,16 @@ def main() -> int:
                 and why_decision.decision_status == "HUMAN_CONFIRMED"
                 and why_decision.accounting_classification_code_snapshot == "TEST-5100",
             )
-            check(
-                "23. an exact-match rule is recorded for future imports",
-                len(outcome.rules_created) == 1
-                and s.query(m.BankRecognitionRule).filter_by(
-                    normalized_pattern="US FOODS INC 4821",
-                    match_type=recognition.EXACT_NORMALIZED_DESCRIPTION,
-                ).count() == 1,
-            )
-            check(
-                "34. the suppressed copy was NOT classified",
-                recognition.get_current_explanation(s, financial_transaction_id=copy.id) is None
-                or recognition.get_current_explanation(
-                    s, financial_transaction_id=copy.id
-                ).decision_source != "HUMAN",
-            )
-            check(
-                "27. the group is now ASSIGNED and out of the unclassified list",
-                {c.payee_normalized for c in rc.build_candidates(s, include_assigned=False)}
-                .isdisjoint({"US FOODS INC 4821"}),
-            )
-
-            # 19-20. An existing Who, several groups at once.
-            us_foods = s.query(m.BankOccurrence).filter_by(canonical_name="US FOODS").one()
-            multi = rc.approve_candidates(
-                s, payee_keys=["DEBIT|PUBLIX 1488", "DEBIT|PUBLIX 1661"],
-                occurrence_id=us_foods.id, learn_description=True,
-            )
-            s.commit()
-            check(
-                "19/20. several groups can be approved onto one EXISTING Who in one operation",
-                multi.occurrence_id == us_foods.id
-                and multi.transactions_classified == 2
-                and len(multi.payees) == 2,
-            )
-
-            # 25. A human decision is never overwritten.
-            other_who = classification_service.create_occurrence(
-                s, canonical_name="Sysco", occurrence_type_id=supplier_type.id,
-                default_transaction_reason_id=ap_why.id,
-            )
-            s.commit()
-            before = recognition.get_current_explanation(s, financial_transaction_id=b1.id)
-            again = rc.approve_candidates(
-                s, payee_keys=["DEBIT|PUBLIX 1488"], occurrence_id=other_who.id,
-                learn_description=False,
-            )
-            s.commit()
-            after = recognition.get_current_explanation(s, financial_transaction_id=b1.id)
-            check(
-                "25. a transaction a human already decided is skipped, never overwritten",
-                again.transactions_skipped_human == 1
-                and again.transactions_classified == 0
-                and after.id == before.id,
-            )
-
-            # 24. Contradiction -> ambiguous, never an automatic choice.
-            c1 = txn(checking, 15, -1000, "AMBIGUOUS MERCHANT")
-            c2 = txn(checking, 16, -1000, "AMBIGUOUS MERCHANT")
-            s.commit()
-            accounting_dedup.recompute_accounting_dedup(s)
-            s.commit()
-            recognition.record_human_decision(
-                s, recognition.HumanDecisionRequest(
-                    transaction_id=c1.id, occurrence_id=us_foods.id,
-                    # The human chooses the Why explicitly; a Who's default is
-                    # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
-                    transaction_reason_id=s.get(m.BankOccurrence, us_foods.id).default_transaction_reason_id,
-                    confirmed_by_account_id=None, learn_description=False,
-                ),
-            )
-            recognition.record_human_decision(
-                s, recognition.HumanDecisionRequest(
-                    transaction_id=c2.id, occurrence_id=other_who.id,
-                    # The human chooses the Why explicitly; a Who's default is
-                    # never applied on its own (BANK_FINAL_RELEASE_BLOCKERS_001).
-                    transaction_reason_id=s.get(m.BankOccurrence, other_who.id).default_transaction_reason_id,
-                    confirmed_by_account_id=None, learn_description=False,
-                ),
-            )
-            s.commit()
-            ambiguous = {
-                c.payee_normalized: c for c in rc.build_candidates(s)
-            }.get("AMBIGUOUS MERCHANT")
-            check(
-                "24. two different Who values for one payee produce AMBIGUOUS, never a guess",
-                ambiguous is not None and ambiguous.status == rc.STATUS_AMBIGUOUS
-                and ambiguous.suggested_occurrence_id is None,
-            )
-            raises(
-                "24b. an ambiguous group cannot be bulk-approved",
-                lambda: rc.approve_candidates(
-                    s, payee_keys=["DEBIT|AMBIGUOUS MERCHANT"], occurrence_id=us_foods.id,
-                ),
-                "ambiguous",
-            )
+            # 22c (no recognition rule learned) was retired with
+            # BANK_OLD_RULES_REMOVAL_001: the table no longer exists, so the
+            # invariant holds by construction.
 
             # 33. Nothing was destroyed.
             check(
                 "33. no raw row and no transaction was created or deleted by classification",
                 s.query(m.RawBankTransaction).count() == 0
-                and s.query(m.FinancialTransaction).count() == 9,
+                and s.query(m.FinancialTransaction).count() == 2,
                 detail=str(s.query(m.FinancialTransaction).count()),
-            )
-            summary = rc.summary(s)
-            check(
-                "27b. the summary counts groups and transactions consistently",
-                summary["groups"] == len(rc.build_candidates(s))
-                and summary["suppressed_copies"] == 1,
             )
     finally:
         engine.dispose()

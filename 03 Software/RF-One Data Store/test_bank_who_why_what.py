@@ -11,9 +11,14 @@ Covers the model/service layer end to end on a throwaway database:
 * editing an association affecting FUTURE classifications only;
 * historical snapshots surviving every such edit unchanged;
 * explicit `Reclassify` appending a new auditable decision;
-* automatic recognition of a WHO on later transactions, and ambiguity
-  being routed to human review rather than guessed;
+* an automatic WHO never resolving the WHY;
 * the export blockers this hierarchy introduces.
+
+BANK_OLD_RULES_REMOVAL_001: the checks on learned recognition rules,
+automatic deduction at import, contradictory rules and broken-chain rules
+went with the old rule system (section E). The check "human confirmations
+learn no recognition rule" was retired when migration d2b6f8a4c0e7 dropped
+the recognition-rule table: the invariant now holds by construction.
 
 Never touches AWS, RDS, a production database, or a real bank file.
 """
@@ -292,8 +297,7 @@ def main() -> int:
             first = new_txn("US FOODS INVOICE 4821", 1)
             who_only = bank_service.record_recognition_decision(
                 s, transaction_id=first.id, occurrence_id=us_foods.id,
-                confirmed_by_account_id=None, learn_description=True,
-            )
+                confirmed_by_account_id=None, )
             # BANK_FINAL_RELEASE_BLOCKERS_001 — this used to assert "the Why is
             # derived" from the Who. A Who's default Why is never applied: the
             # Who is recorded and the Why stays open for a person.
@@ -316,8 +320,7 @@ def main() -> int:
                 s, recognition.HumanDecisionRequest(
                     transaction_id=first.id, occurrence_id=us_foods.id,
                     transaction_reason_id=supplier_payment.id,
-                    confirmed_by_account_id=None, learn_description=False,
-                ),
+                    confirmed_by_account_id=None, ),
             )
             check(
                 "the Why the person chooses is recorded",
@@ -341,8 +344,7 @@ def main() -> int:
             # nothing about its broken default leaks into the decision.
             legacy_only = bank_service.record_recognition_decision(
                 s, transaction_id=new_txn("MYSTERY 1", 2).id, occurrence_id=legacy_who.id,
-                confirmed_by_account_id=None, learn_description=False,
-            )
+                confirmed_by_account_id=None, )
             check(
                 "confirming a Who whose default chain is incomplete records only the Who",
                 legacy_only.occurrence_id == legacy_who.id
@@ -353,109 +355,66 @@ def main() -> int:
                 "confirming an INACTIVE Who is refused with an actionable reason",
                 lambda: bank_service.record_recognition_decision(
                     s, transaction_id=new_txn("MYSTERY 2", 3).id, occurrence_id=inactive_who.id,
-                    confirmed_by_account_id=None, learn_description=False,
-                ),
+                    confirmed_by_account_id=None, ),
                 "INACTIVE",
             )
 
             # =============================================================
-            # E. Learning and automatic recognition of the WHO
+            # E. An automatic WHO never resolves the WHY
             # =============================================================
-            rules = s.query(m.BankRecognitionRule).filter_by(occurrence_id=us_foods.id).all()
-            check(
-                "confirming with description learning records the evidence as an EXACT rule",
-                len(rules) == 1 and rules[0].match_type == recognition.EXACT_NORMALIZED_DESCRIPTION,
-            )
-            check(
-                "a single description never creates a broad CONTAINS/PREFIX rule on its own",
-                all(r.match_type == recognition.EXACT_NORMALIZED_DESCRIPTION for r in rules),
-            )
-
+            # BANK_OLD_RULES_REMOVAL_001: the checks on learned recognition
+            # rules (EXACT rule from a confirmation, no broad rule from one
+            # description, confirmations accumulating on one rule), on
+            # automatic deduction at import, on contradictory rules and on a
+            # rule with a broken chain went with the old rule system. Only AI
+            # rules decide automatically now; the automatic WHO below is
+            # seeded the way such a rule writes it.
             later = new_txn("US FOODS INVOICE 4821", 5)
-            auto = recognition.deduce_for_transaction(s, later)
-            check(
-                "a later transaction with the same description has its WHO recognized "
-                "automatically",
-                auto.occurrence_id == us_foods.id and auto.recognition_rule_id is not None,
-                detail=f"occurrence={auto.occurrence_id} rule={auto.recognition_rule_id}",
+            auto = recognition._create_decision_row(
+                s, later, occurrence_id=us_foods.id, transaction_reason_id=None,
+                decision_source="RULE", decision_status="NEEDS_HUMAN_REVIEW", confidence=None,
+                explanation_notes="Seeded automatic WHO.",
             )
-            # BANK_WHO_WHY_INVARIANT_001 — this assertion used to be
-            # "automatic recognition derives the Why and the What too". It
-            # no longer does, and that is the point: US FOODS INVOICE 4821
-            # names a supplier and says nothing about what was bought, so
-            # concluding COGS_FOOD from it would be identity alone deciding
-            # the accounting purpose. The WHO is resolved; the WHY waits.
+            # BANK_WHO_WHY_INVARIANT_001 — US FOODS INVOICE 4821 names a
+            # supplier and says nothing about what was bought, so concluding
+            # COGS_FOOD from it would be identity alone deciding the
+            # accounting purpose. The WHO is resolved; the WHY waits.
             check(
-                "recognizing the WHO does NOT resolve the WHY or the WHAT — the transaction "
-                "carries no purpose evidence, so it goes to a human",
-                auto.decision_status == "NEEDS_HUMAN_REVIEW"
+                "an automatic WHO decision snapshots the Who and resolves no WHY or WHAT",
+                auto.occurrence_name_snapshot == "US FOODS"
                 and auto.transaction_reason_id is None
+                and auto.transaction_reason_name_snapshot is None
                 and auto.accounting_classification_code_snapshot is None,
                 detail=f"{auto.decision_status}/{auto.transaction_reason_id}",
             )
+            confirmed_auto = bank_service.record_recognition_decision(
+                s, transaction_id=later.id, occurrence_id=us_foods.id,
+                confirmed_by_account_id=None, )
+            s.refresh(auto)
             check(
-                "...and the Who's usual Why is offered as a suggestion, never as the answer",
-                "Suggestion only" in (auto.explanation_notes or "")
-                and supplier_payment.name in (auto.explanation_notes or ""),
-                detail=(auto.explanation_notes or "")[-140:],
+                "confirming the automatic WHO still takes no WHY from the Who's default",
+                confirmed_auto.id != auto.id
+                and confirmed_auto.occurrence_id == us_foods.id
+                and confirmed_auto.transaction_reason_id is None
+                and confirmed_auto.decision_status == "NEEDS_HUMAN_REVIEW"
+                and auto.decision_source == "RULE",
+                detail=f"{confirmed_auto.decision_status}/{confirmed_auto.transaction_reason_id}",
+            )
+            raises(
+                "Reclassify of a WHO-only decision refuses rather than applying the Who's default",
+                lambda: recognition.reclassify_transaction(
+                    s, transaction_id=later.id, confirmed_by_account_id=None,
+                ),
+                "no Why",
             )
 
             repeat = new_txn("US FOODS INVOICE 4821", 6)
             bank_service.record_recognition_decision(
                 s, transaction_id=repeat.id, occurrence_id=us_foods.id,
-                confirmed_by_account_id=None, learn_description=True,
-            )
-            check(
-                "repeated confirmations accumulate on the one rule rather than multiplying rules",
-                s.query(m.BankRecognitionRule).filter_by(occurrence_id=us_foods.id).count() == 1
-                and s.query(m.BankRecognitionRule).filter_by(occurrence_id=us_foods.id).one()
-                .human_confirmations >= 2,
-            )
-
-            # --- ambiguity is never guessed --------------------------------
-            sysco = classification_service.create_occurrence(
-                s, canonical_name="Sysco", occurrence_type_id=supplier_type.id,
-                default_transaction_reason_id=invoice_settlement.id,
-            )
-            recognition.create_or_reuse_rule(
-                s, match_type=recognition.CONTAINS_TEXT, normalized_pattern="SHARED MERCHANT",
-                occurrence_id=us_foods.id, transaction_reason_id=supplier_payment.id,
-                payment_instrument_id=None, direction=None,
-                auto_apply_enabled=True, created_from_transaction_id=None,
-            )
-            recognition.create_or_reuse_rule(
-                s, match_type=recognition.CONTAINS_TEXT, normalized_pattern="SHARED MERCHANT X",
-                occurrence_id=sysco.id, transaction_reason_id=invoice_settlement.id,
-                payment_instrument_id=None, direction=None,
-                auto_apply_enabled=True, created_from_transaction_id=None,
-            )
-            ambiguous = new_txn("SHARED MERCHANT X 99", 7)
-            ambiguous_decision = recognition.deduce_for_transaction(s, ambiguous)
-            check(
-                "contradictory rules leave the transaction at NEEDS_HUMAN_REVIEW, never a guess",
-                ambiguous_decision.decision_status == "NEEDS_HUMAN_REVIEW"
-                and ambiguous_decision.occurrence_id is None,
-            )
-
-            # A rule whose Who's chain has since broken must not auto-apply.
-            broken_who = classification_service.create_occurrence(
-                s, canonical_name="Broken Chain Vendor", occurrence_type_id=supplier_type.id,
-                default_transaction_reason_id=supplier_payment.id,
-            )
-            recognition.create_or_reuse_rule(
-                s, match_type=recognition.EXACT_NORMALIZED_DESCRIPTION, normalized_pattern="BROKEN VENDOR",
-                occurrence_id=broken_who.id, transaction_reason_id=supplier_payment.id,
-                payment_instrument_id=None, direction=None,
-                auto_apply_enabled=True, created_from_transaction_id=None,
-            )
-            broken_who.default_transaction_reason_id = None
-            s.flush()
-            broken_decision = recognition.deduce_for_transaction(s, new_txn("BROKEN VENDOR", 8))
-            check(
-                "a rule pointing at a Who whose chain has broken never auto-applies a broken chain",
-                broken_decision.decision_status == "NEEDS_HUMAN_REVIEW",
-            )
-
+                confirmed_by_account_id=None, )
+            # "human confirmations learn no recognition rule" was retired with
+            # BANK_OLD_RULES_REMOVAL_001: the table no longer exists, so the
+            # invariant holds by construction.
             # =============================================================
             # F. Editing an association — future only, history intact
             # =============================================================
@@ -483,8 +442,7 @@ def main() -> int:
                 s, recognition.HumanDecisionRequest(
                     transaction_id=after_edit.id, occurrence_id=us_foods.id,
                     transaction_reason_id=supplier_payment.id,
-                    confirmed_by_account_id=None, learn_description=False,
-                ),
+                    confirmed_by_account_id=None, ),
             )
             check(
                 "a NEW classification uses the Why's edited mapping",

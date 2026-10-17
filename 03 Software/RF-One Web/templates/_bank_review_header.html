@@ -19,13 +19,12 @@
 </nav>
 <p class="muted review-tab-help">
   {% if review_view == 'to_reconcile' %}
-    Transactions whose WHO is not resolved yet. Choose the WHO, or teach RF-One a <strong>Rule</strong>:
+    Transactions whose WHO is not resolved yet. Choose the WHO, or apply an <strong>AI rule</strong>:
     as soon as a transaction has its WHO it moves to <em>Reconciled</em>.
   {% else %}
     Transactions whose WHO is resolved, and transfers between RF-One's own accounts, which need no WHO.
     Complete WHY and For Whom, then Confirm.
-    <span class="rp-st rp-st-automatic" aria-hidden="true">&#10003;</span> Automatic rows were completed by an approved Standard
-    and need no click; <span class="rp-st rp-st-confirmed" aria-hidden="true">&#10004;</span> Confirmed rows were accepted by a person.
+    <span class="rp-st rp-st-confirmed" aria-hidden="true">&#10004;</span> Confirmed rows were accepted by a person.
   {% endif %}
 </p>
 

@@ -33,6 +33,7 @@ from sqlalchemy import func, select
 
 from rfone_data_store import models as m
 from rfone_data_store.bank_reconciliation import ai_rule_operations as operations
+from rfone_data_store.bank_reconciliation import ai_rule_rewrite
 from rfone_data_store.bank_reconciliation import ai_rules
 from rfone_data_store.selection.parsing import ai_client
 
@@ -72,9 +73,20 @@ def _scope() -> tuple[str, list[int], bool]:
     all_ = request.form.get("scope_all") == "on"
     selected = request.form.get("scope_selected") == "on"
     if all_ and selected:
-        raise ai_rules.AiRuleError("Choose either “Tutte le transazioni esistenti” or “Solo le transazioni selezionate”.")
+        raise ai_rules.AiRuleError("Choose either “All existing transactions” or “Only the selected transactions”.")
     scope = ai_rules.SCOPE_ALL if all_ else ai_rules.SCOPE_SELECTED if selected else ai_rules.SCOPE_PERIOD
     return scope, _selected_ids() if selected else [], request.form.get("scope_future") == "on"
+
+
+def _within_search(db, scope: str, selected: list[int]) -> list[int]:
+    """BANK_AI_RULES_025 — "Solo le transazioni selezionate" with a movements'
+    search active: only the selected movements within the list's perimeter
+    (period, Classificazione, search), recomputed here whatever the page sent."""
+    if scope != ai_rules.SCOPE_SELECTED:
+        return selected
+    return ai_rules.selected_within_search(
+        db, selected, date_from=_date(request.form.get("date_from")), date_to=_date(request.form.get("date_to")),
+        cls=request.form.get("cls"), search=request.form.get("q"))
 
 
 def _rule_as_dict(db, rule: "m.BankAiRule") -> dict:
@@ -82,10 +94,13 @@ def _rule_as_dict(db, rule: "m.BankAiRule") -> dict:
     origin = ai_rules.row_for(db, rule.origin_transaction_id)
     return {
         "ok": True, "rule_id": rule.id, "status": rule.status, "apply_future": rule.apply_future,
+        "user_title": rule.user_title or "",
         "rule_text": version.rule_text if version else "", "version_no": version.version_no if version else None,
         "method": version.method if version else None,
         "create_missing_who": bool(version.create_missing_who) if version else False,
         "override_protected": bool(version.override_protected) if version else False,
+        # Saved but never applied to the existing movements (Save, or new imports only): said in the window.
+        "applied_to_existing": operations.applied_to_existing(db, version),
         "origin": origin.as_dict() if origin is not None else {
             "id": None, "date": None, "description": rule.origin_description or "", "amount": "", "currency": "",
             "source": "", "who": None, "why": None},
@@ -117,10 +132,20 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
                 date_from, date_to = default_from, default_to
             rows = ai_rules.classification_filter(period, cls)
             shown = {r.id for r in rows}
+            # The selection follows "Classificazione" only (BANK_AI_RULES_019): never the search below.
             excluded_ids = [r.id for r in period if r.id not in shown]
+            classified_total = len(rows)
+            # BANK_AI_RULES_024 — the movements' search (`q`), as in Bank Reconciliation; empty = no search.
+            q = (request.args.get("q") or "").strip()
+            rows = ai_rules.search_filter(db, rows, q)
             provider, model = ai_rules.active_ai_description()
             who_names, why_names = ai_rules.catalog_names(db)
-            operative = [(rule, operations.current_version(rule)) for rule in operations.rules(db)]
+            # BANK_AI_RULES_023 — the rules' search (name and content, any case); empty shows every rule.
+            rule_q = " ".join((request.args.get("rule_q") or "").split())
+            all_rules = operations.rules(db)
+            applied = operations.applied_versions(db)
+            operative = [(rule, operations.current_version(rule))
+                         for rule in operations.search_rules(all_rules, rule_q)]
             return render_template(
                 "bank_ai_rules.html",
                 rows=rows, error=error, who_names=who_names, why_names=why_names,
@@ -128,7 +153,8 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
                 excluded_ids=excluded_ids,
                 date_from=date_from.isoformat() if date_from else "",
                 date_to=date_to.isoformat() if date_to else "",
-                drafts=ai_rules.drafts(db), operative_rules=operative,
+                drafts=ai_rules.drafts(db), operative_rules=operative, applied_versions=applied,
+                rule_q=rule_q, rules_total=len(all_rules), q=q, classified_total=classified_total,
                 instruction=ai_rules.current_instruction(db),
                 provider=provider, model=model,
                 batch_size=ai_rules.BATCH_SIZE, max_period=ai_rules.MAX_PERIOD_MOVEMENTS,
@@ -159,6 +185,7 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
         with SessionFactory() as db:
             try:
                 scope, selected, _future = _scope()
+                selected = _within_search(db, scope, selected)
                 preview = ai_rules.preview_rule(
                     db, rule_text=request.form.get("rule_text"),
                     origin_transaction_id=request.form.get("origin_transaction_id", type=int),
@@ -170,6 +197,7 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
                     only_unsettled=request.form.get("only_unsettled") == "on",
                     who_only=request.form.get("who_only") == "on",
                     scope=scope, selected_ids=selected, ai_rule_id=request.form.get("rule_id", type=int) or None,
+                    title=request.form.get("user_title"),
                     # BANK_AI_RULES_008: never an automatic fallback — only when asked.
                     allow_ai_batches=request.form.get("allow_ai_batches") == "on",
                 )
@@ -178,6 +206,30 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
                 db.rollback()
                 return jsonify({"ok": False, "error": str(exc)}), 400
             return jsonify(ai_rules.preview_as_dict(preview))
+
+    @app.route("/bank/ai-rules/rewrite", methods=["POST"])
+    @gate
+    def bank_ai_rules_rewrite():
+        """BANK_AI_RULES_026 — Rewrite with AI: rewrites the text and verifies
+        it with Preview's interpreter and checks. It never saves or applies a
+        rule; only the interpretation of the rewritten text is kept, as a
+        Preview keeps it (JSON)."""
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                result = ai_rule_rewrite.rewrite_rule(
+                    db, rule_text=request.form.get("rule_text"),
+                    origin_transaction_id=request.form.get("origin_transaction_id", type=int),
+                    rule_id=request.form.get("rule_id", type=int) or None, title=request.form.get("user_title"))
+                db.commit()
+            except ai_rules.AiRuleError as exc:
+                db.rollback()
+                return jsonify({"ok": False, "status": "ERROR", "message": str(exc), "details": []}), 400
+            except Exception as exc:  # noqa: BLE001 — the text is never changed on an error; said so
+                db.rollback()
+                return jsonify({"ok": False, "status": "ERROR", "details": [],
+                                "message": f"Rewrite failed ({exc}). The text was not changed."}), 500
+            return jsonify(result.as_dict())
 
     @app.route("/bank/ai-rules/previews/<int:preview_id>/create-who", methods=["POST"])
     @gate
@@ -214,6 +266,7 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
                     override_protected=request.form.get("override_protected") == "on",
                     only_unsettled=request.form.get("only_unsettled") == "on",
                     ai_rule_id=request.form.get("rule_id", type=int) or None,
+                    user_title=request.form.get("user_title"),
                 )
                 db.commit()
             except ai_rules.AiRuleError as exc:
@@ -227,15 +280,17 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
             create_missing_who=request.form.get("create_missing_who") == "on", apply_future=apply_future,
             override_protected=request.form.get("override_protected") == "on",
             origin_transaction_id=request.form.get("origin_transaction_id", type=int), account_id=_account_id(db),
-            draft_id=request.form.get("draft_id", type=int) or None)
+            draft_id=request.form.get("draft_id", type=int) or None, user_title=request.form.get("user_title"))
 
     def _done(db) -> bool:
         """After success only: the draft the window came from leaves the drafts."""
         return operations.remove_draft(db, request.form.get("draft_id", type=int) or None)
 
-    def _saved(result) -> dict:
+    def _saved(db, result) -> dict:
         return {"rule_id": result.rule.id, "version_no": result.version.version_no, "new_version": result.new_version,
-                "created": result.created, "apply_future": result.rule.apply_future, "method": result.version.method}
+                "created": result.created, "apply_future": result.rule.apply_future, "method": result.version.method,
+                "applied_to_existing": operations.applied_to_existing(db, result.version),
+                "rule_conflicts": operations.conflicts_of(db, result.rule)}
 
     @app.route("/bank/ai-rules/save", methods=["POST"])
     @gate
@@ -254,7 +309,7 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
             except ai_rules.AiRuleError as exc:
                 db.rollback()
                 return jsonify({"ok": False, "error": str(exc)}), 400
-            return jsonify({"ok": True, **_saved(result), "applied": False, "draft_removed": draft_removed})
+            return jsonify({"ok": True, **_saved(db, result), "applied": False, "draft_removed": draft_removed})
 
     @app.route("/bank/ai-rules/save-apply", methods=["POST"])
     @gate
@@ -267,13 +322,14 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
         with SessionFactory() as db:
             try:
                 scope, selected, future = _scope()
+                selected = _within_search(db, scope, selected)
                 if scope == ai_rules.SCOPE_PERIOD:
                     if not future:
                         raise ai_rules.AiRuleError("Choose where to apply the rule.")
                     result = _save(db, apply_future=True)
                     draft_removed = _done(db)
                     db.commit()
-                    return jsonify({"ok": True, **_saved(result), "applied": False, "draft_removed": draft_removed})
+                    return jsonify({"ok": True, **_saved(db, result), "applied": False, "draft_removed": draft_removed})
                 text = (request.form.get("rule_text") or "").strip()
                 create = request.form.get("create_missing_who") == "on"
                 preview = db.get(m.BankAiRulePreview, request.form.get("preview_id", type=int) or 0)
@@ -295,7 +351,7 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
                 complete = application.status == "COMPLETED" and not application.errors
                 draft_removed = _done(db) if complete else False
                 db.commit()
-                return jsonify({"ok": True, **_saved(result), "applied": True, "complete": complete,
+                return jsonify({"ok": True, **_saved(db, result), "applied": True, "complete": complete,
                                 "draft_removed": draft_removed,
                                 "application": operations.application_as_dict(application)})
             except operations.NeedsPreview as exc:
@@ -309,7 +365,7 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
                 return jsonify({"ok": False, "error": str(exc)}), 400
             except Exception as exc:  # noqa: BLE001 — rolled back: nothing saved, nothing applied, said so
                 db.rollback()
-                return jsonify({"ok": False, "error": f"Non applicata: nulla è stato salvato né modificato ({exc})."}), 500
+                return jsonify({"ok": False, "error": f"Not applied: nothing was saved or changed ({exc})."}), 500
 
     @app.route("/bank/ai-rules/rules/<int:rule_id>")
     @gate
@@ -336,8 +392,23 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
             except ai_rules.AiRuleError as exc:
                 db.rollback()
                 flash(str(exc), "error")
-        back = {k: request.form.get(k) for k in ("date_from", "date_to", "cls") if request.form.get(k)}
+        back = {k: request.form.get(k) for k in ("date_from", "date_to", "cls", "rule_q", "q") if request.form.get(k)}
         return redirect(url_for("bank_ai_rules", **back) + "#ai-operative-rules")
+
+    @app.route("/bank/ai-rules/rules/<int:rule_id>/title", methods=["POST"])
+    @gate
+    def bank_ai_rules_rule_title(rule_id: int):
+        """BANK_AI_RULES_022 — only the Title: the rule is not reinterpreted,
+        reapplied or versioned; nothing on movements changes (JSON)."""
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                rule = operations.set_title(db, rule_id=rule_id, title=request.form.get("user_title"))
+                db.commit()
+            except ai_rules.AiRuleError as exc:
+                db.rollback()
+                return jsonify({"ok": False, "error": str(exc)}), 400
+            return jsonify({"ok": True, "rule_id": rule.id, "user_title": rule.user_title or ""})
 
     @app.route("/bank/ai-rules/rules/<int:rule_id>/status", methods=["POST"])
     @gate
@@ -352,7 +423,7 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
             except ai_rules.AiRuleError as exc:
                 db.rollback()
                 flash(str(exc), "error")
-        back = {k: request.form.get(k) for k in ("date_from", "date_to", "cls") if request.form.get(k)}
+        back = {k: request.form.get(k) for k in ("date_from", "date_to", "cls", "rule_q", "q") if request.form.get(k)}
         return redirect(url_for("bank_ai_rules", **back) + "#ai-operative-rules")
 
     @app.route("/bank/ai-rules/instructions", methods=["POST"])
@@ -363,7 +434,8 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
             ai_rules.save_instructions(db, text=request.form.get("instructions"), account_id=_account_id(db))
             db.commit()
         flash("General AI instructions saved. Existing rules and classifications are unchanged.", "info")
-        back = {k: request.form.get(k) for k in ("date_from", "date_to", "cls") if request.form.get(k) is not None}
+        back = {k: request.form.get(k) for k in ("date_from", "date_to", "cls", "rule_q", "q")
+                if request.form.get(k) is not None}
         return redirect(url_for("bank_ai_rules", **back))
 
     @app.route("/bank/ai-rules/drafts/<int:draft_id>")
@@ -376,7 +448,7 @@ def register_bank_ai_rule_routes(app, *, gate, SessionFactory, load_current_acco
                 abort(404)
             origin = ai_rules.row_for(db, draft.origin_transaction_id)
             return jsonify({
-                "ok": True, "draft_id": draft.id, "rule_text": draft.rule_text,
+                "ok": True, "draft_id": draft.id, "rule_text": draft.rule_text, "user_title": draft.user_title or "",
                 "create_missing_who": draft.create_missing_who, "rule_id": draft.ai_rule_id,
                 "override_protected": bool(draft.override_protected),
                 "only_unsettled": bool(draft.only_unsettled),

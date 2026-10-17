@@ -114,10 +114,10 @@ def main() -> int:
         publix = s.scalar(select(m.BankOccurrence.id).where(m.BankOccurrence.canonical_name == "PUBLIX"))
         acme_one = s.scalar(select(m.BankOccurrence.id).where(m.BankOccurrence.canonical_name == "ACME ONE"))
         recognition._create_decision_row(s, s.get(m.FinancialTransaction, ids["manual"]), occurrence_id=publix,
-                                         transaction_reason_id=None, recognition_rule_id=None, decision_source="HUMAN",
+                                         transaction_reason_id=None, decision_source="HUMAN",
                                          decision_status="HUMAN_CONFIRMED", confidence=None, explanation_notes="manual")
         recognition._create_decision_row(s, s.get(m.FinancialTransaction, ids["same"]), occurrence_id=acme_one,
-                                         transaction_reason_id=why.id, recognition_rule_id=None, decision_source="RULE",
+                                         transaction_reason_id=why.id, decision_source="RULE",
                                          decision_status="AUTO_APPLIED", confidence=None, explanation_notes="earlier")
         s.commit()
 
@@ -132,7 +132,8 @@ def main() -> int:
     page = client.get("/bank/ai-rules?date_from=2026-09-01&date_to=2026-09-30").data.decode()
     csrf = CSRF_RE.search(page).group(1)
     check("1. the page offers the option, selected by default",
-          '<input type="checkbox" name="only_unsettled" id="ai-rule-only-unsettled" checked>' in page)
+          '<input type="radio" name="only_unsettled" value="on" id="ai-rule-only-unsettled" checked>' in page
+          and '<input type="radio" name="only_unsettled" value="off" id="ai-rule-include-ai-settled">' in page)
 
     def preview(rule, **extra):
         data = {"csrf_token": csrf, "rule_text": rule, "origin_transaction_id": str(ids["settled"]),
@@ -177,7 +178,7 @@ def main() -> int:
         settled_mid = ai_rules.ai_settled(s)
         publix = s.scalar(select(m.BankOccurrence.id).where(m.BankOccurrence.canonical_name == "PUBLIX"))
         recognition._create_decision_row(s, s.get(m.FinancialTransaction, ids["changed"]), occurrence_id=publix,
-                                         transaction_reason_id=None, recognition_rule_id=None, decision_source="HUMAN",
+                                         transaction_reason_id=None, decision_source="HUMAN",
                                          decision_status="HUMAN_CONFIRMED", confidence=None, explanation_notes="fixed")
         s.commit()
         settled = ai_rules.ai_settled(s)
@@ -220,7 +221,7 @@ def main() -> int:
             refused = str(exc)
         s.rollback()
     check("9. Apply with the option ON on a preview made with it OFF is refused, saying why",
-          refused is not None and "Solo movimenti non ancora sistemati" in refused, detail=str(refused))
+          refused is not None and "Only transactions not yet classified by AI rules" in refused, detail=str(refused))
     on_rule = preview(RULE_TWO, only_unsettled="on", rule_id=str(rule_two))
     with SessionFactory() as s:
         application = ai_rule_operations.apply_rule(s, rule=s.get(m.BankAiRule, rule_two), scope="ALL",

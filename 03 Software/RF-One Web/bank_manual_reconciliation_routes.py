@@ -78,8 +78,8 @@ def register_bank_manual_reconciliation_routes(app, *, gate, SessionFactory, loa
             return jsonify({"whats": manual_reconciliation.what_options(db),
                             "whys": manual_reconciliation.catalog_whys(db)})
 
-    # ---- "Create New WHY": ONE flow, used by Select WHO / WHY and by the
-    # WHO Rule modal alike (the shared dialog `_bank_why_create_dialog.html`).
+    # ---- "Create New WHY": ONE flow, used by Select WHO / WHY
+    # (the shared dialog `_bank_why_create_dialog.html`).
 
     @app.route("/bank/whys/create-options")
     @gate

@@ -1,0 +1,39 @@
+{
+ "revision_before": [
+  [
+   "a3c7e5b9d1f4"
+  ]
+ ],
+ "revision_after": [
+  [
+   "d2b6f8a4c0e7"
+  ]
+ ],
+ "old_table_rows_before": {
+  "bank_why_rules": 0,
+  "bank_learning_runs": 0,
+  "bank_pattern_suggestions": 0,
+  "bank_general_rules": 0,
+  "bank_recognition_rules": 0,
+  "bank_reconciliation_standards": 0,
+  "bank_who_recognitions": 0
+ },
+ "tables_compared": 262,
+ "problems": [],
+ "foreign_key_check": 0,
+ "integrity_check": "ok",
+ "standard_in_check": false,
+ "downgrade_revision": [
+  [
+   "a3c7e5b9d1f4"
+  ]
+ ],
+ "downgrade_old_tables_back_empty": true,
+ "downgrade_columns_back": true,
+ "reupgrade_revision": [
+  [
+   "d2b6f8a4c0e7"
+  ]
+ ],
+ "reupgrade_same_as_first_upgrade": true
+}

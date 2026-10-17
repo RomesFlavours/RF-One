@@ -89,7 +89,7 @@ Implementation: `rfone_data_store/local_calendar.py`.
 | 2 Surname I. | Clover Acquisition; saved-period validation; Bank cardholder list and "changed by"; trainer student list | every operational table; Host Audit CSV | trainer student list and breadcrumb |
 | 3 Inline action | — | Sync Now on the Clover Acquisition tab | — |
 | 4 Breadcrumb | every sub-page | every page | every page |
-| 5 Row return | Bank: Configuration (WHAT, WHY, WHO, Entity); Source (Sources, source profiles); Rules (General Rules, WHO Rules, To classify, Manual Only, pattern suggestions); Review Transactions (To Reconcile, Reconciled) | — (not yet aligned) | — (not yet aligned) |
+| 5 Row return | Bank: Configuration (WHAT, WHY, WHO, Entity); Source (Sources, source profiles); Review Transactions (To Reconcile, Reconciled) | — (not yet aligned) | — (not yet aligned) |
 
 Rule 5 is defined for every module. Lists outside Bank (Tips, Training, Compensation, Organization, Selection…) adopt it when they are next worked on, by loading `rf-one-row-return.js` and marking their rows. Within Bank, the Import and Review lists (batches, import files) and Monthly Export are not marked yet.
 

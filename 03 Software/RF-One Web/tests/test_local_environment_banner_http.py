@@ -4,7 +4,7 @@ On a throwaway database, over HTTP:
 
 * without RFONE_LOCAL_ENV_* (AWS, every other test) no bar is shown;
 * started by "Avvia Bank" (work): PC, database, generation, code and AI mode;
-* a test copy: the bar says COPIA DI PROVA, impossible to miss;
+* a test copy: the bar says TEST COPY, impossible to miss;
 * the AI mode shown is the one in force: SESSION never names a provider.
 
 Never touches a real bank file, AWS, or any production database.
@@ -63,14 +63,14 @@ def main() -> int:
         page = login_page()
         check("2. work environment: PC, database, generation, code and AI mode are shown",
               'class="local-env ' in page and "ASUS2026" in page and "Bank\\rfone.db" in page
-              and "generazione 7 (MINIPC-KSYR1" in page and "code 0123456789" in page
-              and "SESSIONE Claude Code" in page and "COPIA DI PROVA" not in page)
+              and "generation 7 (MINIPC-KSYR1" in page and "code 0123456789" in page
+              and "SESSION Claude Code" in page and "TEST COPY" not in page)
         os.environ["RFONE_LOCAL_ENV_KIND"] = "TEST"
         page = login_page()
-        check("3. a test copy is marked COPIA DI PROVA", "local-env-test" in page and "COPIA DI PROVA" in page)
+        check("3. a test copy is marked TEST COPY", "local-env-test" in page and "TEST COPY" in page)
         os.environ["RFONE_BANK_AI_MODE"] = "PROVIDER"
         page = login_page()
-        check("4. PROVIDER mode names the provider in force", "PROVIDER " in page and "SESSIONE" not in page)
+        check("4. PROVIDER mode names the provider in force", "PROVIDER " in page and "SESSION Claude Code" not in page)
     finally:
         for key in list(ENV) + ["RFONE_BANK_AI_MODE"]:
             os.environ.pop(key, None)

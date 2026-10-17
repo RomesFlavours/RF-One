@@ -12,7 +12,7 @@ rules; the application itself never simulates an answer.
   scope, selection and option — otherwise nothing at all is written;
 * applied to the SELECTED movements only those change; applied to ALL, every
   matching movement is planned and logged: updated, unchanged, protected
-  (manual, Standard), conflicts (a different value decided elsewhere, another
+  (manual), conflicts (a different value decided elsewhere, another
   AI rule with a different value) — only the fields the rule names change;
 * "Crea WHO mancanti" creates the WHO needed, once; a repeated application
   changes nothing and writes no new decision;
@@ -20,7 +20,16 @@ rules; the application itself never simulates an answer.
   two future rules with incompatible values are a conflict, none applied; a
   disabled rule is not applied; a rule the code cannot execute is refused;
 * editing an operative rule through Save Draft keeps its current version;
-* traditional rules, Standards and unrelated classifications are unchanged.
+* unrelated classifications and WHY are unchanged.
+
+BANK_OLD_RULES_REMOVAL_001: Reconciliation Standards were removed from the
+product, so the Standard-protected movement ("SALON TEST STD") and its
+Standard fixture went with them. Checks 7, 8 and 8c no longer expect a
+Standard-protected movement (check 8 now counts 1 protected — the manual one —
+instead of 2); the manual (HUMAN) protection they assert is unchanged. The old
+rule tables (recognition rules, Standards, General Rules) were removed too, so
+check 18 no longer counts them; it still verifies that the WHY are unchanged
+and that only NEW PERSON was added as WHO. No check number was removed.
 
 Never touches a real bank file, AWS, or any production database.
 """
@@ -104,13 +113,6 @@ def main() -> int:
             m.BankTransactionReason.status == "ACTIVE",
             m.BankTransactionReason.accounting_classification_id.is_not(None)).order_by(m.BankTransactionReason.id)).all()
         why_x, why_y = whys[0], whys[1]
-        standard = m.BankReconciliationStandard(
-            match_type="CONTAINS_TEXT", normalized_pattern="SALON TEST STD", match_field="DESCRIPTION",
-            occurrence_id=publix.id, transaction_reason_id=why_x.id,
-            accounting_classification_id=why_x.accounting_classification_id, reporting_entity_id=entity.id,
-            status="ACTIVE", approved_at=datetime.now(timezone.utc))
-        s.add(standard)
-        s.flush()
         seq = [0]
 
         def tx(day, amount, description):
@@ -124,19 +126,16 @@ def main() -> int:
             s.flush()
             return t
 
-        def decide(t, who, why, source="RULE", standard_id=None):
-            extra = (dict(reconciliation_standard_id=standard_id, accounting_destination_source=m.DESTINATION_SOURCE_STANDARD,
-                          accounting_classification_id=why.accounting_classification_id) if standard_id else {})
+        def decide(t, who, why, source="RULE"):
             recognition._create_decision_row(
                 s, t, occurrence_id=who.id if who else None, transaction_reason_id=why.id if why else None,
-                recognition_rule_id=None, decision_source=source, decision_status="NEEDS_HUMAN_REVIEW",
-                confidence=None, explanation_notes="test setup", **extra)
+                decision_source=source, decision_status="NEEDS_HUMAN_REVIEW",
+                confidence=None, explanation_notes="test setup")
 
         t = {
             "free": tx(date(2026, 9, 2), -1000, "SALON TEST ORLANDO"),
             "free2": tx(date(2026, 9, 3), -1100, "SALON TEST WINTER PARK"),
             "human": tx(date(2026, 9, 4), -1200, "SALON TEST HUMAN"),
-            "standard": tx(date(2026, 9, 5), -1300, "SALON TEST STD"),
             "conflict": tx(date(2026, 9, 6), -1400, "SALON TEST OTHER"),
             "same": tx(date(2026, 9, 7), -1500, "SALON TEST SAME"),
             "why_only": tx(date(2026, 9, 8), -1600, "SALON TEST WHY MISSING"),
@@ -145,7 +144,6 @@ def main() -> int:
             "unrelated": tx(date(2026, 9, 11), -1900, "UNRELATED VENDOR"),
         }
         decide(t["human"], publix, why_y, source="HUMAN")
-        decide(t["standard"], publix, why_x, standard_id=standard.id)
         decide(t["conflict"], publix, None)
         decide(t["same"], salon_who, why_x)
         decide(t["why_only"], salon_who, None)
@@ -191,9 +189,6 @@ def main() -> int:
             return dict(
                 decisions=decisions,
                 explanations=s.scalar(select(func.count(m.BankTransactionExplanation.id))),
-                rules=s.scalar(select(func.count(m.BankRecognitionRule.id))),
-                standards=s.scalar(select(func.count(m.BankReconciliationStandard.id))),
-                general=s.scalar(select(func.count(m.BankGeneralRule.id))),
                 whys=s.scalar(select(func.count(m.BankTransactionReason.id))),
                 who_names=sorted(s.scalars(select(m.BankOccurrence.canonical_name))),
                 ai_rules=s.scalar(select(func.count(m.BankAiRule.id))))
@@ -203,13 +198,14 @@ def main() -> int:
     client.post("/login", data={"username": "ai_apply", "password": "AiApply123!", "csrf_token": csrf})
     page = client.get("/bank/ai-rules?date_from=2026-09-01&date_to=2026-09-30").data.decode()
     csrf = CSRF_RE.search(page).group(1)
-    check("1. the window has Save Draft, Salva and Salva e Applica (disabled until a scope is chosen), the three scopes "
-          "with none preselected, and row selection",
+    check("1. the window has Save Draft, Save and Save and Apply (disabled until a scope is chosen), the existing-"
+          "transactions choice on “No existing transactions”, new transactions off, and row selection",
           "Save Draft" in page and 'id="ai-rule-save"' in page
-          and re.search(r'<button type="button" id="ai-rule-save-apply" disabled>Salva e Applica</button>', page)
-          and all(f'name="{n}" id' in page for n in ("scope_all", "scope_selected", "scope_future"))
-          and not re.search(r'name="scope_(all|selected|future)"[^>]*checked', page)
-          and page.count('class="ai-rule-select"') == len(ids) and "Seleziona tutte nel periodo" in page)
+          and re.search(r'<button type="button" id="ai-rule-save-apply" disabled>Save and Apply</button>', page)
+          and '<input type="radio" name="scope_existing" value="none" id="ai-scope-none" checked>' in page
+          and all(f'name="scope_existing" value="{v}" id="ai-scope-{v}">' in page for v in ("all", "selected"))
+          and '<input type="checkbox" name="scope_future" id="ai-scope-future">' in page
+          and page.count('class="ai-rule-select"') == len(ids) and "Select all in the period" in page)
 
     def post(path, **data):
         form = {"csrf_token": csrf, "origin_transaction_id": str(ids["free"]), "date_from": "2026-09-01",
@@ -259,28 +255,28 @@ def main() -> int:
           and after_sel["decisions"][ids["free"]] == (salon_id, why_x_id, "RULE")
           and after_sel["decisions"][ids["human"]] == start["decisions"][ids["human"]]
           and all(after_sel["decisions"].get(ids[k]) == start["decisions"].get(ids[k])
-                  for k in ("free2", "standard", "conflict", "same", "why_only", "unrelated")), detail=str(a))
+                  for k in ("free2", "conflict", "same", "why_only", "unrelated")), detail=str(a))
 
     # --------------------------------------------------------------------- ALL
     status, prev_all = post("/bank/ai-rules/preview", rule_id=str(rule_id), scope_all="on")
     plans = {i["id"]: i["plan"] for i in prev_all["match_items"]}
-    check("7. the preview of ALL plans every match: updated, unchanged, protected (manual, Standard), conflict",
+    check("7. the preview of ALL plans every match: updated, unchanged, protected (manual), conflict",
           prev_all["scope"] == "ALL" and plans == {
               ids["free"]: "UNCHANGED", ids["free2"]: "UPDATED", ids["human"]: "PROTECTED",
-              ids["standard"]: "PROTECTED", ids["conflict"]: "CONFLICT", ids["same"]: "UNCHANGED",
+              ids["conflict"]: "CONFLICT", ids["same"]: "UNCHANGED",
               ids["why_only"]: "UPDATED"}, detail=str(plans))
     status, applied_all = post("/bank/ai-rules/save-apply", rule_id=str(rule_id), scope_all="on",
                                preview_id=str(prev_all["preview_id"]))
     after_all = state()
     b = applied_all["application"]
-    check("8. applied to ALL: 2 updated, 2 unchanged, 2 protected, 1 conflict — logged",
-          (b["updated"], b["unchanged"], b["protected"], b["conflicts"], b["errors"]) == (2, 2, 2, 1, 0), detail=str(b))
+    check("8. applied to ALL: 2 updated, 2 unchanged, 1 protected, 1 conflict — logged",
+          (b["updated"], b["unchanged"], b["protected"], b["conflicts"], b["errors"]) == (2, 2, 1, 1, 0), detail=str(b))
     check("8b. only the fields the rule names: a WHO already right keeps its WHO and gets the WHY",
           after_all["decisions"][ids["why_only"]][:2] == (salon_id, why_x_id)
           and after_all["decisions"][ids["free2"]][:2] == (salon_id, why_x_id))
-    check("8c. manual, Standard and conflicting movements are untouched; unrelated ones too",
+    check("8c. manual and conflicting movements are untouched; unrelated ones too",
           all(after_all["decisions"][ids[k]] == start["decisions"][ids[k]]
-              for k in ("human", "standard", "conflict", "unrelated")))
+              for k in ("human", "conflict", "unrelated")))
     with SessionFactory() as s:
         items = {i.financial_transaction_id: i for i in s.scalars(select(m.BankAiRuleApplicationItem).where(
             m.BankAiRuleApplicationItem.application_id == b["application_id"]))}
@@ -331,7 +327,7 @@ def main() -> int:
     status, judged = post("/bank/ai-rules/save", rule_text=JUDGED, scope_future="on")
     # BANK_AI_RULES_009: a rule the code cannot execute is never operative (with or without “Per il futuro”).
     check("12. a rule the code cannot execute is refused (never operative, so never “Per il futuro”)",
-          status == 400 and "non è valida" in judged["error"])
+          status == 400 and "is not valid" in judged["error"])
     status, future = post("/bank/ai-rules/save-apply", rule_id=str(rule_id), scope_future="on")
     check("12b. Salva e Applica with only “Per il futuro”: saved and enabled, history untouched",
           future["ok"] and future["apply_future"] and not future["applied"] and state()["decisions"] == after_z["decisions"])
@@ -392,9 +388,8 @@ def main() -> int:
           and reopened["rule_text"] == salon_rule and reopened["status"] == "INACTIVE" and reopened["apply_future"])
 
     end = state()
-    check("18. traditional rules, Standards, WHY and General Rules are unchanged; only NEW PERSON was added as WHO",
-          (end["rules"], end["standards"], end["whys"], end["general"]) ==
-          (start["rules"], start["standards"], start["whys"], start["general"])
+    check("18. WHY are unchanged; only NEW PERSON was added as WHO",
+          end["whys"] == start["whys"]
           and sorted(set(end["who_names"]) - set(start["who_names"])) == ["NEW PERSON"])
 
     print()

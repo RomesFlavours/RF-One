@@ -9,8 +9,10 @@ database transaction, which is rolled back whole on any failure; the WHY
 comes back to the modal that asked for it (selected in Select WHO / WHY);
 Confirm then behaves exactly as before. BANK_RULES_RESET_001 retired the WHO
 Rule modal (and /bank/classification); its checks 11, 13, 15 and 23 went
-with it, while the kept WHO lookups (/bank/who-rules/who/<id>, who-options)
-are still checked.
+with it, while the kept WHO lookup (who-options) is still checked.
+BANK_OLD_RULES_REMOVAL_001 removed the WHO summary endpoint
+(/bank/who-rules/who/<id>), so check 14 (summary lists the WHY) went with
+it; check 12 already verifies the WHO-WHY association.
 
 The "Withdrawal" case uses a WHAT of this disposable database only: the
 real WHAT of a Withdrawal is the Product Owner's decision.
@@ -284,9 +286,7 @@ def main() -> int:
     check("12. for another WHO the WHY is created through the same route and added to that WHO",
           rule_why.status_code == 200 and rb["ok"] and not rb["reused"] and rb["associated"]
           and association(ids["zeta"], rb["why"]["id"]) == (True, 0) and calls[-1] == ids["zeta"], str(rb))
-    summary = client.get(f"/bank/who-rules/who/{ids['zeta']}").get_json()
-    check("14. the kept WHO summary lookup lists it as a Possible WHY of the WHO",
-          rb["why"]["id"] in summary["possible_why_ids"], str(summary))
+    # 14 (WHO summary endpoint) removed with BANK_OLD_RULES_REMOVAL_001.
     options = client.get("/bank/who-rules/who-options?q=zeta").get_json()
     ungated = web_app.app.test_client()
     check("14b. the kept WHO search lookup finds the WHO, behind the BANK gate",

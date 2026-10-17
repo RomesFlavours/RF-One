@@ -1,21 +1,20 @@
 """The ONE definition of a transaction's reconciliation status
 (BANK_RECONCILIATION_STANDARDS_001).
 
-Exactly three statuses, each derived from persisted facts only — never
-from a page label or browser state:
+Two statuses, each derived from persisted facts only — never from a page
+label or browser state:
 
 * CONFIRMED — a human accepted this transaction: its allocation set is
-  COMPLETE and HUMAN, balances the transaction, carries no Standard
-  lineage, and a single allocation matches the current decision's WHY and
-  accounting destination (the decision names the WHO).
-* AUTOMATIC — an approved Reconciliation Standard completed it: exactly one
-  allocation, COMPLETE, decision source RULE, destination source STANDARD,
-  and the CURRENT decision names the SAME Standard with the same WHY and
-  destination (and a WHO).
+  COMPLETE and HUMAN, balances the transaction, and a single allocation
+  matches the current decision's WHY and accounting destination (the
+  decision names the WHO).
 * NEEDS REVIEW — anything else, including an automatic suggestion no human
-  or Standard approved.
+  approved.
 
-AUTOMATIC and CONFIRMED are exportable; NEEDS REVIEW is not. The
+CONFIRMED is exportable; NEEDS REVIEW is not. (A third status, AUTOMATIC,
+was produced only by a Reconciliation Standard; it went with the old rule
+system — BANK_RULES_RESET_001, BANK_OLD_RULES_REMOVAL_001 — and, by Product
+Owner decision, was not given another meaning.) The
 Reconciliation page and the Monthly Export both read this module, so the
 two can never disagree about what is done.
 """
@@ -28,9 +27,8 @@ from sqlalchemy.orm import Session
 from .. import models as m
 
 NEEDS_REVIEW = "Needs review"
-AUTOMATIC = "Automatic"
 CONFIRMED = "Confirmed"
-EXPORTABLE = (AUTOMATIC, CONFIRMED)
+EXPORTABLE = (CONFIRMED,)
 
 _COMPLETE = m.ALLOCATION_COMPLETE
 
@@ -52,20 +50,13 @@ def status_of(
             return NEEDS_REVIEW
         if a.accounting_classification_id != explanation.accounting_classification_id:
             return NEEDS_REVIEW
-        if a.decision_source == "HUMAN" and a.reconciliation_standard_id is None:
+        if a.decision_source == "HUMAN":
             return CONFIRMED
-        if (a.decision_source == "RULE"
-                and a.accounting_destination_source == m.DESTINATION_SOURCE_STANDARD
-                and a.reconciliation_standard_id is not None
-                and explanation.reconciliation_standard_id == a.reconciliation_standard_id
-                and explanation.accounting_destination_source == m.DESTINATION_SOURCE_STANDARD):
-            return AUTOMATIC
         return NEEDS_REVIEW
 
     # A split (several allocations, e.g. from invoice lines) is confirmed only
-    # when every line is a human, Standard-free, complete decision.
-    if all(a.decision_source == "HUMAN" and a.reconciliation_standard_id is None
-           and a.reporting_entity_id is not None for a in allocations):
+    # when every line is a human, complete decision.
+    if all(a.decision_source == "HUMAN" and a.reporting_entity_id is not None for a in allocations):
         return CONFIRMED
     return NEEDS_REVIEW
 

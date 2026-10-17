@@ -15,6 +15,11 @@ statement about the P&L, not a gap.
 And the productivity model the whole thing exists for: associating a Why
 with a Who teaches "Amazon has been this", never "Amazon means this".
 
+BANK_OLD_RULES_REMOVAL_001: check 31 no longer inspects recognition rules
+(their table is gone, so no rule can claim a Who proves a Why — it holds
+by construction) and check 34 no longer counts learned rules, for the same
+reason. Every other check and all numbering are unchanged.
+
 Never touches AWS, RDS, a production database, Clover, ADP or Mercury.
 """
 
@@ -356,8 +361,7 @@ def main() -> int:
             decision = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=first.id, occurrence_id=cleaner.id,
-                    confirmed_by_account_id=None, learn_description=False,
-                    transaction_reason_id=reasons["JANITORIAL_CLEANING"].id,
+                    confirmed_by_account_id=None, transaction_reason_id=reasons["JANITORIAL_CLEANING"].id,
                 ),
             )
             s.commit()
@@ -380,8 +384,7 @@ def main() -> int:
             recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=second.id, occurrence_id=cleaner.id,
-                    confirmed_by_account_id=None, learn_description=False,
-                    transaction_reason_id=reasons["FACILITY_MAINTENANCE"].id,
+                    confirmed_by_account_id=None, transaction_reason_id=reasons["FACILITY_MAINTENANCE"].id,
                 ),
             )
             s.commit()
@@ -405,15 +408,13 @@ def main() -> int:
             tips_decision = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=tips_txn.id, occurrence_id=worker.id,
-                    confirmed_by_account_id=None, learn_description=False,
-                    transaction_reason_id=reasons["TIPS_SETTLEMENT"].id,
+                    confirmed_by_account_id=None, transaction_reason_id=reasons["TIPS_SETTLEMENT"].id,
                 ),
             )
             labor_decision = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=labor_txn.id, occurrence_id=worker.id,
-                    confirmed_by_account_id=None, learn_description=False,
-                    transaction_reason_id=reasons["BOH_CONTRACT_LABOR"].id,
+                    confirmed_by_account_id=None, transaction_reason_id=reasons["BOH_CONTRACT_LABOR"].id,
                 ),
             )
             s.commit()
@@ -438,11 +439,7 @@ def main() -> int:
             check(
                 "31. no WHO identity alone proves WHY — the association is a shortcut, and "
                 "no recognition rule claims otherwise",
-                len(wc.reasons_for_occurrence(s, worker.id)) == 2
-                and not [
-                    r for r in s.query(m.BankRecognitionRule).all()
-                    if r.determines_purpose and r.match_field == "DESCRIPTION"
-                ],
+                len(wc.reasons_for_occurrence(s, worker.id)) == 2,
             )
 
             # =============================================================
@@ -456,10 +453,9 @@ def main() -> int:
                 and not cc.what_catalog_problems(s),
             )
             check(
-                "34. this suite created no raw rows, no import batches and no learned rules",
+                "34. this suite created no raw rows and no import batches",
                 s.query(m.RawBankTransaction).count() == 0
-                and s.query(m.BankImportBatch).count() == 0
-                and s.query(m.BankRecognitionRule).count() == 0,
+                and s.query(m.BankImportBatch).count() == 0,
             )
             check(
                 "§20 `default_transaction_reason_id` is not required for any of this — the "

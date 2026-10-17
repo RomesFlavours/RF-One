@@ -7,30 +7,21 @@ where a transaction belongs:
                   WHO being named. Either:
                   * its CURRENT decision (`FinancialTransaction.explanation_id`
                     -> `BankTransactionExplanation.occurrence_id`) names a
-                    WHO — from a recognition rule, a person, a Standard, or an
-                    earlier decision; or
+                    WHO — from a person, an AI rule, or an earlier decision;
+                    or
                   * it is an own-account movement, for which the model
-                    deliberately records NO WHO: its current WHO recognition
-                    is STRUCTURAL (the counterparty is RF-One itself — a
-                    registered instrument, one of its legal entities, or a
-                    card settlement paid from its own funds), or it is one
-                    side of a confirmed INTERNAL_TRANSFER match
-                    (`FinancialTransactionMatch`, the authority the Monthly
-                    Export trusts).
+                    deliberately records NO WHO: one side of a confirmed
+                    INTERNAL_TRANSFER match (`FinancialTransactionMatch`,
+                    the authority the Monthly Export trusts).
                   WHY, WHAT or For Whom may still be open: the row is
                   finished on the Reconciled tab.
     To Reconcile  everything else in scope: no decision, or a decision naming
-                  no WHO (no rule matched, rules contradicted each other, or
-                  only a raw recognizer proposal exists) — and any transaction
-                  whose duplicate question is still open, because a possible
-                  duplicate is not yet a transaction anyone should reconcile.
+                  no WHO — and any transaction whose duplicate question is
+                  still open, because a possible duplicate is not yet a
+                  transaction anyone should reconcile.
 
-A raw DETERMINISTIC or PROPOSED WHO recognition (`BankWhoRecognition`) alone
-does not resolve the WHO: it is the recognizer's proposal, and the operator
-turns it into an authoritative WHO with Select Who or a Rule. A STRUCTURAL
-recognition is different in kind: it is not a proposed WHO but the
-recognizer's proof, from registered RF-One data, that no external WHO applies
-— so no WHO is ever invented for it to leave To Reconcile.
+(The structural WHO recognitions of the old rule system, which could also
+answer the WHO question, were retired by BANK_RULES_RESET_001.)
 
 Scope: the transactions the books are about — the same scope as the Monthly
 Export (`export._not_confirmed_duplicate`, `accounting_dedup.
@@ -55,7 +46,6 @@ from sqlalchemy.orm import Session
 from .. import models as m
 from . import accounting_dedup
 from . import export as export_service
-from . import who_recognition
 
 TO_RECONCILE = "to_reconcile"
 RECONCILED = "reconciled"
@@ -103,19 +93,14 @@ def _search_condition(text: str):
 
 
 def own_account_movement():
-    """True for a transaction the model resolves WITHOUT a WHO: a STRUCTURAL
-    current WHO recognition, or a confirmed INTERNAL_TRANSFER match."""
-    structural = exists().where(
-        m.BankWhoRecognition.financial_transaction_id == m.FinancialTransaction.id,
-        m.BankWhoRecognition.recognizer_version == who_recognition.RECOGNIZER_VERSION,
-        m.BankWhoRecognition.tier == m.WHO_TIER_STRUCTURAL,
-    )
-    matched = exists().where(
+    """True for a transaction the model resolves WITHOUT a WHO: a confirmed
+    INTERNAL_TRANSFER match. (The STRUCTURAL WHO recognitions this once also
+    read belonged to the old rule system, retired by BANK_RULES_RESET_001.)"""
+    return exists().where(
         m.FinancialTransactionMatch.match_type == "INTERNAL_TRANSFER",
         or_(m.FinancialTransactionMatch.transaction_a_id == m.FinancialTransaction.id,
             m.FinancialTransactionMatch.transaction_b_id == m.FinancialTransaction.id),
     )
-    return or_(structural, matched)
 
 
 def _who_resolved():

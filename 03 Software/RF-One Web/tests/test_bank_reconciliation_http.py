@@ -24,6 +24,10 @@ over HTTP, normalization into the canonical FinancialTransaction ledger,
 the Who -> Why -> What classification workflow, the Kermali export
 download, and HUMAN confirmation of a cross-ledger internal-transfer
 match.
+
+BANK_OLD_RULES_REMOVAL_001: the check "manual reconciliation learns
+nothing: no recognition rule is created" is removed — the old rule tables
+no longer exist, so no rule can be created; every other check is unchanged.
 """
 
 from __future__ import annotations
@@ -461,10 +465,9 @@ def main() -> int:
                 and decision.accounting_classification_code_snapshot == "COGS_FOOD"
                 and decision.accounting_statement_type_snapshot == "PROFIT_LOSS",
             )
-            check(
-                "manual reconciliation learns nothing: no recognition rule is created",
-                s.query(m.BankRecognitionRule).filter_by(occurrence_id=occurrence_id).count() == 0,
-            )
+            # BANK_OLD_RULES_REMOVAL_001: the check "manual reconciliation
+            # learns nothing: no recognition rule is created" is gone with the
+            # bank_recognition_rules table — it now holds by construction.
 
         # --- Explicit Reclassify over HTTP -------------------------------
         # BANK_TWO_STAGE_REVIEW_001 — a classified row has left To Reconcile

@@ -11,7 +11,10 @@ done by the Claude Code session in VS Code — no AWS, no API key. The interpret
 |---|---|
 | already has a saved interpretation that represents every instruction | **runs at once, by code, 0 AI calls**; shows the instructions represented and the provider/model that interpreted it |
 | has a saved interpretation that does NOT represent every instruction | **blocked**, with the reason; no simplified version runs |
-| has no saved interpretation | **waits for the session**: "In attesa della sessione Claude Code (Preview #N)…". No provider is called — never a silent fallback to AWS |
+| has no saved interpretation | **waits for the session**: the page shows "Waiting for the Claude Code session (Preview #N)…". No provider is called — never a silent fallback to AWS |
+
+The preview's stored message keeps its internal marker "In attesa della sessione Claude Code" (the value
+`session pending` looks for, `ai_rules.SESSION_WAIT_MARKER`); the page shows it in the interface language (`ai_rules.shown_message`). The lookup never depends on the text shown.
 
 Any change of the rule text or of the general AI instructions is a new text: it needs the session again.
 "Salva" of an operative rule needs a saved interpretation (Preview first).
@@ -36,7 +39,7 @@ The manual procedure below stays valid, e.g. with `"off"` or when the CLI is not
 
 ## What the Product Owner does (manual procedure)
 
-1. Press **Preview**. If it says *In attesa della sessione Claude Code*, write in the Claude Code session in
+1. Press **Preview**. If it says *Waiting for the Claude Code session*, write in the Claude Code session in
    VS Code: **«Interpreta le AI Rules in attesa»**.
 2. When the session confirms, press **Preview** again.
 

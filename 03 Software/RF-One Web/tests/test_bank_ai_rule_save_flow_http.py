@@ -164,14 +164,14 @@ def main() -> int:
     # ------------------------------------------------- no valid interpretation
     status, blocked = post("/bank/ai-rules/save", rule_text=RULE_BLOCKED)
     check("4. a rule whose interpretation is not executable is NOT saved as operative, and says what is missing",
-          status == 400 and "non è valida" in blocked["error"] and "festivo" in blocked["error"]
+          status == 400 and "is not valid" in blocked["error"] and "festivo" in blocked["error"]
           and counts()["rules"] == 1, detail=str(blocked))
     status, blocked_edit = post("/bank/ai-rules/save", rule_id=rule_id, rule_text=RULE_BLOCKED)
     with SessionFactory() as s:
         version_now = ai_rule_operations.current_version(s.get(m.BankAiRule, rule_id))
         kept = (version_now.version_no, version_now.rule_text)
     check("4b. on an operative rule it is refused too, and the current version stays as it is",
-          status == 400 and "resta invariata" in blocked_edit["error"] and kept == (2, RULE_B), detail=str(kept))
+          status == 400 and "stays unchanged" in blocked_edit["error"] and kept == (2, RULE_B), detail=str(kept))
     os.environ["RFONE_BANK_AI_MODE"] = "SESSION"
     try:
         status, session_missing = post("/bank/ai-rules/save", rule_text=RULE_A + " Nuovo testo.")

@@ -2,6 +2,7 @@
 
 **Task:** BANK_CLASSIFICATION_LEARNING_001 (Product Owner decision, 2026-10-05)
 **Status:** Implemented on `feature/bank-simple-who-rules` — engine, WHY rules, import step, Classification UI, tests. Not committed, not deployed.
+**Superseded (2026-10-13, BANK_RULES_RESET_001 / BANK_OLD_RULES_REMOVAL_001):** Classification Learning and WHY rules (`pattern_discovery`, `why_rules`, their routes and import step) were removed; their three tables are empty and are to be dropped. Kept as the historical record of what was built; it no longer describes current behaviour.
 **Module:** Domain / Shared Domains / Administration / Bank Reconciliation
 **Schema:** migration `a5d9e3f7b2c4` — `bank_learning_runs`, `bank_pattern_suggestions`, `bank_why_rules` (no data).
 

@@ -14,6 +14,12 @@ Proves, on a throwaway database, that:
 * the created WHO is then in the modal's WHO list, and the normal Confirm
   records the classification with it.
 
+BANK_OLD_RULES_REMOVAL_001: the old rule system's tables are gone, so the
+counts no longer include recognition rules or WHO recognitions — the check
+"…and nothing else" now covers aliases and explanations only (no rule / no
+recognition hold by construction), and the final check "still no recognition
+rule was created" is removed; every other check is unchanged.
+
 Never touches a real bank file, AWS, or any production database.
 """
 
@@ -112,10 +118,8 @@ def main() -> int:
             with SessionFactory() as s:
                 return {
                     "who": s.scalar(select(func.count(m.BankOccurrence.id))),
-                    "rules": s.scalar(select(func.count(m.BankRecognitionRule.id))),
                     "aliases": s.scalar(select(func.count(m.BankOccurrenceAlias.id))),
                     "explanations": s.scalar(select(func.count(m.BankTransactionExplanation.id))),
-                    "recognitions": s.scalar(select(func.count(m.BankWhoRecognition.id))),
                 }
 
         def create(name, with_csrf=True):
@@ -147,7 +151,7 @@ def main() -> int:
         check("Save creates the WHO as Configuration does: active counterparty, no WHY, no Entity",
               resp.status_code == 200 and data["ok"] and not data["reused"]
               and shape == ("ACTIVE", "COUNTERPARTY", None, 0, 0), str((data, shape)))
-        check("…and nothing else: no rule, no alias, no recognition, no transaction classified",
+        check("…and nothing else: no alias, no transaction classified",
               after["who"] == before["who"] + 1 and all(after[k] == before[k] for k in after if k != "who"),
               str((before, after)))
         new_id = data["who"]["id"]
@@ -188,7 +192,8 @@ def main() -> int:
         check("the normal Confirm then records the classification with the new WHO",
               resp.status_code == 302 and explanation is not None and explanation.occurrence_id == new_id,
               str(resp.status_code))
-        check("still no recognition rule was created", counts()["rules"] == before["rules"])
+        # BANK_OLD_RULES_REMOVAL_001: "still no recognition rule was created"
+        # is gone with bank_recognition_rules — it holds by construction.
     finally:
         try:
             os.remove(_TEST_DB_PATH)

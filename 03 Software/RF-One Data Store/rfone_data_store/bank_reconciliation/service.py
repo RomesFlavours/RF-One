@@ -7,13 +7,12 @@ caller, mirroring this repository's existing Payroll import convention
 Canonical Financial Model Convergence — Phase 3/4/4B (FINANCIAL_MODEL_
 CONVERGENCE_001): normalization writes canonical `PaymentInstrument`/
 `FinancialTransaction` rows (was `FinancialAccount`/
-`NormalizedFinancialTransaction` on the source branch). Every newly
-normalized `FinancialTransaction` row enters the Expert System
-(`recognition.deduce_for_transaction`), which is now the ONE canonical
-reconciliation decision (Product Owner Decision 1) — the legacy V1
-catalog-style `assign_explanation` workflow has been retired (Decision
-1/10); it no longer exists as a second, independent classification
-mechanism.
+`NormalizedFinancialTransaction` on the source branch). The decision row
+written by `recognition` is the ONE canonical reconciliation decision
+(Product Owner Decision 1) — the legacy V1 catalog-style
+`assign_explanation` workflow has been retired (Decision 1/10). Since
+BANK_RULES_RESET_001 the only automatic classification at import is the
+operative AI rules (`ai_rule_operations.apply_to_new_transaction`).
 
 BANK_RECONCILIATION_INSTRUMENT_ASSIGNMENT_001 (web collaudo findings)
 adds three things to this same module, without a second ledger and
@@ -27,7 +26,7 @@ without ever touching the raw preservation layer:
     `reassign_transaction_instrument` correct an assignment already made,
     updating the existing `FinancialTransaction` rows in place
     (idempotently, never deleting and never re-inserting), re-running
-    duplicate detection, Recognition and matching, and writing one
+    duplicate detection and matching, and writing one
     `BankInstrumentAssignmentAudit` row per correction.
   * **Reuse.** A human's one-off resolution of a source that cannot
     identify itself (First Citizens' `AccountHistory.csv`) can be saved as
@@ -714,14 +713,10 @@ def _recompute_duplicate_state(session: Session, txn: "m.FinancialTransaction") 
 
 def _reprocess_transaction(session: Session, txn: "m.FinancialTransaction") -> bool:
     """Everything that must be re-derived after a transaction's instrument
-    changed: identity fingerprint, duplicate state, Recognition, and
-    cross-ledger matching. Idempotent — running it twice on an unchanged
-    transaction produces the same state and creates nothing new.
-
-    Recognition is re-run ONLY when the current decision was not made by a
-    human: `BankRecognitionRule`s can be scoped to a payment instrument, so
-    the correct rule may genuinely differ after a correction — but a human's
-    own confirmed decision is never overwritten by a rule."""
+    changed: identity fingerprint, duplicate state and cross-ledger
+    matching. Idempotent — running it twice on an unchanged transaction
+    produces the same state and creates nothing new. The decision is never
+    re-derived here (BANK_RULES_RESET_001)."""
     if txn.posting_date is not None and txn.amount_minor is not None:
         txn.fingerprint = compute_identity_fingerprint(
             payment_instrument_id=txn.payment_instrument_id,
@@ -1803,7 +1798,7 @@ def resolve_duplicate_decision(
 
 def record_recognition_decision(
     session: Session, *, transaction_id: int, occurrence_id: int,
-    confirmed_by_account_id: int | None, learn_description: bool = True,
+    confirmed_by_account_id: int | None,
 ) -> "m.BankTransactionExplanation":
     """Canonical Financial Model Convergence — Phase 4B (Product Owner
     Decisions 1, 6, 7, 10). The ONE human-facing entry point for
@@ -1816,21 +1811,13 @@ def record_recognition_decision(
     The caller supplies the WHO only, so this records WHO the counterparty
     is and leaves the WHY open for a human: a Who's default Why is never
     applied (BANK_FINAL_RELEASE_BLOCKERS_001). The Why step
-    (`/bank/transactions/<id>/why`) is where a Why is decided.
-
-    `learn_description` controls ONLY whether this confirmation also
-    teaches RF-One that this exact normalized description means this Who
-    (an `EXACT_NORMALIZED_DESCRIPTION` `BankRecognitionRule`). It does
-    not, and can no longer, affect whether the Who -> Why -> What
-    associations persist: those live on the vocabulary itself. Broader
-    `CONTAINS_TEXT`/`PREFIX` rules still require an explicit, separate
-    human choice — a single description never creates one."""
+    (`/bank/transactions/<id>/why`) is where a Why is decided. No
+    recognition rule is learned (BANK_RULES_RESET_001)."""
     result = recognition.record_human_decision(
         session,
         recognition.HumanDecisionRequest(
             transaction_id=transaction_id, occurrence_id=occurrence_id,
             confirmed_by_account_id=confirmed_by_account_id,
-            learn_description=learn_description,
         ),
     )
     txn = session.get(m.FinancialTransaction, transaction_id)

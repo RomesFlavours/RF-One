@@ -9,21 +9,98 @@
 {#- BANK_AI_RULES_002 … 006 — every movement of a period; from one of them the
     operator writes a rule in natural language, previews it on a scope and
     keeps it as a draft, saves it as an operative rule, or saves and applies
-    it. Manual and Standard classifications stay protected; traditional
-    Rules and Standards are never changed. -#}
+    it. Manual and confirmed classifications stay protected. -#}
 <p class="muted">
   Choose a period, then open <strong>AI Rules</strong> on a movement to write a rule in your own words, using that
   movement as the example. <strong>Preview</strong> shows what the rule would do; <strong>Save Draft</strong> only
-  keeps it; <strong>Salva</strong> makes it operative without touching existing movements; <strong>Salva e
-  Applica</strong> applies it to the chosen scope after its preview. Manual and Standard classifications are never
-  changed, and existing Rules and Standards keep working exactly as before.
+  keeps it; <strong>Save</strong> makes it operative without touching existing movements; <strong>Save and
+  Apply</strong> applies it to the chosen scope after its preview. Manual and confirmed classifications are never
+  changed, unless a rule is explicitly allowed to replace them.
 </p>
 
+<section class="card ai-rules-operative" id="ai-operative-rules" aria-labelledby="ai-operative-title">
+  {#- BANK_AI_RULES_020 — the saved rules come first, each with its full text
+      (current version) and Delete; the movements follow. -#}
+  <h3 id="ai-operative-title">Operative AI Rules <span class="badge">{% if rule_q %}{{ operative_rules|length }} of {{ rules_total }}{% else %}{{ operative_rules|length }}{% endif %}</span></h3>
+  {#- BANK_AI_RULES_023 — like the search of Bank Reconciliation: Enter or Search runs it (never while typing),
+      over each rule's name and content, any case; empty shows every rule; the period and Classification stay. -#}
+  <form method="get" action="{{ url_for('bank_ai_rules') }}" class="compact-form filter-row review-search ai-rules-search" role="search">
+    {% if date_from %}<input type="hidden" name="date_from" value="{{ date_from }}">{% endif %}
+    {% if date_to %}<input type="hidden" name="date_to" value="{{ date_to }}">{% endif %}
+    <input type="hidden" name="cls" value="{{ cls }}">
+    {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+    <div class="field-row review-search-field">
+      <label for="ai-rules-search">Search rules</label>
+      <span class="review-search-box">
+        <input type="text" id="ai-rules-search" name="rule_q" value="{{ rule_q }}" placeholder="Title or text of the rule" autocomplete="off">
+        <button type="submit">Search</button>
+      </span>
+    </div>
+  </form>
+  {% if rule_q %}
+    <p class="cell-note review-search-result" data-rule-search-count="{{ operative_rules|length }}"><strong>{{ operative_rules|length }}</strong> rule{{ '' if operative_rules|length == 1 else 's' }} of {{ rules_total }} found for &ldquo;{{ rule_q }}&rdquo;.</p>
+  {% endif %}
+  {% if operative_rules %}
+    <div class="table-scroll ai-operative-scroll">
+      <table class="table-compact table-stack ai-operative-table">
+        <thead><tr><th>Rule</th><th>Version</th><th>Status</th><th>New imports</th><th>Executed by</th><th>Last applied</th><th>Actions</th></tr></thead>
+        <tbody>
+        {% for rule, version in operative_rules %}
+          <tr data-rule-id="{{ rule.id }}" data-rr-key="ai-operative:{{ rule.id }}">
+            {#- BANK_AI_RULES_022 — the Title is the main identifier; the number stays as the secondary reference. -#}
+            <td data-label="Rule" class="ai-operative-rule">
+              {% if rule.user_title %}<strong class="ai-rule-name">{{ rule.user_title }}</strong>{% else %}<em class="muted ai-rule-name">No title</em>{% endif %}
+              <span class="cell-note">#{{ rule.id }} &middot; {{ rule.title|truncate(120) }}</span></td>
+            <td data-label="Version">v{{ version.version_no if version else '—' }}</td>
+            <td data-label="Status">{% if rule.status == 'ACTIVE' %}<span class="badge ok">Active</span>{% else %}<span class="badge warn">Disabled</span>{% endif %}
+              {%- if version and version.id not in applied_versions %}
+              <span class="badge warn ai-rule-not-applied" title="v{{ version.version_no }} was saved but never applied to the existing transactions: use Save and Apply">Saved, not applied to existing transactions</span>{% endif %}</td>
+            <td data-label="New imports">{{ 'Yes' if rule.apply_future else 'No' }}</td>
+            <td data-label="Executed by">{{ 'Code' if version and version.method == 'CODE' else 'AI' }}</td>
+            <td data-label="Last applied">{{ rule.last_applied_at|local_dt(tz, empty='—') }}</td>
+            <td data-label="Actions" class="ai-operative-actions">
+              <button type="button" class="btn-secondary ai-rule-operative-open" data-rule-id="{{ rule.id }}">Open</button>
+              <form method="post" action="{{ url_for('bank_ai_rules_rule_status', rule_id=rule.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="date_from" value="{{ date_from }}">
+                <input type="hidden" name="date_to" value="{{ date_to }}">
+                <input type="hidden" name="cls" value="{{ cls }}">
+                <input type="hidden" name="rule_q" value="{{ rule_q }}">
+                <input type="hidden" name="q" value="{{ q }}">
+                <input type="hidden" name="active" value="{{ '0' if rule.status == 'ACTIVE' else '1' }}">
+                <button type="submit" class="btn-secondary">{{ 'Disable' if rule.status == 'ACTIVE' else 'Activate' }}</button>
+              </form>
+              {#- BANK_AI_RULES_014 — asks for confirmation, naming the rule (bank-ai-rules.js). -#}
+              <form method="post" action="{{ url_for('bank_ai_rules_rule_delete', rule_id=rule.id) }}" class="ai-rule-delete-form"
+                    data-rule-name="{{ rule.user_title ~ ' (#' ~ rule.id ~ ')' if rule.user_title else '#' ~ rule.id ~ ' — ' ~ rule.title }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="date_from" value="{{ date_from }}">
+                <input type="hidden" name="date_to" value="{{ date_to }}">
+                <input type="hidden" name="cls" value="{{ cls }}">
+                <input type="hidden" name="rule_q" value="{{ rule_q }}">
+                <input type="hidden" name="q" value="{{ q }}">
+                <button type="submit" class="btn-secondary ai-rule-delete">Delete</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% elif rule_q %}
+    <p class="empty" data-rule-search-count="0">No rule matches your search. Empty the field and press Search to show every rule.</p>
+  {% else %}
+    <p class="muted">No operative AI rule yet. Use <strong>Save</strong> or <strong>Save and Apply</strong> in the AI Rules window.</p>
+  {% endif %}
+</section>
+
 <form method="get" action="{{ url_for('bank_ai_rules') }}" class="ai-rules-period" id="ai-rules-period" aria-label="Period">
+  {% if rule_q %}<input type="hidden" name="rule_q" value="{{ rule_q }}">{% endif %}
+  {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
   <label>From <input type="date" name="date_from" value="{{ date_from }}"></label>
   <label>To <input type="date" name="date_to" value="{{ date_to }}"></label>
   {#- BANK_AI_RULES_019 — the list's filter on the CURRENT WHO / WHY of each movement. -#}
-  <label>Classificazione <select name="cls" id="ai-rules-cls">
+  <label>Classification <select name="cls" id="ai-rules-cls">
     {%- for key, label in cls_options.items() %}
     <option value="{{ key }}"{% if key == cls %} selected{% endif %}>{{ label }}</option>
     {%- endfor %}
@@ -34,15 +111,41 @@
 </form>
 {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
 
+{#- BANK_AI_RULES_024 — the movements' search, the same as Bank Reconciliation's (description, WHO, WHY, Source;
+    any case; Enter or Search, never while typing), on the movements the period and "Classification" show.
+    Independent of the rules' search. It only narrows the list: the selection, Preview and Apply are unchanged. -#}
+<form method="get" action="{{ url_for('bank_ai_rules') }}" class="compact-form filter-row review-search ai-rules-search ai-txn-search" role="search"
+      data-search-active="{{ '1' if q else '0' }}">
+  {% if date_from %}<input type="hidden" name="date_from" value="{{ date_from }}">{% endif %}
+  {% if date_to %}<input type="hidden" name="date_to" value="{{ date_to }}">{% endif %}
+  <input type="hidden" name="cls" value="{{ cls }}">
+  {% if rule_q %}<input type="hidden" name="rule_q" value="{{ rule_q }}">{% endif %}
+  <div class="field-row review-search-field">
+    <label for="ai-txn-search">Search transactions</label>
+    <span class="review-search-box">
+      <input type="text" id="ai-txn-search" name="q" value="{{ q }}" placeholder="Description, WHO, WHY, Source" autocomplete="off">
+      <button type="submit">Search</button>
+    </span>
+  </div>
+</form>
+{% if q %}
+  <p class="cell-note review-search-result" data-search-count="{{ rows|length }}"><strong>{{ rows|length }}</strong> transaction{{ '' if rows|length == 1 else 's' }} of {{ classified_total }} found for &ldquo;{{ q }}&rdquo;.</p>
+{% endif %}
+
 {% if rows %}
 {#- BANK_AI_RULES_006 — the selection is a set of precise movements, kept
     across period changes; changing the period never adds any. -#}
 <div class="ai-selection-bar" id="ai-selection-bar" data-cls="{{ cls }}" data-excluded-ids="{{ excluded_ids|tojson|forceescape }}"
      data-check-url="{{ url_for('bank_ai_rules_selection_check') }}" data-csrf="{{ csrf_token() }}">
-  <label class="ai-rule-option"><input type="checkbox" id="ai-select-period"> {% if cls == 'all' %}Seleziona tutte nel periodo{% else %}Seleziona tutte le transazioni filtrate{% endif %}</label>
+  {#- BANK_AI_RULES_025 — with a search, the selection is only within the results (period, Classification, search). -#}
+  <label class="ai-rule-option"><input type="checkbox" id="ai-select-period"> {% if q %}Select all the transactions found{% elif cls == 'all' %}Select all in the period{% else %}Select all the filtered transactions{% endif %}</label>
+  {% if q %}
+  <span class="cell-note" role="status"><strong id="ai-selection-count">0</strong> selected among the {{ rows|length }} found &mdash; Preview and Apply operate only on these<span hidden><span id="ai-selection-visible">0</span><span id="ai-selection-outside">0</span><span id="ai-selection-checking"></span></span></span>
+  {% else %}
   <span class="cell-note" role="status"><strong id="ai-selection-count">0</strong> selected
     (<span id="ai-selection-visible">0</span> {% if cls == 'all' %}in this period{% else %}among the filtered ones{% endif %},
     <span id="ai-selection-outside">0</span> outside the period shown)<span id="ai-selection-checking" hidden> · checking the other periods…</span></span>
+  {% endif %}
   <button type="button" class="btn-secondary" id="ai-selection-clear">Clear selection</button>
 </div>
 <div class="table-scroll ai-rules-list">
@@ -67,54 +170,11 @@
     </tbody>
   </table>
 </div>
+{% elif q and not error %}
+  <p class="empty" data-search-count="0">No transactions match your search. Empty the field and press Search to show every movement again.</p>
 {% elif not error %}
   <p class="muted">No movement in this period.</p>
 {% endif %}
-
-<section class="card ai-rules-operative" id="ai-operative-rules" aria-labelledby="ai-operative-title">
-  <h3 id="ai-operative-title">Operative AI Rules</h3>
-  {% if operative_rules %}
-    <div class="table-scroll">
-      <table class="table-compact table-stack ai-operative-table">
-        <thead><tr><th>Rule</th><th>Version</th><th>Status</th><th>Per il futuro</th><th>Executed by</th><th>Last applied</th><th>Actions</th></tr></thead>
-        <tbody>
-        {% for rule, version in operative_rules %}
-          <tr data-rule-id="{{ rule.id }}" data-rr-key="ai-operative:{{ rule.id }}">
-            <td data-label="Rule"><strong>#{{ rule.id }}</strong> {{ rule.title|truncate(120) }}</td>
-            <td data-label="Version">v{{ version.version_no if version else '—' }}</td>
-            <td data-label="Status">{% if rule.status == 'ACTIVE' %}<span class="badge ok">Active</span>{% else %}<span class="badge warn">Disabled</span>{% endif %}</td>
-            <td data-label="Per il futuro">{{ 'Yes' if rule.apply_future else 'No' }}</td>
-            <td data-label="Executed by">{{ 'Code' if version and version.method == 'CODE' else 'AI' }}</td>
-            <td data-label="Last applied">{{ rule.last_applied_at|local_dt(tz, empty='—') }}</td>
-            <td data-label="Actions" class="ai-operative-actions">
-              <button type="button" class="btn-secondary ai-rule-operative-open" data-rule-id="{{ rule.id }}">Open</button>
-              <form method="post" action="{{ url_for('bank_ai_rules_rule_status', rule_id=rule.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="date_from" value="{{ date_from }}">
-                <input type="hidden" name="date_to" value="{{ date_to }}">
-                <input type="hidden" name="cls" value="{{ cls }}">
-                <input type="hidden" name="active" value="{{ '0' if rule.status == 'ACTIVE' else '1' }}">
-                <button type="submit" class="btn-secondary">{{ 'Disable' if rule.status == 'ACTIVE' else 'Activate' }}</button>
-              </form>
-              {#- BANK_AI_RULES_014 — asks for confirmation, naming the rule (bank-ai-rules.js). -#}
-              <form method="post" action="{{ url_for('bank_ai_rules_rule_delete', rule_id=rule.id) }}" class="ai-rule-delete-form"
-                    data-rule-name="#{{ rule.id }} — {{ rule.title }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="date_from" value="{{ date_from }}">
-                <input type="hidden" name="date_to" value="{{ date_to }}">
-                <input type="hidden" name="cls" value="{{ cls }}">
-                <button type="submit" class="btn-secondary ai-rule-delete">Delete</button>
-              </form>
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% else %}
-    <p class="muted">No operative AI rule yet. Use <strong>Salva</strong> or <strong>Salva e Applica</strong> in the AI Rules window.</p>
-  {% endif %}
-</section>
 
 <section class="card ai-rules-drafts" id="ai-rule-drafts" aria-labelledby="ai-rule-drafts-title">
   <h3 id="ai-rule-drafts-title">Draft AI Rules</h3>
@@ -122,7 +182,7 @@
     <ul class="plain">
       {% for draft in drafts %}
         <li data-draft-id="{{ draft.id }}"><button type="button" class="btn-secondary ai-rule-draft-open" data-draft-id="{{ draft.id }}">Open</button>
-          <strong>{{ draft.rule_text|truncate(140) }}</strong>
+          {% if draft.user_title %}<strong>{{ draft.user_title }}</strong> <span class="cell-note">{{ draft.rule_text|truncate(140) }}</span>{% else %}<strong>{{ draft.rule_text|truncate(140) }}</strong>{% endif %}
           <span class="cell-note">{% if draft.ai_rule_id %}Draft of a change to operative rule #{{ draft.ai_rule_id }} &middot; {% endif %}From {{ draft.origin_posting_date or '—' }} &middot; {{ draft.origin_description or 'origin no longer available' }} &middot; saved {{ draft.updated_at|local_dt(tz) }}</span></li>
       {% endfor %}
     </ul>
@@ -137,6 +197,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="date_from" value="{{ date_from }}">
     <input type="hidden" name="date_to" value="{{ date_to }}"><input type="hidden" name="cls" value="{{ cls }}">
+    <input type="hidden" name="rule_q" value="{{ rule_q }}"><input type="hidden" name="q" value="{{ q }}">
     <textarea name="instructions" rows="5" class="ai-rules-textarea" aria-label="General AI instructions">{{ instruction.instructions if instruction else '' }}</textarea>
     <div class="ai-rules-actions">
       <button type="submit">Save Instructions</button>
@@ -161,6 +222,7 @@
      data-save-apply-url="{{ url_for('bank_ai_rules_save_apply') }}"
      data-draft-get-template="{{ url_for('bank_ai_rules_draft', draft_id=0) }}"
      data-rule-get-template="{{ url_for('bank_ai_rules_rule', rule_id=0) }}"
+     data-rule-title-template="{{ url_for('bank_ai_rules_rule_title', rule_id=0) }}"
      data-create-who-template="{{ url_for('bank_ai_rules_create_who', preview_id=0) }}"
      data-batch-size="{{ batch_size }}" data-period-count="{{ period_total }}">
   <div class="org-modal-panel ai-rule-panel" role="dialog" aria-modal="true" aria-labelledby="ai-rule-title">
@@ -184,11 +246,34 @@
       <input type="hidden" name="selected_ids" id="ai-rule-selected-ids" value="">
       <input type="hidden" name="date_from" value="{{ date_from }}">
       <input type="hidden" name="date_to" value="{{ date_to }}">
+      {#- BANK_AI_RULES_025 — the list's perimeter, so the server limits a selection to it when a search is active. -#}
+      <input type="hidden" name="cls" value="{{ cls }}">
+      <input type="hidden" name="q" value="{{ q }}">
+      {#- BANK_AI_RULES_022 — the rule's Title, above its text. For an operative rule, "Save title" saves only
+          the Title: the rule is not reinterpreted or reapplied. -#}
+      <label for="ai-rule-user-title">Title <span class="cell-note">optional &middot; shown first in the list of rules</span></label>
+      <div class="ai-rule-title-row">
+        <input type="text" id="ai-rule-user-title" name="user_title" maxlength="200" autocomplete="off"
+               placeholder="e.g. Publix groceries">
+        <button type="button" class="btn-secondary" id="ai-rule-save-title" hidden>Save title</button>
+      </div>
       <label for="ai-rule-text">Rule, in your own words</label>
-      <textarea id="ai-rule-text" name="rule_text" rows="4" class="ai-rules-textarea"
-                placeholder="e.g. Every Publix purchase is WHO PUBLIX, WHY groceries, except refunds."></textarea>
+      {#- BANK_AI_RULES_026 — Rewrite with AI: rewrites and verifies the text only (never saves or applies). -#}
+      <div class="ai-rule-text-row">
+        <textarea id="ai-rule-text" name="rule_text" rows="4" class="ai-rules-textarea"
+                  placeholder="e.g. Every Publix purchase is WHO PUBLIX, WHY groceries, except refunds."></textarea>
+        <div class="ai-rule-rewrite-actions">
+          <button type="button" class="btn-secondary" id="ai-rule-rewrite"
+                  data-rewrite-url="{{ url_for('bank_ai_rules_rewrite') }}">Rewrite with AI</button>
+          <button type="button" class="btn-secondary" id="ai-rule-rewrite-undo" hidden>Undo rewrite</button>
+        </div>
+      </div>
+      <div class="ai-rule-rewrite-status" id="ai-rule-rewrite-status" role="status" hidden></div>
+      {#- Conflicts with the other ACTIVE rules (ai_rules.rule_conflicts), found at Rewrite with AI, Preview and Save
+          and Apply: a conflict between rules, never a problem of this text. Nothing is resolved automatically. -#}
+      <div class="ai-rule-conflicts" id="ai-rule-conflicts" role="alert" hidden></div>
       {#- BANK_AI_RULES_004 — pick lists that only write text into the rule,
-          at the last cursor position: WHO "NAME" / WHY "name". -#}
+          at the last cursor position: WHO = "NAME" / WHY = "name". -#}
       <div class="ai-rule-pickers" aria-label="Insert a WHO or a WHY into the rule">
         {% for kind, names, label in (('who', who_names, 'WHO'), ('why', why_names, 'WHY')) %}
         <div class="ai-rule-picker" data-kind="{{ kind }}">
@@ -204,37 +289,72 @@
         </div>
         {% endfor %}
       </div>
-      <label class="ai-rule-option"><input type="checkbox" name="create_missing_who" id="ai-rule-create-missing">
-        Crea WHO mancanti <span class="cell-note">a WHO extracted by this rule but missing from the list is created when the rule is applied</span></label>
-      {#- BANK_AI_RULES_011 — explicit, per rule, off by default, recorded with the rule's version and its previews. -#}
-      <label class="ai-rule-option"><input type="checkbox" name="override_protected" id="ai-rule-override-protected">
-        Sostituisci anche WHO/WHY manuali, Standard o confermati <span class="cell-note">this rule only: For Whom is kept, the movement becomes “Da confermare” and the override is recorded; every other rule keeps the protections</span></label>
-
-      {#- BANK_AI_RULES_006 — where the rule applies. The first two are
-          alternatives; "Per il futuro" combines with either. None preselected. -#}
-      <fieldset class="ai-rule-scopes">
-        <legend>Apply to</legend>
-        <label class="ai-rule-option"><input type="checkbox" name="scope_all" id="ai-scope-all"> Tutte le transazioni esistenti
-          <span class="cell-note">the whole database, not only the period shown</span></label>
-        <label class="ai-rule-option"><input type="checkbox" name="scope_selected" id="ai-scope-selected"> Solo le transazioni selezionate
-          <span class="cell-note" id="ai-scope-selected-count">0 selected</span></label>
-        <label class="ai-rule-option"><input type="checkbox" name="scope_future" id="ai-scope-future"> Per il futuro
-          <span class="cell-note">new movements imported from now on</span></label>
-        {#- BANK_AI_RULES_013 — selected by default; Preview and Apply use the same choice. -#}
-        <label class="ai-rule-option"><input type="checkbox" name="only_unsettled" id="ai-rule-only-unsettled" checked>
-          Solo movimenti non ancora sistemati da regole AI
-          <span class="cell-note">leaves out the movements whose current classification was saved by an AI rule; manual and Standard protections apply either way</span></label>
-        {#- BANK_AI_RULES_018 — a run mode, not a rule option: Preview and Apply use the same choice. -#}
-        <label class="ai-rule-option"><input type="checkbox" name="who_only" id="ai-rule-who-only">
-          Solo WHO
-          <span class="cell-note">executes only the WHO part of the rule: WHY, default WHY and For Whom are not applied now (they stay in the rule)</span></label>
-      </fieldset>
+      {#- The rule's options, one box per choice, stacked vertically (A–F). Alternatives are radio buttons of one
+          group; independent, combinable options are checkboxes. The field names and values the server reads are
+          unchanged: "only_unsettled" / "who_only" are "on" or "off", and the A group is sent as scope_all /
+          scope_selected by bank-ai-rules.js (formBody). -#}
+      <div class="ai-rule-option-boxes">
+        {#- A — BANK_AI_RULES_006: where the rule applies among the existing transactions. "None" = the Preview
+            shows the period on screen and nothing is applied to it. -#}
+        <fieldset class="ai-rule-scopes">
+          <legend>Which existing transactions should the rule apply to?</legend>
+          <label class="ai-rule-option"><input type="radio" name="scope_existing" value="none" id="ai-scope-none" checked>
+            No existing transactions
+            <span class="cell-note">the Preview shows the transactions of the period on screen; nothing is applied to them</span></label>
+          <label class="ai-rule-option"><input type="radio" name="scope_existing" value="all" id="ai-scope-all">
+            All existing transactions, in the whole database
+            <span class="cell-note">not only the period shown</span></label>
+          <label class="ai-rule-option"><input type="radio" name="scope_existing" value="selected" id="ai-scope-selected">
+            Only the selected transactions
+            <span class="cell-note" id="ai-scope-selected-count">0 selected</span></label>
+        </fieldset>
+        {#- B — BANK_AI_RULES_006: independent, combines with any choice of A. -#}
+        <fieldset class="ai-rule-scopes">
+          <legend>Apply the rule to new transactions too?</legend>
+          <label class="ai-rule-option"><input type="checkbox" name="scope_future" id="ai-scope-future">
+            Apply automatically to transactions imported from now on
+            <span class="cell-note">can be combined with the choice for existing transactions</span></label>
+        </fieldset>
+        {#- C — BANK_AI_RULES_013: "only not yet classified" selected by default; Preview and Apply use the same choice. -#}
+        <fieldset class="ai-rule-scopes">
+          <legend>Which AI classifications may be updated?</legend>
+          <label class="ai-rule-option"><input type="radio" name="only_unsettled" value="on" id="ai-rule-only-unsettled" checked>
+            Only transactions not yet classified by AI rules</label>
+          <label class="ai-rule-option"><input type="radio" name="only_unsettled" value="off" id="ai-rule-include-ai-settled">
+            Also include transactions already classified by AI rules</label>
+          <p class="cell-note">Manual or confirmed classifications stay protected either way: replacing them depends only on
+            the option in the next box.</p>
+        </fieldset>
+        {#- D — BANK_AI_RULES_011: explicit, per rule (on for a NEW rule: NEW_RULE_DEFAULTS in bank-ai-rules.js), recorded with the rule's version and its previews. -#}
+        <fieldset class="ai-rule-scopes">
+          <legend>Allow replacing manual or confirmed classifications?</legend>
+          <label class="ai-rule-option"><input type="checkbox" name="override_protected" id="ai-rule-override-protected">
+            Allow this rule to replace manual or confirmed WHO and WHY</label>
+          <p class="cell-note">For Whom is kept, the transaction goes back to “To confirm” and the replacement is recorded.
+            The permission applies to this rule only: every other rule keeps the protections.</p>
+        </fieldset>
+        {#- E — BANK_AI_RULES_018: a run mode, not a rule option; Preview and Apply use the same choice. -#}
+        <fieldset class="ai-rule-scopes">
+          <legend>Which parts of the rule should be applied?</legend>
+          <label class="ai-rule-option"><input type="radio" name="who_only" value="off" id="ai-rule-all-parts" checked>
+            Apply every part of the rule</label>
+          <label class="ai-rule-option"><input type="radio" name="who_only" value="on" id="ai-rule-who-only">
+            Apply only WHO</label>
+          <p class="cell-note">“Apply only WHO” does not apply WHY, default WHY and For Whom now, but keeps them in the rule.</p>
+        </fieldset>
+        {#- F — BANK_AI_RULES_003: per rule. -#}
+        <fieldset class="ai-rule-scopes">
+          <legend>Create missing WHO?</legend>
+          <label class="ai-rule-option"><input type="checkbox" name="create_missing_who" id="ai-rule-create-missing">
+            Create the WHO extracted by the rule that are not in the catalog</label>
+        </fieldset>
+      </div>
       <p class="cell-note" id="ai-rule-scope-note"></p>
       <div class="ai-rules-actions">
         <button type="submit" id="ai-rule-preview-button">Preview</button>
         <button type="button" class="btn-secondary" id="ai-rule-save-draft">Save Draft</button>
-        <button type="button" class="btn-secondary" id="ai-rule-save">Salva</button>
-        <button type="button" id="ai-rule-save-apply" disabled>Salva e Applica</button>
+        <button type="button" class="btn-secondary" id="ai-rule-save">Save</button>
+        <button type="button" id="ai-rule-save-apply" disabled>Save and Apply</button>
         <button type="button" class="btn-secondary" data-modal-close>Close</button>
         <span class="cell-note" id="ai-rule-draft-status" role="status"></span>
       </div>
@@ -254,7 +374,7 @@
       <p class="cell-note" id="ai-rule-interpretation" hidden></p>
       <p class="cell-note" id="ai-rule-origin-verdict"></p>
       <div class="ai-rule-new-who" id="ai-rule-new-who" hidden>
-        <button type="button" id="ai-rule-create-who">Inserisci nuovi WHO in elenco</button>
+        <button type="button" id="ai-rule-create-who">Add the new WHO to the list</button>
         <span class="cell-note" id="ai-rule-new-who-count"></span>
         <div id="ai-rule-create-who-result" role="status"></div>
       </div>
@@ -266,6 +386,6 @@
   </div>
 </div>
 
-<script defer src="{{ url_for('static', filename='js/bank-ai-rules.js') }}?v=19"></script>
+<script defer src="{{ url_for('static', filename='js/bank-ai-rules.js') }}?v=31"></script>
 <script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
 {% endblock %}

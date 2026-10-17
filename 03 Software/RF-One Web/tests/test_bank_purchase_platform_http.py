@@ -10,6 +10,11 @@ is never expected to send bank statements, never enters the bank-movement
 import path (no duplicated spend), and never reaches the export.
 
 Runs against a DISPOSABLE SQLite database created here and deleted at the end.
+
+BANK_OLD_RULES_REMOVAL_001 removed the old WHO recognizer: check 8 (a
+platform with digits is never taken for an own account by the recognizer's
+registered-instrument lookup, `who_recognition.build_contexts`) went with it.
+The other check numbers are unchanged.
 """
 
 from __future__ import annotations
@@ -48,7 +53,6 @@ from rfone_data_store.bank_reconciliation import export as export_service  # noq
 from rfone_data_store.bank_reconciliation import import_preview  # noqa: E402
 from rfone_data_store.bank_reconciliation import monthly_source  # noqa: E402
 from rfone_data_store.bank_reconciliation import service as bank_service  # noqa: E402
-from rfone_data_store.bank_reconciliation import who_recognition  # noqa: E402
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 FETCH = {"X-Requested-With": "fetch"}
@@ -185,17 +189,12 @@ def main() -> int:
         with SessionFactory() as s:
             blockers = export_service.compute_export_blockers(s, year=2026, month=10)
             amazon_warning = bank_service.instrument_export_warning(s.get(m.PaymentInstrument, ids["amazon"]))
-            platform_with_digits = bank_service.create_payment_instrument(
-                s, institution="Instacart", display_name="Instacart", instrument_type="PURCHASE_PLATFORM",
-                last_four="3376")
-            s.flush()
-            registered, _entities, _lookups = who_recognition.build_contexts(s)
-            s.rollback()
         check("7. it never reaches the export: no blocker, no export warning",
               not any(b.instrument_id == ids["amazon"] for b in blockers)
               and amazon_warning is None, str([b.reason for b in blockers]))
-        check("8. never taken for an own account in WHO recognition, even with digits",
-              registered.get("3376") == ids["checking"])
+        # 8 (never taken for an own account in WHO recognition) went with
+        # BANK_OLD_RULES_REMOVAL_001: the WHO recognizer and its registered-
+        # instrument lookup no longer exist.
         with SessionFactory() as s:
             payment_sources = {i.id for i in monthly_source.relevant_instruments(s)}
         check("9. the existing payment sources are unchanged", ids["checking"] in payment_sources)

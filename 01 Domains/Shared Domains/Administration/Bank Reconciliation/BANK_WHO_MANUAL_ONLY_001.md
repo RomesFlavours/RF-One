@@ -2,6 +2,7 @@
 
 **Task:** BANK_WHO_MANUAL_ONLY_001 (Product Owner decision, 2026-10-05)
 **Status:** Implemented on `feature/bank-simple-who-rules`. Not committed, not deployed.
+**Superseded (2026-10-13, BANK_RULES_RESET_001 / BANK_OLD_RULES_REMOVAL_001):** the WHO Classification page and its Needs Rule / Has Rule / Manual Only groups were removed with the WHO Rules. The flag was then removed from the code too (Product Owner decision, 2026-10-14: it never protected a WHO from AI rules or manual edits); the column `bank_occurrences.manual_only` (no WHO has it set) is dropped in Phase 2. Kept as the historical record of what was built; it no longer describes current behaviour.
 **Module:** Domain / Shared Domains / Administration / Bank Reconciliation
 **Schema:** migration `b7f1c3e5a9d2` — `bank_occurrences.manual_only` (boolean, default false; no data change).
 

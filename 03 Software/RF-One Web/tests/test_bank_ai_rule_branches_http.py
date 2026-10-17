@@ -221,7 +221,7 @@ def main() -> int:
           "classification is Da verificare (a doubt), executed by code",
           p["method"] == "CODE" and set(i["id"] for i in p["match_items"]) == {ids["publix_personal_card"]}
           and ids["publix_company_card"] not in items and items[ids["publix_missing"]]["why_to_verify"]
-          and items[ids["publix_missing"]] in p["doubt_items"] and "Da verificare" in items[ids["publix_missing"]]["reason"],
+          and items[ids["publix_missing"]] in p["doubt_items"] and "To verify" in items[ids["publix_missing"]]["reason"],
           detail=str({k: v.get("plan_note") for k, v in items.items()}))
     p = preview(PUBLIX_NOT, "publix_company_card")
     items = by_id(p)
@@ -243,7 +243,7 @@ def main() -> int:
           cc["proposed_who"] == "PRATO" and cc["proposed_why"] == "Marketing / Advertising" and "branch 2" in cc["reason"])
     check("5c. classification missing → WHO PRATO, WHY Da verificare — never Marketing / Advertising",
           ms["proposed_who"] == "PRATO" and ms["proposed_why"] is None and ms["why_to_verify"]
-          and "no settlement account" in ms["reason"] and "WHY Da verificare: not assigned" in ms["plan_note"],
+          and "no settlement account" in ms["reason"] and "WHY To verify: not assigned" in ms["plan_note"],
           detail=str(ms))
     check("5d. a Personal bank account matches no branch: WHO PRATO, WHY unchanged",
           pa["proposed_who"] == "PRATO" and pa["proposed_why"] is None and not pa["why_to_verify"]
@@ -257,7 +257,7 @@ def main() -> int:
               "(existing, OWNER_PERSONAL_FOOD)" in lines
           and "BRANCH 2 — IF the Source is classified not Personal → WHY: Marketing / Advertising (existing, "
               "MARKETING_ADVERTISING)" in lines
-          and "BRANCH 3 — IF the Source is without a Personal classification (missing) → WHY: Da verificare" in lines
+          and "BRANCH 3 — IF the Source is without a Personal classification (missing) → WHY: To verify" in lines
           and any(line.startswith("Data checked — Personal / not Personal = the Source's owner") for line in lines),
           detail=json.dumps(lines, ensure_ascii=False))
     calls["n"] = 0
@@ -284,7 +284,7 @@ def main() -> int:
                                     "prato_company_card": (prato_id, whys["Marketing / Advertising"]),
                                     "prato_missing": (prato_id, None),
                                     "prato_personal_account": (prato_id, None)}
-          and "WHY Da verificare" in items[ids["prato_missing"]].note, detail=f"{got} {applied.get('application')}")
+          and "WHY To verify" in items[ids["prato_missing"]].note, detail=f"{got} {applied.get('application')}")
 
     # ---------------------------------------------- BONNE VIE SALON and Zelle
     p = preview(SALON, "salon")
