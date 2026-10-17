@@ -12178,7 +12178,9 @@ class BankAiRuleInterpretation(Base):
     __table_args__ = (UniqueConstraint("cache_key", name="uq_bank_ai_rule_interpretation_key"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    cache_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    # 128, not 64 (BANK_REINSTALL_001): an invalidated interpretation keeps its key with a suffix
+    # (":invalidated-BANK_RULES_RESET_001", 97 characters) — SQLite never enforced the length, PostgreSQL does.
+    cache_key: Mapped[str] = mapped_column(String(128), nullable=False)
     rule_text: Mapped[str] = mapped_column(Text, nullable=False)
     instructions_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_answer: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -115,6 +115,10 @@ def _refuse_if_not_empty(bind) -> None:
 
 
 def upgrade() -> None:
+    # BANK_REINSTALL_001 — on a database where Bank was removed (84354dc654ce, RDS on 2026-10-14) there is nothing
+    # to change: the reinstall revision c8e4b2a6f0d1 creates the current Bank schema there.
+    if "bank_transaction_explanations" not in sa.inspect(op.get_bind()).get_table_names():
+        return
     bind = op.get_bind()
     _remove_untouched_seed(bind)
     _refuse_if_not_empty(bind)

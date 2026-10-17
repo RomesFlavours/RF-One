@@ -25,8 +25,15 @@ the revision fail instead of removing something else. The one cycle (`financial_
 `bank_transaction_explanations`, both dropped) is broken first.
 
 Not reversible: `downgrade` refuses. Recovery is the RDS snapshot taken before this revision ran.
+
+BANK_REINSTALL_001 (2026-10-17) — guard: the revision drops only when the environment variable
+`RFONE_CONFIRM_REMOVE_BANK` names it (`RFONE_CONFIRM_REMOVE_BANK=84354dc654ce`). Without it the revision is recorded
+as applied and changes nothing, so a database that holds Bank data (the local working databases) keeps it on its
+way to the reinstall revision `c8e4b2a6f0d1`. On RDS it already ran on 2026-10-14: the guard changes nothing there.
 """
 from __future__ import annotations
+
+import os
 
 from typing import Sequence, Union
 
@@ -61,7 +68,13 @@ BANK_TABLES_DROP_ORDER: tuple[str, ...] = (
 BANK_DOMAIN_CODE = "BANK"
 
 
+CONFIRM_VARIABLE = "RFONE_CONFIRM_REMOVE_BANK"
+
+
 def upgrade() -> None:
+    if os.environ.get(CONFIRM_VARIABLE) != revision:
+        # Not confirmed: nothing is dropped and no access row is deleted (see the module docstring).
+        return
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     existing = set(inspector.get_table_names())
@@ -94,6 +107,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if "bank_transaction_explanations" in sa.inspect(op.get_bind()).get_table_names():
+        return  # the Bank tables are there: the revision dropped nothing here (not confirmed), nothing to undo
     raise RuntimeError(
         "84354dc654ce removed Bank and its data; it cannot be undone by a migration. "
         "Restore the RDS snapshot taken before it ran."

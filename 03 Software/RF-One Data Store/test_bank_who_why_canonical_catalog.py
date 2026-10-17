@@ -49,7 +49,7 @@ from rfone_data_store.database import (
 HERE = Path(__file__).resolve().parent
 REVISION = "a7c3e9d5f2b8"
 PREVIOUS = "b9e4c2a7d5f3"
-CURRENT_HEAD = "d2b6f8a4c0e7"  # the single Alembic head of the branch (BANK_OLD_RULES_REMOVAL_001, 2026-10-14)
+CURRENT_HEAD = "c8e4b2a6f0d1"  # the single Alembic head: the Bank reinstall (BANK_REINSTALL_001, 2026-10-17)
 MIGRATION = HERE / "migrations" / "versions" / f"{REVISION}_add_municipal_utilities_and_settlement_whys.py"
 
 APPROVED = {

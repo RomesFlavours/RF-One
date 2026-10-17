@@ -74,9 +74,12 @@ from rfone_data_store.bank_reconciliation import card_configuration  # noqa: E40
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 NEW_REVISION = "e5b1d7c3a9f2"
 HEAD_REVISION = "b9e4c2a7d5f3"  # last schema revision rendered offline for PostgreSQL (check 2)
-CURRENT_HEAD = "d2b6f8a4c0e7"  # the single Alembic head a fresh database reaches (check 1)
+CURRENT_HEAD = "c8e4b2a6f0d1"  # the single Alembic head a fresh database reaches (check 1)
 LAST_RULES_REVISION = "a3c7e5b9d1f4"  # last revision with bank_recognition_rules (check 3)
 PREVIOUS_REVISION = "d4a8c2e6f1b3"
+# The head of the Bank line below the reinstall (c8e4b2a6f0d1 and 84354dc654ce are not reversible): the seed
+# re-run check (D10) goes down and up inside this line, then the database is taken to the head.
+BANK_LINE_HEAD = "a6e2c8f4b0d9"
 
 
 def _alembic_config(url: str, buffer=None):
@@ -272,7 +275,7 @@ def main() -> int:
         conn.execute("DELETE FROM bank_recognition_rules")
         conn.commit()
         conn.close()
-        _upgrade(old_url, "head")
+        _upgrade(old_url, BANK_LINE_HEAD)
         conn = sqlite3.connect(old_path)
         types_after_upgrade = conn.execute("SELECT id, code, name, description FROM bank_occurrence_types").fetchall()
         conn.close()
@@ -281,7 +284,8 @@ def main() -> int:
             command.downgrade(_alembic_config(old_url), NEW_REVISION)
         finally:
             os.environ.pop("ALEMBIC_DATABASE_URL_OVERRIDE", None)
-        _upgrade(old_url, "head")
+        _upgrade(old_url, BANK_LINE_HEAD)
+        _upgrade(old_url, "head")          # through the reinstall revision: Bank kept, verified
         conn = sqlite3.connect(old_path)
         types_after_rerun = conn.execute("SELECT id, code, name, description FROM bank_occurrence_types").fetchall()
         conn.close()

@@ -385,6 +385,14 @@ AI Rules waiting** («Interpreta le AI Rules in attesa»), follow
 
 ---
 
+# Bank on AWS — no further local data transfer
+
+On 2026-10-17 (BANK_REINSTALL_001) the cleaned local Bank database was loaded once into AWS. From then on the
+local Bank database is **never** transferred to AWS again: Bank releases carry code and migrations only and
+preserve the online data (`03 Software/Infrastructure/README.md`, "Bank reinstallato su AWS").
+
+---
+
 # RF-One Report Standard
 
 **Standing instruction, applied automatically to every RF-One task.** It is

@@ -485,3 +485,52 @@ Conservati (condivisi o punti di ripristino): `legal_entities` (anche la riga 3,
 **Ripristino:** codice — rimettere il backup zip su `rfone-web-source.zip`, build, `start-deployment`; database — lo snapshot sopra (la migrazione non ha `downgrade`).
 
 **Revisione RDS e deploy (vedi `07 Tasks/Reports/BANK_AWS_REMOVAL_001_HANDOVER.md`):** RDS è a `84354dc654ce`. Pubblicare su AWS solo da un ramo la cui catena di migrazioni contiene `84354dc654ce` — oggi `release/remove-bank-aws`; `origin/main` (head `7b1d4f9a2c6e`) e il `main` locale non sono allineati. `rfone-selection` esegue le migrazioni a ogni avvio: con l'immagine attuale (catena del 2026-10-03) una nuova istanza non parte — va ricostruito da un ramo allineato.
+
+## Bank reinstallato su AWS (BANK_REINSTALL_001, 2026-10-17)
+
+Decisione del Product Owner (2026-10-17): il Bank locale ripulito viene ripubblicato su AWS, software **e dati**. Per
+questo primo rilascio il database locale (quello usato sulla 5080) è la fonte autorevole: i suoi dati Bank sono
+copiati integralmente su RDS, al posto dei vecchi dati Bank (che su RDS non esistono più dal 2026-10-14), senza unione
+e senza duplicati. Gli altri Domain restano invariati.
+
+**Catena di migrazioni.** Ramo `release/bank-reinstall` = `origin/main` + linea Bank locale (`feature/bank-simple-who-rules`)
++ `release/remove-bank-aws` (presa la migrazione `84354dc654ce` e la documentazione, **non** la rimozione del codice).
+Testa unica `c8e4b2a6f0d1` (reinstallazione, merge di `84354dc654ce` e `a6e2c8f4b0d9`):
+
+| Database | Effetto di `alembic upgrade head` |
+|---|---|
+| RDS (a `84354dc654ce`, Bank assente) | `d2b6f8a4c0e7` e `a6e2c8f4b0d9` non fanno nulla (tabelle Bank assenti); `c8e4b2a6f0d1` crea le 46 tabelle Bank attuali con indici e chiavi esterne (schema congelato al 2026-10-17). Nessun dato |
+| Database locale di lavoro (a `a6e2c8f4b0d9`) | eseguite le revisioni di `main` mancanti; `84354dc654ce` **non cancella** (protezione sotto); `c8e4b2a6f0d1` verifica le colonne delle 46 tabelle e non cambia nulla |
+
+- `84354dc654ce` ora cancella **solo** con `RFONE_CONFIRM_REMOVE_BANK=84354dc654ce` nell'ambiente; su RDS era già eseguita.
+- `c8e4b2a6f0d1` è tutto o niente: tabelle Bank tutte assenti → le crea (solo PostgreSQL); tutte presenti → verifica;
+  solo alcune → rifiuta. Non ha `downgrade`: il ripristino è lo snapshot RDS preso prima.
+- `bank_ai_rule_interpretations.cache_key` passa da 64 a 128 caratteri: 11 interpretazioni invalidate hanno la chiave
+  con il suffisso `:invalidated-BANK_RULES_RESET_001` (97 caratteri). SQLite non applicava il limite, PostgreSQL sì.
+
+**Caricamento iniziale (una sola volta).** Strumento `RF-One Data Store/load_bank_initial_to_aws.py`: copia del file
+locale (backup SQLite), portata alla testa sulla copia; destinazione a `c8e4b2a6f0d1` con le 46 tabelle Bank **vuote**
+(altrimenti rifiuta: nessuna unione, nessuna seconda esecuzione); ID conservati; nessun ricalcolo (nessuna regola,
+riconoscimento o classificazione eseguita durante la copia); riferimenti condivisi rimappati con le mappe del Product
+Owner (Legal Entity locale 1→2, 2→1, 3→3; account locale `admin` → `rfone`), ogni altro riferimento condiviso deve
+essere vuoto; una transazione REPEATABLE READ in UTC; prima del COMMIT: conteggio e hash di contenuto di ogni tabella
+Bank uguali al locale, totali per Source, decisioni per WHO/WHY, impronta (conteggio + hash) di ogni tabella degli
+altri Domain invariata.
+
+> **Regola permanente:** dopo questo caricamento iniziale il database locale **non si trasferisce più su AWS**. I
+> rilasci successivi di Bank portano solo codice e migrazioni e preservano i dati online. Lo strumento
+> `load_bank_initial_to_aws.py` rifiuta comunque di scrivere su tabelle Bank non vuote.
+
+**AI online.** Su AWS la sessione Claude Code locale non esiste: le funzioni AI (interpretazione, Rewrite with AI,
+Preview di testi nuovi) usano Bedrock, modello `us.anthropic.claude-opus-4-6-v1` (Opus 5.5 non è disponibile per
+l'account: "not available for this account"). Le interpretazioni già salvate in locale arrivano con i dati e sono
+riusate senza chiamate AI. Risorse con permessi minimi: policy inline `rfone-web-bedrock-invoke-bank-ai-rules`
+(`bedrock:InvokeModel` sul solo profilo Opus 4.6 e i suoi modelli) su `rfone-web-apprunner-instance-role`; endpoint di
+interfaccia `bedrock-runtime` nella VPC di default con un security group che ammette 443 solo dal security group del
+connettore VPC; variabili `RFONE_AI_PROVIDER=BEDROCK`, `RFONE_BEDROCK_MODEL_ID=us.anthropic.claude-opus-4-6-v1` su
+`rfone-web`.
+
+**Ordine del rilascio:** snapshot RDS → backup degli zip sorgente → migrazioni → caricamento iniziale → build e
+deploy di `rfone-web`, `rfone-selection` (esegue `alembic upgrade head` all'avvio: con l'immagine precedente una nuova
+istanza non partirebbe) e `rfone-tips` dal ramo di rilascio → Bedrock → verifiche. Esito e riferimenti:
+`07 Tasks/Reports/BANK_REINSTALL_001.md`.

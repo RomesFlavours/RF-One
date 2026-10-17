@@ -27,6 +27,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # BANK_REINSTALL_001 — on a database where Bank was removed (84354dc654ce, RDS on 2026-10-14) there is nothing
+    # to change: the reinstall revision c8e4b2a6f0d1 creates the current Bank schema there.
+    if "bank_transaction_explanations" not in sa.inspect(op.get_bind()).get_table_names():
+        return
     for table in ("bank_ai_rules", "bank_ai_rule_drafts"):
         with op.batch_alter_table(table) as batch:
             batch.add_column(sa.Column("user_title", sa.String(length=200), nullable=True))

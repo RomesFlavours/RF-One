@@ -31,6 +31,13 @@ Options (append to the command, e.g. `run.ps1 start --migrate`):
 | `close --check` | Only verify again that OneDrive delivered the last close. |
 | `--profile test` | The same procedure on the TEST copy: port 5082, `RF-One Bank Handoff TEST`, and the page says **TEST COPY**. |
 
+## Bank on AWS: the local database is never transferred again
+
+On 2026-10-17 (BANK_REINSTALL_001) the cleaned local Bank was loaded ONCE into AWS with
+`RF-One Data Store/load_bank_initial_to_aws.py` (Infrastructure README, "Bank reinstallato su AWS"). From then on
+the local working database is **never** copied to AWS again: later Bank releases carry code and migrations only and
+preserve the online data. The tool itself refuses to write into Bank tables that are not empty.
+
 ## Where things are
 
 | What | Where | Synced? |
