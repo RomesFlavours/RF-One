@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="cbank-token" content="{{ token }}">
+<title>C-Bank Prototype</title>
+<style>
+:root{--bg:#f7f6f1;--card:#fff;--ink:#23231f;--muted:#6b6a60;--line:#dedbd0;--olive:#5d6b2f;--ok:#2e7d32;--bad:#b3261e;--warn:#9a6700}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:#fff;border-bottom:1px solid var(--line);padding:10px 18px}
+.crumb{font-size:13px;color:var(--muted)}.crumb a{color:var(--olive)}
+h1{margin:4px 0 0;font-size:20px}.exp{display:inline-block;background:#ffe3e0;color:var(--bad);font-weight:600;padding:2px 8px;border-radius:6px;font-size:12px;margin-left:8px}
+main{padding:14px 18px;max-width:1700px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+button,select,input,textarea{font:inherit}button{background:var(--olive);color:#fff;border:0;border-radius:7px;padding:6px 12px;cursor:pointer}
+button.sec{background:#fff;color:var(--olive);border:1px solid var(--olive)}button:disabled{opacity:.5;cursor:wait}
+table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:5px 6px;text-align:left;vertical-align:top}
+th{font-size:12px;color:var(--muted);position:sticky;top:0;background:#fff}tr.r:hover{background:#f1efe6;cursor:pointer}
+.b{display:inline-block;padding:1px 7px;border-radius:10px;font-size:12px;font-weight:600}
+.RECONCILED{background:#e3f1e4;color:var(--ok)}.EXCEPTION{background:#fde7e5;color:var(--bad)}
+.m{font-size:11px;color:var(--muted)}.num{text-align:right;white-space:nowrap}.neg{color:var(--bad)}
+.kpi{display:flex;gap:14px;flex-wrap:wrap}.kpi div{background:#f1efe6;border-radius:8px;padding:6px 10px}.kpi b{font-size:18px;display:block}
+dialog{width:min(1100px,96vw);max-height:94vh;border:1px solid var(--line);border-radius:12px;padding:0}
+#list{width:min(1750px,98vw)}tr.cur{background:#e8eed6}
+#wiz{width:min(1180px,96vw)}#wiz .bd{max-height:62vh}.wiz{font-size:15px}
+.steps{display:flex;gap:6px;list-style:none;margin:0;padding:10px 16px;border-bottom:1px solid var(--line)}
+.steps li{padding:4px 12px;border-radius:14px;background:#f1efe6;color:var(--muted);font-weight:600}.steps li.on{background:var(--olive);color:#fff}.steps li.done{background:#e3f1e4;color:var(--ok)}
+.ft{display:flex;gap:8px;align-items:center;padding:10px 16px;border-top:1px solid var(--line)}
+.prop{font-size:17px;line-height:1.6;margin:6px 0 12px}.prop b{color:var(--olive)}
+.anom{background:#fff1ef;border:1px solid #f3b9b2;border-radius:8px;padding:8px 10px;margin:8px 0}
+.okbox{background:#e3f1e4;border:1px solid #b6d9b8;border-radius:8px;padding:8px 10px;margin:8px 0}
+.wiz table td,.wiz table th{font-size:14px}.wiz details summary{cursor:pointer;color:var(--olive)}
+.pop{position:fixed;inset:auto;margin:0;max-width:360px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.15);background:#fff;font-size:13px;line-height:1.45}
+.pop ol{margin:6px 0 6px 18px;padding:0}
+.aiq{background:#fff6e0;border:1px solid #f0d89a;border-radius:10px;padding:10px 12px;margin:8px 0}
+.aiq label{display:flex;gap:8px;align-items:flex-start;color:var(--ink);font-size:14px;margin:4px 0}.aiq label input[type=radio]{display:inline-block;width:auto;margin-top:3px}
+.aiq .res{margin-top:8px;padding:8px;border-radius:8px;background:#fff}
+#help{width:min(860px,94vw)}.help{font-size:15px;line-height:1.55}.help h3{margin:14px 0 4px;font-size:16px;color:var(--olive)}
+.help p,.help li{max-width:78ch}.help th{width:150px;color:var(--ink);font-size:14px;position:static}
+dialog .hd{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
+dialog .bd{padding:12px 16px;overflow:auto;max-height:80vh}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label select,label input,label textarea{display:block;width:100%;margin-top:2px;padding:5px}
+.msg{padding:6px 8px;border-radius:8px;margin:4px 0;white-space:pre-wrap}.user{background:#eef3e0}.assistant{background:#f1efe6}
+.warnbox{background:#fff6e0;border:1px solid #f0d89a;border-radius:8px;padding:8px;margin:6px 0}
+#status{color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <nav class="crumb" aria-label="Breadcrumb"><a href="{{ bank_url }}" target="_blank" rel="noopener">RF-One Bank (operational) ↗</a> › C-Bank Prototype</nav>
+  <h1>C-Bank Prototype <span class="exp">EXPERIMENTAL · dry run · Bank read-only</span></h1>
+</header>
+<main>
+<section class="card">
+  <div class="row">
+    <button data-run="sample">Run MVP sample</button>
+    <select id="month">{% for mo in months %}<option {% if mo=='2026-09' %}selected{% endif %}>{{ mo }}</option>{% endfor %}</select>
+    <button class="sec" data-run="month">Run month</button>
+    <span id="status" role="status"></span>
+    <span style="flex:1"></span>
+    <label style="margin:0">Run <select onchange="location.search='?run='+this.value">{% for r in runs %}<option value="{{ r.id }}" {% if run and r.id==run.id %}selected{% endif %}>#{{ r.id }} · {{ r.label }} · {{ local_time(r.created_at) }}</option>{% endfor %}</select></label>
+    {% if run %}<a href="/export/{{ run.id }}.zip"><button class="sec" type="button">Export per LLC (Excel)</button></a>{% endif %}
+  </div>
+</section>
+{% if run %}
+<section class="card">
+  {% set s = run.summary %}
+  <div class="kpi">
+    <div><b>{{ s.get('total',0) }}</b>movements</div>
+    <div><b style="color:var(--ok)">{{ s.get('RECONCILED',0) }}</b>Reconciled</div>
+    <div><b style="color:var(--bad)">{{ s.get('EXCEPTION',0) }}</b>Exceptions</div>
+    <div><b>{{ s.get('protected',0) }}</b>human decisions protected</div>
+    <div><b>{{ s.get('protected_with_proposal',0) }}</b>proposals on human rows</div>
+    <div><b>{{ s.get('cmp:SAME',0) }}</b>same as Bank</div>
+    <div><b>{{ s.get('cmp:DIFFERENT',0) }}</b>different from Bank</div>
+    <div><b>{{ s.get('cmp:BANK_EMPTY',0) }}</b>reconciled, empty in Bank</div>
+  </div>
+</section>
+<section class="card">
+  <h3 style="margin:0 0 6px">Exceptions by type and WHO</h3>
+  <table><thead><tr><th>Type</th><th>WHO / pattern</th><th>Movements</th><th></th></tr></thead><tbody>
+  {% for code, key, ids in dashboard %}
+    <tr class="r" data-group-exc="{{ code }}" data-group-key="{{ key }}"><td>{{ code }}</td><td>{{ key }}</td><td>{{ ids|length }}</td>
+      <td><button type="button" data-review>Review</button>
+          <button class="sec" data-investigate="{{ ids[:6]|join(',') }}">Investigate with AI{% if ids|length>6 %} (first 6){% endif %}</button>
+          <button class="sec" type="button" data-show>Advanced details</button></td></tr>
+  {% else %}<tr><td colspan="4">No exceptions.</td></tr>{% endfor %}
+  </tbody></table>
+  <div class="row" style="margin-top:8px"><button class="sec" type="button" id="all-movements">All movements ({{ total }})</button><span class="m" id="saved-filters"></span></div>
+</section>
+{% else %}
+<section class="card">No run yet. Start with <b>Run MVP sample</b>.</section>
+{% endif %}
+</main>
+
+{% if run %}
+<dialog id="list" aria-label="Transactions">
+  <div class="hd"><div><b id="l-title">Transactions</b> <button class="sec" type="button" id="help-open" aria-haspopup="dialog" style="padding:2px 10px;margin-left:6px">? Help</button><div class="m">Run #{{ run.id }} · {{ run.label }} — click a row to open it; Previous/Next move inside this list.</div></div>
+    <button class="sec" type="button" id="l-close">Close</button></div>
+  <div class="bd" style="max-height:84vh">
+    <form class="row" id="l-filters">
+      <select name="status"><option value="">All statuses</option>{% for v in ['RECONCILED','EXCEPTION'] %}<option>{{ v }}</option>{% endfor %}</select>
+      <select name="case"><option value="">All cases</option>{% for k,v in cases.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+      <select name="exc"><option value="">All exceptions</option>{% for k,v in codes.items() %}<option value="{{ k }}">{{ k }} ({{ v }})</option>{% endfor %}</select>
+      <select name="cmp"><option value="">Any comparison</option>{% for v in ['SAME','DIFFERENT','BANK_EMPTY','CBANK_OPEN','BOTH_OPEN'] %}<option>{{ v }}</option>{% endfor %}</select>
+      <input name="q" placeholder="Search description or WHO">
+      <input type="hidden" name="group">
+      <span class="m" id="l-group"></span>
+      <button class="sec">Filter</button> <button class="sec" type="button" id="l-reset">Clear filters</button>
+      <span class="m" id="l-count"></span>
+    </form>
+    <div class="row" style="margin:6px 0">
+      <button class="sec" type="button" id="l-select-all">Select all shown</button>
+      <button class="sec" type="button" id="l-select-none">Clear selection</button>
+      <span class="m" id="l-selected"></span>
+      <button type="button" id="l-investigate">Investigate selected with AI</button>
+      <span class="m">(open movements only, up to 6 per investigation)</span>
+      <span class="m" data-status role="status"></span>
+    </div>
+    <details id="p-box" open style="margin:6px 0"><summary><b>Previous Bank classifications</b> <span class="m" id="p-count"></span>
+      <span class="m">— Decision 59: proposals recovered read-only from the operational Bank. Approving stores a human decision in the C-Bank store only; no rule is created.</span></summary>
+      <div id="p-done" class="m" role="status"></div>
+      <div id="p-groups"></div></details>
+    <div style="overflow:auto;max-height:66vh">
+    <table><thead><tr><th></th><th>Date</th><th>Description</th><th class="num">Amount</th><th>Paid by</th><th>WHO</th><th>Beneficiary</th><th>WHY</th><th>Category RF-One</th><th>QB</th><th>Operation</th><th>Status</th><th>vs Bank</th><th>Previous Bank classification</th></tr></thead>
+    <tbody id="l-rows"></tbody></table></div>
+  </div>
+</dialog>
+{% endif %}
+
+{% if run %}
+<dialog id="wiz" aria-labelledby="w-title">
+  <div class="hd"><div><b id="w-title">Guided reconciliation</b><div class="m" id="w-sub"></div></div>
+    <div class="row"><button class="sec" type="button" id="w-advanced">Advanced details</button>
+      <button class="sec" type="button" id="w-x" aria-label="Cancel">✕</button></div></div>
+  <ol class="steps" id="w-steps"><li data-s="1">1 · Proposal</li><li data-s="2">2 · Review</li><li data-s="3">3 · Confirm</li></ol>
+  <div class="bd wiz" id="w-body"></div>
+  <div class="ft"><span class="m" data-status role="status"></span><span style="flex:1"></span>
+    <button class="sec" type="button" id="w-cancel">Cancel</button>
+    <button class="sec" type="button" id="w-skip">Skip this proposal</button>
+    <button class="sec" type="button" id="w-back">Back</button>
+    <button type="button" id="w-next">Next</button></div>
+</dialog>
+{% endif %}
+
+<dialog id="help" aria-labelledby="help-title">
+  <div class="hd"><b id="help-title">How to use the Transactions window</b>
+    <button class="sec" type="button" data-help-close aria-label="Close help">✕</button></div>
+  <div class="bd help">
+    <h3>1. What am I looking at?</h3>
+    <p>C-Bank lists the bank movements of this run that are <b>not fully reconciled yet</b>. On the dashboard they are grouped by
+      <b>problem</b> (for example <code>NO_PROFILE</code> = the WHO is known but has no Recognition Profile) and by <b>WHO</b>
+      (for example <i>MERCHANT BANKCD</i>). Clicking a group opens only its movements here.</p>
+    <p><b>Previous Bank classifications</b> are <b>proposals</b> recovered read-only from the old Bank (often AI batches that were never
+      reviewed, shown as their <i>origin</i>). They are <b>not</b> approved decisions until you approve them here.</p>
+
+    <h3>2. Understanding the columns</h3>
+    <table>
+      <tr><th>Paid by</th><td>The owner of the account or card that paid (e.g. a payment from <i>Checking RFWP</i> is paid by RFWP).</td></tr>
+      <tr><th>WHO</th><td>The counterparty: who was paid or who paid us (e.g. <i>ADP WAGE PAY</i>, <i>TABLE TOP LINEN</i>).</td></tr>
+      <tr><th>Beneficiary</th><td>The LLC or person the movement economically belongs to. It can differ from <i>Paid by</i>: if RFWP pays a bill of RFMD, the beneficiary is RFMD and RFMD owes RFWP.</td></tr>
+      <tr><th>WHY</th><td>The nature of the movement (e.g. <i>Payroll Wages Payment</i>, <i>Merchant / Card Sales Settlement</i>).</td></tr>
+      <tr><th>Category RF-One</th><td>The management category (e.g. <i>1210 Merchant Processor Receivable / Clearing</i>). Usually it follows the WHY.</td></tr>
+      <tr><th>QB</th><td>The QuickBooks account. It shows <i>not mapped</i> for now: the QuickBooks chart of accounts is not imported yet.</td></tr>
+      <tr><th>Operation</th><td>The type of operation: operating expense or income, capital asset, financing, transfer between accounts, card payment, inter-entity advance/repayment, other patrimonial.</td></tr>
+      <tr><th>Status</th><td><span class="b RECONCILED">RECONCILED</span> = every needed field is set. <span class="b EXCEPTION">EXCEPTION</span> = something is missing or uncertain; the reason is listed below it. 🔒 = a protected human decision.</td></tr>
+      <tr><th>vs Bank</th><td>Comparison with the old Bank: <i>SAME</i>, <i>DIFFERENT</i> (with the fields), <i>CBANK_OPEN</i> (still open in C-Bank), <i>BANK_EMPTY</i> (Bank had nothing).</td></tr>
+    </table>
+
+    <h3>3. How to approve transactions</h3>
+    <ol>
+      <li>Look at the movements of the group in the table (click a row to see the full decision trace; use <i>Previous / Next</i> to move through the list).</li>
+      <li>In <b>Previous Bank classifications</b>, check each proposal: <b>Beneficiary</b>, <b>WHY</b> and <b>Category</b>.</li>
+      <li>If a value is wrong, change it in the proposal's drop-downs before approving (choosing a WHY also fills in its category).</li>
+      <li><b>Select these rows</b> ticks the movements of that proposal; you can untick the ones you are not sure about.</li>
+      <li><b>Approve selected rows</b> approves only the ticked movements of that proposal.</li>
+      <li><b>Approve whole group</b> approves every movement of <b>that one proposal</b>, not every movement visible in this window.</li>
+    </ol>
+    <p class="warnbox">Check before approving: the old Bank may have given the same classification to different movements. Example: in
+      <i>MERCHANT BANKCD</i> the proposal “RFWP · Merchant / Card Sales Settlement” holds 20 card-sales deposits, while the proposal
+      “RFMD · Merchant / Card Sales Settlement” holds one <b>−45.00 debit</b> that the AI flagged as a possible processing fee: a debit is
+      not a sales deposit, so correct its WHY (e.g. <i>Bank Service Charge</i>) or leave it open. Untick or correct any row you are unsure about.
+      Movements with a different beneficiary are always in a separate proposal.
+      A proposal marked <i>incomplete</i> (e.g. no category) must be completed first, otherwise the rows stay in EXCEPTION.</p>
+
+    <h3>4. Investigate with AI</h3>
+    <p>Use <b>Investigate selected with AI</b> when the information is really uncertain: no previous classification, conflicting rules,
+      or a beneficiary you cannot tell. Tick up to <b>6 open movements</b> that look alike; ChatGPT (OpenAI) studies them together and judges each one.</p>
+    <p>The AI only <b>proposes</b>. A movement is classified automatically only if the AI says the evidence is sufficient with confidence ≥ 0.85;
+      otherwise you see its <b>question</b> and <b>alternatives</b> on the movement (for example: “Does this payment settle payroll already accrued, or cover unrecorded wages?”).
+      You can also discuss a single movement in its own window (“Conversation with AI”).</p>
+
+    <h3>5. What happens after approval?</h3>
+    <ul>
+      <li>The decision is saved <b>only in C-Bank Prototype</b> (its experimental store).</li>
+      <li>The operational <b>Bank is not changed</b>.</li>
+      <li>An approved row becomes <b>RECONCILED</b> if WHO, Beneficiary, WHY, Category and Operation are all set; otherwise it stays in EXCEPTION with the missing field shown. “Just approved” shows the result at once, and the dashboard counts update when you close this window.</li>
+      <li><b>No permanent rule</b> is created, and an approval applies only to the rows you approved, never to other movements of the same WHO.</li>
+      <li>Approved decisions are <b>protected</b> 🔒: automatic processing never changes them, and approving the same row again is refused.</li>
+    </ul>
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button type="button" data-help-close>Close</button></div>
+  </div>
+</dialog>
+
+<dialog id="dlg" aria-label="Movement">
+  <div class="hd"><div><b id="d-title"></b> <button class="sec" type="button" id="d-help-btn" popovertarget="d-help-pop" aria-label="How to use this window" style="padding:1px 9px">?</button><div class="m" id="d-sub"></div></div>
+    <div class="row"><button class="sec" type="button" id="d-prev">← Previous</button><span class="m" id="d-pos"></span><button class="sec" type="button" id="d-next">Next →</button>
+    <button class="sec" type="button" onclick="dlg.close()">Close</button></div></div>
+  <div id="d-help-pop" popover class="pop">
+    <b>How to use this window</b>
+    <ol><li><b>Read the AI question</b> in the yellow box.</li>
+      <li><b>Select an answer</b>, or choose <i>Other</i> and explain in your own words, then <i>Submit answer</i>.</li>
+      <li><b>Review the proposed classification</b>: the AI fills WHO, Beneficiary, WHY and Category; nothing is saved yet.</li>
+      <li><b>Confirm the decision</b> with <i>Confirm human decision</i> (saved only in C-Bank).</li></ol>
+    <span class="m">Technical information is under <i>Advanced details</i>.</span>
+  </div>
+  <div class="bd">
+    <div class="m" data-status role="status"></div>
+    <div id="d-alerts"></div>
+    <div id="d-question"></div>
+    <div class="grid">
+      <div>
+        <h4 style="margin:4px 0">Classification — your decision (experimental, protected)</h4>
+        <form id="d-form">
+          <label>WHO<input name="who" list="whos" required></label><datalist id="whos"></datalist>
+          <label>Beneficiary<select name="beneficiary_id"></select></label>
+          <label>WHY<select name="why_id" required></select></label>
+          <label>Category RF-One<select name="category_id"></select></label>
+          <label>Note / explanation<textarea name="note" rows="2"></textarea></label>
+          <div class="row" style="margin-top:8px"><button type="submit">Confirm human decision</button><span class="m">Saved only in the C-Bank store. Re-evaluates unresolved movements only.</span></div>
+        </form>
+      </div>
+      <div>
+        <h4 style="margin:4px 0">Conversation with AI (OpenAI)</h4>
+        <div id="d-chat"></div>
+        <form id="d-chatform" class="row"><input name="text" style="flex:1" placeholder="Ask or explain…"><button class="sec">Send</button></form>
+      </div>
+    </div>
+    <details id="d-advanced" style="margin-top:12px"><summary><b>Advanced details</b> <span class="m">— decision trace, operational Bank, history</span></summary>
+      <h4 style="margin:6px 0 4px">Decision trace</h4>
+      <table id="d-trace"><thead><tr><th>Stage</th><th>Method</th><th>Value</th><th>Evidence</th></tr></thead><tbody></tbody></table>
+      <h4 style="margin:10px 0 4px">Operational Bank today (read-only)</h4><div id="d-bank" class="m"></div>
+      <div id="d-history" class="m"></div>
+    </details>
+  </div>
+</dialog>
+<script>
+const token=document.querySelector('meta[name=cbank-token]').content,runId={{ run.id if run else 'null' }};
+const $=s=>document.querySelector(s),esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function post(url,data){const r=await fetch(url,{method:'POST',headers:{'X-CBank-Token':token},body:new URLSearchParams(data)});const v=await r.json();if(!r.ok||v.ok===false)throw Error(v.error||r.statusText);return v;}
+function busy(b,t){document.querySelectorAll('button').forEach(x=>x.disabled=b);document.querySelectorAll('#status,[data-status]').forEach(x=>x.textContent=t||'');if(!b&&current)position();}
+document.querySelectorAll('[data-run]').forEach(b=>b.onclick=async()=>{busy(true,'Running the engine (dry run)…');try{const v=await post('/api/runs',{kind:b.dataset.run,month:$('#month').value});location.search='?run='+v.run_id;}catch(e){busy(false,e.message);}});
+document.querySelectorAll('[data-investigate]').forEach(b=>b.onclick=async()=>{busy(true,'AI investigation of the group (OpenAI). This can take a minute…');try{const v=await post(`/api/runs/${runId}/investigate`,{txn_ids:b.dataset.investigate});busy(false,`Investigation done: ${v.reevaluated_changed} unresolved movements changed. Reloading…`);setTimeout(()=>location.reload(),800);}catch(e){busy(false,e.message);}});
+// --- Transactions modal: filters, selection and position persist per run (sessionStorage) ---
+const KEY='cbank-list-'+runId,FIELDS=['status','case','exc','cmp','q','group'];
+let current=null,rows=[],changed=false;
+const state=(()=>{try{return JSON.parse(sessionStorage.getItem(KEY))||{}}catch{return {}}})();
+state.filters=state.filters||{};state.selected=state.selected||[];
+function save(){try{sessionStorage.setItem(KEY,JSON.stringify(state));}catch{}showSaved();}
+function showSaved(){const f=state.filters,parts=FIELDS.filter(k=>f[k]).map(k=>`${k}: ${f[k]}`);const el=$('#saved-filters');if(el)el.textContent=(parts.length?'Last filters — '+parts.join(' · '):'')+(state.selected.length?` · ${state.selected.length} selected`:'');}
+function fillForm(){const form=$('#l-filters');for(const k of FIELDS)form.elements[k].value=state.filters[k]||'';$('#l-group').textContent=state.filters.group?'Group: '+state.filters.group:'';}
+function readForm(){const form=$('#l-filters');for(const k of FIELDS)state.filters[k]=form.elements[k].value.trim();save();}
+let priors={},pdata={groups:[]};
+async function loadRows(){const qs=new URLSearchParams(Object.entries(state.filters).filter(([,v])=>v));const v=await (await fetch(`/api/runs/${runId}/results?${qs}`)).json();rows=v.rows;
+ pdata=await (await fetch(`/api/runs/${runId}/prior?${qs}`)).json();priors=pdata.priors||{};renderRows();renderPriors();}
+// --- Decision 59: previous Bank classifications, approved by group or by selected rows ---
+function renderPriors(){const g=pdata.groups||[],cat=pdata;$('#p-count').textContent=`${g.length} proposal group(s), ${Object.keys(priors).length} movement(s)`;
+ $('#p-groups').innerHTML=g.map((x,i)=>`<div class="warnbox" data-pg="${i}">
+  <div><b>${esc(x.who)}</b> → <b>${esc(x.beneficiary||'—')}</b> · WHY <b>${esc(x.why)}</b> · ${esc(x.category||'no category')} <span class="m">· ${x.txn_ids.length} movement(s) · origin: ${esc(Object.entries(x.origins).map(([k,n])=>`${k} (${n})`).join('; '))}${x.complete?'':' · incomplete: correct before approving'}</span></div>
+  <div class="row" style="margin-top:4px">
+   <label style="margin:0">Beneficiary <select data-c="beneficiary_id">${opt(cat.entities||[],x.beneficiary_id,y=>y.name)}</select></label>
+   <label style="margin:0">WHY <select data-c="why_id">${opt(cat.whys||[],x.why_id,y=>y.name)}</select></label>
+   <label style="margin:0">Category <select data-c="category_id">${opt(cat.categories||[],x.category_id,y=>y.label,'(category of the WHY)')}</select></label>
+   <button class="sec" type="button" data-pselect>Select these rows</button>
+   <button type="button" data-papprove="selected">Approve selected rows</button>
+   <button type="button" data-papprove="group">Approve whole group (${x.txn_ids.length})</button></div></div>`).join('')||'<p class="m">No previous Bank classification for the open movements shown.</p>';
+ document.querySelectorAll('[data-pg]').forEach(box=>{const x=g[+box.dataset.pg];
+  box.querySelector('[data-c=why_id]').onchange=e=>{const w=(cat.whys||[]).find(y=>y.id===+e.target.value);box.querySelector('[data-c=category_id]').value=w&&w.category_id?w.category_id:'';};
+  box.querySelector('[data-pselect]').onclick=()=>{state.selected=[...new Set([...state.selected,...x.txn_ids])];save();renderRows();};
+  box.querySelectorAll('[data-papprove]').forEach(b=>b.onclick=()=>approvePrior(x,box,b.dataset.papprove));});}
+async function approvePrior(x,box,mode){const ids=mode==='group'?x.txn_ids:x.txn_ids.filter(i=>state.selected.includes(i));
+ if(!ids.length){$('#l-selected').textContent='Select at least one movement of this proposal.';return;}
+ const data={txn_ids:ids.join(',')};for(const k of ['beneficiary_id','why_id','category_id']){const v=box.querySelector(`[data-c=${k}]`).value;if(v&&+v!==x[k])data[k]=v;}
+ const fixes=Object.keys(data).filter(k=>k!=='txn_ids');
+ if(!confirm(`Approve ${ids.length} movement(s) of ${x.who}${fixes.length?' with corrections: '+fixes.join(', '):''}? Saved only in the C-Bank store.`))return;
+ busy(true,'Saving approvals…');
+ try{const v=await post(`/api/runs/${runId}/prior/approve`,data);changed=true;state.selected=state.selected.filter(i=>!ids.includes(i));save();
+  busy(false,`Approved ${v.saved.length}, skipped ${v.skipped.length}${v.skipped.length?' ('+v.skipped.map(s=>s.id+': '+s.reason).join('; ')+')':''}. Re-evaluated: ${v.reevaluated_changed} changed. Reconciled now ${v.summary.RECONCILED||0} / ${v.summary.total}.`);
+  await loadRows();
+  $('#p-done').innerHTML='<b>Just approved</b> (C-Bank store): '+v.updated.map(u=>`#${u.txn_id} <span class="b ${u.status}">${u.status}</span> ${esc(u.who_name)} · ${esc(u.why)} · ${esc(u.category||'—')} · ${esc(u.beneficiary||'—')}`).join(' — ');}catch(e){busy(false,e.message);}}
+function renderRows(){const sel=new Set(state.selected);
+ $('#l-rows').innerHTML=rows.map(r=>`<tr class="r ${current&&current.result.txn_id===r.txn_id?'cur':''}" data-txn="${r.txn_id}">
+  <td><input type="checkbox" data-pick="${r.txn_id}" ${sel.has(r.txn_id)?'checked':''} aria-label="Select ${r.txn_id}"></td>
+  <td>${esc(r.date)}</td><td>${esc(r.description)}${(r.cases||[]).length?`<div class="m">${esc(r.cases.join(', '))}</div>`:''}</td>
+  <td class="num ${r.amount_minor<0?'neg':''}">${(r.amount_minor/100).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+  <td>${esc(r.payer||'—')}<div class="m">${esc(r.source)}</div></td><td>${esc(r.who_name||'—')}<div class="m">${esc(r.who_method||'')}</div></td>
+  <td>${esc(r.beneficiary||'—')}<div class="m">${esc(r.beneficiary_method||'')}</div></td><td>${esc(r.why||'—')}<div class="m">${esc(r.why_method||'')}</div></td>
+  <td>${esc(r.category||'—')}</td><td class="m">${esc(r.qb_account||'not mapped')}</td><td class="m">${esc(r.operation_type||'—')}</td>
+  <td><span class="b ${r.status}">${r.status}</span>${r.protected?`<div class="m">🔒 ${esc(r.protected)}</div>`:''}${r.exceptions.map(e=>`<div class="m">${esc(e.code)}</div>`).join('')}</td>
+  <td class="m">${esc(r.comparison)}</td>
+  <td class="m">${(p=>p?`${esc(p.why)} · ${esc(p.category||'no category')} · ${esc(p.beneficiary||'—')}<br><i>${esc(p.origin)}</i>`:'')(priors[r.txn_id])}</td></tr>`).join('');
+ $('#l-count').textContent=`${rows.length} of {{ total }}`;$('#l-selected').textContent=`${state.selected.length} selected`;
+ document.querySelectorAll('#l-rows tr[data-txn]').forEach(tr=>tr.onclick=e=>{if(e.target.matches('[data-pick]'))return;open(+tr.dataset.txn);});
+ document.querySelectorAll('[data-pick]').forEach(c=>c.onchange=()=>{const id=+c.dataset.pick,s=new Set(state.selected);c.checked?s.add(id):s.delete(id);state.selected=[...s];save();$('#l-selected').textContent=`${state.selected.length} selected`;});}
+async function openList(preset){if(preset){state.filters=Object.assign({},preset);save();}fillForm();await loadRows();$('#l-title').textContent=state.filters.group?`Transactions — ${state.filters.exc||''} ${state.filters.group}`:'Transactions';if(!list.open)list.showModal();}
+if(window.list){
+ document.querySelectorAll('tr[data-group-exc]').forEach(tr=>{const g={exc:tr.dataset.groupExc,group:tr.dataset.groupKey};
+  tr.querySelector('[data-show]').onclick=e=>{e.stopPropagation();openList(g);};
+  tr.onclick=e=>{if(e.target.closest('[data-investigate]'))return;openWizard(g);};});
+ $('#all-movements').onclick=()=>openList(null);
+ $('#l-filters').onsubmit=e=>{e.preventDefault();readForm();loadRows();};
+ $('#l-reset').onclick=()=>{state.filters={};save();fillForm();loadRows();};
+ $('#l-select-all').onclick=()=>{state.selected=[...new Set([...state.selected,...rows.map(r=>r.txn_id)])];save();renderRows();};
+ $('#l-select-none').onclick=()=>{state.selected=[];save();renderRows();};
+ $('#l-investigate').onclick=async()=>{const open_=rows.filter(r=>state.selected.includes(r.txn_id)&&r.status!=='RECONCILED').map(r=>r.txn_id).slice(0,6);
+  if(!open_.length){$('#l-selected').textContent='Select at least one open movement shown in the list.';return;}
+  busy(true,`AI investigation of ${open_.length} movement(s) (OpenAI). This can take a minute…`);
+  try{const v=await post(`/api/runs/${runId}/investigate`,{txn_ids:open_.join(',')});changed=true;busy(false,`Investigation done: ${v.reevaluated_changed} unresolved movements changed.`);await loadRows();}catch(e){busy(false,e.message);}};
+ $('#l-close').onclick=()=>list.close();
+ // Help: a separate modal on top; closing it (X, Close or Escape) leaves the list, filters and selection as they were.
+ let helpClosedAt=0;
+ $('#help-open').onclick=()=>help.showModal();
+ document.querySelectorAll('[data-help-close]').forEach(b=>b.onclick=()=>help.close());
+ help.addEventListener('close',()=>{helpClosedAt=Date.now();});
+ // Escape closes only the help: the same key press must not also close the Transactions window.
+ list.addEventListener('cancel',e=>{if(help.open||Date.now()-helpClosedAt<500)e.preventDefault();});
+ list.addEventListener('close',()=>{if(changed)location.reload();});
+ showSaved();
+}
+// --- Decision 60: Guided Reconciliation Wizard -------------------------------------------------
+// Presentation only: proposals are the Decision 59 previous Bank classifications (/prior), approvals
+// go through /prior/approve. No new AI call, no new reconciliation logic. Movements are never mixed
+// across direction (money in / money out): the minority direction of a group is shown apart as an anomaly.
+const W={};
+const usd=v=>(v<0?'−':'')+'$'+Math.abs(v/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const plainCat=l=>l?String(l).replace(/^\d+\s+/,''):null;
+const entName=id=>{const e=((W.cat||{}).entities||[]).find(x=>x.id===id);return e?(e.legal_name?`${e.name} (${e.legal_name})`:e.name):'—';};
+const shortDesc=d=>{let s=String(d||'').replace(/\s+/g,' ').trim();const m=s.match(/ORIG CO NAME:(.*?) ORIG ID/);
+ if(m){const p=(s.match(/CO ENTRY DESCR:(.*?) SEC:/)||[])[1];s=m[1].trim()+(p?' · '+p.trim():'');}return s.length>50?s.slice(0,48)+'…':s;};
+const dirWord=d=>d==='in'?'money in':'money out';
+async function openWizard(g){
+ const qs=new URLSearchParams({exc:g.exc,group:g.group});
+ const [res,pr]=await Promise.all([fetch(`/api/runs/${runId}/results?${qs}`).then(r=>r.json()),fetch(`/api/runs/${runId}/prior?${qs}`).then(r=>r.json())]);
+ Object.assign(W,{g,rows:res.rows,byId:Object.fromEntries(res.rows.map(r=>[r.txn_id,r])),cat:pr,results:[]});
+ const ins=res.rows.filter(r=>r.amount_minor>=0).length,outs=res.rows.length-ins;W.main=ins>=outs?'in':'out';
+ const props=[];
+ for(const x of pr.groups)for(const d of ['in','out']){
+  const ids=x.txn_ids.filter(i=>W.byId[i]&&((W.byId[i].amount_minor>=0)===(d==='in')));if(!ids.length)continue;
+  const notes=[...new Set(ids.flatMap(i=>W.byId[i].exceptions.map(e=>e.question).filter(Boolean)))];
+  props.push({...x,txn_ids:ids,dir:d,anomaly:d!==W.main,notes});}
+ props.sort((a,b)=>(a.anomaly-b.anomaly)||(b.txn_ids.length-a.txn_ids.length));
+ const inProp=new Set(props.flatMap(p=>p.txn_ids));
+ W.noPrior=res.rows.filter(r=>!inProp.has(r.txn_id)&&!r.protected);W.protectedRows=res.rows.filter(r=>r.protected);
+ W.props=props;W.i=0;startProposal();if(!wiz.open)wiz.showModal();}
+function cur(){return W.props[W.i];}
+function startProposal(){const p=cur();W.step=1;W.sel=new Set(p&&!p.anomaly?p.txn_ids:[]);W.fix={};renderWizard();}
+function fixed(){const p=cur(),f=W.fix;const why=f.why_id||p.why_id;const w=(W.cat.whys||[]).find(x=>x.id===why);
+ const category=f.category_id||(f.why_id?(w&&w.category_id):p.category_id);
+ const catLabel=((W.cat.categories||[]).find(x=>x.id===category)||{}).label||(category===p.category_id?p.category:null);
+ return {beneficiary_id:f.beneficiary_id||p.beneficiary_id,why_id:why,why:(w||{}).name||p.why,category_id:category,category:catLabel};}
+function others(){return W.props.filter((x,k)=>k!==W.i);}
+function keptApart(){let h='';const anomalies=others().filter(x=>x.anomaly);
+ for(const a of anomalies)h+=`<div class="anom"><b>${a.txn_ids.length} movement(s) of ${a.txn_ids.map(i=>usd(W.byId[i].amount_minor)).join(', ')}</b> are ${dirWord(a.dir)} while most movements of ${esc(W.g.group)} are ${dirWord(W.main)}.
+  They may be a fee, a refund or an adjustment, so they are <b>excluded from this proposal</b> and reviewed separately.${a.notes.length?`<br><span class="m">AI note: ${esc(a.notes[0])}</span>`:''}</div>`;
+ const same=others().filter(x=>!x.anomaly);if(same.length)h+=`<p class="m">Also in this group, reviewed as separate proposals: ${same.map(x=>`${x.txn_ids.length} for ${esc(entName(x.beneficiary_id))} (${esc(x.why)})`).join('; ')}.</p>`;
+ if(W.noPrior.length)h+=`<div class="anom"><b>${W.noPrior.length} movement(s) have no earlier classification.</b> C-Bank has no evidence to propose anything for them: use <i>Investigate with AI</i> or <i>Advanced details</i>.</div>`;
+ if(W.protectedRows.length)h+=`<p class="m">🔒 ${W.protectedRows.length} movement(s) already decided by a person are protected and not included.</p>`;
+ return h;}
+function renderWizard(){const p=cur(),s=W.step;
+ document.querySelectorAll('#w-steps li').forEach(li=>{const n=+li.dataset.s;li.className=n===s?'on':n<s?'done':'';});
+ $('#w-title').textContent=`Guided reconciliation — ${W.g.group}`;
+ $('#w-sub').textContent=W.props.length?`Proposal ${Math.min(W.i+1,W.props.length)} of ${W.props.length} · ${W.rows.length} open movement(s) in this group`:`${W.rows.length} open movement(s) in this group`;
+ const back=$('#w-back'),next=$('#w-next');back.hidden=s===1||!p;next.hidden=false;next.disabled=false;$('#w-skip').hidden=!p;
+ let h='';
+ if(!p){ // no (more) proposals
+  const done=W.results.length;
+  h=done?`<div class="okbox"><b>Done with this group.</b> ${W.results.map(r=>esc(r)).join('<br>')}</div>`:'';
+  h+=done?'':`<p class="prop">There is <b>no earlier classification</b> to propose for this group, so C-Bank will not guess one.</p>`;
+  const gs=[...document.querySelectorAll('tr[data-group-exc]')],k=gs.findIndex(t=>t.dataset.groupExc===W.g.exc&&t.dataset.groupKey===W.g.group);
+  h+=keptApart();next.textContent=done||!W.noPrior.length?(gs[k+1]?'Next group':'Back to Dashboard'):'Investigate with AI';next.dataset.act=done||!W.noPrior.length?'nextgroup':'ai';back.hidden=true;
+ }else if(s===1){const f=fixed(),total=p.txn_ids.reduce((a,i)=>a+W.byId[i].amount_minor,0);
+  h=`<div class="prop">${p.anomaly?'<div class="anom"><b>Needs care:</b> this proposal is kept apart from the other movements of the group. Check each movement before approving.</div>':''}
+   I found <b>${p.txn_ids.length}</b> movement(s) (${dirWord(p.dir)}, total <b>${usd(total)}</b>) with <b>${esc(p.who)}</b>.<br>
+   They belong to <b>${esc(entName(f.beneficiary_id))}</b>.<br>
+   They look like: <b>${esc(f.why)}</b>.<br>
+   ${f.category?`Proposed category: <b>${esc(plainCat(f.category))}</b>.`:'<span class="anom" style="display:inline-block">No category is known for this classification: choose one in Review, otherwise these movements stay incomplete.</span>'}</div>
+   <p class="m">Source: the old Bank's earlier classification (${esc(Object.keys(p.origins).join('; '))}). Nothing is approved yet.</p>${p.notes.length&&!p.anomaly?`<p class="m">AI note: ${esc(p.notes[0])}</p>`:''}${p.anomaly&&p.notes.length?`<p class="m">AI note: ${esc(p.notes[0])}</p>`:''}`+keptApart();
+  next.textContent='Next';next.dataset.act='review';
+ }else if(s===2){const f=fixed();
+  h=`<p>Tick the movements to approve. ${p.anomaly?'<b>These movements are unusual: none is ticked by default.</b>':'Untick anything you are not sure about.'}</p>
+   <table><thead><tr><th><input type="checkbox" id="w-all" ${W.sel.size===p.txn_ids.length?'checked':''} aria-label="Select all"></th><th>Date</th><th>Description</th><th class="num">Amount</th><th>Account / card</th><th>Beneficiary</th><th>Proposed classification</th><th></th></tr></thead><tbody>
+   ${p.txn_ids.map(i=>{const r=W.byId[i];return `<tr><td><input type="checkbox" data-w="${i}" ${W.sel.has(i)?'checked':''} aria-label="Select ${i}"></td><td>${esc(r.date)}</td>
+    <td><details><summary>${esc(shortDesc(r.description))}</summary><span class="m">${esc(r.description)}</span></details></td>
+    <td class="num ${r.amount_minor<0?'neg':''}">${usd(r.amount_minor)}</td><td>${esc(r.source)}</td><td>${esc(entName(f.beneficiary_id))}</td>
+    <td>${esc(f.why)}${f.category?' · '+esc(plainCat(f.category)):' · <i>no category</i>'}</td><td><button class="sec" type="button" data-wdetail="${i}">Details / ask AI</button></td></tr>`;}).join('')}</tbody></table>
+   <details style="margin-top:8px" ${Object.keys(W.fix).length?'open':''}><summary>Change the proposed classification</summary><div class="row" style="margin-top:6px">
+    <label style="margin:0">Beneficiary <select data-wf="beneficiary_id">${opt(W.cat.entities||[],f.beneficiary_id,x=>x.legal_name?`${x.name} (${x.legal_name})`:x.name)}</select></label>
+    <label style="margin:0">WHY <select data-wf="why_id">${opt(W.cat.whys||[],f.why_id,x=>x.name)}</select></label>
+    <label style="margin:0">Category <select data-wf="category_id">${opt(W.cat.categories||[],f.category_id,x=>plainCat(x.label),'Choose a category')}</select></label></div>
+    <p class="m">The change applies to the ticked movements of this proposal.</p></details>`+(others().length||W.noPrior.length?`<h4 style="margin:12px 0 4px">Kept apart</h4>${keptApart()}`:'');
+  next.textContent='Next';next.dataset.act='confirm';
+ }else{const f=fixed(),n=W.sel.size,excl=p.txn_ids.filter(i=>!W.sel.has(i));
+  h=`<div class="prop">You are approving <b>${n}</b> movement(s) with <b>${esc(p.who)}</b>.<br>Beneficiary: <b>${esc(entName(f.beneficiary_id))}</b><br>
+   Classification: <b>${esc(f.why)}</b>${f.category?` · <b>${esc(plainCat(f.category))}</b>`:' · <span class="neg">no category</span>'}</div>
+   <p>${f.category?`Expected: <b>${n}</b> will become <span class="b RECONCILED">RECONCILED</span>, <b>0</b> will stay incomplete.`:`Expected: <b>0</b> will become Reconciled, <b>${n}</b> will stay <span class="b EXCEPTION">incomplete</span> (no category).`}</p>
+   ${excl.length?`<p>Not approved now (unticked): ${excl.map(i=>`${esc(W.byId[i].date)} ${usd(W.byId[i].amount_minor)}`).join(', ')}.</p>`:''}
+   ${others().length?`<p class="m">${others().length} other proposal(s) of this group are not affected.</p>`:''}
+   <p class="m">Saved only in C-Bank Prototype as a human decision. The operational Bank is not changed and no rule is created.</p>`;
+  next.textContent='Approve and continue';next.dataset.act='approve';next.disabled=!n;}
+ $('#w-body').innerHTML=h;
+ const all=$('#w-all');if(all)all.onchange=()=>{W.sel=new Set(all.checked?p.txn_ids:[]);renderWizard();};
+ document.querySelectorAll('[data-w]').forEach(c=>c.onchange=()=>{const i=+c.dataset.w;c.checked?W.sel.add(i):W.sel.delete(i);});
+ document.querySelectorAll('[data-wdetail]').forEach(b=>b.onclick=()=>{rows=p.txn_ids.map(i=>W.byId[i]);open(+b.dataset.wdetail);});
+ document.querySelectorAll('[data-wf]').forEach(sel=>sel.onchange=()=>{const k=sel.dataset.wf,v=+sel.value||null;
+  if(k==='why_id'){W.fix.why_id=v!==p.why_id?v:undefined;delete W.fix.category_id;}else{W.fix[k]=v&&v!==p[k]?v:undefined;}
+  for(const key of Object.keys(W.fix))if(W.fix[key]==null)delete W.fix[key];renderWizard();});}
+async function wizardNext(){const act=$('#w-next').dataset.act,p=cur();
+ if(act==='review'){W.step=2;return renderWizard();}
+ if(act==='confirm'){W.step=3;return renderWizard();}
+ if(act==='ai'){const ids=W.noPrior.slice(0,6).map(r=>r.txn_id);busy(true,'AI investigation (OpenAI)… this can take a minute');
+  try{const v=await post(`/api/runs/${runId}/investigate`,{txn_ids:ids.join(',')});changed=true;busy(false,`Investigation done: ${v.reevaluated_changed} movement(s) updated.`);await openWizard(W.g);}catch(e){busy(false,e.message);}return;}
+ if(act==='nextgroup'){const gs=[...document.querySelectorAll('tr[data-group-exc]')].map(t=>({exc:t.dataset.groupExc,group:t.dataset.groupKey}));
+  const k=gs.findIndex(x=>x.exc===W.g.exc&&x.group===W.g.group),nx=gs[k+1]||null;
+  try{sessionStorage.setItem('cbank-wiz-next',JSON.stringify(nx));}catch{}location.reload();return;}
+ if(act==='approve'){const ids=p.txn_ids.filter(i=>W.sel.has(i)),data={txn_ids:ids.join(',')};
+  for(const k of ['beneficiary_id','why_id','category_id'])if(W.fix[k])data[k]=W.fix[k];
+  if(W.fix.why_id&&!W.fix.category_id){const f=fixed();if(f.category_id)data.category_id=f.category_id;}
+  busy(true,'Saving…');
+  try{const v=await post(`/api/runs/${runId}/prior/approve`,data);changed=true;
+   const rec=v.updated.filter(u=>u.status==='RECONCILED').length,inc=v.updated.length-rec;
+   W.results.push(`${p.who} · ${entName(fixed().beneficiary_id)}: ${v.saved.length} approved → ${rec} Reconciled, ${inc} still incomplete${v.skipped.length?`; ${v.skipped.length} skipped (${v.skipped.map(s=>s.reason).join('; ')})`:''}.`);
+   busy(false,`Approved ${v.saved.length}. Reconciled now ${v.summary.RECONCILED||0} of ${v.summary.total}.`);
+   W.i++;startProposal();}catch(e){busy(false,e.message);}}}
+if(window.wiz){
+ $('#w-next').onclick=wizardNext;$('#w-back').onclick=()=>{W.step=Math.max(1,W.step-1);renderWizard();};
+ const wclose=()=>wiz.close();$('#w-cancel').onclick=wclose;$('#w-x').onclick=wclose;
+ wiz.addEventListener('close',()=>{if(W.toAdvanced){W.toAdvanced=false;return;}if(changed)location.reload();});
+ $('#w-advanced').onclick=()=>{W.toAdvanced=true;wiz.close();openList(W.g);};
+ $('#w-skip').onclick=()=>{W.results.push(`${cur().who} · ${entName(cur().beneficiary_id)}: skipped, nothing approved.`);W.i++;startProposal();};
+ try{const nx=JSON.parse(sessionStorage.getItem('cbank-wiz-next')||'null');sessionStorage.removeItem('cbank-wiz-next');
+  if(nx){const ok=[...document.querySelectorAll('tr[data-group-exc]')].some(t=>t.dataset.groupExc===nx.exc&&t.dataset.groupKey===nx.group);if(ok)openWizard(nx);}}catch{}
+}
+async function open(id){const v=await (await fetch(`/api/runs/${runId}/txn/${id}`)).json();current=v;render(v);position();if(!dlg.open)dlg.showModal();if(window.list&&list.open)renderRows();}
+function position(){const i=rows.findIndex(r=>r.txn_id===current.result.txn_id);$('#d-pos').textContent=i>=0?`${i+1} / ${rows.length}`:'';$('#d-prev').disabled=i<=0;$('#d-next').disabled=i<0||i>=rows.length-1;}
+$('#d-prev').onclick=()=>{const i=rows.findIndex(r=>r.txn_id===current.result.txn_id);if(i>0)open(rows[i-1].txn_id);};
+$('#d-next').onclick=()=>{const i=rows.findIndex(r=>r.txn_id===current.result.txn_id);if(i>=0&&i<rows.length-1)open(rows[i+1].txn_id);};
+function opt(list,sel,label,none){return (none?`<option value="">${none}</option>`:'')+list.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(label(x))}</option>`).join('');}
+function render(v){const r=v.result;$('#d-title').textContent=`#${r.txn_id} · ${r.date} · ${(r.amount_minor/100).toFixed(2)} ${r.currency||''}`;$('#d-sub').textContent=`${r.description} — ${r.source} (${r.source_type}), paid by ${r.payer||'—'}`;
+ let a='';if(r.protected)a+=`<div class="warnbox">🔒 Protected human decision (${esc(r.protected)}). The engine never replaces it.</div>`;
+ if(r.proposal)a+=`<div class="warnbox"><b>Engine proposal (not applied):</b> ${esc(r.proposal.fields.join(', '))} — WHO ${esc(r.proposal.who)}, WHY ${esc(r.proposal.why)}, Category ${esc(r.proposal.category)}, Beneficiary ${esc(r.proposal.beneficiary)}. ${esc(r.proposal.note)}</div>`;
+ const q=r.exceptions.find(e=>e.question);
+ for(const e of r.exceptions)a+=`<div class="warnbox"><b>${esc(e.code)}</b>: ${esc(e.message)}${e.question&&e!==q?`<br><b>Question:</b> ${esc(e.question)}`:''}</div>`;
+ for(const e of r.anomalies)a+=`<div class="warnbox">${esc(e.code)}: ${esc(e.message)}</div>`;
+ if(r.ledger)a+=`<div class="warnbox"><b>Inter-entity:</b> ${esc(r.ledger.proposal)} ${(r.ledger.amount_minor/100).toFixed(2)} — ${esc(r.ledger.note)}</div>`;
+ $('#d-alerts').innerHTML=a;
+ $('#d-trace tbody').innerHTML=r.trace.map(s=>`<tr><td>${esc(s.stage)}</td><td>${esc(s.method)}</td><td>${esc(s.value)}</td><td class="m">${esc(s.evidence)}${s.confidence?' · '+esc(s.confidence):''}</td></tr>`).join('');
+ const b=r.bank||{};$('#d-bank').innerHTML=`WHO ${esc(b.who||'—')} · WHY #${esc(b.why_id||'—')} · Category #${esc(b.category_id||'—')} · Beneficiary #${esc(b.beneficiary_id||'(account default)')} · source ${esc(b.source||'—')} → <b>${esc(r.comparison)}</b>`;
+ $('#d-history').innerHTML=v.history.length?'C-Bank human decisions: '+v.history.map(h=>`${esc(h.created_at)} ${esc(h.who_name)} / WHY #${h.why_id}${h.active?' (active)':''}`).join('; '):'';
+ $('#whos').innerHTML=v.whos.map(w=>`<option value="${esc(w)}">`).join('');
+ const f=$('#d-form');f.who.value=r.who_name||'';f.beneficiary_id.innerHTML=opt(v.entities,r.beneficiary_id,x=>x.name,'(account owner)');
+ f.why_id.innerHTML=opt(v.whys,r.why_id,x=>x.name,'Choose WHY');f.category_id.innerHTML=opt(v.categories,r.category_id,x=>x.label,'(category of the WHY)');f.note.value='';
+ f.why_id.onchange=()=>{const w=v.whys.find(x=>x.id===+f.why_id.value);if(w&&w.category_id)f.category_id.value=w.category_id;};
+ $('#d-chat').innerHTML=v.messages.map(x=>`<div class="msg ${x.role}">${esc(x.text)}</div>`).join('');
+ renderQuestion(q,v);}
+// --- Interactive AI question: the person answers; the existing AI conversation interprets the answer ---
+function renderQuestion(q,v){const box=$('#d-question');if(!q){box.innerHTML='';return;}
+ const alts=(q.alternatives||[]).filter(x=>x&&x.label);
+ box.innerHTML=`<div class="aiq"><b>The AI asks:</b> ${esc(q.question)}
+  <form id="d-answer" style="margin-top:6px">${alts.map((x,i)=>`<label><input type="radio" name="ans" value="${i}"> ${esc(x.label)}</label>`).join('')}
+   <label><input type="radio" name="ans" value="other"> Other — explain in your own words</label>
+   <input name="other" placeholder="Explain in your own words" style="width:100%;padding:5px;margin:2px 0 6px" aria-label="Other answer">
+   <button type="submit">Submit answer</button> <span class="m">Nothing is saved: the AI only fills the fields below for your review.</span></form>
+  <div class="res" id="d-answer-res" hidden></div></div>`;
+ const form=$('#d-answer');form.other.oninput=()=>{if(form.other.value.trim())form.querySelector('[value=other]').checked=true;};
+ form.onsubmit=async e=>{e.preventDefault();const sel=form.querySelector('[name=ans]:checked');
+  if(!sel){return showAnswer('Select an answer, or choose Other and explain.');}
+  let answer,hint='';
+  if(sel.value==='other'){answer=form.other.value.trim();if(!answer)return showAnswer('Write your explanation in the Other field.');}
+  else{const x=alts[+sel.value];answer=x.label;const w=v.whys.find(y=>y.id===x.why_id),b=v.entities.find(y=>y.id===x.beneficiary_id);
+   hint=(w||b)?` (this option was suggested with${w?` WHY “${w.name}”`:''}${b?` and beneficiary ${b.name}`:''})`:'';}
+  const text=`Answer to your question.\nQuestion: ${q.question}\nMy answer: ${answer}${hint}\nPropose WHO, beneficiary, WHY and RF-One category from the catalogs only; if something is still missing, ask only for that.`;
+  busy(true,'Asking OpenAI to interpret your answer…');
+  try{const res=await post(`/api/runs/${runId}/txn/${current.result.txn_id}/chat`,{text});current.messages=res.messages;
+   $('#d-chat').innerHTML=res.messages.map(x=>`<div class="msg ${x.role}">${esc(x.text)}</div>`).join('');
+   const out=applyProposal(res.answer,v);busy(false,out.ready?'Proposal ready — review the fields and confirm.':'More information needed.');showAnswer(out.html);}
+  catch(err){busy(false,err.message);showAnswer(esc(err.message));}};}
+function showAnswer(html){const el=$('#d-answer-res');if(!el)return;el.hidden=false;el.innerHTML=html;}
+// Only values that exist in the catalogs are copied into the fields; nothing is invented or saved.
+function applyProposal(ans,v){const p=(ans&&ans.proposal)||{},f=$('#d-form'),set=[],rejected=[];
+ if(p.who){f.who.value=String(p.who).toUpperCase();set.push(`WHO ${esc(f.who.value)}${v.whos.includes(f.who.value)?'':' (new WHO)'}`);}
+ const ent=v.entities.find(x=>x.id===p.beneficiary_id);if(ent){f.beneficiary_id.value=ent.id;set.push(`Beneficiary ${esc(ent.name)}`);}else if(p.beneficiary_id)rejected.push('beneficiary');
+ const why=v.whys.find(x=>x.id===p.why_id);if(why){f.why_id.value=why.id;set.push(`WHY ${esc(why.name)}`);}else if(p.why_id)rejected.push('WHY');
+ let cat=v.categories.find(x=>x.id===p.category_id);if(!cat&&p.category_id)rejected.push('category');
+ if(!cat&&why&&why.category_id)cat=v.categories.find(x=>x.id===why.category_id);
+ if(cat){f.category_id.value=cat.id;set.push(`Category ${esc(cat.label)}`);}
+ const missing=[!why&&'WHY',!cat&&'Category'].filter(Boolean),reply=esc((ans&&ans.reply)||'');
+ const ready=!missing.length;
+ return {ready,html:(set.length?`<b>Filled for your review:</b> ${set.join(' · ')}.`:'')
+  +(rejected.length?`<br><span class="neg">Ignored (not in the catalogs): ${rejected.join(', ')}.</span>`:'')
+  +(ready?'<br>Check the fields below, then <b>Confirm human decision</b>.':`<br><b>Still needed: ${missing.join(', ')}.</b> ${reply}`)};}
+$('#d-form').onsubmit=async e=>{e.preventDefault();const f=e.target;try{busy(true,'Saving…');const v=await post(`/api/runs/${runId}/txn/${current.result.txn_id}/decision`,Object.fromEntries(new FormData(f)));changed=true;busy(false,`Saved. ${v.reevaluated_changed} unresolved movements changed.`);current.result=v.result;await open(current.result.txn_id);}catch(err){busy(false,err.message);}};
+$('#d-chatform').onsubmit=async e=>{e.preventDefault();const t=e.target.text.value.trim();if(!t)return;busy(true,'Asking OpenAI…');try{const v=await post(`/api/runs/${runId}/txn/${current.result.txn_id}/chat`,{text:t});e.target.text.value='';current.messages=v.messages;$('#d-chat').innerHTML=v.messages.map(x=>`<div class="msg ${x.role}">${esc(x.text)}</div>`).join('');const out=applyProposal(v.answer,current);busy(false,out.ready?'AI proposal copied into the fields — review and confirm.':'The AI needs more information (see the conversation).');}catch(err){busy(false,err.message);}};
+// Help popover: placed next to its button, light-dismiss (click outside or on ? again), never blocks the fields.
+{const pop=$('#d-help-pop'),btn=$('#d-help-btn');if(pop&&pop.showPopover)pop.addEventListener('toggle',e=>{if(e.newState==='open'){const r=btn.getBoundingClientRect();pop.style.top=(r.bottom+6)+'px';pop.style.left=Math.max(8,Math.min(r.left,innerWidth-380))+'px';}});}
+// Closing a movement returns to the list (refreshed); the dashboard reloads only when the list closes after a change.
+dlg.addEventListener('close',async()=>{if(window.list&&list.open){await loadRows();}else if(window.wiz&&wiz.open){/* back to the wizard */}else if(changed){location.reload();}});
+</script>
+</body>
+</html>
