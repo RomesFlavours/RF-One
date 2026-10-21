@@ -103,6 +103,7 @@ class Result:
     ledger: dict | None = None
     group_key: str | None = None
     history_key: str | None = None
+    ai_partial: dict | None = None   # AI fields with their acceptance (kept even when not applied)
 
 
 class Engine:
@@ -142,6 +143,32 @@ class Engine:
         self.allocations = defaultdict(list)
         for a in self.db.scalars(select(m.BankTransactionAllocation)):
             self.allocations[a.financial_transaction_id].append(a)
+        self.approved_rule_decisions = self._approved_rule_decisions()
+
+    def _approved_rule_decisions(self) -> dict:
+        """Movements whose CURRENT Bank decision was written by an approved rule or Recognition Profile:
+        an application item that produced the current explanation, not rolled back, of an ACTIVE, not
+        deleted rule with `apply to future`. Rules without `apply to future` are left out (their behaviour
+        is unchanged); Codex sessions never appear here (they are not rule applications)."""
+        current = {t.explanation_id: t.id for t in self.txns if t.explanation_id}
+        out = {}
+        rows = self.db.execute(
+            select(m.BankAiRuleApplicationItem.explanation_id, m.BankAiRule.id, m.BankAiRule.user_title,
+                   m.BankAiRule.title, m.BankAiRuleVersion.version_no)
+            .join(m.BankAiRuleApplication, m.BankAiRuleApplication.id == m.BankAiRuleApplicationItem.application_id)
+            .join(m.BankAiRule, m.BankAiRule.id == m.BankAiRuleApplication.rule_id)
+            .join(m.BankAiRuleVersion, m.BankAiRuleVersion.id == m.BankAiRuleApplication.version_id)
+            .where(m.BankAiRuleApplication.rolled_back_at.is_(None), m.BankAiRule.deleted_at.is_(None),
+                   m.BankAiRule.status == "ACTIVE", m.BankAiRule.apply_future.is_(True)))
+        for explanation_id, rule_id, user_title, title, version_no in rows:
+            if explanation_id in current:
+                out[current[explanation_id]] = f"Bank rule #{rule_id} v{version_no} {user_title or title} (approved, apply to future)"
+        return out
+
+    def _is_codex(self, txn) -> bool:
+        """Codex WHY sessions (CODEX_WHY_*) wrote unreviewed classifications: never treated as confirmed."""
+        e = self.explanations.get(txn.explanation_id)
+        return bool(e and (e.explanation_notes or "").startswith("CODEX_"))
 
     def bank_decision(self, txn) -> dict:
         e = self.explanations.get(txn.explanation_id)
@@ -175,8 +202,11 @@ class Engine:
             key = history_key(t.description_original)
             b = self.bank_decision(t)
             if b["who"]:
-                self.who_memory[key].append(dict(txn_id=t.id, who=b["who"],
-                                                 origin=HUMAN_BANK if b["source"] == "HUMAN" else "Bank rule"))
+                # WHO memory is unchanged; only its provenance is stated honestly. Codex sessions decided the
+                # WHY (never reused as a precedent below); the WHO they carried came from Bank's earlier reading.
+                origin = HUMAN_BANK if b["source"] == "HUMAN" else (
+                    "Bank (Codex WHY session, unreviewed)" if self._is_codex(t) else "Bank rule")
+                self.who_memory[key].append(dict(txn_id=t.id, who=b["who"], origin=origin))
             h = self.human.get(t.id)
             if h and h["who_name"]:
                 self.who_memory[key].append(dict(txn_id=t.id, who=h["who_name"], origin=HUMAN_CBANK))
@@ -195,6 +225,12 @@ class Engine:
                                              category_id=b["category_id"],
                                              beneficiary_id=b["beneficiary_id"] if b["beneficiary_human"] else None,
                                              origin=HUMAN_BANK))
+            elif b["source"] == "RULE" and b["why_id"] and t.id in self.approved_rule_decisions:
+                # WHY precedent from an approved rule / Recognition Profile (provenance kept). It never
+                # carries a beneficiary: beneficiary precedents stay human-only.
+                self.memory[key].append(dict(txn_id=t.id, who=b["who"], why_id=b["why_id"],
+                                             category_id=b["category_id"], beneficiary_id=None,
+                                             origin=self.approved_rule_decisions[t.id], rule=True))
 
     def owner(self, txn):
         key = (txn.payment_instrument_id, txn.posting_date)
@@ -272,7 +308,7 @@ class Engine:
             name, refs = next(iter(distinct.values()))
             who, who_method, who_evidence = name.strip().upper(), RULE, "; ".join(refs)
         elif len(distinct) > 1:
-            if ai and ai.get("who") and clean(ai["who"]) in distinct and self._ai_sufficient(ai):
+            if ai and ai.get("who") and clean(ai["who"]) in distinct and self._ai_field_ok(ai, "who"):
                 who, who_method = distinct[clean(ai["who"])][0].upper(), AI
                 who_evidence = f"rules disagree ({', '.join(v[0] for v in distinct.values())}); AI resolved: {ai.get('justification', '')}"
             else:
@@ -290,7 +326,7 @@ class Engine:
                     origins[p["origin"]] += 1
                 who_evidence = (f"{len(precedents)} earlier movement(s) with the same description pattern ("
                                 + ", ".join(f"{n} {o}" for o, n in origins.items()) + f"), e.g. #{precedents[0]['txn_id']}")
-            elif ai and ai.get("who") and self._ai_sufficient(ai) and self._who_supported(ai["who"], txn):
+            elif ai and ai.get("who") and self._ai_field_ok(ai, "who") and self._who_supported(ai["who"], txn):
                 who, who_method = ai["who"].strip().upper(), AI
                 who_evidence = ai.get("justification", "")
             else:
@@ -355,9 +391,12 @@ class Engine:
                 outcome = self._transfer_outcome(txn, mt, r.payer_id, cp_owner)
             if outcome is None and who:
                 outcome = self._memory_outcome(txn, r.history_key)
-        if outcome is None and ai and self._ai_sufficient(ai) and ai.get("why_id") in self.c.whys:
-            outcome = Outcome(ai["why_id"], ai.get("category_id") if ai.get("category_id") in self.c.classes else None,
-                              ai.get("beneficiary_id") if ai.get("beneficiary_id") in self.c.entities else None,
+        if outcome is None and ai and self._ai_field_ok(ai, "why") and ai.get("why_id") in self.c.whys:
+            # Each AI field is accepted on its own evidence: a certain WHY does not carry an uncertain
+            # category or beneficiary with it (they stay open and the movement stays an Exception).
+            outcome = Outcome(ai["why_id"],
+                              ai.get("category_id") if self._ai_field_ok(ai, "category") and ai.get("category_id") in self.c.classes else None,
+                              ai.get("beneficiary_id") if self._ai_field_ok(ai, "beneficiary") and ai.get("beneficiary_id") in self.c.entities else None,
                               AI, f"AI investigation #{ai['investigation_id']}: {ai.get('justification', '')}")
             exceptions = [e for e in exceptions if e["code"] not in ("PROFILE_UNDECIDED", "PROFILE_CONFLICT")]
         if outcome is None and who and not exceptions:
@@ -368,6 +407,14 @@ class Engine:
             for e in exceptions:
                 e.setdefault("question", ai["question"])
                 e["alternatives"] = ai.get("alternatives") or []
+        if outcome and not mt and txn.amount_minor < 0 and self._is_income(
+                self.c.classes.get(outcome.category_id or self._why_category(outcome.why_id))):
+            # E1: a text rule can match the words ("INTEREST PAYMENT") of an operation whose direction
+            # contradicts it (interest PAID on a loan is not interest income): never reconcile it silently.
+            exceptions.append(dict(code="DIRECTION_CONFLICT", message=(
+                f"“{self._why_name(outcome.why_id)}” is an income, but this movement is money OUT "
+                f"({outcome.reference}): verify the nature of the operation."),
+                question=ai.get("question") if ai else None))
         if outcome:
             trace.append(Step("Profile", outcome.method, self._why_name(outcome.why_id), outcome.reference, ""))
         else:
@@ -392,15 +439,22 @@ class Engine:
             elif len(values) > 1:
                 exceptions.append(dict(code="BENEFICIARY_UNCERTAIN",
                                        message="Human precedents attribute this pattern to different entities."))
-            elif ai and self._ai_sufficient(ai) and ai.get("beneficiary_id") in self.c.entities:
+            elif ai and self._ai_field_ok(ai, "beneficiary") and ai.get("beneficiary_id") in self.c.entities:
                 beneficiary, b_method, b_evidence = ai["beneficiary_id"], AI, ai.get("justification", "")
+            elif outcome and outcome.method == AI and self._ai_field_declared(ai, "beneficiary"):
+                # The AI established the WHY but explicitly NOT the beneficiary: no account-owner default.
+                exceptions.append(dict(code="AI_PARTIAL", message="AI identified the WHY but not the beneficiary "
+                                       "with sufficient evidence: confirm who the cost/revenue belongs to.",
+                                       question=ai.get("question")))
             elif r.payer_id:
                 beneficiary, b_method = r.payer_id, ACCOUNT
                 b_evidence = "account owner; no rule, profile, precedent or evidence points to another beneficiary"
                 category = self.c.classes.get(outcome.category_id or self._why_category(outcome.why_id)) if outcome else None
                 if beneficiary == personal and category is not None and category.statement_type == "PROFIT_LOSS" \
-                        and not (category.code or "").startswith("4") and not mt:
-                    # Decisions 03/16: a business cost on a personal instrument — which LLC benefits?
+                        and not self._is_income(category) and not mt:
+                    # Decisions 03/16: a business cost (or its refund) on a personal instrument — which LLC
+                    # benefits? Income on a personal account (E1: interest earned) is not a business cost:
+                    # it keeps the account owner as beneficiary.
                     exceptions.append(dict(code="BENEFICIARY_UNCERTAIN", message=(
                         f"Business category {category.code} {category.name} paid with a personal account/card: "
                         "which entity is the beneficiary?")))
@@ -409,6 +463,8 @@ class Engine:
 
         why_id = outcome.why_id if outcome else None
         category_id = (outcome.category_id if outcome and outcome.category_id else self._why_category(why_id))
+        if ai:
+            r.ai_partial = self._ai_fields(ai)
         return dict(who=who, who_id=who_id, who_method=who_method, why_id=why_id,
                     why_method=outcome.method if outcome else None, category_id=category_id,
                     beneficiary_id=beneficiary, beneficiary_method=b_method,
@@ -435,9 +491,13 @@ class Engine:
         if len(values) != 1:
             return None
         why_id, category_id = next(iter(values))
-        bens = {p["beneficiary_id"] for p in precedents}
+        human = [p for p in precedents if not p.get("rule")]
+        bens = {p["beneficiary_id"] for p in human}
+        rules = sorted({p["origin"] for p in precedents if p.get("rule")})
+        basis = f"{len(human)} human" + (f", {len(precedents) - len(human)} from approved rules ({'; '.join(rules)})"
+                                         if rules else "")
         return Outcome(why_id, category_id, next(iter(bens)) if len(bens) == 1 else None, MEMORY,
-                       f"{len(precedents)} concordant human precedents (e.g. #{precedents[0]['txn_id']})")
+                       f"{len(precedents)} concordant precedents ({basis}; e.g. #{precedents[0]['txn_id']})")
 
     # -- protection ----------------------------------------------------------
 
@@ -536,8 +596,7 @@ class Engine:
             return None
         code = a.code or ""
         if a.statement_type == "PROFIT_LOSS":
-            income = (a.normal_balance or "").upper() == "CREDIT" or code.startswith("4")
-            return OPERATING_INCOME if income else OPERATING_EXPENSE
+            return OPERATING_INCOME if self._is_income(a) else OPERATING_EXPENSE
         if code.startswith("15"):
             return CAPITAL_ASSET
         if code.startswith("26"):
@@ -578,6 +637,12 @@ class Engine:
 
     # -- helpers ---------------------------------------------------------------
 
+    @staticmethod
+    def _is_income(category) -> bool:
+        """A P&L category whose nature is income (credit balance or 4xxx revenue), e.g. 8100 Interest Income."""
+        return category is not None and category.statement_type == "PROFIT_LOSS" and (
+            (category.normal_balance or "").upper() == "CREDIT" or (category.code or "").startswith("4"))
+
     def _personal_entity(self):
         return next((e.id for e in self.c.entities.values() if e.entity_type == "PERSONAL" and e.status == "ACTIVE"), None)
 
@@ -588,6 +653,34 @@ class Engine:
     def _why_name(self, why_id):
         r = self.c.whys.get(why_id)
         return r.name if r else None
+
+    FIELDS = ("who", "why", "category", "beneficiary")
+
+    @staticmethod
+    def _ai_field_declared(ai: dict | None, name: str) -> bool:
+        return bool(ai) and isinstance(ai.get("fields"), dict) and isinstance(ai["fields"].get(name), dict)
+
+    def _ai_field_ok(self, ai: dict | None, name: str) -> bool:
+        """Field-level acceptance (sufficient + confidence ≥ threshold). Answers recorded before field-level
+        evidence existed declared one `sufficient` for every field: for them the global flag still applies."""
+        if not ai:
+            return False
+        if self._ai_field_declared(ai, name):
+            f = ai["fields"][name]
+            conf = f.get("confidence")
+            return f.get("sufficient") is True and isinstance(conf, (int, float)) and conf >= config.AI_MIN_CONFIDENCE
+        return self._ai_sufficient(ai)
+
+    def _ai_fields(self, ai: dict) -> dict:
+        values = dict(who=ai.get("who"), why=self._why_name(ai.get("why_id")),
+                      category=self.c.class_label(ai.get("category_id")), beneficiary=self.c.entity_name(ai.get("beneficiary_id")))
+        out = {}
+        for name in self.FIELDS:
+            f = ai["fields"][name] if self._ai_field_declared(ai, name) else {}
+            out[name] = dict(value=values[name], confidence=f.get("confidence", ai.get("confidence")),
+                             accepted=self._ai_field_ok(ai, name) and values[name] is not None,
+                             investigation_id=ai.get("investigation_id"))
+        return out
 
     @staticmethod
     def _ai_sufficient(ai: dict) -> bool:

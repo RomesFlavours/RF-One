@@ -50,8 +50,9 @@ Tests (standard library, real data, read-only):
 | Matching | description references the other account's last four → configured card settlement → both hinted; mutual unique best only | 22, 37 |
 | WHO | matched counterpart (contextual) → approved text rules (Bank extractors + legacy structured rules) → WHO memory (same Bank precedent key) → AI (WHO must be readable in the description) → exception | 36, 43, 48 |
 | Profile | BANK_FLOW_2 profiles + legacy rules for that WHO; different results = `PROFILE_CONFLICT`, no deciding branch = `PROFILE_UNDECIDED` | 4, 42, 44 |
-| Fallbacks | transfer WHY from the match → ≥2 concordant **human** precedents → AI with `sufficient=true` and confidence ≥ 0.85 | 5, 11, 50 |
-| Beneficiary | human → profile branch → personal WHY ⇒ person → ≥2 concordant human precedents → AI → account owner; business category on a personal instrument ⇒ question | 01–03, 16 |
+| Fallbacks | transfer WHY from the match → ≥2 concordant precedents (human, or the current Bank decision written by an approved rule / Recognition Profile with *apply to future*, provenance kept; Codex WHY sessions never count) → AI, **field by field** (each of WHO, WHY, Category, Beneficiary accepted only with its own `sufficient=true` and confidence ≥ 0.85; partial AI fields are kept in `ai_partial`) | 5, 11, 50 |
+| Direction | an income category on money out (e.g. "INTEREST PAYMENT ON LOAN" matched by an interest-income rule) ⇒ `DIRECTION_CONFLICT`, never reconciled silently | E1 |
+| Beneficiary | human → profile branch → personal WHY ⇒ person → ≥2 concordant human precedents → AI → account owner; business **cost** category on a personal instrument ⇒ question (income such as interest earned keeps the owner); AI WHY accepted but beneficiary explicitly uncertain ⇒ `AI_PARTIAL` | 01–03, 16 |
 | Mapping | Category RF-One = Bank WHAT (`accounting_classification_id`); QB account "not mapped" until the QB COA is imported | 09, 20 |
 | Operation | match, else category (P&L income/expense, 15xx capital, 26xx financing, 16xx/27xx inter-entity, 3xxx patrimonial) | spec §2 |
 | Ledger | payer ≠ beneficiary ⇒ proposed receivable/payable; inter-entity transfer ⇒ advance/repayment to qualify | 01, 07, 14 |

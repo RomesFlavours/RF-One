@@ -95,6 +95,79 @@ class CBankTests(unittest.TestCase):
                 self.assertTrue(r["exceptions"])
 
 
+class DirectionAndKnowledgeTests(unittest.TestCase):
+    """E1 (income vs cost), knowledge reuse provenance, independent AI fields."""
+
+    def _automatic(self, e, pred):
+        for t in e.txns:
+            r = e.evaluate(t)
+            if not r["protected"] and pred(t, r):
+                yield t, r
+
+    def test_income_on_personal_account_is_not_a_business_cost(self):
+        e, _ = env()
+        personal = e._personal_entity()
+        rows = list(self._automatic(e, lambda t, r: r["payer_id"] == personal and t.amount_minor > 0
+                                    and e._is_income(e.c.classes.get(r["category_id"]))))
+        if not rows:
+            self.skipTest("no automatic income on a personal account")
+        for t, r in rows:
+            self.assertNotIn("BENEFICIARY_UNCERTAIN", [x["code"] for x in r["exceptions"]])
+            self.assertEqual(r["operation_type"], eng_mod.OPERATING_INCOME)
+
+    def test_income_category_on_money_out_is_a_direction_conflict(self):
+        e, _ = env()
+        rows = list(self._automatic(e, lambda t, r: t.amount_minor < 0 and not r["match"]
+                                    and e._is_income(e.c.classes.get(r["category_id"]))))
+        if not rows:
+            self.skipTest("no automatic income category on money out")
+        for t, r in rows:
+            self.assertIn("DIRECTION_CONFLICT", [x["code"] for x in r["exceptions"]])
+            self.assertEqual(r["status"], eng_mod.EXCEPTION)
+
+    def test_why_precedents_only_from_humans_or_approved_future_rules(self):
+        e, _ = env()
+        for t in e.txns:
+            for p in e.memory.get(legacy.history_key(t.description_original), []):
+                if p.get("rule"):
+                    self.assertIn(p["txn_id"], e.approved_rule_decisions)
+                    self.assertIn("apply to future", p["origin"])
+                    self.assertIsNone(p["beneficiary_id"], "beneficiary precedents stay human-only")
+                    self.assertFalse(e._is_codex(e.by_id[p["txn_id"]]), "Codex sessions are never precedents")
+                else:
+                    self.assertIn(p["origin"], (eng_mod.HUMAN_BANK, eng_mod.HUMAN_CBANK))
+
+    def test_ai_fields_are_accepted_independently(self):
+        e, _ = env()
+        t, r0 = next(self._automatic(e, lambda t, r: any(x["code"] == "NO_PROFILE" for x in r["exceptions"])
+                                     and r["payer_id"] and not r["match"]))
+        why = next(w for w, row in e.c.whys.items() if row.accounting_classification_id
+                   and not e._is_income(e.c.classes.get(row.accounting_classification_id)))
+        saved = e.ai_answers.get(t.id)
+        field = lambda ok: dict(sufficient=ok, confidence=0.95 if ok else 0.4)
+        try:
+            e.ai_answers[t.id] = dict(id=t.id, who=r0["who_name"], why_id=why, category_id=None,
+                                      beneficiary_id=r0["payer_id"], sufficient=False, confidence=0.6,
+                                      investigation_id=0, justification="test",
+                                      fields=dict(who=field(True), why=field(True), category=field(True),
+                                                  beneficiary=field(False)))
+            r = e.evaluate(t)
+            self.assertEqual(r["status"], eng_mod.EXCEPTION, "one uncertain field keeps the movement open")
+            self.assertIn("AI_PARTIAL", [x["code"] for x in r["exceptions"]])
+            self.assertTrue(r["ai_partial"]["why"]["accepted"])
+            self.assertFalse(r["ai_partial"]["beneficiary"]["accepted"])
+            e.ai_answers[t.id]["fields"] = dict(who=field(True), why=field(False), category=field(False),
+                                                beneficiary=field(False))
+            r = e.evaluate(t)
+            self.assertEqual(r["status"], eng_mod.EXCEPTION)
+            self.assertIsNone(r["why_id"], "a certain WHO never brings an uncertain WHY with it")
+        finally:
+            if saved is None:
+                e.ai_answers.pop(t.id, None)
+            else:
+                e.ai_answers[t.id] = saved
+
+
 class PriorApprovalTests(unittest.TestCase):
     """Decision 59 on an isolated in-memory store (never the real experimental store)."""
 
