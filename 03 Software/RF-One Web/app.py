@@ -57,6 +57,7 @@ from tips_validation_routes import register_tips_validation_routes  # noqa: E402
 from clover_acquisition_routes import register_clover_acquisition_routes  # noqa: E402
 from restaurant_wines_routes import register_restaurant_wines_routes  # noqa: E402
 from projects_routes import register_projects_routes  # noqa: E402
+from dev_journal_routes import register_dev_journal_routes  # noqa: E402
 import training_integration  # noqa: E402
 
 app = Flask(__name__)
@@ -336,6 +337,8 @@ def logout():
 #   * Bank is presented under Administration instead of as a Domain.
 _HOME_WORK_IN_PROGRESS_CODES: frozenset[str] = frozenset()  # Selection released (SELECTION_AWS_PUBLISH_001)
 _HOME_ADMINISTRATION_CODES = frozenset({"BANK", "CLOVER_ACQUISITION"})
+# System-level services, shown in their own "Services" block, never as a Domain.
+_HOME_SERVICE_CODES = frozenset({"DEV_JOURNAL"})
 
 
 @app.route("/", strict_slashes=False)
@@ -353,7 +356,8 @@ def home():
         # progress ones, each group alphabetical. Bank is shown under
         # Administration, not as a Domain, with the same access rule.
         domains_view = sorted(
-            (d for d in DOMAINS if d.code in enabled_codes and d.code not in _HOME_ADMINISTRATION_CODES),
+            (d for d in DOMAINS if d.code in enabled_codes
+             and d.code not in _HOME_ADMINISTRATION_CODES and d.code not in _HOME_SERVICE_CODES),
             key=lambda d: (d.code in _HOME_WORK_IN_PROGRESS_CODES, d.display_name.casefold()),
         )
 
@@ -364,6 +368,7 @@ def home():
             work_in_progress_codes=_HOME_WORK_IN_PROGRESS_CODES,
             bank_available="BANK" in enabled_codes,
             clover_acquisition_available="CLOVER_ACQUISITION" in enabled_codes,
+            dev_journal_available="DEV_JOURNAL" in enabled_codes,
         )
 
 
@@ -560,6 +565,18 @@ register_restaurant_wines_routes(
 
 register_projects_routes(
     app, require_domain_access=require_domain_access, SessionFactory=SessionFactory, require_csrf=require_csrf,
+)
+
+
+# ---------------------------------------------------------------------------
+# Development Journal — a system-level service (`10 System/Development
+# Journal/README.md`). See `dev_journal_routes.py`; every page and document
+# is gated by `require_domain_access("DEV_JOURNAL")`.
+# ---------------------------------------------------------------------------
+
+register_dev_journal_routes(
+    app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
+    load_current_account=load_current_account, require_csrf=require_csrf,
 )
 
 

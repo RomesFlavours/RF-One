@@ -61,5 +61,12 @@
       <a class="home-row" href="{{ url_for('admin_workweek') }}"><strong>Workweek</strong> &mdash; The day each Restaurant's Workweek starts.</a>
     {% endif %}
   </div>
+
+  {% if dev_journal_available %}
+    <div class="domain-card home-block">
+      <div class="domain-name">Services</div>
+      <a class="home-row" href="{{ url_for('dev_journal_list') }}"><strong>Development Journal</strong> &mdash; Document every phase of a piece of work, from study to the AWS release.</a>
+    </div>
+  {% endif %}
 </div>
 {% endblock %}

@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% from "_dev_journal_macros.html" import entry_fields, entry_type_script, entry_content %}
+{% block page_title %}{{ work.title }} · Development Journal · RF-One{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-dev-journal.css') }}?v=2">{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+
+{% macro doc_list(documents) %}
+  <ul class="dj-docs">
+    {% for doc in documents %}
+      <li>
+        <a href="{{ url_for('dev_journal_document', work_id=work.id, document_id=doc.id) }}" target="_blank" rel="noopener">{{ doc.original_filename }}</a>
+        &middot; <a href="{{ url_for('dev_journal_document', work_id=work.id, document_id=doc.id, download=1) }}">download</a>
+        <span class="muted">&middot; {{ human_size(doc.size_bytes) }} &middot; {{ names.get(doc.uploaded_by_account_id, '-') }} &middot; {{ doc.uploaded_at|local_dt(tz) }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+{% endmacro %}
+
+{% macro upload_form(entry_id=None) %}
+  <form method="post" enctype="multipart/form-data" action="{{ url_for('dev_journal_upload', work_id=work.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if entry_id %}<input type="hidden" name="entry_id" value="{{ entry_id }}">{% endif %}
+    <input type="file" name="files" multiple required
+           accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md">
+    <button type="submit">Upload</button>
+  </form>
+{% endmacro %}
+
+{% block content %}
+{{ breadcrumb([('RF-One', url_for('home')), ('Development Journal', url_for('dev_journal_list')), (work.title, None)]) }}
+<h1>{{ work.title }}</h1>
+<p>
+  <span class="badge">{{ phase_labels[work.phase] }}</span>
+  <span class="badge {{ 'ok' if work.status == 'COMPLETED' else ('bad' if work.status == 'BLOCKED' else ('warn' if work.status == 'WAITING' else '')) }}">{{ status_labels[work.status] }}</span>
+  <span class="muted">&middot; {{ domain_labels.get(work.domain_code, work.domain_code) }} &middot; responsible {{ names.get(work.responsible_account_id, '-') }}</span>
+</p>
+
+<div class="card dj-next-step">
+  <div class="dj-label">Next step</div>
+  {% if work.next_step %}
+    <div class="dj-next-text">{{ work.next_step }}</div>
+  {% elif work.status in closed_statuses %}
+    <div class="dj-next-text muted">None: the work is {{ status_labels[work.status]|lower }}.</div>
+  {% else %}
+    <div class="dj-next-text dj-next-empty">Not defined yet — set it with “Edit”.</div>
+  {% endif %}
+  <div class="btn-row">
+    <a class="btn" href="#new-entry">Add entry</a>
+    <a class="btn btn-secondary" href="{{ url_for('dev_journal_edit', work_id=work.id) }}">Edit</a>
+    {% if work.status in closed_statuses %}
+      <form method="post" action="{{ url_for('dev_journal_reopen', work_id=work.id) }}" style="margin:0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-secondary">Reopen</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Card</h2>
+  <dl class="dj-facts">
+    <dt>Objective</dt><dd>{{ work.objective }}</dd>
+    <dt>Domain</dt><dd>{{ domain_labels.get(work.domain_code, work.domain_code) }}</dd>
+    <dt>Responsible</dt><dd>{{ names.get(work.responsible_account_id, '-') }}</dd>
+    <dt>Phase</dt><dd>{{ phase_labels[work.phase] }}</dd>
+    <dt>Status</dt><dd>{{ status_labels[work.status] }}</dd>
+    <dt>Created</dt><dd>{{ work.created_at|local_dt(tz) }} by {{ names.get(work.created_by_account_id, '-') }}</dd>
+    <dt>Last update</dt><dd>{{ work.updated_at|local_dt(tz) }} by {{ names.get(work.updated_by_account_id, '-') }}</dd>
+  </dl>
+  <p class="muted">Times in {{ zone_label(tz) }}.</p>
+</div>
+
+<div class="card" id="documents">
+  <h2>Card documents</h2>
+  {% if work_documents %}{{ doc_list(work_documents) }}{% else %}<p class="empty">No documents on the card.</p>{% endif %}
+  {{ upload_form() }}
+  <p class="muted">PDF, images, Office, TXT and Markdown &middot; up to {{ max_document_mb }} MB per file. Documents are never public.</p>
+</div>
+
+<div class="card">
+  <h2>Journal</h2>
+  {% if entries %}
+    <ol class="dj-timeline">
+      {% for entry in entries %}
+        <li id="entry-{{ entry.id }}" class="dj-entry dj-entry-{{ entry.entry_type }}{{ ' dj-release-failed' if entry.release_outcome == 'FAILED' }}">
+          <div class="dj-entry-head">
+            <span class="badge dj-type-{{ entry.entry_type }}">{{ entry_type_labels[entry.entry_type] }}</span>
+            <span>{{ entry.created_at|local_dt(tz) }}</span>
+            <span>&middot; {{ names.get(entry.author_account_id, '-') }}</span>
+            <span>&middot; phase {{ phase_labels[entry.phase] }}</span>
+            {% if entry.version > 1 %}
+              <span>&middot; <a href="{{ url_for('dev_journal_entry_versions', work_id=work.id, entry_id=entry.id) }}">corrected {{ entry.edited_at|local_dt(tz) }} &middot; version {{ entry.version }} &middot; earlier versions</a></span>
+            {% endif %}
+            {% if entry.author_account_id == current_account_id %}
+              <span>&middot; <a href="{{ url_for('dev_journal_edit_entry', work_id=work.id, entry_id=entry.id) }}">Correct</a></span>
+            {% endif %}
+          </div>
+          {{ entry_content(entry, environment_labels, outcome_labels) }}
+          {% if docs_by_entry.get(entry.id) %}{{ doc_list(docs_by_entry[entry.id]) }}{% endif %}
+          <details class="dj-inline-upload">
+            <summary>Attach documents to this entry</summary>
+            {{ upload_form(entry.id) }}
+          </details>
+        </li>
+      {% endfor %}
+    </ol>
+  {% else %}
+    <p class="empty">No entries yet.</p>
+  {% endif %}
+</div>
+
+<div class="card" id="new-entry">
+  <h2>Add entry</h2>
+  <form method="post" enctype="multipart/form-data" class="dj-form" action="{{ url_for('dev_journal_add_entry', work_id=work.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ entry_fields(entry_form, phase_labels, entry_type_labels, environment_labels, outcome_labels) }}
+    <label>Documents (optional)
+      <input type="file" name="files" multiple accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md">
+    </label>
+    <p class="muted">Date and author are recorded automatically. Only the author can correct an entry later; earlier versions stay available.</p>
+    <div class="btn-row"><button type="submit">Save entry</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Phase and status history</h2>
+  {% if changes %}
+    <table class="table-compact">
+      <thead><tr><th>When</th><th>Who</th><th>Change</th></tr></thead>
+      <tbody>
+        {% for change in changes %}
+          {% set labels = phase_labels if change.field == 'PHASE' else status_labels %}
+          <tr>
+            <td class="col-date">{{ change.changed_at|local_dt(tz) }}</td>
+            <td>{{ names.get(change.changed_by_account_id, '-') }}</td>
+            <td>{{ "Phase" if change.field == 'PHASE' else "Status" }}: {{ labels[change.old_value] }} &rarr; {{ labels[change.new_value] }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty">No phase or status change since creation.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <details>
+    <summary>Events recorded for MyRF ({{ events|length }})</summary>
+    <p class="muted">Recorded for future MyRF signals; no notification is sent yet.</p>
+    <table class="table-compact">
+      <thead><tr><th>When</th><th>Event</th><th>Who</th><th>Detail</th></tr></thead>
+      <tbody>
+        {% for event in events %}
+          <tr>
+            <td class="col-date">{{ event.occurred_at|local_dt(tz) }}</td>
+            <td>{{ event_labels[event.event_type] }}</td>
+            <td>{{ names.get(event.actor_account_id, '-') }}</td>
+            <td>{{ event.summary }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+</div>
+
+{{ entry_type_script() }}
+{% endblock %}

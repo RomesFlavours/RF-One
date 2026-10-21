@@ -74,7 +74,7 @@ from rfone_data_store.bank_reconciliation import card_configuration  # noqa: E40
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 NEW_REVISION = "e5b1d7c3a9f2"
 HEAD_REVISION = "b9e4c2a7d5f3"  # last schema revision rendered offline for PostgreSQL (check 2)
-CURRENT_HEAD = "c8e4b2a6f0d1"  # the single Alembic head a fresh database reaches (check 1)
+CURRENT_HEAD = "c4e820261021"  # the single Alembic head a fresh database reaches (check 1): the Development Journal
 LAST_RULES_REVISION = "a3c7e5b9d1f4"  # last revision with bank_recognition_rules (check 3)
 PREVIOUS_REVISION = "d4a8c2e6f1b3"
 # The head of the Bank line below the reinstall (c8e4b2a6f0d1 and 84354dc654ce are not reversible): the seed

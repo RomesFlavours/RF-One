@@ -534,3 +534,16 @@ connettore VPC; variabili `RFONE_AI_PROVIDER=BEDROCK`, `RFONE_BEDROCK_MODEL_ID=u
 deploy di `rfone-web`, `rfone-selection` (esegue `alembic upgrade head` all'avvio: con l'immagine precedente una nuova
 istanza non partirebbe) e `rfone-tips` dal ramo di rilascio → Bedrock → verifiche. Esito e riferimenti:
 `07 Tasks/Reports/BANK_REINSTALL_001.md`.
+
+---
+
+## Development Journal su AWS (DEV_JOURNAL_RELEASE_001, 2026-10-21)
+
+Funzione di servizio di `rfone-web` (`/dev-journal`, accesso `DEV_JOURNAL`). Documenti nel bucket privato di Selection
+`rfone-selection-documents-418674484214`, prefisso separato `dev-journal/documents/`: variabile
+`RFONE_DEV_JOURNAL_DOCUMENT_BUCKET` su `rfone-web`, policy inline `rfone-web-dev-journal-documents` (Put/Get/Delete solo su
+quel prefisso, versionata in [`deploy/rfone-web/dev-journal-documents-policy.json`](deploy/rfone-web/dev-journal-documents-policy.json)).
+Rete invariata (connettore VPC + endpoint gateway S3 già esistenti). Senza la variabile gli upload falliscono con un
+messaggio esplicito: nessun salvataggio sul disco effimero di App Runner. Migrazione `c4e820261021` (additiva, 6 tabelle)
+dopo `c8e4b2a6f0d1`; `rfone-selection` esegue `alembic upgrade head` all'avvio e va quindi ricostruito dallo stesso commit.
+Dettagli: `10 System/Development Journal/README.md`; esito: `07 Tasks/Reports/DEV_JOURNAL_RELEASE_001.md`.

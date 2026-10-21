@@ -26,6 +26,12 @@
       <fieldset class="access-domain" data-domain="{{ code }}">
         <legend class="access-name">{{ row.domain.display_name }}</legend>
         <div class="access-row">
+          {% if row.domain.access_label %}
+          {#- One checkbox (the form's `enabled_<CODE>`): checked = the whole
+              Domain, unchecked = no access. #}
+          <label class="access-choice"><input type="checkbox" name="enabled_{{ code }}"
+                 {{ "checked" if row.mode != "none" }}> {{ row.domain.access_label }}</label>
+          {% else %}
           <label class="access-choice"><input type="radio" name="access_{{ code }}" value="none"
                  {{ "checked" if row.mode == "none" }}> No access</label>
           <label class="access-choice"><input type="radio" name="access_{{ code }}" value="all"
@@ -33,6 +39,7 @@
           {% if row.domain.items %}
             <label class="access-choice"><input type="radio" name="access_{{ code }}" value="selected"
                    {{ "checked" if row.mode == "selected" }}> Only selected items</label>
+          {% endif %}
           {% endif %}
           <label class="access-choice">
             Role:

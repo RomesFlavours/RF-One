@@ -40,6 +40,7 @@ Examples: the global Identity & Access subsystem (see `Identity & Access/README.
 |---|---|
 | [Identity & Access/](Identity%20%26%20Access/README.md) | The global RF-One Identity & Access subsystem — User Account, Authentication, Authorization, Authority levels, Branch/Location scope, data visibility, individual overrides, and audit of authorization configuration. Implements the Core concepts defined in `00 Core/ConceptualArchitecture/09_Identity_Authority_and_Accountability.md` without redefining them. **Status: development FROZEN** — see its own README. |
 | [Organizational Responsibility and Attention Management/](Organizational%20Responsibility%20and%20Attention%20Management/README.md) | Position/Position Scope/Occupant/Temporary Coverage/Process Ownership, and cross-Domain Attention Items with priority and routing resolution. Implements `00 Core/Organizational Responsibility.md` and `00 Core/ConceptualArchitecture/12_Attention_Management.md` without redefining them. **Status: active, minimum runtime implemented** — see its own README. |
+| [Development Journal/](Development%20Journal/README.md) | A manual, per-work journal of RF-One development from study to the AWS release — cards, phase/status history, typed entries (decisions distinct) with author corrections kept as versions, release records, private documents on S3, and a persistent event log for future MyRF signals. Access: `DEV_JOURNAL`. **Status: released** — see its own README. |
 
 ---
 

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% from "_dev_journal_macros.html" import entry_content %}
+{% block page_title %}Entry versions · Development Journal · RF-One{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-dev-journal.css') }}?v=2">{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ breadcrumb([('RF-One', url_for('home')), ('Development Journal', url_for('dev_journal_list')), (work.title, url_for('dev_journal_work', work_id=work.id)), ('Entry #' ~ entry.id ~ ' versions', None)]) }}
+<h1>Entry #{{ entry.id }} — versions</h1>
+<p class="muted">Newest first. Times in {{ zone_label(tz) }}.</p>
+
+<ol class="dj-timeline">
+  <li class="dj-entry dj-entry-{{ entry.entry_type }}">
+    <div class="dj-entry-head">
+      <span class="badge ok">Version {{ entry.version }} &middot; current</span>
+      <span class="badge dj-type-{{ entry.entry_type }}">{{ entry_type_labels[entry.entry_type] }}</span>
+      <span>{{ (entry.edited_at or entry.created_at)|local_dt(tz) }}</span>
+      <span>&middot; {{ names.get(entry.edited_by_account_id or entry.author_account_id, '-') }}</span>
+      <span>&middot; phase {{ phase_labels[entry.phase] }}</span>
+    </div>
+    {{ entry_content(entry, environment_labels, outcome_labels) }}
+  </li>
+  {% for version in versions %}
+    <li class="dj-entry dj-entry-{{ version.entry_type }}">
+      <div class="dj-entry-head">
+        <span class="badge">Version {{ version.version }}</span>
+        <span class="badge dj-type-{{ version.entry_type }}">{{ entry_type_labels[version.entry_type] }}</span>
+        <span>written {{ version.written_at|local_dt(tz) }}</span>
+        <span>&middot; {{ names.get(version.written_by_account_id, '-') }}</span>
+        <span>&middot; replaced {{ version.superseded_at|local_dt(tz) }}</span>
+        <span>&middot; phase {{ phase_labels[version.phase] }}</span>
+      </div>
+      {{ entry_content(version, environment_labels, outcome_labels) }}
+    </li>
+  {% else %}
+    <li class="empty">This entry has never been corrected.</li>
+  {% endfor %}
+</ol>
+<p><a href="{{ url_for('dev_journal_work', work_id=work.id, _anchor='entry-' ~ entry.id) }}">Back to the card</a></p>
+{% endblock %}

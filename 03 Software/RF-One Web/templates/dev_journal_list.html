@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% block page_title %}Development Journal · RF-One{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-dev-journal.css') }}?v=2">{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ breadcrumb([('RF-One', url_for('home')), ('Development Journal', None)]) }}
+<h1>Development Journal</h1>
+<p class="muted">Each card is one change with a verifiable result, documented by hand from study to the AWS release.</p>
+
+<div class="btn-row">
+  <a class="btn" href="{{ url_for('dev_journal_new') }}">New work</a>
+</div>
+
+<div class="card">
+  <form method="get" class="dj-filters" aria-label="Filters">
+    <label>Domain
+      <select name="domain">
+        <option value="">All</option>
+        {% for code, label in domain_choices %}
+          <option value="{{ code }}" {{ "selected" if filters.domain_code == code }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Phase
+      <select name="phase">
+        <option value="">All</option>
+        {% for code, label in phase_labels.items() %}
+          <option value="{{ code }}" {{ "selected" if filters.phase == code }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Status
+      <select name="status">
+        <option value="">All</option>
+        {% for code, label in status_labels.items() %}
+          <option value="{{ code }}" {{ "selected" if filters.status == code }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Responsible
+      <select name="responsible">
+        <option value="">All</option>
+        {% for account_id, label in responsible_filter %}
+          <option value="{{ account_id }}" {{ "selected" if filters.responsible_account_id == account_id }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Filter</button>
+    <a class="btn btn-secondary" href="{{ url_for('dev_journal_list') }}">Clear</a>
+  </form>
+</div>
+
+<div class="card">
+  {% if works %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Domain</th>
+            <th>Responsible</th>
+            <th>Phase</th>
+            <th>Status</th>
+            <th>Last update</th>
+            <th>Next step</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for work in works %}
+            <tr>
+              <td><a href="{{ url_for('dev_journal_work', work_id=work.id) }}"><strong>{{ work.title }}</strong></a></td>
+              <td>{{ domain_labels.get(work.domain_code, work.domain_code) }}</td>
+              <td>{{ names.get(work.responsible_account_id, '-') }}</td>
+              <td>{{ phase_labels[work.phase] }}</td>
+              <td><span class="badge {{ 'ok' if work.status == 'COMPLETED' else ('bad' if work.status == 'BLOCKED' else ('warn' if work.status == 'WAITING' else '')) }}">{{ status_labels[work.status] }}</span></td>
+              <td class="col-date">{{ work.updated_at|local_dt(tz) }}</td>
+              <td>
+                {% if work.next_step %}<span class="dj-next">{{ work.next_step }}</span>
+                {% elif work.status not in closed_statuses %}<span class="dj-next-empty">to be defined</span>
+                {% else %}-{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">Times in {{ zone_label(tz) }}.</p>
+  {% else %}
+    <p class="empty">No work{{ " matches these filters" if filters.domain_code or filters.phase or filters.status or filters.responsible_account_id else " yet" }}.</p>
+  {% endif %}
+</div>
+{% endblock %}

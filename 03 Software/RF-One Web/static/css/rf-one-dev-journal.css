@@ -1,0 +1,48 @@
+/* Development Journal — only what the shared rf-one.css does not already
+   provide. Same tokens (olive palette, --ok/--bad), no new colours family. */
+
+.dj-filters { display: flex; flex-wrap: wrap; gap: .6rem; align-items: flex-end; }
+.dj-filters label { display: flex; flex-direction: column; font-size: .8rem; color: var(--muted); gap: .2rem; margin: 0; }
+.dj-next { color: var(--olive-900); }
+.dj-next-empty { color: var(--bad); font-style: italic; }
+
+/* The next step is always the first thing on a card. */
+.dj-next-step { border-left: 4px solid var(--olive-600); background: var(--olive-050); }
+.dj-next-step .dj-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--olive-700); font-weight: 700; }
+.dj-next-step .dj-next-text { font-size: 1.1rem; margin-top: .25rem; white-space: pre-wrap; }
+
+.dj-facts { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem; margin: 0; }
+.dj-facts dt { color: var(--muted); font-size: .85rem; }
+.dj-facts dd { margin: 0; white-space: pre-wrap; }
+
+.dj-timeline { list-style: none; margin: 0; padding: 0; }
+.dj-entry { border: 1px solid var(--olive-150); border-radius: var(--radius); padding: .8rem 1rem; margin-bottom: .8rem; background: var(--surface); }
+.dj-entry-head { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; font-size: .85rem; color: var(--muted); }
+.dj-entry-body { white-space: pre-wrap; word-break: break-word; margin: .6rem 0 0; font-family: inherit; }
+.dj-entry-refs { font-size: .82rem; margin-top: .5rem; color: var(--muted); }
+.dj-entry-refs code, .dj-entry-refs pre { background: var(--olive-050); padding: .05rem .3rem; border-radius: 4px; }
+.dj-entry-refs pre { white-space: pre-wrap; padding: .4rem .6rem; margin: .3rem 0 0; }
+
+/* A decision must never look like an ordinary note. */
+.dj-entry-DECISION { border: 2px solid var(--olive-700); background: var(--olive-050); }
+.dj-entry-PROBLEM { border-left: 4px solid #c58a1f; }
+.dj-entry-RELEASE { border-left: 4px solid var(--ok); }
+.dj-entry-RELEASE.dj-release-failed { border-left-color: var(--bad); background: #fdf5f4; }
+.badge.dj-type-DECISION { background: var(--olive-700); color: #fff; border-color: var(--olive-700); }
+
+.dj-release { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .8rem; font-size: .88rem; margin-top: .6rem; }
+.dj-release dt { color: var(--muted); }
+.dj-release dd { margin: 0; white-space: pre-wrap; }
+
+.dj-docs { list-style: none; padding: 0; margin: .5rem 0 0; font-size: .88rem; }
+.dj-docs li { padding: .2rem 0; }
+.dj-docs .muted { font-size: .8rem; }
+.dj-inline-upload { margin-top: .5rem; font-size: .85rem; }
+.dj-inline-upload summary { cursor: pointer; color: var(--olive-700); }
+
+.dj-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem 1rem; }
+.dj-form-grid label, .dj-form label { display: flex; flex-direction: column; gap: .25rem; font-size: .85rem; }
+.dj-form textarea { width: 100%; font-family: inherit; }
+.dj-form textarea.dj-body { min-height: 10rem; }
+.dj-release-fields { border: 1px dashed var(--olive-300); border-radius: var(--radius); padding: .6rem .8rem; margin-top: .6rem; }
+.dj-release-fields legend { font-weight: 600; padding: 0 .3rem; }

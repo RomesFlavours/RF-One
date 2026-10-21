@@ -64,6 +64,9 @@ class DomainDefinition:
     future_path: str
     link: str | None = None
     items: tuple[DomainItem, ...] = field(default=())
+    # When set, the account's access page offers this one checkbox instead
+    # of the "No access / Whole Domain" choice (a Domain without items).
+    access_label: str | None = None
 
     def item(self, code: str) -> DomainItem | None:
         return next((i for i in self.items if i.code == code), None)
@@ -217,6 +220,20 @@ DOMAINS: tuple[DomainDefinition, ...] = (
             DomainItem("ai_review", "AI Consistency Review (boundary)", "admin_org_ai_review",
                        paths=("/admin/org/ai-review",)),
         ),
+    ),
+    DomainDefinition(
+        code="DEV_JOURNAL",
+        display_name="Development Journal",
+        description="Document by hand every phase of a piece of work, from study to the AWS release.",
+        future_path="/dev-journal",
+        # A system-level service, not a business Domain
+        # (`10 System/Development Journal/README.md`), listed here because
+        # this list is where RF-One access codes live — the same choice
+        # CLOVER_ACQUISITION makes. Shown on Home under "Services", gated by
+        # `require_domain_access("DEV_JOURNAL")` (`dev_journal_routes.py`).
+        # Holders are also the future MyRF recipients of its events.
+        link="/dev-journal",
+        access_label="Development Journal access",
     ),
 )
 

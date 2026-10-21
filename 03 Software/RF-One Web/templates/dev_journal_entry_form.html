@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% from "_dev_journal_macros.html" import entry_fields, entry_type_script %}
+{% block page_title %}Correct entry · Development Journal · RF-One{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-dev-journal.css') }}?v=2">{% endblock %}
+{% block content %}
+{{ breadcrumb([('RF-One', url_for('home')), ('Development Journal', url_for('dev_journal_list')), (work.title, url_for('dev_journal_work', work_id=work.id)), ('Correct entry', None)]) }}
+<h1>Correct entry #{{ entry.id }}</h1>
+<p class="muted">You are correcting version {{ entry.version }}. The current text is kept as an earlier version, with its author and date, and stays available from the entry.</p>
+
+<div class="card">
+  <form method="post" class="dj-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ entry_fields(form, phase_labels, entry_type_labels, environment_labels, outcome_labels) }}
+    <div class="btn-row">
+      <button type="submit">Save correction</button>
+      <a class="btn btn-secondary" href="{{ url_for('dev_journal_work', work_id=work.id, _anchor='entry-' ~ entry.id) }}">Cancel</a>
+    </div>
+  </form>
+</div>
+{{ entry_type_script() }}
+{% endblock %}
