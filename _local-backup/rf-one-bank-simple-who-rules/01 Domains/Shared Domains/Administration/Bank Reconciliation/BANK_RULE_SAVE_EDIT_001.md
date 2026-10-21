@@ -1,0 +1,8 @@
+# BANK_RULE_SAVE_EDIT_001
+
+1. Requested workflow: Save and Preview in the AI rule conversation, independently. At the bottom of the preview: Edit rule, Apply to future imports, Apply to all transactions and future imports. Returning to edit retains the conversation.
+2. Save persists the existing conversation artifact as explicit saved changes, including an unsent message and incomplete instructions. No rule version is activated, future imports changed, historical transactions edited or preview required. Saved changes are visible in the AI rules list and reopen the same conversation. The previous active version stays active until explicit Apply. Incomplete instructions remain non-executable.
+3. Preview remains required before application. Edit rule reopens the same conversation and composer, discarding only the old preview so changed instructions require a new one. The extra Finish review step is removed. Preview mode still hides the trailing composer. Photo per row and its return flow remain intact.
+4. Application uses the existing FUTURE/ALL backend, signatures, stale checks and rollback. Applying clears saved-draft state. No schema change. No existing saved policy is applied during this implementation.
+5. Verification: Save without preview for incomplete instructions and unsent text; reopening and list visibility; auth/CSRF; Save does not change active version/future setting; explicit Apply does; nested profile and final application/rollback regression. Browser fixture uses production rendering with sample responses to check Save, Preview, footer buttons and Edit rule retaining messages.
+6. Traceability: deployment.json, verification.json, code_before/ and bank_before.db in the deployment output.

@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title %}{{ position.title }}{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="{{ url_for('dashboard') }}">Posizioni</a> › <b>{{ position.title }}</b></div>{% endblock %}
+
+{% macro card(c, select=True, quick=True) %}
+<div class="cand">
+  <div class="row" style="justify-content:space-between">
+    <label class="row" style="margin:0;color:var(--ink);font-size:.95rem">
+      {% if select %}<input type="checkbox" name="pc_id" value="{{ c.pc.id }}">{% endif %}
+      <a class="name" href="{{ url_for('candidate_detail', position_id=position.id, pc_id=c.pc.id) }}">{{ c.name }}</a>
+    </label>
+    {% if c.proposal %}<span class="pill {{ 'blue' if c.proposal.source == 'AI' else '' }}" title="Fonte della proposta">{{ 'AI' if c.proposal.source == 'AI' else 'Regole' }}</span>{% endif %}
+  </div>
+  <div class="small muted">{{ c.latest_role or 'Ultima esperienza non letta' }}{% if c.direct_months is not none %} · esperienza diretta {{ c.direct_months }} mesi{% endif %}</div>
+  {% if c.application and c.application.status != 'SUBMITTED' %}<div class="small"><span class="pill warn">Intervista non completata</span></div>{% endif %}
+  {% if c.proposal %}<div class="why">{{ c.proposal.payload.reasons[0] }}</div>{% endif %}
+  {% if c.decision %}<div class="small"><span class="pill ok">{{ DECISION_LABELS[c.decision.decision] }}</span>
+     <span class="muted">{{ c.decision.actor_name }}, {{ c.decision.created_at|local(position.timezone) }}</span></div>{% endif %}
+  {% if c.next_appointment %}<div class="small">📅 {{ KIND_LABELS[c.next_appointment.kind] }} {{ c.next_appointment.starts_at|local(position.timezone, '%a %d/%m %H:%M') }}</div>{% endif %}
+  {% if c.duplicates %}<div class="small" style="color:var(--warn)">⚠ {{ c.duplicates|join(' ') }}</div>{% endif %}
+  {% if can_edit and quick and not c.decision %}
+  <div class="acts">
+    <button class="btn ok small" name="quick" value="{{ c.pc.id }}:INTERVIEW" formaction="{{ url_for('record_decision', position_id=position.id) }}" formmethod="post">Da intervistare</button>
+    <button class="btn ghost small" name="quick" value="{{ c.pc.id }}:DEEPEN" formaction="{{ url_for('record_decision', position_id=position.id) }}" formmethod="post">Da approfondire</button>
+  </div>{% endif %}
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="row" style="justify-content:space-between">
+  <div>
+    <h1>{{ position.title }}</h1>
+    <div class="muted small">{{ ROLE_LABEL[position.role_code] }} · {{ position.location_label }} · {{ position.headcount }} persona/e · Responsabile {{ manager }}
+      · <span class="pill {{ 'ok' if position.status == 'OPEN' else ('warn' if position.status == 'DRAFT' else '') }}">{{ POSITION_STATUS_LABELS[position.status] }}</span></div>
+  </div>
+  {% if position.status == 'OPEN' %}<a class="btn ghost small" href="{{ public_url }}" target="_blank">Pagina di candidatura ↗</a>{% endif %}
+</div>
+{% if unapproved %}<div class="banner warn">Ci sono modifiche non ancora approvate: la pagina di candidatura e la valutazione usano la versione approvata.
+  <a href="{{ url_for('position_detail', position_id=position.id, tab='posizione') }}">Rivedi e approva</a></div>{% endif %}
+
+<div class="tabs">
+  {% for code, label in [('posizione','1 · Posizione'),('candidature','2 · Candidature (' ~ cards|length ~ ')'),('valutazione','3 · Valutazione'),('colloqui','4 · Colloqui'),('decisioni','5 · Decisioni')] %}
+  <a class="{{ 'on' if tab == code }}" href="{{ url_for('position_detail', position_id=position.id, tab=code) }}">{{ label }}</a>{% endfor %}
+</div>
+
+{# =============================== 1 POSIZIONE =============================== #}
+{% if tab == 'posizione' %}
+{% if position.description %}<div class="card"><h3>Cosa cerchi (descrizione del manager)</h3><p style="white-space:pre-wrap;margin:0">{{ position.description }}</p></div>{% endif %}
+
+{% for d in drafts %}
+<div class="card" style="border-color:#c5d4fb">
+  <h3>Proposta AI <span class="pill blue">da approvare</span></h3>
+  <div class="small muted">{{ d.provider_label }} · {{ d.created_at|local(position.timezone) }}. Scegli cosa usare: potrai ancora modificare tutto.</div>
+  <form method="post" action="{{ url_for('position_draft_use', position_id=position.id, draft_id=d.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <table><tr><th></th><th>Requisito</th><th>Tipo</th><th>Perché</th></tr>
+    {% for item in d.payload.requirements %}<tr>
+      <td><input type="checkbox" name="item" value="{{ loop.index0 }}" checked></td>
+      <td><b>{{ item.name }}</b><div class="small">{{ item.description }}</div>
+        {% if item.cv_keywords %}<div class="small muted">Parole chiave CV: {{ item.cv_keywords|join(', ') }}</div>{% endif %}</td>
+      <td class="small">{{ CRITICALITY_LABELS[item.criticality] }}<br>{{ categories[item.category] }}</td>
+      <td class="small muted">{{ item.why }}</td></tr>{% endfor %}</table>
+    <label class="row" style="color:var(--ink)"><input type="checkbox" name="use_headcount" value="1" {{ 'checked' if d.payload.headcount }} {{ 'disabled' if not d.payload.headcount }}>
+      Persone da assumere: <b>{{ d.payload.headcount or 'non indicato nella descrizione' }}</b></label>
+    <label class="row" style="color:var(--ink)"><input type="checkbox" name="use_ad" value="1" checked> Usa l'annuncio in inglese proposto</label>
+    <pre class="cv small" style="margin:.3rem 0">{{ d.payload.job_ad_en }}</pre>
+    {% if d.payload.open_questions %}<p class="small"><b>Da decidere (l'AI non le ha inventate):</b></p>
+      <ul class="small">{% for q in d.payload.open_questions %}<li>{{ q }}</li>{% endfor %}</ul>{% endif %}
+    <div class="row"><button class="btn small" name="action" value="use">Usa i selezionati</button>
+      <button class="btn ghost small" name="action" value="discard">Scarta</button></div>
+  </form>
+</div>{% endfor %}
+
+<div class="grid g2">
+<div class="card">
+  <div class="row" style="justify-content:space-between">
+    <h3 style="margin:0">Requisiti</h3>
+    {% if position.approved_snapshot_id and not unapproved %}<span class="pill ok">approvati</span>{% endif %}
+  </div>
+  <p class="small muted">Solo requisiti pertinenti alla mansione. «Essenziale» decide i gruppi; i CV sono confrontati con nome e descrizione, quindi includi le parole inglesi che compaiono nei CV.</p>
+  {% for r in requirements %}
+  <div class="cand">
+    <div class="row" style="justify-content:space-between"><b>{{ r.name }}</b>
+      <span><span class="pill {{ 'bad' if r.criticality == 'MUST_HAVE' else '' }}">{{ CRITICALITY_LABELS[r.criticality] }}</span>
+        <span class="pill">{{ trainability[r.trainability] }}</span></span></div>
+    {% if r.description %}<div class="small" style="white-space:pre-wrap">{{ r.description }}</div>{% endif %}
+    {% if can_edit %}<details><summary>Modifica</summary>
+      <form method="post" action="{{ url_for('requirement_edit', position_id=position.id, requirement_id=r.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Nome</label><input type="text" name="name" value="{{ r.name }}">
+        <label>Descrizione e parole chiave</label><textarea name="description">{{ r.description or '' }}</textarea>
+        <div class="grid g3">
+          <div><label>Tipo</label><select name="criticality">{% for code, label in CRITICALITY_LABELS.items() %}<option value="{{ code }}" {{ 'selected' if r.criticality == code }}>{{ label }}</option>{% endfor %}</select></div>
+          <div><label>Area</label><select name="category">{% for code, label in categories.items() %}<option value="{{ code }}" {{ 'selected' if r.category == code }}>{{ label }}</option>{% endfor %}</select></div>
+          <div><label>Formabile?</label><select name="trainability">{% for code, label in trainability.items() %}<option value="{{ code }}" {{ 'selected' if r.trainability == code }}>{{ label }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="row" style="margin-top:.5rem"><button class="btn small" name="action" value="save">Salva</button>
+          <button class="btn bad small" name="action" value="remove">Rimuovi</button></div>
+      </form></details>{% endif %}
+  </div>
+  {% else %}<p class="muted small">Nessun requisito.</p>{% endfor %}
+  {% if can_edit %}
+  <details style="margin-top:.6rem" {{ 'open' if not requirements }}><summary>+ Aggiungi requisito</summary>
+    <form method="post" action="{{ url_for('requirement_add', position_id=position.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Nome</label><input type="text" name="name" required placeholder="es. Server experience">
+      <label>Descrizione e parole chiave</label><textarea name="description" placeholder="es. server, waiter, waitress, table service"></textarea>
+      <div class="grid g3">
+        <div><label>Tipo</label><select name="criticality">{% for code, label in CRITICALITY_LABELS.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div>
+        <div><label>Area</label><select name="category">{% for code, label in categories.items() %}<option value="{{ code }}" {{ 'selected' if code == 'Experience' }}>{{ label }}</option>{% endfor %}</select></div>
+        <div><label>Formabile?</label><select name="trainability">{% for code, label in trainability.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div>
+      </div>
+      <p><button class="btn ghost small">Aggiungi</button></p></form>
+  </details>
+  <details><summary>+ Copia da un modello esistente di Selection</summary>
+    <form method="post" action="{{ url_for('requirement_from_template', position_id=position.id) }}" class="row" style="margin-top:.4rem">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <select name="template_id" style="flex:1">{% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select>
+      <button class="btn ghost small">Copia</button></form>
+  </details>
+  {% if ai_policy.ai_enabled %}
+  <details><summary>+ Chiedi una nuova proposta all'AI</summary>
+    <form method="post" action="{{ url_for('position_ai_draft', position_id=position.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <textarea name="extra" placeholder="Precisazioni facoltative"></textarea>
+      <button class="btn ghost small">Proponi</button></form>
+  </details>
+  {% else %}<div class="banner off small">Proposta AI non attiva (il prototipo è avviato senza --ai).</div>{% endif %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">Annuncio, persone e domande standard</h3>
+  <form method="post" action="{{ url_for('position_details', position_id=position.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Persone da assumere</label><input type="text" name="headcount" value="{{ position.headcount }}" inputmode="numeric" {{ 'disabled' if not can_edit }}>
+    <label>Annuncio in inglese (pubblicato sulla pagina di candidatura)</label>
+    <textarea name="job_ad_en" style="min-height:11rem" {{ 'disabled' if not can_edit }}>{{ position.job_ad_en }}</textarea>
+    <label>Domande standard dell'intervista (una per riga, in inglese, max 6)</label>
+    <textarea name="questions" style="min-height:8rem" {{ 'disabled' if not can_edit }}>{{ position.questions|join('\n') }}</textarea>
+    <details><summary class="small">Altre domande standard già presenti in Selection</summary>
+      <ul class="small">{% for q in standard_pool %}<li>{{ q }}</li>{% endfor %}</ul></details>
+    <p class="small muted">{% if ai_policy.cv_ai_authorized %}L'AI aggiunge fino a 3 domande costruite sul CV del candidato.
+      {% else %}Domande costruite sul CV: non attive (servirebbe l'invio del CV all'AI, non autorizzato).{% endif %}</p>
+    {% if can_edit %}<button class="btn ghost small">Salva</button>{% endif %}
+  </form>
+</div>
+</div>
+
+{% if can_edit %}
+<div class="card row" style="justify-content:space-between">
+  <div class="small">{% if position.approved_at %}Ultima approvazione: {{ position.approved_at|local(position.timezone) }}.{% else %}Approvando si apre la pagina di candidatura.{% endif %}</div>
+  <form method="post" action="{{ url_for('position_approve', position_id=position.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn ok">{{ 'Approva le modifiche' if position.approved_snapshot_id else 'Approva e apri la posizione' }}</button></form>
+</div>{% endif %}
+
+{# =============================== 2 CANDIDATURE =============================== #}
+{% elif tab == 'candidature' %}
+<div class="grid g2">
+  <div class="card">
+    <h3>Pagina di candidatura</h3>
+    {% if position.status == 'OPEN' %}
+      <p class="small"><span class="pill ok">Aperta</span> <a href="{{ public_url }}" target="_blank">{{ public_url }}</a></p>
+      <p class="small muted">CV + breve intervista in inglese (testo o voce), interrompibile e riprendibile. Pronta per essere usata come link
+        «Apply on company site» su Indeed. Per ora raggiungibile solo da questo PC: pubblicarla su Internet richiede un'autorizzazione separata.</p>
+    {% else %}<p class="small"><span class="pill">{{ 'Da approvare' if position.status == 'DRAFT' else 'Chiusa' }}</span> La pagina accetta candidature solo con posizione approvata e aperta.</p>{% endif %}
+  </div>
+  <div class="card">
+    <h3>Carica CV</h3>
+    {% if can_edit %}
+    <form method="post" enctype="multipart/form-data" action="{{ url_for('cv_upload', position_id=position.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="file" name="cv" multiple accept=".pdf,.docx,.txt" required>
+      <p class="small muted">Più file insieme (PDF, DOCX, TXT). I duplicati vengono riconosciuti.
+        {% if not ai_policy.cv_ai_authorized %}Nessun CV viene inviato all'AI.{% endif %}</p>
+      <button class="btn">Carica</button>
+    </form>{% else %}<p class="muted small">Sola lettura.</p>{% endif %}
+  </div>
+</div>
+<div class="card">
+  <table>
+    <tr><th>Candidato</th><th>Ultima esperienza</th><th>Canale</th><th>Stato</th><th>Ricevuto</th></tr>
+    {% for c in cards %}<tr>
+      <td><a href="{{ url_for('candidate_detail', position_id=position.id, pc_id=c.pc.id) }}">{{ c.name }}</a>
+        {% if c.duplicates %}<div class="small" style="color:var(--warn)">⚠ possibile duplicato</div>{% endif %}
+        {% if c.pc.import_note %}<div class="small muted">{{ c.pc.import_note }}</div>{% endif %}</td>
+      <td class="small">{{ c.latest_role or '—' }}</td><td class="small">{{ c.channel }}</td>
+      <td class="small">{% if c.application %}{{ APPLICATION_STATUS_LABELS[c.application.status] }}{% else %}CV caricato{% endif %}</td>
+      <td class="small">{{ c.pc.added_at|local(position.timezone) }}</td></tr>
+    {% else %}<tr><td colspan="5" class="muted">Nessuna candidatura.</td></tr>{% endfor %}
+  </table>
+  <div class="small muted" style="margin-top:.5rem">{% for ch in channels if not ch.active %}{{ ch.label }}: {{ ch.note }}{% endfor %}</div>
+</div>
+
+{# =============================== 3 VALUTAZIONE =============================== #}
+{% elif tab == 'valutazione' %}
+{% if not position.approved_snapshot_id %}<div class="banner warn">Approva la posizione per avviare la valutazione.</div>{% endif %}
+{% if not cards %}
+<div class="card"><p>Nessuna candidatura. <a href="{{ url_for('position_detail', position_id=position.id, tab='candidature') }}">Carica CV o condividi la pagina di candidatura</a>.</p></div>
+{% else %}
+<form method="get" action="{{ url_for('compare', position_id=position.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="back" value="{{ url_for('position_detail', position_id=position.id, tab='valutazione') }}">
+  <div class="row" style="justify-content:space-between;margin-bottom:.5rem">
+    <p class="small muted" style="margin:0;max-width:760px">Proposta {% if ai_policy.cv_ai_authorized %}dell'AI (citazioni verificate su CV e risposte) e{% endif %} dei motori esistenti
+      sui requisiti approvati. È solo una proposta: nessuno viene escluso e «non dimostrato» significa informazione mancante.</p>
+    <button class="btn ghost small">Confronta i selezionati</button>
+  </div>
+  <div class="grid g3">
+    {% for g in ['INTERVIEW','DEEPEN','ESSENTIALS_NOT_SHOWN'] %}
+    <div class="col">
+      <h3>{{ GROUP_LABELS[g] }} <span class="pill">{{ columns[g]|length }}</span></h3>
+      {% for c in columns[g] %}{{ card(c) }}{% else %}<p class="small muted">Nessuno.</p>{% endfor %}
+    </div>{% endfor %}
+  </div>
+  {% if pending %}<div class="card" style="margin-top:1rem"><h3>In attesa di valutazione</h3>{% for c in pending %}{{ card(c, quick=False) }}{% endfor %}</div>{% endif %}
+  {% if decided['INTERVIEW'] or decided['DEEPEN'] %}
+  <h2>Già smistati dal manager</h2>
+  <div class="grid g2">
+    {% for code in ['INTERVIEW','DEEPEN'] if decided[code] %}<div class="col"><h3>{{ DECISION_LABELS[code] }} <span class="pill">{{ decided[code]|length }}</span></h3>
+      {% for c in decided[code] %}{{ card(c, quick=False) }}{% endfor %}</div>{% endfor %}
+  </div>{% endif %}
+</form>
+{% if can_edit and position.approved_snapshot_id %}<form method="post" action="{{ url_for('reanalyze', position_id=position.id) }}" style="margin-top:.8rem">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost small">Rivaluta tutti</button></form>{% endif %}
+{% endif %}
+
+{# =============================== 4 COLLOQUI =============================== #}
+{% elif tab == 'colloqui' %}
+<div class="grid g2">
+<div class="card">
+  <h3>Calendario</h3>
+  {% for day, items in days.items() %}
+    <div style="margin:.6rem 0 .2rem;font-weight:600">{{ day }}</div>
+    {% for a in items %}<div class="row small" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:.3rem 0;{{ 'opacity:.5;text-decoration:line-through' if a.status == 'CANCELLED' }}">
+      <span><b>{{ a.starts_at|local(position.timezone, '%H:%M') }}</b> · {{ a.duration_min }} min · {{ KIND_LABELS[a.kind] }} ·
+        <a href="{{ url_for('candidate_detail', position_id=position.id, pc_id=a.position_candidate_id) }}">{{ names[a.position_candidate_id] }}</a>
+        {% if a.place %}<span class="muted">· {{ a.place }}</span>{% endif %}
+        {% if a.booked_by == 'CANDIDATE' %}<span class="pill blue">scelto dal candidato</span>{% endif %}</span>
+      {% if can_edit and a.status == 'CONFIRMED' and a.starts_at > now %}
+      <form method="post" action="{{ url_for('interview_cancel', position_id=position.id, appointment_id=a.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn bad small">Annulla</button></form>{% endif %}
+    </div>{% endfor %}
+  {% else %}<p class="small muted">Nessun colloquio in calendario.</p>{% endfor %}
+  {% if offers %}<h3>Orari proposti in attesa di scelta</h3>
+    {% for o in offers %}<div class="small">{{ names[o.position_candidate_id] }} · {{ KIND_LABELS[o.kind] }} ·
+      {% for s in o.slots %}{{ s|local(position.timezone, '%a %d/%m %H:%M') }}{{ ', ' if not loop.last }}{% endfor %}</div>{% endfor %}{% endif %}
+</div>
+<div class="card">
+  <h3>Da programmare</h3>
+  <p class="small muted">Candidati segnati «Da intervistare» senza un colloquio in calendario.</p>
+  {% for c in decided['INTERVIEW'] if not c.next_appointment %}
+    <div class="row small" style="justify-content:space-between;padding:.3rem 0"><span>{{ c.name }}</span>
+      <a class="btn ghost small" href="{{ url_for('candidate_detail', position_id=position.id, pc_id=c.pc.id) }}#colloquio">Programma</a></div>
+  {% else %}<p class="small muted">Nessuno.</p>{% endfor %}
+</div>
+</div>
+
+{# =============================== 5 DECISIONI =============================== #}
+{% else %}
+<div class="grid g3">
+  {% for code in ['HIRED','ON_HOLD','NOT_SELECTED'] %}
+  <div class="col"><h3>{{ DECISION_LABELS[code] }} <span class="pill">{{ decided[code]|length }}{{ ' / ' ~ position.headcount if code == 'HIRED' }}</span></h3>
+    {% for c in decided[code] %}{{ card(c, select=False, quick=False) }}{% else %}<p class="small muted">Nessuno.</p>{% endfor %}</div>
+  {% endfor %}
+</div>
+<p class="small muted">L'esito si registra dalla scheda di ogni candidato. Nessun collegamento automatico con Management, Training o Organization.</p>
+{% if can_edit %}
+<div class="card row" style="justify-content:space-between">
+  <div class="small">{% if position.status == 'CLOSED' %}Posizione chiusa il {{ position.closed_at|local(position.timezone) }}.
+    {% elif hired >= position.headcount %}Hai assunto le persone previste: puoi chiudere la posizione.{% else %}La posizione si chiude solo manualmente.{% endif %}</div>
+  <form method="post" action="{{ url_for('position_status', position_id=position.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if position.status == 'CLOSED' %}<button class="btn ghost" name="action" value="reopen">Riapri</button>
+    {% else %}<button class="btn bad" name="action" value="close" onclick="return confirm('Chiudere la posizione? La pagina di candidatura non accetterà più candidature.')">Chiudi posizione</button>{% endif %}
+  </form>
+</div>{% endif %}
+<div class="card">
+  <h3>Storico</h3>
+  <table><tr><th>Quando</th><th>Chi</th><th>Cosa</th></tr>
+  {% for e in events %}<tr><td class="small" style="white-space:nowrap">{{ e.created_at|local(position.timezone) }}</td>
+    <td class="small">{{ e.actor_name }}</td><td class="small">{{ e.detail }}</td></tr>
+  {% else %}<tr><td colspan="3" class="muted">Nessun evento.</td></tr>{% endfor %}</table>
+  <p class="small muted">Orari nel fuso della sede ({{ position.timezone }}).</p>
+</div>
+{% endif %}
+{% endblock %}

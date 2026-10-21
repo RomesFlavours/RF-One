@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Rules and applications · Bank{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('ai_rules') }}
+<p><a href="{{ url_for('bank_ai_rules') }}">Back to Rules and profiles</a></p>
+<h2>Application history</h2>
+<p>Rollback restores only transactions that still match the application result. Later changes are preserved and reported. Applications made before rollback was introduced do not have enough history to be undone.</p>
+{% for application in applications %}
+<details class="card" id="application-{{ application.id }}">
+  <summary>Application #{{ application.id }} · Rule #{{ application.rule_id }} · {{ application.started_at }} · {{ application.updated }} updated{% if application.rolled_back_at %} · Rolled back{% endif %}</summary>
+  {% if application.can_rollback %}
+  <form class="application-rollback-form" action="{{ url_for('bank_ai_rule_application_rollback', application_id=application.id) }}" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-secondary">Roll back this application</button>
+  </form>
+  {% endif %}
+  <p class="rollback-result" role="status"></p>
+  <div class="table-scroll"><table class="table-compact">
+    <thead><tr><th>Transaction ID</th><th>WHO before → after</th><th>WHY before → after</th><th>WHOM before → after</th><th>Result</th></tr></thead>
+    <tbody>{% for item in application["items"] %}<tr>
+      <td>{{ item.id }}</td><td>{{ item.who_before or '—' }} → {{ item.who_after or '—' }}</td>
+      <td>{{ item.why_before or '—' }} → {{ item.why_after or '—' }}</td>
+      <td>{{ item.for_whom_before or '—' }} → {{ item.for_whom_after or '—' }}</td>
+      <td>{{ item.rollback or item.outcome }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+</details>
+{% else %}<p>No applications recorded.</p>{% endfor %}
+{% if next_before %}<p><a href="{{ url_for('bank_ai_rule_applications', before=next_before) }}">Earlier applications</a></p>{% endif %}
+<script defer src="{{ url_for('static', filename='js/bank-rule-applications.js') }}?v=en1"></script>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "public_base.html" %}
+{% block head %}
+{% if open_ %}
+<script type="application/ld+json">
+{{ {"@context": "https://schema.org/", "@type": "JobPosting", "title": position.title,
+    "description": position.approved_job_ad_en or position.title,
+    "datePosted": position.approved_at.strftime('%Y-%m-%d') if position.approved_at else None,
+    "hiringOrganization": {"@type": "Organization", "name": client},
+    "jobLocation": {"@type": "Place", "address": {"@type": "PostalAddress", "addressLocality": position.location_label}},
+    "totalJobOpenings": position.headcount, "directApply": true}|tojson }}
+</script>
+{% endif %}
+{% endblock %}
+{% block content %}
+<h1>{{ position.title }}</h1>
+<div class="muted">{{ role_label }} · {{ position.location_label }}{% if position.headcount > 1 %} · {{ position.headcount }} openings{% endif %}</div>
+{% if not open_ %}
+  <p>This position is not accepting applications at the moment.</p>
+{% else %}
+  <div class="ad">{{ position.approved_job_ad_en }}</div>
+  {% if requirements %}<h2 style="font-size:1.05rem">What we are looking for</h2>
+  <ul>{% for r in requirements if r.criticality != 'DISQUALIFIER' %}<li>{{ r.name }}{% if r.criticality == 'MUST_HAVE' %} <b>(required)</b>{% endif %}</li>{% endfor %}</ul>{% endif %}
+  <div id="resume" class="note" hidden>You have an application in progress. <a id="resume-link" href="#">Continue where you left off</a></div>
+  <h2 style="font-size:1.1rem;margin-top:1.4rem">Apply</h2>
+  <div class="muted">Step 1: your résumé. Step 2: a short interview in English (about 5 minutes, typing or voice). You can stop and continue later.</div>
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Full name *</label><input type="text" name="name" required autocomplete="name">
+    <label>Email *</label><input type="email" name="email" required autocomplete="email">
+    <label>Phone</label><input type="tel" name="phone" autocomplete="tel">
+    <label>Résumé * (PDF, DOCX or TXT)</label><input type="file" name="cv" accept=".pdf,.docx,.txt" required>
+    <label class="row" style="color:#1d2433;align-items:flex-start"><input type="checkbox" name="consent" value="1" required style="margin-top:.3rem">
+      <span>I agree that my résumé and answers are used only for this hiring process. Only job-related information is considered,
+        and the decision is made by a person, not by software.</span></label>
+    <p><button class="btn">Continue to the short interview</button></p>
+  </form>
+  <script>
+    try { var t = localStorage.getItem('rfone-apply-{{ position.public_token }}');
+      if (t) { document.getElementById('resume').hidden = false; document.getElementById('resume-link').href = t; } } catch (e) {}
+  </script>
+{% endif %}
+{% endblock %}

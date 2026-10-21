@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Selection{% endblock %} · RF-One</title>
+<style>
+  :root { --ink:#1d2433; --muted:#667085; --line:#e4e7ec; --bg:#f6f7f9; --card:#fff; --accent:#2557d6;
+          --accent-soft:#eaf0ff; --ok:#1f7a45; --ok-soft:#e6f4ec; --warn:#a15c07; --warn-soft:#fff4e0;
+          --bad:#b42318; --bad-soft:#fdecea; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--ink);
+         background:var(--bg); font-size:15px; line-height:1.45; }
+  a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+  header.top { background:#fff; border-bottom:1px solid var(--line); }
+  header.top .in { max-width:1200px; margin:0 auto; padding:.7rem 1rem; display:flex; gap:1rem; align-items:center; }
+  header.top .brand { font-weight:700; font-size:1.05rem; color:var(--ink); }
+  header.top .brand span { color:var(--accent); }
+  header.top .right { margin-left:auto; display:flex; gap:.8rem; align-items:center; font-size:.85rem; color:var(--muted); }
+  main { max-width:1200px; margin:0 auto; padding:1rem 1rem 3rem; }
+  .crumbs { font-size:.85rem; color:var(--muted); margin:.2rem 0 .8rem; }
+  .crumbs a { color:var(--muted); } .crumbs b { color:var(--ink); font-weight:600; }
+  h1 { font-size:1.45rem; margin:.2rem 0 .3rem; } h2 { font-size:1.1rem; margin:1.2rem 0 .6rem; }
+  h3 { font-size:.98rem; margin:.4rem 0; }
+  .muted { color:var(--muted); } .small { font-size:.82rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:1rem 1.1rem; margin-bottom:1rem; }
+  .grid { display:grid; gap:1rem; } .g3 { grid-template-columns:repeat(3,1fr); } .g2 { grid-template-columns:1fr 1fr; }
+  @media (max-width:900px){ .g3,.g2 { grid-template-columns:1fr; } }
+  .btn { display:inline-block; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:8px;
+         padding:.45rem .9rem; font-size:.88rem; cursor:pointer; font-family:inherit; }
+  .btn:hover { text-decoration:none; filter:brightness(1.05); }
+  .btn.ghost { background:#fff; color:var(--accent); } .btn.small { padding:.25rem .6rem; font-size:.8rem; }
+  .btn.ok { background:var(--ok); border-color:var(--ok); } .btn.bad { background:#fff; color:var(--bad); border-color:var(--bad); }
+  .btn[disabled] { opacity:.5; cursor:not-allowed; }
+  .pill { display:inline-block; border-radius:999px; padding:.1rem .55rem; font-size:.75rem; font-weight:600;
+          background:#f2f4f7; color:var(--muted); border:1px solid var(--line); white-space:nowrap; }
+  .pill.ok { background:var(--ok-soft); color:var(--ok); border-color:#b7dfc6; }
+  .pill.warn { background:var(--warn-soft); color:var(--warn); border-color:#f3d39b; }
+  .pill.bad { background:var(--bad-soft); color:var(--bad); border-color:#f3b8b2; }
+  .pill.blue { background:var(--accent-soft); color:var(--accent); border-color:#c5d4fb; }
+  .flash { background:#fff; border-left:4px solid var(--accent); padding:.55rem .8rem; margin:.4rem 0; border-radius:6px;
+           font-size:.88rem; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .tabs { display:flex; gap:.2rem; border-bottom:1px solid var(--line); margin:1rem 0; flex-wrap:wrap; }
+  .tabs a { padding:.55rem .9rem; color:var(--muted); border-bottom:2px solid transparent; font-weight:500; }
+  .tabs a.on { color:var(--accent); border-color:var(--accent); } .tabs a:hover { text-decoration:none; color:var(--ink); }
+  table { width:100%; border-collapse:collapse; } th,td { text-align:left; padding:.5rem .45rem; border-bottom:1px solid var(--line);
+          vertical-align:top; font-size:.88rem; } th { font-size:.74rem; text-transform:uppercase; color:var(--muted); letter-spacing:.03em; }
+  label { display:block; font-size:.8rem; color:var(--muted); margin:.55rem 0 .2rem; }
+  input[type=text],input[type=password],input[type=email],input[type=tel],select,textarea {
+    width:100%; padding:.5rem .6rem; border:1px solid #d0d5dd; border-radius:8px; font:inherit; background:#fff; }
+  textarea { min-height:5rem; resize:vertical; }
+  .col { background:#fff; border:1px solid var(--line); border-radius:12px; padding:.7rem; }
+  .col h3 { display:flex; justify-content:space-between; align-items:center; }
+  .cand { border:1px solid var(--line); border-radius:10px; padding:.65rem .7rem; margin:.55rem 0; background:#fff; }
+  .cand .name { font-weight:600; } .cand .why { font-size:.8rem; color:var(--muted); margin:.3rem 0; }
+  .cand .acts { display:flex; gap:.3rem; flex-wrap:wrap; margin-top:.4rem; }
+  .banner { border-radius:10px; padding:.7rem .9rem; margin:.6rem 0; font-size:.88rem; }
+  .banner.warn { background:var(--warn-soft); border:1px solid #f3d39b; } .banner.info { background:var(--accent-soft); border:1px solid #c5d4fb; }
+  .banner.off { background:#f2f4f7; border:1px dashed #c4c9d2; color:var(--muted); }
+  .ev { border-left:3px solid var(--line); padding:.15rem .5rem; margin:.25rem 0; font-size:.82rem; }
+  .ev.SUPPORTS { border-color:var(--ok); } .ev.CONTRADICTS { border-color:var(--bad); }
+  .row { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; }
+  details summary { cursor:pointer; color:var(--accent); font-size:.85rem; }
+  mark { background:#ffe58f; }
+  pre.cv { white-space:pre-wrap; font-family:inherit; font-size:.9rem; background:#fff; border:1px solid var(--line);
+           border-radius:10px; padding:1rem; }
+  .stat { font-size:1.4rem; font-weight:700; } .statl { font-size:.75rem; color:var(--muted); }
+</style>
+</head>
+<body>
+<header class="top"><div class="in">
+  <a class="brand" href="{{ url_for('dashboard') }}">RF-One <span>Selection</span></a>
+  <span class="pill warn">Prototipo locale</span>
+  {% if actor is defined and actor %}
+  <div class="right">
+    <span title="Stato AI">{% if ai_policy.cv_ai_authorized %}<span class="pill ok">AI attiva (requisiti e CV)</span>
+      {% elif ai_policy.ai_enabled %}<span class="pill blue">AI attiva solo per i requisiti</span>
+      {% else %}<span class="pill">AI non attiva</span>{% endif %}</span>
+    {% if actor.is_owner %}<a href="{{ url_for('people') }}">Persone</a>{% endif %}
+    <span>{{ actor.name }}</span>
+    <form method="post" action="{{ url_for('logout') }}" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn ghost small">Esci</button></form>
+  </div>
+  {% endif %}
+</div></header>
+<main>
+  {% block crumbs %}{% endblock %}
+  {% for msg in get_flashed_messages() %}<div class="flash">{{ msg }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

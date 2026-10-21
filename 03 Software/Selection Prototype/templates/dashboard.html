@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Posizioni{% endblock %}
+{% block crumbs %}<div class="crumbs"><b>Posizioni</b></div>{% endblock %}
+{% block content %}
+<div class="row" style="justify-content:space-between">
+  <div><h1>Posizioni</h1>
+    <p class="muted" style="margin:0">{% if actor.supervises_all %}Tutte le posizioni{% else %}Le posizioni che gestisci{% endif %}</p></div>
+  {% if actor.role != 'SUPERVISOR' %}<a class="btn" href="{{ url_for('position_new') }}">+ Nuova posizione</a>{% endif %}
+</div>
+
+{% if upcoming %}
+<div class="card" style="margin-top:1rem">
+  <h3>Prossimi colloqui</h3>
+  {% for a, p, c in upcoming %}<div class="small" style="margin:.25rem 0">
+    <b>{{ a.starts_at|local(p.timezone, '%a %d/%m %H:%M') }}</b> · {{ KIND_LABELS[a.kind] }} ·
+    <a href="{{ url_for('candidate_detail', position_id=p.id, pc_id=c.pc.id) }}">{{ c.name }}</a>
+    <span class="muted">— {{ p.title }}{% if a.place %} · {{ a.place }}{% endif %}</span></div>{% endfor %}
+</div>{% endif %}
+
+{% if not rows %}
+<div class="card" style="margin-top:1rem">
+  <h2 style="margin-top:0">Nessuna posizione</h2>
+  <p class="muted">Crea una posizione descrivendo a parole chi cerchi.</p>
+</div>
+{% endif %}
+
+{% for r in rows %}{% set p = r.position %}
+<a href="{{ url_for('position_detail', position_id=p.id) }}" style="color:inherit;text-decoration:none">
+<div class="card" style="margin-top:1rem">
+  <div class="row" style="justify-content:space-between">
+    <div>
+      <h2 style="margin:0">{{ p.title }}</h2>
+      <div class="muted small">{{ ROLE_LABEL[p.role_code] }} · {{ p.location_label }} · Responsabile {{ r.manager }}
+        · creata il {{ p.created_at|local(p.timezone, '%d/%m/%Y') }}</div>
+    </div>
+    <span class="pill {{ 'ok' if p.status == 'OPEN' else ('warn' if p.status == 'DRAFT' else '') }}">{{ POSITION_STATUS_LABELS[p.status] }}</span>
+  </div>
+  <div class="row" style="gap:2rem;margin-top:.8rem">
+    <div><div class="stat">{{ r.total }}</div><div class="statl">Candidature</div></div>
+    <div><div class="stat">{{ r.counts['INTERVIEW'] }}</div><div class="statl">Proposti per colloquio</div></div>
+    <div><div class="stat">{{ r.counts['DEEPEN'] }}</div><div class="statl">Da approfondire</div></div>
+    <div><div class="stat">{{ r.to_interview }}</div><div class="statl">Da intervistare</div></div>
+    <div><div class="stat">{{ r.hired }} / {{ p.headcount }}</div><div class="statl">Assunti</div></div>
+  </div>
+</div></a>
+{% endfor %}
+
+<div class="grid g2" style="margin-top:1.5rem">
+  <div class="card">
+    <h3>Funzioni AI</h3>
+    {% for name, active, text in ai_policy.status_lines() %}
+      <div class="small" style="margin:.3rem 0"><span class="pill {{ 'ok' if active else '' }}">{{ 'attiva' if active else 'non attiva' }}</span>
+        <b>{{ name }}</b> — <span class="muted">{{ text }}</span></div>
+    {% endfor %}
+    <div class="small muted" style="margin-top:.4rem">Fornitore configurato: {{ ai_policy.provider_label }} (client AI di Selection).
+      Servizio AI centrale RF-One: non ancora disponibile, collegabile tramite adattatore.</div>
+    {% if ai_policy.last_call %}<div class="small muted">Ultima chiamata: {{ ai_policy.last_call.purpose }} ·
+      {{ 'riuscita' if ai_policy.last_call.ok else 'non riuscita: ' ~ ai_policy.last_call.message }}</div>{% endif %}
+    <div class="small muted">Invio automatico di email/SMS: non disponibile. I messaggi approvati si copiano e si inviano a mano.</div>
+  </div>
+  <div class="card">
+    <h3>Profilo aziendale</h3>
+    <div class="small muted">Usato per proporre requisiti e annunci. {{ company.source }}.</div>
+    {% if actor.is_owner %}
+    <form method="post" action="{{ url_for('company_profile') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <textarea name="text" placeholder="Es. tipo di locale, sedi, stile di servizio, turni tipici, cosa offriamo. Solo fatti verificati.">{{ company.profile }}</textarea>
+      <button class="btn ghost small" style="margin-top:.4rem">Salva profilo</button>
+    </form>
+    {% else %}<p class="small" style="white-space:pre-wrap">{{ company.profile or 'Non compilato.' }}</p>{% endif %}
+    {% if company.missing %}<div class="small muted">Non disponibili da Organization: {{ company.missing|join(', ') }}. Non vengono inventati.</div>{% endif %}
+  </div>
+</div>
+{% endblock %}

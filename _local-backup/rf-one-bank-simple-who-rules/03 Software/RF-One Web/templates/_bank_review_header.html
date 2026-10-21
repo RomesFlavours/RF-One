@@ -1,0 +1,161 @@
+{# Review Transactions — the filters and the two queue tabs
+   (BANK_TWO_STAGE_REVIEW_001), shared by To Reconcile (bank_review.html) and
+   Reconciled (bank_reconciliation.html in review mode). The tabs carry the
+   same month / instrument / batch, so moving between them keeps the context.
+   BANK_REVIEW_SEARCH_001 — the free search (`q`) is part of that context: it
+   is ANDed with the filters on the server, before the row limit, and kept by
+   the tabs, the filters and every action (they return to this full address).
+   Needs: review_view, queue_counts, tab_args, instruments, filter_*,
+   search, search_summary. #}
+<h2>Transactions</h2>
+
+<nav class="review-tabs" aria-label="Review queues">
+  <a class="review-tab{% if review_view == 'to_reconcile' %} is-active{% endif %}"
+     href="{{ url_for('bank_review', view='to_reconcile', **(tab_links.to_reconcile if tab_links is defined else tab_args)) }}"
+     {% if review_view == 'to_reconcile' %}aria-current="page"{% endif %}>Without WHO ({{ queue_counts.to_reconcile }})</a>
+  <a class="review-tab{% if review_view == 'reconciled' %} is-active{% endif %}"
+     href="{{ url_for('bank_review', view='reconciled', **(tab_links.reconciled if tab_links is defined else tab_args)) }}"
+     {% if review_view == 'reconciled' %}aria-current="page"{% endif %}>With WHO ({{ queue_counts.reconciled }})</a>
+</nav>
+<p class="muted review-tab-help">Fill in WHO, WHY and WHOM. Use any transaction as an example for a rule or a profile.</p>
+
+<div class="card">
+  <form method="get" class="compact-form filter-row" action="{{ url_for('bank_review') }}">
+    <input type="hidden" name="view" value="{{ review_view }}">
+    <div class="field-row">
+      <label for="year">Year</label>
+      <input type="number" id="year" name="year" value="{{ filter_year or '' }}" min="2000" max="2100">
+    </div>
+    <div class="field-row">
+      <label for="month">Month</label>
+      <input type="number" id="month" name="month" value="{{ filter_month or '' }}" min="1" max="12">
+    </div>
+    <div class="field-row">
+      <label for="payment_instrument_id">Account</label>
+      <select id="payment_instrument_id" name="payment_instrument_id">
+        <option value="">All</option>
+        {% for instrument in instruments %}
+          <option value="{{ instrument.id }}" {{ 'selected' if filter_payment_instrument_id == instrument.id else '' }}>{{ instrument.display_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if filter_batch_id %}
+      <input type="hidden" name="batch_id" value="{{ filter_batch_id }}">
+    {% endif %}
+    {% if search %}<input type="hidden" name="q" value="{{ search }}">{% endif %}
+    {% if tab_args.sort %}<input type="hidden" name="sort" value="{{ tab_args.sort }}"><input type="hidden" name="dir" value="{{ tab_args.dir }}">{% endif %}
+    {#- BANK_REVIEW_COLUMN_FILTERS_001 — the column filters stay with this form. -#}
+    {% for name, value in tab_args.items() if name.startswith('f_') and value %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+    <button type="submit">Filter</button>
+  </form>
+
+  {#- BANK_REVIEW_SEARCH_001 — Enter or Search runs it (no search while
+      typing); × clears only the search, the filters stay. -#}
+  <form method="get" class="compact-form filter-row review-search" action="{{ url_for('bank_review') }}" role="search">
+    <input type="hidden" name="view" value="{{ review_view }}">
+    {% if filter_year %}<input type="hidden" name="year" value="{{ filter_year }}">{% endif %}
+    {% if filter_month %}<input type="hidden" name="month" value="{{ filter_month }}">{% endif %}
+    {% if filter_payment_instrument_id %}<input type="hidden" name="payment_instrument_id" value="{{ filter_payment_instrument_id }}">{% endif %}
+    {% if filter_batch_id %}<input type="hidden" name="batch_id" value="{{ filter_batch_id }}">{% endif %}
+    {% if tab_args.sort %}<input type="hidden" name="sort" value="{{ tab_args.sort }}"><input type="hidden" name="dir" value="{{ tab_args.dir }}">{% endif %}
+    {#- BANK_REVIEW_COLUMN_FILTERS_001 — the column filters stay with this form. -#}
+    {% for name, value in tab_args.items() if name.startswith('f_') and value %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+    <div class="field-row review-search-field">
+      <label for="review-search">Search transactions</label>
+      <span class="review-search-box">
+        <button type="submit">Search</button>
+        <input type="text" id="review-search" name="q" value="{{ search or '' }}" placeholder="Description, WHO or WHY" autocomplete="off">
+        {% if search %}<a class="review-search-clear" data-rf-busy aria-label="Clear search" title="Clear search"
+           href="{{ url_for('bank_review', view=review_view, **dict(tab_args, q=None)) }}">&times;</a>{% endif %}
+      </span>
+    </div>
+  </form>
+  {% if search_summary %}
+    {% if search_summary.count %}
+      <p class="review-search-result" data-search-count="{{ search_summary.count }}">
+        <strong>{{ search_summary.count }}</strong> transaction{{ '' if search_summary.count == 1 else 's' }} found
+        {%- if search %} for &ldquo;{{ search }}&rdquo;{% endif %}
+        {%- if column_filters %} with {{ column_filters|length }} column filter{{ '' if column_filters|length == 1 else 's' }}{% endif %}
+        &middot; Total:
+        {% for t in search_summary.totals %}<strong data-search-total="{{ t.currency or 'none' }}">{{ "%.2f"|format(t.total_minor / 100) }}</strong> {{ t.currency or '(currency not set)' }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
+      </p>
+    {% else %}
+      <p class="empty review-search-result" data-search-count="0">No transactions match {{ 'your search and the column filters' if search and column_filters else ('the column filters' if column_filters else 'your search') }}</p>
+    {% endif %}
+  {% endif %}
+  <style>
+    .review-search { margin-top: .4rem; }
+    .review-search-field { flex: 1 1 22rem; }
+    .review-search-box { display: flex; align-items: center; gap: .3rem; }
+    .review-search-box input { flex: 1; min-width: 0; margin: 0; }
+    .review-search-box button { width: auto; margin: 0; flex: none; }
+    .review-search-clear { text-decoration: none; font-size: 1.2rem; line-height: 1; padding: 0 .3rem; }
+    .review-search-result { margin: .4rem 0 0; }
+    /* BANK_REVIEW_SORT_001 — a sortable header reads as the header it was. */
+    .review-sort-link { color: inherit; text-decoration: none; cursor: pointer; }
+    .review-sort-link:hover, .review-sort-link:focus-visible { text-decoration: underline; }
+    .review-sort-arrow { font-weight: 700; }
+    /* BANK_REVIEW_COLUMN_FILTERS_001 — discreet Search / All under each data column title. */
+    .col-filter { display: block; margin-top: .15rem; font-size: .72rem; font-weight: 400; white-space: nowrap; }
+    .col-filter-link { color: var(--muted, #6e735e); text-decoration: none; }
+    .col-filter-link:hover, .col-filter-link:focus-visible { text-decoration: underline; color: inherit; }
+    .col-filter-link.is-idle { opacity: .6; }
+    .col-filter-sep { color: var(--muted, #6e735e); margin: 0 .15rem; }
+    .col-filter-active { display: block; white-space: normal; font-weight: 600; color: var(--olive-900, #2f3a1f);
+                         background: var(--olive-050, #f6f8ef); border-radius: 4px; padding: 0 .25rem; margin-top: .1rem; }
+    .col-filter-dialog .col-filter-targets { display: flex; gap: 1rem; margin: .4rem 0; }
+    .col-filter-dialog .col-filter-targets label { display: flex; align-items: center; gap: .3rem; font-weight: 400; }
+    .col-filter-dialog .col-filter-targets input { width: auto; margin: 0; }
+    .col-filter-dialog .col-filter-actions { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .6rem; }
+    .col-filter-dialog .col-filter-actions button { width: auto; }
+    .review-column-filters { margin: .4rem 0 0; font-size: .85rem; }
+    .col-filter-chip { font-weight: 600; }
+  </style>
+
+  {#- BANK_REVIEW_COLUMN_FILTERS_001 — ONE search dialog for every column (bank-review-column-filters.js): OK or
+      Enter searches only the column it was opened from; Cancel or Esc changes nothing. -#}
+  <div class="org-modal-overlay col-filter-dialog" id="col-filter-modal" hidden aria-hidden="true">
+    <div class="org-modal-panel" role="dialog" aria-modal="true" aria-labelledby="col-filter-title">
+      <form id="col-filter-form" autocomplete="off">
+        <h3 id="col-filter-title">Search</h3>
+        <div class="col-filter-targets" id="col-filter-targets" hidden>
+          <label><input type="radio" name="col-filter-target" value="instrument" id="col-filter-in-account"> Account / Card</label>
+          <label><input type="radio" name="col-filter-target" value="for_whom" id="col-filter-in-for-whom"> For Whom</label>
+        </div>
+        <label for="col-filter-text" class="sr-only">Text to search</label>
+        <input type="text" id="col-filter-text" placeholder="Text contained in this column (any case)">
+        <div class="col-filter-actions">
+          <button type="button" class="btn-secondary" id="col-filter-cancel">Cancel</button>
+          <button type="submit" id="col-filter-ok">OK</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <script defer src="{{ url_for('static', filename='js/bank-review-column-filters.js') }}?v=en1"></script>
+
+  {#- BANK_REVIEW_COLUMN_FILTERS_001 — the active column filters, always visible (also when no row is left, and on
+      To Reconcile, which shows no table then), each with its own "All". -#}
+  {% if column_filters %}
+    {% set column_labels = {'instrument': 'For Whom' if instrument_target == 'for_whom' else 'Account / Card', 'date': 'Date',
+       'description': 'Description', 'amount': 'Amount', 'source': 'Source', 'duplicate': 'Duplicate',
+       'classification': 'Classification', 'who': 'WHO', 'why': 'WHY', 'what': 'WHAT', 'status': 'Status'} %}
+    <p class="review-column-filters">Column filters:
+      {% for key, text in column_filters.items() %}
+        <span class="col-filter-chip">{{ column_labels.get(key, key) }} &ldquo;{{ text }}&rdquo;
+          <a class="col-filter-link" data-col-nav href="{{ url_for('bank_review', view=review_view, **clear_links[key]) }}"
+             title="Remove only this column's filter">All</a></span>{% if not loop.last %} &middot; {% endif %}
+      {% endfor %}
+    </p>
+  {% endif %}
+
+  {% if filter_batch_id %}
+    <p class="muted">
+      Showing only batch #{{ filter_batch_id }}{% if filter_batch %} &mdash; <code>{{ filter_batch.original_file_name }}</code>{% endif %}.
+      <a href="{{ url_for('bank_review', view=review_view, year=filter_year, month=filter_month, payment_instrument_id=filter_payment_instrument_id, q=search or None, sort=tab_args.sort, dir=tab_args.dir) }}">Show every batch</a>
+    </p>
+  {% endif %}
+  {% set shown = queue_counts[review_view] %}
+  {% if shown > row_limit %}
+    <p class="muted">Showing the first {{ row_limit }} of {{ shown }} transactions. Choose a month or an instrument to narrow the list.</p>
+  {% endif %}
+</div>

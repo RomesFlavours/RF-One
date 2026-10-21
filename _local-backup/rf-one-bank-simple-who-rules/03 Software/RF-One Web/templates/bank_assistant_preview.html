@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="bank-csrf" content="{{ csrf_token() if csrf_token is defined else '' }}"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Rules and profiles · Bank · RF-One</title>
+  <link rel="icon" href="/static/bank-assistant/rf-one.png"><link rel="stylesheet" href="/static/css/rf-one.css"><link rel="stylesheet" href="/static/bank-assistant/preview.css?v=management1">
+  <script defer src="/static/bank-assistant/app.js?v=en1"></script>
+</head>
+<body>
+<div class="wrap wrap-wide">
+  <header class="site-header">
+    <a class="brand" href="http://127.0.0.1:5080/" target="_blank" rel="noopener"><span class="brand-name-group"><span class="brand-wordmark">Rome's Flavours · WP</span><span class="brand-suffix">RF-ONE</span></span></a>
+    <img class="brand-logo" src="/static/bank-assistant/rf-one.png" alt="RF-One">
+  </header>
+  <div class="preview-notice"><span class="preview-label">Bank rules</span><span>General rules → WHO knowledge → recurring transaction profiles. Apply each change to future transactions only or to all transactions as well.</span></div>
+  <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="http://127.0.0.1:5080/" target="_blank" rel="noopener">RF-One</a></li><li><a href="http://127.0.0.1:5080/bank" target="_blank" rel="noopener">Bank Reconciliation</a></li><li aria-current="page">Rules and profiles</li></ol></nav>
+  <div class="module-header"><div class="module-identity"><h1 class="module-title">Bank Reconciliation</h1><p class="module-tagline">Monthly bank and card reconciliation.</p></div></div>
+  <nav class="module-tabs module-tabs--equal" aria-label="Bank Reconciliation sections">
+    <a class="module-tab" href="http://127.0.0.1:5080/bank" target="_blank" rel="noopener">Import and Review</a><a class="module-tab" href="http://127.0.0.1:5080/bank/review" target="_blank" rel="noopener">Review Transactions</a><a class="module-tab" href="http://127.0.0.1:5080/bank/export" target="_blank" rel="noopener">Monthly Export</a><a class="module-tab" href="http://127.0.0.1:5080/bank/sources" target="_blank" rel="noopener">Source</a><a class="module-tab is-active" href="#" aria-current="page">Rules and profiles</a><a class="module-tab" href="http://127.0.0.1:5080/bank/configuration" target="_blank" rel="noopener">Configuration</a><a class="module-tab" href="http://127.0.0.1:5080/bank/instructions" target="_blank" rel="noopener">Instructions</a>
+  </nav>
+  <div class="page-heading"><div><h2>Rules and profiles</h2><p class="muted">Explain how to decide. I will ask when something is unclear.</p></div><a class="jump-link" href="#questions">Go to cases to review ↓</a></div>
+  <p><a href="{{ url_for('bank_ai_rule_applications') }}">Application history</a></p>
+  <section class="card rules-section" aria-labelledby="rules-title">
+    <div class="section-heading"><div><span class="eyebrow">HOW TO DECIDE</span><h2 id="rules-title">General rules <span class="badge" id="rule-count">—</span></h2></div><button type="button" class="btn-secondary" id="add-rule">+ General rule</button></div>
+    <p class="muted section-description">Read standard descriptions, extract WHO and interpret the purpose. Counterparties appear in the profiles below.</p>
+    <label class="search-label" for="rule-search">Search rules<input id="rule-search" type="search" placeholder="Name, counterparty or criteria"></label><div id="rules-list"></div>
+  </section>
+  <section class="card knowledge-section" aria-labelledby="knowledge-title">
+    <div class="section-heading"><div><span class="eyebrow">COUNTERPARTY INFORMATION</span><h2 id="knowledge-title">WHO knowledge <span class="badge" id="knowledge-count">—</span></h2></div></div>
+    <p class="muted section-description">Counterparty activity, default WHY and sources. Research suggests a purpose; multiple activities require clarification. Research alone does not change transactions.</p>
+    <label class="search-label">Search WHO<input id="knowledge-search" type="search" placeholder="Counterparty name"></label><div id="knowledge-list"></div>
+  </section>
+  <section class="card recognition-section" aria-labelledby="recognition-title">
+    <div class="section-heading"><div><span class="eyebrow">RESOLVED CASES</span><h2 id="recognition-title">Recognition profiles <span class="badge" id="recognition-count">—</span></h2></div><button type="button" id="add-recognition" class="btn-secondary">+ Recognition</button></div>
+    <p class="muted">Approved descriptions and conditions that identify transactions and their WHO, WHY and accounting destination. Applied at each import without another AI request.</p>
+    <label class="search-label">Search profiles<input id="recognition-search" type="search" placeholder="Counterparty or description"></label>
+    <div id="recognition-list"></div>
+  </section>
+  <section class="card questions-section" id="questions" aria-labelledby="questions-title">
+    <div class="section-heading"><div><span class="eyebrow">TO REVIEW</span><h2 id="questions-title">Discuss and refine rules <span class="badge" id="question-count">—</span></h2></div><label class="period-label">Period<select id="period"><option value="all">All available months</option></select></label></div>
+    <p class="muted section-description" id="questions-description">Loading Bank cases…</p>
+    <div class="question-toolbar"><label class="search-label">Search WHO<input id="search" type="search" placeholder="Counterparty name"></label><span id="queue-summary" aria-live="polite"></span></div>
+    <div id="cases-list"></div>
+    <div id="empty" class="empty-state" hidden><strong>No cases to review in this period.</strong><p>Previous answers remain available in saved knowledge.</p></div>
+  </section>
+  <footer class="preview-footer"><span id="snapshot-date"></span><button type="button" class="text-button" id="reset">Clear local conversations</button></footer>
+</div>
+<dialog id="answer-dialog" class="chat-dialog" aria-labelledby="answer-title">
+  <div class="dialog-heading"><div><span class="eyebrow">DEFINE THE RULE TOGETHER</span><h2 id="answer-title"></h2></div><button type="button" class="close-button" data-close aria-label="Close">×</button></div>
+  <p class="chat-subtitle">Explain in your own words. Then choose future transactions only or all transactions as well.</p>
+  <a id="chat-return" href="/bank/review" hidden>Back to transaction</a>
+  <label class="organization-choice">Instruction type<select id="chat-kind"><option value="GENERAL">General rule</option><option value="RECOGNITION">Recognition profile</option></select></label>
+  <p id="chat-context" class="answer-context"></p>
+  <div id="chat-related" class="confirmation-actions"></div>
+  <div id="chat-messages" class="chat-messages" role="log" aria-live="polite" aria-label="Rule conversation"></div>
+  <div id="chat-busy" class="chat-busy" role="status" hidden>Reading your answer…</div>
+  <form id="photo-form" hidden><h3>Save this classification as a recognition profile</h3><p id="photo-values"></p><label>Match by<select id="photo-match-op"><option value="who">WHO extracted from the transaction</option><option value="contains">Contains</option><option value="is">Exactly matches</option></select><input id="photo-pattern" required maxlength="2000"></label><label>Distinctive memo text, if needed<input id="photo-memo" maxlength="2000" placeholder="For example TIP; leave blank if the memo does not distinguish the case"></label><p id="photo-original-memo" class="muted"></p><p class="muted">The profile applies to the same source and direction. Its text must distinguish this payment type from others for the same counterparty.</p><button type="submit">Prepare profile for approval</button></form>
+  <div id="chat-confirmation" hidden></div>
+  <section id="chat-preview" hidden aria-label="Rule preview across all transactions"></section>
+  <details id="chat-history" hidden><summary>Rule history and rollback</summary><div id="chat-history-list"></div></details>
+  <form id="chat-form" class="chat-composer"><label for="chat-input">Your answer</label><textarea id="chat-input" rows="3" required placeholder="For example: TEMU purchases on the personal card are personal; purchases on the company card are restaurant supplies."></textarea><div class="composer-bottom"><span>Enter to send · Shift + Enter for a new line</span><button id="chat-send" type="submit">Send</button></div></form>
+</dialog>
+<dialog id="manage-dialog" aria-labelledby="manage-title">
+  <div class="dialog-heading"><h2 id="manage-title"></h2><button type="button" class="close-button" data-close aria-label="Close">×</button></div>
+  <form id="manage-form"><label id="manage-name-label">Name<input id="manage-name" maxlength="200" required></label><p id="manage-description"></p><p id="manage-error" role="alert"></p><div class="confirmation-actions"><button type="button" class="btn-secondary" data-close>Cancel</button><button type="submit" id="manage-submit"></button></div></form>
+</dialog>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

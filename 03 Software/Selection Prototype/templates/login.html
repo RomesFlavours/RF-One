@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Accesso{% endblock %}
+{% block content %}
+<div class="card" style="max-width:420px;margin:3rem auto;">
+  <h1>Accesso</h1>
+  <p class="muted small">Account RF-One del prototipo con accesso al Domain Selection.</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Nome utente</label><input type="text" name="username" autofocus required>
+    <label>Password</label><input type="password" name="password" required>
+    <p><button class="btn">Entra</button></p>
+  </form>
+</div>
+{% endblock %}
