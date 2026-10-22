@@ -39,7 +39,7 @@ Decisions are visibly distinct (own border and badge). A **Release** entry also 
 
 ### Corrections and versions
 
-- Only the **author** of an entry can correct it ("Correct" link; anyone else gets 403 on the page and on the POST).
+- The **author** of an entry can correct it, and so can a **Development Journal administrator** — an RF-One administrator with the access, or an account with the role "Domain administrator" on `DEV_JOURNAL` (ADMIN_PERMISSIONS_001, `rfone_web_session.account_is_domain_admin`) — for anyone's entry. Everyone else gets no "Correct" link and 403 on the page and on the POST. A correction by an administrator says so on the form and on the card ("corrected … by …").
 - A correction never overwrites: the version being replaced is copied whole into `dev_journal_entry_versions`, with who wrote it, when, and when it was replaced. The entry keeps its original author and creation time and records `version`, `edited_by`, `edited_at`.
 - Every user with access can consult all versions ("earlier versions" link on a corrected entry), newest first.
 - Saving without any change creates no version and no event.
@@ -65,7 +65,7 @@ Every write records a `DevJournalEvent` in the same transaction, linked to its c
 | `WORK_CREATED` | New work |
 | `ENTRY_ADDED` | New entry (any type except Release) |
 | `RELEASE_RECORDED` | Release recorded (replaces `ENTRY_ADDED` for a release entry — one event per entry) |
-| `ENTRY_EDITED` | Entry corrected by its author (`entry_version_id` = the version it replaced) |
+| `ENTRY_EDITED` | Entry corrected by its author or an administrator (`actor_account_id` = who corrected it; `entry_version_id` = the version it replaced) |
 | `DOCUMENT_UPLOADED` | Document uploaded (one per file) |
 | `PHASE_CHANGED`, `STATUS_CHANGED` | Phase or status change (including reopen) |
 

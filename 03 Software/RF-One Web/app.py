@@ -616,7 +616,7 @@ def admin_account_new():
             try:
                 account = account_service.create_account(
                     db, username=username, display_name=display_name, password=password, status=status,
-                    email=email,
+                    email=email, is_admin=request.form.get("is_admin") == "on",
                 )
                 db.commit()
             except (account_service.UsernameTakenError, account_service.EmailTakenError, ValueError) as exc:
@@ -651,18 +651,27 @@ def admin_account_edit(account_id: int):
             require_csrf()
             display_name = request.form.get("display_name", "").strip()
             status = "ACTIVE" if request.form.get("status") == "ACTIVE" else "INACTIVE"
+            # ADMIN_PERMISSIONS_001 — any number of RF-One administrators;
+            # the service refuses only what would demote the owner, lock the
+            # actor out, or leave no active administrator.
+            is_admin = request.form.get("is_admin") == "on"
             try:
-                account_service.update_account(db, account, display_name=display_name, status=status)
+                account_service.update_account(
+                    db, account, display_name=display_name, status=status,
+                    is_admin=is_admin, actor=load_current_account(db),
+                )
                 db.commit()
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
-                return render_template("admin_account_form.html", mode="edit", account=account), 400
+                db.refresh(account)
+                return render_template("admin_account_form.html", mode="edit", account=account,
+                                       actor_id=current_account_id()), 400
 
             flash("Account updated.", "info")
             return redirect(url_for("admin_accounts"))
 
-        return render_template("admin_account_form.html", mode="edit", account=account)
+        return render_template("admin_account_form.html", mode="edit", account=account, actor_id=current_account_id())
 
 
 @app.route("/admin/accounts/<int:account_id>/reset-password", methods=["POST"])

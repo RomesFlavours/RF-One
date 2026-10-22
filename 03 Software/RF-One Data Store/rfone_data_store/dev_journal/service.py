@@ -362,14 +362,23 @@ def add_entry(db: Session, work: dj.DevJournalWork, data: EntryInput, *, actor_i
     return entry
 
 
+def may_correct_entry(entry: dj.DevJournalEntry, *, actor_id: int, actor_is_admin: bool) -> bool:
+    """The one rule for who may correct an entry — used by the route, the
+    page (to show "Correct") and `edit_entry` itself."""
+    return actor_is_admin or entry.author_account_id == actor_id
+
+
 def edit_entry(db: Session, work: dj.DevJournalWork, entry: dj.DevJournalEntry, data: EntryInput, *,
-               actor_id: int) -> dj.DevJournalEntryVersion | None:
-    """Correct an entry. Only its author may; the version being replaced is
-    kept whole. Returns that kept version, or None when nothing changed."""
+               actor_id: int, actor_is_admin: bool = False) -> dj.DevJournalEntryVersion | None:
+    """Correct an entry. Its author may, and so may a Development Journal
+    administrator (`actor_is_admin`, ADMIN_PERMISSIONS_001) for anyone's
+    entry; the version being replaced is kept whole and the new one records
+    who corrected it (`edited_by_account_id`). Returns that kept version, or
+    None when nothing changed."""
     if entry.work_id != work.id:
         raise DevJournalError("This entry does not belong to this work.")
-    if entry.author_account_id != actor_id:
-        raise NotEntryAuthorError("Only the author of an entry can correct it.")
+    if not may_correct_entry(entry, actor_id=actor_id, actor_is_admin=actor_is_admin):
+        raise NotEntryAuthorError("Only the author of an entry or an administrator can correct it.")
     values = _validated_entry(data)
     if all(getattr(entry, name) == values[name] for name in dj.ENTRY_CONTENT_FIELDS):
         return None

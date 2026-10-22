@@ -27,6 +27,17 @@ from . import models as m
 
 VALID_STATUSES = ("ACTIVE", "INACTIVE")
 
+# ADMIN_PERMISSIONS_001 — the one role code, on a Domain access row, that
+# makes the account an administrator of THAT Domain. Stored lowercase;
+# `normalize_role_code` folds the "Admin"/"ADMIN" spellings typed before
+# this existed. Every other role code stays Domain-interpreted (e.g.
+# Training's 'trainer'/'student').
+DOMAIN_ADMIN_ROLE = "admin"
+
+
+class AdminRuleError(ValueError):
+    """A change refused to keep the owner and at least one administrator."""
+
 
 class UsernameTakenError(ValueError):
     pass
@@ -108,14 +119,64 @@ def create_account(
     return account
 
 
-def update_account(session: Session, account: m.RFOneAccount, *, display_name: str, status: str) -> None:
+def update_account(
+    session: Session, account: m.RFOneAccount, *, display_name: str, status: str,
+    is_admin: bool | None = None, actor: m.RFOneAccount | None = None,
+) -> None:
+    """`is_admin=None` leaves the administrator flag untouched. When it is
+    given, `actor` (the administrator making the change) is required, and
+    the rules of `_check_admin_rules` apply to status and flag together."""
     if not display_name.strip():
         raise ValueError("display_name is required")
     if status not in VALID_STATUSES:
         raise ValueError(f"Invalid status {status!r} — must be one of {VALID_STATUSES}")
+    new_is_admin = account.is_admin if is_admin is None else bool(is_admin)
+    _check_admin_rules(session, account, status=status, is_admin=new_is_admin, actor=actor)
     account.display_name = display_name.strip()
     account.status = status
+    account.is_admin = new_is_admin
     session.flush()
+
+
+def _check_admin_rules(
+    session: Session, account: m.RFOneAccount, *, status: str, is_admin: bool, actor: m.RFOneAccount | None,
+) -> None:
+    """ADMIN_PERMISSIONS_001. Any number of administrators is allowed; only
+    these changes are refused:
+      * the owner losing the administrator role or being deactivated;
+      * an administrator removing their own role or deactivating themselves
+        (another administrator can do it — nobody locks themselves out);
+      * a change that would leave no ACTIVE administrator at all."""
+    if account.is_owner and (not is_admin or status != "ACTIVE"):
+        raise AdminRuleError("The owner always stays an active administrator.")
+    losing = account.is_admin and account.status == "ACTIVE" and (not is_admin or status != "ACTIVE")
+    if not losing:
+        return
+    if actor is not None and actor.id == account.id:
+        raise AdminRuleError("You cannot remove your own administrator role or deactivate yourself; "
+                             "ask another administrator.")
+    others = session.scalars(
+        select(m.RFOneAccount.id).where(
+            m.RFOneAccount.is_admin.is_(True), m.RFOneAccount.status == "ACTIVE", m.RFOneAccount.id != account.id,
+        )
+    ).first()
+    if others is None:
+        raise AdminRuleError("RF-One must keep at least one active administrator.")
+
+
+def list_admins(session: Session) -> list[m.RFOneAccount]:
+    return list(session.scalars(
+        select(m.RFOneAccount).where(m.RFOneAccount.is_admin.is_(True)).order_by(m.RFOneAccount.display_name)
+    ).all())
+
+
+def normalize_role_code(role_code: str | None) -> str | None:
+    """Trim; empty becomes None; any spelling of 'admin' becomes
+    `DOMAIN_ADMIN_ROLE`. Other codes are kept as typed (Domain-interpreted)."""
+    value = (role_code or "").strip()
+    if not value:
+        return None
+    return DOMAIN_ADMIN_ROLE if value.casefold() == DOMAIN_ADMIN_ROLE else value
 
 
 def set_password(session: Session, account: m.RFOneAccount, new_password: str) -> None:
@@ -250,7 +311,11 @@ def set_domain_access(
     it. SELECTED requires at least one item: an access to "only these
     items" with no item would be a no-access in disguise. The item list is
     replaced as a whole when SELECTED, and cleared when the Domain is
-    disabled or opened whole, so a stale selection never comes back."""
+    disabled or opened whole, so a stale selection never comes back.
+
+    `role_code` goes through `normalize_role_code`, so 'Admin' is stored as
+    the one Domain administrator code."""
+    role_code = normalize_role_code(role_code)
     if scope is not None and scope not in m.DOMAIN_ACCESS_SCOPES:
         raise ValueError(f"Unknown access scope {scope!r}.")
     selected_items = sorted({code.strip() for code in (item_codes or ()) if code and code.strip()})

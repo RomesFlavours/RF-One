@@ -90,9 +90,9 @@
             <span>&middot; {{ names.get(entry.author_account_id, '-') }}</span>
             <span>&middot; phase {{ phase_labels[entry.phase] }}</span>
             {% if entry.version > 1 %}
-              <span>&middot; <a href="{{ url_for('dev_journal_entry_versions', work_id=work.id, entry_id=entry.id) }}">corrected {{ entry.edited_at|local_dt(tz) }} &middot; version {{ entry.version }} &middot; earlier versions</a></span>
+              <span>&middot; <a href="{{ url_for('dev_journal_entry_versions', work_id=work.id, entry_id=entry.id) }}">corrected {{ entry.edited_at|local_dt(tz) }}{% if entry.edited_by_account_id and entry.edited_by_account_id != entry.author_account_id %} by {{ names.get(entry.edited_by_account_id, '-') }}{% endif %} &middot; version {{ entry.version }} &middot; earlier versions</a></span>
             {% endif %}
-            {% if entry.author_account_id == current_account_id %}
+            {% if entry.id in correctable_entry_ids %}
               <span>&middot; <a href="{{ url_for('dev_journal_edit_entry', work_id=work.id, entry_id=entry.id) }}">Correct</a></span>
             {% endif %}
           </div>

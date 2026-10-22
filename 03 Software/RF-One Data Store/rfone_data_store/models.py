@@ -10381,11 +10381,25 @@ class RFOneAccount(Base):
     `rfone_account_service.set_password` on every password change (self-
     service reset AND the existing admin/trainer reset alike), so a
     session cookie issued before the change stops matching on its very
-    next request and is treated as logged out."""
+    next request and is treated as logged out.
+
+    ADMIN_PERMISSIONS_001 — `is_admin` marks an RF-One administrator; any
+    number of accounts may hold it, granted and revoked from Accounts.
+    `is_owner` marks the ONE owner of the installation (at most one row,
+    enforced by a partial unique index): always an administrator, and
+    never demoted or deactivated by anyone through the application. A
+    Domain administrator is NOT a flag here — it is the `admin` role on
+    that Domain's `RFOneAccountDomainAccess` row (see
+    `rfone_web_session.account_is_domain_admin`)."""
 
     __tablename__ = "rfone_accounts"
     __table_args__ = (
         CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_rfone_account_status"),
+        CheckConstraint("NOT is_owner OR is_admin", name="ck_rfone_account_owner_is_admin"),
+        Index(
+            "uq_rfone_accounts_single_owner", "is_owner", unique=True,
+            postgresql_where=text("is_owner"), sqlite_where=text("is_owner"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -10394,6 +10408,7 @@ class RFOneAccount(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="ACTIVE")
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    is_owner: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")

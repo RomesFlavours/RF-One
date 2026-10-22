@@ -30,7 +30,7 @@
               <td>
                 <span class="badge {{ 'ok' if account.status == 'ACTIVE' else 'bad' }}">{{ account.status }}</span>
               </td>
-              <td>{{ "Yes" if account.is_admin else "" }}</td>
+              <td>{{ "Owner" if account.is_owner else ("Yes" if account.is_admin else "") }}</td>
               <td>
                 <a href="{{ url_for('admin_account_edit', account_id=account.id) }}">Edit</a>
                 &middot;

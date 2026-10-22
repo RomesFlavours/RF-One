@@ -15,9 +15,11 @@ Every page is opened with `require_domain_access("ORGANIZATION")`, which
 also checks the page's item (`domain_registry.py`) — an account granted the
 Domain, admin or not, may consult it (`view`). Every change to the
 organization (create, assign, deactivate, route/acknowledge/resolve, and the
-forms that lead to them) stays reserved to administrators, on top of the
-same Domain access (`administer`): being an administrator never opens the
-Domain by itself. Templates hide the change controls when
+forms that lead to them) stays reserved to ORGANIZATION administrators — an
+RF-One administrator or the Domain administrator role on ORGANIZATION
+(`rfone_web_session.account_is_domain_admin`, ADMIN_PERMISSIONS_001) — on
+top of the same Domain access (`administer`): being an administrator never
+opens the Domain by itself. Templates hide the change controls when
 `org_may_administer()` is false; the server refuses them either way.
 
 Same registration pattern `compensation_routes.py` already establishes:
@@ -34,11 +36,13 @@ scope matching, routing, or lifecycle rules (Core 2.0 Channel Independence).
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from functools import wraps
 
 from flask import abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import select
 
 from rfone_data_store import models as m
+from rfone_data_store import rfone_web_session as shared_session
 from rfone_data_store import attention_service as att_svc
 from rfone_data_store import organizational_ai_review_service as ai_svc
 from rfone_data_store import organizational_coverage_check_service as coverage_svc
@@ -96,13 +100,19 @@ def register_organizational_responsibility_routes(
 ):
     view = require_domain_access(ORGANIZATION_DOMAIN_CODE)
 
-    def administer(handler):
-        return view(require_admin(handler))
-
     def org_may_administer() -> bool:
         with SessionFactory() as db:
-            account = load_current_account(db)
-            return bool(account is not None and account.is_admin)
+            return shared_session.account_is_domain_admin(
+                db, load_current_account(db), ORGANIZATION_DOMAIN_CODE,
+            )
+
+    def administer(handler):
+        @wraps(handler)
+        def wrapped(*args, **kwargs):
+            if not org_may_administer():
+                abort(403)
+            return handler(*args, **kwargs)
+        return view(wrapped)
 
     # A template global (like `domain_nav`), so the Position editor body,
     # also included inside the chart's modal fragment, can read it.

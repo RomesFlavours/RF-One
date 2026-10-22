@@ -59,6 +59,17 @@ An initial software foundation exists and **remains in `03 Software/`** — it i
 
 Separate from this foundation and not affected by its freeze: RF-One Web's **account access perimeter** — which Domains, and which items of each Domain, a login account (`RFOneAccount`) may enter (`rfone_account_domain_access`, `rfone_account_domain_item_access`, ACCOUNT_ITEM_ACCESS_001). It answers "may this account open this part of RF-One", never "may this Acting Identity perform this Action in this Scope", which stays `AuthorityGrant`'s. See `03 Software/User Interaction Architecture.md` §4, "Implementation status".
 
+Within that perimeter, ADMIN_PERMISSIONS_001 distinguishes four levels of a login account:
+
+| Level | Where it is recorded | What it allows |
+|---|---|---|
+| **Owner** | `rfone_accounts.is_owner` — at most one account (partial unique index), always an administrator; assigned explicitly to the `rfone` account (Pino Miraglia) by migration `d5a120261021` | Everything an RF-One administrator can do; can never be demoted or deactivated through the application |
+| **RF-One administrator** | `rfone_accounts.is_admin` — any number of accounts, granted and revoked in Settings › Accounts › Edit | Accounts, settings, and administration of every Domain the account has access to |
+| **Domain administrator** | role `admin` ("Domain administrator") on that Domain's `rfone_account_domain_access` row | Changes every content of that Domain, including what others wrote (e.g. Development Journal entries, Organization changes); nothing outside it |
+| **Enabled user** | an enabled access row with no role (or a Domain's own role, e.g. Training's `student`) | The Domain's own limits (e.g. correcting only one's own journal entries, consulting Organization) |
+
+The one check is `rfone_web_session.account_is_domain_admin` (Domain access AND (`is_admin` OR role `admin`)). Refused changes: removing the owner's administrator role or deactivating the owner; removing one's own administrator role or deactivating oneself; leaving no active administrator. In Training the Domain administrator has the Trainer rights (`training_integration.effective_training_role`); it never creates or links a Training identity by itself. Being any kind of administrator never opens a Domain by itself, and never replaces an `AuthorityGrant` (Tips' Approve & Pay is unchanged).
+
 **Tips is the first Domain to actually consume this foundation** (STEP 12B integration): `authority_service.authorize()`/`AuthorityGrant` gate Tips' Approve & Pay directly (`03 Software/RF-One Data Store/rfone_data_store/tips/payment_cycle_service.py`), scoped per-Restaurant. This is approved Domain *consumption* of already-built services, not a structural change to Identity & Access itself (the one exception, the `RESTAURANT` scope-value widening above, was itself a minimal, additive, Product-Owner-approved schema change to the existing `scope_type` vocabulary — see "Status: FROZEN" below for why this did not require lifting the freeze). No other Domain (Selection, Purchasing, etc.) has integrated with this foundation yet.
 
 ---

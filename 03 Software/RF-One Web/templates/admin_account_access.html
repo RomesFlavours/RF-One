@@ -14,7 +14,7 @@
   .access-domain:last-of-type { border-bottom: none; }
   .access-domain .access-row { border-bottom: none; padding: .2rem 0; }
   .access-choice { display: inline-flex; align-items: center; gap: .35rem; margin: 0 1rem 0 0; font-weight: normal; }
-  .access-choice input[type=text] { display: inline-block; width: auto; margin-bottom: 0; }
+  .access-choice input[type=text], .access-choice select { display: inline-block; width: auto; margin-bottom: 0; }
   .access-items { list-style: none; margin: .2rem 0 0 1.6rem; padding: 0; display: flex; flex-wrap: wrap; gap: .2rem 0; }
 </style>
 
@@ -41,11 +41,27 @@
                    {{ "checked" if row.mode == "selected" }}> Only selected items</label>
           {% endif %}
           {% endif %}
+          {#- ADMIN_PERMISSIONS_001 — "Domain administrator" (role `admin`) may
+              change every content of this Domain, including what others
+              wrote; "User" keeps the Domain's own limits. In Training the Domain
+              administrator has the Trainer rights (`training_integration.
+              effective_training_role`). A code typed before this list
+              existed stays offered. #}
+          {% set current_role = row.access.role_code if row.access and row.access.role_code else '' %}
+          {% set role_options = [('', 'User'), ('admin', 'Domain administrator')] %}
+          {% if code == 'TRAINING' %}{% set role_options = [('', 'No Training role'), ('student', 'Student'), ('trainer', 'Trainer'), ('admin', 'Domain administrator (Trainer rights)')] %}{% endif %}
+          {% set known = role_options | map('first') | list %}
+          {% set selected_role = 'admin' if current_role|lower == 'admin' and 'admin' in known else current_role %}
           <label class="access-choice">
             Role:
-            <input type="text" name="role_{{ code }}"
-                   value="{{ row.access.role_code if row.access and row.access.role_code else '' }}"
-                   placeholder="optional">
+            <select name="role_{{ code }}">
+              {% for value, label in role_options %}
+                <option value="{{ value }}" {{ "selected" if value == selected_role }}>{{ label }}</option>
+              {% endfor %}
+              {% if selected_role not in known %}
+                <option value="{{ selected_role }}" selected>{{ selected_role }} (not recognised)</option>
+              {% endif %}
+            </select>
           </label>
         </div>
         {% if row.domain.items %}

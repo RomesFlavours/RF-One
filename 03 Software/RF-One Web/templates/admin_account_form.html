@@ -42,10 +42,30 @@
 
     <div class="field-row">
       <label for="status">Status</label>
-      <select id="status" name="status">
+      <select id="status" name="status" {{ "disabled" if account and account.is_owner }}>
         <option value="ACTIVE" {{ "selected" if not account or account.status == "ACTIVE" }}>Active</option>
         <option value="INACTIVE" {{ "selected" if account and account.status == "INACTIVE" }}>Inactive</option>
       </select>
+      {% if account and account.is_owner %}<input type="hidden" name="status" value="ACTIVE">{% endif %}
+    </div>
+
+    {#- ADMIN_PERMISSIONS_001 — any number of RF-One administrators. The owner
+        always stays one, and nobody removes their own role (another
+        administrator can); the server enforces both. #}
+    {% set locked = account and (account.is_owner or account.id == actor_id) %}
+    <div class="field-row">
+      <label class="access-choice">
+        <input type="checkbox" id="is_admin" name="is_admin"
+               {{ "checked" if account and account.is_admin }} {{ "disabled" if locked }}>
+        RF-One administrator
+      </label>
+      {% if locked %}<input type="hidden" name="is_admin" value="{{ 'on' if account.is_admin else '' }}">{% endif %}
+      <p class="muted">
+        {% if account and account.is_owner %}This account is the owner of RF-One: it always stays an active administrator.
+        {% elif account and account.id == actor_id %}You cannot remove your own administrator role; another administrator can.
+        {% else %}Manages accounts and settings, and administers every Domain the account is given access to.
+          To administer only some Domains, give the role "Domain administrator" in Domain Access instead.{% endif %}
+      </p>
     </div>
 
     <button type="submit">{{ "Create account" if mode == "create" else "Save changes" }}</button>

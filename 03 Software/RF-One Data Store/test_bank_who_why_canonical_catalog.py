@@ -49,7 +49,7 @@ from rfone_data_store.database import (
 HERE = Path(__file__).resolve().parent
 REVISION = "a7c3e9d5f2b8"
 PREVIOUS = "b9e4c2a7d5f3"
-CURRENT_HEAD = "c4e820261021"  # the single Alembic head: the Development Journal, on top of the Bank reinstall c8e4b2a6f0d1
+CURRENT_HEAD = "d5a120261021"  # the single Alembic head: the RF-One owner (ADMIN_PERMISSIONS_001), on top of the Development Journal
 MIGRATION = HERE / "migrations" / "versions" / f"{REVISION}_add_municipal_utilities_and_settlement_whys.py"
 
 APPROVED = {

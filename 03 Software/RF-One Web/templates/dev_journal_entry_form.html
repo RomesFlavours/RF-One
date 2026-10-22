@@ -7,6 +7,9 @@
 {{ breadcrumb([('RF-One', url_for('home')), ('Development Journal', url_for('dev_journal_list')), (work.title, url_for('dev_journal_work', work_id=work.id)), ('Correct entry', None)]) }}
 <h1>Correct entry #{{ entry.id }}</h1>
 <p class="muted">You are correcting version {{ entry.version }}. The current text is kept as an earlier version, with its author and date, and stays available from the entry.</p>
+{% if author_name %}
+<p class="muted">This entry was written by {{ author_name }}. You are correcting it as an administrator: the new version is recorded under your name, and {{ author_name }}'s text stays in the earlier versions.</p>
+{% endif %}
 
 <div class="card">
   <form method="post" class="dj-form">

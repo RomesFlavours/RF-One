@@ -11,7 +11,8 @@ control. Every POST also checks the CSRF token.
                                                   documents, phase/status history;
   * `/dev-journal/<id>/edit`, `/reopen`         — change / reopen the card;
   * `/dev-journal/<id>/entries`                 — add an entry (with files);
-  * `/dev-journal/<id>/entries/<e>/edit`        — the author corrects an entry;
+  * `/dev-journal/<id>/entries/<e>/edit`        — the author, or a Development
+                                                  Journal administrator, corrects an entry;
   * `/dev-journal/<id>/entries/<e>/versions`    — every version of an entry;
   * `/dev-journal/<id>/documents`               — upload to the card or an entry;
   * `/dev-journal/<id>/documents/<doc>`         — open or download, never public.
@@ -32,6 +33,7 @@ from flask import Response, abort, flash, redirect, render_template, request, ur
 
 from domain_registry import DOMAINS
 from rfone_data_store import rfone_account_service as account_service
+from rfone_data_store import rfone_web_session as shared_session
 from rfone_data_store.dev_journal import document_store
 from rfone_data_store.dev_journal import models as dj
 from rfone_data_store.dev_journal import service as svc
@@ -136,6 +138,11 @@ def register_dev_journal_routes(app, *, require_domain_access, SessionFactory, l
             "event_labels": svc.EVENT_TYPE_LABELS, "closed_statuses": svc.CLOSED_STATUSES,
             "human_size": svc.human_size, "max_document_mb": svc.MAX_DOCUMENT_BYTES // (1024 * 1024),
         }
+
+    def _is_admin(db, account) -> bool:
+        # ADMIN_PERMISSIONS_001 — an RF-One administrator, or the Domain
+        # administrator role on DEV_JOURNAL, may correct anyone's entry.
+        return shared_session.account_is_domain_admin(db, account, DOMAIN_CODE)
 
     def _work_or_404(db, work_id: int):
         work = svc.get_work(db, work_id)
@@ -264,6 +271,8 @@ def register_dev_journal_routes(app, *, require_domain_access, SessionFactory, l
                 docs_by_entry.setdefault(doc.entry_id, []).append(doc)
         return render_template(
             "dev_journal_work.html", work=work, entries=entries, current_account_id=account.id,
+            correctable_entry_ids={e.id for e in entries if svc.may_correct_entry(
+                e, actor_id=account.id, actor_is_admin=_is_admin(db, account))},
             work_documents=[d for d in documents if d.entry_id is None], docs_by_entry=docs_by_entry,
             changes=svc.list_changes(db, work.id), events=svc.list_events(db, work.id), names=_names(db),
             entry_form=entry_form or {"phase": work.phase, "entry_type": "ACTIVITY"}, **_labels(),
@@ -300,7 +309,7 @@ def register_dev_journal_routes(app, *, require_domain_access, SessionFactory, l
             return redirect(url_for("dev_journal_work", work_id=work_id, _anchor=f"entry-{entry.id}"))
 
     # -----------------------------------------------------------------
-    # Correcting an entry (its author only) and its versions
+    # Correcting an entry (its author or an administrator) and its versions
     # -----------------------------------------------------------------
 
     @app.route("/dev-journal/<int:work_id>/entries/<int:entry_id>/edit", methods=["GET", "POST"])
@@ -310,13 +319,15 @@ def register_dev_journal_routes(app, *, require_domain_access, SessionFactory, l
             account = load_current_account(db)
             work = _work_or_404(db, work_id)
             entry = _entry_or_404(db, work_id, entry_id)
-            if entry.author_account_id != account.id:
+            is_admin = _is_admin(db, account)
+            if not svc.may_correct_entry(entry, actor_id=account.id, actor_is_admin=is_admin):
                 abort(403)
             form = request.form if request.method == "POST" else _entry_form(entry)
             if request.method == "POST":
                 require_csrf()
                 try:
-                    kept = svc.edit_entry(db, work, entry, _entry_input(request.form), actor_id=account.id)
+                    kept = svc.edit_entry(db, work, entry, _entry_input(request.form), actor_id=account.id,
+                                          actor_is_admin=is_admin)
                     db.commit()
                 except svc.DevJournalError as exc:
                     db.rollback()
@@ -325,7 +336,10 @@ def register_dev_journal_routes(app, *, require_domain_access, SessionFactory, l
                     flash("Entry corrected; the previous version is kept." if kept else "Nothing changed.", "info")
                     return redirect(url_for("dev_journal_work", work_id=work_id, _anchor=f"entry-{entry_id}"))
             return render_template(
-                "dev_journal_entry_form.html", work=work, entry=entry, form=form, **_labels(),
+                "dev_journal_entry_form.html", work=work, entry=entry, form=form,
+                author_name=None if entry.author_account_id == account.id
+                else _names(db).get(entry.author_account_id, f"#{entry.author_account_id}"),
+                **_labels(),
             ), (400 if request.method == "POST" else 200)
 
     @app.route("/dev-journal/<int:work_id>/entries/<int:entry_id>/versions")

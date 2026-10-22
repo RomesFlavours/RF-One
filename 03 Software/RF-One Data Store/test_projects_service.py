@@ -440,7 +440,7 @@ def main() -> int:
                   and all(r[2] is None for r in task_rows), str(task_rows))
             from alembic.script import ScriptDirectory
             heads = ScriptDirectory.from_config(cfg).get_heads()
-            check("43. one single head after Project Management (the Development Journal, after the Bank reinstall)", heads == ["c4e820261021"], str(heads))
+            check("43. one single head after Project Management (the RF-One owner, after the Development Journal)", heads == ["d5a120261021"], str(heads))
         finally:
             os.environ.pop("ALEMBIC_DATABASE_URL_OVERRIDE", None)
             engine.dispose()

@@ -69,6 +69,19 @@ TRAINING_SESSION_ACCOUNT_KEY = "training_account_id"
 VALID_TRAINING_ROLE_CODES = ("trainer", "student")
 
 
+def effective_training_role(role_code: str | None) -> str | None:
+    """ADMIN_PERMISSIONS_001 — the Training role a TRAINING `role_code`
+    grants. The Domain administrator role (`admin`, any case) is Training's
+    administrator, i.e. 'trainer' (the only editing role Training's own
+    `TrainingAccount.role` knows). 'trainer'/'student' map to themselves;
+    anything else grants no Training role. Never creates or links a
+    Training identity by itself."""
+    normalized = account_service.normalize_role_code(role_code)
+    if normalized == account_service.DOMAIN_ADMIN_ROLE:
+        return "trainer"
+    return normalized if normalized in VALID_TRAINING_ROLE_CODES else None
+
+
 def install_training_blueprint():
     """Loads Training's `routes.py` (hence its `auth`/`db`/`dish_data`)
     into fresh, uniquely-named modules so its internal
@@ -138,8 +151,8 @@ def check_training_authorization(session, rfone_account: "m.RFOneAccount") -> Tr
     if access is None or not access.enabled:
         return TrainingAuthorizationResult(None, "Il tuo account RF-One non ha accesso al Domain Training.")
 
-    role_code = access.role_code
-    if role_code not in VALID_TRAINING_ROLE_CODES:
+    role_code = effective_training_role(access.role_code)
+    if role_code is None:
         return TrainingAuthorizationResult(
             None, "Il tuo accesso a Training non ha un ruolo valido assegnato. Contatta un amministratore.",
         )
@@ -276,7 +289,8 @@ def sync_training_role_if_linked(session, rfone_account_id: int, role_code: str 
     Runs unconditionally whenever called with a valid `role_code`, even if
     it equals the value already stored (task §4: fixing a pre-existing
     incoherence must not depend on the RF-One value actually changing)."""
-    if role_code not in VALID_TRAINING_ROLE_CODES:
+    role_code = effective_training_role(role_code)
+    if role_code is None:
         return
     link = get_link_for_rfone_account(session, rfone_account_id)
     if link is None:
@@ -306,9 +320,10 @@ def link_existing_training_account(session, *, rfone_account_id: int, training_a
 
     access_rows = account_service.list_domain_access_for_account(session, rfone_account_id)
     training_access = next((r for r in access_rows if r.domain_code == TRAINING_DOMAIN_CODE), None)
-    if training_access is not None and training_access.role_code in VALID_TRAINING_ROLE_CODES:
+    training_role = effective_training_role(training_access.role_code) if training_access is not None else None
+    if training_role is not None:
         training_account = session.get(m.TrainingAccount, training_account_id)
-        training_account.role = training_access.role_code
+        training_account.role = training_role
 
     session.flush()
     return link
@@ -323,8 +338,9 @@ def create_and_link_training_identity(
     (existing, FROZEN schema) but is never used for authentication in this
     integration (Training is only ever entered via RF-One SSO here), so a
     random, unknown, immediately-discarded value satisfies it."""
-    if role_code not in VALID_TRAINING_ROLE_CODES:
+    if effective_training_role(role_code) is None:
         raise ValueError(f"Invalid role_code {role_code!r} — must be one of {VALID_TRAINING_ROLE_CODES}")
+    role_code = effective_training_role(role_code)
     if get_link_for_rfone_account(session, rfone_account_id) is not None:
         raise AlreadyLinkedError("Questo account RF-One è già collegato a un'identità Training.")
 

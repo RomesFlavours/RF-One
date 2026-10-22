@@ -122,6 +122,25 @@ def account_may_enter_domain(
     return bool(account_service.list_domain_item_access_for_account(db_session, account.id).get(domain_code))
 
 
+def account_is_domain_admin(
+    db_session: Session, account: "m.RFOneAccount | None", domain_code: str,
+) -> bool:
+    """ADMIN_PERMISSIONS_001 — whether `account` administers `domain_code`:
+    it may enter the Domain (`account_may_enter_domain`) AND is either an
+    RF-One administrator (`is_admin`, which administers every Domain it is
+    let into) or holds the Domain administrator role (`admin`, any case) on
+    that Domain's access row. A Domain administrator may change every
+    content of that Domain, including what other people wrote; an ordinary
+    enabled user keeps the Domain's own limits. Never implies anything for
+    another Domain."""
+    if not account_may_enter_domain(db_session, account, domain_code):
+        return False
+    if account.is_admin:
+        return True
+    row = _enabled_domain_access(db_session, account, domain_code)
+    return account_service.normalize_role_code(row.role_code) == account_service.DOMAIN_ADMIN_ROLE
+
+
 def account_may_use_domain_item(
     db_session: Session, account: "m.RFOneAccount | None", domain_code: str, item_code: str,
 ) -> bool:
