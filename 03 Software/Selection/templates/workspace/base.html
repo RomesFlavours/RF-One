@@ -1,0 +1,39 @@
+{% from "_nav_macros.html" import breadcrumb %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Selection{% endblock %} · RF-One</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/selection.css') }}?v=1">
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
+</head>
+<body>
+<div class="wrap">
+  {# RF-One shell header, as on RF-One Web and Tips: it names RF-One, never
+     the Domain (the breadcrumb says "Selection"), and links to RF-One Home. #}
+  <header class="site-header">
+    <a href="{{ rfone_home_url or url_for('positions.dashboard') }}" class="brand">
+      <span class="brand-name-group">
+        <span class="brand-wordmark">Rome's Flavours · WP</span>
+        <span class="brand-suffix">RF-ONE</span>
+      </span>
+    </a>
+    {% if actor is defined and actor %}
+    <div class="header-meta">
+      {% if ai_policy.cv_ai_authorized %}<span class="badge ok">AI active (requirements and résumés)</span>
+      {% elif ai_policy.ai_enabled %}<span class="badge info">AI active for requirements only</span>
+      {% else %}<span class="badge">AI not active</span>{% endif %}
+      <span>{{ actor.name }}</span>
+    </div>
+    {% endif %}
+  </header>
+  {# RF-One UI Rules §4: RF-One > Selection > [levels set by the page]. #}
+  {% set levels = crumbs if crumbs is defined else [] %}
+  {{ breadcrumb([('RF-One', rfone_home_url), ('Selection', url_for('positions.dashboard') if levels else None)] + levels) }}
+  {% for msg in get_flashed_messages() %}<div class="info">{{ msg }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

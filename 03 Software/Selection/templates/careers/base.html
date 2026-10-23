@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ position.title if position else "Careers" }}{% endblock %} · {{ client }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/selection.css') }}?v=1">
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
+{% block head %}{% endblock %}
+</head>
+<body class="public">
+<div class="wrap">
+  <header class="site-header">
+    <span class="brand"><span class="brand-name-group"><span class="brand-wordmark">{{ client }}</span>
+      <span class="brand-suffix">Careers</span></span></span>
+    {% if candidate %}
+    <div class="header-meta">
+      <span>{{ candidate.full_name }}</span>
+      {% if position %}<form method="post" action="{{ url_for('careers.sign_out', token=position.public_token) }}" style="margin:0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-secondary btn-small">Sign out</button></form>{% endif %}
+    </div>
+    {% endif %}
+  </header>
+  {% for msg in get_flashed_messages() %}<div class="info">{{ msg }}</div>{% endfor %}
+  <div class="card">{% block content %}{% endblock %}</div>
+</div>
+</body>
+</html>

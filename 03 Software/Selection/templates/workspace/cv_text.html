@@ -1,0 +1,33 @@
+{% extends "workspace/base.html" %}
+{% set name = candidate.full_name or pc.declared_name or 'Candidate' %}
+{% block title %}CV · {{ name }}{% endblock %}
+{% set crumbs = [(position.title, url_for('positions.position_detail', position_id=position.id)), (name, url_for('positions.candidate_detail', position_id=position.id, pc_id=pc.id)), ('Text read from the résumé', None)] %}
+{% block content %}
+<h1>Text read from the résumé</h1>
+<p class="small muted">Text extracted from the original document, unchanged.{% if highlight %} The selected quote is highlighted.{% endif %}
+  <a href="{{ url_for('positions.candidate_original', position_id=position.id, pc_id=pc.id) }}" target="_blank">Open the original résumé</a></p>
+<pre class="cv" id="cvtext">{{ text }}</pre>
+{% if highlight %}
+<script>
+(function () {
+  var q = {{ highlight|tojson }}, el = document.getElementById('cvtext'), t = el.textContent;
+  var norm = function (s) { return s.replace(/\s+/g, ' ').toLowerCase(); };
+  // map normalized positions back to the original text
+  var map = [], n = '', prevSpace = false;
+  for (var i = 0; i < t.length; i++) {
+    var ch = /\s/.test(t[i]) ? ' ' : t[i].toLowerCase();
+    if (ch === ' ' && prevSpace) continue;
+    prevSpace = ch === ' '; n += ch; map.push(i);
+  }
+  var at = n.indexOf(norm(q).trim());
+  if (at < 0) return;
+  var start = map[at], end = map[at + norm(q).trim().length - 1] + 1;
+  el.innerHTML = '';
+  el.appendChild(document.createTextNode(t.slice(0, start)));
+  var mk = document.createElement('mark'); mk.textContent = t.slice(start, end); el.appendChild(mk);
+  el.appendChild(document.createTextNode(t.slice(end)));
+  mk.scrollIntoView({block: 'center'});
+})();
+</script>
+{% endif %}
+{% endblock %}

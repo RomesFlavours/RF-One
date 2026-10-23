@@ -1,0 +1,73 @@
+{% extends "workspace/base.html" %}
+{% block title %}Positions{% endblock %}
+{% block content %}
+<div class="row" style="justify-content:space-between">
+  <div><h1>Positions</h1>
+    <p class="muted" style="margin:0">{% if actor.supervises_all %}All positions{% else %}The positions you manage{% endif %}</p></div>
+  {% if actor.role != 'SUPERVISOR' %}<a class="btn" href="{{ url_for('positions.position_new') }}">+ New position</a>{% endif %}
+</div>
+
+{% if upcoming %}
+<div class="card" style="margin-top:1rem">
+  <h3>Upcoming interviews</h3>
+  {% for a, p, c in upcoming %}<div class="small" style="margin:.25rem 0">
+    <b>{{ a.starts_at|local(p.timezone, '%a %d/%m %H:%M') }}</b> · {{ KIND_LABELS[a.kind] }} ·
+    <a href="{{ url_for('positions.candidate_detail', position_id=p.id, pc_id=c.pc.id) }}">{{ c.name }}</a>
+    <span class="muted">— {{ p.title }}{% if a.place %} · {{ a.place }}{% endif %}</span></div>{% endfor %}
+</div>{% endif %}
+
+{% if not rows %}
+<div class="card" style="margin-top:1rem">
+  <h2 style="margin-top:0">No positions</h2>
+  <p class="muted">Create a position by describing in your own words who you are looking for.</p>
+</div>
+{% endif %}
+
+{% for r in rows %}{% set p = r.position %}
+<a href="{{ url_for('positions.position_detail', position_id=p.id) }}" class="card-link">
+<div class="card" style="margin-top:1rem">
+  <div class="row" style="justify-content:space-between">
+    <div>
+      <h2 style="margin:0">{{ p.title }}</h2>
+      <div class="muted small">{{ ROLE_LABEL[p.role_code] }} · {{ p.location_label }} · Manager {{ r.manager }}
+        · created on {{ p.created_at|local(p.timezone, '%d/%m/%Y') }}</div>
+    </div>
+    <span class="badge {{ 'ok' if p.status == 'OPEN' else ('warn' if p.status == 'DRAFT' else '') }}">{{ POSITION_STATUS_LABELS[p.status] }}</span>
+  </div>
+  <div class="row" style="gap:2rem;margin-top:.8rem">
+    <div><div class="stat">{{ r.total }}</div><div class="statl">Applications</div></div>
+    <div><div class="stat">{{ r.counts['INTERVIEW'] }}</div><div class="statl">Proposed for interview</div></div>
+    <div><div class="stat">{{ r.counts['DEEPEN'] }}</div><div class="statl">Need a closer look</div></div>
+    <div><div class="stat">{{ r.to_interview }}</div><div class="statl">To interview</div></div>
+    <div><div class="stat">{{ r.hired }} / {{ p.headcount }}</div><div class="statl">Hired</div></div>
+  </div>
+</div></a>
+{% endfor %}
+
+<div class="grid g2" style="margin-top:1.5rem">
+  <div class="card">
+    <h3>AI features</h3>
+    {% for name, active, text in ai_policy.status_lines() %}
+      <div class="small" style="margin:.3rem 0"><span class="badge {{ 'ok' if active else '' }}">{{ 'active' if active else 'not active' }}</span>
+        <b>{{ name }}</b> — <span class="muted">{{ text }}</span></div>
+    {% endfor %}
+    <div class="small muted" style="margin-top:.4rem">Configured provider: {{ ai_policy.provider_label }} (Selection's AI client).
+      RF-One central AI service: not available yet, can be connected through an adapter.</div>
+    {% if ai_policy.last_call %}<div class="small muted">Last call: {{ ai_policy.last_call.purpose }} ·
+      {{ 'succeeded' if ai_policy.last_call.ok else 'failed: ' ~ ai_policy.last_call.message }}</div>{% endif %}
+    <div class="small muted">Automatic email/SMS sending: not available. Approved messages are copied and sent by hand.</div>
+  </div>
+  <div class="card">
+    <h3>Company profile</h3>
+    <div class="small muted">Used to propose requirements and job ads. {{ company.source }}.</div>
+    {% if actor.is_owner %}
+    <form method="post" action="{{ url_for('positions.company_profile') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <textarea name="text" placeholder="E.g. type of restaurant, locations, service style, typical shifts, what we offer. Verified facts only.">{{ company.profile }}</textarea>
+      <button class="btn btn-secondary btn-small" style="margin-top:.4rem">Save profile</button>
+    </form>
+    {% else %}<p class="small" style="white-space:pre-wrap">{{ company.profile or 'Not filled in.' }}</p>{% endif %}
+    {% if company.missing %}<div class="small muted">Not available from Organization: {{ company.missing|join(', ') }}. They are never made up.</div>{% endif %}
+  </div>
+</div>
+{% endblock %}
