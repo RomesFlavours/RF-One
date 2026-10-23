@@ -413,7 +413,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
         detail_body = detail_response.get_data(as_text=True)
         check(
             "29 (3D-FIX-Y/Z): the Screening Run detail page shows both the run-level and the "
-            "Criterion-Evaluation-level Selezionatore notes",
+            "Criterion-Evaluation-level Recruiter notes",
             detail_response.status_code == 200 and "Batch-upload-test run note." in detail_body
             and "Batch-upload-test evaluation note." in detail_body,
         )

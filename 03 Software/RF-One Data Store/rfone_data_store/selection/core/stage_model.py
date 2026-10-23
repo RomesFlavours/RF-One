@@ -6,7 +6,7 @@ separate from `core/application_model.py`'s workflow-status vocabulary
 every other `core/*_model.py` module's role: vocabulary + nothing else, no
 persistence, no ordering/sequence logic.
 
-Deliberately NOT a state machine: the Selezionatore has total freedom to
+Deliberately NOT a state machine: the Recruiter has total freedom to
 move an Application to any Stage, forward, backward, repeated, or skipped
 (task §2/§10/§32) — this module defines the fixed set of Stage NAMES only,
 never a required order between them. Application Received/Primary

@@ -22,7 +22,7 @@ Fundamental boundaries this module enforces:
 - The Consistency Engine (task §8-§14) compares raw statements across
   sources and records a NEUTRAL comparison status plus a plain factual
   explanation — it NEVER concludes dishonesty, deception, or manipulation
-  (task §12); that judgment, if any, belongs to the Selezionatore alone.
+  (task §12); that judgment, if any, belongs to the Recruiter alone.
 - Nothing here produces a numeric score, rank, or automatic hiring
   decision (task §25/§26) — Task 4B stops at complete evidence collection.
 """
@@ -486,7 +486,7 @@ def list_incomplete_items(session: Session, plan_id: int) -> list[m.AssessmentIt
 
 
 # ---------------------------------------------------------------------------
-# Interview lifecycle (task §9/§19/§21) — the Selezionatore drives every
+# Interview lifecycle (task §9/§19/§21) — the Recruiter drives every
 # transition; nothing here fires on its own. No Escape Route / post-
 # interview HOLD-STOP decision exists here (task §26 — not yet built).
 # ---------------------------------------------------------------------------
@@ -583,7 +583,7 @@ def set_notes(session: Session, plan_id: int, note_text: str | None) -> m.InPers
 
 
 def stop_interview(session: Session, plan_id: int, *, plan_status: str) -> m.InPersonInterviewPlan:
-    """Task §19/§21/§26 — the Selezionatore may stop at any point; this
+    """Task §19/§21/§26 — the Recruiter may stop at any point; this
     only records the Plan's own process status (COMPLETED/STOPPED_EARLY).
     No Application workflow status is touched and no Final Selection
     Decision is produced (task §26 — not yet built); uncompleted items
@@ -693,7 +693,7 @@ def create_consistency_thread(
     """Task §8/§9 — one topic worth comparing for this Application. Starts
     UNRESOLVED (no comparison has been made yet); never assumes every
     possible topic must be compared — a thread is only ever created for a
-    topic someone (a service caller or the Selezionatore) has actually
+    topic someone (a service caller or the Recruiter) has actually
     identified as worth comparing."""
 
     _validate_importance(importance)
@@ -805,7 +805,7 @@ def set_comparison_status(
     confidence: str | None = None, resolution: str | None = None,
 ) -> m.ConsistencyThread:
     """Task §11/§12 — the ONLY place a Consistency Thread's status is set.
-    A deliberate, explicit call (by the Selezionatore, or by a narrow
+    A deliberate, explicit call (by the Recruiter, or by a narrow
     deterministic auto-classifier for STRUCTURED facts —
     `generate_cross_application_consistency_threads` below) — free-text
     statement comparison is never auto-judged by this codebase (the same
@@ -836,7 +836,7 @@ def generate_clarification_item(
     session: Session, plan_id: int, thread_id: int, *, question_text: str | None = None,
 ) -> m.AssessmentItemInstance:
     """Task §13/§15 — turns a Consistency Thread's own open discrepancy
-    into a CONSISTENCY_CHECK Assessment Item the Selezionatore can actually
+    into a CONSISTENCY_CHECK Assessment Item the Recruiter can actually
     ask, preserving both/all original statements via the thread link
     (task's own example clarification-question shape). If `question_text`
     is not supplied, a plain templated one is built by quoting each
@@ -876,7 +876,7 @@ def generate_cross_application_consistency_threads(session: Session, application
     (structured, normalized profile facts only — never free-text NLP
     judgment). Each concrete change becomes one thread with a prior/current
     statement pair, classified NEW_INFORMATION (a change is NOT
-    automatically negative — task's own instruction); the Selezionatore may
+    automatically negative — task's own instruction); the Recruiter may
     later reclassify to MATERIAL_INCONSISTENCY via `set_comparison_status`
     if the change itself turns out to matter."""
 

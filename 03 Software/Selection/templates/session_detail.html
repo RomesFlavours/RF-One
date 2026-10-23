@@ -54,9 +54,9 @@
   </form>
 </div>
 
-<!-- ================= Selezionatori / authority ================= -->
+<!-- ================= Recruiters / authority ================= -->
 <div class="card">
-  <h2>Assigned Selezionatori</h2>
+  <h2>Assigned Recruiters</h2>
   {% if assignments %}
   {% for a in assignments %}
   <div class="assignment-row">
@@ -73,16 +73,16 @@
   </div>
   {% endfor %}
   {% else %}
-  <p class="empty">No Selezionatori assigned yet.</p>
+  <p class="empty">No Recruiters assigned yet.</p>
   {% endif %}
-  <p class="quick-read">With no configured authority level, assigned Selezionatori are peers — none may reassign another's owned Application.</p>
+  <p class="quick-read">With no configured authority level, assigned Recruiters are peers — none may reassign another's owned Application.</p>
 
   <details class="edit-toggle">
-    <summary>Assign a Selezionatore</summary>
+    <summary>Assign a Recruiter</summary>
     <form method="post" action="{{ url_for('session_assign_selezionatore', session_id=selection_session.id) }}" class="req-form">
-      <label>Selezionatore (an existing, registered Acting Identity — never a typed name)</label>
+      <label>Recruiter (an existing, registered Acting Identity — never a typed name)</label>
       <select name="acting_identity_id" required>
-        <option value="">— select a registered Selezionatore —</option>
+        <option value="">— select a registered Recruiter —</option>
         {% for i in registered_identities %}<option value="{{ i.id }}">{{ i.display_name }}</option>{% endfor %}
       </select>
       <label>Authority level (optional — leave blank for peer)</label>
@@ -302,7 +302,7 @@
 <div class="card">
   <h2>Interview Scheduling Windows</h2>
   <p class="muted" style="font-size:.82rem;">
-    Offered once per Session/stage and shared by every eligible Application here — the Selezionatore never
+    Offered once per Session/stage and shared by every eligible Application here — the Recruiter never
     recreates identical windows per candidate. Capacity is shared: once a slot is fully booked by any
     Application in this Session, it is no longer offered to any other.
   </p>

@@ -136,7 +136,7 @@
       <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong>{% if not rfone_login_mode %} — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a>{% endif %}</p>
       <label>New owner</label>
       <select name="new_owner_identity_id" required>
-        <option value="">— select a Selezionatore assigned to this Session —</option>
+        <option value="">— select a Recruiter assigned to this Session —</option>
         {% for a in session_assignments %}
         <option value="{{ a.acting_identity_id }}" {% if not a.acting_identity_id %}disabled{% endif %}>{{ a.selezionatore_name }}{% if not a.acting_identity_id %} (no Acting Identity on record — cannot be selected){% endif %}</option>
         {% endfor %}
@@ -247,7 +247,7 @@
 </div>
 
 <!-- ==================================================================
-     Trainable Gap (task §13 / Part A) — RF-One vs Selezionatore level.
+     Trainable Gap (task §13 / Part A) — RF-One vs Recruiter level.
      ================================================================== -->
 <div class="card">
   <h2>Trainable Gaps ({{ dossier.trainable_gaps|length }} active)</h2>
@@ -267,7 +267,7 @@
       <div class="level-row">
         <div class="level-item"><div class="label">RF-One Initial Level</div><span class="badge level-{{ gap.rf_one_initial_level }}">{{ gap.rf_one_initial_level }} &mdash; {{ level_descriptions[gap.rf_one_initial_level] }}</span></div>
         {% if gap.selezionatore_initial_level is not none %}
-        <div class="level-item"><div class="label">Selezionatore Initial Level</div><span class="badge level-{{ gap.selezionatore_initial_level }}">{{ gap.selezionatore_initial_level }} &mdash; {{ level_descriptions[gap.selezionatore_initial_level] }}</span></div>
+        <div class="level-item"><div class="label">Recruiter Initial Level</div><span class="badge level-{{ gap.selezionatore_initial_level }}">{{ gap.selezionatore_initial_level }} &mdash; {{ level_descriptions[gap.selezionatore_initial_level] }}</span></div>
         {% endif %}
         <div class="level-item"><div class="label">Effective Level</div><span class="badge level-{{ gap.effective_initial_level }}">{{ gap.effective_initial_level }} &mdash; {{ level_descriptions[gap.effective_initial_level] }}</span></div>
         {% if gap.confidence %}<div class="level-item"><div class="label">Confidence</div><span class="badge confidence-{{ gap.confidence|lower }}">{{ gap.confidence|title }}</span></div>{% endif %}
@@ -281,7 +281,7 @@
       <form method="post" action="{{ url_for('trainable_gap_review', gap_id=gap.id) }}" class="req-form">
         <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
         <p class="quick-read">Acting as <strong>{{ current_identity.display_name }}</strong>{% if not rfone_login_mode %} — <a href="{{ url_for('identity_switch', next=url_for('application_dossier', application_id=application.id)) }}">not you?</a>{% endif %}</p>
-        <label>Selezionatore's initial level (0-4) — select RF-One's own level ({{ gap.rf_one_initial_level }}) to agree without a reason</label>
+        <label>Recruiter's initial level (0-4) — select RF-One's own level ({{ gap.rf_one_initial_level }}) to agree without a reason</label>
         <select name="level">
           {% for lvl in initial_levels %}<option value="{{ lvl }}" {{ 'selected' if lvl == gap.effective_initial_level else '' }}>{{ lvl }} — {{ level_descriptions[lvl] }}</option>{% endfor %}
         </select>
@@ -469,7 +469,7 @@
   <p style="font-size:.85rem;"><span class="badge status-completed">Missing-Evidence Questionnaire answered</span></p>
   {% endif %}
   {% if dossier.intake_context.is_ready_for_phone_review %}
-  <p style="font-size:.85rem;"><span class="badge status-completed">READY FOR PHONE REVIEW</span> — enough early-stage evidence exists; ADVANCE_TO_PHONE still requires an explicit Selezionatore decision.</p>
+  <p style="font-size:.85rem;"><span class="badge status-completed">READY FOR PHONE REVIEW</span> — enough early-stage evidence exists; ADVANCE_TO_PHONE still requires an explicit Recruiter decision.</p>
   {% endif %}
 
   {% if dossier.session_context.session %}
@@ -534,7 +534,7 @@
     <h2 style="margin:0;">Information / Events</h2>
     <button type="button" class="pencil-btn" onclick="document.getElementById('modal-event').showModal()">&#9998; Record</button>
   </div>
-  <p class="quick-read">Factual reports — e.g. "candidate called and stated they were withdrawing." Never a Selezionatore decision by itself; shown chronologically in Notes below.</p>
+  <p class="quick-read">Factual reports — e.g. "candidate called and stated they were withdrawing." Never a Recruiter decision by itself; shown chronologically in Notes below.</p>
   <dialog id="modal-event" class="edit-modal">
     <button type="button" class="rf-modal-x" aria-label="Close" onclick="this.closest('dialog').close()">&times;</button>
     <h3>Record Information / Event</h3>

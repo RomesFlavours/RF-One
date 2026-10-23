@@ -326,7 +326,7 @@ def reopen_application(
     reason: str | None = None, note_text: str | None = None, performed_by: str | None = None,
     performed_by_identity_id: int | None = None,
 ) -> m.SelectionOutcomeDecision:
-    """Task §7/§10 — a deliberate Selezionatore action that always remains
+    """Task §7/§10 — a deliberate Recruiter action that always remains
     possible, even for a CLOSED Application; no Outcome configuration can
     technically block it. The chosen Outcome must itself resolve to ACTIVE
     (an application isn't "reopened" into SUSPENDED/CLOSED) — this is the
@@ -428,14 +428,14 @@ def list_due_reminders(
     session: Session, restaurant_id: int | None, *, as_of: datetime | None = None,
 ) -> list[m.SelectionReminder]:
     """Task 5A-ALIGN §6 — the "bring the Application back to the
-    Selezionatore's attention" mechanism for a TIME-BASED HOLD: every
+    Recruiter's attention" mechanism for a TIME-BASED HOLD: every
     unresolved reminder, across the whole restaurant, whose `due_date` has
     been reached. RF-One only ever SURFACES these — it never makes a
     substantive decision on its own (task's own explicit prohibition).
     A CONDITION-BASED hold (a reminder with no `due_date`) is never
     "due" by this query — nothing in Selection can detect when an
     external condition resolves, so it stays visible only via the
-    Application's own unresolved-reminders list until the Selezionatore
+    Application's own unresolved-reminders list until the Recruiter
     checks and resolves it manually."""
 
     as_of = as_of or datetime.utcnow()

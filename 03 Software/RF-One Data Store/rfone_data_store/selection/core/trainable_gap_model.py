@@ -93,7 +93,7 @@ def is_non_trainable_concern(*, effective_status: str, trainability: str) -> boo
 # ---------------------------------------------------------------------------
 # Status (task §3's "preserve... status") — a small, non-Training lifecycle:
 # whether this Trainable Gap is still open/active evidence for the
-# Selezionatore, or has been withdrawn because a later assessment refresh no
+# Recruiter, or has been withdrawn because a later assessment refresh no
 # longer evidences the gap at all. Never a Training-progress status.
 # ---------------------------------------------------------------------------
 

@@ -19,7 +19,7 @@ Fundamental boundaries this module enforces:
 - A Question's `importance`/`is_sine_qua_non` order PRESENTATION only —
   nothing here ever produces a candidate score, rank, or automatic hiring
   decision (task §4/§25). A failed Gate never auto-rejects an Application
-  (task §6/§7) — only the Selezionatore may activate the Escape Route.
+  (task §6/§7) — only the Recruiter may activate the Escape Route.
 - An interview answer becomes Fit Assessment/Signal EVIDENCE only through
   an explicit call into `fit_assessment_service.add_evidence()`/
   `signal_service.add_evidence()` (task §14/§15) — no parallel evidence
@@ -539,7 +539,7 @@ def get_carried_forward_questions(session: Session, plan_id: int) -> list[m.Phon
 
 
 # ---------------------------------------------------------------------------
-# Interview lifecycle (task §8/§9/§21/§23) — the Selezionatore drives every
+# Interview lifecycle (task §8/§9/§21/§23) — the Recruiter drives every
 # transition; nothing here ever fires on its own.
 # ---------------------------------------------------------------------------
 
@@ -595,7 +595,7 @@ def set_gate_evaluation(
 ) -> m.PhoneInterviewQuestionInstance:
     """Task §6 — a Gate Question's own evaluation, kept separate from the
     raw answer. Never rejects the Application by itself (task §7) — only
-    the Selezionatore's explicit `activate_escape_route` does anything with
+    the Recruiter's explicit `activate_escape_route` does anything with
     a FAILED gate."""
 
     if gate_evaluation not in pim.GATE_EVALUATIONS:
@@ -623,7 +623,7 @@ def add_follow_up_question(
     """Task §12 — a follow-up question suggested by the answer just given.
     Captures evidence first; it never labels the candidate (e.g.
     "conflictual", "unreliable") anywhere in the framework itself — that
-    judgment, if any, stays with the Selezionatore (task §12's own
+    judgment, if any, stays with the Recruiter (task §12's own
     boundary)."""
 
     parent = session.get(m.PhoneInterviewQuestionInstance, parent_question_instance_id)
@@ -720,7 +720,7 @@ def record_answer_as_signal_evidence(
 
 
 # ---------------------------------------------------------------------------
-# Escape Route (task §7) — an explicit Selezionatore choice only.
+# Escape Route (task §7) — an explicit Recruiter choice only.
 # ---------------------------------------------------------------------------
 
 _FALLBACK_COURTESY_QUESTIONS = (
@@ -772,7 +772,7 @@ def _generate_courtesy_questions(session: Session, plan: m.PhoneInterviewPlan) -
 
 
 def activate_escape_route(session: Session, plan_id: int, *, reason: str | None = None) -> m.PhoneInterviewPlan:
-    """Task §7 — an explicit Selezionatore choice only, never automatic
+    """Task §7 — an explicit Recruiter choice only, never automatic
     (a failed Gate alone never calls this). Stops presenting the full
     remaining plan, preserves every still-unanswered substantive question
     as UNRESOLVED (never deleted — task §16), and offers 2-3 short courtesy
@@ -804,7 +804,7 @@ def activate_escape_route(session: Session, plan_id: int, *, reason: str | None 
 
 # ---------------------------------------------------------------------------
 # Post-Phone-Interview decision + carry-forward (task §16/§17/§22) — the
-# Selezionatore alone decides; nothing here fires on its own.
+# Recruiter alone decides; nothing here fires on its own.
 # ---------------------------------------------------------------------------
 
 def _carry_forward_unresolved(session: Session, plan: m.PhoneInterviewPlan) -> list[m.PhoneInterviewQuestionInstance]:
@@ -841,7 +841,7 @@ def record_post_interview_decision(
     session: Session, plan_id: int, *, plan_status: str, application_decision: str, reason: str | None = None,
     performed_by: str | None = None, performed_by_identity_id: int | None = None,
 ) -> m.PhoneInterviewPlan:
-    """The Selezionatore's explicit post-Phone-Interview decision (task
+    """The Recruiter's explicit post-Phone-Interview decision (task
     §22) — never automatic. Closes out the Phone Interview Plan's own
     process status (task §21 — a DIFFERENT thing from the Application's own
     Stage/Outcome), records ADVANCE_TO_IN_PERSON/HOLD/STOP through the Task

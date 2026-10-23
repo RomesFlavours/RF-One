@@ -143,7 +143,7 @@ def approve_posting(session: Session, job_posting_id: int, *, approved_by: str) 
     "after the base posting is approved")."""
 
     if not approved_by or not approved_by.strip():
-        raise ValueError("Approving a Job Posting requires the approving Selezionatore's name.")
+        raise ValueError("Approving a Job Posting requires the approving Recruiter's name.")
     job_posting = session.get(m.JobPosting, job_posting_id)
     if job_posting is None:
         raise ValueError(f"No JobPosting with id {job_posting_id}")
@@ -260,7 +260,7 @@ def approve_channel_variant(session: Session, variant_id: int, *, approved_by: s
     simply no function here that approves more than one)."""
 
     if not approved_by or not approved_by.strip():
-        raise ValueError("Approving a channel variant requires the approving Selezionatore's name.")
+        raise ValueError("Approving a channel variant requires the approving Recruiter's name.")
     variant = session.get(m.JobPostingChannelVariant, variant_id)
     if variant is None:
         raise ValueError(f"No JobPostingChannelVariant with id {variant_id}")

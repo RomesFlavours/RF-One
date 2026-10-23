@@ -6627,7 +6627,7 @@ class Application(Base):
     `review_priority_system`/`review_priority_effective`/
     `review_priority_origin` mirror Task 3B's `RequirementAssessment`
     system/effective/origin pattern exactly (concept note §10: "System
-    priority and Selezionatore override must remain distinguishable.")."""
+    priority and Recruiter override must remain distinguishable.")."""
 
     __tablename__ = "applications"
 
@@ -6660,10 +6660,10 @@ class Application(Base):
     # exactly as `core.signal_model.compute_review_priority()` returned them
     # (never a score), so the Review Queue can show WHY without recomputing.
     review_priority_reasons: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Selezionatore note — never evidence.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Recruiter note — never evidence.
 
     # Task 3C-FIX §7 — operational workflow status, entirely separate from
-    # Review Priority above. Only ever set by an explicit Selezionatore
+    # Review Priority above. Only ever set by an explicit Recruiter
     # action (`application_service.set_workflow_status`) — nothing in this
     # codebase sets it automatically from a Signal or a priority category.
     workflow_status: Mapped[str] = mapped_column(String(24), nullable=False, default="NEW")
@@ -6672,7 +6672,7 @@ class Application(Base):
 
     # Task 3C-FIX §1/§2 — identity-resolution provenance. SYSTEM_RESOLVED
     # covers both an automatic VERY_STRONG contact match and a brand-new
-    # person; HUMAN_CONFIRMED records that a Selezionatore explicitly
+    # person; HUMAN_CONFIRMED records that a Recruiter explicitly
     # confirmed/corrected which CandidatePerson this Application belongs to.
     identity_origin: Mapped[str] = mapped_column(String(24), nullable=False, default="SYSTEM_RESOLVED")
     identity_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -6942,7 +6942,7 @@ class PersonMatchCandidate(Base):
     (just created for one incoming Application) and an already-existing
     `CandidatePerson`, produced when identity resolution finds supporting-
     but-inconclusive evidence — a name match without an exact email/phone
-    match (Task 3C-FIX §1/§2). Never auto-merged: a Selezionatore must
+    match (Task 3C-FIX §1/§2). Never auto-merged: a Recruiter must
     explicitly confirm or reject it. Confirming reassigns the Application to
     `suggested_person_id` (see `identity_service.confirm_match`); rejecting
     simply leaves the Application on `source_person_id` — both people stay
@@ -6971,7 +6971,7 @@ class PersonMatchCandidate(Base):
 
 
 class ApplicationNote(Base):
-    """One free-form Selezionatore note on an Application (Task 3C-FIX
+    """One free-form Recruiter note on an Application (Task 3C-FIX
     §11) — append-only, so notes keep their history instead of overwriting
     each other (unlike the legacy `Application.notes` single-value field
     Task 3C introduced). Deliberately separate from `EvidenceItem`/
@@ -7007,7 +7007,7 @@ class ApplicationNote(Base):
     # Task 5A-ALIGN §3/§15 — an INFORMATION/EVENT LOG entry (context_type
     # ="INFORMATION_EVENT") reuses this same append-only table rather than
     # a parallel one, but carries its own extra fields so a factual report
-    # from staff stays clearly distinguishable from a Selezionatore note or
+    # from staff stays clearly distinguishable from a Recruiter note or
     # decision: `event_type` (free text — e.g. "CANDIDATE_WITHDRAWAL_CLAIM"),
     # `reported_by` (who entered/reported it into Selection — may differ
     # from who the information came FROM), `original_source` (where the
@@ -7044,7 +7044,7 @@ class ApplicationNote(Base):
 # never silently repoints to a newer live Requirement Set (task §1).
 # `PhoneInterviewQuestionInstance` mirrors `RequirementAssessment`/
 # `SignalObservation`'s "one persisted row per unit, evidence/answer
-# enriches it" shape, but a raw interview answer is a live, Selezionatore-
+# enriches it" shape, but a raw interview answer is a live, Recruiter-
 # editable transcript (not append-only evidence) — evidence proper is
 # still only ever added via `fit_assessment_service.add_evidence()`/
 # `signal_service.add_evidence()` (task §14/§15 — no parallel evidence
@@ -7132,7 +7132,7 @@ class PhoneInterviewPlan(Base):
     fit_assessment_id: Mapped[int] = mapped_column(ForeignKey("fit_assessments.id"), nullable=False, index=True)
 
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="NOT_STARTED")
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Selezionatore note — never evidence.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Recruiter note — never evidence.
 
     escape_route_activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     escape_route_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -7167,7 +7167,7 @@ class PhoneInterviewQuestionInstance(Base):
     `linked_requirement_ids` here point to `RequirementSnapshotItem` rows
     (this plan's own pinned snapshot), not live `Requirement` rows.
 
-    The raw `answer_text`/`selezionatore_note` are a live, Selezionatore-
+    The raw `answer_text`/`selezionatore_note` are a live, Recruiter-
     editable transcript — NOT append-only evidence (task §13: "keep raw
     response and interpretation separate"). Turning an answer into Fit
     Assessment/Signal evidence is a separate, explicit action
@@ -7357,7 +7357,7 @@ class InPersonInterviewPlan(Base):
     )
 
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="NOT_STARTED")
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Selezionatore note — never evidence.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Recruiter note — never evidence.
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -7388,7 +7388,7 @@ class AssessmentItemInstance(Base):
     like `PhoneInterviewQuestionInstance.source_question_definition_id`.
 
     `raw_response` is the RAW INPUT (task §16) — a candidate's answer, a
-    Selezionatore's direct observation, or a practical-test performance
+    Recruiter's direct observation, or a practical-test performance
     note, depending on `source_type`; never rewritten once entered.
     `selezionatore_note` is the separate INTERPRETATION layer. Turning
     either into Fit Assessment/Signal evidence is a distinct, explicit
@@ -7444,7 +7444,7 @@ class AssessmentItemInstance(Base):
 class ConsistencyThread(Base):
     """One topic compared across multiple sources for one Application
     (task §8/§9) — CV/Application, prior Applications, Phone Interview,
-    In-Person Interview, Practical Assessment, or Selezionatore-entered
+    In-Person Interview, Practical Assessment, or Recruiter-entered
     evidence. Scoped to the Application (not to one specific interview
     plan) since consistency spans the whole selection process. A
     contradiction found here is EVIDENCE, never automatic proof of
@@ -7664,7 +7664,7 @@ class PrimaryScreeningRun(Base):
     """One Primary Screening pass over one Application (task §17) —
     binds a snapshot-frozen set of Criterion Evaluations together with the
     resulting INTERNAL `priority_index` (never exposed to the
-    Selezionatore — task §5/§17), whether an active, un-overridden Hard
+    Recruiter — task §5/§17), whether an active, un-overridden Hard
     Disqualifier is present, and a plain-language `explanation`. Multiple
     runs may exist for the same Application over time (never unique,
     unlike the 1:1 Phone/In-Person Interview Plans) — each stays tied to
@@ -7786,7 +7786,7 @@ class ApplicationStageTransition(Base):
     current_stage`'s default without an explicit first transition row —
     this table records CHANGES, not the initial state). No "allowed next
     Stage" validation exists here or in `stage_service.py` — the
-    Selezionatore has total freedom to move forward, backward, repeat, or
+    Recruiter has total freedom to move forward, backward, repeat, or
     skip (task §2)."""
 
     __tablename__ = "application_stage_transitions"
@@ -7872,8 +7872,8 @@ class SelectionOutcomeDefinition(Base):
     # RBAC/authentication system exists in Selection to enforce either one
     # — same honest-placeholder rationale as `performed_by` throughout this
     # module): `authority_label` names WHO is expected to apply this
-    # Outcome (e.g. "Selezionatore", "Trainer" — task §11's "the Trainer,
-    # not the Selezionatore, is the authority for the Training Check
+    # Outcome (e.g. "Recruiter", "Trainer" — task §11's "the Trainer,
+    # not the Recruiter, is the authority for the Training Check
     # result"); `driven_by` records whether the Outcome is normally
     # RESTAURANT-initiated, CANDIDATE-initiated, or EITHER.
     authority_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -7991,7 +7991,7 @@ class SelectionReminder(Base):
     configuration may generate (task §5/§11) — deliberately minimal (no
     notification/scheduling engine, task §14's "no separate Event Engine"
     spirit applied here too): a due date and a note, visible on the
-    Decision Summary, that a Selezionatore can mark resolved."""
+    Decision Summary, that a Recruiter can mark resolved."""
 
     __tablename__ = "selection_reminders"
 
@@ -8019,7 +8019,7 @@ class CandidateFlag(Base):
     its whole purpose is surfacing on a LATER Application by the same
     person (task §19). Never causes an automatic rejection (task §18/§28)
     — `operational_effect` caps out at OPERATIONAL_ACTION, defined as
-    "requires Selezionatore attention," never "reject automatically."
+    "requires Recruiter attention," never "reject automatically."
     History is preserved by never deleting a flag row — `is_active`/
     `expires_at` describe CURRENT state; the row's existence, its original
     `reason`/`note`/`created_at`, are the permanent historical fact that it
@@ -8073,7 +8073,7 @@ class SelectionQueue(Base):
     Deliberately minimal (name/description/active/display_order only) —
     this is NOT a general-purpose workflow engine, and queue placement is
     never itself a hiring decision (task §14): it only ever changes because
-    the Selezionatore moved the Application there directly, or because an
+    the Recruiter moved the Application there directly, or because an
     Outcome they chose was configured to do so."""
 
     __tablename__ = "selection_queues"
@@ -8097,7 +8097,7 @@ class ApplicationQueueMovement(Base):
     """One actual queue/list move (Task 5A-FIX §9) — append-only, exactly
     like `ApplicationStageTransition`; a move never overwrites a prior one.
     `source` (`core/queue_model.py` — MANUAL/OUTCOME_ACTION) distinguishes
-    a direct Selezionatore move from one an applied Outcome triggered;
+    a direct Recruiter move from one an applied Outcome triggered;
     `originating_outcome_decision_id` is set only for the latter, so the
     Outcome that caused a move stays traceable without making queue
     placement itself a decision source (task §14)."""
@@ -8410,7 +8410,7 @@ class SelectionStagePatternSnapshot(Base):
     ID is sufficient and never goes stale).
 
     `rf_one_judgment`/`selector_action`/`divergence_*`/`selector_note`
-    together are the Selezionatore Note / Divergence representation (task
+    together are the Recruiter Note / Divergence representation (task
     §13) — normally optional (`selector_note` nullable), but
     `note_required` records whether this specific snapshot's divergence
     made a note mandatory (the architecture supports that; no sophisticated
@@ -8573,7 +8573,7 @@ class SelectionCaseMemory(Base):
     Traces/Stage Snapshots) rather than duplicating their content.
     `rf_one_final_judgment` and `selezionatore_final_decision` are
     DISTINCT fields (task's own explicit "RF-One evaluates. The
-    Selezionatore decides.") — never merged into one.
+    Recruiter decides.") — never merged into one.
 
     THE PAST IS IMMUTABLE (task §17): once created, a Case Memory row is
     never updated (no `updated_at`, no service function edits one).
@@ -8740,7 +8740,7 @@ class SelectionGovernanceRequirement(Base):
 # RequirementAssessment's gap (NOT_EVIDENCED/PARTIALLY_EVIDENCED, against a
 # Requirement the restaurant marked TRAINABLE/PARTIALLY_TRAINABLE) is being
 # tracked with an RF-One-proposed 0-4 initial level and, optionally, a
-# Selezionatore's own corrected level. Mirrors the system/effective/origin/
+# Recruiter's own corrected level. Mirrors the system/effective/origin/
 # override_reason/overridden_at quadruple already used by
 # `RequirementAssessment`, `Application.review_priority_*`,
 # `PrimaryScreeningCriterionEvaluation`, and `SignalObservation` — see
@@ -8776,8 +8776,8 @@ class TrainableGap(Base):
     `rf_one_initial_level` is proposed once at creation and NEVER modified
     afterward, by anything — the immutable RF-One value (task §5: "Never
     overwrite the RF-One original level"). `selezionatore_initial_level` is
-    `None` until a Selezionatore records a level that DIFFERS from RF-One's
-    (task §5: "If the Selezionatore agrees... no duplicate manual value is
+    `None` until a Recruiter records a level that DIFFERS from RF-One's
+    (task §5: "If the Recruiter agrees... no duplicate manual value is
     required"); `effective_initial_level` is always
     `selezionatore_initial_level if not None else rf_one_initial_level` —
     kept as its own column (mirrors `RequirementAssessment.effective_status`)
@@ -8859,7 +8859,7 @@ class TrainableGap(Base):
 # authority_level_id` simply points a Session-scoped assignment at an
 # existing, restaurant-configured level. Two assignments with no configured
 # level (`authority_level_id is None`) are peers (task §5's own "If NO
-# dependency is defined... all Selezionatori... are considered peers").
+# dependency is defined... all Recruiters... are considered peers").
 # ---------------------------------------------------------------------------
 
 
@@ -8917,7 +8917,7 @@ class SelectionSession(Base):
 
 
 class SelectionSessionAssignment(Base):
-    """One Selezionatore assigned to a Session (task §4) — never a single
+    """One Recruiter assigned to a Session (task §4) — never a single
     forced "primary selector." `selezionatore_name` is kept as the display
     text (originally a plain honest-placeholder string; as of
     GLOBAL_INTEGRITY_FIX_002 it is always set FROM `acting_identity.
@@ -8963,7 +8963,7 @@ class SelectionSessionAssignment(Base):
 
 class ApplicationOwnership(Base):
     """One period of operational "take in charge" ownership of an
-    Application by one Selezionatore (task §6/§7/§10) — append-only
+    Application by one Recruiter (task §6/§7/§10) — append-only
     history, exactly one `is_active=True` row per Application at a time
     (enforced in `ownership_service.py`, not by a DB constraint — the same
     "current = latest/only active row" discipline `SelectionOutcomeDecision`
@@ -9138,10 +9138,10 @@ class SelectionRuleChangeImpact(Base):
     résumé-stage evidence via the existing, idempotent
     `fit_assessment_service.generate_resume_stage_assessment`, which
     already never overwrites a human-touched `effective_status` — task
-    §20's own "must NOT... change an existing substantive Selezionatore
+    §20's own "must NOT... change an existing substantive Recruiter
     decision") without that ever meaning the Application's human review is
     considered DONE — `review_status` starts at NEEDS_REVIEW and is only
-    ever advanced by an explicit Selezionatore action."""
+    ever advanced by an explicit Recruiter action."""
 
     __tablename__ = "selection_rule_change_impacts"
 
@@ -9198,7 +9198,7 @@ class AcquisitionSourceDefinition(Base):
 
 class CommunicationTemplate(Base):
     """A restaurant-configurable, versioned Communication Template (task
-    §3/§4) — the Selezionatore never rewrites the standard message per
+    §3/§4) — the Recruiter never rewrites the standard message per
     candidate. `stage`/`trigger_event`/`outcome_definition_id` together
     identify WHEN this template fires (see `core/communication_model.py`'s
     `TRIGGER_EVENTS` docstring for exactly which service-layer call reads
@@ -9461,7 +9461,7 @@ class InterviewSchedulingWindow(Base):
 class InterviewAppointment(Base):
     """One booked interview appointment (task §13/§14) — created and
     CONFIRMED automatically the moment a candidate selects an available
-    slot (task §13: "No Selezionatore approval is required"). Rescheduling
+    slot (task §13: "No Recruiter approval is required"). Rescheduling
     (task §15) never deletes/overwrites the prior row: it is marked
     `RESCHEDULED` and a new row is created referencing it via
     `previous_appointment_id`, exactly like `ApplicationOwnership`'s own
@@ -9548,7 +9548,7 @@ class InboundCommunication(Base):
     """One inbound candidate message, preserved verbatim (task §21 — "never
     replace the raw message with a summary"). `classification_system` is
     what the deterministic classifier produced; `classification_effective`
-    starts equal to it and is the ONLY field a Selezionatore correction
+    starts equal to it and is the ONLY field a Recruiter correction
     changes (task §23 — the system classification is never overwritten/
     lost). `alert_required`/`alert_reason` implement the high-visibility
     alert (task §20/§25); acknowledging an alert never itself changes any

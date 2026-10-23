@@ -1,7 +1,7 @@
 """Candidate Flag service (Task 5A §16-§19/§29). A persistent, PERSON-level
 marker (never Application-level, since its whole purpose is surfacing on a
 LATER Application by the same person) that never causes an automatic
-rejection — `operational_effect` caps out at requiring Selezionatore
+rejection — `operational_effect` caps out at requiring Recruiter
 attention (task §18/§28). History is preserved by never deleting a flag
 row; `is_active`/`expires_at` describe current state only (task §29).
 """
@@ -110,7 +110,7 @@ def list_active_flags_for_application(session: Session, application_id: int) -> 
     `role_scope` matches this Application's `target_role`; a
     LOCATION_SPECIFIC flag is included regardless of location match here
     since Selection does not yet carry a location on the Application itself
-    — shown for Selezionatore judgment rather than silently hidden).
+    — shown for Recruiter judgment rather than silently hidden).
     Restaurant-scoped: a flag recorded at a DIFFERENT restaurant than this
     Application never surfaces here."""
 

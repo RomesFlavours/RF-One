@@ -155,7 +155,7 @@ def record_inbound(
 def correct_classification(
     session: Session, inbound_id: int, *, new_classification: str, corrected_by: str, reason: str | None = None,
 ) -> m.InboundCommunication:
-    """Task §23 — the Selezionatore may correct the EFFECTIVE classification
+    """Task §23 — the Recruiter may correct the EFFECTIVE classification
     without ever losing the original system classification (`classification_
     system` is never written here)."""
 

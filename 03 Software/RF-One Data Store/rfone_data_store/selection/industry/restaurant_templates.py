@@ -349,13 +349,13 @@ def seed_romes_flavours_in_person_interview_structure(session: Session, *, resta
             session, practical.id, item_type=ipm.ROLE_PLAY,
             title_or_question="Describe a dish from your previous restaurant as if I were a guest.",
             objective="Assess menu-description technique.", importance=ipm.IMPORTANCE_LEVELS[1],
-            scenario="The Selezionatore plays the role of a guest asking about a dish.",
+            scenario="The Recruiter plays the role of a guest asking about a dish.",
         )
         ip_svc.create_item_definition(
             session, practical.id, item_type=ipm.ROLE_PLAY,
             title_or_question="Recommend a pasta dish to me as if I were deciding what to order.",
             objective="Assess sales/upsell technique in a realistic role-play.", importance=ipm.IMPORTANCE_LEVELS[1],
-            scenario="The Selezionatore plays the role of an undecided guest.",
+            scenario="The Recruiter plays the role of an undecided guest.",
         )
         ip_svc.create_item_definition(
             session, practical.id, item_type=ipm.PRACTICAL_TEST,
@@ -389,7 +389,7 @@ def seed_romes_flavours_in_person_interview_structure(session: Session, *, resta
             session, practical.id, item_type=ipm.ROLE_PLAY,
             title_or_question="Train me as if today were my first day at your previous restaurant.",
             objective="Assess ability to explain and teach a familiar process.", importance=ipm.IMPORTANCE_LEVELS[2],
-            scenario="The Selezionatore plays the role of a brand-new coworker on their first shift.",
+            scenario="The Recruiter plays the role of a brand-new coworker on their first shift.",
         )
         ip_svc.create_item_definition(
             session, practical.id, item_type=ipm.QUESTION, title_or_question="Basic wine knowledge — walk me through it.",
@@ -510,7 +510,7 @@ def seed_romes_flavours_primary_screening_criteria(session: Session, *, restaura
         },
         evidence_sources_allowed=[psm.APPLICATION, psm.SELEZIONATORE_INPUT],
         is_hard_disqualifier=True, hard_disqualifier_trigger_level=4,
-        evaluation_guidance="Base this on any stated availability on the Application, or on direct Selezionatore input.",
+        evaluation_guidance="Base this on any stated availability on the Application, or on direct Recruiter input.",
     )
     _ensure(
         "Repeated-application history", category="History", coefficient=1.0, direction=psm.POSITIVE,
@@ -836,12 +836,12 @@ def seed_default_selection_outcomes(session: Session, *, restaurant_id: int) -> 
     _ensure(
         "Active / Continue", description="The Application remains open and under normal, ongoing consideration.",
         lifecycle_effect=om.ACTIVE, is_reopenable=True, requires_note=False, requires_reason=False,
-        target_queue_id=queues.get("Active Review"), authority_label="Selezionatore",
+        target_queue_id=queues.get("Active Review"), authority_label="Recruiter",
         driven_by=om.DRIVEN_BY_RESTAURANT,
     )
 
     # Task 5A-ALIGN §5/§9/§10/§13 — "HIRABLE," never "HIRE": the
-    # Selezionatore considers the candidate suitable to proceed toward
+    # Recruiter considers the candidate suitable to proceed toward
     # Training, NOT that they are already an employee. A restaurant that
     # seeded this Outcome before this fix, under the old name "Hire," gets
     # its LIVE definition row renamed in place (its id — and therefore
@@ -849,21 +849,21 @@ def seed_default_selection_outcomes(session: Session, *, restaurant_id: int) -> 
     # "Hire" forever, exactly as it was when that decision was made — is
     # untouched); a brand-new restaurant simply gets "Hirable" directly.
     hirable_description = (
-        "The Selezionatore considers this candidate suitable to proceed toward employment. This does NOT mean "
+        "The Recruiter considers this candidate suitable to proceed toward employment. This does NOT mean "
         "the candidate is already an employee — Training and a successful Training Check must still follow "
         "before HIRED (outside Selection's scope)."
     )
     if "Hire" in existing and "Hirable" not in existing:
         outcome_svc.update_outcome_definition(
             session, existing["Hire"], name="Hirable", description=hirable_description,
-            authority_label="Selezionatore", driven_by=om.DRIVEN_BY_RESTAURANT,
+            authority_label="Recruiter", driven_by=om.DRIVEN_BY_RESTAURANT,
         )
         result["Hirable"] = result.pop("Hire")
     else:
         _ensure(
             "Hirable", description=hirable_description, lifecycle_effect=om.CLOSED, is_reopenable=True,
             requires_note=False, requires_reason=False, future_contact_policy=om.CONTACT_ALLOWED,
-            target_queue_id=queues.get("Hired"), authority_label="Selezionatore", driven_by=om.DRIVEN_BY_RESTAURANT,
+            target_queue_id=queues.get("Hired"), authority_label="Recruiter", driven_by=om.DRIVEN_BY_RESTAURANT,
         )
 
     _ensure(
@@ -881,7 +881,7 @@ def seed_default_selection_outcomes(session: Session, *, restaurant_id: int) -> 
         ),
         lifecycle_effect=om.CLOSED, is_reopenable=True, requires_note=True, requires_reason=False,
         future_contact_policy=om.CONTACT_ALLOWED, target_queue_id=queues.get("Closed"),
-        authority_label="Selezionatore", driven_by=om.DRIVEN_BY_CANDIDATE,
+        authority_label="Recruiter", driven_by=om.DRIVEN_BY_CANDIDATE,
     )
     _ensure(
         "Hold", description="Interesting, but not being actively advanced right now — kept for later reconsideration.",
@@ -890,7 +890,7 @@ def seed_default_selection_outcomes(session: Session, *, restaurant_id: int) -> 
             "Sufficient pipeline already exists for this role", "Timing not right for this candidate",
             "Awaiting further information",
         ],
-        target_queue_id=queues.get("Hold"), authority_label="Selezionatore", driven_by=om.DRIVEN_BY_RESTAURANT,
+        target_queue_id=queues.get("Hold"), authority_label="Recruiter", driven_by=om.DRIVEN_BY_RESTAURANT,
     )
     _ensure(
         "Stop", description="This Application will not proceed further right now.",
@@ -900,20 +900,20 @@ def seed_default_selection_outcomes(session: Session, *, restaurant_id: int) -> 
             "Candidate did not respond", "Better-fitting candidates identified",
         ],
         future_contact_policy=om.CONTACT_ALLOWED, target_queue_id=queues.get("Closed"),
-        authority_label="Selezionatore", driven_by=om.DRIVEN_BY_RESTAURANT,
+        authority_label="Recruiter", driven_by=om.DRIVEN_BY_RESTAURANT,
     )
     _ensure(
         "Withdrawn", description="The candidate communicated that they are withdrawing from consideration.",
         lifecycle_effect=om.CLOSED, is_reopenable=True, requires_note=True, requires_reason=False,
         future_contact_policy=om.CONTACT_ALLOWED, target_queue_id=queues.get("Closed"),
-        authority_label="Selezionatore", driven_by=om.DRIVEN_BY_CANDIDATE,
+        authority_label="Recruiter", driven_by=om.DRIVEN_BY_CANDIDATE,
     )
 
     # Task 5A-ALIGN §11/§12 — downstream Training outcomes. Training
     # itself is NOT implemented here (no Trainer UI, no Training domain) —
     # these two rows only let Selection PRESERVE the fact and its history
     # cleanly if/when a future Training integration (or, today, a
-    # Selezionatore recording what a Trainer reported) needs to apply them.
+    # Recruiter recording what a Trainer reported) needs to apply them.
     # "Training Check Not Passed" automatically creates a Candidate Flag
     # (task §12's own "a very strong historical negative fact... should be
     # immediately visible" on any future Application) — never an automatic
@@ -928,13 +928,13 @@ def seed_default_selection_outcomes(session: Session, *, restaurant_id: int) -> 
         ),
         lifecycle_effect=om.CLOSED, is_reopenable=True, requires_note=True, requires_reason=False,
         future_contact_policy=om.CONTACT_ALLOWED, target_queue_id=queues.get("Closed"),
-        authority_label="Selezionatore", driven_by=om.DRIVEN_BY_CANDIDATE,
+        authority_label="Recruiter", driven_by=om.DRIVEN_BY_CANDIDATE,
     )
     _ensure(
         "Training Check Not Passed",
         description=(
             "The candidate reached the required Training Check but the Trainer determined it was not passed. "
-            "The Trainer, not the Selezionatore, is the authority for this result. Training itself is not "
+            "The Trainer, not the Recruiter, is the authority for this result. Training itself is not "
             "implemented in Selection."
         ),
         lifecycle_effect=om.CLOSED, is_reopenable=True, requires_note=True, requires_reason=False,

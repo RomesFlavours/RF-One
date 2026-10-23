@@ -92,7 +92,7 @@ def create_initial_version(
     configuration is carried forward — re-resolved back to live
     Requirement Set / Criterion ids and re-snapshotted fresh, never a
     stale copy of the old snapshot rows themselves. Absent a seed, this is
-    an empty envelope the Selezionatore populates during Rule Review
+    an empty envelope the Recruiter populates during Rule Review
     before confirming."""
 
     seed = session.get(m.SelectionRuleSetVersion, seed_from_version_id) if seed_from_version_id else None
@@ -135,7 +135,7 @@ def confirm_rule_set_version(
     version_id: int | None = None,
 ) -> m.SelectionRuleSetVersion:
     """Task §13/§15 — explicit, mandatory confirmation of the Session's
-    CURRENT Rule Set version. Never personal to a Selezionatore (task §14):
+    CURRENT Rule Set version. Never personal to a Recruiter (task §14):
     one confirmation applies to the whole Session. Activates the Session as
     a side effect (task §13's own SESSION CREATED -> RULES REVIEW ->
     EXPLICIT CONFIRMATION -> ACTIVE flow) — mirrors

@@ -30,7 +30,7 @@ def validate_channel(value: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Advance-to-Phone-Interview communication mode (task §7) — a Selezionatore
+# Advance-to-Phone-Interview communication mode (task §7) — a Recruiter
 # choice at the moment of advancing an Application to PHONE_INTERVIEW, never
 # a persisted Application field of its own (it only ever selects which of
 # the two triggers below fires once).
@@ -56,7 +56,7 @@ def validate_phone_advance_mode(value: str) -> None:
 #                                     Outcome is the template's configured
 #                                     `outcome_definition_id`.
 #   ADVANCE_TO_PHONE_SCHEDULING/
-#   ADVANCE_TO_PHONE_CONTACT      <- an explicit Selezionatore mode choice
+#   ADVANCE_TO_PHONE_CONTACT      <- an explicit Recruiter mode choice
 #                                     when advancing to PHONE_INTERVIEW.
 #   PHONE_HOLD/PHONE_STOP         <- apply_outcome while current_stage ==
 #                                     PHONE_INTERVIEW.
@@ -172,7 +172,7 @@ INBOUND_CLASSIFICATIONS = (
 )
 
 # Task §25 — classifications that record only, with no mandatory alert.
-# Every other classification requires a Selezionatore-visible alert; this is
+# Every other classification requires a Recruiter-visible alert; this is
 # an explicit allow-list so a new classification defaults to "alert" (the
 # safer default) rather than silently going unnoticed.
 NO_ALERT_CLASSIFICATIONS = (
@@ -188,7 +188,7 @@ def validate_classification(value: str) -> None:
 def default_requires_alert(classification: str) -> bool:
     """Task §24/§25 — classification alone never changes an Outcome; the
     only behavior it drives directly is whether a high-visibility
-    Selezionatore alert is raised. `LATE_RESPONSE_AFTER_NO_RESPONSE_STOP` is
+    Recruiter alert is raised. `LATE_RESPONSE_AFTER_NO_RESPONSE_STOP` is
     always a mandatory alert (task §20/§25) purely by virtue of not being in
     the no-alert list above."""
 

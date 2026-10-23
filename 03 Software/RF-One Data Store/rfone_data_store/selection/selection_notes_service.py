@@ -79,7 +79,7 @@ def _application_notes(session: Session, application_id: int) -> list[NoteEntry]
         if note.context_type == "INFORMATION_EVENT":
             # Task 5A-ALIGN §3/§15 — an Information/Event entry is never a
             # decision; format it so it reads unmistakably as a raw,
-            # reported fact rather than a Selezionatore conclusion.
+            # reported fact rather than a Recruiter conclusion.
             author = note.reported_by or author
             stage = note.stage_at_time or stage
             prefix = f"[{note.event_type}] " if note.event_type else "[Reported information] "

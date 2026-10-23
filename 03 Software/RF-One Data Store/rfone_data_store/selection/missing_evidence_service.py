@@ -8,7 +8,7 @@ automatically through the existing Task 5D Communication engine (task §24/
 §30 — no separate reminder system), and moves an Application into the
 existing `SelectionQueue` mechanism for READY FOR PHONE REVIEW once (and
 only once) enough early-stage evidence exists — which never itself performs
-`ADVANCE_TO_PHONE` (task §29, exclusively a Selezionatore Outcome/Stage
+`ADVANCE_TO_PHONE` (task §29, exclusively a Recruiter Outcome/Stage
 action, untouched by this module).
 """
 
@@ -69,7 +69,7 @@ def get_or_create_ready_for_phone_review_queue(session: Session, restaurant_id: 
         return existing
     return queue_svc.create_queue(
         session, restaurant_id=restaurant_id, name=READY_FOR_PHONE_REVIEW_QUEUE_NAME,
-        description="Enough early-stage evidence exists for a Selezionatore to decide whether to invest in a "
+        description="Enough early-stage evidence exists for a Recruiter to decide whether to invest in a "
         "Phone Interview. This is NOT an advance-to-Phone-Interview decision.",
     )
 
@@ -123,7 +123,7 @@ def process_application_readiness(
     exclusive:
       1. an active Hard Disqualifier is present -> the Application is
          "clearly to be stopped" (task §22's own qualifier); do nothing —
-         the Selezionatore decides explicitly, exactly as Primary Screening
+         the Recruiter decides explicitly, exactly as Primary Screening
          already works, untouched here.
       2. required evidence is still missing -> generate/return the (at most
          one) PENDING Missing-Evidence Questionnaire, sending it
@@ -175,7 +175,7 @@ def _generate_and_send_questionnaire(
         ))
     session.flush()
 
-    # Task §24 — no prior Selezionatore approval required.
+    # Task §24 — no prior Recruiter approval required.
     template = tmpl_svc.find_best_template(
         session, restaurant_id=application.restaurant_id, trigger_event=cm.TRIGGER_MISSING_EVIDENCE_QUESTIONNAIRE,
         stage=application.current_stage, role=application.target_role,

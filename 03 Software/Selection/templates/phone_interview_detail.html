@@ -34,7 +34,7 @@
   </div>
   {% endif %}
   {% if q.selezionatore_note %}
-  <p class="muted" style="font-size:.8rem;"><strong>Selezionatore note:</strong> {{ q.selezionatore_note }}</p>
+  <p class="muted" style="font-size:.8rem;"><strong>Recruiter note:</strong> {{ q.selezionatore_note }}</p>
   {% endif %}
   {% if q.carried_forward_reason %}
   <p class="context-note" style="font-size:.78rem;"><strong>Carried forward:</strong> {{ q.carried_forward_reason }}</p>
@@ -50,7 +50,7 @@
       </select>
       <label>Answer (exact, as given — never rewritten)</label>
       <textarea name="answer_text">{{ q.answer_text or '' }}</textarea>
-      <label>Selezionatore note (interpretation — kept separate from the raw answer)</label>
+      <label>Recruiter note (interpretation — kept separate from the raw answer)</label>
       <textarea name="selezionatore_note">{{ q.selezionatore_note or '' }}</textarea>
       <button type="submit" class="btn" style="margin-top:.6rem;">Save answer</button>
     </form>
@@ -71,7 +71,7 @@
     {% if q.gate_evaluation == 'FAILED' %}
     <p class="context-note" style="font-size:.78rem;">
       A failed Gate does not automatically stop this Application — it only makes the Escape Route available below.
-      The Selezionatore remains the decision authority.
+      The Recruiter remains the decision authority.
     </p>
     {% endif %}
   </details>
@@ -217,7 +217,7 @@
   {% endif %}
 
   <details class="edit-toggle">
-    <summary>Selezionatore notes</summary>
+    <summary>Recruiter notes</summary>
     <form method="post" action="{{ url_for('phone_interview_set_notes', plan_id=plan.id) }}" class="req-form">
       <textarea name="notes" placeholder="Free-form notes about this Phone Interview">{{ plan.notes or '' }}</textarea>
       <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save notes</button>
@@ -256,7 +256,7 @@
 <div class="card">
   <h2>Remaining Questions ({{ remaining_questions|length }}) — priority order</h2>
   <p class="muted" style="font-size:.8rem;">
-    Gate Questions first, then CRITICAL &rarr; HIGH &rarr; MEDIUM &rarr; LOW. The Selezionatore may stop at any
+    Gate Questions first, then CRITICAL &rarr; HIGH &rarr; MEDIUM &rarr; LOW. The Recruiter may stop at any
     point — this is never a rigid questionnaire that must be completed in full.
   </p>
   {% if remaining_questions %}
@@ -289,7 +289,7 @@
 <div class="card">
   <h2>Post-Phone-Interview Decision</h2>
   <p class="muted" style="font-size:.82rem;">
-    An explicit Selezionatore decision only — never produced automatically. Closing here carries every still
+    An explicit Recruiter decision only — never produced automatically. Closing here carries every still
     unresolved substantive question forward.
   </p>
   <form method="post" action="{{ url_for('phone_interview_decision', plan_id=plan.id) }}" class="req-form">
@@ -302,7 +302,7 @@
       {% for d in post_interview_decisions %}<option value="{{ d }}">{{ d|replace('_',' ') }}</option>{% endfor %}
     </select>
     <label>Reason</label>
-    <textarea name="reason" placeholder="Selezionatore's reason for this decision"></textarea>
+    <textarea name="reason" placeholder="Recruiter's reason for this decision"></textarea>
     <button type="submit" class="btn" style="margin-top:.6rem;">Record decision</button>
   </form>
 </div>

@@ -62,7 +62,7 @@ def compute_contribution(*, coefficient: float, level: int, direction: str) -> f
 # Evidence source (task §12) — where a Criterion Evaluation's evidence came
 # from. Primary Screening happens mostly before Phone Interview, so the
 # engine itself never depends on later-stage evidence to function — later
-# evidence sources exist in this vocabulary only so an explicit, Selezionatore
+# evidence sources exist in this vocabulary only so an explicit, Recruiter
 # -chosen re-evaluation has somewhere to record them.
 # ---------------------------------------------------------------------------
 
@@ -102,7 +102,7 @@ def compute_priority_index(contributions: list[float]) -> float:
     """Task §5/§9 — the sum of every EVALUATED Criterion's signed
     contribution. Cumulative by design (never "just the strongest
     Criterion"). This number is INTERNAL ONLY — never shown to the
-    Selezionatore (task §5's own explicit prohibition); used only to order
+    Recruiter (task §5's own explicit prohibition); used only to order
     the Primary Screening Queue."""
 
     return sum(contributions)

@@ -45,7 +45,7 @@ IMPORTANCE_ORDER = {CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3}
 # Gate Evaluation (task §6) — a Sine Qua Non Question's own outcome, kept
 # separate from the raw answer text. A FAILED gate never automatically
 # rejects the Application (task §7) — it only makes the Escape Route
-# available to the Selezionatore, who remains the decision authority.
+# available to the Recruiter, who remains the decision authority.
 # ---------------------------------------------------------------------------
 
 PASSED = "PASSED"

@@ -171,7 +171,7 @@ def _create_impacts_and_recalculate(
             impact.recalculated_at = datetime.utcnow()
             impact.notes = (
                 "Résumé-stage evidence refreshed against the new Rule Set version. Any human-confirmed/"
-                "overridden assessment was left untouched. Selezionatore review still required."
+                "overridden assessment was left untouched. Recruiter review still required."
             )
         except Exception as exc:  # pragma: no cover - defensive; never silently swallowed
             impact.recalculation_status = rsm.RECALC_FAILED
@@ -223,7 +223,7 @@ def mark_impact_reviewed(
     session: Session, impact_id: int, *, note: str | None = None,
 ) -> m.SelectionRuleChangeImpact:
     """Task §20 — the ONLY way an impacted Application's `review_status`
-    ever advances: an explicit Selezionatore action. Never automatic."""
+    ever advances: an explicit Recruiter action. Never automatic."""
 
     impact = session.get(m.SelectionRuleChangeImpact, impact_id)
     if impact is None:

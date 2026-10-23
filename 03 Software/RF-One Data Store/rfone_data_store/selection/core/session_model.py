@@ -17,7 +17,7 @@ CLOSED = "CLOSED"
 SESSION_STATUSES = (DRAFT, RULES_REVIEW, ACTIVE, PAUSED, CLOSED)
 
 # Statuses under which "prepare the Session" actions are allowed (task §13:
-# view/edit setup, review rules, modify rules, configure Selezionatori) —
+# view/edit setup, review rules, modify rules, configure Recruiters) —
 # deliberately NOT a strict forward-only sequence (mirrors `stage_model.py`'s
 # own "total freedom" philosophy): a Session may be paused and its rules
 # revisited without being force-marched through a fixed state machine.

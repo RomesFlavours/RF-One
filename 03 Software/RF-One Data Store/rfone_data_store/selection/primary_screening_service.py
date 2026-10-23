@@ -11,7 +11,7 @@ Fundamental boundaries this module enforces:
   authored data (task §1/§10). This module only executes the restaurant's
   own configuration.
 - The internal `priority_index` this module computes is NEVER returned by
-  any function meant for direct Selezionatore display without going
+  any function meant for direct Recruiter display without going
   through `list_normal_pool`/`list_hard_disqualifier_pool`'s own ordering
   — no route/template should ever render the raw number (task §5/§17).
 - A Hard Disqualifier is a categorical gate, never mathematically
@@ -481,7 +481,7 @@ def _recompute_run(session: Session, run: m.PrimaryScreeningRun) -> m.PrimaryScr
 
 
 # ---------------------------------------------------------------------------
-# Criterion Evaluation actions (task §13/§15) — the Selezionatore's own
+# Criterion Evaluation actions (task §13/§15) — the Recruiter's own
 # input; nothing here fires on its own beyond the optional auto-evaluation
 # already applied at run creation.
 # ---------------------------------------------------------------------------
@@ -490,7 +490,7 @@ def human_enter_evaluation(
     session: Session, evaluation_id: int, *, level: int, confidence: str | None = None,
     evidence_source: str | None = None, evidence_text: str | None = None, explanation: str | None = None,
 ) -> m.PrimaryScreeningCriterionEvaluation:
-    """A Selezionatore directly enters a level where none was auto-
+    """A Recruiter directly enters a level where none was auto-
     evaluated (task §15's HUMAN_ENTERED)."""
 
     psm.validate_level(level)
@@ -519,7 +519,7 @@ def human_enter_evaluation(
 
 
 def human_confirm_evaluation(session: Session, evaluation_id: int, *, note: str | None = None) -> m.PrimaryScreeningCriterionEvaluation:
-    """The Selezionatore reviewed the current (system or human) level and
+    """The Recruiter reviewed the current (system or human) level and
     agrees with it — `effective_level` is left exactly as it is; `origin`
     becomes HUMAN_CONFIRMED (task §15)."""
 
@@ -611,7 +611,7 @@ def apply_self_reported_evidence(
     evaluation pass) can use it, without silently inventing certainty
     (task §19 — "missing evidence must never become negative evidence").
     Never overwrites a HUMAN_* origin evaluation (task §27's own "do not
-    overwrite previous evidence") — a Selezionatore's own decision always
+    overwrite previous evidence") — a Recruiter's own decision always
     takes precedence over a candidate's self-report."""
 
     evaluation = session.get(m.PrimaryScreeningCriterionEvaluation, evaluation_id)
@@ -735,13 +735,13 @@ def run_screening_for_unscreened_applications(
 ) -> list[m.PrimaryScreeningRun]:
     """A practical bulk convenience for the task's own "200 Applications"
     use case (task §12: "Processing 200 Applications must not require the
-    Selezionatore to manually open each one first.") — screens every
+    Recruiter to manually open each one first.") — screens every
     Application in this restaurant that does not yet have a Primary
     Screening Run, evaluating every applicable Criterion for each one
     (deterministic Signal mapping first, the generic AI-assisted evaluator
     second — see `create_screening_run`). Never re-screens (and so never
     silently changes) an Application that already has one; use
-    `create_screening_run` directly for an explicit, Selezionatore-chosen
+    `create_screening_run` directly for an explicit, Recruiter-chosen
     re-evaluation (task §12/3D-FIX §13). One Application's failure never
     stops the batch: `create_screening_run` itself never raises for an
     unresolved/failed Criterion, only for a genuinely missing Application."""
@@ -755,7 +755,7 @@ def run_screening_for_unscreened_applications(
 
 
 # ---------------------------------------------------------------------------
-# Selezionatore notes (Task 3D-FIX §16) — reuses `application_service`'s
+# Recruiter notes (Task 3D-FIX §16) — reuses `application_service`'s
 # `ApplicationNote` mechanism (Task 3C-FIX) with a context tag, rather than
 # inventing a parallel notes system for Primary Screening.
 # ---------------------------------------------------------------------------

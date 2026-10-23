@@ -633,7 +633,7 @@ def _original_cv_available(session, candidate: "m.Candidate") -> bool:
 @app.route("/candidate/<int:candidate_id>/original-cv")
 def candidate_original_cv(candidate_id: int):
     """Opens the ORIGINAL uploaded résumé file directly (Task 3C-FIX §5) —
-    never a re-rendering of extracted/interpreted data, so the Selezionatore
+    never a re-rendering of extracted/interpreted data, so the Recruiter
     can always compare RF-One's interpretation against the source document.
     Linked with `target="_blank"` everywhere it appears, so this always
     opens in a new tab/window."""
@@ -982,7 +982,7 @@ def requirement_assessment_override(fit_assessment_id: int, requirement_assessme
 
 # ---------------------------------------------------------------------------
 # Selection Signals + Review Priority (Task 3C) — "which Applications
-# should the Selezionatore review first, and why?" Never a ranking, never
+# should the Recruiter review first, and why?" Never a ranking, never
 # an automatic discard. Routes are thin: every actual operation is
 # delegated to `application_service.py`/`signal_service.py`.
 # ---------------------------------------------------------------------------
@@ -1172,7 +1172,7 @@ def application_detail(application_id: int):
 @app.route("/applications/<int:application_id>/dossier")
 def application_dossier(application_id: int):
     """Task 5B — the Operational Candidate Dossier: one Application-centric
-    page a Selezionatore can read in ~2-3 minutes, aggregating Primary
+    page a Recruiter can read in ~2-3 minutes, aggregating Primary
     Screening, Evidence, Trainable Gaps, Interview journey, Decision/Outcome
     history, Information/Events, candidate history, and Notes. Never a
     parallel data source — `dossier_service.get_application_dossier` is a
@@ -1261,7 +1261,7 @@ def application_take_in_charge(application_id: int):
 
 @app.route("/applications/<int:application_id>/reassign", methods=["POST"])
 def application_reassign(application_id: int):
-    """Task 5C §9 — reassignment by the current owner or a Selezionatore
+    """Task 5C §9 — reassignment by the current owner or a Recruiter
     with configured superior authority; always requires a reason.
     GLOBAL_INTEGRITY_FIX_002 / C-1: the performer is resolved server-side
     (never client-supplied text); only the TARGET (new owner) is selected
@@ -1287,7 +1287,7 @@ def application_reassign(application_id: int):
 @app.route("/applications/<int:application_id>/workflow-status", methods=["POST"])
 def application_set_workflow_status(application_id: int):
     """A legacy, backward-compatible control (Task 5A-FIX §5) — the
-    Selezionatore's choice is translated into the authoritative Stage
+    Recruiter's choice is translated into the authoritative Stage
     transition and/or Outcome application via `workflow_projection_
     service.apply_legacy_workflow_action`; `workflow_status` itself is
     only ever refreshed as the resulting projection, never written
@@ -1327,7 +1327,7 @@ def application_add_note_entry(application_id: int):
 
 @app.route("/applications/<int:application_id>/stage", methods=["POST"])
 def application_set_stage(application_id: int):
-    """Task 5A §2/§3 — the Selezionatore may move an Application to ANY
+    """Task 5A §2/§3 — the Recruiter may move an Application to ANY
     Stage, forward, backward, repeated, or skipped; no validation here
     restricts which Stage may follow which."""
 
@@ -1387,7 +1387,7 @@ def application_apply_outcome(application_id: int):
 @app.route("/applications/<int:application_id>/outcome/reopen", methods=["POST"])
 def application_reopen(application_id: int):
     """Task 5A §7 — even a CLOSED Application may always be reopened by a
-    deliberate Selezionatore action; never technically blocked."""
+    deliberate Recruiter action; never technically blocked."""
 
     with SessionFactory() as session:
         outcome_definition_id = request.form.get("outcome_definition_id", type=int)
@@ -1411,7 +1411,7 @@ def application_reopen(application_id: int):
 def application_record_information_event(application_id: int):
     """Task 5A-ALIGN §3/§15 — a factual INFORMATION/EVENT report (e.g. "a
     server received a phone call from the candidate saying they are
-    withdrawing"), kept clearly separate from a Selezionatore DECISION.
+    withdrawing"), kept clearly separate from a Recruiter DECISION.
     Recording this NEVER itself changes Stage/Outcome/lifecycle — see
     `application_service.record_information_event`'s own docstring."""
 
@@ -1496,7 +1496,7 @@ def application_decision(application_id: int):
 @app.route("/applications/<int:application_id>/reassign-person", methods=["POST"])
 def application_reassign_person(application_id: int):
     """Direct manual identity correction (Task 3C-FIX §2), independent of
-    any system-generated suggestion — e.g. the Selezionatore recognizes the
+    any system-generated suggestion — e.g. the Recruiter recognizes the
     same person by other means."""
 
     with SessionFactory() as session:
@@ -1513,7 +1513,7 @@ def application_reassign_person(application_id: int):
 @app.route("/applications/<int:application_id>/refresh", methods=["POST"])
 def application_refresh_signals(application_id: int):
     """Re-runs résumé-stage Signal detection and recomputes Review Priority
-    — human-touched Signal Observations and a Selezionatore's Review
+    — human-touched Signal Observations and a Recruiter's Review
     Priority override are both left untouched (task's own system/effective
     distinction)."""
 
@@ -1804,7 +1804,7 @@ def priority_policy_rule_remove(policy_id: int, rule_id: int):
 
 # ---------------------------------------------------------------------------
 # CandidatePerson identity resolution (Task 3C-FIX §1/§2) — possible-match
-# suggestions the Selezionatore must explicitly confirm or reject; never an
+# suggestions the Recruiter must explicitly confirm or reject; never an
 # automatic merge.
 # ---------------------------------------------------------------------------
 
@@ -2564,7 +2564,7 @@ def primary_screening_criterion_toggle_active(criterion_id: int):
 # ---------------------------------------------------------------------------
 # Primary Screening Queue (Task 3D) — the operational, aggressive early-
 # stage filter sitting BEFORE Phone Interview. The internal Priority Index
-# orders the queue but is NEVER rendered to the Selezionatore.
+# orders the queue but is NEVER rendered to the Recruiter.
 # ---------------------------------------------------------------------------
 
 
@@ -3033,7 +3033,7 @@ def session_detail(session_id: int):
             scheduling_windows=sched_svc.list_windows_for_session(session, session_id, active_only=False),
             schedulable_stages=cm.SCHEDULABLE_STAGES,
             job_postings=jp_svc.list_job_postings_for_session(session, session_id),
-            # GLOBAL_INTEGRITY_FIX_002 / C-1 — assigning a Selezionatore and
+            # GLOBAL_INTEGRITY_FIX_002 / C-1 — assigning a Recruiter and
             # confirming the Rule Set both select/resolve a stable Acting
             # Identity, never a typed name.
             registered_identities=acting_id_svc.list_identities(session, kind=m.HUMAN_USER, active_only=True),
@@ -3430,7 +3430,7 @@ def session_scheduling_window_create(session_id: int):
 def application_record_inbound(application_id: int):
     """No real SMS/Email webhook exists in this environment (task §30);
     this route is Selection's own honest stand-in for "an inbound message
-    arrived" — used by the validation suite and by a Selezionatore manually
+    arrived" — used by the validation suite and by a Recruiter manually
     recording a phone call/text reported to them."""
 
     with SessionFactory() as session:

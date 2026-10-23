@@ -43,7 +43,7 @@ RECALCULATION_STATUSES = (RECALC_NOT_APPLICABLE, RECALC_PENDING, RECALC_RECALCUL
 # ---------------------------------------------------------------------------
 # Impact review status (task §20) — a retroactive Rule Change must never
 # silently decide anything; every impacted Application starts
-# NEEDS_REVIEW and only an explicit Selezionatore action ever advances it.
+# NEEDS_REVIEW and only an explicit Recruiter action ever advances it.
 # ---------------------------------------------------------------------------
 
 REVIEW_NOT_REQUIRED = "NOT_REQUIRED"

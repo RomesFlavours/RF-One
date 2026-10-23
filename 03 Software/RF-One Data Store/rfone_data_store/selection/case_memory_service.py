@@ -17,7 +17,7 @@ discovery, automatic rule creation, Training/Performance integration
 only), and no code path in this codebase calls `close_case_memory()`
 automatically — it is always an explicit call, exactly like
 `outcome_service.apply_outcome()`/`reopen_application()` are always
-explicit Selezionatore actions, never auto-fired by another service
+explicit Recruiter actions, never auto-fired by another service
 function (task's own "do not redesign the existing Selection workflow").
 """
 
@@ -78,7 +78,7 @@ def freeze_stage_pattern_snapshot(
 
     if divergence_occurred and note_required_if_divergence and not selector_note:
         raise ValueError(
-            "A Selezionatore Note is required when recording a divergence from RF-One's judgment "
+            "A Recruiter Note is required when recording a divergence from RF-One's judgment "
             "(freeze_stage_pattern_snapshot: divergence_occurred=True, note_required_if_divergence=True)."
         )
     if divergence_category is not None:

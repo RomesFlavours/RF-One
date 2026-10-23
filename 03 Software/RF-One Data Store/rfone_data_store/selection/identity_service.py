@@ -5,7 +5,7 @@ known `CandidatePerson`, using confidence-based matching
 email or phone) resolves automatically — the same rule the original Task 3C
 `get_or_create_person_for_candidate` already applied for email, extended
 here to phone. STRONG/POSSIBLE matches (name-based, no exact contact match)
-are surfaced as a `PersonMatchCandidate` for the Selezionatore to confirm or
+are surfaced as a `PersonMatchCandidate` for the Recruiter to confirm or
 reject — never auto-merged ("Prefer false separation over an incorrect
 merge.").
 
@@ -181,7 +181,7 @@ def _close_out_orphaned_pending_matches(session: Session, person_id: int) -> Non
 
 
 def confirm_match(session: Session, match_id: int, *, note: str | None = None) -> m.PersonMatchCandidate:
-    """Selezionatore confirms this suggestion is the same person — safely
+    """Recruiter confirms this suggestion is the same person — safely
     reassigns the Application to the confirmed `CandidatePerson`. Every
     already-recorded CV/Fit Assessment/Signal Observation/note tied to this
     Application is untouched (none of it is keyed off `person_id`)."""
@@ -213,7 +213,7 @@ def confirm_match(session: Session, match_id: int, *, note: str | None = None) -
 
 
 def reject_match(session: Session, match_id: int, *, note: str | None = None) -> m.PersonMatchCandidate:
-    """Selezionatore rejects this suggestion — the Application stays
+    """Recruiter rejects this suggestion — the Application stays
     exactly where it is (on its own, separate `CandidatePerson`); both
     people remain intact."""
 
@@ -233,7 +233,7 @@ def reassign_application(
     session: Session, application_id: int, *, target_person_id: int, note: str | None = None,
 ) -> m.Application:
     """Direct manual reassignment (task §2's general case) — used when a
-    Selezionatore recognizes the correct person outside of a system-
+    Recruiter recognizes the correct person outside of a system-
     generated suggestion. Same safety guarantee as `confirm_match`: only
     `Application.person_id` changes."""
 

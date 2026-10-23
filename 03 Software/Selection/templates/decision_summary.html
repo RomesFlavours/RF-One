@@ -46,13 +46,13 @@
   </p>
   <div class="context-note" style="font-size:.85rem;">{{ summary_text }}</div>
   <p class="muted" style="font-size:.76rem; margin-top:.4rem;">
-    This is a current-state summary, not a recommendation — a decision remains entirely the Selezionatore's own.
+    This is a current-state summary, not a recommendation — a decision remains entirely the Recruiter's own.
   </p>
 </div>
 
 <div class="card decision-section">
   <h2>Move Stage</h2>
-  <p class="muted" style="font-size:.8rem;">The Selezionatore has total freedom to move forward, backward, repeat, or skip Stages.</p>
+  <p class="muted" style="font-size:.8rem;">The Recruiter has total freedom to move forward, backward, repeat, or skip Stages.</p>
   <form method="post" action="{{ url_for('application_set_stage', application_id=application.id) }}" class="req-form">
     <input type="hidden" name="next" value="{{ url_for('application_decision', application_id=application.id) }}">
     <label>New Stage</label>
@@ -105,7 +105,7 @@
   <p class="muted" style="font-size:.8rem;">
     A factual report from staff — e.g. "a server received a phone call from the candidate saying they are
     withdrawing." This is NOT a decision: recording it here never changes Stage, Outcome, or anything else about
-    the Application. The Selezionatore decides separately, above, what (if anything) to do about it.
+    the Application. The Recruiter decides separately, above, what (if anything) to do about it.
   </p>
   <form method="post" action="{{ url_for('application_record_information_event', application_id=application.id) }}" class="req-form">
     <input type="hidden" name="next" value="{{ url_for('application_decision', application_id=application.id) }}">
@@ -246,7 +246,7 @@
       <select name="operational_effect">
         <option value="INFORMATION_ONLY">Informational only</option>
         <option value="WARNING">Show a prominent warning</option>
-        <option value="OPERATIONAL_ACTION">Requires Selezionatore attention</option>
+        <option value="OPERATIONAL_ACTION">Requires Recruiter attention</option>
       </select>
       <label>Note</label>
       <textarea name="note"></textarea>

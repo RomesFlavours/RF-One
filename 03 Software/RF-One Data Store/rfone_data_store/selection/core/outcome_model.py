@@ -11,7 +11,7 @@ py`'s "the SCALE is universal, the MEANING is restaurant data" split).
 No Outcome is technically irreversible (task §7) — this module defines no
 "terminal"/"final" state; CLOSED is a lifecycle effect an Outcome may
 apply, not a system-enforced dead end. Reopening is always a deliberate,
-always-available Selezionatore action (`outcome_service.reopen_application`).
+always-available Recruiter action (`outcome_service.reopen_application`).
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ DEFAULT_FLAG_SCOPE = FLAG_INFORMATIONAL
 # ---------------------------------------------------------------------------
 # Candidate Flag operational effect (task §18) — never an automatic
 # permanent rejection; the strongest configurable effect only requires
-# Selezionatore attention.
+# Recruiter attention.
 # ---------------------------------------------------------------------------
 
 FLAG_INFORMATION_ONLY = "INFORMATION_ONLY"

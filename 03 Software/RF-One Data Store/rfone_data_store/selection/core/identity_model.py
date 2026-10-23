@@ -18,7 +18,7 @@ import re
 # Match confidence tiers. Only VERY_STRONG (identical normalized email or
 # phone) is ever used to auto-attach an Application to an existing person —
 # STRONG/POSSIBLE always produce a `PersonMatchCandidate` suggestion for the
-# Selezionatore to confirm or reject, never an automatic merge.
+# Recruiter to confirm or reject, never an automatic merge.
 # ---------------------------------------------------------------------------
 
 VERY_STRONG = "VERY_STRONG"

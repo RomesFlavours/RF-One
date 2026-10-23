@@ -404,7 +404,7 @@ def compute_and_apply_review_priority(session: Session, application_id: int) -> 
 
     Always sets `review_priority_system`; only updates
     `review_priority_effective` when `review_priority_origin` is still
-    SYSTEM_GENERATED — a Selezionatore override is never silently
+    SYSTEM_GENERATED — a Recruiter override is never silently
     recalculated away (same rule as `RequirementAssessment`/
     `SignalObservation` effective-status handling)."""
 

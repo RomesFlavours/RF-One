@@ -49,7 +49,7 @@
 <!-- D/E. Primary Screening + internal Priority Index + Evidence -->
 <div class="card">
   <h2>D. Primary Screening &amp; E. Evidence</h2>
-  <p class="muted" style="font-size:.78rem;">The internal Priority Index below is shown ONLY in this Audit context — it is never shown in the ordinary Selezionatore operational UI.</p>
+  <p class="muted" style="font-size:.78rem;">The internal Priority Index below is shown ONLY in this Audit context — it is never shown in the ordinary Recruiter operational UI.</p>
   {% for ra in report.screening_runs %}
   <h3 style="font-size:.85rem;">Run #{{ ra.run.id }} ({{ ra.run.created_at.strftime('%Y-%m-%d %H:%M') if ra.run.created_at else '' }}) — internal Priority Index: {{ '%.2f'|format(ra.resulting_priority_index) }} {% if ra.has_active_hard_disqualifier %}<span class="badge status-failed">Active Hard Disqualifier</span>{% endif %}</h3>
   <div class="table-scroll">
@@ -116,7 +116,7 @@
   {% if report.trainable_gaps %}
   <div class="table-scroll">
   <table>
-    <thead><tr><th>Capability</th><th>RF-One initial level</th><th>Selezionatore level</th><th>Effective</th><th>Override reason</th><th>Status</th></tr></thead>
+    <thead><tr><th>Capability</th><th>RF-One initial level</th><th>Recruiter level</th><th>Effective</th><th>Override reason</th><th>Status</th></tr></thead>
     <tbody>
       {% for g in report.trainable_gaps %}
       <tr>

@@ -34,7 +34,7 @@
   <div class="evidence-row neutral"><strong>Raw response:</strong> {{ q.raw_response }}</div>
   {% endif %}
   {% if q.selezionatore_note %}
-  <p class="muted" style="font-size:.8rem;"><strong>Selezionatore note:</strong> {{ q.selezionatore_note }}</p>
+  <p class="muted" style="font-size:.8rem;"><strong>Recruiter note:</strong> {{ q.selezionatore_note }}</p>
   {% endif %}
 
   <details class="edit-toggle">
@@ -46,7 +46,7 @@
       </select>
       <label>Raw response (candidate answer / observation / practical result — exact, never rewritten)</label>
       <textarea name="raw_response">{{ q.raw_response or '' }}</textarea>
-      <label>Selezionatore note (interpretation — kept separate from the raw response)</label>
+      <label>Recruiter note (interpretation — kept separate from the raw response)</label>
       <textarea name="selezionatore_note">{{ q.selezionatore_note or '' }}</textarea>
       <label>Confidence (optional)</label>
       <select name="confidence">
@@ -191,7 +191,7 @@
   {% endif %}
 
   <details class="edit-toggle">
-    <summary>Selezionatore notes</summary>
+    <summary>Recruiter notes</summary>
     <form method="post" action="{{ url_for('in_person_interview_set_notes', plan_id=plan.id) }}" class="req-form">
       <textarea name="notes" placeholder="Free-form notes about this In-Person Interview">{{ plan.notes or '' }}</textarea>
       <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save notes</button>
@@ -274,7 +274,7 @@
           </select>
           <label>Explanation (plain factual description — never a dishonesty conclusion)</label>
           <textarea name="explanation">{{ t.explanation or '' }}</textarea>
-          <label>Selezionatore resolution (optional)</label>
+          <label>Recruiter resolution (optional)</label>
           <textarea name="resolution">{{ t.selezionatore_resolution or '' }}</textarea>
           <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save status</button>
         </form>
@@ -307,7 +307,7 @@
   <h2>Remaining Assessment Items ({{ remaining_items|length }})</h2>
   <p class="muted" style="font-size:.8rem;">
     Ordered by this restaurant's own configured Section order, then importance within a Section. The
-    Selezionatore may stop at any point.
+    Recruiter may stop at any point.
   </p>
   {% if remaining_items %}
     {% for q in remaining_items %}{{ item_card(q) }}{% endfor %}
@@ -344,7 +344,7 @@
 <div class="card">
   <h2>Stop Interview</h2>
   <p class="muted" style="font-size:.82rem;">
-    The Selezionatore controls how long the In-Person Interview lasts. Stopping only records the interview's
+    The Recruiter controls how long the In-Person Interview lasts. Stopping only records the interview's
     own process status — it never produces a hiring decision (not yet implemented).
   </p>
   <form method="post" action="{{ url_for('in_person_interview_stop', plan_id=plan.id) }}" class="req-form">

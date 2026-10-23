@@ -18,7 +18,7 @@ truth" guarantee) — it is still written through the existing
 never called directly by a UI action choosing an arbitrary value anymore.
 
 `apply_legacy_workflow_action()` is the compatibility bridge for the
-handful of old UI/routes that still let a Selezionatore pick a legacy
+handful of old UI/routes that still let a Recruiter pick a legacy
 value directly (task §5) — the Review Queue's workflow-status control, and
 Phone Interview's post-interview decision (task §18). Each legacy choice
 is translated into the equivalent Stage transition and/or Outcome
@@ -216,7 +216,7 @@ def apply_legacy_workflow_action(
         if definition is None:
             # No restaurant-configured Outcome to apply yet — fall back to
             # the pre-5A-FIX direct write rather than blocking a
-            # Selezionatore action outright (see docstring above).
+            # Recruiter action outright (see docstring above).
             return app_svc.set_workflow_status(session, application_id, new_status, reason=reason)
         from . import communication_service as comm_svc
 

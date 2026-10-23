@@ -1,5 +1,5 @@
 """Selection Audit / Explainability service (Task 5F Part B). A PURE,
-READ-ONLY aggregator — reconstructs "why did RF-One and the Selezionatore
+READ-ONLY aggregator — reconstructs "why did RF-One and the Recruiter
 treat this Application this way," across its full HISTORY, not merely its
 current state. Every field is read directly from an already-existing,
 unmodified authoritative service (mirrors `dossier_service.py`'s own
@@ -10,7 +10,7 @@ computes nothing new and never writes anything.
 The internal Primary Screening Priority Index is reconstructed here
 explicitly (task §14) — this is the ONE place in Selection that is allowed
 to surface it, because this is an explicit Audit/Explainability context for
-authorized review, never the ordinary Selezionatore operational UI (which
+authorized review, never the ordinary Recruiter operational UI (which
 must keep hiding it, unchanged).
 """
 
@@ -233,7 +233,7 @@ def build_audit(session: Session, application_id: int) -> AuditReport:
         raise ValueError(f"No Application with id {application_id}")
 
     # Idempotent, matches Dossier's own discipline — never overwrites a
-    # Selezionatore-set gap level.
+    # Recruiter-set gap level.
     tg_svc.generate_trainable_gaps_for_application(session, application_id)
 
     selection_session = session.get(m.SelectionSession, application.session_id) if application.session_id else None

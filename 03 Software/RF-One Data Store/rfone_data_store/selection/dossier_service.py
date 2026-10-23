@@ -4,7 +4,7 @@ aggregation of everything Selection already knows about an Application —
 Primary Screening, Evidence, Trainable Gaps, Interview journey,
 Decision/Outcome history, Information/Events, candidate history, Notes,
 and (5C) which Selection Session it belongs to, its responsible
-Selezionatore, the applicable Rule Set version, and whether it was
+Recruiter, the applicable Rule Set version, and whether it was
 affected by a retroactive Rule Change.
 
 This module is a PURE AGGREGATOR (mirrors `decision_service.py`'s own
@@ -163,7 +163,7 @@ def _training_check_flags(session: Session, application: m.Application) -> list[
 
 
 def _session_context(session: Session, application: m.Application) -> SessionContext:
-    """Task §27 — Session, role, responsible Selezionatore, applicable
+    """Task §27 — Session, role, responsible Recruiter, applicable
     Rule Set version, and Rule-Change-impact status, all read from the
     existing 5C services rather than recomputed here."""
 
@@ -234,7 +234,7 @@ def get_application_dossier(session: Session, application_id: int) -> Applicatio
 
     # Idempotent (task §1/§8) — only creates Trainable Gaps not already
     # recorded, and only withdraws ones no longer evidenced; never
-    # overwrites an existing gap's RF-One or Selezionatore level.
+    # overwrites an existing gap's RF-One or Recruiter level.
     tg_svc.generate_trainable_gaps_for_application(session, application_id)
 
     summary = dec_svc.get_decision_summary(session, application_id)

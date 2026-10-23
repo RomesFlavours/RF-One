@@ -6,7 +6,7 @@ longer independently authoritative — `set_stage` below now refreshes it as
 a derived PROJECTION automatically, so it can never diverge through this
 function).
 
-No "allowed next Stage" validation exists anywhere here: the Selezionatore
+No "allowed next Stage" validation exists anywhere here: the Recruiter
 has total freedom to move forward, backward, repeat, or skip Stages (task
 §2/§10/§32) — `set_stage` accepts any of `core.stage_model.STAGES` as the
 new Stage regardless of the current one.

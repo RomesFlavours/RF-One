@@ -5,7 +5,7 @@ Mirrors every other `core/*_model.py` module's role: vocabulary only, no
 persistence.
 
 `SOURCES` distinguishes an Outcome-driven queue move from a direct,
-independent Selezionatore action — both are recorded identically in
+independent Recruiter action — both are recorded identically in
 `ApplicationQueueMovement` history, distinguished only by this field (task
 §9's own "source/reason").
 """
@@ -18,7 +18,7 @@ OUTCOME_ACTION = "OUTCOME_ACTION"
 # configured automatic move (task's own "RF-One may determine that
 # sufficient early-stage evidence is available"), never a hiring decision
 # and never `ADVANCE_TO_PHONE` (task §29 — that stays exclusively a
-# Selezionatore-driven Outcome/Stage action).
+# Recruiter-driven Outcome/Stage action).
 AUTOMATIC_READINESS = "AUTOMATIC_READINESS"
 
 SOURCES = (MANUAL, OUTCOME_ACTION, AUTOMATIC_READINESS)

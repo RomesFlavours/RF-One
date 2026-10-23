@@ -1,7 +1,7 @@
 """Primary Screening — generic, AI-assisted Criterion evaluator (Task
 3D-FIX). Task 3D's `_auto_evaluate_from_signal` only ever resolves a
 Criterion explicitly linked to a Signal Definition; every other
-restaurant-authored Criterion stayed `NOT_EVALUATED` until a Selezionatore
+restaurant-authored Criterion stayed `NOT_EVALUATED` until a Recruiter
 manually entered a level — defeating the "200 Applications -> automatically
 proposed evaluations -> ~15-20 reviewed first" operational purpose. This
 module is the generic fallback: it interprets an ARBITRARY restaurant-
@@ -308,7 +308,7 @@ def _format_evidence_package(package: dict[str, list[EvidenceRef]]) -> str:
 def build_prompt(criterion_snapshot: m.PrimaryScreeningCriterionSnapshot, package: dict[str, list[EvidenceRef]]) -> str:
     allowed = ", ".join(criterion_snapshot.evidence_sources_allowed or []) or "(not restricted by the restaurant — use judgment)"
 
-    return f"""You are assisting a restaurant's Selezionatore (hiring reviewer) with Primary Screening of a job Application. Evaluate exactly ONE restaurant-defined Screening Criterion, strictly against the evidence listed below. You must NEVER invent a candidate fact that is not present in that evidence.
+    return f"""You are assisting a restaurant's Recruiter (hiring reviewer) with Primary Screening of a job Application. Evaluate exactly ONE restaurant-defined Screening Criterion, strictly against the evidence listed below. You must NEVER invent a candidate fact that is not present in that evidence.
 
 CRITERION
 Name: {criterion_snapshot.name}

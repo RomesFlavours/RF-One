@@ -153,7 +153,7 @@ def on_stage_transition(
     session: Session, application: m.Application, transition: m.ApplicationStageTransition, *,
     communication_mode: str | None = None, performed_by: str | None = None,
 ) -> m.CandidateCommunication | None:
-    """Task §7/§9 — fires when the Selezionatore advances to PHONE_INTERVIEW
+    """Task §7/§9 — fires when the Recruiter advances to PHONE_INTERVIEW
     (mode-dependent) or to IN_PERSON_PRACTICAL (task §9's ADVANCE_TO_IN_PERSON).
     Any OTHER Stage transition (backward, repeated, to APPLICATION_RECEIVED/
     PRIMARY_SCREENING) triggers no automatic communication — never
@@ -196,7 +196,7 @@ def on_stage_transition(
 def on_outcome_decision(
     session: Session, application: m.Application, decision: m.SelectionOutcomeDecision,
 ) -> m.CandidateCommunication | None:
-    """Task §6/§8/§9 — fires when a Selezionatore Outcome decision is
+    """Task §6/§8/§9 — fires when a Recruiter Outcome decision is
     applied (Primary Screening Stop, Phone Hold/Stop, In-Person Hold/Stop/
     Hirable...). Which specific communication (if any) fires is entirely
     determined by whether the restaurant configured a Template naming BOTH
@@ -219,7 +219,7 @@ def on_outcome_decision(
 
 
 # ---------------------------------------------------------------------------
-# Appointment confirmation (task §13) — always automatic, no Selezionatore
+# Appointment confirmation (task §13) — always automatic, no Recruiter
 # approval; called by `scheduling_service.book_slot` right after a slot is
 # confirmed.
 # ---------------------------------------------------------------------------

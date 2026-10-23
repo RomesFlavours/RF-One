@@ -43,7 +43,7 @@ def create_session(
     an explicitly given prior Session (task §23: "start from the COMPLETE
     CURRENT Rule Set that resulted from prior Session learning"), or, absent
     that, auto-detected as the most recent prior Session for the SAME
-    restaurant/role, or else an empty envelope the Selezionatore populates
+    restaurant/role, or else an empty envelope the Recruiter populates
     during Rule Review. The new version is never pre-confirmed (task §24 —
     confirmation is always a fresh, explicit act)."""
 
@@ -176,13 +176,13 @@ def assert_operational(session: Session, session_id: int) -> m.SelectionSession:
 
 
 # ---------------------------------------------------------------------------
-# Selezionatore assignment (task §4/§5)
+# Recruiter assignment (task §4/§5)
 # ---------------------------------------------------------------------------
 
 def assign_selezionatore(
     session: Session, session_id: int, *, acting_identity_id: int, authority_level_id: int | None = None,
 ) -> m.SelectionSessionAssignment:
-    """Assigns (or reactivates/re-configures) one Selezionatore on a
+    """Assigns (or reactivates/re-configures) one Recruiter on a
     Session, identified by a stable `ActingIdentity` (GLOBAL_INTEGRITY_FIX_002
     / C-1 — never a freely-typed name). `selezionatore_name` is still stored,
     but only ever DERIVED from `acting_identity.display_name` — it is display
@@ -192,7 +192,7 @@ def assign_selezionatore(
 
     identity = session.get(m.ActingIdentity, acting_identity_id)
     if identity is None or not identity.is_active:
-        raise ValueError("Assigning a Selezionatore requires a valid, active Acting Identity.")
+        raise ValueError("Assigning a Recruiter requires a valid, active Acting Identity.")
 
     existing = session.scalars(
         select(m.SelectionSessionAssignment).where(

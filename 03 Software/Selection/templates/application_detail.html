@@ -77,7 +77,7 @@
         {% for p in priority_categories %}<option value="{{ p }}" {{ 'selected' if p == application.review_priority_effective else '' }}>{{ p|replace('_',' ') }}</option>{% endfor %}
       </select>
       <label>Reason</label>
-      <textarea name="reason" placeholder="Selezionatore's reason for this override"></textarea>
+      <textarea name="reason" placeholder="Recruiter's reason for this override"></textarea>
       <button type="submit" class="btn" style="margin-top:.6rem;">Override priority</button>
     </form>
   </details>
@@ -101,7 +101,7 @@
 <div class="card">
   <h2>Workflow Status</h2>
   <p class="muted" style="font-size:.8rem;">
-    A separate operational decision from Review Priority — Review Priority NEVER sets this; only the Selezionatore does.
+    A separate operational decision from Review Priority — Review Priority NEVER sets this; only the Recruiter does.
   </p>
   <form method="post" action="{{ url_for('application_set_workflow_status', application_id=application.id) }}" class="req-form">
     <label>New status</label>
@@ -292,7 +292,7 @@
 </div>
 
 <div class="card">
-  <h2>Selezionatore Notes ({{ notes|length }})</h2>
+  <h2>Recruiter Notes ({{ notes|length }})</h2>
   <p class="muted" style="font-size:.8rem;">
     Free-form notes, kept separate from evidence — they never change a Fit Assessment or Signal Observation on their own.
   </p>

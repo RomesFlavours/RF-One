@@ -22,7 +22,7 @@
   <label>What should this Outcome be called?</label>
   <input type="text" name="name" value="{{ d.name if d else '' }}" placeholder="e.g. Hire, Hold, Stop, Withdrawn, Not a fit right now" required>
 
-  <label>Describe it in plain language — when would a Selezionatore choose this?</label>
+  <label>Describe it in plain language — when would a Recruiter choose this?</label>
   <textarea name="description" placeholder="e.g. The candidate communicated they are withdrawing from consideration.">{{ d.description if d else '' }}</textarea>
 
   <label>What should happen to the Application when this Outcome is chosen?</label>
@@ -84,7 +84,7 @@
   <select name="candidate_flag_operational_effect">
     {% for e in flag_operational_effects %}
     <option value="{{ e }}" {{ 'selected' if d and d.candidate_flag_operational_effect == e else '' }}>
-      {{ {'INFORMATION_ONLY': 'Informational only', 'WARNING': 'Show a prominent warning', 'OPERATIONAL_ACTION': 'Requires Selezionatore attention (never an automatic rejection)'}[e] }}
+      {{ {'INFORMATION_ONLY': 'Informational only', 'WARNING': 'Show a prominent warning', 'OPERATIONAL_ACTION': 'Requires Recruiter attention (never an automatic rejection)'}[e] }}
     </option>
     {% endfor %}
   </select>
@@ -93,8 +93,8 @@
   <label>Flag expires after how many days? (optional — leave blank for no expiration)</label>
   <input type="text" name="candidate_flag_expires_after_days" value="{{ d.candidate_flag_expires_after_days if d and d.candidate_flag_expires_after_days is not none else '' }}">
 
-  <label>Who normally has authority to apply this Outcome? (informational only — e.g. "Selezionatore", "Trainer")</label>
-  <input type="text" name="authority_label" value="{{ d.authority_label if d else '' }}" placeholder="Selezionatore">
+  <label>Who normally has authority to apply this Outcome? (informational only — e.g. "Recruiter", "Trainer")</label>
+  <input type="text" name="authority_label" value="{{ d.authority_label if d else '' }}" placeholder="Recruiter">
   <label>Is this Outcome normally restaurant-driven or candidate-driven?</label>
   <select name="driven_by">
     <option value="">(unspecified)</option>
@@ -125,7 +125,7 @@
         Future contact: {{ d.future_contact_policy|replace('_',' ')|title }}.
         {% if d.creates_candidate_flag %}Creates a Candidate Flag ("{{ d.candidate_flag_name or d.name }}", {{ d.candidate_flag_operational_effect|replace('_',' ')|title }}).{% endif %}
         {% if d.target_queue %}Moves the Application to the "{{ d.target_queue.name }}" queue.{% endif %}
-        {% if d.authority_label %}Authority: {{ d.authority_label }}.{% endif %}
+        {% if d.authority_label %}Authority: {{ 'Recruiter' if d.authority_label == 'Selezionatore' else d.authority_label }}.{% endif %}
         {% if d.driven_by %}{{ d.driven_by|title }}-driven.{% endif %}
       </p>
 

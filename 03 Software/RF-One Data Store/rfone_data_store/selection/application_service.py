@@ -13,7 +13,7 @@ this layer alongside it; a documented, deliberate scope decision.
 Identity resolution (Task 3C-FIX — see `identity_service.py`) is
 confidence-based: an exact normalized email or phone match resolves
 automatically; a name-only match is never enough on its own and instead
-surfaces a `PersonMatchCandidate` suggestion for the Selezionatore.
+surfaces a `PersonMatchCandidate` suggestion for the Recruiter.
 """
 
 from __future__ import annotations
@@ -161,7 +161,7 @@ def list_applications(
     operational severity HIGH_PRIORITY -> INTERESTING -> STANDARD ->
     LOW_PRIORITY (never the category string alphabetically), always reading
     the EFFECTIVE Review Priority (`Application.review_priority_effective`,
-    which already reflects any Selezionatore override). Within the same
+    which already reflects any Recruiter override). Within the same
     priority category, Applications are ordered by application date (newest
     first), then by Application id (descending) as a deterministic
     tie-breaker — a display/order policy only, never a candidate ranking."""
@@ -259,7 +259,7 @@ def add_note(
     context_type: str | None = None, context_id: int | None = None, event_type: str | None = None,
     reported_by: str | None = None, original_source: str | None = None, stage_at_time: str | None = None,
 ) -> m.ApplicationNote:
-    """Appends one Selezionatore note (Task 3C-FIX §11) — append-only
+    """Appends one Recruiter note (Task 3C-FIX §11) — append-only
     history, never a single overwritten field. Deliberately separate from
     evidence: adding a note never touches a Signal Observation, a Fit
     Assessment, or Review Priority.
@@ -273,7 +273,7 @@ def add_note(
 
     `event_type`/`reported_by`/`original_source`/`stage_at_time` (Task
     5A-ALIGN §3/§15) are used only by `record_information_event()` below,
-    for `context_type="INFORMATION_EVENT"` rows — an ordinary Selezionatore
+    for `context_type="INFORMATION_EVENT"` rows — an ordinary Recruiter
     note leaves all four `None`."""
 
     application = session.get(m.Application, application_id)
@@ -297,13 +297,13 @@ def record_information_event(
     reported_by: str | None = None, original_source: str | None = None,
 ) -> m.ApplicationNote:
     """Task 5A-ALIGN §3/§15 — a factual INFORMATION/EVENT, distinct from a
-    Selezionatore DECISION (`outcome_service.apply_outcome`). Example: "a
+    Recruiter DECISION (`outcome_service.apply_outcome`). Example: "a
     server received a phone call from a candidate saying they are
     withdrawing." This function does exactly one thing — append one
     `ApplicationNote` row tagged `context_type="INFORMATION_EVENT"` — and
     NOTHING else: it never touches `Application.current_stage`,
     `.lifecycle_state`, `.workflow_status`, or any Outcome Decision. The
-    Selezionatore alone decides what (if anything) to do with this
+    Recruiter alone decides what (if anything) to do with this
     information, via a completely separate, explicit
     `outcome_service.apply_outcome()` call."""
 

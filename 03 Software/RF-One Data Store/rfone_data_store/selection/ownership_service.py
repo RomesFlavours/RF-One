@@ -1,6 +1,6 @@
 """Application Ownership — service layer (Task 5C §6-§10). ONE active
 operational owner per Application at a time (task §10 — never competing
-concurrent owners); non-owner Selezionatori assigned to the same Session
+concurrent owners); non-owner Recruiters assigned to the same Session
 remain read-only (task §8) until ownership is explicitly transferred
 (task §9). Authority for reassignment reuses `SelectionAuthorityLevel` via
 the consolidated `authority_service` (GLOBAL_INTEGRITY_FIX_002 / I-4)
@@ -169,7 +169,7 @@ def reassign(
     if not can_reassign(session, application_id, performer.id):
         raise ValueError(
             f"{performer.display_name} is not authorized to reassign this Application — not the current owner "
-            f"({current.owner_name}), and not a Selezionatore with configured superior authority over them."
+            f"({current.owner_name}), and not a Recruiter with configured superior authority over them."
         )
 
     current.is_active = False
@@ -233,7 +233,7 @@ def assert_can_operate(session: Session, application_id: int, actor_identity_id:
 
     if not can_write(session, application_id, actor_identity_id):
         current = get_current_owner(session, application_id)
-        owner = current.owner_name if current else "another Selezionatore"
+        owner = current.owner_name if current else "another Recruiter"
         raise ValueError(
             f"This Acting Identity has read-only access to this Application — it is currently taken in charge "
             f"by {owner}. Reassign ownership first."

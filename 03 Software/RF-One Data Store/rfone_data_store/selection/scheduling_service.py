@@ -2,7 +2,7 @@
 5D-MICRO-FIX §1-§9). The NORMAL/default scope of an
 `InterviewSchedulingWindow` is a Selection Session + Interview Stage —
 offered ONCE and shared by every eligible Application in that Session
-(task 5D-MICRO-FIX §1: "Do NOT require the Selezionatore to recreate
+(task 5D-MICRO-FIX §1: "Do NOT require the Recruiter to recreate
 identical windows for every candidate"). An Application-specific window
 (`application_id` set) remains supported as an optional, genuinely
 exceptional override (task §3). `InterviewAppointment` stays

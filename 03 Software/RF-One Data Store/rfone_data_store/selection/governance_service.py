@@ -9,7 +9,7 @@ require which configured level, but NO approval workflow/enforcement
 engine is implemented here (task's own explicit "do not implement a
 complex approval UI... create the correct domain/configuration foundation
 only"). An ordinary case-level override (`outcome_service.apply_outcome`,
-a Selezionatore Note) is never gated by this module — only a future,
+a Recruiter Note) is never gated by this module — only a future,
 explicit Organization-Memory-modification workflow would consult it
 (task §23's "case-level decisions should remain operationally easy;
 changing Organization Memory should be intentionally difficult")."""

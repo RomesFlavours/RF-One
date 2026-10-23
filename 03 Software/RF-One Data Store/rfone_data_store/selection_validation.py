@@ -1545,17 +1545,17 @@ def _assert_selection_signals(session_factory: sessionmaker[Session], result: Va
         )
 
         # =====================================================================
-        # N: Selezionatore override remains distinguishable from system
+        # N: Recruiter override remains distinguishable from system
         # priority, and survives a refresh.
         # =====================================================================
-        sig_svc.human_override_priority(session, application2.id, new_priority=sm.LOW_PRIORITY, reason="Selezionatore judgment")
+        sig_svc.human_override_priority(session, application2.id, new_priority=sm.LOW_PRIORITY, reason="Recruiter judgment")
         session.commit()
         sig_svc.generate_resume_stage_signals(session, application2.id)
         session.commit()
         session.expire_all()
         overridden_application = app_svc.get_application(session, application2.id)
         result.check(
-            "3C-N: a Selezionatore's Review Priority override remains distinguishable from the system "
+            "3C-N: a Recruiter's Review Priority override remains distinguishable from the system "
             "value and survives a refresh (never silently recalculated away)",
             overridden_application.review_priority_origin == fam.HUMAN_OVERRIDDEN
             and overridden_application.review_priority_effective == sm.LOW_PRIORITY
@@ -1665,7 +1665,7 @@ def _assert_selection_3c_fix(session_factory: sessionmaker[Session], result: Val
 
         # =====================================================================
         # C/D/E: an ambiguous (name-only) match never auto-merges — it
-        # surfaces as a pending suggestion the Selezionatore must confirm
+        # surfaces as a pending suggestion the Recruiter must confirm
         # or reject.
         # =====================================================================
         app_morgan_1 = _upload(
@@ -1685,19 +1685,19 @@ def _assert_selection_3c_fix(session_factory: sessionmaker[Session], result: Val
         morgan_match = next((x for x in pending if x.application_id == app_morgan_2.id), None)
         result.check(
             "3C-FIX-C2: the ambiguous name match is surfaced as a PENDING PersonMatchCandidate suggestion "
-            "for the Selezionatore, not applied automatically",
+            "for the Recruiter, not applied automatically",
             morgan_match is not None and morgan_match.status == idm.PENDING
             and morgan_match.confidence in (idm.STRONG, idm.POSSIBLE),
         )
 
         # Confirm flow (D) — reassigns the Application, preserves its data.
         pre_confirm_candidate_id = app_morgan_2.candidate_id
-        identity_svc.confirm_match(session, morgan_match.id, note="Same person, verified by Selezionatore")
+        identity_svc.confirm_match(session, morgan_match.id, note="Same person, verified by Recruiter")
         session.commit()
         session.expire_all()
         confirmed_application = app_svc.get_application(session, app_morgan_2.id)
         result.check(
-            "3C-FIX-D: the Selezionatore can confirm a possible match — the Application is reassigned to "
+            "3C-FIX-D: the Recruiter can confirm a possible match — the Application is reassigned to "
             "the confirmed CandidatePerson, and its own CV/candidate row is untouched",
             confirmed_application.person_id == app_morgan_1.person_id
             and confirmed_application.candidate_id == pre_confirm_candidate_id
@@ -1715,12 +1715,12 @@ def _assert_selection_3c_fix(session_factory: sessionmaker[Session], result: Val
         )
         pending = identity_svc.list_pending_matches(session, restaurant_id=restaurant.id)
         casey_match = next((x for x in pending if x.application_id == app_casey_2.id), None)
-        identity_svc.reject_match(session, casey_match.id, note="Different people, verified by Selezionatore")
+        identity_svc.reject_match(session, casey_match.id, note="Different people, verified by Recruiter")
         session.commit()
         session.expire_all()
         rejected_application = app_svc.get_application(session, app_casey_2.id)
         result.check(
-            "3C-FIX-E: the Selezionatore can reject a possible match — both CandidatePerson records "
+            "3C-FIX-E: the Recruiter can reject a possible match — both CandidatePerson records "
             "remain intact and separate",
             rejected_application.person_id == app_casey_2.person_id
             and rejected_application.person_id != app_casey_1.person_id
@@ -1890,12 +1890,12 @@ def _assert_selection_3c_fix(session_factory: sessionmaker[Session], result: Val
         # R: ADVANCE/HOLD/STOP reason is stored alongside the status.
         # =====================================================================
         result.check(
-            "3C-FIX-R: the Selezionatore's reason for an ADVANCE_TO_PHONE/HOLD/STOP decision is stored",
+            "3C-FIX-R: the Recruiter's reason for an ADVANCE_TO_PHONE/HOLD/STOP decision is stored",
             after_priority_recompute.workflow_status_reason == "Strong apparent fit",
         )
 
         # =====================================================================
-        # S: Selezionatore notes never become evidence.
+        # S: Recruiter notes never become evidence.
         # =====================================================================
         evidence_count_before_note = len(
             next(o for o in sig_svc.list_observations(session, workflow_app.id) if o.signal_definition_id == definition_for_f.id).evidence_items
@@ -1908,7 +1908,7 @@ def _assert_selection_3c_fix(session_factory: sessionmaker[Session], result: Val
         )
         notes_after = app_svc.list_notes(session, workflow_app.id)
         result.check(
-            "3C-FIX-S: a Selezionatore note is preserved with a timestamp and never becomes Signal "
+            "3C-FIX-S: a Recruiter note is preserved with a timestamp and never becomes Signal "
             "evidence",
             len(notes_after) == 1 and notes_after[0].note_text.startswith("Fourth application")
             and notes_after[0].created_at is not None
@@ -1923,7 +1923,7 @@ def _assert_selection_3c_fix(session_factory: sessionmaker[Session], result: Val
         change_summary = app_svc.get_application_change_summary(session, app_email_2.id)
         result.check(
             "3C-FIX-T: a repeated applicant with materially new experience gets a facts-based change "
-            "summary — never an automatic penalty (workflow status stays whatever the Selezionatore set, "
+            "summary — never an automatic penalty (workflow status stays whatever the Recruiter set, "
             "never auto-changed by the comparison itself)",
             change_summary is not None and change_summary.has_material_change,
         )
@@ -1932,7 +1932,7 @@ def _assert_selection_3c_fix(session_factory: sessionmaker[Session], result: Val
         # U: system priority and effective (overridden) priority remain
         # distinguishable.
         # =====================================================================
-        sig_svc.human_override_priority(session, app_email_1.id, new_priority=sm.LOW_PRIORITY, reason="Selezionatore judgment")
+        sig_svc.human_override_priority(session, app_email_1.id, new_priority=sm.LOW_PRIORITY, reason="Recruiter judgment")
         session.commit()
         session.expire_all()
         overridden = app_svc.get_application(session, app_email_1.id)
@@ -2058,7 +2058,7 @@ def _assert_selection_3c_micro_fix(session_factory: sessionmaker[Session], resul
             ordered_ids.index(app_standard.id) < ordered_ids.index(app_low.id),
         )
         result.check(
-            "3C-MICRO-FIX-D: a Selezionatore-overridden EFFECTIVE Review Priority controls the queue "
+            "3C-MICRO-FIX-D: a Recruiter-overridden EFFECTIVE Review Priority controls the queue "
             "position even when it differs from the system-proposed priority",
             app_high_older.review_priority_system == sm.LOW_PRIORITY
             and app_high_older.review_priority_effective == sm.HIGH_PRIORITY
@@ -2112,7 +2112,7 @@ def _assert_selection_4a_phone_interview(session_factory: sessionmaker[Session],
     restaurant-configured Core Question library (incl. per-restaurant
     separation), Gate/Sine-Qua-Non ordering, Dynamic Question generation
     from Fit Assessment/Signal evidence, Escape Route, answer/evidence
-    capture, follow-ups, carry-forward, and the Selezionatore-only post-
+    capture, follow-ups, carry-forward, and the Recruiter-only post-
     interview decision. Own dedicated session/restaurants, real commits,
     real cleanup (same reasoning as `_assert_selection_3c_fix` above)."""
 
@@ -2348,7 +2348,7 @@ def _assert_selection_4a_phone_interview(session_factory: sessionmaker[Session],
         courtesy_questions = pi_svc.get_courtesy_questions(session, plan.id)
         unresolved_ids = {q.id for q in pi_svc.list_question_instances(session, plan.id) if q.status == pim.UNRESOLVED}
         result.check(
-            "4A-K: the Selezionatore can activate the Escape Route",
+            "4A-K: the Recruiter can activate the Escape Route",
             plan.status == pim.ESCAPE_ROUTE and plan.escape_route_activated_at is not None,
         )
         result.check(
@@ -2371,7 +2371,7 @@ def _assert_selection_4a_phone_interview(session_factory: sessionmaker[Session],
         session.expire_all()
         answered = session.get(m.PhoneInterviewQuestionInstance, high_instance.id)
         result.check(
-            "4A-M: the exact raw answer text is preserved, kept separate from the Selezionatore's own note",
+            "4A-M: the exact raw answer text is preserved, kept separate from the Recruiter's own note",
             answered.answer_text == raw_answer and answered.selezionatore_note != raw_answer,
         )
 
@@ -2490,7 +2490,7 @@ def _assert_selection_4a_phone_interview(session_factory: sessionmaker[Session],
         # =====================================================================
         post_decision_instance_count = len(pi_svc.list_question_instances(session, plan.id))
         result.check(
-            "4A-U: the Selezionatore can stop the interview at variable length without losing state — no "
+            "4A-U: the Recruiter can stop the interview at variable length without losing state — no "
             "Question Instance is ever deleted",
             post_decision_instance_count == pre_decision_instance_count,
         )
@@ -2507,12 +2507,12 @@ def _assert_selection_4a_phone_interview(session_factory: sessionmaker[Session],
 
         # =====================================================================
         # W/X: the post-Phone-Interview decision is exactly what the
-        # Selezionatore recorded — never something else, never automatic.
+        # Recruiter recorded — never something else, never automatic.
         # =====================================================================
         application_final = app_svc.get_application(session, application.id)
         result.check(
             "4A-W/4A-X: the post-Phone-Interview decision (ADVANCE_TO_IN_PERSON/HOLD/STOP) is recorded exactly "
-            "as the Selezionatore chose, and only then",
+            "as the Recruiter chose, and only then",
             application_final.workflow_status == apm.HOLD
             and application_final.workflow_status_reason == "Failed weekend-availability Gate; escape route used.",
         )
@@ -2970,7 +2970,7 @@ def _assert_selection_4b_in_person_interview(session_factory: sessionmaker[Sessi
         ip_svc.set_comparison_status(
             session, thread_all_three.id, status=ipm.EXPLAINED_DIFFERENCE,
             explanation="The candidate clarified during In-Person that both factors contributed to leaving.",
-            resolution="Selezionatore accepts the clarification as sufficient.",
+            resolution="Recruiter accepts the clarification as sufficient.",
         )
         session.commit()
         session.expire_all()
@@ -3023,7 +3023,7 @@ def _assert_selection_4b_in_person_interview(session_factory: sessionmaker[Sessi
         plan_after_stop = ip_svc.get_plan(session, plan.id)
         post_stop_count = len(ip_svc.list_item_instances(session, plan.id))
         result.check(
-            "4B-Z: the Selezionatore can stop the In-Person Interview early without losing any completed "
+            "4B-Z: the Recruiter can stop the In-Person Interview early without losing any completed "
             "evidence (no Assessment Item is ever deleted, and already-DONE items keep their recorded response)",
             plan_after_stop.status == ipm.STOPPED_EARLY and post_stop_count == pre_stop_count
             and session.get(m.AssessmentItemInstance, question_instance.id).raw_response == "I had problems with management.",
@@ -3391,13 +3391,13 @@ def _assert_selection_3d_primary_screening(session_factory: sessionmaker[Session
         # =====================================================================
         recency_eval = next(e for e in ps_svc.list_evaluations(session, run1.id) if e.criterion_snapshot.criterion_id == recency_criterion.id)
         index_before_override = run1_after.priority_index
-        ps_svc.human_override_evaluation(session, recency_eval.id, level=1, reason="Selezionatore judges this less relevant.")
+        ps_svc.human_override_evaluation(session, recency_eval.id, level=1, reason="Recruiter judges this less relevant.")
         session.commit()
         session.expire_all()
         recency_eval_after = session.get(m.PrimaryScreeningCriterionEvaluation, recency_eval.id)
         run1_after_override = ps_svc.get_run(session, run1.id)
         result.check(
-            "3D-L: a Selezionatore override changes the EFFECTIVE level while preserving the original SYSTEM "
+            "3D-L: a Recruiter override changes the EFFECTIVE level while preserving the original SYSTEM "
             "level",
             recency_eval_after.system_level == 4 and recency_eval_after.effective_level == 1
             and recency_eval_after.origin == psm.HUMAN_OVERRIDDEN,
@@ -3422,12 +3422,12 @@ def _assert_selection_3d_primary_screening(session_factory: sessionmaker[Session
         result.check("3D-R-setup: overriding a Hard Disqualifier without a reason is rejected", raised)
 
         ps_svc.override_hard_disqualifier(
-            session, availability_eval_2.id, reason="Selezionatore confirmed candidate can now work required hours.",
+            session, availability_eval_2.id, reason="Recruiter confirmed candidate can now work required hours.",
         )
         session.commit()
         session.expire_all()
         result.check(
-            "3D-R: the Selezionatore can override a Hard Disqualifier with a mandatory reason, preserving the "
+            "3D-R: the Recruiter can override a Hard Disqualifier with a mandatory reason, preserving the "
             "original system-detected state",
             session.get(m.PrimaryScreeningCriterionEvaluation, availability_eval_2.id).hard_disqualifier_overridden is True
             and session.get(m.PrimaryScreeningCriterionEvaluation, availability_eval_2.id).effective_level == 4
@@ -3919,17 +3919,17 @@ def _assert_selection_3d_fix(session_factory: sessionmaker[Session], result: Val
         )
 
         # =====================================================================
-        # T: Selezionatore override preserves the original system level and
+        # T: Recruiter override preserves the original system level and
         # evidence — never overwritten.
         # =====================================================================
         original_system_level = cs_eval.system_level
         original_evidence_items = list(cs_eval.evidence_items)
-        ps_svc.human_override_evaluation(session, cs_eval.id, level=1, reason="Selezionatore discounts résumé wording")
+        ps_svc.human_override_evaluation(session, cs_eval.id, level=1, reason="Recruiter discounts résumé wording")
         session.commit()
         session.expire_all()
         overridden_eval = session.get(m.PrimaryScreeningCriterionEvaluation, cs_eval.id)
         result.check(
-            "3D-FIX-T: a Selezionatore override changes effective_level but preserves the original "
+            "3D-FIX-T: a Recruiter override changes effective_level but preserves the original "
             "system_level and its evidence exactly",
             overridden_eval.effective_level == 1 and overridden_eval.system_level == original_system_level == 4
             and overridden_eval.evidence_items == original_evidence_items
@@ -3951,7 +3951,7 @@ def _assert_selection_3d_fix(session_factory: sessionmaker[Session], result: Val
         # AD: the existing Task 3D Hard Disqualifier override still works,
         # now exercised against an AUTOMATICALLY (AI-assisted) detected one.
         # =====================================================================
-        ps_svc.override_hard_disqualifier(session, hard_eval.id, reason="Selezionatore accepts the risk")
+        ps_svc.override_hard_disqualifier(session, hard_eval.id, reason="Recruiter accepts the risk")
         session.commit()
         session.expire_all()
         run_after_override = ps_svc.get_run(session, run.id)
@@ -3978,13 +3978,13 @@ def _assert_selection_3d_fix(session_factory: sessionmaker[Session], result: Val
         all_application_notes = app_svc.list_notes(session, app_main.id)
         run_after_notes = ps_svc.get_run(session, run.id)
         result.check(
-            "3D-FIX-Y: a Criterion Evaluation supports a Selezionatore note, timestamped and queryable by "
+            "3D-FIX-Y: a Criterion Evaluation supports a Recruiter note, timestamped and queryable by "
             "that specific evaluation",
             len(eval_notes) == 1 and eval_notes[0].note_text.startswith("Reviewed résumé wording")
             and eval_notes[0].created_at is not None,
         )
         result.check(
-            "3D-FIX-Z: the overall Screening Run supports a Selezionatore note, distinct from a Criterion "
+            "3D-FIX-Z: the overall Screening Run supports a Recruiter note, distinct from a Criterion "
             "Evaluation note, and BOTH remain queryable in aggregate by Application (reusing "
             "ApplicationNote, not a duplicate notes system) while notes never alter the Priority Index",
             len(run_notes) == 1 and run_notes[0].note_text.startswith("Overall screening looks promising")
@@ -4084,7 +4084,7 @@ def _assert_selection_3d_fix(session_factory: sessionmaker[Session], result: Val
         # W/X: the numeric Priority Index is never exposed by the pool-
         # listing functions' own row-building contract (structural check —
         # `_screening_row` in app.py builds its own dict from `run.explanation`/
-        # counts only); Original CV access remains a Selezionatore/Application-
+        # counts only); Original CV access remains a Recruiter/Application-
         # level concern untouched by this task (verified unaffected: the
         # helper `_original_cv_available`/`candidate_original_cv` route in
         # app.py were not modified by 3D-FIX).
@@ -4234,7 +4234,7 @@ def _assert_selection_5a_outcome_stage_decision(session_factory: sessionmaker[Se
         session.commit()
         session.expire_all()
         result.check(
-            "5A-B: the Selezionatore can move Primary Screening -> Phone Interview",
+            "5A-B: the Recruiter can move Primary Screening -> Phone Interview",
             app_svc.get_application(session, app1.id).current_stage == stgm.PHONE_INTERVIEW,
         )
 
@@ -4244,7 +4244,7 @@ def _assert_selection_5a_outcome_stage_decision(session_factory: sessionmaker[Se
         session.commit()
         session.expire_all()
         result.check(
-            "5A-C: the Selezionatore can move Primary Screening -> In-Person Practical directly, skipping "
+            "5A-C: the Recruiter can move Primary Screening -> In-Person Practical directly, skipping "
             "Phone Interview — RF-One does not block this",
             app_svc.get_application(session, app2.id).current_stage == stgm.IN_PERSON_PRACTICAL,
         )
@@ -4253,7 +4253,7 @@ def _assert_selection_5a_outcome_stage_decision(session_factory: sessionmaker[Se
         session.commit()
         session.expire_all()
         result.check(
-            "5A-D: the Selezionatore can move a Stage BACKWARD",
+            "5A-D: the Recruiter can move a Stage BACKWARD",
             app_svc.get_application(session, app1.id).current_stage == stgm.APPLICATION_RECEIVED,
         )
 
@@ -4583,7 +4583,7 @@ def _assert_selection_5a_outcome_stage_decision(session_factory: sessionmaker[Se
         result.check(
             "5A-AR/5A-AS: no automatic HIRE or automatic permanent STOP occurs — Stage-movement and "
             "Primary Screening code never call `outcome_service.apply_outcome`/`reopen_application` "
-            "themselves; every Outcome decision requires an explicit, Selezionatore-supplied "
+            "themselves; every Outcome decision requires an explicit, Recruiter-supplied "
             "outcome_definition_id",
             ".apply_outcome(" not in stage_source and ".reopen_application(" not in stage_source
             and ".apply_outcome(" not in ps_source and ".reopen_application(" not in ps_source,
@@ -4713,7 +4713,7 @@ def _assert_selection_5a_fix_authoritative_state_and_queue(
         # Seed this restaurant's default Outcomes (Active/Hire/Hold/Stop/
         # Withdrawn) AND default Queues (Active Review/Call Later/Hold/
         # Reconsider/Hired/Closed), exactly as every real Selection page
-        # does idempotently before letting the Selezionatore act.
+        # does idempotently before letting the Recruiter act.
         restaurant_templates.seed_default_selection_outcomes(session, restaurant_id=restaurant.id)
         outcome_defs = {
             d.name: d for d in outcome_svc.list_outcome_definitions(session, restaurant_id=restaurant.id)
@@ -5352,7 +5352,7 @@ def _assert_selection_5a_align(session_factory: sessionmaker[Session], result: V
         app2_after_event = app_svc.get_application(session, app2.id)
         result.check(
             "5A-ALIGN-F: recording an Information/Event NEVER itself changes Stage, lifecycle, workflow "
-            "status, or the Outcome Decision history — only the Selezionatore's own separate "
+            "status, or the Outcome Decision history — only the Recruiter's own separate "
             "apply_outcome() call can do that",
             app2_after_event.current_stage == stage_before_event
             and app2_after_event.lifecycle_state == lifecycle_before_event
@@ -5396,9 +5396,9 @@ def _assert_selection_5a_align(session_factory: sessionmaker[Session], result: V
             "Server, Bistro Align Three\nJan 2022 - Present\nWaited tables.",
         )
         # Open-ended: the seeded "Hold" Outcome itself creates no reminder —
-        # the Application is simply SUSPENDED until a Selezionatore reviews
+        # the Application is simply SUSPENDED until a Recruiter reviews
         # it again, with no date or condition attached.
-        outcome_svc.apply_outcome(session, app3.id, outcome_defs["Hold"].id, reason="Awaiting Selezionatore review.")
+        outcome_svc.apply_outcome(session, app3.id, outcome_defs["Hold"].id, reason="Awaiting Recruiter review.")
         session.commit()
         session.expire_all()
         result.check(
@@ -5409,7 +5409,7 @@ def _assert_selection_5a_align(session_factory: sessionmaker[Session], result: V
 
         # Time-based: a reminder with a due_date already in the past must
         # surface in the restaurant-wide "due" list (task's own "RF-One
-        # must bring the Application back to the Selezionatore's
+        # must bring the Application back to the Recruiter's
         # attention").
         session.add(m.SelectionReminder(
             application_id=app3.id, due_date=datetime.utcnow() - timedelta(days=1),
@@ -5618,7 +5618,7 @@ def _assert_selection_5a_micro_fix(session_factory: sessionmaker[Session], resul
             raised_no_reason,
         )
         stop_decision = outcome_svc.apply_outcome(
-            session, app1.id, outcome_defs["Stop"].id, reason="Candidate withdrew interest", performed_by="Selezionatore: Sam",
+            session, app1.id, outcome_defs["Stop"].id, reason="Candidate withdrew interest", performed_by="Recruiter: Sam",
         )
         session.commit()
         session.expire_all()
@@ -5630,7 +5630,7 @@ def _assert_selection_5a_micro_fix(session_factory: sessionmaker[Session], resul
             len(history_after_stop) == 2
             and history_after_stop[0].id == hirable_decision.id and history_after_stop[0].reason is None
             and history_after_stop[1].id == stop_decision.id and history_after_stop[1].reason == "Candidate withdrew interest"
-            and history_after_stop[1].performed_by == "Selezionatore: Sam"
+            and history_after_stop[1].performed_by == "Recruiter: Sam"
             and history_after_stop[1].created_at is not None,
         )
 
@@ -5882,7 +5882,7 @@ def _assert_trainable_gap_dossier(session_factory: sessionmaker[Session], result
         rf_one_level = gap.rf_one_initial_level
 
         # =====================================================================
-        # TG-D/TG-G: the Selezionatore may accept RF-One's level without a
+        # TG-D/TG-G: the Recruiter may accept RF-One's level without a
         # redundant manual value being stored, and RF-One's own original
         # level is never touched by doing so.
         # =====================================================================
@@ -5895,12 +5895,12 @@ def _assert_trainable_gap_dossier(session_factory: sessionmaker[Session], result
             agreed.selezionatore_initial_level is None and agreed.origin == fam.HUMAN_CONFIRMED,
         )
         result.check(
-            "5B-TG-G: RF-One's original level is unchanged after the Selezionatore agrees",
+            "5B-TG-G: RF-One's original level is unchanged after the Recruiter agrees",
             agreed.rf_one_initial_level == rf_one_level,
         )
 
         # =====================================================================
-        # TG-F: a DIFFERENT Selezionatore level with NO reason is rejected,
+        # TG-F: a DIFFERENT Recruiter level with NO reason is rejected,
         # and leaves the gap completely unchanged.
         # =====================================================================
         different_level = (rf_one_level + 2) % 5
@@ -5910,7 +5910,7 @@ def _assert_trainable_gap_dossier(session_factory: sessionmaker[Session], result
         except ValueError:
             raised_no_reason = True
         result.check(
-            "5B-TG-F: a Selezionatore level different from RF-One's, with a blank reason, is rejected",
+            "5B-TG-F: a Recruiter level different from RF-One's, with a blank reason, is rejected",
             raised_no_reason,
         )
         session.rollback()
@@ -5922,23 +5922,23 @@ def _assert_trainable_gap_dossier(session_factory: sessionmaker[Session], result
 
         # =====================================================================
         # TG-E/TG-G2: a DIFFERENT level WITH a reason is accepted; the
-        # effective level becomes the Selezionatore's; RF-One's original
+        # effective level becomes the Recruiter's; RF-One's original
         # level still remains untouched.
         # =====================================================================
         tg_svc.set_selezionatore_level(
             session, gap.id, level=different_level, reason="Observed stronger technique during a trial pour.",
-            performed_by="Selezionatore: Morgan",
+            performed_by="Recruiter: Morgan",
         )
         session.commit()
         session.expire_all()
         overridden = tg_svc.get_trainable_gap(session, gap.id)
         result.check(
-            "5B-TG-E: a different Selezionatore level WITH a reason is accepted",
+            "5B-TG-E: a different Recruiter level WITH a reason is accepted",
             overridden.selezionatore_initial_level == different_level and overridden.origin == fam.HUMAN_OVERRIDDEN
             and overridden.override_reason,
         )
         result.check(
-            "5B-TG-E2: the effective level becomes the Selezionatore's level",
+            "5B-TG-E2: the effective level becomes the Recruiter's level",
             overridden.effective_initial_level == different_level,
         )
         result.check(
@@ -5949,7 +5949,7 @@ def _assert_trainable_gap_dossier(session_factory: sessionmaker[Session], result
         # =====================================================================
         # TG-J: regenerating against the SAME Fit Assessment is idempotent —
         # never creates a second row for the same RequirementAssessment, and
-        # never touches the Selezionatore's already-recorded level.
+        # never touches the Recruiter's already-recorded level.
         # =====================================================================
         second_pass = tg_svc.generate_trainable_gaps_for_fit_assessment(session, fit_assessment.id)
         session.commit()
@@ -5957,7 +5957,7 @@ def _assert_trainable_gap_dossier(session_factory: sessionmaker[Session], result
         still_one = tg_svc.list_trainable_gaps_for_application(session, application.id, active_only=False)
         result.check(
             "5B-TG-J: regenerating Trainable Gaps is idempotent (no duplicate row) and preserves the "
-            "Selezionatore's recorded level",
+            "Recruiter's recorded level",
             len(second_pass) == 0 and len(still_one) == 1
             and still_one[0].selezionatore_initial_level == different_level,
         )
@@ -5965,7 +5965,7 @@ def _assert_trainable_gap_dossier(session_factory: sessionmaker[Session], result
         # =====================================================================
         # TG-K: once new evidence closes the gap (EVIDENCED), a later
         # regeneration withdraws the gap's lifecycle status — but never
-        # touches any of its level fields, preserving the Selezionatore's
+        # touches any of its level fields, preserving the Recruiter's
         # own judgment in history.
         # =====================================================================
         fa_svc.add_evidence(
@@ -5992,7 +5992,7 @@ def _assert_trainable_gap_dossier(session_factory: sessionmaker[Session], result
             withdrawn.status == tgm.WITHDRAWN and gap.id not in {g.id for g in active_after_close},
         )
         result.check(
-            "5B-TG-K2: withdrawal never touches the gap's own level fields — the Selezionatore's prior "
+            "5B-TG-K2: withdrawal never touches the gap's own level fields — the Recruiter's prior "
             "judgment remains in history",
             withdrawn.selezionatore_initial_level == different_level
             and withdrawn.rf_one_initial_level == rf_one_level,
@@ -6112,7 +6112,7 @@ def _assert_trainable_gap_dossier(session_factory: sessionmaker[Session], result
 
 def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Session], result: ValidationResult) -> None:
     """Task 5C checks — Selection Session, single-role constraint,
-    multi-Selezionatore assignment, authority/dependency hierarchy
+    multi-Recruiter assignment, authority/dependency hierarchy
     (reusing `SelectionAuthorityLevel`), Application ownership (take in
     charge / read-only / reassignment), the Rule Set confirmation gate,
     and Rule Change (SUBSEQUENT_ONLY / ENTIRE_SESSION). Own dedicated
@@ -6167,7 +6167,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         # =====================================================================
         sc_session = sess_svc.create_session(
             session, restaurant_id=restaurant.id, name="Server — 5C Validation Suite", target_role="SERVER",
-            created_by="Selezionatore: Alex",
+            created_by="Recruiter: Alex",
         )
         session.commit()
         session_ids.append(sc_session.id)
@@ -6178,13 +6178,13 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         result.check("5C-B: a Session supports exactly one role", sc_session.target_role == "SERVER")
 
         # =====================================================================
-        # 5C-C/5C-D: multiple Selezionatori assigned; no hierarchy -> peers.
+        # 5C-C/5C-D: multiple Recruiters assigned; no hierarchy -> peers.
         # =====================================================================
         sess_svc.assign_selezionatore(session, sc_session.id, acting_identity_id=alex.id)
         sess_svc.assign_selezionatore(session, sc_session.id, acting_identity_id=jordan.id)
         session.commit()
         result.check(
-            "5C-C: multiple Selezionatori may be assigned to one Session",
+            "5C-C: multiple Recruiters may be assigned to one Session",
             len(sess_svc.list_assignments(session, sc_session.id)) == 2,
         )
 
@@ -6210,7 +6210,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
 
         # =====================================================================
         # 5C-R/5C-S: confirmation activates the Session; the Rule Set is
-        # Session/role-specific, not personal to a Selezionatore.
+        # Session/role-specific, not personal to a Recruiter.
         # =====================================================================
         version1_id = sc_session.current_rule_set_version_id
         rs_svc.confirm_rule_set_version(session, sc_session.id, acting_identity_id=alex.id, note="Reviewed for the validation suite.")
@@ -6220,7 +6220,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         result.check("5C-R: explicit Rule Set confirmation activates the Session", sc_session_reloaded.status == sesm.ACTIVE)
         version1 = rs_svc.get_version(session, version1_id)
         result.check(
-            "5C-S: the confirmed Rule Set version is the ONE Session-wide version every Selezionatore uses "
+            "5C-S: the confirmed Rule Set version is the ONE Session-wide version every Recruiter uses "
             "— never a personal copy",
             version1.confirmed_by == "Alex" and sc_session_reloaded.current_rule_set_version_id == version1.id,
         )
@@ -6244,7 +6244,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
             "5C-H: exactly one active owner exists at a time",
             own_svc.get_current_owner(session, app1.id).id == ownership1.id,
         )
-        result.check("5C-I: a non-owner Session Selezionatore is read-only", not own_svc.can_write(session, app1.id, jordan.id))
+        result.check("5C-I: a non-owner Session Recruiter is read-only", not own_svc.can_write(session, app1.id, jordan.id))
         result.check("5C-J: the owner can perform allowed Application operations", own_svc.can_write(session, app1.id, alex.id))
         result.check(
             "GLOBAL_INTEGRITY_FIX_002 / C-1 check G: an arbitrary submitted identity id cannot impersonate the owner",
@@ -6261,7 +6261,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
             peer_reassign_rejected = True
             session.rollback()
         result.check(
-            "5C-D/5C-M: with no configured hierarchy, Selezionatori are peers — a peer cannot reassign "
+            "5C-D/5C-M: with no configured hierarchy, Recruiters are peers — a peer cannot reassign "
             "another owner's Application",
             peer_reassign_rejected,
         )
@@ -6305,7 +6305,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         )
         ownership3 = own_svc.reassign(session, app1.id, new_owner_identity_id=morgan.id, performed_by_identity_id=morgan.id, reason="Escalating per configured seniority.")
         session.commit()
-        result.check("5C-L: a Selezionatore with configured superior authority can reassign", ownership3.owner_name == "Morgan")
+        result.check("5C-L: a Recruiter with configured superior authority can reassign", ownership3.owner_name == "Morgan")
 
         inferior_rejected = False
         try:
@@ -6410,7 +6410,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         rc_svc.mark_impact_reviewed(session, impact_app1.id, note="Reviewed for the validation suite — no material change.")
         session.commit()
         result.check(
-            "review_status only ever advances via an explicit Selezionatore action",
+            "review_status only ever advances via an explicit Recruiter action",
             rc_svc.list_impacts_for_rule_change(session, rule_change_2.id)[0].review_status == rsm.REVIEW_REVIEWED
             if rc_svc.list_impacts_for_rule_change(session, rule_change_2.id)[0].application_id == app1.id
             else True,
@@ -6423,7 +6423,7 @@ def _assert_session_ownership_rule_governance(session_factory: sessionmaker[Sess
         # =====================================================================
         sc_session_2 = sess_svc.create_session(
             session, restaurant_id=restaurant.id, name="Server — 5C Validation Suite Session 2", target_role="SERVER",
-            created_by="Selezionatore: Alex",
+            created_by="Recruiter: Alex",
         )
         session.commit()
         session.expire_all()
@@ -6810,9 +6810,9 @@ def _assert_candidate_communication_scheduling(session_factory: sessionmaker[Ses
         # =====================================================================
         # F. Primary Screening STOP triggers configured rejection communication.
         # =====================================================================
-        stage_svc.set_stage(session, app_both.id, stgm.PRIMARY_SCREENING, performed_by="Selezionatore: Alex")
+        stage_svc.set_stage(session, app_both.id, stgm.PRIMARY_SCREENING, performed_by="Recruiter: Alex")
         session.commit()
-        screening_decision = outcome_svc.apply_outcome(session, app_both.id, stop_def.id, performed_by="Selezionatore: Alex")
+        screening_decision = outcome_svc.apply_outcome(session, app_both.id, stop_def.id, performed_by="Recruiter: Alex")
         session.commit()
         screening_comm = comm_svc.on_outcome_decision(session, app_both, screening_decision)
         session.commit()
@@ -6838,7 +6838,7 @@ def _assert_candidate_communication_scheduling(session_factory: sessionmaker[Ses
             sms_text="Hi $candidate_name, you have been selected for a phone interview; we will contact you.",
         )
         session.commit()
-        phone_transition = stage_svc.set_stage(session, app_phone.id, stgm.PHONE_INTERVIEW, performed_by="Selezionatore: Alex")
+        phone_transition = stage_svc.set_stage(session, app_phone.id, stgm.PHONE_INTERVIEW, performed_by="Recruiter: Alex")
         session.commit()
         comm_scheduling = comm_svc.on_stage_transition(
             session, app_phone, phone_transition, communication_mode=ccm.PHONE_ADVANCE_MODE_SCHEDULING,
@@ -6871,7 +6871,7 @@ def _assert_candidate_communication_scheduling(session_factory: sessionmaker[Ses
             outcome_definition_id=stop_def.id, sms_text="We will not be moving forward after the phone interview.",
         )
         session.commit()
-        hold_decision = outcome_svc.apply_outcome(session, app_phone.id, hold_def.id, reason="Pipeline full", performed_by="Selezionatore: Alex")
+        hold_decision = outcome_svc.apply_outcome(session, app_phone.id, hold_def.id, reason="Pipeline full", performed_by="Recruiter: Alex")
         session.commit()
         hold_comm = comm_svc.on_outcome_decision(session, app_phone, hold_decision)
         session.commit()
@@ -6879,7 +6879,7 @@ def _assert_candidate_communication_scheduling(session_factory: sessionmaker[Ses
             "I: a Phone HOLD automatically triggers the configured Phone-Hold communication",
             hold_comm is not None and hold_comm.trigger_event == ccm.TRIGGER_PHONE_HOLD,
         )
-        stop_decision = outcome_svc.apply_outcome(session, app_phone.id, stop_def.id, reason="Availability incompatible", performed_by="Selezionatore: Alex")
+        stop_decision = outcome_svc.apply_outcome(session, app_phone.id, stop_def.id, reason="Availability incompatible", performed_by="Recruiter: Alex")
         session.commit()
         phone_stop_comm = comm_svc.on_outcome_decision(session, app_phone, stop_decision)
         session.commit()
@@ -6899,7 +6899,7 @@ def _assert_candidate_communication_scheduling(session_factory: sessionmaker[Ses
             stage=stgm.IN_PERSON_PRACTICAL, sms_text="Congratulations, next: an in-person interview.",
         )
         session.commit()
-        in_person_transition = stage_svc.set_stage(session, app_in_person.id, stgm.IN_PERSON_PRACTICAL, performed_by="Selezionatore: Alex")
+        in_person_transition = stage_svc.set_stage(session, app_in_person.id, stgm.IN_PERSON_PRACTICAL, performed_by="Recruiter: Alex")
         session.commit()
         advance_comm = comm_svc.on_stage_transition(session, app_in_person, in_person_transition)
         session.commit()
@@ -6926,7 +6926,7 @@ def _assert_candidate_communication_scheduling(session_factory: sessionmaker[Ses
         )
         session.commit()
 
-        ip_hold_decision = outcome_svc.apply_outcome(session, app_in_person.id, hold_def.id, reason="Timing not right", performed_by="Selezionatore: Alex")
+        ip_hold_decision = outcome_svc.apply_outcome(session, app_in_person.id, hold_def.id, reason="Timing not right", performed_by="Recruiter: Alex")
         session.commit()
         ip_hold_comm = comm_svc.on_outcome_decision(session, app_in_person, ip_hold_decision)
         session.commit()
@@ -6936,9 +6936,9 @@ def _assert_candidate_communication_scheduling(session_factory: sessionmaker[Ses
         )
 
         app_in_person_stop = _upload("Morgan FiveD", "morgan.5d@example.com", "555-770-0004", "Server, Grill 5D\nMay 2023 - Present\nServed guests.")
-        stage_svc.set_stage(session, app_in_person_stop.id, stgm.IN_PERSON_PRACTICAL, performed_by="Selezionatore: Alex")
+        stage_svc.set_stage(session, app_in_person_stop.id, stgm.IN_PERSON_PRACTICAL, performed_by="Recruiter: Alex")
         session.commit()
-        ip_stop_decision = outcome_svc.apply_outcome(session, app_in_person_stop.id, stop_def.id, reason="Better-fitting candidates identified", performed_by="Selezionatore: Alex")
+        ip_stop_decision = outcome_svc.apply_outcome(session, app_in_person_stop.id, stop_def.id, reason="Better-fitting candidates identified", performed_by="Recruiter: Alex")
         session.commit()
         ip_stop_comm = comm_svc.on_outcome_decision(session, app_in_person_stop, ip_stop_decision)
         session.commit()
@@ -6949,7 +6949,7 @@ def _assert_candidate_communication_scheduling(session_factory: sessionmaker[Ses
 
         hirable_decision = outcome_svc.apply_outcome(
             session, app_in_person.id, hirable_def.id, reason="Strong in-person interview performance",
-            performed_by="Selezionatore: Alex",
+            performed_by="Recruiter: Alex",
         )
         session.commit()
         hirable_comm = comm_svc.on_outcome_decision(session, app_in_person, hirable_decision)
@@ -7031,7 +7031,7 @@ def _assert_candidate_communication_scheduling(session_factory: sessionmaker[Ses
         )
         session.commit()
         result.check(
-            "T: selecting an available slot confirms the appointment automatically, no Selezionatore approval step",
+            "T: selecting an available slot confirms the appointment automatically, no Recruiter approval step",
             appointment.status == ccm.APPOINTMENT_CONFIRMED and appointment.confirmed_at is not None,
         )
         confirmation_comms = [
@@ -7090,7 +7090,7 @@ def _assert_candidate_communication_scheduling(session_factory: sessionmaker[Ses
             policy.reminder_count == 1 and policy.first_reminder_delay_hours == 1 and policy.final_deadline_hours == 2,
         )
 
-        transition_nr = stage_svc.set_stage(session, app_no_response.id, stgm.PHONE_INTERVIEW, performed_by="Selezionatore: Alex")
+        transition_nr = stage_svc.set_stage(session, app_no_response.id, stgm.PHONE_INTERVIEW, performed_by="Recruiter: Alex")
         session.commit()
         root_comm = comm_svc.on_stage_transition(
             session, app_no_response, transition_nr, communication_mode=ccm.PHONE_ADVANCE_MODE_SCHEDULING,
@@ -7149,7 +7149,7 @@ def _assert_candidate_communication_scheduling(session_factory: sessionmaker[Ses
 
         # =====================================================================
         # AC/AD. Late response after NO RESPONSE STOP does not reopen the
-        # Application, and generates a mandatory Selezionatore alert.
+        # Application, and generates a mandatory Recruiter alert.
         # =====================================================================
         late_inbound = inbound_svc.record_inbound(
             session, app_no_response.id, channel=ccm.CHANNEL_SMS, raw_text="Sorry for the late reply, I am still interested!",
@@ -7188,15 +7188,15 @@ def _assert_candidate_communication_scheduling(session_factory: sessionmaker[Ses
 
         corrected = inbound_svc.correct_classification(
             session, inbound_general.id, new_classification=ccm.CLASS_RESCHEDULE_REQUESTED,
-            corrected_by="Selezionatore: Alex", reason="Listened to the voicemail — it's a reschedule request.",
+            corrected_by="Recruiter: Alex", reason="Listened to the voicemail — it's a reschedule request.",
         )
         session.commit()
         result.check(
-            "AH: a Selezionatore can correct the EFFECTIVE classification without losing the original system "
+            "AH: a Recruiter can correct the EFFECTIVE classification without losing the original system "
             "classification",
             corrected.classification_effective == ccm.CLASS_RESCHEDULE_REQUESTED
             and corrected.classification_system == ccm.CLASS_AMBIGUOUS_OR_UNCLEAR
-            and corrected.classification_corrected_by == "Selezionatore: Alex",
+            and corrected.classification_corrected_by == "Recruiter: Alex",
         )
 
         lifecycle_before_declined = app_inbound_general.lifecycle_state
@@ -7373,7 +7373,7 @@ def _assert_5d_micro_fix_session_scheduling(session_factory: sessionmaker[Sessio
 
         selection_session = sess_svc.create_session(
             session, restaurant_id=restaurant.id, name="Server — 5D-MICRO-FIX Suite", target_role="SERVER",
-            created_by="Selezionatore: Alex",
+            created_by="Recruiter: Alex",
         )
         session.commit()
         session_ids.append(selection_session.id)
@@ -7702,7 +7702,7 @@ def _assert_job_posting_application_intake_pre_screening(
 
         selection_session = sess_svc.create_session(
             session, restaurant_id=restaurant.id, name="Server — 5E Validation Suite", target_role="SERVER",
-            created_by="Selezionatore: Alex",
+            created_by="Recruiter: Alex",
         )
         session.commit()
         session_ids.append(selection_session.id)
@@ -7997,7 +7997,7 @@ def _assert_job_posting_application_intake_pre_screening(
         comms_after_intake = comm_svc.list_communications_for_application(session, application.id)
         me_comm = next((c for c in comms_after_intake if c.trigger_event == ccm.TRIGGER_MISSING_EVIDENCE_QUESTIONNAIRE), None)
         result.check(
-            "AD: the Questionnaire is sent automatically, with no prior Selezionatore approval step",
+            "AD: the Questionnaire is sent automatically, with no prior Recruiter approval step",
             me_comm is not None and me_comm.performed_by == "SYSTEM_AUTOMATIC",
         )
 
@@ -8029,7 +8029,7 @@ def _assert_job_posting_application_intake_pre_screening(
 
         # =====================================================================
         # AI/AJ/AK. Sufficient evidence -> READY FOR PHONE REVIEW; this never
-        # itself performs ADVANCE_TO_PHONE; the Selezionatore still decides.
+        # itself performs ADVANCE_TO_PHONE; the Recruiter still decides.
         # =====================================================================
         result.check(
             "AI: once sufficient early-stage evidence exists, the Application reaches READY FOR PHONE REVIEW",
@@ -8040,11 +8040,11 @@ def _assert_job_posting_application_intake_pre_screening(
             "AJ: reaching READY FOR PHONE REVIEW does NOT automatically ADVANCE_TO_PHONE (Stage is untouched)",
             application_after_readiness.current_stage != stgm.PHONE_INTERVIEW,
         )
-        stage_svc.set_stage(session, application.id, stgm.PHONE_INTERVIEW, performed_by="Selezionatore: Alex")
+        stage_svc.set_stage(session, application.id, stgm.PHONE_INTERVIEW, performed_by="Recruiter: Alex")
         session.commit()
         application_after_advance = app_svc.get_application(session, application.id)
         result.check(
-            "AK: the Selezionatore can still explicitly decide ADVANCE_TO_PHONE afterward",
+            "AK: the Recruiter can still explicitly decide ADVANCE_TO_PHONE afterward",
             application_after_advance.current_stage == stgm.PHONE_INTERVIEW,
         )
 
@@ -8375,7 +8375,7 @@ def _assert_compliance_audit_domain_closure(session_factory: sessionmaker[Sessio
 
         selection_session = sess_svc.create_session(
             session, restaurant_id=restaurant.id, name="Server — 5F Closure Suite", target_role="SERVER",
-            created_by="Selezionatore: Alex",
+            created_by="Recruiter: Alex",
         )
         session.commit()
         session_ids.append(selection_session.id)
@@ -8605,7 +8605,7 @@ def _assert_compliance_audit_domain_closure(session_factory: sessionmaker[Sessio
         )
         session.add(gap)
         session.commit()
-        tg_svc.set_selezionatore_level(session, gap.id, level=3, reason="Selezionatore judged stronger than RF-One's initial estimate after discussion.", performed_by="Alex")
+        tg_svc.set_selezionatore_level(session, gap.id, level=3, reason="Recruiter judged stronger than RF-One's initial estimate after discussion.", performed_by="Alex")
         session.commit()
 
         pi_svc.create_plan(session, app_rich.id)
@@ -8671,7 +8671,7 @@ def _assert_compliance_audit_domain_closure(session_factory: sessionmaker[Sessio
             isinstance(report.screening_runs[0].resulting_priority_index, float),
         )
         criteria_page_text_has_no_index = True  # structural guarantee: no template outside audit.html renders `priority_index`
-        result.check("W: the normal Selezionatore UI still does not show the numeric Priority Index (structural — only audit.html reads it)", criteria_page_text_has_no_index)
+        result.check("W: the normal Recruiter UI still does not show the numeric Priority Index (structural — only audit.html reads it)", criteria_page_text_has_no_index)
         result.check(
             "X: the Audit shows Hard Disqualifier history (triggered then overridden)",
             any(row.hard_disqualifier_overridden for row in report.screening_runs[0].rows),
@@ -8696,7 +8696,7 @@ def _assert_compliance_audit_domain_closure(session_factory: sessionmaker[Sessio
         result.check("AF: the Audit shows Consistency Threads", len(report.consistency_threads) >= 1)
         result.check("AG: the Audit shows Trainable Gaps", len(report.trainable_gaps) >= 1)
         result.check(
-            "AH: the Audit shows RF-One vs. Selezionatore gap-level divergence",
+            "AH: the Audit shows RF-One vs. Recruiter gap-level divergence",
             report.trainable_gaps[0].rf_one_initial_level == 2 and report.trainable_gaps[0].selezionatore_initial_level == 3,
         )
         result.check(
@@ -8876,7 +8876,7 @@ def _assert_compliance_audit_domain_closure(session_factory: sessionmaker[Sessio
             ready_before_advance,
         )
         result.check(
-            "BE: ADVANCE_TO_PHONE remains exclusively Selezionatore-controlled (an explicit Stage action, never automatic)",
+            "BE: ADVANCE_TO_PHONE remains exclusively Recruiter-controlled (an explicit Stage action, never automatic)",
             app_strong.current_stage == stgm.IN_PERSON_PRACTICAL,
         )
 
@@ -9292,7 +9292,7 @@ def _assert_selection_pattern_intelligence_foundation(
 ) -> None:
     """Selection Feedback Intelligence Foundation task — targeted checks
     A-Z (task's own letter list) plus the task's own explicit Final
-    Validation (T1 belief X / Selezionatore decides Y / Case Memory V1
+    Validation (T1 belief X / Recruiter decides Y / Case Memory V1
     records exactly that / new evidence never rewrites V1 / reopen+reclose
     creates V2 without touching V1). Own dedicated session/restaurant, real
     commits, real cleanup (same reasoning as `_assert_selection_5a_align`
@@ -9338,7 +9338,7 @@ def _assert_selection_pattern_intelligence_foundation(
             scope=patm.SCOPE_ORGANIZATION, status=patm.STATUS_PROPOSED, maturity=patm.MATURITY_EMERGING,
             persistence_type=patm.PERSISTENCE_STRUCTURAL,
             signature={"dimensions": [{"type": patm.DIMENSION_STABILITY, "weight": "HIGH"}]},
-            creation_provenance=patm.PROVENANCE_HUMAN_AUTHORED, created_by="Test Selezionatore",
+            creation_provenance=patm.PROVENANCE_HUMAN_AUTHORED, created_by="Test Recruiter",
         )
         session.commit()
         result.check(
@@ -9507,7 +9507,7 @@ def _assert_selection_pattern_intelligence_foundation(
         # =====================================================================
         # I. Repeated Stage creates a distinct historical snapshot
         # =====================================================================
-        stage_svc.set_stage(session, app1.id, stgm.PRIMARY_SCREENING)  # Selezionatore moves it back
+        stage_svc.set_stage(session, app1.id, stgm.PRIMARY_SCREENING)  # Recruiter moves it back
         session.commit()
         snap_primary_repeat = cm_svc.freeze_stage_pattern_snapshot(
             session, app1.id, stgm.PRIMARY_SCREENING, rf_one_judgment="Re-reviewed after Phone Interview.",
@@ -9521,10 +9521,10 @@ def _assert_selection_pattern_intelligence_foundation(
         )
 
         # =====================================================================
-        # J/K. Selezionatore Note / Divergence representation
+        # J/K. Recruiter Note / Divergence representation
         # =====================================================================
         result.check(
-            "PIF-J1: a Selezionatore Note is normally OPTIONAL (no divergence -> no note required)",
+            "PIF-J1: a Recruiter Note is normally OPTIONAL (no divergence -> no note required)",
             snap_primary.note_required is False and snap_primary.selector_note is None,
         )
         result.check(
@@ -9532,13 +9532,13 @@ def _assert_selection_pattern_intelligence_foundation(
             "making the note mandatory on divergence",
             _raises(
                 ValueError, cm_svc.freeze_stage_pattern_snapshot, session, app1.id, stgm.IN_PERSON_PRACTICAL,
-                rf_one_judgment="Moderate priority.", selector_action="Selezionatore advanced to HIRE anyway.",
+                rf_one_judgment="Moderate priority.", selector_action="Recruiter advanced to HIRE anyway.",
                 divergence_occurred=True, divergence_category=patm.DIVERGENCE_EXPERIENCE,
             ),
         )
         snap_in_person = cm_svc.freeze_stage_pattern_snapshot(
             session, app1.id, stgm.IN_PERSON_PRACTICAL, rf_one_judgment="Moderate priority.",
-            selector_action="Selezionatore advanced to HIRE anyway.", divergence_occurred=True,
+            selector_action="Recruiter advanced to HIRE anyway.", divergence_occurred=True,
             divergence_category=patm.DIVERGENCE_EXPERIENCE, selector_note="Excellent trial shift performance.",
         )
         session.commit()
@@ -9699,11 +9699,11 @@ def _assert_selection_pattern_intelligence_foundation(
         )
         result.check(
             "PIF-R2: FINAL VALIDATION (task's own explicit acceptance test) — at T1 RF-One believed "
-            "X and the Selezionatore decided Y; Case Memory V1 records exactly X and Y. At T2 new "
+            "X and the Recruiter decided Y; Case Memory V1 records exactly X and Y. At T2 new "
             "evidence arrived and the Application reopened and closed again; V1 STILL says exactly X "
             "and Y (never rewritten), and V2 independently records the later state — nothing in this "
             "architecture is capable of rewriting what RF-One knew, predicted, recommended, or what "
-            "the Selezionatore decided in the past",
+            "the Recruiter decided in the past",
             case_memory_v1_final_check.rf_one_final_judgment == "Strong, steady tenure candidate; recommend Hire."
             and case_memory_v1_final_check.selezionatore_final_decision == "Hired — trial shift confirmed fit."
             and case_memory_v2.rf_one_final_judgment == "Confirmed strong candidate on second review."

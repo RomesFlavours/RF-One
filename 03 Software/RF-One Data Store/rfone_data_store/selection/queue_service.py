@@ -8,7 +8,7 @@ sole record of truth.
 Two ways an Application moves between queues, both recorded identically
 (distinguished only by `source`):
   - `move_to_queue(..., source=qm.MANUAL)` — a direct, independent
-    Selezionatore action (task §12) — never changes Stage or Outcome.
+    Recruiter action (task §12) — never changes Stage or Outcome.
   - `move_to_queue(..., source=qm.OUTCOME_ACTION)` — called by
     `outcome_service.apply_outcome()` when the applied Outcome's snapshot
     has a `target_queue_id` configured (task §10). Never invents a queue

@@ -76,7 +76,7 @@ def generate_trainable_gaps_for_fit_assessment(session: Session, fit_assessment_
     # RequirementAssessment is no longer evidenced as a gap at all (e.g. new
     # evidence moved it to EVIDENCED). Never touches `rf_one_initial_level`/
     # `selezionatore_initial_level`/`effective_initial_level` — only the
-    # lifecycle `status` flag, so a Selezionatore's own prior judgment on
+    # lifecycle `status` flag, so a Recruiter's own prior judgment on
     # this gap is preserved in history even after it closes.
     still_active = session.scalars(
         select(m.TrainableGap).where(
@@ -152,7 +152,7 @@ def list_non_trainable_concerns_for_application(session: Session, application_id
 
 
 # ---------------------------------------------------------------------------
-# Selezionatore review (task §5) — the one write path for a human's own
+# Recruiter review (task §5) — the one write path for a human's own
 # initial-level judgment. Mirrors `primary_screening_service.
 # override_hard_disqualifier`'s mandatory-reason enforcement (strict
 # ValueError on a blank reason) combined with `outcome_service.
@@ -163,18 +163,18 @@ def list_non_trainable_concerns_for_application(session: Session, application_id
 def set_selezionatore_level(
     session: Session, gap_id: int, *, level: int, reason: str | None = None, performed_by: str | None = None,
 ) -> m.TrainableGap:
-    """Records the Selezionatore's own initial-level judgment. `rf_one_
+    """Records the Recruiter's own initial-level judgment. `rf_one_
     initial_level` is NEVER modified here — only read for comparison. When
     `level` equals RF-One's proposed level, this is treated as agreement
     (task §5): no duplicate manual value is stored
     (`selezionatore_initial_level` stays `None`), `origin` becomes
     HUMAN_CONFIRMED, and no reason is required — any prior override is
-    cleared since the Selezionatore is no longer diverging from RF-One.
+    cleared since the Recruiter is no longer diverging from RF-One.
     When `level` differs, a non-empty `reason` is mandatory;
     `selezionatore_initial_level`, `origin=HUMAN_OVERRIDDEN`,
     `override_reason` and `overridden_at` are then set, and
-    `effective_initial_level` becomes the Selezionatore's level (task §5:
-    "The effective level becomes the Selezionatore level")."""
+    `effective_initial_level` becomes the Recruiter's level (task §5:
+    "The effective level becomes the Recruiter level")."""
 
     tgm.validate_initial_level(level)
     gap = session.get(m.TrainableGap, gap_id)
@@ -191,7 +191,7 @@ def set_selezionatore_level(
     else:
         if not reason or not reason.strip():
             raise ValueError(
-                "A reason is mandatory when the Selezionatore's initial level differs from RF-One's proposed level."
+                "A reason is mandatory when the Recruiter's initial level differs from RF-One's proposed level."
             )
         gap.selezionatore_initial_level = level
         gap.effective_initial_level = level
