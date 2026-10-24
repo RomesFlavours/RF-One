@@ -237,7 +237,9 @@ class CardSettlementTests(unittest.TestCase):
                 self.assertEqual(rr["why_id"], b["why_id"])
 
     # Personal expense paid by an LLC -------------------------------------------------
-    def test_personal_expense_paid_by_llc_attributed_but_no_credit_created(self):
+    def test_personal_expense_paid_by_llc_stays_in_the_llc_and_no_credit_is_created(self):
+        """Decision 86 (supersedes the economic attribution to the person): the LLC Source is the accounting
+        subject; the person is only the management destination; the relationship stays to decide."""
         flag = config.WHO_WHY_KNOWLEDGE
         config.WHO_WHY_KNOWLEDGE = True
         try:
@@ -248,15 +250,16 @@ class CardSettlementTests(unittest.TestCase):
                 if e.owner(t) is None or e.owner(t).id == personal:
                     continue
                 r = e.evaluate(t)
-                if r["ledger"] and r["ledger"]["kind"] == "PAID_FOR_OTHER" and r["beneficiary_id"] == personal:
+                if r["management"] and r["beneficiary_id"] == personal:
                     cases.append(r)
                 if len(cases) >= 5:
                     break
             if not cases:
                 self.skipTest("no personal expense paid by an LLC in the copy")
             for r in cases:
-                self.assertEqual(r["ledger"]["relationship"], "TO_DECIDE")
-                self.assertEqual(r["beneficiary_id"], personal, "the economic attribution stays")
+                self.assertEqual(r["subject_id"], r["payer_id"], "the LLC Source owner is the accounting subject")
+                self.assertNotEqual(r["subject_id"], personal)
+                self.assertIsNone(r["ledger"], "no receivable/payable is created")
                 if not r["protected"]:
                     self.assertIn("RELATIONSHIP_TO_DECIDE", [x["code"] for x in r["exceptions"]])
                     self.assertEqual(r["status"], E.EXCEPTION)

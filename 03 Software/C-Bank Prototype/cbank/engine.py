@@ -106,6 +106,11 @@ class Result:
     group_key: str | None = None
     history_key: str | None = None
     ai_partial: dict | None = None   # AI fields with their acceptance (kept even when not applied)
+    # Decision 86: the Source owner IS the accounting subject. `beneficiary_*` is only the management
+    # destination (who the cost/revenue is for, operationally); it never moves the accounting.
+    subject_id: int | None = None
+    subject: str | None = None
+    management: dict | None = None   # a management destination other than the subject (signalled, never posted)
     who_labels: list = field(default_factory=list)   # Labels of the WHO: context, never a rule
     label_hints: list | None = None  # what approved WHO→WHY of other WHOs with the same Label say
 
@@ -539,7 +544,7 @@ class Engine:
         else:
             trace.append(Step("Profile", "—", None, "no classification", ""))
 
-        # BENEFICIARY -------------------------------------------------------
+        # MANAGEMENT DESTINATION (decision 86: never the accounting subject) ----------------
         beneficiary, b_method, b_evidence = None, None, ""
         why_row = self.c.whys.get(outcome.why_id) if outcome else None
         personal = self._personal_entity()
@@ -556,32 +561,27 @@ class Engine:
                 beneficiary, b_method = next(iter(values)), MEMORY
                 b_evidence = f"{len(precedents)} human precedent(s) attributed this pattern to another entity"
             elif len(values) > 1:
-                exceptions.append(dict(code="BENEFICIARY_UNCERTAIN",
-                                       message="Human precedents attribute this pattern to different entities."))
+                r.anomalies.append(dict(code="DESTINATION_UNCERTAIN", message=(
+                    "Human precedents give this pattern different management destinations; the accounting "
+                    "subject is the Source owner (decision 86).")))
             elif ai and self._ai_field_ok(ai, "beneficiary") and ai.get("beneficiary_id") in self.c.entities:
                 beneficiary, b_method, b_evidence = ai["beneficiary_id"], AI, ai.get("justification", "")
-            elif outcome and outcome.method == AI and self._ai_field_declared(ai, "beneficiary"):
-                # The AI established the WHY but explicitly NOT the beneficiary: no account-owner default.
-                exceptions.append(dict(code="AI_PARTIAL", message="AI identified the WHY but not the beneficiary "
-                                       "with sufficient evidence: confirm who the cost/revenue belongs to.",
-                                       question=ai.get("question")))
             elif r.payer_id:
                 beneficiary, b_method = r.payer_id, ACCOUNT
-                b_evidence = "account owner; no rule, profile, precedent or evidence points to another beneficiary"
-                category = self.c.classes.get(outcome.category_id or self._why_category(outcome.why_id)) if outcome else None
-                if beneficiary == personal and category is not None and category.statement_type == "PROFIT_LOSS" \
-                        and not self._is_income(category) and not mt:
-                    # Decisions 03/16: a business cost (or its refund) on a personal instrument — which LLC
-                    # benefits? Income on a personal account (E1: interest earned) is not a business cost:
-                    # it keeps the account owner as beneficiary.
-                    exceptions.append(dict(code="BENEFICIARY_UNCERTAIN", message=(
-                        f"Business category {category.code} {category.name} paid with a personal account/card: "
-                        "which entity is the beneficiary?")))
-        trace.append(Step("Beneficiary", b_method or "—", self.c.entity_name(beneficiary), b_evidence,
+                b_evidence = "Source owner; no rule, profile, precedent or evidence points to another destination"
+        trace.append(Step("Destination", b_method or "—", self.c.entity_name(beneficiary),
+                          (b_evidence or "") + " — management only; the accounting subject is the Source owner",
                           "default" if b_method == ACCOUNT else ""))
 
         why_id = outcome.why_id if outcome else None
-        category_id = (outcome.category_id if outcome and outcome.category_id else self._why_category(why_id))
+        # BANK_WHY_REQUIRES_WHAT_001: the WHAT derives from the WHY. A different WHAT proposed by a profile
+        # destination or by the AI is never applied; it is only signalled.
+        category_id = self._why_category(why_id) or (outcome.category_id if outcome else None)
+        if outcome and outcome.category_id and self._why_category(why_id) \
+                and outcome.category_id != self._why_category(why_id):
+            r.anomalies.append(dict(code="WHAT_NOT_FROM_WHY", message=(
+                f"{outcome.reference} proposed WHAT {self.c.class_label(outcome.category_id)}; the WHAT of "
+                f"“{self._why_name(why_id)}” ({self.c.class_label(self._why_category(why_id))}) is used.")))
         if ai:
             r.ai_partial = self._ai_fields(ai)
         return dict(who=who, who_id=who_id, who_method=who_method, why_id=why_id,
@@ -729,28 +729,41 @@ class Engine:
         elif r.match and r.match.get("state") == "MATCHED" and r.operation_type == INTER_ACCOUNT_TRANSFER \
                 and r.match.get("counterpart_owner") and r.payer and r.match["counterpart_owner"] != r.payer:
             r.operation_type = INTER_ENTITY
+        # Decision 86: the Source owner is the accounting subject. Another entity is only a management
+        # destination: signalled, never posted to it, and never a receivable/payable by itself.
+        r.subject_id, r.subject = r.payer_id, r.payer
+        personal = self._personal_entity()
         if r.payer_id and r.beneficiary_id and r.payer_id != r.beneficiary_id \
                 and r.operation_type not in (INTER_ACCOUNT_TRANSFER, CARD_SETTLEMENT):
-            # Decision 01: cost attributed to the beneficiary; the payer gets a receivable.
-            amount = -r.amount_minor
-            r.ledger = dict(kind="PAID_FOR_OTHER", payer_id=r.payer_id, payer=r.payer,
-                            beneficiary_id=r.beneficiary_id, beneficiary=r.beneficiary,
-                            amount_minor=amount,
-                            proposal=(f"{r.beneficiary} owes {r.payer}" if amount > 0 else f"{r.payer} owes {r.beneficiary}"),
-                            note="Proposed receivable/payable; accounting qualification to verify.")
-            personal = self._personal_entity()
-            if personal in (r.payer_id, r.beneficiary_id):
-                # A personal expense paid by an LLC (or the reverse): the ECONOMIC ATTRIBUTION is decided
-                # (the cost belongs to the beneficiary); the credit/debit towards the owner is NOT created —
-                # it may settle an earlier advance or be a draw/contribution. One exception to decide it.
-                r.ledger.update(relationship="TO_DECIDE", note=(
-                    f"Economic attribution: {r.beneficiary}. No receivable/payable created: the relationship "
-                    f"between {r.payer} and {r.beneficiary} is to be decided."))
+            r.management = dict(destination_id=r.beneficiary_id, destination=r.beneficiary,
+                                basis=r.beneficiary_method, amount_minor=-r.amount_minor)
+            if r.beneficiary_id == personal:
+                # A personal expense paid from an LLC Source: posted in the LLC (its WHY/WHAT); whether it is a
+                # draw, an advance to the owner or the settlement of an earlier one is the relationship to decide.
+                r.management["note"] = (f"Paid by {r.payer} for {r.beneficiary}: posted in {r.payer}; the relationship "
+                                        "with the owner is to be decided (draw, advance or settlement).")
                 if not r.protected:
                     r.exceptions.append(dict(code="RELATIONSHIP_TO_DECIDE", message=(
                         f"Rapporto economico da decidere: {r.payer} paid an expense of {r.beneficiary} — "
-                        "the classification is complete; only the relationship between them is open.")))
-        elif r.operation_type == INTER_ENTITY and r.match and r.amount_minor < 0:
+                        f"it stays in the accounts of {r.payer} (decision 86); only the relationship is open.")))
+            elif r.payer_id == personal:
+                r.management["note"] = (f"Business use of a personal Source ({r.beneficiary}): signalled only; "
+                                        "it stays in personal accounting (decision 86).")
+                r.anomalies.append(dict(code="PROMISCUOUS_USE", message=r.management["note"]))
+            else:
+                r.management["note"] = (f"Management destination {r.beneficiary}; posted in {r.payer} (decision 86). "
+                                        "Any recharge between entities is decided later.")
+                r.anomalies.append(dict(code="MANAGEMENT_DESTINATION", message=r.management["note"]))
+        category = self.c.classes.get(r.category_id)
+        if r.payer_id and r.payer_id == personal and category is not None and category.statement_type == "PROFIT_LOSS" \
+                and not self._is_income(category) and r.operation_type not in (INTER_ACCOUNT_TRANSFER, CARD_SETTLEMENT):
+            # Personal accounting (decision 86) with a business P&L WHAT of the LLC chart: the WHY does not fit
+            # the subject (e.g. a business meal on a personal card). Never moved to an LLC; a person decides.
+            item = dict(code="PERSONAL_SOURCE_BUSINESS_WHAT", message=(
+                f"Personal Source, business WHAT {category.code} {category.name}: in personal accounting this needs "
+                "a personal WHY, or a recorded decision (decision 86 — never moved to an LLC automatically)."))
+            (r.anomalies if r.protected else r.exceptions).append(item)
+        if r.operation_type == INTER_ENTITY and r.match and r.amount_minor < 0:
             r.ledger = dict(kind="TRANSFER", payer_id=r.payer_id, payer=r.payer,
                             beneficiary=r.match.get("counterpart_owner"),
                             beneficiary_id=self.entity_by_name.get(clean(r.match.get("counterpart_owner"))),
@@ -765,11 +778,12 @@ class Engine:
             r.exceptions.append(dict(code="CATEGORY_MISSING", message=f"WHY “{r.why}” has no Category RF-One in the "
                                      "Bank catalog: choose it for this movement; a catalog change needs approval (decision 39)."))
         blocking = [e for e in r.exceptions]
-        complete = all([r.who_name, r.why_id, r.category_id, r.beneficiary_id, r.operation_type])
+        complete = all([r.who_name, r.why_id, r.category_id, r.subject_id, r.operation_type])
         r.status = RECONCILED if complete and not blocking else EXCEPTION
         if r.status == EXCEPTION and complete is False and not blocking:
             missing = [n for n, v in (("WHO", r.who_name), ("WHY", r.why_id), ("Category", r.category_id),
-                                      ("Beneficiary", r.beneficiary_id), ("Operation", r.operation_type)) if not v]
+                                      ("Accounting subject (Source owner)", r.subject_id),
+                                      ("Operation", r.operation_type)) if not v]
             r.exceptions.append(dict(code="INCOMPLETE", message="Missing: " + ", ".join(missing)))
         r.trace.append(asdict(Step("Mapping", r.why_method or "—", r.category,
                                    "Category RF-One = Bank WHAT; QB account not mapped (COA not imported)")))

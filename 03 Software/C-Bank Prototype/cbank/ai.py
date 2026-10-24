@@ -94,7 +94,8 @@ def _facts(r: dict) -> dict:
 INSTRUCTIONS = (
     "You are the C-Bank investigator of RF-One. Classify bank movements of a group of small restaurant LLCs and "
     "their owner, who uses accounts and cards promiscuously. For EACH movement decide: WHO (the counterparty), the "
-    "single economic BENEFICIARY entity (who the cost/revenue belongs to, independent of the paying account), "
+    "MANAGEMENT DESTINATION entity (beneficiary: who the cost/revenue is for operationally; the ACCOUNTING subject "
+    "is always the owner of the Source and is not yours to choose — decision 86), "
     "WHY (economic nature, from the WHY catalog) and the Category (from the categories catalog). Rules: "
     "never invent a WHO — it must be readable in the description or be a known WHO; one beneficiary only; "
     "not every payment is a P&L cost (assets, financing, transfers, equity are balance sheet); documents are not "

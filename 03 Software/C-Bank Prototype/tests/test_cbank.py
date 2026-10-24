@@ -83,8 +83,9 @@ class CBankTests(unittest.TestCase):
             r = e.evaluate(t)
             if r["protected"]:
                 continue
-            self.assertEqual(r["beneficiary_id"], rfmd)
+            self.assertEqual(r["beneficiary_id"], rfmd, "the profile branch gives the management destination")
             self.assertEqual(r["beneficiary_method"], eng_mod.PROFILE)
+            self.assertEqual(r["subject_id"], r["payer_id"], "decision 86: the accounting subject is the Source owner")
             checked += 1
         if not checked:
             self.skipTest("no unprotected TABLE TOP LINEN RF MOUNT DORA movement")
@@ -118,7 +119,8 @@ class DirectionAndKnowledgeTests(unittest.TestCase):
         if not rows:
             self.skipTest("no automatic income on a personal account")
         for t, r in rows:
-            self.assertNotIn("BENEFICIARY_UNCERTAIN", [x["code"] for x in r["exceptions"]])
+            self.assertNotIn("PERSONAL_SOURCE_BUSINESS_WHAT", [x["code"] for x in r["exceptions"]])
+            self.assertEqual(r["subject_id"], personal)
             self.assertEqual(r["operation_type"], eng_mod.OPERATING_INCOME)
 
     def test_income_category_on_money_out_is_a_direction_conflict(self):
@@ -158,8 +160,10 @@ class DirectionAndKnowledgeTests(unittest.TestCase):
                                       fields=dict(who=field(True), why=field(True), category=field(True),
                                                   beneficiary=field(False)))
             r = e.evaluate(t)
-            self.assertEqual(r["status"], eng_mod.EXCEPTION, "one uncertain field keeps the movement open")
-            self.assertIn("AI_PARTIAL", [x["code"] for x in r["exceptions"]])
+            # Decision 86: an uncertain management destination no longer blocks — the accounting subject is
+            # the Source owner, and the destination stays the Source owner by default.
+            self.assertNotIn("AI_PARTIAL", [x["code"] for x in r["exceptions"]])
+            self.assertEqual((r["subject_id"], r["beneficiary_id"]), (r0["payer_id"], r0["payer_id"]))
             self.assertTrue(r["ai_partial"]["why"]["accepted"])
             self.assertFalse(r["ai_partial"]["beneficiary"]["accepted"])
             e.ai_answers[t.id]["fields"] = dict(who=field(True), why=field(False), category=field(False),

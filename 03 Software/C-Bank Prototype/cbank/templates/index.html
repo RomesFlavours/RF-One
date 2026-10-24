@@ -139,7 +139,7 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
       <div id="p-done" class="m" role="status"></div>
       <div id="p-groups"></div></details>
     <div style="overflow:auto;max-height:66vh">
-    <table><thead><tr><th></th><th>Date</th><th>Description</th><th class="num">Amount</th><th>Paid by</th><th>WHO</th><th>Beneficiary</th><th>WHY</th><th>Category RF-One</th><th>QB</th><th>Operation</th><th>Status</th><th>vs Bank</th><th>Previous Bank classification</th></tr></thead>
+    <table><thead><tr><th></th><th>Date</th><th>Description</th><th class="num">Amount</th><th>Paid by</th><th>WHO</th><th>Destination</th><th>WHY</th><th>Category RF-One</th><th>QB</th><th>Operation</th><th>Status</th><th>vs Bank</th><th>Previous Bank classification</th></tr></thead>
     <tbody id="l-rows"></tbody></table></div>
   </div>
 </dialog>
@@ -175,7 +175,7 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
     <table>
       <tr><th>Paid by</th><td>The owner of the account or card that paid (e.g. a payment from <i>Checking RFWP</i> is paid by RFWP).</td></tr>
       <tr><th>WHO</th><td>The counterparty: who was paid or who paid us (e.g. <i>ADP WAGE PAY</i>, <i>TABLE TOP LINEN</i>).</td></tr>
-      <tr><th>Beneficiary</th><td>The LLC or person the movement economically belongs to. It can differ from <i>Paid by</i>: if RFWP pays a bill of RFMD, the beneficiary is RFMD and RFMD owes RFWP.</td></tr>
+      <tr><th>Destination</th><td>The LLC or person the movement economically belongs to. It can differ from <i>Paid by</i>: if RFWP pays a bill of RFMD, the beneficiary is RFMD and RFMD owes RFWP.</td></tr>
       <tr><th>WHY</th><td>The nature of the movement (e.g. <i>Payroll Wages Payment</i>, <i>Merchant / Card Sales Settlement</i>).</td></tr>
       <tr><th>Category RF-One</th><td>The management category (e.g. <i>1210 Merchant Processor Receivable / Clearing</i>). Usually it follows the WHY.</td></tr>
       <tr><th>QB</th><td>The QuickBooks account. It shows <i>not mapped</i> for now: the QuickBooks chart of accounts is not imported yet.</td></tr>
@@ -187,7 +187,7 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
     <h3>3. How to approve transactions</h3>
     <ol>
       <li>Look at the movements of the group in the table (click a row to see the full decision trace; use <i>Previous / Next</i> to move through the list).</li>
-      <li>In <b>Previous Bank classifications</b>, check each proposal: <b>Beneficiary</b>, <b>WHY</b> and <b>Category</b>.</li>
+      <li>In <b>Previous Bank classifications</b>, check each proposal: <b>Destination</b>, <b>WHY</b> and <b>Category</b>.</li>
       <li>If a value is wrong, change it in the proposal's drop-downs before approving (choosing a WHY also fills in its category).</li>
       <li><b>Select these rows</b> ticks the movements of that proposal; you can untick the ones you are not sure about.</li>
       <li><b>Approve selected rows</b> approves only the ticked movements of that proposal.</li>
@@ -211,7 +211,7 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
     <ul>
       <li>The decision is saved <b>only in C-Bank Prototype</b> (its experimental store).</li>
       <li>The operational <b>Bank is not changed</b>.</li>
-      <li>An approved row becomes <b>RECONCILED</b> if WHO, Beneficiary, WHY, Category and Operation are all set; otherwise it stays in EXCEPTION with the missing field shown. “Just approved” shows the result at once, and the dashboard counts update when you close this window.</li>
+      <li>An approved row becomes <b>RECONCILED</b> if WHO, WHY, Category and Operation are all set (the accounting subject is always the Source owner, decision 86); otherwise it stays in EXCEPTION with the missing field shown. “Just approved” shows the result at once, and the dashboard counts update when you close this window.</li>
       <li><b>No permanent rule</b> is created, and an approval applies only to the rows you approved, never to other movements of the same WHO.</li>
       <li>Approved decisions are <b>protected</b> 🔒: automatic processing never changes them, and approving the same row again is refused.</li>
     </ul>
@@ -227,7 +227,7 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
     <b>How to use this window</b>
     <ol><li><b>Read the AI question</b> in the yellow box.</li>
       <li><b>Select an answer</b>, or choose <i>Other</i> and explain in your own words, then <i>Submit answer</i>.</li>
-      <li><b>Review the proposed classification</b>: the AI fills WHO, Beneficiary, WHY and Category; nothing is saved yet.</li>
+      <li><b>Review the proposed classification</b>: the AI fills WHO, Destination, WHY and Category; nothing is saved yet.</li>
       <li><b>Confirm the decision</b> with <i>Confirm human decision</i> (saved only in C-Bank).</li></ol>
     <span class="m">Technical information is under <i>Advanced details</i>.</span>
   </div>
@@ -240,7 +240,7 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
         <h4 style="margin:4px 0">Classification — your decision (experimental, protected)</h4>
         <form id="d-form">
           <label>WHO<input name="who" list="whos" required></label><datalist id="whos"></datalist>
-          <label>Beneficiary<select name="beneficiary_id"></select></label>
+          <label>Destination<select name="beneficiary_id"></select></label>
           <label>WHY<select name="why_id" required></select></label>
           <label>Category RF-One<select name="category_id"></select></label>
           <label>Note / explanation<textarea name="note" rows="2"></textarea></label>
@@ -286,7 +286,7 @@ function renderPriors(){const g=pdata.groups||[],cat=pdata;$('#p-count').textCon
  $('#p-groups').innerHTML=g.map((x,i)=>`<div class="warnbox" data-pg="${i}">
   <div><b>${esc(x.who)}</b> → <b>${esc(x.beneficiary||'—')}</b> · WHY <b>${esc(x.why)}</b> · ${esc(x.category||'no category')} <span class="m">· ${x.txn_ids.length} movement(s) · origin: ${esc(Object.entries(x.origins).map(([k,n])=>`${k} (${n})`).join('; '))}${x.complete?'':' · incomplete: correct before approving'}</span></div>
   <div class="row" style="margin-top:4px">
-   <label style="margin:0">Beneficiary <select data-c="beneficiary_id">${opt(cat.entities||[],x.beneficiary_id,y=>y.name)}</select></label>
+   <label style="margin:0">Destination <select data-c="beneficiary_id">${opt(cat.entities||[],x.beneficiary_id,y=>y.name)}</select></label>
    <label style="margin:0">WHY <select data-c="why_id">${opt(cat.whys||[],x.why_id,y=>y.name)}</select></label>
    <label style="margin:0">Category <select data-c="category_id">${opt(cat.categories||[],x.category_id,y=>y.label,'(category of the WHY)')}</select></label>
    <button class="sec" type="button" data-pselect>Select these rows</button>
@@ -422,19 +422,19 @@ function renderWizard(){const p=cur(),s=W.step;
   next.textContent='Next';next.dataset.act='review';
  }else if(s===2){const f=fixed();
   h=`<p>Tick the movements to approve. ${p.anomaly?'<b>These movements are unusual: none is ticked by default.</b>':'Untick anything you are not sure about.'}</p>
-   <table><thead><tr><th><input type="checkbox" id="w-all" ${W.sel.size===p.txn_ids.length?'checked':''} aria-label="Select all"></th><th>Date</th><th>Description</th><th class="num">Amount</th><th>Account / card</th><th>Beneficiary</th><th>Proposed classification</th><th></th></tr></thead><tbody>
+   <table><thead><tr><th><input type="checkbox" id="w-all" ${W.sel.size===p.txn_ids.length?'checked':''} aria-label="Select all"></th><th>Date</th><th>Description</th><th class="num">Amount</th><th>Account / card</th><th>Destination</th><th>Proposed classification</th><th></th></tr></thead><tbody>
    ${p.txn_ids.map(i=>{const r=W.byId[i];return `<tr><td><input type="checkbox" data-w="${i}" ${W.sel.has(i)?'checked':''} aria-label="Select ${i}"></td><td>${esc(r.date)}</td>
     <td><details><summary>${esc(shortDesc(r.description))}</summary><span class="m">${esc(r.description)}</span></details></td>
     <td class="num ${r.amount_minor<0?'neg':''}">${usd(r.amount_minor)}</td><td>${esc(r.source)}</td><td>${esc(entName(f.beneficiary_id))}</td>
     <td>${esc(f.why)}${f.category?' · '+esc(plainCat(f.category)):' · <i>no category</i>'}</td><td><button class="sec" type="button" data-wdetail="${i}">Details / ask AI</button></td></tr>`;}).join('')}</tbody></table>
    <details style="margin-top:8px" ${Object.keys(W.fix).length?'open':''}><summary>Change the proposed classification</summary><div class="row" style="margin-top:6px">
-    <label style="margin:0">Beneficiary <select data-wf="beneficiary_id">${opt(W.cat.entities||[],f.beneficiary_id,x=>x.legal_name?`${x.name} (${x.legal_name})`:x.name)}</select></label>
+    <label style="margin:0">Destination <select data-wf="beneficiary_id">${opt(W.cat.entities||[],f.beneficiary_id,x=>x.legal_name?`${x.name} (${x.legal_name})`:x.name)}</select></label>
     <label style="margin:0">WHY <select data-wf="why_id">${opt(W.cat.whys||[],f.why_id,x=>x.name)}</select></label>
     <label style="margin:0">Category <select data-wf="category_id">${opt(W.cat.categories||[],f.category_id,x=>plainCat(x.label),'Choose a category')}</select></label></div>
     <p class="m">The change applies to the ticked movements of this proposal.</p></details>`+(others().length||W.noPrior.length?`<h4 style="margin:12px 0 4px">Kept apart</h4>${keptApart()}`:'');
   next.textContent='Next';next.dataset.act='confirm';
  }else{const f=fixed(),n=W.sel.size,excl=p.txn_ids.filter(i=>!W.sel.has(i));
-  h=`<div class="prop">You are approving <b>${n}</b> movement(s) with <b>${esc(p.who)}</b>.<br>Beneficiary: <b>${esc(entName(f.beneficiary_id))}</b><br>
+  h=`<div class="prop">You are approving <b>${n}</b> movement(s) with <b>${esc(p.who)}</b>.<br>Destination: <b>${esc(entName(f.beneficiary_id))}</b><br>
    Classification: <b>${esc(f.why)}</b>${f.category?` · <b>${esc(plainCat(f.category))}</b>`:' · <span class="neg">no category</span>'}</div>
    <p>${f.category?`Expected: <b>${n}</b> will become <span class="b RECONCILED">RECONCILED</span>, <b>0</b> will stay incomplete.`:`Expected: <b>0</b> will become Reconciled, <b>${n}</b> will stay <span class="b EXCEPTION">incomplete</span> (no category).`}</p>
    ${excl.length?`<p>Not approved now (unticked): ${excl.map(i=>`${esc(W.byId[i].date)} ${usd(W.byId[i].amount_minor)}`).join(', ')}.</p>`:''}
@@ -480,16 +480,16 @@ $('#d-prev').onclick=()=>{const i=rows.findIndex(r=>r.txn_id===current.result.tx
 $('#d-next').onclick=()=>{const i=rows.findIndex(r=>r.txn_id===current.result.txn_id);if(i>=0&&i<rows.length-1)open(rows[i+1].txn_id);};
 function opt(list,sel,label,none){return (none?`<option value="">${none}</option>`:'')+list.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(label(x))}</option>`).join('');}
 function render(v){const r=v.result;$('#d-title').textContent=`#${r.txn_id} · ${r.date} · ${(r.amount_minor/100).toFixed(2)} ${r.currency||''}`;$('#d-sub').textContent=`${r.description} — ${r.source} (${r.source_type}), paid by ${r.payer||'—'}`;
- let a='';if(r.protected)a+=`<div class="warnbox">🔒 Protected human decision (${esc(r.protected)}). The engine never replaces it.</div>`;
+ let a=`<div class="m"><b>Accounting subject:</b> ${esc(r.subject||r.payer||'—')} (owner of the Source, decision 86)${r.management?` · <b>Management destination:</b> ${esc(r.management.destination)} — ${esc(r.management.note||'')}`:''}</div>`;if(r.protected)a+=`<div class="warnbox">🔒 Protected human decision (${esc(r.protected)}). The engine never replaces it.</div>`;
  if(r.who_labels&&r.who_labels.length)a+=`<div class="m"><b>Labels of ${esc(r.who_name)}</b> (context only, edited in Configuration › Edit WHO): ${esc(r.who_labels.join(', '))}${(r.label_hints||[]).map(h=>` · ${h.whos} of ${h.of} WHOs labelled ${esc(h.label)} are approved as <b>${esc(h.why)}</b>`).join('')}</div>`;
- if(r.proposal)a+=`<div class="warnbox"><b>Engine proposal (not applied):</b> ${esc(r.proposal.fields.join(', '))} — WHO ${esc(r.proposal.who)}, WHY ${esc(r.proposal.why)}, Category ${esc(r.proposal.category)}, Beneficiary ${esc(r.proposal.beneficiary)}. ${esc(r.proposal.note)}</div>`;
+ if(r.proposal)a+=`<div class="warnbox"><b>Engine proposal (not applied):</b> ${esc(r.proposal.fields.join(', '))} — WHO ${esc(r.proposal.who)}, WHY ${esc(r.proposal.why)}, Category ${esc(r.proposal.category)}, Destination ${esc(r.proposal.beneficiary)}. ${esc(r.proposal.note)}</div>`;
  const q=r.exceptions.find(e=>e.question);
  for(const e of r.exceptions)a+=`<div class="warnbox"><b>${esc(e.code)}</b>: ${esc(e.message)}${e.question&&e!==q?`<br><b>Question:</b> ${esc(e.question)}`:''}</div>`;
  for(const e of r.anomalies)a+=`<div class="warnbox">${esc(e.code)}: ${esc(e.message)}</div>`;
  if(r.ledger)a+=`<div class="warnbox"><b>Inter-entity:</b> ${esc(r.ledger.proposal)} ${(r.ledger.amount_minor/100).toFixed(2)} — ${esc(r.ledger.note)}</div>`;
  $('#d-alerts').innerHTML=a;
  $('#d-trace tbody').innerHTML=r.trace.map(s=>`<tr><td>${esc(s.stage)}</td><td>${esc(s.method)}</td><td>${esc(s.value)}</td><td class="m">${esc(s.evidence)}${s.confidence?' · '+esc(s.confidence):''}</td></tr>`).join('');
- const b=r.bank||{};$('#d-bank').innerHTML=`WHO ${esc(b.who||'—')} · WHY #${esc(b.why_id||'—')} · Category #${esc(b.category_id||'—')} · Beneficiary #${esc(b.beneficiary_id||'(account default)')} · source ${esc(b.source||'—')} → <b>${esc(r.comparison)}</b>`;
+ const b=r.bank||{};$('#d-bank').innerHTML=`WHO ${esc(b.who||'—')} · WHY #${esc(b.why_id||'—')} · Category #${esc(b.category_id||'—')} · Destination #${esc(b.beneficiary_id||'(account default)')} · source ${esc(b.source||'—')} → <b>${esc(r.comparison)}</b>`;
  $('#d-history').innerHTML=v.history.length?'C-Bank human decisions: '+v.history.map(h=>`${esc(h.created_at)} ${esc(h.who_name)} / WHY #${h.why_id}${h.active?' (active)':''}`).join('; '):'';
  $('#whos').innerHTML=v.whos.map(w=>`<option value="${esc(w)}">`).join('');
  const f=$('#d-form');f.who.value=r.who_name||'';f.beneficiary_id.innerHTML=opt(v.entities,r.beneficiary_id,x=>x.name,'(account owner)');
@@ -523,7 +523,7 @@ function showAnswer(html){const el=$('#d-answer-res');if(!el)return;el.hidden=fa
 // Only values that exist in the catalogs are copied into the fields; nothing is invented or saved.
 function applyProposal(ans,v){const p=(ans&&ans.proposal)||{},f=$('#d-form'),set=[],rejected=[];
  if(p.who){f.who.value=String(p.who).toUpperCase();set.push(`WHO ${esc(f.who.value)}${v.whos.includes(f.who.value)?'':' (new WHO)'}`);}
- const ent=v.entities.find(x=>x.id===p.beneficiary_id);if(ent){f.beneficiary_id.value=ent.id;set.push(`Beneficiary ${esc(ent.name)}`);}else if(p.beneficiary_id)rejected.push('beneficiary');
+ const ent=v.entities.find(x=>x.id===p.beneficiary_id);if(ent){f.beneficiary_id.value=ent.id;set.push(`Destination ${esc(ent.name)}`);}else if(p.beneficiary_id)rejected.push('beneficiary');
  const why=v.whys.find(x=>x.id===p.why_id);if(why){f.why_id.value=why.id;set.push(`WHY ${esc(why.name)}`);}else if(p.why_id)rejected.push('WHY');
  let cat=v.categories.find(x=>x.id===p.category_id);if(!cat&&p.category_id)rejected.push('category');
  if(!cat&&why&&why.category_id)cat=v.categories.find(x=>x.id===why.category_id);

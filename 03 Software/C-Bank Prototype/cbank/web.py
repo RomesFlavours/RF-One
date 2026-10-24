@@ -95,7 +95,8 @@ def create_app(con=None) -> Flask:
         rows = apply_filters(store.results(db(), run_id), filters(request.args))
         keep = ("txn_id", "date", "description", "cases", "amount_minor", "payer", "source", "who_name", "who_method",
                 "beneficiary", "beneficiary_method", "why", "why_method", "category", "qb_account", "operation_type",
-                "status", "protected", "exceptions", "comparison", "group_key", "who_labels", "label_hints")
+                "status", "protected", "exceptions", "comparison", "group_key", "who_labels", "label_hints",
+                "subject", "management")
         return jsonify(ok=True, rows=[{k: r.get(k) for k in keep} for r in rows])
 
     def _priors(run_id, rows):

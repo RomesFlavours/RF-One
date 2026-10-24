@@ -15,7 +15,8 @@ from openpyxl.styles import Font, PatternFill
 BANNER = "EXPERIMENTAL — C-Bank Prototype dry run. Not accounting entries; not approved; Bank data unchanged."
 COLUMNS = [("txn_id", "Txn"), ("date", "Date"), ("description", "Description"), ("amount", "Amount"),
            ("posting", "Posting"), ("posted_amount", "Posted amount"),
-           ("source", "Account/Card"), ("payer", "Paid by"), ("beneficiary", "Beneficiary"), ("who_name", "WHO"),
+           ("source", "Account/Card"), ("subject", "Accounting subject (Source)"),
+           ("beneficiary", "Management destination"), ("who_name", "WHO"),
            ("why", "WHY"), ("category", "Category RF-One"), ("qb", "QB account"), ("operation_type", "Operation"),
            ("status", "Status"), ("methods", "Method WHO/WHY/Beneficiary"), ("protected", "Human decision"),
            ("comparison", "Compared with Bank"), ("issues", "Exceptions / anomalies")]
@@ -38,6 +39,7 @@ def _row(r: dict) -> list:
     values["posting"] = (f"counterpart of #{r['match']['counterpart_id']} (traceability, not posted)"
                          if is_counterpart(r) else "posted")
     values["posted_amount"] = posted_amount_minor(r) / 100
+    values["subject"] = r.get("subject") or r.get("payer")
     values["qb"] = r["qb_account"] or "not mapped"
     values["methods"] = f"{r['who_method'] or '—'} / {r['why_method'] or '—'} / {r['beneficiary_method'] or '—'}"
     values["issues"] = "; ".join(f"{e['code']}: {e['message']}" for e in r["exceptions"] + r["anomalies"])
@@ -58,17 +60,20 @@ def _sheet(wb, title, rows, columns=COLUMNS, convert=_row):
     return ws
 
 
+def subject_id(r: dict):
+    """Decision 86: the accounting subject is the Source owner (older runs carry only `payer_id`)."""
+    return r.get("subject_id", r.get("payer_id"))
+
+
 def balances(results: list[dict]) -> dict[tuple, int]:
-    """Net amounts owed: (debtor, creditor) -> minor units (decision 14)."""
+    """Net amounts between entities (decision 14), from DOCUMENTED transfers only. A management destination
+    is never a balance by itself (decision 86); an undecided relationship is never a balance owed."""
     net = defaultdict(int)
     for r in results:
         led = r.get("ledger")
         if not led or not led.get("beneficiary") or led.get("relationship") == "TO_DECIDE":
-            continue   # an undecided relationship is never a balance owed
-        if led["kind"] == "PAID_FOR_OTHER":
-            debtor, creditor = (led["beneficiary"], led["payer"]) if led["amount_minor"] > 0 else (led["payer"], led["beneficiary"])
-            net[(debtor, creditor)] += abs(led["amount_minor"])
-        elif led["kind"] == "TRANSFER":
+            continue
+        if led["kind"] == "TRANSFER":
             # Money sent from payer to beneficiary: reduces what payer owes, or creates an advance.
             net[(led["beneficiary"], led["payer"])] += led["amount_minor"]
     out = {}
@@ -91,15 +96,12 @@ def build_zip(results: list[dict], entities: dict, run_label: str) -> bytes:
                 continue
             wb = Workbook()
             wb.remove(wb.active)
-            attributed = [r for r in results if r["beneficiary_id"] == e.id]
-            paid_for_others = [r for r in results if r["payer_id"] == e.id and r["beneficiary_id"] not in (None, e.id)
-                               and r.get("ledger")]
-            open_items = [r for r in results if (r["beneficiary_id"] == e.id or r["payer_id"] == e.id)
-                          and (r["status"] != "RECONCILED" or r["anomalies"])]
-            differences = [r for r in results if (r["beneficiary_id"] == e.id or r["payer_id"] == e.id)
-                           and (r["comparison"] or "").startswith("DIFFERENT")]
+            attributed = [r for r in results if subject_id(r) == e.id]
+            for_others = [r for r in attributed if r["beneficiary_id"] not in (None, e.id)]
+            open_items = [r for r in attributed if r["status"] != "RECONCILED" or r["anomalies"]]
+            differences = [r for r in attributed if (r["comparison"] or "").startswith("DIFFERENT")]
             _sheet(wb, "Transactions", attributed)
-            _sheet(wb, "Paid for others", paid_for_others)
+            _sheet(wb, "Other destination (info)", for_others)
             _sheet(wb, "Anomalies", open_items)
             _sheet(wb, "Differences vs Bank", differences)
             out = io.BytesIO()
