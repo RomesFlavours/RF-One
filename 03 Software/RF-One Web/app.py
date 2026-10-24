@@ -53,6 +53,7 @@ from compensation_routes import register_compensation_routes  # noqa: E402
 from workweek_settings_routes import register_workweek_settings_routes  # noqa: E402
 from organizational_responsibility_routes import register_organizational_responsibility_routes  # noqa: E402
 from bank_routes import register_bank_routes  # noqa: E402
+import bank_guided_reconciliation  # noqa: E402
 from tips_validation_routes import register_tips_validation_routes  # noqa: E402
 from clover_acquisition_routes import register_clover_acquisition_routes  # noqa: E402
 from projects_routes import register_projects_routes  # noqa: E402
@@ -507,6 +508,10 @@ register_bank_routes(
     app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
     load_current_account=load_current_account, require_csrf=require_csrf,
 )
+
+# Bank unification Phase 1: Guided Reconciliation (C-Bank) under /bank/reconcile/,
+# behind the same Bank gate. Registers nothing unless the process enables it.
+bank_guided_reconciliation.register(app, require_domain_access=require_domain_access)
 
 
 # ---------------------------------------------------------------------------

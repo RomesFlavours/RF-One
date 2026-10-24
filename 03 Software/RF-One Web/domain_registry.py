@@ -40,6 +40,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
+import bank_guided_reconciliation
+
 # Where Tips's own home page is served — a path on this host by default.
 TIPS_HOME_URL = (os.environ.get("RFONE_TIPS_URL") or "").strip() or "/tips/"
 
@@ -138,6 +140,11 @@ DOMAINS: tuple[DomainDefinition, ...] = (
         items=(
             DomainItem("import", "Import and Review", "bank_home", exact_paths=("/bank",),
                        paths=("/bank/upload", "/bank/import", "/bank/batches", "/bank/monthly")),
+            # Bank unification Phase 1 (2026-10-24): the C-Bank Dashboard and
+            # Guided Reconciliation Wizard, served inside this application
+            # (`bank_guided_reconciliation.py`) — only where it is mounted.
+            *((DomainItem("guided", "Guided Reconciliation", "bank_guided", paths=("/bank/reconcile",)),)
+              if bank_guided_reconciliation.available() else ()),
             DomainItem("review", "Review Transactions", "bank_review",
                        paths=("/bank/review", "/bank/reconciliation", "/bank/transactions")),
             DomainItem("export", "Monthly Export", "bank_export", paths=("/bank/export",)),

@@ -1,0 +1,8 @@
+{#- The Bank shell placed above the Guided Reconciliation page (served by C-Bank,
+    `bank_guided_reconciliation.py`): the same header, local-environment bar,
+    breadcrumb and Bank tabs as every other Bank page. #}
+{% import "_bank_macros.html" as bank %}
+<div class="wrap wrap-wide">
+  {% include "_site_header.html" %}
+  {{ bank.module_nav('guided') }}
+</div>

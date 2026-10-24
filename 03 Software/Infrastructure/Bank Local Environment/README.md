@@ -94,6 +94,20 @@ It becomes generation 1; the original file is not modified or moved. From then o
 The default AI mode is **SESSION** (`environment.json`): the Preview button never calls an AI provider. See
 [SESSION_INTERPRETATION.md](SESSION_INTERPRETATION.md).
 
+## Guided Reconciliation (Bank unification, Phase 1)
+
+*Avvia Bank* also serves the C-Bank Dashboard and Guided Reconciliation Wizard, as the Bank tab
+**Guided Reconciliation** (`/bank/reconcile/`, `RF-One Web/bank_guided_reconciliation.py`). One server, one
+interface; not yet one engine: C-Bank keeps its own engine and store (`%LOCALAPPDATA%\RF-One\C-Bank`, test
+profile `C-Bank TEST`) and reads this profile's database read-only. Its automatic run after a new import starts
+with the server. The C-Bank code is read from the sibling worktree `rf-one-c-bank-prototype`
+(`RFONE_BANK_CBANK_ROOT` overrides it); if it is missing, the tab is simply absent.
+
+Rollback to the previous configuration: start the Bank with `RFONE_BANK_GUIDED=0` in the environment (the tab
+and the routes are not registered), and, if needed, run the standalone C-Bank again with `Avvia C-Bank.cmd`
+on 5090. Never run the standalone C-Bank while the Bank serves Guided Reconciliation: both would write
+automatic runs to the same store.
+
 ## The page header
 
 Every page served by *Avvia Bank* shows a bar with the **PC**, the **database path and generation**, the **code
