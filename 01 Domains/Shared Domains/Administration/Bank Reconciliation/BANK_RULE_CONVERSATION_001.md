@@ -1,0 +1,5 @@
+# Conversational Bank rule workflow
+
+Approved correction, 2026-10-19: authoring, discussion and execution choices belong in the existing Regole e chiarimenti conversation. Three choices: save only (no future execution), future imports only (no past changes), or past and future (mandatory UPDATE_ASSIGNED preview followed by a separate explicit Apply). Preview alone never saves a version or enables a future rule. Exact signed confirmation binds text, actor, instructions and prior version; apply remains atomically tied to the reviewed data fingerprint.
+
+A Rules link on each reconciliation row opens transaction context. Existing compatible rules are selected by actual executable conditions; multiple matches are presented for a human choice. Transactions without WHO can start a conversation. All saved rule identities and versions are available, not only chat-created rules. Per-rule rollback history stays in the same dialog; the old applications URL becomes history only. The safety/rollback service and source-data protections remain unchanged.

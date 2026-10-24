@@ -69,6 +69,15 @@ Implementation: `static/js/rf-one-row-return.js` (RF-One Web), one implementatio
 - The record travels in `sessionStorage` (this tab only). It is used once, by the next load of the same page within a minute of leaving it.
 - The Bank menu macro (`_bank_macros.html` → `module_nav`) loads the script on every Bank page.
 
+## 6. Every modal window has a close X at its top right
+
+Product Owner standard UI_MODAL_CLOSE_X_001 (2026-10-22). Every modal window or dialog of every RF-One app has a close **X** at its top right. The person can leave the window without scrolling to its bottom.
+
+- The X stays visible while the window's content scrolls.
+- The X does exactly what the window's own Cancel / Close does. It calls that same action, never a second implementation. Nothing is saved.
+- Esc and a click outside the window keep working where they already work.
+- Implementation: the `.rf-modal-x` style (and the existing `.org-modal-close`, now with the same behaviour) in RF-One Web's `static/css/rf-one.css`: sticky at the top of the scrolling panel, floated right. Selection (`templates/base.html`) and Training (`trainer_student_detail.html`) carry the same style. The Bank Flow dialogs keep their `.dialog-heading` X, now sticky (`static/bank-assistant/preview.css`). A new modal adds `<button type="button" class="rf-modal-x" aria-label="Close">&times;</button>` as the first element of its panel and wires it to its own Cancel.
+
 ---
 
 ## Local days (companion rule, UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001)
