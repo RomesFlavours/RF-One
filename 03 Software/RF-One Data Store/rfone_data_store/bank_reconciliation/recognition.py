@@ -308,6 +308,8 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
             transaction_reason_id=reason.id, source="HUMAN",
         )
         destination_source = m.DESTINATION_SOURCE_WHY
+        if what is None and request.accounting_classification_id is not None:
+            raise why_what.IncoherentWhyWhatError(f"WHY “{reason.name}” is provisional and has no WHAT.")
         if request.accounting_classification_id is not None and request.accounting_classification_id != what.id:
             chosen = session.get(m.BankAccountingClassification, request.accounting_classification_id)
             if chosen is None:

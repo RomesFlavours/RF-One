@@ -40,6 +40,11 @@ LEGACY_MESSAGE = ("This WHY is a legacy entry to resolve and cannot be used for 
                   "Choose a canonical WHY.")
 # The "Legacy - To Resolve" WHY group (BANK_WHY_LEGACY_001).
 LEGACY_GROUP_CODE = "TO_REVIEW"
+# Provisional WHYs (Product Owner decisions 74-76 and 79, 2026-10-24): the ONLY explicit exception to this
+# rule. Exactly these WHYs, in the "Provisional" group and with no WHAT, may be assigned: they describe a
+# movement whose nature is not known yet, and the reconciliation engine keeps it an Exception.
+PROVISIONAL_GROUP_CODE = "PROVISIONAL"
+PROVISIONAL_WHY_CODES = frozenset({"ONLINE_PURCHASE_UNIDENTIFIED", "CASH_CHECK_DEPOSIT", "WITHDRAWAL"})
 
 
 class WhyWithoutWhatError(ValueError):
@@ -77,6 +82,14 @@ def is_legacy(session: Session, reason: "m.BankTransactionReason | None") -> boo
     return group is not None and group.code == LEGACY_GROUP_CODE
 
 
+def is_provisional(session: Session, reason: "m.BankTransactionReason | None") -> bool:
+    """One of the approved provisional WHYs: listed code, Provisional group, no WHAT."""
+    if reason is None or reason.code not in PROVISIONAL_WHY_CODES or reason.accounting_classification_id is not None:
+        return False
+    group = session.get(m.BankReasonGroup, reason.reason_group_id) if reason.reason_group_id else None
+    return group is not None and group.code == PROVISIONAL_GROUP_CODE
+
+
 def assignment_problem(session: Session, reason: "m.BankTransactionReason | None") -> str | None:
     """Why this WHY cannot classify a movement now, or None when it can."""
     if reason is None:
@@ -85,6 +98,8 @@ def assignment_problem(session: Session, reason: "m.BankTransactionReason | None
         return f"WHY “{reason.name}” is inactive; choose its canonical WHY."
     if is_legacy(session, reason):
         return LEGACY_MESSAGE
+    if is_provisional(session, reason):
+        return None
     if usable_what(session, reason) is None:
         return NO_WHAT_MESSAGE
     return None
@@ -94,9 +109,9 @@ def is_usable(session: Session, reason: "m.BankTransactionReason | None") -> boo
     return assignment_problem(session, reason) is None
 
 
-def require_what(session: Session, transaction_reason_id: int) -> "m.BankAccountingClassification":
+def require_what(session: Session, transaction_reason_id: int) -> "m.BankAccountingClassification | None":
     """The WHAT of a WHY about to classify a movement; refuses a draft, legacy
-    or inactive WHY."""
+    or inactive WHY. None only for a provisional WHY, which has no WHAT."""
     reason = session.get(m.BankTransactionReason, transaction_reason_id)
     problem = assignment_problem(session, reason)
     if problem is not None:
@@ -153,6 +168,11 @@ def _check_assignment(session: Session, obj) -> None:
         reason = session.get(m.BankTransactionReason, reason_id)
         problem = assignment_problem(session, reason)
         what = usable_what(session, reason)
+        if problem is None and what is None:
+            # A provisional WHY: never with a WHAT, nothing to derive.
+            if obj.accounting_classification_id is not None:
+                raise IncoherentWhyWhatError(f"WHY “{reason.name}” is provisional and has no WHAT.")
+            return
         if problem is None and obj.accounting_classification_id == what.id:
             return
         if _carried_over(session, obj.financial_transaction_id, pair, obj):
