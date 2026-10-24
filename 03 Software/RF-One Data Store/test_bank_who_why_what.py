@@ -562,6 +562,19 @@ def main() -> int:
             # BANK_RECONCILIATION_STANDARDS_001: a person confirms each row.
             confirm_decided_rows(s, year=2026, month=9)
             s.commit()
+            # BANK_WHY_REQUIRES_WHAT_001 — a What required by an active Why
+            # cannot be deactivated; the Why is retired first.
+            raises(
+                "a What required by an active Why cannot be deactivated",
+                lambda: classification_service.set_accounting_classification_active(
+                    s, classification_id=ap_settlement.id, active=False,
+                ),
+                "active WHYs",
+            )
+            s.rollback()
+            classification_service.set_transaction_reason_status(
+                s, transaction_reason_id=invoice_settlement.id, status="INACTIVE",
+            )
             classification_service.set_accounting_classification_active(
                 s, classification_id=ap_settlement.id, active=False,
             )

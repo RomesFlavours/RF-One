@@ -46,6 +46,7 @@ from sqlalchemy.orm import Session
 from .. import models as m
 from . import classification as classification_service
 from . import why_catalog
+from . import why_what
 
 UTC = timezone.utc
 
@@ -296,18 +297,10 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
             raise ValueError(f"Why {request.transaction_reason_id} does not exist.")
         if reason.status != "ACTIVE":
             raise ValueError(f"Why {reason.code} — {reason.name} is inactive.")
-        # Read by id, not through the relationship: a mapping edited earlier
-        # in this same session must be the one used.
-        what = (session.get(m.BankAccountingClassification, reason.accounting_classification_id)
-                if reason.accounting_classification_id is not None else None)
-        # BANK_WHY_WITHOUT_WHAT_001 — a WHY with no accounting destination yet
-        # is a complete Bank answer (WHO + WHY); the decision's WHAT stays NULL
-        # until bookkeeping assigns one. Never invented.
-        if what is not None and not what.is_posting_account:
-            raise ValueError(
-                f"Why {reason.code} resolves to {what.code}, a reporting group, which "
-                "nothing may be posted to."
-            )
+        # BANK_WHY_REQUIRES_WHAT_001 (supersedes BANK_WHY_WITHOUT_WHAT_001) —
+        # a WHY without a valid WHAT is a draft and never classifies a
+        # movement. Read by id: a mapping edited earlier in this session counts.
+        what = why_what.require_what(session, reason.id)
         # An explicit choice IS the human confirming this purpose for this
         # counterparty: recorded additively, never replacing another.
         why_catalog.associate(
@@ -315,22 +308,20 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
             transaction_reason_id=reason.id, source="HUMAN",
         )
         destination_source = m.DESTINATION_SOURCE_WHY
-        if (request.accounting_classification_id is not None
-                and (what is None or request.accounting_classification_id != what.id)):
+        if request.accounting_classification_id is not None and request.accounting_classification_id != what.id:
             chosen = session.get(m.BankAccountingClassification, request.accounting_classification_id)
             if chosen is None:
                 raise ValueError(f"WHAT {request.accounting_classification_id} does not exist.")
             current = get_current_explanation(session, financial_transaction_id=txn.id)
+            # BANK_WHY_REQUIRES_WHAT_001 — the WHAT derives from the WHY; a
+            # different one is refused. Only restating the SAME WHY with the
+            # exception this movement already holds keeps it, so history is
+            # never reclassified silently.
             keeps_current = (current is not None
+                             and current.transaction_reason_id == reason.id
                              and current.accounting_classification_id == chosen.id)
-            # A transaction-level choice is a P&L WHAT. The only other value
-            # accepted is the destination this transaction ALREADY has (e.g. a
-            # preserved Balance Sheet destination), so nothing is converted.
-            if not (chosen.is_what or keeps_current):
-                raise ValueError(
-                    f"{chosen.code} — {chosen.name} is not a P&L WHAT that can be chosen for a "
-                    "transaction."
-                )
+            if not keeps_current:
+                raise why_what.IncoherentWhyWhatError(why_what.incoherent_message(reason, what, chosen))
             what = chosen
             destination_source = m.DESTINATION_SOURCE_TRANSACTION
         chain = classification_service.ResolvedChain(

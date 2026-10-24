@@ -12207,6 +12207,7 @@ class BankAiRule(Base):
     # secondary reference). Optional. Not part of a version: changing it never reinterprets or reapplies the rule.
     user_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
+    organization_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="AUTO", server_default="AUTO")
     apply_future: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     origin_transaction_id: Mapped[int | None] = mapped_column(
         ForeignKey("financial_transactions.id", ondelete="SET NULL"), nullable=True)
@@ -12269,6 +12270,10 @@ class BankAiRuleApplication(Base):
         CheckConstraint("status IN ('COMPLETED', 'FAILED')", name="ck_bank_ai_rule_application_status"),
     )
 
+    application_mode: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rolled_back_by_account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     rule_id: Mapped[int] = mapped_column(ForeignKey("bank_ai_rules.id"), nullable=False, index=True)
     version_id: Mapped[int] = mapped_column(ForeignKey("bank_ai_rule_versions.id"), nullable=False)
@@ -12310,6 +12315,10 @@ class BankAiRuleApplicationItem(Base):
         CheckConstraint("outcome IN ('UPDATED', 'UNCHANGED', 'PROTECTED', 'CONFLICT', 'UNRESOLVED', 'ERROR')",
                         name="ck_bank_ai_rule_application_item_outcome"),
     )
+
+    before_state: Mapped[str | None] = mapped_column(Text, nullable=True)
+    after_state: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rollback_outcome: Mapped[str | None] = mapped_column(String(24), nullable=True)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     application_id: Mapped[int] = mapped_column(
@@ -12357,6 +12366,9 @@ class BankAiRulePreview(Base):
     __table_args__ = (
         CheckConstraint("status IN ('COMPLETED', 'FAILED')", name="ck_bank_ai_rule_preview_status"),
     )
+
+    application_mode: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    state_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     draft_id: Mapped[int | None] = mapped_column(ForeignKey("bank_ai_rule_drafts.id", ondelete="SET NULL"),
@@ -14738,3 +14750,214 @@ ALL_MODELS: tuple[type[Base], ...] = (
     ProjectTask,
     ProjectTaskDependency,
 )
+
+
+class BankWhoKnowledge(Base):
+    """Sourced counterparty research; never an approval to classify payments."""
+    __tablename__ = "bank_who_knowledge"
+    display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occurrence_id: Mapped[int] = mapped_column(ForeignKey("bank_occurrences.id"), nullable=False, unique=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    sources_json: Mapped[str] = mapped_column(Text, nullable=False)
+    suggested_reason_id: Mapped[int | None] = mapped_column(ForeignKey("bank_transaction_reasons.id"), nullable=True)
+    researched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class BankImportReconciliation(Base):
+    """Committed per-movement extraction/photo/research job and proposal audit."""
+    __tablename__ = "bank_import_reconciliations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    financial_transaction_id: Mapped[int] = mapped_column(ForeignKey("financial_transactions.id"), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="QUEUED", index=True)
+    stage: Mapped[str] = mapped_column(String(24), nullable=False, default="EXTRACTION")
+    context_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    proposal_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    eligible_versions_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    input_state: Mapped[str] = mapped_column(Text, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class BankFlowArtifact(Base):
+    """Durable discovery, conversation or exact reviewed plan; never a decision."""
+    __tablename__ = "bank_flow_artifacts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+# ---------------------------------------------------------------------------
+# BANK_WHO_IDENTIFICATION_001 — the WHO identification engine
+# (`bank_reconciliation/who_identification.py`). It writes ONLY WHO identity,
+# aliases (`BankOccurrenceAlias`), activity labels, evidence and the link of a
+# movement to its WHO. It never writes a reconciliation decision
+# (`BankTransactionExplanation`), a WHY, a WHAT or a WHOM.
+# ---------------------------------------------------------------------------
+
+WHO_ID_IDENTIFIED = "IDENTIFIED"
+WHO_ID_PENDING = "PENDING"            # waiting for the AI investigation of its group
+WHO_ID_UNRESOLVED = "UNRESOLVED"      # investigated, identity not established
+WHO_ID_AMBIGUOUS = "AMBIGUOUS"        # several identities (rules or AI) disagree
+WHO_ID_INSUFFICIENT = "INSUFFICIENT"  # the description does not name a counterparty
+WHO_ID_OWN_ACCOUNT = "OWN_ACCOUNT"    # between two of RF-One's own accounts: no WHO by design
+WHO_ID_AI_ERROR = "AI_ERROR"          # the AI call failed; retried by the next run
+WHO_ID_STATUSES = (WHO_ID_IDENTIFIED, WHO_ID_PENDING, WHO_ID_UNRESOLVED, WHO_ID_AMBIGUOUS,
+                   WHO_ID_INSUFFICIENT, WHO_ID_OWN_ACCOUNT, WHO_ID_AI_ERROR)
+
+
+class BankWhoLabel(Base):
+    """One activity label of the shared catalog ("Restaurant", "Bank"): an
+    English name and a short definition. Names are unique by `name_key`
+    (case, spacing and a plural "s" aside), so a synonym is not added twice."""
+
+    __tablename__ = "bank_who_labels"
+    __table_args__ = (
+        UniqueConstraint("name_key", name="uq_bank_who_label_name_key"),
+        CheckConstraint("source IN ('SEED', 'AI', 'HUMAN')", name="ck_bank_who_label_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    definition: Mapped[str] = mapped_column(String(255), nullable=False)
+    source: Mapped[str] = mapped_column(String(8), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class BankOccurrenceLabel(Base):
+    """A label given to a WHO, with who gave it and on what evidence."""
+
+    __tablename__ = "bank_occurrence_labels"
+    __table_args__ = (
+        UniqueConstraint("occurrence_id", "label_id", name="uq_bank_occurrence_label"),
+        CheckConstraint("source IN ('AI', 'HUMAN')", name="ck_bank_occurrence_label_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occurrence_id: Mapped[int] = mapped_column(ForeignKey("bank_occurrences.id"), nullable=False, index=True)
+    label_id: Mapped[int] = mapped_column(ForeignKey("bank_who_labels.id"), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(8), nullable=False)
+    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sources_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("bank_who_identify_runs.id"), nullable=True)
+    decided_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class BankWhoProfile(Base):
+    """Provenance of a WHO the engine created or confirmed, and the state of
+    its activity label — identity and label have independent outcomes: a
+    certain WHO may still wait for its label (`label_status` PENDING)."""
+
+    __tablename__ = "bank_who_profiles"
+    __table_args__ = (
+        CheckConstraint("label_status IN ('NONE', 'ACCEPTED', 'PENDING', 'HUMAN')", name="ck_bank_who_profile_label_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occurrence_id: Mapped[int] = mapped_column(ForeignKey("bank_occurrences.id"), nullable=False, unique=True)
+    identity_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    identity_evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    identity_sources_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    activity: Mapped[str | None] = mapped_column(Text, nullable=True)
+    label_status: Mapped[str] = mapped_column(String(8), nullable=False, default="NONE", server_default="NONE")
+    label_question: Mapped[str | None] = mapped_column(Text, nullable=True)
+    label_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_by_run_id: Mapped[int | None] = mapped_column(ForeignKey("bank_who_identify_runs.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class BankWhoRecognitionKey(Base):
+    """One group of equivalent descriptions: the bank variant of a
+    counterparty (`kind` NAME, e.g. "TRADER JOE S" from "PURCHASE 09/30
+    TRADER JOE S #76…") or a generic shape that names no counterparty
+    (`kind` GENERIC, e.g. "CHECK #"). It carries the outcome of its
+    investigation (AI or person), so the same identity is never investigated
+    twice, and the person's decision for the group is kept for later runs."""
+
+    __tablename__ = "bank_who_recognition_keys"
+    __table_args__ = (
+        UniqueConstraint("key", name="uq_bank_who_recognition_key"),
+        CheckConstraint("kind IN ('NAME', 'GENERIC')", name="ck_bank_who_recognition_key_kind"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    variant_text: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    occurrence_id: Mapped[int | None] = mapped_column(ForeignKey("bank_occurrences.id"), nullable=True, index=True)
+    method: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sources_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    candidates_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    question: Mapped[str | None] = mapped_column(Text, nullable=True)
+    samples_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    ai_answer_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("bank_who_identify_runs.id"), nullable=True)
+    decided_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class BankWhoIdentification(Base):
+    """The link of ONE movement to the WHO the engine recognised (or why it
+    has none). Separate from the reconciliation decision on purpose: a
+    WHO recognised here never assigns WHY / WHAT / WHOM nor confirms
+    anything. `current_occurrence_id` is the WHO of the movement's current
+    decision when the engine ran; `discrepancy` says the two differ (a WHO
+    chosen by a person is kept and only reported)."""
+
+    __tablename__ = "bank_who_identifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    financial_transaction_id: Mapped[int] = mapped_column(ForeignKey("financial_transactions.id"), nullable=False, unique=True)
+    occurrence_id: Mapped[int | None] = mapped_column(ForeignKey("bank_occurrences.id"), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    method: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    recognition_key_id: Mapped[int | None] = mapped_column(ForeignKey("bank_who_recognition_keys.id"), nullable=True, index=True)
+    rule_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    current_occurrence_id: Mapped[int | None] = mapped_column(ForeignKey("bank_occurrences.id"), nullable=True)
+    current_source: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    discrepancy: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("bank_who_identify_runs.id"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class BankWhoIdentifyRun(Base):
+    """One run of the engine: every present movement (scope ALL, the
+    "Identify WHO" button) or the movements of one import (scope NEW). It
+    keeps its cursor and counters, so a stopped or interrupted run resumes
+    where it was without redoing or duplicating anything."""
+
+    __tablename__ = "bank_who_identify_runs"
+    __table_args__ = (
+        CheckConstraint("scope IN ('ALL', 'NEW')", name="ck_bank_who_identify_run_scope"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scope: Mapped[str] = mapped_column(String(8), nullable=False)
+    transaction_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # QUEUED, RUNNING, STOP_REQUESTED, STOPPED, COMPLETED, FAILED
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    phase: Mapped[str] = mapped_column(String(16), nullable=False, default="RECORDS", server_default="RECORDS")
+    total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    cursor_transaction_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    counters_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}", server_default="{}")
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

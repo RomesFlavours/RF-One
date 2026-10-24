@@ -18,3 +18,10 @@ branch — both are structurally dependent on the Recognition/Explanation
 model, which Phase 3 explicitly excludes; they are deferred to the phase
 that ports Recognition.
 """
+
+# BANK_WHY_REQUIRES_WHAT_001 — one server-side check on every flush: a WHY
+# without a valid WHAT never classifies a movement, and WHY/WHAT pairs stay
+# coherent, whatever service writes them.
+from . import why_what as _why_what  # noqa: E402
+
+_why_what.install()

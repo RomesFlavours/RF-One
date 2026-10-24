@@ -1,22 +1,10 @@
-"""The ONE definition of a transaction's reconciliation status
-(BANK_RECONCILIATION_STANDARDS_001).
+"""Canonical reconciliation statuses for manual decisions and validated photos.
 
-Two statuses, each derived from persisted facts only — never from a page
-label or browser state:
-
-* CONFIRMED — a human accepted this transaction: its allocation set is
-  COMPLETE and HUMAN, balances the transaction, and a single allocation
-  matches the current decision's WHY and accounting destination (the
-  decision names the WHO).
-* NEEDS REVIEW — anything else, including an automatic suggestion no human
-  approved.
-
-CONFIRMED is exportable; NEEDS REVIEW is not. (A third status, AUTOMATIC,
-was produced only by a Reconciliation Standard; it went with the old rule
-system — BANK_RULES_RESET_001, BANK_OLD_RULES_REMOVAL_001 — and, by Product
-Owner decision, was not given another meaning.) The
-Reconciliation page and the Monthly Export both read this module, so the
-two can never disagree about what is done.
+A human-confirmed complete allocation remains Confirmed. A complete decision
+from an explicitly validated photo is Reconciled and exportable. A photo with
+WHO/WHY/WHOM but no accounting destination is Reconciled · accounting pending;
+it remains blocked from accounting export. Historical automatic suggestions
+never gain either status. Both Review and Export read this one definition.
 """
 
 from __future__ import annotations
@@ -28,7 +16,9 @@ from .. import models as m
 
 NEEDS_REVIEW = "Needs review"
 CONFIRMED = "Confirmed"
-EXPORTABLE = (CONFIRMED,)
+RECONCILED = "Reconciled"
+RECONCILED_ACCOUNTING_PENDING = "Reconciled · accounting pending"
+EXPORTABLE = (CONFIRMED, RECONCILED)
 
 _COMPLETE = m.ALLOCATION_COMPLETE
 
@@ -41,6 +31,18 @@ def status_of(
         return NEEDS_REVIEW
     if not allocations or sum(a.amount_minor for a in allocations) != transaction.amount_minor:
         return NEEDS_REVIEW
+    # An approved photo is an explicit human policy, with its own audited application.
+    # Keep this distinct from human confirmation and from historical AI suggestions.
+    if (len(allocations) == 1 and explanation.decision_status == "AUTO_APPLIED"
+            and (explanation.explanation_notes or "").startswith(("Foto segnaletica #", "Reconciliation run #"))
+            and transaction.review_status == "ACCEPTED"):
+        a = allocations[0]
+        if (a.decision_source == "RULE" and a.reporting_entity_id is not None
+                and a.transaction_reason_id == explanation.transaction_reason_id):
+            if a.status == _COMPLETE and a.accounting_classification_id == explanation.accounting_classification_id:
+                return RECONCILED
+            if a.accounting_classification_id is None:
+                return RECONCILED_ACCOUNTING_PENDING
     if any(a.status != _COMPLETE for a in allocations):
         return NEEDS_REVIEW
 

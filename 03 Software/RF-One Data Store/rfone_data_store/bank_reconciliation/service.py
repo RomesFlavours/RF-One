@@ -636,6 +636,8 @@ def import_csv(
         )
 
     _refresh_batch_status(session, batch)
+    from . import import_pipeline
+    import_pipeline.seal_batch(session,batch.id)
     session.flush()
     return ImportResult(
         batch=batch, created=True, parsed_row_count=len(parsed_file.rows),
@@ -1610,6 +1612,7 @@ def _normalize_rows(
     # BANK_AI_RULES_006 — operative AI rules enabled "Per il futuro" (None
     # when there is none: the import then behaves exactly as before).
     ai_rule_context = ai_rule_operations.import_context(session)
+    newly_normalized = []
 
     for row in parsed_rows:
         if row.parse_status == "UNREADABLE":
@@ -1678,13 +1681,7 @@ def _normalize_rows(
         session.add(normalized)
         session.flush()  # visible to the next row's existing_match query
 
-        # BANK_RULES_RESET_001 — the only automatic classification at import
-        # is the operative AI rules enabled for new movements: only the fields
-        # each rule names, existing protections, conflicts reported (never
-        # settled by order). The old engines (learned / structural
-        # recognition, General Rules, WHY rules, Reconciliation Standards) no
-        # longer run: a new movement is otherwise left to classify.
-        ai_rule_operations.apply_to_new_transaction(session, normalized, ai_rule_context)
+        newly_normalized.append(normalized)
 
         # Accounting deduplication keying
         # (BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001): the payee
@@ -1714,7 +1711,6 @@ def _normalize_rows(
 
     # BANK_AI_RULES_006 — close the log of the operative AI rules applied
     # during this pass (no-op when none applies to new movements).
-    ai_rule_operations.finish_import(ai_rule_context)
 
     # Accounting deduplication, resolved ONCE for the whole pass rather
     # than per row: which occurrence is canonical is a property of the
@@ -1728,6 +1724,11 @@ def _normalize_rows(
             session, payment_instrument_ids=sorted(instrument_cache),
         )
 
+    # Bank facts, canonical/suppressed status and automatic transfer matching
+    # must be final before classification and the asynchronous state guard.
+    for txn in newly_normalized:
+        ai_rule_operations.apply_to_new_transaction(session,txn,ai_rule_context)
+    ai_rule_operations.finish_import(ai_rule_context)
     return normalized_count, candidate_count
 
 

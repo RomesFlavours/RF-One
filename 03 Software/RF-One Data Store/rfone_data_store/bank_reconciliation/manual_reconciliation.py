@@ -45,6 +45,7 @@ from .. import models as m
 from . import configuration as config_service
 from . import row_reconciliation
 from . import why_catalog
+from . import why_what
 
 
 @dataclass(frozen=True)
@@ -107,8 +108,11 @@ def why_navigation_catalog(session: Session) -> dict:
     whys = []
     for reason in why_catalog.active_reasons(session):
         group_id = reason.reason_group_id if reason.reason_group_id in active_group_ids else None
+        # BANK_WHY_REQUIRES_WHAT_001 — a draft WHY stays visible but is
+        # marked, and choosing it is refused (here at once, on the server always).
         whys.append({"id": reason.id, "name": reason.name, "what": reason.resolution_label,
-                     "group_id": group_id})
+                     "group_id": group_id, "usable": why_what.is_usable(session, reason),
+                     "problem": why_what.assignment_problem(session, reason)})
     counts: dict[int | None, int] = {}
     for why in whys:
         counts[why["group_id"]] = counts.get(why["group_id"], 0) + 1

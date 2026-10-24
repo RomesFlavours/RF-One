@@ -385,6 +385,82 @@ def save_who(
     return occurrence
 
 
+# Delete a WHO (Configuration > WHO > Delete). The person confirms after a
+# preview; the WHO is then removed from every transaction it was assigned to
+# (their WHY and reconciliation stay), and its own links are deleted. AI
+# rules that name it are only counted: they are not changed.
+_WHO_OWN_LINKS = (
+    ("labels", "BankOccurrenceLabel"), ("aliases", "BankOccurrenceAlias"),
+    ("possible_whys", "BankOccurrenceReasonAssociation"), ("entities", "BankOccurrenceReportingEntity"),
+    ("suppliers", "BankOccurrenceSupplier"), ("knowledge", "BankWhoKnowledge"), ("profiles", "BankWhoProfile"),
+    ("evidence_authorizations", "BankEvidenceBypassAuthorization"),
+)
+
+
+def _require_who(session: Session, occurrence_id: int) -> "m.BankOccurrence":
+    occurrence = session.get(m.BankOccurrence, occurrence_id)
+    if occurrence is None:
+        raise ValueError("This WHO no longer exists.")
+    return occurrence
+
+
+def _rules_naming(session: Session, name: str) -> int:
+    import json
+    key = (name or "").strip().upper()
+    rule_ids = set()
+    for rule_id, spec in session.execute(
+        select(m.BankAiRuleVersion.rule_id, m.BankAiRuleVersion.spec)
+        .join(m.BankAiRule, m.BankAiRule.id == m.BankAiRuleVersion.rule_id)
+        .where(m.BankAiRule.deleted_at.is_(None))
+    ):
+        try:
+            who = (json.loads(spec or "{}") or {}).get("who")
+        except ValueError:
+            continue
+        if isinstance(who, str) and who.strip().upper() == key:
+            rule_ids.add(rule_id)
+    return len(rule_ids)
+
+
+def who_delete_preview(session: Session, occurrence_id: int) -> dict:
+    """What deleting this WHO would change. Writes nothing."""
+    occurrence = _require_who(session, occurrence_id)
+    count = lambda model, column: session.scalar(select(func.count()).select_from(model).where(column == occurrence.id))
+    links = {key: count(getattr(m, model), getattr(m, model).occurrence_id) for key, model in _WHO_OWN_LINKS}
+    return {
+        "id": occurrence.id, "name": occurrence.canonical_name,
+        "transactions": count(m.BankTransactionExplanation, m.BankTransactionExplanation.occurrence_id),
+        "rules": _rules_naming(session, occurrence.canonical_name),
+        "links": links,
+    }
+
+
+def delete_who(session: Session, occurrence_id: int) -> dict:
+    """Delete the WHO, after the person's confirmation: removed from its
+    transactions and from every other reference, its own links deleted."""
+    from sqlalchemy import delete, update
+    preview = who_delete_preview(session, occurrence_id)
+    oid = preview["id"]
+    session.execute(update(m.BankTransactionExplanation).where(m.BankTransactionExplanation.occurrence_id == oid)
+                    .values(occurrence_id=None, occurrence_name_snapshot=None))
+    session.execute(update(m.BankAiRulePreviewItem).where(m.BankAiRulePreviewItem.proposed_who_id == oid)
+                    .values(proposed_who_id=None))
+    session.execute(update(m.BankAiTestResult).where(m.BankAiTestResult.proposed_who_id == oid)
+                    .values(proposed_who_id=None))
+    session.execute(update(m.BankWhoIdentification).where(m.BankWhoIdentification.current_occurrence_id == oid)
+                    .values(current_occurrence_id=None))
+    session.execute(update(m.BankWhoIdentification).where(m.BankWhoIdentification.occurrence_id == oid)
+                    .values(occurrence_id=None, status=m.WHO_ID_UNRESOLVED))
+    session.execute(update(m.BankWhoRecognitionKey).where(m.BankWhoRecognitionKey.occurrence_id == oid)
+                    .values(occurrence_id=None, status=m.WHO_ID_UNRESOLVED))
+    for _, model in _WHO_OWN_LINKS:
+        cls = getattr(m, model)
+        session.execute(delete(cls).where(cls.occurrence_id == oid))
+    session.execute(delete(m.BankOccurrence).where(m.BankOccurrence.id == oid))
+    session.expire_all()
+    return preview
+
+
 # ---------------------------------------------------------------------------
 # Support — entities
 # ---------------------------------------------------------------------------
@@ -723,10 +799,27 @@ def configuration_view(session: Session) -> dict:
         .where(m.BankOccurrenceReportingEntity.active.is_(True))
     ):
         entities_by_who.setdefault(occurrence_id, []).append(entity_id)
+    # Activity labels already given to each WHO (display only).
+    labels_by_who: dict[int, list[str]] = {}
+    label_ids_by_who: dict[int, list[int]] = {}
+    for occurrence_id, label_id, label_name in session.execute(
+        select(m.BankOccurrenceLabel.occurrence_id, m.BankWhoLabel.id, m.BankWhoLabel.name)
+        .join(m.BankWhoLabel, m.BankWhoLabel.id == m.BankOccurrenceLabel.label_id)
+        .order_by(m.BankWhoLabel.name)
+    ):
+        labels_by_who.setdefault(occurrence_id, []).append(label_name)
+        label_ids_by_who.setdefault(occurrence_id, []).append(label_id)
+    # The label catalog the WHO modal chooses from.
+    who_labels = [
+        {"id": l.id, "name": l.name, "definition": l.definition, "active": bool(l.active)}
+        for l in session.scalars(select(m.BankWhoLabel).order_by(m.BankWhoLabel.name))
+    ]
     whos = [
         {"id": o.id, "name": o.canonical_name, "whys": reasons_by_who.get(o.id, []),
          "default_why": o.default_transaction_reason_id,
          "entities": entities_by_who.get(o.id, []),
+         "labels": labels_by_who.get(o.id, []),
+         "label_ids": label_ids_by_who.get(o.id, []),
          "active": o.status == "ACTIVE"}
         for o in session.scalars(select(m.BankOccurrence).order_by(m.BankOccurrence.canonical_name))
     ]
@@ -742,4 +835,5 @@ def configuration_view(session: Session) -> dict:
     return {
         "whats": whats, "groups": groups, "whys": whys,
         "balance_sheet_destinations": balance_sheet_destinations, "whos": whos, "entities": entities,
+        "who_labels": who_labels,
     }

@@ -37,7 +37,7 @@ size: the counts are one grouped query, each queue one query.
 from __future__ import annotations
 
 import calendar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 
 from sqlalchemy import and_, case, exists, func, or_, select
@@ -61,6 +61,11 @@ class ReviewFilters:
     batch_id: int | None = None
     # BANK_REVIEW_SEARCH_001 — one literal text, ANDed with the filters above.
     search: str | None = None
+    # BANK_REVIEW_COLUMN_FILTERS_001 — per column: (key, text), all ANDed; each text is looked for, any case, in
+    # the text that column SHOWS (`column_texts`). `allowed_ids` is their result, resolved by
+    # `with_column_filters` over every movement the other filters keep, before the row limit.
+    columns: tuple[tuple[str, str], ...] = ()
+    allowed_ids: frozenset | None = None
 
 
 _LIKE_ESCAPE = "\\"
@@ -133,7 +138,90 @@ def _scoped(query, filters: ReviewFilters, *, with_suppressed: bool = False):
         query = query.where(m.FinancialTransaction.import_batch_id == filters.batch_id)
     if filters.search:
         query = query.where(_search_condition(filters.search))
+    if filters.allowed_ids is not None:
+        query = query.where(m.FinancialTransaction.id.in_(sorted(filters.allowed_ids)))
     return query
+
+
+# BANK_REVIEW_COLUMN_FILTERS_001 — the columns a filter may name: the data columns of both tabs. `instrument` is
+# the Account / Card, `for_whom` the For Whom shown under it (the same column, two targets).
+COLUMN_FILTERS = ("instrument", "for_whom", "date", "description", "amount", "source", "duplicate",
+                  "classification", "who", "why", "what", "status")
+VIEW_COLUMNS = {
+    TO_RECONCILE: ("instrument", "for_whom", "date", "description", "amount", "source", "duplicate", "classification"),
+    RECONCILED: ("instrument", "for_whom", "date", "description", "amount", "who", "why", "what", "status"),
+}
+
+
+def column_texts(session: Session, transactions: list["m.FinancialTransaction"]) -> dict[int, dict[str, str]]:
+    """The text each filterable column SHOWS for each transaction, from the same definitions the two tabs render
+    (account label, For Whom, WHO / WHY / WHAT, reconciliation status). Read only."""
+    from . import reconciliation_status
+    from . import row_reconciliation
+    ids = [t.id for t in transactions]
+    if not ids:
+        return {}
+    instruments = {i.id: i for i in session.scalars(select(m.PaymentInstrument))}
+    explanation_ids = [t.explanation_id for t in transactions if t.explanation_id is not None]
+    explanations = {}
+    for start in range(0, len(explanation_ids), 900):
+        explanations.update({e.id: e for e in session.scalars(select(m.BankTransactionExplanation).where(
+            m.BankTransactionExplanation.id.in_(explanation_ids[start:start + 900])))})
+    allocations: dict[int, list] = {}
+    for start in range(0, len(ids), 900):
+        for a in session.scalars(select(m.BankTransactionAllocation).where(
+                m.BankTransactionAllocation.financial_transaction_id.in_(ids[start:start + 900]))
+                .order_by(m.BankTransactionAllocation.allocation_index)):
+            allocations.setdefault(a.financial_transaction_id, []).append(a)
+    whos = dict(session.execute(select(m.BankOccurrence.id, m.BankOccurrence.canonical_name)).all())
+    whys = dict(session.execute(select(m.BankTransactionReason.id, m.BankTransactionReason.name)).all())
+    whats = {c.id: c for c in session.scalars(select(m.BankAccountingClassification))}
+    entities = dict(session.execute(select(m.ReportingEntity.id, m.ReportingEntity.name)).all())
+    for_whom = row_reconciliation.for_whom_values(session, transactions, instruments, allocations)
+    own_account = row_reconciliation._own_account_labels(session, ids)
+    result = {}
+    for t in transactions:
+        e = explanations.get(t.explanation_id)
+        on_date = t.posting_date or t.transaction_date
+        who = (whos.get(e.occurrence_id) if e and e.occurrence_id else None) or (e.occurrence_name_snapshot if e else None)
+        if who is None:
+            who = own_account.get(t.id) or ""
+        why = (whys.get(e.transaction_reason_id) if e and e.transaction_reason_id else None) or (
+            e.transaction_reason_name_snapshot if e else None) or ""
+        destination = whats.get(e.accounting_classification_id) if e and e.accounting_classification_id else None
+        what = " ".join(x for x in (row_reconciliation._destination_label(destination),
+                                    e.accounting_classification_code_snapshot if e else None,
+                                    e.accounting_classification_name_snapshot if e else None) if x)
+        fw = for_whom[t.id]
+        amount = t.amount_minor / 100
+        result[t.id] = {
+            "instrument": row_reconciliation.account_label(instruments.get(t.payment_instrument_id)),
+            "for_whom": "split" if fw["split"] else (entities.get(fw["for_whom"]) or ""),
+            "date": on_date.isoformat() if on_date else "",
+            "description": t.description_original or "",
+            "amount": f"{amount:.2f} {amount:,.2f}",
+            "source": t.bank_source or "",
+            "duplicate": t.duplicate_status or "",
+            "classification": " ".join(x for x in (who, why, what, e.decision_status if e else "") if x),
+            "who": who, "why": why, "what": what,
+            "status": reconciliation_status.status_of(t, e, allocations.get(t.id, [])),
+        }
+    return result
+
+
+def with_column_filters(session: Session, view: str, filters: ReviewFilters) -> ReviewFilters:
+    """`filters` with `allowed_ids` resolved for its column filters (only those of this view's columns): every
+    movement the other filters keep in this queue is read, and a movement stays when each column filter's text is
+    in what that column shows, any case. No column filter: `filters` unchanged."""
+    columns = tuple((k, v) for k, v in filters.columns if k in VIEW_COLUMNS[view] and v)
+    if not columns:
+        return replace(filters, columns=(), allowed_ids=None)
+    base = replace(filters, columns=(), allowed_ids=None)
+    candidates = list(session.scalars(_queue_query(view, base).order_by(None)).all())
+    texts = column_texts(session, candidates)
+    allowed = frozenset(t.id for t in candidates
+                        if all(text.casefold() in texts[t.id][key].casefold() for key, text in columns))
+    return replace(filters, columns=columns, allowed_ids=allowed)
 
 
 def counts(session: Session, filters: ReviewFilters) -> dict[str, int]:

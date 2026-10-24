@@ -307,10 +307,11 @@ def _write(session: Session, txn: "m.FinancialTransaction", current, target: ai_
         decision_status=status,
         confidence=current.confidence if current is not None else None,
         explanation_notes=note,
-        accounting_destination_source=(current.accounting_destination_source
-                                       if current is not None and not target.why_set else m.DESTINATION_SOURCE_WHY),
+        accounting_classification_id=target.destination_id,
+        accounting_destination_source=(m.DESTINATION_SOURCE_TRANSACTION if target.destination_id is not None
+            else (current.accounting_destination_source if current is not None and not target.why_set else m.DESTINATION_SOURCE_WHY)),
     )
-    if not target.why_set and current is not None:
+    if not target.why_set and target.destination_id is None and current is not None:
         for name in _PURPOSE_FIELDS:            # the WHY is unchanged: so are its WHAT and accounting snapshot
             setattr(row, name, getattr(current, name))
     session.flush()
@@ -333,7 +334,7 @@ def _write_for_whom(session: Session, txn: "m.FinancialTransaction", target: ai_
 def _needs_decision(current, plan: ai_rules.Plan, target: ai_rules.Target) -> bool:
     """A new decision row is written when WHO or WHY change, or when only For
     Whom changes and the decision must become "Da confermare" (and is not)."""
-    if "WHO" in plan.changes or "WHY" in plan.changes:
+    if "WHO" in plan.changes or "WHY" in plan.changes or "WHAT" in plan.changes:
         return True
     return (target.to_confirm and current is not None
             and current.decision_status != ai_rules.TO_CONFIRM_DECISION_STATUS)
@@ -354,6 +355,9 @@ def _log_to_verify(application: "m.BankAiRuleApplication", row: ai_rules.Row, ex
 def _apply_one(session: Session, planner: ai_rules.Planner, row: ai_rules.Row, target: ai_rules.Target, *,
                create_missing_who: bool, maker: _WhoMaker, application: "m.BankAiRuleApplication", note: str,
                to_verify: str | None = None) -> str:
+    from . import rule_application_safety as safety
+    target = safety.prepare_target(target, row, planner)
+    before_state = safety.snapshot(session, row.txn)
     plan = planner.plan_full(row, target, create_missing_who=create_missing_who)
     outcome, plan_note, who_after, why_after = plan.as_tuple()
     for_whom_after = plan.for_whom_after
@@ -366,7 +370,7 @@ def _apply_one(session: Session, planner: ai_rules.Planner, row: ai_rules.Row, t
                 if _needs_decision(row.explanation, plan, target):
                     who_id = maker.id_for(target.who_name) if target.who_set and target.who_new else target.who_id
                     written = target
-                    if "WHO" not in plan.changes and "WHY" not in plan.changes:
+                    if "WHO" not in plan.changes and "WHY" not in plan.changes and "WHAT" not in plan.changes:
                         # Only For Whom changes: the decision keeps WHO and WHY
                         # and only becomes "Da confermare".
                         written = dataclasses.replace(target, who_set=False, why_set=False)
@@ -384,6 +388,8 @@ def _apply_one(session: Session, planner: ai_rules.Planner, row: ai_rules.Row, t
             outcome, plan_note, who_after, why_after = "ERROR", f"Not applied: {exc}", row.current_who, row.current_why
             for_whom_after = plan.for_whom_before
     application.items.append(m.BankAiRuleApplicationItem(
+        before_state=before_state if outcome == ai_rules.UPDATED else None,
+        after_state=safety.snapshot(session, row.txn) if outcome == ai_rules.UPDATED else None,
         financial_transaction_id=row.id, outcome=outcome, who_before=row.current_who, why_before=row.current_why,
         who_after=who_after, why_after=why_after, for_whom_before=plan.for_whom_before,
         for_whom_after=for_whom_after, explanation_id=explanation_id, note=plan_note[:2000]))
@@ -407,6 +413,7 @@ def application_as_dict(application: "m.BankAiRuleApplication") -> dict:
         unchanged=application.unchanged, protected=application.protected, conflicts=application.conflicts,
         unresolved=application.unresolved, errors=application.errors,
         only_unsettled=bool(application.only_unsettled), excluded_ai_settled=application.excluded_ai_settled or 0,
+        application_mode=application.application_mode,
         who_only=bool(application.who_only),
         who_created=json.loads(application.who_created) if application.who_created else [],
         error=application.error_message)
@@ -434,11 +441,17 @@ def already_applied(session: Session, preview_id: int | None) -> str | None:
 
 def apply_rule(session: Session, *, rule: "m.BankAiRule", scope: str, selected_ids: list[int] | None,
                preview_id: int | None, account_id: int | None,
-               only_unsettled: bool = False, who_only: bool = False) -> "m.BankAiRuleApplication":
+               only_unsettled: bool = False, who_only: bool = False,
+               application_mode: str | None = None) -> "m.BankAiRuleApplication":
     """Apply the rule's current version to ALL in-scope movements or to the
     SELECTED ones, on the strength of a completed preview of the same text,
     scope, selection and option (`AiRuleError` "needs a preview"
     otherwise). The plan is recomputed now, on the current data."""
+    from . import rule_application_safety as safety
+    safety.validate_mode(application_mode)
+    safety.lock_writes(session)
+    if application_mode:
+        only_unsettled, who_only = False, False
     version = current_version(rule)
     if version is None or rule.status != "ACTIVE":
         raise AiRuleError("Only an active rule can be applied.")
@@ -447,11 +460,12 @@ def apply_rule(session: Session, *, rule: "m.BankAiRule", scope: str, selected_i
     if version.spec and not ai_rules.spec_usable(json.loads(version.spec)):
         raise AiRuleError("This rule's saved interpretation is outdated (it read “Personal” as “owner is a "
                           "Person”): press Salva to interpret it again, then preview and apply.")
-    preview = session.get(m.BankAiRulePreview, preview_id) if preview_id else None
+    preview = session.scalar(select(m.BankAiRulePreview).where(
+        m.BankAiRulePreview.id == preview_id).with_for_update()) if preview_id else None
     problem = ai_rules.preview_problem(preview, rule_text=version.rule_text, scope=scope, selected_ids=selected_ids,
                                        create_missing_who=version.create_missing_who,
-                                       override_protected=bool(version.override_protected),
-                                       only_unsettled=only_unsettled, who_only=who_only) \
+                                       override_protected=(application_mode == safety.UPDATE_ASSIGNED if application_mode else bool(version.override_protected)),
+                                       only_unsettled=only_unsettled, who_only=who_only, application_mode=application_mode) \
         or already_applied(session, preview_id)
     if problem:
         raise NeedsPreview(problem)
@@ -464,8 +478,12 @@ def apply_rule(session: Session, *, rule: "m.BankAiRule", scope: str, selected_i
     rows = ai_rules.scope_rows(session, scope=scope, date_from=None, date_to=None, selected_ids=selected_ids)
     # BANK_AI_RULES_013 — the same selection as the preview's, recomputed now.
     rows, excluded_by_rule = ai_rules.without_ai_settled(session, rows, only_unsettled)
+    if application_mode and (not preview.state_fingerprint or
+                             preview.state_fingerprint != safety.fingerprint(session, rows)):
+        raise NeedsPreview("Movements or catalogs changed after Preview: run Preview again.")
     planner = ai_rules.Planner(session, rule_id=rule.id)
     application = m.BankAiRuleApplication(
+        application_mode=application_mode,
         rule_id=rule.id, version_id=version.id, mode=MODE_ALL if scope == ai_rules.SCOPE_ALL else MODE_SELECTED,
         preview_id=preview.id, examined=len(rows), updated=0, unchanged=0, protected=0, conflicts=0, unresolved=0,
         errors=0, status="COMPLETED", created_by_account_id=account_id, started_at=datetime.now(timezone.utc),
@@ -488,6 +506,7 @@ def apply_rule(session: Session, *, rule: "m.BankAiRule", scope: str, selected_i
                     _log_to_verify(application, row, ex, planner.for_whom(row.id).name)
                 continue
             target = planner.target_of(ex)
+            target.application_mode = application_mode
             target.override_protected = bool(version.override_protected)
             _apply_one(session, planner, row, target,
                        create_missing_who=version.create_missing_who, maker=maker, application=application,
@@ -501,6 +520,7 @@ def apply_rule(session: Session, *, rule: "m.BankAiRule", scope: str, selected_i
             if item is None:
                 continue
             target = planner.target(item.proposed_who_name, item.proposed_why_name)
+            target.application_mode = application_mode
             target.override_protected = bool(version.override_protected)
             _apply_one(session, planner, row, target,
                        create_missing_who=version.create_missing_who, maker=maker, application=application, note=note)
@@ -553,7 +573,7 @@ def import_context(session: Session) -> ImportContext | None:
     return ImportContext(session, entries) if entries else None
 
 
-def apply_to_new_transaction(session: Session, txn: "m.FinancialTransaction",
+def _apply_import_matches(session: Session, txn: "m.FinancialTransaction",
                              context: ImportContext | None) -> bool:
     """Every rule for the future is evaluated on the new movement. Rules that
     match with incompatible values are ALL reported as conflicts and none is
@@ -577,6 +597,8 @@ def apply_to_new_transaction(session: Session, txn: "m.FinancialTransaction",
             continue
         target = context.planner.target_of(ex)
         target.override_protected = bool(version.override_protected)
+        if getattr(context, "photo_stage", False):
+            target.replace_existing = True
         matched.append((rule, version, target))
     if not matched:
         session.flush()
@@ -591,6 +613,8 @@ def apply_to_new_transaction(session: Session, txn: "m.FinancialTransaction",
                 incompatible.append(f"AI rules #{rule_a.id} and #{rule_b.id} assign different WHO")
             if a.why_set and b.why_set and a.why_key() != b.why_key():
                 incompatible.append(f"AI rules #{rule_a.id} and #{rule_b.id} assign different WHY")
+            if a.destination_id is not None and b.destination_id is not None and a.destination_id != b.destination_id:
+                incompatible.append(f"Photos #{rule_a.id} and #{rule_b.id} assign different accounting destinations")
             if a.for_whom_set and b.for_whom_set and a.for_whom_id != b.for_whom_id:
                 incompatible.append(f"AI rules #{rule_a.id} and #{rule_b.id} assign different For Whom")
     if incompatible:
@@ -616,6 +640,8 @@ def apply_to_new_transaction(session: Session, txn: "m.FinancialTransaction",
         if target.for_whom_set:
             merged.for_whom_set, merged.for_whom_id = True, target.for_whom_id
             merged.for_whom_name = target.for_whom_name
+        if target.destination_id is not None:
+            merged.destination_id = target.destination_id
         merged.to_confirm = merged.to_confirm or target.to_confirm
         merged.only_if_who_differs = merged.only_if_who_differs or target.only_if_who_differs
         merged.replace_existing = merged.replace_existing or target.replace_existing
@@ -634,12 +660,17 @@ def apply_to_new_transaction(session: Session, txn: "m.FinancialTransaction",
             financial_transaction_id=txn.id, outcome=item.outcome, who_before=item.who_before,
             why_before=item.why_before, who_after=item.who_after, why_after=item.why_after,
             for_whom_before=item.for_whom_before, for_whom_after=item.for_whom_after,
-            explanation_id=item.explanation_id, note=item.note))
+            explanation_id=item.explanation_id, note=item.note, before_state=item.before_state, after_state=item.after_state))
         _count(other, item.outcome)
     for rule, _version, _target in matched:
         rule.last_applied_at = datetime.now(timezone.utc)
     session.flush()
     return outcome == ai_rules.UPDATED
+
+
+def apply_to_new_transaction(session, txn, context):
+    from . import import_pipeline
+    return import_pipeline.reconcile_new(session, txn, context)
 
 
 def finish_import(context: ImportContext | None) -> None:

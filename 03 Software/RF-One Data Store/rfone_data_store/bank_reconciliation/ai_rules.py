@@ -102,6 +102,7 @@ from ..selection.parsing import ai_client
 from . import accounting_dedup
 from . import claude_code_cli
 from . import export as export_service
+from . import why_what
 
 # One AI call evaluates at most BATCH_SIZE movements, so its answer fits the
 # provider's output limit; a batch whose answer cannot be read is split in
@@ -481,11 +482,13 @@ _SCOPE_WORDS = {SCOPE_ALL: "“All existing transactions”", SCOPE_SELECTED: "�
 
 def preview_problem(preview, *, rule_text: str, scope: str, selected_ids: list[int] | None,
                     create_missing_who: bool, override_protected: bool = False,
-                    only_unsettled: bool = False, who_only: bool = False) -> str | None:
+                    only_unsettled: bool = False, who_only: bool = False, application_mode: str | None = None) -> str | None:
     """Why `preview` cannot authorize applying this text, scope, selection
     and option — the precise reason — or None when it can."""
     if preview is None:
         return "there is no Preview of this rule: press Preview, check it, then apply."
+    if preview.application_mode != application_mode:
+        return "Application mode changed: run Preview again."
     if preview.status != "COMPLETED":
         return (f"Preview #{preview.id} did not complete ({preview.status})"
                 + (f": {shown_message(preview.error_message)}" if preview.error_message else "."))
@@ -877,6 +880,7 @@ class EntityCatalog:
     For Whom."""
 
     def __init__(self, session: Session):
+        self.session = session
         entities = list(session.scalars(select(m.ReportingEntity)))
         active = [e for e in entities if e.status == "ACTIVE"]
         self.by_code = {_norm(e.code): e.id for e in active}
@@ -986,7 +990,10 @@ IF_NO_DEFAULT = ("clear", "unchanged")
 MAX_COVERAGE = 30
 TEXT_FIELDS = {
     "description": ("contains", "not_contains", "starts_with", "ends_with_number", "starts_with_word",
-                    "not_starts_with_word"),
+                    "not_starts_with_word", "is"),
+    "source_id": ("is",),
+    "who_name": ("is",),
+    "memo": ("contains", "is"),
     "source_name": ("contains", "not_contains"),
     "source_owner_name": ("contains", "not_contains"),
 }
@@ -1096,6 +1103,10 @@ def interpreter_capabilities() -> str:
 - {{"field": "description", "op": "ends_with_number"}}  the description, trailing spaces ignored, ends with a space
      followed by a block made ONLY of digits (e.g. "… Cleaning 30541248046"); a final code mixing letters and digits
      (e.g. "JPM99cxov680") is NOT a final number
+- {{"field": "who_name", "op": "is", "value": "EXACT WHO NAME"}} the WHO already extracted/recognized on the movement
+- {{"field": "source_id", "op": "is", "value": "LOCAL SOURCE ID"}} the precise Source ID, not an account/card number
+- {{"field": "description", "op": "is", "value": "EXACT TEXT"}} exact description (case and repeated spaces ignored)
+- {{"field": "memo", "op": "contains" | "is", "value": "TEXT"}} the separate original payment note
 - {{"field": "source_name", "op": "contains" | "not_contains", "value": "TEXT"}}   the Source (card/account) name
 - {{"field": "source_owner_name", "op": "contains" | "not_contains", "value": "TEXT"}}  the Source owner's name
 - {{"field": "source_class", "op": "is" | "is_not", "value": "Personal" | "not Personal" | "missing"}}
@@ -1104,6 +1115,8 @@ def interpreter_capabilities() -> str:
      A "Personal card" ("carta Personal") = TWO conditions: source_type is "card" AND source_class is "Personal".
 - {{"field": "source_type", "op": "is" | "is_not", "value": "card" | "bank account"}}
 - {{"field": "direction", "op": "is" | "is_not", "value": "money out" | "money in"}}
+An optional captured accounting destination is {{"captured_destination": {{"id": EXISTING_ID, "code": "EXISTING_CODE", "name": "EXISTING_NAME"}}}}.
+It requires a fixed WHY and the exact existing code and name in rule_text; use only a destination explicitly selected by the person, never invent one or discard an existing captured destination.
 Assignments (null = left unchanged):
 - "who": {{"mode": "fixed", "name": "NAME"}}
      or {{"mode": "between", "start": "A", "end": "B", "start_at": "beginning" | "anywhere",
@@ -1431,6 +1444,13 @@ def validate_interpretation(answer, rule_text: str, *,
         only_if_who_differs = answer.get("only_if_who_differs") is True
         if only_if_who_differs and not (who and who["mode"] in WHO_NAMING):
             raise _Invalid("“only if the WHO differs” needs a WHO assigned by the rule")
+        captured = answer.get("captured_destination")
+        if captured is not None:
+            destination = entities.session.get(m.BankAccountingClassification, captured.get("id")) if entities and isinstance(captured,dict) else None
+            if not destination or (not destination.is_complete or destination.node_type == "GROUP") or captured.get("code") != destination.code or captured.get("name") != destination.name or not _in_rule(rule_text,destination.code) or not _in_rule(rule_text,destination.name):
+                raise _Invalid("the captured accounting destination is not verified in the active catalog and rule text")
+            if not why or why.get("mode") != "fixed":
+                raise _Invalid("a captured accounting destination needs an explicit fixed WHY")
         coverage, unsupported = _coverage(answer)
     except _Invalid as exc:
         return None, str(exc)
@@ -1442,10 +1462,12 @@ def validate_interpretation(answer, rule_text: str, *,
         return None, "the rule states no condition"
     if who is None and why is None and for_whom is None and not branches:
         return None, "the rule assigns no WHO, no WHY and no For Whom"
-    return {"kind": "STRUCTURED", "version": SPEC_VERSION, "conditions": conditions, "who": who, "why": why,
+    result = {"kind": "STRUCTURED", "version": SPEC_VERSION, "conditions": conditions, "who": who, "why": why,
             "for_whom": for_whom, "branches": branches, "status": TO_CONFIRM if status else None,
             "only_if_who_differs": only_if_who_differs, "replace_existing": answer.get("replace_existing") is True,
-            "coverage": coverage}, None
+            "coverage": coverage}
+    if captured is not None: result["captured_destination"] = captured
+    return result, None
 
 
 def spec_usable(spec: dict | None) -> bool:
@@ -1636,6 +1658,9 @@ def extract_before_final_number(description: str | None, assignment: dict) -> tu
 def _field_value(row: Row, field: str) -> str | None:
     return {
         "description": row.txn.description_original,
+        "memo": row.txn.source_memo,
+        "source_id": str(row.txn.payment_instrument_id),
+        "who_name": row.current_who,
         "source_name": row.source_name,
         "source_owner_name": row.owner_name,
         "source_type": row.source_type,
@@ -1710,6 +1735,7 @@ class Exec:
     for_whom: str | None = None
     for_whom_note: str | None = None
     for_whom_verify: str | None = None
+    destination_id: int | None = None
 
     @property
     def assigns(self) -> bool:
@@ -1759,7 +1785,7 @@ def execute(spec: dict, row: Row) -> Exec:
     if holds is None:
         return Exec("UNKNOWN", note=f"{TO_VERIFY}: {_missing_note(row)}.")
     result = Exec("MATCH", status=spec.get("status"), only_if_who_differs=bool(spec.get("only_if_who_differs")),
-                  replace_existing=bool(spec.get("replace_existing")))
+                  replace_existing=bool(spec.get("replace_existing")), destination_id=(spec.get("captured_destination") or {}).get("id"))
 
     def assign(kind: str, assignment, label: str) -> str | None:
         if assignment is None:
@@ -1857,7 +1883,7 @@ def execute(spec: dict, row: Row) -> Exec:
     return result
 
 
-_FIELD_LABEL = {"description": "the description", "source_name": "the Source name",
+_FIELD_LABEL = {"who_name": "the recognized WHO", "source_id": "Source ID", "memo": "Payment memo", "description": "the description", "source_name": "the Source name",
                 "source_owner_name": "the Source owner's name", "source_type": "the Source",
                 "direction": "the movement", "source_class": "the Source"}
 _OP_LABEL = {"contains": "contains", "not_contains": "does not contain", "starts_with": "starts with",
@@ -2073,6 +2099,7 @@ def rule_note_prefix(rule_id: int | None) -> str | None:
 
 @dataclass
 class Target:
+    application_mode: str | None = None
     """What a rule assigns to one movement, resolved in the catalogs. Only
     the fields the rule names are set; the others stay as they are."""
     who_set: bool = False
@@ -2097,6 +2124,7 @@ class Target:
     # BANK_AI_RULES_011 — the rule's option "Sostituisci anche WHO/WHY
     # manuali, Standard o confermati" (off by default, set per rule).
     override_protected: bool = False
+    destination_id: int | None = None
 
     @property
     def sets_anything(self) -> bool:
@@ -2154,6 +2182,7 @@ def target_for(who: str | None, why: str | None, who_status: _WhoStatus, why_cat
         target.to_confirm = bool(ex.status)
         target.only_if_who_differs = ex.only_if_who_differs
         target.replace_existing = ex.replace_existing
+        target.destination_id = ex.destination_id
     return target
 
 
@@ -2356,6 +2385,8 @@ class Planner:
         return self.plan_full(row, target, create_missing_who=create_missing_who).as_tuple()
 
     def plan_full(self, row: Row, target: Target, *, create_missing_who: bool) -> Plan:
+        from . import rule_application_safety as safety
+        target = safety.prepare_target(target, row, self)
         current = row.explanation
         who_before, why_before = row.current_who, row.current_why
         fw = self.for_whom(row.id)
@@ -2372,13 +2403,25 @@ class Planner:
             return keep(UNRESOLVED, f"WHO {target.who_name} is not in the WHO list and “Create missing WHO” is off.")
         if target.why_set and not target.why_clear and target.why_id is None:
             return keep(UNRESOLVED, f"WHY “{target.why_name}” is not in the WHY list (a WHY is never created).")
+        # BANK_WHY_REQUIRES_WHAT_001 / BANK_WHY_LEGACY_001 — a draft, legacy or
+        # inactive WHY is never assigned, and a captured WHAT must be the one
+        # the WHY resolves to.
+        if target.why_set and not target.why_clear:
+            reason = self.session.get(m.BankTransactionReason, target.why_id)
+            problem = why_what.assignment_problem(self.session, reason)
+            if problem is not None:
+                return keep(UNRESOLVED, f"WHY “{target.why_name}”: {problem}")
+            what = why_what.usable_what(self.session, reason)
+            if target.destination_id is not None and target.destination_id != what.id:
+                chosen = self.session.get(m.BankAccountingClassification, target.destination_id)
+                return keep(UNRESOLVED, why_what.incoherent_message(reason, what, chosen))
         if target.for_whom_set and target.for_whom_id is None:
             return keep(UNRESOLVED, f"For Whom “{target.for_whom_name}” is not an active entity (an entity is "
                                     "never created).")
         # BANK_AI_RULES_011 — the rule's explicit option may override the
         # protections of WHO / WHY (never For Whom, never own-account): the
         # movement's For Whom is kept, its confirmation withdrawn.
-        override = target.override_protected and (target.who_set or target.why_set) and not target.for_whom_set
+        override = bool(target.application_mode) or (target.override_protected and (target.who_set or target.why_set) and not target.for_whom_set)
         overridden = []
         if current is not None and current.decision_source == "HUMAN":
             if not override:
@@ -2401,7 +2444,7 @@ class Planner:
         if target.only_if_who_differs and same_who:
             return keep(UNCHANGED, "Same WHO: nothing changes (WHY, For Whom and status kept).")
         mine = bool(current is not None and self.prefix and (current.explanation_notes or "").startswith(self.prefix))
-        replace = mine or target.replace_existing or bool(overridden)
+        replace = bool(target.application_mode) or mine or target.replace_existing or bool(overridden)
         changes, conflicts, kept = [], [], []
         if target.who_set:
             if same_who:
@@ -2422,7 +2465,9 @@ class Planner:
         if target.for_whom_set:
             if fw.entity_id == target.for_whom_id:
                 pass
-            elif fw.provenance == FW_NONE:
+            elif target.application_mode and split:
+                return keep(PROTECTED, "Split allocations require a separate allocation decision.")
+            elif target.application_mode or fw.provenance == FW_NONE:
                 changes.append("For Whom")
             elif fw.provenance == FW_HUMAN:
                 kept.append(f"For Whom {fw.name or '—'} chosen by a person: kept")
@@ -2433,8 +2478,14 @@ class Planner:
                     conflicts.append(f"For Whom is already {fw.name or '—'}, decided by another rule")
             else:
                 kept.append(f"For Whom {fw.name or '—'} kept: its origin is uncertain ({fw.reason})")
+        if target.destination_id is not None and (current is None or current.accounting_classification_id != target.destination_id):
+            destination=self.session.get(m.BankAccountingClassification,target.destination_id)
+            if not destination or (not destination.is_complete or destination.node_type == "GROUP"):
+                return keep(UNRESOLVED,"Captured accounting destination is no longer active.")
+            changes.append("WHAT")
         other_conflicts, overlaps = self.other_rules(row, target)
-        conflicts += other_conflicts
+        if not target.application_mode:
+            conflicts += other_conflicts
         also = (" Overlap: " + "; ".join(overlaps) + ".") if overlaps else ""
         if conflicts:
             plan = keep(CONFLICT, "Conflict: " + "; ".join(conflicts) + "." + also)
@@ -2617,7 +2668,7 @@ def preview_rule(session: Session, *, rule_text: str | None, origin_transaction_
                  generate: Callable[[str], dict] | None = None,
                  allow_ai_batches: bool = False, override_protected: bool = False,
                  only_unsettled: bool = False, who_only: bool = False,
-                 title: str | None = None) -> "m.BankAiRulePreview":
+                 title: str | None = None, application_mode: str | None = None) -> "m.BankAiRulePreview":
     """Evaluate the rule on every movement of the scope — the displayed
     period, ALL the in-scope movements, or the SELECTED ones — and plan what
     applying would do to each match. The rule is interpreted once (or the
@@ -2629,6 +2680,11 @@ def preview_rule(session: Session, *, rule_text: str | None, origin_transaction_
     never as an automatic fallback. A preview that could not evaluate every
     movement is FAILED, never shown as complete. Nothing is written on
     movements. The caller commits."""
+    from . import rule_application_safety as safety
+    safety.validate_mode(application_mode)
+    if application_mode:
+        only_unsettled, who_only = False, False
+        override_protected = application_mode == safety.UPDATE_ASSIGNED
     rule_text = (rule_text or "").strip()
     if not rule_text:
         raise AiRuleError("Write the rule before asking for a preview.")
@@ -2643,6 +2699,7 @@ def preview_rule(session: Session, *, rule_text: str | None, origin_transaction_
     rows, excluded_by_rule = without_ai_settled(session, rows, only_unsettled)
     provider, model = active_ai_description()
     preview = m.BankAiRulePreview(
+        application_mode=application_mode,
         draft_id=draft_id, rule_text=rule_text, origin_transaction_id=origin.id,
         date_from=date_from if scope == SCOPE_PERIOD else None, date_to=date_to if scope == SCOPE_PERIOD else None,
         examined_count=len(rows), match_count=0, doubt_count=0, ai_calls=0, provider=provider,
@@ -2654,6 +2711,8 @@ def preview_rule(session: Session, *, rule_text: str | None, origin_transaction_
                                          override_protected=override_protected, only_unsettled=only_unsettled,
                                          who_only=who_only),
         created_by_account_id=account_id, started_at=datetime.now(timezone.utc))
+    if application_mode:
+        preview.state_fingerprint = safety.fingerprint(session, rows)
     generate = generate or default_generate()
     who_status = _WhoStatus(session)
     whos, whys = _catalog(session)
@@ -2778,6 +2837,7 @@ def preview_rule(session: Session, *, rule_text: str | None, origin_transaction_
     overlap_count, overlap_rules, overridden_count, who_reused = 0, {}, 0, 0
     for row, verdict, reason, who, why_value, to_verify, ex in found:
         target = planner.target_of(ex) if ex is not None else planner.target(who, why_value)
+        target.application_mode = application_mode
         target.override_protected = bool(override_protected)
         if ex is not None and ex.why_default and target.why_set and not target.why_clear:
             why_value = target.why_name           # the WHO's default WHY, shown as the proposed WHY
@@ -2808,6 +2868,10 @@ def preview_rule(session: Session, *, rule_text: str | None, origin_transaction_
                 overridden_count += 1
             if to_verify:
                 note += f" {to_verify.replace(',', ' and ')} {TO_VERIFY}: not assigned."
+            if application_mode:
+                item.proposed_who_name = plan.who_after
+                item.proposed_why_name = plan.why_after
+                item.proposed_for_whom_name = plan.for_whom_after
             item.plan, item.plan_note = outcome, note
             counts[outcome] += 1
         elif (resolved.get("who_error") or "").startswith(WHO_DOUBT):
@@ -2871,6 +2935,7 @@ def preview_as_dict(preview: "m.BankAiRulePreview") -> dict:
         create_missing_who=preview.create_missing_who, new_who_names=new_names,
         for_whom_rule=uses_for_whom(info.get("spec")) and not preview.who_only,
         who_only=bool(preview.who_only), who_only_label=WHO_ONLY_LABEL,
+        application_mode=preview.application_mode,
         override_protected=bool(preview.override_protected), override_label=OVERRIDE_LABEL,
         overlaps=info.get("overlaps") or 0, overlap_rules=info.get("overlap_rules") or {},
         overridden=info.get("overridden") or 0, who_reused=info.get("who_reused") or 0,

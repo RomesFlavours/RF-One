@@ -431,4 +431,7 @@ def import_confirmed(
             excluded_row_numbers=excluded, distinct_row_numbers=distinct,
             import_log=json.dumps(log, default=str),
         ))
+    from . import import_pipeline
+    for result in results:
+        if result.created:import_pipeline.seal_batch(session,result.batch.id)
     return results
