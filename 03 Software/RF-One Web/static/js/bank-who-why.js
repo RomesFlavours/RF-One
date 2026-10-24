@@ -273,6 +273,8 @@
     return button;
   }
 
+  var NO_WHAT_MESSAGE = "This WHY has no associated WHAT. Complete its configuration before using it.";
+
   function byName(a, b) { return a.name.localeCompare(b.name, undefined, { sensitivity: "base" }); }
 
   function renderWhys() {
@@ -307,7 +309,8 @@
     if (chosen && chosen.scrollIntoView) { chosen.scrollIntoView({ block: "nearest" }); }
     var group = groupList.querySelector(".ww-group.is-selected");
     if (group && group.scrollIntoView) { group.scrollIntoView({ block: "nearest" }); }
-    showError("");
+    // BANK_WHY_REQUIRES_WHAT_001 — said at once; the server refuses it anyway.
+    showError(why.usable === false ? (why.problem || NO_WHAT_MESSAGE) : "");
     sync();
   }
 
@@ -466,7 +469,7 @@
     boxes.forEach(function (box) {
       var row = box.closest("tr");
       var button = row && row.querySelector(".who-picker-open");
-      if (button) { button.textContent = box.checked ? "Select WHO / WHY" : (button.dataset.singleLabel || "Select WHO"); }
+      if (button) { button.textContent = box.checked ? "WHO / WHY" : (button.dataset.singleLabel || "WHO / WHY"); }
     });
   }
   document.addEventListener("change", function (event) {

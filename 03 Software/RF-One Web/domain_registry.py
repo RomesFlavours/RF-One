@@ -144,7 +144,7 @@ DOMAINS: tuple[DomainDefinition, ...] = (
             DomainItem("source", "Source", "bank_sources",
                        paths=("/bank/sources", "/bank/source-profiles", "/bank/instruments", "/bank/entities",
                               "/bank/accounting-dedup")),
-            DomainItem("ai_rules", "AI Rules", "bank_ai_rules", paths=("/bank/ai-rules",)),
+            DomainItem("ai_rules", "Rules and profiles", "bank_ai_rules", paths=("/bank/ai-rules",)),
             DomainItem("configuration", "Configuration", "bank_configuration", paths=("/bank/configuration",)),
             DomainItem("instructions", "Instructions", "bank_instructions", paths=("/bank/instructions",)),
         ),

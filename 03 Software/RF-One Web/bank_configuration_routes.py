@@ -1,9 +1,10 @@
 """RF-One Web — Bank Configuration (BANK_CONFIGURATION_001).
 
-One page, `/bank/configuration`, in the approved order: WHAT, WHY, WHO,
-Sources (a link only: every Source, including a card's settlement account and
-cardholder, is maintained on `/bank/sources` — BANK_FINAL_RELEASE_BLOCKERS_002),
-then Support (entities; Balance Sheet destinations, read-only). File
+One page, `/bank/configuration`, in the approved order (2026-10-21): WHO, WHY,
+WHOM (entities), WHAT, Sources (a link only: every Source, including a card's
+settlement account and cardholder, is maintained on `/bank/sources` —
+BANK_FINAL_RELEASE_BLOCKERS_002), then Support (Balance Sheet destinations,
+read-only). File
 recognition rules and deduplication live on Source, the completeness control
 in Check Sources — Support only links there (BANK_FINAL_CLEANUP_001). Each modal on the page posts to one of the
 routes below. Every route:
@@ -140,11 +141,40 @@ def register_bank_configuration_routes(
     # ------------------------------------------------------------------- WHO
 
     def _save_who(occurrence_id):
-        return _apply("cp-who", lambda db: config_service.save_who(
-            db, occurrence_id=occurrence_id, name=_text("name"), active=_flag("active"),
-            reason_ids=_ints("why_ids"), default_reason_id=_int("default_why_id"),
-            reporting_entity_ids=_ints("entity_ids"),
-        ), lambda who: f"WHO {who.canonical_name!r} saved.")
+        def action(db):
+            who = config_service.save_who(
+                db, occurrence_id=occurrence_id, name=_text("name"), active=_flag("active"),
+                reason_ids=_ints("why_ids"), default_reason_id=_int("default_why_id"),
+                reporting_entity_ids=_ints("entity_ids"),
+            )
+            if request.form.get("labels_sent") == "1":
+                _save_who_labels(db, who)
+            return who
+        return _apply("cp-who", action, lambda who: f"WHO {who.canonical_name!r} saved.")
+
+    def _save_who_labels(db, who):
+        """The WHO's activity labels from the modal: optional. Unchanged labels
+        are left as they are; a change is a person's choice and goes through
+        the one label implementation (who_identification.set_labels)."""
+        from sqlalchemy import select
+        from rfone_data_store import models as m
+        from rfone_data_store.bank_reconciliation import who_identification
+        db.flush()
+        chosen = set(_ints("label_ids"))
+        new_name, new_definition = _text("new_label_name"), _text("new_label_definition")
+        links = list(db.scalars(select(m.BankOccurrenceLabel).where(m.BankOccurrenceLabel.occurrence_id == who.id)))
+        if not new_name and chosen == {link.label_id for link in links}:
+            return
+        if not chosen and not new_name:
+            for link in links:
+                db.delete(link)
+            db.flush()
+            return
+        names = [label.name for label in db.scalars(select(m.BankWhoLabel).where(m.BankWhoLabel.id.in_(chosen)))]
+        account = load_current_account(db)
+        who_identification.set_labels(db, who.id, labels=names,
+                                      new_label=(new_name, new_definition) if new_name else None,
+                                      account_id=account.id if account else None)
 
     # BANK_WHO_MERGE_001 — merge two WHO: a preview (writes nothing), then
     # the merge itself, one database transaction, back to the WHO section.
@@ -186,6 +216,27 @@ def register_bank_configuration_routes(
     @gate
     def bank_configuration_who_edit(occurrence_id: int):
         return _save_who(occurrence_id)
+
+    # Delete a WHO: a preview (writes nothing), then the deletion itself after
+    # the person's confirmation, one database transaction.
+    @app.route("/bank/configuration/who/<int:occurrence_id>/delete/preview", methods=["POST"])
+    @gate
+    def bank_configuration_who_delete_preview(occurrence_id: int):
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                return jsonify(config_service.who_delete_preview(db, occurrence_id))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
+    @app.route("/bank/configuration/who/<int:occurrence_id>/delete", methods=["POST"])
+    @gate
+    def bank_configuration_who_delete(occurrence_id: int):
+        def done(result):
+            moved = (f" It was removed from {result['transactions']} transaction(s)."
+                     if result["transactions"] else "")
+            return f"WHO {result['name']!r} deleted.{moved}"
+        return _apply("cp-who", lambda db: config_service.delete_who(db, occurrence_id), done)
 
     # Accounts & Cards are no longer edited here (BANK_FINAL_RELEASE_BLOCKERS_002):
     # every Source is maintained on the Source page (`/bank/sources`).

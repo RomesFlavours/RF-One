@@ -30,6 +30,7 @@ Every mutating route is behind `require_domain_access("BANK")` and
 from __future__ import annotations
 
 import calendar
+from dataclasses import replace as _dc_replace
 import json
 import os
 from datetime import date, datetime, timedelta, timezone
@@ -367,6 +368,14 @@ def register_bank_routes(
         context: dict = {}
         current_app.update_template_context(context)
         return context.get("tz")
+
+    from bank_import_worker import Worker
+    pipeline_worker=Worker(app,SessionFactory)
+    app.extensions['bank_import_worker']=pipeline_worker
+    @app.before_request
+    def start_bank_import_worker():
+        if request.path.startswith('/bank'):
+            pipeline_worker.wake()
 
     @app.route("/bank")
     @gate
@@ -1058,6 +1067,11 @@ def register_bank_routes(
                         uploaded_by_account_id=account_id,
                     )
                     db.commit()
+                    pipeline_worker.wake()
+                    # BANK_WHO_IDENTIFICATION_001 — the movements just imported, for
+                    # the WHO identification queued once this session is closed.
+                    new_transaction_ids = [t for (t,) in db.execute(select(m.FinancialTransaction.id).where(
+                        m.FinancialTransaction.import_batch_id.in_([r.batch.id for r in results if r.created])))]
                 except Exception as exc:  # noqa: BLE001 — reported, and rolled back whole
                     db.rollback()
                     current_app.logger.exception("Confirmed Bank import failed")
@@ -1071,6 +1085,8 @@ def register_bank_routes(
                           + ("" if result.created else " (this exact file was already imported: nothing new)"),
                           "info")
                 _report_missing_accounts(db, covered_months)
+            from bank_who_identification_routes import enqueue_new
+            enqueue_new(app, SessionFactory, new_transaction_ids, account_id=account_id)
             held = [f for f in state["files"] if f["status"] == import_session_routes.HELD]
             if held:
                 kept = os.path.join(root, "held", token)
@@ -1247,20 +1263,51 @@ def register_bank_routes(
         # BANK_REVIEW_SEARCH_001 — the free search (`q`), outer spaces
         # ignored; empty means no search at all.
         search = (request.args.get("q") or "").strip()
+        # BANK_REVIEW_COLUMN_FILTERS_001 — one filter per column (`f_<column>`), ANDed; the first column looks in the
+        # Account / Card or in its For Whom (`f_instrument_in`). Only this tab's columns are used.
+        column_filters = {}
+        for key in review_queues.VIEW_COLUMNS[view]:
+            if key == "for_whom":
+                continue
+            text = (request.args.get(f"f_{key}") or "").strip()
+            if text:
+                column_filters[key] = text
+        instrument_target = "for_whom" if request.args.get("f_instrument_in") == "for_whom" else "instrument"
+        columns = tuple((instrument_target if key == "instrument" else key, text) for key, text in column_filters.items())
         filters = review_queues.ReviewFilters(
             year=year, month=month, payment_instrument_id=payment_instrument_id, batch_id=batch_id,
-            search=search or None,
+            search=search or None, columns=columns,
         )
         # BANK_REVIEW_SORT_001 — the column and direction chosen by a header,
         # only from the allowed list; anything else is the default order.
         sort, direction = review_queues.valid_sort(request.args.get("sort"), request.args.get("dir"))
-        tab_args = {"year": year, "month": month, "payment_instrument_id": payment_instrument_id,
-                    "batch_id": batch_id, "q": search or None, "sort": sort, "dir": direction}
+        base_args = {"year": year, "month": month, "payment_instrument_id": payment_instrument_id,
+                     "batch_id": batch_id, "q": search or None, "sort": sort, "dir": direction}
+        column_args = {f"f_{key}": text for key, text in column_filters.items()}
+        if "instrument" in column_filters and instrument_target == "for_whom":
+            column_args["f_instrument_in"] = "for_whom"
+        tab_args = {**base_args, **column_args}
+        # A tab link carries only the column filters of the columns that tab has.
+        tab_links = {}
+        for other in review_queues.VIEWS:
+            kept = {k: v for k, v in column_args.items()
+                    if k == "f_instrument_in" or k[2:] in review_queues.VIEW_COLUMNS[other]}
+            tab_links[other] = {**base_args, **kept}
+        # "All" under a column: the same address without that column's filter.
+        clear_links = {}
+        for key in column_filters:
+            clear_links[key] = {k: v for k, v in tab_args.items()
+                                if k != f"f_{key}" and not (key == "instrument" and k == "f_instrument_in")}
 
         with SessionFactory() as db:
-            queue_counts = review_queues.counts(db, filters)
+            per_view = {v: review_queues.with_column_filters(db, v, _dc_replace(filters, columns=tuple(
+                (k, t) for k, t in filters.columns if k in review_queues.VIEW_COLUMNS[v])))
+                for v in review_queues.VIEWS}
+            filters = per_view[view]
+            queue_counts = {v: review_queues.counts(db, per_view[v])[v] for v in review_queues.VIEWS}
             transactions = review_queues.queue(db, view, filters, sort=sort, direction=direction)
-            search_summary = review_queues.search_summary(db, view, filters) if search else None
+            search_summary = (review_queues.search_summary(db, view, filters)
+                              if (search or column_filters) else None)
             instruments = _payment_instruments(db)
             filter_batch = db.get(m.BankImportBatch, batch_id) if batch_id else None
             if view == review_queues.RECONCILED:
@@ -1270,6 +1317,8 @@ def register_bank_routes(
                     "bank_reconciliation.html",
                     view=reconciliation_rows.rows_view(db, transactions),
                     review_mode=True, review_view=view, queue_counts=queue_counts, tab_args=tab_args,
+                    tab_links=tab_links, column_filters=column_filters, instrument_target=instrument_target,
+                    clear_links=clear_links,
                     instruments=instruments, filter_year=year, filter_month=month,
                     filter_payment_instrument_id=payment_instrument_id, filter_batch_id=batch_id,
                     filter_batch=filter_batch, row_limit=review_queues.ROW_LIMIT,
@@ -1392,6 +1441,8 @@ def register_bank_routes(
                 filter_payment_instrument_id=payment_instrument_id,
                 filter_batch_id=batch_id, filter_batch=filter_batch,
                 review_view=view, queue_counts=queue_counts, tab_args=tab_args,
+                tab_links=tab_links, column_filters=column_filters, instrument_target=instrument_target,
+                clear_links=clear_links,
                 row_limit=review_queues.ROW_LIMIT, search=search, search_summary=search_summary,
                 active_who_ids=active_who_ids,
             )
@@ -1846,6 +1897,12 @@ def register_bank_routes(
     # The real Bank Configuration page (BANK_CONFIGURATION_001).
     from bank_configuration_routes import register_bank_configuration_routes
     register_bank_configuration_routes(
+        app, gate=gate, SessionFactory=SessionFactory,
+        load_current_account=load_current_account, require_csrf=require_csrf,
+    )
+    # Automatic WHO identification after an import (BANK_WHO_IDENTIFICATION_001).
+    from bank_who_identification_routes import register as register_who_identification
+    register_who_identification(
         app, gate=gate, SessionFactory=SessionFactory,
         load_current_account=load_current_account, require_csrf=require_csrf,
     )

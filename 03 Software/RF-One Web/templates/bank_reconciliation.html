@@ -18,8 +18,8 @@
     of a transaction are chosen in the one Select WHO / WHY popup. -#}
 {{ bank.module_nav('review') }}
 {%- macro status_mark(status, note='') -%}
-{%- if status == 'Confirmed' -%}<span class="rp-st rp-st-confirmed" role="img" aria-label="Confirmed">&#10004;</span><span class="rp-st-text">Confirmed</span>
-{%- else -%}<span class="rp-st rp-st-review" role="img" aria-label="Needs review">&#10007;</span><span class="rp-st-text">Needs review</span>{%- endif -%}
+{%- if status in ('Confirmed','Reconciled') -%}<span class="rp-st rp-st-confirmed" role="img" aria-label="Complete">&#10004;</span><span class="rp-st-text">{{ 'Confirmed' if status == 'Confirmed' else 'Reconciled' }}</span>
+{%- else -%}<span class="rp-st rp-st-review" role="img" aria-label="Incomplete">&#10007;</span><span class="rp-st-text">{{ 'Accounting incomplete' if status == 'Reconciled · accounting pending' else 'Incomplete' }}</span>{%- endif -%}
 {%- endmacro %}
 
 <style>
@@ -88,24 +88,24 @@
   <table class="rp-table" id="rp-table">
     <thead>
       <tr>
-        <th class="rp-x"></th>{{ sorting.sort_th('Account / Card &middot; For Whom'|safe, 'instrument') }}{{ sorting.sort_th('Date', 'date') }}{{ sorting.sort_th('Description', 'description') }}{{ sorting.sort_th('Amount', 'amount', 'rp-amount') }}
-        <th>WHO</th><th>WHY</th><th>WHAT</th><th></th><th>Status</th>
+        <th class="rp-x"></th>{{ sorting.sort_th('Account · WHOM'|safe, 'instrument', filter='instrument') }}{{ sorting.sort_th('Date', 'date', filter='date') }}{{ sorting.sort_th('Description', 'description', filter='description') }}{{ sorting.sort_th('Amount', 'amount', 'rp-amount', filter='amount') }}
+        {{ sorting.filter_th('WHO', 'who') }}{{ sorting.filter_th('WHY', 'why') }}{{ sorting.filter_th('WHAT', 'what') }}<th></th>{{ sorting.filter_th('Status', 'status') }}
       </tr>
     </thead>
     <tbody id="rp-body">
       {%- for row in view.rows %}
       <tr id="t-{{ row.id }}" data-row-id="{{ row.id }}" data-rr-key="txn:{{ row.id }}"{% if row.who_id %} data-who="{{ row.who_id }}"{% endif %}{% if row.why_id %} data-why="{{ row.why_id }}"{% endif %}{% if row.what_id %} data-what="{{ row.what_id }}" data-source="{{ row.destination_source }}"{% endif %}{% if row.who_source %} data-who-source="{{ row.who_source }}"{% endif %} data-status="{{ row.status }}"{% if row.default_for_whom is not none %} data-default="{{ row.default_for_whom }}"{% endif %} data-amount="{{ row.amount_minor }}"{% if row.memo %} data-memo="{{ row.memo }}"{% endif %}>
 <td class="rp-x"><button type="button" class="rp-expand" data-action="expand" aria-expanded="false" aria-label="Expand">&#9656;</button></td>
-<td class="rp-account"><span class="rp-account-name">{{ row.account }}</span>{#- BANK_REVIEW_FOR_WHOM_001: For Whom under the Source; choosing it saves it. -#}<span class="rp-forwhom">{% if row.split %}<span class="rp-split">For Whom: split</span>{% else %}<label class="rp-forwhom-label" for="rp-for-whom-{{ row.id }}">For Whom:</label><select id="rp-for-whom-{{ row.id }}" data-action="for-whom" aria-label="For Whom" data-saved="{{ row.for_whom if row.for_whom is not none else '' }}">{% if row.for_whom is none %}<option value="" selected>Choose…</option>{% endif %}{% for entity in view.entities %}{% if entity.active or entity.id == row.for_whom %}<option value="{{ entity.id }}"{{ ' selected' if entity.id == row.for_whom else '' }}>{{ entity.name }}</option>{% endif %}{% endfor %}</select>{% endif %}</span></td><td class="rp-date" title="{{ row.date }}">{{ row.date_label }}</td><td class="rp-desc">{{ row.description }}</td><td class="rp-amount{{ ' rp-in' if row.amount_minor > 0 else '' }}">{{ '+' if row.amount_minor > 0 else '−' }}{{ '{:,.2f}'.format((row.amount_minor|abs) / 100) }}</td>
+<td class="rp-account"><span class="rp-account-name">{{ row.account }}</span>{#- BANK_REVIEW_FOR_WHOM_001: For Whom under the Source; choosing it saves it. -#}<span class="rp-forwhom">{% if row.split %}<span class="rp-split">WHOM: split</span>{% else %}<label class="rp-forwhom-label" for="rp-for-whom-{{ row.id }}">WHOM:</label><select id="rp-for-whom-{{ row.id }}" data-action="for-whom" aria-label="For Whom" data-saved="{{ row.for_whom if row.for_whom is not none else '' }}">{% if row.for_whom is none %}<option value="" selected>Choose…</option>{% endif %}{% for entity in view.entities %}{% if entity.active or entity.id == row.for_whom %}<option value="{{ entity.id }}"{{ ' selected' if entity.id == row.for_whom else '' }}>{{ entity.name }}</option>{% endif %}{% endfor %}</select>{% endif %}</span></td><td class="rp-date" title="{{ row.date }}">{{ row.date_label }}</td><td class="rp-desc">{{ row.description }}</td><td class="rp-amount{{ ' rp-in' if row.amount_minor > 0 else '' }}">{{ '+' if row.amount_minor > 0 else '−' }}{{ '{:,.2f}'.format((row.amount_minor|abs) / 100) }}</td>
 {%- set who_mark -%}{% if row.who_source == 'auto' %}<span class="rp-src" title="Recognized automatically — not approved">suggested</span>{% else %}<span class="rp-src rp-src-person" title="Chosen by a person">&#10003;</span>{% endif %}{%- endset -%}
 {#- BANK_MANUAL_WHO_WHY_001 — Reconciled shows WHO, WHY and WHAT on the row;
     WHY (and WHO) are edited in the same "Select WHO / WHY" popup as To
     Reconcile: a transaction-specific HUMAN decision, never a Rule change. -#}
 {%- set picker_label = row.date ~ ' · ' ~ row.description ~ ' · ' ~ '{:,.2f}'.format(row.amount_minor / 100) %}
-<td class="rp-who">{% if row.who %}<span class="rp-who-name">{{ row.who }}{{ who_mark }}</span>{% elif row.own_account %}<span class="rp-who-name" title="Own-account movement: no external WHO applies">{{ row.own_account }}</span>{% else %}<span class="rp-who-none">No WHO yet</span>{% endif %}<button type="button" class="btn-secondary rp-btn rp-edit who-picker-open" title="Change the WHO of this transaction" aria-label="Change WHO" data-transaction-id="{{ row.id }}" data-transaction-label="{{ picker_label }}" data-current-occurrence-id="{{ row.who_id or '' }}" data-current-reason-id="{{ row.why_id or '' }}">&#9998;</button></td>
-<td class="rp-why" data-cell="why">{% if row.why %}<span class="rp-why-name">{{ row.why }}</span>{% else %}<span class="rp-who-none">WHY needed</span>{% endif %}<button type="button" class="btn-secondary rp-btn rp-edit who-picker-open" title="Choose or create the WHY of this transaction" aria-label="Edit WHY" data-transaction-id="{{ row.id }}" data-transaction-label="{{ picker_label }}" data-current-occurrence-id="{{ row.who_id or '' }}" data-current-reason-id="{{ row.why_id or '' }}">&#9998; WHY</button></td>
+<td class="rp-who">{% if row.who %}<span class="rp-who-name">{{ row.who }}{{ who_mark }}</span>{% elif row.own_account %}<span class="rp-who-name" title="Own-account movement: no external WHO applies">{{ row.own_account }}</span>{% else %}<span class="rp-who-none">Choose WHO</span>{% endif %}<button type="button" class="btn-secondary rp-btn rp-edit who-picker-open" title="Change the WHO of this transaction" aria-label="Change WHO" data-transaction-id="{{ row.id }}" data-transaction-label="{{ picker_label }}" data-current-occurrence-id="{{ row.who_id or '' }}" data-current-reason-id="{{ row.why_id or '' }}">&#9998;</button></td>
+<td class="rp-why" data-cell="why">{% if row.why %}<span class="rp-why-name">{{ row.why }}</span>{% else %}<span class="rp-who-none">Choose WHY</span>{% endif %}<button type="button" class="btn-secondary rp-btn rp-edit who-picker-open" title="Choose or create the WHY of this transaction" aria-label="Edit WHY" data-transaction-id="{{ row.id }}" data-transaction-label="{{ picker_label }}" data-current-occurrence-id="{{ row.who_id or '' }}" data-current-reason-id="{{ row.why_id or '' }}">&#9998; WHY</button></td>
 <td class="rp-what" data-cell="what">{{ row.what or '—' }}</td>
-<td class="rp-actions-cell">{% if not row.split %}{% set done = row.status == 'Confirmed' %}{% set incomplete = not (row.who and row.why) %}{% if done %}<button type="button" class="btn-secondary rp-btn" data-action="reopen" title="Withdraw this acceptance">Reopen</button>{% endif %}<button type="button" class="rp-btn" data-action="confirm"{% if done %} hidden{% endif %}{% if incomplete %} disabled{% endif %}>Confirm</button>{% endif %}</td>
+<td class="rp-actions-cell"><button type="button" class="btn-secondary bank-example-open" data-example-description="{{ row.description }}" data-example-rule="{{ url_for('bank_ai_rules', transaction_id=row.id, return_to=request.full_path.rstrip('?') ~ '#t-' ~ row.id) }}" data-example-photo="{{ url_for('bank_ai_rules', transaction_id=row.id, capture=1, return_to=request.full_path.rstrip('?') ~ '#t-' ~ row.id) }}">Use as example</button><div class="bank-pipeline-status" data-pipeline-id="{{ row.id }}"></div>{% if not row.split %}{% set done = row.status == 'Confirmed' %}{% set incomplete = not (row.who and row.why) %}{% if done %}<button type="button" class="btn-secondary rp-btn" data-action="reopen" title="Withdraw this acceptance">Reopen</button>{% endif %}<button type="button" class="rp-btn" data-action="confirm"{% if done %} hidden{% endif %}{% if incomplete %} disabled{% endif %}>Confirm</button>{% endif %}</td>
 <td class="rp-status" data-cell="status">{{ status_mark(row.status) }}</td>
       </tr>
       {%- else %}
@@ -181,8 +181,11 @@
   };
   function setStatus(tr, status, text) {
     var cell = tr.querySelector('[data-cell="status"]');
-    cell.innerHTML = MARKS[status] + '<span class="rp-st-text">' + esc(text || status) + '</span>';
+    var labels={'Confirmed':'Confirmed','Reconciled':'Reconciled','Needs review':'Incomplete','Reconciled · accounting pending':'Accounting incomplete'};
+    cell.innerHTML = (MARKS[status] || MARKS[status==='Reconciled'?'Confirmed':'Needs review']) + '<span class="rp-st-text">' + esc(text || labels[status] || 'Incomplete') + '</span>';
     tip(cell);
+    // BANK_REVIEW_COLUMN_FILTERS_001 — a row changed and not saved is marked, so a search never loses it silently.
+    if (text === 'Changed — not saved') { tr.setAttribute('data-unsaved', '1'); } else { tr.removeAttribute('data-unsaved'); }
   }
 
   // One shared form posts every row action to that row's own route.
@@ -372,4 +375,6 @@
 })();
 </script>
 {% include "_bank_who_why_modal.html" %}{% include "_bank_why_create_dialog.html" %}{% include "_bank_who_create_dialog.html" %}
+<script defer src="{{ url_for('static',filename='js/bank-import-pipeline.js') }}?v=en1"></script>
+{% include '_bank_example_choice.html' %}
 {% endblock %}

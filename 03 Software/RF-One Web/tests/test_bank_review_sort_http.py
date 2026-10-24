@@ -135,7 +135,9 @@ def main() -> int:
         page = get(q="SORTME")
         check("1. Instrument, Date, Description, Amount are links; Source is not",
               all(f'data-sort="{k}"' in page for k in ("instrument", "date", "description", "amount"))
-              and "<th>Source</th>" in page and 'data-sort="source"' not in page)
+              # Source is a plain header (with its column filter, BANK_REVIEW_COLUMN_FILTERS_001), never a sort link.
+              and re.search(r'<th>Source\s*<span class="col-filter"', page) is not None
+              and 'data-sort="source"' not in page)
         asc = get(q="SORTME", sort="amount", dir="asc")
         desc = get(q="SORTME", sort="amount", dir="desc")
         check("2. Amount ascending is numeric with its sign: -1000, -20, 0, 5, 5, 100",

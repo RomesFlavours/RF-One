@@ -205,8 +205,8 @@ def main() -> int:
             return client.get("/bank/configuration").data.decode("utf-8") if response.status_code == 302 else ""
 
         # ---------------------------------------------------- page structure
-        order = [html.index(f'id="{s}"') for s in ("cp-what", "cp-why", "cp-who", "cp-accounts", "cp-support")]
-        check("0. /bank/configuration responds 200 with the approved block order WHAT, WHY, WHO, "
+        order = [html.index(f'id="{s}"') for s in ("cp-who", "cp-why", "cp-entities", "cp-what", "cp-accounts", "cp-support")]
+        check("0. /bank/configuration responds 200 with the approved block order WHO, WHY, WHOM, WHAT, "
               "Sources, Support", page.status_code == 200 and order == sorted(order))
         check("0. the back button leads to Review Transactions (the standalone Reconciliation page is "
               "retired)", 'href="/bank/review"' in html and 'href="/bank/reconciliation"' not in html)

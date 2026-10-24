@@ -74,6 +74,7 @@
   var validatedText = null;  // the text "Rewritten and validated" refers to
   var saveTitleButton = document.getElementById("ai-rule-save-title");
   var createMissing = document.getElementById("ai-rule-create-missing");
+  var applicationMode = document.getElementById("ai-rule-application-mode");
   var overrideProtected = document.getElementById("ai-rule-override-protected");
   // Radio pairs: each option is the "on" radio of its group, the alternative is the other one.
   var onlyUnsettled = document.getElementById("ai-rule-only-unsettled");
@@ -299,6 +300,7 @@
   // Why the last preview no longer stands for what the window would apply
   // ("" when it does).
   function staleReason() {
+    if (previewed && applicationMode && applicationMode.value !== previewed.applicationMode) { return "application mode changed"; }
     if (previewed === null) { return "there is no Preview of this rule in this window yet"; }
     if (ruleText(text.value) !== previewed.text) { return "the rule text changed after Preview #" + previewed.id; }
     if (createMissing.checked !== previewed.createMissing) {
@@ -411,7 +413,7 @@
                             createMissing: true };
   // The editable model text a NEW rule starts with (a real value, not a placeholder): the operator replaces the
   // description, WHO and WHY between the empty quotes. Drafts and existing rules keep their own text.
-  var NEW_RULE_TEXT = 'Se la descrizione contiene "", allora il WHO è "" e il WHY è "".';
+  var NEW_RULE_TEXT = 'If the description contains "", WHO is "" and WHY is "".';
 
   function openFor(transaction, rule, draft, withCreate, operative, withOverride, withOnlyUnsettled, title, isNew) {
     reset();
@@ -452,6 +454,7 @@
     draftButton.disabled = !transaction.id && !draft;
     describeScope();
     if (!transaction.id) { showError("The starting transaction is no longer available: this rule can be read but not previewed."); }
+    if (applicationMode) { applicationMode.value = "FILL_MISSING"; syncApplicationMode(); }
     modal.open();
   }
 
@@ -516,7 +519,7 @@
     if (item.extracted_who && item.proposed_who && item.extracted_who !== item.proposed_who) {
       var note = document.createElement("span");
       note.className = "cell-note";
-      note.textContent = " estratto: " + item.extracted_who + " · WHO esistente riutilizzato";
+      note.textContent = " extracted: " + item.extracted_who + " · existing WHO reused";
       span.appendChild(document.createElement("br"));
       span.appendChild(note);
     }
@@ -550,7 +553,7 @@
   }
 
   // BANK_AI_RULES_010 — For Whom proposed by the rule: an active entity, a
-  // name that is not one (never created), "Da verificare" or unchanged.
+  // name that is not one (never created), "Needs review" or unchanged.
   function forWhomProposal(item) {
     if (item.for_whom_to_verify) { return toVerify(); }
     if (!item.proposed_for_whom) { return "unchanged"; }
@@ -602,7 +605,7 @@
       cell(row, "Current WHO / WHY", (item.who || "—") + " / " + (item.why || "—"));
       if (forWhom) { cell(row, "Current For Whom", item.for_whom || "—"); }
       cell(row, "Reason", item.reason);
-      // BANK_AI_RULES_007 — a field the rule cannot decide is "Da verificare", never assigned.
+      // BANK_AI_RULES_007 — a field the rule cannot decide is "Needs review", never assigned.
       cell(row, "Proposed WHO", item.who_to_verify ? toVerify() :
            withExtracted(proposal(item.proposed_who, item.proposed_who_is_new, whoNewLabel), item));
       cell(row, "Proposed WHY", item.why_to_verify ? toVerify() : item.proposed_why ?
@@ -617,11 +620,11 @@
 
   function showPreview(data) {
     var newWho = (data.new_who_names || []).length;
-    previewedConflicts = data.rule_conflicts || [];
+    previewedConflicts = applicationMode ? [] : (data.rule_conflicts || []);
     showConflicts(previewedConflicts, "found by Preview");
     previewed = { id: data.preview_id, text: ruleText(data.rule_text), createMissing: !!data.create_missing_who,
                   overrideProtected: !!data.override_protected, onlyUnsettled: !!data.only_unsettled,
-                  whoOnly: !!data.who_only,
+                  applicationMode: data.application_mode, whoOnly: !!data.who_only,
                   scope: scopeSignature(), newWho: newWho };
     previewIdInput.value = data.preview_id;
     stale.hidden = true;
@@ -693,7 +696,19 @@
 
   // The form is read BEFORE setBusy disables its controls: a disabled field
   // is never sent.
+  function syncApplicationMode() {
+    if (!applicationMode) { return; }
+    overrideProtected.checked = applicationMode.value === "UPDATE_ASSIGNED";
+    onlyUnsettled.checked = false;
+    includeAiSettled.checked = true;
+    whoOnly.checked = false;
+    allParts.checked = true;
+  }
+  if (applicationMode) {
+    applicationMode.addEventListener("change", function () { syncApplicationMode(); markStale(); });
+  }
   function formBody() {
+    syncApplicationMode();
     selectedInput.value = scopeSelected.checked ? selectedIds().join(",") : "";
     var body = new FormData(form);
     // The "existing transactions" radio group is sent as the fields the server reads.
@@ -1026,7 +1041,7 @@
       });
       return;
     }
-    if (historical && previewedConflicts.length && !window.confirm(
+    if (!applicationMode && historical && previewedConflicts.length && !window.confirm(
         "Conflict with other active rules:\n\n" + conflictLines(previewedConflicts).join("\n\n") +
         "\n\nThe movements where both rules apply will NOT be changed (Conflict); nothing is resolved " +
         "automatically. Apply the rule to the other movements anyway?")) {

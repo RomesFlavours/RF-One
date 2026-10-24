@@ -345,10 +345,17 @@ tbody tr:hover { background: var(--olive-050); }
   max-width: 700px; width: 100%; padding: 1.2rem 1.5rem; position: relative;
 }
 .org-modal-panel .modal-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .8rem; }
-.org-modal-close {
-  position: absolute; top: .6rem; right: .8rem; border: none; background: none; font-size: 1.3rem; cursor: pointer;
-  color: var(--muted);
+/* RF-One UI standard UI_MODAL_CLOSE_X_001 — every modal window has a close X at its top right
+   that stays visible while the window scrolls (sticky in the scrolling
+   panel), so it can be left without scrolling to its bottom. The X calls the
+   window's own Cancel/close, never a separate implementation. The negative
+   bottom margin keeps the float from pushing the window's content aside. */
+.org-modal-close, .rf-modal-x {
+  position: sticky; top: 0; float: right; z-index: 5; margin: -.4rem -.6rem -2rem .6rem;
+  width: 2rem; height: 2rem; padding: 0; border: none; border-radius: 50%;
+  background: var(--surface, #fff); color: var(--muted, #666); font-size: 1.4rem; line-height: 1; cursor: pointer;
 }
+.org-modal-close:hover, .rf-modal-x:hover { background: var(--olive-050, #f2f2ee); color: var(--ink, #222); }
 
 /* --- Coverage summary tiles (task §15) --- */
 .coverage-tiles { display: flex; gap: .8rem; flex-wrap: wrap; margin: 1rem 0; }

@@ -234,6 +234,11 @@
     color: var(--ink); background: white;
   }
   dialog.edit-modal::backdrop { background: rgba(28,28,28,.45); }
+  /* RF-One UI standard UI_MODAL_CLOSE_X_001 — a close X at the top right, visible while the dialog scrolls. */
+  .rf-modal-x { position: sticky; top: 0; float: right; z-index: 5; margin: -.6rem -.6rem -2rem .6rem;
+    width: 2rem; height: 2rem; padding: 0; border: none; border-radius: 50%; background: white;
+    color: var(--muted); font-size: 1.4rem; line-height: 1; cursor: pointer; }
+  .rf-modal-x:hover { background: #f5f2ee; color: var(--ink); }
   dialog.edit-modal h3 { margin-top: 0; font-size: 1rem; }
   .modal-actions { display: flex; gap: .6rem; justify-content: flex-end; margin-top: 1rem; }
   .dossier-tgap-card { border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem; margin-bottom: .8rem; }

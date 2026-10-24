@@ -6,6 +6,7 @@
 {{ bank.module_nav('ai_rules') }}
 
 <h2>AI Rules</h2>
+<p><a href="{{ url_for('bank_ai_rule_applications') }}">Application history</a></p>
 {#- BANK_AI_RULES_002 … 006 — every movement of a period; from one of them the
     operator writes a rule in natural language, previews it on a scope and
     keeps it as a draft, saves it as an operative rule, or saves and applies
@@ -315,6 +316,16 @@
             Apply automatically to transactions imported from now on
             <span class="cell-note">can be combined with the choice for existing transactions</span></label>
         </fieldset>
+        <fieldset class="ai-rule-scopes">
+          <legend>How should this rule apply?</legend>
+          <select name="application_mode" id="ai-rule-application-mode">
+            <option value="FILL_MISSING">Fill missing values</option>
+            <option value="UPDATE_ASSIGNED">Also update assigned values</option>
+          </select>
+          <p class="cell-note">Only the fields specified by the rule will change. Review the preview before applying.
+            Each application can be rolled back from history, preserving later changes.</p>
+        </fieldset>
+        <div hidden aria-hidden="true">
         {#- C — BANK_AI_RULES_013: "only not yet classified" selected by default; Preview and Apply use the same choice. -#}
         <fieldset class="ai-rule-scopes">
           <legend>Which AI classifications may be updated?</legend>
@@ -342,6 +353,7 @@
             Apply only WHO</label>
           <p class="cell-note">“Apply only WHO” does not apply WHY, default WHY and For Whom now, but keeps them in the rule.</p>
         </fieldset>
+        </div>
         {#- F — BANK_AI_RULES_003: per rule. -#}
         <fieldset class="ai-rule-scopes">
           <legend>Create missing WHO?</legend>
@@ -386,6 +398,6 @@
   </div>
 </div>
 
-<script defer src="{{ url_for('static', filename='js/bank-ai-rules.js') }}?v=31"></script>
-<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
+<script defer src="{{ url_for('static', filename='js/bank-ai-rules.js') }}?v=en1"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=en1"></script>
 {% endblock %}

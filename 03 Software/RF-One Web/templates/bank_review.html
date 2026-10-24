@@ -10,6 +10,14 @@
 
 
 <div class="card">
+  <section aria-label="Reconciliation" style="margin:16px 0">
+    <button type="button" id="bank-run-start">Reconcile pending</button>
+    <button type="button" id="bank-run-stop" class="btn-secondary" hidden>Stop</button>
+    <button type="button" id="bank-run-continue" class="btn-secondary" hidden>Continue</button>
+    <p id="bank-run-status" role="status"></p>
+    <div id="bank-run-preview"></div>
+    <details><summary>Reconciliation history</summary><div id="bank-run-history"></div></details>
+  </section>
   {% if transactions %}
     {#- BANK_REVIEW_BULK_WHO_WHY_001 — the rows ticked on this page; ticking
         writes nothing. Leaving the page (search, filters, tab) clears it. -#}
@@ -23,8 +31,8 @@
         <thead>
           <tr>
             <th class="col-select"><span class="sr-only">Select</span></th>
-            {{ sorting.sort_th('Instrument', 'instrument') }}{{ sorting.sort_th('Date', 'date') }}{{ sorting.sort_th('Description', 'description') }}{{ sorting.sort_th('Amount', 'amount') }}<th>Source</th>
-            <th>Duplicate</th><th>Classification (Who &rarr; Why &rarr; What)</th><th>Internal Transfer</th><th>Review</th>
+            {{ sorting.sort_th('Account', 'instrument', filter='instrument') }}{{ sorting.sort_th('Date', 'date', filter='date') }}{{ sorting.sort_th('Description', 'description', filter='description') }}{{ sorting.sort_th('Amount', 'amount', filter='amount') }}{{ sorting.filter_th('Source', 'source') }}
+            {{ sorting.filter_th('Duplicates', 'duplicate') }}{{ sorting.filter_th('WHO / WHY'|safe, 'classification') }}<th>Transfer</th><th>Example</th>
           </tr>
         </thead>
         <tbody>
@@ -46,15 +54,15 @@
                   import's file -> Source mapping, and is shown read-only. Under
                   it, FOR WHOM: the Reporting Entity / LLC that benefited, a
                   reconciliation decision that can be made at any time. -#}
-              <td data-label="Instrument" class="col-source">
+              <td data-label="Account" class="col-source">
                 <span class="source-name">{{ instruments_by_id.get(txn.payment_instrument_id).display_name if instruments_by_id.get(txn.payment_instrument_id) else txn.payment_instrument_id }}</span>
                 {% if fw.split %}
-                  <span class="cell-note">For Whom: split</span>
+                  <span class="cell-note">WHOM: split</span>
                 {% else %}
                   <form method="post" action="{{ url_for('bank_reconciliation_for_whom', transaction_id=txn.id) }}" class="for-whom-form" data-for-whom-form>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="return_to" value="{{ review_return_to }}">
-                    <label class="for-whom-label" for="for-whom-{{ txn.id }}">For Whom:</label>
+                    <label class="for-whom-label" for="for-whom-{{ txn.id }}">WHOM:</label>
                     <select id="for-whom-{{ txn.id }}" name="for_whom_id" data-for-whom-select>
                       {% if fw.for_whom is none %}<option value="" selected>Choose&hellip;</option>{% endif %}
                       {% for entity in for_whom_entities %}
@@ -68,9 +76,9 @@
               <td data-label="Date" class="col-date">{{ txn.posting_date }}</td>
               <td data-label="Description" class="col-description">{{ txn.description_original }}</td>
               <td data-label="Amount" class="col-amount">{{ "%.2f"|format(txn.amount_minor / 100) }}</td>
-              <td data-label="Source">{{ txn.bank_source }}</td>
-              <td data-label="Duplicate">
-                <span class="badge {{ 'bad' if txn.duplicate_status == 'CANDIDATE_DUPLICATE' else ('warn' if txn.duplicate_status == 'CONFIRMED_DUPLICATE' else 'ok') }}">{{ txn.duplicate_status }}</span>
+              <td data-label="Source">{{ 'Chase' if 'CHASE' in (txn.bank_source or '') else ('PayPal' if 'PAYPAL' in (txn.bank_source or '') else (txn.bank_source or '—').replace('_',' ').title()) }}</td>
+              <td data-label="Duplicates">
+                <span class="badge {{ 'bad' if txn.duplicate_status == 'CANDIDATE_DUPLICATE' else ('warn' if txn.duplicate_status == 'CONFIRMED_DUPLICATE' else 'ok') }}">{{ {'NONE':'—','CONFIRMED_DISTINCT':'Distinct','CONFIRMED_DUPLICATE':'Duplicate','CANDIDATE_DUPLICATE':'Needs review'}.get(txn.duplicate_status,'—') }}</span>
                 {% if txn.duplicate_status == 'CANDIDATE_DUPLICATE' %}
                   {% if txn.duplicate_of_transaction_id %}
                     <span class="cell-note">Same instrument, date, description and amount as transaction #{{ txn.duplicate_of_transaction_id }}.</span>
@@ -87,7 +95,7 @@
                  the Who, shown from the decision's own immutable snapshot
                  so this row keeps saying what it was actually classified
                  as even after the vocabulary is edited. #}
-              <td data-label="Classification (Who → Why → What)">
+              <td data-label="WHO / WHY">
                 {# BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001: a copy
                    excluded from accounting is never given Who/Why/What work.
                    The classification belongs to the canonical transaction —
@@ -121,7 +129,7 @@
                             <td data-label="Batch / file">
                               {% if batch %}#{{ batch.id }} <code>{{ batch.original_file_name }}</code>{% else %}&mdash;{% endif %}
                             </td>
-                            <td data-label="Instrument">
+                            <td data-label="Account">
                               {{ instruments_by_id.get(member.payment_instrument_id).display_name if instruments_by_id.get(member.payment_instrument_id) else member.payment_instrument_id }}
                             </td>
                           </tr>
@@ -130,7 +138,7 @@
                     </table>
                   </details>
                 {% else %}
-                <span class="badge {{ 'ok' if resolved else 'warn' }}">{{ explanation.decision_status if explanation else 'NEEDS_HUMAN_REVIEW' }}</span>
+                
                 {% if canonical_copy_counts.get(txn.id) %}
                   <span class="cell-note">
                     Canonical for {{ canonical_copy_counts[txn.id] }} excluded copy/copies &mdash;
@@ -164,23 +172,23 @@
                     {%- endif %}
                   </span>
                 {% endif %}
-                <button type="button" class="who-picker-open"
-                        title="Reconcile this transaction by hand: choose its WHO and its WHY."
+                <button type="button" class="who-picker-open bank-manual-choice"
+                        title="Edit WHO and WHY"
                         data-transaction-id="{{ txn.id }}"
                         data-transaction-label="{{ txn.posting_date }} · {{ txn.description_original }} · {{ "%.2f"|format(txn.amount_minor / 100) }}"
                         data-current-occurrence-id="{{ explanation.occurrence_id if explanation and explanation.occurrence_id else '' }}"
-                        data-single-label="Select WHO">Select WHO</button>
+                        data-single-label="WHO / WHY">WHO / WHY</button>
                 {% if resolved %}
                   <form method="post" action="{{ url_for('bank_transaction_reclassify', transaction_id=txn.id) }}" class="compact-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" title="Re-resolve the same Who through the current Who → Why → What chain, as a new auditable decision.">Reclassify</button>
+                    <button type="submit" title="Re-resolve the same Who through the current Who → Why → What chain, as a new auditable decision.">Ricalcola</button>
                   </form>
                 {% endif %}
                 {% endif %}
               </td>
               <td data-label="Internal Transfer">
                 {% if counterpart %}
-                  <span class="badge ok">INTERNAL_TRANSFER</span>
+                  <span class="badge ok">Internal transfer</span>
                   <span class="cell-note">&harr; {{ instruments_by_id.get(counterpart.payment_instrument_id).display_name if instruments_by_id.get(counterpart.payment_instrument_id) else counterpart.payment_instrument_id }}
                   ({{ "%.2f"|format(counterpart.amount_minor / 100) }})</span>
                 {% elif match_candidates %}
@@ -199,7 +207,7 @@
                   </form>
                 {% endif %}
               </td>
-              <td data-label="Review" class="col-narrow"><span class="badge {{ 'ok' if txn.review_status in ('REVIEWED', 'ACCEPTED') else 'warn' }}">{{ txn.review_status }}</span></td>
+              <td data-label="Example" class="bank-example-cell"><button type="button" class="btn-secondary" data-profile-research="{{ txn.id }}">AI</button><button type="button" class="btn-secondary bank-example-open" data-example-description="{{ txn.description_original }}" data-example-rule="{{ url_for('bank_ai_rules', transaction_id=txn.id, return_to=request.full_path.rstrip('?') ~ '#t-' ~ txn.id) }}" data-example-photo="{{ url_for('bank_ai_rules', transaction_id=txn.id, capture=1, return_to=request.full_path.rstrip('?') ~ '#t-' ~ txn.id) }}">Use as example</button><div class="bank-pipeline-status" data-pipeline-id="{{ txn.id }}"></div></td>
             </tr>
           {% endfor %}
         </tbody>
@@ -234,4 +242,15 @@ document.querySelectorAll("[data-for-whom-select]").forEach(function (select) {
   });
 });
 </script>
+<script defer src="{{ url_for('static',filename='js/bank-import-pipeline.js') }}?v=en1"></script>
+{% include '_bank_example_choice.html' %}
+<style>
+#bank-research-dialog{width:95vw;max-width:1500px;height:92vh;max-height:96vh;padding:0;border:1px solid var(--olive-300);border-radius:12px;overflow:hidden}
+#bank-research-dialog[open]{display:flex;flex-direction:column}
+.bank-research-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:12px 18px;border-bottom:1px solid var(--olive-150)}
+#bank-research-position{margin-left:auto;color:var(--muted)}
+#bank-research-frame{width:100%;flex:1;min-height:0;border:0}
+</style>
+<dialog id="bank-research-dialog" aria-label="Guided reconciliation"><div class="bank-research-toolbar"><button type="button" id="bank-research-close">Stop</button><button type="button" id="bank-run-skip" class="btn-secondary">Skip this transaction</button><span id="bank-research-position" role="status"></span><button type="button" class="rf-modal-x" style="margin:0 0 0 auto;float:none" aria-label="Close" onclick="document.getElementById('bank-research-close').click()">&times;</button></div><iframe id="bank-research-frame" title="Current transaction and recognition profile"></iframe></dialog>
+<script defer src="{{ url_for('static',filename='js/bank-profile-research.js') }}?v=transaction-context1"></script>
 {% endblock %}
