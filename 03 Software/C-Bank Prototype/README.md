@@ -25,6 +25,11 @@ Bank Transaction → Source owner (payer) → transfer/card matching → WHO →
 
 ## Run
 
+**Bank unification Phase 1 (2026-10-24):** this application is now normally served INSIDE the Bank on 5080, as
+the Bank tab **Guided Reconciliation** (`/bank/reconcile/`) — see `03 Software/RF-One Web/bank_guided_reconciliation.py`
+in the Bank worktree. The page uses its base path (`request.script_root`), so the same code also runs standalone.
+The standalone 5090 server below is kept only as rollback; do not run it while the Bank serves the tab.
+
 Double-click **`Avvia C-Bank.cmd`** → http://127.0.0.1:5090/ (uses the Bank venv, installs nothing).
 
 - **Run MVP sample**: ~4 real movements per MVP case (spec §5), selected deterministically (`cbank/sample.py`).

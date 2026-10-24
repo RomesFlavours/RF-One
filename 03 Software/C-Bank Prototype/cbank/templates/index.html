@@ -4,13 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="cbank-token" content="{{ token }}">
-<title>C-Bank Prototype</title>
+{%- set shell = request.environ.get('rfone.bank_shell') %}
+<title>{{ 'Bank Reconciliation · Guided Reconciliation · RF-One' if shell else 'C-Bank Prototype' }}</title>
+{#- Inside the Bank application: the Bank stylesheet first, so this page's own rules below still win. #}
+{% if shell %}<link rel="stylesheet" href="{{ shell.css }}">{% endif %}
 <style>
 :root{--bg:#f7f6f1;--card:#fff;--ink:#23231f;--muted:#6b6a60;--line:#dedbd0;--olive:#5d6b2f;--ok:#2e7d32;--bad:#b3261e;--warn:#9a6700}
 *{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--ink)}
-header{background:#fff;border-bottom:1px solid var(--line);padding:10px 18px}
+body>header{background:#fff;border-bottom:1px solid var(--line);padding:10px 18px}
 .crumb{font-size:13px;color:var(--muted)}.crumb a{color:var(--olive)}
-h1{margin:4px 0 0;font-size:20px}.exp{display:inline-block;background:#ffe3e0;color:var(--bad);font-weight:600;padding:2px 8px;border-radius:6px;font-size:12px;margin-left:8px}
+body>header h1,.guided-title h2{margin:4px 0 0;font-size:20px}.exp{display:inline-block;background:#ffe3e0;color:var(--bad);font-weight:600;padding:2px 8px;border-radius:6px;font-size:12px;margin-left:8px}
 main{padding:14px 18px;max-width:1700px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -49,10 +52,15 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
 </style>
 </head>
 <body>
+{% if shell %}
+{{ shell.header|safe }}
+<div class="guided-title" style="padding:0 18px"><h2>Guided Reconciliation <span class="exp">EXPERIMENTAL · C-Bank engine and store · Bank data read-only</span></h2></div>
+{% else %}
 <header>
   <nav class="crumb" aria-label="Breadcrumb"><a href="{{ bank_url }}" target="_blank" rel="noopener">RF-One Bank (operational) ↗</a> › C-Bank Prototype</nav>
   <h1>C-Bank Prototype <span class="exp">EXPERIMENTAL · dry run · Bank read-only</span></h1>
 </header>
+{% endif %}
 <main>
 <section class="card">
   <div class="row">
@@ -63,7 +71,7 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
     <span id="status" role="status"></span>
     <span style="flex:1"></span>
     <label style="margin:0">Run <select onchange="location.search='?run='+this.value">{% for r in runs %}<option value="{{ r.id }}" {% if run and r.id==run.id %}selected{% endif %}>#{{ r.id }} · {{ r.label }} · {{ local_time(r.created_at) }}</option>{% endfor %}</select></label>
-    {% if run %}<a href="/export/{{ run.id }}.zip"><button class="sec" type="button">Export per LLC (Excel)</button></a>{% endif %}
+    {% if run %}<a href="{{ request.script_root }}/export/{{ run.id }}.zip"><button class="sec" type="button">Export per LLC (Excel)</button></a>{% endif %}
   </div>
 </section>
 {% if run %}
@@ -249,12 +257,13 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
   </div>
 </dialog>
 <script>
-const token=document.querySelector('meta[name=cbank-token]').content,runId={{ run.id if run else 'null' }};
+// B: the base path — empty on the standalone 5090 server, /bank/reconcile inside the Bank application.
+const B={{ request.script_root|tojson }},token=document.querySelector('meta[name=cbank-token]').content,runId={{ run.id if run else 'null' }};
 const $=s=>document.querySelector(s),esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function post(url,data){const r=await fetch(url,{method:'POST',headers:{'X-CBank-Token':token},body:new URLSearchParams(data)});const v=await r.json();if(!r.ok||v.ok===false)throw Error(v.error||r.statusText);return v;}
 function busy(b,t){document.querySelectorAll('button').forEach(x=>x.disabled=b);document.querySelectorAll('#status,[data-status]').forEach(x=>x.textContent=t||'');if(!b&&current)position();}
-document.querySelectorAll('[data-run]').forEach(b=>b.onclick=async()=>{busy(true,'Running the engine (dry run)…');try{const v=await post('/api/runs',{kind:b.dataset.run,month:$('#month').value});location.search='?run='+v.run_id;}catch(e){busy(false,e.message);}});
-document.querySelectorAll('[data-investigate]').forEach(b=>b.onclick=async()=>{busy(true,'AI investigation of the group (OpenAI). This can take a minute…');try{const v=await post(`/api/runs/${runId}/investigate`,{txn_ids:b.dataset.investigate});busy(false,`Investigation done: ${v.reevaluated_changed} unresolved movements changed. Reloading…`);setTimeout(()=>location.reload(),800);}catch(e){busy(false,e.message);}});
+document.querySelectorAll('[data-run]').forEach(b=>b.onclick=async()=>{busy(true,'Running the engine (dry run)…');try{const v=await post(B+'/api/runs',{kind:b.dataset.run,month:$('#month').value});location.search='?run='+v.run_id;}catch(e){busy(false,e.message);}});
+document.querySelectorAll('[data-investigate]').forEach(b=>b.onclick=async()=>{busy(true,'AI investigation of the group (OpenAI). This can take a minute…');try{const v=await post(B+`/api/runs/${runId}/investigate`,{txn_ids:b.dataset.investigate});busy(false,`Investigation done: ${v.reevaluated_changed} unresolved movements changed. Reloading…`);setTimeout(()=>location.reload(),800);}catch(e){busy(false,e.message);}});
 // --- Transactions modal: filters, selection and position persist per run (sessionStorage) ---
 const KEY='cbank-list-'+runId,FIELDS=['status','case','exc','cmp','q','group'];
 let current=null,rows=[],changed=false;
@@ -265,8 +274,8 @@ function showSaved(){const f=state.filters,parts=FIELDS.filter(k=>f[k]).map(k=>`
 function fillForm(){const form=$('#l-filters');for(const k of FIELDS)form.elements[k].value=state.filters[k]||'';$('#l-group').textContent=state.filters.group?'Group: '+state.filters.group:'';}
 function readForm(){const form=$('#l-filters');for(const k of FIELDS)state.filters[k]=form.elements[k].value.trim();save();}
 let priors={},pdata={groups:[]};
-async function loadRows(){const qs=new URLSearchParams(Object.entries(state.filters).filter(([,v])=>v));const v=await (await fetch(`/api/runs/${runId}/results?${qs}`)).json();rows=v.rows;
- pdata=await (await fetch(`/api/runs/${runId}/prior?${qs}`)).json();priors=pdata.priors||{};renderRows();renderPriors();}
+async function loadRows(){const qs=new URLSearchParams(Object.entries(state.filters).filter(([,v])=>v));const v=await (await fetch(B+`/api/runs/${runId}/results?${qs}`)).json();rows=v.rows;
+ pdata=await (await fetch(B+`/api/runs/${runId}/prior?${qs}`)).json();priors=pdata.priors||{};renderRows();renderPriors();}
 // --- Decision 59: previous Bank classifications, approved by group or by selected rows ---
 function renderPriors(){const g=pdata.groups||[],cat=pdata;$('#p-count').textContent=`${g.length} proposal group(s), ${Object.keys(priors).length} movement(s)`;
  $('#p-groups').innerHTML=g.map((x,i)=>`<div class="warnbox" data-pg="${i}">
@@ -288,7 +297,7 @@ async function approvePrior(x,box,mode){const ids=mode==='group'?x.txn_ids:x.txn
  const fixes=Object.keys(data).filter(k=>k!=='txn_ids');
  if(!confirm(`Approve ${ids.length} movement(s) of ${x.who}${fixes.length?' with corrections: '+fixes.join(', '):''}? Saved only in the C-Bank store.`))return;
  busy(true,'Saving approvals…');
- try{const v=await post(`/api/runs/${runId}/prior/approve`,data);changed=true;state.selected=state.selected.filter(i=>!ids.includes(i));save();
+ try{const v=await post(B+`/api/runs/${runId}/prior/approve`,data);changed=true;state.selected=state.selected.filter(i=>!ids.includes(i));save();
   busy(false,`Approved ${v.saved.length}, skipped ${v.skipped.length}${v.skipped.length?' ('+v.skipped.map(s=>s.id+': '+s.reason).join('; ')+')':''}. Re-evaluated: ${v.reevaluated_changed} changed. Reconciled now ${v.summary.RECONCILED||0} / ${v.summary.total}.`);
   await loadRows();
   $('#p-done').innerHTML='<b>Just approved</b> (C-Bank store): '+v.updated.map(u=>`#${u.txn_id} <span class="b ${u.status}">${u.status}</span> ${esc(u.who_name)} · ${esc(u.why)} · ${esc(u.category||'—')} · ${esc(u.beneficiary||'—')}`).join(' — ');}catch(e){busy(false,e.message);}}
@@ -319,7 +328,7 @@ if(window.list){
  $('#l-investigate').onclick=async()=>{const open_=rows.filter(r=>state.selected.includes(r.txn_id)&&r.status!=='RECONCILED').map(r=>r.txn_id).slice(0,6);
   if(!open_.length){$('#l-selected').textContent='Select at least one open movement shown in the list.';return;}
   busy(true,`AI investigation of ${open_.length} movement(s) (OpenAI). This can take a minute…`);
-  try{const v=await post(`/api/runs/${runId}/investigate`,{txn_ids:open_.join(',')});changed=true;busy(false,`Investigation done: ${v.reevaluated_changed} unresolved movements changed.`);await loadRows();}catch(e){busy(false,e.message);}};
+  try{const v=await post(B+`/api/runs/${runId}/investigate`,{txn_ids:open_.join(',')});changed=true;busy(false,`Investigation done: ${v.reevaluated_changed} unresolved movements changed.`);await loadRows();}catch(e){busy(false,e.message);}};
  $('#l-close').onclick=()=>list.close();
  // Help: a separate modal on top; closing it (X, Close or Escape) leaves the list, filters and selection as they were.
  let helpClosedAt=0;
@@ -344,7 +353,7 @@ const shortDesc=d=>{let s=String(d||'').replace(/\s+/g,' ').trim();const m=s.mat
 const dirWord=d=>d==='in'?'money in':'money out';
 async function openWizard(g){
  const qs=new URLSearchParams({exc:g.exc,group:g.group});
- const [res,pr]=await Promise.all([fetch(`/api/runs/${runId}/results?${qs}`).then(r=>r.json()),fetch(`/api/runs/${runId}/prior?${qs}`).then(r=>r.json())]);
+ const [res,pr]=await Promise.all([fetch(B+`/api/runs/${runId}/results?${qs}`).then(r=>r.json()),fetch(B+`/api/runs/${runId}/prior?${qs}`).then(r=>r.json())]);
  Object.assign(W,{g,rows:res.rows,byId:Object.fromEntries(res.rows.map(r=>[r.txn_id,r])),cat:pr,results:[]});
  // CARD_SETTLEMENT_001: card-payment exceptions never get "earlier classification" proposals (approving one
  // would replace the transfer with an ordinary payment to the issuer): the wizard only explains the case.
@@ -438,7 +447,7 @@ async function wizardNext(){const act=$('#w-next').dataset.act,p=cur();
  if(act==='review'){W.step=2;return renderWizard();}
  if(act==='confirm'){W.step=3;return renderWizard();}
  if(act==='ai'){const ids=W.noPrior.slice(0,6).map(r=>r.txn_id);busy(true,'AI investigation (OpenAI)… this can take a minute');
-  try{const v=await post(`/api/runs/${runId}/investigate`,{txn_ids:ids.join(',')});changed=true;busy(false,`Investigation done: ${v.reevaluated_changed} movement(s) updated.`);await openWizard(W.g);}catch(e){busy(false,e.message);}return;}
+  try{const v=await post(B+`/api/runs/${runId}/investigate`,{txn_ids:ids.join(',')});changed=true;busy(false,`Investigation done: ${v.reevaluated_changed} movement(s) updated.`);await openWizard(W.g);}catch(e){busy(false,e.message);}return;}
  if(act==='nextgroup'){const gs=[...document.querySelectorAll('tr[data-group-exc]')].map(t=>({exc:t.dataset.groupExc,group:t.dataset.groupKey}));
   const k=gs.findIndex(x=>x.exc===W.g.exc&&x.group===W.g.group),nx=gs[k+1]||null;
   try{sessionStorage.setItem('cbank-wiz-next',JSON.stringify(nx));}catch{}location.reload();return;}
@@ -446,7 +455,7 @@ async function wizardNext(){const act=$('#w-next').dataset.act,p=cur();
   for(const k of ['beneficiary_id','why_id','category_id'])if(W.fix[k])data[k]=W.fix[k];
   if(W.fix.why_id&&!W.fix.category_id){const f=fixed();if(f.category_id)data.category_id=f.category_id;}
   busy(true,'Saving…');
-  try{const v=await post(`/api/runs/${runId}/prior/approve`,data);changed=true;
+  try{const v=await post(B+`/api/runs/${runId}/prior/approve`,data);changed=true;
    const rec=v.updated.filter(u=>u.status==='RECONCILED').length,inc=v.updated.length-rec;
    W.results.push(`${p.who} · ${entName(fixed().beneficiary_id)}: ${v.saved.length} approved → ${rec} Reconciled, ${inc} still incomplete${v.skipped.length?`; ${v.skipped.length} skipped (${v.skipped.map(s=>s.reason).join('; ')})`:''}.`);
    busy(false,`Approved ${v.saved.length}. Reconciled now ${v.summary.RECONCILED||0} of ${v.summary.total}.`);
@@ -460,7 +469,7 @@ if(window.wiz){
  try{const nx=JSON.parse(sessionStorage.getItem('cbank-wiz-next')||'null');sessionStorage.removeItem('cbank-wiz-next');
   if(nx){const ok=[...document.querySelectorAll('tr[data-group-exc]')].some(t=>t.dataset.groupExc===nx.exc&&t.dataset.groupKey===nx.group);if(ok)openWizard(nx);}}catch{}
 }
-async function open(id){const v=await (await fetch(`/api/runs/${runId}/txn/${id}`)).json();current=v;render(v);position();if(!dlg.open)dlg.showModal();if(window.list&&list.open)renderRows();}
+async function open(id){const v=await (await fetch(B+`/api/runs/${runId}/txn/${id}`)).json();current=v;render(v);position();if(!dlg.open)dlg.showModal();if(window.list&&list.open)renderRows();}
 function position(){const i=rows.findIndex(r=>r.txn_id===current.result.txn_id);$('#d-pos').textContent=i>=0?`${i+1} / ${rows.length}`:'';$('#d-prev').disabled=i<=0;$('#d-next').disabled=i<0||i>=rows.length-1;}
 $('#d-prev').onclick=()=>{const i=rows.findIndex(r=>r.txn_id===current.result.txn_id);if(i>0)open(rows[i-1].txn_id);};
 $('#d-next').onclick=()=>{const i=rows.findIndex(r=>r.txn_id===current.result.txn_id);if(i>=0&&i<rows.length-1)open(rows[i+1].txn_id);};
@@ -500,7 +509,7 @@ function renderQuestion(q,v){const box=$('#d-question');if(!q){box.innerHTML='';
    hint=(w||b)?` (this option was suggested with${w?` WHY “${w.name}”`:''}${b?` and beneficiary ${b.name}`:''})`:'';}
   const text=`Answer to your question.\nQuestion: ${q.question}\nMy answer: ${answer}${hint}\nPropose WHO, beneficiary, WHY and RF-One category from the catalogs only; if something is still missing, ask only for that.`;
   busy(true,'Asking OpenAI to interpret your answer…');
-  try{const res=await post(`/api/runs/${runId}/txn/${current.result.txn_id}/chat`,{text});current.messages=res.messages;
+  try{const res=await post(B+`/api/runs/${runId}/txn/${current.result.txn_id}/chat`,{text});current.messages=res.messages;
    $('#d-chat').innerHTML=res.messages.map(x=>`<div class="msg ${x.role}">${esc(x.text)}</div>`).join('');
    const out=applyProposal(res.answer,v);busy(false,out.ready?'Proposal ready — review the fields and confirm.':'More information needed.');showAnswer(out.html);}
   catch(err){busy(false,err.message);showAnswer(esc(err.message));}};}
@@ -518,8 +527,8 @@ function applyProposal(ans,v){const p=(ans&&ans.proposal)||{},f=$('#d-form'),set
  return {ready,html:(set.length?`<b>Filled for your review:</b> ${set.join(' · ')}.`:'')
   +(rejected.length?`<br><span class="neg">Ignored (not in the catalogs): ${rejected.join(', ')}.</span>`:'')
   +(ready?'<br>Check the fields below, then <b>Confirm human decision</b>.':`<br><b>Still needed: ${missing.join(', ')}.</b> ${reply}`)};}
-$('#d-form').onsubmit=async e=>{e.preventDefault();const f=e.target;try{busy(true,'Saving…');const v=await post(`/api/runs/${runId}/txn/${current.result.txn_id}/decision`,Object.fromEntries(new FormData(f)));changed=true;busy(false,`Saved. ${v.reevaluated_changed} unresolved movements changed.`);current.result=v.result;await open(current.result.txn_id);}catch(err){busy(false,err.message);}};
-$('#d-chatform').onsubmit=async e=>{e.preventDefault();const t=e.target.text.value.trim();if(!t)return;busy(true,'Asking OpenAI…');try{const v=await post(`/api/runs/${runId}/txn/${current.result.txn_id}/chat`,{text:t});e.target.text.value='';current.messages=v.messages;$('#d-chat').innerHTML=v.messages.map(x=>`<div class="msg ${x.role}">${esc(x.text)}</div>`).join('');const out=applyProposal(v.answer,current);busy(false,out.ready?'AI proposal copied into the fields — review and confirm.':'The AI needs more information (see the conversation).');}catch(err){busy(false,err.message);}};
+$('#d-form').onsubmit=async e=>{e.preventDefault();const f=e.target;try{busy(true,'Saving…');const v=await post(B+`/api/runs/${runId}/txn/${current.result.txn_id}/decision`,Object.fromEntries(new FormData(f)));changed=true;busy(false,`Saved. ${v.reevaluated_changed} unresolved movements changed.`);current.result=v.result;await open(current.result.txn_id);}catch(err){busy(false,err.message);}};
+$('#d-chatform').onsubmit=async e=>{e.preventDefault();const t=e.target.text.value.trim();if(!t)return;busy(true,'Asking OpenAI…');try{const v=await post(B+`/api/runs/${runId}/txn/${current.result.txn_id}/chat`,{text:t});e.target.text.value='';current.messages=v.messages;$('#d-chat').innerHTML=v.messages.map(x=>`<div class="msg ${x.role}">${esc(x.text)}</div>`).join('');const out=applyProposal(v.answer,current);busy(false,out.ready?'AI proposal copied into the fields — review and confirm.':'The AI needs more information (see the conversation).');}catch(err){busy(false,err.message);}};
 // Help popover: placed next to its button, light-dismiss (click outside or on ? again), never blocks the fields.
 {const pop=$('#d-help-pop'),btn=$('#d-help-btn');if(pop&&pop.showPopover)pop.addEventListener('toggle',e=>{if(e.newState==='open'){const r=btn.getBoundingClientRect();pop.style.top=(r.bottom+6)+'px';pop.style.left=Math.max(8,Math.min(r.left,innerWidth-380))+'px';}});}
 // Closing a movement returns to the list (refreshed); the dashboard reloads only when the list closes after a change.
