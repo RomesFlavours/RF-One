@@ -37,3 +37,8 @@ MEMORY_MIN_PRECEDENTS = 2      # concordant human precedents for MEMORY
 # decision. Off unless CBANK_WHO_WHY=1.
 WHO_WHY_KNOWLEDGE = os.environ.get("CBANK_WHO_WHY", "0") == "1"
 AI_MIN_CONFIDENCE = 0.85       # AI confidence for an automatic classification
+
+# Label hint (context only, never a classification): shown when at least this many OTHER WHOs with the
+# same Label have approved WHO -> WHY associations and this share of them agree on one WHY.
+LABEL_HINT_MIN_WHOS = 3
+LABEL_HINT_MIN_SHARE = 0.6

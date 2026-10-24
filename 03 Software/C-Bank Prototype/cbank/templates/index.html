@@ -95,7 +95,12 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
     <tr class="r" data-group-exc="{{ code }}" data-group-key="{{ key }}"><td>{{ code }}</td><td>{{ key }}</td><td>{{ ids|length }}</td>
       <td><button type="button" data-review>Review</button>
           <button class="sec" data-investigate="{{ ids[:6]|join(',') }}">Investigate with AI{% if ids|length>6 %} (first 6){% endif %}</button>
-          <button class="sec" type="button" data-show>Advanced details</button></td></tr>
+          <button class="sec" type="button" data-show>Advanced details</button>
+          {%- if shell and code == 'NO_PROFILE' and profile_who_ids.get(key) %}
+          {#- Phase 2: the Bank's own profile conversation, opened for this WHO with an AI proposal;
+              nothing is active until a person previews and saves it there. #}
+          <a href="/bank/ai-rules?who_id={{ profile_who_ids[key] }}&amp;propose=1"><button class="sec" type="button">Propose profile with AI</button></a>
+          {%- endif %}</td></tr>
   {% else %}<tr><td colspan="4">No exceptions.</td></tr>{% endfor %}
   </tbody></table>
   <div class="row" style="margin-top:8px"><button class="sec" type="button" id="all-movements">All movements ({{ total }})</button><span class="m" id="saved-filters"></span></div>
@@ -306,7 +311,7 @@ function renderRows(){const sel=new Set(state.selected);
   <td><input type="checkbox" data-pick="${r.txn_id}" ${sel.has(r.txn_id)?'checked':''} aria-label="Select ${r.txn_id}"></td>
   <td>${esc(r.date)}</td><td>${esc(r.description)}${(r.cases||[]).length?`<div class="m">${esc(r.cases.join(', '))}</div>`:''}</td>
   <td class="num ${r.amount_minor<0?'neg':''}">${(r.amount_minor/100).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
-  <td>${esc(r.payer||'—')}<div class="m">${esc(r.source)}</div></td><td>${esc(r.who_name||'—')}<div class="m">${esc(r.who_method||'')}</div></td>
+  <td>${esc(r.payer||'—')}<div class="m">${esc(r.source)}</div></td><td>${esc(r.who_name||'—')}<div class="m">${esc(r.who_method||'')}${r.who_labels&&r.who_labels.length?' · '+esc(r.who_labels.join(', ')):''}</div></td>
   <td>${esc(r.beneficiary||'—')}<div class="m">${esc(r.beneficiary_method||'')}</div></td><td>${esc(r.why||'—')}<div class="m">${esc(r.why_method||'')}</div></td>
   <td>${esc(r.category||'—')}</td><td class="m">${esc(r.qb_account||'not mapped')}</td><td class="m">${esc(r.operation_type||'—')}</td>
   <td><span class="b ${r.status}">${r.status}</span>${r.protected?`<div class="m">🔒 ${esc(r.protected)}</div>`:''}${r.exceptions.map(e=>`<div class="m">${esc(e.code)}</div>`).join('')}</td>
@@ -476,6 +481,7 @@ $('#d-next').onclick=()=>{const i=rows.findIndex(r=>r.txn_id===current.result.tx
 function opt(list,sel,label,none){return (none?`<option value="">${none}</option>`:'')+list.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(label(x))}</option>`).join('');}
 function render(v){const r=v.result;$('#d-title').textContent=`#${r.txn_id} · ${r.date} · ${(r.amount_minor/100).toFixed(2)} ${r.currency||''}`;$('#d-sub').textContent=`${r.description} — ${r.source} (${r.source_type}), paid by ${r.payer||'—'}`;
  let a='';if(r.protected)a+=`<div class="warnbox">🔒 Protected human decision (${esc(r.protected)}). The engine never replaces it.</div>`;
+ if(r.who_labels&&r.who_labels.length)a+=`<div class="m"><b>Labels of ${esc(r.who_name)}</b> (context only, edited in Configuration › Edit WHO): ${esc(r.who_labels.join(', '))}${(r.label_hints||[]).map(h=>` · ${h.whos} of ${h.of} WHOs labelled ${esc(h.label)} are approved as <b>${esc(h.why)}</b>`).join('')}</div>`;
  if(r.proposal)a+=`<div class="warnbox"><b>Engine proposal (not applied):</b> ${esc(r.proposal.fields.join(', '))} — WHO ${esc(r.proposal.who)}, WHY ${esc(r.proposal.why)}, Category ${esc(r.proposal.category)}, Beneficiary ${esc(r.proposal.beneficiary)}. ${esc(r.proposal.note)}</div>`;
  const q=r.exceptions.find(e=>e.question);
  for(const e of r.exceptions)a+=`<div class="warnbox"><b>${esc(e.code)}</b>: ${esc(e.message)}${e.question&&e!==q?`<br><b>Question:</b> ${esc(e.question)}`:''}</div>`;

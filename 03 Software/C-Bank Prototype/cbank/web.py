@@ -75,8 +75,11 @@ def create_app(con=None) -> Flask:
         decide = ("RELATIONSHIP_TO_DECIDE", "CARD_PAYMENT_AMBIGUOUS", "CARD_PAYMENT_UNMATCHED")
         dashboard = [g for g in dashboard if g[0] in decide] + [g for g in dashboard if g[0] not in decide][:40]
         codes = Counter(e["code"] for r in results for e in r["exceptions"])
+        # A recognised WHO without a Recognition Profile: its id, to open the Bank profile conversation.
+        profile_who_ids = {r["group_key"]: r["who_id"] for r in results
+                           if r.get("who_id") and any(e["code"] == "NO_PROFILE" for e in r["exceptions"])}
         return render_template("index.html", runs=runs, run=run, total=len(results),
-                               dashboard=dashboard, codes=codes, f=f, cases=sample.CASES, token=token,
+                               dashboard=dashboard, codes=codes, profile_who_ids=profile_who_ids, f=f, cases=sample.CASES, token=token,
                                local_time=local_time, months=[f"2026-{m:02d}" for m in range(1, 11)],
                                bank_url=f"http://127.0.0.1:5080/bank")
 
@@ -92,7 +95,7 @@ def create_app(con=None) -> Flask:
         rows = apply_filters(store.results(db(), run_id), filters(request.args))
         keep = ("txn_id", "date", "description", "cases", "amount_minor", "payer", "source", "who_name", "who_method",
                 "beneficiary", "beneficiary_method", "why", "why_method", "category", "qb_account", "operation_type",
-                "status", "protected", "exceptions", "comparison", "group_key")
+                "status", "protected", "exceptions", "comparison", "group_key", "who_labels", "label_hints")
         return jsonify(ok=True, rows=[{k: r.get(k) for k in keep} for r in rows])
 
     def _priors(run_id, rows):

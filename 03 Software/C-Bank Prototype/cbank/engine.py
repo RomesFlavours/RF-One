@@ -4,7 +4,9 @@ Stages, in order, each recorded in the decision trace (decision 30):
   1. Source        account/card → owner Entity (the payer)
   2. Matching      transfer / card-payment legs (decisions 22, 37)
   3. WHO           matched counterpart (36) → approved text rules (43) →
-                   human memory → AI investigation (11, 45, 50) → exception
+                   human memory → AI investigation (11, 45, 50) → exception;
+                   the WHO's Labels are read as CONTEXT only (Phase 2): shown,
+                   given to the AI, summarised as a hint — never a decision
   4. Profile       one Recognition Profile per WHO with conditional branches
                    (4, 42); conflicts are never resolved arbitrarily (48)
   5. Beneficiary   independent of the account (01-03): human → profile branch
@@ -22,13 +24,13 @@ Dry run (54): reads Bank through `legacy` (read-only); results go to `store`.
 """
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field, asdict
 
 from sqlalchemy import select
 
 from . import config, matching, store
-from .legacy import Catalog, ai_rules, clean, flow, history_key, m
+from .legacy import Catalog, ai_rules, clean, flow, history_key, m, who_identification
 
 # Operation types (spec §2).
 OPERATING_EXPENSE = "OPERATING_EXPENSE"
@@ -104,6 +106,8 @@ class Result:
     group_key: str | None = None
     history_key: str | None = None
     ai_partial: dict | None = None   # AI fields with their acceptance (kept even when not applied)
+    who_labels: list = field(default_factory=list)   # Labels of the WHO: context, never a rule
+    label_hints: list | None = None  # what approved WHO→WHY of other WHOs with the same Label say
 
 
 class Engine:
@@ -122,6 +126,7 @@ class Engine:
         self.card_payment_out = matching.card_payment_pattern(self.c.instruments)
         self._owner_cache: dict = {}
         self._load_who_whys()
+        self._load_labels()
         self._load_bank_decisions()
         self._build_memory()
         self.why_by_name = {clean(r.name): r.id for r in self.c.whys.values()}
@@ -147,6 +152,35 @@ class Engine:
             if w is None or not w.accounting_classification_id:
                 continue
             (self.who_whys_approved if a.source == "HUMAN" else self.who_whys_history)[a.occurrence_id].append(w.id)
+
+    def _load_labels(self):
+        """WHO Labels as Bank Configuration keeps them (Edit WHO), read with Bank's own reader — no copy.
+        Context only: shown on the movement, given to the AI and summarised as a hint; never a
+        classification, never above a Recognition Profile or an approved WHO→WHY association."""
+        self.who_labels = who_identification.labels_of(self.db, self.c.whos.keys())
+        self.label_definitions = {lb.name: lb.definition for lb in self.db.scalars(
+            select(m.BankWhoLabel).where(m.BankWhoLabel.active.is_(True)))}
+        self.label_members = defaultdict(set)
+        for who_id, names in self.who_labels.items():
+            for name in names:
+                self.label_members[name].add(who_id)
+
+    def label_hints(self, who_id) -> list | None:
+        """For each Label of this WHO: the WHY most often APPROVED for the OTHER WHOs with that Label
+        (this WHO itself excluded), when enough of them agree. A hint for the AI and the person only."""
+        out = []
+        for name in self.who_labels.get(who_id, []):
+            counts, whos = Counter(), 0
+            for other in self.label_members[name] - {who_id}:
+                approved = set(self.who_whys_approved.get(other, []))
+                if approved:
+                    whos += 1
+                    counts.update(approved)
+            if whos >= config.LABEL_HINT_MIN_WHOS:
+                why_id, n = counts.most_common(1)[0]
+                if n / whos >= config.LABEL_HINT_MIN_SHARE:
+                    out.append(dict(label=name, why_id=why_id, why=self._why_name(why_id), whos=n, of=whos))
+        return out or None
 
     def _approved_why(self, who_id, payer_id):
         """(WHY id, evidence) from the WHO's APPROVED associations, or (None, reason). One approved
@@ -646,6 +680,14 @@ class Engine:
     # -- finish ----------------------------------------------------------------
 
     def _finish(self, txn, r: Result):
+        if r.who_id and self.who_labels.get(r.who_id):
+            r.who_labels = self.who_labels[r.who_id]
+            r.label_hints = self.label_hints(r.who_id)
+            hint = "; ".join(f"{h['label']}: {h['whos']} of {h['of']} labelled WHOs approved as {h['why']}"
+                             for h in r.label_hints or [])
+            r.trace.append(asdict(Step("Labels", CONTEXT, ", ".join(r.who_labels),
+                                       (hint or "no WHY pattern among WHOs with these Labels")
+                                       + " — context only, never a classification")))
         r.why = self._why_name(r.why_id)
         r.category = self.c.class_label(r.category_id)
         r.qb_account = None  # QuickBooks COA not imported yet (MVP decision): shown as "not mapped".

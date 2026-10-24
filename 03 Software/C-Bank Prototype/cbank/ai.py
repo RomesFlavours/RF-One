@@ -70,6 +70,13 @@ def _evidence(engine, results: list[dict]) -> list[dict]:
             if o and o.default_transaction_reason_id:
                 out.append(dict(kind="Bank Configuration default WHY of this WHO (hint only)",
                                 who=o.canonical_name, why=engine._why_name(o.default_transaction_reason_id)))
+            labels = engine.who_labels.get(r["who_id"], [])
+            if labels:
+                # Context, not a rule: profiles and approved WHO→WHY associations always prevail.
+                out.append(dict(kind="WHO Labels (activity context, not a rule)", who=o.canonical_name if o else None,
+                                labels=[dict(name=n, definition=engine.label_definitions.get(n)) for n in labels],
+                                label_hints=[f"{h['whos']} of {h['of']} other WHOs labelled {h['label']} are approved as "
+                                             f"{h['why']}" for h in engine.label_hints(r["who_id"]) or []]))
             k = engine.db.query(m.BankWhoKnowledge).filter_by(occurrence_id=r["who_id"]).first()
             if k and not k.deleted_at and k.summary:
                 out.append(dict(kind="Bank WHO knowledge", who=o.canonical_name if o else None, summary=k.summary[:600]))
@@ -90,7 +97,8 @@ INSTRUCTIONS = (
     "WHY (economic nature, from the WHY catalog) and the Category (from the categories catalog). Rules: "
     "never invent a WHO — it must be readable in the description or be a known WHO; one beneficiary only; "
     "not every payment is a P&L cost (assets, financing, transfers, equity are balance sheet); documents are not "
-    "required; precedents and hints are evidence, not proof. Judge EACH field on its own evidence in `fields` "
+    "required; precedents, hints and WHO Labels are evidence, not proof (a Label describes the activity of the "
+    "WHO; it never overrides a Recognition Profile or an approved WHO→WHY association). Judge EACH field on its own evidence in `fields` "
     "(who, why, category, beneficiary): sufficient=true and a confidence only for what the evidence really "
     "supports; a certain field never makes another field certain. Top-level sufficient=true only if every field "
     "is sufficient; otherwise ask ONE targeted question with concrete alternatives about what is missing. "
