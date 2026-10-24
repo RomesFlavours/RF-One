@@ -30,7 +30,7 @@ from dataclasses import dataclass, field, asdict
 from sqlalchemy import select
 
 from . import config, matching, store
-from .legacy import Catalog, ai_rules, clean, flow, history_key, m, who_identification
+from .legacy import Catalog, ai_rules, clean, flow, history_key, m, who_identification, why_what
 
 # Operation types (spec §2).
 OPERATING_EXPENSE = "OPERATING_EXPENSE"
@@ -130,6 +130,8 @@ class Engine:
         self._load_bank_decisions()
         self._build_memory()
         self.why_by_name = {clean(r.name): r.id for r in self.c.whys.values()}
+        # Provisional WHYs (decisions 74-76, 79): a movement holding one is always an Exception.
+        self.provisional = {w for w, r in self.c.whys.items() if why_what.is_provisional(self.db, r)}
         self.why_by_code = {r.code: r.id for r in self.c.whys.values()}
         self.entity_by_name = {}
         for e in self.c.entities.values():
@@ -471,6 +473,9 @@ class Engine:
                                     message=f"{len(profiles)} rules/profiles classify WHO {who} (decision 42 expects one)."))
 
         outcome = None
+        if any(o.why_id not in self.provisional for o in outcomes):
+            # A provisional WHY only says "nature unknown": a definitive WHY from another rule prevails over it.
+            outcomes = [o for o in outcomes if o.why_id not in self.provisional]
         keys = {(o.why_id, o.category_id or self._why_category(o.why_id), o.beneficiary_id) for o in outcomes}
         if len(keys) == 1:
             outcome = outcomes[0]
@@ -503,6 +508,8 @@ class Engine:
             r.anomalies.append(dict(code="PROFILE_VS_APPROVED_WHY", message=(
                 f"Profile gives {self._why_name(outcome.why_id)}, the approved WHO→WHY association "
                 + ", ".join(self._why_name(w) for w in self.who_whys_approved[who_id]) + ": the profile wins.")))
+        if outcome and outcome.why_id in self.provisional and ai and self._ai_field_ok(ai, "why")                 and ai.get("why_id") in self.c.whys and ai["why_id"] not in self.provisional:
+            outcome = None   # the investigation established the nature: its definitive WHY replaces the provisional one
         if outcome is None and ai and self._ai_field_ok(ai, "why") and ai.get("why_id") in self.c.whys:
             # Each AI field is accepted on its own evidence: a certain WHY does not carry an uncertain
             # category or beneficiary with it (they stay open and the movement stays an Exception).
@@ -652,6 +659,8 @@ class Engine:
                 if why_id:
                     fill, fill_method, fill_note = why_id, RULE, note
             human_category = values["category_id"]
+            if fill in self.provisional:
+                fill = None   # a provisional WHY never completes a human decision
             if fill and human_category and self._why_category(fill) != human_category:
                 fill = None   # the person's Category disagrees: never overridden, the movement stays open
             if fill:
@@ -748,7 +757,11 @@ class Engine:
                             amount_minor=-r.amount_minor,
                             proposal="Advance or repayment between entities — propose offset against open balances.",
                             note="Decision 07/14: no new cost; qualify as advance or repayment.")
-        if r.why_id and not r.category_id:
+        if r.why_id in self.provisional:
+            r.exceptions.append(dict(code="PROVISIONAL_WHY", message=(
+                f"“{r.why}” is a provisional WHY: the nature of this movement is still to be established "
+                "(investigate with AI or decide). It is never Reconciled with a provisional WHY.")))
+        elif r.why_id and not r.category_id:
             r.exceptions.append(dict(code="CATEGORY_MISSING", message=f"WHY “{r.why}” has no Category RF-One in the "
                                      "Bank catalog: choose it for this movement; a catalog change needs approval (decision 39)."))
         blocking = [e for e in r.exceptions]

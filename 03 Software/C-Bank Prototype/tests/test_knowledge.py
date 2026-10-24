@@ -113,6 +113,20 @@ class KnowledgeTests(unittest.TestCase):
             self.assertIn(r["why_id"], probe.who_whys_approved[r["who_id"]])
             self.assertFalse(any(s["stage"] == "Profile" and s["method"] == eng_mod.PROFILE for s in r["trace"]))
 
+    def test_provisional_why_is_kept_and_never_reconciled(self):
+        """Decisions 74-76, 79: a provisional WHY keeps the movement an Exception, and stays visible."""
+        e, con = env()
+        t, r = next((t, r) for t in e.txns for r in [e.evaluate(t)]
+                    if r["status"] == eng_mod.RECONCILED and r["why_id"] and not r["protected"])
+        probe = eng_mod.Engine(e.db, con, e.c)
+        probe.provisional = {r["why_id"]}
+        again = probe.evaluate(t)
+        self.assertEqual(again["why_id"], r["why_id"], "the provisional WHY is not lost")
+        self.assertEqual(again["status"], eng_mod.EXCEPTION)
+        self.assertIn("PROVISIONAL_WHY", [x["code"] for x in again["exceptions"]])
+        for w in e.provisional:   # the real provisional WHYs, when the Bank has them
+            self.assertIsNone(e.c.whys[w].accounting_classification_id)
+
     def test_human_decisions_stay_protected_with_labels(self):
         e, _ = env()
         human = [t for t in e.txns if e.bank_decision(t)["source"] == "HUMAN" and e.bank_decision(t)["who_id"]][:80]

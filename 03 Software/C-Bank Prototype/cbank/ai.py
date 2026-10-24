@@ -31,7 +31,8 @@ def _catalogs(engine) -> dict:
                                  if i.legal_entity_id == e.legal_entity_id and e.legal_entity_id
                                  or i.owner_reporting_entity_id == e.id])
                   for e in c.entities.values() if e.status == "ACTIVE"],
-        why=[dict(id=r.id, name=r.name, category=c.class_label(r.accounting_classification_id))
+        why=[dict(id=r.id, name=r.name, category=c.class_label(r.accounting_classification_id),
+                  **({"provisional": True} if r.id in engine.provisional else {}))
              for r in c.whys.values()],
         categories=[dict(id=a.id, label=f"{a.code} {a.name}", statement=a.statement_type)
                     for a in c.classes.values() if a.active and (a.node_type or "").startswith("POSTING")],
@@ -98,7 +99,8 @@ INSTRUCTIONS = (
     "never invent a WHO — it must be readable in the description or be a known WHO; one beneficiary only; "
     "not every payment is a P&L cost (assets, financing, transfers, equity are balance sheet); documents are not "
     "required; precedents, hints and WHO Labels are evidence, not proof (a Label describes the activity of the "
-    "WHO; it never overrides a Recognition Profile or an approved WHO→WHY association). Judge EACH field on its own evidence in `fields` "
+    "WHO; it never overrides a Recognition Profile or an approved WHO→WHY association). A WHY marked provisional "
+    "only says the nature is not known yet: never return it as the answer; find the definitive WHY or ask. Judge EACH field on its own evidence in `fields` "
     "(who, why, category, beneficiary): sufficient=true and a confidence only for what the evidence really "
     "supports; a certain field never makes another field certain. Top-level sufficient=true only if every field "
     "is sufficient; otherwise ask ONE targeted question with concrete alternatives about what is missing. "
