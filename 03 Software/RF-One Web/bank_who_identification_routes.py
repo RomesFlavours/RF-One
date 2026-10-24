@@ -44,6 +44,9 @@ class WhoWorker:
         self.recovered = False
 
     def wake(self):
+        from rfone_data_store.bank_reconciliation import single_engine
+        if single_engine.enabled():
+            return   # Phase 3A: the single engine recognises WHO; this worker is off (code kept)
         if self.app.testing or self.app.config.get("BANK_WHO_WORKER_ENABLED") is False:
             return
         with self.lock:
@@ -90,6 +93,9 @@ def enqueue_new(app, factory, transaction_ids, account_id=None):
     """After a successful import: identify the movements just imported. Never
     raises — an engine problem must not touch the import."""
     import time
+    from rfone_data_store.bank_reconciliation import single_engine
+    if single_engine.enabled():
+        return   # Phase 3A: the single engine runs after the import instead
     from sqlalchemy.exc import OperationalError
     try:
         ids = [int(i) for i in transaction_ids or []]
@@ -120,6 +126,10 @@ def register(app, *, gate, SessionFactory, load_current_account, require_csrf):
     @gate
     def bank_who_identification_resume_pending():
         require_csrf()
+        from rfone_data_store.bank_reconciliation import single_engine
+        if single_engine.enabled():
+            flash("WHO identification is now part of the single engine (Guided Reconciliation).", "info")
+            return redirect(url_for("bank_configuration", _anchor="cp-who"))
         with SessionFactory() as db:
             account = load_current_account(db)
             if account is None:

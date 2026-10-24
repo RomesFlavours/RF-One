@@ -94,19 +94,28 @@ It becomes generation 1; the original file is not modified or moved. From then o
 The default AI mode is **SESSION** (`environment.json`): the Preview button never calls an AI provider. See
 [SESSION_INTERPRETATION.md](SESSION_INTERPRETATION.md).
 
-## Guided Reconciliation (Bank unification, Phase 1)
+## One Bank, one database, one engine (Bank unification, Phase 3A)
 
-*Avvia Bank* also serves the C-Bank Dashboard and Guided Reconciliation Wizard, as the Bank tab
-**Guided Reconciliation** (`/bank/reconcile/`, `RF-One Web/bank_guided_reconciliation.py`). One server, one
-interface; not yet one engine: C-Bank keeps its own engine and store (`%LOCALAPPDATA%\RF-One\C-Bank`, test
-profile `C-Bank TEST`) and reads this profile's database read-only. Its automatic run after a new import starts
-with the server. The C-Bank code is read from the sibling worktree `rf-one-c-bank-prototype`
-(`RFONE_BANK_CBANK_ROOT` overrides it); if it is missing, the tab is simply absent.
+*Avvia Bank* serves Guided Reconciliation (`/bank/reconcile/`, `RF-One Web/bank_guided_reconciliation.py`) and
+runs **the single reconciliation engine** (`cbank/engine.py`, read from the sibling worktree
+`rf-one-c-bank-prototype`; `RFONE_BANK_CBANK_ROOT` overrides it). Everything lives in this profile's database:
+engine runs and results (`bank_engine_runs`, `bank_engine_results`), matched transfers and card payments
+(`financial_transaction_matches`, method ENGINE), AI investigations and conversations (`bank_flow_artifacts`).
+The engine reads the database read-only; a person's decision from the Wizard is recorded by Bank's own manual
+decision service, like Review. The former store `%LOCALAPPDATA%\RF-One\C-Bank\cbank.db` is migrated
+(`RF-One Data Store/migrate_cbank_store.py`) and kept only as a frozen archive.
 
-Rollback to the previous configuration: start the Bank with `RFONE_BANK_GUIDED=0` in the environment (the tab
-and the routes are not registered), and, if needed, run the standalone C-Bank again with `Avvia C-Bank.cmd`
-on 5090. Never run the standalone C-Bank while the Bank serves Guided Reconciliation: both would write
-automatic runs to the same store.
+After every CSV import the engine runs by itself; a check every minute catches anything missed (a run starts
+only when the imported data changed). With `RFONE_BANK_SINGLE_ENGINE=1` (set here) the old automatic paths are
+off, their code kept: classification at import, the old transfer matcher, the import and WHO identification
+workers, AI rule / profile Apply to transactions and legacy runs (`single_engine.py` also refuses any new
+automatic decision row they might write). Human decisions stay available everywhere.
+
+Rollback:
+- quick: start with `RFONE_BANK_GUIDED=0 RFONE_BANK_SINGLE_ENGINE=0` (the old paths and the previous interface);
+- full: stop the Bank, put back `previous\rfone_before_phase3a_apply_<time>.db` as `rfone.db`, check out the
+  commits before Phase 3A, start. (Or `alembic downgrade c7a120261021`, which removes the engine tables and the
+  engine's matches.)
 
 ## The page header
 

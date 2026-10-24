@@ -25,3 +25,9 @@ that ports Recognition.
 from . import why_what as _why_what  # noqa: E402
 
 _why_what.install()
+
+# Phase 3A — one reconciliation engine: with RFONE_BANK_SINGLE_ENGINE=1 no old automatic path may write a
+# decision (single_engine.py).
+from . import single_engine as _single_engine  # noqa: E402
+
+_single_engine.install()

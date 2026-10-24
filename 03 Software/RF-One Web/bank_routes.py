@@ -1087,6 +1087,9 @@ def register_bank_routes(
                 _report_missing_accounts(db, covered_months)
             from bank_who_identification_routes import enqueue_new
             enqueue_new(app, SessionFactory, new_transaction_ids, account_id=account_id)
+            # Phase 3A: the single engine reconciles the new movements (no-op where it is not mounted).
+            import bank_guided_reconciliation
+            bank_guided_reconciliation.run_after_import()
             held = [f for f in state["files"] if f["status"] == import_session_routes.HELD]
             if held:
                 kept = os.path.join(root, "held", token)

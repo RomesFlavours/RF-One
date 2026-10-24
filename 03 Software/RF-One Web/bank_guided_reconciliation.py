@@ -70,6 +70,27 @@ def start_auto_runs() -> None:
         print(f"Guided Reconciliation: automatic runs not started: {exc}", flush=True)
 
 
+def run_after_import() -> None:
+    """Phase 3A: right after a CSV import, the single engine processes the Bank in the background (new
+    movements, transfers and card payments, WHO rules, labels, profiles, approved WHO -> WHY, WHY/WHAT,
+    exceptions for the Guided Wizard). Idempotent: a run starts only when the imported data changed, and
+    runs never overlap (`service.run_if_bank_changed`). Never raises into the import."""
+    if not available():
+        return
+
+    def work():
+        try:
+            con = _cbank_app().config["CON"]   # first: it puts the engine code on the path
+            from cbank import service
+            run_id = service.run_if_bank_changed(con)
+            if run_id:
+                print(f"Single engine: run #{run_id} after the import.", flush=True)
+        except Exception as exc:  # noqa: BLE001 — the import is already committed; the watcher retries
+            print(f"Single engine: run after the import not completed: {exc}", flush=True)
+
+    threading.Thread(target=work, daemon=True, name="bank-engine-after-import").start()
+
+
 def register(app, *, require_domain_access) -> None:
     if not available():
         return

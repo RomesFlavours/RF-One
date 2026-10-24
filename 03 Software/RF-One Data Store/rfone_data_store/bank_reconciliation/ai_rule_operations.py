@@ -443,6 +443,8 @@ def apply_rule(session: Session, *, rule: "m.BankAiRule", scope: str, selected_i
                preview_id: int | None, account_id: int | None,
                only_unsettled: bool = False, who_only: bool = False,
                application_mode: str | None = None) -> "m.BankAiRuleApplication":
+    from . import single_engine
+    single_engine.refuse("Apply of an AI rule to transactions")
     """Apply the rule's current version to ALL in-scope movements or to the
     SELECTED ones, on the strength of a completed preview of the same text,
     scope, selection and option (`AiRuleError` "needs a preview"
@@ -669,13 +671,16 @@ def _apply_import_matches(session: Session, txn: "m.FinancialTransaction",
 
 
 def apply_to_new_transaction(session, txn, context):
-    from . import import_pipeline
+    from . import import_pipeline, single_engine
+    if single_engine.enabled():
+        return None   # Phase 3A: the single engine reconciles after the import
     return import_pipeline.reconcile_new(session, txn, context)
 
 
 def finish_import(context: ImportContext | None) -> None:
     """Stamps the end of each import application with the WHO it created."""
-    if context is None:
+    from . import single_engine
+    if context is None or single_engine.enabled():
         return
     for application in context.applications.values():
         application.who_created = json.dumps(context.maker.created, ensure_ascii=False)

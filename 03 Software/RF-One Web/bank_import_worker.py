@@ -72,6 +72,9 @@ class Worker:
     def __init__(self,app,factory):
         self.app=app;self.factory=factory;self.event=threading.Event();self.lock=threading.Lock();self.thread=None
     def wake(self):
+        from rfone_data_store.bank_reconciliation import single_engine
+        if single_engine.enabled():
+            return   # Phase 3A: no background import pipeline; the single engine runs after the import
         if self.app.testing or self.app.config.get('BANK_IMPORT_WORKER_ENABLED') is False:return
         with self.lock:
             if not self.thread or not self.thread.is_alive():

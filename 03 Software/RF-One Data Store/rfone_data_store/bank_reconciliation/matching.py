@@ -370,6 +370,9 @@ def on_financial_transaction_acquired(
     transaction already matched, or with zero/multiple candidates, simply
     returns `None` without side effects — so repeated PayPal
     synchronization or CSV re-import never creates a duplicate match."""
+    from . import single_engine
+    if single_engine.enabled():
+        return None   # Phase 3A: the single engine matches transfers and card payments
     if transaction.duplicate_status == "CANDIDATE_DUPLICATE":
         return None
     return auto_match_transaction(session, transaction)

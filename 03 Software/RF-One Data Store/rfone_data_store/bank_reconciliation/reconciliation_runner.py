@@ -74,6 +74,8 @@ def plan(db, txn, configured=None):
 
 
 def apply(db, txn, choice, run_id, *, account_id=None, applications=None, mode=ops.MODE_ALL):
+    from . import single_engine
+    single_engine.refuse("Legacy reconciliation run")
     """`mode` is one of the existing application modes: a reconciliation run
     over every pending movement is EXISTING_ALL, a run on one chosen movement
     SELECTED — as for an AI Rule applied to all or to selected movements."""

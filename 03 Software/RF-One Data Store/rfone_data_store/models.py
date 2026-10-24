@@ -11362,8 +11362,9 @@ class FinancialTransactionMatch(Base):
     __tablename__ = "financial_transaction_matches"
     __table_args__ = (
         UniqueConstraint("transaction_a_id", "transaction_b_id", name="uq_ftm_pair"),
-        CheckConstraint("match_type IN ('INTERNAL_TRANSFER')", name="ck_ftm_match_type"),
-        CheckConstraint("match_method IN ('AUTO', 'HUMAN')", name="ck_ftm_match_method"),
+        # Phase 3A (e3a120261024): the single engine's matched transfers and card settlements live here too.
+        CheckConstraint("match_type IN ('INTERNAL_TRANSFER', 'TRANSFER', 'CARD_SETTLEMENT')", name="ck_ftm_match_type"),
+        CheckConstraint("match_method IN ('AUTO', 'HUMAN', 'ENGINE')", name="ck_ftm_match_method"),
         CheckConstraint("transaction_a_id < transaction_b_id", name="ck_ftm_ordered_pair"),
         Index("ix_ftm_transaction_a_id", "transaction_a_id"),
         Index("ix_ftm_transaction_b_id", "transaction_b_id"),
@@ -11382,6 +11383,15 @@ class FinancialTransactionMatch(Base):
     match_basis: Mapped[str | None] = mapped_column(Text, nullable=True)
     matched_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
     confirmed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Engine matches: the owners' relationship (SAME_OWNER / TO_DECIDE), the leg that is posted (the other
+    # one is its counterpart, never posted twice) and the engine runs that first and last saw the pair.
+    owner_relationship: Mapped[str | None] = mapped_column("relationship", String(16), nullable=True)
+    posting_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_transactions.id", name="fk_ftm_posting_transaction"), nullable=True)
+    first_engine_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_engine_runs.id", name="fk_ftm_first_engine_run"), nullable=True)
+    last_engine_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bank_engine_runs.id", name="fk_ftm_last_engine_run"), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -14780,6 +14790,31 @@ class BankImportReconciliation(Base):
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class BankEngineRun(Base):
+    """One run of the single reconciliation engine (Phase 3A, `cbank/engine.py`). `origin` CBANK +
+    `origin_run_id` identify a run migrated from the experimental C-Bank store (never imported twice)."""
+    __tablename__ = "bank_engine_runs"
+    __table_args__ = (UniqueConstraint("origin", "origin_run_id", name="uq_bank_engine_run_origin"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False)
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    scope_json: Mapped[str] = mapped_column(Text, nullable=False)
+    summary_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin: Mapped[str] = mapped_column(String(16), nullable=False, server_default="ENGINE")
+    origin_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class BankEngineResult(Base):
+    """The engine's result for one movement in one run: status, exceptions, anomalies, per-field method
+    and trace. A result is never a decision: human decisions stay in `bank_transaction_explanations`."""
+    __tablename__ = "bank_engine_results"
+    __table_args__ = (Index("ix_bank_engine_results_transaction", "financial_transaction_id"),)
+    run_id: Mapped[int] = mapped_column(ForeignKey("bank_engine_runs.id"), primary_key=True)
+    financial_transaction_id: Mapped[int] = mapped_column(ForeignKey("financial_transactions.id"), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class BankFlowArtifact(Base):

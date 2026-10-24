@@ -269,6 +269,9 @@ class HumanDecisionRequest:
     # master mapping is never changed by it.
     accounting_classification_id: int | None = None
     notes: str | None = None
+    # Phase 3A — the approval of a movement's PREVIOUS classification (Decision 59) decides that movement only:
+    # it must not become an approved WHO -> WHY association that the engine applies to the WHO's other movements.
+    record_association: bool = True
 
 
 def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m.BankTransactionExplanation":
@@ -303,10 +306,11 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
         what = why_what.require_what(session, reason.id)
         # An explicit choice IS the human confirming this purpose for this
         # counterparty: recorded additively, never replacing another.
-        why_catalog.associate(
-            session, occurrence_id=request.occurrence_id,
-            transaction_reason_id=reason.id, source="HUMAN",
-        )
+        if request.record_association:
+            why_catalog.associate(
+                session, occurrence_id=request.occurrence_id,
+                transaction_reason_id=reason.id, source="HUMAN",
+            )
         destination_source = m.DESTINATION_SOURCE_WHY
         if what is None and request.accounting_classification_id is not None:
             raise why_what.IncoherentWhyWhatError(f"WHY “{reason.name}” is provisional and has no WHAT.")

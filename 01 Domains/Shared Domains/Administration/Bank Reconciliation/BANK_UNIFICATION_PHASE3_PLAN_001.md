@@ -1,6 +1,8 @@
 # Bank unification — Phase 3 technical plan: one Bank, one engine, one operational database
 
-Status: PLAN, not approved, nothing executed (2026-10-24). Prepared after Phases 0-2, the legacy WHY
+Status: Phase 3A APPROVED and EXECUTED on the local database (2026-10-24): one database, one engine, one
+interface; migration e3a120261024, `migrate_cbank_store.py`, `single_engine.py`. Phase 3B not started.
+Original plan below. Prepared after Phases 0-2, the legacy WHY
 consolidation (decisions 61-84) and decision 86. Facts below were measured on the local operational
 database (read-only) and on isolated copies.
 

@@ -168,6 +168,7 @@ def restore_snapshot(session, txn, before_state, after_state, note):
 
 
 def rollback_application(session, application_id, account_id=None):
+    session.info["bank_restore"] = True   # a rollback restores recorded rows (single_engine allows it)
     lock_writes(session)
     app = session.scalar(select(m.BankAiRuleApplication).where(
         m.BankAiRuleApplication.id == application_id).with_for_update())

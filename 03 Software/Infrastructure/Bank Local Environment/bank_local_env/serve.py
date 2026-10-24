@@ -63,6 +63,8 @@ def _guided_reconciliation_environment() -> None:
     db = Path(os.environ["RFONE_LOCAL_ENV_DB"])
     store = "C-Bank TEST" if os.environ.get("RFONE_LOCAL_ENV_KIND") == "TEST" else "C-Bank"
     os.environ.setdefault("RFONE_BANK_GUIDED", "1")
+    # Phase 3A: one reconciliation engine — the old automatic paths are off (single_engine.py).
+    os.environ.setdefault("RFONE_BANK_SINGLE_ENGINE", "1")
     os.environ.setdefault("CBANK_BANK_DB", str(db))
     os.environ.setdefault("CBANK_STORE_DIR", str(db.parent.parent / store))
     os.environ.setdefault("CBANK_BANK_CODE_ROOT", str(REPO_ROOT))

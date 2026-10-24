@@ -136,9 +136,15 @@ def main() -> int:
     run_id = body.get("run_id")
     check("9. a run started from the Bank page reaches the C-Bank engine", resp.status_code == 200
           and body.get("ok") and run_id, resp.data[:300])
-    check("10. the Bank database is unchanged by the run (C-Bank reads it read-only)",
-          bank_rows() == before)
-    check("11. the run is in the separate C-Bank store", (Path(_STORE_DIR) / "cbank.db").is_file())
+    # Phase 3A (supersedes the separate store): the run is recorded in the Bank database itself, and it changes
+    # no movement, raw row, decision or allocation.
+    after = bank_rows()
+    kept = ("financial_transactions", "raw_bank_transactions", "bank_transaction_explanations",
+            "bank_transaction_allocations")
+    check("10. the run changes no movement, raw row, decision or allocation",
+          all(after[t] == before[t] for t in kept), {t: (before[t], after[t]) for t in kept})
+    check("11. the run is recorded in the Bank database (bank_engine_runs)",
+          after["bank_engine_runs"] == before["bank_engine_runs"] + 1)
 
     resp = client.get(f"/bank/reconcile/?run={run_id}")
     check("12. the Dashboard of the run opens", resp.status_code == 200
