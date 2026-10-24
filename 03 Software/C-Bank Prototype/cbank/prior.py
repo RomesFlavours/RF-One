@@ -124,7 +124,12 @@ def approve(con, run_id: int, txn_ids: list[int], *, priors: dict[int, dict], re
             # The account owner is the default: store a beneficiary only when it differs,
             # so this decision never propagates one entity's beneficiary to another account.
             stored_ben = beneficiary_id if beneficiary_id != r.get("payer_id") else None
-            store.save_human_decision(con, tid, who_name=p["who"], beneficiary_id=stored_ben, why_id=why_id,
-                                      category_id=category_id, note=note)
+            try:   # Bank's manual decision service: refuses a WHAT that does not derive from the WHY
+                store.save_human_decision(con, tid, who_name=p["who"], beneficiary_id=stored_ben, why_id=why_id,
+                                          category_id=category_id, note=note, associate=False)   # decision 59
+            except ValueError as exc:
+                skipped.append(dict(id=tid, reason=str(exc)))
+                continue
+            human[tid] = True
             saved.append(dict(id=tid, corrected=changed))
     return dict(saved=saved, skipped=skipped)

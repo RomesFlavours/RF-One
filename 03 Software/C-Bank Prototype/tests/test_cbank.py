@@ -9,6 +9,8 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _isolated  # noqa: E402,F401 — a copy of the Bank database, never the real one
 
 from cbank import config, engine as eng_mod, legacy, matching, store  # noqa: E402
 
@@ -29,8 +31,9 @@ class CBankTests(unittest.TestCase):
         with self.assertRaises(Exception):
             db.execute(text("create table cbank_should_fail(x integer)"))
 
-    def test_store_is_separate_from_bank(self):
-        self.assertNotEqual(config.STORE_DB.parent, config.BANK_DB.parent)
+    def test_engine_records_live_in_the_bank_database(self):
+        """Phase 3A (supersedes the separate store): one database; the engine still READS it read-only."""
+        self.assertEqual(config.STORE_DB, config.BANK_DB)
         self.assertNotIn("OneDrive", str(config.STORE_DB))
 
     def test_reference_extraction(self):
@@ -60,17 +63,19 @@ class CBankTests(unittest.TestCase):
                 self.assertIn("completing a human decision", r["why_method"])
                 self.assertNotEqual(r["why_method"], eng_mod.HUMAN_BANK)
 
-    def test_cbank_human_decision_wins_and_is_traced(self):
+    def test_human_decision_from_cbank_is_a_bank_decision_and_wins(self):
+        """Phase 3A: a person's decision goes through Bank's manual service and is protected as HUMAN (Bank)."""
         e, con = env()
         t = next(x for x in e.txns if not e.bank_decision(x)["who_id"])
-        why = next(iter(e.c.whys))
+        why = next(w for w, row in e.c.whys.items() if row.accounting_classification_id and w not in e.provisional)
         store.save_human_decision(con, t.id, who_name="TEST WHO", beneficiary_id=None, why_id=why,
                                   category_id=None, note="test")
-        r = eng_mod.Engine(e.db, con, e.c).evaluate(t)
-        self.assertEqual(r["protected"], eng_mod.HUMAN_CBANK)
+        fresh = eng_mod.Engine(legacy.session(), con)
+        r = fresh.evaluate(fresh.by_id[t.id])
+        self.assertEqual(r["protected"], eng_mod.HUMAN_BANK)
         self.assertEqual((r["who_name"], r["why_id"]), ("TEST WHO", why))
         self.assertTrue(any(s["stage"] == "Protection" for s in r["trace"]))
-        con.execute("update human_decisions set active=0")
+        self.assertIn(t.id, store.human_decisions(con))
 
     def test_beneficiary_comes_from_profile_branch_not_account(self):
         """TABLE TOP LINEN profile: the RF MOUNT DORA branch → RFMD, whatever account pays."""
@@ -240,18 +245,17 @@ class PriorApprovalTests(unittest.TestCase):
         self.assertIn(chosen[0], [s["id"] for s in out2["skipped"]], "an existing human decision is never overwritten")
         human = store.human_decisions(con)
         first = human[chosen[0]]
-        self.assertTrue(first["note"].startswith("Decision 59"))
-        if by_id[chosen[0]]["payer_id"] == priors[chosen[0]]["beneficiary_id"]:
-            self.assertIsNone(first["beneficiary_id"], "account-owner beneficiary is not stored (no propagation)")
+        self.assertIn("Decision 59", first["note"])
+        self.assertIsNone(first["beneficiary_id"], "decision 86: no destination is stored with the decision")
         if len(chosen) > 1:
             self.assertEqual(human[chosen[1]]["why_id"], corrected_why)
         service.reevaluate(con, run_id, set(chosen))
         after = {r["txn_id"]: r for r in store.results(con, run_id)}
         for tid in chosen:
-            self.assertEqual(after[tid]["protected"], eng_mod.HUMAN_CBANK)
+            self.assertEqual(after[tid]["protected"], eng_mod.HUMAN_BANK)
         untouched = [t for t in open_ids if t not in chosen]
         for tid in untouched:
-            self.assertNotEqual(after[tid]["protected"], eng_mod.HUMAN_CBANK, "unselected rows are not approved")
+            self.assertNotEqual(after[tid]["protected"], eng_mod.HUMAN_BANK, "unselected rows are not approved")
             self.assertEqual(after[tid]["status"], by_id[tid]["status"],
                              "an approval never spreads to other movements of the same WHO")
 

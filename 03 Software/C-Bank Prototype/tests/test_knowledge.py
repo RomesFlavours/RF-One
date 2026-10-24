@@ -11,6 +11,8 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _isolated  # noqa: E402,F401 — a copy of the Bank database, never the real one
 
 from cbank import ai, config, engine as eng_mod, legacy, store  # noqa: E402
 

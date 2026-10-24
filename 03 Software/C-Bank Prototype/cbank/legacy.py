@@ -56,6 +56,75 @@ def session():
     return db
 
 
+_Writers: dict = {}
+
+
+def _writer_session():
+    """The ONLY writable session the engine package opens: for a person's decision, recorded by Bank's own
+    manual decision service (Phase 3A). The engine itself always reads through `session()`. Bound to the
+    database `config.BANK_DB` names now."""
+    path = config.BANK_DB.as_posix()
+    if path not in _Writers:
+        eng = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False, "timeout": 30})
+        _Writers[path] = sessionmaker(bind=eng, expire_on_commit=False)
+    return _Writers[path]()
+
+
+def record_human_decision(txn_id: int, *, who_name: str, why_id: int, category_id: int | None = None,
+                          note: str | None = None, account_id: int | None = None, associate: bool = True) -> int:
+    """A person's WHO + WHY for one movement, through `recognition.record_human_decision` (the path Review
+    uses): protected as HUMAN, WHO -> WHY association recorded, WHAT derived from the WHY. A WHO not yet in
+    the catalog is created as Review's "+ New WHO" creates it. Returns the explanation id."""
+    from rfone_data_store.bank_reconciliation import manual_reconciliation, recognition
+    db = _writer_session()
+    try:
+        reason = db.get(m.BankTransactionReason, why_id)
+        what = why_what.require_what(db, why_id) if reason is not None else None
+        if category_id and what is not None and category_id != what.id:
+            raise ValueError(f"The WHAT derives from the WHY: “{reason.name}” is {what.code} {what.name}.")
+        who = next((o for o in db.scalars(select(m.BankOccurrence).where(m.BankOccurrence.status == "ACTIVE"))
+                    if clean(o.canonical_name) == clean(who_name)), None)
+        if who is None:
+            who = manual_reconciliation.create_who(db, name=who_name).occurrence
+        explanation = recognition.record_human_decision(db, recognition.HumanDecisionRequest(
+            transaction_id=txn_id, occurrence_id=who.id, confirmed_by_account_id=account_id,
+            transaction_reason_id=why_id, notes=note, record_association=associate))
+        db.commit()
+        return explanation.id
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def current_human_decisions() -> dict[int, dict]:
+    db = session()
+    try:
+        rows = db.execute(select(m.FinancialTransaction.id, m.BankTransactionExplanation).join(
+            m.BankTransactionExplanation, m.BankTransactionExplanation.id == m.FinancialTransaction.explanation_id).where(
+            m.BankTransactionExplanation.decision_source == "HUMAN"))
+        return {tid: dict(txn_id=tid, who_name=e.occurrence_name_snapshot, why_id=e.transaction_reason_id,
+                          category_id=e.accounting_classification_id, beneficiary_id=None, note=e.explanation_notes)
+                for tid, e in rows}
+    finally:
+        db.close()
+
+
+def human_decision_history(txn_id: int) -> list[dict]:
+    """The human decisions Bank holds for one movement (current one marked active)."""
+    db = session()
+    try:
+        txn = db.get(m.FinancialTransaction, txn_id)
+        rows = db.scalars(select(m.BankTransactionExplanation).where(
+            m.BankTransactionExplanation.financial_transaction_id == txn_id,
+            m.BankTransactionExplanation.decision_source == "HUMAN").order_by(m.BankTransactionExplanation.id))
+        return [dict(created_at=str(e.created_at), who_name=e.occurrence_name_snapshot, why_id=e.transaction_reason_id,
+                     active=bool(txn and txn.explanation_id == e.id)) for e in rows]
+    finally:
+        db.close()
+
+
 def history_key(description: str | None) -> str:
     """Bank's own precedent key (same description; Zelle/ACH references tolerated)."""
     return reconciliation_runner.history_key(description)

@@ -11,7 +11,7 @@ from cbank.web import create_app  # noqa: E402
 
 if __name__ == "__main__":
     print(f"C-Bank Prototype — Bank read-only: {config.BANK_DB}")
-    print(f"Experimental store: {config.STORE_DB}")
+    print(f"Engine records in the Bank database: {config.STORE_DB}")
     print(f"Open http://{config.HOST}:{config.PORT}/")
     app = create_app()
     if os.environ.get("CBANK_AUTO_RUN", "1") != "0":

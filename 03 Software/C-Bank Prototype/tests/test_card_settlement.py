@@ -16,6 +16,8 @@ from datetime import timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _isolated  # noqa: E402,F401 — a copy of the Bank database, never the real one
 
 from cbank import config, engine as E, export, legacy, matching, service, store  # noqa: E402
 
@@ -223,8 +225,9 @@ class CardSettlementTests(unittest.TestCase):
         why = next(w for w, r in e.c.whys.items() if r.code == "OWNER_PERSONAL_OTHER")
         store.save_human_decision(con, t.id, who_name="HUMAN WHO", beneficiary_id=None, why_id=why,
                                   category_id=None, note="test G")
-        r = E.Engine(e.db, con, e.c).evaluate(t)
-        self.assertEqual(r["protected"], E.HUMAN_CBANK)
+        fresh = E.Engine(legacy.session(), con)
+        r = fresh.evaluate(fresh.by_id[t.id])
+        self.assertEqual(r["protected"], E.HUMAN_BANK, "Phase 3A: recorded as a Bank human decision")
         self.assertEqual((r["who_name"], r["why_id"]), ("HUMAN WHO", why))
         self.assertEqual(r["match"]["state"], "MATCHED", "the transfer is still identified")
         self.assertNotIn("RELATIONSHIP_TO_DECIDE", [x["code"] for x in r["exceptions"]])

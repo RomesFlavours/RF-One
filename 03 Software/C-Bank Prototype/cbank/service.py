@@ -53,8 +53,7 @@ def _execute(con, kind: str, month: str | None = None) -> int:
     run_id = store.save_run(con, label, scope, results, summary)
     new_pairs = store.record_matches(con, run_id, results)
     summary["new_matched_pairs"] = new_pairs
-    con.execute("update runs set summary_json=? where id=?", (json.dumps(summary), run_id))
-    con.commit()
+    store.update_summary(con, run_id, summary)
     return run_id
 
 
@@ -127,9 +126,5 @@ def reevaluate(con, run_id: int, txn_ids: set[int] | None = None) -> int:
         new["cases"] = r.get("cases", [])
         changed += json.dumps(new, sort_keys=True, default=str) != json.dumps(r, sort_keys=True, default=str)
         updated.append(new)
-    con.execute("delete from results where run_id=?", (run_id,))
-    con.executemany("insert into results(run_id,txn_id,status,payload_json) values(?,?,?,?)",
-                    [(run_id, r["txn_id"], r["status"], json.dumps(r, default=str)) for r in updated])
-    con.execute("update runs set summary_json=? where id=?", (json.dumps(engine_mod.summarize(updated)), run_id))
-    con.commit()
+    store.replace_results(con, run_id, updated, engine_mod.summarize(updated))
     return changed

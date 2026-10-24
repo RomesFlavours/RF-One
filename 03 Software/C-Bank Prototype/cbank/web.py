@@ -171,9 +171,12 @@ def create_app(con=None) -> Flask:
         why_id = form.get("why_id", type=int)
         if not who or not why_id:
             return jsonify(ok=False, error="WHO and WHY are required for a human decision."), 400
-        store.save_human_decision(db(), txn_id, who_name=who, beneficiary_id=form.get("beneficiary_id", type=int),
-                                  why_id=why_id, category_id=form.get("category_id", type=int),
-                                  note=(form.get("note") or "").strip() or None)
+        try:   # Bank's own manual decision service (Phase 3A): protected HUMAN, WHAT derived from the WHY
+            store.save_human_decision(db(), txn_id, who_name=who, beneficiary_id=form.get("beneficiary_id", type=int),
+                                      why_id=why_id, category_id=form.get("category_id", type=int),
+                                      note=(form.get("note") or "").strip() or None)
+        except ValueError as exc:
+            return jsonify(ok=False, error=str(exc)), 400
         changed = service.reevaluate(db(), run_id, {txn_id})
         return jsonify(ok=True, result=find(run_id, txn_id), reevaluated_changed=changed)
 

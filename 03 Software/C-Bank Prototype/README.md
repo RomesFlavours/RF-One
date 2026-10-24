@@ -25,6 +25,8 @@ Bank Transaction → Source owner (payer) → transfer/card matching → WHO →
 
 ## Run
 
+**Bank unification Phase 3A (2026-10-24): this is THE reconciliation engine of the Bank.** Its records live in the Bank database (`bank_engine_runs`, `bank_engine_results`, `financial_transaction_matches`, `bank_flow_artifacts`; `cbank/store.py`); `cbank.db` is a frozen archive; human decisions go through Bank's manual service. Tests run on a copy of the Bank database (`tests/_isolated.py`). The standalone 5090 server is not an operational application.
+
 **Bank unification Phase 1 (2026-10-24):** this application is now normally served INSIDE the Bank on 5080, as
 the Bank tab **Guided Reconciliation** (`/bank/reconcile/`) — see `03 Software/RF-One Web/bank_guided_reconciliation.py`
 in the Bank worktree. The page uses its base path (`request.script_root`), so the same code also runs standalone.

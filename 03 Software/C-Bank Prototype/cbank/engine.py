@@ -120,7 +120,9 @@ class Engine:
         self.db = db
         self.con = con
         self.c = catalog or Catalog.load(db)
-        self.human = store.human_decisions(con)
+        # Phase 3A: no separate C-Bank decisions — Bank's human decisions are read and protected through
+        # `bank_decision` (HUMAN (Bank)); this stays empty.
+        self.human = {}
         self.ai_answers = store.investigation_answers(con)
         self.txns = list(db.scalars(select(m.FinancialTransaction).where(
             m.FinancialTransaction.accounting_status == "CANONICAL").order_by(m.FinancialTransaction.id)))

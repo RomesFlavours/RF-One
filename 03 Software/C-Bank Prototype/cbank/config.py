@@ -16,9 +16,10 @@ BANK_CODE_ROOT = Path(os.environ.get(
     "CBANK_BANK_CODE_ROOT",
     Path(__file__).resolve().parents[4] / "rf-one-bank-simple-who-rules"))
 
-# Experimental store: results, human decisions, AI investigations, exports.
+# Phase 3A: the engine's records live in the Bank database itself (`store.py`); this folder keeps only the
+# exported workbooks. The former experimental store `cbank.db` is migrated and kept frozen as an archive.
 STORE_DIR = Path(os.environ.get("CBANK_STORE_DIR", _LOCAL / "RF-One" / "C-Bank"))
-STORE_DB = STORE_DIR / "cbank.db"
+STORE_DB = BANK_DB
 EXPORT_DIR = STORE_DIR / "exports"
 
 HOST = "127.0.0.1"
