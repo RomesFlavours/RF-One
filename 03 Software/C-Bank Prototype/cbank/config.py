@@ -30,4 +30,10 @@ DISPLAY_TZ = "America/New_York"
 # Automatic acceptance thresholds (decision 05: classify new cases only when
 # the evidence is sufficiently reliable).
 MEMORY_MIN_PRECEDENTS = 2      # concordant human precedents for MEMORY
+
+# WHO -> WHY knowledge (simulation, not active by default): after the Recognition Profile, an
+# EXPLICITLY APPROVED WHO -> WHY association (Bank Configuration, source HUMAN) decides the WHY;
+# historical associations are AI evidence only. It also completes the missing WHY of a human
+# decision. Off unless CBANK_WHO_WHY=1.
+WHO_WHY_KNOWLEDGE = os.environ.get("CBANK_WHO_WHY", "0") == "1"
 AI_MIN_CONFIDENCE = 0.85       # AI confidence for an automatic classification

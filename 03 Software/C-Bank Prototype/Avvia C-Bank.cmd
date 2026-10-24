@@ -1,6 +1,8 @@
 @echo off
 rem C-Bank Prototype: local only, reads the operational Bank read-only.
 set "PY=%LOCALAPPDATA%\RF-One\Bank\venv\Scripts\python.exe"
+rem Approved WHO -> WHY knowledge active in the local C-Bank (Product Owner, 2026-10-24).
+set "CBANK_WHO_WHY=1"
 if not exist "%PY%" (
   echo Bank Python environment not found: %PY%
   echo Run "Configura PC" of the Bank Local Environment first.

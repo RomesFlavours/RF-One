@@ -59,6 +59,7 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
     <button data-run="sample">Run MVP sample</button>
     <select id="month">{% for mo in months %}<option {% if mo=='2026-09' %}selected{% endif %}>{{ mo }}</option>{% endfor %}</select>
     <button class="sec" data-run="month">Run month</button>
+    <button class="sec" data-run="all" title="Same engine over every imported movement; also starts by itself after a new Bank import">Run whole history</button>
     <span id="status" role="status"></span>
     <span style="flex:1"></span>
     <label style="margin:0">Run <select onchange="location.search='?run='+this.value">{% for r in runs %}<option value="{{ r.id }}" {% if run and r.id==run.id %}selected{% endif %}>#{{ r.id }} · {{ r.label }} · {{ local_time(r.created_at) }}</option>{% endfor %}</select></label>
@@ -345,6 +346,10 @@ async function openWizard(g){
  const qs=new URLSearchParams({exc:g.exc,group:g.group});
  const [res,pr]=await Promise.all([fetch(`/api/runs/${runId}/results?${qs}`).then(r=>r.json()),fetch(`/api/runs/${runId}/prior?${qs}`).then(r=>r.json())]);
  Object.assign(W,{g,rows:res.rows,byId:Object.fromEntries(res.rows.map(r=>[r.txn_id,r])),cat:pr,results:[]});
+ // CARD_SETTLEMENT_001: card-payment exceptions never get "earlier classification" proposals (approving one
+ // would replace the transfer with an ordinary payment to the issuer): the wizard only explains the case.
+ W.card=['RELATIONSHIP_TO_DECIDE','CARD_PAYMENT_AMBIGUOUS','CARD_PAYMENT_UNMATCHED'].includes(g.exc);
+ if(W.card){W.props=[];W.noPrior=[];W.protectedRows=[];W.i=0;W.step=1;renderWizard();if(!wiz.open)wiz.showModal();return;}
  const ins=res.rows.filter(r=>r.amount_minor>=0).length,outs=res.rows.length-ins;W.main=ins>=outs?'in':'out';
  const props=[];
  for(const x of pr.groups)for(const d of ['in','out']){
@@ -375,6 +380,18 @@ function renderWizard(){const p=cur(),s=W.step;
  $('#w-sub').textContent=W.props.length?`Proposal ${Math.min(W.i+1,W.props.length)} of ${W.props.length} · ${W.rows.length} open movement(s) in this group`:`${W.rows.length} open movement(s) in this group`;
  const back=$('#w-back'),next=$('#w-next');back.hidden=s===1||!p;next.hidden=false;next.disabled=false;$('#w-skip').hidden=!p;
  let h='';
+ if(W.card){
+  const intro={RELATIONSHIP_TO_DECIDE:'These movements are <b>classified and complete</b> (a card payment matched as a transfer, or an expense attributed to its real beneficiary), but the one who paid and the one it belongs to are <b>different owners</b>. What remains to decide is only the economic relationship between them (an advance, a repayment, a draw or a contribution…). No receivable or payable has been created automatically.',
+   CARD_PAYMENT_AMBIGUOUS:'These card payments have <b>more than one possible counterpart</b> with the same amount and close dates. C-Bank does not choose one arbitrarily.',
+   CARD_PAYMENT_UNMATCHED:'These card payments have <b>no card-side credit yet</b>. Import the missing card statement: they are matched automatically on the next run.'}[W.g.exc];
+  h=`<div class="prop">${intro}</div><table><thead><tr><th>Date</th><th>Paid from</th><th>Owner</th><th class="num">Amount</th><th>Counterpart</th><th>Details</th></tr></thead><tbody>
+   ${W.rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.source)}</td><td>${esc(r.payer||'—')}</td><td class="num ${r.amount_minor<0?'neg':''}">${usd(r.amount_minor)}</td>
+    <td>${esc(r.who_name||'—')}</td><td class="m">#${r.txn_id} · ${esc((r.exceptions.find(e=>e.code===W.g.exc)||{}).message||'')}</td></tr>`).join('')}</tbody></table>
+   <p class="m">The decision on the relationship type is recorded later, once its accounting rule is approved; until then these movements stay open (not Reconciled).</p>`;
+  const gs=[...document.querySelectorAll('tr[data-group-exc]')],k=gs.findIndex(t=>t.dataset.groupExc===W.g.exc&&t.dataset.groupKey===W.g.group);
+  next.textContent=gs[k+1]?'Next group':'Back to Dashboard';next.dataset.act='nextgroup';back.hidden=true;$('#w-skip').hidden=true;
+  $('#w-body').innerHTML=h;return;
+ }
  if(!p){ // no (more) proposals
   const done=W.results.length;
   h=done?`<div class="okbox"><b>Done with this group.</b> ${W.results.map(r=>esc(r)).join('<br>')}</div>`:'';

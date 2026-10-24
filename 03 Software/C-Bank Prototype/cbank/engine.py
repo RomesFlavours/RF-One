@@ -117,8 +117,11 @@ class Engine:
             m.FinancialTransaction.accounting_status == "CANONICAL").order_by(m.FinancialTransaction.id)))
         self.txns = [t for t in self.txns if t.duplicate_status != "CONFIRMED_DUPLICATE"]
         self.by_id = {t.id: t for t in self.txns}
-        self.matches = matching.match_all(self.txns, self.c.instruments, self.c.settlement)
+        self.ambiguous: dict[int, list] = {}
+        self.matches = matching.match_all(self.txns, self.c.instruments, self.c.settlement, self.ambiguous)
+        self.card_payment_out = matching.card_payment_pattern(self.c.instruments)
         self._owner_cache: dict = {}
+        self._load_who_whys()
         self._load_bank_decisions()
         self._build_memory()
         self.why_by_name = {clean(r.name): r.id for r in self.c.whys.values()}
@@ -132,6 +135,34 @@ class Engine:
         self.legacy = [e for e in self.c.rules if e[2].get("engine") != flow.ENGINE]
 
     # -- preload ------------------------------------------------------------
+
+    def _load_who_whys(self):
+        """WHO -> possible WHY from Bank Configuration. Source HUMAN = explicitly approved by a
+        person (approval lists, Configuration edits); anything else (HISTORY…) = historical
+        association, AI evidence only. Only WHYs with a Category count."""
+        self.who_whys_approved, self.who_whys_history = defaultdict(list), defaultdict(list)
+        for a in self.db.scalars(select(m.BankOccurrenceReasonAssociation).where(
+                m.BankOccurrenceReasonAssociation.active.is_(True))):
+            w = self.c.whys.get(a.transaction_reason_id)
+            if w is None or not w.accounting_classification_id:
+                continue
+            (self.who_whys_approved if a.source == "HUMAN" else self.who_whys_history)[a.occurrence_id].append(w.id)
+
+    def _approved_why(self, who_id, payer_id):
+        """(WHY id, evidence) from the WHO's APPROVED associations, or (None, reason). One approved
+        WHY decides; several are narrowed only by the approved personal/company Source rule
+        (OWNER_PERSONAL_* on a personal Source, never on a company one); still several = ambiguous."""
+        approved = sorted(set(self.who_whys_approved.get(who_id, [])))
+        if not approved:
+            return None, None
+        personal = payer_id is not None and payer_id == self._personal_entity()
+        if len(approved) > 1:
+            narrowed = [w for w in approved if (self.c.whys[w].code or "").startswith("OWNER_PERSONAL") == personal]
+            if len(narrowed) == 1:
+                return narrowed[0], (f"approved WHO→WHY association ({len(approved)} approved WHYs; "
+                                     f"{'personal' if personal else 'company'} Source rule leaves one)")
+            return None, "AMBIGUOUS"
+        return approved[0], "approved WHO→WHY association (Bank Configuration, confirmed by a person)"
 
     def _load_bank_decisions(self):
         ids = [t.explanation_id for t in self.txns if t.explanation_id]
@@ -273,8 +304,40 @@ class Engine:
         if mt:
             r.match = dict(counterpart_id=mt.counterpart_id, kind=mt.kind, basis=mt.basis,
                            counterpart_source=self.c.instruments[mt.counterpart_instrument_id].display_name,
-                           counterpart_owner=cp_owner.name if cp_owner else None)
+                           counterpart_owner=cp_owner.name if cp_owner else None, state="MATCHED")
             trace.append(Step("Matching", CONTEXT, f"{mt.kind} with #{mt.counterpart_id}", mt.basis, "matched"))
+        if mt and mt.kind == "CARD_SETTLEMENT":
+            # CARD_SETTLEMENT_001: a certain card payment follows ONLY the transfer path — no WHO text rule,
+            # Recognition Profile, memory or AI can reclassify it (bank charge, purchase, CHASE payment…).
+            outcome = self._transfer_outcome(txn, mt, r.payer_id, cp_owner)
+            who = f"{cp_owner.name} · {self.c.instruments[mt.counterpart_instrument_id].display_name}" if cp_owner else None
+            trace.append(Step("WHO", CONTEXT, who, f"counterparty of a matched card settlement ({mt.basis})", ""))
+            trace.append(Step("Profile", CONTEXT, self._why_name(outcome.why_id) if outcome else None,
+                              "card settlement: the transfer path takes precedence over rules and profiles", ""))
+            trace.append(Step("Beneficiary", ACCOUNT, self.c.entity_name(r.payer_id), "owner of this leg's instrument", ""))
+            return dict(who=who, who_id=None, who_method=CONTEXT, why_id=outcome.why_id if outcome else None,
+                        why_method=CONTEXT if outcome else None,
+                        category_id=self._why_category(outcome.why_id) if outcome else None,
+                        beneficiary_id=r.payer_id, beneficiary_method=ACCOUNT, exceptions=[],
+                        trace=[asdict(s) for s in trace], counterpart_owner=cp_owner)
+        if not mt and (txn.id in self.ambiguous
+                       or matching.is_card_payment_out(txn, self.c.instruments, self.card_payment_out)):
+            # A card payment whose counterpart is ambiguous or not imported yet: never classified as an
+            # ordinary payment to the issuer; it waits for a person (ambiguous) or for the statement.
+            if txn.id in self.ambiguous:
+                exc = dict(code="CARD_PAYMENT_AMBIGUOUS", message=(
+                    "Card payment with more than one possible counterpart: "
+                    + ", ".join(f"#{i}" for i in self.ambiguous[txn.id]) + ". Choose the right one."))
+            else:
+                exc = dict(code="CARD_PAYMENT_UNMATCHED", message=(
+                    "Card payment without its card-side credit: import the missing card statement; "
+                    "it is matched automatically on the next run."))
+            r.match = dict(state="AMBIGUOUS" if txn.id in self.ambiguous else "WAITING",
+                           candidates=self.ambiguous.get(txn.id, []), kind="CARD_SETTLEMENT")
+            trace.append(Step("Matching", CONTEXT, r.match["state"], exc["message"], ""))
+            return dict(who=None, who_id=None, who_method=None, why_id=None, why_method=None, category_id=None,
+                        beneficiary_id=None, beneficiary_method=None, exceptions=[exc],
+                        trace=[asdict(s) for s in trace], counterpart_owner=None)
 
         # WHO --------------------------------------------------------------
         row = self.c.rule_row(txn)
@@ -391,6 +454,21 @@ class Engine:
                 outcome = self._transfer_outcome(txn, mt, r.payer_id, cp_owner)
             if outcome is None and who:
                 outcome = self._memory_outcome(txn, r.history_key)
+            if outcome is None and who_id and config.WHO_WHY_KNOWLEDGE:
+                # After the Recognition Profile: an EXPLICITLY APPROVED WHO -> WHY association.
+                why_id, note = self._approved_why(who_id, r.payer_id)
+                if why_id:
+                    outcome = Outcome(why_id, None, None, RULE, note)
+                elif note == "AMBIGUOUS":
+                    exceptions.append(dict(code="WHO_WHY_AMBIGUOUS", message=(
+                        f"WHO {who} has several approved WHYs ("
+                        + ", ".join(self._why_name(w) for w in self.who_whys_approved[who_id])
+                        + ") and nothing in this movement chooses one."), question=ai.get("question") if ai else None))
+        if outcome and outcome.method == PROFILE and who_id and config.WHO_WHY_KNOWLEDGE \
+                and self.who_whys_approved.get(who_id) and outcome.why_id not in self.who_whys_approved[who_id]:
+            r.anomalies.append(dict(code="PROFILE_VS_APPROVED_WHY", message=(
+                f"Profile gives {self._why_name(outcome.why_id)}, the approved WHO→WHY association "
+                + ", ".join(self._why_name(w) for w in self.who_whys_approved[who_id]) + ": the profile wins.")))
         if outcome is None and ai and self._ai_field_ok(ai, "why") and ai.get("why_id") in self.c.whys:
             # Each AI field is accepted on its own evidence: a certain WHY does not carry an uncertain
             # category or beneficiary with it (they stay open and the movement stays an Exception).
@@ -472,7 +550,9 @@ class Engine:
 
     def _transfer_outcome(self, txn, mt, payer_id, cp_owner) -> Outcome | None:
         same_owner = cp_owner is not None and cp_owner.id == payer_id
-        if mt.kind == "CARD_SETTLEMENT" and same_owner:
+        if mt.kind == "CARD_SETTLEMENT":
+            # Whoever owns the two instruments, the transfer itself is a card statement payment; a
+            # relationship between different owners is a separate question (RELATIONSHIP_TO_DECIDE).
             code = "CREDIT_CARD_SETTLEMENT"
         elif same_owner:
             code = "INTERNAL_BANK_TRANSFER"
@@ -525,6 +605,27 @@ class Engine:
             return
         r.who_name, r.who_id, r.who_method = values["who"], self.c.who_by_name.get(clean(values["who"])), method
         r.why_id, r.why_method = values["why_id"], method
+        if not values["why_id"] and values["who"] and config.WHO_WHY_KNOWLEDGE:
+            # Completion of an incomplete human decision: the person's fields stay as they are; only
+            # the missing WHY is filled, from an approved source, and its provenance is kept.
+            human_who_id = b["who_id"] if not h else self.c.who_by_name.get(clean(values["who"]))
+            fill, fill_method, fill_note = None, None, ""
+            if auto["why_id"] and auto["why_method"] in (PROFILE, RULE) and auto["who"] \
+                    and clean(auto["who"]) == clean(values["who"]):
+                fill, fill_method, fill_note = auto["why_id"], auto["why_method"], "engine decision for the same WHO"
+            elif human_who_id:
+                why_id, note = self._approved_why(human_who_id, r.payer_id)
+                if why_id:
+                    fill, fill_method, fill_note = why_id, RULE, note
+            human_category = values["category_id"]
+            if fill and human_category and self._why_category(fill) != human_category:
+                fill = None   # the person's Category disagrees: never overridden, the movement stays open
+            if fill:
+                values["why_id"] = r.why_id = fill
+                r.why_method = f"{fill_method} (completing a human decision)"
+                r.trace.append(asdict(Step("Completion", fill_method, self._why_name(fill),
+                                           f"missing WHY of the {method} decision filled: {fill_note}; "
+                                           "WHO and the other confirmed fields stay human")))
         r.category_id = values["category_id"] or self._why_category(values["why_id"])
         r.beneficiary_id = values["beneficiary_id"]
         r.beneficiary_method = method if (h and h["beneficiary_id"]) or (not h and b["beneficiary_human"]) else auto["beneficiary_method"]
@@ -551,8 +652,31 @@ class Engine:
         r.beneficiary = self.c.entity_name(r.beneficiary_id)
         r.operation_type = self._operation_type(txn, r)
         r.group_key = r.who_name or r.history_key
-        if r.match and r.operation_type in (INTER_ACCOUNT_TRANSFER, CARD_SETTLEMENT) and r.match.get("counterpart_owner") \
-                and r.payer and r.match["counterpart_owner"] != r.payer:
+        if r.match and r.match.get("state") == "WAITING":
+            r.group_key = "Card payments waiting for their card statement"
+        elif r.match and r.match.get("state") == "AMBIGUOUS":
+            r.group_key = "Card payments with more than one possible counterpart"
+        if r.match and r.match.get("state") == "MATCHED" and r.match["kind"] == "CARD_SETTLEMENT":
+            # The transfer is matched and complete. Only the BANK-ACCOUNT leg (money out) is the posting;
+            # the card leg is its counterpart, kept for traceability (never posted a second time).
+            own = self.c.instruments.get(txn.payment_instrument_id)
+            r.match["posting"] = "COUNTERPART" if matching.is_card(own) else "POSTED"
+            different = r.match.get("counterpart_owner") and r.payer and r.match["counterpart_owner"] != r.payer
+            r.match["relationship"] = "TO_DECIDE" if different else "SAME_OWNER"
+            if different:
+                # Both legs of one payment, and every payment between the same two owners, form one
+                # Dashboard group: "<who paid> → <whose card>".
+                paid_by, card_of = ((r.payer, r.match["counterpart_owner"]) if r.match["posting"] == "POSTED"
+                                    else (r.match["counterpart_owner"], r.payer))
+                r.group_key = f"Card payments: {paid_by} → card of {card_of}"
+            if different and not r.protected:
+                # Never a receivable/payable created automatically: it may settle an earlier advance or be
+                # another patrimonial operation. One exception, for a person to decide.
+                r.exceptions.append(dict(code="RELATIONSHIP_TO_DECIDE", message=(
+                    f"Rapporto economico da decidere: {r.payer} ({r.source}) e {r.match['counterpart_owner']} "
+                    f"({r.match['counterpart_source']}) — the card payment itself is matched and complete.")))
+        elif r.match and r.match.get("state") == "MATCHED" and r.operation_type == INTER_ACCOUNT_TRANSFER \
+                and r.match.get("counterpart_owner") and r.payer and r.match["counterpart_owner"] != r.payer:
             r.operation_type = INTER_ENTITY
         if r.payer_id and r.beneficiary_id and r.payer_id != r.beneficiary_id \
                 and r.operation_type not in (INTER_ACCOUNT_TRANSFER, CARD_SETTLEMENT):
@@ -563,6 +687,18 @@ class Engine:
                             amount_minor=amount,
                             proposal=(f"{r.beneficiary} owes {r.payer}" if amount > 0 else f"{r.payer} owes {r.beneficiary}"),
                             note="Proposed receivable/payable; accounting qualification to verify.")
+            personal = self._personal_entity()
+            if personal in (r.payer_id, r.beneficiary_id):
+                # A personal expense paid by an LLC (or the reverse): the ECONOMIC ATTRIBUTION is decided
+                # (the cost belongs to the beneficiary); the credit/debit towards the owner is NOT created —
+                # it may settle an earlier advance or be a draw/contribution. One exception to decide it.
+                r.ledger.update(relationship="TO_DECIDE", note=(
+                    f"Economic attribution: {r.beneficiary}. No receivable/payable created: the relationship "
+                    f"between {r.payer} and {r.beneficiary} is to be decided."))
+                if not r.protected:
+                    r.exceptions.append(dict(code="RELATIONSHIP_TO_DECIDE", message=(
+                        f"Rapporto economico da decidere: {r.payer} paid an expense of {r.beneficiary} — "
+                        "the classification is complete; only the relationship between them is open.")))
         elif r.operation_type == INTER_ENTITY and r.match and r.amount_minor < 0:
             r.ledger = dict(kind="TRANSFER", payer_id=r.payer_id, payer=r.payer,
                             beneficiary=r.match.get("counterpart_owner"),
@@ -589,7 +725,7 @@ class Engine:
         r.comparison = self._compare(r)
 
     def _operation_type(self, txn, r: Result) -> str | None:
-        if r.match:
+        if r.match and r.match.get("state") == "MATCHED":
             return CARD_SETTLEMENT if r.match["kind"] == "CARD_SETTLEMENT" else INTER_ACCOUNT_TRANSFER
         a = self.c.classes.get(r.category_id)
         if a is None:
@@ -612,7 +748,7 @@ class Engine:
         return OTHER_PATRIMONIAL
 
     def _operation_basis(self, r: Result) -> str:
-        if r.match:
+        if r.match and r.match.get("state") == "MATCHED":
             return f"matched leg ({r.match['basis']})"
         a = self.c.classes.get(r.category_id)
         return f"category {a.code} ({a.statement_type})" if a else "no category"

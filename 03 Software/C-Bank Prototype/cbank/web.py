@@ -71,9 +71,12 @@ def create_app(con=None) -> Flask:
             for e in r["exceptions"]:
                 groups[(e["code"], r["group_key"] or "—")].append(r["txn_id"])
         dashboard = sorted(((code, key, ids) for (code, key), ids in groups.items()), key=lambda g: (-len(g[2]), g[0]))
+        # Card-payment cases that need a person (CARD_SETTLEMENT_001) are always listed, first.
+        decide = ("RELATIONSHIP_TO_DECIDE", "CARD_PAYMENT_AMBIGUOUS", "CARD_PAYMENT_UNMATCHED")
+        dashboard = [g for g in dashboard if g[0] in decide] + [g for g in dashboard if g[0] not in decide][:40]
         codes = Counter(e["code"] for r in results for e in r["exceptions"])
         return render_template("index.html", runs=runs, run=run, total=len(results),
-                               dashboard=dashboard[:40], codes=codes, f=f, cases=sample.CASES, token=token,
+                               dashboard=dashboard, codes=codes, f=f, cases=sample.CASES, token=token,
                                local_time=local_time, months=[f"2026-{m:02d}" for m in range(1, 11)],
                                bank_url=f"http://127.0.0.1:5080/bank")
 

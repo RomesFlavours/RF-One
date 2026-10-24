@@ -14,15 +14,30 @@ from openpyxl.styles import Font, PatternFill
 
 BANNER = "EXPERIMENTAL — C-Bank Prototype dry run. Not accounting entries; not approved; Bank data unchanged."
 COLUMNS = [("txn_id", "Txn"), ("date", "Date"), ("description", "Description"), ("amount", "Amount"),
+           ("posting", "Posting"), ("posted_amount", "Posted amount"),
            ("source", "Account/Card"), ("payer", "Paid by"), ("beneficiary", "Beneficiary"), ("who_name", "WHO"),
            ("why", "WHY"), ("category", "Category RF-One"), ("qb", "QB account"), ("operation_type", "Operation"),
            ("status", "Status"), ("methods", "Method WHO/WHY/Beneficiary"), ("protected", "Human decision"),
            ("comparison", "Compared with Bank"), ("issues", "Exceptions / anomalies")]
 
 
+def is_counterpart(r: dict) -> bool:
+    """CARD_SETTLEMENT_001: the card leg of a matched card payment repeats the bank-account leg.
+    It is listed for traceability but never posted (posted amount 0): one payment, one 2500 entry."""
+    mt = r.get("match") or {}
+    return mt.get("state") == "MATCHED" and mt.get("posting") == "COUNTERPART"
+
+
+def posted_amount_minor(r: dict) -> int:
+    return 0 if is_counterpart(r) else r["amount_minor"]
+
+
 def _row(r: dict) -> list:
     values = dict(r)
     values["amount"] = r["amount_minor"] / 100
+    values["posting"] = (f"counterpart of #{r['match']['counterpart_id']} (traceability, not posted)"
+                         if is_counterpart(r) else "posted")
+    values["posted_amount"] = posted_amount_minor(r) / 100
     values["qb"] = r["qb_account"] or "not mapped"
     values["methods"] = f"{r['who_method'] or '—'} / {r['why_method'] or '—'} / {r['beneficiary_method'] or '—'}"
     values["issues"] = "; ".join(f"{e['code']}: {e['message']}" for e in r["exceptions"] + r["anomalies"])
@@ -48,8 +63,8 @@ def balances(results: list[dict]) -> dict[tuple, int]:
     net = defaultdict(int)
     for r in results:
         led = r.get("ledger")
-        if not led or not led.get("beneficiary"):
-            continue
+        if not led or not led.get("beneficiary") or led.get("relationship") == "TO_DECIDE":
+            continue   # an undecided relationship is never a balance owed
         if led["kind"] == "PAID_FOR_OTHER":
             debtor, creditor = (led["beneficiary"], led["payer"]) if led["amount_minor"] > 0 else (led["payer"], led["beneficiary"])
             net[(debtor, creditor)] += abs(led["amount_minor"])

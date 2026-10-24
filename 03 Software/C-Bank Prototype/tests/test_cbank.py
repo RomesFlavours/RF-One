@@ -52,7 +52,13 @@ class CBankTests(unittest.TestCase):
             r = e.evaluate(t)
             self.assertEqual(r["protected"], eng_mod.HUMAN_BANK)
             self.assertEqual(legacy.clean(r["who_name"]), legacy.clean(r["bank"]["who"]))
-            self.assertEqual(r["why_id"], r["bank"]["why_id"])
+            if r["bank"]["why_id"] is not None:
+                self.assertEqual(r["why_id"], r["bank"]["why_id"], "a confirmed human WHY is never replaced")
+            elif r["why_id"] is not None:
+                # Only a MISSING WHY may be completed, from an approved source, with its provenance kept.
+                self.assertTrue(config.WHO_WHY_KNOWLEDGE)
+                self.assertIn("completing a human decision", r["why_method"])
+                self.assertNotEqual(r["why_method"], eng_mod.HUMAN_BANK)
 
     def test_cbank_human_decision_wins_and_is_traced(self):
         e, con = env()
@@ -168,8 +174,40 @@ class DirectionAndKnowledgeTests(unittest.TestCase):
                 e.ai_answers[t.id] = saved
 
 
+def _bank_copy_with_prior_classifications() -> Path:
+    """An isolated Bank copy where the September MERCHANT BANKCD movements carry a previous, NON-human
+    Bank classification — the situation Decision 59 recovers. The live Bank no longer has any (its WHYs
+    were cleared when the USAR catalog replaced the old one, 2026-10-21), so the test builds it."""
+    import sqlite3
+    import tempfile
+    path = Path(tempfile.mkdtemp(prefix="cbank_d59_")) / "bank.db"
+    with sqlite3.connect(f"file:{config.BANK_DB.as_posix()}?mode=ro", uri=True) as a, sqlite3.connect(path) as b:
+        a.backup(b)
+    c = sqlite3.connect(path)
+    why = dict(c.execute("select code, id from bank_transaction_reasons where status='ACTIVE'"))
+    rows = c.execute("""select t.id, t.amount_minor, e.id from financial_transactions t
+                        join bank_transaction_explanations e on e.id=t.explanation_id
+                        where upper(t.description_original) like '%MERCHANT BANKCD%' and t.posting_date like '2026-09%'
+                        and e.decision_source <> 'HUMAN' and e.occurrence_id is not null""").fetchall()
+    for _tid, amount, eid in rows:
+        code = "MERCHANT_CARD_SETTLEMENT" if amount > 0 else "MERCHANT_PROCESSING_FEE"
+        c.execute("update bank_transaction_explanations set transaction_reason_id=? where id=?", (why[code], eid))
+    c.commit()
+    c.close()
+    return path
+
+
 class PriorApprovalTests(unittest.TestCase):
-    """Decision 59 on an isolated in-memory store (never the real experimental store)."""
+    """Decision 59 on an isolated in-memory store and an isolated Bank copy (never the real ones)."""
+
+    def setUp(self):
+        self._bank = config.BANK_DB
+        config.BANK_DB = _bank_copy_with_prior_classifications()
+        legacy._Session = None
+
+    def tearDown(self):
+        config.BANK_DB = self._bank
+        legacy._Session = None
 
     def test_recover_group_approve_and_reevaluate(self):
         from cbank import prior, service

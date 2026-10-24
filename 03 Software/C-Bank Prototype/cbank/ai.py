@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import re
 
-from . import store
+from . import config, store
 from .legacy import AI_PROVIDER, clean, generate_json, m
 
 MAX_GROUP = 6
@@ -61,6 +61,12 @@ def _evidence(engine, results: list[dict]) -> list[dict]:
                             origin=p["origin"]))
         if r.get("who_id"):
             o = engine.db.get(m.BankOccurrence, r["who_id"])
+            for kind, table in ((("approved WHO→WHY association", engine.who_whys_approved),
+                                 ("historical WHO→WHY association (not approved: evidence only)", engine.who_whys_history))
+                                if config.WHO_WHY_KNOWLEDGE else ()):
+                whys = [engine._why_name(w) for w in table.get(r["who_id"], [])]
+                if whys:
+                    out.append(dict(kind=kind, who=o.canonical_name if o else None, why=", ".join(whys)))
             if o and o.default_transaction_reason_id:
                 out.append(dict(kind="Bank Configuration default WHY of this WHO (hint only)",
                                 who=o.canonical_name, why=engine._why_name(o.default_transaction_reason_id)))

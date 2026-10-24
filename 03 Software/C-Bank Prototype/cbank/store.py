@@ -29,6 +29,10 @@ create table if not exists investigations (
 create table if not exists conversations (
   id integer primary key, txn_id integer not null, role text not null, text text not null,
   payload_json text, created_at text not null);
+create table if not exists matches (
+  txn_a integer not null, txn_b integer not null, kind text not null, basis text not null,
+  relationship text, posting_txn integer, first_run_id integer not null, last_run_id integer not null,
+  primary key (txn_a, txn_b));
 """
 
 
@@ -72,6 +76,42 @@ def run(con, run_id: int) -> dict | None:
 def results(con, run_id: int) -> list[dict]:
     return [json.loads(r["payload_json"]) for r in
             con.execute("select payload_json from results where run_id=? order by txn_id", (run_id,))]
+
+
+# -- matched legs (CARD_SETTLEMENT_001): one row per pair, idempotent -------
+
+def record_matches(con, run_id: int, results: list[dict]) -> int:
+    """Upsert every matched pair of this run (the pair key is the two ids in order),
+    keeping when it was first seen; returns how many pairs are new. Re-running on
+    the same data adds nothing and changes nothing but `last_run_id`."""
+    new = 0
+    for r in results:
+        mt = r.get("match") or {}
+        if mt.get("state") != "MATCHED":
+            continue
+        a, b = sorted((r["txn_id"], mt["counterpart_id"]))
+        posting = r["txn_id"] if mt.get("posting") == "POSTED" else (mt["counterpart_id"] if mt.get("posting") else None)
+        cur = con.execute("insert or ignore into matches(txn_a,txn_b,kind,basis,relationship,posting_txn,first_run_id,last_run_id)"
+                          " values(?,?,?,?,?,?,?,?)", (a, b, mt["kind"], mt["basis"], mt.get("relationship"), posting, run_id, run_id))
+        if cur.rowcount:
+            new += 1
+        else:
+            con.execute("update matches set last_run_id=?, relationship=coalesce(?, relationship),"
+                        " posting_txn=coalesce(?, posting_txn) where txn_a=? and txn_b=?",
+                        (run_id, mt.get("relationship"), posting, a, b))
+    con.commit()
+    return new
+
+
+def matched_pairs(con) -> list[dict]:
+    return [dict(r) for r in con.execute("select * from matches order by txn_a, txn_b")]
+
+
+def previous_full_run(con, before_id: int | None = None) -> dict | None:
+    row = con.execute("select * from runs where json_extract(scope_json,'$.kind')='all'"
+                      + (" and id<?" if before_id else "") + " order by id desc limit 1",
+                      ((before_id,) if before_id else ())).fetchone()
+    return dict(row) | {"scope": json.loads(row["scope_json"])} if row else None
 
 
 # -- human decisions (experimental, protected inside C-Bank) ---------------
