@@ -678,7 +678,7 @@ def _fetch_and_ingest_shifts(
         upsert(
             session, m.Shift, {"source_system_id": source_system_id, "source_shift_id": source_id},
             {
-                **values, "employee_id": employee_id,
+                **values, "employee_id": employee_id, "location_id": location_id,
                 "override_in_employee_id": (
                     employee_by_source_id.get(override_in_source_id) if override_in_source_id else None
                 ),

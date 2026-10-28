@@ -229,6 +229,27 @@ class EmployeeDirectoryTest(unittest.TestCase):
         self.assertFalse(wp_summary.employee_errors)
         self.assertEqual(len(wp_summary.results), 3)
 
+    def test_md_shift_keeps_actual_location_after_linking_to_wp_person(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from rfone_data_store.technical.connectors.clover import acquisition
+        self.sync([{"id": "E1", "name": "Jane Smith"}])
+        _, pending = self.sync([{"id": "E1", "name": "Jane Smith"}], self.md)
+        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        observed = datetime(2026, 10, 1, 12, tzinfo=timezone.utc)
+        run = m.IngestionRun(source_system_id=self.source.id, location_id=self.md.id, status="RUNNING", started_at=observed)
+        self.db.add(run)
+        self.db.flush()
+        result = SimpleNamespace(ok=True, truncated_by_safety_guard=False, elements=[
+            {"id": "MD-SHIFT", "employee": {"id": "E1"}, "inTime": int(observed.timestamp()*1000)}])
+        with patch.object(acquisition, "paginate", return_value=result):
+            acquisition._fetch_and_ingest_shifts(SimpleNamespace(merchant_id="MD"), self.db,
+                period_start=observed, period_end=observed, source_system_id=self.source.id,
+                employee_by_source_id={"E1": self.legacy.id}, ingestion_run_id=run.id, retrieved_at=observed)
+        shift = self.db.scalar(select(m.Shift))
+        self.assertEqual(shift.employee_id, self.legacy.id)
+        self.assertEqual(shift.location_id, self.md.id)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

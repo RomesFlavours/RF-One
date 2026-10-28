@@ -72,7 +72,7 @@ All automated checks use disposable databases and fake Clover clients.
 
 | Check | Result |
 |---|---|
-| Directory service: identity, repeated imports, cross-site linking, management preservation, conflicts, removals, failure rollback, aliases and consolidation rollback, active poller, WP/MD isolation | 17 passed |
+| Directory service: identity, repeated imports, cross-site linking, management preservation, conflicts, removals, failure rollback, aliases and consolidation rollback, active poller, WP/MD isolation, actual shift Location after cross-site linking | 18 passed |
 | Directory HTTP: populated migration, access, owner bootstrap, read-only viewers, CSRF, management, source conflicts, job reuse, duplicate job prevention, migrated-schema consolidation | 6 passed |
 | Clover acquisition safety | 40 passed |
 | Clover Live Sync | 29 passed |
