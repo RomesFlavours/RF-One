@@ -1,5 +1,17 @@
 # PROJECT_STATE
 
+## Employee Directory — 2026-10-28
+
+Implemented, tested and deployed as a Shared Domain at Home → Administration →
+Anagrafica dipendenti (`/administration/employees`). Reuses `Employee.id`, adds
+merchant-scoped Clover links and source history, preserves internal management
+fields and exposes explicit identity/conflict review. Schema head:
+`c8e1f4a7b2d6`. Real WP automatic imports verified: 27 present Clover employees,
+37 historical site records retained for review, 64 identities total, zero pending
+links or duplicate identities, internal employee management fingerprint unchanged.
+MD is not configured; only two-merchant synthetic tests are claimed for MD.
+See `07 Tasks/Reports/EMPLOYEE_DIRECTORY_001_REPORT.md` for release/recovery evidence.
+
 Version: 2.1
 Status: Active development
 

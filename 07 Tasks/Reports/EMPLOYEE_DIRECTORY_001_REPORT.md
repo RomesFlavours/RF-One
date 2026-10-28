@@ -84,6 +84,7 @@ All automated checks use disposable databases and fake Clover clients.
 | Existing admin permissions | 39 passed |
 | Existing Home layout | 34 passed |
 | Container image layout/import and Tips validation routes | 2 checks passed |
+| Existing worker startup integrity guard on the extracted final source package, including PostgreSQL read-only checks | 10 passed; hashes verified, no DB writes, zero orphan Shifts |
 
 The populated migration test retains a Shift's employee ID and existing
 Compensation Terms. Consolidation with incompatible source-role membership is
@@ -91,8 +92,50 @@ verified to roll back every reference and leave no alias behind.
 
 ## 5. AWS release and operational observations
 
-Release preparation completed; operational outcome and recovery identifiers are
-recorded here after the controlled snapshot/migration/build/deploy verification.
+Migration applied on AWS: `d5a120261021` → `c8e1f4a7b2d6`. The following counts
+were identical immediately before and after the migration:
+
+| Existing data | Preserved rows |
+|---|---:|
+| Employees | 64 |
+| Shifts | 3,409 |
+| Employee Assignments | 15 |
+| Employee Compensation Terms | 0 |
+| Orders | 13,129 |
+| Payments | 14,105 |
+
+All 64 legacy Clover links were seeded. The existing owner received EMPLOYEES
+access; no other account was granted access automatically.
+
+Operational finding resolved during rollout: the actual ECS definitions were
+pinned to a digest and invoked an unversioned startup integrity guard. An initial
+updated task stopped before importing because that guard file was absent. The
+stable previous worker was restored while the guard and manifest were recovered,
+versioned and tested on the exact packaged artifact. Final worker definitions are
+`rfone-clover-acquisition-job:4` and `rfone-clover-correction-sync:4`; execution
+roles, secrets, network, CPU/memory and the existing cluster/service were preserved.
+No integrity check was bypassed. Final runtime verification is recorded below.
+
+Final observations on AWS:
+
+- Both App Runner deployment operations completed `SUCCEEDED`; `rfone-web` and
+  `rfone-tips` are `RUNNING`. The active ECS poller is revision `:4` and its actual
+  running image digest matches the final recorded digest below.
+- Real automatic acquisition completed: **27 PRESENT**, **37 MISSING_REVIEW**,
+  **0 pending identity links**, **64 employees total**. The 37 historical records
+  absent from Clover's current roster are retained for review, not terminated.
+- Consecutive automatic cycle runs `168390` and `168394` completed without errors.
+  The repeated real imports created no duplicate employee identity.
+- A before/after fingerprint of name, custom ID and internal active state for the
+  64 existing employees is identical after automatic imports. No personal values
+  were printed as part of that comparison.
+- `/login` responds 200. Directory and retained Tips/Wines routes respond with
+  the existing RF-One login redirect when unauthenticated. Authenticated list,
+  detail, management, permissions and cross-site workflows were verified with
+  synthetic accounts and a disposable database; no production account was
+  impersonated and no real employee management edit/consolidation was used as a test.
+- Local browser inspection verified the list, detail, source/internal separation
+  and existing RF-One styling on synthetic data.
 
 MD credentials were not supplied or invented. Actual MD acquisition is therefore
 not claimed; its identity/linking behavior is covered by the two-merchant tests.
@@ -102,9 +145,22 @@ deployment check.
 ## 6. Traceability and recovery
 
 - Branch: `codex/employee-directory`.
+- Deployed source commit: `60ff80485f4ec8a272ba4a06a2c4419022cc5757`.
 - Specification: `01 Domains/Shared Domains/Employee Directory/README.md`.
 - Runtime: `rfone_data_store/employee_directory.py`, `employee_directory_routes.py`.
 - Migration: `03 Software/RF-One Data Store/migrations/versions/c8e1f4a7b2d6_employee_directory.py`.
 - Page: `https://rfone.romesflavours.com/administration/employees` (existing RF-One login).
 - Operational restore uses the recorded pre-release RDS snapshot and source-package
   backups. A downgrade does not recreate directory observations; preserve backups.
+- RDS snapshot: `rfone-dev-pre-employees-20261028t160542z` (available before migration).
+- Source backup bucket: `rfone-tips-deploy-418674484214`.
+- Source backup keys: `backups/rfone-web-source-pre-employees-20261028t160542z.zip`
+  and `backups/rfone-tips-source-pre-employees-20261028t160542z.zip`.
+- Previous stable worker definitions: `rfone-clover-acquisition-job:2` and
+  `rfone-clover-correction-sync:2` (kept for recovery).
+- Final worker image: `rfone-tips@sha256:90020f29cbb7685891772a5e0503f8139867d87cf928f70fd4fc411031b9401a`.
+- App Runner operations: web `1710f10259f54113bb532d4c8c7bfb5d`;
+  Tips `33d3964b121d4e49ab29f89ce0c3a00c` (both succeeded).
+- Running worker task: `f36a067c5ff541fea1d0d36d47c60644`;
+  CloudWatch stream `/ecs/rfone-clover-correction-sync` /
+  `poller/clover-correction-sync/f36a067c5ff541fea1d0d36d47c60644`.

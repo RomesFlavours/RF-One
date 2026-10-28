@@ -1,5 +1,19 @@
 # Infrastructure
 
+## Employee Directory release — 2026-10-28
+
+Employee Directory is available at `https://rfone.romesflavours.com/administration/employees`
+under Home → Administration. Release details, tested schema migration, preserved
+data counts, snapshot/source backups and exact worker image are recorded in
+[`EMPLOYEE_DIRECTORY_001_REPORT.md`](../../07%20Tasks/Reports/EMPLOYEE_DIRECTORY_001_REPORT.md).
+The active worker definitions are digest-pinned revision `:4`; their actual
+startup integrity-check command is retained in the versioned registration JSON.
+See the updated job/poller READMEs before a later release: forcing a deployment
+alone does not change a pinned image. Guarded source edits require a refreshed
+`clover_connector_release.json` manifest generated from the committed Git bytes,
+then committed and packaged with its check script/tests; never generate hashes
+from a different Windows newline representation or bypass the startup check.
+
 Local dev-environment tooling. This is **not RF-One product code** and not a Domain/Product/Core concept — it is operational scripting to make the developer/session environment usable (see `03 Software/README.md` "What belongs here": scripts and tooling).
 
 ---

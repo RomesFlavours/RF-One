@@ -50,6 +50,24 @@ Payments/Orders still worked — corrected the same day (see
 `RFONE_CLOVER_LIVE_SYNC_ENABLED` stays **unset**: Live Sync is prepared but
 not active until the Product Owner enables it (Cognito).
 
+**Employee Directory release (2026-10-28):** manual jobs use task definition
+`rfone-clover-acquisition-job:4`, pinned to the image digest in the versioned JSON.
+The launcher already names the family without a revision and therefore picks the
+latest registered active revision. Register a new revision with the intended
+digest after a build; pushing `:latest` alone does not update a pinned definition.
+
+### Mount Dora preparation
+
+No MD merchant or credentials were supplied. Keep it unconfigured until both exist;
+never reuse the WP token or infer an external merchant ID. Configure its canonical
+Clover Location, then supply `CLOVER_MD_MERCHANT_ID` and `CLOVER_MD_API_TOKEN` to the
+worker through the normal environment/Secrets Manager mechanism. The web app needs
+the non-secret MD merchant ID and `RFONE_CLOVER_MD_CONFIGURED=1` only after the worker
+connection is ready. The existing location-scoped Sync Now accepts that Location.
+For automatic MD acquisition, run the same existing poller entry point with its
+Location ID, after its credentials are configured. The current service continues
+to acquire WP independently; no second poller or credential resource was created.
+
 ## Release order
 
 1. RDS snapshot, then `alembic upgrade head` (revision `b8d4e2f7a1c9`, additive).
