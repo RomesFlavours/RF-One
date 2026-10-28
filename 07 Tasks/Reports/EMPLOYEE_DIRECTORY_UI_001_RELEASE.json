@@ -1,0 +1,17 @@
+{
+  "commit": "01ab2f1faf8432e129765ec6e54e989f2e4bc2a2",
+  "backup": "backups/rfone-web-source-pre-employees-sync-ui-20261028t185515z.zip",
+  "source_sha256": "5304b46d64e1c4725d94dd00489fae3ed9d7c143507923252de2f71a45885a34",
+  "build": "rfone-web-build:9872592f-e001-4725-b1cc-dba25f9d195a",
+  "operation": "7a66435a982444feba38f807d33304aa",
+  "status": "SUCCEEDED",
+  "service": "RUNNING",
+  "http_tests_passed": 6,
+  "observed_active_by_site": {
+    "WP": 27
+  },
+  "observed_dismissis": 37,
+  "dismissis_default_closed": true,
+  "database_migrations": false,
+  "worker_deployment": false
+}

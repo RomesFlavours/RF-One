@@ -164,3 +164,27 @@ deployment check.
 - Running worker task: `f36a067c5ff541fea1d0d36d47c60644`;
   CloudWatch stream `/ecs/rfone-clover-correction-sync` /
   `poller/clover-correction-sync/f36a067c5ff541fea1d0d36d47c60644`.
+
+## 7. Employee list UI refinement — 2026-10-28
+
+User-requested refinement deployed in web source commit
+`01ab2f1faf8432e129765ec6e54e989f2e4bc2a2`:
+
+- Replaces the large synchronization/history card with the latest completed
+  synchronization's local date/time immediately to the left of Sync Now.
+- Groups active employees by site. Non-active records are visible only after
+  expanding the default-closed **Dismissis** section.
+- Respects an explicit internal RF-One active state. Without one, records absent
+  from every known Clover site go into Dismissis; unverified records stay visible.
+  This changes presentation only, never the persisted employment/active state.
+
+Verification: all six existing directory HTTP acceptance tests passed. Synthetic
+records verified two-site membership and precedence of explicit internal state.
+A read-only production query confirmed **27 active WP records** and **37 Dismissis
+records**, with no ORM changes. No schema migration or worker deployment was needed.
+
+Web build `rfone-web-build:9872592f-e001-4725-b1cc-dba25f9d195a` and App Runner
+operation `7a66435a982444feba38f807d33304aa` succeeded; web is RUNNING.
+The pre-change source is preserved at
+`backups/rfone-web-source-pre-employees-sync-ui-20261028t185515z.zip` in the existing
+deployment bucket. Detailed release metadata is in `EMPLOYEE_DIRECTORY_UI_001_RELEASE.json`.
