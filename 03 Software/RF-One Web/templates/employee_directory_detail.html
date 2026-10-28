@@ -12,8 +12,8 @@
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="action" value="management">
-  <label>Nome completo <input name="display_name" value="{{ employee.display_name or '' }}" maxlength="255" required></label>
-  <label>Codice interno <input name="custom_id" value="{{ employee.custom_id or '' }}" maxlength="64"></label>
+  <label>Nome completo <input type="text" name="display_name" value="{{ employee.display_name or '' }}" maxlength="255" required></label>
+  <label>Codice interno <input type="text" name="custom_id" value="{{ employee.custom_id or '' }}" maxlength="64"></label>
   <label>Stato interno <select name="active">
     <option value="" {% if employee.active is none %}selected{% endif %}>Non definito</option>
     <option value="true" {% if employee.active is sameas true %}selected{% endif %}>Attivo</option>
