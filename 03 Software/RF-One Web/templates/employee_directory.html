@@ -8,23 +8,18 @@
 {{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', none)]) }}
 <h1>Anagrafica dipendenti</h1>
 <p>Una persona RF-One, con i suoi collegamenti Clover e i dati interni di management.</p>
-<h2>Sincronizzazione sedi</h2>
 {% for site in sites %}
-<section class="domain-card">
-  <h3>{{ site.location.name }}</h3>
-  <p class="muted">Orari della sede: {{ zone_label(site.location.timezone) }}.</p>
-  <p>{{ 'Connessione Clover esistente' if site.configured else 'Non configurato: servono Merchant ID e credenziali della sede' }}</p>
+<div class="employee-sync">
+  {% if sites|length > 1 %}<strong>{{ site.location.name }}</strong>{% endif %}
+  <span class="muted" title="Ora locale di {{ site.location.name }} ({{ zone_label(site.location.timezone) }})">Ultima sincronizzazione: {{ site.last_sync|local_dt(site.location.timezone) if site.last_sync else 'Non ancora sincronizzato' }}{% if site.last_sync and not site.location.timezone %} UTC{% endif %}</span>
   {% if can_sync and site.configured %}
   <form method="post" action="{{ url_for('employee_directory_sync') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="location_id" value="{{ site.location.id }}">
     <button type="submit">Sincronizza ora</button>
   </form>
-  {% elif not can_sync %}<p>Per sincronizzare serve anche il permesso Clover Acquisition.</p>{% endif %}
-  {% for run in site.runs %}
-  <p>{{ run.started_at|local_dt(site.location.timezone) }} · {{ run.status }}{% if run.error_summary %} · {{ run.error_summary }}{% endif %}</p>
-  {% else %}<p>Nessuna sincronizzazione registrata.</p>{% endfor %}
-</section>
+  {% endif %}
+</div>
 {% endfor %}
 {% if not md_configured %}<p><strong>Mount Dora: non configurato.</strong> Le credenziali mancanti non bloccano Winter Park.</p>{% endif %}
 

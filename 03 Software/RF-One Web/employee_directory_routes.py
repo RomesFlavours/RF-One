@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 
 from flask import abort, flash, redirect, render_template, request, url_for
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from rfone_data_store import employee_directory as directory
@@ -30,8 +30,13 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             md = location.source_location_id == md_id if md_id else "dora" in location.name.casefold()
             configured = bool(location.source_location_id) and (not md or bool(md_id and (
                 os.environ.get("CLOVER_MD_API_TOKEN") or os.environ.get("RFONE_CLOVER_MD_CONFIGURED") == "1")))
-            runs = jobs.list_acquisition_runs(db, location_id=location.id, limit=5)
-            sites.append({"location": location, "configured": configured, "runs": runs})
+            last_sync = db.scalar(select(func.max(m.IngestionRun.finished_at)).where(
+                m.IngestionRun.location_id == location.id,
+                m.IngestionRun.source_system_id == location.source_system_id,
+                m.IngestionRun.resource_type.is_(None),
+                m.IngestionRun.status == "COMPLETE",
+            ))
+            sites.append({"location": location, "configured": configured, "last_sync": last_sync})
         return sites
 
     @app.route("/administration/employees")

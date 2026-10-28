@@ -228,6 +228,8 @@ button, .btn {
 button:hover, .btn:hover { background: var(--olive-600); color: white; text-decoration: none; }
 button:disabled, .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn-row { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: 1rem; }
+.employee-sync { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin: 1rem 0; }
+.employee-sync form { margin: 0; }
 .btn-secondary { background: var(--olive-150); color: var(--olive-900); }
 .btn-secondary:hover { background: var(--olive-300); color: var(--olive-900); }
 

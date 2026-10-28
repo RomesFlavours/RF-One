@@ -169,7 +169,10 @@ class EmployeeDirectoryHttpTest(unittest.TestCase):
         response = allowed.post(ROOT + "/sync-now", data=data, base_url=fixture.HOST)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(len(web.clover_job_launcher.run_ids), 1)
-        self.assertIn(b"QUEUED", allowed.get(ROOT, base_url=fixture.HOST).data)
+        page = allowed.get(ROOT, base_url=fixture.HOST).data
+        self.assertIn(b"Ultima sincronizzazione:", page)
+        self.assertNotIn(b"QUEUED", page)
+        self.assertLess(page.index(b"Ultima sincronizzazione:"), page.index(b"Sincronizza ora"))
         # Duplicate submission uses exactly the existing acquisition lock.
         allowed.post(ROOT + "/sync-now", data=data, base_url=fixture.HOST)
         self.assertEqual(len(web.clover_job_launcher.run_ids), 1)
