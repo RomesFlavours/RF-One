@@ -30,6 +30,7 @@ Software is **authoritative for actual runtime behavior** — what the system ac
 
 | Module | Description |
 |---|---|
+| Employee Directory (`RF-One Web/`, `RF-One Data Store/`) | Shared `Employee.id`, per-merchant Clover links/snapshots, identity review and internal management fields. Administration → Anagrafica dipendenti (`/administration/employees`). See `01 Domains/Shared Domains/Employee Directory/README.md`. |
 | `InvoiceIntake/` | Local prototype web app validating the purchase-document intake flow (upload → OCR/extraction → review → RF-One Data Store, Excel as a secondary debug export only — TASK_PURCHASING_004). See `InvoiceIntake/README.md`. |
 | `RF-One Data Store/` | The canonical RF-One operational database (SQLAlchemy + Alembic) — Restaurant/Sales (Clover ingestion), Administration/Payroll, and Restaurant/Purchasing (Purchase Document/Line, Physical Receiving, Alerts, Expected Supplier Credit — TASK_PURCHASING_004). See `RF-One Data Store/README.md`. |
 

@@ -25,6 +25,11 @@ Workforce answers **"who"** — the structural question of current occupancy. It
 
 Potential future concepts include Person/Worker, Role, Position, Assignment, Responsibility, Availability, Schedule and Employment Relationship. These are not defined by this document.
 
+The sibling [Employee Directory](../../Employee%20Directory/README.md) now owns
+shared employee identity and external source links (approved 2026-10-28).
+Workforce consumes that identity; organizational assignments retain their existing
+models. It does not introduce a second Person/Worker registry.
+
 ---
 
 ## Relationship to Personnel Decisions, Selection, Continuous Productivity Development and Performance

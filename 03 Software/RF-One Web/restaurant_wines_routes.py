@@ -116,6 +116,11 @@ def _json_error(message: str, status: int = 400):
 def register_restaurant_wines_routes(app, *, require_domain_access, SessionFactory, load_current_account, require_csrf):
     gate = require_domain_access(DOMAIN_CODE)
 
+    @app.route("/restaurant/wines/how-it-works")
+    @gate
+    def restaurant_wines_how_it_works():
+        return render_template("restaurant_wines_how_it_works.html")
+
     # -----------------------------------------------------------------
     # Wine Types
     # -----------------------------------------------------------------

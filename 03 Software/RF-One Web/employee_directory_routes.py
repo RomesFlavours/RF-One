@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 
 from flask import abort, flash, redirect, render_template, request, url_for
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 
 from rfone_data_store import employee_directory as directory
@@ -40,7 +40,7 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
         with SessionFactory() as db:
             account = load_current_account(db)
             query = request.args.get("q", "").strip()
-            employees = list(db.scalars(select(m.Employee).order_by(m.Employee.display_name, m.Employee.id)))
+            employees = list(db.scalars(directory.canonical_employees().order_by(m.Employee.display_name, m.Employee.id)))
             all_links = list(db.scalars(select(m.EmployeeCloverLink).order_by(m.EmployeeCloverLink.id)))
             locations = {loc.id: loc for loc in db.scalars(select(m.Location))}
             rows = []
@@ -52,7 +52,7 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                     continue
                 conflicts = directory.source_conflicts(links)
                 rows.append({"employee": employee, "links": links, "conflicts": conflicts,
-                             "reviewed": directory.is_reviewed(db, employee.id, links) if conflicts else False})
+                             "reviewed": directory.is_reviewed(db, employee.id, links)})
             pending = [{"link": l, "candidates": directory.candidates(db, l.snapshot or {})}
                        for l in all_links if l.employee_id is None]
             sites = _sites(db)
@@ -61,12 +61,16 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 employees=employees, sites=sites, query=query,
                 md_configured=any("dora" in s["location"].name.casefold() and s["configured"] for s in sites),
                 can_sync=shared_session.account_may_enter_domain(db, account, "CLOVER_ACQUISITION"),
+                can_manage=shared_session.account_is_domain_admin(db, account, "EMPLOYEES"),
             )
 
     @app.route("/administration/employees/<int:employee_id>", methods=["GET", "POST"])
     @gate
     def employee_directory_detail(employee_id):
         with SessionFactory() as db:
+            canonical_id = directory.resolve_employee_id(db, employee_id)
+            if canonical_id != employee_id:
+                return redirect(url_for("employee_directory_detail", employee_id=canonical_id))
             employee = db.scalar(select(m.Employee).where(m.Employee.id == employee_id).with_for_update())
             if employee is None:
                 abort(404)
@@ -74,6 +78,8 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 m.EmployeeCloverLink.employee_id == employee_id).order_by(m.EmployeeCloverLink.id)))
             account = load_current_account(db)
             if request.method == "POST":
+                if not shared_session.account_is_domain_admin(db, account, "EMPLOYEES"):
+                    abort(403)
                 require_csrf()
                 try:
                     if request.form.get("action") == "review":
@@ -91,6 +97,15 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                             custom_id=request.form.get("custom_id", "").strip(),
                             active={"": None, "true": True, "false": False}[active_text], account_id=account.id,
                         )
+                    elif request.form.get("action") == "consolidate":
+                        if request.form.get("confirm_identity") != "yes":
+                            raise ValueError("Confirm explicitly that both records are the same person.")
+                        target_id = int(request.form.get("target_employee_id", ""))
+                        directory.consolidate(db, from_employee_id=employee_id,
+                                              into_employee_id=target_id, account_id=account.id)
+                        db.commit()
+                        flash("Identity consolidated; work history and Clover links preserved. Target management values retained.", "info")
+                        return redirect(url_for("employee_directory_detail", employee_id=target_id))
                     else:
                         raise ValueError("Unknown employee action.")
                     db.commit()
@@ -107,13 +122,21 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             terms = list(db.scalars(select(m.EmployeeCompensationTerm).where(
                 m.EmployeeCompensationTerm.employee_id == employee_id).order_by(m.EmployeeCompensationTerm.valid_from.desc())))
             events = list(db.scalars(select(m.EmployeeDirectoryEvent).where(
-                m.EmployeeDirectoryEvent.employee_id == employee_id).order_by(m.EmployeeDirectoryEvent.id.desc()).limit(50)))
+                or_(m.EmployeeDirectoryEvent.employee_id == employee_id,
+                    m.EmployeeDirectoryEvent.link_id.in_([l.id for l in links]))
+                ).order_by(m.EmployeeDirectoryEvent.id.desc()).limit(50)))
             locations = {loc.id: loc for loc in db.scalars(select(m.Location))}
+            actors = {a.id: shared_session.account_display_name(a) for a in db.scalars(select(m.RFOneAccount).where(
+                m.RFOneAccount.id.in_({e.account_id for e in events if e.account_id is not None})))}
             return render_template(
                 "employee_directory_detail.html", employee=employee, links=links, locations=locations,
                 conflicts=directory.source_conflicts(links), reviewed=directory.is_reviewed(db, employee_id, links),
                 fingerprint=directory.review_fingerprint(links), assignments=assignments, terms=terms, events=events,
-                is_admin=account.is_admin,
+                actors=actors, has_missing=any(l.state == "MISSING_REVIEW" for l in links),
+                other_employees=list(db.scalars(directory.canonical_employees().where(
+                    m.Employee.id != employee_id).order_by(m.Employee.display_name))),
+                can_manage=shared_session.account_is_domain_admin(db, account, "EMPLOYEES"),
+                can_org=shared_session.account_may_use_domain_item(db, account, "ORGANIZATION", "chart"),
                 can_compensation=shared_session.account_may_enter_domain(db, account, "COMPENSATION"),
             )
 
@@ -123,6 +146,8 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
         require_csrf()
         with SessionFactory() as db:
             account = load_current_account(db)
+            if not shared_session.account_is_domain_admin(db, account, "EMPLOYEES"):
+                abort(403)
             try:
                 raw_id = request.form.get("employee_id", "")
                 employee = directory.attach_link(
@@ -131,7 +156,7 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 )
                 db.commit()
                 flash("Clover identity linked. Run Sync Now to recover any pending work records.", "info")
-                return redirect(url_for("employee_directory_detail", employee_id=employee.id))
+                return redirect(url_for("employee_directory_home", q=request.form.get("q", "")))
             except (ValueError, IntegrityError) as exc:
                 db.rollback()
                 flash(str(exc) if isinstance(exc, ValueError) else "The record changed concurrently. Reload and retry.", "error")

@@ -15,6 +15,7 @@
 
 <div class="card">
   <h2>Saved Periods</h2>
+  <p><a href="{{ url_for('historical_tip_payments') }}">Historical paid tips from documents</a></p>
   {% if restaurant %}
   <p class="muted" style="font-size:.85rem;">
     Restaurant: <strong>{{ restaurant.name }}</strong>

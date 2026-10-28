@@ -3,6 +3,8 @@
 {% block page_title %}Anagrafica dipendenti · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
+<script defer src="{{ url_for('static', filename='js/rf-one-row-return.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}"></script>
 {{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', none)]) }}
 <h1>Anagrafica dipendenti</h1>
 <p>Una persona RF-One, con i suoi collegamenti Clover e i dati interni di management.</p>
@@ -10,6 +12,7 @@
 {% for site in sites %}
 <section class="domain-card">
   <h3>{{ site.location.name }}</h3>
+  <p class="muted">Orari della sede: {{ zone_label(site.location.timezone) }}.</p>
   <p>{{ 'Connessione Clover esistente' if site.configured else 'Non configurato: servono Merchant ID e credenziali della sede' }}</p>
   {% if can_sync and site.configured %}
   <form method="post" action="{{ url_for('employee_directory_sync') }}">
@@ -29,27 +32,28 @@
 <form method="get"><label>Cerca nome, email o codice <input name="q" value="{{ query }}" type="search"></label> <button>Cerca</button></form>
 <div class="table-scroll"><table>
 <thead><tr><th>Dipendente</th><th>Sedi Clover</th><th>Ultimo aggiornamento</th><th>Da verificare</th></tr></thead>
-<tbody>{% for row in rows %}<tr>
+<tbody>{% for row in rows %}<tr data-rr-key="employee:{{ row.employee.id }}">
   <td><a href="{{ url_for('employee_directory_detail', employee_id=row.employee.id) }}">{{ row.employee.display_name or 'Nome da completare' }}</a></td>
   <td>{% for link in row.links %}{{ locations[link.location_id].name }}{% if not loop.last %}, {% endif %}{% else %}Nessun collegamento{% endfor %}</td>
   <td>{% for link in row.links %}<div>{{ locations[link.location_id].name }}: {{ link.last_seen_at|local_dt(locations[link.location_id].timezone) if link.last_seen_at else 'Mai aggiornato' }}</div>{% endfor %}</td>
   <td>{% if row.conflicts %}{{ 'Differenze esaminate' if row.reviewed else 'Valori diversi tra sedi' }}{% endif %}
-      {% for link in row.links %}{% if link.state == 'MISSING_REVIEW' %}<div>{{ locations[link.location_id].name }}: assente da Clover, posizione da verificare</div>{% elif link.state == 'UNVERIFIED' %}<div>Dati precedenti da aggiornare</div>{% endif %}{% endfor %}</td>
+      {% for link in row.links %}{% if link.state == 'MISSING_REVIEW' %}<div>{{ locations[link.location_id].name }}: {{ 'assenza da Clover esaminata' if row.reviewed else 'assente da Clover, posizione da verificare' }}</div>{% elif link.state == 'UNVERIFIED' %}<div>Dati precedenti da aggiornare</div>{% endif %}{% endfor %}</td>
 </tr>{% else %}<tr><td colspan="4">Nessun dipendente trovato.</td></tr>{% endfor %}</tbody>
 </table></div>
 
 <h2>Collegamenti da riconciliare ({{ pending|length }})</h2>
 {% for item in pending %}
-<section class="domain-card">
+<section class="domain-card" data-rr-key="clover-link:{{ item.link.id }}">
   <h3>{{ item.link.snapshot.name or 'Nome non disponibile' }} · {{ locations[item.link.location_id].name }}</h3>
   <p>{{ item.link.snapshot.email or 'Email non disponibile' }}</p>
   <p>Possibili abbinamenti: {% for suggestion in item.candidates %}{{ suggestion.employee.display_name }} ({{ suggestion.reason }}){% if not loop.last %}, {% endif %}{% else %}nessuno{% endfor %}. Conferma l’identità prima di attribuire dati di lavoro.</p>
-  <form method="post" action="{{ url_for('employee_directory_link', link_id=item.link.id) }}">
+  {% if can_manage %}<form method="post" action="{{ url_for('employee_directory_link', link_id=item.link.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="q" value="{{ query }}">
     <label>Persona RF-One <select name="employee_id"><option value="">Scegli una persona</option>{% for employee in employees %}<option value="{{ employee.id }}">{{ employee.display_name or 'Nome da completare' }} · RF1 {{ employee.id }}</option>{% endfor %}</select></label>
     <button type="submit">Collega alla persona</button>
     <button type="submit" name="create_new" value="yes">Conferma che è una persona nuova</button>
-  </form>
+  </form>{% else %}<p>Il collegamento richiede un amministratore dell’anagrafica.</p>{% endif %}
 </section>
 {% else %}<p>Nessun collegamento in attesa.</p>{% endfor %}
 {% endblock %}

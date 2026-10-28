@@ -18,8 +18,16 @@ A previously unknown external record creates an employee only when no name/email
 candidate exists. Any candidate, including an exact email match, requires human
 confirmation. Pending links are visible and may be attached to an existing
 employee or explicitly confirmed as a new person. Pending employees cannot be
-attributed to shifts until resolved; acquisitions report that condition explicitly.
+attributed to work until resolved; acquisitions report that condition explicitly
+and do not advance their work-data checkpoints until the identities are confirmed.
 Repeated imports use the external key, never the name, as identity.
+
+Previously created duplicate identities can be consolidated only by an explicit
+administrator confirmation. Declared operational employee foreign keys move as one
+transaction. The old ID remains a resolvable alias and its original management
+values remain retained; the target's management values are not overwritten. If
+existing domain uniqueness rules conflict (payroll, roles or other historical
+records), the entire consolidation is refused and all references remain unchanged.
 
 ## Ownership and reconciliation
 
@@ -45,7 +53,14 @@ incomplete collections cannot change absence state.
 `/administration/employees` and its detail pages require EMPLOYEES access through
 the existing RF-One account/access system; every mutation requires CSRF. Sync Now
 uses the existing Clover Acquisition job and its additional access requirement.
+Management edits, identity links and conflict reviews require the existing RF-One
+administrator or Domain administrator rule. Ordinary enabled accounts may consult.
+The existing RF-One owner receives the initial access through the normal access
+table; other accounts are granted explicitly in Accounts, never by an import.
 The same import service is called from automatic Live Sync and manual acquisition.
+The existing active AWS Correction Sync poller also refreshes the directory every
+cycle (~60 seconds), under the existing Location lock. A directory read failure
+preserves source state and leaves work cursors unchanged for retry.
 WP uses the existing configured connection. MD remains explicitly not configured
 until its canonical Location/merchant and dedicated credentials are supplied;
 it does not prevent WP imports. No merchant ID, location or credential is invented.

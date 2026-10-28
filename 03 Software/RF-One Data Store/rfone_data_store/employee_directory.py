@@ -14,7 +14,8 @@ import json
 import re
 import unicodedata
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import models as m
@@ -57,12 +58,73 @@ def candidates(db, snapshot):
         if email and ((link.snapshot or {}).get("email") or "").strip().casefold() == email:
             email_ids.add(link.employee_id)
     suggestions = []
-    for employee in db.scalars(select(m.Employee).order_by(m.Employee.display_name, m.Employee.id)):
+    for employee in db.scalars(canonical_employees().order_by(m.Employee.display_name, m.Employee.id)):
         names = [_normalized(employee.display_name), *source_names.get(employee.id, [])]
         score = max((SequenceMatcher(None, name, other).ratio() for other in names if name and other), default=0)
         if employee.id in email_ids or score >= 0.80:
             suggestions.append({"employee": employee, "reason": "Email" if employee.id in email_ids else "Name", "score": score})
     return sorted(suggestions, key=lambda row: (row["reason"] != "Email", -row["score"]))
+
+
+def canonical_employees():
+    return select(m.Employee).where(~m.Employee.id.in_(select(m.EmployeeIdentityAlias.employee_id)))
+
+
+def resolve_employee_id(db, employee_id):
+    """Public identity resolver for consumers holding a previously issued ID."""
+    alias = db.get(m.EmployeeIdentityAlias, employee_id)
+    return alias.canonical_employee_id if alias else employee_id
+
+
+def consolidate(db, *, from_employee_id, into_employee_id, account_id=None):
+    """Explicit identity confirmation, never fuzzy matching or source precedence.
+
+    Every declared operational employee FK moves together. Source snapshots and
+    work history survive; the retired row remains recoverable through an alias.
+    If domain uniqueness rules conflict, the savepoint rolls back the ENTIRE
+    consolidation rather than guessing how to combine pay/assignments/history.
+    """
+    from_employee_id = resolve_employee_id(db, from_employee_id)
+    into_employee_id = resolve_employee_id(db, into_employee_id)
+    if from_employee_id == into_employee_id:
+        raise ValueError("These records already refer to the same RF-One person.")
+    locked = list(db.scalars(select(m.Employee).where(m.Employee.id.in_(
+        sorted([from_employee_id, into_employee_id]))).order_by(m.Employee.id).with_for_update()))
+    if len(locked) != 2:
+        raise ValueError("Employee identity not found.")
+    old = next(e for e in locked if e.id == from_employee_id)
+    incoming_links = list(db.scalars(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.employee_id == old.id)))
+    target_links = list(db.scalars(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.employee_id == into_employee_id)))
+    if {l.merchant_id for l in incoming_links if l.state == "PRESENT"} & {l.merchant_id for l in target_links if l.state == "PRESENT"}:
+        raise ValueError("Both identities have a current Clover account at the same merchant. Review these accounts before consolidation.")
+    old_values = {key: getattr(old, key) for key in ("display_name", "custom_id", "active", "location_id")}
+    moved = {}
+    try:
+        with db.begin_nested():
+            for table in m.Base.metadata.tables.values():
+                if table.name in ("employees", "employee_identity_aliases"):
+                    continue
+                for column in table.columns:
+                    if any(fk.target_fullname == "employees.id" for fk in column.foreign_keys):
+                        changed = db.execute(update(table).where(column == from_employee_id).values(
+                            {column.name: into_employee_id})).rowcount
+                        if changed:
+                            moved[f"{table.name}.{column.name}"] = changed
+            # Keep aliases flattened, so every old ID resolves in one lookup.
+            db.execute(update(m.EmployeeIdentityAlias).where(
+                m.EmployeeIdentityAlias.canonical_employee_id == from_employee_id
+            ).values(canonical_employee_id=into_employee_id))
+            db.add(m.EmployeeIdentityAlias(employee_id=from_employee_id,
+                canonical_employee_id=into_employee_id, account_id=account_id))
+            _event(db, "CONSOLIDATE", employee_id=into_employee_id, account_id=account_id,
+                   details={"retired_employee_id": from_employee_id, "retained_management": old_values,
+                            "moved_references": moved})
+            db.flush()
+    except IntegrityError as exc:
+        raise ValueError("Identity consolidation conflicts with existing role, payroll or work-history rules. "
+                         "Nothing was moved. Resolve the conflicting records before retrying.") from exc
+    db.expire_all()
+    return db.get(m.Employee, into_employee_id)
 
 
 def ensure_legacy_links(db):
@@ -177,18 +239,53 @@ def attach_link(db, *, link_id, employee_id=None, create_new=False, account_id=N
         db.add(employee)
         db.flush()
     else:
-        employee = db.get(m.Employee, employee_id) if employee_id is not None else None
+        employee = db.scalar(select(m.Employee).where(m.Employee.id == resolve_employee_id(db, employee_id)).with_for_update()) if employee_id is not None else None
         if employee is None:
             raise ValueError("Choose an existing RF-One employee or explicitly create a new person.")
     # Multiple external accounts for one merchant require investigation, not a silent merge.
     other = db.scalar(select(m.EmployeeCloverLink).where(
-        m.EmployeeCloverLink.employee_id == employee.id, m.EmployeeCloverLink.merchant_id == link.merchant_id))
+        m.EmployeeCloverLink.employee_id == employee.id, m.EmployeeCloverLink.merchant_id == link.merchant_id,
+        m.EmployeeCloverLink.state == "PRESENT"))
     if other:
         raise ValueError("This person already has a Clover account at this merchant. Review the source identity first.")
     link.employee_id = employee.id
     _event(db, "LINK", employee_id=employee.id, link=link, account_id=account_id,
            details={"create_new": create_new})
     db.flush()
+    return employee
+
+
+def observe_historical_employee(db, *, location_id, merchant_id, raw, available, observed_at, run_id):
+    """Resolve source-backed historical references without changing RF-One management.
+
+    This is a single-object observation, NEVER a complete roster or an absence
+    scan. A 404 retains the reference and last known profile, not a termination.
+    """
+    location = db.get(m.Location, location_id)
+    if not location or location.source_location_id != merchant_id or not raw.get("id"):
+        raise ValueError("Historical employee reference does not match the configured merchant.")
+    ensure_legacy_links(db)
+    link = db.scalar(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == merchant_id,
+        m.EmployeeCloverLink.external_employee_id == raw["id"]).with_for_update())
+    if link and link.employee_id is not None:
+        return db.get(m.Employee, link.employee_id)
+    if link is not None:
+        raise ValueError("Historical employee identity requires confirmation in Employee Directory.")
+    # The identifier itself is source evidence even when the profile is gone.
+    # Do not guess that an historical reference is another person by name.
+    employee = m.Employee(location_id=location_id, source_system_id=location.source_system_id,
+        source_employee_id=raw["id"], display_name=raw.get("name"), custom_id=raw.get("customId"),
+        system_role=raw.get("role") if isinstance(raw.get("role"), str) else None,
+        source_available=available, source_checked_at=observed_at)
+    db.add(employee)
+    db.flush()
+    link = m.EmployeeCloverLink(employee_id=employee.id, location_id=location_id, merchant_id=merchant_id,
+        external_employee_id=raw["id"], snapshot=safe_snapshot(raw), last_seen_at=observed_at,
+        last_run_id=run_id, state="UNVERIFIED" if available else "MISSING_REVIEW")
+    db.add(link)
+    db.flush()
+    _event(db, "HISTORICAL_REFERENCE", employee_id=employee.id, link=link,
+           details={"snapshot": safe_snapshot(raw), "profile_available": available})
     return employee
 
 

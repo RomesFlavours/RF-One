@@ -9,6 +9,14 @@ depends_on = None
 
 
 def upgrade():
+    # These nullable columns already exist on AWS's deployed Clover reader,
+    # but were absent from the older Git migration history. Preserve them on
+    # AWS and make clean installations reproduce that deployed schema.
+    for table, column, type_ in [("employees", "source_available", sa.Boolean()),
+                                ("employees", "source_checked_at", sa.DateTime(timezone=True)),
+                                ("order_items", "source_present", sa.Boolean())]:
+        if column not in {c["name"] for c in sa.inspect(op.get_bind()).get_columns(table)}:
+            op.add_column(table, sa.Column(column, type_, nullable=True))
     # The legacy source-pair key incorrectly assumes an employee ID is global
     # across merchants. Keep the compatibility columns scoped to Location.
     old = next(c for c in sa.inspect(op.get_bind()).get_unique_constraints("employees")
@@ -31,6 +39,14 @@ def upgrade():
     )
     op.create_index("ix_employee_clover_links_employee_id", "employee_clover_links", ["employee_id"])
     op.create_table(
+        "employee_identity_aliases",
+        sa.Column("employee_id", sa.Integer(), sa.ForeignKey("employees.id"), primary_key=True),
+        sa.Column("canonical_employee_id", sa.Integer(), sa.ForeignKey("employees.id"), nullable=False),
+        sa.Column("account_id", sa.Integer(), sa.ForeignKey("rfone_accounts.id"), nullable=True),
+        sa.Column("merged_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+    )
+    op.create_index("ix_employee_identity_aliases_canonical_employee_id", "employee_identity_aliases", ["canonical_employee_id"])
+    op.create_table(
         "employee_directory_events",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("employee_id", sa.Integer(), sa.ForeignKey("employees.id"), nullable=True),
@@ -51,11 +67,21 @@ def upgrade():
         WHERE s.code = 'CLOVER' AND l.source_system_id = s.id
           AND l.source_location_id IS NOT NULL AND e.source_employee_id IS NOT NULL
     """))
+    # Bootstrap only the existing RF-One owner, who already administers
+    # access grants. Other accounts receive no new access implicitly.
+    op.execute(sa.text("""
+        INSERT INTO rfone_account_domain_access (account_id, domain_code, role_code, enabled, scope)
+        SELECT a.id, 'EMPLOYEES', 'admin', true, 'ALL' FROM rfone_accounts a
+        WHERE a.is_owner = true AND a.status = 'ACTIVE'
+          AND NOT EXISTS (SELECT 1 FROM rfone_account_domain_access d
+                          WHERE d.account_id=a.id AND d.domain_code='EMPLOYEES')
+    """))
 
 
 def downgrade():
     # Directory history cannot be recreated by downgrade/upgrade; take a DB backup.
     op.drop_table("employee_directory_events")
+    op.drop_table("employee_identity_aliases")
     op.drop_table("employee_clover_links")
     with op.batch_alter_table("employees") as batch:
         batch.drop_constraint("uq_employees_location_source_employee", type_="unique")

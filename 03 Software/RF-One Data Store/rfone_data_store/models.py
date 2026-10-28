@@ -1149,6 +1149,10 @@ class Employee(Base):
     source_employee_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Compatibility observations from the already-deployed historical reader.
+    # Per-site directory links are now authoritative for availability/review.
+    source_available: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    source_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     custom_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     system_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # No active/inactive field is exposed by Clover (TASK_CLOVER_003 §B) —
@@ -1178,6 +1182,15 @@ class EmployeeCloverLink(Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_run_id: Mapped[int | None] = mapped_column(ForeignKey("ingestion_runs.id"), nullable=True)
     state: Mapped[str] = mapped_column(String(24), nullable=False, default="PRESENT")
+
+
+class EmployeeIdentityAlias(Base):
+    """Retired employee IDs after an explicit, audited identity consolidation."""
+    __tablename__ = "employee_identity_aliases"
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), primary_key=True)
+    canonical_employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    merged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class EmployeeDirectoryEvent(Base):
@@ -3332,6 +3345,7 @@ class OrderItem(Base):
     # modeling principle F).
     source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
     source_line_item_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source_present: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True

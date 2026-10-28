@@ -61,6 +61,12 @@ Restaurant is currently the first concrete application context for these Domains
 
 ## 4. Shared Domains / Business Domain taxonomy, and the current transversal Domains
 
+**Employee Directory (approved 2026-10-28)** is also a Shared Domain:
+[`Employee Directory/README.md`](Shared%20Domains/Employee%20Directory/README.md).
+It owns the reusable employee identity and external identity reconciliation,
+reusing `Employee.id`. Personnel Management/Workforce consumes that identity for
+participation and role assignments; Administration is its Home navigation placement.
+
 Every Domain under `01 Domains/` belongs to exactly one of two families, physically expressed as the two folders directly under `01 Domains/`:
 
 - **Shared Domains** (`01 Domains/Shared Domains/`, **formerly named `Cross Domain`** — renamed by a later reorganization; see below) — a Domain whose concepts, ontology and reasoning structure are genuinely industry-independent: it must remain usable by any business/industry, not just the one that happens to be RF-One's first application. A Shared Domain may consume industry-specific content supplied by a Business Domain (as data, configuration or evidence), but must never structurally depend on one specific Business Domain to function or to be defined.

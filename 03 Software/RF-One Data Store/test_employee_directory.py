@@ -154,6 +154,81 @@ class EmployeeDirectoryTest(unittest.TestCase):
             directory.attach_link(self.db, link_id=link.id, create_new=True)
         self.assertEqual(self.count(m.Employee), 1)
 
+    def test_explicit_consolidation_preserves_work_and_retired_id(self):
+        self.sync([{"id": "E1", "name": "Jane Smith"}])
+        result, _ = self.sync([{"id": "M2", "name": "Different Known Name"}], self.md)
+        duplicate_id = result["M2"]
+        self.db.add(m.Shift(employee_id=duplicate_id, location_id=self.md.id,
+            source_system_id=self.source.id, source_shift_id="MD-SHIFT",
+            clock_in=datetime(2026, 10, 1, tzinfo=timezone.utc)))
+        self.db.flush()
+        directory.consolidate(self.db, from_employee_id=duplicate_id, into_employee_id=self.legacy.id)
+        self.assertEqual(directory.resolve_employee_id(self.db, duplicate_id), self.legacy.id)
+        self.assertEqual(len(list(self.db.scalars(directory.canonical_employees()))), 1)
+        self.assertEqual(self.db.scalar(select(m.Shift)).employee_id, self.legacy.id)
+        self.assertEqual({l.employee_id for l in self.db.scalars(select(m.EmployeeCloverLink))}, {self.legacy.id})
+        self.assertEqual(self.db.get(m.Employee, duplicate_id).display_name, "Different Known Name")
+        self.assertEqual(self.db.get(m.Employee, self.legacy.id).custom_id, "INTERNAL")
+
+    def test_consolidation_constraint_conflict_rolls_back_every_reference(self):
+        result, _ = self.sync([{"id": "M2", "name": "Different Known Name"}], self.md)
+        duplicate_id = result["M2"]
+        role = m.SourceRole(location_id=self.wp.id, source_system_id=self.source.id,
+                            source_role_id="SHARED", name="Source role")
+        self.db.add(role)
+        self.db.flush()
+        for employee_id in (duplicate_id, self.legacy.id):
+            self.db.add(m.EmployeeSourceRole(employee_id=employee_id, source_role_id=role.id,
+                                            source_system_id=self.source.id))
+        self.db.flush()
+        with self.assertRaisesRegex(ValueError, "Nothing was moved"):
+            directory.consolidate(self.db, from_employee_id=duplicate_id, into_employee_id=self.legacy.id)
+        self.assertEqual(self.count(m.EmployeeIdentityAlias), 0)
+        link = self.db.scalar(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == "MD"))
+        self.assertEqual(link.employee_id, duplicate_id)
+        self.assertEqual(self.count(m.EmployeeSourceRole), 2)
+
+    def test_source_account_replacement_can_link_to_same_person_after_removal(self):
+        self.sync([{"id": "E1", "name": "Jane Smith"}])
+        self.sync([])
+        _, pending = self.sync([{"id": "REPLACEMENT", "name": "Jane Smith"}])
+        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        self.assertEqual(self.count(m.Employee), 1)
+        self.assertEqual(self.count(m.EmployeeCloverLink), 2)
+
+    def test_active_poller_imports_and_failed_employee_read_preserves_roster(self):
+        from rfone_data_store.clover_correction_sync_validation import _CorrectionFakeCloverClient
+        from rfone_data_store.technical.connectors.clover.correction_sync import run_correction_cycle
+        client = _CorrectionFakeCloverClient("WP")
+        client.employees = [{"id": "E1", "name": "Jane Source", "email": "poller@example.test"}]
+        summary = run_correction_cycle(self.db, location_id=self.wp.id, client=client)
+        self.assertFalse(summary.employee_errors)
+        self.assertEqual(len(summary.results), 3)
+        self.assertEqual(self.db.scalar(select(m.EmployeeCloverLink)).snapshot["email"], "poller@example.test")
+        client.fail_employees = True
+        failed = run_correction_cycle(self.db, location_id=self.wp.id, client=client)
+        self.assertTrue(failed.employee_errors)
+        self.assertEqual(failed.results, [])
+        self.assertEqual(self.db.scalar(select(m.EmployeeCloverLink)).state, "PRESENT")
+        self.assertEqual(self.db.get(m.Employee, self.legacy.id).custom_id, "INTERNAL")
+
+    def test_pending_md_identity_does_not_block_wp_poller(self):
+        from rfone_data_store.clover_correction_sync_validation import _CorrectionFakeCloverClient
+        from rfone_data_store.technical.connectors.clover.correction_sync import run_correction_cycle
+        md_client = _CorrectionFakeCloverClient("MD")
+        md_client.employees = [{"id": "M1", "name": "Jane Smith"}]
+        summary = run_correction_cycle(self.db, location_id=self.md.id, client=md_client)
+        self.assertTrue(summary.employee_errors)
+        self.assertFalse(summary.results)
+        md_work_cursors = list(self.db.scalars(select(m.IngestionRun).where(
+            m.IngestionRun.location_id == self.md.id, m.IngestionRun.resource_type.is_not(None))))
+        self.assertFalse(md_work_cursors)
+        wp_client = _CorrectionFakeCloverClient("WP")
+        wp_client.employees = [{"id": "E1", "name": "Jane Smith"}]
+        wp_summary = run_correction_cycle(self.db, location_id=self.wp.id, client=wp_client)
+        self.assertFalse(wp_summary.employee_errors)
+        self.assertEqual(len(wp_summary.results), 3)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

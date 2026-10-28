@@ -31,6 +31,9 @@ def upsert(session: Session, model: type[T], unique_filter: dict[str, Any], valu
     stmt = select(model).filter_by(**unique_filter)
     existing = session.scalars(stmt).first()
     if existing is not None:
+        if model is m.Employee:
+            values = {k: v for k, v in values.items() if k not in
+                      {"display_name", "custom_id", "active", "system_role", "location_id"}}
         for key, value in values.items():
             setattr(existing, key, value)
         return existing

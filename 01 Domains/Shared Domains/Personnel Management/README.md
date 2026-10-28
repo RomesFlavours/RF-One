@@ -8,6 +8,11 @@
 
 ## Purpose
 
+Employee identity is shared through the sibling
+[Employee Directory](../Employee%20Directory/README.md). Personnel Management,
+Workforce and Compensation refer to the existing `Employee.id`; they do not keep
+separate employee registries or redefine Clover identity reconciliation.
+
 **Personnel Management** is the transversal (cross-industry) Domain responsible for managing people across the organization: who occupies which roles, who else could credibly occupy them, whether people meet the standard the role requires, what they actually produce, and what should be done about the person currently in the role.
 
 Personnel Management does not belong to Restaurant or to any other technical Domain. Restaurant is one application context that supplies technical content Personnel Management consumes — it is not the architectural owner of Personnel Management (see [../Domain Architecture.md](../../Domain%20Architecture.md)).
