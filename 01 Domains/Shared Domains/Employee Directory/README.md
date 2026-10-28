@@ -39,6 +39,13 @@ EmployeeAssignment/PositionAssignment records; pay remains EmployeeCompensationT
 No import modifies these management records. Names are full here because identity
 matching requires them; timestamps use each Location's configured timezone.
 
+The employee list displays active people grouped by site. Non-active records are
+inside a default-collapsed **Dismissis** section. An explicit RF-One internal state
+takes precedence; without one, presence in the current Clover roster determines
+the display group. Only records absent from every known site go to Dismissis;
+unverified/unlinked records remain visible. This is presentation, never an
+automatic employment termination or a write to internal employee state.
+
 Different source values across sites produce a conflict. An explicit review
 acknowledges the exact observed state; a subsequent change reopens review. RF-One
 management values are never silently replaced by the latest site import.

@@ -14,6 +14,28 @@ from rfone_data_store.technical.connectors.clover import acquisition_jobs as job
 from rfone_data_store.technical.connectors.clover.acquisition import ImportAlreadyRunningError
 
 
+def _employee_groups(rows, locations):
+    """Presentation only: an absent source roster never changes RF-One status."""
+    by_location = {}
+    dismissed = []
+    for row in rows:
+        employee, links = row["employee"], row["links"]
+        absent_everywhere = bool(links) and all(l.state == "MISSING_REVIEW" for l in links)
+        if employee.active is False or (employee.active is None and absent_everywhere):
+            dismissed.append(row)
+            continue
+        site_ids = {l.location_id for l in links if l.state == "PRESENT"}
+        if not site_ids:
+            site_ids = {l.location_id for l in links if l.state == "UNVERIFIED"} or {employee.location_id}
+        for location_id in site_ids:
+            site_links = [l for l in links if l.location_id == location_id]
+            site_link = next((l for l in site_links if l.state == "PRESENT"), site_links[0] if site_links else None)
+            by_location.setdefault(location_id, []).append({**row, "site_link": site_link})
+    groups = [{"location": locations[location_id], "rows": members} for location_id, members in by_location.items()]
+    groups.sort(key=lambda group: (group["location"].name.casefold(), group["location"].id))
+    return groups, dismissed
+
+
 def register_employee_directory_routes(app, *, require_domain_access, SessionFactory,
                                        load_current_account, require_csrf, get_launcher=lambda: None):
     gate = require_domain_access("EMPLOYEES")
@@ -61,8 +83,10 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             pending = [{"link": l, "candidates": directory.candidates(db, l.snapshot or {})}
                        for l in all_links if l.employee_id is None]
             sites = _sites(db)
+            active_groups, dismissed = _employee_groups(rows, locations)
             return render_template(
-                "employee_directory.html", rows=rows, pending=pending, locations=locations,
+                "employee_directory.html", active_groups=active_groups, dismissed=dismissed,
+                pending=pending, locations=locations,
                 employees=employees, sites=sites, query=query,
                 md_configured=any(s["location"].source_location_id == os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
                                   and s["configured"] for s in sites),
