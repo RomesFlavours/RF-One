@@ -1136,7 +1136,9 @@ class Employee(Base):
     RF-One does not infer a precise restaurant role from it (task §10)."""
 
     __tablename__ = "employees"
-    __table_args__ = (UniqueConstraint("source_system_id", "source_employee_id"),)
+    # Compatibility provenance of the first source. Authoritative external
+    # identity is EmployeeCloverLink (merchant + employee), not this pair.
+    __table_args__ = (UniqueConstraint("location_id", "source_system_id", "source_employee_id", name="uq_employees_location_source_employee"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
@@ -1159,6 +1161,36 @@ class Employee(Base):
     source_modified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class EmployeeCloverLink(Base):
+    """Provider identity, never a second employee registry. NULL employee is pending review."""
+
+    __tablename__ = "employee_clover_links"
+    __table_args__ = (UniqueConstraint("merchant_id", "external_employee_id", name="uq_employee_clover_identity"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
+    merchant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    external_employee_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_run_id: Mapped[int | None] = mapped_column(ForeignKey("ingestion_runs.id"), nullable=True)
+    state: Mapped[str] = mapped_column(String(24), nullable=False, default="PRESENT")
+
+
+class EmployeeDirectoryEvent(Base):
+    """Append-only safe source changes and human identity/review decisions."""
+
+    __tablename__ = "employee_directory_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
+    link_id: Mapped[int | None] = mapped_column(ForeignKey("employee_clover_links.id"), nullable=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    details: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class SourceRole(Base):

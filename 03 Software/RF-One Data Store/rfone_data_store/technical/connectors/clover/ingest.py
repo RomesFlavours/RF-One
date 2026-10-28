@@ -507,18 +507,18 @@ def ingest_employees(
     ingestion_run_id: int,
     retrieved_at: datetime,
 ) -> dict[str, int]:
-    result: dict[str, int] = {}
+    from ....employee_directory import import_snapshot
+    location = session.get(m.Location, location_id)
+    result, pending = import_snapshot(
+        session, location_id=location_id, merchant_id=location.source_location_id,
+        records=bundle.employees, observed_at=retrieved_at, run_id=ingestion_run_id,
+    )
+    if pending:
+        # Do not let historical-stub fallback manufacture another identity
+        # for a current employee whose match still needs human confirmation.
+        raise ValueError("Employee identities require confirmation in Employee Directory before bulk ingestion.")
     for raw in bundle.employees:
-        values = mapping.map_employee(raw)
-        source_id = values.pop("source_employee_id")
-        obj = upsert(
-            session,
-            m.Employee,
-            {"source_system_id": source_system_id, "source_employee_id": source_id},
-            {**values, "location_id": location_id},
-        )
-        session.flush()
-        result[source_id] = obj.id
+        source_id = raw["id"]
         _add_source_record(
             session,
             ingestion_run_id=ingestion_run_id,
@@ -645,7 +645,7 @@ def ingest_employee_stub_references(
         obj = upsert(
             session,
             m.Employee,
-            {"source_system_id": source_system_id, "source_employee_id": source_id},
+            {"location_id": location_id, "source_system_id": source_system_id, "source_employee_id": source_id},
             {
                 "display_name": None,
                 "custom_id": None,

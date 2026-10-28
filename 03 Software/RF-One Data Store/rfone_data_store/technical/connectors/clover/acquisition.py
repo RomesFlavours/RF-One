@@ -228,6 +228,24 @@ def get_default_client() -> CloverReadClient:
     return get_client()
 
 
+def get_location_client(merchant_id: str) -> CloverReadClient:
+    """Keep WP's existing connection; MD uses explicit, separate credentials."""
+    import os
+    from clover_explorer.client import CloverClient
+    from clover_explorer.config import CloverConfig
+
+    md_merchant = os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
+    if md_merchant and merchant_id == md_merchant:
+        token = os.environ.get("CLOVER_MD_API_TOKEN", "").strip()
+        if not token:
+            raise ValueError("Mount Dora Clover connection is not configured.")
+        return CloverClient(CloverConfig(merchant_id=md_merchant, api_token=token))
+    client = get_default_client()
+    if client.merchant_id != merchant_id:
+        raise ValueError("Clover connection is not configured for this Location; no fallback to another merchant.")
+    return client
+
+
 @dataclass
 class EmployeeMismatch:
     order_source_id: str
@@ -495,18 +513,15 @@ def _fetch_reference_catalogs(
     employee_by_source_id: dict[str, int] = {}
     # CLOVER_ACQUISITION_SAFETY_001 — a failed read raises; it is never an
     # empty list that would clear existing Employee links.
-    result = paginate(client, f"/v3/merchants/{client.merchant_id}/employees")
-    for raw in require_complete(result, "Employees"):
-        values = mapping.map_employee(raw)
-        source_id = values.pop("source_employee_id")
-        if not source_id:
-            continue
-        obj, _ = _get_or_create(
-            session, m.Employee, {"source_system_id": source_system_id, "source_employee_id": source_id},
-            {**values, "location_id": location_id},
-        )
-        session.flush()
-        employee_by_source_id[source_id] = obj.id
+    result = paginate(client, f"/v3/merchants/{client.merchant_id}/employees", extra_params={"expand": "role"})
+    from ....employee_directory import import_snapshot
+    records = require_complete(result, "Employees")
+    employee_by_source_id, _pending = import_snapshot(
+        session, location_id=location_id, merchant_id=client.merchant_id, records=records,
+        observed_at=retrieved_at, run_id=ingestion_run_id,
+    )
+    for raw in records:
+        source_id = raw["id"]
         _mirror_source_record(
             session, ingestion_run_id=ingestion_run_id, source_system_id=source_system_id,
             entity_type="employee", source_id=source_id, retrieved_at=retrieved_at, raw=raw,
@@ -1075,7 +1090,7 @@ def import_clover_period(
     retrieved_at = utc_now()
 
     try:
-        resolved_client = client or get_default_client()
+        resolved_client = client or get_location_client(merchant_id)
 
         # CLOVER_ACQUISITION_SAFETY_001 — pre-flight, before any fetch or
         # write: right merchant for this Location, confirmed by Clover, and
@@ -1116,6 +1131,13 @@ def import_clover_period(
             ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at, mode=mode,
         )
         summary.employees_resolved = len(employee_by_source_id)
+        pending_count = session.scalar(select(func.count()).select_from(m.EmployeeCloverLink).where(
+            m.EmployeeCloverLink.merchant_id == merchant_id, m.EmployeeCloverLink.employee_id.is_(None)))
+        if pending_count:
+            summary.errors.append(
+                f"{pending_count} Clover employee identities require confirmation in Employee Directory; "
+                "their work records cannot be attributed until linked. Resolve and run Sync Now again."
+            )
 
         summary.shifts_imported = _fetch_and_ingest_shifts(
             resolved_client, session, period_start=period_start, period_end=period_end,

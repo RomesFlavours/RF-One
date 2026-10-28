@@ -1,0 +1,57 @@
+# Employee Directory
+
+Status: approved implementation specification (Product Owner, 2026-10-28).
+
+This Shared Domain owns the reusable employee identity and external identity
+reconciliation. Administration on Home is its navigation placement, not its
+conceptual owner. Workforce continues to own organizational participation;
+Compensation owns compensation terms. No second personnel registry is created.
+
+## Identity and ingestion
+
+`Employee.id` is the existing RF-One employee identity used by every consuming
+module. Clover identities are separate links keyed by merchant + employee ID.
+Existing employees are backfilled without changing IDs or historical references.
+Imports are Clover GET only; RF-One never writes to Clover.
+
+A previously unknown external record creates an employee only when no name/email
+candidate exists. Any candidate, including an exact email match, requires human
+confirmation. Pending links are visible and may be attached to an existing
+employee or explicitly confirmed as a new person. Pending employees cannot be
+attributed to shifts until resolved; acquisitions report that condition explicitly.
+Repeated imports use the external key, never the name, as identity.
+
+## Ownership and reconciliation
+
+Imported name, email, custom ID and Clover roles are source observations, kept per
+link with last-seen time and append-only change history. RF-One display name,
+custom ID and active flag are internal fields, initialized once for a new person
+and subsequently editable only in RF-One. Organizational roles remain existing
+EmployeeAssignment/PositionAssignment records; pay remains EmployeeCompensationTerm.
+No import modifies these management records. Names are full here because identity
+matching requires them; timestamps use each Location's configured timezone.
+
+Different source values across sites produce a conflict. An explicit review
+acknowledges the exact observed state; a subsequent change reopens review. RF-One
+management values are never silently replaced by the latest site import.
+
+Only a validated, complete employee collection may mark an absent link as
+MISSING_REVIEW. This is a site-level review condition, never termination,
+deletion of a person, assignment closure, or deletion of history. Failed or
+incomplete collections cannot change absence state.
+
+## Runtime and access
+
+`/administration/employees` and its detail pages require EMPLOYEES access through
+the existing RF-One account/access system; every mutation requires CSRF. Sync Now
+uses the existing Clover Acquisition job and its additional access requirement.
+The same import service is called from automatic Live Sync and manual acquisition.
+WP uses the existing configured connection. MD remains explicitly not configured
+until its canonical Location/merchant and dedicated credentials are supplied;
+it does not prevent WP imports. No merchant ID, location or credential is invented.
+
+## Acceptance
+
+Disposable-database tests cover legacy identity preservation, repeated imports,
+cross-site linking, candidate review, management preservation, differing snapshots,
+complete-only absence review, malformed/failed collections, permissions and CSRF.

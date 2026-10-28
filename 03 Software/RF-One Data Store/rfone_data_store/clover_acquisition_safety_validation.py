@@ -213,7 +213,13 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
         run = s.get(m.IngestionRun, job.id)
         point_after = jobs.get_last_successful_sync_point(s, location_id=location_id).at
     after = _fingerprint(session_factory)
-    only_expected = all(before[t] == after[t] for t in before if t not in ("employees", "tenders", "devices", "source_records", "shifts", "employee_source_roles"))
+    # The employee roster is refreshed even with no Payments in the window.
+    # Its separate source observations/review history may legitimately change;
+    # Order/Payment/Tip attribution must still be exactly unchanged.
+    only_expected = all(before[t] == after[t] for t in before if t not in (
+        "employees", "tenders", "devices", "source_records", "shifts", "employee_source_roles",
+        "employee_clover_links", "employee_directory_events",
+    ))
     result.check("a valid empty answer (no Payments in the window) completes: COMPLETE, 0 orders/payments",
                  run.status == "COMPLETE" and run.orders_processed == 0 and run.payments_processed == 0)
     result.check("a valid empty answer moves the sync point to the end of its window",
