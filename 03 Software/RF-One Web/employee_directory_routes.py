@@ -59,7 +59,8 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             return render_template(
                 "employee_directory.html", rows=rows, pending=pending, locations=locations,
                 employees=employees, sites=sites, query=query,
-                md_configured=any("dora" in s["location"].name.casefold() and s["configured"] for s in sites),
+                md_configured=any(s["location"].source_location_id == os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
+                                  and s["configured"] for s in sites),
                 can_sync=shared_session.account_may_enter_domain(db, account, "CLOVER_ACQUISITION"),
                 can_manage=shared_session.account_is_domain_admin(db, account, "EMPLOYEES"),
             )
