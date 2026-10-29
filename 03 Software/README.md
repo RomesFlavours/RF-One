@@ -46,3 +46,14 @@ Software is **authoritative for actual runtime behavior** — what the system ac
 | [User Interaction Architecture.md](User%20Interaction%20Architecture.md) | Which interfaces/devices does RF-One need, what kind of work happens on each, the initial authentication/authorization model, the role of mobile, the role of document/evidence capture, the responsive-web-app delivery decision, and the attention-driven Home principle? Documented — TASK_INTERACTION_001, extended by CORE_IDENTITY_AUTHORITY_SECURITY_ARCHITECTURE. |
 
 **Moved:** `Identity Authority and Security Architecture.md` now lives at [`10 System/Identity & Access/Identity Authority and Security Architecture.md`](../10%20System/Identity%20%26%20Access/Identity%20Authority%20and%20Security%20Architecture.md) — Identity & Access is a system-level capability (neither a Domain nor a Product), not Software-owned architecture; see `10 System/README.md`. The existing software foundation implementing part of it (Acting Identity, Authority, Operational Signature) remains here, in `RF-One Data Store/` (see that document's "Current implementation references" for the exact files) — development is currently **FROZEN**.
+
+## RF-One-owned person foundation — local implementation 2026-10-29
+
+The included base directory now creates RF-One people without a POS or location.
+Every unknown Clover record requires explicit reconciliation, including historical
+references. Explicit context links connect accounts, human actors, Training,
+Selection and project responsibles without grants or domain-fact rewrites.
+Employee remains the compatibility person ID; employment is not directory state.
+Migration d9e220261029 and a coordinated consuming-app release are required.
+This entry records local implementation, not a completed AWS deployment.
+See 07 Tasks/Reports/PERSON_FOUNDATION_003_REPORT.md from the repository root.

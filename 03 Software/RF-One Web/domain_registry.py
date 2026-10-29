@@ -79,7 +79,7 @@ DOMAINS: tuple[DomainDefinition, ...] = (
     DomainDefinition(
         code="EMPLOYEES",
         display_name="Anagrafica dipendenti",
-        description="Shared employee identities, RF-One management data and Clover site links.",
+        description="Included RF-One person directory, reference details and explicit domain/POS reconciliation.",
         future_path="/administration/employees",
         link="/administration/employees",
     ),

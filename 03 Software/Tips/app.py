@@ -389,14 +389,15 @@ def _clover_acquisition_panel(session, restaurant) -> dict:
     return panel
 
 
-def _employee_names(session, source_employee_ids) -> dict:
-    """Clover employee id -> "Surname I." (RF-One UI Rules §2). The id stays
-    in the database; it is never what a person reads."""
-    ids = {i for i in source_employee_ids if i}
-    if not ids:
-        return {}
-    employees = session.scalars(select(m.Employee).where(m.Employee.source_employee_id.in_(ids))).all()
-    return {e.source_employee_id: display_format.employee_short_name(e.display_name) for e in employees}
+def _employee_names(session, employee_ids) -> dict:
+    """RF-One identity -> operational name; external IDs are merchant-scoped."""
+    from rfone_data_store.employee_directory import resolve_employee_id
+    ids = {i for i in employee_ids if i is not None}
+    canonical = {i: resolve_employee_id(session, i) for i in ids}
+    employees = {e.id: e for e in session.scalars(
+        select(m.Employee).where(m.Employee.id.in_(set(canonical.values()))))}
+    return {original: display_format.employee_short_name(employees[target].display_name)
+            for original, target in canonical.items() if target in employees}
 
 
 @app.route("/")
@@ -464,10 +465,9 @@ def home():
                     .order_by(m.Shift.clock_in)
                 )
                 for shift in session.scalars(shift_stmt).all():
-                    employee = session.get(m.Employee, shift.employee_id)
                     shifts_rows.append(
                         {
-                            "employee_id": employee.source_employee_id if employee else None,
+                            "employee_id": shift.employee_id,
                             "clock_in": shift.clock_in,
                             "clock_out": shift.clock_out,
                             "source_shift_id": shift.source_shift_id,
@@ -925,7 +925,7 @@ def calculate_tips_order_drilldown(order_id: int):
                       if recipient_ids else [])
         }
         order = drilldown["order"]
-        order_employee_name = _employee_names(session, [order.source_employee_id]).get(order.source_employee_id)
+        order_employee_name = _employee_names(session, [order.employee_id]).get(order.employee_id)
         return render_template(
             "order_drilldown.html", restaurant=restaurant, start_at=start_at, end_at=end_at,
             drilldown=drilldown, recipient_names=recipient_names, order_employee_name=order_employee_name,
@@ -1689,6 +1689,7 @@ def distribution_rule_toggle_active(rule_id: int):
 # ---------------------------------------------------------------------------
 
 def _host_audit_filters(session, restaurant):
+    from rfone_data_store.employee_directory import employee_options
     employees = []
     if restaurant is not None:
         location_ids = list(
@@ -1697,11 +1698,7 @@ def _host_audit_filters(session, restaurant):
             )
         )
         if location_ids:
-            employees = list(
-                session.scalars(
-                    select(m.Employee).where(m.Employee.location_id.in_(location_ids)).order_by(m.Employee.display_name)
-                )
-            )
+            employees = employee_options(session, location_ids=location_ids, include_inactive=True)
     return employees
 
 
@@ -1712,6 +1709,10 @@ def _host_audit_report_from_request(session, restaurant):
     start_at = request.args.get("start_at") or ""
     end_at = request.args.get("end_at") or ""
     if restaurant is None or not employee_id or not start_at or not end_at:
+        return None
+    from rfone_data_store.employee_directory import resolve_employee_id
+    employee_id = resolve_employee_id(session, employee_id)
+    if employee_id not in {option.id for option in _host_audit_filters(session, restaurant)}:
         return None
     _, tz, _, _, _ = _restaurant_period_config(session, restaurant)
     period = _calculation_period_dt(start_at, end_at, tz)
@@ -1731,10 +1732,13 @@ def host_audit_home():
     with SessionFactory() as session:
         restaurant = _default_restaurant(session)
         employees = _host_audit_filters(session, restaurant)
+        from rfone_data_store.employee_directory import resolve_employee_id
+        selected_id = request.args.get("employee_id", type=int)
+        selected_id = resolve_employee_id(session, selected_id) if selected_id is not None else None
         report = _host_audit_report_from_request(session, restaurant)
         return render_template(
             "host_audit.html", restaurant=restaurant, employees=employees, report=report,
-            employee_id=request.args.get("employee_id", type=int),
+            employee_id=selected_id,
             start_at=request.args.get("start_at") or "",
             end_at=request.args.get("end_at") or "", active_nav="host-audit",
         )

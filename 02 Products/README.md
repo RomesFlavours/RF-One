@@ -31,3 +31,10 @@ A Product must answer: who pays, why they pay, and what measurable economic valu
 # Current status
 
 No canonical Product documentation exists yet. `03 Software/InvoiceIntake/` is current software/prototype tooling that a future Product may use, but Software and Product are distinct layers — see `03 Software/README.md`.
+
+## Included person identity — 2026-10-29
+
+The base RF-One person directory is included in every commercial Domain
+combination. RF-One governs identity; POS records require explicit reconciliation.
+Domain facts remain with their owning Domains; identity links grant no access.
+See the Employee Directory specification for ownership and approval boundaries.

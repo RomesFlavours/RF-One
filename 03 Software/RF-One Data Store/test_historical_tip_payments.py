@@ -18,7 +18,7 @@ from rfone_data_store.tips import historical_payments as service
 class HistoricalPaymentsTests(unittest.TestCase):
     def setUp(self):
         self.engine=create_engine('sqlite://')
-        for model in [m.SourceSystem,m.Location,m.Restaurant,m.RestaurantLocation,m.Employee,m.EmployeeIdentityAlias,m.IngestionRun,m.SourceRecord]:
+        for model in [m.SourceSystem,m.Location,m.Restaurant,m.RestaurantLocation,m.Employee,m.EmployeeIdentityAlias,m.EmployeeCloverLink,m.EmployeeAssignment,m.IngestionRun,m.SourceRecord]:
             model.__table__.create(self.engine)
         self.factory=sessionmaker(self.engine)
         with self.factory.begin() as session:

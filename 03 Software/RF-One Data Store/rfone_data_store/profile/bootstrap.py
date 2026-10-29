@@ -47,6 +47,8 @@ the caller decides DRY_RUN (rollback) vs PERSIST (commit).
 
 from __future__ import annotations
 
+from ..employee_directory import employees_for_locations
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -429,8 +431,10 @@ def bootstrap_restaurant_profile(
 
     # --- Current Employees ---------------------------------------------------
     current_employees = session.scalars(
-        select(m.Employee).where(
-            m.Employee.location_id.in_(location_ids),
+        employees_for_locations(location_ids).where(
+            ((m.Employee.location_id.in_(location_ids)) & (m.Employee.source_system_id == source_system_id)) |
+            m.Employee.id.in_(select(m.EmployeeCloverLink.employee_id).where(
+                m.EmployeeCloverLink.location_id.in_(location_ids), m.EmployeeCloverLink.employee_id.is_not(None))),
             m.Employee.display_name.is_not(None),
         )
     ).all()
@@ -438,8 +442,7 @@ def bootstrap_restaurant_profile(
 
     historical_stub_ids = set(
         session.scalars(
-            select(m.Employee.id).where(
-                m.Employee.location_id.in_(location_ids),
+            employees_for_locations(location_ids).with_only_columns(m.Employee.id).where(
                 m.Employee.display_name.is_(None),
             )
         ).all()
@@ -449,11 +452,22 @@ def bootstrap_restaurant_profile(
     desired_role_ids_by_employee: dict[int, set[int]] = {}
 
     for employee in current_employees:
+        manual_assignment = session.scalar(select(m.EmployeeAssignment.id).where(
+            m.EmployeeAssignment.employee_id == employee.id,
+            m.EmployeeAssignment.restaurant_id == restaurant_id,
+            m.EmployeeAssignment.valid_to.is_(None),
+            m.EmployeeAssignment.assignment_source != ASSIGNMENT_SOURCE_SOURCE_ROLE_MAPPING).limit(1))
+        if manual_assignment is not None:
+            _add_issue(session, run, summary, issue_type="MANUAL_ASSIGNMENT_PRESERVED",
+                       severity=SEVERITY_WARNING, employee_id=employee.id,
+                       details="An open RF-One management assignment was retained. Source role bootstrap did not change it.")
+            continue
         source_roles_for_emp = session.scalars(
             select(m.EmployeeSourceRole).where(m.EmployeeSourceRole.employee_id == employee.id)
         ).all()
 
         desired_role_ids: set[int] = set()
+        role_locations: dict[int, set[int]] = {}
         if not source_roles_for_emp:
             _add_issue(
                 session, run, summary,
@@ -470,6 +484,15 @@ def bootstrap_restaurant_profile(
             )
         else:
             for esr in source_roles_for_emp:
+                source_role = session.get(m.SourceRole, esr.source_role_id)
+                # Evidence for another linked workplace belongs to its profile.
+                # An unlinked foreign role remains an anomaly, as before.
+                if source_role.location_id not in location_ids and session.scalar(
+                    select(m.EmployeeCloverLink.id).where(
+                        m.EmployeeCloverLink.employee_id == employee.id,
+                        m.EmployeeCloverLink.location_id == source_role.location_id).limit(1)
+                ) is not None:
+                    continue
                 mapping = mapping_by_source_role_id.get(esr.source_role_id)
                 if mapping is None:
                     _add_issue(
@@ -487,6 +510,7 @@ def bootstrap_restaurant_profile(
                     )
                     continue
                 desired_role_ids.add(mapping.restaurant_role_id)
+                role_locations.setdefault(mapping.restaurant_role_id, set()).add(source_role.location_id)
 
         if len(desired_role_ids) > 1:
             # EMPLOYEE_ASSIGNMENT_CLOVER_ALIGNMENT_001 — corrects this
@@ -554,18 +578,10 @@ def bootstrap_restaurant_profile(
                     restaurant_id=restaurant_id,
                     operational_area_id=root_area.id,
                     restaurant_role_id=role_id,
-                    # Deterministic, not guessed (TASK_ORGANIZATION_002):
-                    # `employee` was itself selected via
-                    # `Employee.location_id.in_(location_ids)` above, so this
-                    # is the one real Location this Employee's current source
-                    # evidence (SourceRole membership) is scoped to — never
-                    # inferred from name, never backfilled onto a prior/
-                    # existing Assignment row. `to_open` now has at most one
-                    # element (EMPLOYEE_ASSIGNMENT_CLOVER_ALIGNMENT_001 —
-                    # `desired_role_ids` is never allowed to exceed size 1),
-                    # so this loop opens at most one new Assignment per
-                    # Employee per Restaurant.
-                    location_id=employee.location_id,
+                    # Scope comes from the mapped role evidence, never the
+                    # person's legacy origin. Multiple sites remain unspecified.
+                    location_id=(next(iter(role_locations[role_id]))
+                                 if len(role_locations.get(role_id, set())) == 1 else None),
                     valid_from=assignment_valid_from,
                     valid_to=None,
                     assignment_source=ASSIGNMENT_SOURCE_SOURCE_ROLE_MAPPING,
@@ -659,8 +675,6 @@ def _check_fresh_snapshot_congruence(
 
     canonical_pairs: set[tuple[str, str]] = set()
     for employee in current_employees:
-        if not employee.source_employee_id:
-            continue
         esrs = session.scalars(
             select(m.EmployeeSourceRole).where(m.EmployeeSourceRole.employee_id == employee.id)
         ).all()
@@ -668,7 +682,12 @@ def _check_fresh_snapshot_congruence(
             source_role = source_role_by_id.get(esr.source_role_id)
             if source_role is None:
                 continue
-            canonical_pairs.add((employee.source_employee_id, source_role.source_role_id))
+            external_ids = set(session.scalars(select(m.EmployeeCloverLink.external_employee_id).where(
+                m.EmployeeCloverLink.employee_id == employee.id,
+                m.EmployeeCloverLink.location_id == source_role.location_id)))
+            if not external_ids and employee.location_id == source_role.location_id and employee.source_employee_id:
+                external_ids.add(employee.source_employee_id)
+            canonical_pairs.update((external_id, source_role.source_role_id) for external_id in external_ids)
 
     missing_from_canonical = fresh_snapshot.employee_role_pairs - canonical_pairs
     stale_in_canonical = canonical_pairs - fresh_snapshot.employee_role_pairs

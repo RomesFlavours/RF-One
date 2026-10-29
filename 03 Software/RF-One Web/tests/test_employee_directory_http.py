@@ -11,7 +11,7 @@ import test_clover_acquisition_http as fixture
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, text
 from rfone_data_store import employee_directory as directory
 
 m = fixture.m
@@ -43,14 +43,12 @@ class EmployeeDirectoryHttpTest(unittest.TestCase):
                                   source_location_id="DIR-WP", timezone="America/New_York")
             db.add(location)
             db.flush()
-            employee = m.Employee(location_id=location.id, source_system_id=source.id, source_employee_id="E1",
-                                  display_name="Jane Smith", custom_id="MANAGEMENT", active=True)
-            db.add(employee)
-            db.flush()
-            cls.employee_id, cls.location_id, cls.source_id = employee.id, location.id, source.id
-            db.add(m.Shift(employee_id=employee.id, location_id=location.id, source_system_id=source.id,
+            employee_id = db.scalar(text("INSERT INTO employees (location_id, source_system_id, source_employee_id, display_name, custom_id, active) VALUES (:location, :source, 'E1', 'Jane Smith', 'MANAGEMENT', true) RETURNING id"),
+                                    {"location": location.id, "source": source.id})
+            cls.employee_id, cls.location_id, cls.source_id = employee_id, location.id, source.id
+            db.add(m.Shift(employee_id=employee_id, location_id=location.id, source_system_id=source.id,
                            source_shift_id="S1", clock_in=datetime(2026, 10, 1, tzinfo=timezone.utc)))
-            db.add(m.EmployeeCompensationTerm(employee_id=employee.id, function_label="Manager",
+            db.add(m.EmployeeCompensationTerm(employee_id=employee_id, function_label="Manager",
                 compensation_basis="HOURLY", hourly_rate_minor=2500,
                 valid_from=datetime(2026, 10, 1, tzinfo=timezone.utc), source_note="Management only"))
             for username, permissions in [("directory-user", ("EMPLOYEES",)),
@@ -194,6 +192,84 @@ class EmployeeDirectoryHttpTest(unittest.TestCase):
         self.assertTrue(client.get(f"{ROOT}/{old_id}", base_url=fixture.HOST).location.endswith(f"/{self.employee_id}"))
         with SessionFactory() as db:
             self.assertEqual(db.scalar(select(m.Shift).where(m.Shift.source_shift_id == "MERGE-SHIFT")).employee_id, self.employee_id)
+
+    def test_07_reconciliation_options_keep_inactive_sites_and_exclude_aliases(self):
+        with SessionFactory() as db:
+            inactive = m.Employee(location_id=self.location_id, display_name="Inactive <Person>", active=False)
+            retired = m.Employee(location_id=self.location_id, display_name="Retired selector copy")
+            db.add_all([inactive, retired]); db.flush()
+            inactive_id, retired_id = inactive.id, retired.id
+            db.add(m.EmployeeIdentityAlias(employee_id=retired_id, canonical_employee_id=inactive_id))
+            db.add(m.EmployeeCloverLink(location_id=self.location_id, merchant_id="DIR-WP",
+                external_employee_id="PENDING-SELECTOR", snapshot={"name": "Review person"}, state="PRESENT"))
+            db.commit()
+        client = self.client("directory-manager")
+        for path in (ROOT, f"{ROOT}/{self.employee_id}"):
+            response = client.get(path, base_url=fixture.HOST)
+            self.assertEqual(response.status_code, 200)
+            html = response.get_data(as_text=True)
+            self.assertIn(f'<option value="{inactive_id}">Inactive &lt;Person&gt;', html)
+            self.assertNotIn(f'<option value="{retired_id}">', html)
+            self.assertIn("Non attivo", html)
+            self.assertIn("Winter Park", html)
+
+    def test_08_native_person_without_pos_and_create_permissions(self):
+        ordinary = self.client("directory-user")
+        self.assertEqual(ordinary.post(ROOT + "/new", data={"csrf_token": fixture.csrf(ordinary.get("/profile", base_url=fixture.HOST).data),
+            "display_name": "Not authorized"}, base_url=fixture.HOST).status_code, 403)
+        manager = self.client("directory-manager")
+        self.assertEqual(manager.post(ROOT + "/new", data={"display_name": "No token"}, base_url=fixture.HOST).status_code, 400)
+        response = manager.post(ROOT + "/new", data={"csrf_token": self.csrf(manager),
+            "display_name": "Native RF1 person", "email": "native@example.test", "phone": "123"}, base_url=fixture.HOST)
+        self.assertEqual(response.status_code, 302)
+        with SessionFactory() as db:
+            person = db.scalar(select(m.Employee).where(m.Employee.display_name == "Native RF1 person"))
+            self.assertIsNone(person.location_id)
+            self.assertIsNone(person.source_system_id)
+            self.assertEqual(person.email, "native@example.test")
+        home = manager.get(ROOT, base_url=fixture.HOST)
+        self.assertEqual(home.status_code, 200)
+        self.assertIn("Senza sede", home.get_data(as_text=True))
+
+    def test_09_context_links_require_confirmation_and_target_management_rights(self):
+        with SessionFactory() as db:
+            target = db.scalar(select(m.RFOneAccount).where(m.RFOneAccount.username == "directory-user"))
+            target_id = target.id
+        manager = self.client("directory-manager")
+        payload = {"action": "context_link", "context_target": f"RFONE_ACCOUNT:{target_id}", "confirm_identity": "yes"}
+        payload["csrf_token"] = self.csrf(manager)
+        self.assertEqual(manager.post(f"{ROOT}/{self.employee_id}", data=payload, base_url=fixture.HOST).status_code, 403)
+        owner = self.client("directory-owner")
+        payload["csrf_token"] = self.csrf(owner)
+        payload.pop("confirm_identity")
+        owner.post(f"{ROOT}/{self.employee_id}", data=payload, base_url=fixture.HOST)
+        with SessionFactory() as db:
+            self.assertIsNone(directory.context_person_id(db, "RFONE_ACCOUNT", target_id))
+        payload["confirm_identity"] = "yes"
+        self.assertEqual(owner.post(f"{ROOT}/{self.employee_id}", data=payload, base_url=fixture.HOST).status_code, 302)
+        self.assertIn(b"Persona RF1", self.client("directory-user").get("/profile", base_url=fixture.HOST).data)
+        with SessionFactory() as db:
+            self.assertEqual(directory.context_person_id(db, "RFONE_ACCOUNT", target_id), self.employee_id)
+            self.assertFalse(db.get(m.RFOneAccount, target_id).is_admin)
+            link = db.scalar(select(m.EmployeeContextLink).where(m.EmployeeContextLink.rfone_account_id == target_id))
+            link_id = link.id
+        self.assertEqual(owner.post(f"{ROOT}/{self.employee_id}", data={"csrf_token": self.csrf(owner),
+            "action": "context_unlink", "context_link_id": link_id, "confirm_identity": "yes"}, base_url=fixture.HOST).status_code, 302)
+        with SessionFactory() as db:
+            self.assertIsNone(directory.context_person_id(db, "RFONE_ACCOUNT", target_id))
+
+    def test_10_downgrade_refuses_to_discard_native_person_data(self):
+        config = Config(str(Path(fixture._DATA_STORE_DIR) / "alembic.ini"))
+        config.set_main_option("script_location", str(Path(fixture._DATA_STORE_DIR) / "migrations"))
+        os.environ["ALEMBIC_DATABASE_URL_OVERRIDE"] = os.environ["RFONE_DATABASE_URL"]
+        try:
+            with self.assertRaisesRegex(RuntimeError, "Refusing to discard"):
+                command.downgrade(config, "c8e1f4a7b2d6")
+        finally:
+            os.environ.pop("ALEMBIC_DATABASE_URL_OVERRIDE", None)
+        with SessionFactory() as db:
+            self.assertEqual(db.scalar(text("SELECT version_num FROM alembic_version")), "d9e220261029")
+            self.assertIsNotNone(db.scalar(select(m.Employee).where(m.Employee.display_name == "Native RF1 person")))
 
 
 if __name__ == "__main__":

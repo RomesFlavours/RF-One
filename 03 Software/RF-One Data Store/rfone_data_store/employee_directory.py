@@ -1,12 +1,13 @@
 """Shared employee identity and source observations. No network and no commits.
 
 Employee remains the canonical identity used by Tips, Payroll and Sales. A
-provider record with a possible existing person stays pending until confirmed.
+provider record stays pending until a human confirms its RF-One identity.
 Only source fields on links change during imports; management stays on Employee
 and its existing assignment/compensation records.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from hashlib import sha256
@@ -14,7 +15,7 @@ import json
 import re
 import unicodedata
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -60,7 +61,11 @@ def candidates(db, snapshot):
     suggestions = []
     for employee in db.scalars(canonical_employees().order_by(m.Employee.display_name, m.Employee.id)):
         names = [_normalized(employee.display_name), *source_names.get(employee.id, [])]
-        score = max((SequenceMatcher(None, name, other).ratio() for other in names if name and other), default=0)
+        score = max((max(SequenceMatcher(None, name, other).ratio(),
+                         SequenceMatcher(None, " ".join(sorted(name.split())), " ".join(sorted(other.split()))).ratio())
+                     for other in names if name and other), default=0)
+        if email and (employee.email or "").strip().casefold() == email:
+            email_ids.add(employee.id)
         if employee.id in email_ids or score >= 0.80:
             suggestions.append({"employee": employee, "reason": "Email" if employee.id in email_ids else "Name", "score": score})
     return sorted(suggestions, key=lambda row: (row["reason"] != "Email", -row["score"]))
@@ -68,6 +73,108 @@ def candidates(db, snapshot):
 
 def canonical_employees():
     return select(m.Employee).where(~m.Employee.id.in_(select(m.EmployeeIdentityAlias.employee_id)))
+
+
+def employees_for_locations(location_ids):
+    """Canonical people with origin, source or Workforce site evidence.
+
+    Missing source links remain historical evidence, not termination. No joins
+    that multiply people and no implicit current-employment filter: consumers
+    must retain former employees when displaying historical work or payments.
+    Accepts an ID sequence or a single-column SQL select.
+    """
+    linked = select(m.EmployeeCloverLink.employee_id).where(
+        m.EmployeeCloverLink.location_id.in_(location_ids),
+        m.EmployeeCloverLink.employee_id.is_not(None),
+    )
+    restaurant_ids = select(m.RestaurantLocation.restaurant_id).where(m.RestaurantLocation.location_id.in_(location_ids))
+    assigned = select(m.EmployeeAssignment.employee_id).where(
+        m.EmployeeAssignment.location_id.in_(location_ids) |
+        (m.EmployeeAssignment.location_id.is_(None) & m.EmployeeAssignment.restaurant_id.in_(restaurant_ids)))
+    return canonical_employees().where(
+        m.Employee.location_id.in_(location_ids) | m.Employee.id.in_(linked) | m.Employee.id.in_(assigned)
+    )
+
+
+def employee_is_active(employee, links):
+    """Shared display state only; never persists an employment decision."""
+    return employee.active is not False
+
+
+def employee_location_ids(employee, links, *, include_historical=False):
+    """Relevant sites; historical selectors retain all known workplaces."""
+    if include_historical:
+        return {site for site in (employee.location_id, *(link.location_id for link in links)) if site is not None}
+    return ({link.location_id for link in links if link.state == "PRESENT"}
+            or {link.location_id for link in links if link.state == "UNVERIFIED"}
+            or {link.location_id for link in links}
+            or ({employee.location_id} if employee.location_id is not None else set()))
+
+
+@dataclass(frozen=True)
+class EmployeeOption:
+    id: int
+    display_name: str | None
+    location_ids: tuple[int, ...]
+    location_names: tuple[str, ...]
+    is_active: bool
+    is_selected: bool
+
+
+def employee_options(db, *, location_ids=None, include_inactive=False, selected_employee_ids=()):
+    """Read-only canonical choices. Caller supplies its authorized site scope.
+
+    A selected retired ID resolves to its canonical person, but never bypasses
+    location scope. Historical/reconciliation callers opt into inactive people.
+    Uses a bounded number of queries rather than one query per person/site.
+    """
+    scope = None if location_ids is None else set(db.scalars(
+        select(m.Location.id).where(m.Location.id.in_(location_ids))))
+    query = canonical_employees() if scope is None else employees_for_locations(scope)
+    employees = list(db.scalars(query))
+    by_employee = {employee.id: [] for employee in employees}
+    for link in db.scalars(select(m.EmployeeCloverLink).where(
+        m.EmployeeCloverLink.employee_id.in_(by_employee))):
+        by_employee[link.employee_id].append(link)
+    selected_ids = set(selected_employee_ids)
+    aliases = dict(db.execute(select(m.EmployeeIdentityAlias.employee_id,
+        m.EmployeeIdentityAlias.canonical_employee_id).where(
+            m.EmployeeIdentityAlias.employee_id.in_(selected_ids))).all())
+    selected_ids = {aliases.get(identity, identity) for identity in selected_ids}
+    # Workforce owns assignments. Read their site evidence without copying it.
+    assignment_sites = {employee.id: set() for employee in employees}
+    now = datetime.now(timezone.utc)
+    assignment_query = select(m.EmployeeAssignment.employee_id,
+        func.coalesce(m.EmployeeAssignment.location_id, m.RestaurantLocation.location_id)).outerjoin(
+            m.RestaurantLocation, m.RestaurantLocation.restaurant_id == m.EmployeeAssignment.restaurant_id
+        ).where(m.EmployeeAssignment.employee_id.in_(by_employee))
+    if not include_inactive:
+        assignment_query = assignment_query.where(
+            ((m.EmployeeAssignment.valid_from <= now) &
+             (m.EmployeeAssignment.valid_to.is_(None) | (m.EmployeeAssignment.valid_to > now))) |
+            m.EmployeeAssignment.employee_id.in_(selected_ids))
+    for identity, site in db.execute(assignment_query):
+        if site is not None:
+            assignment_sites[identity].add(site)
+    locations = {loc.id: loc.name for loc in db.scalars(
+        select(m.Location) if scope is None else select(m.Location).where(m.Location.id.in_(scope)))}
+    options = []
+    for employee in employees:
+        links = by_employee[employee.id]
+        active = bool(employee_is_active(employee, links))
+        selected = employee.id in selected_ids
+        if not include_inactive and not active and not selected:
+            continue
+        sites = employee_location_ids(employee, links, include_historical=include_inactive or selected) | assignment_sites[employee.id]
+        if scope is not None:
+            sites &= scope
+            if not sites:
+                continue
+        site_ids = tuple(sorted((site for site in sites if site in locations),
+                                key=lambda site: (locations[site].casefold(), site)))
+        options.append(EmployeeOption(employee.id, employee.display_name, site_ids,
+                       tuple(locations[site] for site in site_ids), active, selected))
+    return sorted(options, key=lambda option: ((option.display_name or "").casefold(), option.id))
 
 
 def resolve_employee_id(db, employee_id):
@@ -93,11 +200,7 @@ def consolidate(db, *, from_employee_id, into_employee_id, account_id=None):
     if len(locked) != 2:
         raise ValueError("Employee identity not found.")
     old = next(e for e in locked if e.id == from_employee_id)
-    incoming_links = list(db.scalars(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.employee_id == old.id)))
-    target_links = list(db.scalars(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.employee_id == into_employee_id)))
-    if {l.merchant_id for l in incoming_links if l.state == "PRESENT"} & {l.merchant_id for l in target_links if l.state == "PRESENT"}:
-        raise ValueError("Both identities have a current Clover account at the same merchant. Review these accounts before consolidation.")
-    old_values = {key: getattr(old, key) for key in ("display_name", "custom_id", "active", "location_id")}
+    old_values = {key: getattr(old, key) for key in ("display_name", "email", "phone", "custom_id", "active", "location_id")}
     moved = {}
     try:
         with db.begin_nested():
@@ -151,7 +254,7 @@ def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, 
     """Apply one complete, validated employee collection atomically in caller's transaction.
 
     Incomplete reads are rejected BEFORE any write, including legacy seeding.
-    New records with a candidate stay unlinked, preventing duplicate people.
+    Every unknown external identity stays unlinked until explicit approval.
     """
     if not complete:
         raise ValueError("Incomplete employee collection; existing site states preserved.")
@@ -189,17 +292,6 @@ def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, 
                                        external_employee_id=external_id, state="PRESENT")
             db.add(link)
             db.flush()
-            if not candidates(db, snapshot):
-                employee = m.Employee(location_id=location_id, display_name=snapshot.get("name"),
-                                      custom_id=snapshot.get("customId"), source_system_id=source.id,
-                                      source_employee_id=external_id,
-                                      system_role=snapshot.get("role") if isinstance(snapshot.get("role"), str) else None)
-                db.add(employee)
-                db.flush()
-                link.employee_id = employee.id
-                _event(db, "CREATE", employee_id=employee.id, link=link)
-        if link.location_id != location_id:
-            raise ValueError("External employee identity already belongs to a different configured Location.")
         if link.snapshot != snapshot or link.state != "PRESENT":
             _event(db, "IMPORT", employee_id=link.employee_id, link=link,
                    details={"snapshot": snapshot, "previous_state": link.state})
@@ -242,12 +334,6 @@ def attach_link(db, *, link_id, employee_id=None, create_new=False, account_id=N
         employee = db.scalar(select(m.Employee).where(m.Employee.id == resolve_employee_id(db, employee_id)).with_for_update()) if employee_id is not None else None
         if employee is None:
             raise ValueError("Choose an existing RF-One employee or explicitly create a new person.")
-    # Multiple external accounts for one merchant require investigation, not a silent merge.
-    other = db.scalar(select(m.EmployeeCloverLink).where(
-        m.EmployeeCloverLink.employee_id == employee.id, m.EmployeeCloverLink.merchant_id == link.merchant_id,
-        m.EmployeeCloverLink.state == "PRESENT"))
-    if other:
-        raise ValueError("This person already has a Clover account at this merchant. Review the source identity first.")
     link.employee_id = employee.id
     _event(db, "LINK", employee_id=employee.id, link=link, account_id=account_id,
            details={"create_new": create_new})
@@ -270,36 +356,31 @@ def observe_historical_employee(db, *, location_id, merchant_id, raw, available,
     if link and link.employee_id is not None:
         return db.get(m.Employee, link.employee_id)
     if link is not None:
-        raise ValueError("Historical employee identity requires confirmation in Employee Directory.")
-    # The identifier itself is source evidence even when the profile is gone.
-    # Do not guess that an historical reference is another person by name.
-    employee = m.Employee(location_id=location_id, source_system_id=location.source_system_id,
-        source_employee_id=raw["id"], display_name=raw.get("name"), custom_id=raw.get("customId"),
-        system_role=raw.get("role") if isinstance(raw.get("role"), str) else None,
-        source_available=available, source_checked_at=observed_at)
-    db.add(employee)
-    db.flush()
-    link = m.EmployeeCloverLink(employee_id=employee.id, location_id=location_id, merchant_id=merchant_id,
+        return None
+    link = m.EmployeeCloverLink(location_id=location_id, merchant_id=merchant_id,
         external_employee_id=raw["id"], snapshot=safe_snapshot(raw), last_seen_at=observed_at,
         last_run_id=run_id, state="UNVERIFIED" if available else "MISSING_REVIEW")
     db.add(link)
     db.flush()
-    _event(db, "HISTORICAL_REFERENCE", employee_id=employee.id, link=link,
+    _event(db, "HISTORICAL_PENDING", link=link,
            details={"snapshot": safe_snapshot(raw), "profile_available": available})
-    return employee
+    return None
 
 
 def source_conflicts(links):
+    """Current observations only. Reviewed spelling differences stay in history."""
     result = {}
+    present = [link for link in links if link.state == "PRESENT"]
     for field in ("name", "email", "customId", "role", "roles"):
-        values = {}
-        for link in links:
-            if link.state == "PRESENT" and link.snapshot is not None:
-                value = link.snapshot.get(field)
-                # Missing vs provided is a visible discrepancy too.
-                values[link.merchant_id] = value
-        if len({json.dumps(v, sort_keys=True) for v in values.values()}) > 1:
+        values = {str(link.id): (link.snapshot or {}).get(field) for link in present}
+        if len({json.dumps(value, sort_keys=True) for value in values.values()}) > 1:
             result[field] = values
+    accounts = {}
+    for link in present:
+        accounts.setdefault(link.merchant_id, []).append(link.external_employee_id)
+    duplicates = {merchant: ids for merchant, ids in accounts.items() if len(ids) > 1}
+    if duplicates:
+        result["duplicate_accounts"] = duplicates
     return result
 
 
@@ -320,12 +401,139 @@ def review(db, employee_id, links, account_id):
            details={"fingerprint": review_fingerprint(links)})
 
 
-def update_management(db, employee, *, display_name, custom_id, active, account_id):
+_UNSET = object()
+
+
+def update_management(db, employee, *, display_name, custom_id, active, account_id, email=_UNSET, phone=_UNSET):
+    email = employee.email if email is _UNSET else email
+    phone = employee.phone if phone is _UNSET else phone
     if not display_name or len(display_name) > 255 or len(custom_id or "") > 64:
         raise ValueError("A name (maximum 255 characters) and a custom ID up to 64 characters are required.")
-    before = {key: getattr(employee, key) for key in ("display_name", "custom_id", "active")}
+    if len(email or "") > 255 or len(phone or "") > 64:
+        raise ValueError("Email or phone is too long.")
+    before = {key: getattr(employee, key) for key in ("display_name", "custom_id", "active", "email", "phone")}
+    employee.email, employee.phone = (email or "").strip() or None, (phone or "").strip() or None
     employee.display_name = display_name
     employee.custom_id = custom_id or None
     employee.active = active
-    _event(db, "MANAGEMENT", employee_id=employee.id, account_id=account_id,
-           details={"before": before, "after": {key: getattr(employee, key) for key in before}})
+    if employee.id is not None:
+        _event(db, "MANAGEMENT", employee_id=employee.id, account_id=account_id,
+               details={"before": before, "after": {key: getattr(employee, key) for key in before}})
+
+
+CONTEXT_LABELS = {"RFONE_ACCOUNT": "Account RF1", "ACTING_IDENTITY": "Identità operativa",
+                  "TRAINING": "Formazione", "CANDIDATE": "Candidato", "PROJECT_RESPONSIBLE": "Responsabile di progetto"}
+
+CONTEXTS = {
+    "RFONE_ACCOUNT": (m.RFOneAccount, "rfone_account_id", "display_name"),
+    "ACTING_IDENTITY": (m.ActingIdentity, "acting_identity_id", "display_name"),
+    "TRAINING": (m.TrainingAccount, "training_account_id", "username"),
+    "CANDIDATE": (m.CandidatePerson, "candidate_person_id", "full_name"),
+    "PROJECT_RESPONSIBLE": (m.ProjectResponsible, "project_responsible_id", "name"),
+}
+
+
+def create_person(db, *, display_name, email=None, phone=None, account_id=None):
+    person = m.Employee()
+    update_management(db, person, display_name=(display_name or "").strip(), custom_id="",
+                      active=None, email=email, phone=phone, account_id=account_id)
+    db.add(person)
+    db.flush()
+    _event(db, "RF1_CREATE", employee_id=person.id, account_id=account_id)
+    return person
+
+
+def context_person_id(db, kind, target_id):
+    """Resolve explicit person/authentication bridges, never names or privileges."""
+    if kind not in CONTEXTS:
+        raise ValueError("Unknown person context.")
+    if target_id is None:
+        return None
+    queue, visited, people = [(kind, target_id)], set(), set()
+    while queue:
+        current_kind, identity = queue.pop()
+        if (current_kind, identity) in visited:
+            continue
+        visited.add((current_kind, identity))
+        column = getattr(m.EmployeeContextLink, CONTEXTS[current_kind][1])
+        direct = db.scalar(select(m.EmployeeContextLink.employee_id).where(column == identity))
+        if direct is not None:
+            people.add(resolve_employee_id(db, direct))
+        if current_kind == "RFONE_ACCOUNT":
+            queue.extend(("TRAINING", value) for value in db.scalars(select(m.RFOneTrainingIdentityLink.training_account_id).where(
+                m.RFOneTrainingIdentityLink.rfone_account_id == identity)))
+        elif current_kind == "TRAINING":
+            actor = db.scalar(select(m.TrainingAccount.acting_identity_id).where(m.TrainingAccount.id == identity))
+            if actor is not None:
+                queue.append(("ACTING_IDENTITY", actor))
+            queue.extend(("RFONE_ACCOUNT", value) for value in db.scalars(select(m.RFOneTrainingIdentityLink.rfone_account_id).where(
+                m.RFOneTrainingIdentityLink.training_account_id == identity)))
+        elif current_kind == "ACTING_IDENTITY":
+            queue.extend(("TRAINING", value) for value in db.scalars(select(m.TrainingAccount.id).where(
+                m.TrainingAccount.acting_identity_id == identity)))
+    if len(people) > 1:
+        raise ValueError("Conflicting confirmed person links in the account/Training identity chain.")
+    return next(iter(people), None)
+
+
+def link_context(db, *, employee_id, kind, target_id, account_id=None):
+    if kind not in CONTEXTS:
+        raise ValueError("Unknown person context.")
+    model, field, _ = CONTEXTS[kind]
+    person_id = resolve_employee_id(db, employee_id)
+    person = db.scalar(select(m.Employee).where(m.Employee.id == person_id).with_for_update())
+    if person is not None and resolve_employee_id(db, person_id) != person_id:
+        return link_context(db, employee_id=resolve_employee_id(db, person_id), kind=kind, target_id=target_id, account_id=account_id)
+    target = db.scalar(select(model).where(model.id == target_id).with_for_update())
+    if person is None or target is None:
+        raise ValueError("Person or context record not found.")
+    if kind == "ACTING_IDENTITY" and target.kind != "HUMAN_USER":
+        raise ValueError("Only human acting identities can be linked to a person.")
+    if kind == "TRAINING" and db.get(m.ActingIdentity, target.acting_identity_id).kind != "HUMAN_USER":
+        raise ValueError("A person can only link a human Training identity.")
+    known_person = context_person_id(db, kind, target_id)
+    if known_person is not None and known_person != person.id:
+        raise ValueError("Conflicts with an existing confirmed person association. Unlink and review explicitly first.")
+    existing = db.scalar(select(m.EmployeeContextLink).where(getattr(m.EmployeeContextLink, field) == target_id))
+    if existing:
+        if existing.employee_id != person.id:
+            raise ValueError("Already linked to another person. Unlink explicitly before reassignment.")
+        return existing
+    link = m.EmployeeContextLink(employee_id=person.id, created_by_account_id=account_id, **{field: target_id})
+    db.add(link)
+    db.flush()
+    _event(db, "CONTEXT_LINK", employee_id=person.id, account_id=account_id,
+           details={"kind": kind, "target_id": target_id})
+    return link
+
+
+def unlink_context(db, *, employee_id, link_id, account_id=None):
+    person_id = resolve_employee_id(db, employee_id)
+    link = db.scalar(select(m.EmployeeContextLink).where(m.EmployeeContextLink.id == link_id,
+        m.EmployeeContextLink.employee_id == person_id).with_for_update())
+    if link is None:
+        raise ValueError("Person context link not found.")
+    kind = next(kind for kind, (_, field, _) in CONTEXTS.items() if getattr(link, field) is not None)
+    target_id = getattr(link, CONTEXTS[kind][1])
+    _event(db, "CONTEXT_UNLINK", employee_id=person_id, account_id=account_id,
+           details={"kind": kind, "target_id": target_id})
+    db.delete(link)
+    db.flush()
+
+
+def pending_requires_review(db, link):
+    if link.employee_id is not None:
+        return False
+    if link.state != "MISSING_REVIEW":
+        return True
+    # A disappeared, never-used source account leaves the current queue.
+    # A historical work reference still needs attribution and stays visible.
+    return db.scalar(select(m.EmployeeDirectoryEvent.id).where(
+        m.EmployeeDirectoryEvent.link_id == link.id,
+        m.EmployeeDirectoryEvent.action == "HISTORICAL_PENDING").limit(1)) is not None
+
+
+def source_absence_link_ids(links):
+    """Absence is a site condition, not an alarm for retired duplicate accounts."""
+    present_merchants = {link.merchant_id for link in links if link.state == "PRESENT"}
+    return {link.id for link in links if link.state == "MISSING_REVIEW" and link.merchant_id not in present_merchants}

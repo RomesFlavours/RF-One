@@ -133,6 +133,7 @@
       one("[data-pm-responsible-empty]", overlay).hidden = (project.responsibles || []).length > 0;
       addForm.action = actionFor("data-pm-create-action", project.id, 0);
       one("#pm-responsible-new").value = !errorFor && values.name !== undefined ? values.name : "";
+      one("select[name=employee_id]", addForm).value = !errorFor && values.employee_id ? String(values.employee_id) : "";
       var box = one("[data-pm-error]", overlay);
       box.textContent = error || "";
       box.hidden = !error;
@@ -288,6 +289,7 @@
       one("#pm-task-title").value = values.title || "";
       one("#pm-task-description").value = values.description || "";
       responsibleInput.value = values.responsible_name || "";
+      one("#pm-task-responsible-id").value = values.responsible_id ? String(values.responsible_id) : "";
       updateResponsibleNote();
       parentSelect.value = values.parent_task_id ? String(values.parent_task_id) : "";
       if (values.chapter_id) { chapterSelect.value = String(values.chapter_id); }
@@ -315,7 +317,8 @@
     }
 
     parentSelect.addEventListener("change", syncParentChapter);
-    responsibleInput.addEventListener("input", updateResponsibleNote);
+    responsibleInput.addEventListener("input", function () { one("#pm-task-responsible-id").value = ""; updateResponsibleNote(); });
+    one("#pm-task-responsible-id").addEventListener("change", function () { if (this.value) { responsibleInput.value = ""; } updateResponsibleNote(); });
     startInput.addEventListener("input", updateEndPreview);
     daysInput.addEventListener("input", updateEndPreview);
     if (filterInput) { filterInput.addEventListener("input", filterPredecessors); }

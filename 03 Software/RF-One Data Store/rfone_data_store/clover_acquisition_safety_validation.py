@@ -131,6 +131,12 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
     healthy = _Clover()
     _seed_clover(healthy)
     with s_(session_factory) as s:
+        from .employee_directory import import_snapshot, attach_link
+        _, pending = import_snapshot(s, location_id=location_id, merchant_id=MERCHANT, records=healthy.employees)
+        for link_id in pending:
+            attach_link(s, link_id=link_id, create_new=True)
+        s.commit()
+    with s_(session_factory) as s:
         run = jobs.request_historical_backfill(
             s, location_id=location_id, period_start=T0 - timedelta(days=1), period_end=T0 + timedelta(hours=3),
             launcher=lambda _id: None,

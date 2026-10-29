@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
+{% if reference_person %}<p>Persona RF1: {{ reference_person.display_name or 'Nome da completare' }}</p>{% endif %}
+
 
 <a class="back-link" href="{{ url_for('applications_home') }}">&larr; Back to Applications</a>
 

@@ -47,6 +47,8 @@ from __future__ import annotations
 
 import hashlib
 import re
+from ..employee_directory import employees_for_locations, resolve_employee_id
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
@@ -520,8 +522,7 @@ def resolve_employee_mappings(
     """
     location_ids = _restaurant_location_ids(session, restaurant_id)
     employees = session.execute(
-        select(m.Employee.id, m.Employee.display_name).where(
-            m.Employee.location_id.in_(location_ids) if location_ids else False,
+        employees_for_locations(location_ids).with_only_columns(m.Employee.id, m.Employee.display_name).where(
             m.Employee.display_name.is_not(None),
         )
     ).all()
@@ -555,7 +556,7 @@ def resolve_employee_mappings(
             resolutions[external_key] = MappingResolution(
                 external_employee_key=external_key,
                 status=existing.mapping_status,
-                employee_id=existing.employee_id,
+                employee_id=resolve_employee_id(session, existing.employee_id) if existing.employee_id is not None else None,
                 resolution_method=existing.resolution_method,
             )
             continue

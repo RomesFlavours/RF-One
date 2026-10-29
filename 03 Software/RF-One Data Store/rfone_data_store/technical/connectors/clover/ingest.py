@@ -37,6 +37,8 @@ def upsert(session: Session, model: type[T], unique_filter: dict[str, Any], valu
         for key, value in values.items():
             setattr(existing, key, value)
         return existing
+    if model is m.Employee:
+        raise ValueError("Confirm the external identity in the RF-One directory before attributing work.")
     obj = model(**unique_filter, **values)
     session.add(obj)
     return obj
@@ -635,85 +637,19 @@ def ingest_employee_stub_references(
     (confirmed empirically this run: 13 employee ids referenced by 667/4,368
     Shifts do not appear in `employees.json`).
 
-    Rather than silently dropping those historical facts (forbidden — task
-    §54) or weakening `Shift.employee_id`'s NOT NULL constraint (no evidence
-    this task's other findings require it), a minimal stub Employee row is
-    created for each such id: only `source_employee_id` is set, every other
-    field stays NULL — nothing about the person is fabricated, only their
-    bare identity is acknowledged as "referenced by history, profile
-    unavailable from the current source"."""
+    Unknown historical references now require approval in the RF-One directory.
+    No source stub may manufacture an RF-One person."""
+    from ....employee_directory import observe_historical_employee
     referenced = parser.referenced_employee_ids(bundle.shifts, bundle.orders, bundle.payments, bundle.refunds)
     missing = sorted(referenced - set(employee_map.keys()))
+    location = session.get(m.Location, location_id)
     for source_id in missing:
-        obj = upsert(
-            session,
-            m.Employee,
-            {"location_id": location_id, "source_system_id": source_system_id, "source_employee_id": source_id},
-            {
-                "display_name": None,
-                "custom_id": None,
-                "system_role": None,
-                "active": None,
-                "source_created_at": None,
-                "source_modified_at": None,
-                "location_id": location_id,
-            },
-        )
-        session.flush()
-        employee_map[source_id] = obj.id
-        stats.bump("employee_stub_references_created")
-        _add_source_record(
-            session,
-            ingestion_run_id=ingestion_run_id,
-            source_system_id=source_system_id,
-            entity_type="employee_stub_reference",
-            source_id=source_id,
-            retrieved_at=retrieved_at,
-            raw_path=None,
-        )
-
-
-def ingest_shifts(
-    session: Session,
-    bundle: reader.CloverSourceBundle,
-    source_system_id: int,
-    employee_map: dict[str, int],
-    ingestion_run_id: int,
-    retrieved_at: datetime,
-    stats: IngestionStats,
-) -> None:
-    for raw in bundle.shifts:
-        values = mapping.map_shift(raw)
-        source_id = values.pop("source_shift_id")
-        employee_source_id = values.pop("employee_source_id")
-        override_in_source_id = values.pop("override_in_employee_source_id")
-        override_out_source_id = values.pop("override_out_employee_source_id")
-
-        employee_id = employee_map.get(employee_source_id)
-        if employee_id is None:
-            stats.unresolved_employee_refs += 1
-            continue  # Shift.employee_id is NOT NULL — cannot ingest an orphaned shift
-
-        upsert(
-            session,
-            m.Shift,
-            {"source_system_id": source_system_id, "source_shift_id": source_id},
-            {
-                **values,
-                "employee_id": employee_id,
-                "override_in_employee_id": employee_map.get(override_in_source_id),
-                "override_out_employee_id": employee_map.get(override_out_source_id),
-            },
-        )
-        _add_source_record(
-            session,
-            ingestion_run_id=ingestion_run_id,
-            source_system_id=source_system_id,
-            entity_type="shift",
-            source_id=source_id,
-            retrieved_at=retrieved_at,
-            raw_path=str(bundle.run_dir / "shifts.json"),
-        )
+        person = observe_historical_employee(session, location_id=location_id,
+            merchant_id=location.source_location_id, raw={"id": source_id}, available=False,
+            observed_at=retrieved_at, run_id=ingestion_run_id)
+        if person is None:
+            raise ValueError("Historical employee requires confirmation in RF-One before bulk ingestion.")
+        employee_map[source_id] = person.id
     session.flush()
 
 

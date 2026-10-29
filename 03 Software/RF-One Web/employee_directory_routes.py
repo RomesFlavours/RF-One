@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
 
 from flask import abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import func, or_, select
@@ -20,25 +21,69 @@ def _employee_groups(rows, locations):
     dismissed = []
     for row in rows:
         employee, links = row["employee"], row["links"]
-        absent_everywhere = bool(links) and all(l.state == "MISSING_REVIEW" for l in links)
-        if employee.active is False or (employee.active is None and absent_everywhere):
+        if not directory.employee_is_active(employee, links):
             dismissed.append(row)
             continue
-        site_ids = {l.location_id for l in links if l.state == "PRESENT"}
-        if not site_ids:
-            site_ids = {l.location_id for l in links if l.state == "UNVERIFIED"} or {employee.location_id}
-        for location_id in site_ids:
+        site_ids = row.get("site_ids") or directory.employee_location_ids(employee, links)
+        for location_id in site_ids or {None}:
             site_links = [l for l in links if l.location_id == location_id]
             site_link = next((l for l in site_links if l.state == "PRESENT"), site_links[0] if site_links else None)
             by_location.setdefault(location_id, []).append({**row, "site_link": site_link})
-    groups = [{"location": locations[location_id], "rows": members} for location_id, members in by_location.items()]
-    groups.sort(key=lambda group: (group["location"].name.casefold(), group["location"].id))
+    groups = [{"location": locations.get(location_id, SimpleNamespace(id=None, name="Senza sede", timezone=None)), "rows": members} for location_id, members in by_location.items()]
+    groups.sort(key=lambda group: (group["location"].name.casefold(), group["location"].id or 0))
     return groups, dismissed
 
 
 def register_employee_directory_routes(app, *, require_domain_access, SessionFactory,
                                        load_current_account, require_csrf, get_launcher=lambda: None):
     gate = require_domain_access("EMPLOYEES")
+
+    def _context_permissions(db, account):
+        administrator = bool(account and (account.is_admin or account.is_owner))
+        return {"RFONE_ACCOUNT": administrator, "ACTING_IDENTITY": administrator,
+                "TRAINING": shared_session.account_is_domain_admin(db, account, "TRAINING"),
+                "CANDIDATE": shared_session.account_is_domain_admin(db, account, "SELECTION"),
+                "PROJECT_RESPONSIBLE": shared_session.account_is_domain_admin(db, account, "PROJECTS")}
+
+    def _context_view(db, person_id, permissions):
+        records, choices = [], []
+        for kind, (model, field, label_field) in directory.CONTEXTS.items():
+            if not permissions.get(kind):
+                continue
+            links = list(db.scalars(select(m.EmployeeContextLink).where(
+                getattr(m.EmployeeContextLink, field).is_not(None))))
+            by_target = {getattr(link, field): link for link in links}
+            for target in db.scalars(select(model).order_by(model.id)):
+                if kind == "ACTING_IDENTITY" and target.kind != "HUMAN_USER":
+                    continue
+                label = f"{getattr(target, label_field) or 'Nome da completare'} · #{target.id}"
+                if kind == "PROJECT_RESPONSIBLE":
+                    project = db.get(m.Project, target.project_id)
+                    label = f"{project.name} · {label}"
+                existing = by_target.get(target.id)
+                if existing and existing.employee_id == person_id:
+                    records.append({"id": existing.id, "kind": kind, "kind_label": directory.CONTEXT_LABELS[kind], "label": label})
+                elif existing is None:
+                    choices.append({"kind": kind, "kind_label": directory.CONTEXT_LABELS[kind], "id": target.id, "label": label})
+        return records, choices
+
+    @app.route("/administration/employees/new", methods=["POST"])
+    @gate
+    def employee_directory_create():
+        require_csrf()
+        with SessionFactory() as db:
+            account = load_current_account(db)
+            if not shared_session.account_is_domain_admin(db, account, "EMPLOYEES"):
+                abort(403)
+            try:
+                person = directory.create_person(db, display_name=request.form.get("display_name", ""),
+                    email=request.form.get("email"), phone=request.form.get("phone"), account_id=account.id)
+                db.commit()
+                return redirect(url_for("employee_directory_detail", employee_id=person.id))
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+                return redirect(url_for("employee_directory_home"))
 
     def _sites(db):
         locations = list(db.scalars(select(m.Location).join(
@@ -70,24 +115,27 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             employees = list(db.scalars(directory.canonical_employees().order_by(m.Employee.display_name, m.Employee.id)))
             all_links = list(db.scalars(select(m.EmployeeCloverLink).order_by(m.EmployeeCloverLink.id)))
             locations = {loc.id: loc for loc in db.scalars(select(m.Location))}
+            active_options = {option.id: option for option in directory.employee_options(db)}
             rows = []
             for employee in employees:
                 links = [l for l in all_links if l.employee_id == employee.id]
-                searchable = [employee.display_name or "", employee.custom_id or ""]
+                searchable = [employee.display_name or "", employee.custom_id or "", employee.email or "", employee.phone or ""]
                 searchable.extend(str((l.snapshot or {}).get("email") or "") for l in links)
                 if query and query.casefold() not in " ".join(searchable).casefold():
                     continue
                 conflicts = directory.source_conflicts(links)
                 rows.append({"employee": employee, "links": links, "conflicts": conflicts,
-                             "reviewed": directory.is_reviewed(db, employee.id, links)})
+                             "site_ids": active_options[employee.id].location_ids if employee.id in active_options else (),
+                             "reviewed": directory.is_reviewed(db, employee.id, links),
+                             "absence_link_ids": directory.source_absence_link_ids(links)})
             pending = [{"link": l, "candidates": directory.candidates(db, l.snapshot or {})}
-                       for l in all_links if l.employee_id is None]
+                       for l in all_links if directory.pending_requires_review(db, l)]
             sites = _sites(db)
             active_groups, dismissed = _employee_groups(rows, locations)
             return render_template(
                 "employee_directory.html", active_groups=active_groups, dismissed=dismissed,
                 pending=pending, locations=locations,
-                employees=employees, sites=sites, query=query,
+                employees=directory.employee_options(db, include_inactive=True), sites=sites, query=query,
                 md_configured=any(s["location"].source_location_id == os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
                                   and s["configured"] for s in sites),
                 can_sync=shared_session.account_may_enter_domain(db, account, "CLOVER_ACQUISITION"),
@@ -125,8 +173,28 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                         directory.update_management(
                             db, employee, display_name=request.form.get("display_name", "").strip(),
                             custom_id=request.form.get("custom_id", "").strip(),
+                            email=request.form.get("email"), phone=request.form.get("phone"),
                             active={"": None, "true": True, "false": False}[active_text], account_id=account.id,
                         )
+                    elif request.form.get("action") in ("context_link", "context_unlink"):
+                        permissions = _context_permissions(db, account)
+                        if request.form.get("confirm_identity") != "yes":
+                            raise ValueError("Confirm explicitly that this context belongs to the person.")
+                        if request.form["action"] == "context_link":
+                            kind, raw_target = request.form.get("context_target", "").split(":", 1)
+                            if not permissions.get(kind):
+                                abort(403)
+                            directory.link_context(db, employee_id=employee_id, kind=kind,
+                                target_id=int(raw_target), account_id=account.id)
+                        else:
+                            context_link = db.get(m.EmployeeContextLink, int(request.form.get("context_link_id", "")))
+                            if context_link is None or context_link.employee_id != employee_id:
+                                abort(404)
+                            kind = next(kind for kind, (_, field, _) in directory.CONTEXTS.items()
+                                        if getattr(context_link, field) is not None)
+                            if not permissions.get(kind):
+                                abort(403)
+                            directory.unlink_context(db, employee_id=employee_id, link_id=context_link.id, account_id=account.id)
                     elif request.form.get("action") == "consolidate":
                         if request.form.get("confirm_identity") != "yes":
                             raise ValueError("Confirm explicitly that both records are the same person.")
@@ -140,17 +208,19 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                         raise ValueError("Unknown employee action.")
                     db.commit()
                     flash("Employee record saved.", "info")
-                except ValueError as exc:
+                except (ValueError, IntegrityError) as exc:
                     db.rollback()
-                    flash(str(exc), "error")
+                    flash(str(exc) if isinstance(exc, ValueError) else "The record changed concurrently. Reload and retry.", "error")
                 return redirect(url_for("employee_directory_detail", employee_id=employee_id))
+            can_org = shared_session.account_may_use_domain_item(db, account, "ORGANIZATION", "chart")
+            can_compensation = shared_session.account_may_enter_domain(db, account, "COMPENSATION")
             assignments = list(db.execute(select(m.EmployeeAssignment, m.RestaurantRole.name, m.OperationalArea.name)
                 .join(m.RestaurantRole, m.RestaurantRole.id == m.EmployeeAssignment.restaurant_role_id)
                 .join(m.OperationalArea, m.OperationalArea.id == m.EmployeeAssignment.operational_area_id)
                 .where(m.EmployeeAssignment.employee_id == employee_id)
-                .order_by(m.EmployeeAssignment.valid_from.desc())))
+                .order_by(m.EmployeeAssignment.valid_from.desc()))) if can_org else []
             terms = list(db.scalars(select(m.EmployeeCompensationTerm).where(
-                m.EmployeeCompensationTerm.employee_id == employee_id).order_by(m.EmployeeCompensationTerm.valid_from.desc())))
+                m.EmployeeCompensationTerm.employee_id == employee_id).order_by(m.EmployeeCompensationTerm.valid_from.desc()))) if can_compensation else []
             events = list(db.scalars(select(m.EmployeeDirectoryEvent).where(
                 or_(m.EmployeeDirectoryEvent.employee_id == employee_id,
                     m.EmployeeDirectoryEvent.link_id.in_([l.id for l in links]))
@@ -158,16 +228,17 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             locations = {loc.id: loc for loc in db.scalars(select(m.Location))}
             actors = {a.id: shared_session.account_display_name(a) for a in db.scalars(select(m.RFOneAccount).where(
                 m.RFOneAccount.id.in_({e.account_id for e in events if e.account_id is not None})))}
+            contexts, context_options = _context_view(db, employee_id, _context_permissions(db, account))
             return render_template(
-                "employee_directory_detail.html", employee=employee, links=links, locations=locations,
+                "employee_directory_detail.html", contexts=contexts, context_options=context_options, employee=employee, links=links, locations=locations,
                 conflicts=directory.source_conflicts(links), reviewed=directory.is_reviewed(db, employee_id, links),
                 fingerprint=directory.review_fingerprint(links), assignments=assignments, terms=terms, events=events,
-                actors=actors, has_missing=any(l.state == "MISSING_REVIEW" for l in links),
-                other_employees=list(db.scalars(directory.canonical_employees().where(
-                    m.Employee.id != employee_id).order_by(m.Employee.display_name))),
+                actors=actors, absence_link_ids=directory.source_absence_link_ids(links),
+                has_missing=bool(directory.source_absence_link_ids(links)),
+                other_employees=[option for option in directory.employee_options(db, include_inactive=True)
+                                 if option.id != employee_id],
                 can_manage=shared_session.account_is_domain_admin(db, account, "EMPLOYEES"),
-                can_org=shared_session.account_may_use_domain_item(db, account, "ORGANIZATION", "chart"),
-                can_compensation=shared_session.account_may_enter_domain(db, account, "COMPENSATION"),
+                can_org=can_org, can_compensation=can_compensation,
             )
 
     @app.route("/administration/employees/links/<int:link_id>/confirm", methods=["POST"])

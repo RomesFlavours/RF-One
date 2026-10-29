@@ -114,7 +114,7 @@
           <select id="source-cardholder" name="cardholder">
             <option value="">Not recorded</option>
             {% for candidate in cardholder_candidates %}
-              <option value="{{ 'identity' if candidate.kind == 'ACTING_IDENTITY' else 'employee' }}:{{ candidate.id }}">{{ candidate.name }} ({{ candidate.source }})</option>
+              <option value="{{ 'identity' if candidate.kind == 'ACTING_IDENTITY' else 'employee' }}:{{ candidate.id }}">{{ candidate.name }} ({{ candidate.source }}){% if candidate.location_names %} · {{ candidate.location_names|join(", ") }}{% endif %}</option>
             {% endfor %}
             <option value="other">Other person&hellip;</option>
           </select>

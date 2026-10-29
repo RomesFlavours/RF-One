@@ -72,8 +72,8 @@ def import_document(session, *, payload, restaurant_id, location_id, file_name):
                 raise ValueError('Existing observation integrity failure')
         return {'run_id':doc.ingestion_run_id,'created':False,'rows':len(stored)}
     employees = defaultdict(list)
-    from ..employee_directory import canonical_employees
-    for employee in session.scalars(canonical_employees().where(m.Employee.location_id.in_(location_ids))):
+    from ..employee_directory import employees_for_locations
+    for employee in session.scalars(employees_for_locations(location_ids)):
         employees[_name(employee.display_name)].append(employee)
     now = datetime.now(timezone.utc)
     run = m.IngestionRun(source_system_id=source.id, location_id=location_id, started_at=now,

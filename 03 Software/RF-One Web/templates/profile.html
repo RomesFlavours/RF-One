@@ -6,6 +6,7 @@
 <h1>Profile</h1>
 
 <div class="card">
+  {% if reference_person %}<p><strong>Persona RF1:</strong> {{ reference_person.display_name }}</p>{% endif %}
   <p><strong>Username:</strong> {{ account.username }}</p>
   <p><strong>Display name:</strong> {{ account.display_name }}</p>
   {% if account.email and account.email_verified_at %}

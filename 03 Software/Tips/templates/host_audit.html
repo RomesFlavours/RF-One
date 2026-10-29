@@ -27,7 +27,7 @@
         <select id="employee_id" name="employee_id" required {{ 'disabled' if not employees else '' }}>
           <option value="">Select...</option>
           {% for e in employees %}
-          <option value="{{ e.id }}" {{ 'selected' if e.id == employee_id else '' }}>{{ e.display_name|short_name(empty='Employee #' ~ e.id) }}</option>
+          <option value="{{ e.id }}" {{ 'selected' if e.id == employee_id else '' }}>{{ e.display_name|short_name(empty='Employee #' ~ e.id) }}{% if e.location_names %} · {{ e.location_names|join(', ') }}{% endif %}{% if not e.is_active %} · Inactive{% endif %}</option>
           {% endfor %}
         </select>
       </div>

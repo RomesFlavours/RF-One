@@ -94,3 +94,13 @@ See `07 Tasks/Reports/` and each linked canonical doc for full detail; this tabl
 - Future Domain work on the Shared Domain candidates identified in `09 Strategy/04_Business_Capability_Coverage.md` (e.g. Equipment, Marketing, Reputation) once sufficient cross-Domain evidence justifies creating them — none is scheduled or approved to create now.
 
 This is a factual snapshot; it is not itself canonical architecture. See `00 Core/Core Evolution.md` for the authoritative Core version history.
+
+## 2026-10-29 — RF-One-owned included person directory (local)
+
+Revised canonical consumers/selectors and completed explicit Bank, account,
+Training, Selection and Projects identity bridges. Unknown POS records stay
+pending; native people need no POS/location; same-merchant duplicate accounts
+can explicitly refer to one person. Source absence never decides directory or
+employment state. Current anomalies clear while historical references remain.
+Migration d9e220261029 is tested locally, not applied to AWS. Cloud still runs
+the preceding release. See PERSON_FOUNDATION_003_REPORT.md for verified scope.

@@ -23,6 +23,7 @@ from functools import wraps
 
 from flask import abort, flash, redirect, render_template, request, url_for
 
+from auth import current_account_id
 from rfone_data_store.projects import service
 from rfone_data_store.projects.gantt import timeline_for
 
@@ -48,7 +49,8 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
     # ------------------------------------------------------------ projects
 
     def _render_list(db, *, dialog: dict | None = None, status: int = 200):
-        return render_template("projects_list.html", projects=service.list_projects(db), dialog=dialog), status
+        from rfone_data_store.employee_directory import employee_options
+        return render_template("projects_list.html", projects=service.list_projects(db), person_options=employee_options(db), dialog=dialog), status
 
     @app.route("/projects")
     @gate
@@ -100,7 +102,7 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
         require_csrf()
         with SessionFactory() as db:
             try:
-                service.delete_project(db, project_id)
+                service.delete_project(db, project_id, account_id=current_account_id())
             except service.ProjectValidationError as error:
                 db.rollback()
                 flash(str(error), "error")
@@ -130,7 +132,11 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
         require_csrf()
         with SessionFactory() as db:
             try:
-                service.create_responsible(db, project_id, name=request.form.get("name", ""))
+                person_id = request.form.get("employee_id", type=int)
+                if request.form.get("employee_id") and person_id is None:
+                    raise service.ProjectValidationError("Invalid person selection.")
+                service.create_responsible(db, project_id, name=request.form.get("name", ""),
+                    employee_id=person_id, account_id=current_account_id())
             except service.ProjectValidationError as error:
                 return _responsibles_refused(db, project_id, error)
             db.commit()
@@ -158,7 +164,7 @@ def register_projects_routes(app, *, require_domain_access, SessionFactory, requ
         require_csrf()
         with SessionFactory() as db:
             try:
-                service.delete_responsible(db, project_id, responsible_id)
+                service.delete_responsible(db, project_id, responsible_id, account_id=current_account_id())
             except service.ProjectValidationError as error:
                 return _responsibles_refused(db, project_id, error)
             db.commit()

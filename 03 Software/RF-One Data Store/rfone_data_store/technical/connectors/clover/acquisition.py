@@ -479,6 +479,8 @@ def _get_or_create(session: Session, model: type, unique_filter: dict[str, Any],
         for key, value in values.items():
             setattr(existing, key, value)
         return existing, False
+    if model is m.Employee:
+        raise ValueError("Confirm the external identity in the RF-One directory before attributing work.")
     obj = model(**unique_filter, **values)
     session.add(obj)
     return obj, True
@@ -528,6 +530,12 @@ def _read_monthly_collection(client, path, *, period_start, period_end, extra_pa
     return list(records.values())
 
 
+class EmployeeIdentityConfirmationRequired(CloverAcquisitionError):
+    def __init__(self, observation):
+        super().__init__("Historical employee requires confirmation in the RF-One directory. No work was changed.")
+        self.observation = observation
+
+
 def _resolve_historical_employee(client, session, reference, *, location_id,
                                  source_system_id, employee_by_source_id, ingestion_run_id, retrieved_at):
     """Preserve the deployed historical-reader behavior through shared identity."""
@@ -546,6 +554,9 @@ def _resolve_historical_employee(client, session, reference, *, location_id,
         raise CloverSourceUnavailableError("Historical employee", status_code=result.status_code, detail=result.error)
     employee = observe_historical_employee(session, location_id=location_id, merchant_id=client.merchant_id,
         raw=raw, available=result.ok, observed_at=retrieved_at, run_id=ingestion_run_id)
+    if employee is None:
+        raise EmployeeIdentityConfirmationRequired(dict(location_id=location_id, merchant_id=client.merchant_id,
+            raw=safe_snapshot(raw), available=result.ok, observed_at=retrieved_at, run_id=ingestion_run_id))
     employee_by_source_id[source_id] = employee.id
     _mirror_source_record(session, ingestion_run_id=ingestion_run_id, source_system_id=source_system_id,
         entity_type="employee" if result.ok else "employee_reference", source_id=source_id,
@@ -1190,7 +1201,8 @@ def import_clover_period(
         )
         summary.employees_resolved = len(employee_by_source_id)
         pending_count = session.scalar(select(func.count()).select_from(m.EmployeeCloverLink).where(
-            m.EmployeeCloverLink.merchant_id == merchant_id, m.EmployeeCloverLink.employee_id.is_(None)))
+            m.EmployeeCloverLink.merchant_id == merchant_id, m.EmployeeCloverLink.employee_id.is_(None),
+            m.EmployeeCloverLink.state != "MISSING_REVIEW"))
         if pending_count:
             summary.errors.append(
                 f"{pending_count} Clover employee identities require confirmation in Employee Directory; "
@@ -1379,6 +1391,9 @@ def import_clover_period(
             summary.refunds_found += 1
     except Exception as exc:  # noqa: BLE001 — a failed run must release the guard, never stay RUNNING forever
         session.rollback()
+        if isinstance(exc, EmployeeIdentityConfirmationRequired):
+            from ....employee_directory import observe_historical_employee
+            observe_historical_employee(session, **exc.observation)
         ingestion_run.status = "FAILED"
         ingestion_run.finished_at = utc_now()
         ingestion_run.lock_key = None

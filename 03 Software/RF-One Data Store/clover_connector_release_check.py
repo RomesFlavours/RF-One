@@ -18,7 +18,7 @@ if '--database-readonly' in sys.argv:
     from sqlalchemy import create_engine,text
     engine=create_engine(os.environ['RFONE_DATABASE_URL'],connect_args={'sslmode':'require','options':'-c default_transaction_read_only=on'})
     with engine.connect() as c:
-        assert c.scalar(text('select version_num from alembic_version'))=='c8e1f4a7b2d6','Employee Directory schema is not ready'
+        assert c.scalar(text('select version_num from alembic_version'))=='d9e220261029','Employee Directory schema is not ready'
         out['directory_links']=c.scalar(text('select count(*) from employee_clover_links'))
         out['employees']=dict(c.execute(text('''select count(*) as total,count(*) filter(where source_available) as available,count(*) filter(where source_available=false) as unavailable,count(*) filter(where source_available=false and display_name is not null) as historical_named from employees where source_system_id=1''')).mappings().one())
         out['orphan_shifts']=c.scalar(text('select count(*) from shifts s left join employees e on e.id=s.employee_id where e.id is null'))

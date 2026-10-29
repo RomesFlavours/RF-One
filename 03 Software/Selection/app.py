@@ -1134,8 +1134,11 @@ def application_detail(application_id: int):
         active_flags = flag_svc.list_active_flags_for_application(session, application_id)
         current_queue = queue_svc.get_current_queue(session, application_id)
 
+        from rfone_data_store.employee_directory import context_person_id
+        reference_person_id = context_person_id(session, "CANDIDATE", application.person_id)
+        reference_person = session.get(m.Employee, reference_person_id) if reference_person_id is not None else None
         return render_template(
-            "application_detail.html",
+            "application_detail.html", reference_person=reference_person,
             application=application, observations=observations, prior_applications=prior_applications,
             phone_interview_plan=phone_interview_plan, in_person_interview_plan=in_person_interview_plan,
             primary_screening_run=primary_screening_run, has_fit_assessment=has_fit_assessment,

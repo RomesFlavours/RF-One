@@ -301,3 +301,15 @@ The table names are singular, as approved for this module. This differs from the
 - No manual reordering: rows follow the order in which they were created.
 - One Responsible per Task, optional, as a plain name: no link to accounts or Employees, no notifications.
 - No history of changes.
+
+## Approved identity integration — 2026-10-29
+
+This section supersedes the earlier names-only restriction. A Responsible may
+remain an external local name or explicitly reference the included RF-One person
+directory through EmployeeContextLink. Choosing a person creates that reference;
+it grants no account access or authority. Existing free names are not matched or
+linked automatically. Local labels/history remain preserved, but a linked
+Responsible displays the reference name. Reference name changes belong to the
+directory. Distinct people with equal names remain distinct and are selected by
+Responsible ID; an ambiguous name alone is refused. Deleting an unused local
+Responsible removes its context link with an audit event, never the person.

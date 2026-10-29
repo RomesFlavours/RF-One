@@ -995,8 +995,11 @@ def profile():
             log_out()
             return redirect(url_for("login"))
         pending = recovery_service.get_pending_code(db, account.id, recovery_service.PURPOSE_EMAIL_VERIFICATION)
+        from rfone_data_store.employee_directory import context_person_id
+        person_id = context_person_id(db, "RFONE_ACCOUNT", account.id)
+        reference_person = db.get(m.Employee, person_id) if person_id is not None else None
         return render_template(
-            "profile.html", account=account,
+            "profile.html", account=account, reference_person=reference_person,
             pending_email=pending.target_email if pending is not None else None,
         )
 

@@ -1141,7 +1141,7 @@ class Employee(Base):
     __table_args__ = (UniqueConstraint("location_id", "source_system_id", "source_employee_id", name="uq_employees_location_source_employee"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), nullable=True)
 
     source_system_id: Mapped[int | None] = mapped_column(
         ForeignKey("source_systems.id"), nullable=True
@@ -1149,6 +1149,8 @@ class Employee(Base):
     source_employee_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Compatibility observations from the already-deployed historical reader.
     # Per-site directory links are now authoritative for availability/review.
     source_available: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
@@ -1165,6 +1167,27 @@ class Employee(Base):
     source_modified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class EmployeeContextLink(Base):
+    """Explicit person association; no account authority or domain fact ownership."""
+    __tablename__ = "employee_context_links"
+    __table_args__ = (CheckConstraint(
+        "(CASE WHEN rfone_account_id IS NULL THEN 0 ELSE 1 END + "
+        "CASE WHEN acting_identity_id IS NULL THEN 0 ELSE 1 END + "
+        "CASE WHEN training_account_id IS NULL THEN 0 ELSE 1 END + "
+        "CASE WHEN candidate_person_id IS NULL THEN 0 ELSE 1 END + "
+        "CASE WHEN project_responsible_id IS NULL THEN 0 ELSE 1 END) = 1",
+        name="ck_employee_context_one_target"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+    rfone_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), unique=True)
+    acting_identity_id: Mapped[int | None] = mapped_column(ForeignKey("acting_identities.id"), unique=True)
+    training_account_id: Mapped[int | None] = mapped_column(ForeignKey("training_accounts.id"), unique=True)
+    candidate_person_id: Mapped[int | None] = mapped_column(ForeignKey("candidate_persons.id"), unique=True)
+    project_responsible_id: Mapped[int | None] = mapped_column(ForeignKey("project_responsible.id"), unique=True)
+    created_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class EmployeeCloverLink(Base):
@@ -14789,9 +14812,11 @@ class ProjectTask(Base):
 
 
 class ProjectResponsible(Base):
-    """A name in one Project's list of people responsible for its Tasks.
-    Only a name: independent of access accounts and Employees. `name_key`
-    (trimmed, case-folded) keeps a name unique within its Project."""
+    """A project-local responsible, optionally linked to the RF-One person.
+    Local name/history is retained; confirmed identity lives in EmployeeContextLink.
+    Native selections use an identity key; free names use a normalized name key.
+    No access or organizational authority is implied.
+    """
 
     __tablename__ = "project_responsible"
     __table_args__ = (
