@@ -57,3 +57,6 @@ Employee remains the compatibility person ID; employment is not directory state.
 Migration d9e220261029 and a coordinated consuming-app release are required.
 This entry records local implementation, not a completed AWS deployment.
 See 07 Tasks/Reports/PERSON_FOUNDATION_003_REPORT.md from the repository root.
+
+The person foundation was subsequently published on AWS on 2026-10-29. Exact
+release and backup references: 07 Tasks/Reports/PERSON_FOUNDATION_003_AWS_REPORT.md.

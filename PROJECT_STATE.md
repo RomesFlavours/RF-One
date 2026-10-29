@@ -104,3 +104,12 @@ can explicitly refer to one person. Source absence never decides directory or
 employment state. Current anomalies clear while historical references remain.
 Migration d9e220261029 is tested locally, not applied to AWS. Cloud still runs
 the preceding release. See PERSON_FOUNDATION_003_REPORT.md for verified scope.
+
+## 2026-10-29 — Person foundation published on AWS
+
+Source a195e4c released to Web/Tips/Selection, migration d9e220261029, ECS workers
+revision 6. Full-data rehearsal: 295 tables, 885,586 rows, 649 FKs; copy removed.
+Operational employee values/counts preserved. Corrected an archive CRLF integrity
+mismatch before worker activation. Final read-only canary and startup guard pass;
+two new correction cycles COMPLETE. 64 people, no pending identities/orphan shifts.
+See PERSON_FOUNDATION_003_AWS_REPORT.md and PERSON_FOUNDATION_003_RELEASE.json.

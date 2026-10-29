@@ -1,0 +1,197 @@
+{
+  "source_commit": "a195e4c385d2718b8bbcd8b4d9671595aa3fe8e4",
+  "published_date": "2026-10-29",
+  "url": "https://rfone.romesflavours.com/administration/employees",
+  "snapshot": "rfone-dev-pre-person-20261029t134240z",
+  "snapshot_status": "available",
+  "rehearsal": {
+    "schema": "person_rehearsal_20261029t134240z",
+    "tables": 295,
+    "foreign_keys": 649,
+    "rows": 885586,
+    "migration": "d9e220261029",
+    "native_creation": true,
+    "context_link": true,
+    "public_sequence_unchanged": true,
+    "cleanup": true
+  },
+  "migration": {
+    "before": "c8e1f4a7b2d6",
+    "after": "d9e220261029",
+    "preserved_counts": {
+      "employees": 64,
+      "shifts": 3424,
+      "employee_assignments": 15,
+      "employee_compensation_terms": 0,
+      "orders": 13150,
+      "payments": 14132,
+      "financial_transactions": 3234,
+      "tip_entitlements": 40,
+      "tip_payment_instructions": 0,
+      "rfone_accounts": 6,
+      "training_accounts": 2,
+      "candidate_persons": 2,
+      "project": 2,
+      "project_task": 30,
+      "project_responsible": 0
+    },
+    "employee_values_preserved": true,
+    "context_links": 0
+  },
+  "builds": {
+    "rfone-selection": "rfone-selection-build:0351da2a-93ff-42ff-8786-72d91badd2a6",
+    "rfone-web": "rfone-web-build:74895b7b-ff04-49e3-9341-72b3c5d02db1",
+    "rfone-tips": "rfone-tips-build:f40db5ab-502f-4371-9ad5-cb93373e7674"
+  },
+  "services": {
+    "rfone-selection": {
+      "arn": "arn:aws:apprunner:us-east-1:418674484214:service/rfone-selection/f3c0d46758b44c38b3200947ca8c3a15",
+      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-selection:person-20261029t134240z-lf",
+      "digest": "sha256:7ac9a2a6c94618d3787d62e12f86002a3a3826b43a741c8549023469424991b5",
+      "operation": "29efd3e076dc4ee5a802fd7fc8f114e7",
+      "status": "RUNNING",
+      "operation_status": "SUCCEEDED",
+      "previous_digest": "sha256:613b211ea274ef70b1ba3655abc666a766567ae820475a601e506cf684c5c2f5",
+      "rollback_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-selection:pre-person-20261029t134240z"
+    },
+    "rfone-web": {
+      "arn": "arn:aws:apprunner:us-east-1:418674484214:service/rfone-web/07524815436944e3a05c600c5486f951",
+      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:person-20261029t134240z-lf",
+      "digest": "sha256:17bb1a949d524da813170ffee15f5619532eb099f8087eb9d5a9de17ed36c9ed",
+      "operation": "af54a588dc1b4c26ac91be45af8b3238",
+      "status": "RUNNING",
+      "operation_status": "SUCCEEDED",
+      "previous_digest": "sha256:9e8a484f170db49252a57d4c3a623cb1b651c6fc7d133ff14930b497f33f52df",
+      "rollback_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:pre-person-20261029t134240z"
+    },
+    "rfone-tips": {
+      "arn": "arn:aws:apprunner:us-east-1:418674484214:service/rfone-tips/f12550d3be8047d0a72e17a91e218d27",
+      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips:person-20261029t134240z-lf",
+      "digest": "sha256:1d13878c8772e53ea617ab54c727071573c6e70ff40b03262e6750f73a5a2a5a",
+      "operation": "8d36951952cb4212985a2ee6ef6bd0fe",
+      "status": "RUNNING",
+      "operation_status": "SUCCEEDED",
+      "previous_digest": "sha256:ac6952338aedf8587948162937d7d669eef4a8132405bb544dc639cc976800f1",
+      "rollback_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips:pre-person-20261029t134240z"
+    }
+  },
+  "source_packages": {
+    "rfone-web-build": {
+      "bucket": "rfone-tips-deploy-418674484214",
+      "key": "rfone-web-source.zip",
+      "backup_key": "backups/rfone-web-pre-person-20261029t134240z.zip",
+      "sha256": "5304b46d64e1c4725d94dd00489fae3ed9d7c143507923252de2f71a45885a34",
+      "new_sha256": "3a6c87c243e0fc40396be962dd1774ef5753c1e24c1fc307d43a195452b32830"
+    },
+    "rfone-tips-build": {
+      "bucket": "rfone-tips-deploy-418674484214",
+      "key": "source.zip",
+      "backup_key": "backups/rfone-tips-pre-person-20261029t134240z.zip",
+      "sha256": "8e2df81799b49ff0f5741468d6059deac4f01af8b6e164a886a5dc2dc7bc6e2c",
+      "new_sha256": "5ae8c2aa939af3e35ea13cff67cd5b34e1c809f9488bea1b9efba6a24be52ce2"
+    },
+    "rfone-selection-build": {
+      "bucket": "rfone-tips-deploy-418674484214",
+      "key": "rfone-selection-source.zip",
+      "backup_key": "backups/rfone-selection-pre-person-20261029t134240z.zip",
+      "sha256": "de94ac3b2fb5265e4173e3ee0eb6284f52e4497bc27f5cdd71f28469d3a4226e",
+      "new_sha256": "ff7ed625ac62091e77381e37cd8d59af35eacb7beb696d4b4d36720cfdef9927"
+    }
+  },
+  "worker_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips@sha256:1d13878c8772e53ea617ab54c727071573c6e70ff40b03262e6750f73a5a2a5a",
+  "task_definitions": {
+    "rfone-clover-correction-sync": "arn:aws:ecs:us-east-1:418674484214:task-definition/rfone-clover-correction-sync:6",
+    "rfone-clover-acquisition-job": "arn:aws:ecs:us-east-1:418674484214:task-definition/rfone-clover-acquisition-job:6"
+  },
+  "previous_task_definitions": {
+    "rfone-clover-correction-sync": "arn:aws:ecs:us-east-1:418674484214:task-definition/rfone-clover-correction-sync:4",
+    "rfone-clover-acquisition-job": "arn:aws:ecs:us-east-1:418674484214:task-definition/rfone-clover-acquisition-job:4"
+  },
+  "manual_guard_added": true,
+  "worker_canary": "arn:aws:ecs:us-east-1:418674484214:task/rfone-jobs/8ebe6dbbf21043d09820eac648e8f0ef",
+  "worker_canary_verified": true,
+  "packaging_correction": {
+    "cause": "Git archive emitted CRLF while integrity manifest requires LF",
+    "failed_canary": "arn:aws:ecs:us-east-1:418674484214:task/rfone-jobs/a16871a70fcb4b90998635b4881c3f9a",
+    "first_builds": {
+      "rfone-selection": "rfone-selection-build:7ec6a349-00a0-4229-a9ab-655341e11bf2",
+      "rfone-web": "rfone-web-build:fbdde0f6-5df7-4b9d-9772-7fc2099571de",
+      "rfone-tips": "rfone-tips-build:280f4041-f496-47e9-9558-2a005594327f"
+    },
+    "first_worker_definitions": {
+      "rfone-clover-correction-sync": "arn:aws:ecs:us-east-1:418674484214:task-definition/rfone-clover-correction-sync:5",
+      "rfone-clover-acquisition-job": "arn:aws:ecs:us-east-1:418674484214:task-definition/rfone-clover-acquisition-job:5"
+    }
+  },
+  "rejected_task_definitions_inactive": true,
+  "verification": {
+    "poller_running": 1,
+    "tasks": [
+      {
+        "arn": "arn:aws:ecs:us-east-1:418674484214:task/rfone-jobs/0e8abea6fb7b4898bd0d35f4b3857d2f",
+        "status": "RUNNING",
+        "definition": "arn:aws:ecs:us-east-1:418674484214:task-definition/rfone-clover-correction-sync:6",
+        "image_digest": "sha256:1d13878c8772e53ea617ab54c727071573c6e70ff40b03262e6750f73a5a2a5a",
+        "guard": {
+          "release": "rfone-person-foundation-20261029",
+          "tests_passed": 10,
+          "artifact_verified": true,
+          "database_writes": false,
+          "directory_links": 64,
+          "employees": {
+            "total": 64,
+            "available": 27,
+            "unavailable": 37,
+            "historical_named": 35
+          },
+          "orphan_shifts": 0
+        }
+      }
+    ],
+    "cycles": [
+      {
+        "id": 173388,
+        "status": "COMPLETE",
+        "started_at": "2026-10-29 14:15:38.264131+00:00",
+        "finished_at": "2026-10-29 14:15:40.163897+00:00",
+        "has_error": false
+      },
+      {
+        "id": 173384,
+        "status": "COMPLETE",
+        "started_at": "2026-10-29 14:14:37.075980+00:00",
+        "finished_at": "2026-10-29 14:14:38.252142+00:00",
+        "has_error": false
+      }
+    ],
+    "database": {
+      "revision": "d9e220261029",
+      "employees": 64,
+      "context_links": 0,
+      "pending": 0,
+      "orphan_shifts": 0,
+      "rehearsal_schema_absent": true
+    }
+  },
+  "invalidation": {
+    "distribution": "E3MIBLH55LEYD8",
+    "id": "I8SGZHH9ND1EGDA3RDL6K09OJZ"
+  },
+  "http_checks": {
+    "login": 200,
+    "protected_routes": [
+      "/administration/employees",
+      "/projects",
+      "/compensation",
+      "/bank",
+      "/training",
+      "/selection/",
+      "/tips/"
+    ],
+    "protected_status": 302,
+    "projects_js_current": true,
+    "authenticated_production_impersonation": false
+  },
+  "pos_writes_enabled": false,
+  "production_test_people_created": false
+}

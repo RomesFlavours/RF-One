@@ -1,7 +1,8 @@
 # REPORT — Included RF-One person foundation and domain integration
 
 Date: 2026-10-29 (America/New_York).
-Status: implemented and verified locally. No AWS deployment or production writes.
+Status: implementation verified locally; subsequently published on AWS on 2026-10-29.
+See PERSON_FOUNDATION_003_AWS_REPORT.md and PERSON_FOUNDATION_003_RELEASE.json.
 Supersedes the person/POS ownership and derived-active-state assumptions in
 EMPLOYEE_DIRECTORY_CONSUMERS_001_REPORT.md and EMPLOYEE_DIRECTORY_SELECTORS_002_REPORT.md.
 Baseline: 9764ef6; earlier step 1/2 working-tree changes are retained and refined.
@@ -98,7 +99,8 @@ terms. Downgrade refuses to discard native people, contacts or context links.
 Startup verification now requires the new schema and includes the migration hash.
 The normalized staged package passed artifact verification and isolated tests.
 
-AWS is unchanged. A future release must migrate the database and deploy every
+At completion of local implementation AWS was unchanged. The subsequent release
+is recorded in PERSON_FOUNDATION_003_AWS_REPORT.md. Deployment must migrate the database and deploy every
 consuming app/worker together, preserving the existing startup guard and worker
 configuration. No outbound POS writer was introduced. A future return flow still
 requires supported concrete operations, explicit approval and read-back checks.
@@ -152,5 +154,5 @@ remain part of the cumulative local change.
 Staged guard package: %TEMP%/rfone-person-foundation-release-096ajgmu.
 Test logs: %TEMP%/rfone-person-*.log. Startup manifest uses normalized LF bytes.
 Recovery baseline: commit 9764ef6 and the prior deployed release records in
-EMPLOYEE_DIRECTORY_UI_001_RELEASE.json. No production backup was needed because
-no production data or service was changed.
+EMPLOYEE_DIRECTORY_UI_001_RELEASE.json. During local implementation no production backup was needed because
+no production data or service was changed; the later AWS release has its own verified snapshot.

@@ -561,3 +561,17 @@ Rete invariata (connettore VPC + endpoint gateway S3 già esistenti). Senza la v
 messaggio esplicito: nessun salvataggio sul disco effimero di App Runner. Migrazione `c4e820261021` (additiva, 6 tabelle)
 dopo `c8e4b2a6f0d1`; `rfone-selection` esegue `alembic upgrade head` all'avvio e va quindi ricostruito dallo stesso commit.
 Dettagli: `10 System/Development Journal/README.md`; esito: `07 Tasks/Reports/DEV_JOURNAL_RELEASE_001.md`.
+
+## RF-One-owned person directory — AWS release 2026-10-29
+
+Web, Tips and Selection were published together from source commit a195e4c,
+with migration d9e220261029, verified backup and isolated full-data rehearsal.
+ECS acquisition/correction definitions are revision 6. The manual worker now
+uses a read-only startup guard followed by exec "$@", preserving launcher
+argument overrides. Runtime secrets/roles/network and domain permissions remain.
+No outbound POS writes. See 07 Tasks/Reports/PERSON_FOUNDATION_003_AWS_REPORT.md
+and its RELEASE.json for exact images, operations, backup and recovery boundaries.
+
+Package text must be LF: use git -c core.autocrlf=false archive and check every
+archived manifest member before build. A normalized checkout-only test is not
+proof that a Windows-generated release archive has the same bytes.

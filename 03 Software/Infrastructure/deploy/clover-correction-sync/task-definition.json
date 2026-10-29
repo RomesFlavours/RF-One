@@ -2,7 +2,7 @@
   "containerDefinitions": [
     {
       "name": "clover-correction-sync",
-      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips@sha256:90020f29cbb7685891772a5e0503f8139867d87cf928f70fd4fc411031b9401a",
+      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips@sha256:1d13878c8772e53ea617ab54c727071573c6e70ff40b03262e6750f73a5a2a5a",
       "cpu": 0,
       "portMappings": [],
       "essential": true,
