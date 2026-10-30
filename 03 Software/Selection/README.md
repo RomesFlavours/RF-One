@@ -1,7 +1,60 @@
 # Selection — Resume Screening (MVP)
 
+## Position management entry
+
+RF-One's Selection card opens `/selection/`, the staff-only **Open positions**
+page. It uses RF-One's shared header, official logo, breadcrumb, stylesheet
+and navigation pattern. Navigation: Open positions, Drafts, Closed,
+Configuration (last). Search matches title, role, location or manager.
+
+Create a position with **New position**, complete requirements, advertisement
+and interview questions, then **Approve and open**. Published positions
+become available to verified candidates arriving from RMAED.it. Closing a
+position stops new applications and keeps its history; an approved closed
+position can be reopened. Drafts stay out of the public position list.
+Company facts and AI settings are on Configuration. Existing Selection role
+and ownership rules apply to every view and action.
+
 **Task:** TASK_SELECTION_001, extended by TASK_SELECTION_002 (multi-résumé batch import)
 **Canonical documentation:** `01 Domains/Shared Domains/Selection/ResumeScreening/` (Selection Core) and `01 Domains/Business Domain/Restaurant/Selection/` (Restaurant Industry Extension).
+
+## Current interface — position workspace (SELECTION_AI_INTEGRATION_001, 2026-10-21)
+
+Selection's entry page (`/`, i.e. `/selection/` on RF-One) is now the interface approved from the Selection AI
+prototype (`03 Software/Selection Prototype/`): one page per open position with the five functions **Position,
+Applications, Evaluation, Interviews, Decisions** (`workspace/routes.py`, templates in `templates/workspace/`).
+
+- **Access:** RF-One's account system only — the shared RF-One session, the SELECTION Domain, and the Domain role
+  set in RF-One's account administration: administrator or role `OWNER` manages every position, `SUPERVISOR` sees
+  every position read-only, any other enabled account manages only the positions assigned to it. Checked on every
+  request, not only in the navigation. There is no Selection login, account or invitation of its own.
+- **Candidates** (`workspace/careers.py`, templates in `templates/careers/`): the public position page
+  (`/jobs/<token>`) requires an external candidate identity — Full Name, Email, Password, **Receive Code**, then the
+  emailed code (Confirm/Cancel on the same page) — or a sign-in with email and password. Identities live in
+  `selection_candidate_accounts`, separate from RF-One accounts (`rfone_data_store/selection/candidate_identity_service.py`:
+  10-minute 6-digit code stored only as an HMAC, 5 attempts, 60-second cooldown, hourly caps, Werkzeug password
+  hash, lock after 5 wrong passwords). Codes are emailed by authenticated SMTP through the company mailbox on Aruba
+  (`rfone_data_store/technical/smtp_email.py`: `smtps.aruba.it:465`, implicit TLS ≥ 1.2, one recipient per message,
+  20-second timeout, at most 200 messages per 20 minutes per process — Aruba recommends ≤ 250), configured by
+  `RFONE_SMTP_HOST`/`_PORT`/`_USERNAME`/`_PASSWORD` (sender `RFONE_EMAIL_FROM_ADDRESS`, default the SMTP user name);
+  Amazon SES is not used by Selection. Password: production from AWS Secrets Manager (`rfone-selection/smtp-password`),
+  locally from `%LOCALAPPDATA%\RF-One\Selection\smtp.json`, protected with Windows DPAPI — both written in one step by
+  `Configura Email Selection.cmd` (`configure_smtp.py setup`: hidden prompt, proven by one real test message first); `python configure_smtp.py test` sends one real message, only
+  to `rfone@romesflavours.com`. Without a working sender the page shows an explicit error and nobody can apply. The verified candidate uploads the
+  résumé and answers the English interview (`/my-application/<token>`, resumable after signing in again); the same
+  identity applies to any number of positions.
+- **Data:** the workspace tables (`selection_workspace_*`, `rfone_data_store/selection/workspace_models.py`, migration
+  `a7d520261021`, additive only) sit on top of the existing Selection entities (candidates, persons, applications,
+  requirement sets and snapshots, Fit Assessments), which they reference and never copy.
+- **AI:** Selection's existing AI client only, through `workspace/ai_adapter.py`. `RFONE_SELECTION_AI=1` lets AI draft
+  positions and messages; `RFONE_SELECTION_AI_CV=1` also lets it read résumés and answers. Both off by default.
+- **Historical pages:** every earlier route and service stays available (the candidate list moved from `/` to
+  `/candidates`) but none is in the navigation any more; their menu was replaced by a link back to the positions.
+- **Local run:** `Avvia Selection.cmd` (`local_server.py`) serves RF-One Web at `/` and Selection at `/selection` on
+  http://127.0.0.1:5096 in one process, with data in `%LOCALAPPDATA%\RF-One\Selection` (outside OneDrive and Git).
+- **Test:** `python test_selection_workspace_http.py` (synthetic data, throwaway database, no email or AI call).
+
+---
 
 A small local web app to screen résumés for Rome's Flavours' Server role: upload one or many PDFs at once, each résumé is parsed independently into a structured Candidate CV Profile, and the candidate detail page shows Facts, Derived Information, Flags/Questions and Indicators as four clearly separate areas — never one combined score.
 
@@ -58,3 +111,17 @@ Then open **http://127.0.0.1:5050**.
 - Uploaded résumés are real files (once real uploads happen) and are Git-ignored (`uploads/`, `.gitignore`), consistent with InvoiceIntake's handling of supplier documents.
 - Duplicate detection is a best-effort content/filename hash, not candidate identity resolution — it catches "the same résumé file uploaded twice," not "this candidate applied before under a different résumé."
 - The batch UI processes files sequentially, one HTTP request at a time (not in parallel), to stay safe with this deployment's SQLite database, which does not support concurrent writers.
+
+## Position configuration
+
+Open a position from **Open positions**, then select its **Configuration** tab. Each position stores its own context and independent preferences for AI position drafts, AI message drafts, résumé-based questions and AI evaluation. Editing one position does not update another. The assigned manager or an owner can save; supervisors remain read-only.
+
+Preferences are bounded by the installation's AI capabilities. Provider credentials and RMAED mail transport remain installation services. Existing position context and settings share the position's JSON document, so this change requires no shared database migration. The former global configuration bookmark redirects to the positions list; its global profile write is retired.
+
+## Active AI connection
+
+Selection uses AWS Bedrock with `us.anthropic.claude-haiku-4-5-20251001-v1:0`. Its App Runner instance role and private Bedrock Runtime endpoint already provide the required access. Only Selection's provider and feature-capability environment variables are enabled; individual position preferences remain independent and unconfigured positions stay disabled.
+
+Local Selection reads its provider settings from `%LOCALAPPDATA%/RF-One/Selection/ai.json` and uses the existing `rfone-dev-login` AWS profile. The normal local launcher starts both RF-One and Selection at `http://127.0.0.1:5096/`. Candidate records are not copied from AWS.
+
+Each position's Configuration includes **Test selected AI features**. Each button makes a real provider call with synthetic content and saves its result, elapsed time and output. It never sends email or changes approved requirements or candidate records. The General, Menu Study and Cancellation message purposes are supported in addition to interview and outcome templates.
