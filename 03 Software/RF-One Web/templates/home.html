@@ -22,6 +22,13 @@
           <div class="domain-name">{{ domain.display_name }}</div>
           <div class="domain-description">{{ domain.description }}</div>
         </a>
+        {% if domain.code == 'SELECTION' %}
+          {#- SELECTION_OLD_ENTRY_001 — same service and access as Selection. #}
+          <a class="domain-card {{ 'domain-card-released' if released else 'domain-card-unreleased' }}" href="{{ selection_old_link }}">
+            <div class="domain-name">Selection Old</div>
+            <div class="domain-description">The previous Selection interface: candidates, requirement sets, screening, interviews and settings.</div>
+          </a>
+        {% endif %}
       {% else %}
         <div class="domain-card domain-card-unavailable domain-card-unreleased" aria-disabled="true">
           <div class="domain-name">{{ domain.display_name }}</div>

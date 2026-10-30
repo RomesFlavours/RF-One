@@ -43,6 +43,11 @@ from dataclasses import dataclass, field
 # Where Tips's own home page is served — a path on this host by default.
 TIPS_HOME_URL = (os.environ.get("RFONE_TIPS_URL") or "").strip() or "/tips/"
 
+# SELECTION_OLD_ENTRY_001 — the historical Selection interface, served by the
+# same `rfone-selection` service. Not a Domain of its own: Home shows it beside
+# SELECTION, to the same accounts, and Selection checks the same access.
+SELECTION_OLD_LINK = "/selection/candidates"
+
 
 @dataclass(frozen=True)
 class DomainItem:

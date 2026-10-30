@@ -88,6 +88,9 @@ def main() -> int:
     fake_s3 = FakeS3()
     selection_app.DOCUMENTS = document_store.S3DocumentStore(BUCKET, client=fake_s3)
     uploads_before = set(os.listdir(selection_app.UPLOAD_DIR))
+    # The workspace tables live outside Alembic (workspace/schema.py), as on AWS.
+    from workspace.schema import provision
+    provision(selection_app._engine)
     try:
         with isolated_ai_client():
             with selection_app.SessionFactory() as s:
@@ -133,13 +136,32 @@ def main() -> int:
             allowed_client = client_for("sel-allowed")
             home = allowed_client.get("/selection/")
             check("2. an account with the SELECTION Domain opens Selection", home.status_code == 200)
-            # SELECTION_AI_INTEGRATION_001: the historical candidate list moved to /candidates and
-            # its old menu was replaced by one link back to Selection's position workspace.
+            # SELECTION_OLD_ENTRY_001: the historical interface ("Selection Old") is entered at
+            # /candidates with its original menu; "/" stays the position workspace.
             html = allowed_client.get("/selection/candidates").get_data(as_text=True)
+            check("2. Selection (/) is the position workspace, without the old menu",
+                  'class="nav-tabs"' not in home.get_data(as_text=True)
+                  and 'href="/selection/requirements"' not in home.get_data(as_text=True))
 
             # --- 4. served under /selection/ -------------------------------------
             check("4. links carry the /selection prefix and lead back to RF-One",
-                  'href="/selection/"' in html and 'href="https://rfone.example.test/">RF-One</a>' in html)
+                  'href="/selection/candidates">Selection Old</a>' in html
+                  and 'href="https://rfone.example.test/">RF-One</a>' in html)
+
+            # --- 6. Selection Old: original menu, every entry reachable, same access ---
+            import re
+            menu = re.search(r'<div class="nav-tabs">(.*?)</div>', html, re.S)
+            links = re.findall(r'href="([^"]+)"', menu.group(1)) if menu else []
+            check("6. Selection Old shows its original menu (21 entries, Acting Identity hidden in login mode)",
+                  len(links) == 21 and all(l.startswith("/selection/") for l in links), str(links))
+            statuses = {l: allowed_client.get(l).status_code for l in links}
+            check("6. every Selection Old menu entry opens (200) for a SELECTION account",
+                  all(code == 200 for code in statuses.values()), str(statuses))
+            plain_client, anon_client = client_for("sel-plain"), client_for(None)
+            check("6. without the SELECTION Domain every Selection Old page is refused (403)",
+                  all(plain_client.get(l).status_code == 403 for l in links))
+            check("6. without a session every Selection Old page goes to RF-One's login",
+                  all(anon_client.get(l).status_code == 302 for l in links))
 
             # --- 5. documents in S3 only ---------------------------------------
             up = allowed_client.post("/selection/api/upload", data={

@@ -518,8 +518,10 @@ try:
               cand.post(f'/selection/posizioni/{pid}/configuration', data={'csrf_token': token(text(cand.get(job_url))), 'profile': 'not allowed'}).status_code in (302, 400))
 
         r = owner.get("/selection/candidates")
-        check("historical Selection pages still work, with a link back to the workspace",
-              r.status_code == 200 and 'href="/selection/"' in text(r))
+        # SELECTION_OLD_ENTRY_001: entered from Home as "Selection Old", with its original menu.
+        check("historical Selection pages still work, as Selection Old with their original menu",
+              r.status_code == 200 and 'class="nav-tabs"' in text(r)
+              and 'href="/selection/requirements"' in text(r) and 'Selection Old</a>' in text(r))
 
         # --- AI path with a FAKE transport (no network) -------------------------
         position_prompts = []
