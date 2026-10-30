@@ -1,0 +1,68 @@
+{
+  "label": "employees-20261028t160542z",
+  "commit": "60ff80485f4ec8a272ba4a06a2c4419022cc5757",
+  "snapshot": "rfone-dev-pre-employees-20261028t160542z",
+  "migration": {
+    "before": "d5a120261021",
+    "after": "c8e1f4a7b2d6",
+    "preserved_counts": {
+      "employees": 64,
+      "shifts": 3409,
+      "employee_assignments": 15,
+      "employee_compensation_terms": 0,
+      "orders": 13129,
+      "payments": 14105
+    },
+    "seeded_links": 64
+  },
+  "original_source_backups": {
+    "rfone-web": "backups/rfone-web-source-pre-employees-20261028t160542z.zip",
+    "rfone-tips": "backups/rfone-tips-source-pre-employees-20261028t160542z.zip"
+  },
+  "builds": {
+    "rfone-web": "rfone-web-build:1d63c521-c9c7-4577-a3e4-d4a26960f99d",
+    "rfone-tips": "rfone-tips-build:ab6aaace-3b41-41cc-b1e2-0c41bebc5d94"
+  },
+  "deployments": {
+    "rfone-web": "1710f10259f54113bb532d4c8c7bfb5d",
+    "rfone-tips": "33d3964b121d4e49ab29f89ce0c3a00c"
+  },
+  "task_definitions": {
+    "rfone-clover-acquisition-job": "arn:aws:ecs:us-east-1:418674484214:task-definition/rfone-clover-acquisition-job:4",
+    "rfone-clover-correction-sync": "arn:aws:ecs:us-east-1:418674484214:task-definition/rfone-clover-correction-sync:4"
+  },
+  "worker_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips@sha256:90020f29cbb7685891772a5e0503f8139867d87cf928f70fd4fc411031b9401a",
+  "previous_images": {
+    "rfone-web": "sha256:599c26fa771a86832aec3f8ee4c90b75c7cc72ddff4b8e2afc9e5163b2047a62",
+    "rfone-tips": "sha256:9e4fe5c3979f487dfab72cb80143d1aacb69352f7fb6fc84383700446b15dbb6"
+  },
+  "previous_task_definitions": {
+    "rfone-clover-acquisition-job": "arn:aws:ecs:us-east-1:418674484214:task-definition/rfone-clover-acquisition-job:2",
+    "rfone-clover-correction-sync": "arn:aws:ecs:us-east-1:418674484214:task-definition/rfone-clover-correction-sync:2"
+  },
+  "management_preserved": true,
+  "packaged_guard_passed": true,
+  "source_packages": {
+    "rfone-web": {
+      "key": "rfone-web-source.zip",
+      "sha256": "df4b3bca802ad7d7b9950c45a666c424a17f95ce49d88c3e01af9304ef766038"
+    },
+    "rfone-tips": {
+      "key": "source.zip",
+      "sha256": "8e2df81799b49ff0f5741468d6059deac4f01af8b6e164a886a5dc2dc7bc6e2c"
+    }
+  },
+  "observed_runtime": {
+    "directory_states": {
+      "PRESENT": 27,
+      "MISSING_REVIEW": 37
+    },
+    "pending_identities": 0,
+    "employees": 64,
+    "successful_cycles": [
+      168390,
+      168394
+    ],
+    "app_runner_operations": "SUCCEEDED"
+  }
+}

@@ -1,40 +1,70 @@
 {
-  "family": "rfone-clover-correction-sync",
-  "requiresCompatibilities": ["FARGATE"],
-  "networkMode": "awsvpc",
-  "cpu": "256",
-  "memory": "512",
-  "runtimePlatform": {"cpuArchitecture": "X86_64", "operatingSystemFamily": "LINUX"},
-  "executionRoleArn": "arn:aws:iam::418674484214:role/rfone-clover-acquisition-job-execution-role",
   "containerDefinitions": [
     {
       "name": "clover-correction-sync",
-      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips:latest",
+      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips@sha256:1d13878c8772e53ea617ab54c727071573c6e70ff40b03262e6750f73a5a2a5a",
+      "cpu": 0,
+      "portMappings": [],
       "essential": true,
-      "workingDirectory": "/app/RF-One Data Store",
+      "entryPoint": [
+        "/bin/sh",
+        "-c"
+      ],
       "command": [
-        "python", "-m", "rfone_data_store.technical.connectors.clover.correction_sync",
-        "--location-id", "1", "--interval-seconds", "60", "--skip-migrations"
+        "python clover_connector_release_check.py --database-readonly && exec python -m rfone_data_store.technical.connectors.clover.correction_sync --location-id 1 --interval-seconds 60 --skip-migrations"
+      ],
+      "environment": [
+        {
+          "name": "PYTHONPATH",
+          "value": "/app/RF-One Data Store:/app/Clover Data Explorer"
+        },
+        {
+          "name": "PYTHONUNBUFFERED",
+          "value": "1"
+        }
+      ],
+      "mountPoints": [],
+      "volumesFrom": [],
+      "secrets": [
+        {
+          "name": "RFONE_DATABASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/database-url-chNZo8"
+        },
+        {
+          "name": "CLOVER_API_TOKEN",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/clover-api-token-lTKFIX"
+        },
+        {
+          "name": "CLOVER_MERCHANT_ID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/clover-merchant-id-Gs8iBu"
+        }
       ],
       "stopTimeout": 120,
-      "environment": [
-        {"name": "PYTHONUNBUFFERED", "value": "1"},
-        {"name": "PYTHONPATH", "value": "/app/RF-One Data Store:/app/Clover Data Explorer"}
-      ],
-      "secrets": [
-        {"name": "RFONE_DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/database-url-chNZo8"},
-        {"name": "CLOVER_API_TOKEN", "valueFrom": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/clover-api-token-lTKFIX"},
-        {"name": "CLOVER_MERCHANT_ID", "valueFrom": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/clover-merchant-id-Gs8iBu"}
-      ],
+      "workingDirectory": "/app/RF-One Data Store",
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
           "awslogs-group": "/ecs/rfone-clover-correction-sync",
+          "awslogs-create-group": "true",
           "awslogs-region": "us-east-1",
-          "awslogs-stream-prefix": "poller",
-          "awslogs-create-group": "true"
+          "awslogs-stream-prefix": "poller"
         }
-      }
+      },
+      "systemControls": []
     }
-  ]
+  ],
+  "family": "rfone-clover-correction-sync",
+  "executionRoleArn": "arn:aws:iam::418674484214:role/rfone-clover-acquisition-job-execution-role",
+  "networkMode": "awsvpc",
+  "volumes": [],
+  "placementConstraints": [],
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512"
 }

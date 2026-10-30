@@ -62,6 +62,7 @@ class TaskInput:
     # As typed or picked in the dialog: an existing name of the Project, a new
     # one (added to its list), or empty for none.
     responsible_name: str = ""
+    responsible_id: int | None = None
 
 
 def _text(form: Mapping, name: str) -> str:
@@ -116,6 +117,7 @@ def task_input_from_form(form) -> TaskInput:
         actual_duration_days=_whole_number(form, "actual_duration_days", "Actual days", required=False),
         predecessor_ids=predecessor_ids,
         responsible_name=_text(form, "responsible_name"),
+        responsible_id=_optional_id(form, "responsible_id"),
     )
 
 
@@ -245,12 +247,13 @@ def rename_project(session: Session, project_id: int, *, name: str) -> m.Project
     return project
 
 
-def delete_project(session: Session, project_id: int) -> None:
+def delete_project(session: Session, project_id: int, *, account_id: int | None = None) -> None:
     project = get_project(session, project_id)
     if session.scalar(select(func.count(m.ProjectChapter.id)).where(m.ProjectChapter.project_id == project.id)):
         raise ProjectValidationError("The project still contains chapters: delete them first.")
     # Without chapters there are no tasks, so no name of its list is assigned.
-    session.execute(delete(m.ProjectResponsible).where(m.ProjectResponsible.project_id == project.id))
+    for responsible in list(session.scalars(select(m.ProjectResponsible).where(m.ProjectResponsible.project_id == project.id))):
+        delete_responsible(session, project.id, responsible.id, account_id=account_id)
     session.delete(project)
     session.flush()
 
@@ -278,7 +281,12 @@ def list_responsibles(session: Session, project_id: int) -> list[ResponsibleSumm
         .where(m.ProjectResponsible.project_id == project_id)
         .group_by(m.ProjectResponsible.id, m.ProjectResponsible.name)
     ).all()
-    return sorted((ResponsibleSummary(id=i, name=n, task_count=c) for i, n, c in rows),
+    from ..employee_directory import context_person_id
+    def reference_name(identity, fallback):
+        person_id = context_person_id(session, "PROJECT_RESPONSIBLE", identity)
+        person = session.get(m.Employee, person_id) if person_id is not None else None
+        return person.display_name if person and person.display_name else fallback
+    return sorted((ResponsibleSummary(id=i, name=reference_name(i, n), task_count=c) for i, n, c in rows),
                   key=lambda r: (r.name.casefold(), r.id))
 
 
@@ -303,20 +311,38 @@ def _responsible_in(session: Session, project_id: int, responsible_id: int) -> m
     return responsible
 
 
-def create_responsible(session: Session, project_id: int, *, name: str) -> m.ProjectResponsible:
+def create_responsible(session: Session, project_id: int, *, name: str, employee_id: int | None = None, account_id: int | None = None) -> m.ProjectResponsible:
     project = get_project(session, project_id)
+    if employee_id is not None:
+        from ..employee_directory import resolve_employee_id, link_context
+        person = session.get(m.Employee, resolve_employee_id(session, employee_id))
+        if person is None:
+            raise ProjectValidationError("RF-One person not found.")
+        name = person.display_name or name
+        for existing_link in session.scalars(select(m.EmployeeContextLink).where(
+            m.EmployeeContextLink.employee_id == person.id,
+            m.EmployeeContextLink.project_responsible_id.is_not(None))):
+            existing_responsible = session.get(m.ProjectResponsible, existing_link.project_responsible_id)
+            if existing_responsible.project_id == project_id:
+                return existing_responsible
     name = _clean_responsible_name(name)
-    existing = _responsible_with_key(session, project.id, responsible_key(name))
+    key = f"rf1:{person.id}" if employee_id is not None else responsible_key(name)
+    existing = _responsible_with_key(session, project.id, key)
     if existing is not None:
         raise ProjectValidationError(f"“{existing.name}” is already in this project's list.")
-    responsible = m.ProjectResponsible(project_id=project.id, name=name, name_key=responsible_key(name))
+    responsible = m.ProjectResponsible(project_id=project.id, name=name, name_key=key)
     session.add(responsible)
     session.flush()
+    if employee_id is not None:
+        link_context(session, employee_id=person.id, kind="PROJECT_RESPONSIBLE", target_id=responsible.id, account_id=account_id)
     return responsible
 
 
 def rename_responsible(session: Session, project_id: int, responsible_id: int, *, name: str) -> m.ProjectResponsible:
     responsible = _responsible_in(session, project_id, responsible_id)
+    from ..employee_directory import context_person_id
+    if context_person_id(session, "PROJECT_RESPONSIBLE", responsible.id) is not None:
+        raise ProjectValidationError("This person is linked to the RF-One directory. Edit the reference name there, or unlink explicitly.")
     name = _clean_responsible_name(name)
     existing = _responsible_with_key(session, project_id, responsible_key(name))
     if existing is not None and existing.id != responsible.id:
@@ -326,23 +352,34 @@ def rename_responsible(session: Session, project_id: int, responsible_id: int, *
     return responsible
 
 
-def delete_responsible(session: Session, project_id: int, responsible_id: int) -> None:
+def delete_responsible(session: Session, project_id: int, responsible_id: int, *, account_id: int | None = None) -> None:
     responsible = _responsible_in(session, project_id, responsible_id)
     assigned = session.scalar(select(func.count(m.ProjectTask.id)).where(m.ProjectTask.responsible_id == responsible.id))
     if assigned:
         tasks = "1 task" if assigned == 1 else f"{assigned} tasks"
         raise ProjectValidationError(
             f"“{responsible.name}” is the responsible of {tasks}: assign those tasks to someone else first.")
+    from ..employee_directory import unlink_context
+    link = session.scalar(select(m.EmployeeContextLink).where(m.EmployeeContextLink.project_responsible_id == responsible.id))
+    if link is not None:
+        unlink_context(session, employee_id=link.employee_id, link_id=link.id, account_id=account_id)
     session.delete(responsible)
     session.flush()
 
 
-def _resolve_responsible(session: Session, project_id: int, name: str) -> int | None:
+def _resolve_responsible(session: Session, project_id: int, name: str, responsible_id: int | None = None) -> int | None:
     """The Task dialog's Responsible: empty → none; a name of the Project's list
     (case and outer spaces ignored) → that entry; any other name → added to
     the list and used. Only the Task's own Project is ever searched."""
+    if responsible_id is not None:
+        return _responsible_in(session, project_id, responsible_id).id
     if not (name or "").strip():
         return None
+    matches = [row.id for row in list_responsibles(session, project_id) if responsible_key(row.name) == responsible_key(name)]
+    if len(matches) > 1:
+        raise ProjectValidationError("Several people have this name. Choose the responsible explicitly.")
+    if matches:
+        return matches[0]
     existing = _responsible_with_key(session, project_id, responsible_key(name))
     if existing is not None:
         return existing.id
@@ -501,7 +538,7 @@ def create_task(session: Session, project_id: int, data: TaskInput) -> m.Project
     _validate_numbers(data)
     chapter_id, parent_id = _resolve_chapter_and_parent(session, project_id, None, data)
     _validate_predecessors(session, project_id, None, data.predecessor_ids)
-    responsible_id = _resolve_responsible(session, project_id, data.responsible_name)
+    responsible_id = _resolve_responsible(session, project_id, data.responsible_name, data.responsible_id)
     task = m.ProjectTask(
         chapter_id=chapter_id, parent_task_id=parent_id, responsible_id=responsible_id,
         title=title, description=data.description,
@@ -521,7 +558,7 @@ def update_task(session: Session, project_id: int, task_id: int, data: TaskInput
     _validate_numbers(data)
     chapter_id, parent_id = _resolve_chapter_and_parent(session, project_id, task, data)
     _validate_predecessors(session, project_id, task.id, data.predecessor_ids)
-    task.responsible_id = _resolve_responsible(session, project_id, data.responsible_name)
+    task.responsible_id = _resolve_responsible(session, project_id, data.responsible_name, data.responsible_id)
     if chapter_id != task.chapter_id:
         # Children follow their parent: they are always in its Chapter.
         for child_id in _children_ids(session, task.id):

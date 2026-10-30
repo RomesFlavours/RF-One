@@ -170,6 +170,8 @@ Completion and actual days are entered manually; nothing is rescheduled automati
 
       {# One Responsible, optional: pick a name of this Project or type a new one,
          which the server adds to the Project's list when the task is saved. #}
+      <label>Existing responsible <select name="responsible_id" id="pm-task-responsible-id"><option value="">None / enter an external name below</option>
+      {% for r in plan.responsibles %}<option value="{{ r.id }}">{{ r.name }} · #{{ r.id }}</option>{% endfor %}</select></label>
       <label for="pm-task-responsible">Responsible</label>
       <input type="text" id="pm-task-responsible" name="responsible_name" maxlength="200" list="pm-responsible-options"
              autocomplete="off" placeholder="Search or type a new name…" data-pm-responsible-input>
@@ -234,5 +236,5 @@ Completion and actual days are entered manually; nothing is rescheduled automati
 
 {% if dialog %}<script type="application/json" id="pm-dialog-state">{{ dialog|tojson }}</script>{% endif %}
 <script defer src="{{ url_for('static', filename='js/rf-one-row-return.js') }}?v=1"></script>
-<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=4"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-projects.js') }}?v=5"></script>
 {% endblock %}

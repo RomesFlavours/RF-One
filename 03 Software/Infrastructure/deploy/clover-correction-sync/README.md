@@ -34,6 +34,14 @@ see [`../clover-acquisition-job/README.md`](../clover-acquisition-job/README.md)
 
 ## Behaviour that matters operationally
 
+- **Employee Directory (2026-10-28):** before transactional corrections, each cycle
+  reads the complete employee roster through the shared directory importer. It
+  updates per-merchant links and safe source observations without modifying RF-One
+  management data. Read failures or unresolved identity candidates are visible on
+  the cycle and Directory page; transactional cursors stay unchanged for retry.
+  This is the already-active automatic mechanism; enabling Live Sync is not a
+  prerequisite. A new `rfone-tips` build must also be picked up by this ECS service.
+
 - **Command:** `python -m rfone_data_store.technical.connectors.clover.correction_sync --location-id 1 --interval-seconds 60 --skip-migrations`. It never applies migrations: those stay a separate, snapshotted release step.
 - **Lock:** it shares the Location's one acquisition lock with Sync Now and Backfill. If Sync Now or a Backfill is running, the cycle is skipped. If a person presses Sync Now during the few seconds a cycle runs, they get the usual "already in progress" and press again (accepted with option A).
 - **Stop:** on SIGTERM (redeploy, scale-down) it finishes the cycle in flight and stops between cycles (`stopTimeout` 120 s). A cycle cut off anyway carries a heartbeat, so its lock is recovered after 5 minutes, not 30.
@@ -59,12 +67,25 @@ handler exists — runs until ECS kills it after `stopTimeout`; observed on
 
 ## Operate
 
+**Employee Directory release (2026-10-28):** the running task definition is
+`rfone-clover-correction-sync:4`, pinned to the image digest in the versioned
+task definition. The previous running `:2` was also digest-pinned: merely forcing
+a deployment did not load a new `rfone-tips:latest`. For subsequent releases,
+register the task definition with the intended new digest and update the ECS
+service to that revision; forcing a deployment alone keeps the same pinned image.
+
+The actual worker command also runs `clover_connector_release_check.py` before the
+poller. That script and its immutable `clover_connector_release.json` manifest
+are now versioned with the Data Store; package them together with their three
+test modules. It verifies artifact hashes, runs 10 isolated checks and reads the
+expected DB revision/row counts without writing. Do not omit or bypass it.
+
 ```powershell
 # pause / resume
 aws ecs update-service --cluster rfone-jobs --service rfone-clover-correction-sync --desired-count 0 --profile rfone-dev-login --region us-east-1
 aws ecs update-service --cluster rfone-jobs --service rfone-clover-correction-sync --desired-count 1 --profile rfone-dev-login --region us-east-1
-# pick up a new rfone-tips image after a release
-aws ecs update-service --cluster rfone-jobs --service rfone-clover-correction-sync --force-new-deployment --profile rfone-dev-login --region us-east-1
+# after registering the versioned task definition with the intended image digest
+aws ecs update-service --cluster rfone-jobs --service rfone-clover-correction-sync --task-definition <new-revision-arn> --force-new-deployment --profile rfone-dev-login --region us-east-1
 ```
 
 A new `rfone-tips:latest` is **not** picked up automatically: after a

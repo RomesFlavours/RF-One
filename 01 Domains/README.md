@@ -24,6 +24,7 @@ Do not confuse **`Shared Domains/`** (a family of Domains, reusable by any Busin
 ├── Shared Domains/                         (formerly Cross Domain/)
 │   ├── Administration/                     transversal Domain, with its Payroll and Invoice Intake modules
 │   ├── Continuous Productivity Development/ transversal Domain — gaps/opportunities, interventions, outcomes
+│   ├── Employee Directory/                 transversal Domain — shared employee identity and external links
 │   ├── Intercompany Funding & Settlement/   transversal Domain — financial relationships between Legal Entities
 │   ├── Operational Knowledge/               transversal Domain — retrievable operational information (formerly "Training")
 │   ├── Performance/                         transversal Domain — what people actually produce

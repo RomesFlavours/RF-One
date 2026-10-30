@@ -55,6 +55,7 @@
     "actual_duration_days": task.actual_duration_days,
     "predecessor_ids": task.predecessor_ids,
     "responsible_name": task.responsible_name,
+    "responsible_id": task.responsible_id,
     "has_children": task.children|length > 0,
   }|tojson|forceescape }}
 {%- endmacro %}

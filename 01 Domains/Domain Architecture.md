@@ -61,6 +61,12 @@ Restaurant is currently the first concrete application context for these Domains
 
 ## 4. Shared Domains / Business Domain taxonomy, and the current transversal Domains
 
+**Employee Directory (approved 2026-10-28)** is also a Shared Domain:
+[`Employee Directory/README.md`](Shared%20Domains/Employee%20Directory/README.md).
+It owns the reusable employee identity and external identity reconciliation,
+reusing `Employee.id`. Personnel Management/Workforce consumes that identity for
+participation and role assignments; Administration is its Home navigation placement.
+
 Every Domain under `01 Domains/` belongs to exactly one of two families, physically expressed as the two folders directly under `01 Domains/`:
 
 - **Shared Domains** (`01 Domains/Shared Domains/`, **formerly named `Cross Domain`** — renamed by a later reorganization; see below) — a Domain whose concepts, ontology and reasoning structure are genuinely industry-independent: it must remain usable by any business/industry, not just the one that happens to be RF-One's first application. A Shared Domain may consume industry-specific content supplied by a Business Domain (as data, configuration or evidence), but must never structurally depend on one specific Business Domain to function or to be defined.
@@ -246,3 +252,10 @@ No KPI algorithm, scoring formula, or derivation mechanism is designed by this d
 4. **Performance and KPI ownership.** Whether Performance is the (Shared Domain) capability that hosts KPI-discovery logic, or whether KPI discovery reads from Performance among other sources, is not decided here.
 5. **Naming.** "Personnel Management" and its modules (Workforce, Personnel Decisions, Compensation) are the fixed canonical names (TASK_DOMAINS_002). Selection, Operational Knowledge (formerly Training), Continuous Productivity Development and Performance are each a fixed canonical name too, each a sibling top-level Shared Domain rather than a Personnel Management module (TASK_DOMAINS_003 for Selection; the Cross Domain / Business Domain reorganization (Cross Domain since renamed Shared Domains) for Training and Performance; a later reorganization for Continuous Productivity Development and Operational Knowledge). No final names are fixed for the remaining candidates, Customer Feedback and Review.
 6. **Purchased vs. Restaurant/Purchasing.** The new Purchased Shared Domain (§4; `Shared Domains/Purchased/README.md`) and Restaurant's pre-existing, Business-Domain-specific `Purchasing` module (`Business Domain/Restaurant/Purchasing/README.md`) both normalize supplier invoices into purchase-line-level facts. **Partially closed** by "Align legacy Invoice Intake with Purchased": for the `03 Software/InvoiceIntake/` runtime path specifically, Purchased now owns the Purchase Fact (capture + normalize + publish) and Restaurant/Purchasing consumes it — see Purchased's own README, "Relationship to Restaurant's existing Purchasing module — Invoice Intake alignment (closed)." Whether Restaurant/Purchasing's *remaining* scope (Purchase Order, Configured Expectation, Physical Receiving, Reconciliation, Alert, Expected Supplier Credit) should eventually become Restaurant's own consumer/specialization of Purchased more broadly, analogous to Service Copilot's recognized relationship to Ambient Operational Context, remains open; Restaurant/Purchasing's own approved content is otherwise unmodified.
+
+## Included person identity — 2026-10-29
+
+The base RF-One person directory is included in every commercial Domain
+combination. RF-One governs identity; POS records require explicit reconciliation.
+Domain facts remain with their owning Domains; identity links grant no access.
+See the Employee Directory specification for ownership and approval boundaries.

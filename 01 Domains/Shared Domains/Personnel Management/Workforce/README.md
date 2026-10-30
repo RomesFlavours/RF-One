@@ -25,6 +25,11 @@ Workforce answers **"who"** — the structural question of current occupancy. It
 
 Potential future concepts include Person/Worker, Role, Position, Assignment, Responsibility, Availability, Schedule and Employment Relationship. These are not defined by this document.
 
+The sibling [Employee Directory](../../Employee%20Directory/README.md) now owns
+shared employee identity and external source links (approved 2026-10-28).
+Workforce consumes that identity; organizational assignments retain their existing
+models. It does not introduce a second Person/Worker registry.
+
 ---
 
 ## Relationship to Personnel Decisions, Selection, Continuous Productivity Development and Performance
@@ -48,3 +53,10 @@ Workforce consumes role and position context from whichever technical Domain the
 ## Deferred
 
 Detailed modeling of Workforce entities, relationships, business rules and data requirements is deferred to a future task.
+
+## Included person identity — 2026-10-29
+
+The base RF-One person directory is included in every commercial Domain
+combination. RF-One governs identity; POS records require explicit reconciliation.
+Domain facts remain with their owning Domains; identity links grant no access.
+See the Employee Directory specification for ownership and approval boundaries.

@@ -104,3 +104,11 @@ Recorded as open, not designed further here:
 - `10 System/README.md` — the System top-level area's own purpose and boundary
 - `03 Software/README.md` — where the corresponding implementation code lives
 - `07 Tasks/Reports/CORE_IDENTITY_AUTHORITY_SECURITY_ARCHITECTURE_REPORT.md` — historical task report for the original architecture
+
+## Included person-directory bridge — approved 2026-10-29
+
+Employee Directory owns explicit person/context links to existing login, human
+ActingIdentity and Training records. It reuses existing authenticated account↔
+Training↔human identity associations to resolve the same person. This adds no
+permission, AuthorityGrant, authentication mechanism or changes to access tables.
+The structural freeze on Identity & Access itself remains in force.

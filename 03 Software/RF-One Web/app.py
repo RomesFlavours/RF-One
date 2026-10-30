@@ -58,6 +58,7 @@ from clover_acquisition_routes import register_clover_acquisition_routes  # noqa
 from restaurant_wines_routes import register_restaurant_wines_routes  # noqa: E402
 from projects_routes import register_projects_routes  # noqa: E402
 from dev_journal_routes import register_dev_journal_routes  # noqa: E402
+from employee_directory_routes import register_employee_directory_routes  # noqa: E402
 import training_integration  # noqa: E402
 
 app = Flask(__name__)
@@ -336,7 +337,7 @@ def logout():
 #     Domain on Home counts as operational.
 #   * Bank is presented under Administration instead of as a Domain.
 _HOME_WORK_IN_PROGRESS_CODES: frozenset[str] = frozenset()  # Selection released (SELECTION_AWS_PUBLISH_001)
-_HOME_ADMINISTRATION_CODES = frozenset({"BANK", "CLOVER_ACQUISITION"})
+_HOME_ADMINISTRATION_CODES = frozenset({"BANK", "CLOVER_ACQUISITION", "EMPLOYEES"})
 # System-level services, shown in their own "Services" block, never as a Domain.
 _HOME_SERVICE_CODES = frozenset({"DEV_JOURNAL"})
 
@@ -369,6 +370,7 @@ def home():
             bank_available="BANK" in enabled_codes,
             clover_acquisition_available="CLOVER_ACQUISITION" in enabled_codes,
             dev_journal_available="DEV_JOURNAL" in enabled_codes,
+            employees_available="EMPLOYEES" in enabled_codes,
         )
 
 
@@ -554,6 +556,12 @@ register_clover_acquisition_routes(
 register_restaurant_wines_routes(
     app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
     load_current_account=load_current_account, require_csrf=require_csrf,
+)
+
+register_employee_directory_routes(
+    app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
+    load_current_account=load_current_account, require_csrf=require_csrf,
+    get_launcher=lambda: clover_job_launcher,
 )
 
 
@@ -987,8 +995,11 @@ def profile():
             log_out()
             return redirect(url_for("login"))
         pending = recovery_service.get_pending_code(db, account.id, recovery_service.PURPOSE_EMAIL_VERIFICATION)
+        from rfone_data_store.employee_directory import context_person_id
+        person_id = context_person_id(db, "RFONE_ACCOUNT", account.id)
+        reference_person = db.get(m.Employee, person_id) if person_id is not None else None
         return render_template(
-            "profile.html", account=account,
+            "profile.html", account=account, reference_person=reference_person,
             pending_email=pending.target_email if pending is not None else None,
         )
 
