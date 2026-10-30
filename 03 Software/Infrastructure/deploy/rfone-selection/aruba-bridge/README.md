@@ -40,10 +40,10 @@ required on Aruba. PHP sessions use the host's existing session storage.
 
 ## AWS release boundary
 
-The release starts from the downloaded production `rfone-selection-source.zip`,
-adds Selection's existing workspace/candidate implementation and only its
-required data-store modules, then adds `workspace/aruba_bridge.py` and
-`workspace/schema.py`. Unrelated local changes are excluded.
+Since 2026-10-30 (SELECTION_DEPLOY_GUARD_001) the release is built only by
+`../release_selection.py` from one pushed Git commit; the CodeBuild project's
+own buildspec refuses any source without the workspace or a working
+`/candidate/bridge/health`. The earlier hand-assembled staging ZIP is retired.
 
 `workspace.schema.provision(connection)` creates only new tables whose names
 start with `selection_workspace_` or `selection_candidate_`. Run it once in
@@ -51,10 +51,17 @@ a transaction after the database snapshot completes and before deploying the
 image. It does not change existing tables/rows or the shared Alembic revision:
 the current images of the other services remain restart-compatible.
 
-Only the `rfone-selection` App Runner service receives the new image and the
-`RFONE_SELECTION_ARUBA_KEY` runtime setting. There are no changes to IAM,
-CloudFront, DNS, VPC routing or other App Runner services. No SMTP credential
-is added to AWS; mail is sent by Aruba.
+The relay key is the Secrets Manager secret `rfone-selection/rmaed-relay-key`
+(rotated 2026-10-30 after exposure of the previous key). `rfone-selection`
+receives it as the runtime secret `RFONE_SELECTION_ARUBA_KEY`, the mail Lambda
+reads it through `RFONE_RELAY_SECRET_ID`, and the only other copy is
+`config.php` on Aruba, produced by `make_aruba_config.py` (upload, then delete
+the ZIP). No key file (`relay-key.txt`) is kept anywhere. To rotate: put a new
+secret value, run `make_aruba_config.py`, upload `config.php`, redeploy
+Selection with `release_selection.py`, then run `setup_mail_worker.py setup`
+and `setup_mail_worker.py activate` (setup leaves the schedule disabled until
+activate has verified the uploaded file against the new key).
+No SMTP credential is added to AWS; mail is sent by Aruba.
 
 Source ZIP backup, tagged previous ECR image and an RDS snapshot are retained
 for rollback. A rollback may restore the prior Selection image/configuration;

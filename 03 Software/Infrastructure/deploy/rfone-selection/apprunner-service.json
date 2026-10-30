@@ -2,21 +2,25 @@
   "ServiceName": "rfone-selection",
   "SourceConfiguration": {
     "ImageRepository": {
-      "ImageIdentifier": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-selection:latest",
+      "ImageIdentifier": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-selection:sel-<commit12>",
       "ImageRepositoryType": "ECR",
       "ImageConfiguration": {
         "Port": "8080",
         "RuntimeEnvironmentVariables": {
           "AWS_REGION": "us-east-1",
+          "RFONE_AI_PROVIDER": "BEDROCK",
+          "RFONE_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
           "RFONE_PUBLIC_BASE_URL": "https://rfone.romesflavours.com",
-          "RFONE_WEB_BASE_URL": "https://rfone.romesflavours.com",
-          "RFONE_SELECTION_REQUIRE_RFONE_LOGIN": "1",
+          "RFONE_SELECTION_AI": "1",
+          "RFONE_SELECTION_AI_CV": "1",
           "RFONE_SELECTION_DOCUMENT_BUCKET": "rfone-selection-documents-418674484214",
-          "RFONE_AI_PROVIDER": "ANTHROPIC"
+          "RFONE_SELECTION_REQUIRE_RFONE_LOGIN": "1",
+          "RFONE_WEB_BASE_URL": "https://rfone.romesflavours.com"
         },
         "RuntimeEnvironmentSecrets": {
           "RFONE_DATABASE_URL": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/database-url-chNZo8",
-          "RFONE_FLASK_SECRET_KEY": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-web/flask-secret-key-aRFYYm"
+          "RFONE_FLASK_SECRET_KEY": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-web/flask-secret-key-aRFYYm",
+          "RFONE_SELECTION_ARUBA_KEY": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-selection/rmaed-relay-key-PJxbvJ"
         }
       }
     },
@@ -35,9 +39,16 @@
       "EgressType": "VPC",
       "VpcConnectorArn": "arn:aws:apprunner:us-east-1:418674484214:vpcconnector/rfone-tips-vpc-connector/1/d85b21340d0c4fbda82017b934ba18f4"
     },
-    "IngressConfiguration": {"IsPubliclyAccessible": true}
+    "IngressConfiguration": {
+      "IsPubliclyAccessible": true
+    }
   },
   "HealthCheckConfiguration": {
-    "Protocol": "TCP", "Interval": 5, "Timeout": 2, "HealthyThreshold": 1, "UnhealthyThreshold": 5
+    "Protocol": "TCP",
+    "Path": "/",
+    "Interval": 5,
+    "Timeout": 2,
+    "HealthyThreshold": 1,
+    "UnhealthyThreshold": 5
   }
 }

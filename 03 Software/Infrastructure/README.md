@@ -158,7 +158,18 @@ Nessuno script di deploy era presente nel repository; la procedura è stata rico
 
 **Migrazioni applicate il 2026-10-03** (prima del deploy, con snapshot): `c5e8a2d7f1b4` (lettura strutturale delle esperienze) e `d8e2f5a9c3b7` (`raw_resumes.content_hash` da 64 a 80 caratteri — difetto preesistente, emerso solo su PostgreSQL). Entrambe additive e compatibili con `rfone-web` e `rfone-tips` già in esecuzione. Snapshot: `rfone-dev-pre-selection-publish-20261003t205731z`, `rfone-dev-pre-selection-hash-width-20261003t211858z`.
 
-**Rilascio di una nuova versione:** zip dai file committati (come sopra) → backup in `backups/rfone-selection-source-pre-<label>-<ts>.zip` → `put-object` su `rfone-selection-source.zip` → `codebuild start-build --project-name rfone-selection-build` → `apprunner start-deployment` → verifica. Se la versione tocca il Data Store condiviso, applicare prima le migrazioni (con snapshot) e valutare se `rfone-web`/`rfone-tips` vanno ricostruiti.
+**Rilascio di una nuova versione (dal 2026-10-30, SELECTION_DEPLOY_GUARD_001):** solo con
+[`deploy/rfone-selection/release_selection.py`](deploy/rfone-selection/release_selection.py) `<label> --commit <sha>`,
+da un commit già pushato che contiene il workspace Selection. Lo script fa snapshot RDS, backup dello zip e
+dell'immagine corrente, installa il `buildspec.yml` del commit **come buildspec del progetto CodeBuild** (uno zip
+caricato da altri rilasci, senza `RELEASE_COMMIT` o senza workspace, viene quindi rifiutato in build, e
+l'immagine viene spinta solo se risponde a `/candidate/bridge/health`), pubblica `rfone-selection:sel-<commit12>`,
+verifica `https://rfone.romesflavours.com/selection/candidate/bridge/health` e, se fallisce, ripristina
+l'immagine precedente. **Un rilascio di un altro dominio (Person Foundation, Web, Tips…) non deve mai
+ricostruire `rfone-selection`:** il 2026-10-29 lo ha fatto da un commit senza workspace e ha cancellato il
+collegamento RMAED.it. Se un cambiamento del Data Store condiviso (nuova migrazione) richiede di ricostruire
+Selection, va prima integrato nel ramo Selection e pubblicato con questo script. La chiave del collegamento
+RMAED è il segreto `rfone-selection/rmaed-relay-key` (vedi `deploy/rfone-selection/aruba-bridge/README.md`).
 
 **Ripristino:**
 - *Codice:* ripristinare lo zip di backup su `rfone-selection-source.zip`, ricostruire e ridistribuire (oppure ripubblicare un'immagine precedente da ECR).

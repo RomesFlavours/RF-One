@@ -1,11 +1,41 @@
+# SELECTION_DEPLOY_GUARD_001 — this file is installed as the CodeBuild
+# project's own buildspec (`rfone-selection-build`, source.buildspec) by
+# release_selection.py, so it applies to every source ZIP uploaded to the
+# project, whoever builds it. A buildspec.yml inside a ZIP is ignored.
+# The image is pushed only if the source carries a release commit, contains
+# the Selection workspace and answers /candidate/bridge/health.
 version: 0.2
 phases:
   pre_build:
+    on-failure: ABORT
     commands:
+      - test -s RELEASE_COMMIT || { echo "REFUSED no RELEASE_COMMIT - build rfone-selection only with release_selection.py"; exit 1; }
+      - |
+        for f in Selection/app.py Selection/workspace/__init__.py Selection/workspace/routes.py \
+                 Selection/workspace/careers.py Selection/workspace/engine.py Selection/workspace/aruba_bridge.py \
+                 Selection/workspace/mail_delivery.py Selection/workspace/schema.py \
+                 "RF-One Data Store/rfone_data_store/selection/workspace_models.py" \
+                 "RF-One Data Store/rfone_data_store/selection/candidate_identity_service.py"; do
+          test -f "$f" || { echo "REFUSED $f is missing - this is not the complete Selection"; exit 1; }
+        done
+      - grep -q "candidate/bridge/health" Selection/workspace/aruba_bridge.py || { echo "REFUSED no bridge/health route"; exit 1; }
       - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_URI
   build:
+    on-failure: ABORT
     commands:
-      - docker build -t $ECR_URI:latest .
-  post_build:
-    commands:
+      - export RELEASE_TAG=sel-$(cut -c1-12 RELEASE_COMMIT)
+      - docker build -t $ECR_URI:$RELEASE_TAG .
+      - |
+        docker run --rm -e RFONE_DATABASE_URL=sqlite:////tmp/guard.db \
+          -e RFONE_SELECTION_ARUBA_KEY=build-guard-placeholder-not-a-secret-000000000000 \
+          $ECR_URI:$RELEASE_TAG python -c "
+        import app
+        rules = {r.endpoint for r in app.app.url_map.iter_rules()}
+        assert any(e.startswith('positions.') for e in rules), 'position workspace missing'
+        r = app.app.test_client().get('/candidate/bridge/health')
+        body = r.get_json()
+        assert r.status_code == 200 and body['version'].startswith('rmaed-selection-bridge') and body['enabled'], (r.status_code, body)
+        print('GUARD OK', body['version'])"
+      - docker tag $ECR_URI:$RELEASE_TAG $ECR_URI:latest
+      - docker push $ECR_URI:$RELEASE_TAG
       - docker push $ECR_URI:latest

@@ -11,15 +11,18 @@ from urllib.request import Request, urlopen
 import boto3
 
 HERE = Path(__file__).parent
-session = boto3.Session(profile_name='rfone-dev-login', region_name='us-east-1')
+session = boto3.Session(region_name='us-east-1')
 ACCOUNT = '418674484214'
 NAME = 'rfone-selection-mail-worker'
 ROLE = NAME + '-role'
 RULE = NAME + '-minute'
-key = (HERE / 'relay-key.txt').read_text().strip()
+# The relay key lives only in Secrets Manager (and in config.php on Aruba).
+RELAY_SECRET = f'arn:aws:secretsmanager:us-east-1:{ACCOUNT}:secret:rfone-selection/rmaed-relay-key-PJxbvJ'
+LAMBDA_ENV = {'Variables': {'RFONE_RELAY_SECRET_ID': RELAY_SECRET}}
 mode = sys.argv[1]
 assert session.client('sts').get_caller_identity()['Account'] == ACCOUNT
 iam, lam, events = (session.client(n) for n in ['iam', 'lambda', 'events'])
+key = session.client('secretsmanager').get_secret_value(SecretId=RELAY_SECRET)['SecretString']
 
 if mode == 'setup':
     trust = {'Version': '2012-10-17', 'Statement': [{'Effect': 'Allow', 'Principal': {'Service': 'lambda.amazonaws.com'}, 'Action': 'sts:AssumeRole'}]}
@@ -38,6 +41,9 @@ if mode == 'setup':
     iam.put_role_policy(RoleName=ROLE, PolicyName=NAME + '-logs', PolicyDocument=json.dumps({
         'Version': '2012-10-17', 'Statement': [{'Effect': 'Allow', 'Action': ['logs:CreateLogStream', 'logs:PutLogEvents'],
             'Resource': f'arn:aws:logs:us-east-1:{ACCOUNT}:log-group:{group}:*'}]}))
+    iam.put_role_policy(RoleName=ROLE, PolicyName=NAME + '-relay-key', PolicyDocument=json.dumps({
+        'Version': '2012-10-17', 'Statement': [{'Effect': 'Allow', 'Action': 'secretsmanager:GetSecretValue',
+            'Resource': RELAY_SECRET}]}))
     data = io.BytesIO()
     with ZipFile(data, 'w', ZIP_DEFLATED) as z:
         z.write(HERE / 'mail_lambda.py', 'mail_lambda.py')
@@ -46,13 +52,13 @@ if mode == 'setup':
         lam.update_function_code(FunctionName=NAME, ZipFile=data.getvalue())
         lam.get_waiter('function_updated_v2').wait(FunctionName=NAME, WaiterConfig={'Delay': 2, 'MaxAttempts': 20})
         lam.update_function_configuration(FunctionName=NAME, Role=role['Arn'], Runtime='python3.12',
-            Handler='mail_lambda.handler', Timeout=90, MemorySize=128, Environment={'Variables': {'RFONE_RELAY_KEY': key}})
+            Handler='mail_lambda.handler', Timeout=90, MemorySize=128, Environment=LAMBDA_ENV)
     except lam.exceptions.ResourceNotFoundException:
         for attempt in range(10):
             try:
                 lam.create_function(FunctionName=NAME, Runtime='python3.12', Role=role['Arn'],
                     Handler='mail_lambda.handler', Code={'ZipFile': data.getvalue()}, Timeout=90, MemorySize=128,
-                    Environment={'Variables': {'RFONE_RELAY_KEY': key}}, Description='Selection email transport via RMAED.it')
+                    Environment=LAMBDA_ENV, Description='Selection email transport via RMAED.it')
                 break
             except lam.exceptions.InvalidParameterValueException:
                 if attempt == 9:

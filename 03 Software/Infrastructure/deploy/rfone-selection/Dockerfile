@@ -1,8 +1,8 @@
 # SELECTION_AWS_PUBLISH_001 — the Selection service (App Runner `rfone-selection`).
-# Build context: a zip of committed files holding `RF-One Data Store/` and
-# `Selection/` plus this Dockerfile and buildspec.yml at its root.
-# No AI provider package is installed and no .env is copied: résumés are read
-# by the rule-based reader only.
+# Build context: made by release_selection.py from one pushed Git commit —
+# `RF-One Data Store/`, `Selection/`, this Dockerfile and RELEASE_COMMIT.
+# The CodeBuild project's own buildspec (buildspec.yml here) refuses any
+# other context. AI runs through Bedrock (boto3); no .env is copied.
 FROM public.ecr.aws/docker/library/python:3.12-slim
 
 WORKDIR /app
@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir -r /app/rfone-data-store-requirements.txt \
 
 COPY ["RF-One Data Store", "/app/RF-One Data Store"]
 COPY ["Selection", "/app/Selection"]
+COPY ["RELEASE_COMMIT", "/app/RELEASE_COMMIT"]
 
 WORKDIR "/app/Selection"
 EXPOSE 8080
