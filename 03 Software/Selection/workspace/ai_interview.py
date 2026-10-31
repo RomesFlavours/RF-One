@@ -196,7 +196,7 @@ no step ids. Ask about the situation, never about {protected}. Never ask about p
 personal reason for something, accept it and do not dig. Do not repeat a question already answered.
 For "findings": one entry per step the candidate's LAST message answered, with "quote" copied EXACTLY from the
 candidate's own words, status CLEAR (answered), PARTLY (partly) or OPEN (avoided or unclear), and a short
-neutral note for the hiring team.
+factual note for the hiring team: what they said, no praise and no judgement of character.
 
 JSON shape: {{"reply": "...", "findings": [{{"step_id": "...", "status": "CLEAR|PARTLY|OPEN", "quote": "...",
 "note": "..."}}]}}

@@ -25,12 +25,14 @@ From "Position-Specific Standards", the Server and Line Cook "AI CV Preselection
 | `03 Software/Selection/workspace/position_profiles.py` | New. Server and Line Cook profiles: dimensions and draft weights, environment tables, flags, commute and hours bands, Mount Dora drive table. |
 | `03 Software/Selection/workspace/profile_screening.py` | New. AI reading of the résumé, then code: quote check, stability from dates, score, commute, interview steps. |
 | `03 Software/Selection/workspace/ai_interview.py` | New. Tables `selection_workspace_ai_interviews` and `selection_workspace_priorities`, invitation, conversation, public page. |
-| `03 Software/Selection/templates/careers/ai_interview.html` | New. Candidate's interview page. |
+| `03 Software/Selection/templates/careers/ai_interview.html` | New. Candidate's interview page: welcome with Start, chat, progress, thank-you. |
+| `03 Software/Selection/templates/_profile_art.html` | New. Flat drawings (Server, Line Cook, interview) and the score ring. |
+| `static/css/selection.css` | `sp-` styles added at the end, in RF-One's olive family; no gradients, no animation. Stylesheet versions bumped so browsers load them. |
 | `03 Software/Selection/test_position_profiles_http.py` | New. 34 checks, synthetic data, fake AI, no email. |
 | `workspace/engine.py` | `analyze` also runs the profile screening when the role has a profile; any failure there is logged and never loses the existing analysis. `current_proposals` gates it like the AI evaluation. |
 | `workspace/routes.py` | Ranked list, priority route, AI Interview Requested route, template context. |
 | `workspace/schema.py`, `workspace/__init__.py` | Provision the two new tables; register the public interview page. |
-| `templates/workspace/position.html`, `candidate.html` | CV ranking table; From the CV panel; AI interview section with transcript. |
+| `templates/workspace/position.html`, `candidate.html` | "Who to call first" ranking cards; From the CV panel (score ring, commute/hours/availability tiles, flags, evidence bars, stations, work-history bars, questions); AI interview checklist and conversation. |
 | `03 Software/Selection/README.md` | New section. |
 
 Not changed: existing tables, the shared Alembic revision, the existing rule-based and AI evaluation, duplicate and
@@ -128,6 +130,8 @@ Problems found and fixed during review:
 | Problem (observed) | Fix |
 |---|---|
 | One reply was not valid JSON, so the résumé got no result | One retry with a note asking for valid JSON |
+| The AI did not know today's date and understated a current job ("1 year 11 months" for 4+ years) | The prompt now gives today's date; the code still computes the months |
+| An interview note praised the candidate | Notes are now factual: what was said, no praise or judgement |
 | The AI put Leesburg at 45 minutes, so Marco became a cut-off | Mount Dora town table, used before the AI estimate |
 | "Jobs without usable dates" counted every job | Counting bug fixed; test added |
 | An estimated 45+ minute drive was labelled a business cut-off | Now a point to confirm; points still apply |

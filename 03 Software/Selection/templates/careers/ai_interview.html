@@ -1,45 +1,49 @@
 {% extends "careers/base.html" %}
+{% import "_profile_art.html" as art %}
 {% block title %}Your interview{% endblock %}
 {% block content %}
-<h1>{{ position.title }}</h1>
-<div class="muted">Rome's Flavours · {{ position.location_label }} · short written interview</div>
+<div class="sp-art-top">{{ art.banner('INTERVIEW') }}</div>
+<div class="sp-eyebrow">Rome's Flavours · {{ position.location_label }}</div>
+<h1 class="sp-title">{{ position.title }}: short written interview</h1>
 {% if done %}
-  <h2>Thank you</h2>
-  <p>That's the end of the interview. The hiring team will read your answers and contact you about the next step.</p>
-  <p class="muted">You can close this page.</p>
+  <p class="sp-lede" style="font-size:1rem">Thank you. That's the end of the interview. The hiring team will read your answers and contact you about the next step.</p>
+  <p class="muted small">You can close this page.</p>
 {% elif closed %}
-  <p>This interview is no longer open. If you have a question, please reply to the email you received.</p>
+  <p class="sp-lede" style="font-size:1rem">This interview is no longer open. If you have a question, please reply to the email you received.</p>
 {% else %}
-  <p class="muted small">An AI assistant asks the questions for our hiring team, who read every answer. It takes about
-    10 to 15 minutes. If you would rather talk to a person, reply to the email you received.</p>
   {% if error %}<div class="info">{{ error }}</div>{% endif %}
   {% if not interview.transcript %}
+  <p class="sp-lede" style="font-size:1rem">Thank you for applying. Before we meet, we'd like to know you a little better.</p>
+  <ol class="sp-steps">
+    <li><span>1</span>A few short questions about your availability and your experience.</li>
+    <li><span>2</span>Answer in your own words. There are no trick questions.</li>
+    <li><span>3</span>About 10 to 15 minutes, and it works well on a phone.</li>
+  </ol>
   <form method="post" id="end">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <p class="row"><button class="btn" name="action" value="start">Start the interview</button></p>
+    <button class="btn btn-large" name="action" value="start">Start the interview</button>
   </form>
+  <p class="sp-foot">An AI assistant asks the questions for our hiring team, who read every answer. If you would rather talk to a person, reply to the email you received.</p>
   {% else %}
-  <div class="ai-chat">
+  {% set total = interview.steps|length %}{% set covered = interview.findings|length %}
+  <div class="sp-progress"><span>Topic {{ [covered + 1, total]|min }} of {{ total }}</span>
+    <div class="sp-meter" aria-hidden="true"><span style="width:{{ (covered * 100 / total)|round if total else 0 }}%"></span></div></div>
+  <div class="sp-chat">
   {% for t in interview.transcript %}
-    <div class="ai-msg {{ 'ai-msg-ai' if t.who == 'AI' else 'ai-msg-me' }}"><b>{{ 'Rome\'s Flavours' if t.who == 'AI' else 'You' }}</b><br>{{ t.text }}</div>
+    <div class="sp-msg {{ 'ai' if t.who == 'AI' else 'me' }}"><span class="who">{{ "Rome's Flavours" if t.who == 'AI' else 'You' }}</span>{{ t.text }}</div>
   {% endfor %}
   </div>
-  <form method="post" id="end">
+  <form method="post" id="end" class="sp-composer">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="message">Your answer</label>
     <textarea id="message" name="message" rows="3" required autofocus>{{ draft }}</textarea>
-    <p class="row"><button class="btn">Send</button></p>
+    <div class="row"><button class="btn">Send</button>
+      <button class="btn btn-secondary btn-small" form="finish" name="action" value="finish">End the interview</button></div>
   </form>
-  <form method="post" onsubmit="return confirm('End the interview now? Your answers so far are saved.')">
+  <form method="post" id="finish" onsubmit="return confirm('End the interview now? Your answers so far are saved.')">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="btn btn-secondary btn-small" name="action" value="finish">End the interview</button>
   </form>
+  <p class="sp-foot">An AI assistant asks the questions for our hiring team, who read every answer. If you would rather talk to a person, reply to the email you received.</p>
   {% endif %}
 {% endif %}
-<style>
-.ai-chat{margin:1rem 0;display:flex;flex-direction:column;gap:.6rem}
-.ai-msg{padding:.6rem .8rem;border-radius:10px;max-width:90%;white-space:pre-wrap;line-height:1.4}
-.ai-msg-ai{background:#f3f1ec;align-self:flex-start}
-.ai-msg-me{background:#e7eefb;align-self:flex-end}
-</style>
 {% endblock %}

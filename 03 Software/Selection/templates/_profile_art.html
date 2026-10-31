@@ -1,0 +1,60 @@
+{# Flat illustrations for the position profiles and the AI interview (SELECTION_POSITION_PROFILES_001).
+   RF-One's olive family and cream only, no gradients, no animation. Wide scene centred, so a phone keeps the
+   middle and a desktop sees the whole room. Decorative: hidden from screen readers. #}
+{% macro banner(kind) -%}
+<svg class="sp-art" viewBox="0 0 1200 120" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+  <rect width="1200" height="120" fill="#f6f8ef"/>
+{%- if kind == 'SERVER' %}
+  {% for x in range(20, 1200, 74) %}{% if x < 420 or x > 760 %}<path d="M{{ x }} 98 v-44 a18 18 0 0 1 36 0 v44z" fill="#e8edd8"/>{% endif %}{% endfor %}
+  {% for x in [470, 730] %}<path d="M{{ x }} 0 v18" stroke="#7c8f52" stroke-width="2"/><path d="M{{ x - 16 }} 30 q16 -18 32 0z" fill="#55642f"/><circle cx="{{ x }}" cy="34" r="4" fill="#c7d1a8"/>{% endfor %}
+  <rect x="0" y="98" width="1200" height="22" fill="#55642f"/>
+  <path d="M0 98 h1200" stroke="#c7d1a8" stroke-width="3" stroke-dasharray="14 10"/>
+  <path d="M470 92 h260 l-10 -6 h-240z" fill="#ffffff" stroke="#c7d1a8" stroke-width="2"/>
+  <path d="M490 92 v6 M710 92 v6" stroke="#2f3a1f" stroke-width="3"/>
+  <ellipse cx="545" cy="83" rx="30" ry="6" fill="#ffffff" stroke="#7c8f52" stroke-width="2"/><path d="M528 81 q17 -14 34 0z" fill="#c7d1a8"/>
+  <ellipse cx="655" cy="83" rx="30" ry="6" fill="#ffffff" stroke="#7c8f52" stroke-width="2"/><path d="M638 81 q17 -14 34 0z" fill="#c7d1a8"/>
+  <path d="M592 50 h18 q0 18 -9 22 q-9 -4 -9 -22z" fill="#2f3a1f"/><path d="M601 72 v10 M594 83 h14" stroke="#2f3a1f" stroke-width="2.5" stroke-linecap="round"/>
+  <rect x="618" y="44" width="12" height="40" rx="3" fill="#55642f"/><rect x="621" y="34" width="6" height="12" rx="2" fill="#55642f"/>
+  <rect x="573" y="66" width="7" height="18" rx="2" fill="#ffffff" stroke="#7c8f52" stroke-width="2"/><path d="M576.5 58 q5 6 0 9 q-5 -3 0 -9z" fill="#7c8f52"/>
+  <circle cx="1100" cy="34" r="16" fill="#e8edd8"/>
+{%- elif kind == 'LINE_COOK' %}
+  <rect x="0" y="0" width="1200" height="14" fill="#c7d1a8" opacity=".55"/>
+  {% for x in range(40, 1200, 90) %}{% if x < 430 or x > 770 %}<path d="M{{ x }} 14 v20" stroke="#7c8f52" stroke-width="2"/>{% if loop.index is even %}<circle cx="{{ x }}" cy="42" r="8" fill="none" stroke="#7c8f52" stroke-width="3"/>{% else %}<path d="M{{ x }} 34 v22 M{{ x - 7 }} 56 h14" stroke="#7c8f52" stroke-width="3" stroke-linecap="round"/>{% endif %}{% endif %}{% endfor %}
+  <rect x="0" y="100" width="1200" height="20" fill="#e8edd8"/>
+  <rect x="470" y="74" width="260" height="46" fill="#2f3a1f"/>
+  <rect x="466" y="70" width="268" height="7" rx="2" fill="#55642f"/>
+  {% for x in [520, 600, 680] %}<path d="M{{ x - 14 }} 70 q4 -9 9 0 q5 -9 10 0 q4 -9 9 0" fill="none" stroke="#c7d1a8" stroke-width="3" stroke-linecap="round"/>{% endfor %}
+  {% for x in [500, 560, 640, 700] %}<rect x="{{ x }}" y="88" width="20" height="5" rx="2" fill="#55642f"/>{% endfor %}
+  <ellipse cx="520" cy="60" rx="30" ry="7" fill="#55642f"/><path d="M550 58 h30" stroke="#55642f" stroke-width="5" stroke-linecap="round"/>
+  <path d="M506 50 q6 -10 12 0 q6 -10 12 0" fill="none" stroke="#7c8f52" stroke-width="2.5" stroke-linecap="round"/>
+  <rect x="650" y="38" width="52" height="26" rx="4" fill="#7c8f52"/><rect x="645" y="35" width="62" height="6" rx="2" fill="#55642f"/>
+  <path d="M664 30 q5 -9 0 -16 M680 30 q5 -9 0 -16" fill="none" stroke="#c7d1a8" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M800 30 h120" stroke="#55642f" stroke-width="3"/>
+  {% for x in [808, 846, 884] %}<rect x="{{ x }}" y="30" width="30" height="40" fill="#ffffff" stroke="#c7d1a8" stroke-width="2"/><path d="M{{ x + 6 }} 42 h18 M{{ x + 6 }} 50 h12 M{{ x + 6 }} 58 h16" stroke="#7c8f52" stroke-width="2.5" stroke-linecap="round"/>{% endfor %}
+  <rect x="280" y="84" width="110" height="14" rx="3" fill="#ffffff" stroke="#c7d1a8" stroke-width="2"/>
+  <circle cx="310" cy="80" r="7" fill="#7c8f52"/><circle cx="328" cy="81" r="6" fill="#55642f"/><path d="M346 84 l30 -10" stroke="#2f3a1f" stroke-width="3" stroke-linecap="round"/>
+{%- else %}
+  {% for x in range(20, 1200, 74) %}{% if x < 430 or x > 760 %}<path d="M{{ x }} 104 v-40 a18 18 0 0 1 36 0 v40z" fill="#e8edd8"/>{% endif %}{% endfor %}
+  <rect x="0" y="104" width="1200" height="16" fill="#55642f"/>
+  <path d="M440 104 V66 Q600 50 760 62 V104z" fill="#ffffff" stroke="#c7d1a8" stroke-width="2"/>
+  {% for i in range(6) %}<path d="M{{ 462 + i * 50 }} 104 v-22 a13 13 0 0 1 26 0 v22z" fill="#55642f"/>{% endfor %}
+  <rect x="468" y="8" width="96" height="32" rx="11" fill="#55642f"/>
+  <path d="M488 40 l-2 11 l14 -11z" fill="#55642f"/><path d="M484 20 h62 M484 29 h40" stroke="#e8edd8" stroke-width="3" stroke-linecap="round"/>
+  <rect x="628" y="14" width="104" height="34" rx="11" fill="#ffffff" stroke="#55642f" stroke-width="2.5"/>
+  <path d="M712 48 l4 11 l-16 -11z" fill="#ffffff" stroke="#55642f" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M644 27 h72 M644 37 h44" stroke="#7c8f52" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="1100" cy="34" r="16" fill="#e8edd8"/>
+{%- endif %}
+</svg>
+{%- endmacro %}
+
+{# Score ring: the evidence score out of 100, drawn, not animated. #}
+{% macro ring(score) -%}
+{% set c = 2 * 3.14159 * 30 %}
+<svg class="sp-ring" viewBox="0 0 72 72" role="img" aria-label="Evidence score {{ score }} out of 100">
+  <circle cx="36" cy="36" r="30" fill="none" stroke="#e8edd8" stroke-width="8"/>
+  <circle cx="36" cy="36" r="30" fill="none" stroke="#55642f" stroke-width="8" stroke-linecap="round"
+          stroke-dasharray="{{ '%.1f' % (c * score / 100) }} {{ '%.1f' % c }}" transform="rotate(-90 36 36)"/>
+  <text x="36" y="41" text-anchor="middle" font-size="18" font-weight="700" fill="#2f3a1f">{{ score }}</text>
+</svg>
+{%- endmacro %}

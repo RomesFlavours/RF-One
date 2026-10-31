@@ -250,7 +250,7 @@ try:
 
         page = text(owner.get(f"/selection/posizioni/{pid}?tab=valutazione"))
         check("ranking: the evaluation tab shows the ranked list with Jordan before Casey",
-              "CV ranking · Server profile" in page and page.index(f'id="cand-{jordan_id}"') < page.index(f'id="cand-{casey_id}"'))
+              "Server profile · CV ranking" in page and page.index(f'id="cand-{jordan_id}"') < page.index(f'id="cand-{casey_id}"'))
         owner.post(f"/selection/posizioni/{pid}/candidati/{casey_id}/priorita", data={"csrf_token": t, "priority": "HIGH"})
         page = text(owner.get(f"/selection/posizioni/{pid}?tab=valutazione"))
         check("ranking: the recruiter's High priority overrides the proposed order",
@@ -261,7 +261,7 @@ try:
 
         cand_page = text(owner.get(f"/selection/posizioni/{pid}/candidati/{jordan_id}"))
         check("candidate page: From the CV shows flags, evidence, commute, unknowns and the questions",
-              "From the CV · Server" in cand_page and "Lives in Eustis, FL" in cand_page and "Unknown (missing information" in cand_page)
+              "From the CV" in cand_page and "Server profile" in cand_page and "Eustis, FL" in cand_page and "Unknown (missing information" in cand_page)
 
         url = f"/selection/posizioni/{pid}/candidati/{jordan_id}/ai-interview"
         check("AI interview: without confirmation nothing is created",

@@ -153,6 +153,9 @@ step and closes as soon as every step is answered (at most 2 extra answers); onl
 as quotes. Then the status is **AI Interview Completed** and the transcript is on the candidate page. Once the
 position is closed or the candidate has a final decision, the link shows that the interview is no longer open.
 
+Look: the ranking, the From the CV panel and both interview pages use `sp-` styles in `static/css/selection.css`
+(RF-One's olive family only, no gradients, no animation) and the flat drawings in `templates/_profile_art.html`.
+
 New tables, provisioned by `workspace/schema.py` like the outbox: `selection_workspace_ai_interviews`,
 `selection_workspace_priorities`. No existing table or shared Alembic revision changes.
 Test: `python test_position_profiles_http.py` (synthetic data, fake AI, no email).

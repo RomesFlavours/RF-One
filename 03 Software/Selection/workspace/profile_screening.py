@@ -30,7 +30,8 @@ FIT_LABELS = {code: label for code, _, label in FIT_BANDS}
 _PROMPT = """You read ONE job applicant's résumé for a restaurant manager. You do not decide; the manager does.
 Output ONLY a JSON object, no markdown. Write in plain ENGLISH.
 
-Position: {title} at Rome's Flavours, {location}, Florida.
+Position: {title} at Rome's Flavours, {location}, Florida. Today is {today}: "present" means today, so count
+durations up to today (the code computes the exact months from your dates).
 What the position is: {summary}
 
 Evidence dimensions (give each a level 0-4: {levels}):
@@ -182,6 +183,7 @@ def screen(profile: dict, *, location: str, cv_text: str, today: date | None = N
         raise AIProviderUnavailable("The résumé text is empty.")
     dims = [d for d in profile["dimensions"] if d["id"] != "stability"]
     prompt = _PROMPT.format(
+        today=(today or date.today()).strftime("%B %Y"),
         title=profile["title"], location=location, summary=profile["summary"],
         levels="; ".join(f"{k} = {v}" for k, v in pp.LEVELS.items()),
         dimensions="\n".join(f"- {d['id']}: {d['name']}. {d['look_for']}" for d in dims),

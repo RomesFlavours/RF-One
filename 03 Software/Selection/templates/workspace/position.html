@@ -203,42 +203,59 @@
 {% if not cards %}
 <div class="card"><p>No applications. <a href="{{ url_for('positions.position_detail', position_id=position.id, tab='candidature') }}">Upload résumés or share the application page</a>.</p></div>
 {% else %}
-{% if selection_profile %}
-<div class="card" id="ranked">
-  <div class="row" style="justify-content:space-between">
-    <h3 style="margin:0">CV ranking · {{ selection_profile.title }} profile</h3>
-    <span class="small muted">{{ selection_profile.version }} · weights and thresholds proposed, not yet approved</span>
+{% if selection_profile %}{% import "_profile_art.html" as art %}
+<div class="card sp-card" id="ranked">
+  {{ art.banner(selection_profile.code) }}
+  <div class="sp-body">
+  <div class="sp-head">
+    <div><div class="sp-eyebrow">{{ selection_profile.title }} profile · CV ranking</div>
+      <h2 class="sp-title">Who to call first</h2></div>
+    <span class="sp-version">{{ selection_profile.version }} · proposed, not yet approved</span>
   </div>
   {% if not ai_policy.allows("cv_evaluation") %}<div class="banner off small">The {{ selection_profile.title }} CV ranking needs “AI résumé and answer evaluation” in this position’s Configuration.</div>{% endif %}
-  <p class="small muted">Order: your priority first (High, Medium, not set, Low), then the CV evidence score adjusted for the estimated commute (+5 up to 20 min, 0 up to 30, −5 up to 44, −15 at 45 or more). A 45+ minute estimate is a point to confirm, not yet a business cut-off. A proposal only: nobody is excluded.</p>
-  <table class="ranked">
-    <tr><th>#</th><th>Candidate</th><th>CV fit</th><th>Commute</th><th>Flags</th><th>Priority</th><th>AI interview</th></tr>
+  <p class="sp-lede">Your priority comes first. Within it, candidates are ordered by what their CV shows for this position, plus the commute. A proposal only: nobody is excluded.</p>
+  <div class="sp-chips" style="margin:-.3rem 0 1.1rem"><span class="sp-chip c-FAVORABLE">Up to 20 min +5</span><span class="sp-chip c-MANAGEABLE">21–30 min 0</span><span class="sp-chip c-CONFIRM">31–44 min −5</span><span class="sp-chip c-CUTOFF">45+ min −15, to confirm</span></div>
+  <div class="sp-list">
     {% for c in ranked %}{% set s = c.screening.payload if c.screening else None %}
-    <tr id="cand-{{ c.pc.id }}">
-      <td>{{ loop.index }}</td>
-      <td><a class="name" href="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=c.pc.id) }}">{{ c.name }}</a>
-        <div class="small muted">{{ c.latest_role or '' }}</div>
-        {% if c.decision %}<div class="small"><span class="badge ok">{{ DECISION_LABELS[c.decision.decision] }}</span></div>{% endif %}</td>
-      <td>{% if s %}<span class="badge {{ 'ok' if s.fit == 'STRONG' else ('warn' if s.fit == 'MODERATE' else '') }}">{{ FIT_LABELS.get(s.fit, s.fit) }}</span>
-        <div class="small muted">score {{ s.score }}/100{% if s.commute.points %} · commute {{ '%+d' % s.commute.points }}{% endif %} · confidence {{ s.confidence }}</div>
-        {% else %}<span class="small muted">Not screened</span>{% endif %}</td>
-      <td class="small">{% if s %}{% if s.commute.minutes is not none %}~{{ s.commute.minutes }} min from {{ s.commute.place }}{% else %}Unknown{% endif %}{% endif %}</td>
-      <td class="small">{% if s %}{{ s.risk_flags|length }}{% if s.cutoffs %} · <b>commute 45+ to confirm</b>{% endif %}{% endif %}</td>
-      <td>{% if can_edit %}<form method="post" action="{{ url_for('positions.set_priority', position_id=position.id, pc_id=c.pc.id) }}" style="margin:0">
+    <div class="sp-row {{ 'sp-high' if c.priority == 'HIGH' }}" id="cand-{{ c.pc.id }}">
+      <div class="sp-num">{{ loop.index }}</div>
+      <div>
+        <a class="sp-name" href="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=c.pc.id) }}">{{ c.name }}</a>
+        <div class="sp-sub">{{ c.latest_role or '' }}</div>
+        {% if c.decision %}<div class="sp-chips" style="margin-top:.3rem"><span class="sp-chip done">{{ DECISION_LABELS[c.decision.decision] }}</span></div>{% endif %}
+      </div>
+      <div>
+        {% if s %}
+        <div class="sp-score"><b>{{ s.score }}</b><span class="small muted">/ 100</span>
+          <span class="sp-chip fit-{{ s.fit }}">{{ FIT_LABELS.get(s.fit, s.fit) }}</span></div>
+        <div class="sp-meter" aria-hidden="true"><span style="width:{{ s.score }}%"></span></div>
+        <div class="sp-sub">{% if s.commute.points %}{{ s.ranking_score }} with commute ({{ '%+d' % s.commute.points }}) · {% endif %}{{ s.confidence }} confidence</div>
+        {% else %}<span class="sp-chip c-UNKNOWN">Not screened yet</span>{% endif %}
+      </div>
+      <div class="sp-chips">
+        {% if s %}
+        <span class="sp-chip c-{{ s.commute.band }}">{% if s.commute.minutes is not none %}~{{ s.commute.minutes }} min · {{ s.commute.place.split(',')[0] }}{% if s.cutoffs %} · confirm{% endif %}{% else %}Commute unknown{% endif %}</span>
+        {% if s.risk_flags %}<span class="sp-chip flag">{{ s.risk_flags|length }} flag{{ 's' if s.risk_flags|length != 1 }}</span>{% endif %}
+        {% endif %}
+      </div>
+      <div class="sp-actions">
+        {% if can_edit %}<form method="post" class="sp-prio" action="{{ url_for('positions.set_priority', position_id=position.id, pc_id=c.pc.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <select name="priority" onchange="this.form.submit()" aria-label="Priority for {{ c.name }}" style="width:auto">
-            <option value="">—</option>{% for code, label in PRIORITIES.items() %}<option value="{{ code }}" {{ 'selected' if c.priority == code }}>{{ label }}</option>{% endfor %}
+          <select name="priority" onchange="this.form.submit()" aria-label="Priority for {{ c.name }}">
+            <option value="">Priority</option>{% for code, label in PRIORITIES.items() %}<option value="{{ code }}" {{ 'selected' if c.priority == code }}>{{ label }}</option>{% endfor %}
           </select><noscript><button class="btn btn-small">Save</button></noscript></form>
-        {% else %}{{ PRIORITIES.get(c.priority, '—') }}{% endif %}</td>
-      <td class="small">{% if c.ai_interview %}<span class="badge {{ 'ok' if c.ai_interview.status == 'COMPLETED' else 'info' }}">{{ AI_INTERVIEW_LABELS[c.ai_interview.status] }}</span>
-        {% elif can_edit and s and position.status == 'OPEN' and ai_policy.allows("cv_evaluation") %}<form method="post" action="{{ url_for('positions.request_ai_interview', position_id=position.id, pc_id=c.pc.id) }}" style="margin:0"
+        {% elif c.priority %}<span class="sp-chip">{{ PRIORITIES[c.priority] }}</span>{% endif %}
+        {% if c.ai_interview %}<span class="sp-chip {{ 'fit-STRONG' if c.ai_interview.status == 'COMPLETED' else 'done' }}">{{ AI_INTERVIEW_LABELS[c.ai_interview.status] }}</span>
+        {% elif can_edit and s and position.status == 'OPEN' and ai_policy.allows("cv_evaluation") %}<form method="post" action="{{ url_for('positions.request_ai_interview', position_id=position.id, pc_id=c.pc.id) }}"
           data-confirm="Send {{ c.name }} the AI interview invitation by email now?" onsubmit="return confirm(this.dataset.confirm)">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirmed" value="1">
           <input type="hidden" name="back" value="{{ url_for('positions.position_detail', position_id=position.id, tab='valutazione') }}#cand-{{ c.pc.id }}">
-          <button class="btn btn-secondary btn-small">AI Interview Requested</button></form>{% else %}—{% endif %}</td>
-    </tr>{% endfor %}
-  </table>
-  <style>.ranked td{vertical-align:top}.ranked tr:target{background:#fff6d6}</style>
+          <button class="btn btn-secondary btn-small">AI Interview Requested</button></form>{% endif %}
+      </div>
+    </div>
+    {% else %}<p class="empty">No candidates to rank yet.</p>{% endfor %}
+  </div>
+  </div>
 </div>
 {% endif %}
 <form method="get" action="{{ url_for('positions.compare', position_id=position.id) }}">
