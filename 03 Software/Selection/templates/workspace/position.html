@@ -205,16 +205,19 @@
 {% else %}
 {% if selection_profile %}{% import "_profile_art.html" as art %}
 <div class="card sp-card" id="ranked">
-  {{ art.banner(selection_profile.code) }}
   <div class="sp-body">
-  <div class="sp-head">
-    <div><div class="sp-eyebrow">{{ selection_profile.title }} profile · CV ranking</div>
-      <h2 class="sp-title">Who to call first</h2></div>
-    <span class="sp-version">{{ selection_profile.version }} · proposed, not yet approved</span>
-  </div>
+  <div class="sp-hero">
+  <div>
+    <div class="sp-eyebrow">{{ selection_profile.title }} profile · CV ranking</div>
+    <h2 class="sp-title">Who to call first</h2>
   {% if not ai_policy.allows("cv_evaluation") %}<div class="banner off small">The {{ selection_profile.title }} CV ranking needs “AI résumé and answer evaluation” in this position’s Configuration.</div>{% endif %}
   <p class="sp-lede">Your priority comes first. Within it, candidates are ordered by what their CV shows for this position, plus the commute. A proposal only: nobody is excluded.</p>
-  <div class="sp-chips" style="margin:-.3rem 0 1.1rem"><span class="sp-chip c-FAVORABLE">Up to 20 min +5</span><span class="sp-chip c-MANAGEABLE">21–30 min 0</span><span class="sp-chip c-CONFIRM">31–44 min −5</span><span class="sp-chip c-CUTOFF">45+ min −15, to confirm</span></div>
+  <div class="sp-chips"><span class="sp-chip c-FAVORABLE">Up to 20 min +5</span><span class="sp-chip c-MANAGEABLE">21–30 min 0</span><span class="sp-chip c-CONFIRM">31–44 min −5</span><span class="sp-chip c-CUTOFF">45+ min −15, to confirm</span></div>
+  <p class="sp-foot" style="margin-top:.7rem">{{ selection_profile.version }} · weights proposed, not yet approved</p>
+  </div>
+  <div class="sp-hero-art">{{ art.banner(selection_profile.code) }}</div>
+  </div>
+  <div style="height:1.2rem"></div>
   <div class="sp-list">
     {% for c in ranked %}{% set s = c.screening.payload if c.screening else None %}
     <div class="sp-row {{ 'sp-high' if c.priority == 'HIGH' }}" id="cand-{{ c.pc.id }}">
