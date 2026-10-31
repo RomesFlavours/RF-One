@@ -53,6 +53,7 @@ from rfone_data_store.selection.industry.restaurant_templates import (
 from rfone_data_store.selection.parsing.ai_client import AIProviderUnavailable
 
 from . import ai_adapter, engine, organization_adapter, mail_delivery, position_settings, ai_checks
+from . import ai_interview, position_profiles, profile_screening
 from .channels import CHANNEL_LABELS, CHANNELS
 
 bp = Blueprint("positions", __name__)
@@ -180,7 +181,10 @@ def _globals():
             "STATUS_LABELS": engine.STATUS_LABELS, "CRITICALITY_LABELS": engine.CRITICALITY_LABELS,
             "POSITION_STATUS_LABELS": ps.POSITION_STATUS_LABELS, "SOURCE_LABELS": ps.SOURCE_LABELS,
             "KIND_LABELS": ps.KIND_LABELS, "MESSAGE_KINDS": ps.MESSAGE_KINDS,
-            "APPLICATION_STATUS_LABELS": ps.APPLICATION_STATUS_LABELS, "NOT_SELECTED_REASONS": ps.NOT_SELECTED_REASONS}
+            "APPLICATION_STATUS_LABELS": ps.APPLICATION_STATUS_LABELS, "NOT_SELECTED_REASONS": ps.NOT_SELECTED_REASONS,
+            "PRIORITIES": ai_interview.PRIORITIES, "AI_INTERVIEW_LABELS": ai_interview.STATUS_LABELS,
+            "FINDING_LABELS": ai_interview.FINDING_LABELS, "FIT_LABELS": profile_screening.FIT_LABELS,
+            "LEVEL_LABELS": position_profiles.LEVELS}
 
 
 @bp.app_template_filter("local")
@@ -304,8 +308,22 @@ def _candidate_cards(db, position: ps.Position) -> list[dict]:
             "proposal": engine.leading_proposal(proposals), "decision": engine.current_decision(db, pc.id),
             "channel": CHANNEL_LABELS.get(pc.channel, pc.channel), "duplicates": engine.duplicate_notes(db, pc),
             "application": application, "next_appointment": upcoming[0] if upcoming else None,
+            "screening": proposals.get(profile_screening.SOURCE), "priority": ai_interview.priority_for(db, pc.id),
+            "ai_interview": ai_interview.for_pc(db, pc.id),
         })
     return cards
+
+
+def _ranked(cards: list[dict]) -> list[dict]:
+    """The CV screening order (SELECTION_POSITION_PROFILES_001): recruiter priority first (High, Medium, not set,
+    Low), then business cut-offs last within each priority, then the profile's ranking score. Final outcomes
+    (hired, not selected, on hold) leave the list."""
+    def key(c):
+        s = c["screening"].payload if c["screening"] else None
+        return (ai_interview.PRIORITY_ORDER.get(c["priority"], 2), 1 if s and s["cutoffs"] else 0,
+                0 if s else 1, -(s["ranking_score"] if s else 0), c["pc"].added_at)
+    active = [c for c in cards if not (c["decision"] and c["decision"].decision in ps.FINAL_DECISIONS)]
+    return sorted(active, key=key)
 
 
 def _record_decision(db, actor, position, pc, decision, reason, note) -> None:
@@ -576,6 +594,7 @@ def position_detail(db, actor, position_id):
         public_url=external_url("careers.job_page", token=position.public_token), standard_pool=standard_pool,
         days=days, offers=offers, names=names, now=ps.utcnow(),
         hired=len(decided[ps.D_HIRED]), configuration=position_settings.get(position),
+        ranked=_ranked(cards), selection_profile=position_profiles.for_role(position.role_code),
         configuration_features=position_settings.FEATURES, ai_checks=position_settings.context(position).get("ai_checks", {}),
         platform_policy=ai_adapter.POLICY,
         company=_company_facts(db, position.location_label, position))
@@ -828,6 +847,9 @@ def candidate_detail(db, actor, position_id, pc_id):
         appointments=_appointments(db, [pc.id], include_cancelled=True), offers=offers, messages=messages,
         mail_recipient=mail_delivery.email_for(db, pc), deliveries=mail_delivery.rows_for(db, pc.id),
         mail_status_labels=mail_delivery.STATUS_LABELS,
+        screening=proposals.get(profile_screening.SOURCE), selection_profile=position_profiles.for_role(position.role_code),
+        priority=ai_interview.priority_for(db, pc.id), ai_interview=ai_interview.for_pc(db, pc.id),
+        ai_interview_url=lambda iv: external_url("careers.ai_interview_page", token=iv.token),
         slot_url=lambda o: external_url("careers.slot_page", token=o.token), now=ps.utcnow())
 
 
@@ -892,6 +914,45 @@ def record_decision(db, actor, position_id):
         _record_decision(db, actor, position, _pc(db, position, pc_id), decision, reason, note)
     db.commit()
     flash(f"Decision recorded for {len(pc_ids)} candidate(s).")
+    return redirect(back)
+
+
+@bp.route("/posizioni/<int:position_id>/candidati/<int:pc_id>/priorita", methods=["POST"])
+@access_required
+def set_priority(db, actor, position_id, pc_id):
+    position = _position(db, actor, position_id, edit=True)
+    pc = _pc(db, position, pc_id)
+    value = request.form.get("priority") or None
+    if value is not None and value not in ai_interview.PRIORITIES:
+        abort(400)
+    ai_interview.set_priority(db, position=position, pc=pc, priority=value, actor=actor)
+    db.commit()
+    return redirect(_safe_back(request.form.get("back"), url_for(".position_detail", position_id=position.id,
+                                                                  tab="valutazione") + f"#cand-{pc.id}"))
+
+
+@bp.route("/posizioni/<int:position_id>/candidati/<int:pc_id>/ai-interview", methods=["POST"])
+@access_required
+def request_ai_interview(db, actor, position_id, pc_id):
+    """AI Interview Requested: one confirmed action creates the link and queues one invitation."""
+    position = _position(db, actor, position_id, edit=True)
+    pc = _pc(db, position, pc_id)
+    back = _safe_back(request.form.get("back"), url_for(".candidate_detail", position_id=position.id, pc_id=pc.id))
+    if request.form.get("confirmed") != "1":
+        flash("Confirm the AI interview request.")
+        return redirect(back)
+    try:
+        interview, created = ai_interview.request_interview(
+            db, position=position, pc=pc, actor=actor,
+            link_for=lambda token: external_url("careers.ai_interview_page", token=token))
+    except ValueError as exc:
+        db.rollback()
+        flash(str(exc))
+        return redirect(back)
+    db.commit()
+    flash("AI interview requested: the invitation is queued for delivery through RMAED.it." if created else
+          f"The AI interview was already requested on {_local(interview.requested_at, position.timezone)}: "
+          "no second email was sent.")
     return redirect(back)
 
 

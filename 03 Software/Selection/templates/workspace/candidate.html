@@ -21,6 +21,95 @@
 
 <div class="grid g2" style="margin-top:.8rem">
 <div>
+  {# ---------------- Position profile screening (SELECTION_POSITION_PROFILES_001) ---------------- #}
+  {% if selection_profile %}
+  <div class="card" id="from-cv">
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">From the CV · {{ selection_profile.title }}</h2>
+      {% if can_edit %}<form method="post" action="{{ url_for('positions.set_priority', position_id=position.id, pc_id=pc.id) }}" class="row" style="margin:0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="back" value="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=pc.id) }}#from-cv">
+        <label for="prio" style="margin:0">Priority</label>
+        <select id="prio" name="priority" onchange="this.form.submit()" style="width:auto"><option value="">—</option>
+          {% for code, label in PRIORITIES.items() %}<option value="{{ code }}" {{ 'selected' if priority == code }}>{{ label }}</option>{% endfor %}</select>
+        <noscript><button class="btn btn-small">Save</button></noscript></form>{% endif %}
+    </div>
+    {% if not screening %}
+      <p class="muted">Not screened with the {{ selection_profile.title }} profile yet{% if not ai_policy.allows('cv_evaluation') %} (needs “AI résumé and answer evaluation” in Configuration){% endif %}.</p>
+    {% else %}{% set s = screening.payload %}
+      <p><span class="badge {{ 'ok' if s.fit == 'STRONG' else ('warn' if s.fit in ('MODERATE', 'CUTOFF') else '') }}" style="font-size:.85rem">{{ FIT_LABELS[s.fit] }}</span>
+        <span class="small">evidence score <b>{{ s.score }}/100</b>{% if s.commute.points %}, ranking {{ s.ranking_score }} with commute {{ '%+d' % s.commute.points }}{% endif %} · evidence confidence {{ s.confidence }}</span></p>
+      <p class="small muted">{{ s.version }} ({{ s.status }}) · {{ screening.provider_label }} · {{ screening.created_at|local(position.timezone) }}. Not a probability of success.</p>
+
+      <h3>Cut-offs and flags</h3>
+      {% for x in s.cutoffs %}<div class="small"><span class="badge bad">Business cut-off</span> {{ x.rule }}: {{ x.fact }} · {{ x.status }} · {{ x.exception }}</div>{% endfor %}
+      {% for f in s.risk_flags %}<div class="small"><span class="badge warn">{{ 'High-priority flag' if f.severity == 'high' else 'Risk flag' }}</span> {{ f.flag }}{% if f.fact %}: {{ f.fact }}{% endif %}
+        {% if f.quote %}<div class="ev">«{{ f.quote }}»</div>{% endif %}</div>{% else %}<p class="small muted">No risk flags.</p>{% endfor %}
+
+      <h3>Positive evidence</h3>
+      <ul class="small">{% for p in s.positive_evidence %}<li>{{ p.text }}{% if p.quote %} <span class="muted">«{{ p.quote }}»</span>{% endif %}</li>{% else %}<li class="muted">None documented.</li>{% endfor %}</ul>
+
+      <h3>Practical fit</h3>
+      <ul class="small">
+        <li>Commute: {{ s.commute.label }}{% if s.commute.place %} · lives in {{ s.commute.place }} <span class="muted">«{{ s.commute.quote }}»</span>{% endif %}{% if s.commute.basis %} <span class="muted">({{ s.commute.basis }})</span>{% endif %}</li>
+        <li>Desired hours: {% if s.stated_hours %}{{ s.stated_hours.hours }} h, {{ s.hours_band }} <span class="muted">«{{ s.stated_hours.quote }}»</span>{% else %}Unknown{% endif %}</li>
+        <li>Availability: {% if s.stated_availability %}{{ s.stated_availability.text }}{% else %}Unknown{% endif %}</li>
+        <li>Adaptability: {% if s.adaptability.status == 'DOCUMENTED' %}documented <span class="muted">«{{ s.adaptability.quote }}»</span>{% else %}not established (to verify, not a negative){% endif %}</li>
+      </ul>
+
+      <h3>Unknown (missing information, not negatives)</h3>
+      <ul class="small">{% for u in s.unknowns %}<li>{{ u }}</li>{% else %}<li class="muted">Nothing important missing.</li>{% endfor %}</ul>
+
+      <details><summary>Evidence by dimension</summary>
+        <table><tr><th>Dimension</th><th>Weight</th><th>Level</th><th>From the CV</th></tr>
+        {% for d in s.dimensions %}<tr><td>{{ d.name }}</td><td>{{ d.weight }}%</td>
+          <td class="small">{% if d.known %}{{ d.level }} · {{ LEVEL_LABELS[d.level] }}{% else %}Unknown{% endif %}</td>
+          <td class="small">{% for q in d.quotes %}<div class="ev SUPPORTS">«{{ q }}»</div>{% endfor %}<span class="muted">{{ d.explanation }}</span></td></tr>{% endfor %}
+        </table></details>
+      {% if s.stations %}<details><summary>Station matrix</summary>
+        <table><tr><th>Station</th><th>Level</th><th>Employer</th><th>From the CV</th></tr>
+        {% for st in s.stations %}<tr><td>{{ st.station }}</td><td>{{ st.level }}</td><td>{{ st.employer }}</td><td class="small">«{{ st.quote }}»</td></tr>{% endfor %}</table></details>{% endif %}
+      <details><summary>Work history and stability</summary>
+        <table><tr><th>Employer</th><th>Role</th><th>Dates</th><th>Months</th><th>Environment</th></tr>
+        {% for j in s.timeline %}<tr><td>{{ j.employer }}</td><td>{{ j.title }}{% if j.promotion %} <span class="badge ok">promotion</span>{% endif %}</td>
+          <td class="small">{{ j.start or '?' }} to {{ j.end or '?' }}{% if j.date_note %} <span class="muted">{{ j.date_note }}</span>{% endif %}</td>
+          <td>{{ j.months if j.months is not none else '?' }}</td><td class="small">{{ j.environment }}{{ '' if j.relevant else ' (not relevant)' }}</td></tr>{% endfor %}
+        </table>
+        <p class="small muted">{{ s.stability.reasons|join(' ') }}</p></details>
+      {% if s.questions %}<h3>To verify later</h3><ul class="small">{% for q in s.questions %}<li>{{ q }}</li>{% endfor %}</ul>{% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# ---------------- AI interview (SELECTION_POSITION_PROFILES_001) ---------------- #}
+  <div class="card" id="ai-interview">
+    <h2 style="margin-top:0">AI interview</h2>
+    {% if not ai_interview %}
+      <p class="small muted">After your call, request the AI interview: the candidate receives one email with a personal link
+        (from RomesFlavoursCareers@RMAED.it). The AI checks availability, hours, the commute when unknown, the questions this
+        CV raises and the position’s own questions.</p>
+      {% if can_edit %}<form method="post" action="{{ url_for('positions.request_ai_interview', position_id=position.id, pc_id=pc.id) }}"
+          data-confirm="Send the AI interview invitation to {{ mail_recipient or 'this candidate' }} now?" onsubmit="return confirm(this.dataset.confirm)">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirmed" value="1">
+        <input type="hidden" name="back" value="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=pc.id) }}#ai-interview">
+        <button class="btn" {{ 'disabled' if not mail_recipient }}>AI Interview Requested</button>
+        {% if not mail_recipient %}<span class="small" style="color:var(--warn)">No valid email address.</span>{% endif %}</form>{% endif %}
+    {% else %}
+      <p><span class="badge {{ 'ok' if ai_interview.status == 'COMPLETED' else 'info' }}">{{ AI_INTERVIEW_LABELS[ai_interview.status] }}</span>
+        <span class="small muted">requested by {{ ai_interview.requested_by_name }}, {{ ai_interview.requested_at|local(position.timezone) }}
+        {% if ai_interview.completed_at %}· completed {{ ai_interview.completed_at|local(position.timezone) }}{% endif %}</span></p>
+      <p class="small">Candidate’s link: <a href="{{ ai_interview_url(ai_interview) }}" target="_blank">{{ ai_interview_url(ai_interview) }}</a></p>
+      {% set f = ai_interview.findings %}
+      <table><tr><th>What was checked</th><th>Answer</th></tr>
+      {% for st in ai_interview.steps %}{% set r = f.get(st.id) %}<tr><td class="small">{{ st.ask }}</td>
+        <td class="small">{% if r %}<b>{{ FINDING_LABELS[r.status] }}</b> «{{ r.quote }}»{% if r.note %}<div class="muted">{{ r.note }}</div>{% endif %}{% else %}<span class="muted">Not asked yet</span>{% endif %}</td></tr>{% endfor %}
+      </table>
+      {% if ai_interview.transcript %}<details {{ 'open' if ai_interview.status == 'COMPLETED' }}><summary>Full conversation</summary>
+        {% for t in ai_interview.transcript %}<div class="small" style="margin:.35rem 0;white-space:pre-wrap"><b>{{ 'AI' if t.who == 'AI' else 'Candidate' }}:</b> {{ t.text }}</div>{% endfor %}
+      </details>{% endif %}
+    {% endif %}
+  </div>
+
   {# ---------------- 3 Evaluation ---------------- #}
   <div class="card">
     <h2 style="margin-top:0">Evaluation</h2>

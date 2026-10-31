@@ -33,7 +33,7 @@ from rfone_data_store.selection.parsing.text_extraction import SUPPORTED_EXTENSI
 
 from rfone_data_store.selection import workspace_models as ps
 
-from . import ai_adapter, position_settings
+from . import ai_adapter, position_profiles, position_settings, profile_screening
 
 STATUS_LABELS = {
     fam.EVIDENCED: "Evidenced in résumé",
@@ -256,6 +256,19 @@ def analyze(session, position: ps.Position, pc: ps.PositionCandidate, *, actor_i
         except AIProviderUnavailable as exc:
             ps.log_event(session, position_id=position.id, position_candidate_id=pc.id, kind="AI_UNAVAILABLE",
                          detail=f"AI evaluation not performed: {exc}", actor_id=actor_id, actor_name=actor_name)
+    profile = position_profiles.for_role(position.role_code)
+    if profile and ai_adapter.current_policy().allows("cv_evaluation"):
+        # Position Selection Profile (SELECTION_POSITION_PROFILES_001): the position-specific CV screening.
+        raw = session.get(m.RawResume, candidate.raw_resume_id) if candidate.raw_resume_id else None
+        try:
+            result = profile_screening.screen(profile, location=position.location_label,
+                                              cv_text=raw.raw_text if raw else "")
+            _store_proposal(session, pc, snapshot_id, fa.id, profile_screening.SOURCE, result["fit"], result,
+                            ai_adapter.POLICY.provider_label)
+        except AIProviderUnavailable as exc:
+            ps.log_event(session, position_id=position.id, position_candidate_id=pc.id, kind="AI_UNAVAILABLE",
+                         detail=f"{profile['title']} CV screening not performed: {exc}", actor_id=actor_id,
+                         actor_name=actor_name)
     ps.log_event(session, position_id=position.id, position_candidate_id=pc.id, kind="ANALYZED",
                  detail=f"Analyzed {candidate.full_name or 'candidate'}: proposal “{ps.GROUP_LABELS[group]}»",
                  actor_id=actor_id, actor_name=actor_name)
@@ -279,7 +292,8 @@ def current_proposals(session, pc_id: int) -> dict[str, ps.Proposal]:
     pc = session.get(ps.PositionCandidate, pc_id)
     position = session.get(ps.Position, pc.position_id) if pc else None
     policy = position_settings.bind(position) if position else ai_adapter.current_policy()
-    return {p.source: p for p in rows if p.source != ps.SOURCE_AI or policy.allows("cv_evaluation")}
+    return {p.source: p for p in rows
+            if p.source not in (ps.SOURCE_AI, profile_screening.SOURCE) or policy.allows("cv_evaluation")}
 
 
 def leading_proposal(proposals: dict[str, ps.Proposal]) -> ps.Proposal | None:

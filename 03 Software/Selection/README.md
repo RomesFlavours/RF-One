@@ -118,6 +118,35 @@ Open a position from **Open positions**, then select its **Configuration** tab. 
 
 Preferences are bounded by the installation's AI capabilities. Provider credentials and RMAED mail transport remain installation services. Existing position context and settings share the position's JSON document, so this change requires no shared database migration. The former global configuration bookmark redirects to the positions list; its global profile write is retired.
 
+## Position Selection Profiles, ranking and AI interview (SELECTION_POSITION_PROFILES_001)
+
+One CV engine, different standards for every position. A position whose role has a profile (today **Server** and
+**Line Cook**, `workspace/position_profiles.py`, from the 31 October 2026 specifications) gets a second screening of
+each résumé (`workspace/profile_screening.py`), stored as a proposal with source `PROFILE` and the profile version:
+
+- The AI reads the résumé: work history with dates and environment class, an evidence level 0–4 per dimension with
+  word-for-word quotes, role flags, unknowns, stated hours/availability, the home town and a rough drive time.
+- Code decides the order: quotes not found in the résumé are discarded (the level drops to "not shown"); tenure,
+  short-job runs and changes in 36 months are computed from the dates; the weighted evidence score uses the
+  profile's draft weights; the commute band adds points for locals and marks 45+ minutes as a business cut-off
+  candidate (rough estimate from the town, never a verified route). Unknowns are listed, never scored as negatives.
+- Needs the position's "AI résumé and answer evaluation" setting, like the existing AI evaluation.
+
+The Evaluation tab shows the **CV ranking**: recruiter priority first (High, Medium, not set, Low), business cut-offs
+last within each priority, then the ranking score. The candidate page shows **From the CV** with cut-offs, flags,
+positive evidence, practical fit, unknowns, evidence by dimension, the station matrix (Line Cook) and the work history.
+
+**AI Interview Requested** (list row or candidate page, with a confirmation) creates the candidate's personal link and
+queues one invitation through the RMAED.it outbox (`source_key = ai-interview:<id>`); a repeated click sends nothing.
+On `/selection/ai-interview/<token>` the candidate has a short written conversation (`workspace/ai_interview.py`):
+availability and hours, the commute when unknown, the résumé's questions, then the position's questions. The server
+picks the next step and closes it; only the candidate's own words are kept as quotes. Then the status is
+**AI Interview Completed** and the transcript is on the candidate page.
+
+New tables, provisioned by `workspace/schema.py` like the outbox: `selection_workspace_ai_interviews`,
+`selection_workspace_priorities`. No existing table or shared Alembic revision changes.
+Test: `python test_position_profiles_http.py` (synthetic data, fake AI, no email).
+
 ## Active AI connection
 
 Selection uses AWS Bedrock with `us.anthropic.claude-haiku-4-5-20251001-v1:0`. Its App Runner instance role and private Bedrock Runtime endpoint already provide the required access. Only Selection's provider and feature-capability environment variables are enabled; individual position preferences remain independent and unconfigured positions stay disabled.

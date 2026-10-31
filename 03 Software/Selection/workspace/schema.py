@@ -7,6 +7,7 @@ from rfone_data_store.models import Base
 from rfone_data_store.selection import workspace_models  # noqa: F401
 from .aruba_bridge import CandidateBridgeTicket  # noqa: F401
 from .mail_delivery import EmailOutbox  # noqa: F401
+from .ai_interview import AIInterview, RecruiterPriority  # noqa: F401
 
 
 def provision(bind):

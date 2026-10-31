@@ -27,6 +27,8 @@ def register_workspace(app, *, SessionFactory, documents, rfone_web_base_url) ->
     aruba_bridge.install()
     from . import mail_delivery
     mail_delivery.install()
+    from . import ai_interview
+    ai_interview.install()
     _cfg.SessionFactory = SessionFactory
     _cfg.documents = documents
     _cfg.rfone_web_base_url = rfone_web_base_url

@@ -203,6 +203,44 @@
 {% if not cards %}
 <div class="card"><p>No applications. <a href="{{ url_for('positions.position_detail', position_id=position.id, tab='candidature') }}">Upload résumés or share the application page</a>.</p></div>
 {% else %}
+{% if selection_profile %}
+<div class="card" id="ranked">
+  <div class="row" style="justify-content:space-between">
+    <h3 style="margin:0">CV ranking · {{ selection_profile.title }} profile</h3>
+    <span class="small muted">{{ selection_profile.version }} · weights and thresholds proposed, not yet approved</span>
+  </div>
+  {% if not ai_policy.allows("cv_evaluation") %}<div class="banner off small">The {{ selection_profile.title }} CV ranking needs “AI résumé and answer evaluation” in this position’s Configuration.</div>{% endif %}
+  <p class="small muted">Order: your priority first (High, Medium, not set, Low), then the CV evidence score adjusted for the estimated commute. Business cut-offs go last within each priority. A proposal only: nobody is excluded.</p>
+  <table class="ranked">
+    <tr><th>#</th><th>Candidate</th><th>CV fit</th><th>Commute</th><th>Flags</th><th>Priority</th><th>AI interview</th></tr>
+    {% for c in ranked %}{% set s = c.screening.payload if c.screening else None %}
+    <tr id="cand-{{ c.pc.id }}">
+      <td>{{ loop.index }}</td>
+      <td><a class="name" href="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=c.pc.id) }}">{{ c.name }}</a>
+        <div class="small muted">{{ c.latest_role or '' }}</div>
+        {% if c.decision %}<div class="small"><span class="badge ok">{{ DECISION_LABELS[c.decision.decision] }}</span></div>{% endif %}</td>
+      <td>{% if s %}<span class="badge {{ 'ok' if s.fit == 'STRONG' else ('warn' if s.fit in ('MODERATE', 'CUTOFF') else '') }}">{{ FIT_LABELS[s.fit] }}</span>
+        <div class="small muted">score {{ s.score }}/100{% if s.commute.points %} · commute {{ '%+d' % s.commute.points }}{% endif %} · confidence {{ s.confidence }}</div>
+        {% else %}<span class="small muted">Not screened</span>{% endif %}</td>
+      <td class="small">{% if s %}{% if s.commute.minutes is not none %}~{{ s.commute.minutes }} min from {{ s.commute.place }}{% else %}Unknown{% endif %}{% endif %}</td>
+      <td class="small">{% if s %}{{ s.risk_flags|length }}{% if s.cutoffs %} · <b>cut-off</b>{% endif %}{% endif %}</td>
+      <td>{% if can_edit %}<form method="post" action="{{ url_for('positions.set_priority', position_id=position.id, pc_id=c.pc.id) }}" style="margin:0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select name="priority" onchange="this.form.submit()" aria-label="Priority for {{ c.name }}" style="width:auto">
+            <option value="">—</option>{% for code, label in PRIORITIES.items() %}<option value="{{ code }}" {{ 'selected' if c.priority == code }}>{{ label }}</option>{% endfor %}
+          </select><noscript><button class="btn btn-small">Save</button></noscript></form>
+        {% else %}{{ PRIORITIES.get(c.priority, '—') }}{% endif %}</td>
+      <td class="small">{% if c.ai_interview %}<span class="badge {{ 'ok' if c.ai_interview.status == 'COMPLETED' else 'info' }}">{{ AI_INTERVIEW_LABELS[c.ai_interview.status] }}</span>
+        {% elif can_edit %}<form method="post" action="{{ url_for('positions.request_ai_interview', position_id=position.id, pc_id=c.pc.id) }}" style="margin:0"
+          data-confirm="Send {{ c.name }} the AI interview invitation by email now?" onsubmit="return confirm(this.dataset.confirm)">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirmed" value="1">
+          <input type="hidden" name="back" value="{{ url_for('positions.position_detail', position_id=position.id, tab='valutazione') }}#cand-{{ c.pc.id }}">
+          <button class="btn btn-secondary btn-small">AI Interview Requested</button></form>{% else %}—{% endif %}</td>
+    </tr>{% endfor %}
+  </table>
+  <style>.ranked td{vertical-align:top}.ranked tr:target{background:#fff6d6}</style>
+</div>
+{% endif %}
 <form method="get" action="{{ url_for('positions.compare', position_id=position.id) }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="back" value="{{ url_for('positions.position_detail', position_id=position.id, tab='valutazione') }}">
