@@ -82,6 +82,8 @@ _STATIONS = ("For each named kitchen station (sauté, pasta, grill/broiler, fry,
              "(ran it alone), coordinated (ran several). Never upgrade a level.\n")
 _STATIONS_SHAPE = ('"stations": [{"station": "...", "level": "claimed|assisted|executed|owned|coordinated", '
                    '"employer": "...", "quote": "..."}],\n  ')
+_JSON_RETRY = ("\n\nYour previous reply was not valid JSON. Reply again with valid JSON only: inside every string, "
+               "escape double quotes as \\\" or use single quotes.")
 
 
 def _month(value, today: date) -> date | None:
@@ -108,7 +110,8 @@ def stability(timeline: list[dict], today: date | None = None) -> dict:
     for job in timeline:
         start, end = _month(job.get("start"), today), _month(job.get("end"), today)
         if start and end and end >= start:
-            jobs.append({**job, "months": _months(start, end), "_start": start, "_end": end})
+            job["months"] = _months(start, end)
+            jobs.append({**job, "_start": start, "_end": end})
         else:
             job["months"] = None
     jobs.sort(key=lambda j: j["_start"])
@@ -181,13 +184,20 @@ def screen(profile: dict, *, location: str, cv_text: str, today: date | None = N
         stations_shape=_STATIONS_SHAPE if "station_levels" in profile else "",
         cv_text=ai_adapter.redact_contacts(cv_text), protected=ai_adapter._PROTECTED.replace(
             ", address or where the person lives", ""))
-    data = ai_adapter._transport(prompt, "position profile screening")
+    try:
+        data = ai_adapter._transport(prompt, "position profile screening")
+    except AIProviderUnavailable as exc:
+        if "unparsable" not in str(exc):
+            raise
+        # Temperature is 0, so the same prompt gives the same broken JSON: ask once more, differently.
+        data = ai_adapter._transport(prompt + _JSON_RETRY, "position profile screening (retry)")
     if not isinstance(data, dict) or not isinstance(data.get("timeline"), list):
         raise AIProviderUnavailable("Invalid AI response (work history missing).")
-    return assemble(profile, data, cv_text=cv_text, today=today)
+    return assemble(profile, data, cv_text=cv_text, today=today, location=location)
 
 
-def assemble(profile: dict, data: dict, *, cv_text: str, today: date | None = None) -> dict:
+def assemble(profile: dict, data: dict, *, cv_text: str, today: date | None = None,
+             location: str | None = None) -> dict:
     hay = ai_adapter._normalized(cv_text)
     timeline = [j for j in data.get("timeline") or [] if isinstance(j, dict)][:20]
     for job in timeline:
@@ -221,14 +231,16 @@ def assemble(profile: dict, data: dict, *, cv_text: str, today: date | None = No
     home = data.get("home_location") if isinstance(data.get("home_location"), dict) else None
     if home and not _quote_ok(home.get("quote"), hay):
         home = None
-    minutes = data.get("commute_minutes")
+    known = pp.known_drive(location, home.get("place")) if home else None
+    minutes = data.get("commute_minutes") if known is None else known
     minutes = minutes if isinstance(minutes, int) and 0 <= minutes <= 600 and home else None
     band = pp.commute_band(minutes)
     commute = {"place": home.get("place") if home else None, "quote": home.get("quote") if home else None,
                "minutes": minutes, "band": band[0] if band else "UNKNOWN",
                "label": band[1] if band else "Commute unknown: no clear home location in the résumé",
                "points": band[2] if band else 0,
-               "basis": "Rough AI estimate from the city on the résumé, not a verified route" if band else None}
+               "basis": (None if not band else "Typical drive from the town list, approximate" if known is not None
+                         else "Rough AI estimate from the city on the résumé, not a verified route")}
 
     def stated(key, field):
         value = data.get(key) if isinstance(data.get(key), dict) else None

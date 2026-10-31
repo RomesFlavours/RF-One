@@ -39,6 +39,19 @@ COMMUTE_BANDS = (
     (None, "CUTOFF", "45 min or more: business cut-off candidate, exception review", -15),
 )
 
+# Typical one-way drive (minutes) from nearby towns to the restaurant, used before the AI's own estimate,
+# which proved unreliable (Leesburg came back as 45 minutes). Approximate: to be confirmed by the restaurant.
+DRIVE_MINUTES = {
+    "mount dora": {
+        "mount dora": 5, "eustis": 12, "tavares": 12, "sorrento": 12, "mount plymouth": 15, "zellwood": 15,
+        "plymouth": 18, "astatula": 20, "umatilla": 22, "leesburg": 25, "apopka": 25, "paisley": 25,
+        "howey-in-the-hills": 25, "altoona": 25, "fruitland park": 30, "lady lake": 32, "minneola": 35,
+        "sanford": 35, "lake mary": 35, "longwood": 35, "ocoee": 35, "altamonte springs": 38, "maitland": 38,
+        "the villages": 38, "clermont": 40, "groveland": 40, "winter garden": 40, "winter park": 40,
+        "orlando": 45, "deland": 45, "deltona": 45, "kissimmee": 60, "ocala": 60,
+    },
+}
+
 HOURS_BANDS = (
     (35, "Potential full-time fit (35–40 h)"),
     (25, "Substantial regular commitment (25–34 h)"),
@@ -174,6 +187,15 @@ def commute_band(minutes: int | None) -> tuple[str, str, int] | None:
         if limit is None or minutes <= limit:
             return code, label, points
     return None
+
+
+def known_drive(location: str | None, place: str | None) -> int | None:
+    """Minutes from the restaurant's town table, or None when the location or the town is not listed."""
+    if not location or not place:
+        return None
+    table = next((t for key, t in DRIVE_MINUTES.items() if key in location.lower()), None)
+    town = place.split(",")[0].strip().lower()
+    return table.get(town) if table else None
 
 
 def hours_band(hours: int | None) -> str | None:

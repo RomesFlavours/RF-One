@@ -129,7 +129,9 @@ each résumé (`workspace/profile_screening.py`), stored as a proposal with sour
 - Code decides the order: quotes not found in the résumé are discarded (the level drops to "not shown"); tenure,
   short-job runs and changes in 36 months are computed from the dates; the weighted evidence score uses the
   profile's draft weights; the commute band adds points for locals and marks 45+ minutes as a business cut-off
-  candidate (rough estimate from the town, never a verified route). Unknowns are listed, never scored as negatives.
+  candidate. The drive time comes from `position_profiles.DRIVE_MINUTES` (typical minutes from nearby towns, to be
+  confirmed by the restaurant) and falls back to the AI's rough estimate only for towns not listed; it is never a
+  verified route. A reply that is not valid JSON is asked once more. Unknowns are listed, never scored as negatives.
 - Needs the position's "AI résumé and answer evaluation" setting, like the existing AI evaluation.
 
 The Evaluation tab shows the **CV ranking**: recruiter priority first (High, Medium, not set, Low), business cut-offs

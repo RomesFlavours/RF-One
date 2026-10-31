@@ -148,6 +148,29 @@ try:
           s["level"] == 4 and s["positives"][0]["code"] == "LONG_TENURE", s)
     s = profile_screening.stability([{"start": None, "end": None}], today)
     check("stability: no usable dates means unknown, not zero", s["level"] is None and not s["known"])
+    s = profile_screening.stability([{"start": "2022-04", "end": "present"}, {"start": "2021-01", "end": "2022-03"},
+                                     {"start": None, "end": None}], today)
+    check("stability: only the jobs really missing dates are counted as undated",
+          s["jobs_dated"] == 2 and s["jobs_undated"] == 1, s)
+    check("commute: a listed town uses the restaurant's drive table, not the AI's guess",
+          position_profiles.known_drive("Mount Dora", "Leesburg, FL") == 25
+          and position_profiles.known_drive("Mount Dora", "Atlantis") is None
+          and position_profiles.known_drive(None, "Leesburg") is None)
+    prompts, real_transport = [], profile_screening.ai_adapter._transport
+
+    def broken_once(prompt, purpose):
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            raise profile_screening.AIProviderUnavailable("AWS Bedrock returned an unparsable response: x")
+        return fake_screening(prompt)
+    profile_screening.ai_adapter._transport = broken_once
+    try:
+        retried = profile_screening.screen(position_profiles.SERVER, location="Mount Dora",
+                                           cv_text="Server, Olive Grove, 2019 - present")
+    finally:
+        profile_screening.ai_adapter._transport = real_transport
+    check("screening: a reply that is not valid JSON is asked once more, with a note",
+          len(prompts) == 2 and "not valid JSON" in prompts[1] and retried["fit"], len(prompts))
     check("profiles: Server and Line Cook weights add up to 100",
           all(sum(d["weight"] for d in p["dimensions"]) == 100 for p in position_profiles.PROFILES.values()))
     check("profiles: commute bands follow the 45-minute rule",
