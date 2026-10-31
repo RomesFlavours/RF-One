@@ -191,7 +191,7 @@ def _transcribe_transport(images: list[bytes]) -> str:
             modelId=model_id,
             messages=[{"role": "user", "content": [{"image": {"format": "png", "source": {"bytes": b}}} for b in images]
                        + [{"text": _TRANSCRIBE_PROMPT}]}],
-            inferenceConfig={"maxTokens": 4096, "temperature": 0})
+            inferenceConfig={"maxTokens": ai_client.MAX_OUTPUT_TOKENS, "temperature": 0})
     except ImportError as exc:
         raise AIProviderUnavailable("The 'boto3' package is not installed.") from exc
     except (BotoCoreError, ClientError) as exc:

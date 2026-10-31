@@ -169,8 +169,11 @@ Uploading the same file again reuses the first reading. A reply that is not vali
 **Checks:** 39 checks in `test_position_profiles_http.py`; Pino's suites still pass, including the Selection engine
 validation (659/659) and batch upload (39/39). Real AI: a made-up scanned résumé was read back word for word in 6 s.
 
-**Not changed, proposal:** the shared AI client caps an answer at 4,096 tokens; a very long résumé can be cut off and
-fall back to the rule-based reader. Raising it touches Bank, Tips and Organization too, so it is left to the owner.
+**AI answer cap raised:** the shared AI client capped an answer at 4,096 tokens, so a long résumé could be cut off and
+fall back to the rule-based reader. It is now 16,000 (`ai_client.MAX_OUTPUT_TOKENS`, both providers). It is only a
+ceiling: short answers are unchanged in cost and content. The client is shared with Bank, Tips and Organization; their
+AI tests still pass (Bank AI rules 44/44, Tips AI rule authoring 45/45, AI client 14/14). Real AI check: a résumé read
+in 4.9 s with the new cap.
 
 ## 9. References
 
