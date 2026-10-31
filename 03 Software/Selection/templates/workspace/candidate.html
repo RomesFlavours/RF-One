@@ -18,6 +18,10 @@
 </div>
 {% if duplicates %}<div class="banner warn">{% for d in duplicates %}<div>⚠ {{ d }}</div>{% endfor %}</div>{% endif %}
 {% if pc.import_note %}<div class="banner info">{{ pc.import_note }}</div>{% endif %}
+{% if candidate.parsing_mode != 'REAL_AI' and can_edit %}<div class="banner warn">This résumé was read without the AI, so parts may be missing.
+  {% if ai_policy.cv_ai_authorized %}<form method="post" action="{{ url_for('positions.read_again_one', position_id=position.id, pc_id=pc.id) }}" style="display:inline;margin:0 0 0 .4rem">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-small">Read again with the AI</button></form>
+  {% else %}Turn on “AI résumé and answer evaluation” in Configuration to read it again.{% endif %}</div>{% endif %}
 
 <div class="grid g2" style="margin-top:.8rem">
 <div>

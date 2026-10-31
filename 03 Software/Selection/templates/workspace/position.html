@@ -182,6 +182,14 @@
     </form>{% else %}<p class="muted small">Read only.</p>{% endif %}
   </div>
 </div>
+{% set unread = cards|selectattr('read_without_ai')|list %}
+{% if unread %}<div class="banner warn">
+  <b>{{ unread|length }} résumé{{ 's were' if unread|length != 1 else ' was' }} read without the AI</b>, so names and experience may be missing.
+  {% if not ai_policy.cv_ai_authorized %}Turn on “AI résumé and answer evaluation” in this position’s Configuration, then read them again.
+  {% elif can_edit %}<form method="post" action="{{ url_for('positions.read_again_all', position_id=position.id) }}" style="display:inline;margin:0 0 0 .4rem">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-small">Read again with the AI</button></form>
+  <span class="small">About 10 seconds a résumé; long lists continue on the next click.</span>{% endif %}
+</div>{% endif %}
 <div class="card">
   <table>
     <tr><th>Candidate</th><th>Latest experience</th><th>Channel</th><th>Status</th><th>Received</th></tr>

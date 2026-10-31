@@ -33,7 +33,7 @@ from rfone_data_store.selection.parsing.text_extraction import SUPPORTED_EXTENSI
 
 from rfone_data_store.selection import workspace_models as ps
 
-from . import ai_adapter, position_profiles, position_settings, profile_screening
+from . import ai_adapter, cv_reading, position_profiles, position_settings, profile_screening
 
 STATUS_LABELS = {
     fam.EVIDENCED: "Evidenced in résumé",
@@ -71,6 +71,13 @@ def import_cv(session, *, documents, restaurant_id: int, position: ps.Position, 
         raw_text = extract_text(staged.local_path, ext)
     except Exception:
         return {"filename": filename, "status": "FAILED", "message": "Unable to read the file."}
+    if ext == ".pdf" and len((raw_text or "").strip()) < 80:
+        # A scan has no text inside: the AI reads its pages (SELECTION_CV_REREAD_001). If it cannot, the import
+        # below reports "No extractable text" exactly as before.
+        try:
+            raw_text = cv_reading.transcribe_pdf(staged.local_path) or raw_text
+        except Exception:
+            pass
 
     result = import_one_resume(
         session, restaurant_id=restaurant_id, source_type=LOCAL_UPLOAD, original_filename=filename,
@@ -99,6 +106,9 @@ def import_cv(session, *, documents, restaurant_id: int, position: ps.Position, 
 
     if result.status == PARTIAL:
         note = ((note or "") + " Partial résumé extraction; some sections need checking.").strip()
+    without_ai = cv_reading.note_for_reading(persistence.get_candidate(session, application.candidate_id))
+    if without_ai:
+        note = ((note or "") + " " + without_ai).strip()
     declared = declared or {}
     pc = ps.PositionCandidate(
         position_id=position.id, application_id=application.id, candidate_id=application.candidate_id,

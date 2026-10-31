@@ -84,8 +84,6 @@ _STATIONS_SHAPE = ('"stations": [{"station": "...", "level": "claimed|assisted|e
 # The existing "never use" list minus where the person lives, which the commute rule needs (screening and
 # interview only; the existing evaluation keeps the full list). If that wording changes, the test fails.
 PROTECTED_EXCEPT_RESIDENCE = ai_adapter._PROTECTED.replace(", address or where the person lives", "")
-_JSON_RETRY = ("\n\nYour previous reply was not valid JSON. Reply again with valid JSON only: inside every string, "
-               "escape double quotes as \\\" or use single quotes.")
 
 
 def _list(value) -> list:
@@ -198,7 +196,7 @@ def screen(profile: dict, *, location: str, cv_text: str, today: date | None = N
         if "unparsable" not in str(exc):
             raise
         # Temperature is 0, so the same prompt gives the same broken JSON: ask once more, differently.
-        data = ai_adapter._transport(prompt + _JSON_RETRY, "position profile screening (retry)")
+        data = ai_adapter._transport(prompt + ai_adapter.JSON_RETRY_NOTE, "position profile screening (retry)")
     if not isinstance(data, dict) or not isinstance(data.get("timeline"), list):
         raise AIProviderUnavailable("Invalid AI response (work history missing).")
     return assemble(profile, data, cv_text=cv_text, today=today, location=location)

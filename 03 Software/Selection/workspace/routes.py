@@ -54,7 +54,7 @@ from rfone_data_store.selection.industry.restaurant_templates import (
 from rfone_data_store.selection.parsing.ai_client import AIProviderUnavailable
 
 from . import ai_adapter, engine, organization_adapter, mail_delivery, position_settings, ai_checks
-from . import ai_interview, position_profiles, profile_screening
+from . import ai_interview, cv_reading, position_profiles, profile_screening
 from .channels import CHANNEL_LABELS, CHANNELS
 
 bp = Blueprint("positions", __name__)
@@ -310,6 +310,7 @@ def _candidate_cards(db, position: ps.Position) -> list[dict]:
             "channel": CHANNEL_LABELS.get(pc.channel, pc.channel), "duplicates": engine.duplicate_notes(db, pc),
             "application": application, "next_appointment": upcoming[0] if upcoming else None,
             "screening": proposals.get(profile_screening.SOURCE), "priority": ai_interview.priority_for(db, pc.id),
+            "read_without_ai": cv_reading.read_without_ai(candidate),
             "ai_interview": ai_interview.for_pc(db, pc.id),
         })
     return cards
@@ -817,6 +818,38 @@ def reanalyze(db, actor, position_id):
         engine.analyze(db, position, pc, actor_id=actor.id, actor_name=actor.name)
     flash("Evaluation updated using the approved version.")
     return _position_redirect(position, "valutazione")
+
+
+@bp.route("/posizioni/<int:position_id>/rileggi", methods=["POST"])
+@access_required
+def read_again_all(db, actor, position_id):
+    """Read again with the AI the résumés read without it (SELECTION_CV_REREAD_001), a batch per click."""
+    position = _position(db, actor, position_id, edit=True)
+    r = cv_reading.read_pending(db, position, actor_id=actor.id, actor_name=actor.name)
+    parts = [f"{r['read']} read with the AI"]
+    if r["partial"]:
+        parts.append(f"{r['partial']} still partly read (check them on the candidate page)")
+    if r["failed"]:
+        parts.append(f"{len(r['failed'])} not read: {r['failed'][-1]}")
+    if r["left"]:
+        parts.append(f"{r['left']} left: click again to continue")
+    flash("Read again: " + "; ".join(parts) + ".")
+    return _position_redirect(position, "candidature")
+
+
+@bp.route("/posizioni/<int:position_id>/candidati/<int:pc_id>/rileggi", methods=["POST"])
+@access_required
+def read_again_one(db, actor, position_id, pc_id):
+    position = _position(db, actor, position_id, edit=True)
+    pc = _pc(db, position, pc_id)
+    try:
+        status = cv_reading.read_again(db, position, pc, actor_id=actor.id, actor_name=actor.name)
+        flash("Résumé read again with the AI." + ("" if status == "COMPLETED" else
+                                                   " Some sections still need checking against the original."))
+    except ValueError as exc:
+        db.rollback()
+        flash(str(exc))
+    return redirect(url_for(".candidate_detail", position_id=position.id, pc_id=pc.id))
 
 
 # ---------------------------------------------------------------------------

@@ -118,9 +118,24 @@ def fake_screening(prompt: str) -> dict:
 
 
 interview_prompts: list[str] = []
+reading = {"on": False, "broken_once": False}  # the AI résumé reader: off at upload (like Pino's run), on later
+
+
+def fake_reading(prompt: str) -> dict:
+    if reading["broken_once"]:
+        reading["broken_once"] = False
+        raise AIProviderUnavailable("AWS Bedrock returned an unparsable response: x")
+    name = next((n for n in ("Jordan Example", "Sam Scan") if n in prompt), "Casey Sample")
+    return {"full_name": name, "email": name.split()[0].lower() + "@example.test", "phone": None, "location": None, "skills": [], "certifications": [],
+            "language_details": [], "education": [],
+            "work_history": [{"employer": "Trattoria Esempio" if "Jordan" in name else "Diner Demo",
+                              "original_job_title": "Server", "start_date_text": "Mar 2021", "end_date_text": "Present",
+                              "evidence_snippet": "Server"}]}
 
 
 def fake_ai(prompt: str) -> dict:
+    if "You are extracting structured information from a résumé" in prompt and reading["on"]:
+        return fake_reading(prompt)
     if "You read ONE job applicant's résumé" in prompt:
         return fake_screening(prompt)
     if "You are the interviewer for Rome's Flavours" in prompt:
@@ -263,6 +278,32 @@ try:
         check("candidate page: From the CV shows flags, evidence, commute, unknowns and the questions",
               "From the CV" in cand_page and "Server profile" in cand_page and "Eustis, FL" in cand_page and "Unknown (missing information" in cand_page)
 
+        # --- Résumés read without the AI, then read again (SELECTION_CV_REREAD_001) ---------------
+        apps_page = text(owner.get(f"/selection/posizioni/{pid}?tab=candidature"))
+        with selection_app.SessionFactory() as db:
+            before = db.get(ws.PositionCandidate, jordan_id)
+            jordan_note = before.import_note or ""
+            jordan_candidate_id = before.candidate_id
+        check("reading: a résumé read without the AI says so, and the list offers to read it again",
+              "Read without the AI" in jordan_note and "2 résumés were read without the AI" in apps_page
+              and "Read again with the AI" in apps_page, jordan_note)
+        reading.update(on=True, broken_once=True)
+        owner.post(f"/selection/posizioni/{pid}/rileggi", data={"csrf_token": t})
+        with selection_app.SessionFactory() as db:
+            from rfone_data_store.selection import persistence as _p
+            jc = _p.get_candidate(db, jordan_candidate_id)
+            pcj = db.get(ws.PositionCandidate, jordan_id)
+            events = db.scalars(select(ws.WorkspaceEvent).where(ws.WorkspaceEvent.position_candidate_id == jordan_id,
+                                                                ws.WorkspaceEvent.kind == "CV_READ")).all()
+            check("reading: Read again uses the AI on the same résumé (a broken reply is asked once more)",
+                  jc.id == jordan_candidate_id and jc.parsing_mode == "REAL_AI" and jc.full_name == "Jordan Example"
+                  and len(jc.work_history) == 1 and jc.work_history[0].employer == "Trattoria Esempio", jc.parsing_mode)
+            check("reading: the old reading notes are cleared and nothing linked to the candidate is lost",
+                  "Read without the AI" not in (pcj.import_note or "") and pcj.candidate_id == jordan_candidate_id
+                  and events)
+        apps_page = text(owner.get(f"/selection/posizioni/{pid}?tab=candidature"))
+        check("reading: once read, the list no longer asks to read again", "read without the AI" not in apps_page)
+
         url = f"/selection/posizioni/{pid}/candidati/{jordan_id}/ai-interview"
         check("AI interview: without confirmation nothing is created",
               owner.post(url, data={"csrf_token": t}).status_code == 302)
@@ -334,6 +375,29 @@ try:
                   not db.scalars(select(ws.Proposal).join(ws.PositionCandidate,
                       ws.PositionCandidate.id == ws.Proposal.position_candidate_id).where(
                       ws.PositionCandidate.position_id == other, ws.Proposal.source == "PROFILE")).first())
+
+        # --- A scanned PDF (no text inside) is read by the AI from its page images ------------------
+        from PIL import Image
+        from workspace import cv_reading
+        scan = BytesIO()
+        Image.new("RGB", (850, 1100), "white").save(scan, "PDF")
+        seen_images: list[int] = []
+
+        def fake_transcribe(images):
+            seen_images.append(len(images))
+            return "Sam Scan\nsam.scan@example.test\nLives in Tavares, FL\nServer, Cafe Scan | Jan 2022 - Present"
+        real_transcribe, cv_reading._transcribe_transport = cv_reading._transcribe_transport, fake_transcribe
+        try:
+            owner.post(f"/selection/posizioni/{other}/cv", data={"csrf_token": t, "cv": (BytesIO(scan.getvalue()), "scan.pdf")},
+                       content_type="multipart/form-data")
+        finally:
+            cv_reading._transcribe_transport = real_transcribe
+        with selection_app.SessionFactory() as db:
+            from rfone_data_store.selection import persistence as _p
+            names = [(_p.get_candidate(db, pc.candidate_id).full_name or "") for pc in db.scalars(
+                select(ws.PositionCandidate).where(ws.PositionCandidate.position_id == other)).all()]
+        check("reading: a scanned PDF is read by the AI from its pages instead of failing",
+              seen_images == [1] and "Sam Scan" in names, (seen_images, names))
 finally:
     selection_app._engine.dispose()
     shutil.rmtree(TMP, ignore_errors=True)

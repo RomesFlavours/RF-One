@@ -33,6 +33,9 @@ From "Position-Specific Standards", the Server and Line Cook "AI CV Preselection
 | `workspace/routes.py` | Ranked list, priority route, AI Interview Requested route, template context. |
 | `workspace/schema.py`, `workspace/__init__.py` | Provision the two new tables; register the public interview page. |
 | `templates/workspace/position.html`, `candidate.html` | "Who to call first" ranking cards; From the CV panel (score ring, commute/hours/availability tiles, flags, evidence bars, stations, work-history bars, questions); AI interview checklist and conversation. |
+| `03 Software/Selection/workspace/cv_reading.py` | New. Read again with the AI; scanned PDFs read from page images. |
+| `RF-One Data Store/rfone_data_store/selection/persistence.py` | `replace_candidate_profile` added; `save_candidate_profile` split so both use the same code (same behaviour). |
+| `workspace/ai_adapter.py` | A résumé reply that is not valid JSON is asked once more. |
 | `03 Software/Selection/README.md` | New section. |
 
 Not changed: existing tables, the shared Alembic revision, the existing rule-based and AI evaluation, duplicate and
@@ -146,7 +149,30 @@ Interpretation: the order matched what a manager would expect, the flags trace t
 quote had to be dropped. Four résumés and one interview prove the flow works, not that the weights are right
 (section 6).
 
-## 8. References
+## 8. Résumés not recognised (added after the owner's test, 31 October)
+
+**Observed:** uploading real résumés gave "(name not extracted)", "? · ?" and "Partial résumé extraction".
+
+**Cause (from the code):** the AI reads a résumé only when the CV AI switch, the position's AI résumé setting and the
+AWS sign-in are all in place. Otherwise the rule-based reader is used silently, and it finds little in real résumés.
+Uploading the same file again reuses the first reading. A reply that is not valid JSON had the same effect.
+
+**Solutions on the branch:**
+
+| Change | Effect |
+|---|---|
+| Note on every résumé read without the AI, with the reason | Never silent again |
+| "Read again with the AI" on the Applications tab (all) and the candidate page (one) | Same candidate updated in place; names, experience, duplicate check and ranking redone |
+| Scanned PDFs read by the AI from page images | They no longer stop at "No extractable text" |
+| One retry when the reading reply is not valid JSON | Fewer silent fallbacks |
+
+**Checks:** 39 checks in `test_position_profiles_http.py`; Pino's suites still pass, including the Selection engine
+validation (659/659) and batch upload (39/39). Real AI: a made-up scanned résumé was read back word for word in 6 s.
+
+**Not changed, proposal:** the shared AI client caps an answer at 4,096 tokens; a very long résumé can be cut off and
+fall back to the rule-based reader. Raising it touches Bank, Tips and Organization too, so it is left to the owner.
+
+## 9. References
 
 - Branch `shelbi/selection-position-profiles`; base `release/selection-complete-20261030` (`2d85435`).
 - Test: `python test_position_profiles_http.py`.

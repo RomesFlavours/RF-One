@@ -153,6 +153,16 @@ step and closes as soon as every step is answered (at most 2 extra answers); onl
 as quotes. Then the status is **AI Interview Completed** and the transcript is on the candidate page. Once the
 position is closed or the candidate has a final decision, the link shows that the interview is no longer open.
 
+**Reading résumés again (SELECTION_CV_REREAD_001).** A résumé is read once, at upload: by the AI when AI résumé
+reading is on and working, otherwise by the rule-based reader, which finds little in most real résumés. Uploading
+the file again reuses that first reading. Now: each résumé read without the AI says why in its note; the
+Applications tab and the candidate page offer **Read again with the AI** (`workspace/cv_reading.py`), which reads the
+same stored text with the AI only, replaces what was read on the same candidate
+(`persistence.replace_candidate_profile`), fills the person's blank name/email/phone, redoes the possible-duplicate
+suggestions, and re-evaluates; a click processes about 80 seconds of résumés and the rest continue on the next click.
+A PDF with no text inside (a scan) is read by the AI from its first 4 pages as images instead of stopping at "No
+extractable text". A résumé reply that is not valid JSON is asked once more before falling back.
+
 Look: the ranking, the From the CV panel and both interview pages use `sp-` styles in `static/css/selection.css`
 (RF-One's olive family only, no gradients, no animation) and the flat drawings in `templates/_profile_art.html`.
 

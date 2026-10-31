@@ -63,49 +63,65 @@ def raw_resume_ref(raw_resume: m.RawResume) -> RawResumeRef:
     )
 
 
+# The Candidate columns a reading fills from a CandidateCVProfile (everything but ids and status).
+_PROFILE_FIELDS = (
+    "full_name", "email", "phone", "location", "languages", "target_role", "declared_availability",
+    "source", "source_file", "source_provider", "parsing_mode", "parser_provider", "declared_age_context",
+    "derived_age_context_range", "derived_age_context_rationale", "derived_age_context_confidence",
+    "summary", "linkedin_url", "other_profile_url", "other_sections_text",
+)
+
+
 def save_candidate_profile(
     session: Session, profile: CandidateCVProfile, *, restaurant_id: int | None, raw_resume_id: int | None,
 ) -> m.Candidate:
     candidate = m.Candidate(
-        restaurant_id=restaurant_id, raw_resume_id=raw_resume_id,
-        full_name=profile.full_name, email=profile.email, phone=profile.phone,
-        location=profile.location, languages=profile.languages, target_role=profile.target_role,
-        declared_availability=profile.declared_availability,
-        source=profile.source, source_file=profile.source_file, source_provider=profile.source_provider,
-        parsing_mode=profile.parsing_mode, parser_provider=profile.parser_provider,
-        declared_age_context=profile.declared_age_context,
-        derived_age_context_range=profile.derived_age_context_range,
-        derived_age_context_rationale=profile.derived_age_context_rationale,
-        derived_age_context_confidence=profile.derived_age_context_confidence,
-        summary=profile.summary, linkedin_url=profile.linkedin_url,
-        other_profile_url=profile.other_profile_url, other_sections_text=profile.other_sections_text,
-        status="NEW",
+        restaurant_id=restaurant_id, raw_resume_id=raw_resume_id, status="NEW",
+        **{field: getattr(profile, field) for field in _PROFILE_FIELDS},
     )
     session.add(candidate)
     session.flush()
+    _add_profile_rows(session, candidate.id, profile)
+    return candidate
 
+
+def replace_candidate_profile(session: Session, candidate: m.Candidate, profile: CandidateCVProfile) -> m.Candidate:
+    """A new reading of the SAME résumé (SELECTION_CV_REREAD_001): the Candidate row keeps its id, status and
+    everything linked to it (application, position, decisions); only what was read is replaced."""
+    for field in _PROFILE_FIELDS:
+        setattr(candidate, field, getattr(profile, field))
+    for rows in (candidate.education, candidate.work_history, candidate.skills, candidate.certifications,
+                 candidate.language_records):
+        rows.clear()
+    session.flush()
+    _add_profile_rows(session, candidate.id, profile)
+    session.expire(candidate, ["education", "work_history", "skills", "certifications", "language_records"])
+    return candidate
+
+
+def _add_profile_rows(session: Session, candidate_id: int, profile: CandidateCVProfile) -> None:
     for skill in profile.skills:
         if skill and skill.strip():
-            session.add(m.CandidateSkill(candidate_id=candidate.id, skill=skill.strip()))
+            session.add(m.CandidateSkill(candidate_id=candidate_id, skill=skill.strip()))
     for c in profile.certifications:
         if c.name and c.name.strip():
             session.add(
                 m.CandidateCertification(
-                    candidate_id=candidate.id, name=c.name.strip(), issuer=c.issuer, date_text=c.date_text,
+                    candidate_id=candidate_id, name=c.name.strip(), issuer=c.issuer, date_text=c.date_text,
                 )
             )
     for lang in profile.languages_detail:
         if lang.language and lang.language.strip():
             session.add(
                 m.CandidateLanguage(
-                    candidate_id=candidate.id, language=lang.language.strip(), proficiency=lang.proficiency,
+                    candidate_id=candidate_id, language=lang.language.strip(), proficiency=lang.proficiency,
                 )
             )
 
     for e in profile.education:
         session.add(
             m.CandidateEducation(
-                candidate_id=candidate.id, institution=e.institution, program=e.program,
+                candidate_id=candidate_id, institution=e.institution, program=e.program,
                 qualification=e.qualification, field=e.field, start_date=e.start_date, end_date=e.end_date,
                 completion_status=e.completion_status, certifications=e.certifications, notes=e.notes,
                 start_date_text=e.start_date_text, end_date_text=e.end_date_text,
@@ -116,7 +132,7 @@ def save_candidate_profile(
     for w in profile.work_history:
         session.add(
             m.CandidateWorkHistory(
-                candidate_id=candidate.id, employer=w.employer, location=w.location,
+                candidate_id=candidate_id, employer=w.employer, location=w.location,
                 original_job_title=w.original_job_title, normalized_role=w.normalized_role,
                 start_date=w.start_date, end_date=w.end_date, is_current=w.is_current,
                 responsibilities=w.responsibilities, achievements=w.achievements,
@@ -131,7 +147,6 @@ def save_candidate_profile(
             )
         )
     session.flush()
-    return candidate
 
 
 def list_candidates(session: Session, *, restaurant_id: int | None = None) -> list[m.Candidate]:
