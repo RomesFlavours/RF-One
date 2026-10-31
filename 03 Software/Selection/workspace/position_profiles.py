@@ -36,7 +36,7 @@ COMMUTE_BANDS = (
     (20, "FAVORABLE", "Favorable (0–20 min)", 5),
     (30, "MANAGEABLE", "Generally manageable (21–30 min)", 0),
     (44, "CONFIRM", "Needs confirmation (31–44 min)", -5),
-    (None, "CUTOFF", "45 min or more: business cut-off candidate, exception review", -15),
+    (None, "CUTOFF", "45 min or more: business cut-off only once the drive is confirmed", -15),
 )
 
 # Typical one-way drive (minutes) from nearby towns to the restaurant, used before the AI's own estimate,
@@ -58,15 +58,6 @@ HOURS_BANDS = (
     (16, "Part-time; match to the vacancy (16–24 h)"),
     (10, "May be supplementary; clarify (10–15 h)"),
     (0, "Very limited availability (under 10 h)"),
-)
-
-# Shared stability thresholds (both draft models use the same ones).
-STABILITY_RULES = (
-    ("LONG_TENURE", "positive", "3+ continuous years at one relevant employer"),
-    ("PROMOTION", "positive", "Promotion or more responsibility at the same employer"),
-    ("TWO_SHORT", "flag", "Two consecutive jobs under 6 months"),
-    ("THREE_SHORT", "high", "Three or more consecutive jobs under 6 months"),
-    ("FIVE_CHANGES", "high", "Five or more job changes in the last 36 months"),
 )
 
 SERVER = {
@@ -191,7 +182,7 @@ def commute_band(minutes: int | None) -> tuple[str, str, int] | None:
 
 def known_drive(location: str | None, place: str | None) -> int | None:
     """Minutes from the restaurant's town table, or None when the location or the town is not listed."""
-    if not location or not place:
+    if not isinstance(location, str) or not isinstance(place, str):
         return None
     table = next((t for key, t in DRIVE_MINUTES.items() if key in location.lower()), None)
     town = place.split(",")[0].strip().lower()
@@ -201,4 +192,4 @@ def known_drive(location: str | None, place: str | None) -> int | None:
 def hours_band(hours: int | None) -> str | None:
     if hours is None:
         return None
-    return next(label for floor, label in HOURS_BANDS if hours >= floor)
+    return next((label for floor, label in HOURS_BANDS if hours >= floor), None)

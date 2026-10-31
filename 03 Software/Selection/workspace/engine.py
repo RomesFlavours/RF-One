@@ -256,19 +256,19 @@ def analyze(session, position: ps.Position, pc: ps.PositionCandidate, *, actor_i
         except AIProviderUnavailable as exc:
             ps.log_event(session, position_id=position.id, position_candidate_id=pc.id, kind="AI_UNAVAILABLE",
                          detail=f"AI evaluation not performed: {exc}", actor_id=actor_id, actor_name=actor_name)
-    profile = position_profiles.for_role(position.role_code)
-    if profile and ai_adapter.current_policy().allows("cv_evaluation"):
+    sel_profile = position_profiles.for_role(position.role_code)
+    if sel_profile and ai_adapter.current_policy().allows("cv_evaluation"):
         # Position Selection Profile (SELECTION_POSITION_PROFILES_001): the position-specific CV screening.
         raw = session.get(m.RawResume, candidate.raw_resume_id) if candidate.raw_resume_id else None
         try:
-            result = profile_screening.screen(profile, location=position.location_label,
+            result = profile_screening.screen(sel_profile, location=position.location_label,
                                               cv_text=raw.raw_text if raw else "")
             _store_proposal(session, pc, snapshot_id, fa.id, profile_screening.SOURCE, result["fit"], result,
                             ai_adapter.POLICY.provider_label)
-        except AIProviderUnavailable as exc:
+        except Exception as exc:  # never lose the existing analysis because of this extra screening
             ps.log_event(session, position_id=position.id, position_candidate_id=pc.id, kind="AI_UNAVAILABLE",
-                         detail=f"{profile['title']} CV screening not performed: {exc}", actor_id=actor_id,
-                         actor_name=actor_name)
+                         detail=f"{sel_profile['title']} CV screening not performed: {exc}"[:500],
+                         actor_id=actor_id, actor_name=actor_name)
     ps.log_event(session, position_id=position.id, position_candidate_id=pc.id, kind="ANALYZED",
                  detail=f"Analyzed {candidate.full_name or 'candidate'}: proposal “{ps.GROUP_LABELS[group]}»",
                  actor_id=actor_id, actor_name=actor_name)

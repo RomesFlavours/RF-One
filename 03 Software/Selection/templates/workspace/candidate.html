@@ -37,12 +37,13 @@
     {% if not screening %}
       <p class="muted">Not screened with the {{ selection_profile.title }} profile yet{% if not ai_policy.allows('cv_evaluation') %} (needs “AI résumé and answer evaluation” in Configuration){% endif %}.</p>
     {% else %}{% set s = screening.payload %}
-      <p><span class="badge {{ 'ok' if s.fit == 'STRONG' else ('warn' if s.fit in ('MODERATE', 'CUTOFF') else '') }}" style="font-size:.85rem">{{ FIT_LABELS[s.fit] }}</span>
+      <p><span class="badge {{ 'ok' if s.fit == 'STRONG' else ('warn' if s.fit == 'MODERATE' else '') }}" style="font-size:.85rem">{{ FIT_LABELS.get(s.fit, s.fit) }}</span>
         <span class="small">evidence score <b>{{ s.score }}/100</b>{% if s.commute.points %}, ranking {{ s.ranking_score }} with commute {{ '%+d' % s.commute.points }}{% endif %} · evidence confidence {{ s.confidence }}</span></p>
       <p class="small muted">{{ s.version }} ({{ s.status }}) · {{ screening.provider_label }} · {{ screening.created_at|local(position.timezone) }}. Not a probability of success.</p>
 
-      <h3>Cut-offs and flags</h3>
-      {% for x in s.cutoffs %}<div class="small"><span class="badge bad">Business cut-off</span> {{ x.rule }}: {{ x.fact }} · {{ x.status }} · {{ x.exception }}</div>{% endfor %}
+      <h3>Hard requirements, business cut-offs and risk flags</h3>
+      <div class="small"><span class="badge">Hard requirements</span> None set in this profile yet; essential conditions apply only once verified.</div>
+      {% for x in s.cutoffs %}<div class="small"><span class="badge bad">Possible business cut-off</span> {{ x.rule }}: {{ x.fact }} · {{ x.status }} · {{ x.exception }}</div>{% endfor %}
       {% for f in s.risk_flags %}<div class="small"><span class="badge warn">{{ 'High-priority flag' if f.severity == 'high' else 'Risk flag' }}</span> {{ f.flag }}{% if f.fact %}: {{ f.fact }}{% endif %}
         {% if f.quote %}<div class="ev">«{{ f.quote }}»</div>{% endif %}</div>{% else %}<p class="small muted">No risk flags.</p>{% endfor %}
 
@@ -82,13 +83,15 @@
   {% endif %}
 
   {# ---------------- AI interview (SELECTION_POSITION_PROFILES_001) ---------------- #}
+  {% if selection_profile or ai_interview %}
   <div class="card" id="ai-interview">
     <h2 style="margin-top:0">AI interview</h2>
     {% if not ai_interview %}
       <p class="small muted">After your call, request the AI interview: the candidate receives one email with a personal link
-        (from RomesFlavoursCareers@RMAED.it). The AI checks availability, hours, the commute when unknown, the questions this
+        (from RomesFlavoursCareers@RMAED.it). The AI checks availability, hours, the commute when unknown or over 30 minutes, the questions this
         CV raises and the position’s own questions.</p>
-      {% if can_edit %}<form method="post" action="{{ url_for('positions.request_ai_interview', position_id=position.id, pc_id=pc.id) }}"
+      {% if ai_interview_blocked %}<p class="small muted">Not available: {{ ai_interview_blocked }}</p>
+      {% elif can_edit %}<form method="post" action="{{ url_for('positions.request_ai_interview', position_id=position.id, pc_id=pc.id) }}"
           data-confirm="Send the AI interview invitation to {{ mail_recipient or 'this candidate' }} now?" onsubmit="return confirm(this.dataset.confirm)">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirmed" value="1">
         <input type="hidden" name="back" value="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=pc.id) }}#ai-interview">
@@ -98,7 +101,7 @@
       <p><span class="badge {{ 'ok' if ai_interview.status == 'COMPLETED' else 'info' }}">{{ AI_INTERVIEW_LABELS[ai_interview.status] }}</span>
         <span class="small muted">requested by {{ ai_interview.requested_by_name }}, {{ ai_interview.requested_at|local(position.timezone) }}
         {% if ai_interview.completed_at %}· completed {{ ai_interview.completed_at|local(position.timezone) }}{% endif %}</span></p>
-      <p class="small">Candidate’s link: <a href="{{ ai_interview_url(ai_interview) }}" target="_blank">{{ ai_interview_url(ai_interview) }}</a></p>
+      <p class="small">Candidate’s link (it starts only when the candidate presses Start): <a href="{{ ai_interview_url(ai_interview) }}" target="_blank">{{ ai_interview_url(ai_interview) }}</a></p>
       {% set f = ai_interview.findings %}
       <table><tr><th>What was checked</th><th>Answer</th></tr>
       {% for st in ai_interview.steps %}{% set r = f.get(st.id) %}<tr><td class="small">{{ st.ask }}</td>
@@ -109,6 +112,7 @@
       </details>{% endif %}
     {% endif %}
   </div>
+  {% endif %}
 
   {# ---------------- 3 Evaluation ---------------- #}
   <div class="card">

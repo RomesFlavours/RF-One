@@ -210,7 +210,7 @@
     <span class="small muted">{{ selection_profile.version }} · weights and thresholds proposed, not yet approved</span>
   </div>
   {% if not ai_policy.allows("cv_evaluation") %}<div class="banner off small">The {{ selection_profile.title }} CV ranking needs “AI résumé and answer evaluation” in this position’s Configuration.</div>{% endif %}
-  <p class="small muted">Order: your priority first (High, Medium, not set, Low), then the CV evidence score adjusted for the estimated commute. Business cut-offs go last within each priority. A proposal only: nobody is excluded.</p>
+  <p class="small muted">Order: your priority first (High, Medium, not set, Low), then the CV evidence score adjusted for the estimated commute (+5 up to 20 min, 0 up to 30, −5 up to 44, −15 at 45 or more). A 45+ minute estimate is a point to confirm, not yet a business cut-off. A proposal only: nobody is excluded.</p>
   <table class="ranked">
     <tr><th>#</th><th>Candidate</th><th>CV fit</th><th>Commute</th><th>Flags</th><th>Priority</th><th>AI interview</th></tr>
     {% for c in ranked %}{% set s = c.screening.payload if c.screening else None %}
@@ -219,11 +219,11 @@
       <td><a class="name" href="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=c.pc.id) }}">{{ c.name }}</a>
         <div class="small muted">{{ c.latest_role or '' }}</div>
         {% if c.decision %}<div class="small"><span class="badge ok">{{ DECISION_LABELS[c.decision.decision] }}</span></div>{% endif %}</td>
-      <td>{% if s %}<span class="badge {{ 'ok' if s.fit == 'STRONG' else ('warn' if s.fit in ('MODERATE', 'CUTOFF') else '') }}">{{ FIT_LABELS[s.fit] }}</span>
+      <td>{% if s %}<span class="badge {{ 'ok' if s.fit == 'STRONG' else ('warn' if s.fit == 'MODERATE' else '') }}">{{ FIT_LABELS.get(s.fit, s.fit) }}</span>
         <div class="small muted">score {{ s.score }}/100{% if s.commute.points %} · commute {{ '%+d' % s.commute.points }}{% endif %} · confidence {{ s.confidence }}</div>
         {% else %}<span class="small muted">Not screened</span>{% endif %}</td>
       <td class="small">{% if s %}{% if s.commute.minutes is not none %}~{{ s.commute.minutes }} min from {{ s.commute.place }}{% else %}Unknown{% endif %}{% endif %}</td>
-      <td class="small">{% if s %}{{ s.risk_flags|length }}{% if s.cutoffs %} · <b>cut-off</b>{% endif %}{% endif %}</td>
+      <td class="small">{% if s %}{{ s.risk_flags|length }}{% if s.cutoffs %} · <b>commute 45+ to confirm</b>{% endif %}{% endif %}</td>
       <td>{% if can_edit %}<form method="post" action="{{ url_for('positions.set_priority', position_id=position.id, pc_id=c.pc.id) }}" style="margin:0">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <select name="priority" onchange="this.form.submit()" aria-label="Priority for {{ c.name }}" style="width:auto">
@@ -231,7 +231,7 @@
           </select><noscript><button class="btn btn-small">Save</button></noscript></form>
         {% else %}{{ PRIORITIES.get(c.priority, '—') }}{% endif %}</td>
       <td class="small">{% if c.ai_interview %}<span class="badge {{ 'ok' if c.ai_interview.status == 'COMPLETED' else 'info' }}">{{ AI_INTERVIEW_LABELS[c.ai_interview.status] }}</span>
-        {% elif can_edit %}<form method="post" action="{{ url_for('positions.request_ai_interview', position_id=position.id, pc_id=c.pc.id) }}" style="margin:0"
+        {% elif can_edit and s and position.status == 'OPEN' and ai_policy.allows("cv_evaluation") %}<form method="post" action="{{ url_for('positions.request_ai_interview', position_id=position.id, pc_id=c.pc.id) }}" style="margin:0"
           data-confirm="Send {{ c.name }} the AI interview invitation by email now?" onsubmit="return confirm(this.dataset.confirm)">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirmed" value="1">
           <input type="hidden" name="back" value="{{ url_for('positions.position_detail', position_id=position.id, tab='valutazione') }}#cand-{{ c.pc.id }}">

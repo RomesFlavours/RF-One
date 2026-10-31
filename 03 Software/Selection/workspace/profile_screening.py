@@ -9,13 +9,12 @@ commute band. Quotes not found in the CV are discarded and the level they
 supported drops to "not shown" (the same rule as `ai_adapter.evaluate_candidate`).
 
 Kept separate and visible, never hidden in one number: positive evidence,
-business cut-offs, risk flags, unknowns. Nobody is excluded automatically; a
+possible business cut-offs, risk flags, unknowns. Nobody is excluded automatically; a
 recruiter's priority (High / Medium / Low) overrides the proposed order.
 """
 
 from __future__ import annotations
 
-import json
 import re
 from datetime import date
 
@@ -27,7 +26,6 @@ SOURCE = "PROFILE"  # WorkspaceProposal.source for these results
 
 FIT_BANDS = (("STRONG", 60, "Strong CV fit"), ("MODERATE", 40, "Moderate CV fit"), ("LIMITED", 0, "Limited CV fit"))
 FIT_LABELS = {code: label for code, _, label in FIT_BANDS}
-FIT_LABELS["CUTOFF"] = "Business cut-off to review"
 
 _PROMPT = """You read ONE job applicant's résumé for a restaurant manager. You do not decide; the manager does.
 Output ONLY a JSON object, no markdown. Write in plain ENGLISH.
@@ -82,8 +80,16 @@ _STATIONS = ("For each named kitchen station (sauté, pasta, grill/broiler, fry,
              "(ran it alone), coordinated (ran several). Never upgrade a level.\n")
 _STATIONS_SHAPE = ('"stations": [{"station": "...", "level": "claimed|assisted|executed|owned|coordinated", '
                    '"employer": "...", "quote": "..."}],\n  ')
+# The existing "never use" list minus where the person lives, which the commute rule needs (screening and
+# interview only; the existing evaluation keeps the full list). If that wording changes, the test fails.
+PROTECTED_EXCEPT_RESIDENCE = ai_adapter._PROTECTED.replace(", address or where the person lives", "")
 _JSON_RETRY = ("\n\nYour previous reply was not valid JSON. Reply again with valid JSON only: inside every string, "
                "escape double quotes as \\\" or use single quotes.")
+
+
+def _list(value) -> list:
+    """The AI's list, or an empty one when it returned something else."""
+    return value if isinstance(value, list) else []
 
 
 def _month(value, today: date) -> date | None:
@@ -127,6 +133,7 @@ def stability(timeline: list[dict], today: date | None = None) -> dict:
         longest_run = max(longest_run, run)
     cutoff = date(today.year - 3, today.month, 1)
     changes_36 = sum(1 for j in jobs if j["_start"] >= cutoff)
+    changes_24 = sum(1 for j in jobs if j["_start"] >= date(today.year - 2, today.month, 1))
     relevant = [j for j in jobs if j.get("relevant")]
     longest_relevant = max((j["months"] for j in relevant), default=0)
     ordered = sorted(months)
@@ -154,14 +161,14 @@ def stability(timeline: list[dict], today: date | None = None) -> dict:
         level = 3
     else:
         level = 2
-    reasons = [f"Longest job {max(months)} months; median {median:g} months; {changes_36} job(s) started in the last 36 months."]
+    reasons = [f"Longest job {max(months)} months; median {median:g} months; jobs started in the last 24 / 36 months: {changes_24} / {changes_36}."]
     if undated:
         reasons.append(f"{undated} job(s) without usable dates are not counted.")
     return {"level": level, "known": True, "jobs_dated": len(jobs), "jobs_undated": undated, "reasons": reasons,
             "flags": [{"code": c, "severity": s, "text": t} for c, s, t in flags],
             "positives": [{"code": c, "text": t} for c, t in positives],
             "longest_months": max(months), "longest_relevant_months": longest_relevant,
-            "median_months": median, "changes_36": changes_36}
+            "median_months": median, "changes_24": changes_24, "changes_36": changes_36}
 
 
 def _quote_ok(quote, haystack: str) -> bool:
@@ -182,8 +189,7 @@ def screen(profile: dict, *, location: str, cv_text: str, today: date | None = N
         role_flags=" ".join(profile["role_flags"]), must_not_assume=profile["must_not_assume"],
         stations=_STATIONS if "station_levels" in profile else "",
         stations_shape=_STATIONS_SHAPE if "station_levels" in profile else "",
-        cv_text=ai_adapter.redact_contacts(cv_text), protected=ai_adapter._PROTECTED.replace(
-            ", address or where the person lives", ""))
+        cv_text=ai_adapter.redact_contacts(cv_text), protected=PROTECTED_EXCEPT_RESIDENCE)
     try:
         data = ai_adapter._transport(prompt, "position profile screening")
     except AIProviderUnavailable as exc:
@@ -199,7 +205,7 @@ def screen(profile: dict, *, location: str, cv_text: str, today: date | None = N
 def assemble(profile: dict, data: dict, *, cv_text: str, today: date | None = None,
              location: str | None = None) -> dict:
     hay = ai_adapter._normalized(cv_text)
-    timeline = [j for j in data.get("timeline") or [] if isinstance(j, dict)][:20]
+    timeline = [j for j in _list(data.get("timeline")) if isinstance(j, dict)][:20]
     for job in timeline:
         for key in ("employer", "title", "environment", "duties", "date_note"):
             job[key] = str(job.get(key) or "").strip()[:200]
@@ -219,8 +225,8 @@ def assemble(profile: dict, data: dict, *, cv_text: str, today: date | None = No
             level = min(4, max(0, int(raw.get("level") or 0)))
         except (TypeError, ValueError):
             level = 0
-        quotes = [str(q).strip() for q in (raw.get("quotes") or [])[:4] if _quote_ok(q, hay)]
-        dropped += len(raw.get("quotes") or []) - len(quotes)
+        quotes = [str(q).strip() for q in _list(raw.get("quotes"))[:4] if _quote_ok(q, hay)]
+        dropped += len(_list(raw.get("quotes"))[:4]) - len(quotes)
         explanation = str(raw.get("explanation") or "").strip()
         if level and not quotes:
             level, explanation = 0, ("No quote found in the résumé; treated as not shown. " + explanation).strip()
@@ -246,30 +252,34 @@ def assemble(profile: dict, data: dict, *, cv_text: str, today: date | None = No
         value = data.get(key) if isinstance(data.get(key), dict) else None
         return value if value and _quote_ok(value.get("quote"), hay) and value.get(field) not in (None, "") else None
     hours = stated("stated_hours", "hours")
-    if hours and not isinstance(hours.get("hours"), int):
+    if hours and not (isinstance(hours.get("hours"), int) and 0 < hours["hours"] <= 80):
         hours = None
     availability = stated("stated_availability", "text")
 
     stations = []
-    for s in data.get("stations") or []:
+    for s in _list(data.get("stations")):
         if isinstance(s, dict) and s.get("level") in profile.get("station_levels", []) and _quote_ok(s.get("quote"), hay):
             stations.append({k: str(s.get(k) or "") for k in ("station", "level", "employer", "quote")})
 
-    positives = [{"text": str(p.get("text") or ""), "quote": p.get("quote")} for p in data.get("positive_evidence") or []
+    positives = [{"text": str(p.get("text") or ""), "quote": p.get("quote")} for p in _list(data.get("positive_evidence"))
                  if isinstance(p, dict) and _quote_ok(p.get("quote"), hay)][:6]
     positives += [{"text": p["text"], "quote": None} for p in stab.get("positives", [])]
     flags = [{"flag": str(f.get("flag") or ""), "fact": str(f.get("fact") or ""),
               "quote": f.get("quote") if _quote_ok(f.get("quote"), hay) else None,
-              "question": str(f.get("question") or "")} for f in data.get("risk_flags") or [] if isinstance(f, dict)][:6]
+              "question": str(f.get("question") or "")} for f in _list(data.get("risk_flags")) if isinstance(f, dict)][:6]
     flags += [{"flag": f["text"], "fact": "Computed from the dates in the résumé.", "quote": None,
                "question": "Could you tell me about the shorter jobs in your work history?",
                "severity": f["severity"]} for f in stab.get("flags", [])]
     cutoffs = []
     if commute["band"] == "CUTOFF":
-        cutoffs.append({"rule": "Commute 45 minutes or more (one way)", "status": "Estimated, not verified",
-                        "fact": f"{commute['place']}: about {minutes} minutes", "exception": "Review with the candidate"})
+        # The 45-minute rule is a business cut-off only once the drive is verified (System Changes v2, section 4):
+        # from the résumé it is a point to confirm, and only the ranking points apply.
+        cutoffs.append({"rule": "Commute 45 minutes or more (one way)",
+                        "status": "Estimate, not verified: a business cut-off only once the drive is confirmed",
+                        "fact": f"{commute['place']}: about {minutes} minutes",
+                        "exception": "Confirm in the interview; the manager can make an exception"})
 
-    unknowns = [str(u) for u in data.get("unknowns") or [] if str(u).strip()][:8]
+    unknowns = [str(u) for u in _list(data.get("unknowns")) if str(u).strip()][:8]
     if not stab["known"]:
         unknowns.insert(0, "Employment dates (stability cannot be computed).")
     if commute["band"] == "UNKNOWN":
@@ -281,11 +291,11 @@ def assemble(profile: dict, data: dict, *, cv_text: str, today: date | None = No
                     if adaptability.get("status") == "DOCUMENTED" and _quote_ok(adaptability.get("quote"), hay)
                     else {"status": "NOT_ESTABLISHED", "quote": None})
 
-    questions = [str(q).strip() for q in data.get("questions") or [] if str(q).strip()][:5]
+    questions = [str(q).strip() for q in _list(data.get("questions")) if str(q).strip()][:5]
     dated_share = stab["jobs_dated"] / max(1, len(timeline))
     confidence = "High" if dated_share >= .8 and not dropped else ("Medium" if dated_share >= .5 else "Low")
     ranking = score + commute["points"]
-    fit = "CUTOFF" if cutoffs else next(code for code, floor, _ in FIT_BANDS if score >= floor)
+    fit = next(code for code, floor, _ in FIT_BANDS if score >= floor)
     return {"profile": profile["code"], "version": profile["version"], "status": pp.STATUS, "score": score,
             "ranking_score": ranking, "fit": fit, "confidence": confidence, "dimensions": dimensions,
             "timeline": timeline, "stability": stab, "stations": stations, "positive_evidence": positives,
@@ -304,16 +314,17 @@ def interview_steps(result: dict, profile: dict) -> list[dict]:
     if commute.get("band") in ("UNKNOWN", "CONFIRM", "CUTOFF"):
         steps.append({"id": "commute", "ask": "Roughly how long their drive to the restaurant would be.",
                       "context": commute.get("label", "")})
-    seen = set()
-    for item in [f["question"] for f in result.get("risk_flags") or [] if f.get("question")] + list(result.get("questions") or []):
-        key = ai_adapter._normalized(item)
-        if key and key not in seen and len(steps) < 6:
-            seen.add(key)
-            steps.append({"id": f"cv{len(steps)}", "ask": item, "context": "From the résumé screening."})
-    for i, item in enumerate(profile["interview_focus"][1:], start=1):
-        steps.append({"id": f"role{i}", "ask": item, "context": f"{profile['title']} standard."})
-    return steps[:9]
+    # At most 3 résumé questions: the date-based flags first, then the AI's own questions (which already cover
+    # its flags), skipping near-duplicates, so a candidate is never asked the same thing twice.
+    computed = [f["question"] for f in result.get("risk_flags") or [] if f.get("severity") and f.get("question")]
+    seen, cv = [], []
+    for item in computed + list(result.get("questions") or []):
+        words = set(ai_adapter._normalized(item).split())
+        if words and len(cv) < 3 and not any(len(words & w) >= .6 * min(len(words), len(w)) for w in seen):
+            seen.append(words)
+            cv.append(item)
+    steps += [{"id": f"cv{i}", "ask": item, "context": "From the résumé screening."} for i, item in enumerate(cv, 1)]
+    steps += [{"id": f"role{i}", "ask": item, "context": f"{profile['title']} standard."}
+              for i, item in enumerate(profile["interview_focus"][1:], start=1)]
+    return steps
 
-
-def dumps(result: dict) -> str:
-    return json.dumps(result, default=str)

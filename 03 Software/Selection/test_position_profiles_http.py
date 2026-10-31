@@ -128,6 +128,10 @@ def fake_ai(prompt: str) -> dict:
         if "CLOSE NOW" in prompt:
             return {"reply": "Thank you, the hiring team will be in touch.",
                     "findings": [{"step_id": "cv2", "status": "CLEAR", "quote": "about 30 hours", "note": "ok"}]}
+        if "Candidate: That is all of it." in prompt:
+            ids = re.findall(r"^- (\w+): ", prompt.split("Steps to cover")[1].split("Already covered")[0], re.M)
+            return {"reply": "And what else?", "findings": [{"step_id": i, "status": "CLEAR", "quote": "That is all of it",
+                                                               "note": "ok"} for i in ids]}
         if "Conversation so far:\n(not started)" in prompt:
             return {"reply": "Hi Jordan! Which evenings and weekends can you work?", "findings": []}
         return {"reply": "Thanks. How long would your drive be?",
@@ -171,6 +175,15 @@ try:
         profile_screening.ai_adapter._transport = real_transport
     check("screening: a reply that is not valid JSON is asked once more, with a note",
           len(prompts) == 2 and "not valid JSON" in prompts[1] and retried["fit"], len(prompts))
+    check("privacy: the screening's never-use list differs from the existing one only by where the person lives",
+          profile_screening.PROTECTED_EXCEPT_RESIDENCE != ai_adapter._PROTECTED
+          and "address" not in profile_screening.PROTECTED_EXCEPT_RESIDENCE)
+    odd = profile_screening.assemble(position_profiles.SERVER, {
+        "timeline": "not a list", "dimensions": {"table_service": {"level": 3, "quotes": 5}},
+        "stated_hours": {"hours": -3, "quote": "Server"}, "home_location": {"place": 7, "quote": "Server"},
+        "commute_minutes": 10, "questions": "abc", "unknowns": None, "risk_flags": "x"}, cv_text="Server", location="Mount Dora")
+    check("screening: an odd AI reply is handled, never a crash",
+          odd["questions"] == [] and odd["stated_hours"] is None and odd["score"] == 0)
     check("profiles: Server and Line Cook weights add up to 100",
           all(sum(d["weight"] for d in p["dimensions"]) == 100 for p in position_profiles.PROFILES.values()))
     check("profiles: commute bands follow the 45-minute rule",
@@ -228,9 +241,10 @@ try:
               next(d for d in jp["dimensions"] if d["id"] == "learning")["level"] == 0 and jp["dropped_quotes"] == 1)
         check("screening: stability is computed from the dates, not by the AI",
               cp["stability"]["level"] == 1 and any(f.get("severity") == "flag" for f in cp["risk_flags"]))
-        check("screening: a local candidate gets commute points; 45+ minutes is a visible business cut-off",
+        check("screening: a local candidate gets commute points; an estimated 45+ minutes is a point to confirm, not a verdict",
               jp["commute"]["band"] == "FAVORABLE" and jp["ranking_score"] == jp["score"] + 5
-              and cp["fit"] == "CUTOFF" and cp["cutoffs"])
+              and cp["fit"] != "CUTOFF" and cp["cutoffs"] and "not verified" in cp["cutoffs"][0]["status"]
+              and cp["ranking_score"] == cp["score"] - 15)
         check("screening: unknown hours are listed as unknown, never scored",
               "Desired weekly hours." in jp["unknowns"] and jp["stated_hours"] is None)
 
@@ -270,25 +284,28 @@ try:
                   [s["id"] for s in iv.steps])
 
         cand = app.test_client()
+        before = len(interview_prompts)
         page = text(cand.get(link))
-        check("AI interview: the link opens the interview with the first question",
-              "Which evenings and weekends can you work?" in page and "would rather talk to a person" in page)
+        with selection_app.SessionFactory() as db:
+            check("AI interview: opening the link (or a mail scanner) calls no AI and starts nothing",
+                  len(interview_prompts) == before and "Start the interview" in page
+                  and ai_interview.for_pc(db, jordan_id).status == ai_interview.REQUESTED)
         ct = token(page)
+        page = text(cand.post(link, data={"csrf_token": ct, "action": "start"}, follow_redirects=True))
+        check("AI interview: Start opens the interview with the first question",
+              "Which evenings and weekends can you work?" in page and "would rather talk to a person" in page)
         cand.post(link, data={"csrf_token": ct, "message": "I can work every weekend."})
         with selection_app.SessionFactory() as db:
             iv = ai_interview.for_pc(db, jordan_id)
             check("AI interview: only the candidate's own words are kept as quotes",
                   iv.findings.get("availability", {}).get("quote") == "every weekend" and "commute" not in iv.findings
                   and iv.status == ai_interview.IN_PROGRESS)
-        for answer in ("About 15 minutes.", "I'd like about 30 hours.") + ("Ok.",) * 10:
-            cand.post(link, data={"csrf_token": ct, "message": answer})
-            with selection_app.SessionFactory() as db:
-                if ai_interview.for_pc(db, jordan_id).status == ai_interview.COMPLETED:
-                    break
+        cand.post(link, data={"csrf_token": ct, "message": "That is all of it."})
         with selection_app.SessionFactory() as db:
             iv = ai_interview.for_pc(db, jordan_id)
-            check("AI interview: the server closes it and records AI Interview Completed",
-                  iv.status == ai_interview.COMPLETED and iv.completed_at is not None)
+            check("AI interview: it closes on the answer that covers the last step and records AI Interview Completed",
+                  iv.status == ai_interview.COMPLETED and iv.completed_at is not None
+                  and iv.transcript[-1]["text"] == ai_interview.CLOSING_REPLY, iv.status)
         check("AI interview: the finished link shows the thank-you page only", "Thank you" in text(cand.get(link)))
         cand_page = text(owner.get(f"/selection/posizioni/{pid}/candidati/{jordan_id}"))
         list_page = text(owner.get(f"/selection/posizioni/{pid}?tab=valutazione"))
@@ -296,11 +313,23 @@ try:
               "AI Interview Completed" in cand_page and "I can work every weekend." in cand_page
               and "AI Interview Completed" in list_page)
         check("AI interview: a wrong link is not found", cand.get("/selection/ai-interview/not-a-token").status_code == 404)
+        owner.post(f"/selection/posizioni/{pid}/candidati/{casey_id}/ai-interview", data={"csrf_token": t, "confirmed": "1"})
+        with selection_app.SessionFactory() as db:
+            casey_link = f"/selection/ai-interview/{ai_interview.for_pc(db, casey_id).token}"
+            db.get(ws.Position, pid).status = ws.CLOSED
+            db.commit()
+        check("AI interview: once the position is closed the link is no longer open",
+              "no longer open" in text(cand.get(casey_link)))
 
         other = open_position("BARTENDER", "Bartender")
         owner.post(f"/selection/posizioni/{other}/cv", data={"csrf_token": t, "cv": (BytesIO(CV_LOCAL.encode()), "j2.txt")},
                    content_type="multipart/form-data")
         with selection_app.SessionFactory() as db:
+            other_pc = db.scalars(select(ws.PositionCandidate).where(ws.PositionCandidate.position_id == other)).first()
+        owner.post(f"/selection/posizioni/{other}/candidati/{other_pc.id}/ai-interview", data={"csrf_token": t, "confirmed": "1"})
+        with selection_app.SessionFactory() as db:
+            check("AI interview: refused for a role without a profile, no email",
+                  ai_interview.for_pc(db, other_pc.id) is None and not mail_delivery.rows_for(db, other_pc.id))
             check("a role without a profile keeps the existing screening only",
                   not db.scalars(select(ws.Proposal).join(ws.PositionCandidate,
                       ws.PositionCandidate.id == ws.Proposal.position_candidate_id).where(

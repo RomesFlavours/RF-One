@@ -7,10 +7,18 @@
   <h2>Thank you</h2>
   <p>That's the end of the interview. The hiring team will read your answers and contact you about the next step.</p>
   <p class="muted">You can close this page.</p>
+{% elif closed %}
+  <p>This interview is no longer open. If you have a question, please reply to the email you received.</p>
 {% else %}
   <p class="muted small">An AI assistant asks the questions for our hiring team, who read every answer. It takes about
     10 to 15 minutes. If you would rather talk to a person, reply to the email you received.</p>
   {% if error %}<div class="info">{{ error }}</div>{% endif %}
+  {% if not interview.transcript %}
+  <form method="post" id="end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="row"><button class="btn" name="action" value="start">Start the interview</button></p>
+  </form>
+  {% else %}
   <div class="ai-chat">
   {% for t in interview.transcript %}
     <div class="ai-msg {{ 'ai-msg-ai' if t.who == 'AI' else 'ai-msg-me' }}"><b>{{ 'Rome\'s Flavours' if t.who == 'AI' else 'You' }}</b><br>{{ t.text }}</div>
@@ -19,13 +27,14 @@
   <form method="post" id="end">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="message">Your answer</label>
-    <textarea id="message" name="message" rows="3" required autofocus></textarea>
+    <textarea id="message" name="message" rows="3" required autofocus>{{ draft }}</textarea>
     <p class="row"><button class="btn">Send</button></p>
   </form>
   <form method="post" onsubmit="return confirm('End the interview now? Your answers so far are saved.')">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-secondary btn-small" name="action" value="finish">End the interview</button>
   </form>
+  {% endif %}
 {% endif %}
 <style>
 .ai-chat{margin:1rem 0;display:flex;flex-direction:column;gap:.6rem}

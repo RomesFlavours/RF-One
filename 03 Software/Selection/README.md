@@ -122,28 +122,36 @@ Preferences are bounded by the installation's AI capabilities. Provider credenti
 
 One CV engine, different standards for every position. A position whose role has a profile (today **Server** and
 **Line Cook**, `workspace/position_profiles.py`, from the 31 October 2026 specifications) gets a second screening of
-each résumé (`workspace/profile_screening.py`), stored as a proposal with source `PROFILE` and the profile version:
+each résumé (`workspace/profile_screening.py`), stored as a proposal with source `PROFILE` and the profile version.
+Roles without a profile are unchanged.
 
 - The AI reads the résumé: work history with dates and environment class, an evidence level 0–4 per dimension with
-  word-for-word quotes, role flags, unknowns, stated hours/availability, the home town and a rough drive time.
+  word-for-word quotes, role flags, unknowns, stated hours/availability and the home town. A reply that is not valid
+  JSON is asked once more.
 - Code decides the order: quotes not found in the résumé are discarded (the level drops to "not shown"); tenure,
-  short-job runs and changes in 36 months are computed from the dates; the weighted evidence score uses the
-  profile's draft weights; the commute band adds points for locals and marks 45+ minutes as a business cut-off
-  candidate. The drive time comes from `position_profiles.DRIVE_MINUTES` (typical minutes from nearby towns, to be
-  confirmed by the restaurant) and falls back to the AI's rough estimate only for towns not listed; it is never a
-  verified route. A reply that is not valid JSON is asked once more. Unknowns are listed, never scored as negatives.
+  short-job runs and job changes in 24 and 36 months are computed from the dates; the evidence score uses the
+  profile's draft weights; commute points are added (+5 up to 20 min, 0 up to 30, −5 up to 44, −15 at 45+).
+  The drive time comes from `position_profiles.DRIVE_MINUTES` (typical minutes from nearby towns, to be confirmed by
+  the restaurant), or the AI's rough estimate for towns not listed. It is never a verified route, so 45+ minutes is
+  shown as a possible business cut-off to confirm, not as a verdict. Unknowns are listed, never scored as negatives.
+- If this screening fails for any reason, the existing analysis is still saved and an `AI_UNAVAILABLE` event says why.
 - Needs the position's "AI résumé and answer evaluation" setting, like the existing AI evaluation.
 
-The Evaluation tab shows the **CV ranking**: recruiter priority first (High, Medium, not set, Low), business cut-offs
-last within each priority, then the ranking score. The candidate page shows **From the CV** with cut-offs, flags,
-positive evidence, practical fit, unknowns, evidence by dimension, the station matrix (Line Cook) and the work history.
+The Evaluation tab shows the **CV ranking**: recruiter priority first (High, Medium, not set, Low), then the ranking
+score (evidence plus commute points); hired and not-selected candidates leave the list. The candidate page shows
+**From the CV** with hard requirements, possible cut-offs, flags, positive evidence, practical fit, unknowns, evidence
+by dimension, the station matrix (Line Cook) and the work history.
 
 **AI Interview Requested** (list row or candidate page, with a confirmation) creates the candidate's personal link and
-queues one invitation through the RMAED.it outbox (`source_key = ai-interview:<id>`); a repeated click sends nothing.
-On `/selection/ai-interview/<token>` the candidate has a short written conversation (`workspace/ai_interview.py`):
-availability and hours, the commute when unknown, the résumé's questions, then the position's questions. The server
-picks the next step and closes it; only the candidate's own words are kept as quotes. Then the status is
-**AI Interview Completed** and the transcript is on the candidate page.
+queues one invitation through the RMAED.it outbox (`source_key = ai-interview:<id>`); a repeated or double click sends
+nothing. It is offered only when the position is open, has a profile and the AI setting, the CV has been screened, and
+the candidate is not hired or not selected. On `/selection/ai-interview/<token>` (the link is the access, like the
+time-choice link) nothing reaches the AI until the candidate presses Start, so mail link scanners start nothing. The
+conversation (`workspace/ai_interview.py`) covers availability and hours, the commute when unknown or over 30 minutes,
+up to 3 questions from the résumé (no near-duplicates) and the position's own questions. The server picks the next
+step and closes as soon as every step is answered (at most 2 extra answers); only the candidate's own words are kept
+as quotes. Then the status is **AI Interview Completed** and the transcript is on the candidate page. Once the
+position is closed or the candidate has a final decision, the link shows that the interview is no longer open.
 
 New tables, provisioned by `workspace/schema.py` like the outbox: `selection_workspace_ai_interviews`,
 `selection_workspace_priorities`. No existing table or shared Alembic revision changes.

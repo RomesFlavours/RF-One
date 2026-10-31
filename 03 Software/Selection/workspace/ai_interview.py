@@ -9,21 +9,24 @@ nothing. The confirmation is the manager's approval of the standard text.
 
 On the link, the candidate has a short written conversation with the AI. The
 steps come from the CV screening (`profile_screening.interview_steps`):
-availability and hours, the commute when unknown, the résumé's flags, and
-the position's own questions. The server decides which step is next and when
-to close; the AI only words the questions and records what the candidate
+availability and hours, the commute when unknown or 31+ minutes, the résumé's
+flags, and the position's own questions. The server decides which step is next
+and when to close (every step answered, or 2 answers beyond the steps); the AI only words the questions and records what the candidate
 said, with their own words as quotes (checked against the transcript).
 When it ends, the status becomes **AI Interview Completed** and the full
 transcript is on the candidate page.
 
 Same AI seam and permission as the CV evaluation (`cv_evaluation` for the
-position); nothing is sent to AI when it is off.
+position): no invitation and nothing sent to AI when it is off. Only for
+positions with a profile and a screened CV, while the position is open and
+the candidate is not hired or not selected. Nothing reaches the AI until the
+candidate presses Start (link scanners only open pages).
 """
 
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+import re
 
 from flask import abort, redirect, render_template, request, url_for
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, select
@@ -39,8 +42,9 @@ REQUESTED, IN_PROGRESS, COMPLETED = "REQUESTED", "IN_PROGRESS", "COMPLETED"
 STATUS_LABELS = {REQUESTED: "AI Interview Requested", IN_PROGRESS: "AI Interview in progress",
                  COMPLETED: "AI Interview Completed"}
 FINDING_LABELS = {"CLEAR": "Clear answer", "PARTLY": "Partly answered", "OPEN": "Still open"}
-MAX_MINUTES = 20
 CANDIDATE_ACTOR = "Candidate (AI interview link)"
+CLOSING_REPLY = ("Thank you, that's everything we need. The hiring team will read your answers and contact you "
+                 "about the next step.")
 
 PRIORITIES = {"HIGH": "High", "MEDIUM": "Medium", "LOW": "Low"}
 # Recruiter priority overrides the proposed groups; within each, the screening order is kept.
@@ -106,12 +110,28 @@ def set_priority(db, *, position, pc, priority: str | None, actor) -> None:
 # Request and invitation (internal side; the route lives in routes.py)
 # ---------------------------------------------------------------------------
 
-GENERIC_STEPS = [
-    {"id": "availability", "ask": "Evening and weekend availability, and desired and minimum weekly hours.",
-     "context": "Not stated in the résumé."},
-    {"id": "commute", "ask": "Roughly how long their drive to the restaurant would be.", "context": "Unknown."},
-    {"id": "experience", "ask": "Their most relevant restaurant experience for this position.", "context": ""},
-]
+def closed_reason(db, position, pc) -> str | None:
+    """Why no AI interview can run for this candidate now, or None."""
+    from . import engine
+    if position.status != ws.OPEN:
+        return "The position is not open."
+    decision = engine.current_decision(db, pc.id)
+    if decision and decision.decision in (ws.D_HIRED, ws.D_NOT_SELECTED):
+        return "The candidate already has a final decision."
+    return None
+
+
+def blocked_reason(db, position, pc) -> str | None:
+    """Why the AI interview cannot be requested for this candidate now (the email is checked separately)."""
+    from . import engine
+    if not position_profiles.for_role(position.role_code):
+        return "this position has no selection profile (Server and Line Cook only, for now)."
+    if not ai_adapter.current_policy().allows("cv_evaluation"):
+        return "“AI résumé and answer evaluation” is off in this position’s Configuration."
+    if not engine.current_proposals(db, pc.id).get(profile_screening.SOURCE):
+        return "the CV has not been screened with the position profile yet."
+    reason = closed_reason(db, position, pc)
+    return reason[0].lower() + reason[1:] if reason else None
 
 
 def invitation_text(position, first_name: str | None, link: str) -> str:
@@ -124,26 +144,27 @@ def invitation_text(position, first_name: str | None, link: str) -> str:
 
 def request_interview(db, *, position, pc, actor, link_for) -> tuple[AIInterview, bool]:
     """Create the interview and queue its one invitation. Returns (interview, created).
-    Raises ValueError (nothing saved) when the candidate has no valid email address."""
+    Raises ValueError (nothing saved) when it cannot be requested; the message says why."""
     existing = for_pc(db, pc.id)
     if existing is not None:
         return existing, False
-    if not mail_delivery.email_for(db, pc):
-        raise ValueError("The candidate does not have a valid email address: no interview was requested.")
     from . import engine
+    reason = blocked_reason(db, position, pc) or (
+        None if mail_delivery.email_for(db, pc) else "the candidate does not have a valid email address.")
+    if reason:
+        raise ValueError(f"No AI interview was requested: {reason}")
     profile = position_profiles.for_role(position.role_code)
-    screening = engine.current_proposals(db, pc.id).get(profile_screening.SOURCE)
-    steps = (profile_screening.interview_steps(screening.payload, profile) if profile and screening
-             else GENERIC_STEPS)
+    screening = engine.current_proposals(db, pc.id)[profile_screening.SOURCE]
+    steps = profile_screening.interview_steps(screening.payload, profile)
     interview = AIInterview(position_candidate_id=pc.id, steps_json=json.dumps(steps),
-                            profile_version=profile["version"] if profile else None,
+                            profile_version=profile["version"],
                             requested_by_account_id=actor.id, requested_by_name=actor.name)
     db.add(interview)
     db.flush()
     candidate = persistence.get_candidate(db, pc.candidate_id)
     name = (candidate.full_name or pc.declared_name or "").strip()
     row = mail_delivery.enqueue(db, pc=pc, source_key=f"ai-interview:{interview.id}",
-                                subject=f"Rome's Flavours — {position.title}: short online interview",
+                                subject=f"Rome's Flavours: short online interview for the {position.title} position",
                                 body=invitation_text(position, name.split()[0].title() if name else None,
                                                      link_for(interview.token)))
     interview.outbox_id = row.id
@@ -186,12 +207,13 @@ def _transcript_text(transcript: list[dict]) -> str:
     return "\n".join(f"{'Interviewer' if t['who'] == 'AI' else 'Candidate'}: {t['text']}" for t in transcript) or "(not started)"
 
 
+def _all_covered(interview: AIInterview, findings: dict) -> bool:
+    return all(s["id"] in findings for s in interview.steps)
+
+
 def _closing(interview: AIInterview) -> bool:
-    steps, findings = interview.steps, interview.findings
-    started = interview.started_at or ws.utcnow()
     answered = sum(1 for t in interview.transcript if t["who"] == "CANDIDATE")
-    return (all(s["id"] in findings for s in steps) or answered >= len(steps) + 4
-            or ws.utcnow() - started > timedelta(minutes=MAX_MINUTES))
+    return _all_covered(interview, interview.findings) or answered >= len(interview.steps) + 2
 
 
 def take_turn(db, interview: AIInterview, position, message: str | None) -> None:
@@ -209,19 +231,21 @@ def take_turn(db, interview: AIInterview, position, message: str | None) -> None
         instruction = ("CLOSE NOW: thank them warmly, say the hiring team will read their answers and contact them "
                        "about the next step, and ask NO new question. Still record findings for their last message.")
     else:
-        instruction = f"NEXT STEP to ask about: {todo[0]['id']}." if todo else "Ask nothing new; close politely."
+        instruction = (f"NEXT STEP to ask about: {todo[0]['id']} (if their last message already answers it, "
+                       "ask about the following step instead)." if todo else "Ask nothing new; close politely.")
     prompt = _PROMPT.format(
         location=position.location_label, title=position.title,
         steps="\n".join(f"- {s['id']}: {s['ask']} ({s['context']})" for s in interview.steps),
         covered=", ".join(findings) or "nothing yet", instruction=instruction, transcript=_transcript_text(transcript),
-        protected=ai_adapter._PROTECTED.replace(", address or where the person lives", ""))
+        protected=profile_screening.PROTECTED_EXCEPT_RESIDENCE)
     data = ai_adapter._transport(prompt, "AI interview")
     reply = str(data.get("reply") or "").strip() if isinstance(data, dict) else ""
     if not reply:
         raise AIProviderUnavailable("The AI returned no reply.")
     said = ai_adapter._normalized(" ".join(t["text"] for t in transcript if t["who"] == "CANDIDATE"))
     known = {s["id"] for s in interview.steps}
-    for f in (data.get("findings") or []) if message else []:
+    found = data.get("findings") if message and isinstance(data.get("findings"), list) else []
+    for f in found:
         if not isinstance(f, dict) or f.get("step_id") not in known or f.get("status") not in FINDING_LABELS:
             continue
         quote = str(f.get("quote") or "").strip()
@@ -231,7 +255,9 @@ def take_turn(db, interview: AIInterview, position, message: str | None) -> None
         if previous and list(FINDING_LABELS).index(previous["status"]) <= list(FINDING_LABELS).index(f["status"]):
             continue  # the clearest answer wins
         findings[f["step_id"]] = {"status": f["status"], "quote": quote[:500], "note": str(f.get("note") or "")[:300]}
-    transcript.append({"who": "AI", "text": reply.replace("—", ",")[:2000], "at": ws.utcnow().isoformat(timespec="seconds")})
+    if message and not closing and _all_covered(interview, findings):
+        closing, reply = True, CLOSING_REPLY  # the last step was just answered: close now, not one message later
+    transcript.append({"who": "AI", "text": re.sub(r"\s*[—–]\s*", ", ", reply)[:2000], "at": ws.utcnow().isoformat(timespec="seconds")})
     interview.transcript_json, interview.findings_json = json.dumps(transcript), json.dumps(findings)
     if interview.status == REQUESTED:
         interview.status, interview.started_at = IN_PROGRESS, ws.utcnow()
@@ -263,25 +289,29 @@ def install():
                 abort(404)
             pc = db.get(ws.PositionCandidate, interview.position_candidate_id)
             position = db.get(ws.Position, pc.position_id)
-            error = None
-            if interview.status != COMPLETED:
+            error, draft = None, ""
+            closed = interview.status != COMPLETED and closed_reason(db, position, pc) is not None
+            if interview.status != COMPLETED and not closed:
                 position_settings.bind(position)
                 try:
                     if not ai_adapter.current_policy().allows("cv_evaluation"):
                         raise AIProviderUnavailable("AI is not enabled for this position.")
                     if request.method == "POST" and request.form.get("action") == "finish":
                         complete(db, interview, position)
+                    elif request.method == "POST" and request.form.get("action") == "start":
+                        if not interview.transcript:
+                            take_turn(db, interview, position, None)
                     elif request.method == "POST":
-                        text = (request.form.get("message") or "").strip()
-                        if text:
-                            take_turn(db, interview, position, text)
-                    elif not interview.transcript:
-                        take_turn(db, interview, position, None)
+                        draft = (request.form.get("message") or "").strip()
+                        if draft:
+                            take_turn(db, interview, position, draft)
                     db.commit()
                 except AIProviderUnavailable:
                     db.rollback()
                     error = "The interview is not available right now. Please try again in a few minutes."
+                    db.refresh(interview)
                 if request.method == "POST" and not error:
                     return redirect(url_for("careers.ai_interview_page", token=token) + "#end")
             return render_template("careers/ai_interview.html", position=position, candidate=None,
-                                   interview=interview, error=error, done=interview.status == COMPLETED)
+                                   interview=interview, error=error, done=interview.status == COMPLETED,
+                                   closed=closed, draft=draft if error else "")

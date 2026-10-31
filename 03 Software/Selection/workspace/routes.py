@@ -35,6 +35,7 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 from flask import session as flask_session
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from rfone_data_store import display_format
 from rfone_data_store import models as m
@@ -316,12 +317,11 @@ def _candidate_cards(db, position: ps.Position) -> list[dict]:
 
 def _ranked(cards: list[dict]) -> list[dict]:
     """The CV screening order (SELECTION_POSITION_PROFILES_001): recruiter priority first (High, Medium, not set,
-    Low), then business cut-offs last within each priority, then the profile's ranking score. Final outcomes
+    Low), then the profile's ranking score (evidence plus commute points). Final outcomes
     (hired, not selected, on hold) leave the list."""
     def key(c):
         s = c["screening"].payload if c["screening"] else None
-        return (ai_interview.PRIORITY_ORDER.get(c["priority"], 2), 1 if s and s["cutoffs"] else 0,
-                0 if s else 1, -(s["ranking_score"] if s else 0), c["pc"].added_at)
+        return (ai_interview.PRIORITY_ORDER.get(c["priority"], 2), 0 if s else 1, -(s["ranking_score"] if s else 0), c["pc"].added_at)
     active = [c for c in cards if not (c["decision"] and c["decision"].decision in ps.FINAL_DECISIONS)]
     return sorted(active, key=key)
 
@@ -849,6 +849,7 @@ def candidate_detail(db, actor, position_id, pc_id):
         mail_status_labels=mail_delivery.STATUS_LABELS,
         screening=proposals.get(profile_screening.SOURCE), selection_profile=position_profiles.for_role(position.role_code),
         priority=ai_interview.priority_for(db, pc.id), ai_interview=ai_interview.for_pc(db, pc.id),
+        ai_interview_blocked=ai_interview.blocked_reason(db, position, pc),
         ai_interview_url=lambda iv: external_url("careers.ai_interview_page", token=iv.token),
         slot_url=lambda o: external_url("careers.slot_page", token=o.token), now=ps.utcnow())
 
@@ -949,7 +950,12 @@ def request_ai_interview(db, actor, position_id, pc_id):
         db.rollback()
         flash(str(exc))
         return redirect(back)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:  # a double click: the other request created it and queued the one email
+        db.rollback()
+        flash("The AI interview was already requested: no second email was sent.")
+        return redirect(back)
     flash("AI interview requested: the invitation is queued for delivery through RMAED.it." if created else
           f"The AI interview was already requested on {_local(interview.requested_at, position.timezone)}: "
           "no second email was sent.")
