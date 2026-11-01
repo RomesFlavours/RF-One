@@ -1,9 +1,11 @@
 """Selection — the position workspace, internal side (SELECTION_AI_INTEGRATION_001).
 
 The operational interface of the Selection Domain, transferred from the
-approved Selection AI prototype: one page per open position with the five
-functions — 1 Position, 2 Applications, 3 Evaluation, 4 Interviews,
-5 Decisions — plus the positions list.
+approved Selection AI prototype. One process, five tabs at the same level
+(SELECTION_PROCESS_REORGANIZATION_001): Selection (the Jobs list, where a Job
+is created, configured and chosen), Applications, Evaluation, Interviews and
+Decisions, the last four always about the current Job. A Job is a
+`selection_workspace_positions` row: "Job" is only the name shown to people.
 
 Access is RF-One's own: the RF-One account of the shared session, the
 SELECTION Domain rule (`rfone_web_session.account_may_enter_domain`) and the
@@ -34,7 +36,7 @@ from zoneinfo import ZoneInfo
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 from flask import session as flask_session
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from rfone_data_store import display_format
 from rfone_data_store import models as m
@@ -87,6 +89,10 @@ ROLE_CHOICES = [
 ROLE_LABEL = dict(ROLE_CHOICES)
 ROLE_LABEL_EN = {"SERVER": "Server", "FOH_SUPERVISOR": "Front of House Team Leader", "PIZZA_COOK": "Pizza Cook",
                  "DISHWASHER": "Dishwasher"}
+# Names shown to people (SELECTION_PROCESS_REORGANIZATION_001); the stored statuses do not change.
+JOB_STATUS_LABELS = {ps.DRAFT: "Draft", ps.OPEN: "Active", ps.CLOSED: "Closed"}
+CURRENT_JOB_KEY = "selection_current_job"   # the Job every tab after Selection refers to
+SECTIONS = ("selection", "applications", "evaluation", "interviews", "decisions")
 DEFAULT_QUESTIONS = (
     "Are you looking for full-time or part-time work?",
     "Are you available to work weekends?",
@@ -178,7 +184,8 @@ def _globals():
     return {"csrf_token": lambda: shared_session.csrf_token(flask_session), "ai_policy": ai_adapter.current_policy(),
             "GROUP_LABELS": ps.GROUP_LABELS, "DECISION_LABELS": ps.DECISION_LABELS, "ROLE_LABEL": ROLE_LABEL,
             "STATUS_LABELS": engine.STATUS_LABELS, "CRITICALITY_LABELS": engine.CRITICALITY_LABELS,
-            "POSITION_STATUS_LABELS": ps.POSITION_STATUS_LABELS, "SOURCE_LABELS": ps.SOURCE_LABELS,
+            "POSITION_STATUS_LABELS": JOB_STATUS_LABELS, "SOURCE_LABELS": ps.SOURCE_LABELS,
+            "applications_url": applications_url, "tab_url": tab_url,
             "KIND_LABELS": ps.KIND_LABELS, "MESSAGE_KINDS": ps.MESSAGE_KINDS,
             "APPLICATION_STATUS_LABELS": ps.APPLICATION_STATUS_LABELS, "NOT_SELECTED_REASONS": ps.NOT_SELECTED_REASONS}
 
@@ -243,7 +250,40 @@ def _position(db, actor: Actor, position_id: int, *, edit: bool = False) -> ps.P
     if edit and not actor.can_edit(position):
         abort(403)
     position_settings.bind(position)
+    if request.method == "GET":
+        flask_session[CURRENT_JOB_KEY] = position.id   # opening a Job's page makes it the current Job
     return position
+
+
+def applications_url(position) -> str:
+    from .sp import profiles as spp
+    if position.role_code in spp.ROLES:
+        return url_for("positions.sp_page", position_id=position.id)
+    return url_for("positions.position_detail", position_id=position.id, tab="candidature")
+
+
+def tab_url(section: str, position) -> str:
+    """Address of one of the five tabs for this Job."""
+    if section == "selection":
+        return url_for("positions.dashboard")
+    if section == "applications":
+        return applications_url(position)
+    if section == "evaluation":
+        return url_for("positions.evaluation", position_id=position.id)
+    if section == "interviews":
+        return url_for("positions.interviews", position_id=position.id)
+    return url_for("positions.position_detail", position_id=position.id,
+                   tab={"interviews": "colloqui", "decisions": "decisioni"}[section])
+
+
+def _modal() -> bool:
+    """The Job form opened in the modal window of the Selection tab (same pages, same saves, no shell)."""
+    return request.values.get("modal") == "1"
+
+
+def _current_job(db, actor) -> ps.Position | None:
+    position = db.get(ps.Position, flask_session.get(CURRENT_JOB_KEY) or 0)
+    return position if position is not None and actor.can_view(position) else None
 
 
 def _pc(db, position, pc_id) -> ps.PositionCandidate:
@@ -367,41 +407,32 @@ def how_it_works(db, actor):
 @bp.route("/")
 @access_required
 def dashboard(db, actor):
-    status_filter = request.args.get('stato', ps.OPEN).upper()
-    if status_filter not in (ps.OPEN, ps.DRAFT, ps.CLOSED):
-        status_filter = ps.OPEN
+    """Selection tab: every Job the person may see, newest first, with the action that fits its state."""
     search = (request.args.get('q') or '').strip()[:120]
-    positions = db.scalars(select(ps.Position).order_by(ps.Position.status.desc(), ps.Position.created_at.desc())).all()
-    rows, upcoming = [], []
-    position_counts = {ps.OPEN: 0, ps.DRAFT: 0, ps.CLOSED: 0}
-    now = ps.utcnow()
-    for position in positions:
-        if not actor.can_view(position):
-            continue
-        position_counts[position.status] = position_counts.get(position.status, 0) + 1
-        cards = _candidate_cards(db, position)
-        counts = {g: 0 for g in ps.GROUP_ORDER}
-        for c in cards:
-            if not c["decision"] and c["proposal"]:
-                counts[c["proposal"].group_code] += 1
+    positions = db.scalars(select(ps.Position).order_by(ps.Position.created_at.desc(), ps.Position.id.desc())).all()
+    visible = [p for p in positions if actor.can_view(p)]
+    counts = dict(db.execute(select(ps.PositionCandidate.position_id, func.count(ps.PositionCandidate.id))
+                             .group_by(ps.PositionCandidate.position_id)).all())
+    rows = []
+    for position in visible:
         manager_name = _manager_name(db, position.manager_account_id)
-        row = {"position": position, "manager": manager_name,
-                     "total": len(cards), "counts": counts,
-                     "hired": sum(1 for c in cards if c["decision"] and c["decision"].decision == ps.D_HIRED),
-                     "to_interview": sum(1 for c in cards if c["decision"] and c["decision"].decision == ps.D_INTERVIEW)}
-        if position.status == status_filter and (not search or search.casefold() in
-            ' '.join((position.title, ROLE_LABEL.get(position.role_code, ''), position.location_label, manager_name)).casefold()):
-            rows.append(row)
-        for c in cards:
-            a = c["next_appointment"]
-            if a and a.starts_at <= now + timedelta(days=14):
-                upcoming.append((a, position, c))
-    upcoming.sort(key=lambda t: t[0].starts_at)
-    headings = {ps.OPEN: 'Open positions', ps.DRAFT: 'Drafts', ps.CLOSED: 'Closed positions'}
-    return render_template('workspace/dashboard.html', actor=actor, rows=rows, upcoming=upcoming,
-        position_counts=position_counts, status_filter=status_filter, search=search,
-        page_heading=headings[status_filter], crumbs=[(headings[status_filter], None)],
-        candidate_url=lambda p: external_url('careers.job_page', token=p.public_token))
+        if search and search.casefold() not in ' '.join((position.title, ROLE_LABEL.get(position.role_code, ''),
+                                                         position.location_label, manager_name)).casefold():
+            continue
+        rows.append({"position": position, "manager": manager_name, "total": counts.get(position.id, 0)})
+    upcoming = []
+    pcs = {pc.id: (pc, p) for p in visible for pc in db.scalars(
+        select(ps.PositionCandidate).where(ps.PositionCandidate.position_id == p.id)).all()}
+    now = ps.utcnow()
+    for a in _appointments(db, list(pcs)):
+        if now - timedelta(hours=2) <= a.starts_at <= now + timedelta(days=14):
+            pc, p = pcs[a.position_candidate_id]
+            candidate = persistence.get_candidate(db, pc.candidate_id)
+            upcoming.append((a, p, {"pc": pc, "name": (candidate.full_name if candidate else None)
+                                    or pc.declared_name or "(name not extracted)"}))
+    return render_template('workspace/dashboard.html', actor=actor, rows=rows, upcoming=upcoming, search=search,
+                           section="selection", current_job=_current_job(db, actor),
+                           candidate_url=lambda p: external_url('careers.job_page', token=p.public_token))
 
 
 @bp.route('/configurazione')
@@ -430,7 +461,7 @@ def position_configuration(db, actor, position_id):
     ps.log_event(db, position_id=position.id, kind="CONFIGURATION", actor_id=actor.id, actor_name=actor.name,
                  detail="Position configuration updated")
     db.commit()
-    flash("Configuration saved for this position only.")
+    flash("Settings saved for this Job only.")
     return _position_redirect(position, "configuration")
 
 
@@ -487,8 +518,8 @@ def position_new(db, actor):
                 and shared_session.account_may_enter_domain(db, a, SELECTION_DOMAIN)]
     company = _company_facts(db, request.form.get("location", ""))
     if request.method == "POST":
-        title = request.form.get("title", "").strip()
         role_code = request.form.get("role_code", "")
+        title = request.form.get("title", "").strip() or ROLE_LABEL.get(role_code, "")
         location = request.form.get("location", "").strip()
         timezone = request.form.get("timezone", "").strip() or DEFAULT_TIMEZONE
         manager_id = request.form.get("manager_account_id", type=int) if actor.is_owner else actor.id
@@ -498,10 +529,10 @@ def position_new(db, actor):
             timezone = ""
         if not title or role_code not in ROLE_LABEL or not location or not timezone or \
                 manager_id not in {a.id for a in managers}:
-            flash("Enter a title, role, location, valid time zone and manager.")
+            flash("Enter the Role, location, a valid time zone and the manager.")
             return render_template("workspace/position_new.html", actor=actor, roles=ROLE_CHOICES, managers=managers,
                                    form=request.form, company=company, default_tz=DEFAULT_TIMEZONE,
-                                   full_roles=FULL_ANALYSIS_ROLES)
+                                   full_roles=FULL_ANALYSIS_ROLES, standards=_role_standards(), modal=_modal())
         restaurant_id = _restaurant_id(db)
         requirement_set = req_svc.create_requirement_set(
             db, restaurant_id=restaurant_id, name=f"{title} — {location}", target_role=role_code,
@@ -516,24 +547,231 @@ def position_new(db, actor):
         db.add(position)
         db.flush()
         ps.log_event(db, position_id=position.id, kind="CREATED", actor_id=actor.id, actor_name=actor.name,
-                     detail=f"Position created: {title} ({ROLE_LABEL[role_code]}, {location}); "
+                     detail=f"Job created: {title} ({ROLE_LABEL[role_code]}, {location}); "
                             f"manager {_manager_name(db, manager_id)}")
         db.commit()
         position_settings.save(position, {**position_settings.get(position), "profile": company["profile"]}, actor_name=actor.name)
+        if sp_routes().has_profile(position):
+            sp_routes().reset_to_role_standard(position)   # the Role's standard requirements and rules, copied
         db.commit()
         position_settings.bind(position)
         if ai_adapter.current_policy().allows("position_drafting"):
             _run_position_draft(db, actor, position)
-        return redirect(url_for(".position_detail", position_id=position.id, tab="posizione"))
+        flask_session[CURRENT_JOB_KEY] = position.id
+        return redirect(url_for(".job_edit", position_id=position.id, **({"modal": "1"} if _modal() else {})))
     return render_template("workspace/position_new.html", actor=actor, roles=ROLE_CHOICES, managers=managers, form={},
-                           company=company, default_tz=DEFAULT_TIMEZONE, full_roles=FULL_ANALYSIS_ROLES)
+                           company=company, default_tz=DEFAULT_TIMEZONE, full_roles=FULL_ANALYSIS_ROLES, standards=_role_standards(), modal=_modal())
+
+
+def _role_standards() -> dict:
+    """Read-only preview of each Role standard for the New Job page."""
+    from .sp import profiles as spp
+    from .sp import rules as sp_rules
+    return {code: {"requirements": spp.default_requirements(code),
+                   "rules": [r["name"] for r in sp_rules.catalogue(code)]} for code in spp.ROLES}
+
+
+def sp_routes():
+    from . import sp_routes as module   # imported late: sp_routes registers its routes on this blueprint
+    return module
+
+
+# ---------------------------------------------------------------------------
+# Job form (Selection tab): Role, location, requirements, rules, ad, questions
+# ---------------------------------------------------------------------------
+
+def _job_form_context(db, actor, position) -> dict:
+    sp_mod = sp_routes()
+    from .sp import rules as sp_rules
+    sp_role = sp_mod.has_profile(position)
+    sp = sp_mod.state(position) if sp_role else None
+    seed_sample_templates(db)
+    restaurant_id = _restaurant_id(db)
+    seed_romes_flavours_phone_interview_questions(db, restaurant_id=restaurant_id)
+    db.commit()
+    managers = [a for a in account_svc.list_accounts(db) if a.status == "ACTIVE"
+                and shared_session.account_may_enter_domain(db, a, SELECTION_DOMAIN)]
+    unapproved = position.approved_snapshot_id and (
+        engine.requirements_changed_since_approval(db, position)
+        or position.job_ad_en != (position.approved_job_ad_en or "")
+        or position.questions_json != (position.approved_questions_json or "[]")
+        or bool(sp and sp.get("editing")))
+    return dict(
+        actor=actor, position=position, section="selection", sp_role=sp_role, sp=sp, modal=_modal(),
+        sp_rules=sp_rules.catalogue(position.role_code) if sp_role else [],
+        rules_on=sp_rules.effective(position.role_code, (sp or {}).get("rules_draft") or (sp or {}).get("rules")),
+        role_standard=spp_standard(position.role_code), roles=ROLE_CHOICES, managers=managers,
+        requirements=engine.active_requirements(db, position), templates=req_svc.list_templates(db),
+        drafts=db.scalars(select(ps.PositionDraft).where(ps.PositionDraft.position_id == position.id,
+                                                         ps.PositionDraft.status == "PROPOSED")
+                          .order_by(ps.PositionDraft.id.desc())).all(),
+        standard_pool=[d.question_text for d in pi_svc.list_question_definitions(db, restaurant_id=restaurant_id)
+                       if not d.is_courtesy],
+        categories=ai_adapter.CATEGORY_LABELS_EN, trainability=engine.TRAINABILITY_LABELS,
+        can_edit=actor.can_edit(position), configuration=position_settings.get(position),
+        configuration_features=position_settings.FEATURES, platform_policy=ai_adapter.POLICY,
+        unapproved=unapproved, manager=_manager_name(db, position.manager_account_id),
+        crumbs=[("New Job" if position.status == ps.DRAFT and not position.approved_snapshot_id else
+                 f"{ROLE_LABEL.get(position.role_code, position.role_code)} · {position.location_label}", None)])
+
+
+def spp_standard(role_code: str) -> list[dict]:
+    from .sp import profiles as spp
+    return spp.default_requirements(role_code) if role_code in spp.ROLES else []
+
+
+@bp.route("/posizioni/<int:position_id>/job")
+@access_required
+def job_edit(db, actor, position_id):
+    position = _position(db, actor, position_id)
+    return render_template("workspace/job_form.html", **_job_form_context(db, actor, position))
+
+
+def _save_selection_requirements(db, position, form) -> None:
+    """Requirements of a Role without a CV Selection SP profile: Selection's own requirement set."""
+    for r in engine.active_requirements(db, position):
+        if form.get(f"req_remove_{r.id}"):
+            req_svc.deactivate_requirement(db, r.id)
+            continue
+        fields = _requirement_fields({k[len("req_"):-len(f"_{r.id}")]: v for k, v in form.items()
+                                      if k.startswith("req_") and k.endswith(f"_{r.id}")})
+        if fields["name"]:
+            req_svc.update_requirement(db, r.id, **fields)
+    new = _requirement_fields({k[len("req_new_"):]: v for k, v in form.items() if k.startswith("req_new_")})
+    if new["name"]:
+        req_svc.add_requirement(db, position.requirement_set_id, assessment_stages=engine.DEFAULT_STAGES, **new)
+
+
+def _save_sp_requirements(position, sp, form) -> None:
+    """Requirements and rules of a Role with a CV Selection SP profile, in the Job's copy only."""
+    from .sp import profiles as spp
+    from .sp import rules as sp_rules
+    draft = []
+    for r in sp["requirements_draft"]:
+        if r["id"].startswith("custom") and form.get(f"sp_remove_{r['id']}"):
+            continue
+        if form.get(f"sp_crit_{r['id']}") in spp.CRITICALITY_LABELS:
+            r["criticality"] = form[f"sp_crit_{r['id']}"]
+        weight = form.get(f"sp_weight_{r['id']}", type=int)
+        if weight is not None:
+            r["weight"] = max(0, min(100, weight))
+        r["active"] = bool(form.get(f"sp_active_{r['id']}"))
+        draft.append(r)
+    name = (form.get("sp_new_name") or "").strip()
+    if name:
+        index = 1 + max([int(r["id"][6:]) for r in draft if r["id"].startswith("custom") and r["id"][6:].isdigit()]
+                        or [0])
+        draft.append({**spp.custom_requirement(index, name, form.get("sp_new_look_for") or name,
+                                               form.get("sp_new_crit") or spp.PREFERRED,
+                                               form.get("sp_new_weight", type=int) or 5), "active": True})
+    sp["requirements_draft"] = draft
+    sp["rules_draft"] = {rule["id"]: bool(form.get(f"rule_{rule['id']}"))
+                         for rule in sp_rules.catalogue(position.role_code) if rule["switchable"]}
+    approved = sp.get("approved")
+    chosen = [{k: v for k, v in r.items() if k != "active"} for r in sp_routes().active_requirements(draft)]
+    sp["editing"] = bool(approved) and (approved["requirements"] != chosen
+                                        or sp_rules.effective(position.role_code, sp["rules_draft"]) != sp.get("rules"))
+
+
+def _sync_selection_requirements(db, position, approved_requirements: list[dict]) -> None:
+    """The approved CV Selection SP requirements become the Job's Selection requirement set, which the
+    application page, the existing engines and the approval snapshot read. Derived, never edited apart."""
+    wanted = [(r["name"], r["look_for"], r["criticality"]) for r in approved_requirements]
+    existing = engine.active_requirements(db, position)
+    if [(r.name, r.description, r.criticality) for r in existing] == wanted:
+        return
+    for r in existing:
+        req_svc.deactivate_requirement(db, r.id)
+    for name, look_for, criticality in wanted:
+        req_svc.add_requirement(db, position.requirement_set_id, name=name, description=look_for,
+                                category="Experience", criticality=criticality,
+                                trainability=rm.TRAINABILITY_UNKNOWN, assessment_stages=engine.DEFAULT_STAGES)
+
+
+@bp.route("/posizioni/<int:position_id>/job", methods=["POST"])
+@access_required
+def job_save(db, actor, position_id):
+    """Save Draft / Confirm & Publish: every field of the Job form in one save."""
+    position = _position(db, actor, position_id, edit=True)
+    form, sp_mod = request.form, sp_routes()
+    role_code = form.get("role_code") or position.role_code
+    role_changed = position.status == ps.DRAFT and role_code in ROLE_LABEL and role_code != position.role_code
+    location = (form.get("location") or "").strip() or position.location_label
+    timezone = (form.get("timezone") or "").strip() or position.timezone
+    try:
+        ZoneInfo(timezone)
+    except Exception:
+        timezone = position.timezone
+    if role_changed:
+        position.role_code = role_code
+    position.title = (form.get("title") or "").strip() or ROLE_LABEL.get(position.role_code, position.title)
+    position.location_label, position.timezone = location, timezone
+    position.description = (form.get("description") or "").strip()
+    if actor.is_owner and form.get("manager_account_id", type=int):
+        position.manager_account_id = form.get("manager_account_id", type=int)
+    position.headcount = max(1, form.get("headcount", type=int) or 1)
+    position.job_ad_en = (form.get("job_ad_en") or "").strip()
+    questions = [q.strip() for q in (form.get("questions") or "").splitlines() if q.strip()]
+    position.questions_json = json.dumps(questions[:MAX_STANDARD_QUESTIONS])
+    if len(questions) > MAX_STANDARD_QUESTIONS:
+        flash(f"Kept the first {MAX_STANDARD_QUESTIONS} questions: the interview should take about 5 minutes.")
+    profile = (form.get("profile") or "").strip()[:16000]
+    position_settings.save(position, {"profile": profile, **{key: form.get(f"feat_{key}") == "1"
+                                                             for key, _, _ in position_settings.FEATURES}},
+                           actor_name=actor.name)
+    if role_changed:
+        req_svc.update_requirement_set(db, position.requirement_set_id, target_role=role_code)
+        if sp_mod.has_profile(position):
+            sp_mod.reset_to_role_standard(position)
+        flash(f"Role changed to {ROLE_LABEL[role_code]}: its standard requirements and rules are loaded. "
+              "Review them, then save.")
+    elif sp_mod.has_profile(position):
+        sp = sp_mod.state(position)
+        _save_sp_requirements(position, sp, form)
+        sp_mod.save_state(position, sp)
+    else:
+        _save_selection_requirements(db, position, form)
+    ps.log_event(db, position_id=position.id, kind="DETAILS", actor_id=actor.id, actor_name=actor.name,
+                 detail=f"Job saved: {ROLE_LABEL.get(position.role_code)}, {position.location_label}, "
+                        f"{position.headcount} person(s), {len(position.questions)} standard questions")
+    db.commit()
+    edit_again = redirect(url_for(".job_edit", position_id=position.id, **({"modal": "1"} if _modal() else {})))
+    finished = render_template("workspace/modal_done.html") if _modal() else redirect(url_for(".dashboard"))
+    if role_changed:
+        return edit_again
+    if form.get("action") != "publish":
+        flash("Draft saved. You can continue later from the Jobs list." if position.status == ps.DRAFT
+              else "Changes saved. Confirm them to make them effective.")
+        return finished
+    if sp_mod.has_profile(position):
+        sp = sp_mod.state(position)
+        problem = sp_mod.approve(position, sp, actor.name)
+        if problem:
+            flash(problem)
+            return edit_again
+        if not _approval_problems(db, position, sp["approved"]["requirements"]):
+            sp_mod.save_state(position, sp)
+            _sync_selection_requirements(db, position, sp["approved"]["requirements"])
+            db.commit()
+    first_publication = position.approved_snapshot_id is None
+    if not _approve_position(db, actor, position):
+        return edit_again
+    if sp_mod.has_profile(position) and not position_settings.bind(position).allows("cv_evaluation"):
+        flash("Note: AI résumé evaluation is off for this Job, so uploaded CVs are not analyzed.")
+    if not first_publication:
+        flash("Changes confirmed: the application page and the analysis use them now.")
+    return finished
 
 
 @bp.route("/posizioni/<int:position_id>")
 @access_required
 def position_detail(db, actor, position_id):
     position = _position(db, actor, position_id)
-    tab = request.args.get("tab") or ("posizione" if position.status == ps.DRAFT else "valutazione")
+    tab = request.args.get("tab") or ("posizione" if position.status == ps.DRAFT else "candidature")
+    if tab in ("posizione", "configuration"):
+        return redirect(url_for(".job_edit", position_id=position.id))   # the Job form, in the Selection tab
+    if tab in ("candidature", "valutazione") and sp_routes().has_profile(position):
+        return redirect(url_for(".sp_page", position_id=position.id))
     cards = _candidate_cards(db, position)
     columns = {g: [] for g in ps.GROUP_ORDER}
     pending, decided = [], {d: [] for d in ps.DECISION_LABELS}
@@ -577,11 +815,14 @@ def position_detail(db, actor, position_id):
         days=days, offers=offers, names=names, now=ps.utcnow(),
         hired=len(decided[ps.D_HIRED]), configuration=position_settings.get(position),
         configuration_features=position_settings.FEATURES, ai_checks=position_settings.context(position).get("ai_checks", {}),
-        platform_policy=ai_adapter.POLICY,
+        platform_policy=ai_adapter.POLICY, section={"colloqui": "interviews", "decisioni": "decisions"}.get(
+            tab, "applications"),
         company=_company_facts(db, position.location_label, position))
 
 
 def _position_redirect(position, tab="posizione"):
+    if tab in ("posizione", "configuration"):
+        return redirect(url_for(".job_edit", position_id=position.id, **({"modal": "1"} if _modal() else {})))
     return redirect(url_for(".position_detail", position_id=position.id, tab=tab))
 
 
@@ -715,20 +956,34 @@ def requirement_from_template(db, actor, position_id):
     return _position_redirect(position)
 
 
+def _approval_problems(db, position, requirements) -> list[str]:
+    missing = [label for label, ok in (("at least one requirement", requirements),
+                                       ("the job ad text", position.job_ad_en.strip()),
+                                       ("at least one standard question", position.questions)) if not ok]
+    problems = ["Cannot publish yet; missing: " + "; ".join(missing) + "."] if missing else []
+    if "[" in position.job_ad_en and "]" in position.job_ad_en:
+        problems.append("The job ad still contains placeholders in square brackets. Complete or remove them.")
+    return problems
+
+
 @bp.route("/posizioni/<int:position_id>/approva", methods=["POST"])
 @access_required
 def position_approve(db, actor, position_id):
     position = _position(db, actor, position_id, edit=True)
+    if not _approve_position(db, actor, position):
+        return _position_redirect(position)
+    return _position_redirect(position, "candidature")
+
+
+def _approve_position(db, actor, position) -> bool:
+    """Approve requirements, job ad and questions; a Draft Job becomes Active. False (with the reasons
+    flashed) when something required is missing."""
     requirements = engine.active_requirements(db, position)
-    missing = [label for label, ok in (("at least one requirement (“Requirements” → “Add requirement”)", requirements),
-                                       ("the job ad text", position.job_ad_en.strip()),
-                                       ("at least one standard question", position.questions)) if not ok]
-    if missing:
-        flash("Cannot approve yet; missing: " + "; missing: ".join(missing) + ".")
-        return _position_redirect(position)
-    if "[" in position.job_ad_en and "]" in position.job_ad_en:
-        flash("The job ad still contains placeholders in square brackets. Complete or remove them.")
-        return _position_redirect(position)
+    problems = _approval_problems(db, position, requirements)
+    for problem in problems:
+        flash(problem)
+    if problems:
+        return False
     if not any(r.criticality == rm.MUST_HAVE for r in requirements):
         flash("No requirement is marked Must-have, so the proposal cannot distinguish between candidates.")
     snapshot = req_svc.create_requirement_set_snapshot(db, position.requirement_set_id)
@@ -739,14 +994,14 @@ def position_approve(db, actor, position_id):
     if position.status == ps.DRAFT:
         position.status = ps.OPEN
     ps.log_event(db, position_id=position.id, kind="APPROVED", actor_id=actor.id, actor_name=actor.name,
-                 detail=f"Position approved (requirements v{snapshot.version}: {len(requirements)}; "
+                 detail=f"Job confirmed and published (requirements v{snapshot.version}: {len(requirements)}; "
                         f"{position.headcount} opening(s); {len(position.questions)} standard questions)")
     db.commit()
     for pc in db.scalars(select(ps.PositionCandidate).where(ps.PositionCandidate.position_id == position.id)).all():
         engine.analyze(db, position, pc, actor_id=actor.id, actor_name=actor.name)
     if first_approval:
-        flash("Position open: the application page is active.")
-    return _position_redirect(position, "candidature")
+        flash("Job active: the application page is open.")
+    return True
 
 
 @bp.route("/posizioni/<int:position_id>/stato", methods=["POST"])
@@ -755,10 +1010,10 @@ def position_status(db, actor, position_id):
     position = _position(db, actor, position_id, edit=True)
     if request.form.get("action") == "close":
         position.status, position.closed_at = ps.CLOSED, ps.utcnow()
-        detail = "Position closed: the application page no longer accepts applications"
+        detail = "Job closed: the application page no longer accepts applications"
     elif request.form.get('action') == 'reopen':
         position.status, position.closed_at = (ps.OPEN if position.approved_snapshot_id else ps.DRAFT), None
-        detail = 'Position reopened' if position.status == ps.OPEN else 'Draft position: complete and approve it to open it'
+        detail = 'Job reopened' if position.status == ps.OPEN else 'Draft Job: complete and publish it to open it'
     else:
         abort(400)
     ps.log_event(db, position_id=position.id, kind="STATUS", detail=detail, actor_id=actor.id, actor_name=actor.name)
@@ -804,11 +1059,48 @@ def reanalyze(db, actor, position_id):
 # 3. EVALUATE
 # ---------------------------------------------------------------------------
 
+def _job_candidates(db, position) -> list[dict]:
+    """The current Job's candidates for the Evaluation search: name, contacts, file name, current decision."""
+    out = []
+    # Roles read by CV Selection SP: the name verified by its analysis, when Selection's rule reading has none.
+    sp_names = {pc_id: (json.loads(p.payload_json).get("analysis") or {}).get("full_name")
+                for pc_id, p in sp_routes()._results(db, position).items()}
+    for pc in db.scalars(select(ps.PositionCandidate).where(ps.PositionCandidate.position_id == position.id)
+                         .order_by(ps.PositionCandidate.added_at.desc())).all():
+        candidate = persistence.get_candidate(db, pc.candidate_id)
+        raw = _raw_resume(db, pc)
+        out.append({"pc": pc, "name": (candidate.full_name if candidate else None) or pc.declared_name
+                    or sp_names.get(pc.id)
+                    or (raw.original_filename if raw else None) or f"Candidate {pc.id}",
+                    "email": (candidate.email if candidate else None) or pc.declared_email or "",
+                    "phone": (candidate.phone if candidate else None) or pc.declared_phone or "",
+                    "filename": (raw.original_filename if raw else "") or "",
+                    "decision": engine.current_decision(db, pc.id)})
+    return out
+
+
+@bp.route("/posizioni/<int:position_id>/evaluation")
+@access_required
+def evaluation(db, actor, position_id):
+    """Evaluation tab opened directly: find a candidate of the current Job, then open the dossier."""
+    position = _position(db, actor, position_id)
+    if request.args.get("pc", type=int):
+        return redirect(url_for(".candidate_detail", position_id=position.id, pc_id=request.args.get("pc", type=int)))
+    search = (request.args.get("q") or "").strip()[:120]
+    rows = _job_candidates(db, position)
+    if search:
+        rows = [r for r in rows if search.casefold() in " ".join((r["name"], r["email"], r["phone"],
+                                                                  r["filename"])).casefold()]
+    return render_template("workspace/evaluation.html", actor=actor, position=position, rows=rows, search=search,
+                           section="evaluation", crumbs=[("Evaluation", None)])
+
+
 @bp.route("/posizioni/<int:position_id>/candidati/<int:pc_id>")
 @access_required
 def candidate_detail(db, actor, position_id, pc_id):
     position = _position(db, actor, position_id)
     pc = _pc(db, position, pc_id)
+    flask_session["selection_current_candidate"] = pc.id   # Interviews opens on the same candidate
     candidate, profile, view = engine.candidate_view(db, pc, position)
     proposals = engine.current_proposals(db, pc.id)
     decisions = db.scalars(select(ps.Decision).where(ps.Decision.position_candidate_id == pc.id)
@@ -828,7 +1120,9 @@ def candidate_detail(db, actor, position_id, pc_id):
         appointments=_appointments(db, [pc.id], include_cancelled=True), offers=offers, messages=messages,
         mail_recipient=mail_delivery.email_for(db, pc), deliveries=mail_delivery.rows_for(db, pc.id),
         mail_status_labels=mail_delivery.STATUS_LABELS,
-        slot_url=lambda o: external_url("careers.slot_page", token=o.token), now=ps.utcnow())
+        slot_url=lambda o: external_url("careers.slot_page", token=o.token), now=ps.utcnow(),
+        section="evaluation", sp_dossier=sp_routes().dossier(db, position, pc.id),
+        history=sp_routes().history(db, position, pc), job_candidates=_job_candidates(db, position))
 
 
 def _raw_resume(db, pc) -> m.RawResume | None:

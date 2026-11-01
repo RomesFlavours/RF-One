@@ -1,7 +1,8 @@
 {% extends "workspace/base.html" %}
 {% set name = candidate.full_name or pc.declared_name or 'Candidate' %}
 {% block title %}CV · {{ name }}{% endblock %}
-{% set crumbs = [(position.title, url_for('positions.position_detail', position_id=position.id)), (name, url_for('positions.candidate_detail', position_id=position.id, pc_id=pc.id)), ('Extracted résumé text', None)] %}
+{% set crumbs = [('Evaluation', url_for('positions.evaluation', position_id=position.id)), (name, url_for('positions.candidate_detail', position_id=position.id, pc_id=pc.id)), ('Extracted résumé text', None)] %}
+{% set section = 'evaluation' %}
 {% block content %}
 <h1>Extracted résumé text</h1>
 <p class="small muted">Text extracted from the original document, without changes.{% if highlight %} The selected quote is highlighted.{% endif %}

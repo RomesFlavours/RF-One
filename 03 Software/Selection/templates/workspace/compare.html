@@ -1,6 +1,7 @@
 {% extends "workspace/base.html" %}
-{% block title %}Comparison · {{ position.title }}{% endblock %}
-{% set crumbs = [(position.title, url_for('positions.position_detail', position_id=position.id, tab='valutazione')), ('Comparison', None)] %}
+{% block title %}Comparison · {{ ROLE_LABEL.get(position.role_code) }}{% endblock %}
+{% set crumbs = [('Applications', url_for('positions.position_detail', position_id=position.id, tab='candidature')), ('Comparison', None)] %}
+{% set section = 'applications' %}
 {% block content %}
 <h1>Compare candidates</h1>
 <p class="small muted">The same profile data side by side: each approved requirement’s status in the current proposal, experience and answers. No scores or ranking.</p>
@@ -22,5 +23,5 @@
   {% endfor %}
 </table>
 </div>
-<p><a href="{{ url_for('positions.position_detail', position_id=position.id, tab='valutazione') }}">← Back to evaluation</a></p>
+<p><a href="{{ url_for('positions.position_detail', position_id=position.id, tab='candidature') }}">← Back to Applications</a></p>
 {% endblock %}

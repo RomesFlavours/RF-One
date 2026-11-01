@@ -139,15 +139,16 @@ try:
         owner.post(f"/selection/posizioni/{pid}/approva", data={"csrf_token": t})
         owner.post(f"/selection/posizioni/{pid}/configuration", data={"csrf_token": t, "cv_evaluation": "1"})
         dash = text(owner.get("/selection/"))
-        tab = text(owner.get(f"/selection/posizioni/{pid}?tab=candidature"))
-        check("one Upload CVs only: the Applications tab has no upload form, it points to the positions page",
-              f"/selection/posizioni/{pid}/cv\"" not in tab and 'type="file"' not in tab and "Upload CVs" in tab)
-        check("dashboard: the position row has Upload CVs and CV ranking",
-              f"/selection/posizioni/{pid}/sp/upload" in dash and f"/selection/posizioni/{pid}/sp\"" in dash
-              and "Upload CVs" in dash and "<th>CVs</th>" in dash)
+        tab = owner.get(f"/selection/posizioni/{pid}?tab=candidature")
         page = text(owner.get(f"/selection/posizioni/{pid}/sp"))
-        check("SP page: Shelbi's Server profile as draft requirements; no upload button on this page",
-              "Relevant table-service experience" in page and 'type="file"' not in page)
+        check("one Upload CVs only: in Applications (the SP page), never on the Jobs list",
+              tab.status_code == 302 and tab.headers["Location"].endswith(f"/posizioni/{pid}/sp")
+              and f"/selection/posizioni/{pid}/sp/upload" in page and page.count('type="file"') == 1
+              and 'type="file"' not in dash and f"/selection/posizioni/{pid}/cv\"" not in page)
+        check("Jobs list: the Active Job's Process opens Applications (the SP ranking)",
+              f'href="/selection/posizioni/{pid}/sp">Process</a>' in dash)
+        check("SP page: Shelbi's Server profile as the Job's requirements",
+              "Relevant table-service experience" in page)
         owner.post(f"/selection/posizioni/{pid}/sp/requirements", data={"csrf_token": t, "action": "approve"})
 
         # 2-3. First upload: 12 CVs, analyzed automatically
@@ -304,9 +305,11 @@ try:
         page = text(owner.get(f"/selection/posizioni/{pid}/sp"))
         check("Analyze after the change: only the 20 still outdated, each once; no 'update recommended' left",
               calls["sp"] == before + 22 and s.get("DONE") == 22 and "update recommended" not in page, (calls, s))
-        detail = text(owner.get(f"/selection/posizioni/{pid}/sp/c/{first_id}"))
-        check("detail: breadcrumb Selection › position › CV ranking, Selection's CV link",
-              'href="/selection/">Selection</a>' in detail and "CV ranking</a>" in detail
+        old_detail = owner.get(f"/selection/posizioni/{pid}/sp/c/{first_id}")
+        detail = text(owner.get(f"/selection/posizioni/{pid}/candidati/{first_id}"))
+        check("detail: the former SP detail opens the Evaluation dossier, with the analysis and Selection's CV link",
+              old_detail.status_code == 302 and f"/candidati/{first_id}#sp" in old_detail.headers["Location"]
+              and 'href="/selection/">Selection</a>' in detail and "CV Selection SP analysis" in detail
               and f"/selection/posizioni/{pid}/candidati/{first_id}/cv-originale" in detail)
         check("original CV opens through Selection",
               owner.get(f"/selection/posizioni/{pid}/candidati/{first_id}/cv-originale").status_code == 200)

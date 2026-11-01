@@ -1,0 +1,182 @@
+{% extends "workspace/modal_base.html" if modal else "workspace/base.html" %}
+{% set draft = position.status == 'DRAFT' %}
+{% block title %}{{ 'New Job' if draft else 'Job settings' }}{% endblock %}
+{% block content %}
+<div class="selection-page-heading">
+  <div><h1>{{ 'Complete & Publish' if draft else 'Job settings' }}</h1>
+    <p class="muted" style="margin:0">{{ ROLE_LABEL.get(position.role_code) }} · {{ position.location_label }} · Manager {{ manager }}.
+      {% if draft %}Save Draft keeps everything and returns to the Jobs list; Confirm &amp; Publish approves the requirements and makes the Job Active.
+      {% else %}Changes become effective when you confirm them.{% endif %}</p></div>
+</div>
+{% if unapproved %}<div class="banner warn">There are changes not yet confirmed. The application page and the analysis use the confirmed version.</div>{% endif %}
+
+{% for d in drafts %}
+<div class="card" style="border-color:#c5d4fb">
+  <h3>AI draft <span class="badge info">pending</span></h3>
+  <div class="small muted">{{ d.provider_label }} · {{ d.created_at|local(position.timezone) }}. Choose what to use (save your other changes first).</div>
+  <form method="post" action="{{ url_for('positions.position_draft_use', position_id=position.id, draft_id=d.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if modal %}<input type="hidden" name="modal" value="1">{% endif %}
+    {% if not sp_role %}<table><tr><th></th><th>Requirement</th><th>Type</th><th>Why</th></tr>
+    {% for item in d.payload.requirements %}<tr>
+      <td><input type="checkbox" name="item" value="{{ loop.index0 }}" checked></td>
+      <td><b>{{ item.name }}</b><div class="small">{{ item.description }}</div></td>
+      <td class="small">{{ CRITICALITY_LABELS[item.criticality] }}<br>{{ categories[item.category] }}</td>
+      <td class="small muted">{{ item.why }}</td></tr>{% endfor %}</table>{% endif %}
+    <label class="row" style="color:var(--ink)"><input type="checkbox" name="use_headcount" value="1" {{ 'checked' if d.payload.headcount }} {{ 'disabled' if not d.payload.headcount }}>
+      People required: <b>{{ d.payload.headcount or 'not stated in the description' }}</b></label>
+    <label class="row" style="color:var(--ink)"><input type="checkbox" name="use_ad" value="1" checked> Use the proposed English job ad</label>
+    <pre class="cv small" style="margin:.3rem 0">{{ d.payload.job_ad_en }}</pre>
+    {% if d.payload.open_questions %}<p class="small"><b>Still to decide (not invented by AI):</b></p>
+      <ul class="small">{% for q in d.payload.open_questions %}<li>{{ q }}</li>{% endfor %}</ul>{% endif %}
+    <div class="row"><button class="btn btn-small" name="action" value="use">Use selected items</button>
+      <button class="btn btn-secondary btn-small" name="action" value="discard">Discard</button></div>
+  </form>
+</div>{% endfor %}
+
+<form id="job-form" method="post" action="{{ url_for('positions.job_save', position_id=position.id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if modal %}<input type="hidden" name="modal" value="1">{% endif %}
+<fieldset style="border:0;padding:0;margin:0" {{ 'disabled' if not can_edit }}>
+
+<div class="card">
+  <h2>Job</h2>
+  <div class="grid g3">
+    <div><label>Role</label>
+      <select name="role_code" {{ 'disabled' if not draft }}
+        onchange="if (confirm('Load the standard of the new Role? The requirements and rules of this Job are replaced.')) this.form.requestSubmit(); else this.value = '{{ position.role_code }}';">
+        {% for code, label in roles %}<option value="{{ code }}" {{ 'selected' if position.role_code == code }}>{{ label }}</option>{% endfor %}</select>
+      {% if not draft %}<div class="small muted">The Role of a published Job does not change.</div>{% endif %}</div>
+    <div><label>Location</label><input type="text" name="location" value="{{ position.location_label }}" required></div>
+    <div><label>People required</label><input type="text" name="headcount" value="{{ position.headcount }}" inputmode="numeric"></div>
+    <div><label>Job title</label><input type="text" name="title" value="{{ position.title }}"></div>
+    {% if actor.is_owner %}<div><label>Job manager</label><select name="manager_account_id">
+      {% for a in managers %}<option value="{{ a.id }}" {{ 'selected' if a.id == position.manager_account_id }}>{{ a.display_name }}</option>{% endfor %}</select></div>{% endif %}
+    <div><label>Location time zone</label><input type="text" name="timezone" value="{{ position.timezone }}"></div>
+  </div>
+  <label>Job description</label>
+  <textarea name="description" style="min-height:6rem">{{ position.description }}</textarea>
+</div>
+
+<div class="card" id="requirements">
+  <h2>Requirements</h2>
+  {% if sp_role %}
+  <p class="small muted">Standard of the Role <b>{{ ROLE_LABEL.get(position.role_code) }}</b> ({{ role_standard[0].source if role_standard else '' }}), copied into this Job.
+    Switch a requirement off, change its criticality or weight, or add one: only this Job changes, never the Role standard.
+    Must-haves define the ranking groups; weights order candidates inside a group.</p>
+  <div class="table-scroll"><table>
+    <tr><th>On</th><th>Requirement</th><th>What the CV should show</th><th>Criticality</th><th>Weight</th><th></th></tr>
+    {% for r in sp.requirements_draft %}
+    <tr>
+      <td><input type="checkbox" name="sp_active_{{ r.id }}" value="1" {{ 'checked' if r.active is not defined or r.active }} aria-label="Use {{ r.name }}"></td>
+      <td><b>{{ r.name }}</b>{% if r.computed %}<div class="small muted">Computed from the verified CV dates</div>{% endif %}
+        {% if r.id.startswith('custom') %}<div class="small muted">Added for this Job</div>{% endif %}</td>
+      <td class="small">{{ r.look_for }}</td>
+      <td><select name="sp_crit_{{ r.id }}">{% for k, v in CRIT.items() %}<option value="{{ k }}" {{ 'selected' if r.criticality == k }}>{{ v }}</option>{% endfor %}</select></td>
+      <td><input type="text" name="sp_weight_{{ r.id }}" value="{{ r.weight }}" size="3" inputmode="numeric" style="width:4.5rem"></td>
+      <td>{% if r.id.startswith('custom') %}<label class="row small" style="margin:0"><input type="checkbox" name="sp_remove_{{ r.id }}" value="1"> Remove</label>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <td></td>
+      <td><input type="text" name="sp_new_name" placeholder="Add a requirement"></td>
+      <td><input type="text" name="sp_new_look_for" placeholder="What the CV should show"></td>
+      <td><select name="sp_new_crit">{% for k, v in CRIT.items() %}<option value="{{ k }}" {{ 'selected' if k == 'PREFERRED' }}>{{ v }}</option>{% endfor %}</select></td>
+      <td><input type="text" name="sp_new_weight" value="5" size="3" inputmode="numeric" style="width:4.5rem"></td><td></td>
+    </tr>
+  </table></div>
+  {% if sp.approved %}<p class="small muted">Confirmed version: v{{ sp.approved.version }} ({{ local_time(sp.approved.approved_at, position.timezone) }}, {{ sp.approved.approved_by }}). A new version is created only if the requirements change; analyses made with an earlier version are kept and marked for update.</p>{% endif %}
+  {% else %}
+  <p class="small muted">Use only job-related requirements. Must-have requirements determine the proposal groups. Résumés are matched against requirement names and descriptions.</p>
+  {% for r in requirements %}
+  <div class="cand">
+    <div class="grid g2">
+      <div><label>Name</label><input type="text" name="req_name_{{ r.id }}" value="{{ r.name }}"></div>
+      <div><label>Description and keywords</label><input type="text" name="req_description_{{ r.id }}" value="{{ r.description or '' }}"></div>
+    </div>
+    <div class="grid g3">
+      <div><label>Type</label><select name="req_criticality_{{ r.id }}">{% for code, label in CRITICALITY_LABELS.items() %}<option value="{{ code }}" {{ 'selected' if r.criticality == code }}>{{ label }}</option>{% endfor %}</select></div>
+      <div><label>Area</label><select name="req_category_{{ r.id }}">{% for code, label in categories.items() %}<option value="{{ code }}" {{ 'selected' if r.category == code }}>{{ label }}</option>{% endfor %}</select></div>
+      <div><label>Trainable?</label><select name="req_trainability_{{ r.id }}">{% for code, label in trainability.items() %}<option value="{{ code }}" {{ 'selected' if r.trainability == code }}>{{ label }}</option>{% endfor %}</select></div>
+    </div>
+    <label class="row small"><input type="checkbox" name="req_remove_{{ r.id }}" value="1"> Remove this requirement</label>
+  </div>
+  {% else %}<p class="muted small">No requirements yet.</p>{% endfor %}
+  <div class="cand"><b class="small">Add a requirement</b>
+    <div class="grid g2">
+      <div><label>Name</label><input type="text" name="req_new_name" placeholder="e.g. Server experience"></div>
+      <div><label>Description and keywords</label><input type="text" name="req_new_description" placeholder="e.g. server, waiter, table service"></div>
+    </div>
+    <div class="grid g3">
+      <div><label>Type</label><select name="req_new_criticality">{% for code, label in CRITICALITY_LABELS.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div>
+      <div><label>Area</label><select name="req_new_category">{% for code, label in categories.items() %}<option value="{{ code }}" {{ 'selected' if code == 'Experience' }}>{{ label }}</option>{% endfor %}</select></div>
+      <div><label>Trainable?</label><select name="req_new_trainability">{% for code, label in trainability.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card" id="rules">
+  <h2>Evaluation rules</h2>
+  {% if sp_role %}
+  <p class="small muted">The rules CV Selection SP applies for this Role, with their parameters. Switch off the ones this Job should not use: the analysis is kept whole and nothing is sent to the AI again.</p>
+  <table>
+    {% for rule in sp_rules %}<tr>
+      <td style="width:2rem">{% if rule.switchable %}<input type="checkbox" name="rule_{{ rule.id }}" value="1" {{ 'checked' if rules_on.get(rule.id, True) }} aria-label="Use {{ rule.name }}">{% else %}<span title="Always applied">✓</span>{% endif %}</td>
+      <td><b>{{ rule.name }}</b>{% if not rule.switchable %} <span class="badge">always applied</span>{% endif %}<div class="small muted">{{ rule.detail }}</div></td>
+    </tr>{% endfor %}
+  </table>
+  {% else %}
+  <p class="small muted">This Role has no CV Selection SP standard yet: candidates are evaluated by Selection's existing engines against the requirements above.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Job ad and standard questions</h2>
+  <label>English job ad (published on the application page)</label>
+  <textarea name="job_ad_en" style="min-height:10rem">{{ position.job_ad_en }}</textarea>
+  <label>Standard interview questions (one per line, in English, up to 6)</label>
+  <textarea name="questions" style="min-height:7rem">{{ position.questions|join('\n') }}</textarea>
+  <details><summary class="small">Other standard questions already available in Selection</summary>
+    <ul class="small">{% for q in standard_pool %}<li>{{ q }}</li>{% endfor %}</ul></details>
+</div>
+
+<div class="card">
+  <h2>AI for this Job</h2>
+  {% for key, label, description in configuration_features %}
+    {% set available = platform_policy.cv_ai_authorized if key.startswith('cv_') else platform_policy.ai_enabled %}
+    <label class="row" style="color:var(--ink)"><input type="checkbox" name="feat_{{ key }}" value="1" {{ 'checked' if configuration[key] }}> {{ label }}</label>
+    <div class="small muted" style="margin:0 0 .5rem 1.6rem">{{ description }}{% if key == 'cv_evaluation' and sp_role %} Needed for the CV Selection SP analysis.{% endif %}
+      {% if not available %} Not available on this installation; the preference is kept for this Job.{% endif %}</div>
+  {% endfor %}
+  <label>Job context (service style, shifts, team, training; used for drafts)</label>
+  <textarea name="profile" maxlength="16000" style="min-height:5rem">{{ configuration.profile }}</textarea>
+</div>
+
+{% if can_edit %}
+<div class="card row" style="justify-content:space-between">
+  <a href="{{ url_for('positions.dashboard') }}" data-modal-cancel>Cancel</a>
+  <div class="row">
+    <button class="btn btn-secondary" name="action" value="draft">{{ 'Save Draft' if draft else 'Save' }}</button>
+    <button class="btn" name="action" value="publish">{{ 'Confirm & Publish' if draft else 'Confirm changes' }}</button>
+  </div>
+</div>{% endif %}
+</fieldset>
+</form>
+
+{% if can_edit %}
+<div class="card">
+  <h3>Other ways to fill the Job</h3>
+  <p class="small muted">These save immediately: save your other changes first.</p>
+  {% if not sp_role %}
+  <form method="post" action="{{ url_for('positions.requirement_from_template', position_id=position.id) }}" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if modal %}<input type="hidden" name="modal" value="1">{% endif %}
+    <select name="template_id" style="flex:1">{% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select>
+    <button class="btn btn-secondary btn-small">Copy requirements from a Selection template</button></form>
+  {% endif %}
+  {% if ai_policy.allows("position_drafting") %}
+  <form method="post" action="{{ url_for('positions.position_ai_draft', position_id=position.id) }}" style="margin-top:.6rem">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if modal %}<input type="hidden" name="modal" value="1">{% endif %}
+    <textarea name="extra" placeholder="Optional details for the AI draft"></textarea>
+    <button class="btn btn-secondary btn-small">Request an AI draft{{ ' of the job ad' if sp_role }}</button></form>
+  {% else %}<div class="banner off small">AI drafting is off for this Job (see “AI for this Job”).</div>{% endif %}
+</div>{% endif %}
+{% endblock %}

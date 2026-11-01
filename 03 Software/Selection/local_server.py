@@ -102,11 +102,33 @@ def _ensure_administrator(selection_app) -> None:
     print(f"Local administrator created; credentials in {DATA / 'first-login.txt'}")
 
 
+def _install_auto_login(selection_app, *flask_apps) -> None:
+    """Local environment only (127.0.0.1): a request without an RF-One session is signed in as the local
+    administrator, so no login page is shown. Never used by the AWS deployment, which does not run this file."""
+    from flask import session
+    from rfone_data_store import rfone_account_service as account_svc
+    from rfone_data_store import rfone_web_session as shared_session
+
+    def sign_in():
+        if session.get(shared_session.SESSION_ACCOUNT_KEY):
+            return
+        with selection_app.SessionFactory() as db:
+            admin = next((a for a in account_svc.list_accounts(db) if a.username == "admin"), None)
+            if admin is not None:
+                session[shared_session.SESSION_ACCOUNT_KEY] = admin.id
+                session[shared_session.SESSION_VERSION_KEY] = admin.session_version
+
+    for flask_app in flask_apps:
+        flask_app.before_request_funcs.setdefault(None, []).insert(0, sign_in)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="RF-One + Selection, local environment")
     parser.add_argument("--port", type=int, default=5096)
     parser.add_argument("--ai", action="store_true", help="AI drafts positions and messages")
     parser.add_argument("--ai-cv", action="store_true", help="AI may also read résumés and answers")
+    parser.add_argument("--auto-login", action="store_true",
+                        help="local only: enter as the local administrator without typing credentials")
     args = parser.parse_args()
     _prepare_environment(args.port, args.ai, args.ai_cv)
 
@@ -123,6 +145,9 @@ def main() -> None:
     for flask_app in (rfone_web.app, selection_app.app):
         flask_app.config["SESSION_COOKIE_SECURE"] = False
 
+    if args.auto_login:
+        _install_auto_login(selection_app, rfone_web.app, selection_app.app)
+
     from werkzeug.middleware.dispatcher import DispatcherMiddleware
     from werkzeug.serving import run_simple
 
@@ -131,7 +156,8 @@ def main() -> None:
     print(f"Local data: {DATA}")
     print("AI position/message drafting:", "ENABLED" if (args.ai or args.ai_cv) else "disabled",
           "· AI résumé and answer processing:", "ENABLED" if args.ai_cv else "disabled")
-    run_simple("127.0.0.1", args.port, application, use_reloader=False, threaded=False)
+    # Threaded: one stalled browser connection must not block every other page (single-thread server hung).
+    run_simple("127.0.0.1", args.port, application, use_reloader=False, threaded=True)
 
 
 if __name__ == "__main__":

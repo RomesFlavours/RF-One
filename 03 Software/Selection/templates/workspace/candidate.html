@@ -1,15 +1,28 @@
 {% extends "workspace/base.html" %}
-{% set name = candidate.full_name or pc.declared_name or '(name not extracted)' %}
+{% set name = candidate.full_name or pc.declared_name or (sp_dossier.c.analysis.full_name if sp_dossier and sp_dossier.c and sp_dossier.c.analysis else none) or '(name not extracted)' %}
 {% block title %}{{ name }}{% endblock %}
-{% set crumbs = [(position.title, url_for('positions.position_detail', position_id=position.id)), (name, None)] %}
+{% set crumbs = [('Evaluation', url_for('positions.evaluation', position_id=position.id)), (name, None)] %}
+{% set section = 'evaluation' %}
+{% block head %}{% if sp_dossier %}{% include "sp/_styles.html" %}{% endif %}{% endblock %}
 {% block content %}
+<form method="get" action="{{ url_for('positions.evaluation', position_id=position.id) }}" class="row" style="margin:.2rem 0 .8rem;gap:.5rem;flex-wrap:wrap">
+  <label class="small" style="margin:0">Candidate of this Job
+    <select name="pc" onchange="this.form.submit()" style="width:auto;max-width:22rem">
+      {% for jc in job_candidates %}<option value="{{ jc.pc.id }}" {{ 'selected' if jc.pc.id == pc.id }}>{{ jc.name }}{% if jc.decision %} — {{ DECISION_LABELS[jc.decision.decision] }}{% endif %}</option>{% endfor %}
+    </select></label>
+  <input type="text" name="q" placeholder="Search by name, email, phone or file" style="width:auto;min-width:16rem">
+  <button class="btn btn-secondary btn-small">Search</button>
+</form>
 <div class="row" style="justify-content:space-between">
   <div>
     <h1>{{ name }}</h1>
     <div class="small muted">{{ channel }} · {{ pc.added_at|local(position.timezone) }} ·
       {{ candidate.email or pc.declared_email or '—' }} · {{ candidate.phone or pc.declared_phone or '—' }}
       {% if pc.candidate_account_id %}· <span class="badge ok" title="Application submitted by a candidate verified with an email or SMS code">verified identity</span>{% endif %}
-      {% if decision %}· <span class="badge ok">{{ DECISION_LABELS[decision.decision] }}</span>{% endif %}</div>
+      · Status: {% if decision and decision.decision == 'NOT_SELECTED' %}<span class="badge bad">Rejected</span>
+        {% elif decision %}<span class="badge ok">{{ DECISION_LABELS[decision.decision] }}</span>
+        {% elif sp_dossier and sp_dossier.c %}<span class="badge">{{ {'DONE': 'Analyzed', 'ANALYZING': 'Analyzing', 'IN_PROGRESS': 'Application in progress', 'OUTDATED': 'Analyzed (update recommended)', 'ERROR': 'Analysis error', 'WAITING': 'Waiting for analysis'}[sp_dossier.c.status] }}</span>
+        {% else %}<span class="badge">{{ APPLICATION_STATUS_LABELS[application.status] if application else 'CV received' }}</span>{% endif %}</div>
   </div>
   <div class="row">
     <a class="btn btn-secondary btn-small" href="{{ url_for('positions.candidate_original', position_id=position.id, pc_id=pc.id) }}" target="_blank">Original résumé</a>
@@ -18,14 +31,24 @@
 </div>
 {% if duplicates %}<div class="banner warn">{% for d in duplicates %}<div>⚠ {{ d }}</div>{% endfor %}</div>{% endif %}
 {% if pc.import_note %}<div class="banner info">{{ pc.import_note }}</div>{% endif %}
+{% if decision and decision.decision == 'NOT_SELECTED' %}<div class="banner warn row" style="justify-content:space-between">
+  <span>Rejected on {{ decision.created_at|local(position.timezone) }} by {{ decision.actor_name }}{% if decision.reason_code %} — {{ NOT_SELECTED_REASONS[decision.reason_code] }}{% endif %}{% if decision.note %} · “{{ decision.note }}”{% endif %}. The CV and the analysis are kept.</span>
+  {% if can_edit %}<form method="post" action="{{ url_for('positions.record_decision', position_id=position.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="pc_id" value="{{ pc.id }}">
+    <input type="hidden" name="decision" value="UNDECIDED"><input type="hidden" name="note" value="Rejection withdrawn: back in the ranking">
+    <input type="hidden" name="back" value="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=pc.id) }}">
+    <button class="btn btn-secondary btn-small">Restore</button></form>{% endif %}
+</div>{% endif %}
+{% if sp_dossier and sp_dossier.c %}{% with p = position, c = sp_dossier.c, row = sp_dossier.row, total = sp_dossier.total %}{% include "sp/_analysis.html" %}{% endwith %}{% endif %}
 
 <div class="grid g2" style="margin-top:.8rem">
 <div>
   {# ---------------- 3 Evaluation ---------------- #}
   <div class="card">
-    <h2 style="margin-top:0">Evaluation</h2>
+    {% if sp_dossier %}<details><summary><b>Requirement check by Selection's existing engines</b></summary>{% endif %}
+    <h2 style="margin-top:0">{{ 'Existing engines' if sp_dossier else 'Evaluation' }}</h2>
     {% if not lead %}
-      <p class="muted">{% if position.approved_snapshot_id %}Not evaluated yet.{% else %}Awaiting position approval.{% endif %}</p>
+      <p class="muted">{% if position.approved_snapshot_id %}Not evaluated yet.{% else %}Awaiting Job publication.{% endif %}</p>
     {% else %}
       <div class="row"><span class="badge {{ 'ok' if lead.group_code == 'INTERVIEW' else ('warn' if lead.group_code == 'DEEPEN' else 'bad') }}" style="font-size:.85rem">{{ GROUP_LABELS[lead.group_code] }}</span>
         <span class="small muted">proposed by: {{ SOURCE_LABELS[lead.source] }} · {{ lead.created_at|local(position.timezone) }}</span></div>
@@ -49,6 +72,7 @@
       {% endif %}
       <p class="small muted" style="margin-bottom:0">“Not evidenced” means missing information, not proof that a requirement is unmet. No automatic exclusion.</p>
     {% endif %}
+    {% if sp_dossier %}</details>{% endif %}
   </div>
 
   {% set questions = (ai.payload.questions if ai else []) + (rules.payload.questions if rules else []) %}
@@ -57,7 +81,7 @@
 
   {# ---------------- 4 Interview ---------------- #}
   <div class="card" id="colloquio">
-    <h2 style="margin-top:0">Interview</h2>
+    <h2 style="margin-top:0">Interview <a class="btn btn-secondary btn-small" href="{{ url_for('positions.interviews', position_id=position.id, pc=pc.id) }}">Interview sheet</a></h2>
     {% for a in appointments %}<div class="small" style="margin:.25rem 0;{{ 'opacity:.5;text-decoration:line-through' if a.status == 'CANCELLED' }}">
       📅 <b>{{ a.starts_at|local(position.timezone, '%a %d/%m/%Y %H:%M') }}</b> · {{ KIND_LABELS[a.kind] }} · {{ a.duration_min }} min
       {% if a.place %}· {{ a.place }}{% endif %}{% if a.booked_by == 'CANDIDATE' %} <span class="badge info">chosen by the candidate</span>{% endif %}</div>{% endfor %}
@@ -157,6 +181,15 @@
 </div>
 
 <div>
+  <div class="card" id="storico">
+    <h2 style="margin-top:0">History</h2>
+    <table>
+      {% for h in history %}<tr><td class="small" style="white-space:nowrap">{{ h.at|local(position.timezone) if h.at else '—' }}</td>
+        <td class="small">{{ h.what }}<div class="muted">{{ h.who }}</div></td></tr>
+      {% else %}<tr><td class="muted small">No events recorded.</td></tr>{% endfor %}
+    </table>
+    <p class="small muted">Times in the location's time zone ({{ position.timezone }}).</p>
+  </div>
   {# ---------------- Risposte ---------------- #}
   <div class="card" id="risposte">
     <h2 style="margin-top:0">Candidate interview</h2>

@@ -1,0 +1,31 @@
+{# The Job form (New Job, Complete & Publish) inside the modal window of the Selection tab: the same pages
+   and the same save routes as on their own, without the shell (header, breadcrumb, tabs). #}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Job{% endblock %} · RF-One</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/selection.css') }}?v=6">
+<style> body { background: var(--surface, #fff); } .wrap { max-width: none; padding: 1rem 1.4rem 2rem; } </style>
+{% block head %}{% endblock %}
+</head>
+<body>
+<div class="wrap">
+  {% for msg in get_flashed_messages() %}<div class="info">{{ msg }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</div>
+<script>
+  // Unsaved changes, read by the Selection tab before the modal closes (Cancel, X, Escape).
+  window.jobFormDirty = false;
+  document.addEventListener("input", () => { window.jobFormDirty = true; });
+  document.addEventListener("change", () => { window.jobFormDirty = true; });
+  document.addEventListener("submit", () => { window.jobFormDirty = false; });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && parent.SelectionModal) parent.SelectionModal.close(); });
+  document.querySelectorAll("[data-modal-cancel]").forEach(a => a.addEventListener("click", e => {
+    if (parent.SelectionModal) { e.preventDefault(); parent.SelectionModal.close(); }
+  }));
+</script>
+</body>
+</html>

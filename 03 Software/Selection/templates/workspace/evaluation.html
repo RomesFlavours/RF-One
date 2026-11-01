@@ -1,0 +1,21 @@
+{% extends "workspace/base.html" %}
+{% block title %}Evaluation{% endblock %}
+{% block content %}
+<h1>Evaluation</h1>
+<p class="muted">Find a candidate of this Job and open the dossier: analysis, requirements and evidence, work history, red flags, missing information, decisions and history.</p>
+<form method="get" action="{{ url_for('positions.evaluation', position_id=position.id) }}" class="selection-search">
+  <label>Search by name, email, phone or CV file<input type="text" name="q" value="{{ search }}" maxlength="120" autofocus></label>
+  <button class="btn btn-secondary">Search</button>
+  {% if search %}<a href="{{ url_for('positions.evaluation', position_id=position.id) }}">Clear search</a>{% endif %}
+</form>
+<div class="card"><div class="table-scroll"><table class="selection-table">
+  <thead><tr><th>Candidate</th><th>Contacts</th><th>CV</th><th>Received</th><th>Status</th></tr></thead>
+  <tbody>{% for r in rows %}<tr>
+    <td><a href="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=r.pc.id) }}"><b>{{ r.name }}</b></a></td>
+    <td class="small">{{ r.email }}{% if r.email and r.phone %} · {% endif %}{{ r.phone }}</td>
+    <td class="small">{{ r.filename }}</td>
+    <td class="small">{{ r.pc.added_at|local(position.timezone) }}</td>
+    <td class="small">{% if r.decision and r.decision.decision == 'NOT_SELECTED' %}<span class="badge bad">Rejected</span>{% elif r.decision %}<span class="badge ok">{{ DECISION_LABELS[r.decision.decision] }}</span>{% else %}—{% endif %}</td>
+  </tr>{% else %}<tr><td colspan="5" class="muted">{% if search %}No candidate matches “{{ search }}”.{% else %}No candidates yet: upload CVs in Applications.{% endif %}</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

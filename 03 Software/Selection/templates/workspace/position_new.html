@@ -1,43 +1,55 @@
-{% extends "workspace/base.html" %}
-{% block title %}New position{% endblock %}
-{% set crumbs = [('New position', None)] %}
+{% extends "workspace/modal_base.html" if modal else "workspace/base.html" %}
+{% block title %}New Job{% endblock %}
+{% set crumbs = [('New Job', None)] %}
 {% block content %}
-<h1>New position</h1>
+<h1>New Job</h1>
 <div class="grid g2">
 <div class="card">
   <form method="post">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Who are you looking for? Describe the role in your own words</label>
-    <textarea name="description" style="min-height:8rem" autofocus
-      placeholder="E.g. We need 2 servers in Mount Dora for evenings and weekends. Table-service experience is required; we can teach the rest.">{{ form.get('description', '') }}</textarea>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if modal %}<input type="hidden" name="modal" value="1">{% endif %}
     <div class="grid g2">
-      <div><label>Title</label><input type="text" name="title" value="{{ form.get('title', '') }}" placeholder="Server" required></div>
       <div><label>Role</label>
-        <select name="role_code" required><option value="">Choose…</option>
+        <select name="role_code" id="role" required><option value="">Choose…</option>
         {% for code, label in roles %}<option value="{{ code }}" {{ 'selected' if form.get('role_code') == code }}>{{ label }}</option>{% endfor %}</select></div>
       <div><label>Location</label><input type="text" name="location" value="{{ form.get('location', '') }}" placeholder="Mount Dora" required></div>
-      <div><label>Number of openings</label><input type="text" name="headcount" value="{{ form.get('headcount', '1') }}" inputmode="numeric"></div>
+      <div><label>People required</label><input type="text" name="headcount" value="{{ form.get('headcount', '1') }}" inputmode="numeric"></div>
+      <div><label>Job title (optional)</label><input type="text" name="title" value="{{ form.get('title', '') }}" placeholder="The Role name is used if empty"></div>
     </div>
+    <label>Job description: who are you looking for, in your own words</label>
+    <textarea name="description" style="min-height:7rem"
+      placeholder="E.g. We need 2 servers in Mount Dora for evenings and weekends. Table-service experience is required; we can teach the rest.">{{ form.get('description', '') }}</textarea>
     {% if actor.is_owner %}
-    <label>Position manager</label>
+    <label>Job manager</label>
     <select name="manager_account_id" required>
       {% for a in managers %}<option value="{{ a.id }}" {{ 'selected' if a.id == actor.id }}>{{ a.display_name }}</option>{% endfor %}
     </select>{% endif %}
     <details style="margin-top:.6rem"><summary>Location time zone</summary>
       <input type="text" name="timezone" value="{{ form.get('timezone') or company.timezone or default_tz }}"></details>
-    <p><button class="btn">Create position</button></p>
+    <p><button class="btn">Continue</button> <a href="{{ url_for('positions.dashboard') }}" data-modal-cancel>Cancel</a></p>
   </form>
 </div>
 <div class="card">
-  <h3>What happens next</h3>
-  <ol class="small">
-    <li>Create the position, then select its AI features in <b>Configuration</b>. Draft requirements and the job ad with AI, or start from an existing template.</li>
-    <li>Review and <b>approve</b>: this opens the application page.</li>
-    <li>Candidates upload their résumé and complete a short English interview (about 5 minutes).</li>
-    <li>Applications are grouped into three categories with explanations. No automatic exclusion.</li>
-    <li>Schedule interviews and record the outcome.</li>
+  <h3>Role standard</h3>
+  <div id="standard" class="small muted">Choose a Role: its standard requirements and evaluation rules load into the Job. You can switch rules off or add new ones for this Job; the Role standard itself does not change.</div>
+  <ol class="small" style="margin-top:.8rem">
+    <li><b>Continue</b> saves the Job as a Draft and opens its form with the Role standard loaded.</li>
+    <li>Complete requirements, rules, job ad and standard questions: <b>Save Draft</b> to finish later.</li>
+    <li><b>Confirm &amp; Publish</b> approves the requirements and makes the Job Active.</li>
+    <li>In the Jobs list choose <b>Process</b>: Applications, Evaluation, Interviews and Decisions refer to that Job.</li>
   </ol>
-  <div class="small muted">Full experience analysis is available for Server and FOH Team Leader. Other roles are assessed against the requirements.</div>
 </div>
 </div>
+<script>
+  // Preview of the Role standard (read only): the Job receives a copy when it is created.
+  const STANDARDS = {{ standards|tojson }};
+  const box = document.getElementById("standard"), role = document.getElementById("role"), intro = box.innerHTML;
+  function show() {
+    const std = STANDARDS[role.value], list = std && std.requirements;
+    if (!list) { box.innerHTML = role.value ? "No CV Selection SP standard for this Role: add its requirements in the Job form." : intro; return; }
+    box.innerHTML = "<b>Standard requirements loaded for this Role</b><ul>" + list.map(r =>
+      `<li>${r.name} — ${r.criticality === "MUST_HAVE" ? "Must-have" : r.criticality === "PREFERRED" ? "Preferred" : "Optional"}, weight ${r.weight}</li>`).join("") +
+      "</ul><b>Evaluation rules</b><ul>" + std.rules.map(n => `<li>${n}</li>`).join("") + "</ul>";
+  }
+  role.addEventListener("change", show); show();
+</script>
 {% endblock %}

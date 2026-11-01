@@ -1,4 +1,4 @@
-"""CV Selection SP inside Selection: CV upload from the positions page, analysis and the preselection ranking.
+"""CV Selection SP inside Selection: the Applications tab of a Job (CV upload, analysis, preselection ranking).
 
 Everything is Selection's own: the position (`selection_workspace_positions`), the candidates, documents and
 duplicate checks (`engine.import_cv`: exact duplicate by content hash, same person by email/phone, similar
@@ -27,11 +27,14 @@ from rfone_data_store.selection import persistence
 from rfone_data_store.selection import workspace_models as ps
 
 from . import engine, position_settings, sp_queue
-from .routes import _cfg, _pc, _position, _restaurant_id, access_required, bp
+from .routes import _cfg, _pc, _position, _restaurant_id, access_required, bp, external_url
 from .sp import profiles as spp
 from .sp import ranking as sp_ranking
+from .sp import rules as sp_rules
 
 SOURCE = sp_queue.RESULT
+AI_OFF = ("AI résumé evaluation is off for this Job: turn on “AI résumé and answer evaluation” in the Job "
+          "(Selection tab) to analyze.")
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +50,8 @@ def state(position) -> dict:
     if not isinstance(sp, dict):
         sp = {"requirements_draft": spp.default_requirements(position.role_code), "editing": False, "versions": [],
               "approved": None, "manual_order": [], "uploads": [], "run": None}
+    sp.setdefault("rules", None)        # the Job's evaluation rules in force (set when the Job is confirmed)
+    sp.setdefault("rules_draft", None)  # the Job's rule choices being edited
     return sp
 
 
@@ -54,6 +59,43 @@ def save_state(position, sp: dict) -> None:
     data = position_settings.context(position)
     data["sp"] = sp
     position.organization_context_json = json.dumps(data, ensure_ascii=False, default=str)
+
+
+def reset_to_role_standard(position) -> dict:
+    """A new Job, or a draft Job whose Role changed: a copy of the Role's standard requirements and rules.
+    The standard itself (`position_profiles`, `sp.rules`) is only read."""
+    uploads = position_settings.context(position).get("sp", {}).get("uploads", []) \
+        if isinstance(position_settings.context(position).get("sp"), dict) else []
+    sp = {"requirements_draft": spp.default_requirements(position.role_code), "editing": False, "versions": [],
+          "approved": None, "manual_order": [], "uploads": uploads, "run": None, "rules": None,
+          "rules_draft": sp_rules.defaults(position.role_code)}
+    save_state(position, sp)
+    return sp
+
+
+def active_requirements(draft: list[dict]) -> list[dict]:
+    """The requirements switched on for the Job (a requirement without the switch is on)."""
+    return [r for r in draft if r.get("active", True)]
+
+
+def approve(position, sp: dict, actor_name: str) -> str | None:
+    """Approve the Job's requirement draft and put its rule choices in force. A new requirement version is
+    created only when the switched-on requirements changed, so unchanged requirements never cause a new AI
+    reading. Returns an error message, or None when approved."""
+    chosen = [{k: v for k, v in r.items() if k != "active"} for r in active_requirements(sp["requirements_draft"])]
+    if not any(r["criticality"] == spp.MUST_HAVE for r in chosen):
+        return "Mark at least one active requirement as Must-have: the ranking groups depend on it."
+    sp["rules"] = sp_rules.effective(position.role_code, sp.get("rules_draft"))
+    current = sp.get("approved")
+    if current and current["requirements"] == chosen:
+        sp["editing"] = False
+        return None
+    version = len(sp["versions"]) + 1
+    approved = {"version": version, "approved_at": ps.utcnow().isoformat(), "approved_by": actor_name,
+                "requirements": json.loads(json.dumps(chosen))}
+    sp["versions"].append(approved)
+    sp["approved"], sp["editing"], sp["manual_order"] = approved, False, []
+    return None
 
 
 @bp.before_app_request
@@ -64,7 +106,8 @@ def _sp_kick():
 
 @bp.app_context_processor
 def _sp_globals():
-    return {"SP_ROLES": spp.ROLES}
+    return {"SP_ROLES": spp.ROLES, "local_time": _local_time, "CRIT": spp.CRITICALITY_LABELS,
+            "level_label": sp_ranking.spp_level, "summary": sp_ranking.summary}
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +144,7 @@ def candidates(db, position, sp) -> list[dict]:
         payload = json.loads(prop.payload_json) if prop else {}
         version = payload.get("version")
         application = engine.candidate_application(db, pc.id)
+        decision = engine.current_decision(db, pc.id)
         if pc.id in jobs:
             status = "ANALYZING"
         elif application is not None and application.status != ps.A_SUBMITTED:
@@ -113,7 +157,9 @@ def candidates(db, position, sp) -> list[dict]:
             status = "WAITING"
         out.append({"id": pc.id, "filename": (raw.original_filename if raw else None) or f"CV {pc.id}",
                     "uploaded_at": pc.added_at.isoformat(), "name": candidate.full_name if candidate else None,
-                    "analysis": payload.get("analysis"), "analyzed_version": version,
+                    "analysis": sp_rules.apply(payload.get("analysis"), position.role_code, sp.get("rules")),
+                    "analyzed_version": version, "decision": decision,
+                    "rejected": bool(decision and decision.decision == ps.D_NOT_SELECTED),
                     "analyzed_at": payload.get("analyzed_at"), "model": payload.get("model"),
                     "error": payload.get("error"), "status": status, "new": pc.id in last,
                     "batch": batch_of.get(pc.id), "channel": pc.channel,
@@ -153,7 +199,7 @@ def sp_upload(db, actor, position_id):
     files = [f for f in request.files.getlist("cv") if f and f.filename]
     if not files:
         flash("Select at least one CV file.")
-        return redirect(url_for(".dashboard"))
+        return redirect(url_for(".position_detail", position_id=position.id, tab="candidature"))
     sp_role = has_profile(position)
     batch = {"at": ps.utcnow().isoformat(), "by": actor.name, "received": len(files), "imported": [],
              "exact_duplicates": [], "possible_duplicates": [], "failed": []}
@@ -191,7 +237,7 @@ def sp_upload(db, actor, position_id):
             queued = _queue(db, sp, batch["imported"])
             flash(f"Analyzing the {queued} new CV(s); earlier analyses are kept.")
         else:
-            flash("AI résumé evaluation is off for this position: turn it on in Configuration to analyze.")
+            flash(AI_OFF)
     return redirect(url_for(".sp_page", position_id=position.id))
 
 
@@ -213,16 +259,14 @@ def _local_time(iso: str | None, tz: str) -> str:
 
 
 def _render(template: str, **kw):
-    return render_template(template, local_time=_local_time, STATUS_LABELS=sp_ranking.STATUS_LABELS,
-                           CRIT=spp.CRITICALITY_LABELS, level_label=sp_ranking.spp_level, summary=sp_ranking.summary,
-                           **kw)
+    return render_template(template, **kw)
 
 
 def _sp_position(db, actor, position_id, *, edit=False):
     position = _position(db, actor, position_id, edit=edit)
     if not has_profile(position):
-        flash("CV Selection SP has a profile for Server and Line Cook positions only.")
-        abort(redirect(url_for(".position_detail", position_id=position.id)))
+        flash("CV Selection SP has a profile for Server and Line Cook Jobs only.")
+        abort(redirect(url_for(".position_detail", position_id=position.id, tab="candidature")))
     return position
 
 
@@ -232,10 +276,15 @@ def sp_page(db, actor, position_id):
     position = _sp_position(db, actor, position_id)
     sp = state(position)
     cands = candidates(db, position, sp)
-    rows = ranked(cands, sp)
+    # Rejected candidates leave the numbered ranking but stay listed below it, with their analysis.
+    rejected = ranked([c for c in cands if c["rejected"]], sp) + [c for c in cands if c["rejected"] and not
+                                                                  (c["analysis"] and sp.get("approved"))]
+    rows = ranked([c for c in cands if not c["rejected"]], sp)
     view = "last" if request.args.get("view") == "last" else "all"
     shown = [r for r in rows if r["new"]] if view == "last" else rows
     return _render("sp/position.html", p=position, sp=sp, rows=shown, all_rows=rows, cands=cands, view=view,
+                   rejected=rejected, reasons=ps.NOT_SELECTED_REASONS,
+                   public_url=external_url("careers.job_page", token=position.public_token),
                    running=sum(1 for c in cands if c["status"] == "ANALYZING"),
                    to_analyze=len(_to_analyze(cands)) if sp.get("approved") else 0,
                    outdated=sum(1 for c in cands if c["status"] == "OUTDATED"),
@@ -294,7 +343,7 @@ def sp_analyze(db, actor, position_id):
     if not sp.get("approved") or sp.get("editing"):
         flash("Approve the requirements first: the analysis applies the approved version.")
     elif not _ai_allowed(position):
-        flash("AI résumé evaluation is off for this position: turn it on in Configuration to analyze.")
+        flash(AI_OFF)
     else:
         cands = candidates(db, position, sp)
         ids = [c["id"] for c in cands if c["status"] != "ANALYZING"] if request.form.get("all") == "1" \
@@ -325,7 +374,7 @@ def sp_move(db, actor, position_id):
     if request.form.get("reset"):
         sp["manual_order"] = []
     else:
-        order = [r["id"] for r in ranked(candidates(db, position, sp), sp)]
+        order = [r["id"] for r in ranked([c for c in candidates(db, position, sp) if not c["rejected"]], sp)]
         cid, direction = request.form.get("cid", type=int), request.form.get("dir")
         if cid in order:
             i = order.index(cid)
@@ -343,11 +392,51 @@ def sp_move(db, actor, position_id):
 @bp.route("/posizioni/<int:position_id>/sp/c/<int:pc_id>")
 @access_required
 def sp_candidate(db, actor, position_id, pc_id):
+    """Former SP detail page: the candidate's analysis now lives in the Evaluation dossier."""
     position = _sp_position(db, actor, position_id)
     _pc(db, position, pc_id)
+    return redirect(url_for(".candidate_detail", position_id=position.id, pc_id=pc_id) + "#sp")
+
+
+def dossier(db, position, pc_id: int) -> dict | None:
+    """The candidate's SP analysis for the Evaluation dossier (None for Roles without an SP profile)."""
+    if not has_profile(position):
+        return None
     sp = state(position)
     cands = candidates(db, position, sp)
-    rows = ranked(cands, sp)
-    c = next(c for c in cands if c["id"] == pc_id)
+    rows = ranked([c for c in cands if not c["rejected"]], sp)
+    c = next((c for c in cands if c["id"] == pc_id), None)
     row = next((r for r in rows if r["id"] == pc_id), None)
-    return _render("sp/candidate.html", p=position, sp=sp, c=c, row=row, total=len(rows))
+    if row is None and c and c["analysis"] and sp.get("approved"):
+        row = ranked([c], sp)[0]          # a rejected candidate keeps its assessment, without a place
+        row["rank"] = None
+    return {"sp": sp, "c": c, "row": row, "total": len(rows)}
+
+
+def history(db, position, pc) -> list[dict]:
+    """Every recorded event of one candidate, oldest first, from data Selection already keeps: the candidate's
+    events (CV received, decisions, rejection and restore, interviews, messages), the uploads that brought the
+    CV, the application, and each SP analysis (current and earlier ones)."""
+    out = [{"at": e.created_at, "what": e.detail, "who": e.actor_name, "kind": e.kind}
+           for e in db.scalars(select(ps.Event).where(ps.Event.position_candidate_id == pc.id)).all()]
+    if has_profile(position):
+        for u in state(position)["uploads"]:
+            if pc.id in u["imported"]:
+                out.append({"at": datetime.fromisoformat(u["at"]), "who": u["by"], "kind": "UPLOAD",
+                            "what": f"Upload #{u['n']}: {u['received']} CV(s) received, "
+                                    f"{len(u['imported'])} new (this CV among them)"})
+        for p in db.scalars(select(ps.Proposal).where(ps.Proposal.position_candidate_id == pc.id,
+                                                      ps.Proposal.source == SOURCE)).all():
+            payload = json.loads(p.payload_json)
+            out.append({"at": p.created_at, "who": payload.get("model") or "AI", "kind": "AI_ANALYSIS",
+                        "what": (f"CV Selection SP analysis with requirements v{payload.get('version')}"
+                                 + ("" if p.is_current else " (replaced by a later one)")) if payload.get("analysis")
+                        else f"CV Selection SP analysis failed: {payload.get('error')}"})
+    application = engine.candidate_application(db, pc.id)
+    if application is not None and application.submitted_at:
+        out.append({"at": application.submitted_at, "who": "Candidate", "kind": "APPLICATION",
+                    "what": "Application completed on the application page"})
+    for item in out:
+        if item["at"] is not None and item["at"].tzinfo is not None:
+            item["at"] = item["at"].replace(tzinfo=None)
+    return sorted(out, key=lambda i: (i["at"] is None, i["at"]))

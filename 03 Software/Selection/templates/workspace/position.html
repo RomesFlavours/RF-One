@@ -1,6 +1,7 @@
 {% extends "workspace/base.html" %}
-{% block title %}{{ position.title }}{% endblock %}
-{% set crumbs = [(position.title, None)] %}
+{% set section_label = {'applications': 'Applications', 'interviews': 'Interviews', 'decisions': 'Decisions'}[section] %}
+{% block title %}{{ section_label }} · {{ ROLE_LABEL.get(position.role_code) }} · {{ position.location_label }}{% endblock %}
+{% set crumbs = [(section_label, None)] %}
 
 {% macro card(c, select=True, quick=True) %}
 <div class="cand">
@@ -29,136 +30,17 @@
 {% block content %}
 <div class="row" style="justify-content:space-between">
   <div>
-    <h1>{{ position.title }}</h1>
-    <div class="muted small">{{ ROLE_LABEL[position.role_code] }} · {{ position.location_label }} · {{ position.headcount }} opening(s) · Manager {{ manager }}
-      · <span class="badge {{ 'ok' if position.status == 'OPEN' else ('warn' if position.status == 'DRAFT' else '') }}">{{ POSITION_STATUS_LABELS[position.status] }}</span></div>
+    <h1>{{ section_label }}</h1>
+    <div class="muted small">{{ ROLE_LABEL[position.role_code] }} · {{ position.location_label }} · {{ position.headcount }} person(s) required · Manager {{ manager }}</div>
   </div>
   {% if position.approved_snapshot_id %}<a class="btn btn-secondary btn-small" href="{{ public_url }}" target="_blank">Application page ↗{{ ' (closed)' if position.status == 'CLOSED' }}</a>{% endif %}
 </div>
-{% if unapproved %}<div class="banner warn">There are unapproved changes. The application page and evaluation use the approved version.
-  <a href="{{ url_for('positions.position_detail', position_id=position.id, tab='posizione') }}">Review and approve</a></div>{% endif %}
+{% if unapproved %}<div class="banner warn">There are changes not yet confirmed. The application page and evaluation use the confirmed version.
+  <a href="{{ url_for('positions.job_edit', position_id=position.id) }}">Review and confirm</a></div>{% endif %}
 
-<div class="nav-tabs">
-  {% for code, label in [('posizione','1 · Position'),('candidature','2 · Applications (' ~ cards|length ~ ')'),('valutazione','3 · Evaluation'),('colloqui','4 · Interviews'),('decisioni','5 · Decisions'),('configuration','Configuration')] %}
-  <a class="{{ 'active' if tab == code }}" href="{{ url_for('positions.position_detail', position_id=position.id, tab=code) }}">{{ label }}</a>{% endfor %}
-</div>
-
-{# =============================== 1 POSIZIONE =============================== #}
-{% if tab == 'configuration' %}
-{% include 'workspace/configuration.html' %}
-{% elif tab == 'posizione' %}
-{% if position.description %}<div class="card"><h3>What you need (manager’s description)</h3><p style="white-space:pre-wrap;margin:0">{{ position.description }}</p></div>{% endif %}
-
-{% for d in drafts %}
-<div class="card" style="border-color:#c5d4fb">
-  <h3>AI draft <span class="badge info">pending approval</span></h3>
-  <div class="small muted">{{ d.provider_label }} · {{ d.created_at|local(position.timezone) }}. Choose what to use; you can still edit everything.</div>
-  <form method="post" action="{{ url_for('positions.position_draft_use', position_id=position.id, draft_id=d.id) }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <table><tr><th></th><th>Requirement</th><th>Type</th><th>Why</th></tr>
-    {% for item in d.payload.requirements %}<tr>
-      <td><input type="checkbox" name="item" value="{{ loop.index0 }}" checked></td>
-      <td><b>{{ item.name }}</b><div class="small">{{ item.description }}</div>
-        {% if item.cv_keywords %}<div class="small muted">Résumé keywords: {{ item.cv_keywords|join(', ') }}</div>{% endif %}</td>
-      <td class="small">{{ CRITICALITY_LABELS[item.criticality] }}<br>{{ categories[item.category] }}</td>
-      <td class="small muted">{{ item.why }}</td></tr>{% endfor %}</table>
-    <label class="row" style="color:var(--ink)"><input type="checkbox" name="use_headcount" value="1" {{ 'checked' if d.payload.headcount }} {{ 'disabled' if not d.payload.headcount }}>
-      Number of openings: <b>{{ d.payload.headcount or 'not stated in the description' }}</b></label>
-    <label class="row" style="color:var(--ink)"><input type="checkbox" name="use_ad" value="1" checked> Use the proposed English job ad</label>
-    <pre class="cv small" style="margin:.3rem 0">{{ d.payload.job_ad_en }}</pre>
-    {% if d.payload.open_questions %}<p class="small"><b>Still to decide (not invented by AI):</b></p>
-      <ul class="small">{% for q in d.payload.open_questions %}<li>{{ q }}</li>{% endfor %}</ul>{% endif %}
-    <div class="row"><button class="btn btn-small" name="action" value="use">Use selected items</button>
-      <button class="btn btn-secondary btn-small" name="action" value="discard">Discard</button></div>
-  </form>
-</div>{% endfor %}
-
-<div class="grid g2">
-<div class="card">
-  <div class="row" style="justify-content:space-between">
-    <h3 style="margin:0">Requirements</h3>
-    {% if position.approved_snapshot_id and not unapproved %}<span class="badge ok">approved</span>{% endif %}
-  </div>
-  <p class="small muted">Use only job-related requirements. Must-have requirements determine the proposal groups. Résumés are matched against requirement names and descriptions, so include the English terms used in résumés.</p>
-  {% for r in requirements %}
-  <div class="cand">
-    <div class="row" style="justify-content:space-between"><b>{{ r.name }}</b>
-      <span><span class="badge {{ 'bad' if r.criticality == 'MUST_HAVE' else '' }}">{{ CRITICALITY_LABELS[r.criticality] }}</span>
-        <span class="badge">{{ trainability[r.trainability] }}</span></span></div>
-    {% if r.description %}<div class="small" style="white-space:pre-wrap">{{ r.description }}</div>{% endif %}
-    {% if can_edit %}<details><summary>Edit</summary>
-      <form method="post" action="{{ url_for('positions.requirement_edit', position_id=position.id, requirement_id=r.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <label>Name</label><input type="text" name="name" value="{{ r.name }}">
-        <label>Description and keywords</label><textarea name="description">{{ r.description or '' }}</textarea>
-        <div class="grid g3">
-          <div><label>Type</label><select name="criticality">{% for code, label in CRITICALITY_LABELS.items() %}<option value="{{ code }}" {{ 'selected' if r.criticality == code }}>{{ label }}</option>{% endfor %}</select></div>
-          <div><label>Area</label><select name="category">{% for code, label in categories.items() %}<option value="{{ code }}" {{ 'selected' if r.category == code }}>{{ label }}</option>{% endfor %}</select></div>
-          <div><label>Trainable?</label><select name="trainability">{% for code, label in trainability.items() %}<option value="{{ code }}" {{ 'selected' if r.trainability == code }}>{{ label }}</option>{% endfor %}</select></div>
-        </div>
-        <div class="row" style="margin-top:.5rem"><button class="btn btn-small" name="action" value="save">Save</button>
-          <button class="btn btn-danger btn-small" name="action" value="remove">Remove</button></div>
-      </form></details>{% endif %}
-  </div>
-  {% else %}<p class="muted small">No requirements.</p>{% endfor %}
-  {% if can_edit %}
-  <details style="margin-top:.6rem" {{ 'open' if not requirements }}><summary>+ Add requirement</summary>
-    <form method="post" action="{{ url_for('positions.requirement_add', position_id=position.id) }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label>Name</label><input type="text" name="name" required placeholder="e.g. Server experience">
-      <label>Description and keywords</label><textarea name="description" placeholder="e.g. server, waiter, waitress, table service"></textarea>
-      <div class="grid g3">
-        <div><label>Type</label><select name="criticality">{% for code, label in CRITICALITY_LABELS.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div>
-        <div><label>Area</label><select name="category">{% for code, label in categories.items() %}<option value="{{ code }}" {{ 'selected' if code == 'Experience' }}>{{ label }}</option>{% endfor %}</select></div>
-        <div><label>Trainable?</label><select name="trainability">{% for code, label in trainability.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div>
-      </div>
-      <p><button class="btn btn-secondary btn-small">Add</button></p></form>
-  </details>
-  <details><summary>+ Copy from an existing Selection template</summary>
-    <form method="post" action="{{ url_for('positions.requirement_from_template', position_id=position.id) }}" class="row" style="margin-top:.4rem">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <select name="template_id" style="flex:1">{% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select>
-      <button class="btn btn-secondary btn-small">Copy</button></form>
-  </details>
-  {% if ai_policy.allows("position_drafting") %}
-  <details><summary>+ Request a new AI draft</summary>
-    <form method="post" action="{{ url_for('positions.position_ai_draft', position_id=position.id) }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <textarea name="extra" placeholder="Optional details"></textarea>
-      <button class="btn btn-secondary btn-small">Draft</button></form>
-  </details>
-  {% else %}<div class="banner off small">AI drafting is not enabled for this installation.</div>{% endif %}
-  {% endif %}
-</div>
-
-<div class="card">
-  <h3 style="margin-top:0">Job ad, openings and standard questions</h3>
-  <form method="post" action="{{ url_for('positions.position_details', position_id=position.id) }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Number of openings</label><input type="text" name="headcount" value="{{ position.headcount }}" inputmode="numeric" {{ 'disabled' if not can_edit }}>
-    <label>English job ad (published on the application page)</label>
-    <textarea name="job_ad_en" style="min-height:11rem" {{ 'disabled' if not can_edit }}>{{ position.job_ad_en }}</textarea>
-    <label>Standard interview questions (one per line, in English, up to 6)</label>
-    <textarea name="questions" style="min-height:8rem" {{ 'disabled' if not can_edit }}>{{ position.questions|join('\n') }}</textarea>
-    <details><summary class="small">Other standard questions already available in Selection</summary>
-      <ul class="small">{% for q in standard_pool %}<li>{{ q }}</li>{% endfor %}</ul></details>
-    <p class="small muted">{% if ai_policy.allows("cv_questions") %}AI adds up to 3 questions based on the candidate’s résumé.
-      {% else %}Résumé-based questions are not enabled because sharing résumés with AI has not been authorized.{% endif %}</p>
-    {% if can_edit %}<button class="btn btn-secondary btn-small">Save</button>{% endif %}
-  </form>
-</div>
-</div>
-
-{% if can_edit %}
-<div class="card row" style="justify-content:space-between">
-  <div class="small">{% if position.approved_at %}Last approved: {{ position.approved_at|local(position.timezone) }}.{% else %}Approval opens the application page.{% endif %}</div>
-  <form method="post" action="{{ url_for('positions.position_approve', position_id=position.id) }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="btn">{{ 'Approve changes' if position.approved_snapshot_id else 'Approve and open position' }}</button></form>
-</div>{% endif %}
-
-{# =============================== 2 CANDIDATURE =============================== #}
-{% elif tab == 'candidature' %}
+{% if false %}
+{# =============================== 2 APPLICATIONS (Roles without a CV Selection SP profile) ================ #}
+{% elif tab in ('candidature', 'valutazione') %}
 <div class="grid g2">
   <div class="card">
     <h3>Application page</h3>
@@ -167,14 +49,16 @@
       <p class="small muted">Candidates verify their email, upload a résumé and complete a short English interview by typing or voice. They can save and resume later. Use this URL as the “Apply on company site” link on Indeed.</p>
     {% elif position.status == 'CLOSED' %}
       <p class="small"><span class="badge warn">Closed</span> <a href="{{ public_url }}" target="_blank">{{ public_url }}</a></p>
-      <p class="small muted">The page remains available but <b>does not accept new applications</b>. To receive new applications, reopen the position from “5 · Decisions”.</p>
-    {% else %}<p class="small"><span class="badge">Pending approval</span> The application page opens when you approve the position (“1 · Position” → “Approve and open position”).</p>{% endif %}
+      <p class="small muted">The page remains available but <b>does not accept new applications</b>. To receive new applications, reopen the Job from Decisions.</p>
+    {% else %}<p class="small"><span class="badge">Draft</span> The application page opens when the Job is published (Selection → Complete &amp; Publish).</p>{% endif %}
   </div>
   <div class="card">
     <h3>Résumés</h3>
-    <p class="small muted">Add résumés with <b>Upload CVs</b> on this position's row of the
-      <a href="{{ url_for('positions.dashboard', stato=position.status) }}">positions page</a>: every upload adds only
-      new CVs, duplicates are detected.</p>
+    {% if can_edit %}<form method="post" enctype="multipart/form-data" action="{{ url_for('positions.sp_upload', position_id=position.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="btn btn-small" title="PDF, DOCX or TXT; several at once">Upload CVs<input type="file" name="cv" multiple accept=".pdf,.docx,.txt" hidden onchange="this.form.submit()"></label>
+    </form>{% endif %}
+    <p class="small muted">Every upload adds only new CVs; duplicates are detected.</p>
   </div>
 </div>
 <div class="card">
@@ -192,15 +76,13 @@
   <div class="small muted" style="margin-top:.5rem">{% for ch in channels if not ch.active %}{{ ch.label }}: {{ ch.note }}{% endfor %}</div>
 </div>
 
-{# =============================== 3 VALUTAZIONE =============================== #}
-{% elif tab == 'valutazione' %}
-{% if not position.approved_snapshot_id %}<div class="banner warn">Approve the position to start evaluation.</div>{% endif %}
-{% if not cards %}
-<div class="card"><p>No applications. Use <a href="{{ url_for('positions.dashboard', stato=position.status) }}">Upload CVs on the positions page</a> or <a href="{{ url_for('positions.position_detail', position_id=position.id, tab='candidature') }}">share the application page</a>.</p></div>
-{% else %}
+{# ------------- Proposal board of the existing engines (part of Applications for these Roles) ------------- #}
+<h2>Proposal</h2>
+{% if not position.approved_snapshot_id %}<div class="banner warn">Publish the Job to start evaluation.</div>{% endif %}
+{% if cards %}
 <form method="get" action="{{ url_for('positions.compare', position_id=position.id) }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <input type="hidden" name="back" value="{{ url_for('positions.position_detail', position_id=position.id, tab='valutazione') }}">
+  <input type="hidden" name="back" value="{{ url_for('positions.position_detail', position_id=position.id, tab='candidature') }}">
   <div class="row" style="justify-content:space-between;margin-bottom:.5rem">
     <p class="small muted" style="margin:0;max-width:760px">Proposal {% if ai_policy.allows("cv_evaluation") %}from AI (quotes checked against résumés and answers) and{% endif %}  from the existing engines against approved requirements. This is a proposal only: no one is excluded, and “not evidenced” means missing information.</p>
     <button class="btn btn-secondary btn-small">Compare selected candidates</button>
@@ -226,6 +108,7 @@
 
 {# =============================== 4 COLLOQUI =============================== #}
 {% elif tab == 'colloqui' %}
+<p class="small"><a href="{{ url_for('positions.interviews', position_id=position.id) }}">Interview sheet</a> · <b>Calendar</b></p>
 <div class="grid g2">
 <div class="card">
   <h3>Calendar</h3>
@@ -263,15 +146,15 @@
     {% for c in decided[code] %}{{ card(c, select=False, quick=False) }}{% else %}<p class="small muted">None.</p>{% endfor %}</div>
   {% endfor %}
 </div>
-<p class="small muted">Record the outcome in each candidate’s profile. There is no automatic connection to Management, Training or Organization.</p>
+<p class="small muted">Record the outcome in each candidate’s dossier (Evaluation). There is no automatic connection to Management, Training or Organization.</p>
 {% if can_edit %}
 <div class="card row" style="justify-content:space-between">
-  <div class="small">{% if position.status == 'CLOSED' %}Position closed on {{ position.closed_at|local(position.timezone) }}.
-    {% elif hired >= position.headcount %}All openings have been filled. You can close the position.{% else %}Positions are closed manually.{% endif %}</div>
+  <div class="small">{% if position.status == 'CLOSED' %}Job closed on {{ position.closed_at|local(position.timezone) }}.
+    {% elif hired >= position.headcount %}All openings have been filled. You can close the Job.{% else %}Jobs are closed manually.{% endif %}</div>
   <form method="post" action="{{ url_for('positions.position_status', position_id=position.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if position.status == 'CLOSED' %}<button class="btn btn-secondary" name="action" value="reopen">Reopen</button>
-    {% else %}<button class="btn btn-danger" name="action" value="close" onclick="return confirm('Close this position? The application page will stop accepting applications.')">Close position</button>{% endif %}
+    {% else %}<button class="btn btn-danger" name="action" value="close" onclick="return confirm('Close this Job? The application page will stop accepting applications.')">Close Job</button>{% endif %}
   </form>
 </div>{% endif %}
 <div class="card">

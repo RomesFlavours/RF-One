@@ -123,11 +123,11 @@ try:
         owner = internal("owner")
         home = owner.get("/selection/")
         html = text(home)
-        check("1. an enabled account opens Selection on the positions list",
-              home.status_code == 200 and '<html lang="en">' in html and "<h1>Open positions</h1>" in html)
+        check("1. an enabled account opens Selection on the Jobs list",
+              home.status_code == 200 and '<html lang="en">' in html and "<h1>Jobs</h1>" in html)
         check("2. RF-One look: shell header, stylesheet, clickable path RF-One > Selection, loading indicator",
               'class="site-header"' in html and "css/rf-one.css" in html and "js/rf-one-busy.js" in html
-              and 'href="https://rfone.example.test/">RF-One</a>' in html and '<span aria-current="page">Open positions</span>' in html)
+              and 'href="https://rfone.example.test/">RF-One</a>' in html and '<span aria-current="page">Selection</span>' in html)
         check("2. no old Selection menu, no separate login or people page",
               "/selection/applications" not in html and "/selection/requirements" not in html
               and "Esci" not in html and "/persone" not in html)
@@ -135,19 +135,19 @@ try:
 
         # --- 3. Create and approve a position (managed by mgr) ---------------
         r = owner.post("/selection/posizioni/nuova", data={
-            "csrf_token": t, "title": "Server", "role_code": "SERVER", "location": "Mount Dora",
+            "csrf_token": t, "title": "Server", "role_code": "FOH_SUPERVISOR", "location": "Mount Dora",
             "timezone": "America/New_York", "headcount": "1", "manager_account_id": str(accounts["mgr"][0]),
             "description": "We need a server."}, follow_redirects=True)
-        pid = int(re.search(r"/selection/posizioni/(\d+)/requisiti/aggiungi", text(r)).group(1))
-        check('position management: a new draft is in Bozze, not in open positions',
-            f'/selection/posizioni/{pid}' in text(owner.get('/selection/?stato=DRAFT')) and
-            f'/selection/posizioni/{pid}' not in text(owner.get('/selection/')))
-        config = text(owner.get(f'/selection/posizioni/{pid}?tab=configuration'))
-        check('standard RF-One page: logo, breadcrumb, navigation and configuration',
+        # A Role without a CV Selection SP profile: Applications keeps the existing engines' proposal board.
+        pid = int(re.search(r"/selection/posizioni/(\d+)/job", r.request.path).group(1))
+        check('position management: a new Job is a Draft in the Jobs list, with Complete & Publish',
+            re.search(rf'href="/selection/posizioni/{pid}/job" data-job-modal="[^"]*">Complete &amp; Publish</a>', text(owner.get('/selection/'))))
+        config = text(owner.get(f'/selection/posizioni/{pid}?tab=configuration', follow_redirects=True))
+        check('standard RF-One page: logo, breadcrumb, navigation; no Configuration tab',
             'shared-brand/logos/rf-one.png' in html and 'aria-label="Selection"' in html and
-            'configuration-link' not in html and '<h2>Position configuration</h2>' in config)
-        check('position management: implementation settings live in Configuration',
-            'Service information' not in html and 'Service information' in config)
+            'configuration-link' not in html and 'Configuration' not in html and 'AI for this Job' in config)
+        check('position management: the Job settings (AI features) live in the Job form',
+            'AI for this Job' not in html and 'name="feat_cv_evaluation"' in config)
         owner.post(f"/selection/posizioni/{pid}/requisiti/aggiungi", data={
             "csrf_token": t, "name": "Server experience", "description": "server waiter table service",
             "criticality": "MUST_HAVE", "category": "Experience", "trainability": "PARTIALLY_TRAINABLE"})
@@ -156,11 +156,11 @@ try:
             "questions": "Are you available to work weekends?\nWhen could you start?"})
         r = owner.post(f"/selection/posizioni/{pid}/approva", data={"csrf_token": t}, follow_redirects=True)
         page = text(r)
-        check("3. position created and approved: the application page is open",
-              "Position open" in page and "/selection/jobs/" in page)
-        check("3. the five functions are tabs of the position page",
-              all(f"tab={code}" in page for code in ("posizione", "candidature", "valutazione", "colloqui", "decisioni"))
-              and 'class="nav-tabs"' in page)
+        check("3. Job created and published: the application page is open",
+              "Job active" in page and "/selection/jobs/" in page)
+        check("3. the five steps are tabs at the same level",
+              re.findall(r'>(Selection|Applications|Evaluation|Interviews|Decisions)</a>', page.split('aria-label="Selection"', 1)[1])
+              == ["Selection", "Applications", "Evaluation", "Interviews", "Decisions"] and 'nav-tabs' in page)
         with selection_app.SessionFactory() as s:
             public_token = s.get(ws.Position, pid).public_token
         job_url = f"/selection/jobs/{public_token}"
@@ -171,12 +171,12 @@ try:
             'No results' in text(owner.get('/selection/?q=missing-synthetic-title')))
         r = owner.post(f'/selection/posizioni/{pid}/stato', data={'csrf_token': t, 'action': 'close',
             'back': '/selection/?stato=OPEN'})
-        check('position management: close returns to the list and moves to closed positions',
-            r.location == '/selection/?stato=OPEN' and f'/selection/posizioni/{pid}' not in text(owner.get('/selection/')) and
-            f'/selection/posizioni/{pid}' in text(owner.get('/selection/?stato=CLOSED')))
+        check('position management: close returns to the list, where the Job shows View history',
+            r.location == '/selection/?stato=OPEN' and
+            f'href="/selection/posizioni/{pid}?tab=decisioni">View history</a>' in text(owner.get('/selection/')))
         owner.post(f'/selection/posizioni/{pid}/stato', data={'csrf_token': t, 'action': 'reopen', 'back': '/selection/'})
         check('position management: reopen restores the existing approved application page',
-            f'/selection/posizioni/{pid}' in text(owner.get('/selection/')))
+            f'href="/selection/posizioni/{pid}?tab=candidature">Process</a>' in text(owner.get('/selection/')))
         check('position management: unknown state action is refused',
             owner.post(f'/selection/posizioni/{pid}/stato', data={'csrf_token': t, 'action': 'unknown'}).status_code == 400)
 
@@ -352,13 +352,13 @@ try:
         cpage = text(mgr.get(f"/selection/posizioni/{pid}/candidati/{pc_id}"))
         check("7. the candidate page shows the verified identity and the answers",
               "verified identity" in cpage and "I can start next Monday." in cpage
-              and '<a href="/selection/posizioni/%d">Server</a>' % pid in cpage)
+              and '<a href="/selection/posizioni/%d/evaluation">Evaluation</a>' % pid in cpage)
 
         check("English manager pages and status labels", all(label in cpage for label in
               ("Candidate interview", "Communications", "Original résumé", "verified identity", "Application complete"))
               and "Valutazione" not in cpage and "Configurazione" not in cpage)
-        check("English position workflow", all(label in page for label in
-              ("1 · Position", "2 · Applications", "3 · Evaluation", "4 · Interviews", "5 · Decisions")))
+        check("English process tabs", all(f">{label}</a>" in page for label in
+              ("Selection", "Applications", "Evaluation", "Interviews", "Decisions")) and "Position" not in page.split("<h1>", 1)[1][:40])
 
         # --- 8. Decision -------------------------------------------------------
         r = mgr.post(f"/selection/posizioni/{pid}/decisioni", data={"csrf_token": mt, "pc_id": str(pc_id), "decision": "HIRED"},
@@ -463,7 +463,7 @@ try:
             "csrf_token": t, "title": "Food Runner", "role_code": "FOOD_RUNNER", "location": "Mount Dora",
             "timezone": "America/New_York", "headcount": "1", "manager_account_id": str(accounts["owner"][0]),
             "description": "Runner"}, follow_redirects=True)
-        pid2 = int(re.search(r"/selection/posizioni/(\d+)/requisiti/aggiungi", text(r)).group(1))
+        pid2 = int(re.search(r"/selection/posizioni/(\d+)/job", r.request.path).group(1))
         owner.post(f"/selection/posizioni/{pid2}/requisiti/aggiungi", data={
             "csrf_token": t, "name": "Food running", "description": "runner food runner", "criticality": "PREFERRED",
             "category": "Experience", "trainability": "TRAINABLE"})
@@ -507,8 +507,8 @@ try:
             check('configuration: a position cannot enable unauthorized AI processing',
                   not ai_adapter.current_policy().ai_enabled and not ai_adapter.current_policy().cv_ai_authorized)
             ai_adapter.reset_policy()
-        first_page = text(owner.get(f'/selection/posizioni/{pid}?tab=configuration'))
-        second_page = text(owner.get(f'/selection/posizioni/{pid2}?tab=configuration'))
+        first_page = text(owner.get(f'/selection/posizioni/{pid}?tab=configuration', follow_redirects=True))
+        second_page = text(owner.get(f'/selection/posizioni/{pid2}?tab=configuration', follow_redirects=True))
         check('configuration: each position renders only its own context',
               first_config['profile'] in first_page and second_config['profile'] not in first_page
               and second_config['profile'] in second_page and first_config['profile'] not in second_page)
@@ -542,7 +542,7 @@ try:
             "csrf_token": t, "title": "Server 2", "role_code": "SERVER", "location": "Mount Dora",
             "timezone": "America/New_York", "manager_account_id": str(accounts["owner"][0]), "description": "A server"},
             follow_redirects=True)
-        new_pid = int(re.search(r"/selection/posizioni/(\d+)/requisiti/aggiungi", text(r)).group(1))
+        new_pid = int(re.search(r"/selection/posizioni/(\d+)/job", r.request.path).group(1))
         with selection_app.SessionFactory() as db:
             check('AI activation: unconfigured positions stay disabled even when the installation is enabled',
                   not any(position_settings.get(db.get(ws.Position, new_pid))[key] for key, _, _ in position_settings.FEATURES))

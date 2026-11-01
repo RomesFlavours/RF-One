@@ -17,6 +17,7 @@ from .careers import bp as careers_bp
 from .routes import _cfg
 from .routes import bp as positions_bp
 from . import sp_routes  # noqa: E402,F401  CV Selection SP routes on the positions blueprint
+from . import interviews  # noqa: E402,F401  Interviews tab routes on the positions blueprint
 
 PUBLIC_BLUEPRINT = careers_bp.name
 

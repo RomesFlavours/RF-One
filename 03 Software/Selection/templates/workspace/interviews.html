@@ -1,0 +1,228 @@
+{% extends "workspace/base.html" %}
+{% block title %}Interviews · {{ ROLE_LABEL.get(position.role_code) }} · {{ position.location_label }}{% endblock %}
+{% macro source_select(name, value, mode) %}
+  <select name="{{ name }}" class="iv-src" aria-label="Source of the evidence">
+    {% for code, label in EVIDENCE_SOURCES.items() %}<option value="{{ code }}" {{ 'selected' if (value or (mode if mode in EVIDENCE_SOURCES else 'IN_PERSON')) == code }}>{{ label }}</option>{% endfor %}
+  </select>
+{% endmacro %}
+{% macro ratings(name, value) %}
+  <div class="iv-ratings">{% for code, label in RATINGS.items() %}
+    <label class="iv-r iv-{{ code }}"><input type="radio" name="{{ name }}" value="{{ code }}" {{ 'checked' if (value or 'NOT_ASSESSED') == code }}> {{ label }}</label>{% endfor %}</div>
+{% endmacro %}
+{% block content %}
+<style>
+  .iv-top { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: end; }
+  .iv-top label { margin: 0; }
+  .iv-ratings { display: flex; flex-wrap: wrap; gap: .3rem .9rem; margin: .3rem 0; }
+  .iv-r { display: inline-flex; gap: .3rem; align-items: center; font-size: .85rem; color: var(--ink); margin: 0; }
+  .iv-item { border-top: 1px solid var(--line); padding: .7rem 0; }
+  .iv-item:first-of-type { border-top: 0; }
+  .iv-item textarea { min-height: 3.2rem; }
+  .iv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+  .iv-src { width: auto !important; font-size: .8rem; }
+  .iv-meta { font-size: .78rem; color: var(--muted); }
+  .iv-sum h3 { margin: .6rem 0 .3rem; }
+  @media (max-width: 800px) { .iv-grid { grid-template-columns: 1fr; } }
+  .iv-modal { position: fixed; inset: 0; background: rgba(20, 24, 14, .45); z-index: 1000; display: flex;
+              align-items: center; justify-content: center; padding: 2vh 2vw; }
+  .iv-modal[hidden] { display: none; }
+  .iv-box { background: var(--surface, #fff); width: min(1100px, 96vw); max-height: 94vh; border-radius: 10px;
+            display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+  .iv-head { display: flex; justify-content: space-between; align-items: center; padding: .7rem 1rem; border-bottom: 1px solid var(--line); }
+  .iv-x { border: 0; background: none; font-size: 1.8rem; line-height: 1; cursor: pointer; color: var(--muted); }
+  .iv-body { overflow-y: auto; padding: 1rem 1.2rem; }
+  .iv-foot { display: flex; justify-content: flex-end; gap: .5rem; padding: .7rem 1rem; border-top: 1px solid var(--line); }
+  .iv-cfg td { vertical-align: top; padding: .35rem .4rem; }
+</style>
+
+<div class="row" style="justify-content:space-between;align-items:flex-start">
+  <div><h1>Interviews</h1>
+    <p class="small" style="margin:0"><b>Interview sheet</b> · <a href="{{ url_for('positions.position_detail', position_id=position.id, tab='colloqui') }}">Calendar</a></p></div>
+</div>
+
+<div class="card iv-top">
+  <form method="get" action="{{ url_for('positions.interviews', position_id=position.id) }}">
+    <label class="small">Candidate of this Job
+      <select name="pc" onchange="this.form.submit()" style="min-width:16rem">
+        {% if not pc %}<option value="">Choose a candidate…</option>{% endif %}
+        {% for r in rows %}<option value="{{ r.pc.id }}" {{ 'selected' if pc and r.pc.id == pc.id }}>{{ r.name }}{% if r.decision %} — {{ DECISION_LABELS[r.decision.decision] }}{% endif %}</option>{% endfor %}
+      </select></label>
+  </form>
+  {% if pc %}
+    <a class="btn btn-secondary btn-small" href="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=pc.id) }}">Evaluation dossier</a>
+    <span class="small">Interview: <span class="badge {{ 'ok' if data.status == 'COMPLETED' else ('warn' if data.status == 'IN_PROGRESS' else '') }}" id="iv-status">{{ INTERVIEW_STATUS[data.status] }}</span></span>
+    {% if data.updated_at %}<span class="iv-meta" id="iv-saved">Last saved {{ local_time(data.updated_at, position.timezone) }} · {{ data.updated_by }}</span>{% else %}<span class="iv-meta" id="iv-saved"></span>{% endif %}
+    {% if can_edit %}<button type="button" class="btn btn-small" style="margin-left:auto" onclick="InterviewConfig.open()">Configure Interview</button>{% endif %}
+  {% endif %}
+</div>
+
+{% if not pc %}
+<div class="card"><p class="muted">{% if rows %}Choose a candidate of this Job to open the interview sheet.{% else %}No candidates yet: upload CVs in Applications.{% endif %}</p></div>
+{% else %}
+<form id="sheet" method="post" action="{{ url_for('positions.interview_save', position_id=position.id, pc_id=pc.id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<fieldset style="border:0;padding:0;margin:0" {{ 'disabled' if not can_edit }}>
+
+<div class="card">
+  <h2>{{ name }}</h2>
+  <div class="iv-top">
+    <label class="small">Interview mode
+      <select name="mode" style="width:auto">{% for code, label in MODES.items() %}<option value="{{ code }}" {{ 'selected' if data.mode == code }}>{{ label }}</option>{% endfor %}</select></label>
+    <span class="iv-meta">Interviewer: {{ data.updated_by or actor.name }}. Every evidence records its source (in person, phone, AI interview).
+      Observe only what the candidate does and says for the job: never appearance, accent, physical characteristics or presumed personality.</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Questions</h2>
+  {% for q in config.questions if q.active %}
+  <div class="iv-item">
+    <b class="small">{{ q.text }}</b> <span class="iv-meta">· {{ q.source }}</span>
+    {% set a = data.answers.get(q.id, {}) %}
+    <div class="iv-grid" style="grid-template-columns:1fr auto;align-items:start">
+      <textarea name="q_{{ q.id }}_answer" placeholder="Answer and concrete evidence">{{ a.answer or '' }}</textarea>
+      {{ source_select('q_' ~ q.id ~ '_src', a.src, data.mode) }}
+    </div>
+  </div>
+  {% else %}<p class="muted small">No active questions: use Configure Interview.</p>{% endfor %}
+</div>
+
+{% if ai_answers %}
+<div class="card">
+  <h2>AI interview answers <span class="iv-meta">(already given by the candidate on the application page: reused, not asked again)</span></h2>
+  {% for a in ai_answers %}<div class="iv-item"><b class="small">{{ a.question_text }}</b>
+    <div class="small" style="white-space:pre-wrap">{{ a.answer_text }}</div>
+    <div class="iv-meta">AI interview · {{ 'voice' if a.input_mode == 'VOICE' else 'typed' }} · {{ a.answered_at|local(position.timezone) }}</div></div>{% endfor %}
+  <p class="iv-meta">Use them as evidence below with the source “AI interview”.</p>
+</div>{% endif %}
+
+<div class="card">
+  <h2>Observation</h2>
+  {% for did, label, description in DIMENSIONS %}{% set d = data.dimensions.get(did, {}) %}
+  <div class="iv-item">
+    <b>{{ label }}</b> <span class="iv-meta">· {{ description }}</span>
+    {{ ratings('dim_' ~ did ~ '_rating', d.rating) }}
+    <div class="iv-grid" style="grid-template-columns:1fr auto;align-items:start">
+      <textarea name="dim_{{ did }}_evidence" placeholder="Concrete evidence observed or stated by the candidate">{{ d.evidence or '' }}</textarea>
+      {{ source_select('dim_' ~ did ~ '_src', d.src, data.mode) }}
+    </div>
+  </div>{% endfor %}
+  <p class="iv-meta">No overall score: each dimension stands on its own evidence.</p>
+</div>
+
+<div class="card">
+  <h2>Questions to Clarify</h2>
+  {% for c in config.clarify if c.active %}{% set r = data.clarify.get(c.id, {}) %}
+  <div class="iv-item">
+    <b class="small">{{ c.text }}</b> <span class="iv-meta">· {{ c.source }}</span>
+    <div class="iv-ratings">{% for code, label in CLARIFY.items() %}<label class="iv-r"><input type="radio" name="cl_{{ c.id }}_status" value="{{ code }}" {{ 'checked' if (r.status or 'OPEN') == code }}> {{ label }}</label>{% endfor %}</div>
+    <div class="iv-grid">
+      <textarea name="cl_{{ c.id }}_answer" placeholder="Candidate's answer">{{ r.answer or '' }}</textarea>
+      <textarea name="cl_{{ c.id }}_evidence" placeholder="Evidence">{{ r.evidence or '' }}</textarea>
+    </div>
+    {{ source_select('cl_' ~ c.id ~ '_src', r.src, data.mode) }}
+  </div>
+  {% else %}<p class="muted small">No points to clarify from the analysis.</p>{% endfor %}
+  <p class="iv-meta">Missing information is not a negative judgement: a point still open is something to ask, never a concern.</p>
+</div>
+
+<div class="card">
+  <h2>Practical Scenarios</h2>
+  {% for s in config.scenarios if s.active %}{% set r = data.scenarios.get(s.id, {}) %}
+  <div class="iv-item">
+    <b class="small">{{ s.title }}</b>{% if s.detail %} <span class="iv-meta">· {{ s.detail }}</span>{% endif %}
+    {{ ratings('sc_' ~ s.id ~ '_rating', r.rating) }}
+    <div class="iv-grid">
+      <textarea name="sc_{{ s.id }}_answer" placeholder="Candidate's answer">{{ r.answer or '' }}</textarea>
+      <textarea name="sc_{{ s.id }}_evidence" placeholder="Evidence">{{ r.evidence or '' }}</textarea>
+    </div>
+    {{ source_select('sc_' ~ s.id ~ '_src', r.src, data.mode) }}
+  </div>
+  {% else %}<p class="muted small">No scenarios selected: use Configure Interview.</p>{% endfor %}
+</div>
+
+{% if can_edit %}<div class="card row" style="justify-content:flex-end;gap:.5rem">
+  <span class="iv-meta" style="margin-right:auto">Saved automatically while you type.</span>
+  <button class="btn btn-secondary" name="action" value="save">Save</button>
+  {% if data.status == 'COMPLETED' %}<button class="btn btn-secondary" name="action" value="reopen">Reopen interview</button>
+  {% else %}<button class="btn" name="action" value="complete">Complete interview</button>{% endif %}
+</div>{% endif %}
+</fieldset>
+</form>
+
+<div class="card iv-sum" id="summary">
+  <h2>Summary</h2>
+  <p class="iv-meta">From the evidence recorded. No hiring decision here: record it in Decisions.</p>
+  {% for key, label in [('demonstrated', 'Demonstrated'), ('clarify', 'Needs Clarification'), ('concerns', 'Concerns Documented')] %}
+  <h3>{{ label }} <span class="badge">{{ summary[key]|length }}</span></h3>
+  <ul class="small">{% for i in summary[key] %}<li><b>{{ i.name }}</b>{% if i.status %} ({{ i.status }}){% endif %}{% if i.evidence %} — {{ i.evidence }}{% if i.source %} <span class="iv-meta">[{{ i.source }}]</span>{% endif %}{% else %} <span class="iv-meta">— no evidence recorded yet</span>{% endif %}</li>
+  {% else %}<li class="muted">None.</li>{% endfor %}</ul>
+  {% endfor %}
+  {% if summary.not_assessed %}<p class="iv-meta">Not assessed: {{ summary.not_assessed|map(attribute='name')|join(', ') }}.</p>{% endif %}
+</div>
+
+{# Configure Interview: this candidate's copy of the Role standard (RF-One UI rule 5: close X always visible). #}
+{% if can_edit %}
+<div id="iv-config" class="iv-modal" hidden role="dialog" aria-modal="true" aria-labelledby="iv-config-title">
+  <form class="iv-box" method="post" action="{{ url_for('positions.interview_config', position_id=position.id, pc_id=pc.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="iv-head"><b id="iv-config-title">Configure Interview · {{ name }}</b>
+      <button type="button" class="iv-x" aria-label="Close" onclick="InterviewConfig.close()">×</button></div>
+    <div class="iv-body">
+      <p class="small muted">Starts from the {{ ROLE_LABEL.get(position.role_code) }} standard. Changes apply to this candidate only: the Role standard is not modified.</p>
+      <h3>Questions</h3>
+      <table class="iv-cfg">{% for q in config.questions %}<tr>
+        <td><input type="checkbox" name="q_active_{{ q.id }}" value="1" {{ 'checked' if q.active }} aria-label="Ask this question"></td>
+        <td style="width:100%"><input type="text" name="q_text_{{ q.id }}" value="{{ q.text }}"><div class="iv-meta">{{ q.source }}</div></td></tr>{% endfor %}</table>
+      <label>Add questions for this candidate (one per line)</label>
+      <textarea name="new_questions" style="min-height:4rem"></textarea>
+      <h3>Points to clarify (from the analysis)</h3>
+      <table class="iv-cfg">{% for c in config.clarify %}<tr>
+        <td><input type="checkbox" name="cl_active_{{ c.id }}" value="1" {{ 'checked' if c.active }}></td>
+        <td>{{ c.text }}<div class="iv-meta">{{ c.source }}</div></td></tr>
+      {% else %}<tr><td class="muted small">None from the analysis.</td></tr>{% endfor %}</table>
+      <h3>Practical scenarios</h3>
+      <table class="iv-cfg">{% for s in config.scenarios %}<tr>
+        <td><input type="checkbox" name="sc_active_{{ s.id }}" value="1" {{ 'checked' if s.active }}></td>
+        <td><b class="small">{{ s.title }}</b>{% if s.detail %}<div class="iv-meta">{{ s.detail }}</div>{% endif %}<div class="iv-meta">{{ s.source }}</div></td></tr>
+      {% else %}<tr><td class="muted small">No scenarios in the standard of this Role.</td></tr>{% endfor %}</table>
+    </div>
+    <div class="iv-foot"><button type="button" class="btn btn-secondary" onclick="InterviewConfig.close()">Cancel</button>
+      <button class="btn">Save configuration</button></div>
+  </form>
+</div>
+<script>
+  window.InterviewConfig = (function () {
+    const box = document.getElementById("iv-config"), form = box.querySelector("form");
+    let dirty = false;
+    form.addEventListener("input", () => { dirty = true; });
+    form.addEventListener("change", () => { dirty = true; });
+    function open() { box.hidden = false; document.body.style.overflow = "hidden"; dirty = false; }
+    function close() {
+      if (dirty && !confirm("You have unsaved changes. Close and lose them?")) return;
+      form.reset(); dirty = false; box.hidden = true; document.body.style.overflow = "";
+    }
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && !box.hidden) close(); });
+    return { open, close };
+  })();
+  // Progressive save of the sheet: a few seconds after the last change.
+  (function () {
+    const sheet = document.getElementById("sheet"), saved = document.getElementById("iv-saved"),
+          status = document.getElementById("iv-status");
+    let timer = null;
+    // getAttribute: sheet.action would be the button named "action", not the address.
+    function autosave() {
+      const data = new FormData(sheet); data.append("autosave", "1");
+      fetch(sheet.getAttribute("action"), { method: "POST", body: data }).then(r => r.json()).then(j => {
+        saved.textContent = "Saved automatically " + new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+        status.textContent = j.status;
+      }).catch(() => { saved.textContent = "Not saved: use Save"; });
+    }
+    sheet.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(autosave, 2000); });
+    sheet.addEventListener("change", () => { clearTimeout(timer); timer = setTimeout(autosave, 800); });
+    sheet.addEventListener("submit", () => clearTimeout(timer));
+  })();
+</script>
+{% endif %}
+{% endif %}
+{% endblock %}

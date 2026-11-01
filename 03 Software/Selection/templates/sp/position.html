@@ -1,52 +1,42 @@
 {% extends "sp/base.html" %}
-{% block title %}{{ p.title }} · CV ranking{% endblock %}
-{% block crumbs %}<div class="crumbs"><a href="{{ url_for('positions.dashboard') }}">Selection</a> › <a href="{{ url_for('positions.position_detail', position_id=p.id) }}">{{ p.title }}</a> › CV ranking</div>{% endblock %}
-{% block content %}
+{% block title %}Applications · {{ ROLE_LABEL.get(p.role_code) }} · {{ p.location_label }}{% endblock %}
+{% set crumbs = [('Applications', None)] %}
+{% set section = 'applications' %}
+{% block sp_content %}
 {% set approved = sp.approved %}
-{% set editable = can_edit and ((not approved) or sp.editing) %}
-<h1>{{ p.title }}</h1>
-<div class="muted">{{ p.location_label }} · profile {{ sp.requirements_draft[0].source if sp.requirements_draft else '' }}
-  {% if approved %} · requirements v{{ approved.version }} approved {{ local_time(approved.approved_at, p.timezone) }}{% endif %}</div>
+<h1>Applications</h1>
+<div class="muted">{{ ROLE_LABEL.get(p.role_code) }} · {{ p.location_label }} · profile {{ sp.requirements_draft[0].source if sp.requirements_draft else '' }}
+  {% if approved %} · requirements v{{ approved.version }} confirmed {{ local_time(approved.approved_at, p.timezone) }}{% endif %}</div>
 
-<!-- 1. Requirements -->
+<!-- 1. Requirements (set in the Job, Selection tab) -->
 <div class="card" id="requirements">
-  <h2><span class="step">1</span>Requirements {% if (not approved) or sp.editing %}<span class="badge gC">Draft: review and approve</span>{% else %}<span class="badge gA">Approved v{{ approved.version }}</span>{% endif %}</h2>
-  <form method="post" action="{{ url_for('positions.sp_requirements', position_id=p.id) }}">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2><span class="step">1</span>Requirements {% if not approved %}<span class="badge gC">Not confirmed yet</span>{% elif sp.editing %}<span class="badge gC">Changes not confirmed</span> <span class="badge gA">In use: v{{ approved.version }}</span>{% else %}<span class="badge gA">Confirmed v{{ approved.version }}</span>{% endif %}</h2>
+  <details {% if not approved %}open{% endif %}><summary class="small">{{ (approved.requirements if approved else sp.requirements_draft)|length }} requirement(s) in use{% if can_edit %} · change them in the <a href="{{ url_for('positions.job_edit', position_id=p.id) }}#requirements">Job settings</a>{% endif %}</summary>
   <table>
-    <tr><th>Requirement</th><th class="hide-sm">What the CV should show</th><th>Criticality</th><th>Weight</th><th></th></tr>
-    {% for r in (sp.requirements_draft if ((not approved) or sp.editing) else approved.requirements) %}
+    <tr><th>Requirement</th><th class="hide-sm">What the CV should show</th><th>Criticality</th><th>Weight</th></tr>
+    {% for r in (approved.requirements if approved else sp.requirements_draft) %}
     <tr>
       <td><b>{{ r.name }}</b>{% if r.computed %}<div class="small muted">Computed from the verified CV dates</div>{% endif %}</td>
       <td class="hide-sm small">{{ r.look_for }}</td>
-      <td>{% if editable %}<select name="crit_{{ r.id }}">{% for k, v in CRIT.items() %}<option value="{{ k }}" {% if r.criticality == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select>{% else %}{{ CRIT[r.criticality] }}{% endif %}</td>
-      <td>{% if editable %}<input name="weight_{{ r.id }}" value="{{ r.weight }}" size="3">{% else %}{{ r.weight }}{% endif %}</td>
-      <td>{% if editable and r.id.startswith('custom') %}<button class="tiny light" name="remove" value="{{ r.id }}">Remove</button>{% endif %}</td>
+      <td>{{ CRIT[r.criticality] }}</td>
+      <td>{{ r.weight }}</td>
     </tr>
     {% endfor %}
-    {% if editable %}
-    <tr>
-      <td><input name="new_name" placeholder="Add a requirement" size="26"></td>
-      <td class="hide-sm"><input name="new_look_for" placeholder="What the CV should show" size="40"></td>
-      <td><select name="new_crit">{% for k, v in CRIT.items() %}<option value="{{ k }}" {% if k == 'PREFERRED' %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></td>
-      <td><input name="new_weight" value="5" size="3"></td><td></td>
-    </tr>
-    {% endif %}
   </table>
-  <p class="small muted">Profile standard from Shelbi's Server / Line Cook model (weights proposed, to be calibrated).
-    Must-haves define the ranking groups; weights order candidates inside a group. Residence and commute are not used.</p>
-  {% if editable %}
-    <button class="light" name="action" value="save">Save draft</button>
-    <button name="action" value="approve">Approve requirements</button>
-  {% elif can_edit %}
-    <button class="light" name="action" value="edit">Edit requirements (creates a new version)</button>
-  {% endif %}
-  </form>
+  <p class="small muted">Must-haves define the ranking groups; weights order candidates inside a group. Residence and commute are not used.</p>
+  </details>
 </div>
 
 <!-- 2. CVs (uploaded from the Selection positions page) -->
 <div class="card">
-  <h2><span class="step">2</span>CVs <span class="small muted">({{ cands|length }} in this position)</span></h2>
+  <h2><span class="step">2</span>CVs <span class="small muted">({{ cands|length }} for this Job)</span></h2>
+  {% if can_edit %}<form method="post" enctype="multipart/form-data" action="{{ url_for('positions.sp_upload', position_id=p.id) }}" style="margin-bottom:8px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="btn" title="PDF, DOCX or TXT; several at once">Upload CVs<input type="file" name="cv" multiple accept=".pdf,.docx,.txt" hidden onchange="this.form.submit()"></label>
+    <span class="small muted">PDF, DOCX or TXT, several at once. Every upload adds only new CVs: exact duplicates are ignored, possible duplicates are flagged.</span>
+  </form>{% endif %}
+  {% if p.status == 'OPEN' and p.approved_snapshot_id %}<p class="small muted">Application page (candidates apply and are analyzed when they complete it):
+    <a href="{{ public_url }}" target="_blank" rel="noopener">{{ public_url }}</a></p>{% endif %}
   {% if last_upload %}
   <p class="small"><b>Last upload (#{{ last_upload.n }}, {{ local_time(last_upload.at, p.timezone) }}, {{ last_upload.by }}):</b>
     {{ last_upload.received }} received · <b>{{ last_upload.imported|length }} new imported</b> ·
@@ -57,8 +47,6 @@
   {% for d in last_upload.exact_duplicates %}<div class="small muted">Exact duplicate ignored — {{ d }}</div>{% endfor %}
   {% for d in last_upload.failed %}<div class="small flag">Not imported — {{ d.filename }}: {{ d.message }}</div>{% endfor %}
   {% endif %}
-  <p class="small muted">Add CVs with <b>Upload CVs</b> on the <a href="{{ url_for('positions.dashboard') }}">Selection positions page</a>:
-    every upload adds only new CVs; earlier candidates and analyses are kept.</p>
   {% if cands %}
   <details {% if running or to_analyze %}open{% endif %}>
     <summary class="small">Uploads and analysis status</summary>
@@ -82,10 +70,10 @@
 <div class="card">
   <h2><span class="step">3</span>Analyze</h2>
   {% if not approved or sp.editing %}
-    <p class="muted">Approve the requirements first.</p>
+    <p class="muted">Confirm the Job's requirements first (Selection tab, <a href="{{ url_for('positions.job_edit', position_id=p.id) }}">Job settings</a>).</p>
   {% elif not ai_allowed %}
-    <p class="verify">AI résumé evaluation is off for this position. Turn on “AI résumé and answer evaluation” in the
-      <a href="{{ url_for('positions.position_detail', position_id=p.id, tab='configuration') }}">position's Configuration</a>.</p>
+    <p class="verify">AI résumé evaluation is off for this Job. Turn on “AI résumé and answer evaluation” in the
+      <a href="{{ url_for('positions.job_edit', position_id=p.id) }}">Job settings</a>.</p>
   {% else %}
   {% if outdated %}<p class="verify small">{{ outdated }} analysis(es) used an earlier version of the requirements and may need an update: Analyze updates them.</p>{% endif %}
   {% if can_edit %}
@@ -116,15 +104,15 @@
   {% if not rows %}<p class="muted">{% if all_rows and view == 'last' %}No analyzed candidate from the last upload yet.{% else %}No analyzed CV yet.{% endif %}</p>{% else %}
   <p class="small muted">Preselection priority from the approved requirements: group first (A every must-have shown · B partly shown ·
     C must-have not documented, to verify · D documented concern), then the documented evidence weighted by the requirements.
-    Not a probability of success. Nobody is excluded. Use ▲▼ to change the order.</p>
+    Not a probability of success. Nobody is excluded automatically. Use ▲▼ to change the order; a click on a name opens Evaluation.</p>
   <table>
-    <tr><th>#</th><th>Candidate</th><th>Relevant experience</th><th>Demonstrated competences</th><th>Red flags</th><th>To verify</th><th>Why here</th><th></th></tr>
+    <tr><th>#</th><th>Candidate</th><th>Relevant experience</th><th>Demonstrated competences</th><th>Red flags</th><th>To verify</th><th>Why here</th><th>Actions</th></tr>
     {% for r in rows %}{% set a = r.analysis %}
     <tr>
       <td><div class="rank">{{ r.rank }}</div>
         {% if can_edit %}<form method="post" action="{{ url_for('positions.sp_move', position_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="cid" value="{{ r.id }}"><input type="hidden" name="view" value="{{ view }}">
           <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form>{% endif %}</td>
-      <td><b><a href="{{ url_for('positions.sp_candidate', position_id=p.id, pc_id=r.id) }}">{{ a.full_name or r.name or r.filename }}</a></b>{% if r.new %} <span class="badge gB">NEW</span>{% endif %}<br>
+      <td><b><a href="{{ url_for('positions.candidate_detail', position_id=p.id, pc_id=r.id) }}">{{ a.full_name or r.name or r.filename }}</a></b>{% if r.new %} <span class="badge gB">NEW</span>{% endif %}<br>
         <span class="badge g{{ r.assessment.group }}">{{ r.assessment.group }} · {{ r.assessment.group_label.split(':')[0] }}</span>
         {% if r.rank_moved %}<div class="small verify">Moved by the manager (proposed #{{ r.proposed_rank }})</div>{% endif %}
         {% if r.status == 'OUTDATED' %}<div class="small verify">Analyzed with requirements v{{ r.analyzed_version }}: update recommended</div>{% endif %}
@@ -136,9 +124,36 @@
       <td class="small flag"><ul class="tight">{% for f in a.flags[:3] %}<li>{{ f.flag }}</li>{% endfor %}</ul>{% if a.flags|length > 3 %}<span class="muted">+{{ a.flags|length - 3 }} more</span>{% endif %}</td>
       <td class="small verify"><ul class="tight">{% for u in a.unknowns[:3] %}<li>{{ u }}</li>{% endfor %}</ul>{% if a.unknowns|length > 3 %}<span class="muted">+{{ a.unknowns|length - 3 }} more</span>{% endif %}</td>
       <td class="small">{{ summary(r) }}{% if r.why_ahead %}<div class="why">{{ r.why_ahead }}</div>{% endif %}</td>
-      <td class="small"><a href="{{ url_for('positions.sp_candidate', position_id=p.id, pc_id=r.id) }}">Details</a><br><a href="{{ url_for('positions.candidate_original', position_id=p.id, pc_id=r.id) }}" target="_blank">CV</a></td>
+      <td class="small"><a href="{{ url_for('positions.candidate_detail', position_id=p.id, pc_id=r.id) }}">Evaluation</a><br><a href="{{ url_for('positions.candidate_original', position_id=p.id, pc_id=r.id) }}" target="_blank">CV</a>
+        {% if can_edit %}<details class="reject"><summary>Reject</summary>
+          <form method="post" action="{{ url_for('positions.record_decision', position_id=p.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="pc_id" value="{{ r.id }}">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="{{ url_for('positions.sp_page', position_id=p.id, **({'view': 'last'} if view == 'last' else {})) }}#ranking">
+            <select name="reason" required><option value="">Reason…</option>{% for code, label in reasons.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details>{% endif %}</td>
     </tr>
     {% endfor %}
+  </table>
+  {% endif %}
+  {% if rejected %}
+  <h2 style="margin-top:18px">Rejected <span class="small muted">({{ rejected|length }}: CV and analysis kept, reversible)</span></h2>
+  <table>
+    <tr><th>Candidate</th><th>Group</th><th>Rejected</th><th>Reason</th><th></th></tr>
+    {% for r in rejected %}{% set a = r.analysis %}{% set d = r.decision %}
+    <tr class="rejected">
+      <td><b><a href="{{ url_for('positions.candidate_detail', position_id=p.id, pc_id=r.id) }}">{{ a.full_name or r.name or r.filename }}</a></b></td>
+      <td><span class="badge g{{ r.assessment.group }}">{{ r.assessment.group }}</span></td>
+      <td class="small">{{ d.created_at|local(p.timezone) }} · {{ d.actor_name }}</td>
+      <td class="small">{{ NOT_SELECTED_REASONS[d.reason_code] if d.reason_code else '' }}{% if d.note %} · “{{ d.note }}”{% endif %}</td>
+      <td class="small">{% if can_edit %}<form method="post" action="{{ url_for('positions.record_decision', position_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="pc_id" value="{{ r.id }}">
+        <input type="hidden" name="decision" value="UNDECIDED"><input type="hidden" name="note" value="Rejection withdrawn: back in the ranking">
+        <input type="hidden" name="back" value="{{ url_for('positions.sp_page', position_id=p.id) }}#ranking">
+        <button class="tiny light">Restore</button></form>{% endif %}</td>
+    </tr>{% endfor %}
   </table>
   {% endif %}
 </div>

@@ -1,53 +1,88 @@
 {% extends "workspace/base.html" %}
-{% block title %}{{ page_heading }}{% endblock %}
+{% block title %}Selection{% endblock %}
 {% block content %}
 <div class="selection-page-heading">
-  <div><h1>{{ page_heading }}</h1><p class="muted" style="margin:0">Manage positions, applications and interviews{% if not actor.supervises_all %} for positions assigned to you{% endif %}.</p></div>
+  <div><h1>Jobs</h1><p class="muted" style="margin:0">Create a Job, complete and publish it, then choose <b>Process</b> to work on its applications{% if not actor.supervises_all %} (Jobs assigned to you){% endif %}.</p></div>
   <div class="selection-page-actions">
-    {% if actor.role != 'SUPERVISOR' %}<a class="btn" href="{{ url_for('positions.position_new') }}">+ New position</a>{% endif %}
+    {% if actor.role != 'SUPERVISOR' %}<a class="btn" href="{{ url_for('positions.position_new') }}" data-job-modal="New Job">+ New Job</a>{% endif %}
   </div>
 </div>
 <form method="get" action="{{ url_for('positions.dashboard') }}" class="selection-search">
-  <input type="hidden" name="stato" value="{{ status_filter }}">
-  <label>Search by position, role, location or manager<input type="text" name="q" value="{{ search }}" maxlength="120"></label>
+  <label>Search by Role, location or manager<input type="text" name="q" value="{{ search }}" maxlength="120"></label>
   <button class="btn btn-secondary">Search</button>
-  {% if search %}<a href="{{ url_for('positions.dashboard', stato=status_filter) }}">Clear search</a>{% endif %}
+  {% if search %}<a href="{{ url_for('positions.dashboard') }}">Clear search</a>{% endif %}
 </form>
 {% if rows %}<div class="card"><div class="table-scroll"><table class="selection-table">
-  <thead><tr><th>Position</th><th>Location</th><th>Manager</th><th>CVs</th><th>Hired / openings</th><th>Actions</th></tr></thead>
-  <tbody>{% for r in rows %}{% set p = r.position %}<tr>
-    <td><a href="{{ url_for('positions.position_detail', position_id=p.id) }}"><b>{{ p.title }}</b></a><div class="small muted">{{ ROLE_LABEL[p.role_code] }}</div>
-      <span class="badge {{ 'ok' if p.status == 'OPEN' else ('warn' if p.status == 'DRAFT' else '') }}">{{ POSITION_STATUS_LABELS[p.status] }}</span></td>
-    <td>{{ p.location_label }}</td><td>{{ r.manager }}</td>
-    <td><a href="{{ url_for('positions.position_detail', position_id=p.id, tab='candidature') }}">{{ r.total }}</a>{% if r.to_interview %}<div class="small muted">{{ r.to_interview }} to interview</div>{% endif %}</td>
-    <td>{{ r.hired }} / {{ p.headcount }}</td>
+  <thead><tr><th>Role</th><th>Location</th><th>People required</th><th>Created</th><th>Status</th><th>Candidates</th><th>Action</th></tr></thead>
+  <tbody>{% for r in rows %}{% set p = r.position %}<tr{% if current_job and current_job.id == p.id %} style="background:var(--olive-050)"{% endif %}>
+    <td><b>{{ ROLE_LABEL.get(p.role_code, p.role_code) }}</b>{% if p.title != ROLE_LABEL.get(p.role_code) %}<div class="small muted">{{ p.title }}</div>{% endif %}
+      <div class="small muted">Manager {{ r.manager }}</div></td>
+    <td>{{ p.location_label }}</td>
+    <td>{{ p.headcount }}</td>
+    <td class="small">{{ p.created_at|local(p.timezone, '%b %d, %Y') }}</td>
+    <td><span class="badge {{ 'ok' if p.status == 'OPEN' else ('warn' if p.status == 'DRAFT' else '') }}">{{ POSITION_STATUS_LABELS[p.status] }}</span></td>
+    <td>{{ r.total }}</td>
     <td><div class="selection-table-actions">
-      <a class="btn btn-secondary btn-small" href="{{ url_for('positions.position_detail', position_id=p.id, tab='posizione' if p.status == 'DRAFT' else 'candidature') }}">{{ 'Complete and open' if p.status == 'DRAFT' else 'Manage' }}</a>
-      {% if actor.can_edit(p) %}<form method="post" enctype="multipart/form-data" action="{{ url_for('positions.sp_upload', position_id=p.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <label class="btn btn-small" title="PDF, DOCX or TXT; several at once">Upload CVs<input type="file" name="cv" multiple accept=".pdf,.docx,.txt" hidden onchange="this.form.submit()"></label>
-      </form>{% endif %}
-      {% if p.role_code in SP_ROLES %}<a class="btn btn-secondary btn-small" href="{{ url_for('positions.sp_page', position_id=p.id) }}">CV ranking</a>{% endif %}
-      {% if p.status == 'OPEN' %}<a class="small" href="{{ candidate_url(p) }}" target="_blank" rel="noopener">Application page</a>{% endif %}
-      {% if actor.can_edit(p) and p.status in ['OPEN', 'CLOSED'] %}<form method="post" action="{{ url_for('positions.position_status', position_id=p.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ url_for('positions.dashboard', stato=status_filter, q=search) }}">
-        <button class="btn btn-secondary btn-small" name="action" value="{{ 'close' if p.status == 'OPEN' else 'reopen' }}">{{ 'Close' if p.status == 'OPEN' else 'Reopen' }}</button>
-      </form>{% endif %}
+      {% if p.status == 'DRAFT' %}<a class="btn btn-small" href="{{ url_for('positions.job_edit', position_id=p.id) }}" data-job-modal="Complete &amp; Publish · {{ ROLE_LABEL.get(p.role_code) }} · {{ p.location_label }}">Complete &amp; Publish</a>
+      {% elif p.status == 'OPEN' %}<a class="btn btn-small" href="{{ applications_url(p) }}">Process</a>
+      {% else %}<a class="btn btn-secondary btn-small" href="{{ url_for('positions.position_detail', position_id=p.id, tab='decisioni') }}">View history</a>{% endif %}
     </div></td>
   </tr>{% endfor %}</tbody>
 </table></div></div>
 {% else %}<div class="card selection-empty">
-  <h2>{% if search %}No results{% elif status_filter == 'OPEN' %}No open positions{% elif status_filter == 'DRAFT' %}No drafts{% else %}No closed positions{% endif %}</h2>
-  <p class="muted">{% if search %}Change your search or choose another section.
-    {% elif status_filter == 'OPEN' and position_counts.DRAFT %}You have {{ position_counts.DRAFT }} drafts: complete the requirements and job ad, then choose “Approve and open position”.
-    {% elif status_filter == 'OPEN' %}Create your first position, complete its requirements and job ad, then open it to receive résumés and initial interviews.
-    {% elif status_filter == 'DRAFT' %}New positions appear here until they are approved.
-    {% else %}Closed positions remain here with their applications and can be reopened.{% endif %}</p>
-  {% if status_filter == 'OPEN' and position_counts.DRAFT %}<a class="btn btn-secondary" href="{{ url_for('positions.dashboard', stato='DRAFT') }}">View drafts</a>{% endif %}
+  <h2>{% if search %}No results{% else %}No Jobs yet{% endif %}</h2>
+  <p class="muted">{% if search %}Change your search.{% else %}Create a Job with <b>New Job</b>: choose the Role and its standard requirements and rules load automatically.{% endif %}</p>
 </div>{% endif %}
 {% if upcoming %}<div class="card"><h2>Upcoming interviews</h2>
   {% for a, p, c in upcoming %}<div class="small" style="margin:.5rem 0"><b>{{ a.starts_at|local(p.timezone, '%a %d/%m %H:%M') }}</b> · {{ KIND_LABELS[a.kind] }} ·
     <a href="{{ url_for('positions.candidate_detail', position_id=p.id, pc_id=c.pc.id) }}">{{ c.name }}</a>
-    <span class="muted">— {{ p.title }}{% if a.place %} · {{ a.place }}{% endif %} ({{ p.timezone }})</span></div>{% endfor %}
+    <span class="muted">— {{ ROLE_LABEL.get(p.role_code) }} · {{ p.location_label }}{% if a.place %} · {{ a.place }}{% endif %} ({{ p.timezone }})</span></div>{% endfor %}
 </div>{% endif %}
+{# New Job / Complete & Publish: the Job form in a modal window over this tab (RF-One UI rule 5: a close X at
+   the top right, always visible, calling the window's own Cancel). The form is the same page and the same
+   save as on its own (`?modal=1` only drops the shell); a save closes the window and reloads this list. #}
+<div id="job-modal" class="job-modal" hidden role="dialog" aria-modal="true" aria-labelledby="job-modal-title">
+  <div class="job-modal-box">
+    <div class="job-modal-head"><b id="job-modal-title">New Job</b>
+      <button type="button" class="job-modal-x" aria-label="Close" onclick="SelectionModal.close()">×</button></div>
+    <iframe id="job-modal-frame" title="Job form"></iframe>
+  </div>
+</div>
+<style>
+  .job-modal { position: fixed; inset: 0; background: rgba(20, 24, 14, .45); z-index: 1000; display: flex;
+               align-items: center; justify-content: center; padding: 2vh 2vw; }
+  .job-modal[hidden] { display: none; }
+  .job-modal-box { background: var(--surface, #fff); width: min(1180px, 96vw); height: 94vh; border-radius: 10px;
+                   display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+  .job-modal-head { display: flex; align-items: center; justify-content: space-between; padding: .7rem 1rem;
+                    border-bottom: 1px solid var(--line); }
+  .job-modal-x { border: 0; background: none; font-size: 1.8rem; line-height: 1; cursor: pointer; color: var(--muted); }
+  .job-modal-x:hover { color: var(--ink); }
+  #job-modal-frame { flex: 1; width: 100%; border: 0; }
+</style>
+<script>
+  window.SelectionModal = (function () {
+    const box = document.getElementById("job-modal"), frame = document.getElementById("job-modal-frame");
+    function open(url, title) {
+      document.getElementById("job-modal-title").textContent = title;
+      frame.src = url + (url.includes("?") ? "&" : "?") + "modal=1";
+      box.hidden = false;
+      document.body.style.overflow = "hidden";
+    }
+    function shut() { box.hidden = true; frame.src = "about:blank"; document.body.style.overflow = ""; }
+    function close() {
+      let dirty = false;
+      try { dirty = !!(frame.contentWindow && frame.contentWindow.jobFormDirty); } catch (e) {}
+      if (dirty && !confirm("You have unsaved changes. Close and lose them?")) return;
+      shut();
+    }
+    function done() { shut(); location.reload(); }
+    document.querySelectorAll("[data-job-modal]").forEach(a => a.addEventListener("click", e => {
+      e.preventDefault(); open(a.getAttribute("href"), a.dataset.jobModal);
+    }));
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && !box.hidden) close(); });
+    return { open, close, done };
+  })();
+</script>
 {% endblock %}
+
