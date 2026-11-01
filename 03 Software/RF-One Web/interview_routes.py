@@ -28,7 +28,7 @@ def home_state(db, account):
 
 def register_interview_routes(app, *, SessionFactory, require_login, require_admin, require_csrf, require_domain_access):
     def admin_gate(view):
-        return require_admin(require_domain_access("EMPLOYEES")(view))
+        return require_domain_access("ORGANIZATION")(view)
     app.jinja_env.globals["interview_status_labels"] = STATUS_LABELS
 
     def ready(db):
@@ -152,14 +152,23 @@ def register_interview_routes(app, *, SessionFactory, require_login, require_adm
         return response
 
     @app.get("/people")
-    @admin_gate
+    @require_domain_access("EMPLOYEES")
     def people_home():
         return redirect(url_for("employee_directory_home"))
 
     @app.get("/people/<int:person_id>")
-    @admin_gate
+    @require_domain_access("EMPLOYEES")
     def person_detail(person_id):
         return redirect(url_for("employee_directory_detail", employee_id=person_id))
+
+    @app.context_processor
+    def interview_navigation_context():
+        if request.endpoint not in {"interview_admin", "interview_admin_results"}:
+            return {}
+        from rfone_data_store import rfone_web_session as permissions
+        with SessionFactory() as db:
+            return dict(interview_directory_access=permissions.account_may_enter_domain(
+                db, load_current_account(db), "EMPLOYEES"))
 
     @app.context_processor
     def interview_directory_context():
@@ -167,7 +176,10 @@ def register_interview_routes(app, *, SessionFactory, require_login, require_adm
             return {}
         with SessionFactory() as db:
             actor = load_current_account(db)
-            if not actor or not actor.is_admin or not svc.available(db):
+            if not actor or not svc.available(db):
+                return {}
+            from rfone_data_store import rfone_web_session as permissions
+            if not permissions.account_may_use_domain_item(db, actor, "ORGANIZATION", "interviews"):
                 return {}
             person = people.get_person(db, request.view_args["employee_id"])
             if person is None:

@@ -9,7 +9,7 @@
 <section class="interview-purpose"><h2>Interview purpose</h2><p>{{ row.purpose }}</p></section>
 <p class="interview-hint">Times shown in {{ zone_label(tz) }}.</p>
 <dl class="interview-metadata">
-<div><dt>Interviewee</dt><dd>{% if person %}<a href="{{ url_for('person_detail', person_id=person.id) }}">{{ person.full_name }}</a>{% else %}{{ recipient.display_name }}{% endif %}<span>{{ recipient.username }}</span></dd></div>
+<div><dt>Interviewee</dt><dd>{% if person %}{% if interview_directory_access %}<a href="{{ url_for('person_detail', person_id=person.id) }}">{{ person.full_name }}</a>{% else %}{{ person.full_name }}{% endif %}{% else %}{{ recipient.display_name }}{% endif %}<span>{{ recipient.username }}</span></dd></div>
 <div><dt>Requested by</dt><dd>{{ requester.display_name }}</dd></div>
 <div><dt>Requested on</dt><dd>{{ row.created_at|local_dt(tz) }}</dd></div>
 <div><dt>{{ 'Completed on' if result else 'Progress' }}</dt><dd>{{ row.completed_at|local_dt(tz) if result else interview_status_labels[row.status] }}</dd></div>

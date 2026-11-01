@@ -1,6 +1,6 @@
 # Interviews TEST release
 
-Publish the common interview prototype inside the existing `rfone-web` service and official RF-One entry. Every interview page displays TEST. Existing RF-One login and EMPLOYEES Domain access are preserved for administrators; the assigned active account alone can conduct an interview. No local demo login, fixture, setup token or anonymous access is deployed. The configured RF-One AI provider is used, not simulated answers.
+Publish the common interview prototype inside the existing `rfone-web` service and official RF-One entry. Every interview page displays TEST. Existing RF-One login is preserved. Interview request/results access is the Organization item `interviews` (Interviews · TEST), configured through Accounts > Access > Organization > Only selected items. It does not require global administrator status or EMPLOYEES access. Whole Organization access includes this new item under the existing rule. Results remain limited to their requester; the assigned active account alone can conduct an interview. Full directory pages still require EMPLOYEES access. No local demo login, fixture, setup token or anonymous access is deployed. The configured RF-One AI provider is used, not simulated answers.
 
 ## Verified release baseline
 
@@ -24,3 +24,7 @@ The application never migrates on import. The feature's auth pages are not index
 ## Verification and rollback
 
 Run tests/test_interviews.py and tests/test_image_layout_startup.py on the release tree; exercise existing directory tests for regressions. Deployment verification never creates real interviews or changes real person links. If application deployment fails, restore the recorded prior immutable image. The new table is additive and can remain while the previous image runs. Do not drop interview data automatically; a schema downgrade is an explicit operational decision.
+
+## Organization authorization update
+
+Approved by the user: temporarily place Interviews inside Organization with an account authorization checkbox. The registry drives both navigation and server-side checks on all request/results URLs; service operations repeat the same check. No individual account grants are automatically changed. To enable Shelbi, an RF-One administrator opens Accounts > Shelbi > Access, selects Organization > Only selected items, ticks Interviews · TEST, preserves any other intended items, and saves. No schema migration is needed for this authorization change.

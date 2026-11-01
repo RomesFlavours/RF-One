@@ -229,6 +229,7 @@ DOMAINS: tuple[DomainDefinition, ...] = (
             DomainItem("coverage_check", "Full Coverage Check", "admin_org_coverage_check",
                        paths=("/admin/org/coverage-check",)),
             DomainItem("attention", "Attention Items", "admin_org_attention", paths=("/admin/org/attention",)),
+            DomainItem("interviews", "Interviews · TEST", "interview_admin", paths=("/admin/interviews",)),
             DomainItem("ai_review", "AI Consistency Review (boundary)", "admin_org_ai_review",
                        paths=("/admin/org/ai-review",)),
         ),

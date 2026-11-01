@@ -6,6 +6,7 @@ import uuid
 from sqlalchemy import inspect, select, update
 
 from .. import models as m
+from .. import rfone_web_session as permissions
 from . import directory_bridge as people
 from .models import InterviewSession
 from .provider import ProviderError
@@ -31,14 +32,14 @@ def active(account):
         raise PermissionError("Account unavailable.")
 
 
-def require_admin(account):
+def require_manager(db, account):
     active(account)
-    if not account.is_admin:
-        raise PermissionError("Administrator access required.")
+    if not permissions.account_may_use_domain_item(db, account, "ORGANIZATION", "interviews"):
+        raise PermissionError("Interviews access required.")
 
 
 def request_interview(db, requester, recipient_id, purpose, specialization="KNOW_HOW"):
-    require_admin(requester)
+    require_manager(db, requester)
     recipient = db.get(m.RFOneAccount, recipient_id)
     active(recipient)
     purpose = purpose.strip()
@@ -58,7 +59,7 @@ def request_interview(db, requester, recipient_id, purpose, specialization="KNOW
 
 
 def request_for_person(db, requester, person_id, purpose):
-    require_admin(requester)
+    require_manager(db, requester)
     person = people.get_person(db, person_id)
     if person is None:
         raise ValueError("Select a person from the people directory.")
@@ -92,7 +93,7 @@ def recipient_matches(db, account, row):
 
 
 def requested(db, account):
-    require_admin(account)
+    require_manager(db, account)
     return list(db.scalars(select(InterviewSession).where(
         InterviewSession.requester_id == account.id).order_by(InterviewSession.created_at.desc())))
 
@@ -101,7 +102,7 @@ def load(db, account, session_id, *, admin=False):
     active(account)
     row = db.get(InterviewSession, session_id)
     if admin:
-        require_admin(account)
+        require_manager(db, account)
     if row is None or (row.requester_id != account.id if admin else not recipient_matches(db, account, row)):
         raise PermissionError("Interview unavailable.")
     return row

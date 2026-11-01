@@ -66,8 +66,8 @@ class InterviewTests(unittest.TestCase):
             directory.link_context(self.db, employee_id=person.id, kind="RFONE_ACCOUNT", target_id=account.id, account_id=self.admin.id)
             self.person_records[account.id] = people.get_person(self.db, person.id)
         self.person_record = self.person_records[self.person.id]
-        self.db.add(m.RFOneAccountDomainAccess(account_id=self.admin.id, domain_code="EMPLOYEES", enabled=True, role_code="admin"))
-        self.db.add(m.RFOneAccountDomainAccess(account_id=self.admin2.id, domain_code="EMPLOYEES", enabled=True, role_code="admin"))
+        self.db.add(m.RFOneAccountDomainAccess(account_id=self.admin.id, domain_code="ORGANIZATION", enabled=True, role_code="admin"))
+        self.db.add(m.RFOneAccountDomainAccess(account_id=self.admin2.id, domain_code="ORGANIZATION", enabled=True, role_code="admin"))
         self.db.commit()
         self.client = web.app.test_client()
         web.app.config["INTERVIEW_PROVIDER"] = fake_provider
@@ -140,6 +140,29 @@ class InterviewTests(unittest.TestCase):
         self.assertEqual(self.client.get("/admin/interviews/" + row.id, base_url="https://localhost").status_code, 404)
         self.login(self.admin)
         self.assertEqual(self.post(row, "start", 0).status_code, 404)
+
+    def test_organization_interviews_checkbox_without_global_admin(self):
+        from rfone_data_store import rfone_account_service as accounts
+        accounts.set_domain_access(self.db, account_id=self.other.id,
+            domain_code="ORGANIZATION", enabled=True, role_code=None,
+            scope=m.DOMAIN_ACCESS_SCOPE_SELECTED, item_codes=["interviews"])
+        self.db.commit()
+        self.login(self.other)
+        self.assertEqual(self.client.get('/admin/interviews').status_code, 200)
+        self.assertEqual(self.client.get('/administration/employees').status_code, 403)
+        self.assertEqual(self.client.get('/admin/accounts').status_code, 403)
+        response = self.client.post('/admin/interviews', data=dict(csrf_token='test-csrf',
+            person_id=self.person_record.id, purpose='Learn from a service experience'))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.client.get(response.location).status_code, 200)
+        self.assertIn(b'/admin/interviews', self.client.get('/').data)
+        accounts.set_domain_access(self.db, account_id=self.other.id,
+            domain_code="ORGANIZATION", enabled=True, role_code=None,
+            scope=m.DOMAIN_ACCESS_SCOPE_SELECTED, item_codes=["positions"])
+        self.db.commit()
+        self.assertEqual(self.client.get('/admin/interviews').status_code, 403)
+        self.assertEqual(self.client.get(response.location).status_code, 403)
+        self.assertNotIn(b'/admin/interviews', self.client.get('/').data)
 
     def test_csrf_and_session_revocation(self):
         row = self.create(); self.login(self.person)
