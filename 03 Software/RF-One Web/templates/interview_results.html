@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block page_title %}Interview results · RF-One{% endblock %}
+{% block content %}
+{% include "_interview_test_banner.html" %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/interviews.css') }}?v=2">
+<div class="interview-page interview-results-page">
+<p class="breadcrumb"><a href="{{ url_for('home') }}">MyRFOne</a> / <a href="{{ url_for('interview_admin') }}">Interviews</a> / Results</p>
+<div class="interview-heading"><div><h1>{{ 'Interview results' if result else 'Interview requested' }}</h1><p class="interview-meta">{{ person.full_name if person else recipient.display_name }}</p></div><span class="interview-state">{{ interview_status_labels[row.status] }}</span></div>
+<section class="interview-purpose"><h2>Interview purpose</h2><p>{{ row.purpose }}</p></section>
+<p class="interview-hint">Times shown in {{ zone_label(tz) }}.</p>
+<dl class="interview-metadata">
+<div><dt>Interviewee</dt><dd>{% if person %}<a href="{{ url_for('person_detail', person_id=person.id) }}">{{ person.full_name }}</a>{% else %}{{ recipient.display_name }}{% endif %}<span>{{ recipient.username }}</span></dd></div>
+<div><dt>Requested by</dt><dd>{{ requester.display_name }}</dd></div>
+<div><dt>Requested on</dt><dd>{{ row.created_at|local_dt(tz) }}</dd></div>
+<div><dt>{{ 'Completed on' if result else 'Progress' }}</dt><dd>{{ row.completed_at|local_dt(tz) if result else interview_status_labels[row.status] }}</dd></div>
+</dl>
+{% if result %}
+<p class="interview-context">These results are AI proposals and do not constitute validated knowledge. Quotations link to the original answers so you can check the source.</p>
+<nav class="interview-section-links" aria-label="Results sections"><a href="#results-summary">Summary</a><a href="#results-knowledge">Candidate knowledge</a><a href="#results-open">Open questions</a><a href="#results-conversation" data-open-transcript>Full conversation</a></nav>
+<section id="results-summary" class="interview-panel"><div class="interview-section-heading"><h2>Summary</h2><span class="interview-hint">AI-generated · Not validated</span></div><p class="interview-preserve">{{ result.summary }}</p></section>
+<section id="results-knowledge" class="interview-panel">
+<div class="interview-section-heading"><h2>Candidate knowledge</h2><span class="interview-hint">{{ result.knowledge|length }} {{ 'item' if result.knowledge|length == 1 else 'items' }}</span></div>
+{% for item in result.knowledge %}<article class="interview-knowledge-item"><h3>Candidate {{ loop.index }}</h3><p class="interview-preserve">{{ item.text }}</p><p class="interview-hint">Supporting quotation</p><blockquote class="interview-preserve">{{ item.quote }}</blockquote><a href="#message-{{ item.message_index }}" data-open-transcript>View the original answer</a></article>
+{% else %}<p>No candidate knowledge was extracted. Review the summary and original answers.</p>{% endfor %}
+</section>
+<section id="results-open" class="interview-panel"><h2>Open questions</h2>
+{% if result.open_questions %}<ul class="interview-open-questions">{% for question in result.open_questions %}<li>{{ question }}</li>{% endfor %}</ul>
+{% else %}<p>No further questions were identified by the AI. This does not establish that every relevant topic was covered.</p>{% endif %}</section>
+<details id="results-conversation" class="interview-history"><summary>Full conversation <span class="interview-hint">({{ answer_count }} {{ 'answer' if answer_count == 1 else 'answers' }})</span></summary>
+{% for message in messages %}<section id="message-{{ loop.index0 }}" tabindex="-1" class="interview-message interview-message-{{ message.role }}"><h2>{{ (person.full_name if person else recipient.display_name) if message.role == 'user' else 'AI interviewer' }}</h2><p>{{ message.text }}</p></section>{% endfor %}
+</details>
+{% else %}<section class="interview-panel"><h2>Results are not available yet</h2><p>Results will be available when the recipient completes the interview.</p><p class="interview-hint">The recipient can open the interview from their MyRFOne home page.</p></section>{% endif %}
+<div class="interview-finish-row"><a href="{{ url_for('interview_admin') }}">Back to interviews</a>{% if person %}<a href="{{ url_for('interview_admin', person_id=person.id) }}">Request another interview</a>{% endif %}</div>
+</div>
+<script defer src="{{ url_for('static', filename='js/interview-results.js') }}?v=1"></script>
+{% endblock %}

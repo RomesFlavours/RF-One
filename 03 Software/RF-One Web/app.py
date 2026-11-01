@@ -43,6 +43,7 @@ from domain_registry import DOMAINS, DOMAINS_BY_CODE, SELECTION_OLD_LINK, TIPS_H
 from rfone_data_store import display_format  # noqa: E402
 from rfone_data_store import public_entry  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
+from interview_routes import home_state as interview_home_state, register_interview_routes  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 from rfone_data_store import legal_entity_service  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
@@ -372,6 +373,7 @@ def home():
             clover_acquisition_available="CLOVER_ACQUISITION" in enabled_codes,
             dev_journal_available="DEV_JOURNAL" in enabled_codes,
             employees_available="EMPLOYEES" in enabled_codes,
+            **interview_home_state(db, account),
         )
 
 
@@ -1219,3 +1221,8 @@ def forgot_password_code():
         return redirect(url_for("login"))
 
     return render_template("forgot_password_code.html")
+
+
+# Additive TEST feature; keep existing authentication and directory access.
+register_interview_routes(app, SessionFactory=SessionFactory, require_login=require_login,
+    require_admin=require_admin, require_csrf=require_csrf, require_domain_access=require_domain_access)

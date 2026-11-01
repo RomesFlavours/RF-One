@@ -11,6 +11,18 @@
 <h1>Welcome, {{ account.display_name }}</h1>
 
 <h2>MyRFOne</h2>
+{% if interview_tasks %}
+<div class="home-stack" aria-label="Requested interviews">
+  {% for interview in interview_tasks %}
+  <a class="domain-card domain-card-released" href="{{ url_for('interview_session', session_id=interview.id) }}">
+    <div class="domain-name">{{ 'Resume interview · TEST' if interview.status == 'In progress' else 'Interview requested · TEST' }}</div>
+    <div class="domain-description">{{ interview.purpose|truncate(160) }}</div>
+    <div>Requested by {{ interview.requester|short_name }}</div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% if domains_view %}
   <div class="home-stack">
     {% for domain in domains_view %}
@@ -47,7 +59,7 @@
     <div class="domain-card home-block">
       <div class="domain-name">Administration</div>
       {% if employees_available %}
-      <a class="home-row" href="{{ url_for('employee_directory_home') }}"><strong>Anagrafica dipendenti</strong> &mdash; Identità RF-One, sedi e collegamenti Clover.</a>
+      <a class="home-row" href="{{ url_for('employee_directory_home') }}"><strong>Anagrafica dipendenti <span role="img" aria-label="Funzionante" title="Funzionante">👍</span></strong> &mdash; Identità RF-One, sedi e collegamenti Clover.</a>
       {% endif %}
       {% if bank_available %}
       <a class="home-row" href="{{ domain_entry('BANK') }}"><strong>Bank</strong> &mdash; Import and reconcile bank transactions.</a>
@@ -61,6 +73,7 @@
   <div class="domain-card home-block">
     <div class="domain-name">Settings</div>
     {% if account.is_admin %}
+      <a class="home-row" href="{{ url_for('interview_admin') }}"><strong>Interviews · TEST</strong> &mdash; Request an interview and review the results.</a>
       <a class="home-row" href="{{ url_for('admin_accounts') }}"><strong>Accounts</strong> &mdash; Manage RF-One accounts and Domain access.</a>
       <a class="home-row" href="{{ url_for('admin_legal_entities') }}"><strong>Legal Entities</strong> &mdash; Manage legal entities.</a>
     {% endif %}

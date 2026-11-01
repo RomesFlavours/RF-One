@@ -104,4 +104,12 @@
 </form>
 </details>
 {% endif %}
+
+{% if interview_person %}
+<section class="subsection"><h2>Interviews · TEST</h2>
+{% if interview_can_request %}<p><a class="btn" href="{{ url_for('interview_admin', person_id=interview_person.id) }}">Request interview</a></p>{% else %}<p>Link one unambiguous active RF-One account in the existing context links to deliver an interview to MyRFOne.</p>{% endif %}
+<p>Only interviews requested by you are shown.</p>
+<table class="table-stack"><thead><tr><th>Purpose</th><th>Status</th><th></th></tr></thead><tbody>
+{% for interview in person_interviews %}<tr><td data-label="Purpose">{{ interview.purpose|truncate(140) }}</td><td data-label="Status">{{ interview_status_labels[interview.status] }}</td><td><a href="{{ url_for('interview_admin_results', session_id=interview.id) }}">{{ 'View results' if interview.status == 'COMPLETED' else 'View request' }}</a></td></tr>{% else %}<tr><td colspan="3">No interviews requested by you for this person.</td></tr>{% endfor %}</tbody></table></section>
+{% endif %}
 {% endblock %}
