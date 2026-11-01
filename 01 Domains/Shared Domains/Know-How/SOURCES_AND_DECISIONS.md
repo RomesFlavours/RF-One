@@ -41,3 +41,19 @@ Tutte le righe hanno stato **APPROVATO-RICHIESTA**, fonte S1. I dettagli attuati
 ## Limite di completezza
 
 Il pacchetto copre tutti i temi esplicitati in S1. Non può attestare di contenere tutte le decisioni storiche di S2 finché il testo integrale non è disponibile. Nessuna proposta ulteriore viene presentata come approvata mediante gli assensi isolati.
+
+## S4 — Nuove decisioni nella conversazione corrente
+
+**Data:** 2026-11-01. Fonte primaria: messaggi dell'utente successivi alla consegna iniziale.
+
+| ID | Stato e contenuto | Riferimento |
+|---|---|---|
+| KH-16 | APPROVATO-RICHIESTA: motore generico comune; i domini specializzano contenuti e direzione | «facciamo subito il motore, che di per se è generico, poi i vari domini ne specializzano sia i contenuti che la direzione che deve prendere l'intervista» |
+| KH-17 | APPROVATO-RICHIESTA: interviste programmate e richieste dall'AI | Richiesta di avvio della ricerca sul motore di acquisizione |
+| KH-18 | APPROVATO-RICHIESTA: parlato e testo, non solo testo | «Io non voglio solo testo, serve anche parlato» |
+| KH-19 | APPROVATO-RICHIESTA: aggiornamento per S. e richiesta del suo parere | Richiesta di un documento sulla nuova architettura |
+| KH-20 | AUTORIZZAZIONE: documentare ed eseguire commit e push soltanto dei file creati/modificati per la consegna | «Documenta il tutto e facciamo un push dei soli file creati/ modificati» |
+
+Il report di Claude allegato dall'utente è fonte di confronto, non autorità per nuove policy. La successiva discussione conferma il motore comune e corregge la proposta solo testuale. Restano proposte: percorso tecnico `rfone_data_store/interviews/`, scelta dei framework, metodo semistrutturato specifico, continuità tra i canali e dettagli di implementazione. Il collegamento funzionale a Cognito è motivato dal contesto locale; non prova una scelta già approvata della topologia software.
+
+Il documento per S. è salvato in Markdown nel repository e non viene inviato. L'autorizzazione al push sostituisce il precedente rinvio per questa consegna, senza includere le modifiche preesistenti estranee. S4 non colma retroattivamente il testo mancante di S2.

@@ -1,6 +1,6 @@
 # RF1 Know-How — Shared Domain
 
-**Versione documentale:** 0.1 · **Data:** 2026-11-01
+**Versione documentale:** 0.2 · **Data:** 2026-11-01
 
 **Stato:** riferimento funzionale dei requisiti espliciti disponibili; ricostruzione storica incompleta. Non è una specifica tecnica approvata né una funzionalità dichiarata implementata.
 
@@ -16,10 +16,12 @@ Know-How è il nuovo Shared Domain richiesto per acquisire, collegare, valorizza
 | [Integrations](INTEGRATIONS.md) | Training, Selection, Management, RFCore e confini esistenti |
 | [Open Decisions](OPEN_DECISIONS.md) | Dettagli non definiti, proposte e lacune delle fonti |
 | [Sources and Decisions](SOURCES_AND_DECISIONS.md) | Provenienza, registro dei requisiti e criteri di autorità |
+| [Common Interview Service](../INTERVIEW_SERVICE_001.md) | Motore generico, specializzazione dei domini, voce e testo |
+| [Aggiornamento per S.](ARCHITECTURE_UPDATE_FOR_S.md) | Documento di confronto sulla nuova architettura |
 
 ## Come leggere lo stato delle affermazioni
 
-- **APPROVATO-RICHIESTA:** requisito esplicito del messaggio attuale dell'utente (S1). Non certifica i dettagli mancanti della conversazione precedente.
+- **APPROVATO-RICHIESTA:** requisito esplicito delle richieste dell'utente (S1 e S4). Non certifica i dettagli mancanti della conversazione precedente.
 - **CONTESTO-REPOSITORY:** definizione presente nelle fonti locali consultate; non è una nuova decisione Know-How.
 - **PROPOSTA:** articolazione suggerita per la successiva progettazione, non approvata.
 - **APERTO / FONTE-MANCANTE:** dettaglio non stabilito dalle fonti disponibili.
@@ -28,4 +30,4 @@ Il semplice «sì» privo della proposta cui risponde non approva un contenuto r
 
 ## Perimetro della consegna
 
-Questa cartella contiene solo documentazione del nuovo dominio. La richiesta non autorizza modifiche a indici esterni, altri Shared Domains, Legacy, RFCore o codice. Non stabilisce che Know-How sostituisca Operational Knowledge: tale rapporto resta aperto. Commit e push sono rinviati dall'utente.
+Questa cartella documenta Know-How; il servizio comune è descritto nel documento trasversale collegato sopra. Nessun altro dominio, Legacy, RFCore o codice viene modificato da questa consegna. Il rapporto con Operational Knowledge resta aperto. Dopo il precedente rinvio, l'utente ha autorizzato commit e push dei soli file creati o modificati per l'aggiornamento documentale corrente (S4).

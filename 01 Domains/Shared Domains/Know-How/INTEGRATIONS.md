@@ -17,7 +17,7 @@
 
 ## Interview engine comune
 
-**PROPOSTA:** trattare il motore comune come capacità condivisa, separando la conduzione dell'intervista dalla competenza specialistica del dominio utilizzatore. Il repository attribuisce già a Cognito funzioni conversazionali nel contesto Management/Selection; ciò non dimostra che l'utente abbia assegnato a Cognito il nuovo interview engine. Titolarità, riuso e confini restano aperti.
+**DECISIONE S4:** motore generico comune, con contenuti e direzione guidati dai domini; Know-How come prima applicazione. Voce e testo sono entrambi requisiti iniziali. Il [Common Interview Service](../INTERVIEW_SERVICE_001.md) descrive responsabilità e punti aperti. Il confine è coerente con Cognito, ma titolarità tecnica, collocazione del codice e tecnologia vocale restano proposte da confermare. Il servizio non sostituisce il ragionamento specialistico dei domini.
 
 ## Elaborazioni RF1 ed efficacia
 
@@ -25,4 +25,4 @@
 
 ## Confine tecnico
 
-Non sono definiti API, eventi, database, tecnologie di ricerca, modelli AI, code, interfacce o procedure di sincronizzazione. Gli accessi richiesti non vengono implementati con questa consegna documentale. I riferimenti esterni servono alla lettura; nessun file esterno alla cartella Know-How viene aggiornato.
+Non sono definiti API, eventi, database, tecnologie di ricerca, modelli AI, code, interfacce o procedure di sincronizzazione. Gli accessi richiesti non vengono implementati con questa consegna documentale. I riferimenti esterni servono alla lettura; l'aggiornamento S4 aggiunge il solo documento trasversale Common Interview Service fuori da Know-How, senza modificare altri domini o codice.

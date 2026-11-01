@@ -10,7 +10,9 @@ Non sono definiti l'elenco dei canali, i formati, le modalità di importazione n
 
 ## Interview engine comune
 
-È richiesto un interview engine comune per l'acquisizione della conoscenza. Non sono disponibili le decisioni storiche sulla sua struttura o sul suo rapporto tecnico con i motori già esistenti. Sequenze di domande, adattività, criteri di conclusione, iniziativa dell'intervista e gestione delle contraddizioni restano aperti. Non viene introdotto un motore autonomo specifico per ciascun dominio.
+**AGGIORNAMENTO S4:** il motore è generico e comune a RF1; i domini ne specializzano contenuti e direzione, anche per gli approfondimenti. Know-How è la prima applicazione concreta. Sono richieste interviste programmate e richieste dall'AI, con supporto sia al parlato sia al testo fin dall'inizio.
+
+Il [Common Interview Service](../INTERVIEW_SERVICE_001.md) distingue decisioni funzionali, comportamento proposto e dettagli ancora aperti. In particolare, percorso del codice, provider, tecnologia vocale, criteri esatti di completamento, autorizzazione al contatto e conservazione dell'audio non sono approvati qui. Non è prevista la duplicazione del motore per ogni dominio. La lacuna storica S2 resta aperta, ma non impedisce di registrare le nuove decisioni esplicite.
 
 ## Rete di conoscenze ed evidenze
 
