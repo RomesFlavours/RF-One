@@ -42,7 +42,7 @@ from rfone_data_store.selection import workspace_models as ps
 from rfone_data_store.selection.parsing.ai_client import AIProviderUnavailable
 from rfone_data_store.technical import smtp_email, sms_text
 
-from . import ai_adapter, engine, position_settings
+from . import ai_adapter, engine, position_settings, sp_queue
 from .routes import (
     CLIENT_NAME, ROLE_LABEL, ROLE_LABEL_EN, _book, _cfg, _conflicts, _raw_resume, _restaurant_id, _local, external_url,
 )
@@ -211,7 +211,9 @@ def job_page(token):
                     file_storage=file, channel=ps.PUBLIC_LINK, actor_id=None, actor_name=CANDIDATE_ACTOR,
                     declared={"name": candidate.full_name, "email": candidate.email,
                               "phone": (request.form.get("phone") or "").strip() or None},
-                    candidate_account_id=candidate.id)
+                    candidate_account_id=candidate.id,
+                    # CV Selection SP positions: no analysis while the application is in progress (see submit).
+                    analyze_after=not sp_queue.has_profile(position))
                 if result["status"] == "DUPLICATE":
                     return render_template("careers/message.html", position=position, candidate=candidate,
                                            title="We already have this résumé",
@@ -355,6 +357,7 @@ def candidate_interview(token):
                 db.commit()
                 if position.approved_snapshot_id:
                     engine.analyze(db, position, pc, actor_id=None, actor_name="System")
+                sp_queue.on_application_completed(db, position, pc)  # CV Selection SP: queued once, never raises
                 return redirect(url_for(".candidate_interview", token=token))
             index = request.form.get("index", type=int)
             text = (request.form.get("answer") or "").strip()

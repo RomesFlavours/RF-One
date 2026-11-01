@@ -14,7 +14,7 @@
   {% if search %}<a href="{{ url_for('positions.dashboard', stato=status_filter) }}">Clear search</a>{% endif %}
 </form>
 {% if rows %}<div class="card"><div class="table-scroll"><table class="selection-table">
-  <thead><tr><th>Position</th><th>Location</th><th>Manager</th><th>Applications</th><th>Hired / openings</th><th>Actions</th></tr></thead>
+  <thead><tr><th>Position</th><th>Location</th><th>Manager</th><th>CVs</th><th>Hired / openings</th><th>Actions</th></tr></thead>
   <tbody>{% for r in rows %}{% set p = r.position %}<tr>
     <td><a href="{{ url_for('positions.position_detail', position_id=p.id) }}"><b>{{ p.title }}</b></a><div class="small muted">{{ ROLE_LABEL[p.role_code] }}</div>
       <span class="badge {{ 'ok' if p.status == 'OPEN' else ('warn' if p.status == 'DRAFT' else '') }}">{{ POSITION_STATUS_LABELS[p.status] }}</span></td>
@@ -23,6 +23,11 @@
     <td>{{ r.hired }} / {{ p.headcount }}</td>
     <td><div class="selection-table-actions">
       <a class="btn btn-secondary btn-small" href="{{ url_for('positions.position_detail', position_id=p.id, tab='posizione' if p.status == 'DRAFT' else 'candidature') }}">{{ 'Complete and open' if p.status == 'DRAFT' else 'Manage' }}</a>
+      {% if actor.can_edit(p) %}<form method="post" enctype="multipart/form-data" action="{{ url_for('positions.sp_upload', position_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="btn btn-small" title="PDF, DOCX or TXT; several at once">Upload CVs<input type="file" name="cv" multiple accept=".pdf,.docx,.txt" hidden onchange="this.form.submit()"></label>
+      </form>{% endif %}
+      {% if p.role_code in SP_ROLES %}<a class="btn btn-secondary btn-small" href="{{ url_for('positions.sp_page', position_id=p.id) }}">CV ranking</a>{% endif %}
       {% if p.status == 'OPEN' %}<a class="small" href="{{ candidate_url(p) }}" target="_blank" rel="noopener">Application page</a>{% endif %}
       {% if actor.can_edit(p) and p.status in ['OPEN', 'CLOSED'] %}<form method="post" action="{{ url_for('positions.position_status', position_id=p.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ url_for('positions.dashboard', stato=status_filter, q=search) }}">

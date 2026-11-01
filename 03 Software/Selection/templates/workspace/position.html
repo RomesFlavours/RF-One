@@ -171,15 +171,10 @@
     {% else %}<p class="small"><span class="badge">Pending approval</span> The application page opens when you approve the position (“1 · Position” → “Approve and open position”).</p>{% endif %}
   </div>
   <div class="card">
-    <h3>Upload résumés</h3>
-    {% if can_edit %}
-    <form method="post" enctype="multipart/form-data" action="{{ url_for('positions.cv_upload', position_id=position.id) }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="file" name="cv" multiple accept=".pdf,.docx,.txt" required>
-      <p class="small muted">Upload multiple files (PDF, DOCX, TXT). Duplicates are detected.
-        {% if not ai_policy.cv_ai_authorized %}No résumé is sent to AI.{% endif %}</p>
-      <button class="btn">Upload</button>
-    </form>{% else %}<p class="muted small">Read only.</p>{% endif %}
+    <h3>Résumés</h3>
+    <p class="small muted">Add résumés with <b>Upload CVs</b> on this position's row of the
+      <a href="{{ url_for('positions.dashboard', stato=position.status) }}">positions page</a>: every upload adds only
+      new CVs, duplicates are detected.</p>
   </div>
 </div>
 <div class="card">
@@ -201,7 +196,7 @@
 {% elif tab == 'valutazione' %}
 {% if not position.approved_snapshot_id %}<div class="banner warn">Approve the position to start evaluation.</div>{% endif %}
 {% if not cards %}
-<div class="card"><p>No applications. <a href="{{ url_for('positions.position_detail', position_id=position.id, tab='candidature') }}">Upload résumés or share the application page</a>.</p></div>
+<div class="card"><p>No applications. Use <a href="{{ url_for('positions.dashboard', stato=position.status) }}">Upload CVs on the positions page</a> or <a href="{{ url_for('positions.position_detail', position_id=position.id, tab='candidature') }}">share the application page</a>.</p></div>
 {% else %}
 <form method="get" action="{{ url_for('positions.compare', position_id=position.id) }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

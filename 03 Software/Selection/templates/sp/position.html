@@ -1,0 +1,156 @@
+{% extends "sp/base.html" %}
+{% block title %}{{ p.title }} · CV ranking{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="{{ url_for('positions.dashboard') }}">Selection</a> › <a href="{{ url_for('positions.position_detail', position_id=p.id) }}">{{ p.title }}</a> › CV ranking</div>{% endblock %}
+{% block content %}
+{% set approved = sp.approved %}
+{% set editable = can_edit and ((not approved) or sp.editing) %}
+<h1>{{ p.title }}</h1>
+<div class="muted">{{ p.location_label }} · profile {{ sp.requirements_draft[0].source if sp.requirements_draft else '' }}
+  {% if approved %} · requirements v{{ approved.version }} approved {{ local_time(approved.approved_at, p.timezone) }}{% endif %}</div>
+
+<!-- 1. Requirements -->
+<div class="card" id="requirements">
+  <h2><span class="step">1</span>Requirements {% if (not approved) or sp.editing %}<span class="badge gC">Draft: review and approve</span>{% else %}<span class="badge gA">Approved v{{ approved.version }}</span>{% endif %}</h2>
+  <form method="post" action="{{ url_for('positions.sp_requirements', position_id=p.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <table>
+    <tr><th>Requirement</th><th class="hide-sm">What the CV should show</th><th>Criticality</th><th>Weight</th><th></th></tr>
+    {% for r in (sp.requirements_draft if ((not approved) or sp.editing) else approved.requirements) %}
+    <tr>
+      <td><b>{{ r.name }}</b>{% if r.computed %}<div class="small muted">Computed from the verified CV dates</div>{% endif %}</td>
+      <td class="hide-sm small">{{ r.look_for }}</td>
+      <td>{% if editable %}<select name="crit_{{ r.id }}">{% for k, v in CRIT.items() %}<option value="{{ k }}" {% if r.criticality == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select>{% else %}{{ CRIT[r.criticality] }}{% endif %}</td>
+      <td>{% if editable %}<input name="weight_{{ r.id }}" value="{{ r.weight }}" size="3">{% else %}{{ r.weight }}{% endif %}</td>
+      <td>{% if editable and r.id.startswith('custom') %}<button class="tiny light" name="remove" value="{{ r.id }}">Remove</button>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    {% if editable %}
+    <tr>
+      <td><input name="new_name" placeholder="Add a requirement" size="26"></td>
+      <td class="hide-sm"><input name="new_look_for" placeholder="What the CV should show" size="40"></td>
+      <td><select name="new_crit">{% for k, v in CRIT.items() %}<option value="{{ k }}" {% if k == 'PREFERRED' %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></td>
+      <td><input name="new_weight" value="5" size="3"></td><td></td>
+    </tr>
+    {% endif %}
+  </table>
+  <p class="small muted">Profile standard from Shelbi's Server / Line Cook model (weights proposed, to be calibrated).
+    Must-haves define the ranking groups; weights order candidates inside a group. Residence and commute are not used.</p>
+  {% if editable %}
+    <button class="light" name="action" value="save">Save draft</button>
+    <button name="action" value="approve">Approve requirements</button>
+  {% elif can_edit %}
+    <button class="light" name="action" value="edit">Edit requirements (creates a new version)</button>
+  {% endif %}
+  </form>
+</div>
+
+<!-- 2. CVs (uploaded from the Selection positions page) -->
+<div class="card">
+  <h2><span class="step">2</span>CVs <span class="small muted">({{ cands|length }} in this position)</span></h2>
+  {% if last_upload %}
+  <p class="small"><b>Last upload (#{{ last_upload.n }}, {{ local_time(last_upload.at, p.timezone) }}, {{ last_upload.by }}):</b>
+    {{ last_upload.received }} received · <b>{{ last_upload.imported|length }} new imported</b> ·
+    {{ last_upload.exact_duplicates|length }} exact duplicate(s) ignored ·
+    <span class="{{ 'verify' if last_upload.possible_duplicates else '' }}">{{ last_upload.possible_duplicates|length }} possible duplicate(s) to verify</span>
+    {% if last_upload.failed %} · <span class="flag">{{ last_upload.failed|length }} not imported</span>{% endif %}</p>
+  {% for d in last_upload.possible_duplicates %}<div class="small verify">Possible duplicate — {{ d.filename }}: {{ d.note }}</div>{% endfor %}
+  {% for d in last_upload.exact_duplicates %}<div class="small muted">Exact duplicate ignored — {{ d }}</div>{% endfor %}
+  {% for d in last_upload.failed %}<div class="small flag">Not imported — {{ d.filename }}: {{ d.message }}</div>{% endfor %}
+  {% endif %}
+  <p class="small muted">Add CVs with <b>Upload CVs</b> on the <a href="{{ url_for('positions.dashboard') }}">Selection positions page</a>:
+    every upload adds only new CVs; earlier candidates and analyses are kept.</p>
+  {% if cands %}
+  <details {% if running or to_analyze %}open{% endif %}>
+    <summary class="small">Uploads and analysis status</summary>
+    {% if sp.uploads %}<table class="small">
+      <tr><th>Upload</th><th>When</th><th>Received</th><th>New</th><th>Exact duplicates</th><th>Possible duplicates</th></tr>
+      {% for u in sp.uploads|reverse %}<tr><td>#{{ u.n }}</td><td>{{ local_time(u.at, p.timezone) }} · {{ u.by }}</td><td>{{ u.received }}</td><td>{{ u.imported|length }}</td><td>{{ u.exact_duplicates|length }}</td><td>{{ u.possible_duplicates|length }}</td></tr>{% endfor %}
+    </table>{% endif %}
+    <table class="small" style="margin-top:8px">
+      {% for c in cands %}
+      <tr><td>{{ c.filename }}{% if c.new %} <span class="badge gB">NEW</span>{% endif %}</td>
+        <td class="muted">{% if c.batch %}upload #{{ c.batch }}{% else %}{{ c.channel|replace('_', ' ')|lower }}{% endif %}</td>
+        <td>{% if c.status == 'DONE' %}<span class="s-SHOWN">Analyzed</span>{% elif c.status == 'ERROR' %}<span class="flag">Error: {{ c.error }}</span>{% elif c.status == 'ANALYZING' %}Analyzing…{% elif c.status == 'IN_PROGRESS' %}<span class="muted">Application in progress: analyzed when the candidate completes it</span>{% elif c.status == 'OUTDATED' %}<span class="verify">Analyzed with requirements v{{ c.analyzed_version }}: update recommended</span>{% else %}Waiting for Analyze{% endif %}</td>
+        <td class="muted">{% if c.duplicate_note %}<span class="verify">{{ c.duplicate_note }}</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+  </details>
+  {% endif %}
+</div>
+
+<!-- 3. Analyze -->
+<div class="card">
+  <h2><span class="step">3</span>Analyze</h2>
+  {% if not approved or sp.editing %}
+    <p class="muted">Approve the requirements first.</p>
+  {% elif not ai_allowed %}
+    <p class="verify">AI résumé evaluation is off for this position. Turn on “AI résumé and answer evaluation” in the
+      <a href="{{ url_for('positions.position_detail', position_id=p.id, tab='configuration') }}">position's Configuration</a>.</p>
+  {% else %}
+  {% if outdated %}<p class="verify small">{{ outdated }} analysis(es) used an earlier version of the requirements and may need an update: Analyze updates them.</p>{% endif %}
+  {% if can_edit %}
+  <form method="post" action="{{ url_for('positions.sp_analyze', position_id=p.id) }}" style="display:inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button {% if running or not to_analyze %}disabled{% endif %}>Analyze{% if to_analyze %} {{ to_analyze }} CV(s){% endif %}</button>
+  </form>
+  <form method="post" action="{{ url_for('positions.sp_analyze', position_id=p.id) }}" style="display:inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="all" value="1"><button class="light" {% if running %}disabled{% endif %}>Re-analyze all</button>
+  </form>
+  {% endif %}
+  <span id="progress" class="small muted">{% if running %}Analyzing {{ running }} CV(s)…{% elif not to_analyze %}Every CV is analyzed with the approved requirements.{% endif %}</span>
+  <p class="small muted">One AI reading per CV (AWS Bedrock), checked by code: quotes and dates must be in the CV;
+    durations, gaps and stability are computed; skills only listed count as claims. New uploads are analyzed
+    automatically; earlier analyses are reused while the requirements do not change.</p>
+  {% endif %}
+</div>
+
+<!-- 4. Ranking -->
+<div class="card" id="ranking">
+  <h2><span class="step">4</span>Ranking {% if all_rows %}<span class="small muted">({{ all_rows|length }} candidates)</span>{% endif %}
+    {% if sp.manual_order and can_edit %}<form method="post" action="{{ url_for('positions.sp_move', position_id=p.id) }}" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="reset" value="1"><button class="tiny light">Back to the proposed order</button></form>{% endif %}</h2>
+  {% if all_rows %}<p class="small">
+    {% if view == 'all' %}<b>All Candidates</b>{% else %}<a href="{{ url_for('positions.sp_page', position_id=p.id) }}#ranking">All Candidates</a>{% endif %} |
+    {% if view == 'last' %}<b>Last Upload</b>{% else %}<a href="{{ url_for('positions.sp_page', position_id=p.id, view='last') }}#ranking">Last Upload</a>{% endif %}
+    {% if last_added %}<span class="muted"> (upload #{{ last_added.n }}: {{ last_added.imported|length }} new{% if last_upload.n != last_added.n %}; upload #{{ last_upload.n }} added no new CV: {{ last_upload.exact_duplicates|length }} exact duplicate(s){% endif %})</span>{% endif %}</p>{% endif %}
+  {% if not rows %}<p class="muted">{% if all_rows and view == 'last' %}No analyzed candidate from the last upload yet.{% else %}No analyzed CV yet.{% endif %}</p>{% else %}
+  <p class="small muted">Preselection priority from the approved requirements: group first (A every must-have shown · B partly shown ·
+    C must-have not documented, to verify · D documented concern), then the documented evidence weighted by the requirements.
+    Not a probability of success. Nobody is excluded. Use ▲▼ to change the order.</p>
+  <table>
+    <tr><th>#</th><th>Candidate</th><th>Relevant experience</th><th>Demonstrated competences</th><th>Red flags</th><th>To verify</th><th>Why here</th><th></th></tr>
+    {% for r in rows %}{% set a = r.analysis %}
+    <tr>
+      <td><div class="rank">{{ r.rank }}</div>
+        {% if can_edit %}<form method="post" action="{{ url_for('positions.sp_move', position_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="cid" value="{{ r.id }}"><input type="hidden" name="view" value="{{ view }}">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form>{% endif %}</td>
+      <td><b><a href="{{ url_for('positions.sp_candidate', position_id=p.id, pc_id=r.id) }}">{{ a.full_name or r.name or r.filename }}</a></b>{% if r.new %} <span class="badge gB">NEW</span>{% endif %}<br>
+        <span class="badge g{{ r.assessment.group }}">{{ r.assessment.group }} · {{ r.assessment.group_label.split(':')[0] }}</span>
+        {% if r.rank_moved %}<div class="small verify">Moved by the manager (proposed #{{ r.proposed_rank }})</div>{% endif %}
+        {% if r.status == 'OUTDATED' %}<div class="small verify">Analyzed with requirements v{{ r.analyzed_version }}: update recommended</div>{% endif %}
+        {% if r.duplicate_note %}<div class="small verify">{{ r.duplicate_note }}</div>{% endif %}</td>
+      <td class="small"><ul class="tight">{% for j in a.jobs if j.relevant %}{% if loop.index <= 3 %}<li>{{ j.title }} · {{ j.employer }}<span class="muted"> · {{ j.duration_label or 'dates to verify' }}</span></li>{% endif %}{% else %}<li class="muted">None documented</li>{% endfor %}</ul></td>
+      <td class="small">{% set demo = a.competences|rejectattr('level', 'equalto', 'claimed')|list %}{% set claimed = a.competences|selectattr('level', 'equalto', 'claimed')|list %}
+        {% for x in demo[:5] %}{{ x.name }} <span class="muted">({{ x.level }})</span>{% if not loop.last %}, {% endif %}{% endfor %}
+        {% if claimed %}<div class="muted">Claimed only: {{ claimed|map(attribute='name')|join(', ') }}</div>{% endif %}</td>
+      <td class="small flag"><ul class="tight">{% for f in a.flags[:3] %}<li>{{ f.flag }}</li>{% endfor %}</ul>{% if a.flags|length > 3 %}<span class="muted">+{{ a.flags|length - 3 }} more</span>{% endif %}</td>
+      <td class="small verify"><ul class="tight">{% for u in a.unknowns[:3] %}<li>{{ u }}</li>{% endfor %}</ul>{% if a.unknowns|length > 3 %}<span class="muted">+{{ a.unknowns|length - 3 }} more</span>{% endif %}</td>
+      <td class="small">{{ summary(r) }}{% if r.why_ahead %}<div class="why">{{ r.why_ahead }}</div>{% endif %}</td>
+      <td class="small"><a href="{{ url_for('positions.sp_candidate', position_id=p.id, pc_id=r.id) }}">Details</a><br><a href="{{ url_for('positions.candidate_original', position_id=p.id, pc_id=r.id) }}" target="_blank">CV</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+{% if running %}
+<script>
+  (function poll() {
+    fetch("{{ url_for('positions.sp_status', position_id=p.id) }}").then(r => r.json()).then(s => {
+      const busy = s.ANALYZING || 0;
+      document.getElementById("progress").textContent = busy ? `Analyzing… ${s.DONE || 0} done, ${busy} to go` : "Done";
+      if (busy) setTimeout(poll, 2000); else location.reload();
+    }).catch(() => setTimeout(poll, 4000));
+  })();
+</script>
+{% endif %}
+{% endblock %}

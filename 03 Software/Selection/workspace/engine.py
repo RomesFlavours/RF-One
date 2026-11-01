@@ -59,9 +59,18 @@ DEFAULT_STAGES = [rm.RESUME, rm.PHONE_INTERVIEW, rm.IN_PERSON_INTERVIEW]
 
 def import_cv(session, *, documents, restaurant_id: int, position: ps.Position, file_storage, channel: str,
               actor_id: int | None, actor_name: str, declared: dict | None = None,
-              candidate_account_id: int | None = None) -> dict:
-    """One file -> one PositionCandidate. Never raises; returns a result dict."""
-    position_settings.bind(position)
+              candidate_account_id: int | None = None, analyze_after: bool = True,
+              ai_reading: bool = True) -> dict:
+    """One file -> one PositionCandidate. Never raises; returns a result dict.
+
+    CV Selection SP imports with `ai_reading=False, analyze_after=False`: the rule-based reading still gives the
+    candidate record and the duplicate checks, and SP's single AI reading replaces the AI parsing and this
+    module's analysis, so a CV is never sent to Bedrock more than once."""
+    policy = position_settings.bind(position)
+    if not ai_reading:
+        ai_adapter.bind_policy(ai_adapter.AIPolicy(
+            ai_enabled=policy.ai_enabled, cv_ai_authorized=False,
+            features={k: (False if k.startswith("cv_") else v) for k, v in policy.features.items()}))
     filename = file_storage.filename or "(unnamed file)"
     ext = os.path.splitext(filename)[1].lower()
     if ext not in SUPPORTED_EXTENSIONS:
@@ -112,7 +121,7 @@ def import_cv(session, *, documents, restaurant_id: int, position: ps.Position, 
                  detail=f"Aggiunto {candidate.full_name or filename} ({filename})", actor_id=actor_id,
                  actor_name=actor_name)
     session.commit()
-    if position.approved_snapshot_id:
+    if analyze_after and position.approved_snapshot_id:
         analyze(session, position, pc, actor_id=actor_id, actor_name=actor_name)
     return {"filename": filename, "status": "OK", "position_candidate_id": pc.id,
             "name": candidate.full_name, "message": note, "pc": pc}

@@ -54,6 +54,46 @@ Applications, Evaluation, Interviews, Decisions** (`workspace/routes.py`, templa
   http://127.0.0.1:5096 in one process, with data in `%LOCALAPPDATA%\RF-One\Selection` (outside OneDrive and Git).
 - **Test:** `python test_selection_workspace_http.py` (synthetic data, throwaway database, no email or AI call).
 
+## CV analysis and ranking — CV Selection SP (SELECTION_SP_INTEGRATION_001, 2026-11-01)
+
+Shelbi's and Pino's CV engines consolidated into one analysis component, for positions whose role has a profile
+(Server, Line Cook — `workspace/position_profiles.py`, from Shelbi's branch, unchanged).
+
+- **Upload:** the **Upload CVs** button on the position's row of the positions page (one place only). Every upload
+  adds only new CVs to the same position: Selection's own import (`engine.import_cv`) skips an **exact duplicate**
+  (same content hash already linked to the position), imports a **possible duplicate** (same email or phone, or a
+  similar name — `engine.duplicate_notes`) and flags it for the manager without merging anyone, and imports new
+  candidates. Earlier candidates are never removed or replaced. The summary (received, new, exact duplicates,
+  possible duplicates) is shown after each upload and kept in the upload history.
+- **One AI reading per CV:** for profile roles the import uses the rule-based reading only and does not run this
+  workspace's analysis (`import_cv(..., ai_reading=False, analyze_after=False)`); SP's single reading
+  (`workspace/sp/analysis.py`, through `ai_adapter._transport` and only when the position allows "AI résumé and
+  answer evaluation") is the only Bedrock call. New uploads are analyzed automatically; a CV already analyzed with
+  the approved requirement version is never sent again. Code verifies quotes and dates and computes durations,
+  gaps and stability (`workspace/sp/timeline.py`).
+- **Ranking** (`/selection/posizioni/<id>/sp`, `workspace/sp/ranking.py`): groups A–D from the approved must-haves,
+  then documented evidence weighted by the approved weights; a motivated preselection priority, not a prediction;
+  nobody excluded; manual order (▲▼). **NEW** marks the candidates of the last upload that added candidates;
+  filter **All Candidates | Last Upload**. When the requirements are approved again, earlier analyses stay in the
+  ranking marked "update recommended" until Analyze refreshes them.
+- **Applications from the application page / RMAED** enter SP automatically when the candidate **completes** the
+  application (`careers.candidate_interview` → `sp_queue.on_application_completed`); an application in progress is
+  never analyzed (status "IN_PROGRESS"). Identification, OTP, the interview questions, the saved answers and this
+  workspace's evaluation on completion are unchanged.
+- **Durable queue** (`workspace/sp_queue.py`): jobs are `selection_workspace_proposals` rows with source `SP_JOB`,
+  claimed by a conditional UPDATE with a 5-minute lease (at most 3 attempts). Workers are threads started by any
+  request to Selection, including the per-minute mail-outbox claim of the existing RMAED mail worker
+  (EventBridge `rate(1 minute)`), so analysis continues or resumes with every page closed and after a restart. A
+  job is skipped when its candidate is already analyzed with that version or an older job for the same candidate
+  exists; the result and the job's closing are one transaction — no duplicate Bedrock call.
+- **Storage, no new table:** SP's requirement versions, manual order and upload batches in the position's context
+  document (`organization_context_json`, key `sp`); each analysis is a `selection_workspace_proposals` row with
+  source `SP` (newest per candidate current). Interviews, appointments, decisions and RMAED are unchanged; the
+  Applications tab no longer has its own upload form (the import service behind it is unchanged).
+- **Routes:** `workspace/sp_routes.py`, on the `positions` blueprint (RF-One login, permissions and CSRF).
+- **Tests:** `python test_sp_integration_http.py` (successive uploads, duplicates, NEW / Last Upload, no repeated
+  AI calls, requirement change; fake AI) and `python test_sp_engine.py` (dates, quotes, claims, flags, ranking).
+
 ---
 
 A small local web app to screen résumés for Rome's Flavours' Server role: upload one or many PDFs at once, each résumé is parsed independently into a structured Candidate CV Profile, and the candidate detail page shows Facts, Derived Information, Flags/Questions and Indicators as four clearly separate areas — never one combined score.
