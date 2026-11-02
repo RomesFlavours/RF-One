@@ -155,6 +155,35 @@ def _blocking_final_run(
     ).first()
 
 
+def identity_hold_blockers(
+    session: Session, run: m.TipDistributionCalculationRun,
+) -> list[str]:
+    """EMPLOYEE_DIRECTORY_RECORD_HOLD_001 — Business Dates of this run whose
+    Clover work still waits for an unconfirmed employee identity. Only those
+    days are refused; every other day finalizes normally."""
+    from ..technical.connectors.clover.identity_holds import unattributed_work
+
+    if run.first_business_date is None or run.last_business_date is None:
+        return []
+    location_ids = list(session.scalars(select(m.RestaurantLocation.location_id).where(
+        m.RestaurantLocation.restaurant_id == run.restaurant_id)))
+    location, config_reason = engine.require_location_business_day_config(session, run.restaurant_id)
+    window = (engine.business_date_window_utc(location, run.first_business_date, run.last_business_date)
+              if not config_reason else (None, None))
+    held = unattributed_work(session, location_ids=location_ids, first_business_date=run.first_business_date,
+                             last_business_date=run.last_business_date, window_start=window[0],
+                             window_end=window[1])
+    if not any(held[key] for key in ("orders", "payments", "refunds", "shifts")):
+        return []
+    days = ", ".join(held["business_dates"]) or f"{run.first_business_date} to {run.last_business_date}"
+    return [
+        f"Business Dates {days} still have Clover work waiting for an employee identity to be confirmed "
+        f"in Employee Directory (orders {held['orders']}, payments {held['payments']}, refunds "
+        f"{held['refunds']}, shifts {held['shifts']}). Tips would allocate them to nobody, so these days "
+        "cannot be final yet. Confirm the identity; the work is attributed automatically."
+    ]
+
+
 def finalization_blockers(
     session: Session, run: m.TipDistributionCalculationRun,
 ) -> list[str]:
@@ -187,6 +216,7 @@ def finalization_blockers(
             "choose one. Both runs are kept exactly as they are. This needs a Product Owner "
             "decision on supersession before a period can be re-finalized."
         )
+    blockers.extend(identity_hold_blockers(session, run))
     return blockers
 
 

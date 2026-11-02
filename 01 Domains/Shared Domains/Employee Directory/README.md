@@ -1,6 +1,6 @@
 # Employee Directory
 
-Status: approved specification, revised by Product Owner on 2026-10-29.
+Status: approved specification, revised by Product Owner on 2026-10-29 and 2026-11-02 (record-level identity holds).
 
 The shared base directory is included in every RF-One Domain combination.
 RF-One owns the reference person identity; a POS is an observation source.
@@ -22,6 +22,17 @@ An authorized human must link it to an RF-One person or explicitly approve a new
 person. RF-One people can be created directly with no POS, location or employment.
 Existing confirmed IDs and work history remain unchanged. Historical unknown
 references follow the same approval boundary; they cannot silently create people.
+
+A pending identity holds only the records that depend on that person, never a
+Location's whole acquisition (Product Owner decision, 2026-11-02). Orders,
+Payments and Refunds are still acquired, keeping the original Clover employee ID
+and the raw payload, with no RF-One person attributed. A Shift requires a person,
+so it waits in the raw Provider Mirror. When a human confirms the identity, the
+held records are attributed through the Clover ID: only empty attributions are
+filled, repeating it changes nothing, and the counts are recorded as a
+`REATTRIBUTE` directory event. Tips refuses to finalize only the Business Dates
+that still have held attributions. Every cycle logs the held records and why.
+Runtime: `technical/connectors/clover/identity_holds.py`.
 
 Multiple source accounts, including at one merchant, may explicitly refer to one
 person. Complete source reads drive current duplicate-account anomalies. Removed
@@ -75,7 +86,8 @@ table; other accounts are granted explicitly in Accounts, never by an import.
 The same import service is called from automatic Live Sync and manual acquisition.
 The existing active AWS Correction Sync poller also refreshes the directory every
 cycle (~60 seconds), under the existing Location lock. A directory read failure
-preserves source state and leaves work cursors unchanged for retry.
+preserves source state and leaves work cursors unchanged for retry; a pending
+identity does not (see Identity and ingestion).
 WP uses the existing configured connection. MD remains explicitly not configured
 until its canonical Location/merchant and dedicated credentials are supplied;
 it does not prevent WP imports. No merchant ID, location or credential is invented.
