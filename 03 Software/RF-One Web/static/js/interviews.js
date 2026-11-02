@@ -128,6 +128,10 @@
           method: 'POST', body: data, headers: { Accept: 'application/json' }
         });
         if (!response.headers.get('content-type')?.includes('application/json')) {
+          // A gateway timeout or restart answers with an HTML page, not our JSON.
+          if ([502, 503, 504].includes(response.status)) {
+            throw new Error('The AI took too long to answer. Please try again; your unsent answer is still here.');
+          }
           throw new Error('Your session is unavailable. Reload the page or sign in again; keep a copy of your unsent answer.');
         }
         const result = await response.json();

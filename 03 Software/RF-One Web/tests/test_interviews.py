@@ -187,6 +187,18 @@ class InterviewTests(unittest.TestCase):
             csrf_token="test-csrf", action="answer", revision=1, message="Risposta da conservare"), base_url="https://localhost")
         self.assertIn("Risposta da conservare", response.text)
 
+    def test_ai_timeout_is_a_clean_try_again(self):
+        row = self.create(); self.login(self.person)
+        self.post(row, "start", 0)
+        def timed_out(payload):
+            raise ProviderError("The AI took too long to answer. Please try again; the saved conversation has not changed.")
+        web.app.config["INTERVIEW_PROVIDER"] = timed_out
+        response = self.post(row, "answer", 1, message="Risposta lenta")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("try again", response.json["error"])
+        self.db.refresh(row)
+        self.assertEqual((row.revision, len(json.loads(row.transcript))), (1, 1))
+
     def test_stale_turn_and_completed_session_are_immutable(self):
         row = self.create(); self.login(self.person)
         self.assertEqual(self.post(row, "start", 0).status_code, 200)
@@ -346,6 +358,49 @@ class AIClientLimitTests(unittest.TestCase):
         self.assertEqual(self.ai._generate_json_bedrock("{}"), {})
         self.assertEqual(self.sent()["anthropic"]["max_tokens"], self.ai.MAX_OUTPUT_TOKENS)
         self.assertEqual(self.sent()["bedrock"]["inferenceConfig"]["maxTokens"], self.ai.MAX_OUTPUT_TOKENS)
+
+    def test_timeout_is_opt_in_and_bounds_each_provider(self):
+        self.ai._generate_json_anthropic("{}")
+        self.ai._generate_json_bedrock("{}")
+        self.assertNotIn("timeout", self.sent()["anthropic-client"])
+        self.assertNotIn("config", self.sent()["bedrock-client"])
+        self.calls.clear()
+        self.ai._generate_json_anthropic("{}", timeout=75)
+        self.ai._generate_json_bedrock("{}", timeout=75)
+        self.assertEqual(self.sent()["anthropic-client"]["timeout"], 75)
+        self.assertEqual(self.sent()["anthropic-client"]["max_retries"], 0)
+        config = self.sent()["bedrock-client"]["config"]
+        self.assertEqual((config.read_timeout, config.connect_timeout), (75, 10))
+        self.assertEqual(config.retries["max_attempts"], 1)
+
+    def test_bedrock_timeout_becomes_try_again(self):
+        from botocore.exceptions import ReadTimeoutError
+        from rfone_data_store.interviews import provider as interview_provider
+
+        def slow(name, **kwargs):
+            self.calls.append(("bedrock-client", kwargs))
+            class Slow:
+                def converse(self, **kwargs):
+                    raise ReadTimeoutError(endpoint_url="https://bedrock.invalid")
+            return Slow()
+
+        sys.modules["boto3"].client = slow
+        with mock.patch.dict(os.environ, RFONE_AI_PROVIDER="BEDROCK"):
+            with self.assertRaises(self.ai.AIProviderTimeout):
+                self.ai.generate_json("{}", timeout=75)
+            with self.assertRaises(ProviderError) as caught:
+                interview_provider.generate(dict(operation="question", transcript=[]))
+        self.assertIn("took too long", str(caught.exception))
+        self.assertIn("try again", str(caught.exception))
+        self.assertEqual(self.sent()["bedrock-client"]["config"].read_timeout, interview_provider.AI_TIMEOUT_SECONDS)
+
+    def test_web_image_threads_outlast_the_ai_timeout(self):
+        from rfone_data_store.interviews.provider import AI_TIMEOUT_SECONDS
+        dockerfile = (WEB.parent / "Infrastructure/deploy/rfone-web/Dockerfile").read_text(encoding="utf-8")
+        command = json.loads(next(line for line in dockerfile.splitlines() if line.startswith("CMD "))[4:])
+        options = dict(zip(command[1::2], command[2::2]))
+        self.assertEqual((options["--workers"], options["--threads"], options["--worker-class"]), ("2", "8", "gthread"))
+        self.assertGreater(int(options["--timeout"]), AI_TIMEOUT_SECONDS + 10)
 
 
 if __name__ == "__main__":

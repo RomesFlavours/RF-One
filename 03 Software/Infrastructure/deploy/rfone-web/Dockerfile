@@ -21,4 +21,7 @@ WORKDIR "/app/RF-One Web"
 EXPOSE 8080
 ENV PYTHONUNBUFFERED=1
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "60", "app:app"]
+# gthread: a worker waiting on the AI (up to 75 s per interview turn) still
+# serves other requests on its remaining threads. The 120 s timeout stays above
+# that AI limit so a slow answer ends as a clean "try again", not a killed worker.
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "8", "--worker-class", "gthread", "--timeout", "120", "app:app"]

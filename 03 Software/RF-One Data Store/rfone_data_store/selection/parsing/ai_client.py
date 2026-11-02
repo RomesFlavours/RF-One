@@ -33,6 +33,11 @@ class AIProviderUnavailable(Exception):
     """No usable AI provider is configured/reachable right now."""
 
 
+class AIProviderTimeout(AIProviderUnavailable):
+    """The provider did not answer within the caller's `timeout`. A subclass,
+    so every existing `except AIProviderUnavailable` still handles it."""
+
+
 def _read_env_or_dotenv(var_name: str) -> str | None:
     """Generic version of this module's original `.env` resolution
     convention (previously inlined in `_anthropic_api_key` alone) — env var
@@ -89,7 +94,7 @@ def _strip_markdown_json_fence(text: str) -> str:
     return stripped
 
 
-def _generate_json_anthropic(prompt: str) -> dict:
+def _generate_json_anthropic(prompt: str, timeout: float | None = None) -> dict:
     api_key = _anthropic_api_key()
     if not api_key:
         raise AIProviderUnavailable("No ANTHROPIC_API_KEY configured.")
@@ -99,8 +104,11 @@ def _generate_json_anthropic(prompt: str) -> dict:
     except ImportError as exc:
         raise AIProviderUnavailable("The 'anthropic' package is not installed.") from exc
 
+    # Without `timeout` the SDK's own defaults apply, as before. With it, one
+    # attempt only: a retry after a timeout would outlast the web request.
+    limits = {} if timeout is None else {"timeout": timeout, "max_retries": 0}
     try:
-        client = anthropic.Anthropic(api_key=api_key)
+        client = anthropic.Anthropic(api_key=api_key, **limits)
         response = client.messages.create(
             model=ANTHROPIC_MODEL,
             max_tokens=MAX_OUTPUT_TOKENS,
@@ -109,10 +117,12 @@ def _generate_json_anthropic(prompt: str) -> dict:
         text = "".join(block.text for block in response.content if getattr(block, "type", None) == "text")
         return json.loads(_strip_markdown_json_fence(text))
     except Exception as exc:
+        if isinstance(exc, getattr(anthropic, "APITimeoutError", ())):
+            raise AIProviderTimeout(f"AI provider did not answer within {timeout} s.") from exc
         raise AIProviderUnavailable(f"AI provider call failed: {exc}") from exc
 
 
-def _generate_json_bedrock(prompt: str) -> dict:
+def _generate_json_bedrock(prompt: str, timeout: float | None = None) -> dict:
     """AWS Bedrock Runtime, behind the exact same `generate_json` contract
     (RFONE_AI_PROVIDER_BEDROCK_001). Deliberately introduces NO new AWS
     credential mechanism: `boto3.client("bedrock-runtime")` with no explicit
@@ -127,29 +137,38 @@ def _generate_json_bedrock(prompt: str) -> dict:
     `RFONE_BEDROCK_MODEL_ID` must name a model this AWS account actually has
     Bedrock access to — never guessed or hardcoded here; the caller
     determines it once (e.g. via `aws bedrock list-foundation-models`) and
-    configures it."""
+    configures it.
+
+    `timeout`, when given, bounds the wait for the answer (read timeout) and
+    allows one attempt only, so the caller gets `AIProviderTimeout` instead of
+    a hung request; without it boto3's own defaults apply, as before."""
     model_id = _read_env_or_dotenv("RFONE_BEDROCK_MODEL_ID")
     if not model_id:
         raise AIProviderUnavailable("No RFONE_BEDROCK_MODEL_ID configured.")
 
     try:
         import boto3
-        from botocore.exceptions import BotoCoreError, ClientError
+        from botocore.config import Config
+        from botocore.exceptions import BotoCoreError, ClientError, ConnectTimeoutError, ReadTimeoutError
     except ImportError as exc:
         raise AIProviderUnavailable("The 'boto3' package is not installed.") from exc
 
+    limits = {} if timeout is None else {"config": Config(
+        read_timeout=timeout, connect_timeout=10, retries={"max_attempts": 1, "mode": "standard"})}
     try:
         # `AWS_REGION` follows this module's own env-var/.env convention
         # (RF-One's `.env` is never auto-loaded into the OS process
         # environment, so boto3 cannot see it on its own) — passed through
         # explicitly; `None` falls back to boto3's own standard region
         # resolution (`~/.aws/config`, etc.) unchanged.
-        client = boto3.client("bedrock-runtime", region_name=_read_env_or_dotenv("AWS_REGION"))
+        client = boto3.client("bedrock-runtime", region_name=_read_env_or_dotenv("AWS_REGION"), **limits)
         response = client.converse(
             modelId=model_id,
             messages=[{"role": "user", "content": [{"text": prompt}]}],
             inferenceConfig={"maxTokens": MAX_OUTPUT_TOKENS, "temperature": 0},
         )
+    except (ReadTimeoutError, ConnectTimeoutError) as exc:
+        raise AIProviderTimeout(f"AWS Bedrock did not answer within {timeout} s.") from exc
     except (BotoCoreError, ClientError) as exc:
         raise AIProviderUnavailable(f"AWS Bedrock call failed: {exc}") from exc
 
@@ -179,17 +198,19 @@ def active_provider_description() -> tuple[str, str | None]:
     return provider, None
 
 
-def generate_json(prompt: str) -> dict:
+def generate_json(prompt: str, *, timeout: float | None = None) -> dict:
     """Call the configured LLM provider and parse its response as JSON.
     Raises `AIProviderUnavailable` if no provider is configured/reachable —
     callers must treat that as "fall back to demo," never as an application
     error surfaced to the user. Which provider actually runs is controlled
     entirely by `RFONE_AI_PROVIDER` (default: Anthropic) — this function's
-    signature and behavior are identical regardless."""
+    signature and behavior are identical regardless. `timeout` (seconds) is
+    for interactive callers that must fail cleanly rather than wait: on expiry
+    it raises `AIProviderTimeout`, a kind of `AIProviderUnavailable`."""
     provider = _active_provider()
     impl = _PROVIDERS.get(provider)
     if impl is None:
         raise AIProviderUnavailable(
             f"Unknown RFONE_AI_PROVIDER {provider!r} — expected one of {sorted(_PROVIDERS)}."
         )
-    return impl(prompt)
+    return impl(prompt) if timeout is None else impl(prompt, timeout=timeout)

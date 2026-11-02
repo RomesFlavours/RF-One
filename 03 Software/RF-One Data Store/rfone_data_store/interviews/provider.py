@@ -1,13 +1,18 @@
 """One adapter over RF-One's existing JSON transport; no new credentials."""
 import json
 
+# Seconds one interview turn may wait for the AI. Below the web worker's 120 s
+# limit, so a slow answer ends with a "try again" message instead of a dropped
+# request. The conversation is saved only after a valid answer.
+AI_TIMEOUT_SECONDS = 75
+
 
 class ProviderError(Exception):
     """Safe public error; provider internals must not reach the browser."""
 
 
 def generate(payload):
-    from ..selection.parsing.ai_client import generate_json
+    from ..selection.parsing.ai_client import AIProviderTimeout, generate_json
 
     instructions = (
         "You conduct an RF-One interview. Return JSON only, in English. "
@@ -24,6 +29,8 @@ def generate(payload):
         "knowledge. A summary is not human validation. Explicitly retain uncertainty.\n"
     )
     try:
-        return generate_json(instructions + json.dumps(payload, ensure_ascii=False))
+        return generate_json(instructions + json.dumps(payload, ensure_ascii=False), timeout=AI_TIMEOUT_SECONDS)
+    except AIProviderTimeout as exc:
+        raise ProviderError("The AI took too long to answer. Please try again; the saved conversation has not changed.") from exc
     except Exception as exc:
         raise ProviderError("The AI is unavailable. Please try again; the saved conversation has not changed.") from exc
