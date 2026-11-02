@@ -20,18 +20,20 @@
   <p>The recipient will find the request on their MyRFOne home page and can answer by voice or text.</p>
   <button type="submit">Request interview</button>
 </form>
-<h2>Requested interviews</h2>
+<h2>All interviews</h2>
+<p>Everyone with Interviews access sees every interview and its results.</p>
 {% if rows %}
 <table class="table-stack">
-  <thead><tr><th>Person</th><th>Purpose</th><th>Status</th><th>Requested on</th><th></th></tr></thead>
+  <thead><tr><th>Person</th><th>Purpose</th><th>Requested by</th><th>Status</th><th>Requested on</th><th></th></tr></thead>
   <tbody>{% for row in rows %}<tr>
     <td data-label="Person">{% set person = row_people.get(row.id) %}{% if person %}{% if interview_directory_access %}<a href="{{ url_for('person_detail', person_id=person.id) }}">{{ person.full_name }}</a>{% else %}{{ person.full_name }}{% endif %}{% else %}{{ names.get(row.recipient_id, 'Account unavailable') }} · {% if interview_directory_access %}<a href="{{ url_for('people_home') }}">Connect person record</a>{% endif %}{% endif %}</td>
     <td data-label="Purpose">{{ row.purpose|truncate(140) }}</td>
+    <td data-label="Requested by">{{ names.get(row.requester_id, 'Account unavailable') }}</td>
     <td data-label="Status">{{ interview_status_labels[row.status] }}</td>
     <td data-label="Requested on">{{ row.created_at|local_dt(tz) }}</td>
     <td data-label="Open"><a href="{{ url_for('interview_admin_results', session_id=row.id) }}">{{ 'View results' if row.status == 'COMPLETED' else 'View request' }}</a></td>
   </tr>{% endfor %}</tbody>
 </table>
-{% else %}<p>You have not requested any interviews yet.</p>{% endif %}
+{% else %}<p>No interviews have been requested yet.</p>{% endif %}
 <script defer src="{{ url_for('static', filename='js/interview-request.js') }}?v=1"></script>
 {% endblock %}

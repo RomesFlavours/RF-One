@@ -15,12 +15,12 @@
 {% if row.status == 'COMPLETED' %}
 <section class="interview-panel">
 <h2>Interview completed</h2>
-<p>Thank you. The results are available to the administrator who requested this interview.</p>
+<p>Thank you. The results are available to RF-One administrators with Interviews access.</p>
 <a href="{{ url_for('home') }}">Back to MyRFOne</a>
 </section>
 {% else %}
 <div id="interview" data-status="{{ row.status }}">
-<p class="interview-context">You will be speaking with an AI. Your answers and the summary will be available to the administrator who requested this interview.</p>
+<p class="interview-context">You will be speaking with an AI. Your answers and the summary will be available to RF-One administrators with Interviews access.</p>
 <p id="interview-error" role="alert" {% if not error %}hidden{% endif %}>{{ error or '' }}</p>
 <section id="interview-intro" class="interview-panel" {% if row.status != 'REQUESTED' %}hidden{% endif %}>
 <h2>Ready when you are</h2>

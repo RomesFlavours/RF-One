@@ -63,7 +63,7 @@ def register_interview_routes(app, *, SessionFactory, require_login, require_adm
                     flash(str(exc), "error")
             persons = people.list_people(db)
             delivery = people.delivery_accounts(db)
-            rows = svc.requested(db, actor)
+            rows = svc.managed(db, actor)
             if selected:
                 rows = [row for row in rows if (svc.interview_person(db, row) is not None and
                     svc.interview_person(db, row).id == selected.id)]
@@ -185,6 +185,6 @@ def register_interview_routes(app, *, SessionFactory, require_login, require_adm
             person = people.get_person(db, request.view_args["employee_id"])
             if person is None:
                 return {}
-            rows = [row for row in svc.requested(db, actor) if row.person_id == person.id]
+            rows = [row for row in svc.managed(db, actor) if row.person_id == person.id]
             return dict(interview_person=person, person_interviews=rows,
                 interview_can_request=people.delivery_account(db, person.id) is not None)

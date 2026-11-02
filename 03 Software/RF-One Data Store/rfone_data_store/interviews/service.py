@@ -97,10 +97,11 @@ def recipient_matches(db, account, row):
     return bool(current and subject and current.id == subject.id)
 
 
-def requested(db, account):
+def managed(db, account):
+    """Every interview, for any account with the Interviews permission: the
+    know-how belongs to the company, not to whoever happened to request it."""
     require_manager(db, account)
-    return list(db.scalars(select(InterviewSession).where(
-        InterviewSession.requester_id == account.id).order_by(InterviewSession.created_at.desc())))
+    return list(db.scalars(select(InterviewSession).order_by(InterviewSession.created_at.desc())))
 
 
 def load(db, account, session_id, *, admin=False):
@@ -108,7 +109,7 @@ def load(db, account, session_id, *, admin=False):
     row = db.get(InterviewSession, session_id)
     if admin:
         require_manager(db, account)
-    if row is None or (row.requester_id != account.id if admin else not recipient_matches(db, account, row)):
+    if row is None or (not admin and not recipient_matches(db, account, row)):
         raise PermissionError("Interview unavailable.")
     return row
 

@@ -139,9 +139,10 @@ class InterviewTests(unittest.TestCase):
         self.assertEqual(self.client.get("/interviews/" + row.id, base_url="https://localhost").status_code, 404)
         self.assertNotIn(row.id, self.client.get("/", base_url="https://localhost").text)
         self.assertEqual(self.post(row, "start", 0).status_code, 404)
-        self.login(self.admin2)
-        self.assertEqual(self.client.get("/admin/interviews/" + row.id, base_url="https://localhost").status_code, 404)
+        self.assertEqual(self.client.get("/admin/interviews/" + row.id, base_url="https://localhost").status_code, 403)
         self.login(self.admin)
+        self.assertEqual(self.post(row, "start", 0).status_code, 404)
+        self.login(self.admin2)
         self.assertEqual(self.post(row, "start", 0).status_code, 404)
 
     def test_organization_interviews_checkbox_without_global_admin(self):
@@ -166,6 +167,23 @@ class InterviewTests(unittest.TestCase):
         self.assertEqual(self.client.get('/admin/interviews').status_code, 403)
         self.assertEqual(self.client.get(response.location).status_code, 403)
         self.assertNotIn(b'/admin/interviews', self.client.get('/').data)
+
+    def test_any_interviews_admin_sees_results(self):
+        row = self.create(); self.login(self.person)
+        self.post(row, "start", 0)
+        self.post(row, "answer", 1, message="Ho chiamato il fornitore.")
+        self.assertEqual(self.post(row, "complete", 2).status_code, 200)
+        self.login(self.admin2)
+        result = self.client.get("/admin/interviews/" + row.id, base_url="https://localhost")
+        self.assertEqual(result.status_code, 200)
+        self.assertIn("Ho chiamato il fornitore", result.text)
+        self.assertIn("Admin Uno", result.text)
+        listing = self.client.get("/admin/interviews", base_url="https://localhost")
+        self.assertIn(row.id, listing.text)
+        self.assertIn("Admin Uno", listing.text)
+        self.assertIn(row, svc.managed(self.db, self.admin2))
+        with self.assertRaises(PermissionError):
+            svc.managed(self.db, self.other)
 
     def test_csrf_and_session_revocation(self):
         row = self.create(); self.login(self.person)
