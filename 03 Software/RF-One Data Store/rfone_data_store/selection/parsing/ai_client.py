@@ -31,9 +31,11 @@ MAX_OUTPUT_TOKENS = 16000
 
 
 # Read timeout for a call that does not pass `timeout` (Selection, Bank AI
-# rules, Tips authoring): RFONE_AI_TIMEOUT_SECONDS when configured, else this.
-# Such a call gets up to DEFAULT_ATTEMPTS attempts; a call with its own
-# `timeout` gets one, so it never outlasts the caller's limit.
+# rules, Tips authoring): DEFAULT_TIMEOUT_SECONDS with up to DEFAULT_ATTEMPTS
+# attempts (background work such as the Selection queue). A service that
+# serves people waiting behind CloudFront's 60 s sets RFONE_AI_TIMEOUT_SECONDS
+# (rfone-web: 45): then one attempt only, so a call never outlasts the page.
+# A call with its own `timeout` always gets one attempt.
 DEFAULT_TIMEOUT_SECONDS = 100.0
 DEFAULT_ATTEMPTS = 2
 
@@ -92,16 +94,18 @@ def _active_provider() -> str:
 
 def _limits(timeout: float | None) -> tuple[float, int]:
     """(read timeout in seconds, attempts) for one call. An explicit `timeout`
-    is one attempt; otherwise RFONE_AI_TIMEOUT_SECONDS (if a positive number)
-    or DEFAULT_TIMEOUT_SECONDS, with up to DEFAULT_ATTEMPTS attempts."""
+    is one attempt; so is RFONE_AI_TIMEOUT_SECONDS (if a positive number);
+    otherwise DEFAULT_TIMEOUT_SECONDS with up to DEFAULT_ATTEMPTS attempts."""
     if timeout is not None:
         return float(timeout), 1
     configured = _read_env_or_dotenv("RFONE_AI_TIMEOUT_SECONDS")
     try:
-        seconds = float(configured) if configured else DEFAULT_TIMEOUT_SECONDS
+        seconds = float(configured) if configured else 0.0
     except ValueError:
-        seconds = DEFAULT_TIMEOUT_SECONDS
-    return (seconds if seconds > 0 else DEFAULT_TIMEOUT_SECONDS), DEFAULT_ATTEMPTS
+        seconds = 0.0
+    if seconds > 0:
+        return seconds, 1
+    return DEFAULT_TIMEOUT_SECONDS, DEFAULT_ATTEMPTS
 
 
 def _bedrock_client(boto3, region: str | None, read_timeout: float, attempts: int):

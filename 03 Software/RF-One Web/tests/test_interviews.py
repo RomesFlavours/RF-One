@@ -683,9 +683,9 @@ class AIClientLimitTests(unittest.TestCase):
         with mock.patch.dict(os.environ, RFONE_AI_TIMEOUT_SECONDS="45"):
             self.ai._generate_json_anthropic("{}")
             self.ai._generate_json_bedrock("{}")
-        self.assertEqual((self.sent()["anthropic-client"]["timeout"], self.sent()["anthropic-client"]["max_retries"]), (45, 1))
+        self.assertEqual((self.sent()["anthropic-client"]["timeout"], self.sent()["anthropic-client"]["max_retries"]), (45, 0))
         config = self.sent()["bedrock-client"]["config"]
-        self.assertEqual((config.read_timeout, config.retries["max_attempts"]), (45, 2))
+        self.assertEqual((config.read_timeout, config.retries["max_attempts"]), (45, 1))
         self.calls.clear()
         with mock.patch.dict(os.environ, RFONE_AI_TIMEOUT_SECONDS="not a number"):
             self.ai._generate_json_anthropic("{}")
