@@ -24,6 +24,9 @@ PROVIDER_ANTHROPIC = "ANTHROPIC"
 PROVIDER_BEDROCK = "BEDROCK"
 DEFAULT_PROVIDER = PROVIDER_ANTHROPIC
 ANTHROPIC_MODEL = "claude-sonnet-5"
+# Ceiling on one AI answer. It only limits; a short answer costs the same. 4,096 cut off the structured reading of
+# long résumés, which then fell back to the rule-based reader (SELECTION_CV_REREAD_001).
+MAX_OUTPUT_TOKENS = 16000
 
 
 class AIProviderUnavailable(Exception):
@@ -100,7 +103,7 @@ def _generate_json_anthropic(prompt: str) -> dict:
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=ANTHROPIC_MODEL,
-            max_tokens=4096,
+            max_tokens=MAX_OUTPUT_TOKENS,
             messages=[{"role": "user", "content": prompt}],
         )
         text = "".join(block.text for block in response.content if getattr(block, "type", None) == "text")
@@ -145,7 +148,7 @@ def _generate_json_bedrock(prompt: str) -> dict:
         response = client.converse(
             modelId=model_id,
             messages=[{"role": "user", "content": [{"text": prompt}]}],
-            inferenceConfig={"maxTokens": 4096, "temperature": 0},
+            inferenceConfig={"maxTokens": MAX_OUTPUT_TOKENS, "temperature": 0},
         )
     except (BotoCoreError, ClientError) as exc:
         raise AIProviderUnavailable(f"AWS Bedrock call failed: {exc}") from exc

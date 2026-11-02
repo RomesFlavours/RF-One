@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import uuid
 
 WEB = Path(__file__).resolve().parents[1]
@@ -300,6 +301,51 @@ class InterviewTests(unittest.TestCase):
                 self.assertFalse(inspect(c).has_table('interview_sessions'))
                 self.assertTrue(inspect(c).has_table('employees'))
         engine.dispose()
+
+
+class AIClientLimitTests(unittest.TestCase):
+    """Both providers are replaced by stand-ins; nothing leaves the machine."""
+
+    def setUp(self):
+        from rfone_data_store.selection.parsing import ai_client
+        self.ai = ai_client
+        self.calls = calls = []
+
+        class Messages:
+            def create(self, **kwargs):
+                calls.append(("anthropic", kwargs))
+                return type("Response", (), {"content": [type("Block", (), {"type": "text", "text": "{}"})()]})()
+
+        class Anthropic:
+            def __init__(self, **kwargs):
+                calls.append(("anthropic-client", kwargs))
+                self.messages = Messages()
+
+        class Bedrock:
+            def converse(self, **kwargs):
+                calls.append(("bedrock", kwargs))
+                return {"output": {"message": {"content": [{"text": "{}"}]}}}
+
+        def client(name, **kwargs):
+            calls.append(("bedrock-client", kwargs))
+            return Bedrock()
+
+        fake_anthropic, fake_boto3 = type(sys)("anthropic"), type(sys)("boto3")
+        fake_anthropic.Anthropic, fake_boto3.client = Anthropic, client
+        for patch in (mock.patch.dict(sys.modules, anthropic=fake_anthropic, boto3=fake_boto3),
+                mock.patch.dict(os.environ, ANTHROPIC_API_KEY="unused-test-key", RFONE_BEDROCK_MODEL_ID="unused-test-model")):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def sent(self):
+        return dict((kind, kwargs) for kind, kwargs in self.calls)
+
+    def test_both_providers_use_the_shared_output_ceiling(self):
+        self.assertEqual(self.ai.MAX_OUTPUT_TOKENS, 16000)
+        self.assertEqual(self.ai._generate_json_anthropic("{}"), {})
+        self.assertEqual(self.ai._generate_json_bedrock("{}"), {})
+        self.assertEqual(self.sent()["anthropic"]["max_tokens"], self.ai.MAX_OUTPUT_TOKENS)
+        self.assertEqual(self.sent()["bedrock"]["inferenceConfig"]["maxTokens"], self.ai.MAX_OUTPUT_TOKENS)
 
 
 if __name__ == "__main__":
