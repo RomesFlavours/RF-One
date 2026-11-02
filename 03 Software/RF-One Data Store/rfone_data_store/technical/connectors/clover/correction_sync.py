@@ -58,8 +58,11 @@ differently:
 - **employees** — Employee Directory also refreshes the complete roster in
   this active AWS poller before work corrections, through the SAME importer
   used by Live Sync and Sync Now. It has no modification cursor of its own:
-  failures preserve source state and leave the work cursors unchanged;
-  pending identity confirmations are reported before any work attribution.
+  failures preserve source state and leave the work cursors unchanged.
+  A pending identity confirmation no longer stops the cycle
+  (EMPLOYEE_DIRECTORY_RECORD_HOLD_001, Product Owner 2026-11-02): its
+  records are acquired without a person, counted and logged every cycle,
+  and attributed when the identity is confirmed (`identity_holds.py`).
 - Order Item / Order Item Modifier / Order Fee / Payment Tip — no separate
   resource either: all four are nested under, and only ever re-verified
   together with, their parent Order/Payment (exactly how Live Sync already
@@ -116,7 +119,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .... import models as m
 from ....ingestion.common import utc_now
-from . import historical_backfill_detail, mapping
+from . import historical_backfill_detail, identity_holds, mapping
 from .acquisition import (
     CloverReadClient,
     ImportAlreadyRunningError,
@@ -197,6 +200,7 @@ class ResourceCorrectionResult:
     records_seen: int = 0
     records_touched: int = 0
     errors: list[str] = field(default_factory=list)
+    records_held: int = 0  # applied without a person: their Clover identity is still pending
 
 
 @dataclass
@@ -204,6 +208,7 @@ class CorrectionCycleSummary:
     location_id: int
     results: list[ResourceCorrectionResult] = field(default_factory=list)
     employee_errors: list[str] = field(default_factory=list)
+    identity_holds: list[str] = field(default_factory=list)
 
 
 def _employee_ids_for_location(session, location_id):
@@ -225,11 +230,12 @@ def _refresh_employees(session, client, *, location_id, merchant_id, run_id):
         records = require_complete(paginate(client, f"/v3/merchants/{merchant_id}/employees",
                                            extra_params={"expand": "role"}), "Employees")
         with session.begin_nested():
-            _, pending = import_snapshot(session, location_id=location_id, merchant_id=merchant_id,
-                                         records=records, run_id=run_id)
+            import_snapshot(session, location_id=location_id, merchant_id=merchant_id,
+                            records=records, run_id=run_id)
         session.commit()
-        return ([f"{len(pending)} Clover employee identities require confirmation in Employee Directory. "
-                 "Work corrections will resume after identity confirmation."] if pending else [])
+        # Pending identities are not an error: they hold only their own
+        # records (EMPLOYEE_DIRECTORY_RECORD_HOLD_001), reported per cycle.
+        return []
     except Exception as exc:
         session.rollback()
         return [f"Employee synchronization failed; previous roster preserved: {_safe_error_summary(exc)}"]
@@ -369,6 +375,7 @@ def _correct_orders(
     errors: list[str] = []
     touched = 0
     seen = 0
+    held = 0
 
     result = paginate(
         client, f"/v3/merchants/{merchant_id}/orders",
@@ -380,6 +387,7 @@ def _correct_orders(
     else:
         seen = len(result.elements)
         employee_by_source_id = _employee_ids_for_location(session, location_id)
+        pending = identity_holds.pending_external_ids(session, [merchant_id])
         for order_raw in result.elements:
             try:
                 # A nested SAVEPOINT (this codebase's established pattern for
@@ -409,6 +417,8 @@ def _correct_orders(
                     # happened to get when it was first acquired.
                     resolve_order_business_dates(session, [order.id])
                 touched += 1
+                if order.employee_id is None and order.source_employee_id in pending:
+                    held += 1
             except Exception as exc:  # noqa: BLE001 — one bad Order must never abort the whole resource pass
                 errors.append(f"Order {(order_raw.get('id') or '')[:8]}...: {_safe_error_summary(exc)}")
         # Baseline-closure fix: FAILED, never PARTIAL, when even one Order in
@@ -428,7 +438,7 @@ def _correct_orders(
     _finish_cursor_run(session, cursor_run, status=status, touched=touched, seen=seen, errors=errors)
     return ResourceCorrectionResult(
         resource_type=RESOURCE_ORDERS, location_id=location_id, window_start=window_start, window_end=window_end,
-        status=status, records_seen=seen, records_touched=touched, errors=errors,
+        status=status, records_seen=seen, records_touched=touched, errors=errors, records_held=held,
     )
 
 
@@ -457,6 +467,7 @@ def _correct_payments(
     informational_notes: list[str] = []
     touched = 0
     seen = 0
+    held = 0
 
     result = paginate(
         client, f"/v3/merchants/{merchant_id}/payments",
@@ -471,6 +482,7 @@ def _correct_payments(
     else:
         seen = len(result.elements)
         employee_by_source_id = _employee_ids_for_location(session, location_id)
+        pending = identity_holds.pending_external_ids(session, [merchant_id])
         tender_by_source_id = _existing_ids_by_source(
             session, m.Tender, source_system_id=source_system_id, source_id_column="source_tender_id",
         )
@@ -488,7 +500,7 @@ def _correct_payments(
             sink = _CorrectionSink()
             try:
                 with session.begin_nested():
-                    _ingest_payment(
+                    payment = _ingest_payment(
                         session, payment_raw, order_id=order_id, source_system_id=source_system_id,
                         employee_by_source_id=employee_by_source_id, tender_by_source_id=tender_by_source_id,
                         device_by_source_id=device_by_source_id, summary=sink,
@@ -502,6 +514,8 @@ def _correct_payments(
                     # Date its earlier, now-superseded Payments produced.
                     resolve_order_business_dates(session, [order_id])
                 touched += 1
+                if payment.employee_id is None and payment.source_employee_id in pending:
+                    held += 1
                 # `_ingest_payment` may flag a non-fatal data-quality anomaly
                 # (e.g. a previously-recorded tip now absent on re-fetch) into
                 # `summary.errors` without raising — the Payment row itself
@@ -521,7 +535,7 @@ def _correct_payments(
     _finish_cursor_run(session, cursor_run, status=status, touched=touched, seen=seen, errors=all_notes)
     return ResourceCorrectionResult(
         resource_type=RESOURCE_PAYMENTS, location_id=location_id, window_start=window_start, window_end=window_end,
-        status=status, records_seen=seen, records_touched=touched, errors=all_notes,
+        status=status, records_seen=seen, records_touched=touched, errors=all_notes, records_held=held,
     )
 
 
@@ -546,6 +560,7 @@ def _correct_refunds(
     errors: list[str] = []
     touched = 0
     seen = 0
+    held = 0
 
     result = paginate(
         client, f"/v3/merchants/{merchant_id}/refunds",
@@ -557,11 +572,14 @@ def _correct_refunds(
     else:
         seen = len(result.elements)
         employee_by_source_id = _employee_ids_for_location(session, location_id)
+        pending = identity_holds.pending_external_ids(session, [merchant_id])
         device_by_source_id = _existing_ids_by_source(
             session, m.Device, source_system_id=source_system_id, source_id_column="source_device_id",
         )
         for refund_raw in result.elements:
             values = mapping.map_refund(refund_raw)
+            if values.get("employee_source_id") in pending:
+                held += 1
             order_source_id = values.get("order_source_id")
             payment_source_id = values.get("payment_source_id")
             order_id = _resolve_order_id(session, source_system_id=source_system_id, source_order_id=order_source_id)
@@ -587,7 +605,7 @@ def _correct_refunds(
     _finish_cursor_run(session, cursor_run, status=status, touched=touched, seen=seen, errors=errors)
     return ResourceCorrectionResult(
         resource_type=RESOURCE_REFUNDS, location_id=location_id, window_start=window_start, window_end=window_end,
-        status=status, records_seen=seen, records_touched=touched, errors=errors,
+        status=status, records_seen=seen, records_touched=touched, errors=errors, records_held=held,
     )
 
 
@@ -613,6 +631,7 @@ class _CycleLockSummary:
     orders_updated: int = 0
     shifts_imported: int = 0
     refunds_found: int = 0
+    identity_holds: list[str] = field(default_factory=list)
 
 
 def run_correction_cycle(
@@ -666,10 +685,18 @@ def run_correction_cycle(
             session, resolved_client, location_id=location_id, merchant_id=merchant_id, run_id=lock_run.id,
         )
         if summary.employee_errors:
+            # Only a failed or incomplete roster read stops the cycle; it is
+            # logged so the stop is never silent.
+            for line in summary.employee_errors:
+                LOG.warning("location_id=%s: %s", location_id, line)
             _finalize_import_run(lock_run, _CycleLockSummary(errors=summary.employee_errors, window_scan_failed=True),
                                  location_id=location_id, mode=MODE_CORRECTION)
             session.commit()
             return summary
+        with session.begin_nested():
+            for done in identity_holds.reattribute_untraced_confirmations(session, merchant_id):
+                LOG.info("location_id=%s: held work attributed after identity confirmation: %s", location_id, done)
+        session.commit()
         summary.results.append(
             _correct_orders(
                 session, resolved_client, location_id=location_id, source_system_id=source_system_id,
@@ -707,6 +734,12 @@ def run_correction_cycle(
     else:
         touched = {r.resource_type: r.records_touched for r in summary.results}
         failed = [r for r in summary.results if r.status == "FAILED"]
+        summary.identity_holds = identity_holds.describe(
+            identity_holds.pending_external_ids(session, [merchant_id]),
+            {r.resource_type: r.records_held for r in summary.results},
+        )
+        for line in summary.identity_holds:
+            LOG.warning("location_id=%s: %s", location_id, line)
         _finalize_import_run(
             lock_run,
             _CycleLockSummary(
@@ -715,6 +748,7 @@ def run_correction_cycle(
                 orders_updated=touched.get(RESOURCE_ORDERS, 0),
                 payments_updated=touched.get(RESOURCE_PAYMENTS, 0),
                 refunds_found=touched.get(RESOURCE_REFUNDS, 0),
+                identity_holds=summary.identity_holds,
             ),
             location_id=location_id, mode=MODE_CORRECTION,
         )
@@ -752,15 +786,15 @@ def _run_forever(
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI wrapper
-    from ....database import create_configured_engine, create_session_factory, get_database_url, run_migrations_to_head
+    from ....database import create_configured_engine, create_session_factory, get_database_url, prepare_new_private_database
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--location-id", type=int, required=True)
     parser.add_argument("--interval-seconds", type=float, default=DEFAULT_POLL_INTERVAL_SECONDS)
     parser.add_argument(
         "--skip-migrations", action="store_true",
-        help="Do not apply database migrations at start. Used by the AWS service: migrations are a "
-        "separate, snapshotted release step there, never a side effect of a process starting.",
+        help="Kept for the AWS task definition. The poller never migrates an existing database at start "
+        "(MIGRATIONS.md); without this flag it only creates a brand-new private SQLite file at head.",
     )
     parser.add_argument(
         "--once", action="store_true",
@@ -773,7 +807,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI
 
     db_url = get_database_url()
     if not args.skip_migrations:
-        run_migrations_to_head(db_url)
+        prepare_new_private_database(db_url)  # never migrates an existing database (MIGRATIONS.md)
     engine = create_configured_engine(db_url)
     session_factory = create_session_factory(engine)
 

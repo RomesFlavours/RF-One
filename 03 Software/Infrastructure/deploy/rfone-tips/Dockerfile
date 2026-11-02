@@ -12,6 +12,9 @@ RUN pip install --no-cache-dir -r /app/rfone-data-store-requirements.txt \
     && pip install --no-cache-dir gunicorn==23.0.0
 
 COPY ["RF-One Data Store", "/app/RF-One Data Store"]
+# MIGRATIONS.md: refuse an image whose chain lacks the revision applied on AWS.
+ARG RFONE_AWS_SCHEMA_REVISION=
+RUN python "/app/RF-One Data Store/check_migration_chain.py"
 COPY ["Tips", "/app/Tips"]
 COPY ["Clover Data Explorer", "/app/Clover Data Explorer"]
 COPY ["Shared UI", "/app/Shared UI"]

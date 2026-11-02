@@ -338,6 +338,14 @@ def attach_link(db, *, link_id, employee_id=None, create_new=False, account_id=N
     _event(db, "LINK", employee_id=employee.id, link=link, account_id=account_id,
            details={"create_new": create_new})
     db.flush()
+    # EMPLOYEE_DIRECTORY_RECORD_HOLD_001 — work acquired while this identity
+    # was pending is attributed now, through its Clover ID, in the same
+    # transaction as the confirmation.
+    from .technical.connectors.clover.identity_holds import reattribute_link
+    counts = reattribute_link(db, link)
+    _event(db, "REATTRIBUTE", employee_id=employee.id, link=link, account_id=account_id,
+           details={"external_employee_id": link.external_employee_id, "counts": counts})
+    db.flush()
     return employee
 
 

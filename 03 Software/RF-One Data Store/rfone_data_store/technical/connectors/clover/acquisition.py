@@ -139,6 +139,7 @@ explicitly via `clover_acquisition_status.py`.
 
 from __future__ import annotations
 
+import logging
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -171,6 +172,7 @@ if str(_CLOVER_EXPLORER_DIR) not in sys.path:
 from clover_explorer.pagination import paginate  # noqa: E402
 
 UTC = timezone.utc
+LOG = logging.getLogger("clover_acquisition")
 
 # How long a RUNNING acquisition may run before a future attempt treats it
 # as orphaned. Generous enough that a legitimately large Historical Backfill
@@ -305,6 +307,12 @@ class ImportSummary:
     # succeeded — see Task report "Live Cursor safety" for the verified gap
     # this closes.
     window_scan_failed: bool = False
+
+    # EMPLOYEE_DIRECTORY_RECORD_HOLD_001 — records acquired without an
+    # RF-One person because their Clover identity is still pending. Not
+    # errors: the run completes and the checkpoint advances; the records are
+    # attributed when the identity is confirmed (`identity_holds`).
+    identity_holds: list[str] = field(default_factory=list)
 
     @property
     def employee_mismatches_count(self) -> int:
@@ -555,12 +563,33 @@ def _resolve_historical_employee(client, session, reference, *, location_id,
     employee = observe_historical_employee(session, location_id=location_id, merchant_id=client.merchant_id,
         raw=raw, available=result.ok, observed_at=retrieved_at, run_id=ingestion_run_id)
     if employee is None:
-        raise EmployeeIdentityConfirmationRequired(dict(location_id=location_id, merchant_id=client.merchant_id,
-            raw=safe_snapshot(raw), available=result.ok, observed_at=retrieved_at, run_id=ingestion_run_id))
+        # EMPLOYEE_DIRECTORY_RECORD_HOLD_001: the identity stays pending (its
+        # link is recorded above) and only this person's attribution waits.
+        return
     employee_by_source_id[source_id] = employee.id
     _mirror_source_record(session, ingestion_run_id=ingestion_run_id, source_system_id=source_system_id,
         entity_type="employee" if result.ok else "employee_reference", source_id=source_id,
         retrieved_at=retrieved_at, raw=safe_snapshot(raw))
+
+
+def _describe_identity_holds(session, *, merchant_id, order_ids, payment_ids, refunds_raw, held_shifts):
+    """EMPLOYEE_DIRECTORY_RECORD_HOLD_001 — what this run acquired without a person, and why."""
+    from . import identity_holds
+    pending = identity_holds.pending_external_ids(session, [merchant_id])
+    if not pending:
+        return []
+    order_ids, payment_ids = list(order_ids), list(payment_ids)
+    counts = {
+        "orders": session.scalar(select(func.count()).select_from(m.Order).where(
+            m.Order.id.in_(order_ids), m.Order.employee_id.is_(None),
+            m.Order.source_employee_id.in_(pending))) if order_ids else 0,
+        "payments": session.scalar(select(func.count()).select_from(m.Payment).where(
+            m.Payment.id.in_(payment_ids), m.Payment.employee_id.is_(None),
+            m.Payment.source_employee_id.in_(pending))) if payment_ids else 0,
+        "refunds": sum(1 for raw in refunds_raw if mapping.map_refund(raw).get("employee_source_id") in pending),
+        "shifts": held_shifts,
+    }
+    return identity_holds.describe(pending, counts)
 
 
 def _fetch_reference_catalogs(
@@ -643,7 +672,7 @@ def _fetch_reference_catalogs(
 def _fetch_and_ingest_shifts(
     client: CloverReadClient, session: Session, *, period_start: datetime, period_end: datetime,
     source_system_id: int, employee_by_source_id: dict[str, int],
-    ingestion_run_id: int, retrieved_at: datetime,
+    ingestion_run_id: int, retrieved_at: datetime, held: list[str] | None = None,
 ) -> int:
     """Clock-in/clock-out source facts, using Clover's `/shifts` endpoint
     and `mapping.map_shift()`. Confirmed empirically (read-only GET, no
@@ -684,7 +713,16 @@ def _fetch_and_ingest_shifts(
                 ingestion_run_id=ingestion_run_id, retrieved_at=retrieved_at)
         employee_id = employee_by_source_id.get(employee_source_id) if employee_source_id else None
         if employee_id is None:
-            raise CloverAcquisitionError("A Shift has no resolvable source employee reference.")
+            # EMPLOYEE_DIRECTORY_RECORD_HOLD_001: a Shift requires a person.
+            # It waits in the Provider Mirror (written above) and is created
+            # when the identity is confirmed; the other Shifts continue.
+            reason = (f"Shift {(source_id or '')[:8]}... held: " + (
+                f"Clover employee {employee_source_id} not yet confirmed in Employee Directory"
+                if employee_source_id else "no source employee reference"))
+            LOG.warning(reason)
+            if held is not None:
+                held.append(reason)
+            continue
 
         upsert(
             session, m.Shift, {"source_system_id": source_system_id, "source_shift_id": source_id},
@@ -1056,6 +1094,8 @@ def _finalize_import_run(ingestion_run: m.IngestionRun, summary: ImportSummary, 
         f"shifts={summary.shifts_imported}; "
         f"refunds={summary.refunds_found}"
         + ("; WINDOW SCAN FAILED — checkpoint not advanced, will retry" if summary.window_scan_failed else "")
+        + ("; IDENTITY HOLDS — " + "; ".join(getattr(summary, "identity_holds", []))[:600]
+           if getattr(summary, "identity_holds", None) else "")
     )
 
 
@@ -1200,20 +1240,11 @@ def import_clover_period(
             ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at, mode=mode,
         )
         summary.employees_resolved = len(employee_by_source_id)
-        pending_count = session.scalar(select(func.count()).select_from(m.EmployeeCloverLink).where(
-            m.EmployeeCloverLink.merchant_id == merchant_id, m.EmployeeCloverLink.employee_id.is_(None),
-            m.EmployeeCloverLink.state != "MISSING_REVIEW"))
-        if pending_count:
-            summary.errors.append(
-                f"{pending_count} Clover employee identities require confirmation in Employee Directory; "
-                "their work records cannot be attributed until linked. Resolve and run Sync Now again."
-            )
-            # Keep source observations for human review, but do not advance
-            # coverage or overwrite work attribution with unresolved identities.
-            summary.window_scan_failed = True
-            _finalize_import_run(ingestion_run, summary, location_id=location_id, mode=mode)
-            session.flush()
-            return summary
+        # EMPLOYEE_DIRECTORY_RECORD_HOLD_001 (Product Owner, 2026-11-02): a
+        # pending identity no longer stops the Location. Its records are
+        # acquired without a person and reported below; never attributed by
+        # guess, never a person created here.
+        held_shifts: list[str] = []
 
         for payment_raw in payments_raw:
             _resolve_historical_employee(resolved_client, session, payment_raw.get("employee"),
@@ -1223,7 +1254,7 @@ def import_clover_period(
         summary.shifts_imported = _fetch_and_ingest_shifts(
             resolved_client, session, period_start=period_start, period_end=period_end,
             source_system_id=source_system_id, employee_by_source_id=employee_by_source_id,
-            ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at,
+            ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at, held=held_shifts,
         )
 
         # CLOVER_HISTORICAL_BACKFILL_EXTRACTOR_V1 — full menu/catalog +
@@ -1389,6 +1420,14 @@ def import_clover_period(
                 ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at,
             )
             summary.refunds_found += 1
+
+        summary.identity_holds = _describe_identity_holds(
+            session, merchant_id=merchant_id, order_ids=order_by_source_id.values(),
+            payment_ids=payment_by_source_id.values(),
+            refunds_raw=refunds_raw, held_shifts=len(held_shifts),
+        )
+        for line in summary.identity_holds:
+            LOG.warning("location_id=%s: %s", location_id, line)
     except Exception as exc:  # noqa: BLE001 — a failed run must release the guard, never stay RUNNING forever
         session.rollback()
         if isinstance(exc, EmployeeIdentityConfirmationRequired):
