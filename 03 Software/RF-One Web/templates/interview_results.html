@@ -20,6 +20,7 @@
 <section id="results-summary" class="interview-panel"><div class="interview-section-heading"><h2>Summary</h2><span class="interview-hint">AI-generated · Not validated</span></div><p class="interview-preserve">{{ result.summary }}</p></section>
 <section id="results-knowledge" class="interview-panel">
 <div class="interview-section-heading"><h2>Candidate knowledge</h2><span class="interview-hint">{{ result.knowledge|length }} {{ 'item' if result.knowledge|length == 1 else 'items' }}</span></div>
+{% if result.dropped_unsupported %}<p class="interview-hint">{{ result.dropped_unsupported }} AI {{ 'proposal was' if result.dropped_unsupported == 1 else 'proposals were' }} left out because {{ 'its quotation was' if result.dropped_unsupported == 1 else 'their quotations were' }} not found in the answers.</p>{% endif %}
 {% for item in result.knowledge %}<article class="interview-knowledge-item"><h3>Candidate {{ loop.index }}</h3><p class="interview-preserve">{{ item.text }}</p><p class="interview-hint">Supporting quotation</p><blockquote class="interview-preserve">{{ item.quote }}</blockquote><a href="#message-{{ item.message_index }}" data-open-transcript>View the original answer</a></article>
 {% else %}<p>No candidate knowledge was extracted. Review the summary and original answers.</p>{% endfor %}
 </section>

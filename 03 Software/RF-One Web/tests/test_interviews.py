@@ -322,17 +322,43 @@ class InterviewTests(unittest.TestCase):
         self.assertEqual("Domanda già salvata", json.loads(row.transcript)[0]["text"])
         self.assertNotIn("da scartare", row.transcript)
 
-    def test_fabricated_evidence_prevents_completion(self):
+    def test_fabricated_evidence_is_dropped_not_kept(self):
         row = self.create(); self.login(self.person)
         self.post(row, "start", 0)
         self.post(row, "answer", 1, message="Un episodio reale")
         web.app.config["INTERVIEW_PROVIDER"] = lambda payload: dict(summary="Sintesi", knowledge=[
-            dict(text="Inventato", quote="Mai detto", message_index=1)], open_questions=[])
+            dict(text="Inventato", quote="Mai detto", message_index=1),
+            dict(text="Supportato", quote="episodio reale", message_index=1)], open_questions=[])
         response = self.post(row, "complete", 2)
-        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.status_code, 200)
         self.db.refresh(row)
-        self.assertEqual(row.status, "IN_PROGRESS")
-        self.assertIsNone(row.results)
+        self.assertEqual(row.status, "COMPLETED")
+        results = json.loads(row.results)
+        self.assertEqual([item["text"] for item in results["knowledge"]], ["Supportato"])
+        self.assertEqual(results["dropped_unsupported"], 1)
+        self.login(self.admin)
+        page = self.client.get("/admin/interviews/" + row.id, base_url="https://localhost").text
+        self.assertIn("1 AI proposal was left out", page)
+        self.assertNotIn("Inventato", page)
+
+    def test_quotation_matches_despite_typography(self):
+        # Curly apostrophe/quotes, an em dash, a one-character ellipsis, double
+        # spaces and a line break in the answer; plain ASCII in the quotations.
+        answer = "L’ho detto al cliente: “non è colpa sua” — poi  ho aspettato…\nE ha funzionato."
+        messages = [dict(role="assistant", text="Domanda"), dict(role="user", text=answer)]
+        raw = dict(summary="Sintesi", open_questions=[], knowledge=[
+            dict(text="Apostrophe and case", quote="l'HO DETTO al cliente", message_index=1),
+            dict(text="Quotes and dash", quote='"Non è colpa sua" - poi ho aspettato...', message_index=1),
+            dict(text="Line break and end mark", quote="“ho aspettato... e ha funzionato.”", message_index=1),
+            dict(text="Wrong index, right answer", quote="non è colpa sua", message_index=0),
+            dict(text="Not said", quote="ho chiamato il direttore", message_index=1),
+            dict(text="Only punctuation", quote="…", message_index=1)])
+        result = svc._complete_output(raw, messages)
+        self.assertEqual([item["text"] for item in result["knowledge"]],
+            ["Apostrophe and case", "Quotes and dash", "Line break and end mark", "Wrong index, right answer"])
+        self.assertEqual({item["message_index"] for item in result["knowledge"]}, {1})
+        self.assertEqual(result["knowledge"][0]["quote"], "l'HO DETTO al cliente")
+        self.assertEqual(result["dropped_unsupported"], 2)
 
     def test_validation_and_explicit_start(self):
         with self.assertRaises(PermissionError):

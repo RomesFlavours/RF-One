@@ -1,6 +1,8 @@
 """Persistent, revision-checked interview engine with explicit participants."""
 from datetime import datetime, timezone
 import json
+import re
+import unicodedata
 import uuid
 
 from sqlalchemy import inspect, select, update
@@ -135,6 +137,36 @@ def _string(value, limit):
     return value.strip()
 
 
+# Typography the AI may change when it copies a quotation: curly and straight
+# quotes and apostrophes, dash variants, the one-character ellipsis.
+_QUOTE_FOLD = str.maketrans({
+    "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'", "\u2032": "'", "`": "'", "\u00b4": "'",
+    "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u201f": '"', "\u2033": '"', "\u00ab": '"', "\u00bb": '"',
+    "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2014": "-", "\u2015": "-", "\u2212": "-",
+    "\u2026": "...",
+})
+
+
+def _comparable(text):
+    """Text as compared for quotations: same words, any typography or spacing."""
+    text = unicodedata.normalize("NFKC", text).translate(_QUOTE_FOLD).casefold()
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _quote_source(quote, index, messages):
+    """Index of the user answer containing `quote`, or None. The AI's own
+    message_index is tried first; any other answer is accepted when that
+    index is wrong. Surrounding quote marks and end punctuation are ignored."""
+    wanted = _comparable(quote).strip(" \"'.,;:!?")
+    if not wanted:
+        return None
+    candidates = ([index] if type(index) is int and 0 <= index < len(messages) else []) + list(range(len(messages)))
+    for position in candidates:
+        if messages[position]["role"] == "user" and wanted in _comparable(messages[position]["text"]):
+            return position
+    return None
+
+
 def _complete_output(raw, messages):
     if not isinstance(raw, dict):
         raise ProviderError("Invalid AI results. Please try again.")
@@ -142,16 +174,18 @@ def _complete_output(raw, messages):
     knowledge, questions = raw.get("knowledge"), raw.get("open_questions")
     if not isinstance(knowledge, list) or len(knowledge) > 50 or not isinstance(questions, list) or len(questions) > 30:
         raise ProviderError("Invalid AI results. Please try again.")
-    verified = []
+    verified, dropped = [], 0
     for item in knowledge:
         if not isinstance(item, dict):
             raise ProviderError("Invalid AI results. Please try again.")
         text, quote = _string(item.get("text"), 4000), _string(item.get("quote"), 8000)
-        index = item.get("message_index")
-        if type(index) is not int or not 0 <= index < len(messages) or messages[index]["role"] != "user" or quote not in messages[index]["text"]:
-            raise ProviderError("An AI quotation does not match the answers. Please try completing the interview again.")
+        index = _quote_source(quote, item.get("message_index"), messages)
+        if index is None:
+            # Unsupported by the answers: left out, the rest of the results stand.
+            dropped += 1
+            continue
         verified.append(dict(text=text, quote=quote, message_index=index))
-    return dict(summary=summary, knowledge=verified,
+    return dict(summary=summary, knowledge=verified, dropped_unsupported=dropped,
         open_questions=[_string(q, 2000) for q in questions], validation="CANDIDATE")
 
 
