@@ -752,15 +752,15 @@ def _run_forever(
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI wrapper
-    from ....database import create_configured_engine, create_session_factory, get_database_url, run_migrations_to_head
+    from ....database import create_configured_engine, create_session_factory, get_database_url, prepare_new_private_database
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--location-id", type=int, required=True)
     parser.add_argument("--interval-seconds", type=float, default=DEFAULT_POLL_INTERVAL_SECONDS)
     parser.add_argument(
         "--skip-migrations", action="store_true",
-        help="Do not apply database migrations at start. Used by the AWS service: migrations are a "
-        "separate, snapshotted release step there, never a side effect of a process starting.",
+        help="Kept for the AWS task definition. The poller never migrates an existing database at start "
+        "(MIGRATIONS.md); without this flag it only creates a brand-new private SQLite file at head.",
     )
     parser.add_argument(
         "--once", action="store_true",
@@ -773,7 +773,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI
 
     db_url = get_database_url()
     if not args.skip_migrations:
-        run_migrations_to_head(db_url)
+        prepare_new_private_database(db_url)  # never migrates an existing database (MIGRATIONS.md)
     engine = create_configured_engine(db_url)
     session_factory = create_session_factory(engine)
 

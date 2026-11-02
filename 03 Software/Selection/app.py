@@ -70,7 +70,7 @@ from rfone_data_store.selection import document_store  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.database import (  # noqa: E402
     create_configured_engine, create_session_factory, get_database_url,
-    redact_database_url, run_migrations_to_head,
+    prepare_new_private_database, redact_database_url,
 )
 from rfone_data_store.selection import acquisition_source_service as acq_svc  # noqa: E402
 from rfone_data_store.selection import application_intake_service as intake_svc  # noqa: E402
@@ -147,7 +147,18 @@ ALLOWED_EXT = set(SUPPORTED_EXTENSIONS)
 DOCUMENTS = document_store.from_environment(UPLOAD_DIR)
 
 _DB_URL = get_database_url()
-run_migrations_to_head(_DB_URL)
+# RF-One Data Store/MIGRATIONS.md: Selection never migrates an existing database
+# at start. Only a brand-new private SQLite file (tests, first local run) is
+# created at head; every database is then checked read-only for the tables
+# Selection maps — an unknown newer revision only warns, a missing table or
+# column refuses to start.
+from workspace.schema import provision as _provision_workspace, verify as _verify_schema  # noqa: E402
+
+if prepare_new_private_database(_DB_URL):
+    _bootstrap_engine = create_configured_engine(_DB_URL)
+    _provision_workspace(_bootstrap_engine)
+    _bootstrap_engine.dispose()
+SCHEMA_REPORT = _verify_schema(_DB_URL)
 _engine = create_configured_engine(_DB_URL)
 SessionFactory = create_session_factory(_engine)
 

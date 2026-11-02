@@ -24,7 +24,10 @@ phases:
     on-failure: ABORT
     commands:
       - export RELEASE_TAG=sel-$(cut -c1-12 RELEASE_COMMIT)
-      - docker build -t $ECR_URI:$RELEASE_TAG .
+      # MIGRATIONS.md: the AWS revision published by the migration release step, if any.
+      - AWS_SCHEMA_REVISION=$(aws s3 cp s3://rfone-tips-deploy-418674484214/schema/aws_applied_revision.json - 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['revision'])" 2>/dev/null || true)
+      - echo "AWS schema revision from the deployment bucket - ${AWS_SCHEMA_REVISION:-not published, the tree registry applies}"
+      - docker build --build-arg RFONE_AWS_SCHEMA_REVISION="$AWS_SCHEMA_REVISION" -t $ECR_URI:$RELEASE_TAG .
       - |
         docker run --rm -e RFONE_DATABASE_URL=sqlite:////tmp/guard.db \
           -e RFONE_SELECTION_ARUBA_KEY=build-guard-placeholder-not-a-secret-000000000000 \

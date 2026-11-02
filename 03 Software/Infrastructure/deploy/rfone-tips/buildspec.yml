@@ -4,8 +4,12 @@ phases:
     commands:
       - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_URI
   build:
+    on-failure: ABORT
     commands:
-      - docker build -t $ECR_URI:latest .
+      # MIGRATIONS.md: the AWS revision published by the migration release step, if any.
+      - AWS_SCHEMA_REVISION=$(aws s3 cp s3://rfone-tips-deploy-418674484214/schema/aws_applied_revision.json - 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['revision'])" 2>/dev/null || true)
+      - echo "AWS schema revision from the deployment bucket - ${AWS_SCHEMA_REVISION:-not published, the tree registry applies}"
+      - docker build --build-arg RFONE_AWS_SCHEMA_REVISION="$AWS_SCHEMA_REVISION" -t $ECR_URI:latest .
   post_build:
     commands:
       - docker push $ECR_URI:latest
