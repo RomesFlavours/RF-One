@@ -33,7 +33,7 @@ from rfone_data_store.selection.parsing.text_extraction import SUPPORTED_EXTENSI
 
 from rfone_data_store.selection import workspace_models as ps
 
-from . import ai_adapter, position_settings
+from . import ai_adapter, cv_reading, position_settings
 
 STATUS_LABELS = {
     fam.EVIDENCED: "Evidenced in résumé",
@@ -63,9 +63,11 @@ def import_cv(session, *, documents, restaurant_id: int, position: ps.Position, 
               ai_reading: bool = True) -> dict:
     """One file -> one PositionCandidate. Never raises; returns a result dict.
 
-    CV Selection SP imports with `ai_reading=False, analyze_after=False`: the rule-based reading still gives the
-    candidate record and the duplicate checks, and SP's single AI reading replaces the AI parsing and this
-    module's analysis, so a CV is never sent to Bedrock more than once."""
+    CV Selection SP imports with `analyze_after=False`: SP's own reading replaces this module's analysis. The import
+    itself still reads the CV with the AI when the position allows it, because SP sends the CV without contacts
+    and keeps the name it reads in its own result: only this reading fills the name, email and phone of the
+    candidate and of the person, which the duplicate checks and the interview invitation use. With
+    `ai_reading=False` the rule-based reader alone is used ("name not extracted" on most real CVs)."""
     policy = position_settings.bind(position)
     if not ai_reading:
         ai_adapter.bind_policy(ai_adapter.AIPolicy(
@@ -80,6 +82,13 @@ def import_cv(session, *, documents, restaurant_id: int, position: ps.Position, 
         raw_text = extract_text(staged.local_path, ext)
     except Exception:
         return {"filename": filename, "status": "FAILED", "message": "Unable to read the file."}
+    if ext == ".pdf" and len((raw_text or "").strip()) < 80:
+        # A scan has no text inside: the AI reads its pages (SELECTION_CV_REREAD_001). If it cannot, the import
+        # below reports "No extractable text" exactly as before.
+        try:
+            raw_text = cv_reading.transcribe_pdf(staged.local_path) or raw_text
+        except Exception:
+            pass
 
     result = import_one_resume(
         session, restaurant_id=restaurant_id, source_type=LOCAL_UPLOAD, original_filename=filename,
@@ -108,6 +117,9 @@ def import_cv(session, *, documents, restaurant_id: int, position: ps.Position, 
 
     if result.status == PARTIAL:
         note = ((note or "") + " Partial résumé extraction; some sections need checking.").strip()
+    without_ai = cv_reading.note_for_reading(persistence.get_candidate(session, application.candidate_id))
+    if without_ai:
+        note = ((note or "") + " " + without_ai).strip()
     declared = declared or {}
     pc = ps.PositionCandidate(
         position_id=position.id, application_id=application.id, candidate_id=application.candidate_id,

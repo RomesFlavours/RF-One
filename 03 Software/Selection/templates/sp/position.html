@@ -35,6 +35,11 @@
     <label class="btn" title="PDF, DOCX or TXT; several at once">Upload CVs<input type="file" name="cv" multiple accept=".pdf,.docx,.txt" hidden onchange="this.form.submit()"></label>
     <span class="small muted">PDF, DOCX or TXT, several at once. Every upload adds only new CVs: exact duplicates are ignored, possible duplicates are flagged.</span>
   </form>{% endif %}
+  {% if can_edit and read_without_ai %}<form method="post" action="{{ url_for('positions.sp_read_again', position_id=p.id) }}" class="small verify" style="margin-bottom:8px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ read_without_ai }} CV(s) were read without the AI, so the name, email or phone may be missing.
+    <button class="tiny">Read again with the AI</button>
+  </form>{% endif %}
   {% if p.status == 'OPEN' and p.approved_snapshot_id %}<p class="small muted">Application page (candidates apply and are analyzed when they complete it):
     <a href="{{ public_url }}" target="_blank" rel="noopener">{{ public_url }}</a></p>{% endif %}
   {% if last_upload %}

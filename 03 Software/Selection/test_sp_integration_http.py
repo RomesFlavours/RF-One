@@ -69,7 +69,7 @@ def cv(i: int, email: str | None = None) -> str:
             f"- Full table service for {10 + i} covers\n")
 
 
-calls = {"sp": 0, "other_cv": 0}
+calls = {"sp": 0, "import": 0, "other_cv": 0}
 lock = threading.Lock()
 
 
@@ -86,8 +86,13 @@ def fake_ai(prompt: str) -> dict:
                 "requirements": {"table_service": {"level": 2 + i % 3, "quotes": ["Full table service"]}},
                 "competences": [{"name": "table service", "level": "executed", "quote": "Full table service"}],
                 "unknowns": ["Desired weekly hours"]}
+    if "extracting structured information from a résumé" in prompt:   # the AI reading at import
+        with lock:
+            calls["import"] += 1
+        lines = prompt.split("---" + chr(10), 1)[1].splitlines()
+        return {"full_name": lines[0].strip(), "email": lines[1].strip(), "work_history": [], "skills": []}
     with lock:
-        calls["other_cv"] += 1   # any other résumé reading (AI parsing at import, Selection's evaluation)
+        calls["other_cv"] += 1   # any other résumé reading (Selection's own evaluation)
     from rfone_data_store.selection.parsing.ai_client import AIProviderUnavailable
     raise AIProviderUnavailable("fake: not used by the SP path")
 
@@ -158,8 +163,9 @@ try:
               "Upload 1: 12 CV(s) received · 12 new imported · 0 exact duplicate(s) ignored · 0 possible duplicate(s)"
               in body, re.findall(r"Upload 1:[^<]+", body))
         s = wait_analysis(owner, pid, 12)
-        check("analysis 1: the 12 CVs analyzed, one SP reading each, no other résumé AI call",
-              s.get("DONE") == 12 and calls == {"sp": 12, "other_cv": 0}, (s, calls))
+        check("analysis 1: the 12 CVs analyzed, one AI reading at import (name, email, phone) and one SP "
+              "evaluation each, no Selection evaluation", s.get("DONE") == 12
+              and calls == {"sp": 12, "import": 12, "other_cv": 0}, (s, calls))
 
         # 4-5. Second upload: 8 more; only those analyzed; total 20
         r = upload(owner, t, pid, [(f"cv{i}.txt", cv(i)) for i in range(12, 20)])

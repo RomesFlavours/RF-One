@@ -27,7 +27,7 @@ from rfone_data_store import models as m
 from rfone_data_store.selection import persistence
 from rfone_data_store.selection import workspace_models as ps
 
-from . import cv_delete, engine, position_settings, sp_queue
+from . import cv_delete, cv_reading, engine, position_settings, sp_queue
 from .routes import _cfg, _pc, _position, _restaurant_id, access_required, bp, external_url
 from .sp import profiles as spp
 from .sp import ranking as sp_ranking
@@ -45,8 +45,7 @@ AI_OFF = ("AI résumé evaluation is off for this Job: turn on “AI résumé an
 # State in the position's context document
 # ---------------------------------------------------------------------------
 
-def has_profile(position) -> bool:
-    return position.role_code in spp.ROLES
+has_profile = sp_queue.has_profile
 
 
 def state(position) -> dict:
@@ -210,10 +209,11 @@ def sp_upload(db, actor, position_id):
     batch = {"at": ps.utcnow().isoformat(), "by": actor.name, "received": len(files), "imported": [],
              "exact_duplicates": [], "possible_duplicates": [], "failed": []}
     for f in files:
-        # SP roles: rule-based reading only and no Selection analysis here; SP's single AI reading follows.
+        # SP roles: no Selection analysis here, SP's own evaluation follows. The import still reads the CV with the
+        # AI when the Job allows it: SP's evaluation never writes the name, email and phone back (`engine.import_cv`).
         r = engine.import_cv(db, documents=_cfg.documents, restaurant_id=_restaurant_id(db), position=position,
                              file_storage=f, channel=ps.MANUAL_UPLOAD, actor_id=actor.id, actor_name=actor.name,
-                             analyze_after=not sp_role, ai_reading=not sp_role)
+                             analyze_after=not sp_role)
         if r["status"] == "OK":
             batch["imported"].append(r["position_candidate_id"])
             notes = engine.duplicate_notes(db, db.get(ps.PositionCandidate, r["position_candidate_id"]))
@@ -246,6 +246,28 @@ def sp_upload(db, actor, position_id):
         else:
             flash(AI_OFF)
     return redirect(url_for(".sp_page", position_id=position.id))
+
+
+@bp.route("/posizioni/<int:position_id>/sp/read-again", methods=["POST"])
+@access_required
+def sp_read_again(db, actor, position_id):
+    """CVs imported with the rule-based reader only (before 2 Nov 2026, or while the AI was unavailable): read the
+    stored text again with the AI, which fills the name, email and phone and redoes the duplicate check. SP's
+    evaluation already read the same text with the AI, so it is kept and not repeated."""
+    position = _sp_position(db, actor, position_id, edit=True)
+    if not position_settings.bind(position).cv_ai_authorized:
+        flash("AI résumé reading is off for this Job (Selection tab).")
+        return redirect(url_for(".sp_page", position_id=position.id) + "#cvs")
+    result = cv_reading.read_pending(db, position, actor_id=actor.id, actor_name=actor.name, analyze=False)
+    parts = [f"{result['read']} CV(s) read again with the AI"]
+    if result["partial"]:
+        parts.append(f"{result['partial']} read in part (some sections to check)")
+    if result["failed"]:
+        parts.append(f"{len(result['failed'])} not read: {result['failed'][0]}")
+    if result["left"]:
+        parts.append(f"{result['left']} still to read: press the button again")
+    flash("; ".join(parts) + ".")
+    return redirect(url_for(".sp_page", position_id=position.id) + "#cvs")
 
 
 @bp.route("/posizioni/<int:position_id>/sp/cv/<int:pc_id>/delete", methods=["POST"])
@@ -319,7 +341,9 @@ def sp_page(db, actor, position_id):
                    to_analyze=len(_to_analyze(cands)) if sp.get("approved") else 0,
                    outdated=sum(1 for c in cands if c["status"] == "OUTDATED"),
                    last_upload=sp["uploads"][-1] if sp["uploads"] else None, last_added=last_adding_upload(sp),
-                   ai_allowed=_ai_allowed(position), can_edit=actor.can_edit(position))
+                   ai_allowed=_ai_allowed(position), can_edit=actor.can_edit(position),
+                   read_without_ai=len(cv_reading.pending(db, position))
+                   if position_settings.bind(position).cv_ai_authorized else 0)
 
 
 @bp.route("/posizioni/<int:position_id>/sp/requirements", methods=["POST"])

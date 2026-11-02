@@ -93,10 +93,21 @@ def _record(purpose: str, ok: bool, message: str) -> None:
                         "message": message}
 
 
+# Asked once more when a reply is not valid JSON: at temperature 0 the same prompt repeats the same broken reply.
+JSON_RETRY_NOTE = ("\n\nYour previous reply was not valid JSON. Reply again with valid JSON only: inside every string, "
+                   "escape double quotes as \\\" or use single quotes.")
+
+
 def _cv_parser_gate(prompt: str) -> dict:
     if not current_policy().cv_ai_authorized:
         raise AIProviderUnavailable("AI résumé processing is not authorized.")
-    return _transport(prompt, "résumé processing")
+    try:
+        return _transport(prompt, "résumé processing")
+    except AIProviderUnavailable as exc:
+        if "unparsable" not in str(exc):
+            raise
+        # SELECTION_CV_REREAD_001: one broken reply must not send a résumé to the rule-based reader.
+        return _transport(prompt + JSON_RETRY_NOTE, "résumé processing (retry)")
 
 
 def install_guard(*, ai_enabled: bool, cv_ai_authorized: bool) -> None:
