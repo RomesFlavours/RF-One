@@ -1,0 +1,122 @@
+{
+  "taskDefinition": {
+    "taskDefinitionArn": "arn:aws:ecs:us-east-1:418674484214:task-definition/rfone-clover-acquisition-job:8",
+    "containerDefinitions": [
+      {
+        "name": "clover-acquisition-job",
+        "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips@sha256:d351090c9ddbb7a04e2533d868d40a5c2b41a97ca131e2c184a953a219e5005a",
+        "cpu": 0,
+        "portMappings": [],
+        "essential": true,
+        "entryPoint": [
+          "/bin/sh",
+          "-c",
+          "python clover_connector_release_check.py --database-readonly && exec \"$@\"",
+          "--"
+        ],
+        "command": [
+          "python",
+          "-m",
+          "rfone_data_store.technical.connectors.clover.acquisition_jobs",
+          "--help"
+        ],
+        "environment": [
+          {
+            "name": "PYTHONPATH",
+            "value": "/app/RF-One Data Store:/app/Clover Data Explorer"
+          },
+          {
+            "name": "PYTHONUNBUFFERED",
+            "value": "1"
+          }
+        ],
+        "mountPoints": [],
+        "volumesFrom": [],
+        "secrets": [
+          {
+            "name": "RFONE_DATABASE_URL",
+            "valueFrom": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/database-url-chNZo8"
+          },
+          {
+            "name": "CLOVER_API_TOKEN",
+            "valueFrom": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/clover-api-token-lTKFIX"
+          },
+          {
+            "name": "CLOVER_MERCHANT_ID",
+            "valueFrom": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/clover-merchant-id-Gs8iBu"
+          }
+        ],
+        "workingDirectory": "/app/RF-One Data Store",
+        "logConfiguration": {
+          "logDriver": "awslogs",
+          "options": {
+            "awslogs-group": "/ecs/rfone-clover-acquisition-job",
+            "awslogs-create-group": "true",
+            "awslogs-region": "us-east-1",
+            "awslogs-stream-prefix": "job"
+          }
+        },
+        "systemControls": []
+      }
+    ],
+    "family": "rfone-clover-acquisition-job",
+    "executionRoleArn": "arn:aws:iam::418674484214:role/rfone-clover-acquisition-job-execution-role",
+    "networkMode": "awsvpc",
+    "revision": 8,
+    "volumes": [],
+    "status": "ACTIVE",
+    "requiresAttributes": [
+      {
+        "name": "com.amazonaws.ecs.capability.logging-driver.awslogs"
+      },
+      {
+        "name": "ecs.capability.execution-role-awslogs"
+      },
+      {
+        "name": "com.amazonaws.ecs.capability.ecr-auth"
+      },
+      {
+        "name": "com.amazonaws.ecs.capability.docker-remote-api.1.19"
+      },
+      {
+        "name": "ecs.capability.secrets.asm.environment-variables"
+      },
+      {
+        "name": "com.amazonaws.ecs.capability.docker-remote-api.1.17"
+      },
+      {
+        "name": "com.amazonaws.ecs.capability.docker-remote-api.1.21"
+      },
+      {
+        "name": "ecs.capability.execution-role-ecr-pull"
+      },
+      {
+        "name": "com.amazonaws.ecs.capability.docker-remote-api.1.18"
+      },
+      {
+        "name": "ecs.capability.task-eni"
+      },
+      {
+        "name": "com.amazonaws.ecs.capability.docker-remote-api.1.29"
+      }
+    ],
+    "placementConstraints": [],
+    "compatibilities": [
+      "EC2",
+      "FARGATE",
+      "MANAGED_INSTANCES"
+    ],
+    "runtimePlatform": {
+      "cpuArchitecture": "X86_64",
+      "operatingSystemFamily": "LINUX"
+    },
+    "requiresCompatibilities": [
+      "FARGATE"
+    ],
+    "cpu": "512",
+    "memory": "1024",
+    "registeredAt": "2026-11-02T00:19:16.755000-05:00",
+    "registeredBy": "arn:aws:iam::418674484214:user/RFone-admin"
+  },
+  "tags": []
+}
