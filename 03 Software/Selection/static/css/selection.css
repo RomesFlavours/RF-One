@@ -108,5 +108,9 @@ a.card-link:hover .card { border-color: var(--olive-500); }
 .selection-guide { max-width: 880px; }
 .selection-guide p, .selection-guide li { line-height: 1.65; }
 .selection-guide h2 { margin-top: 0; }
+.selection-guide h3 { margin: 1rem 0 .3rem; font-size: 1rem; }
+/* How Works opens one section: it stays clear of the top edge and is marked as the one requested. */
+.selection-guide section { scroll-margin-top: 1rem; }
+.selection-guide section:target { border-color: var(--olive-700); box-shadow: 0 0 0 2px var(--olive-300); }
 .selection-guide li + li { margin-top: .45rem; }
 .selection-guide-nav { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin: 1rem 0 1.5rem; }

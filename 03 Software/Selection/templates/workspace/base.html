@@ -8,7 +8,7 @@
 <title>{% block title %}Selection{% endblock %} · RF-One</title>
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='brand/rf-one.png') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/selection.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/selection.css') }}?v=7">
 <script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
 <style>
   .selection-navigation .tab-off { color: var(--muted); opacity: .5; cursor: not-allowed; padding: .55rem .1rem; font-size: .9rem; }
@@ -43,7 +43,11 @@
       {% if code == 'selection' or job %}<a href="{{ tab_url(code, job) }}" class="{{ 'active' if active_section == code }}">{{ label }}</a>
       {% else %}<span class="tab-off" title="Choose a Job in Selection first (Process)">{{ label }}</span>{% endif %}
     {% endfor %}
-    <a class="selection-help-link" href="{{ url_for('positions.how_it_works') }}">How Selection works</a>
+    {# How Works standard (03 Software/Shared UI/How Works Standard.md): the link opens the guide section of the
+       current tab, never the top of the guide. The guide's section id equals the tab code. #}
+    {% set how_works_labels = {'selection': 'Selection', 'applications': 'Applications', 'evaluation': 'Evaluation', 'interviews': 'Interviews', 'decisions': 'Decisions'} %}
+    <a class="selection-help-link" data-how-works="{{ active_section }}" href="{{ url_for('positions.how_it_works') }}#{{ active_section }}"
+       title="How {{ how_works_labels[active_section] }} works">How Works</a>
   </nav>
   {% if job %}<div class="job-bar" aria-label="Current Job">
     <span class="muted small">Current Job</span>

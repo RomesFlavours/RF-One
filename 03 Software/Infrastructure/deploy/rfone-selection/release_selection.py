@@ -1,9 +1,10 @@
 """Release rfone-selection from one pushed Git commit (SELECTION_DEPLOY_GUARD_001).
 
-    python release_selection.py <label> [--commit <sha>] [--no-snapshot]
+    python release_selection.py <label> [--commit <sha>] [--no-snapshot] [--how-works-since <sha>]
 
 The only supported way to publish Selection. It refuses a commit that is not
-on origin or lacks the Selection workspace, installs this commit's
+on origin, lacks the Selection workspace, or fails the How Works check against
+the live commit (03 Software/Shared UI/How Works Standard.md), installs this commit's
 buildspec.yml as the CodeBuild project's own buildspec (so any other ZIP
 uploaded to the project is refused too), snapshots RDS, backs up the current
 source ZIP and image, builds `rfone-selection:sel-<commit12>`, deploys only
@@ -106,6 +107,31 @@ def bridge_health() -> dict | None:
     return None
 
 
+def how_works_gate(commit: str, previous_image: str, args: list[str]) -> str:
+    """How Works standard (UI_HOW_WORKS_001): the released commit must pass the Help check, and every functional
+    change since the live commit must have its Help in this release. Returns the live commit it compared with."""
+    if '--how-works-since' in args:
+        since = git('rev-parse', args[args.index('--how-works-since') + 1])
+    else:
+        tag = previous_image.rsplit(':', 1)[1]
+        try:
+            since = git('rev-parse', '--verify', f'{tag.removeprefix("sel-")}^{{commit}}') if tag.startswith('sel-') else ''
+        except subprocess.CalledProcessError:
+            since = ''
+        if not since:
+            sys.exit(f'REFUSED: the live image {previous_image} names no known commit, so the How Works check cannot '
+                     f'compare with it. Pass --how-works-since <live commit>.')
+    check = ROOT / '03 Software' / 'Shared UI' / 'check_how_works.py'
+    result = subprocess.run([sys.executable, str(check), '--app', 'Selection', '--rev', commit, '--since', since],
+                            cwd=ROOT, capture_output=True, text=True)
+    print(result.stdout, end='')
+    if result.returncode != 0:
+        sys.exit(f'REFUSED: How Works release errors (03 Software/Shared UI/How Works Standard.md). '
+                 f'Update the Help with the code, or declare a technical-only commit. {result.stderr.strip()}')
+    log(f'How Works check passed against the live commit {since[:12]}')
+    return since
+
+
 def main() -> None:
     args = sys.argv[1:]
     if not args or args[0].startswith('-'):
@@ -128,6 +154,7 @@ def main() -> None:
     settings = apprunner.describe_service(ServiceArn=SERVICE_ARN)['Service']['SourceConfiguration']
     previous = settings['ImageRepository']['ImageIdentifier']
     record['previous_image'] = previous
+    record['how_works_since'] = how_works_gate(commit, previous, args)   # before anything on AWS changes
     digest = ecr.batch_get_image(repositoryName=REPOSITORY, imageIds=[{'imageTag': previous.rsplit(':', 1)[1]}])['images'][0]
     rollback_tag = f'pre-{label}-{stamp}'
     ecr.put_image(repositoryName=REPOSITORY, imageManifest=digest['imageManifest'], imageTag=rollback_tag)

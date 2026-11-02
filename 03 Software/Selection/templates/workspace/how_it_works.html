@@ -1,50 +1,96 @@
 {% extends "workspace/base.html" %}
 {% block title %}How Selection works{% endblock %}
 {% block content %}
+{# How Works standard (03 Software/Shared UI/How Works Standard.md): one section per tab, its id equal to the tab
+   code, so each tab's "How Works" link opens its own section. Describe only what this release does. #}
 <div class="selection-guide">
   <h1>How Selection works</h1>
-  <p class="muted">One Job, five steps, one process. Candidates apply through RMAED.it; your team manages the process here in RF-One. The five tabs are the steps: <b>Selection</b>, <b>Applications</b>, <b>Evaluation</b>, <b>Interviews</b> and <b>Decisions</b>. The last four always refer to the current Job, shown under the tabs.</p>
+  <p class="muted">One Job, five steps, one process. Candidates apply through RMAED.it; your team manages the process here in RF-One. The five tabs are the steps: <b>Selection</b>, <b>Applications</b>, <b>Evaluation</b>, <b>Interviews</b> and <b>Decisions</b>. The last four always refer to the current Job, shown under the tabs. Each tab's <b>How Works</b> link opens its section of this guide.</p>
   <nav class="selection-guide-nav" aria-label="Guide sections">
-    <a href="#setup">Selection</a><a href="#applications">Applications</a>
+    <a href="#selection">Selection</a><a href="#applications">Applications</a>
     <a href="#evaluation">Evaluation</a><a href="#interviews">Interviews</a>
     <a href="#decisions">Decisions</a><a href="#ai">AI features</a>
   </nav>
 
-  <section class="card" id="setup">
+  <section class="card" id="selection">
     <h2>1. Selection: create, configure and choose a Job</h2>
     <ol>
-      <li>The <b>Selection</b> tab lists every Job, newest first, with its Role, location, people required, creation date, status (Draft, Active or Closed) and number of candidates.</li>
-      <li>Choose <b>New Job</b>, pick the Role and location, and continue. The Role's standard requirements and evaluation rules load into the Job automatically.</li>
+      <li>The <b>Selection</b> tab lists every Job you may see, newest first, with its Role, location, people required, creation date, status (Draft, Active or Closed) and number of candidates. Search by Role, location or manager.</li>
+      <li>Choose <b>New Job</b>, pick the Role and location, and continue. The Role's standard requirements and evaluation rules load into the Job automatically. The form opens in a window over the list; its X and Cancel close it without saving.</li>
       <li>In the Job form, switch requirements or rules off, change criticality and weights, or add new ones: only this Job changes, never the Role standard. Complete the English job ad and up to six standard questions, and choose the AI features for this Job.</li>
       <li><b>Save Draft</b> keeps everything and returns to the list; <b>Complete &amp; Publish</b> reopens it later. <b>Confirm &amp; Publish</b> approves the requirements, opens the application page and makes the Job Active.</li>
-      <li>Choose <b>Process</b> on an Active Job: it becomes the current Job of the other tabs. A Closed Job shows <b>View history</b>.</li>
+      <li>Choose <b>Process</b> on an Active Job: it becomes the current Job of the other tabs and Applications opens. A Closed Job shows <b>View history</b>. Until a Job is chosen, the other four tabs are greyed out.</li>
     </ol>
+    <p class="small muted">The <b>Upcoming interviews</b> card lists the interviews of the next 14 days across your Jobs.</p>
   </section>
 
   <section class="card" id="applications">
-    <h2>2. Applications: CVs, analysis and ranking</h2>
-    <p>Candidates start at <a href="https://www.rmaed.it/" target="_blank" rel="noopener">RMAED.it</a>, verify their email with a code, choose an open Job and continue to Selection on AWS. They upload a résumé and answer a short interview in English; a completed application is analyzed automatically.</p>
-    <p>Use <b>Upload CVs</b> to add several PDF, DOCX or TXT files at once, as many times as needed. Exact duplicates are ignored, possible duplicates are flagged, and each upload is summarized. <b>NEW</b> and the <b>Last Upload</b> filter show what the last upload added.</p>
-    <p>For Server and Line Cook, CV Selection SP reads each CV once and ranks candidates with reasons, evidence, red flags and missing information. Change the order with ▲▼. <b>Reject</b> removes a candidate from the ranking with a reason; the CV and the analysis are kept and <b>Restore</b> brings the candidate back.</p>
-    <p class="small muted">Nobody is excluded automatically. The ranking is a preselection priority, not a probability of success.</p>
+    <h2>2. Applications: CVs, duplicates, analysis and ranking</h2>
+    <p>Applications collects the candidates of the current Job. They arrive in two ways: candidates apply at <a href="https://www.rmaed.it/" target="_blank" rel="noopener">RMAED.it</a> (they verify their email with a code, choose an open Job, upload a résumé and answer a short interview in English), or you upload their CVs here. The <b>Requirements</b> card at the top shows the approved requirements the analysis uses; change them in the Job settings (Selection tab).</p>
+
+    <h3>Upload CVs</h3>
+    <p>Choose <b>Upload CVs</b> and select one or more PDF, DOCX or TXT files: the upload starts as soon as you select them. Repeat it as many times as needed: every upload only adds new candidates, it never replaces or removes earlier ones. After each upload a summary shows how many CVs were received, how many new candidates were imported, how many were ignored and why. <b>Uploads and analysis status</b> lists every upload and the state of each CV.</p>
+
+    <h3>Duplicates</h3>
+    <ul>
+      <li><b>Exact duplicate</b>: a CV with the same content already linked to this Job. It is ignored and listed by name; nothing is added. A CV already in the archive from another Job is reused, not stored twice, and added to this Job.</li>
+      <li><b>Possible duplicate</b>: a new CV whose email or phone matches another application, or whose name is similar to another person's. It is imported and flagged “to verify”, in the upload summary and in the ranking. Check it yourself: nothing is merged automatically.</li>
+      <li><b>Not imported</b>: a file that could not be read, with the reason.</li>
+    </ul>
+
+    <h3>Analysis (CV Selection SP)</h3>
+    <p>For <b>Server</b> and <b>Line Cook</b> Jobs, CV Selection SP reads each CV once with AI (AWS Bedrock) against the approved requirements. Code then checks the result: quotations and dates must be found in the CV, durations, gaps and stability are computed, and skills that are only listed count as claims, not as demonstrated.</p>
+    <ul>
+      <li>New CVs are analyzed automatically after the upload, and an online application is analyzed when the candidate completes it.</li>
+      <li><b>Analyze</b> sends only the CVs still without an analysis for the approved requirements. <b>Re-analyze all</b> reads every CV again and resets any manual order. Progress is shown while the analysis runs.</li>
+      <li>When the requirements change, earlier analyses stay visible and are marked “update recommended”; Analyze updates them.</li>
+      <li>The analysis needs “AI résumé and answer evaluation” switched on for the Job, and confirmed requirements. If either is missing, the page says so and nothing is sent to the AI.</li>
+    </ul>
+
+    <h3>Ranking</h3>
+    <p>Analyzed candidates are ranked by preselection priority. The group comes first: <b>A</b> every must-have shown, <b>B</b> partly shown, <b>C</b> must-have not documented (to verify), <b>D</b> documented concern. Inside a group, the documented evidence weighted by the requirements decides the order. Each row shows relevant experience, demonstrated competences, red flags, points to verify and why the candidate is in that place.</p>
+    <ul>
+      <li>Use <b>▲▼</b> to change the order; a moved candidate shows its proposed place. <b>Back to the proposed order</b> removes your changes.</li>
+      <li><b>All Candidates</b> shows the whole ranking; <b>Last Upload</b> shows only the candidates added by the latest upload, also marked <b>NEW</b>.</li>
+      <li>A click on a name, or on <b>Evaluation</b>, opens the candidate's dossier; <b>CV</b> opens the original file.</li>
+    </ul>
+
+    <h3>Reject and Restore</h3>
+    <p><b>Reject</b> takes a candidate out of the ranking. Choose a reason (a note is required for “Other”) and confirm: it is recorded as the decision <b>Not selected</b>, with the reason, your name and the time. The CV and the analysis are kept and the candidate moves to the <b>Rejected</b> list below the ranking. <b>Restore</b> brings the candidate back into the ranking; the withdrawal is recorded in the history. Restore is also available in the candidate's dossier.</p>
+
+    <h3>Other Roles</h3>
+    <p>For Roles without a CV Selection SP profile, Applications shows the application page link, Upload CVs, the list of applications and the proposal of the existing engines in three groups (<b>To interview</b>, <b>Needs clarification</b>, <b>Must-have requirements not evidenced</b>), with <b>Compare selected candidates</b> and <b>Re-evaluate all</b>.</p>
+    <p class="small muted">Nobody is excluded automatically: the ranking is a preselection priority, not a probability of success. Missing information means “to verify”, not “unmet”. Use the application page link as the “Apply on company site” link on Indeed; Selection does not import Indeed applications.</p>
   </section>
 
   <section class="card" id="evaluation">
     <h2>3. Evaluation: one candidate, the whole dossier</h2>
-    <p>Click a name in Applications, or open <b>Evaluation</b> and search the current Job's candidates. The dossier shows identity, original CV, the analysis with requirements and evidence, work history, demonstrated and declared competences, red flags, missing information, status, decisions and the complete history of the candidate.</p>
+    <p>Click a name in Applications, or open <b>Evaluation</b> and search the current Job's candidates by name, email, phone or CV file. The list shows each candidate's contacts, CV, date received and decision (Rejected candidates are marked).</p>
+    <p>The dossier shows identity, original CV, the CV Selection SP analysis (place in the ranking, requirements with the evidence quoted from the CV, work history with computed durations and gaps, competences, red flags, missing information and suggested questions, traceability), the candidate's online interview answers, decisions, communications and the complete history.</p>
+    <ul>
+      <li><b>Interview</b>: book a phone or in-person interview directly, or propose times and create a link for the candidate to choose. <b>Interview sheet</b> opens the candidate in the Interviews tab.</li>
+      <li><b>Decision</b>: record the outcome (see Decisions).</li>
+      <li><b>Communications</b>: drafts interview invitations, updates, cancellations and outcome messages. Review, then choose <b>Approve and send</b>: <b>RomesFlavoursCareers@RMAED.it</b> sends the email. Delivery status is shown; acceptance by the mail server is not confirmation that the message was read.</li>
+    </ul>
     <p class="small muted">Missing information is not proof that a requirement is unmet. Quotations are checked against the CV.</p>
   </section>
 
   <section class="card" id="interviews">
-    <h2>4. Interviews and communications</h2>
-    <p>From the dossier, book a phone or in-person interview, or propose times with a link for the candidate to choose. <b>Interviews</b> shows scheduled interviews and proposed times, in the location's time zone.</p>
-    <p><b>Communications</b> drafts interview invitations, updates, cancellations and outcome messages. Review, then choose <b>Approve and send</b>: <b>RomesFlavoursCareers@RMAED.it</b> sends the email.</p>
+    <h2>4. Interviews: the interview sheet and the calendar</h2>
+    <p>Choose a candidate of the current Job to open the <b>Interview sheet</b>. Record the interview mode, then for each question, observation dimension, point to clarify and practical scenario write the answer and the concrete evidence, and choose its source (in person, phone, AI interview). Answers the candidate already gave in the online interview are shown and reused, not asked again.</p>
+    <ul>
+      <li>The sheet saves automatically a few seconds after each change; <b>Save</b> saves at once. <b>Complete interview</b> closes it; <b>Reopen interview</b> opens it again.</li>
+      <li><b>Configure Interview</b> chooses the questions, points to clarify and scenarios for this candidate, starting from the Role standard; the Role standard does not change.</li>
+      <li>The <b>Summary</b> groups the evidence into Demonstrated, Needs Clarification and Concerns Documented. There is no overall score and no hiring decision here.</li>
+      <li><b>Calendar</b> shows the scheduled interviews and the proposed times awaiting a response, in the location's time zone, and lists the candidates marked “To interview” who still need one.</li>
+    </ul>
+    <p class="small muted">Observe only what the candidate does and says for the job: never appearance, accent, physical characteristics or presumed personality.</p>
   </section>
 
   <section class="card" id="decisions">
     <h2>5. Decisions and closing the Job</h2>
-    <p>Record a decision in the dossier: <b>To interview</b>, <b>Needs clarification</b>, <b>Hired</b>, <b>On hold</b> or <b>Not selected</b> (a rejection from the ranking is recorded as Not selected, with its reason). <b>Decisions</b> summarizes outcomes and keeps the Job's history.</p>
-    <p>Close the Job when the search ends: its application page stops accepting applications; existing ones remain. A Closed Job can be reopened.</p>
+    <p>Record a decision in the candidate's dossier: <b>To interview</b>, <b>Needs clarification</b>, <b>Hired</b>, <b>On hold</b> or <b>Not selected</b> (a reason is required; a Reject in Applications is recorded as Not selected with its reason). The <b>Decisions</b> tab shows Hired (against the people required), On hold and Not selected, and the Job's complete history.</p>
+    <p>Close the Job when the search ends: its application page stops accepting applications; existing ones remain. A Closed Job can be reopened here.</p>
     <p class="small muted">Recording an outcome does not create an employee or transfer the person into Management, Training or Organization.</p>
   </section>
 
@@ -59,7 +105,7 @@
     <p>Choose them in the Job form (“AI for this Job”). Other Jobs do not inherit your choices.</p>
   </section>
 
-  <section class="card">
+  <section class="card" id="access">
     <h2>Who can manage a Job?</h2>
     <p>Owners and administrators manage all Jobs. Managers manage the Jobs assigned to them. Supervisors can review Jobs in read-only mode.</p>
   </section>

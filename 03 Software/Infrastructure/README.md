@@ -1,5 +1,10 @@
 # Infrastructure
 
+## Release Checklist — mandatory for every release
+
+Every release of every RF-One service follows [`deploy/RELEASE_CHECKLIST.md`](deploy/RELEASE_CHECKLIST.md),
+including the How Works check (UI_HOW_WORKS_001): code and Help are one release unit.
+
 ## Employee Directory release — 2026-10-28
 
 Employee Directory is available at `https://rfone.romesflavours.com/administration/employees`

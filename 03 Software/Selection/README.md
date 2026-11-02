@@ -94,6 +94,17 @@ Shelbi's and Pino's CV engines consolidated into one analysis component, for pos
 - **Tests:** `python test_sp_integration_http.py` (successive uploads, duplicates, NEW / Last Upload, no repeated
   AI calls, requirement change; fake AI) and `python test_sp_engine.py` (dates, quotes, claims, flags, ranking).
 
+## How Works (UI_HOW_WORKS_001, 2026-11-02)
+
+- Every tab (Selection, Applications, Evaluation, Interviews, Decisions) shows a **How Works** link at the right
+  end of the tabs. `templates/workspace/base.html` renders it once from the page's `section`: it opens
+  `/selection/how-it-works#<section>`, the guide's own section for that tab (the dossier belongs to Evaluation).
+- The guide, `templates/workspace/how_it_works.html`, has one section per tab whose `id` is the tab code. It
+  describes only what this release does and is updated in the same commit as any functional change
+  (`03 Software/Shared UI/How Works Standard.md`). Pages and their Help targets are registered in
+  `03 Software/Shared UI/how_works_registry.json`; `release_selection.py` refuses a release that fails the check.
+- **Test:** `python test_how_works_http.py` (synthetic data, throwaway database, AI off).
+
 ---
 
 A small local web app to screen résumés for Rome's Flavours' Server role: upload one or many PDFs at once, each résumé is parsed independently into a structured Candidate CV Profile, and the candidate detail page shows Facts, Derived Information, Flags/Questions and Indicators as four clearly separate areas — never one combined score.

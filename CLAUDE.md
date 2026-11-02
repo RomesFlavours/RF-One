@@ -342,6 +342,7 @@ Provide a concise implementation report containing:
 - concepts implemented;
 - references updated;
 - tests or consistency checks performed;
+- How Works Help updated with the change, or why the change is technical only;
 - unresolved issues;
 - questions requiring Product Owner decisions.
 
@@ -371,6 +372,33 @@ task.** Full text and implementation pointers:
    after a reload (`rf-one-row-return.js`, rows marked `data-rr-key`).
 
 Every future UI refinement reuses these rules.
+
+---
+
+# RF-One How Works Standard
+
+**Standing Product Owner instruction (2026-11-02), mandatory for every
+Domain and Module (UI_HOW_WORKS_001).** The one normative text is
+`03 Software/Shared UI/How Works Standard.md`; this is a pointer to it.
+
+1. Every operational page shows a visible **How Works** link that opens the
+   Help section of *that* page inside its Domain or Module guide
+   (`<guide>#<section>`), never the top of the manual.
+2. The Help describes the behaviour actually implemented in the published
+   version and how to use it. It never describes planned features.
+3. **Code and Help are one release unit.** A functional change without its
+   Help update is incomplete and is not released. A technical-only commit
+   says so on its own line: `How-Works: technical - <reason>`.
+4. Every new page is registered, with its Help target, in
+   `03 Software/Shared UI/how_works_registry.json`. Its `help_missing`
+   list only shrinks: a new page never enters it.
+5. Before a release: `python "03 Software/Shared UI/check_how_works.py"
+   --app <App> --rev <commit> --since <live commit>`. Any error is a
+   release error (`release_selection.py` runs it itself). Checklist:
+   `03 Software/Infrastructure/deploy/RELEASE_CHECKLIST.md`.
+
+MIEAF — every function explains how it works, in the same release in which
+it is published.
 
 ---
 

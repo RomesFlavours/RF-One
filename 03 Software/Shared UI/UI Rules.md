@@ -71,6 +71,20 @@ Implementation: `static/js/rf-one-row-return.js` (RF-One Web), one implementatio
 
 ---
 
+## How Works on every operational page (UI_HOW_WORKS_001)
+
+Product Owner standard (2026-11-02), mandatory. The normative text, the release rule and the automatic check are in [How Works Standard.md](How%20Works%20Standard.md); this paragraph is the UI summary.
+
+- Every operational page shows a visible **How Works** link at the right end of its Domain's navigation tabs, above their divider line, in the same position on every page of the Domain.
+- The link opens the Help section **of that page** in the Domain or Module guide (`<guide>#<section id>`), never the top of the guide. The section opened is visibly marked.
+- The link is rendered once, by the Domain's layout, from the page's section code, and carries `data-how-works="<section id>"`.
+- The guide uses the RF-One shell and breadcrumb, explains the released behaviour only, and is updated in the same release as the code.
+- Implementation, Selection: `templates/workspace/base.html` (link), `templates/workspace/how_it_works.html` (one section per tab), `static/css/selection.css` (`:target` marking).
+
+This replaces the Domain-guide rule of 2026-10-27 ("How [Domain] works" link to the guide): the placement is kept; the label becomes "How Works" and the link opens the page's own section.
+
+---
+
 ## Local days (companion rule, UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001)
 
 A date a person picks, for a Clover Historical Backfill or for the Tips Clover Acquisition data filter, is the Location's **local civil day**: 00:00:00 → 23:59:59 in the Location's timezone. RF-One converts it to UTC internally. The zone's own rules handle EDT/EST changes.
