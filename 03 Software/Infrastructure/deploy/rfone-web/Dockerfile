@@ -24,7 +24,15 @@ WORKDIR "/app/RF-One Web"
 EXPOSE 8080
 ENV PYTHONUNBUFFERED=1
 
-# gthread: a worker waiting on the AI (up to 75 s per interview turn) still
-# serves other requests on its remaining threads. The 120 s timeout stays above
-# that AI limit so a slow answer ends as a clean "try again", not a killed worker.
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "8", "--worker-class", "gthread", "--timeout", "120", "app:app"]
+# Bounds every AI call made without its own limit (Bank AI rules, Tips
+# authoring) so it cannot hold a request thread for minutes.
+ENV RFONE_AI_TIMEOUT_SECONDS=45
+
+# gthread: a worker waiting on the AI still serves other requests on its other
+# threads. In gthread mode --timeout only restarts a worker whose main loop
+# stops; it does not end a slow request, so each request is bounded by its own
+# AI limit (45 s per interview turn, below CloudFront's 60 s origin timeout).
+# 4 threads per worker: a request can hold two database connections, so one
+# worker needs at most 8, well inside SQLAlchemy's default pool of 15, and the
+# two workers together stay a small share of the RDS connection limit.
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "--worker-class", "gthread", "--timeout", "120", "app:app"]

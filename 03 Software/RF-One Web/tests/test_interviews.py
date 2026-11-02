@@ -506,7 +506,10 @@ class AIClientLimitTests(unittest.TestCase):
         fake_anthropic, fake_boto3 = type(sys)("anthropic"), type(sys)("boto3")
         fake_anthropic.Anthropic, fake_boto3.client = Anthropic, client
         for patch in (mock.patch.dict(sys.modules, anthropic=fake_anthropic, boto3=fake_boto3),
-                mock.patch.dict(os.environ, ANTHROPIC_API_KEY="unused-test-key", RFONE_BEDROCK_MODEL_ID="unused-test-model")):
+                mock.patch.dict(os.environ, ANTHROPIC_API_KEY="unused-test-key", RFONE_BEDROCK_MODEL_ID="unused-test-model",
+                    RFONE_AI_TIMEOUT_SECONDS=""),
+                # The process environment only, never a local .env.
+                mock.patch.object(ai_client, "_read_env_or_dotenv", lambda name: os.environ.get(name) or None)):
             patch.start()
             self.addCleanup(patch.stop)
 
@@ -520,19 +523,61 @@ class AIClientLimitTests(unittest.TestCase):
         self.assertEqual(self.sent()["anthropic"]["max_tokens"], self.ai.MAX_OUTPUT_TOKENS)
         self.assertEqual(self.sent()["bedrock"]["inferenceConfig"]["maxTokens"], self.ai.MAX_OUTPUT_TOKENS)
 
-    def test_timeout_is_opt_in_and_bounds_each_provider(self):
-        self.ai._generate_json_anthropic("{}")
-        self.ai._generate_json_bedrock("{}")
-        self.assertNotIn("timeout", self.sent()["anthropic-client"])
-        self.assertNotIn("config", self.sent()["bedrock-client"])
+    def test_every_call_is_bounded_and_explicit_timeout_is_one_attempt(self):
+        self.ai.generate_json("{}")
+        with mock.patch.dict(os.environ, RFONE_AI_PROVIDER="BEDROCK"):
+            self.ai.generate_json("{}")
+        self.assertEqual((self.sent()["anthropic-client"]["timeout"], self.sent()["anthropic-client"]["max_retries"]), (100, 1))
+        config = self.sent()["bedrock-client"]["config"]
+        self.assertEqual((config.read_timeout, config.connect_timeout, config.retries), (100, 10, {"max_attempts": 2, "mode": "standard"}))
         self.calls.clear()
-        self.ai._generate_json_anthropic("{}", timeout=75)
-        self.ai._generate_json_bedrock("{}", timeout=75)
-        self.assertEqual(self.sent()["anthropic-client"]["timeout"], 75)
+        with mock.patch.dict(os.environ, RFONE_AI_TIMEOUT_SECONDS="45"):
+            self.ai._generate_json_anthropic("{}")
+            self.ai._generate_json_bedrock("{}")
+        self.assertEqual((self.sent()["anthropic-client"]["timeout"], self.sent()["anthropic-client"]["max_retries"]), (45, 1))
+        config = self.sent()["bedrock-client"]["config"]
+        self.assertEqual((config.read_timeout, config.retries["max_attempts"]), (45, 2))
+        self.calls.clear()
+        with mock.patch.dict(os.environ, RFONE_AI_TIMEOUT_SECONDS="not a number"):
+            self.ai._generate_json_anthropic("{}")
+        self.assertEqual(self.sent()["anthropic-client"]["timeout"], 100)
+        self.calls.clear()
+        with mock.patch.dict(os.environ, RFONE_AI_TIMEOUT_SECONDS="45"):
+            self.ai._generate_json_anthropic("{}", timeout=30)
+            self.ai._generate_json_bedrock("{}", timeout=30)
+        self.assertEqual(self.sent()["anthropic-client"]["timeout"], 30)
         self.assertEqual(self.sent()["anthropic-client"]["max_retries"], 0)
         config = self.sent()["bedrock-client"]["config"]
-        self.assertEqual((config.read_timeout, config.connect_timeout), (75, 10))
+        self.assertEqual((config.read_timeout, config.connect_timeout), (30, 10))
         self.assertEqual(config.retries["max_attempts"], 1)
+        with self.assertRaises(TypeError):
+            self.ai.generate_json("{}", 30)  # `timeout` stays keyword-only
+
+    def test_bedrock_client_is_created_once_per_configuration_across_threads(self):
+        import threading
+        import time
+        created = []
+        boto3 = sys.modules["boto3"]
+        def slow_client(name, **kwargs):
+            time.sleep(0.05)  # widen the window two threads could both create in
+            created.append((name, kwargs["config"].read_timeout))
+            return type("Bedrock", (), {"converse": lambda self, **kw: {"output": {"message": {"content": [{"text": "{}"}]}}}})()
+        boto3.client = slow_client
+        threads = [threading.Thread(target=self.ai._generate_json_bedrock, args=("{}",), kwargs=dict(timeout=45)) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.ai._generate_json_bedrock("{}", timeout=45)
+        self.assertEqual(created, [("bedrock-runtime", 45)])
+        self.ai._generate_json_bedrock("{}", timeout=30)
+        self.ai._generate_json_bedrock("{}")
+        self.assertEqual(created, [("bedrock-runtime", 45), ("bedrock-runtime", 30), ("bedrock-runtime", 100)])
+        # A replaced factory (a test stand-in or isolation guard) is always asked again.
+        replacement = []
+        boto3.client = lambda name, **kwargs: replacement.append(name) or slow_client(name, **kwargs)
+        self.ai._generate_json_bedrock("{}", timeout=45)
+        self.assertEqual(replacement, ["bedrock-runtime"])
 
     def test_bedrock_timeout_becomes_try_again(self):
         from botocore.exceptions import ReadTimeoutError
@@ -555,13 +600,28 @@ class AIClientLimitTests(unittest.TestCase):
         self.assertIn("try again", str(caught.exception))
         self.assertEqual(self.sent()["bedrock-client"]["config"].read_timeout, interview_provider.AI_TIMEOUT_SECONDS)
 
-    def test_web_image_threads_outlast_the_ai_timeout(self):
+    def test_web_image_limits_fit_inside_cloudfront(self):
         from rfone_data_store.interviews.provider import AI_TIMEOUT_SECONDS
-        dockerfile = (WEB.parent / "Infrastructure/deploy/rfone-web/Dockerfile").read_text(encoding="utf-8")
+        infrastructure = WEB.parent / "Infrastructure/deploy"
+        dockerfile = (infrastructure / "rfone-web/Dockerfile").read_text(encoding="utf-8")
         command = json.loads(next(line for line in dockerfile.splitlines() if line.startswith("CMD "))[4:])
         options = dict(zip(command[1::2], command[2::2]))
-        self.assertEqual((options["--workers"], options["--threads"], options["--worker-class"]), ("2", "8", "gthread"))
-        self.assertGreater(int(options["--timeout"]), AI_TIMEOUT_SECONDS + 10)
+        self.assertEqual((options["--workers"], options["--threads"], options["--worker-class"]), ("2", "4", "gthread"))
+        self.assertIn("ENV RFONE_AI_TIMEOUT_SECONDS=45", dockerfile.splitlines())
+        distribution = json.loads((infrastructure / "rfone-cloudfront/distribution-config.json").read_text(encoding="utf-8"))
+        timeouts = {origin["CustomOriginConfig"]["OriginReadTimeout"] for origin in distribution["Origins"]["Items"]}
+        self.assertEqual(AI_TIMEOUT_SECONDS, 45)
+        self.assertLessEqual(AI_TIMEOUT_SECONDS + 10, min(timeouts))
+
+    def test_server_database_pool_checks_connections_and_fails_fast(self):
+        from rfone_data_store import database
+        engine = mock.MagicMock()
+        engine.dialect.name = "postgresql"
+        with mock.patch.object(database, "create_engine", return_value=engine) as create:
+            database.create_configured_engine("postgresql://user:secret@db.invalid/rfone")
+            database.create_configured_engine("sqlite:///unused.sqlite3")
+        self.assertEqual(create.call_args_list[0].kwargs, dict(future=True, pool_pre_ping=True, pool_timeout=10))
+        self.assertEqual(create.call_args_list[1].kwargs, dict(future=True))
 
 
 if __name__ == "__main__":

@@ -1,10 +1,11 @@
 """One adapter over RF-One's existing JSON transport; no new credentials."""
 import json
 
-# Seconds one interview turn may wait for the AI. Below the web worker's 120 s
-# limit, so a slow answer ends with a "try again" message instead of a dropped
-# request. The conversation is saved only after a valid answer.
-AI_TIMEOUT_SECONDS = 75
+# Seconds one interview turn may wait for the AI. CloudFront gives rfone-web 60 s
+# to answer (OriginReadTimeout); 45 s leaves room for the rest of the request, so
+# a slow AI ends with a "try again" message instead of a gateway error page. The
+# conversation is saved only after a valid answer.
+AI_TIMEOUT_SECONDS = 45
 
 
 class ProviderError(Exception):
