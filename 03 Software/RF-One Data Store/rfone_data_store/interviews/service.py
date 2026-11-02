@@ -114,6 +114,21 @@ def load(db, account, session_id, *, admin=False):
     return row
 
 
+def delete_interview(db, account, session_id):
+    """Remove one interview with its transcript and results (all held on the
+    row). The person's append-only directory history keeps who deleted which
+    interview and when, never its content."""
+    require_manager(db, account)
+    row = db.get(InterviewSession, session_id)
+    if row is None:
+        raise LookupError("Interview unavailable.")
+    db.add(m.EmployeeDirectoryEvent(employee_id=row.person_id, account_id=account.id,
+        action="INTERVIEW_DELETE", details=dict(interview_id=row.id, status=row.status,
+            requester_id=row.requester_id, requested_at=row.created_at.isoformat())))
+    db.delete(row)
+    db.flush()
+
+
 def _string(value, limit):
     if not isinstance(value, str) or not value.strip() or len(value) > limit:
         raise ProviderError("The AI response is invalid. No changes were saved.")

@@ -185,6 +185,56 @@ class InterviewTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             svc.managed(self.db, self.other)
 
+    def test_admin_delete_is_permissioned_csrf_checked_and_audited(self):
+        row = self.create(); self.login(self.person)
+        self.post(row, "start", 0)
+        self.post(row, "answer", 1, message="Risposta da eliminare")
+        session_id, url = row.id, "/admin/interviews/" + row.id + "/delete"
+        def delete(**data):
+            self.db.commit()
+            return self.client.post(url, data=data, base_url="https://localhost")
+        def exists():
+            self.db.commit()
+            return self.db.scalar(select(func.count()).select_from(InterviewSession).where(InterviewSession.id == session_id)) == 1
+        self.assertEqual(delete(csrf_token="test-csrf", confirm="yes").status_code, 403)  # participant
+        self.login(self.other)
+        self.assertEqual(delete(csrf_token="test-csrf", confirm="yes").status_code, 403)
+        self.login(self.admin2)
+        page = self.client.get("/admin/interviews/" + session_id, base_url="https://localhost")
+        self.assertIn('action="/admin/interviews/' + session_id + '/delete"', page.text)
+        self.assertIn('name="confirm" value="yes" required', page.text)
+        self.assertEqual(delete(confirm="yes").status_code, 400)
+        self.assertEqual(self.client.get(url, base_url="https://localhost").status_code, 405)
+        response = delete(csrf_token="test-csrf")
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.location.endswith("/admin/interviews/" + session_id))
+        self.assertTrue(exists())
+        response = delete(csrf_token="test-csrf", confirm="yes")
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(exists())
+        event = self.db.scalar(select(m.EmployeeDirectoryEvent).where(m.EmployeeDirectoryEvent.action == "INTERVIEW_DELETE")
+            .order_by(m.EmployeeDirectoryEvent.id.desc()))
+        self.assertEqual((event.employee_id, event.account_id, event.details["interview_id"]),
+            (self.person_record.id, self.admin2.id, session_id))
+        self.assertNotIn("Risposta", json.dumps(event.details))
+        self.assertEqual(delete(csrf_token="test-csrf", confirm="yes").status_code, 404)
+        self.assertNotIn(session_id, self.client.get("/admin/interviews", base_url="https://localhost").text)
+        self.login(self.person)
+        self.assertEqual(self.client.get("/interviews/" + session_id, base_url="https://localhost").status_code, 404)
+
+    def test_delete_during_ai_turn_is_not_a_server_error(self):
+        row = self.create(); self.login(self.person)
+        session_id = row.id
+        def deleting_provider(payload):
+            with SessionFactory() as concurrent:
+                svc.delete_interview(concurrent, concurrent.get(m.RFOneAccount, self.admin.id), session_id)
+                concurrent.commit()
+            return {"question": "Domanda per un'intervista eliminata"}
+        web.app.config["INTERVIEW_PROVIDER"] = deleting_provider
+        response = self.post(row, "start", 0)
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("no longer available", response.json["error"])
+
     def test_csrf_and_session_revocation(self):
         row = self.create(); self.login(self.person)
         response = self.client.post("/interviews/" + row.id,

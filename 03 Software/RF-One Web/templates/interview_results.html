@@ -30,6 +30,14 @@
 {% for message in messages %}<section id="message-{{ loop.index0 }}" tabindex="-1" class="interview-message interview-message-{{ message.role }}"><h2>{{ (person.full_name if person else recipient.display_name) if message.role == 'user' else 'AI interviewer' }}</h2><p>{{ message.text }}</p></section>{% endfor %}
 </details>
 {% else %}<section class="interview-panel"><h2>Results are not available yet</h2><p>Results will be available when the recipient completes the interview.</p><p class="interview-hint">The recipient can open the interview from their MyRFOne home page.</p></section>{% endif %}
+<details class="interview-delete"><summary>Delete this interview</summary>
+<form method="post" action="{{ url_for('interview_admin_delete', session_id=row.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <p>This permanently removes the interview, every answer and the results. It cannot be undone.</p>
+  <label class="interview-consent" for="interview-delete-confirm"><input id="interview-delete-confirm" type="checkbox" name="confirm" value="yes" required> <span>Yes, delete this interview for everyone.</span></label>
+  <button type="submit" class="interview-danger">Delete interview</button>
+</form>
+</details>
 <div class="interview-finish-row"><a href="{{ url_for('interview_admin') }}">Back to interviews</a>{% if person %}<a href="{{ url_for('interview_admin', person_id=person.id) }}">Request another interview</a>{% endif %}</div>
 </div>
 <script defer src="{{ url_for('static', filename='js/interview-results.js') }}?v=1"></script>

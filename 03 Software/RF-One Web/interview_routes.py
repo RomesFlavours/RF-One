@@ -8,6 +8,7 @@ from auth import load_current_account
 from rfone_data_store import models as m
 from rfone_data_store.interviews import directory_bridge as people
 from rfone_data_store.interviews import service as svc
+from rfone_data_store.interviews.models import InterviewSession
 from rfone_data_store.interviews.provider import ProviderError, generate
 
 
@@ -89,6 +90,25 @@ def register_interview_routes(app, *, SessionFactory, require_login, require_adm
                 result=json.loads(row.results) if row.results else None,
                 messages=json.loads(row.transcript) if row.status == "COMPLETED" else [])
 
+    @app.post("/admin/interviews/<session_id>/delete")
+    @admin_gate
+    def interview_admin_delete(session_id):
+        require_csrf()
+        if request.form.get("confirm") != "yes":
+            flash("Tick the confirmation box to delete this interview.", "error")
+            return redirect(url_for("interview_admin_results", session_id=session_id))
+        with SessionFactory() as db:
+            ready(db)
+            try:
+                svc.delete_interview(db, load_current_account(db), session_id)
+            except PermissionError:
+                abort(403)
+            except LookupError:
+                abort(404)
+            db.commit()
+        flash("Interview deleted with its answers and results.", "info")
+        return redirect(url_for("interview_admin"))
+
     @app.route("/interviews/<session_id>", methods=["GET", "POST"])
     @require_login
     def interview_session(session_id):
@@ -129,6 +149,12 @@ def register_interview_routes(app, *, SessionFactory, require_login, require_adm
                             redirect=url_for("interview_session", session_id=row.id))
                     return redirect(url_for("interview_session", session_id=row.id))
                 except svc.ConflictError as exc:
+                    db.rollback()
+                    if db.scalar(select(InterviewSession.id).where(InterviewSession.id == session_id)) is None:
+                        # Deleted by an administrator while the AI was answering.
+                        if wants_json:
+                            return jsonify(error="This interview is no longer available."), 404
+                        abort(404)
                     error, status = str(exc), 409
                 except ProviderError as exc:
                     error, status = str(exc), 503
