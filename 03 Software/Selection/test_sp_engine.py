@@ -164,14 +164,21 @@ try:
     order = sp_ranking.rank([dict(c) for c in cands], reqs_sv, None)
     check("ranking: Maria (every must-have shown) before Derek (short-job pattern computed from dates)",
           [c["id"] for c in order] == ["m", "d"] and order[0]["assessment"]["group"] == "A"
-          and order[1]["assessment"]["group"] == "D", [(c["id"], c["assessment"]["group"]) for c in order])
+          and order[1]["assessment"]["group"] != "D", [(c["id"], c["assessment"]["group"]) for c in order])
+    check("stability starts Preferred, not Must-have (dates alone never decide a group)",
+          next(r for r in reqs_sv if r["id"] == "stability")["criticality"] == spp.PREFERRED)
+    reqs_stab_must = [dict(r, criticality=spp.MUST_HAVE) if r["id"] == "stability" else r for r in reqs_sv]
+    d_must = sp_ranking.assess(derek, reqs_stab_must)
+    check("ranking: even as a Must-have, a short-job pattern computed from dates alone is B (to verify), never D",
+          d_must["group"] in ("B", "C") and "Employment stability" not in d_must["group_reason"].split(":")[0]
+          and d_must["group"] != "D", (d_must["group"], d_must["group_reason"]))
     check("ranking: the reason for the order is explicit", "group A" in (order[0]["why_ahead"] or ""), order[0]["why_ahead"])
     manual = sp_ranking.rank([dict(c) for c in cands], reqs_sv, ["d", "m"])
     check("ranking: the manager's order wins and is labelled",
           [c["id"] for c in manual] == ["d", "m"] and manual[0]["rank_moved"] and "by the manager" in manual[0]["why_ahead"])
     unknown_stab = dict(maria, requirements=dict(maria["requirements"], stability={"level": None, "assessable": False,
                                                                                    "computed": True, "quotes": []}))
-    a = sp_ranking.assess(unknown_stab, reqs_sv)
+    a = sp_ranking.assess(unknown_stab, reqs_stab_must)
     check("ranking: stability with no usable dates is 'to verify', not zero",
           next(i for i in a["items"] if i["id"] == "stability")["status"] == sp_ranking.NOT_ASSESSABLE and a["group"] == "B")
 finally:

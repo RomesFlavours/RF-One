@@ -105,12 +105,28 @@ _DURATION_RE = re.compile(r"\b\d+\s*(?:\+\s*)?(?:-\s*\d+\s*)?(?:months?|mos?|yea
 # "family" alone is not listed either ("a family Italian restaurant", "familiarity with the menu").
 _SENSITIVE_RE = re.compile(r"\b(commut\w*|drive time|distance|lives|living in|resid\w*|relocat\w*|age|aged|"
                            r"years old|young|older|younger|family (?:status|situation|reasons|obligations|commitments)|"
-                           r"pregnan\w*|nationalit\w*|religio\w*|ethnic\w*|disabilit\w*|married|children)\b", re.I)
+                           r"pregnan\w*|nationalit\w*|religio\w*|ethnic\w*|disabilit\w*|married|children|"
+                           r"gender|sex|sexual orientation|race|racial|colou?r|citizen\w*|visa|immigra\w*|"
+                           r"national origin|veteran\w*)\b", re.I)
 # A "flag" that only says something is not in the CV is missing information: it goes to To verify.
 _ABSENCE_RE = re.compile(r"^\s*(no|not|limited|minimal|unknown|unclear|lack\w*|missing|without|unverified|incomplete|"
                          r"few|little|insufficient|undocumented)\b|not documented|no documented|without documented|"
                          r"not shown|not stated|not specified|not detailed", re.I)
 _HEADER_RE = re.compile(r"^[A-Z][A-Z &/]{2,40}:?$")
+# Real CVs often write headings in Title Case ("Skills", then "Experience"): the skills section also ends at any
+# usual heading, in any case, or a duty under Experience would count as a mere claim (SELECTION_SP_REAL_CVS_001).
+_SECTION_RE = re.compile(r"^(?:(?:(?:work|professional|relevant|restaurant|employment|job|career)\s+)?"
+                         r"(?:experience|history)|employment|education|training|certifications?|licenses?|"
+                         r"languages?|references?|summary|profile|objective|awards|achievements|volunteer\w*|"
+                         r"interests|hobbies|availability|contact)\s*:?\s*$", re.I)
+# A quote this short ("Server", "POS") names a thing, it does not document work: it can support a claim (level 1)
+# at most (SELECTION_SP_REAL_CVS_001).
+MIN_EVIDENCE_WORDS, MIN_EVIDENCE_CHARS = 4, 20
+
+
+def substantial(quote) -> bool:
+    text = str(quote or "").strip()
+    return len(text.split()) >= MIN_EVIDENCE_WORDS or len(text) >= MIN_EVIDENCE_CHARS
 _SKILLS_RE = re.compile(r"^(skills|core skills|key skills|technical skills|competenc\w*|abilities|strengths)\b:?",
                         re.I)
 
@@ -130,7 +146,7 @@ def skills_text(cv_text: str) -> str:
             if rest:
                 out.append(rest)
             continue
-        if inside and stripped and _HEADER_RE.match(stripped):
+        if inside and stripped and (_HEADER_RE.match(stripped) or _SECTION_RE.match(stripped)):
             inside = False
         if inside and stripped:
             out.append(stripped)
@@ -262,6 +278,11 @@ def verify(data: dict, *, role_code: str, requirements: list[dict], cv_text: str
                 v.log.append(f"Job {key} “{job[key]}” not found in the CV: shown as read, to check.")
                 job[f"{key}_unverified"] = True
         jobs.append(job)
+    for job in jobs:
+        if job.get("duties") and _SENSITIVE_RE.search(str(job["duties"])):
+            v.log.append(f"Duties read for {job.get('employer') or 'a job'} referred to residence or a personal "
+                         "characteristic: not shown.")
+            job["duties"] = None
     timeline = sp_timeline.analyze(jobs, cv_text, today)
     v.log += [n for n in timeline["date_notes"] if "not in the CV" in n]
 
@@ -286,6 +307,12 @@ def verify(data: dict, *, role_code: str, requirements: list[dict], cv_text: str
         elif level > 1 and v.only_in_skills(quotes):
             v.log.append(f"{req['name']}: evidence only in the skills list, level {level} → 1 (claimed).")
             level, explanation = 1, ("Only listed among skills: a claim, not documented evidence. " + explanation)
+        elif level > 1 and not any(substantial(q) for q in quotes):
+            v.log.append(f"{req['name']}: quotes too short to document work, level {level} → 1 (claimed).")
+            level, explanation = 1, ("Only a word or two in the CV: a claim, not documented evidence. " + explanation)
+        if _SENSITIVE_RE.search(explanation):
+            v.log.append(f"{req['name']}: explanation referred to residence or a personal characteristic, removed.")
+            explanation = "Explanation removed: it referred to residence or a personal characteristic."
         against = str(raw.get("against_quote") or "").strip() or None
         if against and not v.quote_ok(against):
             v.log.append(f"{req['name']}: contrary quote not found in the CV, discarded.")
@@ -307,6 +334,9 @@ def verify(data: dict, *, role_code: str, requirements: list[dict], cv_text: str
             continue
         if level != "claimed" and v.only_in_skills([quote]):
             v.log.append(f"Competence “{raw['name']}”: only in the skills list, {level} → claimed.")
+            level = "claimed"
+        elif level != "claimed" and not substantial(quote):
+            v.log.append(f"Competence “{raw['name']}”: quote too short to document work, {level} → claimed.")
             level = "claimed"
         competences.append({"name": str(raw["name"]).strip(), "level": level, "quote": quote,
                             "employer": raw.get("employer")})

@@ -284,9 +284,17 @@ def interview_save(db, actor, position_id, pc_id):
     position = _position(db, actor, position_id, edit=True)
     pc = _pc(db, position, pc_id)
     data = load(db, pc.id)
+    form = request.form
+    if data["status"] == "COMPLETED" and form.get("action") != "reopen":
+        # A completed interview is the record the decision rests on: it changes only after Reopen, which is logged
+        # (an open tab's autosave used to change it silently, SELECTION_SP_REAL_CVS_001).
+        if form.get("autosave") == "1":
+            return jsonify({"ok": False, "status": STATUS[data["status"]],
+                            "message": "This interview is completed: reopen it to change it."}), 409
+        flash("This interview is completed: reopen it to change it. Nothing was saved.")
+        return redirect(url_for(".interviews", position_id=position.id, pc=pc.id) + "#summary")
     config = configuration(db, position, pc, data)
     data["config"] = config
-    form = request.form
     if form.get("mode") in MODES:
         data["mode"] = form["mode"]
     default_src = data["mode"] if data["mode"] in EVIDENCE_SOURCES else "IN_PERSON"

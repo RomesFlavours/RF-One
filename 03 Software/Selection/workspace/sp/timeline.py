@@ -128,23 +128,32 @@ def analyze(jobs: list[dict], cv_text: str, today: date | None = None) -> dict:
     today = today or date.today()
     cv_norm = ai_adapter._normalized(cv_text)
     for job in jobs:
-        for key in [k for k in job if k.startswith(("start_", "end_", "months_"))]:
+        for key in [k for k in job if k.startswith(("start_", "end_", "months_")) or k == "side_job"]:
             job.pop(key)
         job.update(job_dates(job, cv_norm, today, cv_text))
     dated = sorted([j for j in jobs if j["date_status"] == "OK"], key=lambda j: (j["start_lo"], j["end_lo"]))
     notes = [j["date_note"] for j in jobs if j.get("date_note")]
 
-    gaps = []
-    for prev, nxt in zip(dated, dated[1:]):
-        gap_min = nxt["start_lo"] - prev["end_hi"] - 1
-        if gap_min >= GAP_MONTHS:
-            gap_max = nxt["start_hi"] - prev["end_lo"] - 1
-            size = f"{gap_min} months" if gap_min == gap_max else f"at least {gap_min} months"
-            gaps.append({"text": f"{size} between {prev.get('employer') or 'a job'} (ended {prev['date_text']}) "
-                                 f"and {nxt.get('employer') or 'the next job'} ({nxt['date_text']})",
-                         "months_min": gap_min})
+    # Jobs held at the same time are normal in restaurants (a second job, a seasonal one): a gap is measured from
+    # the latest end reached so far, not from the previous job in the list, and a job held inside another, longer
+    # one is not a "job change" (SELECTION_SP_REAL_CVS_001).
+    for j in dated:
+        j["side_job"] = any(k is not j and k["months_min"] > j["months_max"] and k["start_lo"] <= j["start_lo"]
+                            and j["end_hi"] <= k["end_hi"] for k in dated)
+    gaps, latest = [], None
+    for nxt in dated:
+        if latest is not None:
+            gap_min = nxt["start_lo"] - latest["end_hi"] - 1
+            if gap_min >= GAP_MONTHS:
+                gap_max = nxt["start_hi"] - latest["end_lo"] - 1
+                size = f"{gap_min} months" if gap_min == gap_max else f"at least {gap_min} months"
+                gaps.append({"text": f"{size} between {latest.get('employer') or 'a job'} (ended {latest['date_text']}) "
+                                     f"and {nxt.get('employer') or 'the next job'} ({nxt['date_text']})",
+                             "months_min": gap_min})
+        if latest is None or (nxt["end_hi"], nxt["end_lo"]) > (latest["end_hi"], latest["end_lo"]):
+            latest = nxt
 
-    stability = _stability(dated, len(jobs) - len(dated), today)
+    stability = _stability([j for j in dated if not j["side_job"]], len(jobs) - len(dated), today)
     return {"gaps": gaps, "stability": stability, "date_notes": notes}
 
 

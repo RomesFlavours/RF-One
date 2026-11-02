@@ -8,7 +8,7 @@ the payload counts the attempts. Results stay separate (source "SP", see `sp_rou
 Reliability (App Runner gives an instance CPU only while it serves requests):
 - the queue is in the database, so it survives a closed page, a restart or a new instance;
 - a job is claimed by a conditional UPDATE (same state and timestamp), so exactly one worker wins, also
-  across the two gunicorn workers; a RUNNING job whose 5-minute lease expired (process stopped mid-way)
+  across the two gunicorn workers; a RUNNING job whose 10-minute lease expired (process stopped mid-way)
   is claimed again, at most 3 attempts in all;
 - before calling Bedrock a job is dropped when the candidate already has a current analysis for that
   version, or when an older active job exists for the same candidate (the lowest id wins): no duplicate
@@ -41,7 +41,7 @@ log = logging.getLogger(__name__)
 
 JOB, RESULT = "SP_JOB", "SP"
 QUEUED, RUNNING, DONE, FAILED, SUPERSEDED = "QUEUED", "RUNNING", "DONE", "FAILED", "SUPERSEDED"
-LEASE = timedelta(minutes=5)   # longer than one reading with every throttling retry (about 90 s)
+LEASE = timedelta(minutes=10)  # longer than one reading with every throttling retry and the JSON retry (about 4 min)
 MAX_ATTEMPTS = 3
 WORKERS = 3                    # 4 in parallel made Bedrock throttle (1 Nov 2026)
 KICK_EVERY = 5.0               # seconds between two kicks of one process

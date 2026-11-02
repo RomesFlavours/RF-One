@@ -214,6 +214,7 @@
     function autosave() {
       const data = new FormData(sheet); data.append("autosave", "1");
       fetch(sheet.getAttribute("action"), { method: "POST", body: data }).then(r => r.json()).then(j => {
+        if (!j.ok) { saved.textContent = j.message || "Not saved"; status.textContent = j.status; return; }
         saved.textContent = "Saved automatically " + new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
         status.textContent = j.status;
       }).catch(() => { saved.textContent = "Not saved: use Save"; });

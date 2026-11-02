@@ -74,4 +74,12 @@ def apply(analysis: dict | None, role_code: str, chosen: dict | None) -> dict | 
         out["unknowns"] = [u for u in analysis.get("unknowns") or [] if not str(u).startswith("Gap of ")]
     if not on.get("short_stays", True) and isinstance(analysis.get("stability"), dict):
         out["stability"] = {**analysis["stability"], "flags": []}
+        # The stability level is made of the same short-stay pattern: with the rule off it must not count in the
+        # group or the order either, or the switch would only hide the flag (SELECTION_SP_REAL_CVS_001).
+        reqs = dict(analysis.get("requirements") or {})
+        for key, res in reqs.items():
+            if isinstance(res, dict) and res.get("computed"):
+                reqs[key] = {**res, "level": None, "assessable": False, "switched_off": True,
+                             "explanation": "Short stays are switched off for this Job: not counted."}
+        out["requirements"] = reqs
     return out

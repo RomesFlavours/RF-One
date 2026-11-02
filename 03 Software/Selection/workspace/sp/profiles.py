@@ -28,10 +28,15 @@ def profile_for(role_code: str) -> dict:
 
 
 def default_requirements(role_code: str) -> list[dict]:
-    """The profile's dimensions as a draft requirement list (weight >= 25 must-have, 10-15 preferred, else optional)."""
+    """The profile's dimensions as a draft requirement list (weight >= 25 must-have, 10-15 preferred, else optional).
+    A computed requirement (stability) starts Preferred whatever its weight: short or broken job histories also
+    come from studies, caring for someone, health or pregnancy, so the dates alone must not decide a group; the
+    manager can still make it a Must-have, and the interview asks about it."""
     out = []
     for d in profile_for(role_code)["dimensions"]:
         crit = MUST_HAVE if d["weight"] >= 25 else PREFERRED if d["weight"] >= 10 else OPTIONAL
+        if d["id"] in COMPUTED and crit == MUST_HAVE:
+            crit = PREFERRED
         out.append({"id": d["id"], "name": d["name"], "look_for": d["look_for"], "weight": d["weight"],
                     "criticality": crit, "computed": d["id"] in COMPUTED,
                     "source": profile_for(role_code)["version"]})

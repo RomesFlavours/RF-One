@@ -10,7 +10,8 @@ Order, from first to last:
    A  every must-have shown in the CV
    B  must-haves partly shown or to verify, none missing
    C  a must-have not documented in the CV (missing information, to verify)
-   D  a must-have with documented evidence against it (dates or a CV quote)
+   D  a must-have with documented evidence against it (a CV quote; a pattern
+      computed from the dates alone is a point to verify, B at most)
    Missing information (C) is placed before documented concerns (D): it is
    something to verify, not a negative judgement;
 3. within a group, documented evidence weighted by the approved weights
@@ -61,10 +62,14 @@ def assess(analysis: dict, requirements: list[dict]) -> dict:
         if status != NOT_ASSESSABLE and req["weight"]:
             possible += req["weight"]
             got += req["weight"] * (res["level"] or 0) / 4
-    must = [i for i in items if i["criticality"] == spp.MUST_HAVE]
-    against = [i for i in must if i["status"] == AGAINST]
+    # A requirement whose rule the Job switched off is shown but never counts in the group (`rules.apply`).
+    must = [i for i in items if i["criticality"] == spp.MUST_HAVE and not i.get("switched_off")]
+    # A pattern computed from dates alone (stability) is never by itself a documented concern: it is something to
+    # ask at the interview, so it places the candidate at most in B (SELECTION_SP_REAL_CVS_001).
+    against = [i for i in must if i["status"] == AGAINST and not i.get("computed")]
     missing = [i for i in must if i["status"] in (MISSING, CLAIMED)]
-    unclear = [i for i in must if i["status"] in (PARTIAL, NOT_ASSESSABLE)]
+    unclear = [i for i in must if i["status"] in (PARTIAL, NOT_ASSESSABLE)
+               or (i["status"] == AGAINST and i.get("computed"))]
     if against:
         group, why = "D", "Evidence against: " + "; ".join(i["name"] for i in against)
     elif missing:
