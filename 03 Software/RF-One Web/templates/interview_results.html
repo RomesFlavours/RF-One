@@ -2,7 +2,7 @@
 {% block page_title %}Interview results · RF-One{% endblock %}
 {% block content %}
 {% include "_interview_test_banner.html" %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/interviews.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/interviews.css') }}?v=3">
 <div class="interview-page interview-results-page">
 <p class="breadcrumb"><a href="{{ url_for('home') }}">MyRFOne</a> / <a href="{{ url_for('interview_admin') }}">Interviews</a> / Results</p>
 <div class="interview-heading"><div><h1>{{ 'Interview results' if result else 'Interview requested' }}</h1><p class="interview-meta">{{ person.full_name if person else recipient.display_name }}</p></div><span class="interview-state">{{ interview_status_labels[row.status] }}</span></div>

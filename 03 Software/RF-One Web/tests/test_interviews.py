@@ -90,6 +90,8 @@ class InterviewTests(unittest.TestCase):
         return row
 
     def post(self, row, action, revision, **extra):
+        if action == "start":
+            extra.setdefault("consent", "yes")
         self.db.commit()
         return self.client.post("/interviews/" + row.id,
             data=dict(csrf_token="test-csrf", action=action, revision=revision, **extra),
@@ -186,6 +188,31 @@ class InterviewTests(unittest.TestCase):
         response = self.client.post("/interviews/" + row.id, data=dict(
             csrf_token="test-csrf", action="answer", revision=1, message="Risposta da conservare"), base_url="https://localhost")
         self.assertIn("Risposta da conservare", response.text)
+
+    def test_start_requires_consent_on_the_server(self):
+        row = self.create(); self.login(self.person)
+        page = self.client.get("/interviews/" + row.id, base_url="https://localhost")
+        self.assertIn('name="consent" value="yes" required', page.text)
+        self.assertIn("Administrators can delete them", page.text)
+        calls = []
+        web.app.config["INTERVIEW_PROVIDER"] = lambda payload: calls.append(payload) or {"question": "Domanda"}
+        for refused in ("", "no"):
+            response = self.post(row, "start", 0, consent=refused)
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("I agree", response.json["error"])
+        self.db.commit()
+        response = self.client.post("/interviews/" + row.id, data=dict(csrf_token="test-csrf",
+            action="start", revision=0), base_url="https://localhost")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(calls, [])
+        self.db.refresh(row)
+        self.assertEqual((row.status, row.consent_given, row.consent_at), ("REQUESTED", False, None))
+        self.assertEqual(self.post(row, "start", 0).status_code, 200)
+        self.db.refresh(row)
+        self.assertTrue(row.consent_given)
+        self.assertIsNotNone(row.consent_at)
+        with self.assertRaises(ValueError):
+            svc.advance(self.db, self.person, self.create(), 0, "start", "", fake_provider)
 
     def test_ai_timeout_is_a_clean_try_again(self):
         row = self.create(); self.login(self.person)
@@ -292,6 +319,46 @@ class InterviewTests(unittest.TestCase):
         self.assertEqual(self.client.get('/interviews/'+row.id,base_url='https://localhost').status_code,404)
         self.assertNotIn(row.id,self.client.get('/',base_url='https://localhost').text)
         self.assertEqual(self.post(row,'start',0).status_code,404)
+
+    def test_consent_migration_extends_the_single_chain(self):
+        import ast
+        from sqlalchemy import create_engine
+        from alembic.migration import MigrationContext
+        from alembic.operations import Operations
+        versions = WEB.parent/'RF-One Data Store/migrations/versions'
+        parents = {}
+        for path in versions.glob('*.py'):
+            # Same reading as check_migration_chain.py: plain and annotated assignments.
+            declared = {t.id: ast.literal_eval(n.value) for n in ast.parse(path.read_text(encoding='utf-8')).body
+                if isinstance(n, (ast.Assign, ast.AnnAssign)) and n.value is not None
+                for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
+                if isinstance(t, ast.Name) and t.id in ('revision', 'down_revision')}
+            if 'revision' in declared:
+                down = declared.get('down_revision')
+                parents[declared['revision']] = tuple(down) if isinstance(down, (list, tuple)) else ((down,) if down else ())
+        children = {p for ups in parents.values() for p in ups}
+        self.assertEqual(sorted(r for r in parents if r not in children), ['e1b220261102'])
+        self.assertEqual(parents['e1b220261102'], ('e0a120261101',))
+        loaded = []
+        for name in ('e0a120261101_add_interviews_test.py', 'e1b220261102_add_interview_consent.py'):
+            spec = importlib.util.spec_from_file_location('migration_' + name[:12], versions/name)
+            module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module); loaded.append(module)
+        engine = create_engine('sqlite://')
+        with engine.begin() as c:
+            m.Base.metadata.create_all(c, tables=[t for t in m.Base.metadata.tables.values() if t.name != 'interview_sessions'])
+            with Operations.context(MigrationContext.configure(c)):
+                loaded[0].upgrade()
+                c.exec_driver_sql("INSERT INTO interview_sessions (id, requester_id, recipient_id, person_id, purpose, "
+                    "specialization, status, revision, transcript, created_at) VALUES ('old', 1, 1, 1, 'p', 'KNOW_HOW', "
+                    "'REQUESTED', 0, '[]', '2026-11-01')")
+                loaded[1].upgrade()
+                columns = {col['name'] for col in inspect(c).get_columns('interview_sessions')}
+                self.assertLessEqual({'consent_given', 'consent_at'}, columns)
+                self.assertEqual(tuple(c.exec_driver_sql("SELECT consent_given, consent_at FROM interview_sessions").one()), (0, None))
+                loaded[1].downgrade()
+                self.assertNotIn('consent_given', {col['name'] for col in inspect(c).get_columns('interview_sessions')})
+                self.assertEqual(c.exec_driver_sql("SELECT count(*) FROM interview_sessions").scalar(), 1)
+        engine.dispose()
 
     def test_new_migration_is_additive_and_reversible(self):
         from sqlalchemy import create_engine

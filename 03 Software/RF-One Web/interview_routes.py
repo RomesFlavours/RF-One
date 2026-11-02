@@ -120,7 +120,8 @@ def register_interview_routes(app, *, SessionFactory, require_login, require_adm
                         return provider(payload)
                     svc.advance(db, actor, row, revision, request.form.get("action", ""),
                         request.form.get("message", ""), call_provider,
-                        channel=request.form.get("channel", "text"))
+                        channel=request.form.get("channel", "text"),
+                        consent=request.form.get("consent") == "yes")
                     db.commit()
                     if wants_json:
                         messages = json.loads(row.transcript)

@@ -21,10 +21,15 @@ def now():
     return datetime.now(timezone.utc)
 
 
+# Columns added after the first release; until their migration runs the feature
+# reports "not available yet" instead of failing on every query.
+REQUIRED_COLUMNS = {"person_id", "consent_given", "consent_at"}
+
+
 def available(db):
     inspector = inspect(db.connection())
     return (inspector.has_table(InterviewSession.__tablename__) and
-        "person_id" in {c["name"] for c in inspector.get_columns(InterviewSession.__tablename__)})
+        REQUIRED_COLUMNS <= {c["name"] for c in inspector.get_columns(InterviewSession.__tablename__)})
 
 
 def active(account):
@@ -134,11 +139,13 @@ def _complete_output(raw, messages):
         open_questions=[_string(q, 2000) for q in questions], validation="CANDIDATE")
 
 
-def advance(db, account, row, expected_revision, action, text, provider, *, channel="text"):
+def advance(db, account, row, expected_revision, action, text, provider, *, channel="text", consent=False):
     """Only an assigned active account can mutate; CAS protects concurrent tabs.
 
     Build/validate the entire turn before writing. No provider/tool can approve
     knowledge or create an operational side effect through this interface.
+    Starting requires the participant's explicit consent, checked here so a
+    request that skips the page's checkbox is still refused.
     """
     active(account)
     if not recipient_matches(db, account, row):
@@ -151,6 +158,8 @@ def advance(db, account, row, expected_revision, action, text, provider, *, chan
         raise ValueError("Invalid channel.")
     if (action == "start") != (row.status == "REQUESTED"):
         raise ConflictError("This action is unavailable in the current state.")
+    if action == "start" and consent is not True:
+        raise ValueError("Tick \"I agree\" to start the interview.")
     messages = json.loads(row.transcript)
     if action == "answer":
         text = text.strip()
@@ -178,6 +187,8 @@ def advance(db, account, row, expected_revision, action, text, provider, *, chan
         question = _string(raw.get("question"), 4000)
         messages.append(dict(role="assistant", text=question, at=now().isoformat(), channel="ai"))
         values.update(status="IN_PROGRESS", transcript=json.dumps(messages, ensure_ascii=False))
+        if action == "start":
+            values.update(consent_given=True, consent_at=now())
     changed = db.execute(update(InterviewSession).where(
         InterviewSession.id == session_id, InterviewSession.revision == expected_revision,
         InterviewSession.status == previous_status).values(**values).execution_options(synchronize_session=False))

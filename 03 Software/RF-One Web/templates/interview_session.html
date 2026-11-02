@@ -2,7 +2,7 @@
 {% block page_title %}Interview · RF-One{% endblock %}
 {% block content %}
 {% include "_interview_test_banner.html" %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/interviews.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/interviews.css') }}?v=3">
 <div class="interview-page">
 <p class="breadcrumb"><a href="{{ url_for('home') }}">MyRFOne</a> / Interview</p>
 <div class="interview-heading"><div><h1>Interview</h1><p class="interview-meta">Requested by {{ requester.display_name|short_name }}</p></div>
@@ -30,6 +30,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="revision" value="{{ row.revision }}">
   <input type="hidden" name="action" value="start">
+  <label class="interview-consent" for="interview-consent"><input id="interview-consent" type="checkbox" name="consent" value="yes" required> <span>I agree. My answers are saved in RF-One and used to build the company's know-how. Administrators can delete them.</span></label>
   <button type="submit">Start interview</button>
 </form>
 </section>

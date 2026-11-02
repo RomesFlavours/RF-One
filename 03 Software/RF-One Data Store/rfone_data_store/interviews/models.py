@@ -1,7 +1,7 @@
 """Persistent interview sessions, independent of any particular industry."""
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..models import Base
@@ -25,3 +25,6 @@ class InterviewSession(Base):
     results: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The participant's "I agree" on the Start page; set once, when the interview starts.
+    consent_given: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
