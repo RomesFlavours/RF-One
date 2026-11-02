@@ -34,6 +34,9 @@ def main():
             spec = importlib.util.spec_from_file_location('interview_consent_migration', path)
             migration = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(migration)
+            # Fail fast instead of queueing every interview_sessions query
+            # behind the ALTER while a long transaction holds the table.
+            connection.execute(text("SET LOCAL lock_timeout = '5s'"))
             with Operations.context(MigrationContext.configure(connection)):
                 migration.upgrade()
             updated = connection.execute(text('UPDATE alembic_version SET version_num=:new WHERE version_num=:old'),
