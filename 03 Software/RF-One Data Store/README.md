@@ -76,6 +76,8 @@ python test_purchased_alignment.py     # Purchased output tests (NORMALIZED/HUMA
 
 ## Schema migrations (Alembic)
 
+> **Shared database rule — see [`MIGRATIONS.md`](MIGRATIONS.md).** No service applies migrations to the shared database while it starts. The reference chain is the one applied on AWS (`migrations/aws_applied_revision.json`), every image build runs `check_migration_chain.py`, and services check their tables read-only (`rfone_data_store/schema_compatibility.py`). `run_migrations_to_head()` refuses a non-SQLite database without the explicit release-step authorization.
+
 Introduced by TASK_DATABASE_002, before any real data was loaded. Alembic is now the **only** supported way to create or evolve the schema — `create_database.py` itself runs `alembic upgrade head` internally, so a fresh database and an existing one on an older revision both end up correctly at the latest schema without ever deleting a populated database.
 
 ```text

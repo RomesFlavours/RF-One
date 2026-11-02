@@ -32,6 +32,7 @@ Developers and AI agents must never treat a document under `90 Archive/` as defi
 | Location | Description |
 |---|---|
 | `Legacy Repository/X00 Knowledge Repository/` | The full pre-Core-2.0 knowledge repository, preserved with its original internal hierarchy (`00 Vision/` … `09 Interviews/`). Moved here by `90 Archive/Task History/Tasks/TASK_CORE_005_Canonical_Repository_Migration.md` after the legacy-reconciliation review (`90 Archive/Task History/Tasks/TASK_CORE_004_Legacy_Knowledge_Reconciliation_Review.md`) and the approved backlog at `07 Tasks/Backlog/LEGACY_KNOWLEDGE_RECONCILIATION_BACKLOG.md`. |
+| `Superseded Migrations/` | Alembic migration files that must never run again (moved out of `migrations/versions/`), with their origin and reason, per `03 Software/RF-One Data Store/MIGRATIONS.md`. |
 | `Task History/` | Completed RF-One task specifications and execution reports, moved out of the active `07 Tasks/` workspace once reviewed and committed. Historical/non-authoritative, per `90 Archive/Task History/README.md`. |
 
 Files under `Legacy Repository/` are preserved unmodified in their original relative context and should remain unmodified whenever possible.

@@ -1,18 +1,19 @@
 {
-  "release": "rfone-person-foundation-20261029",
+  "release": "rfone-shared-migrations-20261101",
   "scope": "RF-One-owned included person directory, confirmed POS/domain links; GET-only POS, no authority changes",
   "files": {
     "RF-One Data Store/rfone_data_store/models.py": "b828268fe0733b9ca23155b496255dcac2f5d743b5d09d7d0dc96fed9cb9be07",
     "RF-One Data Store/rfone_data_store/employee_directory.py": "3c6e2ebe4c8c5db9e0d6fcde3bf7d340aba9b01734186dc2ca9052dfade6d21e",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/acquisition.py": "64b4deb1b52c683f10c42c96f60d7f4f91d06e0e35fbdcef838a9b06ff0e1414",
-    "RF-One Data Store/rfone_data_store/technical/connectors/clover/correction_sync.py": "1f733aa6a1b7b72acd2438d735d432ee1c39255b1aea9d904a5cd0bed8608775",
+    "RF-One Data Store/rfone_data_store/technical/connectors/clover/correction_sync.py": "4c1c7b85899db2586f30e8b864a170932cf6c3ccbaa0e60705719f0192c35cea",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/mapping.py": "cad7dd0aaddc59f0b1898058ad6553756cbf1eee65fe3249c64d600c31d291d7",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/ingest.py": "339eb6bc8aa7abf452ee6bc9b4c8adf072c2f14274cc56db25c0717ba3c01bd0",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/historical_backfill_detail.py": "36aabe9bbbb85e42e75d36e0d5f8a55e7efaebecaf02e013aa60da7a9d07dcb1",
     "RF-One Data Store/test_clover_employee_history.py": "e88e19aac8a85e371f40f49e52478b6a44481549853f36187aa56a6e3ee6cf40",
     "RF-One Data Store/test_clover_monthly_recovery.py": "9f40416226bb0636f6288fb2f8b85d2bac8239156d6965e4921b1d0d5a5f7eab",
     "RF-One Data Store/test_clover_line_presence.py": "d00655d5915f31cf88243071bb4e1e63811d5c79c22b7393265e2c00bc4f05c4",
-    "RF-One Data Store/clover_connector_release_check.py": "65dff6cdddac3a6689ff97252587ae66fa73ba3e1598bb2be4799cccccab191d",
-    "RF-One Data Store/migrations/versions/d9e220261029_rfone_person_foundation.py": "0ea9032797e5740383b6c54815e45f4077c0b889906f8b63e6913a3d53435785"
+    "RF-One Data Store/clover_connector_release_check.py": "88fbc0606d19bbb83b7e1953b96d780be150f4e5b6332d6a75df07e7cc8ebe08",
+    "RF-One Data Store/migrations/versions/d9e220261029_rfone_person_foundation.py": "0ea9032797e5740383b6c54815e45f4077c0b889906f8b63e6913a3d53435785",
+    "RF-One Data Store/rfone_data_store/schema_compatibility.py": "5eb9b2b93675e2e5f60cc4c992b8ee6f104a9fd8e4d96088621064b2565acef7"
   }
 }

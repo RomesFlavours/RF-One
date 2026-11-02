@@ -22,7 +22,9 @@ config = context.config
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Keep the caller's loggers: migrations also run in-process (bootstrap of a
+    # new private database) and must not silence its warnings (MIGRATIONS.md).
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # The canonical RF-One schema — see rfone_data_store/models.py.
 target_metadata = Base.metadata
