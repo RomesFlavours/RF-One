@@ -111,7 +111,7 @@ def main() -> None:
     _prepare_environment(args.port, args.ai, args.ai_cv)
 
     sys.path.insert(0, str(HERE))
-    selection_app = _load("selection_app", HERE / "app.py")  # runs the Alembic migrations to head
+    selection_app = _load("selection_app", HERE / "app.py")  # creates a new local DB at head; never migrates an existing one
     from workspace.schema import provision
     provision(selection_app._engine)
     _ensure_administrator(selection_app)
