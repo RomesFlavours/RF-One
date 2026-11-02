@@ -66,6 +66,10 @@ Every page template of every app is classified in [`how_works_registry.json`](ho
 
 A template that extends nothing and has no `<html>` is a fragment and is not classified.
 
+**Public candidate pages** (Selection's application page, online interview, interview-time choice and their notices, on RMAED.it) are excluded from the How Works link by Product Owner decision (2026-11-02). They keep the contextual instructions a candidate needs to complete them, on the page itself; a change to what a candidate must do updates those instructions in the same release.
+
+**Legacy pages** (`help_missing`, 121 at 2026-11-02) are kept in the registry by Product Owner decision. A legacy page that a release does not change never blocks that release: it is listed as a warning only. A release is blocked by a new operational page without How Works, and by a functional change to an existing page (legacy included) without its Help update.
+
 ## 5. Automatic check
 
 [`check_how_works.py`](check_how_works.py) (Python standard library and Git only) runs the checks:
@@ -83,7 +87,7 @@ python "03 Software/Shared UI/check_how_works.py" --app Selection --rev <commit>
 python "03 Software/Shared UI/check_how_works.py" --report                # also list pages still without Help
 ```
 
-Exit code 0 = no error; 1 = release error. `help_missing` pages are listed as warnings, not errors.
+Exit code 0 = no error; 1 = release error. Unchanged `help_missing` pages are listed as warnings, never errors. A page added in the release and classified `not_operational` is listed as a warning, so the reviewer confirms it really is not an operational page.
 
 **Where it runs.**
 

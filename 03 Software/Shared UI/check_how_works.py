@@ -144,10 +144,10 @@ def functional(app: dict, path: str) -> bool:
                 or "__pycache__" in rel or rel.startswith(("tmp/", "data/", "uploads/")))
 
 
-def check_range(src: Source, apps: dict, since: str) -> list[str]:
+def check_range(src: Source, apps: dict, since: str) -> tuple[list[str], list[str]]:
     """Code and Help are one release unit: every functional commit after `since` has its Help in the range."""
     until = src.rev or "HEAD"
-    errors = []
+    errors, warnings = [], []
     changed = set(src.git("diff", "--name-only", f"{since}..{until}").splitlines())
     added = set(src.git("diff", "--name-only", "--diff-filter=A", f"{since}..{until}").splitlines())
     units = []                                   # (label, files): each functional unit of the release
@@ -168,6 +168,9 @@ def check_range(src: Source, apps: dict, since: str) -> list[str]:
         for name in app.get("help_missing", {}):
             if f"{templates}/{name}" in added:
                 errors.append(f"{app_name}: new page {name} was put in help_missing: a new page needs its Help")
+        for name, reason in app.get("not_operational", {}).items():
+            if f"{templates}/{name}" in added:
+                warnings.append(f"{app_name}: new page {name} is classified not operational ({reason}): confirm it")
         for short, unit_files in units:
             files = [f for f in unit_files if functional(app, f) and f not in guides]
             other = []                           # code, layouts, assets: not one page's own template
@@ -187,7 +190,7 @@ def check_range(src: Source, apps: dict, since: str) -> list[str]:
                               f"but no {app_name} Help is updated in this release"
                               + ("" if guides else f" ({app_name} has no How Works Help yet)")
                               + "; or declare the commit 'How-Works: technical - <reason>'")
-    return errors
+    return errors, warnings
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -210,7 +213,9 @@ def main(argv: list[str] | None = None) -> int:
     apps = {k: v for k, v in apps.items() if not args.app or k in args.app}
     errors, warnings = check_tree(src, apps, args.report)
     if args.since:
-        errors += check_range(src, apps, args.since)
+        range_errors, range_warnings = check_range(src, apps, args.since)
+        errors += range_errors
+        warnings += range_warnings
     for w in warnings:
         print("WARN  " + w)
     for e in errors:

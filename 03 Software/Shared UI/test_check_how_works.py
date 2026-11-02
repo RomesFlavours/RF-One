@@ -161,6 +161,32 @@ class HowWorksCheckTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("new page new.html was put in help_missing", out)
 
+    def test_unchanged_legacy_pages_never_block_a_release(self):
+        # PO decision 2026-11-02: a release that changes a page with Help, and its Help, passes even though a
+        # legacy page without Help is still in the registry.
+        self.write("templates/list.html", '{% extends "base.html" %}list with a new filter')
+        self.write("templates/guide.html", GUIDE.replace("List", "List and its filter"))
+        self.commit("List: add a filter, with its Help")
+        code, out = self.run_check("--rev", "HEAD", "--since", self.base, "--report")
+        self.assertEqual(code, 0, out)
+        self.assertIn("WARN  Demo: old.html still without page-specific Help", out)
+
+    def test_new_operational_page_blocks_the_release(self):
+        self.write("templates/new.html", '{% extends "base.html" %}new')
+        self.commit("New page\n\nHow-Works: technical - wrongly declared")
+        code, out = self.run_check("--rev", "HEAD", "--since", self.base)
+        self.assertEqual(code, 1)
+        self.assertIn("page new.html has no How Works", out)
+
+    def test_new_not_operational_page_is_shown_for_review(self):
+        self.write("templates/public.html", "<html><body>candidate page</body></html>")
+        self.registry["apps"]["Demo"]["not_operational"]["public.html"] = "public candidate page"
+        self.save_registry()
+        self.commit("Public page\n\nHow-Works: technical - not an operational page")
+        code, out = self.run_check("--rev", "HEAD", "--since", self.base)
+        self.assertEqual(code, 0, out)
+        self.assertIn("new page public.html is classified not operational", out)
+
     def test_uncommitted_work_is_checked_in_working_tree_mode(self):
         self.write("app.py", "VALUE = 3\n")
         code, out = self.run_check("--since", self.base)

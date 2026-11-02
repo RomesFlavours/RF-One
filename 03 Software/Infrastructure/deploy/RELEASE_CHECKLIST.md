@@ -21,4 +21,4 @@ Run it from the repository root on the commit being released, against the commit
 python "03 Software/Shared UI/check_how_works.py" --app "<App>" --rev <commit to release> --since <commit live now>
 ```
 
-`<App>` is the registry name: `Selection`, `RF-One Web`, `Tips`, `Training`, `InvoiceIntake`. Exit code 1 is a release error: do not release. Fix it by updating the Help with the code (or, for a change that is really technical only, by declaring it in the commit message), never by editing the registry to hide a page.
+`<App>` is the registry name: `Selection`, `RF-One Web`, `Tips`, `Training`, `InvoiceIntake`. Exit code 1 is a release error: do not release. It is raised by a new operational page without How Works or by a functional change without its Help; legacy pages the release does not change are only warnings and never block it. Fix it by updating the Help with the code (or, for a change that is really technical only, by declaring it in the commit message), never by editing the registry to hide a page.

@@ -370,6 +370,8 @@ task.** Full text and implementation pointers:
    the person is back on that same record, at the same place on screen,
    with focus on the button used — never at the top of the list, also
    after a reload (`rf-one-row-return.js`, rows marked `data-rr-key`).
+6. Every modal window has a close X at its top right, visible while the
+   window scrolls, calling the window's own Cancel/close.
 
 Every future UI refinement reuses these rules.
 
