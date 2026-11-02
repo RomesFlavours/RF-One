@@ -106,6 +106,10 @@ def enqueue(db, pc_ids, version: int) -> int:
               if pc_id not in active and not _analyzed_with(_current_result(db, pc_id), version)]
     db.commit()  # end the read before writing: on SQLite a read lock is never upgraded (see _claim)
     with _write_lock:
+        # The lock a CV deletion takes (`cv_delete`): only candidates that still exist are queued, so a Delete
+        # and an Analyze at the same moment never leave a job for a deleted CV.
+        needed = list(db.scalars(select(ps.PositionCandidate.id).where(ps.PositionCandidate.id.in_(needed))
+                                 .order_by(ps.PositionCandidate.id).with_for_update()).all()) if needed else []
         for pc_id in needed:
             db.add(ps.Proposal(position_candidate_id=pc_id, snapshot_id=version, fit_assessment_id=None, source=JOB,
                                group_code=QUEUED, payload_json=json.dumps({"attempts": 0}), is_current=True,
