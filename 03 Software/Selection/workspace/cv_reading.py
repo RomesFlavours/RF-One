@@ -41,10 +41,18 @@ from rfone_data_store.selection import workspace_models as ps
 from . import ai_adapter, position_settings
 
 AI_READING = "REAL_AI"   # Candidate.parsing_mode of an AI reading
-TIME_BUDGET_SECONDS = 80  # per click of "Read again": stays inside a web request; the rest waits for the next click
+TIME_BUDGET_SECONDS = 60  # per click of "Read again": with one slow reading after it, still well inside the
+                          # 120 s gunicorn timeout; the rest waits for the next click
 PDF_PAGES = 4
+PAGE_PIXELS = 1600              # longest side of a page image sent to the AI
+MAX_IMAGE_BYTES = 3_500_000     # Bedrock refuses images over 3.75 MB
+TRANSCRIBE_TIMEOUT_SECONDS = 25  # inside an upload request; CloudFront answers 504 after 60 s
 _NOTE_PARTIAL = "Partial résumé extraction; some sections need checking."
 _NOTE_WITHOUT_AI = "Read without the AI"
+_NOTE_FAILED = "The AI could not read it on the last try"
+_FAILED_NOTE = re.compile(re.escape(_NOTE_FAILED) + r" \([^)]*\)\.?")
+_NOTE_CHECK_PERSON = ("Check the person: the AI read a different name than the person this CV is linked to "
+                      "(Duplicates).")
 _OLD_READING_NOTES = re.compile(re.escape(_NOTE_PARTIAL) + "|" + re.escape(_NOTE_WITHOUT_AI) + r" \([^)]*\)[^.]*\.")
 
 
@@ -58,14 +66,15 @@ def note_for_reading(candidate) -> str | None:
         return None
     reason = ("AI résumé reading is off for this position" if not ai_adapter.current_policy().cv_ai_authorized
               else "the AI was not available")
-    return f"{_NOTE_WITHOUT_AI} ({reason}): use “Read again with the AI”."
+    return f"{_NOTE_WITHOUT_AI} ({reason}): the name, email or phone may be missing."
 
 
 def pending(session, position) -> list:
     """This position's résumés read without the AI."""
     pcs = session.scalars(select(ps.PositionCandidate).where(ps.PositionCandidate.position_id == position.id)
                           .order_by(ps.PositionCandidate.id)).all()
-    return [pc for pc in pcs if read_without_ai(persistence.get_candidate(session, pc.candidate_id))]
+    todo = [pc for pc in pcs if read_without_ai(persistence.get_candidate(session, pc.candidate_id))]
+    return sorted(todo, key=lambda pc: _NOTE_FAILED in (pc.import_note or ""))  # failed last time: tried last
 
 
 def read_again(session, position, pc, *, actor_id, actor_name, analyze: bool = True) -> str:
@@ -78,6 +87,16 @@ def read_again(session, position, pc, *, actor_id, actor_name, analyze: bool = T
         raise ValueError("AI résumé reading is off for this position (Configuration).")
     candidate = persistence.get_candidate(session, pc.candidate_id)
     raw = session.get(m.RawResume, candidate.raw_resume_id) if candidate and candidate.raw_resume_id else None
+    profile = read_profile(raw)
+    status = apply_profile(session, position, pc, candidate, profile, actor_id=actor_id, actor_name=actor_name)
+    if analyze and position.approved_snapshot_id:
+        engine.analyze(session, position, pc, actor_id=actor_id, actor_name=actor_name)
+    return status
+
+
+def read_profile(raw):
+    """The AI reading of one stored résumé, with no database write (it can run with no session open, as the SP
+    queue does). Raises ValueError when there is nothing to read or the AI cannot read it now."""
     if raw is None or not (raw.raw_text or "").strip():
         raise ValueError("No stored résumé text to read.")
     try:
@@ -87,11 +106,24 @@ def read_again(session, position, pc, *, actor_id, actor_name, analyze: bool = T
     normalize_profile(profile)
     profile.source = raw.source_type  # as `parsing.resolve.parse_resume` does
     profile.source_provider = profile.source_provider or MANUAL_PROVIDER
+    return profile
 
+
+def apply_profile(session, position, pc, candidate, profile, *, actor_id, actor_name) -> str:
+    """Stores a new AI reading on the same Candidate row, corrects the person's name and contacts, redoes the
+    duplicate suggestions and cleans the import note. Commits. Returns COMPLETED or PARTIAL."""
+    old = {"full_name": candidate.full_name, "email": candidate.email, "phone": candidate.phone}
     persistence.replace_candidate_profile(session, candidate, profile)
-    _refresh_identity(session, pc, candidate)
+    # A name or contact the rule-based reader found and the AI did not is kept: the invitation email must not be
+    # lost because the AI left it out. A "phone" that is really a date range is not kept.
+    for field in ("full_name", "email"):
+        if not getattr(candidate, field) and old[field]:
+            setattr(candidate, field, old[field])
+    if not candidate.phone and old["phone"] and _real_phone(old["phone"]):
+        candidate.phone = old["phone"]
+    _refresh_identity(session, pc, candidate, old)
     status, _ = reading_status(profile)
-    note = _OLD_READING_NOTES.sub("", pc.import_note or "").strip()
+    note = _FAILED_NOTE.sub("", _OLD_READING_NOTES.sub("", pc.import_note or "")).strip()
     if status != COMPLETED:
         note = (note + " " + _NOTE_PARTIAL).strip()
     pc.import_note = note or None
@@ -99,51 +131,110 @@ def read_again(session, position, pc, *, actor_id, actor_name, analyze: bool = T
                  detail=f"Résumé read again with the AI: {candidate.full_name or 'name still not found'}",
                  actor_id=actor_id, actor_name=actor_name)
     session.commit()
-    if analyze and position.approved_snapshot_id:
-        engine.analyze(session, position, pc, actor_id=actor_id, actor_name=actor_name)
     return status
 
 
+def _real_phone(value) -> bool:
+    from rfone_data_store.selection.parsing.deterministic_parser import _find_phone
+    return bool(value) and _find_phone(str(value)) is not None
+
+
+def mark_failed(session, pc_id: int, reason: str) -> None:
+    """Remembers on the CV's import note that the AI could not read it, so the next "Read again" tries the others
+    first instead of spending its time on the same CV (commits)."""
+    pc = session.get(ps.PositionCandidate, pc_id)
+    if pc is None:
+        return
+    note = _FAILED_NOTE.sub("", pc.import_note or "").strip()
+    reason = reason[:120].replace("(", "[").replace(")", "]")
+    pc.import_note = (note + f" {_NOTE_FAILED} ({reason}).").strip()
+    session.commit()
+
+
 def read_pending(session, position, *, actor_id, actor_name, analyze: bool = True) -> dict:
-    """Reads again this position's résumés read without the AI, until the time budget is used up."""
+    """Reads again this position's résumés read without the AI, until the time budget is used up. One CV failing,
+    for any reason, never stops the others."""
     started, result = time.monotonic(), {"read": 0, "partial": 0, "failed": [], "left": 0}
     todo = pending(session, position)
     for i, pc in enumerate(todo):
         if time.monotonic() - started > TIME_BUDGET_SECONDS:
             result["left"] = len(todo) - i
             break
+        pc_id = pc.id
         try:
             status = read_again(session, position, pc, actor_id=actor_id, actor_name=actor_name, analyze=analyze)
             result["read" if status == COMPLETED else "partial"] += 1
-        except ValueError as exc:
+        except Exception as exc:
             session.rollback()
-            result["failed"].append(str(exc))
-            if "off for this position" in str(exc):
+            reason = str(exc) if isinstance(exc, ValueError) else f"unexpected error ({exc.__class__.__name__})"
+            result["failed"].append(reason)
+            if "off for this position" in reason:
                 result["left"] = len(todo) - i - 1
                 break
+            try:
+                mark_failed(session, pc_id, reason)
+            except Exception:
+                session.rollback()
     return result
 
 
-def _refresh_identity(session, pc, candidate) -> None:
-    """The empty first reading created a person with no name or contacts, and "possible duplicate" suggestions
-    were computed from that. Fill only blank fields (the same rule as `identity_service.resolve_or_create_person`)
-    and compute the suggestions again from the real name. Confirmed or rejected suggestions are kept; persons are
-    never merged here: a real duplicate shows up as a suggestion for a person to confirm."""
+def _refresh_identity(session, pc, candidate, old: dict | None = None) -> None:
+    """The first reading (rule-based) often gave the person no name, a wrong name ("RESUME") or a date range as a
+    phone, and "possible duplicate" suggestions were computed from that. Here a person's field is filled when it
+    is blank or still holds exactly what the first reading of this CV put there; anything else (typed or confirmed
+    by someone, or from another CV of the same person) is never overwritten. An email or phone another person
+    already has is not copied: it becomes a suggestion to confirm. Persons are never merged or split here; when
+    this CV is linked to a person with other applications and the AI reads a different name, the import note
+    asks a person to check."""
+    old = old or {}
     application = app_svc.get_application(session, pc.application_id)
     person = session.get(m.CandidatePerson, application.person_id) if application else None
     if person is None:
         return
-    if not person.full_name and candidate.full_name:
+    shared = len(app_svc.list_applications_for_person(session, person.id)) > 1
+
+    def replaceable(current, first_reading) -> bool:
+        return not current or (not shared and first_reading is not None and current == first_reading)
+
+    if candidate.full_name and replaceable(person.full_name, old.get("full_name")):
         person.full_name, person.normalized_name = candidate.full_name, idm.normalize_name(candidate.full_name)
-    if not person.primary_email and candidate.email:
-        person.primary_email = idm.normalize_email(candidate.email)
-    if not person.primary_phone and candidate.phone:
-        person.primary_phone, person.primary_phone_normalized = candidate.phone, idm.normalize_phone(candidate.phone)
+    elif shared and candidate.full_name and person.normalized_name != idm.normalize_name(candidate.full_name):
+        if _NOTE_CHECK_PERSON not in (pc.import_note or ""):
+            pc.import_note = ((pc.import_note or "") + f" {_NOTE_CHECK_PERSON}").strip()
+    suggestions = []
+    email = idm.normalize_email(candidate.email) if candidate.email else None
+    old_email = idm.normalize_email(old["email"]) if old.get("email") else None
+    if email and email != person.primary_email and replaceable(person.primary_email, old_email):
+        other, confidence, basis = identity_svc._find_by_contact(
+            session, restaurant_id=person.restaurant_id, normalized_email=email, normalized_phone=None)
+        if other is not None and other.id != person.id:
+            suggestions.append((other, confidence, basis))
+        else:
+            person.primary_email = email
+    phone = idm.normalize_phone(candidate.phone) if candidate.phone else None
+    if phone and phone != person.primary_phone_normalized and (
+            replaceable(person.primary_phone, old.get("phone")) or not _real_phone(person.primary_phone)):
+        other, confidence, basis = identity_svc._find_by_contact(
+            session, restaurant_id=person.restaurant_id, normalized_email=None, normalized_phone=phone)
+        if other is not None and other.id != person.id:
+            suggestions.append((other, confidence, basis))
+        else:
+            person.primary_phone, person.primary_phone_normalized = candidate.phone, phone
+    if shared:
+        return  # the person's other applications keep their suggestions; nothing is recomputed from this CV alone
     session.execute(delete(m.PersonMatchCandidate).where(
         m.PersonMatchCandidate.application_id == application.id, m.PersonMatchCandidate.status == idm.PENDING))
-    if len(app_svc.list_applications_for_person(session, person.id)) == 1:
-        identity_svc.create_pending_suggestions_for_application(session, application_id=application.id,
-                                                                new_person=person)
+    session.flush()
+    created = identity_svc.create_pending_suggestions_for_application(session, application_id=application.id,
+                                                                      new_person=person)
+    already = {s.suggested_person_id for s in created}
+    for other, confidence, basis in suggestions:
+        if other.id not in already:
+            already.add(other.id)
+            session.add(m.PersonMatchCandidate(application_id=application.id, source_person_id=person.id,
+                                               suggested_person_id=other.id, confidence=confidence,
+                                               match_basis=basis))
+    session.flush()
 
 
 # ---------------------------------------------------------------------------
@@ -163,9 +254,7 @@ def transcribe_pdf(path: str) -> str:
     images = []
     with pdfplumber.open(path) as pdf:
         for page in pdf.pages[:PDF_PAGES]:
-            buffer = io.BytesIO()
-            page.to_image(resolution=130).original.convert("RGB").save(buffer, "PNG")
-            images.append(buffer.getvalue())
+            images.append(_page_image(page))
     if not images:
         raise AIProviderUnavailable("The PDF has no pages.")
     try:
@@ -175,6 +264,21 @@ def transcribe_pdf(path: str) -> str:
         raise
     ai_adapter._record("scanned résumé reading", True, "ok")
     return text
+
+
+def _page_image(page) -> bytes:
+    """One page as a JPEG of at most PAGE_PIXELS on its longest side and under Bedrock's image limit. A phone photo
+    saved as PDF has a page the size of the photo, and anyone applying can upload a PDF with a huge page: rendered
+    at a fixed resolution, that ran to gigapixels (memory) and to images Bedrock refuses."""
+    longest = max(float(page.width or 0), float(page.height or 0), 1.0)
+    resolution = min(130.0, PAGE_PIXELS * 72 / longest)
+    image = page.to_image(resolution=resolution).original.convert("RGB")
+    for quality in (80, 65, 50):
+        buffer = io.BytesIO()
+        image.save(buffer, "JPEG", quality=quality)
+        if buffer.tell() <= MAX_IMAGE_BYTES:
+            return buffer.getvalue()
+    raise AIProviderUnavailable("A page of the scan is too large to read.")
 
 
 def _transcribe_transport(images: list[bytes]) -> str:
@@ -187,10 +291,14 @@ def _transcribe_transport(images: list[bytes]) -> str:
     try:
         import boto3
         from botocore.exceptions import BotoCoreError, ClientError
-        client = boto3.client("bedrock-runtime", region_name=ai_client._read_env_or_dotenv("AWS_REGION"))
+        from botocore.config import Config
+        # Runs inside an upload request: one attempt, bounded, never boto3's 60 s x 5 retries.
+        client = boto3.client("bedrock-runtime", region_name=ai_client._read_env_or_dotenv("AWS_REGION"),
+                              config=Config(connect_timeout=10, read_timeout=TRANSCRIBE_TIMEOUT_SECONDS,
+                                            retries={"max_attempts": 1, "mode": "standard"}))
         response = client.converse(
             modelId=model_id,
-            messages=[{"role": "user", "content": [{"image": {"format": "png", "source": {"bytes": b}}} for b in images]
+            messages=[{"role": "user", "content": [{"image": {"format": "jpeg", "source": {"bytes": b}}} for b in images]
                        + [{"text": _TRANSCRIBE_PROMPT}]}],
             inferenceConfig={"maxTokens": ai_client.MAX_OUTPUT_TOKENS, "temperature": 0})
     except ImportError as exc:

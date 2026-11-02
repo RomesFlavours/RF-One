@@ -61,7 +61,8 @@
 {% else %}
 <form id="sheet" method="post" action="{{ url_for('positions.interview_save', position_id=position.id, pc_id=pc.id) }}">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<fieldset style="border:0;padding:0;margin:0" {{ 'disabled' if not can_edit }}>
+{# A completed interview is read-only until Reopen (logged): nothing typed into it could be saved. #}
+<fieldset style="border:0;padding:0;margin:0" {{ 'disabled' if not can_edit or data.status == 'COMPLETED' }}>
 
 <div class="card">
   <h2>{{ name }}</h2>
@@ -141,13 +142,14 @@
   {% else %}<p class="muted small">No scenarios selected: use Configure Interview.</p>{% endfor %}
 </div>
 
-{% if can_edit %}<div class="card row" style="justify-content:flex-end;gap:.5rem">
-  <span class="iv-meta" style="margin-right:auto">Saved automatically while you type.</span>
-  <button class="btn btn-secondary" name="action" value="save">Save</button>
-  {% if data.status == 'COMPLETED' %}<button class="btn btn-secondary" name="action" value="reopen">Reopen interview</button>
-  {% else %}<button class="btn" name="action" value="complete">Complete interview</button>{% endif %}
-</div>{% endif %}
 </fieldset>
+{% if can_edit %}<div class="card row" style="justify-content:flex-end;gap:.5rem">
+  {% if data.status == 'COMPLETED' %}<span class="iv-meta" style="margin-right:auto">Completed: reopen the interview to change it.</span>
+  <button class="btn btn-secondary" name="action" value="reopen">Reopen interview</button>
+  {% else %}<span class="iv-meta" style="margin-right:auto">Saved automatically while you type.</span>
+  <button class="btn btn-secondary" name="action" value="save">Save</button>
+  <button class="btn" name="action" value="complete">Complete interview</button>{% endif %}
+</div>{% endif %}
 </form>
 
 <div class="card iv-sum" id="summary">

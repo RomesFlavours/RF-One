@@ -33,6 +33,9 @@ from .. import ai_adapter, position_profiles as pp
 
 from . import timeline as sp_timeline
 
+# The checks applied in code to the AI reading. An analysis stored with an older value is shown as needing an
+# update (Analyze), so one Job never ranks CVs checked under two different sets of rules.
+CHECKS_VERSION = "2026-11-02"
 PROMPT_VERSION = "SP-1.1"  # 1.1: absence of information is never a flag
 COMPETENCE_LEVELS = ("claimed", "executed", "owned", "coordinated")
 
@@ -106,8 +109,10 @@ _DURATION_RE = re.compile(r"\b\d+\s*(?:\+\s*)?(?:-\s*\d+\s*)?(?:months?|mos?|yea
 _SENSITIVE_RE = re.compile(r"\b(commut\w*|drive time|distance|lives|living in|resid\w*|relocat\w*|age|aged|"
                            r"years old|young|older|younger|family (?:status|situation|reasons|obligations|commitments)|"
                            r"pregnan\w*|nationalit\w*|religio\w*|ethnic\w*|disabilit\w*|married|children|"
-                           r"gender|sex|sexual orientation|race|racial|colou?r|citizen\w*|visa|immigra\w*|"
-                           r"national origin|veteran\w*)\b", re.I)
+                           r"gender|sex|sexual orientation|race|racial|skin colou?r|citizenship|u\.?s\.? citizen|"
+                           r"immigra\w*|visa status|work visa|national origin|veteran status|military status)\b", re.I)
+# Not listed on purpose, because they are restaurant words: "Visa" (cards), "colour-coded", "senior citizens",
+# "veteran server".
 # A "flag" that only says something is not in the CV is missing information: it goes to To verify.
 _ABSENCE_RE = re.compile(r"^\s*(no|not|limited|minimal|unknown|unclear|lack\w*|missing|without|unverified|incomplete|"
                          r"few|little|insufficient|undocumented)\b|not documented|no documented|without documented|"
@@ -119,9 +124,9 @@ _SECTION_RE = re.compile(r"^(?:(?:(?:work|professional|relevant|restaurant|emplo
                          r"(?:experience|history)|employment|education|training|certifications?|licenses?|"
                          r"languages?|references?|summary|profile|objective|awards|achievements|volunteer\w*|"
                          r"interests|hobbies|availability|contact)\s*:?\s*$", re.I)
-# A quote this short ("Server", "POS") names a thing, it does not document work: it can support a claim (level 1)
-# at most (SELECTION_SP_REAL_CVS_001).
-MIN_EVIDENCE_WORDS, MIN_EVIDENCE_CHARS = 4, 20
+# A quote this short ("POS", "Wine service") names a thing, it does not document work: it supports level 2
+# (partly shown, to verify) at most, unless it is the title or employer of a dated job (SELECTION_SP_REAL_CVS_001).
+MIN_EVIDENCE_WORDS, MIN_EVIDENCE_CHARS = 3, 15
 
 
 def substantial(quote) -> bool:
@@ -286,6 +291,10 @@ def verify(data: dict, *, role_code: str, requirements: list[dict], cv_text: str
     timeline = sp_timeline.analyze(jobs, cv_text, today)
     v.log += [n for n in timeline["date_notes"] if "not in the CV" in n]
 
+    # The verified title or employer of a job with verified dates is real evidence even in one or two words
+    # ("Server" at "Olive Garden", 2019 - 2023): a sparse CV is not a weak one.
+    dated_jobs = {_norm(j[k]) for j in jobs if j.get("date_status") == "OK" for k in ("employer", "title")
+                  if j.get(k) and not j.get(f"{k}_unverified")}
     raw_reqs = data.get("requirements") if isinstance(data.get("requirements"), dict) else {}
     results = {}
     for req in requirements:
@@ -307,9 +316,9 @@ def verify(data: dict, *, role_code: str, requirements: list[dict], cv_text: str
         elif level > 1 and v.only_in_skills(quotes):
             v.log.append(f"{req['name']}: evidence only in the skills list, level {level} → 1 (claimed).")
             level, explanation = 1, ("Only listed among skills: a claim, not documented evidence. " + explanation)
-        elif level > 1 and not any(substantial(q) for q in quotes):
-            v.log.append(f"{req['name']}: quotes too short to document work, level {level} → 1 (claimed).")
-            level, explanation = 1, ("Only a word or two in the CV: a claim, not documented evidence. " + explanation)
+        elif level > 2 and not any(substantial(q) or _norm(q) in dated_jobs for q in quotes):
+            v.log.append(f"{req['name']}: only a word or two quoted, level {level} → 2 (partly shown).")
+            level, explanation = 2, ("Only a word or two quoted from the CV: partly shown, to verify. " + explanation)
         if _SENSITIVE_RE.search(explanation):
             v.log.append(f"{req['name']}: explanation referred to residence or a personal characteristic, removed.")
             explanation = "Explanation removed: it referred to residence or a personal characteristic."
@@ -406,5 +415,5 @@ def verify(data: dict, *, role_code: str, requirements: list[dict], cv_text: str
             "requirements": results, "competences": competences, "strengths": strengths, "flags": flags,
             "unknowns": unknowns, "stated_hours": stated("stated_hours", "hours"),
             "stated_availability": stated("stated_availability", "text"), "questions": questions,
-            "verification_log": v.log, "prompt_version": PROMPT_VERSION,
+            "verification_log": v.log, "prompt_version": PROMPT_VERSION, "checks_version": CHECKS_VERSION,
             "profile_version": pp.PROFILES[role_code]["version"]}

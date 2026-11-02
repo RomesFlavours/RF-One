@@ -166,6 +166,13 @@ try:
         check("analysis 1: the 12 CVs analyzed, one AI reading at import (name, email, phone) and one SP "
               "evaluation each, no Selection evaluation", s.get("DONE") == 12
               and calls == {"sp": 12, "import": 12, "other_cv": 0}, (s, calls))
+        with selection_app.SessionFactory() as db:
+            from rfone_data_store import models as m
+            people = db.execute(select(m.CandidatePerson.full_name, m.CandidatePerson.primary_email)).all()
+            modes = set(db.scalars(select(m.Candidate.parsing_mode)).all())
+        check("upload stays fast (no AI in the request); the queue's AI reading fills each person's name and email",
+              len(people) == 12 and all(n and n.endswith(f"Sample{n.split('Sample')[-1]}") and e and e.endswith(
+                  "@example.test") for n, e in people) and modes == {"REAL_AI"}, (people[:3], modes))
 
         # 4-5. Second upload: 8 more; only those analyzed; total 20
         r = upload(owner, t, pid, [(f"cv{i}.txt", cv(i)) for i in range(12, 20)])
@@ -319,6 +326,37 @@ try:
               and f"/selection/posizioni/{pid}/candidati/{first_id}/cv-originale" in detail)
         check("original CV opens through Selection",
               owner.get(f"/selection/posizioni/{pid}/candidati/{first_id}/cv-originale").status_code == 200)
+        # Read again with the AI (CVs imported before this release): runs in the background, fills the name and
+        # the email the first reading missed, keeps the SP evaluation.
+        with selection_app.SessionFactory() as db:
+            from rfone_data_store import models as m
+            pc = db.get(ws.PositionCandidate, first_id)
+            cand = db.get(m.Candidate, pc.candidate_id)
+            cand.parsing_mode, cand.full_name, cand.email = "RULES", "RESUME", None
+            app_row = db.get(m.Application, pc.application_id) if hasattr(m, "Application") else None
+            person_id = getattr(app_row, "person_id", None)
+            if person_id:
+                person = db.get(m.CandidatePerson, person_id)
+                person.full_name, person.normalized_name, person.primary_email = "RESUME", "resume", None
+            db.commit()
+        page = text(owner.get(f"/selection/posizioni/{pid}/sp"))
+        before = dict(calls)
+        r = owner.post(f"/selection/posizioni/{pid}/sp/read-again", data={"csrf_token": t}, follow_redirects=True)
+        started = "in the background" in text(r) and "1 CV(s) were read without the AI" in page
+        for _ in range(100):
+            if not sp_queue.reading_in_background(pid):
+                break
+            time.sleep(0.1)
+        with selection_app.SessionFactory() as db:
+            pc = db.get(ws.PositionCandidate, first_id)
+            cand = db.get(m.Candidate, pc.candidate_id)
+            person = db.get(m.CandidatePerson, person_id) if person_id else None
+        check("Read again: starts in the background, reads the one CV again, replaces the wrong name the first "
+              "reading put on the person, fills the email, never repeats the SP evaluation",
+              started and cand.parsing_mode == "REAL_AI" and cand.email and person is not None
+              and person.full_name != "RESUME" and person.primary_email == cand.email.lower()
+              and calls["sp"] == before["sp"] and calls["import"] == before["import"] + 1,
+              (started, cand.parsing_mode, cand.full_name, person and person.full_name, calls, before))
         other = app.test_client()
         check("access: not signed in → no SP page", other.get(f"/selection/posizioni/{pid}/sp").status_code in (302, 401, 403))
 finally:

@@ -99,6 +99,22 @@ def _find_sections(lines: list[str]) -> list[tuple[str, int, int]]:
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE_RE = re.compile(r"(\+?\d[\d\-.\s()]{7,}\d)")
+_PHONE_YEAR_RE = re.compile(r"(?:19|20)\d{2}")
+# As `_PHONE_RE`, but never across a line break (a date range and the phone on the next line made one "number").
+_PHONE_ON_ONE_LINE_RE = re.compile(r"(\+?\(?\d[\d\-. \t()]{7,}\d)")
+
+
+def _find_phone(full_text: str):
+    """The first match that is a real phone number. A date range such as "2019 - 2021" also matches `_PHONE_RE`:
+    taken as a phone it made two different applicants "the same person" by phone (SELECTION_SP_REAL_CVS_001).
+    A phone has at least 10 digits and is not made only of years."""
+    for match in _PHONE_ON_ONE_LINE_RE.finditer(full_text):
+        groups = re.findall(r"\d+", match.group(1))
+        if 10 <= len("".join(groups)) <= 15 and not all(_PHONE_YEAR_RE.fullmatch(g) for g in groups):
+            return match
+    return None
+
+
 _LINKEDIN_RE = re.compile(r"(https?://)?(www\.)?linkedin\.com/\S+", re.IGNORECASE)
 _URL_RE = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
 _LOCATION_RE = re.compile(r"\b[A-Z][A-Za-z.'\- ]{1,30},\s*[A-Z]{2}\b")
@@ -106,7 +122,7 @@ _LOCATION_RE = re.compile(r"\b[A-Z][A-Za-z.'\- ]{1,30},\s*[A-Z]{2}\b")
 
 def _extract_contact(full_text: str, lines: list[str]) -> dict:
     email_match = _EMAIL_RE.search(full_text)
-    phone_match = _PHONE_RE.search(full_text)
+    phone_match = _find_phone(full_text)
     linkedin_match = _LINKEDIN_RE.search(full_text)
 
     other_url = None

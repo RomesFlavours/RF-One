@@ -89,7 +89,8 @@ def fake_skills_first(prompt):
                 "table_service": {"level": 4, "quotes": ["Provided wine service to 40 tables nightly"],
                                   "explanation": "Clear table and wine service."},
                 "guest_selling": {"level": 3, "quotes": ["Server"],
-                                        "explanation": "A young server, which suits the team."}},
+                                        "explanation": "A young server, which suits the team."},
+                "trusted": {"level": 4, "quotes": ["trained 6"], "explanation": "Trains others."}},
             "competences": [{"name": "wine service", "level": "executed",
                              "quote": "Provided wine service to 40 tables nightly"},
                             {"name": "POS", "level": "owned", "quote": "POS (Toast)"}],
@@ -114,8 +115,26 @@ try:
     check("a two-word quote cannot make a competence 'owned'", comp.get("POS") == "claimed", comp)
     if "guest_selling" in req_ids:
         g = a["requirements"]["guest_selling"]
-        check("a one-word quote ('Server') supports a claim at most (level 1)", g["level"] == 1, g)
+        check("a one-word quote that is the title of a dated job ('Server', 2018 - 2021) is real evidence",
+              g["level"] == 3, g)
         check("an explanation mentioning age is removed", "young" not in g["explanation"], g["explanation"])
+    if "trusted" in req_ids:
+        t = a["requirements"]["trusted"]
+        check("a short quote that is not a dated job ('trained 6') supports 'partly shown' at most (level 2)",
+              t["level"] == 2, t)
+    sparse = sp_analysis.analyze_cv(
+        role_code="SERVER", requirements=reqs, today=TODAY,
+        cv_text="Sam Lee\n\nServer\nOlive Garden\nJan 2019 - Dec 2023\n",
+        generate=lambda prompt: {"full_name": "Sam Lee",
+                                 "jobs": [{"employer": "Olive Garden", "title": "Server",
+                                           "date_text": "Jan 2019 - Dec 2023", "relevant": True}],
+                                 "requirements": {"table_service": {"level": 3, "quotes": ["Server", "Olive Garden"]}}})
+    check("a sparse CV (title, employer, dates, no duties) is not pushed to 'not documented'",
+          sparse["requirements"]["table_service"]["level"] == 3, sparse["requirements"]["table_service"])
+    for text in ("Accepted cash, Visa and Mastercard", "Colour-coded cutting boards", "Veteran server of 10 years"):
+        check(f"restaurant words are not sensitive: {text!r}", not sp_analysis._SENSITIVE_RE.search(text))
+    for text in ("US citizen", "visa status", "her race", "veteran status"):
+        check(f"personal characteristics are sensitive: {text!r}", bool(sp_analysis._SENSITIVE_RE.search(text)))
     check("a flag about visa status is dropped", not any("Visa" in f["flag"] for f in a["flags"]), a["flags"])
     check("job duties mentioning citizenship are not shown", a["jobs"][0]["duties"] is None, a["jobs"][0])
 
@@ -134,6 +153,11 @@ try:
         + [{"employer": "Cafe Uno", "date_text": "Jan 2025 - Apr 2025"},
            {"employer": "Trattoria Roma", "date_text": "Sep 2025 - Present"}], SHORT_STAYS, TODAY)
     check("a real gap between two jobs is still listed", len(real_gap["gaps"]) == 1, real_gap["gaps"])
+    maybe_after = [{"employer": "Cafe Uno", "date_text": "2019 - 2021"},
+                   {"employer": "Pasta House", "date_text": "Mar 2021 - Nov 2021"}]
+    sp_timeline.analyze(maybe_after, "Cafe Uno 2019 - 2021\nPasta House Mar 2021 - Nov 2021", TODAY)
+    check("a job that may have followed a year-only job is not called a second job",
+          not maybe_after[1]["side_job"], maybe_after)
 
     # --- 3. Short stays switched off -------------------------------------------------------------------------
     def fake_short(prompt):
@@ -189,7 +213,31 @@ try:
     except ImportError as exc:
         check("scan: Pillow and pdfplumber available", False, exc)
 
-    # --- 5. The AI answer cap --------------------------------------------------------------------------------
+    # --- 5. Basic reader, AI reply shapes, checks version ------------------------------------------------------
+    from rfone_data_store.selection.parsing import deterministic_parser as dp
+    from rfone_data_store.selection.parsing import llm_parser
+    check("basic reader: a date range is not a phone number", dp._find_phone("Server 2019 - 2021") is None)
+    check("basic reader: a date range and the phone on the next line are not one number",
+          dp._find_phone("Jan 2019 - 2021\n(352) 555-0142").group(1) == "(352) 555-0142")
+    check("AI reply: a null or a list of strings is read as nothing, not a crash",
+          llm_parser._dicts(None) == [] and llm_parser._dicts(["a", {"x": 1}]) == [{"x": 1}])
+    from workspace import sp_queue
+    check("analyses made before today's checks are marked for an update",
+          not sp_queue.current_checks({"jobs": []}) and sp_queue.current_checks(a))
+
+    # --- 6. Scan images stay small ------------------------------------------------------------------------
+    class _Page:
+        width = height = 14400.0   # the largest page a PDF allows
+
+        def to_image(self, resolution):
+            from PIL import Image
+            _Page.resolution = resolution
+            return type("I", (), {"original": Image.new("RGB", (int(14400 * resolution / 72),) * 2, "white")})()
+    jpeg = cv_reading._page_image(_Page())
+    check("scan: a huge page is rendered at most 1,600 px and well under Bedrock's image limit",
+          int(14400 * _Page.resolution / 72) <= 1600 and len(jpeg) < cv_reading.MAX_IMAGE_BYTES, _Page.resolution)
+
+    # --- 7. The AI answer cap --------------------------------------------------------------------------------
     from rfone_data_store.selection.parsing import ai_client
     check("long CVs: the AI answer cap is 16,000 tokens", ai_client.MAX_OUTPUT_TOKENS == 16000)
 finally:

@@ -135,11 +135,12 @@ def analyze(jobs: list[dict], cv_text: str, today: date | None = None) -> dict:
     notes = [j["date_note"] for j in jobs if j.get("date_note")]
 
     # Jobs held at the same time are normal in restaurants (a second job, a seasonal one): a gap is measured from
-    # the latest end reached so far, not from the previous job in the list, and a job held inside another, longer
-    # one is not a "job change" (SELECTION_SP_REAL_CVS_001).
+    # the latest end reached so far, not from the previous job in the list, and a job certainly held inside another,
+    # longer one (for every reading of year-only dates) is not a "job change" (SELECTION_SP_REAL_CVS_001). It still
+    # counts as experience (longest relevant job).
     for j in dated:
-        j["side_job"] = any(k is not j and k["months_min"] > j["months_max"] and k["start_lo"] <= j["start_lo"]
-                            and j["end_hi"] <= k["end_hi"] for k in dated)
+        j["side_job"] = any(k is not j and k["months_min"] > j["months_max"] and k["start_hi"] <= j["start_lo"]
+                            and j["end_hi"] <= k["end_lo"] for k in dated)
     gaps, latest = [], None
     for nxt in dated:
         if latest is not None:
@@ -153,7 +154,7 @@ def analyze(jobs: list[dict], cv_text: str, today: date | None = None) -> dict:
         if latest is None or (nxt["end_hi"], nxt["end_lo"]) > (latest["end_hi"], latest["end_lo"]):
             latest = nxt
 
-    stability = _stability([j for j in dated if not j["side_job"]], len(jobs) - len(dated), today)
+    stability = _stability(dated, len(jobs) - len(dated), today)
     return {"gaps": gaps, "stability": stability, "date_notes": notes}
 
 
@@ -164,11 +165,12 @@ def _stability(dated: list[dict], undated: int, today: date) -> dict:
                             "(missing information, to verify)."]}
     now = _mi(today.replace(day=1))
     run = longest_run = 0
-    for j in dated:
+    main = [j for j in dated if not j.get("side_job")]   # job changes: second jobs held alongside are not counted
+    for j in main:
         run = run + 1 if j["months_max"] < SHORT_MONTHS else 0     # short for every reading of the dates
         longest_run = max(longest_run, run)
-    changes_24 = sum(1 for j in dated if j["start_lo"] >= now - 24)
-    changes_36 = sum(1 for j in dated if j["start_lo"] >= now - 36)
+    changes_24 = sum(1 for j in main if j["start_lo"] >= now - 24)
+    changes_36 = sum(1 for j in main if j["start_lo"] >= now - 36)
     relevant = [j for j in dated if j.get("relevant")]
     longest_relevant = max((j["months_min"] for j in relevant), default=0)
     longest = max(j["months_min"] for j in dated)

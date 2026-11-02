@@ -32,13 +32,14 @@
   <h2><span class="step">2</span>CVs <span class="small muted">({{ cands|length }} for this Job)</span></h2>
   {% if can_edit %}<form method="post" enctype="multipart/form-data" action="{{ url_for('positions.sp_upload', position_id=p.id) }}" style="margin-bottom:8px">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="btn" title="PDF, DOCX or TXT; several at once">Upload CVs<input type="file" name="cv" multiple accept=".pdf,.docx,.txt" hidden onchange="this.form.submit()"></label>
+    <label class="btn" title="PDF, DOCX or TXT; several at once">Upload CVs<input type="file" name="cv" multiple accept=".pdf,.docx,.txt" hidden onchange="this.form.submit(); this.parentElement.style.pointerEvents='none'; this.parentElement.firstChild.textContent='Uploading… '"></label>
     <span class="small muted">PDF, DOCX or TXT, several at once. Every upload adds only new CVs: exact duplicates are ignored, possible duplicates are flagged.</span>
   </form>{% endif %}
   {% if can_edit and read_without_ai %}<form method="post" action="{{ url_for('positions.sp_read_again', position_id=p.id) }}" class="small verify" style="margin-bottom:8px">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {{ read_without_ai }} CV(s) were read without the AI, so the name, email or phone may be missing.
-    <button class="tiny">Read again with the AI</button>
+    {% if reading_again %}<b>Being read again in the background: reload the page in a minute.</b>
+    {% else %}<button class="tiny" onclick="this.disabled=true; this.textContent='Starting…'; this.form.submit()">Read again with the AI</button>{% endif %}
   </form>{% endif %}
   {% if p.status == 'OPEN' and p.approved_snapshot_id %}<p class="small muted">Application page (candidates apply and are analyzed when they complete it):
     <a href="{{ public_url }}" target="_blank" rel="noopener">{{ public_url }}</a></p>{% endif %}
@@ -65,7 +66,7 @@
       <tr data-pc="{{ c.id }}"><td class="cv-new" style="width:44px">{% if c.id in cv_added %}<span class="badge gB">NEW</span>{% endif %}</td>
         <td>{{ c.filename }}</td>
         <td class="muted">{% if c.batch %}upload #{{ c.batch }}{% else %}{{ c.channel|replace('_', ' ')|lower }}{% endif %}</td>
-        <td>{% if c.status == 'DONE' %}<span class="s-SHOWN">Analyzed</span>{% elif c.status == 'ERROR' %}<span class="flag">Error: {{ c.error }}</span>{% elif c.status == 'ANALYZING' %}Analyzing…{% elif c.status == 'IN_PROGRESS' %}<span class="muted">Application in progress: analyzed when the candidate completes it</span>{% elif c.status == 'OUTDATED' %}<span class="verify">Analyzed with requirements v{{ c.analyzed_version }}: update recommended</span>{% else %}Waiting for Analyze{% endif %}</td>
+        <td>{% if c.status == 'DONE' %}<span class="s-SHOWN">Analyzed</span>{% elif c.status == 'ERROR' %}<span class="flag">Error: {{ c.error }}</span>{% elif c.status == 'ANALYZING' %}Analyzing…{% elif c.status == 'IN_PROGRESS' %}<span class="muted">Application in progress: analyzed when the candidate completes it</span>{% elif c.status == 'OUTDATED' %}<span class="verify">{% if c.old_checks %}Analyzed before the 2 Nov checks{% else %}Analyzed with requirements v{{ c.analyzed_version }}{% endif %}: update recommended</span>{% else %}Waiting for Analyze{% endif %}</td>
         <td class="muted">{% if c.duplicate_note %}<span class="verify">{{ c.duplicate_note }}</span>{% endif %}</td>
         <td style="text-align:right">{% if can_edit %}{% if c.delete_blocked %}<button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: {{ c.delete_blocked }}"
             data-msg="“{{ c.filename }}” cannot be deleted: {{ c.delete_blocked }}." onclick="alert(this.dataset.msg)">Delete</button>
@@ -107,7 +108,7 @@
     <p class="verify">AI résumé evaluation is off for this Job. Turn on “AI résumé and answer evaluation” in the
       <a href="{{ url_for('positions.job_edit', position_id=p.id) }}">Job settings</a>.</p>
   {% else %}
-  {% if outdated %}<p class="verify small">{{ outdated }} analysis(es) used an earlier version of the requirements and may need an update: Analyze updates them.</p>{% endif %}
+  {% if outdated %}<p class="verify small">{{ outdated }} analysis(es) used an earlier version of the requirements or of the checks and may need an update: Analyze updates them.</p>{% endif %}
   {% if can_edit %}
   <form method="post" action="{{ url_for('positions.sp_analyze', position_id=p.id) }}" style="display:inline">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -147,7 +148,7 @@
       <td><b><a href="{{ url_for('positions.candidate_detail', position_id=p.id, pc_id=r.id) }}">{{ a.full_name or r.name or r.filename }}</a></b>{% if r.new %} <span class="badge gB">NEW</span>{% endif %}<br>
         <span class="badge g{{ r.assessment.group }}">{{ r.assessment.group }} · {{ r.assessment.group_label.split(':')[0] }}</span>
         {% if r.rank_moved %}<div class="small verify">Moved by the manager (proposed #{{ r.proposed_rank }})</div>{% endif %}
-        {% if r.status == 'OUTDATED' %}<div class="small verify">Analyzed with requirements v{{ r.analyzed_version }}: update recommended</div>{% endif %}
+        {% if r.status == 'OUTDATED' %}<div class="small verify">{% if r.old_checks %}Analyzed before the 2 Nov checks{% else %}Analyzed with requirements v{{ r.analyzed_version }}{% endif %}: update recommended</div>{% endif %}
         {% if r.duplicate_note %}<div class="small verify">{{ r.duplicate_note }}</div>{% endif %}</td>
       <td class="small"><ul class="tight">{% for j in a.jobs if j.relevant %}{% if loop.index <= 3 %}<li>{{ j.title }} · {{ j.employer }}<span class="muted"> · {{ j.duration_label or 'dates to verify' }}</span></li>{% endif %}{% else %}<li class="muted">None documented</li>{% endfor %}</ul></td>
       <td class="small">{% set demo = a.competences|rejectattr('level', 'equalto', 'claimed')|list %}{% set claimed = a.competences|selectattr('level', 'equalto', 'claimed')|list %}

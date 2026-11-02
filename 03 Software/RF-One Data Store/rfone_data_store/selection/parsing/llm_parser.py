@@ -63,6 +63,12 @@ Résumé text:
 """
 
 
+def _dicts(value) -> list[dict]:
+    """A list of objects from the AI reply. A null, a string or a list of strings (seen in real replies) is read as
+    nothing instead of failing the whole résumé (SELECTION_SP_REAL_CVS_001)."""
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
 class LLMResumeParser(ResumeParser):
     def parse(self, raw_resume: RawResumeRef) -> CandidateCVProfile:
         if not raw_resume.raw_text or not raw_resume.raw_text.strip():
@@ -72,6 +78,8 @@ class LLMResumeParser(ResumeParser):
             data = generate_json(_PROMPT_TEMPLATE.format(resume_text=raw_resume.raw_text))
         except AIProviderUnavailable as exc:
             raise ProviderUnavailable(str(exc)) from exc
+        if not isinstance(data, dict):
+            raise ProviderUnavailable("The AI reply is not a JSON object.")
 
         education = [
             EducationRecord(
@@ -80,7 +88,7 @@ class LLMResumeParser(ResumeParser):
                 start_date_text=e.get("start_date_text"), end_date_text=e.get("end_date_text"),
                 completion_status=e.get("completion_status"), certifications=e.get("certifications"),
             )
-            for e in data.get("education", [])
+            for e in _dicts(data.get("education"))
         ]
         work_history = [
             WorkHistoryRecord(
@@ -90,20 +98,20 @@ class LLMResumeParser(ResumeParser):
                 responsibilities=w.get("responsibilities"), achievements=w.get("achievements"),
                 reason_for_leaving=w.get("reason_for_leaving"), evidence_snippet=w.get("evidence_snippet"),
             )
-            for w in data.get("work_history", [])
+            for w in _dicts(data.get("work_history"))
         ]
 
         certifications = [
             CertificationRecord(name=c.get("name"), issuer=c.get("issuer"), date_text=c.get("date_text"))
-            for c in data.get("certifications", []) or []
+            for c in _dicts(data.get("certifications"))
             if c.get("name")
         ]
         languages_detail = [
             LanguageRecord(language=l.get("language"), proficiency=l.get("proficiency"))
-            for l in data.get("language_details", []) or []
+            for l in _dicts(data.get("language_details"))
             if l.get("language")
         ]
-        skills = [s for s in data.get("skills", []) or [] if s]
+        skills = [s for s in (data.get("skills") or []) if isinstance(s, str) and s]
 
         return CandidateCVProfile(
             full_name=data.get("full_name"), email=data.get("email"), phone=data.get("phone"),

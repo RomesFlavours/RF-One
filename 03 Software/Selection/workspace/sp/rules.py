@@ -6,7 +6,8 @@ real parameters read from the code. A Job may turn off the switchable ones; the 
 
 Switching a rule off filters what the stored analysis shows and counts for that Job; the analysis itself is
 kept whole, so changing rules never calls the AI again. Stability as a ranking dimension is a requirement
-(switched on or off, weighted, in the requirement list), not one of these rules.
+(weighted, in the requirement list), but it is computed from the same short-stay pattern: switching "Short
+stays" off also stops the stability requirement from counting in the group and the order.
 """
 
 from __future__ import annotations
@@ -20,7 +21,9 @@ def catalogue(role_code: str) -> list[dict]:
         {"id": "short_stays", "switchable": True, "name": "Short stays and job changes",
          "detail": f"Red flag computed from the verified CV dates: 2 or more consecutive jobs under "
                    f"{timeline.SHORT_MONTHS} months, or 5 or more jobs started in the last 36 months. "
-                   f"{timeline.LONG_MONTHS}+ months at one relevant employer counts as positive evidence."},
+                   f"{timeline.LONG_MONTHS}+ months at one relevant employer counts as positive evidence. A second job "
+                   f"held inside a longer one is not a job change. Switched off, the stability requirement "
+                   f"does not count either."},
         {"id": "gaps", "switchable": True, "name": "Employment gaps",
          "detail": f"A gap between two dated jobs is listed to verify when it is certainly at least "
                    f"{timeline.GAP_MONTHS} months. Never a negative judgement."},

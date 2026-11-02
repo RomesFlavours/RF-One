@@ -212,8 +212,11 @@ def job_page(token):
                     declared={"name": candidate.full_name, "email": candidate.email,
                               "phone": (request.form.get("phone") or "").strip() or None},
                     candidate_account_id=candidate.id,
-                    # CV Selection SP positions: no analysis while the application is in progress (see submit).
-                    analyze_after=not sp_queue.has_profile(position))
+                    # CV Selection SP positions: no analysis while the application is in progress (see submit),
+                    # and no AI reading while the candidate waits: the SP queue reads the name and contacts with
+                    # the AI before the evaluation (`sp_queue._process`).
+                    analyze_after=not sp_queue.has_profile(position),
+                    ai_reading=not sp_queue.has_profile(position))
                 if result["status"] == "DUPLICATE":
                     return render_template("careers/message.html", position=position, candidate=candidate,
                                            title="We already have this résumé",

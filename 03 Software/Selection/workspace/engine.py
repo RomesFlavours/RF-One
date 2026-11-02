@@ -12,6 +12,7 @@ never decides the group, and nobody is ever excluded automatically.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 
@@ -63,16 +64,12 @@ def import_cv(session, *, documents, restaurant_id: int, position: ps.Position, 
               ai_reading: bool = True) -> dict:
     """One file -> one PositionCandidate. Never raises; returns a result dict.
 
-    CV Selection SP imports with `analyze_after=False`: SP's own reading replaces this module's analysis. The import
-    itself still reads the CV with the AI when the position allows it, because SP sends the CV without contacts
-    and keeps the name it reads in its own result: only this reading fills the name, email and phone of the
-    candidate and of the person, which the duplicate checks and the interview invitation use. With
-    `ai_reading=False` the rule-based reader alone is used ("name not extracted" on most real CVs)."""
+    CV Selection SP imports with `ai_reading=False, analyze_after=False`, so an upload of many CVs stays fast (the
+    rule-based reading gives the candidate record and the duplicate checks), and SP's evaluation replaces this
+    module's analysis. The AI reading that fills the name, email and phone is done afterwards by the SP queue,
+    before the evaluation (`sp_queue._process`), never inside the upload request. A scanned PDF is still read by
+    the AI here when the position allows AI résumé reading, because without text it cannot be imported at all."""
     policy = position_settings.bind(position)
-    if not ai_reading:
-        ai_adapter.bind_policy(ai_adapter.AIPolicy(
-            ai_enabled=policy.ai_enabled, cv_ai_authorized=False,
-            features={k: (False if k.startswith("cv_") else v) for k, v in policy.features.items()}))
     filename = file_storage.filename or "(unnamed file)"
     ext = os.path.splitext(filename)[1].lower()
     if ext not in SUPPORTED_EXTENSIONS:
@@ -82,17 +79,29 @@ def import_cv(session, *, documents, restaurant_id: int, position: ps.Position, 
         raw_text = extract_text(staged.local_path, ext)
     except Exception:
         return {"filename": filename, "status": "FAILED", "message": "Unable to read the file."}
+    content_hash = compute_content_hash(raw_text, filename)
+    scan_problem = None
     if ext == ".pdf" and len((raw_text or "").strip()) < 80:
         # A scan has no text inside: the AI reads its pages (SELECTION_CV_REREAD_001). If it cannot, the import
-        # below reports "No extractable text" exactly as before.
+        # below reports "No extractable text" exactly as before. The same scan uploaded again must still be an
+        # exact duplicate, and two AI transcriptions are never word for word the same: its hash is the file's.
         try:
-            raw_text = cv_reading.transcribe_pdf(staged.local_path) or raw_text
-        except Exception:
-            pass
+            transcribed = cv_reading.transcribe_pdf(staged.local_path)
+            if transcribed and transcribed.strip():
+                with open(staged.local_path, "rb") as fh:
+                    content_hash = "scan:" + hashlib.sha256(fh.read()).hexdigest()
+                raw_text = transcribed
+        except Exception as exc:
+            scan_problem = ("AI résumé reading is off for this Job" if "not authorized" in str(exc)
+                            else "the AI could not read it now, upload it again later")
+    if not ai_reading:
+        ai_adapter.bind_policy(ai_adapter.AIPolicy(
+            ai_enabled=policy.ai_enabled, cv_ai_authorized=False,
+            features={k: (False if k.startswith("cv_") else v) for k, v in policy.features.items()}))
 
     result = import_one_resume(
         session, restaurant_id=restaurant_id, source_type=LOCAL_UPLOAD, original_filename=filename,
-        storage_path=staged.storage_path, raw_text=raw_text, content_hash=compute_content_hash(raw_text, filename),
+        storage_path=staged.storage_path, raw_text=raw_text, content_hash=content_hash,
     )
     application, note = None, None
     if result.status == DUPLICATE and result.duplicate_of_raw_resume_id is not None:
@@ -106,6 +115,9 @@ def import_cv(session, *, documents, restaurant_id: int, position: ps.Position, 
             session, candidate_id=result.candidate_id, restaurant_id=restaurant_id, target_role=position.role_code)
         session.commit()
     if application is None:
+        if scan_problem and not (raw_text or "").strip():
+            return {"filename": filename, "status": "FAILED",
+                    "message": f"Scanned PDF with no text inside: {scan_problem}."}
         return {"filename": filename, "status": "FAILED", "message": result.error or "Import failed."}
 
     existing = session.scalars(select(ps.PositionCandidate).where(
@@ -117,7 +129,7 @@ def import_cv(session, *, documents, restaurant_id: int, position: ps.Position, 
 
     if result.status == PARTIAL:
         note = ((note or "") + " Partial résumé extraction; some sections need checking.").strip()
-    without_ai = cv_reading.note_for_reading(persistence.get_candidate(session, application.candidate_id))
+    without_ai = ai_reading and cv_reading.note_for_reading(persistence.get_candidate(session, application.candidate_id))
     if without_ai:
         note = ((note or "") + " " + without_ai).strip()
     declared = declared or {}

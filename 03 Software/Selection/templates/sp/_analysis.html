@@ -4,7 +4,7 @@
 <div class="sp" id="sp">
 <h2 style="font-size:18px;margin-top:10px">CV Selection SP analysis</h2>
 <div class="muted">
-  {% if c.status == 'OUTDATED' %}<span class="verify">Analyzed with requirements v{{ c.analyzed_version }}: update recommended</span> · {% endif %}{% if row %}{% if row.rank %}<b>#{{ row.rank }} of {{ total }}</b> · {% else %}<b>Rejected</b> (not in the ranking) · {% endif %}<span class="badge g{{ row.assessment.group }}">{{ row.assessment.group }} · {{ row.assessment.group_label }}</span>{% if row.rank_moved and row.rank %} · moved by the manager (proposed #{{ row.proposed_rank }}){% endif %} · {% endif %}
+  {% if c.status == 'OUTDATED' %}<span class="verify">{% if c.old_checks %}Analyzed before the 2 Nov checks{% else %}Analyzed with requirements v{{ c.analyzed_version }}{% endif %}: update recommended</span> · {% endif %}{% if row %}{% if row.rank %}<b>#{{ row.rank }} of {{ total }}</b> · {% else %}<b>Rejected</b> (not in the ranking) · {% endif %}<span class="badge g{{ row.assessment.group }}">{{ row.assessment.group }} · {{ row.assessment.group_label }}</span>{% if row.rank_moved and row.rank %} · moved by the manager (proposed #{{ row.proposed_rank }}){% endif %} · {% endif %}
   <a href="{{ url_for('positions.sp_page', position_id=p.id) }}#ranking">Ranking in Applications</a>{% if c.new %} · <span class="badge gB">NEW</span>{% endif %}
 </div>
 {% if not a %}<div class="card">Not analyzed yet{% if c.error %}: <span class="flag">{{ c.error }}</span>{% endif %}.</div>{% else %}

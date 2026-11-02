@@ -33,7 +33,7 @@ from rfone_data_store import models as m
 from rfone_data_store.selection import persistence
 from rfone_data_store.selection import workspace_models as ps
 
-from . import ai_adapter, position_settings
+from . import ai_adapter, cv_reading, position_settings
 from .sp import analysis as sp_analysis
 from .sp import profiles as spp
 
@@ -91,7 +91,15 @@ def _current_result(db, pc_id: int) -> ps.Proposal | None:
 
 
 def _analyzed_with(result: ps.Proposal | None, version: int) -> bool:
-    return bool(result and result.group_code == "ANALYZED" and json.loads(result.payload_json).get("version") == version)
+    if not (result and result.group_code == "ANALYZED"):
+        return False
+    payload = json.loads(result.payload_json)
+    return payload.get("version") == version and current_checks(payload.get("analysis"))
+
+
+def current_checks(analysis) -> bool:
+    """True when a stored analysis was checked with the code's current checks (`sp_analysis.CHECKS_VERSION`)."""
+    return isinstance(analysis, dict) and analysis.get("checks_version") == sp_analysis.CHECKS_VERSION
 
 
 # ---------------------------------------------------------------------------
@@ -233,10 +241,18 @@ def _process(job_id: int, lease) -> None:
             raw = db.get(m.RawResume, candidate.raw_resume_id) if candidate and candidate.raw_resume_id else None
             cv_text = (raw.raw_text if raw else "") or ""
             pc_id = pc.id
+            # Uploaded by a manager: read with the rule-based reader only (fast upload). The AI reading of the name,
+            # email and phone happens here, once, before the evaluation (SELECTION_SP_REAL_CVS_001).
+            identity_raw = (raw if raw is not None and cv_reading.read_without_ai(candidate)
+                            and ai_adapter.current_policy().cv_ai_authorized else None)
+            if identity_raw is not None:
+                db.expunge(identity_raw)
     if skip:
         _finish(job_id, lease, skip)
         return
-    # No database session is open during the AI call (an open read blocks other writers on SQLite).
+    # No database session is open during the AI calls (an open read blocks other writers on SQLite).
+    if identity_raw is not None:
+        _read_identity(pc_id, identity_raw, job=(job_id, lease))
     analysis, error = None, None
     try:
         analysis = sp_analysis.analyze_cv(role_code=role, requirements=requirements, cv_text=cv_text,
@@ -244,6 +260,90 @@ def _process(job_id: int, lease) -> None:
     except Exception as exc:  # one CV failing never stops the others
         error = str(exc)[:500]
     _write_result(pc_id, version, analysis, error, job=(job_id, lease))
+
+
+def _read_identity(pc_id: int, raw, *, job=None, actor_name: str = "CV Selection SP") -> str | None:
+    """The AI reading at import that a manager's upload skipped: fills the candidate's and the person's name,
+    email and phone and redoes the duplicate suggestions. Returns None when stored or not needed any more, else
+    why it could not be done. A failure never stops the evaluation; the CV stays "read without the AI" and the SP
+    page offers Read again. With `job` (id, lease), nothing is written once the lease is lost."""
+    try:
+        profile = cv_reading.read_profile(raw)
+    except Exception as exc:
+        log.warning("CV Selection SP: identity reading of candidate %s not done: %s", pc_id, exc)
+        return str(exc) if isinstance(exc, ValueError) else f"unexpected error ({exc.__class__.__name__})"
+    with _write_lock, _sessions()() as db:
+        if job is not None and db.scalars(select(ps.Proposal.id).where(
+                ps.Proposal.id == job[0], ps.Proposal.group_code == RUNNING,
+                ps.Proposal.created_at == job[1])).first() is None:
+            return None                              # lease lost: the new owner reads it
+        pc = db.get(ps.PositionCandidate, pc_id)
+        if pc is None:
+            return None                              # CV deleted meanwhile
+        candidate = persistence.get_candidate(db, pc.candidate_id)
+        if not cv_reading.read_without_ai(candidate):
+            return None                              # already read with the AI (by another worker or Read again)
+        position = db.get(ps.Position, pc.position_id)
+        try:
+            cv_reading.apply_profile(db, position, pc, candidate, profile, actor_id=None, actor_name=actor_name)
+        except Exception as exc:
+            db.rollback()
+            log.exception("CV Selection SP: identity reading of candidate %s not stored", pc_id)
+            return f"not stored ({exc.__class__.__name__})"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Read again with the AI (SP page button), in the background
+# ---------------------------------------------------------------------------
+
+_reading_positions: set[int] = set()
+
+
+def read_again_in_background(position_id: int, actor_name: str) -> bool:
+    """Starts reading this Job's CVs read without the AI, in a background thread, so the manager's request returns
+    at once (a request is cut at 60 s by CloudFront). False when this process is already reading this Job."""
+    with _state_lock:
+        if position_id in _reading_positions:
+            return False
+        _reading_positions.add(position_id)
+    threading.Thread(target=_read_position, args=(position_id, actor_name), name="cv-selection-sp-read",
+                     daemon=True).start()
+    return True
+
+
+def reading_in_background(position_id: int) -> bool:
+    with _state_lock:
+        return position_id in _reading_positions
+
+
+def _read_position(position_id: int, actor_name: str) -> None:
+    try:
+        with _sessions()() as db:
+            position = db.get(ps.Position, position_id)
+            if position is None or not position_settings.bind(position).cv_ai_authorized:
+                return
+            todo = []
+            for pc in cv_reading.pending(db, position):
+                candidate = persistence.get_candidate(db, pc.candidate_id)
+                raw = db.get(m.RawResume, candidate.raw_resume_id) if candidate and candidate.raw_resume_id else None
+                if raw is not None:
+                    db.expunge(raw)
+                    todo.append((pc.id, raw))
+            db.rollback()  # no read left open during the AI calls (SQLite)
+        for pc_id, raw in todo:
+            reason = _read_identity(pc_id, raw, actor_name=actor_name)
+            if reason:
+                with _write_lock, _sessions()() as db:
+                    try:
+                        cv_reading.mark_failed(db, pc_id, reason)
+                    except Exception:
+                        db.rollback()
+    except Exception:
+        log.exception("CV Selection SP: Read again of Job %s stopped", position_id)
+    finally:
+        with _state_lock:
+            _reading_positions.discard(position_id)
 
 
 def _write_result(pc_id: int, version: int, analysis: dict | None, error: str | None, job=None) -> None:

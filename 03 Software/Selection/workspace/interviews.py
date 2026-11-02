@@ -291,7 +291,8 @@ def interview_save(db, actor, position_id, pc_id):
         if form.get("autosave") == "1":
             return jsonify({"ok": False, "status": STATUS[data["status"]],
                             "message": "This interview is completed: reopen it to change it."}), 409
-        flash("This interview is completed: reopen it to change it. Nothing was saved.")
+        flash("Interview already completed." if form.get("action") == "complete" else
+              "This interview is completed: reopen it to change it. Nothing was saved.")
         return redirect(url_for(".interviews", position_id=position.id, pc=pc.id) + "#summary")
     config = configuration(db, position, pc, data)
     data["config"] = config

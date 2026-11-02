@@ -16,6 +16,7 @@ version are sent to Bedrock; an analysis made with an older version stays visibl
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -37,6 +38,8 @@ SOURCE = sp_queue.RESULT
 # The CV list's last change (CVs just uploaded or the CV just deleted), handed once to the page, which keeps
 # the CVs added during its browser-tab session marked NEW.
 CV_LIST_KEY = "sp_cv_list_change"
+UPLOAD_BUDGET_SECONDS = 25  # no new file after this: with one scan read by the AI (25 s) the request stays under
+                            # CloudFront's 60 s origin timeout (rfone-cloudfront/distribution-config.json)
 AI_OFF = ("AI résumé evaluation is off for this Job: turn on “AI résumé and answer evaluation” in the Job "
           "(Selection tab) to analyze.")
 
@@ -154,7 +157,8 @@ def candidates(db, position, sp) -> list[dict]:
         elif application is not None and application.status != ps.A_SUBMITTED:
             status = "IN_PROGRESS"        # application page / RMAED: analyzed only once the application is complete
         elif payload.get("analysis"):
-            status = "DONE" if approved and version == approved["version"] else "OUTDATED"
+            status = ("DONE" if approved and version == approved["version"]
+                      and sp_queue.current_checks(payload.get("analysis")) else "OUTDATED")
         elif payload.get("error"):
             status = "ERROR"
         else:
@@ -163,6 +167,7 @@ def candidates(db, position, sp) -> list[dict]:
                     "uploaded_at": pc.added_at.isoformat(), "name": candidate.full_name if candidate else None,
                     "analysis": sp_rules.apply(payload.get("analysis"), position.role_code, sp.get("rules")),
                     "analyzed_version": version, "decision": decision,
+                    "old_checks": bool(payload.get("analysis")) and not sp_queue.current_checks(payload.get("analysis")),
                     "rejected": bool(decision and decision.decision == ps.D_NOT_SELECTED),
                     "analyzed_at": payload.get("analyzed_at"), "model": payload.get("model"),
                     "error": payload.get("error"), "status": status, "new": pc.id in last,
@@ -208,12 +213,19 @@ def sp_upload(db, actor, position_id):
     sp_role = has_profile(position)
     batch = {"at": ps.utcnow().isoformat(), "by": actor.name, "received": len(files), "imported": [],
              "exact_duplicates": [], "possible_duplicates": [], "failed": []}
+    started = time.monotonic()
     for f in files:
-        # SP roles: no Selection analysis here, SP's own evaluation follows. The import still reads the CV with the
-        # AI when the Job allows it: SP's evaluation never writes the name, email and phone back (`engine.import_cv`).
+        if time.monotonic() - started > UPLOAD_BUDGET_SECONDS:
+            # Scanned PDFs are read by the AI during the upload: a large batch of them must not reach the gunicorn
+            # timeout, which would lose the whole batch summary. The rest is reported, never silently dropped.
+            batch["failed"].append({"filename": f.filename, "message": "Not imported: this upload took too long. "
+                                                                       "Upload this file again."})
+            continue
+        # SP roles: rule-based reading only and no Selection analysis here, so the upload stays fast. The SP queue
+        # reads the CV with the AI for the name, email and phone, then evaluates it (`sp_queue._process`).
         r = engine.import_cv(db, documents=_cfg.documents, restaurant_id=_restaurant_id(db), position=position,
                              file_storage=f, channel=ps.MANUAL_UPLOAD, actor_id=actor.id, actor_name=actor.name,
-                             analyze_after=not sp_role)
+                             analyze_after=not sp_role, ai_reading=not sp_role)
         if r["status"] == "OK":
             batch["imported"].append(r["position_candidate_id"])
             notes = engine.duplicate_notes(db, db.get(ps.PositionCandidate, r["position_candidate_id"]))
@@ -252,21 +264,20 @@ def sp_upload(db, actor, position_id):
 @access_required
 def sp_read_again(db, actor, position_id):
     """CVs imported with the rule-based reader only (before 2 Nov 2026, or while the AI was unavailable): read the
-    stored text again with the AI, which fills the name, email and phone and redoes the duplicate check. SP's
-    evaluation already read the same text with the AI, so it is kept and not repeated."""
+    stored text again with the AI, in the background (`sp_queue.read_again_in_background`), which fills the name,
+    email and phone and redoes the duplicate check. SP's evaluation is kept and not repeated."""
     position = _sp_position(db, actor, position_id, edit=True)
     if not position_settings.bind(position).cv_ai_authorized:
         flash("AI résumé reading is off for this Job (Selection tab).")
         return redirect(url_for(".sp_page", position_id=position.id) + "#cvs")
-    result = cv_reading.read_pending(db, position, actor_id=actor.id, actor_name=actor.name, analyze=False)
-    parts = [f"{result['read']} CV(s) read again with the AI"]
-    if result["partial"]:
-        parts.append(f"{result['partial']} read in part (some sections to check)")
-    if result["failed"]:
-        parts.append(f"{len(result['failed'])} not read: {result['failed'][0]}")
-    if result["left"]:
-        parts.append(f"{result['left']} still to read: press the button again")
-    flash("; ".join(parts) + ".")
+    count = len(cv_reading.pending(db, position))
+    if not count:
+        flash("Every CV of this Job is already read with the AI.")
+    elif sp_queue.read_again_in_background(position.id, actor.name):
+        flash(f"Reading {count} CV(s) again with the AI in the background (about 10 to 30 seconds each). "
+              "Reload the page to see the names and contacts as they arrive.")
+    else:
+        flash("These CVs are already being read again with the AI: reload the page in a minute.")
     return redirect(url_for(".sp_page", position_id=position.id) + "#cvs")
 
 
@@ -343,7 +354,8 @@ def sp_page(db, actor, position_id):
                    last_upload=sp["uploads"][-1] if sp["uploads"] else None, last_added=last_adding_upload(sp),
                    ai_allowed=_ai_allowed(position), can_edit=actor.can_edit(position),
                    read_without_ai=len(cv_reading.pending(db, position))
-                   if position_settings.bind(position).cv_ai_authorized else 0)
+                   if position_settings.bind(position).cv_ai_authorized else 0,
+                   reading_again=sp_queue.reading_in_background(position.id))
 
 
 @bp.route("/posizioni/<int:position_id>/sp/requirements", methods=["POST"])
