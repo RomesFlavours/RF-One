@@ -223,11 +223,13 @@ class EmployeeDirectoryTest(unittest.TestCase):
         md_client = _CorrectionFakeCloverClient("MD")
         md_client.employees = [{"id": "M1", "name": "Jane Smith"}]
         summary = run_correction_cycle(self.db, location_id=self.md.id, client=md_client)
-        self.assertTrue(summary.employee_errors)
-        self.assertFalse(summary.results)
-        md_work_cursors = list(self.db.scalars(select(m.IngestionRun).where(
-            m.IngestionRun.location_id == self.md.id, m.IngestionRun.resource_type.is_not(None))))
-        self.assertFalse(md_work_cursors)
+        # EMPLOYEE_DIRECTORY_RECORD_HOLD_001: the pending identity holds only
+        # its own records; MD's work cursors still run and the hold is reported.
+        self.assertFalse(summary.employee_errors)
+        self.assertEqual(len(summary.results), 3)
+        self.assertTrue(summary.identity_holds)
+        self.assertIsNone(self.db.scalar(select(m.EmployeeCloverLink).filter_by(
+            merchant_id="MD", external_employee_id="M1")).employee_id)
         wp_client = _CorrectionFakeCloverClient("WP")
         wp_client.employees = [{"id": "E1", "name": "Jane Smith"}]
         wp_summary = run_correction_cycle(self.db, location_id=self.wp.id, client=wp_client)

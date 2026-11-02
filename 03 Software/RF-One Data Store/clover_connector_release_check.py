@@ -29,7 +29,7 @@ def main(argv):
     for path,digest in manifest['files'].items():
         actual=root.parent/path
         assert hashlib.sha256(actual.read_bytes()).hexdigest()==digest,'Runtime artifact mismatch'
-    suite=unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromName(n) for n in ('test_clover_employee_history','test_clover_monthly_recovery','test_clover_line_presence'))
+    suite=unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromName(n) for n in ('test_clover_employee_history','test_clover_monthly_recovery','test_clover_line_presence','test_clover_identity_record_holds'))
     result=unittest.TextTestRunner().run(suite)
     assert result.wasSuccessful()
     out={'release':manifest['release'],'tests_passed':result.testsRun,'artifact_verified':True,'database_writes':False}
