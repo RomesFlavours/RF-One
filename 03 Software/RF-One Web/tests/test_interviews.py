@@ -344,15 +344,15 @@ class InterviewTests(unittest.TestCase):
     def test_quotation_matches_despite_typography(self):
         # Curly apostrophe/quotes, an em dash, a one-character ellipsis, double
         # spaces and a line break in the answer; plain ASCII in the quotations.
-        answer = "L’ho detto al cliente: “non è colpa sua” — poi  ho aspettato…\nE ha funzionato."
+        answer = "L\u2019ho detto al cliente: \u201cnon \u00e8 colpa sua\u201d \u2014 poi  ho aspettato\u2026\nE ha funzionato."
         messages = [dict(role="assistant", text="Domanda"), dict(role="user", text=answer)]
         raw = dict(summary="Sintesi", open_questions=[], knowledge=[
             dict(text="Apostrophe and case", quote="l'HO DETTO al cliente", message_index=1),
-            dict(text="Quotes and dash", quote='"Non è colpa sua" - poi ho aspettato...', message_index=1),
-            dict(text="Line break and end mark", quote="“ho aspettato... e ha funzionato.”", message_index=1),
-            dict(text="Wrong index, right answer", quote="non è colpa sua", message_index=0),
+            dict(text="Quotes and dash", quote='"Non \u00e8 colpa sua" - poi ho aspettato...', message_index=1),
+            dict(text="Line break and end mark", quote="\u201cho aspettato... e ha funzionato.\u201d", message_index=1),
+            dict(text="Wrong index, right answer", quote="non \u00e8 colpa sua", message_index=0),
             dict(text="Not said", quote="ho chiamato il direttore", message_index=1),
-            dict(text="Only punctuation", quote="…", message_index=1)])
+            dict(text="Only punctuation", quote="\u2026", message_index=1)])
         result = svc._complete_output(raw, messages)
         self.assertEqual([item["text"] for item in result["knowledge"]],
             ["Apostrophe and case", "Quotes and dash", "Line break and end mark", "Wrong index, right answer"])
