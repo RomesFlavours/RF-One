@@ -78,17 +78,22 @@ def register_interview_routes(app, *, SessionFactory, require_login, require_adm
     def interview_admin_results(session_id):
         with SessionFactory() as db:
             ready(db)
+            actor = load_current_account(db)
             try:
-                row = svc.load(db, load_current_account(db), session_id, admin=True)
+                row = svc.load(db, actor, session_id, admin=True)
             except PermissionError:
                 abort(404)
+            # Without recorded consent only the requester reads the content.
+            visible = svc.content_visible(actor, row)
             return render_template("interview_results.html", row=row,
                 recipient=db.get(m.RFOneAccount, row.recipient_id),
                 person=svc.interview_person(db, row),
                 requester=db.get(m.RFOneAccount, row.requester_id),
                 answer_count=sum(msg['role'] == 'user' for msg in json.loads(row.transcript)),
-                result=json.loads(row.results) if row.results else None,
-                messages=json.loads(row.transcript) if row.status == "COMPLETED" else [])
+                result=json.loads(row.results) if row.results and visible else None,
+                messages=json.loads(row.transcript) if row.status == "COMPLETED" and visible else [],
+                consent_missing=svc.consent_missing(row), content_hidden=not visible,
+                can_delete=svc.is_domain_admin(db, actor))
 
     @app.post("/admin/interviews/<session_id>/delete")
     @admin_gate
@@ -146,15 +151,10 @@ def register_interview_routes(app, *, SessionFactory, require_login, require_adm
                     if wants_json:
                         messages = json.loads(row.transcript)
                         return jsonify(status=row.status, revision=row.revision, messages=messages,
+                            consent_given=row.consent_given,
                             redirect=url_for("interview_session", session_id=row.id))
                     return redirect(url_for("interview_session", session_id=row.id))
                 except svc.ConflictError as exc:
-                    db.rollback()
-                    if db.scalar(select(InterviewSession.id).where(InterviewSession.id == session_id)) is None:
-                        # Deleted by an administrator while the AI was answering.
-                        if wants_json:
-                            return jsonify(error="This interview is no longer available."), 404
-                        abort(404)
                     error, status = str(exc), 409
                 except ProviderError as exc:
                     error, status = str(exc), 503
@@ -162,10 +162,18 @@ def register_interview_routes(app, *, SessionFactory, require_login, require_adm
                     error, status = str(exc), 400
                 if error:
                     db.rollback()
+                    # The rollback expired `row`; it may have been deleted by an
+                    # administrator while the AI was answering. Check before
+                    # reading it again for the page below.
+                    if db.scalar(select(InterviewSession.id).where(InterviewSession.id == session_id)) is None:
+                        if wants_json:
+                            return jsonify(error="This interview is no longer available."), 404
+                        abort(404)
                     if wants_json:
                         return jsonify(error=error), status
             requester = db.get(m.RFOneAccount, row.requester_id)
             response = app.make_response((render_template("interview_session.html", row=row,
+                consent_missing=svc.consent_missing(row),
                 messages=json.loads(row.transcript), requester=requester, person=svc.interview_person(db, row), error=error,
                 unsent=request.form.get("message", "") if error else ""), status))
             response.headers["Cache-Control"] = "no-store"

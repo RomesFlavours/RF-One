@@ -1,7 +1,6 @@
 """Persistent, revision-checked interview engine with explicit participants."""
 from datetime import datetime, timezone
 import json
-import re
 import unicodedata
 import uuid
 
@@ -43,6 +42,27 @@ def require_manager(db, account):
     active(account)
     if not permissions.account_may_use_domain_item(db, account, "ORGANIZATION", "interviews"):
         raise PermissionError("Interviews access required.")
+
+
+def is_domain_admin(db, account):
+    """Domain administrators of ORGANIZATION see and delete every interview;
+    other accounts with the Interviews item only the ones they requested."""
+    return permissions.account_is_domain_admin(db, account, "ORGANIZATION")
+
+
+def may_manage(db, account, row):
+    return row.requester_id == account.id or is_domain_admin(db, account)
+
+
+def content_visible(account, row):
+    """Answers and results of an interview without recorded consent (started
+    before consent was asked) stay with the person who requested it until the
+    participant agrees on their next answer."""
+    return bool(row.consent_given) or row.requester_id == account.id
+
+
+def consent_missing(row):
+    return row.status != "REQUESTED" and not row.consent_given
 
 
 def request_interview(db, requester, recipient_id, purpose, specialization="KNOW_HOW"):
@@ -100,10 +120,14 @@ def recipient_matches(db, account, row):
 
 
 def managed(db, account):
-    """Every interview, for any account with the Interviews permission: the
-    know-how belongs to the company, not to whoever happened to request it."""
+    """Every interview for a Domain administrator of ORGANIZATION (the
+    know-how belongs to the company); for any other account with the
+    Interviews item, only the interviews it requested."""
     require_manager(db, account)
-    return list(db.scalars(select(InterviewSession).order_by(InterviewSession.created_at.desc())))
+    query = select(InterviewSession).order_by(InterviewSession.created_at.desc())
+    if not is_domain_admin(db, account):
+        query = query.where(InterviewSession.requester_id == account.id)
+    return list(db.scalars(query))
 
 
 def load(db, account, session_id, *, admin=False):
@@ -111,7 +135,9 @@ def load(db, account, session_id, *, admin=False):
     row = db.get(InterviewSession, session_id)
     if admin:
         require_manager(db, account)
-    if row is None or (not admin and not recipient_matches(db, account, row)):
+        if row is None or not may_manage(db, account, row):
+            raise PermissionError("Interview unavailable.")
+    elif row is None or not recipient_matches(db, account, row):
         raise PermissionError("Interview unavailable.")
     return row
 
@@ -119,8 +145,11 @@ def load(db, account, session_id, *, admin=False):
 def delete_interview(db, account, session_id):
     """Remove one interview with its transcript and results (all held on the
     row). The person's append-only directory history keeps who deleted which
-    interview and when, never its content."""
+    interview and when, never its content. Domain administrators of
+    ORGANIZATION only."""
     require_manager(db, account)
+    if not is_domain_admin(db, account):
+        raise PermissionError("Only Domain administrators of ORGANIZATION can delete interviews.")
     row = db.get(InterviewSession, session_id)
     if row is None:
         raise LookupError("Interview unavailable.")
@@ -147,23 +176,57 @@ _QUOTE_FOLD = str.maketrans({
 })
 
 
+# Shorter quotations ("yes", "the supplier") prove nothing about a claim.
+MIN_QUOTE_WORDS, MIN_QUOTE_CHARACTERS = 3, 15
+
+
+def _comparable_map(text):
+    """Text as compared for quotations (same words, any typography, case or
+    spacing) and, for each of its characters, the (start, end) of the
+    original characters it came from. A base character and its combining
+    marks are normalised together, so composed and decomposed accents match."""
+    clusters, start = [], 0
+    for position in range(1, len(text) + 1):
+        if position == len(text) or not unicodedata.combining(text[position]):
+            clusters.append((start, position))
+            start = position
+    chars, origin = [], []
+    for begin, end in clusters:
+        for char in unicodedata.normalize("NFKC", text[begin:end]).translate(_QUOTE_FOLD).casefold():
+            if char.isspace():
+                if not chars or chars[-1] == " ":
+                    continue
+                char = " "
+            chars.append(char)
+            origin.append((begin, end))
+    while chars and chars[-1] == " ":
+        chars.pop()
+        origin.pop()
+    return "".join(chars), origin
+
+
 def _comparable(text):
-    """Text as compared for quotations: same words, any typography or spacing."""
-    text = unicodedata.normalize("NFKC", text).translate(_QUOTE_FOLD).casefold()
-    return re.sub(r"\s+", " ", text).strip()
+    return _comparable_map(text)[0]
 
 
 def _quote_source(quote, index, messages):
-    """Index of the user answer containing `quote`, or None. The AI's own
-    message_index is tried first; any other answer is accepted when that
-    index is wrong. Surrounding quote marks and end punctuation are ignored."""
+    """(index of the user answer containing `quote`, the matching words as the
+    participant wrote them), or None. The AI's own message_index is tried
+    first; any other answer is accepted when that index is wrong. Surrounding
+    quote marks and end punctuation are ignored. A quotation needs at least
+    MIN_QUOTE_WORDS words or MIN_QUOTE_CHARACTERS characters."""
     wanted = _comparable(quote).strip(" \"'.,;:!?")
-    if not wanted:
+    if not wanted or (len(wanted.split()) < MIN_QUOTE_WORDS and len(wanted) < MIN_QUOTE_CHARACTERS):
         return None
     candidates = ([index] if type(index) is int and 0 <= index < len(messages) else []) + list(range(len(messages)))
     for position in candidates:
-        if messages[position]["role"] == "user" and wanted in _comparable(messages[position]["text"]):
-            return position
+        if messages[position]["role"] != "user":
+            continue
+        answer = messages[position]["text"]
+        comparable, origin = _comparable_map(answer)
+        found = comparable.find(wanted)
+        if found >= 0:
+            return position, answer[origin[found][0]:origin[found + len(wanted) - 1][1]]
     return None
 
 
@@ -179,11 +242,13 @@ def _complete_output(raw, messages):
         if not isinstance(item, dict):
             raise ProviderError("Invalid AI results. Please try again.")
         text, quote = _string(item.get("text"), 4000), _string(item.get("quote"), 8000)
-        index = _quote_source(quote, item.get("message_index"), messages)
-        if index is None:
+        source = _quote_source(quote, item.get("message_index"), messages)
+        if source is None:
             # Unsupported by the answers: left out, the rest of the results stand.
             dropped += 1
             continue
+        # Kept in the participant's own words, not the AI's copy of them.
+        index, quote = source
         verified.append(dict(text=text, quote=quote, message_index=index))
     return dict(summary=summary, knowledge=verified, dropped_unsupported=dropped,
         open_questions=[_string(q, 2000) for q in questions], validation="CANDIDATE")
@@ -195,7 +260,9 @@ def advance(db, account, row, expected_revision, action, text, provider, *, chan
     Build/validate the entire turn before writing. No provider/tool can approve
     knowledge or create an operational side effect through this interface.
     Starting requires the participant's explicit consent, checked here so a
-    request that skips the page's checkbox is still refused.
+    request that skips the page's checkbox is still refused. An interview
+    started before consent was asked needs the same consent on its next
+    answer or completion, before anything reaches the AI.
     """
     active(account)
     if not recipient_matches(db, account, row):
@@ -210,6 +277,9 @@ def advance(db, account, row, expected_revision, action, text, provider, *, chan
         raise ConflictError("This action is unavailable in the current state.")
     if action == "start" and consent is not True:
         raise ValueError("Tick \"I agree\" to start the interview.")
+    record_consent = not row.consent_given
+    if record_consent and consent is not True:
+        raise ValueError("Tick \"I agree\" to continue the interview.")
     messages = json.loads(row.transcript)
     if action == "answer":
         text = text.strip()
@@ -237,8 +307,8 @@ def advance(db, account, row, expected_revision, action, text, provider, *, chan
         question = _string(raw.get("question"), 4000)
         messages.append(dict(role="assistant", text=question, at=now().isoformat(), channel="ai"))
         values.update(status="IN_PROGRESS", transcript=json.dumps(messages, ensure_ascii=False))
-        if action == "start":
-            values.update(consent_given=True, consent_at=now())
+    if record_consent:
+        values.update(consent_given=True, consent_at=now())
     changed = db.execute(update(InterviewSession).where(
         InterviewSession.id == session_id, InterviewSession.revision == expected_revision,
         InterviewSession.status == previous_status).values(**values).execution_options(synchronize_session=False))

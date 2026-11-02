@@ -325,10 +325,10 @@ class InterviewTests(unittest.TestCase):
     def test_fabricated_evidence_is_dropped_not_kept(self):
         row = self.create(); self.login(self.person)
         self.post(row, "start", 0)
-        self.post(row, "answer", 1, message="Un episodio reale")
+        self.post(row, "answer", 1, message="Un episodio reale accaduto ieri")
         web.app.config["INTERVIEW_PROVIDER"] = lambda payload: dict(summary="Sintesi", knowledge=[
             dict(text="Inventato", quote="Mai detto", message_index=1),
-            dict(text="Supportato", quote="episodio reale", message_index=1)], open_questions=[])
+            dict(text="Supportato", quote="episodio reale accaduto", message_index=1)], open_questions=[])
         response = self.post(row, "complete", 2)
         self.assertEqual(response.status_code, 200)
         self.db.refresh(row)
@@ -357,7 +357,26 @@ class InterviewTests(unittest.TestCase):
         self.assertEqual([item["text"] for item in result["knowledge"]],
             ["Apostrophe and case", "Quotes and dash", "Line break and end mark", "Wrong index, right answer"])
         self.assertEqual({item["message_index"] for item in result["knowledge"]}, {1})
-        self.assertEqual(result["knowledge"][0]["quote"], "l'HO DETTO al cliente")
+        # Stored as the participant wrote it, not as the AI copied it.
+        self.assertEqual([item["quote"] for item in result["knowledge"]], [
+            "L\u2019ho detto al cliente",
+            "non \u00e8 colpa sua\u201d \u2014 poi  ho aspettato",
+            "ho aspettato\u2026\nE ha funzionato",
+            "non \u00e8 colpa sua"])
+        self.assertEqual(result["dropped_unsupported"], 2)
+
+    def test_short_quotations_are_dropped(self):
+        answer = "S\u00ec, il fornitore. Poi ho chiamato il direttore per la riorganizzazione della sala."
+        messages = [dict(role="assistant", text="Domanda"), dict(role="user", text=answer)]
+        quotes = {"two short words": "il fornitore", "one word": "S\u00ec",
+            "three words": "ho chiamato il", "fifteen characters": "riorganizzazione",
+            "decomposed accent": "Si\u0300, il fornitore"}
+        raw = dict(summary="Sintesi", open_questions=[], knowledge=[
+            dict(text=name, quote=quote, message_index=1) for name, quote in quotes.items()])
+        result = svc._complete_output(raw, messages)
+        self.assertEqual({item["text"]: item["quote"] for item in result["knowledge"]}, {
+            "three words": "ho chiamato il", "fifteen characters": "riorganizzazione",
+            "decomposed accent": "S\u00ec, il fornitore"})
         self.assertEqual(result["dropped_unsupported"], 2)
 
     def test_validation_and_explicit_start(self):
@@ -378,6 +397,136 @@ class InterviewTests(unittest.TestCase):
 
 
 
+
+    def legacy_in_progress(self, requester=None):
+        """An interview started before consent was asked (pre-migration row)."""
+        row = svc.request_interview(self.db, requester or self.admin, self.person.id, "Interview from before consent")
+        self.db.commit()
+        self.login(self.person)
+        self.assertEqual(self.post(row, "start", 0).status_code, 200)
+        self.assertEqual(self.post(row, "answer", 1, message="Risposta data prima del consenso").status_code, 200)
+        self.db.execute(update(InterviewSession).where(InterviewSession.id == row.id).values(
+            consent_given=False, consent_at=None))
+        self.db.commit()
+        return row
+
+    def test_legacy_interview_needs_consent_before_any_ai_call(self):
+        row = self.legacy_in_progress()
+        page = self.client.get("/interviews/" + row.id, base_url="https://localhost")
+        self.assertIn('id="interview-consent-answer" type="checkbox" name="consent" value="yes" required', page.text)
+        self.assertIn('id="interview-consent-complete"', page.text)
+        calls = []
+        web.app.config["INTERVIEW_PROVIDER"] = lambda payload: calls.append(payload) or fake_provider(payload)
+        for action in ("answer", "complete"):
+            response = self.post(row, action, 2, message="Seconda risposta")
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("I agree", response.json["error"])
+        self.assertEqual(calls, [])
+        self.db.refresh(row)
+        self.assertEqual((row.revision, row.consent_given), (2, False))
+        response = self.post(row, "answer", 2, message="Seconda risposta", consent="yes")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertTrue(response.json["consent_given"])
+        self.db.refresh(row)
+        self.assertTrue(row.consent_given)
+        self.assertIsNotNone(row.consent_at)
+        self.assertNotIn('interview-consent-answer', self.client.get("/interviews/" + row.id, base_url="https://localhost").text)
+        # Once recorded, later turns do not ask again.
+        self.assertEqual(self.post(row, "complete", 3).status_code, 200)
+
+    def test_legacy_completion_records_consent(self):
+        row = self.legacy_in_progress()
+        self.assertEqual(self.post(row, "complete", 2).status_code, 400)
+        self.assertEqual(self.post(row, "complete", 2, consent="yes").status_code, 200)
+        self.db.refresh(row)
+        self.assertEqual((row.status, row.consent_given), ("COMPLETED", True))
+
+    def test_results_without_consent_are_for_the_requester_only(self):
+        row = self.legacy_in_progress()
+        self.db.execute(update(InterviewSession).where(InterviewSession.id == row.id).values(
+            status="COMPLETED", results=json.dumps(dict(summary="Sintesi riservata", knowledge=[],
+                dropped_unsupported=0, open_questions=[], validation="CANDIDATE"))))
+        self.db.commit()
+        url = "/admin/interviews/" + row.id
+        self.login(self.admin)
+        page = self.client.get(url, base_url="https://localhost").text
+        self.assertIn("Consent not recorded", page)
+        self.assertIn("Sintesi riservata", page)
+        self.assertIn("Risposta data prima del consenso", page)
+        self.login(self.admin2)
+        page = self.client.get(url, base_url="https://localhost")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Consent not recorded", page.text)
+        self.assertNotIn("Sintesi riservata", page.text)
+        self.assertNotIn("Risposta data prima del consenso", page.text)
+        self.assertIn("Consent not recorded", self.client.get("/admin/interviews", base_url="https://localhost").text)
+
+    def test_interviews_item_without_domain_admin_sees_only_own_requests(self):
+        from rfone_data_store import rfone_account_service as accounts
+        accounts.set_domain_access(self.db, account_id=self.other.id,
+            domain_code="ORGANIZATION", enabled=True, role_code=None,
+            scope=m.DOMAIN_ACCESS_SCOPE_SELECTED, item_codes=["interviews"])
+        self.db.commit()
+        theirs = self.create("Interview requested by an Organization administrator")
+        mine = svc.request_interview(self.db, self.other, self.person.id, "Interview requested by a manager")
+        self.db.commit()
+        mine_id, theirs_id = mine.id, theirs.id
+        self.assertFalse(svc.is_domain_admin(self.db, self.other))
+        self.assertEqual([row.id for row in svc.managed(self.db, self.other)], [mine_id])
+        self.assertLessEqual({mine_id, theirs_id}, {row.id for row in svc.managed(self.db, self.admin2)})
+        self.login(self.other)
+        listing = self.client.get("/admin/interviews", base_url="https://localhost").text
+        self.assertIn(mine_id, listing)
+        self.assertNotIn(theirs_id, listing)
+        self.assertEqual(self.client.get("/admin/interviews/" + theirs_id, base_url="https://localhost").status_code, 404)
+        own = self.client.get("/admin/interviews/" + mine_id, base_url="https://localhost")
+        self.assertEqual(own.status_code, 200)
+        self.assertNotIn("/delete", own.text)
+        for session_id in (mine_id, theirs_id):
+            self.db.commit()
+            response = self.client.post("/admin/interviews/" + session_id + "/delete",
+                data=dict(csrf_token="test-csrf", confirm="yes"), base_url="https://localhost")
+            self.assertEqual(response.status_code, 403)
+        with self.assertRaises(PermissionError):
+            svc.delete_interview(self.db, self.other, mine_id)
+        self.db.rollback()
+        self.assertIsNotNone(self.db.get(InterviewSession, mine_id))
+        # The Domain administrator role on ORGANIZATION, without global admin, sees and deletes all.
+        accounts.set_domain_access(self.db, account_id=self.other.id,
+            domain_code="ORGANIZATION", enabled=True, role_code="admin",
+            scope=m.DOMAIN_ACCESS_SCOPE_SELECTED, item_codes=["interviews"])
+        self.db.commit()
+        self.assertTrue(svc.is_domain_admin(self.db, self.other))
+        self.assertIn(theirs_id, self.client.get("/admin/interviews", base_url="https://localhost").text)
+        page = self.client.get("/admin/interviews/" + theirs_id, base_url="https://localhost")
+        self.assertIn("/admin/interviews/" + theirs_id + "/delete", page.text)
+        self.db.commit()
+        response = self.client.post("/admin/interviews/" + theirs_id + "/delete",
+            data=dict(csrf_token="test-csrf", confirm="yes"), base_url="https://localhost")
+        self.assertEqual(response.status_code, 302)
+        self.db.commit()
+        self.assertIsNone(self.db.get(InterviewSession, theirs_id))
+
+    def test_html_error_after_deletion_is_not_found(self):
+        row = self.create(); self.login(self.person)
+        session_id = row.id
+        def deleting_then_failing(payload):
+            with SessionFactory() as concurrent:
+                svc.delete_interview(concurrent, concurrent.get(m.RFOneAccount, self.admin.id), session_id)
+                concurrent.commit()
+            raise ProviderError("The AI is unavailable. Please try again; the saved conversation has not changed.")
+        web.app.config["INTERVIEW_PROVIDER"] = deleting_then_failing
+        self.db.commit()
+        response = self.client.post("/interviews/" + session_id, data=dict(csrf_token="test-csrf",
+            action="start", revision=0, consent="yes"), base_url="https://localhost")
+        self.assertEqual(response.status_code, 404)
+        row = self.create(); self.login(self.person)
+        web.app.config["INTERVIEW_PROVIDER"] = lambda payload: (_ for _ in ()).throw(ProviderError("The AI is unavailable."))
+        self.db.commit()
+        response = self.client.post("/interviews/" + row.id, data=dict(csrf_token="test-csrf",
+            action="start", revision=0, consent="yes"), base_url="https://localhost")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("The AI is unavailable.", response.text)
 
     def test_missing_schema_does_not_break_existing_home(self):
         # Restore the table for subsequent tests; only this disposable DB is touched.

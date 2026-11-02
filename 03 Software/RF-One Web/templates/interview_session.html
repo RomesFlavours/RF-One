@@ -2,7 +2,7 @@
 {% block page_title %}Interview · RF-One{% endblock %}
 {% block content %}
 {% include "_interview_test_banner.html" %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/interviews.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/interviews.css') }}?v=4">
 <div class="interview-page">
 <p class="breadcrumb"><a href="{{ url_for('home') }}">MyRFOne</a> / Interview</p>
 <div class="interview-heading"><div><h1>Interview</h1><p class="interview-meta">Requested by {{ requester.display_name|short_name }}</p></div>
@@ -15,12 +15,13 @@
 {% if row.status == 'COMPLETED' %}
 <section class="interview-panel">
 <h2>Interview completed</h2>
-<p>Thank you. The results are available to RF-One administrators with Interviews access.</p>
+<p>Thank you. The results are available to the person who requested this interview and to RF-One's Organization administrators.</p>
 <a href="{{ url_for('home') }}">Back to MyRFOne</a>
 </section>
 {% else %}
 <div id="interview" data-status="{{ row.status }}">
-<p class="interview-context">You will be speaking with an AI. Your answers and the summary will be available to RF-One administrators with Interviews access.</p>
+<p class="interview-context">You will be speaking with an AI. Your answers and the summary will be available to the person who requested this interview and to RF-One's Organization administrators.</p>
+{% if consent_missing %}<p class="interview-context interview-consent-continue">This interview started before we asked for your agreement. Tick "I agree" with your next answer to continue; nothing is sent to the AI until you do.</p>{% endif %}
 <p id="interview-error" role="alert" {% if not error %}hidden{% endif %}>{{ error or '' }}</p>
 <section id="interview-intro" class="interview-panel" {% if row.status != 'REQUESTED' %}hidden{% endif %}>
 <h2>Ready when you are</h2>
@@ -60,6 +61,7 @@
     <input type="hidden" name="revision" value="{{ row.revision }}">
     <input type="hidden" name="action" value="answer">
     <input type="hidden" name="channel" id="interview-channel" value="text">
+{% if consent_missing %}<label class="interview-consent interview-consent-continue" for="interview-consent-answer"><input id="interview-consent-answer" type="checkbox" name="consent" value="yes" required> <span>I agree. My answers are saved in RF-One and used to build the company's know-how. Administrators can delete them.</span></label>{% endif %}
     <label for="interview-message">Your answer <span class="interview-hint">— speak, type or edit here</span></label>
     <textarea id="interview-message" name="message" rows="6" maxlength="8000" required placeholder="Tell us what happened, what you did and why…">{{ unsent }}</textarea>
     <div class="interview-send-row"><button type="submit">Send answer</button><span id="interview-save-status" role="status">Review your answer before sending.</span></div>
@@ -75,12 +77,13 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="revision" value="{{ row.revision }}">
     <input type="hidden" name="action" value="complete">
+{% if consent_missing %}<label class="interview-consent interview-consent-continue" for="interview-consent-complete"><input id="interview-consent-complete" type="checkbox" name="consent" value="yes" required> <span>I agree. My answers are saved in RF-One and used to build the company's know-how. Administrators can delete them.</span></label>{% endif %}
     <button type="submit" class="interview-secondary">Complete interview</button>
   </form>
   </div>
 </div>
 </div>
-<script defer src="{{ url_for('static', filename='js/interviews.js') }}?v=3"></script>
+<script defer src="{{ url_for('static', filename='js/interviews.js') }}?v=4"></script>
 {% endif %}
 </div>
 {% endblock %}

@@ -19,6 +19,7 @@
 .interview-preferences input { accent-color: var(--olive-700); width: 17px; height: 17px; }
 .interview-consent { display: flex; align-items: flex-start; gap: .6rem; margin: 0 0 1rem; font-size: .9rem; line-height: 1.5; color: var(--ink); }
 .interview-consent input { accent-color: var(--olive-700); width: 17px; height: 17px; margin-top: .15rem; flex: none; }
+.interview-consent[hidden] { display: none; }
 .interview-delete { margin: 1.5rem 0; font-size: .85rem; }
 .interview-delete form { border: 1px solid var(--bad); border-radius: var(--radius); padding: 1rem; margin-top: .5rem; }
 .interview-page .interview-danger { background: var(--bad); border-color: var(--bad); color: white; }

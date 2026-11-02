@@ -128,6 +128,11 @@
           method: 'POST', body: data, headers: { Accept: 'application/json' }
         });
         if (!response.headers.get('content-type')?.includes('application/json')) {
+          // RF-One's own 503 page: the feature is switched off, not slow.
+          const page = response.status === 503 ? await response.text() : '';
+          if (page.includes('Interviews are not available yet')) {
+            throw new Error('Interviews are not available yet. Please contact your administrator; your unsent answer is still here.');
+          }
           // A gateway timeout or restart answers with an HTML page, not our JSON.
           if ([502, 503, 504].includes(response.status)) {
             throw new Error('The AI took too long to answer. Please try again; your unsent answer is still here.');
@@ -138,6 +143,11 @@
         if (!response.ok) throw new Error(result.error || 'The operation failed. Please try again.');
         if (result.status === 'COMPLETED') { window.location.assign(result.redirect); return; }
         root.querySelectorAll('input[name="revision"]').forEach(field => { field.value = result.revision; });
+        if (result.consent_given) {
+          // Consent is recorded once; later answers no longer ask for it.
+          root.querySelectorAll('.interview-consent-continue').forEach(item => { item.hidden = true; });
+          root.querySelectorAll('.interview-consent-continue input').forEach(box => { box.required = false; });
+        }
         document.getElementById('interview-start').hidden = true;
         document.getElementById('interview-intro').hidden = true;
         document.getElementById('interview-conversation').hidden = false;
