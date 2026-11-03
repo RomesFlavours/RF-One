@@ -392,6 +392,75 @@ try:
             (preview / name).write_text(html, encoding="utf-8")
         save_preview("applications.html", owner.get(f"/selection/posizioni/{pid}/sp"))
         save_preview("how-it-works.html", owner.get("/selection/how-it-works"))
+        # --- Review of 3 Nov 2026 ---------------------------------------------------------------------------
+        from workspace import cv_reading
+        from rfone_data_store.selection import application_service as app_svc
+
+        def mode_of(pc_id):
+            with selection_app.SessionFactory() as db:
+                return db.get(m.Candidate, db.get(ws.PositionCandidate, pc_id).candidate_id).parsing_mode
+
+        def set_mode(pc_id, mode):
+            with selection_app.SessionFactory() as db:
+                db.get(m.Candidate, db.get(ws.PositionCandidate, pc_id).candidate_id).parsing_mode = mode
+                db.commit()
+
+        # Read again pressed in the other gunicorn worker: the CV it is reading is skipped here, not paid twice; the
+        # claim of a worker that stopped is taken over after the lease.
+        set_mode(first_id, f"READ@{int(time.time())}")
+        before = dict(calls)
+        sp_queue._read_position(pid, "test")
+        skipped = calls["import"] == before["import"] and mode_of(first_id).startswith("READ@")
+        set_mode(first_id, "READ@1")
+        sp_queue._read_position(pid, "test")
+        check("Read again in two workers: a CV being read by the other one is skipped (not paid twice); the claim of "
+              "a stopped worker is taken over", skipped and mode_of(first_id) == "REAL_AI"
+              and calls["import"] == before["import"] + 1, (skipped, mode_of(first_id), calls, before))
+
+        # A manager's "not the same person" stays answered when the identity is refreshed (Analyze, Read again).
+        with selection_app.SessionFactory() as db:
+            alone = None
+            for pc in db.scalars(select(ws.PositionCandidate).where(ws.PositionCandidate.position_id == pid)):
+                application = app_svc.get_application(db, pc.application_id)
+                if application and len(app_svc.list_applications_for_person(db, application.person_id)) == 1:
+                    alone = pc
+                    break
+            cand = db.get(m.Candidate, alone.candidate_id)
+            person = db.get(m.CandidatePerson, application.person_id)
+            twin = m.CandidatePerson(restaurant_id=person.restaurant_id, full_name=person.full_name,
+                                     normalized_name=person.normalized_name)
+            db.add(twin)
+            db.commit()
+            old = {"full_name": cand.full_name, "email": cand.email, "phone": cand.phone}
+
+            def pending_for_twin():
+                return db.scalars(select(m.PersonMatchCandidate).where(
+                    m.PersonMatchCandidate.application_id == application.id,
+                    m.PersonMatchCandidate.suggested_person_id == twin.id,
+                    m.PersonMatchCandidate.status == "PENDING")).all()
+
+            cv_reading._refresh_identity(db, alone, cand, old)
+            db.commit()
+            suggested = pending_for_twin()
+            for row in suggested:
+                row.status = "REJECTED"
+            db.commit()
+            cv_reading._refresh_identity(db, alone, cand, old)
+            db.commit()
+            asked_again = pending_for_twin()
+        check("identity refresh: a same-name person is suggested once; after the manager rejects it, it is not "
+              "suggested again", len(suggested) == 1 and not asked_again, (len(suggested), len(asked_again)))
+
+        # A failed update (e.g. Analyze while the AI is not configured) never replaces a stored analysis.
+        with selection_app.SessionFactory() as db:
+            previous = json.loads(sp_queue._current_result(db, first_id).payload_json)
+        sp_queue._write_result(first_id, previous["version"], None, "AI not configured (test)")
+        with selection_app.SessionFactory() as db:
+            current = sp_queue._current_result(db, first_id)
+            kept = json.loads(current.payload_json)
+        check("a failed update keeps the stored analysis in the ranking, with the error next to it",
+              current.group_code == "ANALYZED" and kept.get("analysis") == previous.get("analysis")
+              and kept.get("error") == "AI not configured (test)", (current.group_code, kept.get("error")))
         other = app.test_client()
         check("access: not signed in → no SP page", other.get(f"/selection/posizioni/{pid}/sp").status_code in (302, 401, 403))
 finally:

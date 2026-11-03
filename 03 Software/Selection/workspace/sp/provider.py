@@ -99,16 +99,26 @@ def _post(payload, timeout):
     except urllib.error.HTTPError as exc:
         # Never include upstream bodies, request headers or CV text in an error/log.
         raise TransportError(f"OpenAI HTTP {exc.code}", retryable=exc.code == 429 or exc.code >= 500) from None
-    except (urllib.error.URLError, TimeoutError, socket.timeout):
-        raise TransportError("OpenAI connection/timeout error", retryable=True) from None
+    except (TimeoutError, socket.timeout):
+        raise TransportError("OpenAI timeout", retryable=True, timed_out=True) from None
+    except urllib.error.URLError as exc:
+        timed_out = isinstance(exc.reason, (TimeoutError, socket.timeout))
+        raise TransportError("OpenAI timeout" if timed_out else "OpenAI connection error", retryable=True,
+                             timed_out=timed_out) from None
     except (ValueError, OSError):
         raise AIProviderUnavailable("OpenAI returned an unreadable response.") from None
 
 
 class TransportError(AIProviderUnavailable):
-    def __init__(self, message, *, retryable=False):
+    def __init__(self, message, *, retryable=False, timed_out=False):
         super().__init__(message)
+        # A timed-out request is still billed by the provider and would most likely time out again: never repeated.
         self.retryable = retryable
+        self.timed_out = timed_out
+
+
+SCAN_TIMEOUT_SECONDS = 25
+QUICK_SECONDS = 5
 
 
 def _openai(content, *, json_output, scanned=False, attempts=None):
@@ -116,14 +126,18 @@ def _openai(content, *, json_output, scanned=False, attempts=None):
                "max_output_tokens": 16000, "input": [{"role": "user", "content": content}]}
     if json_output:
         payload["text"] = {"format": {"type": "json_object"}}
-    # Scans only: at most two attempts, 12 seconds each, 1 second wait.
-    attempts, timeout = (attempts or (2 if scanned else 1)), (12 if scanned else 45)
+    # Text runs in the background (queue, Read again): 90 s, the queue repeats it while the provider is busy.
+    # Scans run inside the upload request: 25 s (several pages are copied word for word), and a second attempt only
+    # after a quick refusal (429/5xx within 5 s), never after a timeout, so the request ends before CloudFront's 60 s.
+    attempts, timeout = (attempts or (2 if scanned else 1)), (SCAN_TIMEOUT_SECONDS if scanned else 90)
+    started = time.monotonic()
     for attempt in range(attempts):
         try:
             response = _post(payload, timeout)
             break
         except TransportError as exc:
-            if not exc.retryable or attempt + 1 == attempts:
+            if (not exc.retryable or exc.timed_out or attempt + 1 == attempts
+                    or time.monotonic() - started > QUICK_SECONDS):
                 raise
             time.sleep(1)
     if response.get("status") != "completed":
@@ -153,7 +167,7 @@ def _bedrock(prompt, images=None, *, attempts=None):
             # A session of its own: boto3's default session is not safe to share between the queue's threads.
             client = boto3.session.Session().client(
                 "bedrock-runtime", region_name=ai_client._read_env_or_dotenv("AWS_REGION"),
-                config=Config(connect_timeout=3, read_timeout=12 if images else 45,
+                config=Config(connect_timeout=3, read_timeout=SCAN_TIMEOUT_SECONDS if images else 90,
                               retries={"total_max_attempts": 1, "mode": "standard"}))
             result = client.converse(modelId=HAIKU, messages=[{"role": "user", "content": content}],
                                       inferenceConfig={"maxTokens": 16000, "temperature": 0})
@@ -164,10 +178,11 @@ def _bedrock(prompt, images=None, *, attempts=None):
         except (BotoCoreError, ClientError) as exc:
             code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
             # Throttling, a busy service or a timeout passes; access or configuration errors do not.
-            retryable = code in _BEDROCK_TRANSIENT or (not code and "timeout" in exc.__class__.__name__.lower())
-            if attempt + 1 == attempts or not retryable:
+            timed_out = not code and "timeout" in exc.__class__.__name__.lower()
+            retryable = code in _BEDROCK_TRANSIENT or timed_out
+            if attempt + 1 == attempts or not retryable or timed_out:
                 raise TransportError(f"SP Bedrock request failed ({code or exc.__class__.__name__}).",
-                                     retryable=retryable) from None
+                                     retryable=retryable, timed_out=timed_out) from None
             time.sleep(1)
 
 
@@ -178,6 +193,7 @@ _BEDROCK_TRANSIENT = ("ThrottlingException", "ServiceUnavailableException", "Int
 def _run(prompt, images=None, *, json_output=True):
     selected = provider()
     _authorize(selected)
+    started = time.monotonic()
     try:
         if selected == "BEDROCK":
             return _bedrock(prompt, images)
@@ -189,8 +205,9 @@ def _run(prompt, images=None, *, json_output=True):
     except TransportError as exc:
         # Opt-in only, and only for transient provider failures. Never mask authentication/configuration errors.
         if (selected != "OPENAI" or not exc.retryable
-                or os.environ.get("RFONE_SP_AI_FALLBACK", "").upper() != "BEDROCK"):
-            raise
+                or os.environ.get("RFONE_SP_AI_FALLBACK", "").upper() != "BEDROCK"
+                or (images and (exc.timed_out or time.monotonic() - started > QUICK_SECONDS))):
+            raise         # a scan in an upload request has no time left for a second provider
         _authorize("BEDROCK")
         return _bedrock(prompt, images, attempts=1)
 

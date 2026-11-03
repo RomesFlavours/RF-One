@@ -37,7 +37,7 @@ class ProviderTests(unittest.TestCase):
         self.assertIs(payload["store"], False)
         self.assertEqual(payload["reasoning"], {"effort": "none"})
         self.assertEqual(payload["text"]["format"]["type"], "json_object")
-        self.assertEqual(timeout, 45)
+        self.assertEqual(timeout, 90)   # background work (queue, Read again)
         self.assertEqual(post.call_count, 1)
         self.assertEqual(p.last_usage()["input_tokens"], 10)
 
@@ -58,7 +58,7 @@ class ProviderTests(unittest.TestCase):
             self.assertEqual(p.transcribe([b"synthetic jpeg"], "Copy"), "Synthetic CV")
         self.assertEqual(post.call_count, 2)
         payload, timeout = post.call_args.args
-        self.assertEqual(timeout, 12)
+        self.assertEqual(timeout, 25)   # inside the upload request
         self.assertTrue(payload["input"][0]["content"][1]["image_url"].startswith("data:image/jpeg;base64,"))
         self.assertNotIn("text", payload)
 
@@ -152,9 +152,12 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(post.call_count, 1)
         slept.assert_not_called()
         # No new attempt once the window is used up: a slow provider never outlasts the queue's lease.
-        clock = iter([0, 140, 140])
-        with patch.object(p, "_post", side_effect=p.TransportError("timeout", retryable=True)) as post, \
-                patch.object(analysis.time, "sleep"), patch.object(analysis.time, "monotonic", lambda: next(clock)), \
+        calls = []
+        def clock():
+            calls.append(1)
+            return 0 if len(calls) == 1 else 140
+        with patch.object(p, "_post", side_effect=p.TransportError("OpenAI HTTP 503", retryable=True)) as post, \
+                patch.object(analysis.time, "sleep"), patch.object(analysis.time, "monotonic", clock), \
                 self.assertRaises(AIProviderUnavailable):
             analysis._generate("JSON")
         self.assertEqual(post.call_count, 2)
@@ -175,6 +178,33 @@ class ProviderTests(unittest.TestCase):
         os.environ["RFONE_SP_AI_PROVIDER"] = "BEDROCK"
         self.assertTrue(sp_queue.same_ai(haiku))
         self.assertFalse(sp_queue.same_ai(openai))
+
+    def test_timeouts_are_never_repeated(self):
+        # A timed-out request is billed anyway and would most likely time out again (review of 3 Nov 2026).
+        from workspace.sp import analysis
+        ai_adapter.install_guard(ai_enabled=True, cv_ai_authorized=True)
+        timeout = p.TransportError("OpenAI timeout", retryable=True, timed_out=True)
+        with patch.object(p, "_post", side_effect=timeout) as post, patch.object(analysis.time, "sleep") as slept, \
+                self.assertRaises(AIProviderUnavailable):
+            analysis._generate("JSON")
+        self.assertEqual(post.call_count, 1)
+        slept.assert_not_called()
+        with patch.object(p, "_post", side_effect=timeout) as post, patch.object(p.time, "sleep"), \
+                self.assertRaises(AIProviderUnavailable):
+            p.transcribe([b"jpeg"], "Copy")
+        self.assertEqual(post.call_count, 1)
+        os.environ["RFONE_SP_AI_FALLBACK"] = "BEDROCK"
+        with patch.object(p, "_post", side_effect=timeout), patch.object(p, "_bedrock") as fallback, \
+                self.assertRaises(AIProviderUnavailable):
+            p.transcribe([b"jpeg"], "Copy")
+        fallback.assert_not_called()   # no time left in the upload request for a second provider
+
+    def test_short_landlines_never_reach_the_ai(self):
+        for text in ("Tel: 06 1234567", "Tel: 02 8901234", "(407) 555-0132"):
+            self.assertNotIn("1234567", ai_adapter.redact_contacts(text).replace("555-0132", "1234567x"))
+            self.assertIn("[phone removed]", ai_adapter.redact_contacts(text))
+        from rfone_data_store.selection.parsing import deterministic_parser as dp
+        self.assertIsNone(dp._find_phone("Tel: 06 1234567"))   # identity matching still needs a full number
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

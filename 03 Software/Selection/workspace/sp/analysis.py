@@ -211,9 +211,10 @@ PURPOSE = "CV Selection SP analysis"
 
 # Seconds to wait before asking again when the provider is busy (OpenAI 429/5xx, a timeout, Bedrock throttling).
 # SP's evaluation runs in the queue, with nobody waiting on the page, so it can wait: Bedrock throttled 4 of 20
-# CVs analyzed 4 at a time (1 Nov 2026). No new attempt starts after BUSY_WINDOW_SECONDS: one call (with the
-# opt-in Haiku fallback, 45 + 45 s) then ends by about 4 minutes, twice that with the JSON retry, inside the
-# queue's 10-minute lease, so a job is never taken over (and paid for) twice.
+# CVs analyzed 4 at a time (1 Nov 2026). A timeout is not repeated (the provider bills it anyway). No new attempt
+# starts after BUSY_WINDOW_SECONDS: one call (with the opt-in Haiku fallback, 90 + 90 s) ends by about 5 minutes,
+# and the JSON retry follows only a completed reply, inside the queue's 10-minute lease, so a job is never taken
+# over (and paid for) twice.
 BUSY_WAITS = (5, 15, 30)
 BUSY_WINDOW_SECONDS = 150
 
@@ -229,7 +230,7 @@ def _generate(prompt: str) -> dict:
             with provider.scope():
                 return ai_adapter._transport(prompt, PURPOSE)
         except provider.TransportError as exc:
-            if (wait is None or not exc.retryable
+            if (wait is None or not exc.retryable or exc.timed_out
                     or time.monotonic() - started + wait > BUSY_WINDOW_SECONDS):
                 raise
             time.sleep(wait)

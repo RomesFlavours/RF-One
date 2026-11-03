@@ -283,10 +283,10 @@ _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 def redact_contacts(text: str) -> str:
     """Emails and phone numbers removed. The phones are the ones the CV reader recognizes (`phone_spans`), so a
     job's dates ("2019 - 2022", "01.2019 - 03.2022") always reach the AI, and a phone written on the same line
-    as a date range is still removed."""
+    as a date range is still removed. From 9 digits, so a short landline ("06 1234567") is removed too."""
     from rfone_data_store.selection.parsing.deterministic_parser import phone_spans
     text = _EMAIL_RE.sub("[email removed]", text or "")
-    for start, end in reversed(phone_spans(text)):
+    for start, end in reversed(phone_spans(text, min_digits=9)):
         text = text[:start] + "[phone removed]" + text[end:]
     return text
 

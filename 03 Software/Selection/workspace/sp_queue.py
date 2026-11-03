@@ -319,6 +319,46 @@ def read_again_in_background(position_id: int, actor_name: str) -> bool:
     return True
 
 
+# Candidate.parsing_mode while Read again reads that CV: "READ@<unix time>" (String(16)). The claim is a conditional
+# UPDATE, so it holds across gunicorn workers: a second Read again (pressed on the other worker, which does not see
+# this process's `_reading_positions`) skips the CV instead of paying the AI for it again. A claim older than LEASE
+# (a worker that died) can be taken over. The CV still counts as read without the AI until the reading is stored.
+_READING = "READ@"
+
+
+def _claim_reading(pc_id: int) -> tuple[str, str] | None:
+    """(claimed mode, mode to restore) when this thread may read the CV now, else None."""
+    with _write_lock, _sessions()() as db:
+        pc = db.get(ps.PositionCandidate, pc_id)
+        candidate = persistence.get_candidate(db, pc.candidate_id) if pc else None
+        if not cv_reading.read_without_ai(candidate):
+            return None
+        mode, restore = candidate.parsing_mode or "", candidate.parsing_mode
+        if mode.startswith(_READING):
+            try:
+                started = int(mode[len(_READING):])
+            except ValueError:
+                started = 0
+            if time.time() - started < LEASE.total_seconds():
+                return None
+            restore = "RULE_BASED"
+        mine = f"{_READING}{int(time.time())}"
+        won = db.execute(update(m.Candidate).where(m.Candidate.id == candidate.id, m.Candidate.parsing_mode == mode)
+                         .values(parsing_mode=mine)).rowcount
+        db.commit()
+        return (mine, restore) if won == 1 else None
+
+
+def _release_reading(pc_id: int, mine: str, restore: str) -> None:
+    """Puts the reading mode back when the reading was not stored (it is unchanged only in that case)."""
+    with _write_lock, _sessions()() as db:
+        pc = db.get(ps.PositionCandidate, pc_id)
+        if pc is not None:
+            db.execute(update(m.Candidate).where(m.Candidate.id == pc.candidate_id, m.Candidate.parsing_mode == mine)
+                       .values(parsing_mode=restore))
+            db.commit()
+
+
 def reading_in_background(position_id: int) -> bool:
     with _state_lock:
         return position_id in _reading_positions
@@ -339,7 +379,13 @@ def _read_position(position_id: int, actor_name: str) -> None:
                     todo.append((pc.id, raw))
             db.rollback()  # no read left open during the AI calls (SQLite)
         for pc_id, raw in todo:
-            reason = _read_identity(pc_id, raw, actor_name=actor_name)
+            claim = _claim_reading(pc_id)
+            if claim is None:
+                continue          # read meanwhile, or being read by Read again in another worker
+            try:
+                reason = _read_identity(pc_id, raw, actor_name=actor_name)
+            finally:
+                _release_reading(pc_id, *claim)
             if reason:
                 with _write_lock, _sessions()() as db:
                     try:
@@ -353,6 +399,37 @@ def _read_position(position_id: int, actor_name: str) -> None:
             _reading_positions.discard(position_id)
 
 
+def _close_job(db, job, analysis) -> bool:
+    """Closes the job if this worker still holds its lease (always True without a job)."""
+    if job is None:
+        return True
+    won = db.execute(update(ps.Proposal).where(ps.Proposal.id == job[0], ps.Proposal.group_code == RUNNING,
+                                               ps.Proposal.created_at == job[1])
+                     .values(group_code=DONE if analysis else FAILED, is_current=False)).rowcount
+    if won != 1:          # lease lost: another worker owns this job now
+        db.rollback()
+        return False
+    return True
+
+
+def _name_from_analysis(db, pc_id: int, analysis: dict) -> None:
+    """SP's reply supplies the name of a CV read without the AI (no second AI call)."""
+    pc = db.get(ps.PositionCandidate, pc_id)
+    candidate = persistence.get_candidate(db, pc.candidate_id) if pc else None
+    raw = db.get(m.RawResume, candidate.raw_resume_id) if candidate and candidate.raw_resume_id else None
+    if not (candidate and raw and cv_reading.read_without_ai(candidate)):
+        return
+    old = {k: getattr(candidate, k) for k in ("full_name", "email", "phone")}
+    name = analysis.get("full_name")
+    # Only a name found word for word in the CV counts as read. Without one the CV stays "read without the AI", so
+    # the SP page still offers Read again instead of keeping a name like "RESUME".
+    if name and " ".join(name.casefold().split()) in " ".join(raw.raw_text.casefold().split()):
+        candidate.full_name = name
+        candidate.parsing_mode = "SP_AI"
+        cv_reading._refresh_identity(db, pc, candidate, old)
+        pc.import_note = cv_reading._OLD_READING_NOTES.sub("", pc.import_note or "").strip() or None
+
+
 def _write_result(pc_id: int, version: int, analysis: dict | None, error: str | None, job=None) -> None:
     """Store the result; with `job`, close that job in the SAME transaction and only if this worker still holds
     its lease. One transaction leaves no moment with neither an active job nor the result, so a second job for
@@ -360,27 +437,28 @@ def _write_result(pc_id: int, version: int, analysis: dict | None, error: str | 
     payload = ({"version": version, "analysis": analysis, "model": sp_provider.label(),
                 "analyzed_at": ps.utcnow().isoformat()} if analysis else {"version": version, "error": error})
     with _write_lock, _sessions()() as db:
-        if job is not None:
-            won = db.execute(update(ps.Proposal).where(ps.Proposal.id == job[0], ps.Proposal.group_code == RUNNING,
-                                                       ps.Proposal.created_at == job[1])
-                             .values(group_code=DONE if analysis else FAILED, is_current=False)).rowcount
-            if won != 1:          # lease lost: another worker owns this job now
-                db.rollback()
-                return
+        if not _close_job(db, job, analysis):
+            return
         if analysis:
-            pc = db.get(ps.PositionCandidate, pc_id)
-            candidate = persistence.get_candidate(db, pc.candidate_id) if pc else None
-            raw = db.get(m.RawResume, candidate.raw_resume_id) if candidate and candidate.raw_resume_id else None
-            if candidate and raw and cv_reading.read_without_ai(candidate):
-                old = {k: getattr(candidate, k) for k in ("full_name", "email", "phone")}
-                name = analysis.get("full_name")
-                # Only a name found word for word in the CV counts as read. Without one the CV stays "read without
-                # the AI", so the SP page still offers Read again instead of keeping a name like "RESUME".
-                if name and " ".join(name.casefold().split()) in " ".join(raw.raw_text.casefold().split()):
-                    candidate.full_name = name
-                    candidate.parsing_mode = "SP_AI"
-                    cv_reading._refresh_identity(db, pc, candidate, old)
-                    pc.import_note = cv_reading._OLD_READING_NOTES.sub("", pc.import_note or "").strip() or None
+            try:
+                _name_from_analysis(db, pc_id, analysis)
+            except Exception:
+                # The analysis (already paid for) is stored anyway: an error here must not leave the job RUNNING,
+                # to be taken over and paid again after the lease.
+                db.rollback()
+                log.exception("CV Selection SP: name of candidate %s from the analysis not stored", pc_id)
+                if not _close_job(db, job, analysis):
+                    return
+        else:
+            # A failed update never replaces an analysis already stored: the CV stays in the ranking (marked for an
+            # update) and the error is shown next to it. E.g. Analyze pressed while the AI is not configured.
+            previous = _current_result(db, pc_id)
+            if previous is not None and previous.group_code == "ANALYZED":
+                kept = json.loads(previous.payload_json)
+                kept.update(error=error, error_at=ps.utcnow().isoformat())
+                previous.payload_json = json.dumps(kept, default=str)
+                db.commit()
+                return
         db.execute(update(ps.Proposal).where(ps.Proposal.position_candidate_id == pc_id, ps.Proposal.source == RESULT,
                                              ps.Proposal.is_current.is_(True)).values(is_current=False))
         db.add(ps.Proposal(position_candidate_id=pc_id, snapshot_id=version, fit_assessment_id=None, source=RESULT,

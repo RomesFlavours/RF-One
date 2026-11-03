@@ -212,8 +212,11 @@ def _refresh_identity(session, pc, candidate, old: dict | None = None) -> None:
         else:
             person.primary_email = email
     phone = idm.normalize_phone(candidate.phone) if candidate.phone else None
+    # A stored "phone" that isn't one (a date range) may be replaced, but only on a person with no other
+    # applications: a shared person's contacts are never overwritten from one CV.
     if phone and phone != person.primary_phone_normalized and (
-            replaceable(person.primary_phone, old.get("phone")) or not _real_phone(person.primary_phone)):
+            replaceable(person.primary_phone, old.get("phone"))
+            or (not shared and not _real_phone(person.primary_phone))):
         other, confidence, basis = identity_svc._find_by_contact(
             session, restaurant_id=person.restaurant_id, normalized_email=None, normalized_phone=phone)
         if other is not None and other.id != person.id:
@@ -227,7 +230,13 @@ def _refresh_identity(session, pc, candidate, old: dict | None = None) -> None:
     session.flush()
     created = identity_svc.create_pending_suggestions_for_application(session, application_id=application.id,
                                                                       new_person=person)
-    already = {s.suggested_person_id for s in created}
+    # A suggestion the manager already confirmed or rejected for this application is never asked again.
+    decided = set(session.scalars(select(m.PersonMatchCandidate.suggested_person_id).where(
+        m.PersonMatchCandidate.application_id == application.id, m.PersonMatchCandidate.status != idm.PENDING)))
+    for suggestion in created:
+        if suggestion.suggested_person_id in decided:
+            session.delete(suggestion)
+    already = {s.suggested_person_id for s in created} | decided
     for other, confidence, basis in suggestions:
         if other.id not in already:
             already.add(other.id)

@@ -38,7 +38,7 @@ SOURCE = sp_queue.RESULT
 # The CV list's last change (CVs just uploaded or the CV just deleted), handed once to the page, which keeps
 # the CVs added during its browser-tab session marked NEW.
 CV_LIST_KEY = "sp_cv_list_change"
-UPLOAD_BUDGET_SECONDS = 25  # no new file after this: with one scan read by the AI (25 s) the request stays under
+UPLOAD_BUDGET_SECONDS = 20  # no new file after this: with one scan read by the AI (25 s) the request stays under
                             # CloudFront's 60 s origin timeout (rfone-cloudfront/distribution-config.json)
 AI_OFF = ("AI résumé evaluation is off for this Job: turn on “AI résumé and answer evaluation” in the Job "
           "(Selection tab) to analyze.")

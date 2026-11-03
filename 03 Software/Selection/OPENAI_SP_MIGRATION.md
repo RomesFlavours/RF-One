@@ -133,3 +133,38 @@ Tests: `test_sp_openai.py` 19/19 (5 new), real CVs 35/35, engine 30/30, integrat
 
 **Before deploying this branch:** with no `RFONE_SP_DATA_REVIEWED`, every SP analysis, scan and Read again is
 refused, Haiku included (`bedrock-reviewed`). Set it, and the OpenAI secret, or SP stops on deploy.
+
+## Second review, 3 November 2026 (independent read of the whole branch against the live release)
+
+- **AWS network, not code: `api.openai.com` cannot be reached from `rfone-selection` today.** It goes out through
+  `rfone-tips-vpc-connector` (EgressType VPC), the default VPC has no NAT gateway, and Bedrock is reached only
+  through its private endpoint (Infrastructure README, Selection README). The live OpenAI test ran from a PC.
+  Before `RFONE_SP_AI_PROVIDER=OPENAI` on AWS: a NAT gateway for the connector's subnets (private subnets routed to
+  it) or a relay outside the VPC, like the mail worker. Until then: `RFONE_SP_AI_PROVIDER=BEDROCK`,
+  `RFONE_SP_DATA_REVIEWED=bedrock-reviewed`, no fallback. Without these two variables SP refuses every CV.
+- **boto3 `max_attempts` counts retries:** `max_attempts=1` made two requests. `total_max_attempts` in the shared
+  `ai_client` (same line as Pino's change on `shelbi/interviews-fixes`) and in the scanned-PDF reader used outside SP.
+- **Read again in two gunicorn workers** read and paid every CV twice (`_reading_positions` lives in one process).
+  Each CV is now claimed in the database first (`Candidate.parsing_mode = "READ@<time>"`, conditional UPDATE); a
+  claim older than the lease is taken over.
+- **Rejected duplicates came back:** refreshing the identity (Analyze, Read again) re-created "possible duplicate"
+  suggestions the manager had already rejected. A decided pair is never suggested again for that application.
+- **A shared person's phone** could be overwritten when the stored one had under 10 digits; now only on a person
+  with no other applications.
+- **9-digit phones reached the AI** ("06 1234567"): redaction now removes from 9 digits; identity matching still
+  needs 10.
+- **Timeouts are not repeated** (billed anyway, likely to time out again); text timeout 90 s (background only),
+  scans 25 s with a second attempt or the fallback only after a quick refusal; upload budget 20 s, so one scan
+  started last still ends before CloudFront's 60 s.
+- **A failed update no longer replaces a stored analysis** (e.g. Analyze pressed while the AI is not configured):
+  the analysis stays in the ranking, marked for an update, with "Last update failed: ...".
+- **An error while storing the name from the analysis** no longer leaves the job RUNNING (re-run and re-paid after
+  the lease): the analysis is stored anyway and the error logged.
+- Not changed, to know: with `RFONE_SP_AI_FALLBACK=BEDROCK`, CVs analyzed by Haiku during an OpenAI outage are
+  ranked with the others, marked "Analyzed with another AI"; keep the fallback off in production. Legacy pages
+  (`home.html`, `detail.html`) show "DEMO / MOCK" for `SP_AI`. `routes.cv_upload` (outside SP) has no time budget,
+  as before. When this branch and `shelbi/interviews-fixes` are merged, `test_schema_startup.py` expects head
+  `e0a120261101`: update it to `e1b220261102`, as was done for `test_shared_schema_compatibility.py`.
+
+Tests: `test_sp_openai.py` 21/21, `test_sp_integration_http.py` with 3 new checks (two workers, rejected
+duplicate, failed update), every other Selection test and Data Store `test_selection_*` pass.

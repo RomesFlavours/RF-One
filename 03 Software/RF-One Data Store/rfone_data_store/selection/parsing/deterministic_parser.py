@@ -120,15 +120,15 @@ def _without_dates(text: str) -> str:
     return text
 
 
-def phone_spans(full_text: str) -> list[tuple[int, int]]:
+def phone_spans(full_text: str, *, min_digits: int = 10) -> list[tuple[int, int]]:
     """(start, end) of every real phone number in the text. Dates are never phones: "2019 - 2021", "01.2019 -
     03.2022" or "06-2019" taken as a phone made two different applicants "the same person" by phone and hid the
     job's dates from SP's evaluation (SELECTION_SP_REAL_CVS_001, SP benchmark of 3 Nov 2026). A phone is on one
-    line, has 10 to 15 digits and is not made only of years."""
+    line, has `min_digits` (10: a phone that identifies a person) to 15 digits and is not made only of years."""
     spans = []
     for match in _PHONE_ON_ONE_LINE_RE.finditer(_without_dates(full_text or "")):
         groups = re.findall(r"\d+", match.group(1))
-        if 10 <= len("".join(groups)) <= 15 and not all(_PHONE_YEAR_RE.fullmatch(g) for g in groups):
+        if min_digits <= len("".join(groups)) <= 15 and not all(_PHONE_YEAR_RE.fullmatch(g) for g in groups):
             spans.append(match.span(1))
     return spans
 
