@@ -678,14 +678,14 @@ class AIClientLimitTests(unittest.TestCase):
             self.ai.generate_json("{}")
         self.assertEqual((self.sent()["anthropic-client"]["timeout"], self.sent()["anthropic-client"]["max_retries"]), (100, 1))
         config = self.sent()["bedrock-client"]["config"]
-        self.assertEqual((config.read_timeout, config.connect_timeout, config.retries), (100, 10, {"max_attempts": 2, "mode": "standard"}))
+        self.assertEqual((config.read_timeout, config.connect_timeout, config.retries), (100, 10, {"total_max_attempts": 2, "mode": "standard"}))
         self.calls.clear()
         with mock.patch.dict(os.environ, RFONE_AI_TIMEOUT_SECONDS="45"):
             self.ai._generate_json_anthropic("{}")
             self.ai._generate_json_bedrock("{}")
         self.assertEqual((self.sent()["anthropic-client"]["timeout"], self.sent()["anthropic-client"]["max_retries"]), (45, 0))
         config = self.sent()["bedrock-client"]["config"]
-        self.assertEqual((config.read_timeout, config.retries["max_attempts"]), (45, 1))
+        self.assertEqual((config.read_timeout, config.retries["total_max_attempts"]), (45, 1))
         self.calls.clear()
         with mock.patch.dict(os.environ, RFONE_AI_TIMEOUT_SECONDS="not a number"):
             self.ai._generate_json_anthropic("{}")
@@ -698,7 +698,7 @@ class AIClientLimitTests(unittest.TestCase):
         self.assertEqual(self.sent()["anthropic-client"]["max_retries"], 0)
         config = self.sent()["bedrock-client"]["config"]
         self.assertEqual((config.read_timeout, config.connect_timeout), (30, 10))
-        self.assertEqual(config.retries["max_attempts"], 1)
+        self.assertEqual(config.retries["total_max_attempts"], 1)
         with self.assertRaises(TypeError):
             self.ai.generate_json("{}", 30)  # `timeout` stays keyword-only
 
@@ -771,6 +771,21 @@ class AIClientLimitTests(unittest.TestCase):
             database.create_configured_engine("sqlite:///unused.sqlite3")
         self.assertEqual(create.call_args_list[0].kwargs, dict(future=True, pool_pre_ping=True, pool_timeout=10))
         self.assertEqual(create.call_args_list[1].kwargs, dict(future=True))
+
+
+class RealSDKRetryConfigurationTests(unittest.TestCase):
+    def test_attempt_budget_is_the_total_seen_by_the_real_sdk(self):
+        # Unlike the stand-ins above, the SDK normalizes max_attempts to total_max_attempts.
+        # Synthetic static credentials and localhost prevent credential/metadata/network lookup.
+        import boto3
+        from types import SimpleNamespace
+        from rfone_data_store.selection.parsing import ai_client
+        session=boto3.Session(aws_access_key_id="synthetic",aws_secret_access_key="synthetic",region_name="us-east-1")
+        factory=SimpleNamespace(client=lambda name,**kw:session.client(name,endpoint_url="http://127.0.0.1:1",**kw))
+        for total in (1,2):
+            client=ai_client._bedrock_client(factory,"us-east-1",45,total)
+            self.addCleanup(client.close)
+            self.assertEqual(client.meta.config.retries["total_max_attempts"],total)
 
 
 if __name__ == "__main__":
