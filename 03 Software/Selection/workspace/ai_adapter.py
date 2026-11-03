@@ -121,7 +121,8 @@ def install_guard(*, ai_enabled: bool, cv_ai_authorized: bool) -> None:
 def _transport(prompt: str, purpose: str) -> dict:
     """Single seam towards the (future central) AI service."""
     try:
-        result = _REAL_GENERATE_JSON(prompt)
+        from .sp import provider as sp_provider
+        result = sp_provider.generate_json(prompt) if sp_provider.in_scope() else _REAL_GENERATE_JSON(prompt)
     except AIProviderUnavailable as exc:
         text = str(exc)
         if any(k in text for k in ("expired", "reauthenticate", "Token", "credentials")):
@@ -277,11 +278,13 @@ JSON shape:
 """
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
-_PHONE_RE = re.compile(r"(?:\+?\d[\d\s().-]{7,}\d)")
+_PHONE_RE = re.compile(r"(?:\+?\(?\d[\d \t().-]{7,}\d)")
 
 
 def redact_contacts(text: str) -> str:
-    return _PHONE_RE.sub("[phone removed]", _EMAIL_RE.sub("[email removed]", text or ""))
+    from rfone_data_store.selection.parsing.deterministic_parser import _find_phone
+    return _PHONE_RE.sub(lambda m: "[phone removed]" if _find_phone(m.group()) else m.group(),
+                         _EMAIL_RE.sub("[email removed]", text or ""))
 
 
 def _normalized(text: str) -> str:

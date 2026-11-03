@@ -65,9 +65,8 @@ def import_cv(session, *, documents, restaurant_id: int, position: ps.Position, 
     """One file -> one PositionCandidate. Never raises; returns a result dict.
 
     CV Selection SP imports with `ai_reading=False, analyze_after=False`, so an upload of many CVs stays fast (the
-    rule-based reading gives the candidate record and the duplicate checks), and SP's evaluation replaces this
-    module's analysis. The AI reading that fills the name, email and phone is done afterwards by the SP queue,
-    before the evaluation (`sp_queue._process`), never inside the upload request. A scanned PDF is still read by
+    rule-based reading gives the candidate record, contacts and duplicate checks), and SP's evaluation replaces
+    this module's analysis. The same SP evaluation supplies the name: no second AI identity call. A scanned PDF is still read by
     the AI here when the position allows AI résumé reading, because without text it cannot be imported at all."""
     policy = position_settings.bind(position)
     filename = file_storage.filename or "(unnamed file)"
@@ -85,8 +84,14 @@ def import_cv(session, *, documents, restaurant_id: int, position: ps.Position, 
         # A scan has no text inside: the AI reads its pages (SELECTION_CV_REREAD_001). If it cannot, the import
         # below reports "No extractable text" exactly as before. The same scan uploaded again must still be an
         # exact duplicate, and two AI transcriptions are never word for word the same: its hash is the file's.
+        with open(staged.local_path, "rb") as fh:
+            scan_hash = "scan:" + hashlib.sha256(fh.read()).hexdigest()
+        known_scan = session.scalars(select(m.RawResume).where(
+            m.RawResume.restaurant_id == restaurant_id, m.RawResume.content_hash == scan_hash)).first()
+        if known_scan is not None:
+            content_hash, raw_text = scan_hash, known_scan.raw_text
         try:
-            transcribed = cv_reading.transcribe_pdf(staged.local_path)
+            transcribed = None if known_scan is not None else cv_reading.transcribe_pdf(staged.local_path, sp=not ai_reading)
             if transcribed and transcribed.strip():
                 with open(staged.local_path, "rb") as fh:
                     content_hash = "scan:" + hashlib.sha256(fh.read()).hexdigest()

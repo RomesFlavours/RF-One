@@ -47,6 +47,7 @@ from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
 from rfone_data_store.selection import workspace_models as ws  # noqa: E402
 from rfone_data_store.selection.parsing.ai_test_isolation import isolated_ai_client  # noqa: E402
 from workspace import ai_adapter, cv_delete, sp_queue, sp_routes  # noqa: E402
+from workspace.sp import provider as sp_provider  # noqa: E402
 
 EDGE = next((p for p in (r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
                          r"C:\Program Files\Microsoft\Edge\Application\msedge.exe") if os.path.exists(p)), None)
@@ -195,6 +196,7 @@ try:
         owner = client("owner")
         t = re.search(r'name="csrf_token" value="([^"]+)"', text(owner.get("/selection/posizioni/nuova"))).group(1)
         ai_adapter._REAL_GENERATE_JSON = fake_ai
+        sp_provider.generate_json = fake_ai  # SP calls go through the SP provider seam (OPENAI_SP_MIGRATION)
         ai_adapter.install_guard(ai_enabled=True, cv_ai_authorized=True)
         sp_queue.GENERATE = None
         docs = sp_routes._cfg.documents

@@ -165,3 +165,11 @@ Selection uses AWS Bedrock with `us.anthropic.claude-haiku-4-5-20251001-v1:0`. I
 Local Selection reads its provider settings from `%LOCALAPPDATA%/RF-One/Selection/ai.json` and uses the existing `rfone-dev-login` AWS profile. The normal local launcher starts both RF-One and Selection at `http://127.0.0.1:5096/`. Candidate records are not copied from AWS.
 
 Each position's Configuration includes **Test selected AI features**. Each button makes a real provider call with synthetic content and saves its result, elapsed time and output. It never sends email or changes approved requirements or candidate records. The General, Menu Study and Cancellation message purposes are supported in addition to interview and outcome templates.
+
+
+## CV Selection SP — OpenAI local migration (3 November 2026)
+
+SP uses `gpt-6.1-terra`, Responses API, reasoning `none`, `store=false`.
+This is SP-specific: `RFONE_AI_PROVIDER` and the shared AI registry are unchanged.
+See [OPENAI_SP_MIGRATION.md](OPENAI_SP_MIGRATION.md) for secrets, account review, tests and limitations.
+The five tabs and SP-1.1 evidence/ranking checks remain as in the Shelbi baseline.

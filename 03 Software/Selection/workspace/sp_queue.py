@@ -36,6 +36,7 @@ from rfone_data_store.selection import workspace_models as ps
 from . import ai_adapter, cv_reading, position_settings
 from .sp import analysis as sp_analysis
 from .sp import profiles as spp
+from .sp import provider as sp_provider
 
 log = logging.getLogger(__name__)
 
@@ -241,18 +242,10 @@ def _process(job_id: int, lease) -> None:
             raw = db.get(m.RawResume, candidate.raw_resume_id) if candidate and candidate.raw_resume_id else None
             cv_text = (raw.raw_text if raw else "") or ""
             pc_id = pc.id
-            # Uploaded by a manager: read with the rule-based reader only (fast upload). The AI reading of the name,
-            # email and phone happens here, once, before the evaluation (SELECTION_SP_REAL_CVS_001).
-            identity_raw = (raw if raw is not None and cv_reading.read_without_ai(candidate)
-                            and ai_adapter.current_policy().cv_ai_authorized else None)
-            if identity_raw is not None:
-                db.expunge(identity_raw)
     if skip:
         _finish(job_id, lease, skip)
         return
     # No database session is open during the AI calls (an open read blocks other writers on SQLite).
-    if identity_raw is not None:
-        _read_identity(pc_id, identity_raw, job=(job_id, lease))
     analysis, error = None, None
     try:
         analysis = sp_analysis.analyze_cv(role_code=role, requirements=requirements, cv_text=cv_text,
@@ -268,7 +261,8 @@ def _read_identity(pc_id: int, raw, *, job=None, actor_name: str = "CV Selection
     why it could not be done. A failure never stops the evaluation; the CV stays "read without the AI" and the SP
     page offers Read again. With `job` (id, lease), nothing is written once the lease is lost."""
     try:
-        profile = cv_reading.read_profile(raw)
+        with sp_provider.scope():
+            profile = cv_reading.read_profile(raw)
     except Exception as exc:
         log.warning("CV Selection SP: identity reading of candidate %s not done: %s", pc_id, exc)
         return str(exc) if isinstance(exc, ValueError) else f"unexpected error ({exc.__class__.__name__})"
@@ -350,7 +344,7 @@ def _write_result(pc_id: int, version: int, analysis: dict | None, error: str | 
     """Store the result; with `job`, close that job in the SAME transaction and only if this worker still holds
     its lease. One transaction leaves no moment with neither an active job nor the result, so a second job for
     the same candidate can never pass both checks and call the AI again."""
-    payload = ({"version": version, "analysis": analysis, "model": ai_adapter.POLICY.provider_label,
+    payload = ({"version": version, "analysis": analysis, "model": sp_provider.label(),
                 "analyzed_at": ps.utcnow().isoformat()} if analysis else {"version": version, "error": error})
     with _write_lock, _sessions()() as db:
         if job is not None:
@@ -360,6 +354,18 @@ def _write_result(pc_id: int, version: int, analysis: dict | None, error: str | 
             if won != 1:          # lease lost: another worker owns this job now
                 db.rollback()
                 return
+        if analysis:
+            pc = db.get(ps.PositionCandidate, pc_id)
+            candidate = persistence.get_candidate(db, pc.candidate_id) if pc else None
+            raw = db.get(m.RawResume, candidate.raw_resume_id) if candidate and candidate.raw_resume_id else None
+            if candidate and raw and cv_reading.read_without_ai(candidate):
+                old = {k: getattr(candidate, k) for k in ("full_name", "email", "phone")}
+                name = analysis.get("full_name")
+                if name and " ".join(name.casefold().split()) in " ".join(raw.raw_text.casefold().split()):
+                    candidate.full_name = name
+                candidate.parsing_mode = "SP_AI"
+                cv_reading._refresh_identity(db, pc, candidate, old)
+                pc.import_note = cv_reading._OLD_READING_NOTES.sub("", pc.import_note or "").strip() or None
         db.execute(update(ps.Proposal).where(ps.Proposal.position_candidate_id == pc_id, ps.Proposal.source == RESULT,
                                              ps.Proposal.is_current.is_(True)).values(is_current=False))
         db.add(ps.Proposal(position_candidate_id=pc_id, snapshot_id=version, fit_assessment_id=None, source=RESULT,

@@ -57,7 +57,7 @@ _OLD_READING_NOTES = re.compile(re.escape(_NOTE_PARTIAL) + "|" + re.escape(_NOTE
 
 
 def read_without_ai(candidate) -> bool:
-    return candidate is not None and candidate.parsing_mode != AI_READING
+    return candidate is not None and candidate.parsing_mode not in (AI_READING, "SP_AI")
 
 
 def note_for_reading(candidate) -> str | None:
@@ -245,7 +245,7 @@ _TRANSCRIBE_PROMPT = ("These are the pages of one job applicant's résumé. Copy
                       "bottom, as plain text. Keep the line breaks. Do not summarize, correct or add anything.")
 
 
-def transcribe_pdf(path: str) -> str:
+def transcribe_pdf(path: str, *, sp: bool = False) -> str:
     """The text of a PDF with no text inside, read by the AI from its first pages as images.
     Raises AIProviderUnavailable when AI résumé reading is off or the AI cannot be reached."""
     if not ai_adapter.current_policy().cv_ai_authorized:
@@ -258,7 +258,11 @@ def transcribe_pdf(path: str) -> str:
     if not images:
         raise AIProviderUnavailable("The PDF has no pages.")
     try:
-        text = _transcribe_transport(images)
+        if sp:
+            from .sp import provider
+            text = provider.transcribe(images, _TRANSCRIBE_PROMPT)
+        else:
+            text = _transcribe_transport(images)
     except AIProviderUnavailable as exc:
         ai_adapter._record("scanned résumé reading", False, str(exc))
         raise

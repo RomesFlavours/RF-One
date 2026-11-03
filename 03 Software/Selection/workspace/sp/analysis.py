@@ -24,7 +24,6 @@ Everything dropped is listed in the verification log shown to the manager.
 from __future__ import annotations
 
 import re
-import time
 from datetime import date
 
 from rfone_data_store.selection.parsing.ai_client import AIProviderUnavailable
@@ -203,7 +202,6 @@ def build_prompt(role_code: str, requirements: list[dict], cv_text: str) -> str:
         cv_text=ai_adapter.redact_contacts(cv_text), protected=PROTECTED)
 
 
-THROTTLE_WAITS = (5, 10, 20, 40)  # seconds; Bedrock throttled 4 of 20 CVs analyzed 4 at a time (1 Nov 2026)
 # Asked once more when a reply is not valid JSON: at temperature 0 the same prompt repeats the same broken reply.
 JSON_RETRY_NOTE = ("\n\nYour previous reply was not valid JSON. Reply again with valid JSON only: inside every string, "
                    "escape double quotes as \\\" or use single quotes.")
@@ -212,15 +210,11 @@ PURPOSE = "CV Selection SP analysis"
 
 def _generate(prompt: str) -> dict:
     """Selection's single AI seam (`ai_adapter._transport`), only when the position allows AI résumé evaluation,
-    waiting and retrying when Bedrock asks to slow down (ThrottlingException)."""
+    using SP's configured provider and bounded transport attempts."""
     ai_adapter._require(ai_adapter.current_policy().allows("cv_evaluation"), "AI résumé evaluation")
-    for wait in THROTTLE_WAITS + (None,):
-        try:
-            return ai_adapter._transport(prompt, PURPOSE)
-        except AIProviderUnavailable as exc:
-            if wait is None or not re.search(r"Throttling|Too many requests", str(exc)):
-                raise
-            time.sleep(wait)
+    from . import provider
+    with provider.scope():
+        return ai_adapter._transport(prompt, PURPOSE)
 
 
 def call_ai(prompt: str) -> dict:

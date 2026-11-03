@@ -42,7 +42,8 @@ from rfone_data_store import rfone_account_service as account_svc  # noqa: E402
 from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
 from rfone_data_store.selection import workspace_models as ws  # noqa: E402
 from rfone_data_store.selection.parsing.ai_test_isolation import isolated_ai_client  # noqa: E402
-from workspace import ai_adapter, sp_queue  # noqa: E402
+from workspace import ai_adapter, sp_queue
+from workspace.sp import provider as sp_provider  # noqa: E402
 
 failures: list[str] = []
 
@@ -127,6 +128,7 @@ try:
             sess[shared_session.SESSION_ACCOUNT_KEY], sess[shared_session.SESSION_VERSION_KEY] = owner_id
         t = re.search(r'name="csrf_token" value="([^"]+)"', text(owner.get("/selection/posizioni/nuova"))).group(1)
         ai_adapter._REAL_GENERATE_JSON = fake_ai
+        sp_provider.generate_json = fake_ai
         ai_adapter.install_guard(ai_enabled=True, cv_ai_authorized=True)
         sp_queue.GENERATE = None   # the real seam (ai_adapter._transport) with the fake transport above
 
@@ -163,16 +165,16 @@ try:
               "Upload 1: 12 CV(s) received · 12 new imported · 0 exact duplicate(s) ignored · 0 possible duplicate(s)"
               in body, re.findall(r"Upload 1:[^<]+", body))
         s = wait_analysis(owner, pid, 12)
-        check("analysis 1: the 12 CVs analyzed, one AI reading at import (name, email, phone) and one SP "
+        check("analysis 1: the 12 CVs analyzed, one combined SP "
               "evaluation each, no Selection evaluation", s.get("DONE") == 12
-              and calls == {"sp": 12, "import": 12, "other_cv": 0}, (s, calls))
+              and calls == {"sp": 12, "import": 0, "other_cv": 0}, (s, calls))
         with selection_app.SessionFactory() as db:
             from rfone_data_store import models as m
             people = db.execute(select(m.CandidatePerson.full_name, m.CandidatePerson.primary_email)).all()
             modes = set(db.scalars(select(m.Candidate.parsing_mode)).all())
         check("upload stays fast (no AI in the request); the queue's AI reading fills each person's name and email",
               len(people) == 12 and all(n and n.endswith(f"Sample{n.split('Sample')[-1]}") and e and e.endswith(
-                  "@example.test") for n, e in people) and modes == {"REAL_AI"}, (people[:3], modes))
+                  "@example.test") for n, e in people) and modes == {"SP_AI"}, (people[:3], modes))
 
         # 4-5. Second upload: 8 more; only those analyzed; total 20
         r = upload(owner, t, pid, [(f"cv{i}.txt", cv(i)) for i in range(12, 20)])
@@ -357,6 +359,39 @@ try:
               and person.full_name != "RESUME" and person.primary_email == cand.email.lower()
               and calls["sp"] == before["sp"] and calls["import"] == before["import"] + 1,
               (started, cand.parsing_mode, cand.full_name, person and person.full_name, calls, before))
+        # A raster PDF is transcribed only once, even when uploaded again before analysis finishes.
+        from PIL import Image, ImageDraw
+        from unittest.mock import patch
+        image = Image.new("RGB", (700, 500), "white")
+        ImageDraw.Draw(image).text((20, 20), cv(0), fill="black")
+        pdf = BytesIO()
+        image.save(pdf, "PDF")
+        scan_bytes = pdf.getvalue()
+        with patch.object(sp_provider, "transcribe", return_value=cv(0)) as ocr:
+            first_scan = owner.post(f"/selection/posizioni/{pid}/sp/upload",
+                data={"csrf_token": t, "cv": (BytesIO(scan_bytes), "synthetic-scan.pdf")},
+                content_type="multipart/form-data", follow_redirects=True)
+            second_scan = owner.post(f"/selection/posizioni/{pid}/sp/upload",
+                data={"csrf_token": t, "cv": (BytesIO(scan_bytes), "synthetic-scan.pdf")},
+                content_type="multipart/form-data", follow_redirects=True)
+        check("scanned PDF repeated: one OCR call, second import is an exact duplicate",
+              ocr.call_count == 1 and "1 new imported" in text(first_scan)
+              and "1 exact duplicate(s) ignored" in text(second_scan),
+              (ocr.call_count, first_scan.status_code, second_scan.status_code))
+        from pathlib import Path
+        preview = Path(__file__).parent / "preview"
+        preview.mkdir(exist_ok=True)
+        def save_preview(name, response):
+            html = text(response)
+            # Inline local CSS for a standalone, read-only HTML review.
+            def css(match):
+                asset = Path(__file__).parent / "static" / match.group(1)
+                return "<style>" + asset.read_text(encoding="utf-8") + "</style>" if asset.is_file() and asset.suffix == ".css" else match.group(0)
+            html = re.sub(r'<link[^>]+href="/selection/static/([^"?]+)[^"]*"[^>]*>', css, html)
+            html = re.sub(r"<script[\s\S]*?</script>", "", html, flags=re.I)
+            (preview / name).write_text(html, encoding="utf-8")
+        save_preview("applications.html", owner.get(f"/selection/posizioni/{pid}/sp"))
+        save_preview("how-it-works.html", owner.get("/selection/how-it-works"))
         other = app.test_client()
         check("access: not signed in → no SP page", other.get(f"/selection/posizioni/{pid}/sp").status_code in (302, 401, 403))
 finally:

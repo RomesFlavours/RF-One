@@ -42,7 +42,8 @@ from rfone_data_store.selection import workspace_models as ws  # noqa: E402
 from rfone_data_store.selection.parsing.ai_test_isolation import isolated_ai_client  # noqa: E402
 from workspace import ai_adapter, engine, sp_queue, sp_routes  # noqa: E402
 from workspace import position_profiles  # noqa: E402
-from workspace.sp import profiles as spp  # noqa: E402
+from workspace.sp import profiles as spp
+from workspace.sp import provider as sp_provider  # noqa: E402
 from workspace.sp import rules as sp_rules  # noqa: E402
 
 failures: list[str] = []
@@ -113,6 +114,7 @@ try:
         with owner.session_transaction() as sess:
             sess[shared_session.SESSION_ACCOUNT_KEY], sess[shared_session.SESSION_VERSION_KEY] = owner_id
         ai_adapter._REAL_GENERATE_JSON = fake_ai
+        sp_provider.generate_json = fake_ai
         ai_adapter.install_guard(ai_enabled=True, cv_ai_authorized=True)
         sp_queue.GENERATE = None
 
