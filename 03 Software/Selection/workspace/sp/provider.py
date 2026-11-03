@@ -150,7 +150,9 @@ def _bedrock(prompt, images=None, *, attempts=None):
     attempts = attempts or (2 if images else 1)
     for attempt in range(attempts):
         try:
-            client = boto3.client("bedrock-runtime", region_name=ai_client._read_env_or_dotenv("AWS_REGION"),
+            # A session of its own: boto3's default session is not safe to share between the queue's threads.
+            client = boto3.session.Session().client(
+                "bedrock-runtime", region_name=ai_client._read_env_or_dotenv("AWS_REGION"),
                 config=Config(connect_timeout=3, read_timeout=12 if images else 45,
                               retries={"total_max_attempts": 1, "mode": "standard"}))
             result = client.converse(modelId=HAIKU, messages=[{"role": "user", "content": content}],
@@ -161,9 +163,16 @@ def _bedrock(prompt, images=None, *, attempts=None):
             return "".join(b.get("text", "") for b in result["output"]["message"]["content"])
         except (BotoCoreError, ClientError) as exc:
             code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
-            if attempt + 1 == attempts or code not in ("ThrottlingException", "ServiceUnavailableException", "InternalServerException"):
-                raise AIProviderUnavailable("SP Bedrock request failed.") from None
+            # Throttling, a busy service or a timeout passes; access or configuration errors do not.
+            retryable = code in _BEDROCK_TRANSIENT or (not code and "timeout" in exc.__class__.__name__.lower())
+            if attempt + 1 == attempts or not retryable:
+                raise TransportError(f"SP Bedrock request failed ({code or exc.__class__.__name__}).",
+                                     retryable=retryable) from None
             time.sleep(1)
+
+
+_BEDROCK_TRANSIENT = ("ThrottlingException", "ServiceUnavailableException", "InternalServerException",
+                      "ModelNotReadyException")
 
 
 def _run(prompt, images=None, *, json_output=True):
@@ -179,7 +188,8 @@ def _run(prompt, images=None, *, json_output=True):
                        attempts=1 if os.environ.get("RFONE_SP_AI_FALLBACK", "").upper() == "BEDROCK" else None)
     except TransportError as exc:
         # Opt-in only, and only for transient provider failures. Never mask authentication/configuration errors.
-        if not exc.retryable or os.environ.get("RFONE_SP_AI_FALLBACK", "").upper() != "BEDROCK":
+        if (selected != "OPENAI" or not exc.retryable
+                or os.environ.get("RFONE_SP_AI_FALLBACK", "").upper() != "BEDROCK"):
             raise
         _authorize("BEDROCK")
         return _bedrock(prompt, images, attempts=1)

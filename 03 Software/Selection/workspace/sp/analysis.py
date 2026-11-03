@@ -24,6 +24,7 @@ Everything dropped is listed in the verification log shown to the manager.
 from __future__ import annotations
 
 import re
+import time
 from datetime import date
 
 from rfone_data_store.selection.parsing.ai_client import AIProviderUnavailable
@@ -208,13 +209,30 @@ JSON_RETRY_NOTE = ("\n\nYour previous reply was not valid JSON. Reply again with
 PURPOSE = "CV Selection SP analysis"
 
 
+# Seconds to wait before asking again when the provider is busy (OpenAI 429/5xx, a timeout, Bedrock throttling).
+# SP's evaluation runs in the queue, with nobody waiting on the page, so it can wait: Bedrock throttled 4 of 20
+# CVs analyzed 4 at a time (1 Nov 2026). No new attempt starts after BUSY_WINDOW_SECONDS: one call (with the
+# opt-in Haiku fallback, 45 + 45 s) then ends by about 4 minutes, twice that with the JSON retry, inside the
+# queue's 10-minute lease, so a job is never taken over (and paid for) twice.
+BUSY_WAITS = (5, 15, 30)
+BUSY_WINDOW_SECONDS = 150
+
+
 def _generate(prompt: str) -> dict:
     """Selection's single AI seam (`ai_adapter._transport`), only when the position allows AI résumé evaluation,
-    using SP's configured provider and bounded transport attempts."""
+    using SP's configured provider, asking again after a pause while the provider is busy."""
     ai_adapter._require(ai_adapter.current_policy().allows("cv_evaluation"), "AI résumé evaluation")
     from . import provider
-    with provider.scope():
-        return ai_adapter._transport(prompt, PURPOSE)
+    started = time.monotonic()
+    for wait in BUSY_WAITS + (None,):
+        try:
+            with provider.scope():
+                return ai_adapter._transport(prompt, PURPOSE)
+        except provider.TransportError as exc:
+            if (wait is None or not exc.retryable
+                    or time.monotonic() - started + wait > BUSY_WINDOW_SECONDS):
+                raise
+            time.sleep(wait)
 
 
 def call_ai(prompt: str) -> dict:

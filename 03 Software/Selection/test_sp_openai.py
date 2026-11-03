@@ -117,5 +117,64 @@ class ProviderTests(unittest.TestCase):
         self.assertNotIn("555", redacted)
         self.assertNotIn("example.test", redacted)
 
+    def test_dates_with_months_survive_phone_on_same_line_removed(self):
+        # SP benchmark of 3 Nov 2026: dates hidden as "[phone removed]" changed Kim's group with both AIs.
+        for dates in ("01.2019 - 03.2022", "06-2019 - 03-2022", "2018.06 - 2021.03", "03/2019 - Present", "06-2019"):
+            self.assertEqual(ai_adapter.redact_contacts(dates), dates)
+        self.assertEqual(ai_adapter.redact_contacts("Server 2019 - 2022 407-555-0132"),
+                         "Server 2019 - 2022 [phone removed]")
+        self.assertEqual(ai_adapter.redact_contacts("+1 (407) 555-2019 | 01.2019 - 03.2022"),
+                         "[phone removed] | 01.2019 - 03.2022")
+        from rfone_data_store.selection.parsing import deterministic_parser as dp
+        self.assertIsNone(dp._find_phone("Line Cook 01.2019 - 03.2022"))
+        self.assertEqual(dp._find_phone("2019 - Present 407 555 0132").group(0), "407 555 0132")
+
+    def test_busy_provider_waits_then_answers(self):
+        from workspace.sp import analysis
+        ai_adapter.install_guard(ai_enabled=True, cv_ai_authorized=True)
+        busy = p.TransportError("OpenAI HTTP 429", retryable=True)
+        with patch.object(p, "_post", side_effect=[busy, busy, reply()]) as post, \
+                patch.object(analysis.time, "sleep") as slept:
+            self.assertEqual(analysis._generate("JSON"), {"jobs": []})
+        self.assertEqual(post.call_count, 3)
+        self.assertEqual([c.args[0] for c in slept.call_args_list], [5, 15])
+
+    def test_busy_provider_gives_up_bounded_and_never_retries_auth(self):
+        from workspace.sp import analysis
+        ai_adapter.install_guard(ai_enabled=True, cv_ai_authorized=True)
+        with patch.object(p, "_post", side_effect=p.TransportError("OpenAI HTTP 503", retryable=True)) as post, \
+                patch.object(analysis.time, "sleep"), self.assertRaises(AIProviderUnavailable):
+            analysis._generate("JSON")
+        self.assertEqual(post.call_count, 4)
+        with patch.object(p, "_post", side_effect=p.TransportError("OpenAI HTTP 401")) as post, \
+                patch.object(analysis.time, "sleep") as slept, self.assertRaises(AIProviderUnavailable):
+            analysis._generate("JSON")
+        self.assertEqual(post.call_count, 1)
+        slept.assert_not_called()
+        # No new attempt once the window is used up: a slow provider never outlasts the queue's lease.
+        clock = iter([0, 140, 140])
+        with patch.object(p, "_post", side_effect=p.TransportError("timeout", retryable=True)) as post, \
+                patch.object(analysis.time, "sleep"), patch.object(analysis.time, "monotonic", lambda: next(clock)), \
+                self.assertRaises(AIProviderUnavailable):
+            analysis._generate("JSON")
+        self.assertEqual(post.call_count, 2)
+
+    def test_bedrock_selected_never_falls_back_to_itself(self):
+        os.environ.update(RFONE_SP_AI_PROVIDER="BEDROCK", RFONE_SP_AI_FALLBACK="BEDROCK")
+        with patch.object(p, "_bedrock", side_effect=p.TransportError("throttled", retryable=True)) as bedrock, \
+                self.assertRaises(AIProviderUnavailable):
+            p.generate_json("JSON")
+        bedrock.assert_called_once()
+
+    def test_analyses_by_the_other_ai_are_marked_for_update(self):
+        from workspace import sp_queue
+        openai, haiku = {"model": f"OpenAI · {p.MODEL}"}, {"model": f"AWS Bedrock · {p.HAIKU}"}
+        self.assertTrue(sp_queue.same_ai(openai))
+        self.assertFalse(sp_queue.same_ai(haiku))
+        self.assertFalse(sp_queue.same_ai({}))
+        os.environ["RFONE_SP_AI_PROVIDER"] = "BEDROCK"
+        self.assertTrue(sp_queue.same_ai(haiku))
+        self.assertFalse(sp_queue.same_ai(openai))
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

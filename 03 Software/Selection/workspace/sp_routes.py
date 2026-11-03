@@ -158,7 +158,8 @@ def candidates(db, position, sp) -> list[dict]:
             status = "IN_PROGRESS"        # application page / RMAED: analyzed only once the application is complete
         elif payload.get("analysis"):
             status = ("DONE" if approved and version == approved["version"]
-                      and sp_queue.current_checks(payload.get("analysis")) else "OUTDATED")
+                      and sp_queue.current_checks(payload.get("analysis")) and sp_queue.same_ai(payload)
+                      else "OUTDATED")
         elif payload.get("error"):
             status = "ERROR"
         else:
@@ -168,6 +169,7 @@ def candidates(db, position, sp) -> list[dict]:
                     "analysis": sp_rules.apply(payload.get("analysis"), position.role_code, sp.get("rules")),
                     "analyzed_version": version, "decision": decision,
                     "old_checks": bool(payload.get("analysis")) and not sp_queue.current_checks(payload.get("analysis")),
+                    "other_ai": bool(payload.get("analysis")) and not sp_queue.same_ai(payload),
                     "rejected": bool(decision and decision.decision == ps.D_NOT_SELECTED),
                     "analyzed_at": payload.get("analyzed_at"), "model": payload.get("model"),
                     "error": payload.get("error"), "status": status, "new": pc.id in last,

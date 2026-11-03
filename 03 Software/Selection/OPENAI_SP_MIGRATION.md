@@ -107,3 +107,29 @@ per eseguire queste prove: l’API ha accettato entrambe le richieste.
 Token: testo 1.361 input / 1.178 output; OCR 2.495 input / 91 output; cache 0.
 Stima totale $0,010201, da riconciliare con il billing ufficiale; nessun saldo residuo viene dedotto da questa misura.
 Nessun CV reale inviato. La verifica account di retention resta necessaria prima dei CV reali.
+
+## Review by Shelbi, 3 November 2026 (branch `shelbi/sp-openai-review`, on top of this one)
+
+- **Dates are never phones, in every format.** `deterministic_parser.phone_spans` masks date ranges and
+  month-years ("01.2019 - 03.2022", "06-2019 - 03-2022", "2018.06 - 2021.03", "2019 - Present") before looking for
+  a phone. Before, these were still read as a phone, both in the redaction sent to SP and in the duplicate
+  check. `redact_contacts` now removes exactly the phones the reader recognizes, so a phone on the same line as
+  a date range ("Server 2019 - 2022 407-555-0132") is removed too; before, it reached the AI.
+- **Busy provider:** SP's evaluation waits 5, 15, 30 s and asks again after a 429/5xx, a timeout or Bedrock
+  throttling, never after 400/401/403. No new attempt starts after 150 s, so one CV (even with the Haiku
+  fallback and the JSON retry) ends inside the 10-minute lease and is never paid twice. Without this, the throttle
+  waits removed in this branch left a busy minute as failed CVs to analyze again by hand.
+- **Bedrock:** a client from its own boto3 session (the default session is not safe between the queue's threads);
+  the error code is kept in the message; with `RFONE_SP_AI_PROVIDER=BEDROCK` the fallback never calls Haiku twice.
+- **Name:** a CV is marked `SP_AI` only when SP's reply gives a name found word for word in the CV. Otherwise it
+  stays "read without the AI" and Read again stays available (before, a name like "RESUME" stayed with no way to fix it).
+- **One AI per ranking:** an analysis made by the other AI (older Haiku analyses, or the opt-in fallback) shows
+  "Analyzed with another AI: update recommended" and Analyze redoes it, so one Job never ranks Haiku and OpenAI
+  readings side by side.
+
+Tests: `test_sp_openai.py` 19/19 (5 new), real CVs 35/35, engine 30/30, integration 30/30, CV Delete 30/30
+(PowerShell), workspace 89/89, process 30/30, batch upload 39/39, the other Selection tests and Data Store
+`test_selection_*` all pass.
+
+**Before deploying this branch:** with no `RFONE_SP_DATA_REVIEWED`, every SP analysis, scan and Read again is
+refused, Haiku included (`bedrock-reviewed`). Set it, and the OpenAI secret, or SP stops on deploy.

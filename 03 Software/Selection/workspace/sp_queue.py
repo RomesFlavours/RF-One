@@ -32,6 +32,7 @@ from sqlalchemy import select, update
 from rfone_data_store import models as m
 from rfone_data_store.selection import persistence
 from rfone_data_store.selection import workspace_models as ps
+from rfone_data_store.selection.parsing.ai_client import AIProviderUnavailable
 
 from . import ai_adapter, cv_reading, position_settings
 from .sp import analysis as sp_analysis
@@ -95,12 +96,24 @@ def _analyzed_with(result: ps.Proposal | None, version: int) -> bool:
     if not (result and result.group_code == "ANALYZED"):
         return False
     payload = json.loads(result.payload_json)
-    return payload.get("version") == version and current_checks(payload.get("analysis"))
+    return payload.get("version") == version and current_checks(payload.get("analysis")) and same_ai(payload)
 
 
 def current_checks(analysis) -> bool:
     """True when a stored analysis was checked with the code's current checks (`sp_analysis.CHECKS_VERSION`)."""
     return isinstance(analysis, dict) and analysis.get("checks_version") == sp_analysis.CHECKS_VERSION
+
+
+def same_ai(payload) -> bool:
+    """True when a stored analysis was made by the AI SP is configured to use now. The SP benchmark of 3 Nov 2026
+    found Haiku placing several candidates a group lower than OpenAI: one Job must not rank CVs read by the two
+    side by side, so an analysis by the other AI (an older one, or the opt-in fallback) is marked for an update."""
+    model = (payload or {}).get("model") or ""
+    try:
+        configured = sp_provider.provider()
+    except AIProviderUnavailable:
+        return True       # a wrong setting stops every analysis anyway; it does not also hide the old ones
+    return ("OPENAI" if model.startswith("OpenAI") else "BEDROCK" if "Bedrock" in model else None) == configured
 
 
 # ---------------------------------------------------------------------------
@@ -361,11 +374,13 @@ def _write_result(pc_id: int, version: int, analysis: dict | None, error: str | 
             if candidate and raw and cv_reading.read_without_ai(candidate):
                 old = {k: getattr(candidate, k) for k in ("full_name", "email", "phone")}
                 name = analysis.get("full_name")
+                # Only a name found word for word in the CV counts as read. Without one the CV stays "read without
+                # the AI", so the SP page still offers Read again instead of keeping a name like "RESUME".
                 if name and " ".join(name.casefold().split()) in " ".join(raw.raw_text.casefold().split()):
                     candidate.full_name = name
-                candidate.parsing_mode = "SP_AI"
-                cv_reading._refresh_identity(db, pc, candidate, old)
-                pc.import_note = cv_reading._OLD_READING_NOTES.sub("", pc.import_note or "").strip() or None
+                    candidate.parsing_mode = "SP_AI"
+                    cv_reading._refresh_identity(db, pc, candidate, old)
+                    pc.import_note = cv_reading._OLD_READING_NOTES.sub("", pc.import_note or "").strip() or None
         db.execute(update(ps.Proposal).where(ps.Proposal.position_candidate_id == pc_id, ps.Proposal.source == RESULT,
                                              ps.Proposal.is_current.is_(True)).values(is_current=False))
         db.add(ps.Proposal(position_candidate_id=pc_id, snapshot_id=version, fit_assessment_id=None, source=RESULT,

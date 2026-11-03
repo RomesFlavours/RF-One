@@ -104,15 +104,42 @@ _PHONE_YEAR_RE = re.compile(r"(?:19|20)\d{2}")
 _PHONE_ON_ONE_LINE_RE = re.compile(r"(\+?\(?\d[\d\-. \t()]{7,}\d)")
 
 
-def _find_phone(full_text: str):
-    """The first match that is a real phone number. A date range such as "2019 - 2021" also matches `_PHONE_RE`:
-    taken as a phone it made two different applicants "the same person" by phone (SELECTION_SP_REAL_CVS_001).
-    A phone has at least 10 digits and is not made only of years."""
-    for match in _PHONE_ON_ONE_LINE_RE.finditer(full_text):
+# A date written with digits only: "2019", "03.2019", "3/2019", "2019-03". `_DATE_RANGE_RE` is a range of them
+# ("01.2019 - 03.2022", "2019 - Present"); `_MONTH_YEAR_RE` a month and year alone ("06-2019").
+_DIGIT_DATE = r"(?:(?:0?[1-9]|1[0-2])[./-])?(?:19|20)\d{2}(?:[./-](?:0?[1-9]|1[0-2]))?"
+_DATE_RANGE_RE = re.compile(rf"\b{_DIGIT_DATE}\s*(?:-|–|—|to)\s*(?:{_DIGIT_DATE}\b|present\b|current\b|now\b)",
+                            re.IGNORECASE)
+_MONTH_YEAR_RE = re.compile(r"\b(?:(?:0?[1-9]|1[0-2])[./-](?:19|20)\d{2}|(?:19|20)\d{2}[./-](?:0?[1-9]|1[0-2]))\b")
+
+
+def _without_dates(text: str) -> str:
+    """The text with every date range and month-year replaced by letters of the same length: positions are
+    unchanged and no date can be read as (part of) a phone number."""
+    for date_re in (_DATE_RANGE_RE, _MONTH_YEAR_RE):
+        text = date_re.sub(lambda m: "x" * len(m.group()), text)
+    return text
+
+
+def phone_spans(full_text: str) -> list[tuple[int, int]]:
+    """(start, end) of every real phone number in the text. Dates are never phones: "2019 - 2021", "01.2019 -
+    03.2022" or "06-2019" taken as a phone made two different applicants "the same person" by phone and hid the
+    job's dates from SP's evaluation (SELECTION_SP_REAL_CVS_001, SP benchmark of 3 Nov 2026). A phone is on one
+    line, has 10 to 15 digits and is not made only of years."""
+    spans = []
+    for match in _PHONE_ON_ONE_LINE_RE.finditer(_without_dates(full_text or "")):
         groups = re.findall(r"\d+", match.group(1))
         if 10 <= len("".join(groups)) <= 15 and not all(_PHONE_YEAR_RE.fullmatch(g) for g in groups):
-            return match
-    return None
+            spans.append(match.span(1))
+    return spans
+
+
+_WHOLE_RE = re.compile(r"(.+)", re.DOTALL)
+
+
+def _find_phone(full_text: str):
+    """The first real phone number (see `phone_spans`) as a match whose group 1 is the phone, or None."""
+    spans = phone_spans(full_text)
+    return _WHOLE_RE.match(full_text, *spans[0]) if spans else None
 
 
 _LINKEDIN_RE = re.compile(r"(https?://)?(www\.)?linkedin\.com/\S+", re.IGNORECASE)

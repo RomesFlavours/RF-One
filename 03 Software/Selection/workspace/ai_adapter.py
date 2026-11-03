@@ -278,13 +278,17 @@ JSON shape:
 """
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
-_PHONE_RE = re.compile(r"(?:\+?\(?\d[\d \t().-]{7,}\d)")
 
 
 def redact_contacts(text: str) -> str:
-    from rfone_data_store.selection.parsing.deterministic_parser import _find_phone
-    return _PHONE_RE.sub(lambda m: "[phone removed]" if _find_phone(m.group()) else m.group(),
-                         _EMAIL_RE.sub("[email removed]", text or ""))
+    """Emails and phone numbers removed. The phones are the ones the CV reader recognizes (`phone_spans`), so a
+    job's dates ("2019 - 2022", "01.2019 - 03.2022") always reach the AI, and a phone written on the same line
+    as a date range is still removed."""
+    from rfone_data_store.selection.parsing.deterministic_parser import phone_spans
+    text = _EMAIL_RE.sub("[email removed]", text or "")
+    for start, end in reversed(phone_spans(text)):
+        text = text[:start] + "[phone removed]" + text[end:]
+    return text
 
 
 def _normalized(text: str) -> str:
