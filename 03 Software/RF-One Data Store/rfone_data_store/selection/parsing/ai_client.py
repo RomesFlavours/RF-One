@@ -122,7 +122,7 @@ def _bedrock_client(boto3, region: str | None, read_timeout: float, attempts: in
         if client is None:
             client = factory("bedrock-runtime", region_name=region, config=Config(
                 read_timeout=read_timeout, connect_timeout=10,
-                retries={"max_attempts": attempts, "mode": "standard"}))
+                retries={"total_max_attempts": attempts, "mode": "standard"}))
             _BEDROCK_CLIENTS[key] = client
         return client
 

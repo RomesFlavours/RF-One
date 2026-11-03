@@ -299,7 +299,7 @@ def _transcribe_transport(images: list[bytes]) -> str:
         # Runs inside an upload request: one attempt, bounded, never boto3's 60 s x 5 retries.
         client = boto3.client("bedrock-runtime", region_name=ai_client._read_env_or_dotenv("AWS_REGION"),
                               config=Config(connect_timeout=10, read_timeout=TRANSCRIBE_TIMEOUT_SECONDS,
-                                            retries={"max_attempts": 1, "mode": "standard"}))
+                                            retries={"total_max_attempts": 1, "mode": "standard"}))
         response = client.converse(
             modelId=model_id,
             messages=[{"role": "user", "content": [{"image": {"format": "jpeg", "source": {"bytes": b}}} for b in images]
