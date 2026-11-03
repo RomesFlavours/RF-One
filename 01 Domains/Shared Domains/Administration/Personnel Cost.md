@@ -258,9 +258,9 @@ Examples of Employee-attributable cost outside Payroll may include a company veh
 
 ---
 
-## 11. Personnel Management boundary
+## 11. Management / Organization boundary
 
-Personnel Management (`01 Domains/Shared Domains/Personnel Management/README.md`) may consume `Total Employee Cost` as evidence — for example when a Personnel Decision compares the current person's expected value against an alternative's. Personnel Cost supplies facts; Personnel Management owns the decision.
+Management / Organization (`01 Domains/Shared Domains/Management/Organization/README.md`, which absorbed the former Personnel Management Workforce and Personnel Decisions responsibilities) may consume `Total Employee Cost` as evidence — for example when it compares the current person's expected value against an alternative's. Personnel Cost supplies facts; the decision is reserved to the authorized people identified by Organization.
 
 The reason the Employee Cost model must remain causally truthful:
 
@@ -269,9 +269,9 @@ generic shared cost that does not change when Employee A is replaced by
 Candidate B must not be artificially attached to Employee A
 ```
 
-If RF-One attached generic overhead to Employee A but not to Candidate B (who has none yet), any Selection/Personnel Decision comparison between them would be built on false comparative evidence. This is the architectural reason §2's `Allocated Labor Overhead` is rejected, not merely a modeling preference.
+If RF-One attached generic overhead to Employee A but not to Candidate B (who has none yet), any Selection or Organization comparison of alternatives between them would be built on false comparative evidence. This is the architectural reason §2's `Allocated Labor Overhead` is rejected, not merely a modeling preference.
 
-No Selection or Personnel Decision logic is modeled by this document.
+No Selection or Organization decision logic is modeled by this document.
 
 ---
 
@@ -283,7 +283,7 @@ Employee Cost
 Replacement Decision Cost
 ```
 
-Costs caused by the act of replacing/changing personnel — recruiting, hiring/onboarding, transition, vacancy effects, severance — do not become intrinsic historical cost of either the incumbent or the candidate merely because they participate in the decision. They belong to the Personnel Decision that caused them, not to `Total Employee Cost`. This boundary is recorded here only to prevent semantic contamination of Employee Cost; Replacement Decision Cost is not further modeled by this document.
+Costs caused by the act of replacing/changing personnel — recruiting, hiring/onboarding, transition, vacancy effects, severance — do not become intrinsic historical cost of either the incumbent or the candidate merely because they participate in the decision. They belong to the personnel decision (Management / Organization) that caused them, not to `Total Employee Cost`. This boundary is recorded here only to prevent semantic contamination of Employee Cost; Replacement Decision Cost is not further modeled by this document.
 
 ---
 
@@ -292,6 +292,6 @@ Costs caused by the act of replacing/changing personnel — recruiting, hiring/o
 - [README.md](README.md) — Administration Domain
 - [Payroll/Labor Cost.md](Payroll/Labor%20Cost.md) — `Payroll Employer Cost`, the Payroll-sourced component of `Total Employee Cost`
 - [Payroll/README.md](Payroll/README.md) — Payroll module boundary
-- [../Personnel Management/README.md](../Personnel%20Management/README.md) — the consumer of `Total Employee Cost` as decision evidence
+- [../Management/Organization/README.md](../Management/Organization/README.md) — the consumer of `Total Employee Cost` as decision evidence
 - [../../OpenQuestions.md](../../../OpenQuestions.md) — resolution record for the generic-overhead-allocation question
 - `07 Tasks/Reports/TASK_LABOR_COST_001_REPORT.md` — task that produced this document

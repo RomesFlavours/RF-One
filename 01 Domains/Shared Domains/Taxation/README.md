@@ -10,7 +10,7 @@
 
 **Taxation** is the transversal (cross-industry) Domain responsible for representing and reasoning about tax obligations, tax consequences, tax positions, tax treatments, tax incentives, tax credits, tax deductions, tax timing, tax structure, lawful tax planning, after-tax outcomes, tax uncertainty and tax compliance burden.
 
-Taxation reasons about the tax consequences of facts that are owned by many other Domains — it does not own those facts. It is transversal in the same sense already established for Personnel Management (see [../Domain Architecture.md](../../Domain%20Architecture.md)): it applies wherever a tax-relevant fact exists, consuming content from whichever Domain owns that fact, without duplicating that Domain's knowledge.
+Taxation reasons about the tax consequences of facts that are owned by many other Domains — it does not own those facts. It is transversal in the same sense already established for the other Shared Domains, such as Management (see [../Domain Architecture.md](../../Domain%20Architecture.md)): it applies wherever a tax-relevant fact exists, consuming content from whichever Domain owns that fact, without duplicating that Domain's knowledge.
 
 ---
 
@@ -70,7 +70,8 @@ Taxation is transversal. It may interact with, without owning:
 
 ```text
 Restaurant
-Personnel Management
+Management
+Administration (Compensation, Payroll)
 Finance / banking data
 Corporate / organizational structure
 Assets
@@ -83,7 +84,7 @@ Taxation does not own those concepts merely because they have tax consequences. 
 
 ```text
 Employee compensation
-→ Personnel/Workforce fact
+→ Administration / Compensation fact
 → Taxation evaluates tax consequences
 ```
 
@@ -157,7 +158,7 @@ Taxation consumes facts owned by other Domains and evaluates their tax consequen
 ```text
 Restaurant / other technical Domains
   → operational, asset, transaction facts
-Personnel Management
+Administration (Compensation, Payroll) and Management
   → compensation, benefit, employment facts
 Finance / banking data
   → financing, cash, investment facts

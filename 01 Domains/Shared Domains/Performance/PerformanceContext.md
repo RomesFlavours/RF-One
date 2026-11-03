@@ -36,7 +36,7 @@ Illustrative examples where comparison requires contextual reasoning:
 Possible Performance Context dimensions include:
 
 - role;
-- Assignment (see [../Workforce/README.md](../Personnel%20Management/Workforce/README.md) — Assignment is a Workforce dependency not yet modeled in depth);
+- Assignment (see [../Management/Organization/README.md](../Management/Organization/README.md) §3 — Assignment is a Workforce dependency, now held by Management / Organization through the existing Restaurant Employee Assignment and System Position records, not yet modeled in depth);
 - location;
 - shift;
 - day/time;
@@ -89,5 +89,5 @@ Performance Context is also required to correctly apply Core [Temporal Coherence
 - [PerformanceEvidence.md](PerformanceEvidence.md)
 - [PerformanceMeasure.md](PerformanceMeasure.md)
 - [PerformanceIndicator.md](PerformanceIndicator.md)
-- [../Workforce/README.md](../Personnel%20Management/Workforce/README.md)
+- [../Management/Organization/README.md](../Management/Organization/README.md) (formerly Workforce)
 - [../../../00 Core/ConceptualArchitecture/04_Temporal_Coherence_and_Evolution.md](../../../00%20Core/ConceptualArchitecture/04_Temporal_Coherence_and_Evolution.md)

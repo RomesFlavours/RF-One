@@ -634,6 +634,37 @@ Compatibility Notes:
 
 ---
 
+Version: Core 2.0 (Clarification — MANAGEMENT_REORGANIZATION_COGNITO_BOUNDARY)
+
+Date: 2026-10-25
+
+Modified Entity:
+`ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md` (new §9 and one Non-assumptions line), `ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md` (one clarification note in §3), `ConceptualArchitecture/20_RF-One_Selection_Pills_Cognitive_Model.md` (Shared Domain list in §1, two reconciliation notes in §12 and §17, new open item 7 in §25), `ConceptualArchitecture/00_RF-One_Core_Vision.md` (one Domain example in §1), `ConceptualArchitecture/01_Subject_and_Reality.md` (one Domain example).
+
+Reason:
+The Product Owner reorganized the Domains on 2026-10-25: Management became a Shared Domain of People, Organization and Project Manager; Personnel Management ceased to be a Domain; Compensation moved to Administration. In the same instruction the Product Owner fixed the boundary between specialist intelligences: Cognito provides sensory functions, language understanding and conversation management; People and Selection lead the specialist reasoning in their fields, and People decides what to explore and for which professional purpose. Document 14 already stated that Cognito "does not substitute itself for a Domain"; §9 records how that applies to specialist reasoning in an interaction. Documents 00 and 01 used retired Domain names ("Workforce", "Personnel Management") as examples.
+
+Concepts introduced:
+
+- None new. Document 14 §9 is a clarification of the existing §1 boundary; Cognito's capability list (§6) is unchanged.
+
+Impacted Domains:
+
+- `01 Domains/Shared Domains/Management/` (People §2 applies the same boundary). No Software file was modified; no software capability was implemented.
+
+Future Expected Impact:
+
+- Any Cognito-led interview or assistance within People or Selection must leave the choice of what to explore, and the professional conclusion, to the specialist Domain.
+- Document 20's Cognitive Observation / Debriefing proposals must be reconciled with this boundary before implementation (document 20 §25, item 7).
+
+Compatibility Notes:
+
+- Document 14 stays APPROVED (Core 2.0); the clarification does not move the `core-2.0-freeze` tag or rewrite its history. Documents 15 and 20 keep their own status (document 20 remains a non-approved conceptual baseline).
+- Not modified: `10_RF-One_Intelligence_and_User_Relationship.md` (the User Model); its relationship with the People profile is recorded as an open question (Management `DECISIONS_AND_GAPS.md`, G27), not resolved here. No other Legacy/RFCore principle was rewritten.
+- All prior Core Evolution entries are preserved unchanged; this is an additive entry.
+
+---
+
 # Design Principles
 
 - The Core Domain is extracted from real domains.

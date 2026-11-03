@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Primo accesso{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:2.5rem auto;">
+  <h1>Primo accesso</h1>
+  <p class="muted small">Il prototipo non ha ancora account. Crea l'account del proprietario: potrà poi creare
+    gli account dei responsabili. Gli account restano nell'archivio locale del prototipo.</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Nome e cognome</label><input type="text" name="display_name" required>
+    <label>Nome utente</label><input type="text" name="username" required>
+    <label>Password</label><input type="password" name="password">
+    <label>Ripeti la password</label><input type="password" name="password2">
+    <p><button class="btn">Crea account proprietario</button></p>
+  </form>
+</div>
+{% endblock %}

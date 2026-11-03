@@ -36,7 +36,7 @@ Server Performance's economic-motivation estimates ([Coaching Model.md](Coaching
 
 ## Generic HR is outside this module
 
-Server Performance does not model employment contracts, disciplinary procedures, leave, benefits, or any other generic HR concern. Where it touches personnel-decision-adjacent territory (persistent underperformance evidence — [Coaching Model.md](Coaching%20Model.md), "Underperformance / management evidence"), it only ever supplies evidence; the Decision itself belongs exclusively to Personnel Management's [Personnel Decisions](../../../Shared%20Domains/Personnel%20Management/Personnel%20Decisions/README.md) module, applied by a human.
+Server Performance does not model employment contracts, disciplinary procedures, leave, benefits, or any other generic HR concern. Where it touches personnel-decision-adjacent territory (persistent underperformance evidence — [Coaching Model.md](Coaching%20Model.md), "Underperformance / management evidence"), it only ever supplies evidence; the Decision itself belongs exclusively to the authorized people identified by Management / [Organization](../../../Shared%20Domains/Management/Organization/README.md) (formerly the Personnel Decisions module), applied by a human.
 
 ## No unsupported personal-cause inference
 
@@ -57,5 +57,5 @@ This module is Domain/conceptual architecture documentation only. It defines no 
 - [Server Performance.md](Server%20Performance.md)
 - [Concurrent Service Load.md](Concurrent%20Service%20Load.md)
 - [Future Development.md](Future%20Development.md)
-- [../../Personnel Management/Personnel Decisions/README.md](../../../Shared%20Domains/Personnel%20Management/Personnel%20Decisions/README.md)
+- [../../../Shared Domains/Management/Organization/README.md](../../../Shared%20Domains/Management/Organization/README.md)
 - [../../Administration/Payroll/README.md](../../../Shared%20Domains/Administration/Payroll/README.md)

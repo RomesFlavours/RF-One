@@ -133,11 +133,13 @@ def main() -> int:
             allowed_client = client_for("sel-allowed")
             home = allowed_client.get("/selection/")
             check("2. an account with the SELECTION Domain opens Selection", home.status_code == 200)
-            html = home.get_data(as_text=True)
+            # SELECTION_AI_INTEGRATION_001: the historical candidate list moved to /candidates and
+            # its old menu was replaced by one link back to Selection's position workspace.
+            html = allowed_client.get("/selection/candidates").get_data(as_text=True)
 
             # --- 4. served under /selection/ -------------------------------------
             check("4. links carry the /selection prefix and lead back to RF-One",
-                  'href="/selection/applications"' in html and 'href="https://rfone.example.test/">RF-One</a>' in html)
+                  'href="/selection/"' in html and 'href="https://rfone.example.test/">RF-One</a>' in html)
 
             # --- 5. documents in S3 only ---------------------------------------
             up = allowed_client.post("/selection/api/upload", data={

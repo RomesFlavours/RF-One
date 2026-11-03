@@ -17,7 +17,7 @@ It is **not** a single score, a rank, or a static label assigned once. It is an 
 
 ## What the Profile holds
 
-Structurally, the Profile is an accumulation of the same atomic Performance Evidence, Measures and Indicators already defined generically by [Personnel Management/Performance](../../../Shared%20Domains/Performance/README.md), organized around this Server across:
+Structurally, the Profile is an accumulation of the same atomic Performance Evidence, Measures and Indicators already defined generically by [Performance](../../../Shared%20Domains/Performance/README.md), organized around this Server across:
 
 ```text
 Dimensions        Productivity, Quality of Sale, Opportunity Capture, Operational Discipline,
@@ -37,7 +37,7 @@ Coaching history    interventions delivered, and their observed effect (Coaching
                     "Coaching effectiveness")
 
 Temporal trajectory isolated event / recurring pattern / improvement / decline / stable
-                    performance / context-specific variation (reusing Personnel Management's
+                    performance / context-specific variation (reusing the Performance Domain's
                     Temporal Coherence application — Performance.md, "Temporal evolution")
 ```
 
@@ -53,7 +53,7 @@ Consistent with Organization's canonical Employee identity (`07 Tasks/Reports/TA
 
 ## The Profile is never used to autonomously decide employment
 
-The Individual Performance Profile is Reality-grounded evidence. It may eventually help management build the evidence history described in [Coaching Model.md](Coaching%20Model.md), "Underperformance / management evidence" — but it never itself decides retain/develop/move/replace. That Decision belongs exclusively to Personnel Management's [Personnel Decisions](../../../Shared%20Domains/Personnel%20Management/Personnel%20Decisions/README.md) module, applied by a human. See [Exclusions.md](Exclusions.md).
+The Individual Performance Profile is Reality-grounded evidence. It may eventually help management build the evidence history described in [Coaching Model.md](Coaching%20Model.md), "Underperformance / management evidence" — but it never itself decides retain/develop/move/replace. That Decision belongs exclusively to the authorized people identified by Management / [Organization](../../../Shared%20Domains/Management/Organization/README.md) (formerly the Personnel Decisions module), applied by a human. See [Exclusions.md](Exclusions.md).
 
 ---
 
@@ -63,4 +63,4 @@ The Individual Performance Profile is Reality-grounded evidence. It may eventual
 - [Brand Expectation and Personal Baseline.md](Brand%20Expectation%20and%20Personal%20Baseline.md)
 - [Concurrent Service Load.md](Concurrent%20Service%20Load.md)
 - [Coaching Model.md](Coaching%20Model.md)
-- [../../Personnel Management/Performance/Performance.md](../../../Shared%20Domains/Performance/Performance.md), "Temporal evolution"
+- [../../../Shared Domains/Performance/Performance.md](../../../Shared%20Domains/Performance/Performance.md), "Temporal evolution"

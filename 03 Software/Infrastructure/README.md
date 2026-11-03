@@ -226,6 +226,35 @@ Verificato il 2026-09-11 via `aws sesv2 get-account` / `get-email-identity` / `g
 
 **Prossimo passaggio (richiede il Product Owner):** aprire l'email di verifica AWS in `rfone@romesflavours.com` e confermare. Dopo la conferma, una sessione futura deve: impostare `RFONE_EMAIL_FROM_ADDRESS=rfone@romesflavours.com` su `rfone-web` (Secrets Manager o env var diretta), ridistribuire, ed eseguire una prova reale di invio verso la stessa casella — distinguendo l'accettazione della chiamata SES dalla consegna effettiva in casella (solo il Product Owner può verificare la seconda).
 
+**Aggiornamento 2026-10-23.** Mittente `rfone@romesflavours.com` ora **verificato** (`SUCCESS`); richiesta di uscita dalla sandbox **respinta** (`DENIED`, caso `179260609400293`); account ancora in sandbox (200/giorno, solo destinatari verificati). DKIM sul dominio non attivo. Per questo il Product Owner ha deciso di inviare i codici OTP di **Selection** via SMTP Aruba (sezione seguente). RF-One Web (recupero password) usa ancora SES e non è stato modificato.
+
+## Email di Selection via SMTP Aruba (2026-10-23)
+
+Decisione del Product Owner: i codici OTP ai candidati partono dalla casella Aruba `rfone@romesflavours.com` tramite SMTP autenticato (Aruba conferma l'uso da software esterni; limite consigliato 250 email ogni 20 minuti). Parametri ufficiali ([guida Aruba](https://guide.aruba.it/hosting-e-domini/email/configurazione-posta/parametri-configurazione-posta)): `smtps.aruba.it`, porta 465, SSL/TLS (minimo TLS 1.2), utente = indirizzo completo. Verificato il 2026-10-23 dal PC di lavoro: TLS 1.3, `AUTH LOGIN PLAIN XOAUTH2`.
+
+Implementazione: `RF-One Data Store/rfone_data_store/technical/smtp_email.py`, usato da `Selection/workspace/careers.py`; configurazione e prova con `Selection/configure_smtp.py` (vedi `Selection/README.md`).
+
+**Blocco per la produzione (rete).** Tutti i servizi App Runner (`rfone-web`, `rfone-tips`, `rfone-selection`, `rfone-selection-ai-test`) escono tramite il connettore VPC `rfone-tips-vpc-connector`. Il VPC non ha **NAT gateway**, e le interfacce del connettore non hanno IP pubblico: la route `0.0.0.0/0 → igw` non vale per loro. Esistono solo endpoint VPC per `ecs`, `s3` e `bedrock-runtime`. Ne segue che da produzione **non si raggiunge nessun server esterno**, quindi né `smtps.aruba.it`, né SES (per SES non c'è endpoint), né l'API Anthropic che `rfone-selection` usa per l'AI (`RFONE_AI_PROVIDER=ANTHROPIC`).
+
+**Soluzione scelta:** `deploy/rfone-private-egress/private_egress.py`. Lo script è idempotente e di default esegue solo il `plan`, in lettura. Crea un NAT gateway gestito con Elastic IP nella subnet pubblica `us-east-1a`, poi due **nuove** subnet private (`172.31.96.0/20` in 1a e `172.31.112.0/20` in 1b) con route `0.0.0.0/0 → NAT` e l'endpoint S3 collegato. Infine crea un nuovo connettore `rfone-private-egress` e vi sposta solo i servizi indicati. Non tocca le subnet esistenti, la route table principale, RDS (`rfone-dev` resta raggiungibile come oggi) né il vecchio connettore. Il rollback è `rollback --services …`.
+
+| Alternativa scartata | Motivo |
+|---|---|
+| Egress `DEFAULT` per Selection | Bisognerebbe aprire RDS a IP App Runner non fissi |
+| NAT su istanza EC2 (circa 7 $/mese) | Server da mantenere e aggiornare; singolo punto di guasto gestito da noi |
+| Instradare via NAT le subnet esistenti | Interromperebbe l'accesso pubblico a `rfone-dev` (routing asimmetrico) |
+
+Costo: circa 33 $/mese di NAT, più 3,65 $ di IP pubblico, più 0,045 $/GB di traffico (trascurabile per OTP e AI): **circa 37 $/mese**. `plan` verificato il 2026-10-23: CIDR liberi, subnet NAT pubblica, permessi EC2 confermati in dry-run.
+
+**Passi di deploy (non eseguiti, servono autorizzazione e il punto di rete risolto):**
+0. `python private_egress.py apply --services rfone-selection rfone-selection-ai-test` (uscita Internet, vedi sopra).
+1. Segreto `rfone-selection/smtp-password`: lo crea `Selection/Configura Email Selection.cmd`, oppure `python configure_smtp.py aws --from-local` dalla copia protetta locale.
+2. `instance-policy.json`: `secretsmanager:GetSecretValue` sull'ARN del segreto.
+3. `apprunner-service.json`: variabili `RFONE_SMTP_HOST=smtps.aruba.it`, `RFONE_SMTP_PORT=465`, `RFONE_SMTP_USERNAME=rfone@romesflavours.com`, `RFONE_EMAIL_FROM_ADDRESS=rfone@romesflavours.com`; segreto `RFONE_SMTP_PASSWORD` uguale all'ARN.
+4. Rebuild, deploy, poi una prova reale verso `rfone@romesflavours.com`.
+
+**Consegna in casella.** Il dominio non ha né record SPF né DMARC (DNS del 2026-10-23). Aruba indica `v=spf1 include:_spf.aruba.it -all` ([guida SPF](https://guide.aruba.it/hosting-e-domini/email/gestione-email/sicurezza-e-storico-accessi/usare-spf)). Senza questi record Gmail e Outlook possono mettere i codici nello spam.
+
 ---
 
 ## RF-One come applicazione unica: la sessione condivisa fra `rfone-web` e `rfone-tips`

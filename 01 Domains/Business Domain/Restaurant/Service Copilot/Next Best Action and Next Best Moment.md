@@ -38,7 +38,7 @@ operational context                    (Sales / Organization evidence)
 
 ### Output responsibility
 
-Next Best Action's output is a single, short, actionable suggestion for this table/moment — never a list, never a dashboard. It must be traceable to the inputs above (the same traceability requirement `Personnel Management/Performance/PerformanceIndicator.md` already places on a Performance Indicator), so a Server or manager can understand why a given suggestion was made.
+Next Best Action's output is a single, short, actionable suggestion for this table/moment — never a list, never a dashboard. It must be traceable to the inputs above (the same traceability requirement `Shared Domains/Performance/PerformanceIndicator.md` already places on a Performance Indicator), so a Server or manager can understand why a given suggestion was made.
 
 ### Boundaries
 

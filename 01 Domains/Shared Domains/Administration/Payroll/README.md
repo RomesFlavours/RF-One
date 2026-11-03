@@ -37,7 +37,8 @@ reconciliation.
 
 ```text
 Payroll ≠ Restaurant
-Payroll ≠ Personnel Management
+Payroll ≠ Compensation
+Payroll ≠ Management
 Payroll ≠ Taxation
 Payroll ≠ Accounting
 Payroll ≠ ADP
@@ -50,7 +51,7 @@ Payroll may consume facts/configuration from all of them, and owns none of them:
 Restaurant / Work Time            → worked time
 Tips                              → reportable tip amount
 Performance / Bonus logic         → bonus amount
-Compensation Terms                → employee-specific compensation
+Compensation (Terms)              → employee-specific compensation (owned by Administration/Compensation)
 Jurisdiction Rule Pack            → legally payable/reportable treatment
 Payroll                           → administrative processing
 Payroll Provider (ADP)            → tax/compliance/direct-deposit processing
@@ -63,7 +64,6 @@ Payroll Provider (ADP)            → tax/compliance/direct-deposit processing
 | File | Concept |
 |---|---|
 | [Payroll Schedule and Period.md](Payroll%20Schedule%20and%20Period.md) | PayrollSchedule, PayrollPeriod, PayDate, Workweek — four distinct concepts |
-| [Compensation Terms.md](Compensation%20Terms.md) | Employee-specific, temporal compensation; multiple concurrent functions/rates; HOURLY/SALARIED |
 | [Payroll Processing.md](Payroll%20Processing.md) | PayrollRun (REGULAR/SPECIAL), Bonus boundary, Tips boundary, jurisdiction/labor-rule boundary |
 | [Payroll Provider Result.md](Payroll%20Provider%20Result.md) | The provider (ADP) boundary and the atomic provider-result facts imported from Payroll Details Excel |
 | [Payroll Result Acquisition.md](Payroll%20Result%20Acquisition.md) | Genuinely automatic vs. manual-fallback acquisition; the adapter abstraction (local file / ADP SFTP AES / ADP Payroll Output API); verified ADP mechanisms |
@@ -78,18 +78,22 @@ Payroll operates on Employees/employment relationships. Contractors/independent 
 
 ---
 
-## Relationship to Personnel Management
+## Relationship to Compensation
 
-Payroll produces economic facts that Personnel Management may consume; it does not make Personnel Management's decisions.
+[Compensation](../Compensation/README.md) is the sibling Administration module that determines and approves what is owed and hands Approved Pay Data to the Payroll Provider through the Payroll Handoff Connector. Payroll records what the provider actually processed. Payroll consumes [Compensation Terms](../Compensation/Compensation%20Terms.md) — Employee-specific, temporal compensation (HOURLY/SALARIED, multiple concurrent functions/rates) — owned by Compensation since 2026-10-25 (previously listed in this folder; content unchanged).
+
+## Relationship to Management
+
+Payroll produces economic facts that Management / Organization may consume; it does not make Organization's decisions about the person in the role.
 
 ```text
 Payroll      → actual labor cost
 Performance  → actual output/performance evidence
 Selection    → candidate alternatives
-Personnel Decision → compares expected value using all of the above
+Organization (comparison of alternatives) → compares expected value using all of the above
 ```
 
-`cheapest Employee = best Employee` is never a conclusion Payroll draws or implies. Payroll only supplies cost evidence; Personnel Management owns decision semantics — see `01 Domains/Shared Domains/Personnel Management/README.md`.
+`cheapest Employee = best Employee` is never a conclusion Payroll draws or implies. Payroll only supplies cost evidence; Management / Organization owns the comparison and the decisions reserved to authorized people — see `01 Domains/Shared Domains/Management/Organization/README.md`.
 
 ---
 
@@ -110,7 +114,8 @@ Payroll consumes Restaurant facts (worked time via Shift, Employee identity, opt
 - [../README.md](../README.md) — Administration Domain
 - [../Personnel Cost.md](../Personnel%20Cost.md) — `Total Employee Cost`/`Total Personnel Cost`, the canonical concept `Payroll Employer Cost` feeds into
 - [../../Restaurant/Tips/README.md](../../../Business%20Domain/Restaurant/Tips/README.md) — Tips boundary Payroll consumes without duplicating
-- [../../Personnel Management/README.md](../../Personnel%20Management/README.md) — Bonus/Performance boundary
+- [../Compensation/README.md](../Compensation/README.md) — Compensation, including the Bonus/Incentive boundary
+- [../../Management/Organization/README.md](../../Management/Organization/README.md) — decision semantics about the person in the role
 - [../../Taxation/README.md](../../Taxation/README.md) — jurisdiction/tax boundary
 - `03 Software/RF-One Data Store/PAYROLL.md` — runtime/database implementation of this Domain
 - `07 Tasks/Reports/TASK_PAYROLL_001_REPORT.md` — implementation history

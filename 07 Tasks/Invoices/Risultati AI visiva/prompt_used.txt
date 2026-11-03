@@ -1,0 +1,42 @@
+You are reading a photographed/scanned supplier invoice for a restaurant. The images are the only source of information: read only what is actually printed or written on them.
+
+Three images are supplied, all of the SAME single page: image 1 is the whole page; image 2 is the upper part and image 3 is the lower part of that same page, at higher resolution, with an overlapping band in the middle. Use images 2 and 3 only to read small print more reliably. Each printed line exists once: never list a line twice because it appears in the overlap or in more than one image.
+
+Extract ONLY the following data:
+
+1. supplier: the supplier (seller) name as printed.
+2. invoice_date: the invoice date as printed (keep the printed format; also give ISO YYYY-MM-DD if unambiguous).
+3. items: one entry per purchased article line. For each:
+   - line_ref: line number or item code as printed (to identify the line).
+   - description: as printed.
+   - qty_ordered: ordered quantity, only if a separate ordered column exists.
+   - qty_delivered: delivered/shipped quantity.
+   - qty_unit: the unit of qty_delivered (e.g. case, piece, each, lb) as indicated by the document.
+   - cases: number of cases, if the document shows it separately.
+   - pieces: number of pieces/units (not cases), if the document shows it separately.
+   - pack_content: package content / pack size as printed (e.g. "4x3 LB", "2/10 LB"). This is the content of one package, not the delivered quantity.
+   - actual_weight: actual/catch weight delivered, with its unit, if printed.
+   - unit_price: unit cost as printed.
+   - unit_price_basis: what the unit price refers to (per case, per piece, per lb, ...) and where that basis is read from on the document. If the basis is not stated or not clear, set null and explain in doubts.
+   - line_amount: the line (extended) amount as printed.
+   - doubts: short note on anything ambiguous for this line, otherwise null.
+4. charges: every non-article charge or credit that affects the total (fuel surcharge, delivery fee, deposit, tax, discount, credit, ...). For each: name as printed, amount with its sign (negative for discounts/credits), doubts.
+
+Rules:
+- Do not invent. If a value is ambiguous, illegible or not printed, set it to null and briefly explain the doubt. Never present a calculated value as read; if you want to note a calculation, put it in doubts and say it is calculated.
+- Keep cases, pieces, package content and actual weight separate. Distinguish ordered from delivered quantity. Do not confuse price per case, per piece or per unit of weight.
+- Subtotals, section totals, page totals, invoice totals and summaries are NOT items or charges. Do not list them as such.
+- If a discount is declared as already included in a line amount, do not list it again as a separate charge and do not subtract it again; mention it in that line's doubts.
+- Ignore all other data (addresses, terms, representative, route, legal text, etc.).
+- Report missing pages (e.g. "Page 1 of 2" with only one page supplied) or cut/cropped/illegible parts, when recognizable, in document_issues.
+
+Answer with a single JSON object only, no text before or after it, with this structure:
+{
+  "supplier": string|null,
+  "invoice_date": {"as_printed": string|null, "iso": string|null},
+  "items": [ {"line_ref":..., "description":..., "qty_ordered":..., "qty_delivered":..., "qty_unit":..., "cases":..., "pieces":..., "pack_content":..., "actual_weight":..., "unit_price":..., "unit_price_basis":..., "line_amount":..., "doubts":...} ],
+  "charges": [ {"name":..., "amount":..., "doubts":...} ],
+  "document_issues": [ string ],
+  "general_doubts": [ string ]
+}
+Use numbers for numeric values when they are clearly legible, otherwise null.

@@ -28,6 +28,7 @@ It exists because future capabilities — Tips, Compensation, Scheduling, Perfor
 | [Physical Area.md](Physical%20Area.md) | Physical place/zone (e.g. Dining Room, Patio) |
 | [Restaurant Role.md](Restaurant%20Role.md) | Canonical operational role performed by a person |
 | [Employee Assignment.md](Employee%20Assignment.md) | Temporally bounded Employee ↔ Area ↔ Role fact |
+| [Employee Registry.md](Employee%20Registry.md) | Clover discovery, RF-One corrections, review and assignment history |
 
 ---
 
@@ -81,9 +82,9 @@ A source system's current configuration (Clover's, so far) may be used as eviden
 
 ---
 
-## Relationship to Personnel Management
+## Relationship to Management
 
-Personnel Management (`01 Domains/Shared Domains/Personnel Management/`) owns broader workforce/personnel semantics that apply across industries — Workforce, Selection, Training, Performance, Personnel Decisions. This section does not duplicate that.
+The Management Shared Domain (`01 Domains/Shared Domains/Management/`, which replaced Personnel Management on 2026-10-25) owns broader, cross-industry semantics about people and work: People (professional knowledge) and Organization (work design, roles, responsibilities, coverage and assignments — including the former Workforce and Personnel Decisions responsibilities). Selection, Performance and the Training service are separate. This section does not duplicate any of them.
 
 Restaurant Organization owns:
 
@@ -95,7 +96,7 @@ restaurant roles
 restaurant assignment context (Employee Assignment)
 ```
 
-Personnel Management consumes this Restaurant-specific technical content (e.g. "this person's Restaurant Role and Operational Area during the evaluated period") the same way it consumes any other technical Domain's content, per `01 Domains/Shared Domains/Personnel Management/README.md`, "Relationship to technical Domains" — it does not redefine Employee Assignment, Operational Area, Physical Area or Restaurant Role.
+Management consumes this Restaurant-specific technical content (e.g. "this person's Restaurant Role and Operational Area during the evaluated period") the same way it consumes any other Business Domain's content, per `01 Domains/Shared Domains/Management/Organization/README.md` §3 and §12 — it introduces no new register and does not redefine Employee Assignment, Operational Area, Physical Area or Restaurant Role.
 
 ---
 
@@ -104,6 +105,6 @@ Personnel Management consumes this Restaurant-specific technical content (e.g. "
 - [../README.md](../README.md) — Restaurant Domain purpose and scope
 - [../Roadmap.md](../Roadmap.md) — Restaurant Domain knowledge coverage
 - [../Model/OU-Restaurant.md](../Model/OU-Restaurant.md), [../Model/OperationalArea.md](../Model/OperationalArea.md) — Core-inherited business-profile model
-- [../../Personnel Management/README.md](../../../Shared%20Domains/Personnel%20Management/README.md) — Personnel Management boundary
+- [../../../Shared Domains/Management/README.md](../../../Shared%20Domains/Management/README.md) — Management boundary
 - `03 Software/RF-One Data Store/RESTAURANT_PROFILE.md` — runtime/database implementation of this section, including the future Tips/Payroll contract
 - `03 Software/RF-One Data Store/DATABASE_SCHEMA.md` §4a — physical schema for `restaurants`, `restaurant_locations`, `operational_areas`, `physical_areas`, `restaurant_roles`, `operational_area_roles`, `employee_assignments`

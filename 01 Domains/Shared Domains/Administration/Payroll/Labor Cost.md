@@ -42,7 +42,7 @@ Payroll Employer Cost
 
 `Fully Loaded Labor Cost` is retained only as a non-canonical/legacy/business synonym for the same Employee-attributable total. It is **never** `Direct Employee Labor Cost + Allocated Labor Overhead` — RF-One does not load arbitrary shared/generic personnel overhead onto an Employee (`../Personnel%20Cost.md` §2). Illustrative, non-exhaustive examples of the "other Employee-attributable cost facts" `Total Employee Cost` extends to: health insurance, retirement employer contribution, workers compensation, company vehicle, company-paid vehicle insurance, company-paid fuel, other employer-paid benefits/costs. This list is never a mandatory taxonomy. This task implements only the `Payroll Employer Cost` half (from ADP), because RF-One does not yet possess any of the other employer-attributable cost sources; the extension point is structural, so a future employer-attributable-cost fact can be summed alongside `Payroll Employer Cost` for the same Employee/period without altering the `Payroll Employer Cost` calculation itself.
 
-`Total Employee Cost` is important to future Selection/Personnel Management (Performance/Personnel Decisions) reasoning, but Payroll does not make those decisions — see `01 Domains/Shared Domains/Administration/Payroll/README.md`, "Relationship to Personnel Management," and `../Personnel%20Cost.md` §11.
+`Total Employee Cost` is important to future Selection and Management / Organization (Performance, comparison of alternatives) reasoning, but Payroll does not make those decisions — see `01 Domains/Shared Domains/Administration/Payroll/README.md`, "Relationship to Management," and `../Personnel%20Cost.md` §11.
 
 ---
 

@@ -1,5 +1,27 @@
 # Clover Correction Sync (AWS)
 
+## Employee protection release 2026-10-19
+
+The active service uses task-definition revision 2, pinned to the immutable
+`rfone-tips` digest in `task-definition.json`; acquisition jobs use revision 2
+of their own family and the same digest. The running poller performs a manifest
+check, ten isolated regression tests and read-only database checks before its
+ordinary loop. The verification runner and manifest are packaged in this image
+and in the published S3 source bundle. They must be regenerated consistently
+for a new image; do not reuse this startup command with an image that lacks
+those release files. Existing App Runner interfaces did not need restarting:
+RF-One Web launches the acquisition task family without pinning revision 1.
+
+The source bundle was based on the previously deployed bundle with a limited
+Clover overlay, not the entire working tree. No database migrations or tip
+recalculations were executed. Previous definitions and the source backup remain
+available; see `07 Tasks/Reports/CLOVER_EMPLOYEE_CONNECTOR_AWS_RELEASE_20261019.md`.
+
+The `:latest` force-deployment instructions below describe the earlier release
+mechanism. For this pinned release, register a new task revision with the tested
+digest and update the service to that revision; forcing a redeployment of the
+same pinned revision does not select a different `:latest` image.
+
 CORRECTION_POLLER_ACTIVATION_001. **Status: created 2026-09-28** (Product
 Owner decision: option A — a permanent service at the approved ~60 s).
 

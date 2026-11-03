@@ -116,6 +116,8 @@
   </div>
 
   <dialog id="modal-take-in-charge" class="edit-modal">
+
+    <button type="button" class="rf-modal-x" aria-label="Close" onclick="this.closest('dialog').close()">&times;</button>
     <h3>Take Application In Charge</h3>
     <form method="post" action="{{ url_for('application_take_in_charge', application_id=application.id) }}" class="req-form">
       <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
@@ -127,6 +129,7 @@
     </form>
   </dialog>
   <dialog id="modal-reassign" class="edit-modal">
+    <button type="button" class="rf-modal-x" aria-label="Close" onclick="this.closest('dialog').close()">&times;</button>
     <h3>Reassign Application Ownership</h3>
     <form method="post" action="{{ url_for('application_reassign', application_id=application.id) }}" class="req-form">
       <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
@@ -189,6 +192,7 @@
       </div>
     </div>
     <dialog id="modal-hd-{{ e.id }}" class="edit-modal">
+      <button type="button" class="rf-modal-x" aria-label="Close" onclick="this.closest('dialog').close()">&times;</button>
       <h3>Override Hard Disqualifier — {{ e.criterion_snapshot.name }}</h3>
       <form method="post" action="{{ url_for('primary_screening_override_hard_disqualifier', run_id=summary.primary_screening_run.id, evaluation_id=e.id) }}" class="req-form">
         <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
@@ -272,6 +276,7 @@
       {% if gap.override_reason %}<p class="muted" style="font-size:.78rem;">Reason for divergence: {{ gap.override_reason }}</p>{% endif %}
     </div>
     <dialog id="modal-tg-{{ gap.id }}" class="edit-modal">
+      <button type="button" class="rf-modal-x" aria-label="Close" onclick="this.closest('dialog').close()">&times;</button>
       <h3>{{ gap.missing_capability }}</h3>
       <form method="post" action="{{ url_for('trainable_gap_review', gap_id=gap.id) }}" class="req-form">
         <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
@@ -361,6 +366,7 @@
     &middot; Stage: <span class="badge stage-{{ summary.current_stage|lower }}">{{ summary.current_stage|replace('_',' ') }}</span>
   </p>
   <dialog id="modal-outcome" class="edit-modal">
+    <button type="button" class="rf-modal-x" aria-label="Close" onclick="this.closest('dialog').close()">&times;</button>
     <h3>Apply an Outcome</h3>
     <p class="quick-read">May be applied at any moment — no Stage or evidence completion is required.</p>
     <form method="post" action="{{ url_for('application_apply_outcome', application_id=application.id) }}" class="req-form">
@@ -530,6 +536,7 @@
   </div>
   <p class="quick-read">Factual reports — e.g. "candidate called and stated they were withdrawing." Never a Selezionatore decision by itself; shown chronologically in Notes below.</p>
   <dialog id="modal-event" class="edit-modal">
+    <button type="button" class="rf-modal-x" aria-label="Close" onclick="this.closest('dialog').close()">&times;</button>
     <h3>Record Information / Event</h3>
     <form method="post" action="{{ url_for('application_record_information_event', application_id=application.id) }}" class="req-form">
       <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">
@@ -606,6 +613,7 @@
   </div>
   <p class="quick-read">Every Note entered anywhere in this Application's Selection journey, chronologically.</p>
   <dialog id="modal-note" class="edit-modal">
+    <button type="button" class="rf-modal-x" aria-label="Close" onclick="this.closest('dialog').close()">&times;</button>
     <h3>Add Application Note</h3>
     <form method="post" action="{{ url_for('application_add_note_entry', application_id=application.id) }}" class="req-form">
       <input type="hidden" name="next" value="{{ url_for('application_dossier', application_id=application.id) }}">

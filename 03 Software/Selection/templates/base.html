@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>RF-One · Selection</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='brand/rf-one.png') }}?v=1">
 <style>
   :root {
     --ink: #1c1c1c;
@@ -234,6 +235,11 @@
     color: var(--ink); background: white;
   }
   dialog.edit-modal::backdrop { background: rgba(28,28,28,.45); }
+  /* RF-One UI standard UI_MODAL_CLOSE_X_001 — a close X at the top right, visible while the dialog scrolls. */
+  .rf-modal-x { position: sticky; top: 0; float: right; z-index: 5; margin: -.6rem -.6rem -2rem .6rem;
+    width: 2rem; height: 2rem; padding: 0; border: none; border-radius: 50%; background: white;
+    color: var(--muted); font-size: 1.4rem; line-height: 1; cursor: pointer; }
+  .rf-modal-x:hover { background: #f5f2ee; color: var(--ink); }
   dialog.edit-modal h3 { margin-top: 0; font-size: 1rem; }
   .modal-actions { display: flex; gap: .6rem; justify-content: flex-end; margin-top: 1rem; }
   .dossier-tgap-card { border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem; margin-bottom: .8rem; }
@@ -279,30 +285,11 @@
   {% if rfone_home_url %}<p style="font-size:.85rem; margin:0 0 .3rem;"><a href="{{ rfone_home_url }}">RF-One</a> &rsaquo; Selection</p>{% endif %}
   <h1>RF-One · Selection</h1>
   <p class="subtitle">Resume screening — structured evidence to support the human evaluator, never a hiring decision.</p>
-  <div class="nav-tabs">
-    <a href="{{ url_for('home') }}" class="{{ 'active' if active_nav == 'candidates' else '' }}">Candidates</a>
-    <a href="{{ url_for('requirements_home') }}" class="{{ 'active' if active_nav == 'requirements' else '' }}">Requirement Sets</a>
-    <a href="{{ url_for('primary_screening_queue') }}" class="{{ 'active' if active_nav == 'primary-screening-queue' else '' }}">Primary Screening</a>
-    <a href="{{ url_for('applications_home') }}" class="{{ 'active' if active_nav == 'applications' else '' }}">Applications</a>
-    <a href="{{ url_for('sessions_home') }}" class="{{ 'active' if active_nav == 'sessions' else '' }}">Sessions</a>
-    <a href="{{ url_for('signals_home') }}" class="{{ 'active' if active_nav == 'signals' else '' }}">Signals</a>
-    <a href="{{ url_for('priority_policies_home') }}" class="{{ 'active' if active_nav == 'priority-policies' else '' }}">Priority Policies</a>
-    <a href="{{ url_for('identity_matches_home') }}" class="{{ 'active' if active_nav == 'identity-matches' else '' }}">Identity Matches</a>
-    <a href="{{ url_for('phone_interview_questions_home') }}" class="{{ 'active' if active_nav == 'phone-interview-questions' else '' }}">Phone Interview Questions</a>
-    <a href="{{ url_for('in_person_interview_sections_home') }}" class="{{ 'active' if active_nav == 'in-person-interview-sections' else '' }}">In-Person Interview Sections</a>
-    <a href="{{ url_for('primary_screening_criteria_home') }}" class="{{ 'active' if active_nav == 'primary-screening-criteria' else '' }}">Primary Screening Criteria</a>
-    <a href="{{ url_for('selection_outcomes_home') }}" class="{{ 'active' if active_nav == 'selection-outcomes' else '' }}">Selection Outcomes</a>
-    <a href="{{ url_for('selection_queues_home') }}" class="{{ 'active' if active_nav == 'selection-queues' else '' }}">Selection Queues</a>
-    <a href="{{ url_for('acquisition_sources_home') }}" class="{{ 'active' if active_nav == 'acquisition-sources' else '' }}">Acquisition Sources</a>
-    <a href="{{ url_for('communication_templates_home') }}" class="{{ 'active' if active_nav == 'communication-templates' else '' }}">Communication Templates</a>
-    <a href="{{ url_for('reminder_policies_home') }}" class="{{ 'active' if active_nav == 'reminder-policies' else '' }}">Reminder Policies</a>
-    <a href="{{ url_for('alerts_home') }}" class="{{ 'active' if active_nav == 'alerts' else '' }}">Alerts</a>
-    <a href="{{ url_for('channels_home') }}" class="{{ 'active' if active_nav == 'channels' else '' }}">Channels</a>
-    <a href="{{ url_for('application_questions_home') }}" class="{{ 'active' if active_nav == 'application-questions' else '' }}">Application Questions</a>
-    <a href="{{ url_for('channel_analytics_home') }}" class="{{ 'active' if active_nav == 'channel-analytics' else '' }}">Channel Analytics</a>
-    <a href="{{ url_for('compliance_reviews_home') }}" class="{{ 'active' if active_nav == 'compliance' else '' }}">Compliance Reviews</a>
-    {% if not rfone_login_mode %}<a href="{{ url_for('identity_switch') }}" class="{{ 'active' if active_nav == 'identity' else '' }}">Acting Identity</a>{% endif %}
-  </div>
+  {# SELECTION_AI_INTEGRATION_001 — the historical Selection pages keep
+     working but are no longer part of the navigation: the only way back is
+     Selection's current interface (the position workspace). #}
+  <p style="font-size:.85rem;"><a href="{{ url_for('positions.dashboard') }}">&larr; Selection: posizioni aperte</a>
+    <span style="color:var(--muted)">· pagina storica di Selection, fuori dalla navigazione</span></p>
   {% block content %}{% endblock %}
 </div>
 </body>

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8"><meta name="bank-csrf" content="{{ csrf_token() if csrf_token is defined else '' }}"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Regole e chiarimenti · Bank · RF-One</title>
+  <link rel="icon" href="rf-one.png"><link rel="stylesheet" href="rf-one.css"><link rel="stylesheet" href="preview.css">
+  <script defer src="app.js?v=3"></script>
+</head>
+<body>
+<div class="wrap wrap-wide">
+  <header class="site-header">
+    <a class="brand" href="http://127.0.0.1:5080/" target="_blank" rel="noopener"><span class="brand-name-group"><span class="brand-wordmark">Rome's Flavours · WP</span><span class="brand-suffix">RF-ONE</span></span></a>
+    <img class="brand-logo" src="rf-one.png" alt="RF-One">
+  </header>
+  <div class="preview-notice"><span class="preview-label">Anteprima locale</span><span>Conversazione → conferma della regola → anteprima sull’intero database. Nessun movimento viene modificato.</span></div>
+  <nav class="breadcrumb" aria-label="Percorso"><ol><li><a href="http://127.0.0.1:5080/" target="_blank" rel="noopener">RF-One</a></li><li><a href="http://127.0.0.1:5080/bank" target="_blank" rel="noopener">Bank Reconciliation</a></li><li aria-current="page">Regole e chiarimenti</li></ol></nav>
+  <div class="module-header"><div class="module-identity"><h1 class="module-title">Bank Reconciliation</h1><p class="module-tagline">Monthly bank and card reconciliation.</p></div></div>
+  <nav class="module-tabs module-tabs--equal" aria-label="Bank Reconciliation sections">
+    <a class="module-tab" href="http://127.0.0.1:5080/bank" target="_blank" rel="noopener">Import and Review</a><a class="module-tab" href="http://127.0.0.1:5080/bank/review" target="_blank" rel="noopener">Review Transactions</a><a class="module-tab" href="http://127.0.0.1:5080/bank/export" target="_blank" rel="noopener">Monthly Export</a><a class="module-tab" href="http://127.0.0.1:5080/bank/sources" target="_blank" rel="noopener">Source</a><a class="module-tab is-active" href="#" aria-current="page">Regole e chiarimenti</a><a class="module-tab" href="http://127.0.0.1:5080/bank/configuration" target="_blank" rel="noopener">Configuration</a><a class="module-tab" href="http://127.0.0.1:5080/bank/instructions" target="_blank" rel="noopener">Instructions</a>
+  </nav>
+  <div class="page-heading"><div><h2>Regole e chiarimenti</h2><p class="muted">Mi insegni come ragionare. Ti chiedo soltanto quello che non riesco a capire.</p></div><a class="jump-link" href="#questions">Vai ai casi da chiarire ↓</a></div>
+  <section class="card rules-section" aria-labelledby="rules-title">
+    <div class="section-heading"><div><span class="eyebrow">01 · COME DEVO RAGIONARE</span><h2 id="rules-title">Le tue regole <span class="badge" id="rule-count">4</span></h2></div><button type="button" class="btn-secondary" id="add-rule">+ Aggiungi regola</button></div>
+    <p class="muted section-description">Le indicazioni generali e le regole definite in chat. Le regole confermate sono salvate nel Bank; le eccezioni tornano in Parliamone.</p>
+    <div id="rules-list"></div>
+  </section>
+  <section class="card questions-section" id="questions" aria-labelledby="questions-title">
+    <div class="section-heading"><div><span class="eyebrow">02 · QUELLO CHE HO BISOGNO DI SAPERE</span><h2 id="questions-title">Parliamone: affiniamo le regole <span class="badge" id="question-count">—</span></h2></div><label class="period-label">Periodo<select id="period"><option value="all">Tutti i mesi disponibili</option></select></label></div>
+    <p class="muted section-description" id="questions-description">Sto caricando i casi dal Bank locale…</p>
+    <div class="question-toolbar"><label class="search-label">Cerca un WHO<input id="search" type="search" placeholder="Nome della controparte"></label><span id="queue-summary" aria-live="polite"></span></div>
+    <div id="cases-list"></div>
+    <div id="empty" class="empty-state" hidden><strong>Nessun caso da chiarire in questo periodo.</strong><p>Le risposte già date rimangono nella conoscenza acquisita.</p></div>
+  </section>
+  <section class="card knowledge-section" aria-labelledby="knowledge-title">
+    <div class="section-heading"><div><span class="eyebrow">03 · QUELLO CHE MI HAI GIÀ INSEGNATO</span><h2 id="knowledge-title">Conoscenza acquisita <span class="badge" id="knowledge-count">1</span></h2></div></div>
+    <p class="muted section-description">Le soluzioni per una controparte. Una nuova evidenza o un'eccezione può cambiare la classificazione.</p>
+    <div id="knowledge-list"></div>
+  </section>
+  <footer class="preview-footer"><span id="snapshot-date"></span><button type="button" class="text-button" id="reset">Ripristina l'anteprima</button></footer>
+</div>
+<dialog id="rule-dialog" aria-labelledby="rule-dialog-title"><form id="rule-form"><div class="dialog-heading"><h2 id="rule-dialog-title">Modifica regola</h2><button type="button" class="close-button" data-close aria-label="Chiudi">×</button></div><label>Titolo<input id="rule-name" required maxlength="100"></label><label>La regola, con le tue parole<textarea id="rule-text" required rows="6"></textarea></label><p class="muted">La modifica resta salvata nell'anteprima locale.</p><div class="dialog-actions"><button type="button" class="btn-secondary" data-close>Annulla</button><button type="submit">Salva regola</button></div></form></dialog>
+<dialog id="answer-dialog" class="chat-dialog" aria-labelledby="answer-title">
+  <div class="dialog-heading"><div><span class="eyebrow">CAPIAMO INSIEME LA REGOLA</span><h2 id="answer-title"></h2></div><button type="button" class="close-button" data-close aria-label="Chiudi">×</button></div>
+  <p class="chat-subtitle">Scrivi come parleresti con me. Prima ti chiedo conferma, poi vediamo l’effetto su tutto il database.</p>
+  <div id="chat-messages" class="chat-messages" role="log" aria-live="polite" aria-label="Conversazione sulla regola"></div>
+  <div id="chat-busy" class="chat-busy" role="status" hidden>Sto leggendo la tua risposta…</div>
+  <div id="chat-confirmation" hidden></div>
+  <section id="chat-preview" hidden aria-label="Anteprima della regola sull’intero database"></section>
+  <form id="chat-form" class="chat-composer"><label for="chat-input">La tua risposta</label><textarea id="chat-input" rows="3" required placeholder="Per esempio: gli acquisti TEMU sulla carta personale sono personali; quelli sulla carta aziendale sono forniture per il ristorante."></textarea><div class="composer-bottom"><span>Invio per mandare · Maiusc + Invio per andare a capo</span><button id="chat-send" type="submit">Invia</button></div></form>
+</dialog>
+<dialog id="trip-dialog" aria-labelledby="trip-title"><div class="dialog-heading"><span class="eyebrow">ESEMPIO DI DOMANDA SUL VIAGGIO</span><button type="button" class="close-button" data-close aria-label="Chiudi">×</button></div><h2 id="trip-title">Vedo un viaggio a Cozumel.<br>Personale o business?</h2><p class="muted">Una risposta per il viaggio, senza ripetere la domanda per ogni transazione.</p><div class="trip-options"><button type="button" class="btn-secondary" data-trip="Personale">Personale</button><button type="button" data-trip="Business">Business</button></div><p class="inline-note">Esempio di interazione: non è un viaggio rilevato nei dati caricati.</p></dialog>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

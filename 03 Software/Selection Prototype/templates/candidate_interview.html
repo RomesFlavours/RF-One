@@ -1,0 +1,63 @@
+{% extends "public_base.html" %}
+{% block title %}Interview{% endblock %}
+{% block content %}
+<h1>{{ position.title }}</h1>
+<div class="muted">{{ position.location_label }} · Short interview, about 5 minutes</div>
+{% set done = given|length %}
+<div class="bar"><span style="width:{{ (100 * done / (questions|length or 1))|round|int }}%"></span></div>
+
+{% if application.status == 'SUBMITTED' %}
+  <h2 style="font-size:1.15rem">Thank you — your application is complete.</h2>
+  <p class="muted">We will contact you if your profile is selected for an interview.</p>
+{% elif current is not none %}
+  <div class="muted">Question {{ current + 1 }} of {{ questions|length }}</div>
+  <form method="post" id="qform">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="index" value="{{ current }}">
+    <input type="hidden" name="input_mode" id="input_mode" value="{{ given[current].input_mode if current in given else 'TEXT' }}">
+    <label for="answer" style="font-size:1.05rem;color:#1d2433">{{ questions[current].text }}</label>
+    <textarea name="answer" id="answer" autofocus>{{ given[current].answer_text if current in given else '' }}</textarea>
+    <div class="row" style="margin-top:.5rem">
+      <button type="button" class="btn ghost small" id="mic" hidden>🎤 Speak</button>
+      <span class="muted" id="mic-state"></span>
+    </div>
+    <div class="note" id="mic-note" hidden>Voice input uses your browser's speech recognition, which may process audio on your browser
+      provider's servers. You can always type instead, and you can edit the text before saving.</div>
+    <div class="row" style="margin-top:1rem">
+      <button class="btn" name="action" value="next">Save and continue</button>
+      <button class="btn ghost" name="action" value="later">Save and finish later</button>
+    </div>
+  </form>
+{% else %}
+  <h2 style="font-size:1.15rem">Review and send</h2>
+  {% for q in questions %}<div class="q"><b>{{ q.text }}</b><br>
+    {% if loop.index0 in given %}{{ given[loop.index0].answer_text }}{% else %}<span class="muted">No answer</span>{% endif %}
+    <form method="get" style="display:inline"><input type="hidden" name="q" value="{{ loop.index0 }}"><button class="btn ghost small">Edit</button></form></div>{% endfor %}
+  <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p><button class="btn" name="action" value="submit">Send my application</button></p></form>
+{% endif %}
+
+{% if application.status != 'SUBMITTED' %}
+<div class="note">Your answers are saved after each question. To continue later, keep this personal link:<br>
+  <a href="{{ resume_url }}">{{ resume_url }}</a></div>
+{% endif %}
+<script>
+  try { localStorage.setItem('rfone-apply-{{ position.public_token }}', {{ resume_url|tojson }});
+        {% if application.status == 'SUBMITTED' %}localStorage.removeItem('rfone-apply-{{ position.public_token }}');{% endif %} } catch (e) {}
+  (function () {
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition, mic = document.getElementById('mic');
+    if (!SR || !mic) return;
+    mic.hidden = false; document.getElementById('mic-note').hidden = false;
+    var rec = new SR(), on = false, box = document.getElementById('answer'), state = document.getElementById('mic-state');
+    rec.lang = 'en-US'; rec.continuous = true; rec.interimResults = false;
+    rec.onresult = function (e) {
+      for (var i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal)
+        box.value = (box.value ? box.value.trim() + ' ' : '') + e.results[i][0].transcript.trim();
+      document.getElementById('input_mode').value = 'VOICE';
+    };
+    rec.onend = function () { on = false; mic.textContent = '🎤 Speak'; state.textContent = ''; };
+    rec.onerror = function (e) { state.textContent = 'Voice not available: please type.'; };
+    mic.onclick = function () { if (on) { rec.stop(); return; } on = true; rec.start(); mic.textContent = '■ Stop'; state.textContent = 'Listening…'; };
+  })();
+</script>
+{% endblock %}

@@ -849,6 +849,22 @@ def tips_run_history():
         )
 
 
+@app.route("/historical-tip-payments")
+def historical_tip_payments():
+    from rfone_data_store.tips import historical_payments
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        documents = historical_payments.list_documents(session, restaurant_id=restaurant.id) if restaurant else []
+        run_id = request.args.get("document", type=int)
+        if run_id is None and documents:
+            run_id = documents[0]["run_id"]
+        report = historical_payments.report(session, restaurant_id=restaurant.id, run_id=run_id) if restaurant and run_id else None
+        if run_id and report is None:
+            abort(404)
+        return render_template("historical_tip_payments.html", documents=documents, report=report,
+            active_nav="tips-runs", crumbs=[("Saved Periods", url_for("tips_run_history")), ("Historical paid tips", None)])
+
+
 @app.route("/tips-runs/<int:run_id>")
 def tips_run_report(run_id: int):
     """§18 — the Calculation Run Report, read back from what was saved.

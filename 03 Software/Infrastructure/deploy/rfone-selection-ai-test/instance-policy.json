@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Sid": "ReadTestSecrets", "Effect": "Allow", "Action": ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
+     "Resource": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-selection-ai-test/*"},
+    {"Sid": "TestResumeDocuments", "Effect": "Allow",
+     "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject", "s3:DeleteObjectVersion"],
+     "Resource": "arn:aws:s3:::rfone-selection-ai-test-documents-418674484214/selection/resumes/*"},
+    {"Sid": "ListTestResumeVersions", "Effect": "Allow", "Action": "s3:ListBucketVersions",
+     "Resource": "arn:aws:s3:::rfone-selection-ai-test-documents-418674484214",
+     "Condition": {"StringLike": {"s3:prefix": "selection/resumes/*"}}},
+    {"Sid": "BedrockHaiku45", "Effect": "Allow", "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+     "Resource": [
+       "arn:aws:bedrock:us-east-1:418674484214:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+       "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
+       "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
+       "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0"]}
+  ]
+}
