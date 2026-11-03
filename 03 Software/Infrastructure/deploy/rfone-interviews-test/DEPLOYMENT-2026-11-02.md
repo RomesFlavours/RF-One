@@ -1,6 +1,6 @@
-# Interviews TEST fixes, 2026-11-02 (NOT deployed)
+# Interviews TEST fixes, 2026-11-02 (deployed 2026-11-03)
 
-Status: committed on branch `shelbi/interviews-fixes`, based on `codex/interviews-aws-test-20261101` (`ac22288`), with `origin/release/tips-shared-migrations` merged in. Nothing was pushed, built, deployed or migrated. No AWS resource or shared database was touched. Pino deploys.
+Status: deployed on 2026-11-03 from commit `34a91a8`; see "Deployment receipt, 2026-11-03" at the end. Originally committed on branch `shelbi/interviews-fixes`, based on `codex/interviews-aws-test-20261101` (`ac22288`), with `origin/release/tips-shared-migrations` merged in. Nothing was pushed, built, deployed or migrated. No AWS resource or shared database was touched. Pino deploys.
 
 **Build rfone-web from this merged branch.** The rfone-web image running now includes `59246b0` (Clover identity holds: `employee_directory.py`, `technical/connectors/clover/identity_holds.py`) and the shared-migrations build-time chain check. Both came in with the merge, so an image built from this branch keeps them; an image built from the interviews branch alone would drop them. After the merge `check_migration_chain.py` reports a single head: `MIGRATION CHAIN OK head=e1b220261102 contains AWS revision e0a120261101`.
 
@@ -39,3 +39,22 @@ If the image goes out before the migration, Interviews pages answer "Interviews 
 - `check_migration_chain.py`: `MIGRATION CHAIN OK head=e1b220261102 contains AWS revision e0a120261101`.
 
 Not exercised: a real AI call, a real timeout against Bedrock, gthread under real load, and the migration on PostgreSQL (tested on SQLite only). With `RFONE_AI_TIMEOUT_SECONDS=45`, a Bank AI rules or Tips call whose answer takes longer than 45 s to generate now fails after its single attempt where it used to wait.
+
+## Deployment receipt, 2026-11-03
+
+AWS account 418674484214, us-east-1, service `rfone-web`. Released from `origin/shelbi/interviews-fixes` at `34a91a890db39d8cea56416528caf806ec7bb9f7`; the source archive was made with `git archive` of that commit (no local changes) in the layout of the previous release.
+
+| Step | Identifier | Result |
+|---|---|---|
+| RDS snapshot | `rfone-dev-pre-interview-consent-20261103t140633z` | available before the migration |
+| Source | `s3://rfone-tips-deploy-418674484214/releases/web-interviews-consent-20261103t140633z/source.zip` (sha256 `7c123b29…96bc5`) | 848 files |
+| Build | CodeBuild `rfone-web-build:cd3de1a4-4bd8-4f31-b3d5-d06255d50967` | SUCCEEDED; `MIGRATION CHAIN OK head=e1b220261102 contains AWS revision e0a120261101` |
+| Image | `rfone-web:interviews-consent-20261103t140633z`, digest `sha256:74e8e188ab16f41816c792e008dd5944ed8ef3346997e055a8da01490fdaa4b1` | pushed |
+| Migration | task definition `rfone-interviews-migration:3`, ECS task `rfone-jobs/5bf0794561ba4ade8616262851b28b05` | exit 0, `applied` `e0a120261101` -> `e1b220261102`, 0 data rows; re-run `f77f0431…` answered `already_applied` |
+| Rollout | App Runner operation `c2e044a2f29e4f32a746f1ca26c55c08` | SUCCEEDED; image identifier only, other settings unchanged |
+
+Verified after the rollout: service RUNNING; TCP health check passed; gunicorn gthread with 2 workers started and the application log has no errors; login 200; Home, Interviews admin and results, Selection, Training, Tips, Bank and People redirect to login; Interviews pages carry `no-store` and `noindex, nofollow`; the served `interviews.js` is byte-identical to the commit. A read-only check run with the new image on the AWS database found revision `e1b220261102`, the Interviews model reading the consent columns (one existing interview, REQUESTED, consent not recorded) and the Bedrock client configured with `total_max_attempts` (one attempt with `RFONE_AI_TIMEOUT_SECONDS=45`). No interview was created; no real AI call was made.
+
+`schema/aws_applied_revision.json` in the deployment bucket now names `e1b220261102` (previous copy: `schema/history/aws_applied_revision.e0a120261101.json`), as does `migrations/aws_applied_revision.json` here.
+
+Rollback: restore image `rfone-web:identity-record-holds-20261102t123252z` (image identifier only). The two consent columns can stay; that image never names them.

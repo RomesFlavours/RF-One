@@ -1,13 +1,13 @@
 {
   "purpose": "Alembic revision currently applied to the shared AWS database. Every service build must contain it (check_migration_chain.py). Update it in the same commit that records a migration applied on AWS. See MIGRATIONS.md.",
   "database": "rfone-dev / rfone (RDS, us-east-1, account 418674484214)",
-  "revision": "e0a120261101",
-  "applied_utc": "2026-11-01T20:00Z",
-  "applied_by": "rfone-web release interviews-test-20261101t195949z, ECS task rfone-jobs/1b522433fe554dd2bcde4c3d7d0d434f (d9e220261029 -> e0a120261101)",
+  "revision": "e1b220261102",
+  "applied_utc": "2026-11-03T14:13Z",
+  "applied_by": "rfone-web release interviews-consent-20261103t140633z (commit 34a91a8), ECS task rfone-jobs/5bf0794561ba4ade8616262851b28b05 (e0a120261101 -> e1b220261102)",
   "evidence": {
-    "deployed_source": "s3://rfone-tips-deploy-418674484214/releases/interviews-test-20261101t202720z/source.zip",
-    "deployed_source_sha256": "f6a7861ee5129177ff3a2bba69b3798bc4931b8caa80129c83d0363df1527c6e",
-    "migration_file_git_blob": "244f462778598bf9808f3c8a15364daca5e0b226",
-    "pre_migration_snapshot": "rfone-dev-pre-interviews-test-20261101t195736z"
+    "deployed_source": "s3://rfone-tips-deploy-418674484214/releases/web-interviews-consent-20261103t140633z/source.zip",
+    "deployed_source_sha256": "7c123b29af4461676b239bffd805cb84ee0e57914ce49bb6d3cf98b9e1696bc5",
+    "migration_file_git_blob": "ae7faad1887f1d5f2cf0351accb6063f6bf3ecac",
+    "pre_migration_snapshot": "rfone-dev-pre-interview-consent-20261103t140633z"
   }
 }
