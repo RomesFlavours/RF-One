@@ -24,8 +24,9 @@ def prepare_environment():
                 or not (parsed.hostname or "").startswith("dpg-")
                 or parsed.path != "/rfone_selection_free_trial"):
             raise RuntimeError("Only the isolated Render trial database is allowed")
-    if url.startswith("postgres://"):
-        os.environ["RFONE_DATABASE_URL"] = "postgresql://" + url[len("postgres://"):]
+    if parsed.scheme in ("postgres", "postgresql"):
+        # SQLAlchemy 2.1 defaults to psycopg3; the shared app installs psycopg2.
+        os.environ["RFONE_DATABASE_URL"] = "postgresql+psycopg2://" + url.split("://", 1)[1]
     for key in ("RFONE_FLASK_SECRET_KEY", "RFONE_TRIAL_ADMIN_PASSWORD"):
         if len(os.environ.get(key, "")) < 24:
             raise RuntimeError(f"Set a unique trial secret: {key} (24+ characters)")
