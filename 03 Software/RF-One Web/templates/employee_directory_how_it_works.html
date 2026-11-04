@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% block page_title %}Come funziona l’Anagrafica · RF-One{% endblock %}
+{% block content %}
+{{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', url_for('employee_directory_home')), ('Come funziona', none)]) }}
+<h1>Come funziona l’Anagrafica dipendenti</h1>
+<p>L’Anagrafica è l’unico registro delle persone di RF-One: ogni persona ha una sola identità RF1, usata da tutti i moduli. Clover è una fonte di osservazioni: RF-One legge Clover e non vi scrive mai.</p>
+<nav aria-label="Indice della guida"><a href="#list">Elenco</a> · <a href="#states">Stati</a> · <a href="#sync">Sincronizzazione</a> · <a href="#suspended">Cessazioni sospese</a> · <a href="#reconcile">Riconciliazione</a> · <a href="#technical">Osservazioni tecniche</a> · <a href="#accounts">Account RF1</a> · <a href="#owner">Eccezione owner</a> · <a href="#detail">Scheda dipendente</a> · <a href="#applicability">Applicabilità</a> · <a href="#history">Storico</a></nav>
+
+<section id="list"><h2>Elenco</h2>
+<p><strong>Dipendenti attivi</strong> sono raggruppati per sede. Per ogni persona si vedono applicabilità, ultimo aggiornamento, stato dell’account RF1 e cosa resta da verificare.</p>
+<p><strong>Dismissis</strong> (chiuso all’apertura) contiene le persone senza posizioni attive, con la data di cessazione. <strong>Osservazioni tecniche</strong> e <strong>Collegamenti da riconciliare</strong> sono spiegati sotto.</p>
+<p><em>Nuova persona RF1</em> crea una persona senza POS e senza sede, con un account RF1 predisposto (vedi <a href="#accounts">Account RF1</a>). La ricerca filtra per nome, email o codice interno.</p></section>
+
+<section id="states"><h2>Stati: persona attiva, posizione per sede, dismissed</h2>
+<p>Una persona può avere una <strong>posizione</strong> in più sedi, anche con più account Clover nella stessa sede. Lo stato della persona dipende dalle sue posizioni:</p>
+<ul><li><strong>Posizione attiva</strong>: la persona compare nell’ultimo elenco completo di Clover di quella sede.</li>
+<li><strong>Posizione cessata</strong>: la persona è scomparsa dall’elenco completo di quella sede. Si chiude solo quella posizione; le altre sedi non cambiano.</li>
+<li><strong>Dismissed</strong>: quando non resta alcuna posizione attiva. La data di cessazione è l’ultimo clock-in, anche senza clock-out. Se esistono solo clock-out la data resta «non determinabile»: RF-One non la inventa.</li></ul>
+<p>Una persona dismissed non è selezionabile per nuove operazioni in nessun modulo (interviste, Projects, carte Bank, Training) e il suo accesso RF1 è bloccato, incluse le sessioni già aperte. Se ricompare in Clover torna attiva, ma l’accesso <strong>non</strong> viene riattivato automaticamente. Le assegnazioni organizzative restano a Workforce: l’Anagrafica registra la cessazione ma non chiude quei record.</p>
+<p>Le persone create in RF1 senza POS hanno lo stato impostato a mano nella scheda: «Non attivo» blocca l’accesso, tornare «Attivo» non riattiva l’account.</p></section>
+
+<section id="sync"><h2>Sincronizzazione</h2>
+<p>Accanto a ogni sede si vede l’ultima sincronizzazione, nell’ora locale della sede. <em>Sincronizza ora</em> avvia subito una lettura Clover della sede; inoltre il servizio automatico legge l’elenco Clover circa ogni minuto.</p>
+<p>Solo una lettura <strong>completa e riuscita</strong> dell’elenco e delle timbrature può chiudere una posizione. Letture fallite o parziali, vecchi file importati e sedi non configurate o mai verificate non producono mai cessazioni. Una sede non configurata (per esempio Mount Dora) non blocca le altre.</p></section>
+
+<section id="suspended"><h2>Cessazioni sospese</h2>
+<p>Se in una sede c’è un’identità Clover con timbrature ancora da riconciliare, l’assenza delle altre persone di quella sede resta «Assente da Clover: cessazione sospesa»: l’identità in attesa potrebbe essere un secondo account della stessa persona. La cessazione viene decisa solo dopo la riconciliazione. Una ricomparsa invece riattiva subito.</p></section>
+
+<section id="reconcile"><h2>Riconciliazione delle identità Clover</h2>
+<p>Ogni nuova identità Clover (merchant + Employee ID) con almeno una timbratura resta in <strong>Collegamenti da riconciliare</strong> finché un amministratore dell’anagrafica non sceglie: <em>Collega alla persona</em> (una persona RF1 esistente) oppure <em>Conferma che è una persona nuova</em>. RF-One non unisce mai persone per somiglianza di nome o email: i «possibili abbinamenti» sono solo suggerimenti.</p>
+<p>Più account POS possono appartenere alla stessa persona. Finché un’identità è in attesa, restano in attesa solo i suoi record (ordini, pagamenti, turni); alla conferma vengono attribuiti e l’evento è registrato nello storico.</p></section>
+
+<section id="technical"><h2>Osservazioni tecniche</h2>
+<p>Un nominativo Clover senza alcun clock-in o clock-out verificato non è un dipendente: non entra nell’elenco, non riceve un account RF1 e non può essere né collegato né confermato come persona nuova. Resta in <em>Osservazioni tecniche</em> solo per l’attribuzione dei dati storici, e diventa riconciliabile quando compare una sua timbratura.</p></section>
+
+<section id="accounts"><h2>Account RF1 e account predisposti</h2>
+<p>Ogni dipendente ha esattamente un account RF1, e un account appartiene al massimo a un dipendente. Alla creazione di una persona viene predisposto un account <strong>INACTIVE</strong>, senza credenziali utilizzabili, senza email e senza permessi.</p>
+<p>Nella scheda dipendente l’account predisposto può essere sostituito con l’account RF1 reale già esistente della persona. L’account sostituito resta INACTIVE, scollegato e registrato (ACCOUNT_REPLACED); non viene cancellato e non può mai diventare l’account reale di un’altra persona. I permessi si assegnano solo in Accounts: l’Anagrafica non ne concede.</p>
+<p>Gli account esterni (per esempio consulenti) non hanno una persona in anagrafica e non sono toccati dalle assenze Clover.</p></section>
+
+<section id="owner"><h2>Eccezione owner</h2>
+<p>Se la persona collegata all’account owner è dismissed, l’owner conserva l’accesso amministrativo RF1 e l’eccezione è registrata (OWNER_ACCESS_PROTECTED). Vale solo per l’accesso: la persona resta dismissed ed esclusa dai destinatari delle interviste e da ogni nuova selezione operativa.</p></section>
+
+<section id="detail"><h2>Scheda dipendente</h2>
+<p>Mostra stato complessivo, account RF1, dati interni (nome, email, telefono, codice interno), collegamenti ai domini, sedi e dati Clover per sede, differenze tra sedi, applicabilità organizzativa e storico. Le modifiche richiedono un amministratore dell’anagrafica.</p>
+<p>I dati interni sono gestiti in RF-One e gli import Clover non li sovrascrivono. Quando i dati Clover differiscono tra sedi nessuna sede prevale: si conferma di averle esaminate, e una nuova differenza riapre la verifica.</p>
+<p>I collegamenti ai domini (account RF1, Training, candidato Selection, responsabile Projects, identità Bank) si creano solo con conferma esplicita e non concedono permessi.</p></section>
+
+<section id="applicability"><h2>Applicabilità organizzativa</h2>
+<p>Indica dove opera la persona. Si sceglie solo nella scheda dipendente e tutti i moduli la leggono da qui:</p>
+<ul><li><strong>Un solo ristorante</strong>: seleziona esattamente un ristorante.</li>
+<li><strong>Più ristoranti</strong>: seleziona almeno due ristoranti.</li>
+<li><strong>Intero gruppo</strong>: tutta l’organizzazione, anche i ristoranti aggiunti in futuro; non si selezionano ristoranti.</li>
+<li><strong>Non configurato</strong>: l’ambito non è ancora stato deciso. Non equivale mai all’intero gruppo.</li></ul>
+<p>Combinazioni incoerenti (ad esempio «Un solo ristorante» con due ristoranti spuntati) vengono rifiutate e nulla viene salvato.</p>
+<p>L’applicabilità non concede permessi (l’accesso ai moduli resta quello assegnato in Accounts), non cambia lo stato attivo e non decide quali persone un utente può selezionare. <strong>Interviews</strong> elenca tutti i dipendenti attivi, senza limitarli all’applicabilità di chi richiede l’intervista, e ricontrolla la persona al momento dell’invio.</p></section>
+
+<section id="history"><h2>Storico conservato</h2>
+<p>Lo storico registra, senza cancellarle, tutte le decisioni: collegamenti e riconciliazioni, cessazioni e riattivazioni per sede, account predisposti e sostituiti, accessi bloccati, eccezione owner e ogni cambio di applicabilità con valore precedente e nuovo. Turni, pagamenti, mance, interviste e documenti delle persone dismissed restano invariati e consultabili.</p></section>
+{% endblock %}
