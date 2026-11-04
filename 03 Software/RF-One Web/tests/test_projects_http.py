@@ -331,7 +331,7 @@ def main() -> int:
     check("P1. native RF-One people appear in the project selector without POS", "Shared project person" in client.get("/projects").get_data(as_text=True))
     response = post(f"/projects/{p1}/responsibles", employee_id=str(person_id), name="")
     with SessionFactory() as s:
-        link = s.scalar(select(m.EmployeeContextLink).where(m.EmployeeContextLink.employee_id == person_id))
+        link = s.scalar(select(m.EmployeeContextLink).where(m.EmployeeContextLink.employee_id == person_id, m.EmployeeContextLink.project_responsible_id.is_not(None)))
         shared_responsible = link.project_responsible_id
     check("P2. selecting a person creates an explicit reference", response.status_code == 302 and shared_responsible is not None)
     response = post(f"/projects/{p1}/tasks", title="Shared identity task", chapter_id=str(c1),
