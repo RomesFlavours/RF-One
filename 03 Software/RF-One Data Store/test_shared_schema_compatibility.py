@@ -20,6 +20,9 @@ from rfone_data_store.schema_compatibility import (
 
 HERE = Path(__file__).resolve().parent
 UNKNOWN = "ffff20991231"
+# This tree's single head: the AWS revision or a later one built on it
+# (e1b220261102, interview consent, runs on AWS after e0a120261101).
+TREE_HEAD = "e1b220261102"
 
 
 def _sha(path):
@@ -63,7 +66,7 @@ class MigrationChainCheckTests(unittest.TestCase):
     def test_tree_contains_the_registered_aws_revision_as_its_single_head(self):
         heads, problems = chain.check(chain.VERSIONS_DIR, chain.aws_revision()[0])
         self.assertEqual(problems, [])
-        self.assertEqual(heads, ["e0a120261101"])
+        self.assertEqual(heads, [TREE_HEAD])
         self.assertEqual(chain.main([]), 0)
 
     def test_tree_without_the_aws_revision_is_refused(self):
@@ -72,7 +75,7 @@ class MigrationChainCheckTests(unittest.TestCase):
         self.assertTrue(any("not in this tree" in p for p in problems), problems)
 
     def test_a_newer_branch_revision_on_top_of_aws_passes(self):
-        self._add("aaaa20991231_next.py", "aaaa20991231", "e0a120261101")
+        self._add("aaaa20991231_next.py", "aaaa20991231", TREE_HEAD)
         heads, problems = chain.check(self.versions, "e0a120261101")
         self.assertEqual((heads, problems), (["aaaa20991231"], []))
 
@@ -121,7 +124,7 @@ class SharedDatabaseRuleTests(unittest.TestCase):
 
     def test_new_private_sqlite_file_is_created_at_head(self):
         self.assertTrue(self.created)
-        self.assertEqual(_revision(self.base), ["e0a120261101"])
+        self.assertEqual(_revision(self.base), [TREE_HEAD])
 
     def test_existing_database_is_never_migrated_by_prepare(self):
         path = self._copy("older.db", "DROP TABLE interview_sessions",

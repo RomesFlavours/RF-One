@@ -71,7 +71,7 @@ class SelectionStartupTests(unittest.TestCase):
 
     def test_new_private_database_is_created_at_head_with_workspace(self):
         self.assertIn("SELECTION STARTED", self.first.stdout, self.first.stderr[-3000:])
-        self.assertEqual(_revision(self.base), ["e0a120261101"])
+        self.assertEqual(_revision(self.base), ["e1b220261102"])
         connection = sqlite3.connect(self.base)
         try:
             tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
