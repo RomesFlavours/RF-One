@@ -1,9 +1,9 @@
 {
-  "release": "rfone-employee-lifecycle-20261103",
-  "scope": "Complete roster/clock lifecycle, mandatory RF1 account, dismissed recipient filtering; Clover GET only",
+  "release": "rfone-employee-directory-20261104",
+  "scope": "Complete roster/clock lifecycle, mandatory RF1 account, dismissed recipient filtering, record-level identity holds kept; Clover GET only",
   "files": {
     "RF-One Data Store/rfone_data_store/models.py": "5a20df19ac9c3e116376d678da3a1abe01fbd34738649b7e07979b717c9e0410",
-    "RF-One Data Store/rfone_data_store/employee_directory.py": "cf65a05ce5d4ae5950d3bdab510ab1ab9530a40a3b7ade965f951e8a8c3d834a",
+    "RF-One Data Store/rfone_data_store/employee_directory.py": "4ad4a45edfea298e997243804ef9cb4d54d328adb13141a539a83b49924f8cdd",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/acquisition.py": "d1e780ed734d5c5b6cb7c41eac2ea3af895f9f7f4ca970703f9a7e51cc9edab9",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/correction_sync.py": "30a0bd58cf9964c1d1b9525054ec005ed5b37ae889af76e668f0427759406140",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/mapping.py": "cad7dd0aaddc59f0b1898058ad6553756cbf1eee65fe3249c64d600c31d291d7",
