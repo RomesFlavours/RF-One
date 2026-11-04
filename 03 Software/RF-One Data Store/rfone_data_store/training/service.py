@@ -179,6 +179,9 @@ def verify_login(session: Session, username: str, password: str, *, now: datetim
     account.failed_login_attempts = 0
     account.locked_until = None
     session.flush()
+    from ..employee_directory import context_employee_allows_access
+    if not context_employee_allows_access(session, "TRAINING", account.id):
+        return LoginResult(None, "This employee is dismissed.")
     return LoginResult(account, None)
 
 
@@ -205,6 +208,7 @@ def create_need(
     text = text.strip()
     if not text:
         raise ValueError("text is required")
+    _require_current_student(session, student_account_id)
     if origin == "":
         origin = None
     need = m.TrainingNeed(
@@ -218,6 +222,13 @@ def create_need(
 
 class DuplicateAssignmentError(ValueError):
     pass
+
+
+def _require_current_student(session: Session, student_account_id: int) -> None:
+    """New needs/assignments only for current people; existing history stays."""
+    from ..employee_directory import context_employee_allows_access
+    if not context_employee_allows_access(session, "TRAINING", student_account_id):
+        raise ValueError("This student's employee record is dismissed: no new training can be assigned.")
 
 
 def assign_pill(
@@ -234,6 +245,9 @@ def assign_pill(
     ).first()
     if existing is not None:
         raise DuplicateAssignmentError("This pill is already assigned to this need.")
+    need = session.get(m.TrainingNeed, need_id)
+    if need is not None:
+        _require_current_student(session, need.student_account_id)
 
     assignment = m.TrainingAssignment(need_id=need_id, pill_id=pill_id, assigned_by_account_id=assigned_by_account_id)
     session.add(assignment)
@@ -278,6 +292,7 @@ def assign_pills_bulk(
     need = session.get(m.TrainingNeed, need_id)
     if need is None:
         raise ValueError("Training need not found.")
+    _require_current_student(session, need.student_account_id)
 
     unique_ids = sorted(set(pill_ids))
     if not unique_ids:
@@ -387,12 +402,13 @@ def list_attempts_for_assignment(session: Session, assignment_id: int) -> list[m
     )
 
 
-def list_all_students(session: Session) -> list[m.TrainingAccount]:
-    return list(
-        session.scalars(
-            select(m.TrainingAccount).where(m.TrainingAccount.role == "student").order_by(m.TrainingAccount.username)
-        ).all()
-    )
+def list_all_students(session: Session, *, dismissed: bool = False) -> list[m.TrainingAccount]:
+    """Current students by default (new assignments); `dismissed=True` lists
+    students whose linked employee has left, so their history stays reachable."""
+    from ..employee_directory import context_employee_allows_access
+    return [account for account in session.scalars(
+        select(m.TrainingAccount).where(m.TrainingAccount.role == "student").order_by(m.TrainingAccount.username))
+        if context_employee_allows_access(session, "TRAINING", account.id) != dismissed]
 
 
 def list_all_pills(session: Session) -> list[m.TrainingPill]:

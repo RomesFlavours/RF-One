@@ -368,7 +368,10 @@ def trainer_home():
         students_view = [
             {"account": s, "need_count": len(svc.list_needs_for_student(db, s.id))} for s in students
         ]
-        return render_template("training/trainer_home.html", account=account, students=students_view)
+        dismissed = [{"account": s, "need_count": len(svc.list_needs_for_student(db, s.id))}
+                     for s in svc.list_all_students(db, dismissed=True)]
+        return render_template("training/trainer_home.html", account=account, students=students_view,
+                               dismissed_students=dismissed)
 
 
 @training_bp.route("/trainer/students/new", methods=["GET", "POST"])
@@ -501,7 +504,7 @@ def trainer_assign_pill(need_id: int):
         try:
             svc.assign_pill(db, need_id=need_id, pill_id=pill_id, assigned_by_account_id=account.id)
             db.commit()
-        except svc.DuplicateAssignmentError as exc:
+        except ValueError as exc:  # duplicate, or the student was dismissed after the page loaded
             db.rollback()
             flash(str(exc), "error")
         student_account_id = need.student_account_id

@@ -595,6 +595,7 @@ def _describe_identity_holds(session, *, merchant_id, order_ids, payment_ids, re
 def _fetch_reference_catalogs(
     client: CloverReadClient, session: Session, *, location_id: int, source_system_id: int,
     ingestion_run_id: int, retrieved_at: datetime, mode: str,
+    shifts_raw: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
     """Employees — refreshed live every call, both modes (task's own
     "Employees" retained-entity list). Tenders and Devices — refreshed live
@@ -608,12 +609,15 @@ def _fetch_reference_catalogs(
     employee_by_source_id: dict[str, int] = {}
     # CLOVER_ACQUISITION_SAFETY_001 — a failed read raises; it is never an
     # empty list that would clear existing Employee links.
+    # Clock evidence is read BEFORE the roster: someone removed in between is
+    # still judged with their last clock-in, never a newer, unseen state.
+    clocks = shifts_raw if shifts_raw is not None else _read_all_shifts(client)
     result = paginate(client, f"/v3/merchants/{client.merchant_id}/employees", extra_params={"expand": "role"})
     from ....employee_directory import import_snapshot, safe_snapshot
     records = require_complete(result, "Employees")
     employee_by_source_id, _pending = import_snapshot(
         session, location_id=location_id, merchant_id=client.merchant_id, records=records,
-        observed_at=retrieved_at, run_id=ingestion_run_id,
+        observed_at=retrieved_at, run_id=ingestion_run_id, clock_records=clocks,
     )
     for raw in records:
         source_id = raw["id"]
@@ -669,10 +673,17 @@ def _fetch_reference_catalogs(
     return employee_by_source_id, tender_by_source_id, device_by_source_id
 
 
+def _read_all_shifts(client: CloverReadClient) -> list[dict[str, Any]]:
+    """One complete `/shifts` read per run, shared by the employee lifecycle
+    and the period's Shift ingestion (the endpoint has no time filter)."""
+    return require_complete(paginate(client, f"/v3/merchants/{client.merchant_id}/shifts"), "Shifts")
+
+
 def _fetch_and_ingest_shifts(
     client: CloverReadClient, session: Session, *, period_start: datetime, period_end: datetime,
     source_system_id: int, employee_by_source_id: dict[str, int],
     ingestion_run_id: int, retrieved_at: datetime, held: list[str] | None = None,
+    shifts_raw: list[dict[str, Any]] | None = None,
 ) -> int:
     """Clock-in/clock-out source facts, using Clover's `/shifts` endpoint
     and `mapping.map_shift()`. Confirmed empirically (read-only GET, no
@@ -682,10 +693,8 @@ def _fetch_and_ingest_shifts(
     filtered client-side to Shifts whose clock-in falls within the requested
     period before upserting, so a run does not repeatedly rewrite a growing
     history of unrelated older Shifts."""
-    result = paginate(client, f"/v3/merchants/{client.merchant_id}/shifts")
-
     touched = 0
-    for raw in require_complete(result, "Shifts"):
+    for raw in (shifts_raw if shifts_raw is not None else _read_all_shifts(client)):
         clock_in = raw.get("inTime")
         if clock_in is None or not (
             int(period_start.astimezone(UTC).timestamp() * 1000)
@@ -1235,9 +1244,11 @@ def import_clover_period(
                 period_start=period_start, period_end=period_end,
         )
 
+        # Read once, before any write: lifecycle evidence and period Shifts share it.
+        shifts_raw = _read_all_shifts(resolved_client)
         employee_by_source_id, tender_by_source_id, device_by_source_id = _fetch_reference_catalogs(
             resolved_client, session, location_id=location_id, source_system_id=source_system_id,
-            ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at, mode=mode,
+            ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at, mode=mode, shifts_raw=shifts_raw,
         )
         summary.employees_resolved = len(employee_by_source_id)
         # EMPLOYEE_DIRECTORY_RECORD_HOLD_001 (Product Owner, 2026-11-02): a
@@ -1255,6 +1266,7 @@ def import_clover_period(
             resolved_client, session, period_start=period_start, period_end=period_end,
             source_system_id=source_system_id, employee_by_source_id=employee_by_source_id,
             ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at, held=held_shifts,
+            shifts_raw=shifts_raw,
         )
 
         # CLOVER_HISTORICAL_BACKFILL_EXTRACTOR_V1 — full menu/catalog +

@@ -23,8 +23,20 @@ def get_person(db, person_id):
 
 
 def list_people(db):
-    return [PersonView(p.id, p.display_name or 'Name not available') for p in db.scalars(
-        directory.canonical_employees().order_by(m.Employee.display_name, m.Employee.id))]
+    """Recipients of NEW interviews: current employees, from the shared
+    Employee Directory selector. History keeps using get_person, unfiltered.
+
+    Unrestricted scope is explicit: the Product Owner decided on 2026-11-04
+    that Interviews has no requester perimeter (neither site nor
+    applicability)."""
+    return [PersonView(p.id, p.display_name or 'Name not available')
+            for p in directory.interview_employee_options(db, location_ids=None)]
+
+
+def require_recipient(db, person_id):
+    """Re-check at submission: refuses dismissed people; retired IDs count as their record."""
+    person = directory.require_active_employee(db, person_id)
+    return PersonView(person.id, person.display_name or 'Name not available')
 
 
 def person_for_account(db, account_id):

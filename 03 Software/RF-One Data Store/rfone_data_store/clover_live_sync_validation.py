@@ -277,7 +277,7 @@ def _test_live_sync_cycle_populates_provider_mirror(session: Session, result: Va
         if reference.get("id") and reference["id"] not in known:
             records.append({"id": reference["id"], "name": "Confirmed test person"})
             known.add(reference["id"])
-    _, pending = import_snapshot(session, location_id=location.id, merchant_id=client.merchant_id, records=records)
+    _, pending = import_snapshot(session, location_id=location.id, merchant_id=client.merchant_id, records=records, clock_records=[{"employee": {"id": row["id"]}, "inTime": 946684800000} for row in records])
     for link_id in pending:
         attach_link(session, link_id=link_id, create_new=True)
     session.flush()
@@ -386,7 +386,7 @@ def _test_live_sync_cycle_reduced_scope_and_idempotency(session: Session, result
     })
 
     from .employee_directory import import_snapshot, attach_link
-    _, pending = import_snapshot(session, location_id=location.id, merchant_id=client.merchant_id, records=client.employees)
+    _, pending = import_snapshot(session, location_id=location.id, merchant_id=client.merchant_id, records=client.employees, clock_records=[{"employee": {"id": row["id"]}, "inTime": 946684800000} for row in client.employees])
     for link_id in pending:
         attach_link(session, link_id=link_id, create_new=True)
     session.flush()

@@ -1157,9 +1157,12 @@ class Employee(Base):
     source_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     custom_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     system_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    # No active/inactive field is exposed by Clover (TASK_CLOVER_003 §B) —
+    # No direct active/inactive field is exposed by Clover (TASK_CLOVER_003 §B) —
     # nullable, never defaulted to True/False from an absent source signal.
     active: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    directory_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
 
     source_created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -1172,7 +1175,8 @@ class Employee(Base):
 class EmployeeContextLink(Base):
     """Explicit person association; no account authority or domain fact ownership."""
     __tablename__ = "employee_context_links"
-    __table_args__ = (CheckConstraint(
+    __table_args__ = (Index("uq_employee_one_rfone_account", "employee_id", unique=True,
+        postgresql_where=text("rfone_account_id IS NOT NULL"), sqlite_where=text("rfone_account_id IS NOT NULL")), CheckConstraint(
         "(CASE WHEN rfone_account_id IS NULL THEN 0 ELSE 1 END + "
         "CASE WHEN acting_identity_id IS NULL THEN 0 ELSE 1 END + "
         "CASE WHEN training_account_id IS NULL THEN 0 ELSE 1 END + "
@@ -1205,6 +1209,10 @@ class EmployeeCloverLink(Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_run_id: Mapped[int | None] = mapped_column(ForeignKey("ingestion_runs.id"), nullable=True)
     state: Mapped[str] = mapped_column(String(24), nullable=False, default="PRESENT")
+    last_clock_in: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_clock_out: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    clocks_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class EmployeeIdentityAlias(Base):
@@ -1227,6 +1235,47 @@ class EmployeeDirectoryEvent(Base):
     action: Mapped[str] = mapped_column(String(32), nullable=False)
     details: Mapped[dict] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+# Organizational applicability (EMPLOYEE_APPLICABILITY_001, Product Owner
+# 2026-11-03): where ONE person operates, set only in the Employee Directory
+# and read by every module through `rfone_data_store.employee_applicability`.
+# "Not configured" is the absence of a row and is never the whole group.
+APPLICABILITY_RESTAURANT = "RESTAURANT"    # exactly one Restaurant
+APPLICABILITY_RESTAURANTS = "RESTAURANTS"  # two or more Restaurants
+APPLICABILITY_GROUP = "GROUP"              # the whole group, stated explicitly
+APPLICABILITY_KINDS = (APPLICABILITY_RESTAURANT, APPLICABILITY_RESTAURANTS, APPLICABILITY_GROUP)
+
+
+class EmployeeApplicability(Base):
+    """The person's organizational applicability: a perimeter, never a
+    permission (Domain access stays in RFOneAccountDomainAccess) and never
+    employment state (`Employee.active`/`dismissed_at`). Role and area facts
+    remain EmployeeAssignment's (Workforce). Changes are recorded as
+    APPLICABILITY_SET events in employee_directory_events."""
+
+    __tablename__ = "employee_applicability"
+    __table_args__ = (
+        CheckConstraint(f"scope_kind IN {APPLICABILITY_KINDS!r}", name="ck_employee_applicability_kind"),
+    )
+
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), primary_key=True)
+    scope_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    updated_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class EmployeeApplicabilityRestaurant(Base):
+    """One Restaurant (Operational Unit) of a RESTAURANT/RESTAURANTS scope;
+    a GROUP scope has none. References employees.id directly so identity
+    consolidation moves it with every other employee reference."""
+
+    __tablename__ = "employee_applicability_restaurants"
+
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), primary_key=True)
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), primary_key=True, index=True)
 
 
 class SourceRole(Base):

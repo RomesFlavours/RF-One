@@ -92,6 +92,9 @@ def account_for_session(
     account = account_service.get_account(db_session, account_id)
     if account is None:
         return None
+    from .employee_directory import account_employee_allows_access
+    if account.status != "ACTIVE" or not account_employee_allows_access(db_session, account.id):
+        return None
     if session_version != account.session_version:
         return None
     return account
@@ -170,6 +173,9 @@ def _enabled_domain_access(
     db_session: Session, account: "m.RFOneAccount | None", domain_code: str,
 ) -> "m.RFOneAccountDomainAccess | None":
     if account is None or account.status != ACTIVE_ACCOUNT_STATUS:
+        return None
+    from .employee_directory import account_employee_allows_access
+    if not account_employee_allows_access(db_session, account.id):
         return None
     return next(
         (

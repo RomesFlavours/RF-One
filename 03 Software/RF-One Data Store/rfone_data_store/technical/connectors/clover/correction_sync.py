@@ -221,17 +221,31 @@ def _employee_ids_for_location(session, location_id):
 
 
 def _refresh_employees(session, client, *, location_id, merchant_id, run_id):
-    """The active AWS poller uses the SAME complete-only directory importer."""
-    from ....employee_directory import import_snapshot
+    """The active AWS poller uses the SAME complete-only directory importer.
+
+    The roster costs one call per minute. The full /shifts history (no
+    server-side filter) is read only when `clock_scan_due` says so, and then
+    BEFORE a second roster read, so lifecycle decisions use clocks no newer
+    than the roster they judge.
+    """
+    from ....employee_directory import clock_scan_due, import_snapshot
     from .source_guard import require_complete
+
+    def roster():
+        return require_complete(paginate(client, f"/v3/merchants/{merchant_id}/employees",
+                                         extra_params={"expand": "role"}), "Employees")
     try:
         if client.merchant_id != merchant_id:
             raise ValueError("Clover client does not match this Location's merchant.")
-        records = require_complete(paginate(client, f"/v3/merchants/{merchant_id}/employees",
-                                           extra_params={"expand": "role"}), "Employees")
+        records = roster()
+        clocks = None
+        if clock_scan_due(session, merchant_id=merchant_id, roster_ids=[row.get("id") for row in records],
+                          now=utc_now()):
+            clocks = require_complete(paginate(client, f"/v3/merchants/{merchant_id}/shifts"), "Employee clock evidence")
+            records = roster()
         with session.begin_nested():
             import_snapshot(session, location_id=location_id, merchant_id=merchant_id,
-                            records=records, run_id=run_id)
+                            records=records, run_id=run_id, clock_records=clocks)
         session.commit()
         # Pending identities are not an error: they hold only their own
         # records (EMPLOYEE_DIRECTORY_RECORD_HOLD_001), reported per cycle.

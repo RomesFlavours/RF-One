@@ -163,3 +163,4 @@ Employee Assignment
 - Employee Assignment is never used, alone, to determine who was operationally active in a period — see "The critical rule for Tips and Compensation" above.
 - `Employee.active` is never used to determine who was operationally active in a period.
 - `Employee.location_id` is a different fact from `EmployeeAssignment.location_id` (source-ingestion/current-home Location vs. canonical Assignment-scoped Location) and is never treated as equivalent to it — see "Location-specific Assignment" above.
+- Employee Assignment is not the person's organizational applicability (one Restaurant, several Restaurants or the whole group). Applicability is set only in the Employee Directory and read through `employee_applicability` (EMPLOYEE_APPLICABILITY_001); an Assignment neither creates nor changes it.
