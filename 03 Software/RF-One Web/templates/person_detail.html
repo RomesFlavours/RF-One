@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block page_title %}{{ person.full_name }} · People · RF-One{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{{ url_for('home') }}">MyRFOne</a> / <a href="{{ url_for('people_home') }}">People</a> / {{ person.full_name }}</p>
+<h1>{{ person.full_name or 'Name not available' }}</h1><p>Person #{{ person.id }}</p>
+{% if person.primary_email %}<p>{{ person.primary_email }}</p>{% endif %}{% if person.primary_phone %}<p>{{ person.primary_phone }}</p>{% endif %}
+<h2>RF-One access</h2>
+{% if linked_account %}<p>{{ linked_account.username }} · {{ linked_account.status }} · <a href="{{ url_for('admin_account_edit', account_id=linked_account.id) }}">Login settings</a></p>
+{% else %}<p>No linked RF-One account. <a href="{{ url_for('people_home') }}">Connect an existing account</a> to deliver interviews to this person's MyRFOne home page.</p>{% endif %}
+<h2>Employee records</h2>
+{% for employee in employee_records %}<p><a href="{{ url_for('employee_registry_detail', employee_id=employee.id) }}">{{ employee.display_name or 'Employee data' }}</a> · Record #{{ employee.id }}</p>{% else %}<p>No employee record linked. This person can still participate as an external person.</p>{% endfor %}
+<h2>Interviews</h2>
+{% if interviews_ready %}
+{% if linked_account and linked_account.status == 'ACTIVE' %}<p><a class="btn" href="{{ url_for('interview_admin', person_id=person.id) }}">Request interview</a></p>{% endif %}
+<p>Only interviews requested by you are shown here.</p>
+<table class="table-stack"><thead><tr><th>Purpose</th><th>Status</th><th>Requested on</th><th></th></tr></thead><tbody>
+{% for interview in interviews %}<tr><td data-label="Purpose">{{ interview.purpose|truncate(120) }}</td><td data-label="Status">{{ interview_status_labels[interview.status] }}</td><td data-label="Requested on">{{ interview.created_at|local_dt(tz) }}</td><td data-label="Open"><a href="{{ url_for('interview_admin_results', session_id=interview.id) }}">{{ 'View results' if interview.status == 'COMPLETED' else 'View request' }}</a></td></tr>
+{% else %}<tr><td colspan="4">You have not requested interviews for this person.</td></tr>{% endfor %}</tbody></table>
+{% else %}<p>Interviews are not available yet.</p>{% endif %}
+{% endblock %}

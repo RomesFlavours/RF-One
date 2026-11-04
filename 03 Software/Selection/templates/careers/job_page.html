@@ -1,0 +1,167 @@
+{% extends "careers/base.html" %}
+{% block head %}
+{% if open_ %}
+<script type="application/ld+json">
+{{ {"@context": "https://schema.org/", "@type": "JobPosting", "title": position.title,
+    "description": position.approved_job_ad_en or position.title,
+    "datePosted": position.approved_at.strftime('%Y-%m-%d') if position.approved_at else None,
+    "hiringOrganization": {"@type": "Organization", "name": client},
+    "jobLocation": {"@type": "Place", "address": {"@type": "PostalAddress", "addressLocality": position.location_label}},
+    "totalJobOpenings": position.headcount, "directApply": true}|tojson }}
+</script>
+{% endif %}
+{% endblock %}
+{% block content %}
+<h1>{{ position.title }}</h1>
+<div class="muted">{{ role_label }} · {{ position.location_label }}{% if position.headcount > 1 %} · {{ position.headcount }} openings{% endif %}</div>
+{% if not open_ %}
+  <p>This position is not accepting applications at the moment.</p>
+{% else %}
+  <div class="ad">{{ position.approved_job_ad_en }}</div>
+  {% if requirements %}<h2>What we are looking for</h2>
+  <ul>{% for r in requirements if r.criticality != 'DISQUALIFIER' %}<li>{{ r.name }}{% if r.criticality == 'MUST_HAVE' %} <b>(required)</b>{% endif %}</li>{% endfor %}</ul>{% endif %}
+
+  <h2 id="apply">Apply</h2>
+  {% if application %}
+    {# Already applied to this position with this identity: continue, never a second application. #}
+    <p>{% if application.status == 'SUBMITTED' %}You have already sent your application for this position. Thank you!
+       {% else %}You have an application in progress for this position.{% endif %}</p>
+    {% if application.status != 'SUBMITTED' %}<p><a class="btn" href="{{ url_for('careers.candidate_interview', token=application.token) }}">Continue my application</a></p>{% endif %}
+
+  {% elif candidate %}
+    <div class="muted">Step 1: your résumé. Step 2: a short interview in English (about 5 minutes, typing or voice). You can stop and continue later.</div>
+    <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <p class="small">Applying as <b>{{ candidate.full_name }}</b> ({{ candidate.email }}).</p>
+      <label>Phone</label><input type="tel" name="phone" autocomplete="tel" value="{{ candidate.phone or '' }}">
+      <label>Résumé * (PDF, DOCX or TXT)</label><input type="file" name="cv" accept=".pdf,.docx,.txt" required>
+      <label class="row" style="align-items:flex-start"><input type="checkbox" name="consent" value="1" required style="margin-top:.3rem">
+        <span>I agree that my résumé and answers are used only for this hiring process. Only job-related information is considered,
+          and the decision is made by a person, not by software.</span></label>
+      <p><button class="btn">Continue to the short interview</button></p>
+    </form>
+
+  {% else %}
+    <p class="muted">To apply, create your account and confirm your email, or sign in if you already have one.</p>
+    <div class="auth-switch" role="tablist">
+      <button type="button" class="active" data-show="register-panel">Create account</button>
+      <button type="button" data-show="signin-panel">I already have an account</button>
+    </div>
+
+    <div id="register-panel" class="auth">
+      <form id="register-form" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label for="full_name">Full Name</label><input type="text" id="full_name" name="full_name" autocomplete="name" required>
+        <label for="email">Email</label><input type="email" id="email" name="email" autocomplete="email" required>
+        <label for="password">Password <span class="muted">(at least {{ min_password }} characters)</span></label>
+        <input type="password" id="password" name="password" autocomplete="new-password" minlength="{{ min_password }}" required>
+        <label for="phone">Mobile number <span class="muted">(US, needed for Text Message)</span></label>
+        <input type="tel" id="phone" name="phone" autocomplete="tel" placeholder="(407) 555-0123">
+        <label>Send my verification code by</label>
+        <label class="row"><input type="radio" name="channel" value="EMAIL" checked> Email</label>
+        <label class="row"><input type="radio" name="channel" value="SMS" {{ 'disabled' if not sms_available }}>
+          Text Message{% if not sms_available %} <span class="muted">(not available yet)</span>{% endif %}</label>
+        <p class="small muted" id="sms-consent" hidden>By choosing Text Message you agree to receive one text message from
+          {{ client }} with your verification code. Message and data rates may apply. Reply STOP to opt out, HELP for help.</p>
+        <p><button type="submit" class="btn" id="receive-code">Receive Code</button></p>
+        <div id="code-step" hidden>
+          <label for="code">Verification Code</label>
+          <input type="text" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+          <div class="row" style="margin-top:.6rem">
+            <button type="button" class="btn" id="confirm-code">Confirm</button>
+            <button type="button" class="btn btn-secondary" id="cancel-code">Cancel</button>
+          </div>
+        </div>
+        <div id="register-status" class="auth-status" role="status" aria-live="polite"></div>
+      </form>
+    </div>
+
+    <div id="signin-panel" class="auth" hidden>
+      <form method="post" action="{{ url_for('careers.sign_in', token=position.public_token) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label for="signin-email">Email</label><input type="email" id="signin-email" name="email" autocomplete="email" required>
+        <label for="signin-password">Password</label><input type="password" id="signin-password" name="password" autocomplete="current-password" required>
+        <p><button class="btn">Sign in</button></p>
+      </form>
+    </div>
+
+    <script>
+    (function () {
+      var form = document.getElementById('register-form'), status = document.getElementById('register-status');
+      var codeStep = document.getElementById('code-step'), receive = document.getElementById('receive-code');
+      var confirmBtn = document.getElementById('confirm-code'), cancelBtn = document.getElementById('cancel-code');
+      var urls = {code: {{ url_for('careers.account_code', token=position.public_token)|tojson }},
+                  confirm: {{ url_for('careers.account_confirm', token=position.public_token)|tojson }},
+                  cancel: {{ url_for('careers.account_cancel', token=position.public_token)|tojson }}};
+      var verifiedEmail = null;
+
+      form.querySelectorAll('input[name=channel]').forEach(function (r) {
+        r.addEventListener('change', function () { document.getElementById('sms-consent').hidden = form.elements.channel.value !== 'SMS'; });
+      });
+      document.querySelectorAll('.auth-switch button').forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          document.querySelectorAll('.auth-switch button').forEach(function (t) { t.classList.toggle('active', t === tab); });
+          document.getElementById('register-panel').hidden = tab.dataset.show !== 'register-panel';
+          document.getElementById('signin-panel').hidden = tab.dataset.show !== 'signin-panel';
+        });
+      });
+
+      function show(text, isError, waiting) {
+        status.textContent = text || '';
+        status.className = 'auth-status' + (isError ? ' error' : (text ? ' info' : '')) + (waiting ? ' waiting' : '');
+      }
+      function lock(locked) {
+        [receive, confirmBtn, cancelBtn].forEach(function (b) { b.disabled = locked; });
+        form.querySelectorAll('input[name=channel]').forEach(function (r) { if (r.value === 'EMAIL' || {{ 'true' if sms_available else 'false' }}) { r.disabled = locked || !codeStep.hidden; } });
+        ['full_name', 'email', 'password', 'phone'].forEach(function (id) { document.getElementById(id).readOnly = locked || !codeStep.hidden; });
+      }
+      function post(url, fields) {
+        var data = new FormData();
+        data.append('csrf_token', form.elements.csrf_token.value);
+        Object.keys(fields).forEach(function (k) { data.append(k, fields[k]); });
+        return fetch(url, {method: 'POST', body: data, credentials: 'same-origin'}).then(function (r) {
+          return r.json().catch(function () { return {ok: false, message: 'Something went wrong. Please try again.'}; });
+        }).catch(function () { return {ok: false, message: 'Connection problem. Please try again.'}; });
+      }
+
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        if (!form.reportValidity()) { return; }
+        lock(true); show('Sending your code…', false, true);
+        post(urls.code, {full_name: form.elements.full_name.value, email: form.elements.email.value,
+                         password: form.elements.password.value, phone: form.elements.phone.value,
+                         channel: form.elements.channel.value}).then(function (res) {
+          if (res.ok) {
+            verifiedEmail = res.email; codeStep.hidden = false; receive.textContent = 'Send a new code';
+            show(res.message, false); lock(false); document.getElementById('code').focus();
+          } else {
+            lock(false); show(res.message, true);
+            if (res.already_registered) {
+              document.querySelector('[data-show="signin-panel"]').click();
+              document.getElementById('signin-email').value = form.elements.email.value;
+              document.getElementById('signin-password').focus();
+            }
+          }
+        });
+      });
+
+      confirmBtn.addEventListener('click', function () {
+        var code = document.getElementById('code').value.trim();
+        if (!/^\d{6}$/.test(code)) { show('Please enter the 6-digit code you received.', true); return; }
+        lock(true); show('Checking your code…', false, true);
+        post(urls.confirm, {email: verifiedEmail, code: code}).then(function (res) {
+          if (res.ok) { show('Email confirmed. Opening your application…', false, true); window.location.assign(res.redirect); }
+          else { lock(false); show(res.message, true); }
+        });
+      });
+
+      cancelBtn.addEventListener('click', function () {
+        post(urls.cancel, {email: verifiedEmail || ''});
+        codeStep.hidden = true; document.getElementById('code').value = ''; receive.textContent = 'Receive Code';
+        verifiedEmail = null; lock(false); show('');
+      });
+    })();
+    </script>
+  {% endif %}
+{% endif %}
+{% endblock %}

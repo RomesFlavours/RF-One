@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Apply — {{ selection_session.target_role|title }}{% if restaurant_name %} at {{ restaurant_name }}{% endif %}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+  h1 { font-size: 1.3rem; }
+  label { display: block; margin-top: 1rem; font-weight: 600; font-size: .9rem; }
+  input[type=text], input[type=email], input[type=tel], input[type=file], textarea { width: 100%; padding: .5rem; margin-top: .3rem; border: 1px solid #ccc; border-radius: 4px; font-size: .95rem; box-sizing: border-box; }
+  textarea { min-height: 4rem; }
+  .checkbox-row { display: flex; align-items: center; gap: .5rem; font-weight: 400; }
+  .checkbox-row input { width: auto; }
+  button { margin-top: 1.5rem; padding: .7rem 1.5rem; font-size: 1rem; border: none; border-radius: 4px; background: #2a5; color: white; cursor: pointer; }
+  .error { background: #fdecea; border: 1px solid #e53935; padding: .8rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
+  .muted { color: #666; font-size: .85rem; }
+</style>
+</head>
+<body>
+
+<h1>Apply — {{ selection_session.target_role|title }}{% if restaurant_name %} at {{ restaurant_name }}{% endif %}</h1>
+{% if variant_version and variant_version.title_override %}<p class="muted">{{ variant_version.title_override }}</p>{% endif %}
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<form method="post" enctype="multipart/form-data">
+  <label>First name<input type="text" name="first_name" required></label>
+  <label>Last name<input type="text" name="last_name" required></label>
+  <label>Email<input type="email" name="email" required></label>
+  <label>Phone<input type="tel" name="phone"></label>
+  <label>CV / Résumé (PDF, DOCX, or TXT)<input type="file" name="resume_file" required></label>
+
+  {% for q in questions %}
+  <label>
+    {{ q.question_text }}{% if q.is_required %} *{% endif %}
+    {% if q.response_type == 'YES_NO' %}
+    <select name="question_{{ q.id }}" {{ 'required' if q.is_required else '' }}>
+      <option value="">-</option>
+      <option value="YES">Yes</option>
+      <option value="NO">No</option>
+    </select>
+    {% elif q.response_type == 'NUMBER' %}
+    <input type="text" name="question_{{ q.id }}" {{ 'required' if q.is_required else '' }}>
+    {% else %}
+    <input type="text" name="question_{{ q.id }}" {{ 'required' if q.is_required else '' }}>
+    {% endif %}
+  </label>
+  {% endfor %}
+
+  <label>Anything else you'd like us to know? (optional)<textarea name="candidate_message"></textarea></label>
+
+  <label class="checkbox-row"><input type="checkbox" name="consent" required> I consent to my information being used for this application, per this restaurant's privacy practices.</label>
+
+  <button type="submit">Submit Application</button>
+</form>
+
+</body>
+</html>

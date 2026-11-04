@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <p class="muted" style="font-size:.82rem;">
+    A Reminder Policy governs no-response follow-up for one trigger (e.g. "Advance to Phone — Scheduling"):
+    how many reminders, how long to wait before each, the final response deadline, and whether RF-One may
+    automatically apply a configured STOP Outcome (reason "NO RESPONSE") when the deadline passes with no
+    candidate response. Automatic STOP only ever happens through this explicit, restaurant-configured opt-in.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Configured Reminder Policies</h2>
+  {% if policies %}
+    {% for p in policies %}
+    <div class="signal-card {{ '' if p.is_active else 'inactive' }}">
+      <div class="req-title">
+        {{ p.trigger_event|replace('_',' ')|title }}
+        {% if p.stage %}<span class="badge stage-{{ p.stage|lower }}">{{ p.stage|replace('_',' ') }}</span>{% endif %}
+        {% if not p.is_active %}<span class="badge status-failed">INACTIVE</span>{% endif %}
+      </div>
+      <p style="font-size:.82rem; margin:.3rem 0;">
+        {{ p.reminder_count }} reminder(s){% if p.first_reminder_delay_hours %}, first after {{ p.first_reminder_delay_hours }}h{% endif %}{% if p.reminder_interval_hours %}, every {{ p.reminder_interval_hours }}h after{% endif %}.
+        {% if p.final_deadline_hours %}Final deadline: {{ p.final_deadline_hours }}h after send.{% endif %}
+        {% if p.auto_stop_enabled %}<span class="badge">Auto-STOP enabled{% if p.auto_stop_outcome_definition %} &rarr; {{ p.auto_stop_outcome_definition.name }}{% endif %}</span>{% else %}Auto-STOP disabled.{% endif %}
+      </p>
+      <form method="post" action="{{ url_for('reminder_policy_toggle_active', policy_id=p.id) }}" class="inline-form">
+        <button type="submit" class="btn secondary" style="margin-top:.4rem; font-size:.78rem; padding:.35rem .8rem;">
+          {{ 'Deactivate' if p.is_active else 'Reactivate' }}
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No Reminder Policies configured yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Create a Reminder Policy</h2>
+  <form method="post" action="{{ url_for('reminder_policy_create') }}" class="req-form">
+    <label>Trigger event this governs</label>
+    <select name="trigger_event">
+      {% for e in trigger_events %}<option value="{{ e }}">{{ e|replace('_',' ')|title }}</option>{% endfor %}
+    </select>
+    <label>Stage (leave blank for any)</label>
+    <input type="text" name="stage" placeholder="e.g. PHONE_INTERVIEW">
+    <label>Role (leave blank for any)</label>
+    <input type="text" name="role">
+    <label>Number of reminders</label>
+    <input type="text" name="reminder_count" value="1">
+    <label>Delay before Reminder 1 (hours)</label>
+    <input type="text" name="first_reminder_delay_hours" value="24">
+    <label>Delay between reminders (hours)</label>
+    <input type="text" name="reminder_interval_hours" value="24">
+    <label>Final response deadline (hours after original send)</label>
+    <input type="text" name="final_deadline_hours" value="72">
+    <label class="checkbox-row">
+      <input type="checkbox" name="auto_stop_enabled"> Automatically apply STOP if the deadline passes with no response
+    </label>
+    <label>Outcome to apply automatically (required if enabled above)</label>
+    <select name="auto_stop_outcome_definition_id">
+      <option value="">(none)</option>
+      {% for d in outcome_definitions %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Create Policy</button>
+  </form>
+</div>
+
+{% endblock %}

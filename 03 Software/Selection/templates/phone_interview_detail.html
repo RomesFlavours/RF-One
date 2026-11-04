@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% macro question_card(q, show_answer_form=True) %}
+<div class="question-card {{ 'gate' if q.is_sine_qua_non else '' }}">
+  <div class="req-title">
+    <span class="badge">{{ q.source_type|replace('_',' ') }}</span>
+    <span class="badge importance-{{ q.importance|lower }}">{{ q.importance }}</span>
+    {% if q.is_sine_qua_non %}<span class="badge sine-qua-non">GATE</span>{% endif %}
+    {% if q.mandatory_within_selection_process %}<span class="badge">Mandatory within process</span>{% endif %}
+    <span class="badge qstatus-{{ q.status|lower }}">{{ q.status|replace('_',' ') }}</span>
+    {% if q.is_sine_qua_non and q.gate_evaluation %}<span class="badge gate-{{ q.gate_evaluation|lower }}">Gate: {{ q.gate_evaluation|replace('_',' ') }}</span>{% endif %}
+  </div>
+  <p style="font-size:.92rem; font-weight:600; margin:.4rem 0;">{{ q.question_text }}</p>
+  {% if q.objective %}<p class="muted" style="font-size:.8rem;"><strong>Objective:</strong> {{ q.objective }}</p>{% endif %}
+  {% if q.reason_for_inclusion %}<p class="context-note" style="font-size:.78rem;">{{ q.reason_for_inclusion }}</p>{% endif %}
+
+  {% if q.linked_requirement_ids or q.linked_signal_definition_ids %}
+  <p class="muted" style="font-size:.76rem;">
+    {% for rid in q.linked_requirement_ids %}
+      {% set item = snapshot_items_by_id.get(rid) %}
+      {% if item %}<span class="badge">Requirement: {{ item.name }}</span>{% endif %}
+    {% endfor %}
+    {% for sid in q.linked_signal_definition_ids %}
+      {% set sdef = signal_definitions_by_id.get(sid) %}
+      {% if sdef %}<span class="badge">Signal: {{ sdef.name }}</span>{% endif %}
+    {% endfor %}
+  </p>
+  {% endif %}
+
+  {% if q.answer_text %}
+  <div class="evidence-row neutral">
+    <strong>Answer (raw):</strong> {{ q.answer_text }}
+  </div>
+  {% endif %}
+  {% if q.selezionatore_note %}
+  <p class="muted" style="font-size:.8rem;"><strong>Selezionatore note:</strong> {{ q.selezionatore_note }}</p>
+  {% endif %}
+  {% if q.carried_forward_reason %}
+  <p class="context-note" style="font-size:.78rem;"><strong>Carried forward:</strong> {{ q.carried_forward_reason }}</p>
+  {% endif %}
+
+  {% if show_answer_form %}
+  <details class="edit-toggle">
+    <summary>Record answer</summary>
+    <form method="post" action="{{ url_for('phone_interview_record_answer', plan_id=plan.id, question_instance_id=q.id) }}" class="req-form">
+      <label>Status</label>
+      <select name="status">
+        {% for s in question_statuses %}<option value="{{ s }}" {{ 'selected' if s == q.status else '' }}>{{ s|replace('_',' ') }}</option>{% endfor %}
+      </select>
+      <label>Answer (exact, as given — never rewritten)</label>
+      <textarea name="answer_text">{{ q.answer_text or '' }}</textarea>
+      <label>Selezionatore note (interpretation — kept separate from the raw answer)</label>
+      <textarea name="selezionatore_note">{{ q.selezionatore_note or '' }}</textarea>
+      <button type="submit" class="btn" style="margin-top:.6rem;">Save answer</button>
+    </form>
+  </details>
+
+  {% if q.is_sine_qua_non %}
+  <details class="edit-toggle">
+    <summary>Gate Evaluation</summary>
+    <form method="post" action="{{ url_for('phone_interview_set_gate', plan_id=plan.id, question_instance_id=q.id) }}" class="req-form">
+      <label>Gate result</label>
+      <select name="gate_evaluation">
+        {% for g in gate_evaluations %}<option value="{{ g }}" {{ 'selected' if g == q.gate_evaluation else '' }}>{{ g|replace('_',' ') }}</option>{% endfor %}
+      </select>
+      <label>Note (optional)</label>
+      <textarea name="note"></textarea>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save Gate Evaluation</button>
+    </form>
+    {% if q.gate_evaluation == 'FAILED' %}
+    <p class="context-note" style="font-size:.78rem;">
+      A failed Gate does not automatically stop this Application — it only makes the Escape Route available below.
+      The Selezionatore remains the decision authority.
+    </p>
+    {% endif %}
+  </details>
+  {% endif %}
+
+  <details class="edit-toggle">
+    <summary>Suggest a follow-up question</summary>
+    <form method="post" action="{{ url_for('phone_interview_add_follow_up', plan_id=plan.id, question_instance_id=q.id) }}" class="req-form">
+      <label>Follow-up question text</label>
+      <textarea name="question_text" placeholder="e.g. What specifically was difficult about that working relationship?"></textarea>
+      <label>Objective (optional)</label>
+      <textarea name="objective"></textarea>
+      <label>Importance (defaults to the parent question's)</label>
+      <select name="importance">
+        <option value="">(same as parent)</option>
+        {% for i in importance_levels %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Add follow-up</button>
+    </form>
+  </details>
+
+  {% if q.answer_text and q.linked_requirement_ids %}
+  <details class="edit-toggle">
+    <summary>Record this answer as Fit Assessment evidence</summary>
+    <form method="post" action="{{ url_for('phone_interview_add_fit_evidence', plan_id=plan.id, question_instance_id=q.id) }}" class="req-form">
+      <label>Requirement</label>
+      <select name="requirement_snapshot_item_id">
+        {% for rid in q.linked_requirement_ids %}
+          {% set item = snapshot_items_by_id.get(rid) %}
+          {% if item %}<option value="{{ item.id }}">{{ item.name }}</option>{% endif %}
+        {% endfor %}
+      </select>
+      <label>Relationship to this Requirement</label>
+      <select name="evidence_relationship">
+        {% for r in evidence_relationships %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+      </select>
+      <label>Classification</label>
+      <select name="evidence_classification">
+        {% for c in evidence_classifications %}<option value="{{ c }}">{{ c|replace('_',' ') }}</option>{% endfor %}
+      </select>
+      <label>Confidence</label>
+      <select name="confidence">
+        {% for c in confidence_levels %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+      <label>Explanation (optional)</label>
+      <textarea name="explanation"></textarea>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Add as Fit Assessment evidence</button>
+    </form>
+  </details>
+  {% endif %}
+
+  {% if q.answer_text and q.linked_signal_definition_ids %}
+  <details class="edit-toggle">
+    <summary>Record this answer as Selection Signal evidence</summary>
+    <form method="post" action="{{ url_for('phone_interview_add_signal_evidence', plan_id=plan.id, question_instance_id=q.id) }}" class="req-form">
+      <label>Signal</label>
+      <select name="signal_definition_id">
+        {% for sid in q.linked_signal_definition_ids %}
+          {% set sdef = signal_definitions_by_id.get(sid) %}
+          {% if sdef %}<option value="{{ sdef.id }}">{{ sdef.name }}</option>{% endif %}
+        {% endfor %}
+      </select>
+      <label>Relationship to this Signal</label>
+      <select name="evidence_relationship">
+        {% for r in evidence_relationships %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+      </select>
+      <label>Classification</label>
+      <select name="evidence_classification">
+        {% for c in evidence_classifications %}<option value="{{ c }}">{{ c|replace('_',' ') }}</option>{% endfor %}
+      </select>
+      <label>Confidence</label>
+      <select name="confidence">
+        {% for c in confidence_levels %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+      <label>Explanation (optional)</label>
+      <textarea name="explanation"></textarea>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Add as Signal evidence</button>
+    </form>
+  </details>
+  {% endif %}
+  {% endif %}
+</div>
+{% endmacro %}
+
+<a class="back-link" href="{{ url_for('application_detail', application_id=application.id) }}">&larr; Back to Application</a>
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Candidate</div>
+      <div class="value">{{ application.candidate.full_name or '(name not extracted)' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Target Role</div>
+      <div class="value">{{ application.target_role or '-' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Review Priority</div>
+      <div class="value"><span class="badge priority-{{ (application.review_priority_effective or 'STANDARD')|lower }}">{{ (application.review_priority_effective or 'STANDARD')|replace('_',' ') }}</span></div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Phone Interview Status</div>
+      <div class="value"><span class="badge">{{ plan.status|replace('_',' ') }}</span></div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.8rem;">
+    {% if original_cv_available %}
+    <a class="cv-link" href="{{ url_for('candidate_original_cv', candidate_id=application.candidate_id) }}" target="_blank" rel="noopener">Open Original CV &#8599;</a>
+    {% else %}
+    <span class="muted">Original CV unavailable</span>
+    {% endif %}
+    &middot;
+    <a href="{{ url_for('fit_assessment_detail', fit_assessment_id=plan.fit_assessment_id) }}">View full Fit Assessment</a>
+    &middot;
+    <a href="{{ url_for('application_detail', application_id=application.id) }}">View full Application</a>
+  </p>
+
+  {% if fit_summary %}
+  <p class="muted" style="font-size:.8rem;">
+    Fit Assessment summary ({{ fit_summary.total }} Requirement(s)):
+    {% for status, count in fit_summary.counts.items() %}
+      {% if count %}<span class="badge fit-{{ status|lower }}">{{ status|replace('_',' ') }}: {{ count }}</span>{% endif %}
+    {% endfor %}
+  </p>
+  {% endif %}
+
+  {% if observations %}
+  <p class="muted" style="font-size:.8rem;">
+    Key Selection Signals:
+    {% for o in observations %}
+      <span class="badge signal-{{ o.status|lower }}">{{ o.signal_definition.name }}: {{ o.status|replace('_',' ') }}</span>
+    {% endfor %}
+  </p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('phone_interview_refresh', plan_id=plan.id) }}" class="inline-form">
+    <button type="submit" class="btn secondary">Refresh plan (new evidence)</button>
+  </form>
+  {% if plan.status == 'NOT_STARTED' %}
+  <form method="post" action="{{ url_for('phone_interview_start', plan_id=plan.id) }}" class="inline-form">
+    <button type="submit" class="btn">Start Interview</button>
+  </form>
+  {% endif %}
+
+  <details class="edit-toggle">
+    <summary>Selezionatore notes</summary>
+    <form method="post" action="{{ url_for('phone_interview_set_notes', plan_id=plan.id) }}" class="req-form">
+      <textarea name="notes" placeholder="Free-form notes about this Phone Interview">{{ plan.notes or '' }}</textarea>
+      <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save notes</button>
+    </form>
+  </details>
+</div>
+
+{% if plan.status not in ('COMPLETED', 'STOPPED_EARLY') %}
+<div class="card">
+  <h2>Escape Route</h2>
+  <p class="muted" style="font-size:.82rem;">
+    If a Sine Qua Non condition has failed or another serious incompatibility makes continuing the full interview
+    unnecessary, activate the Escape Route: the remaining plan stops being presented, unanswered substantive
+    questions are preserved as unresolved (never deleted), and 2-3 short courtesy questions are offered for a
+    professional closing.
+  </p>
+  {% if plan.status == 'ESCAPE_ROUTE' %}
+  <p class="context-note" style="font-size:.8rem;">Escape Route already active{% if plan.escape_route_reason %} — {{ plan.escape_route_reason }}{% endif %}.</p>
+  {% else %}
+  <form method="post" action="{{ url_for('phone_interview_escape_route', plan_id=plan.id) }}" class="req-form">
+    <label>Reason</label>
+    <textarea name="reason" placeholder="e.g. Candidate is not available for required closing shifts."></textarea>
+    <button type="submit" class="btn secondary" style="margin-top:.6rem;">Activate Escape Route</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if plan.status == 'ESCAPE_ROUTE' and courtesy_questions %}
+<div class="card">
+  <h2>Courtesy Questions</h2>
+  {% for q in courtesy_questions %}{{ question_card(q) }}{% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Remaining Questions ({{ remaining_questions|length }}) — priority order</h2>
+  <p class="muted" style="font-size:.8rem;">
+    Gate Questions first, then CRITICAL &rarr; HIGH &rarr; MEDIUM &rarr; LOW. The Selezionatore may stop at any
+    point — this is never a rigid questionnaire that must be completed in full.
+  </p>
+  {% if remaining_questions %}
+    {% for q in remaining_questions %}{{ question_card(q) }}{% endfor %}
+  {% else %}
+    <p class="empty">No remaining questions.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Answered / History ({{ history_questions|length }})</h2>
+  {% if history_questions %}
+    {% for q in history_questions %}{{ question_card(q) }}{% endfor %}
+  {% else %}
+    <p class="empty">No questions asked yet.</p>
+  {% endif %}
+</div>
+
+{% if carried_forward_questions %}
+<div class="card">
+  <h2>Carried Forward to In-Person Interview ({{ carried_forward_questions|length }})</h2>
+  <p class="muted" style="font-size:.82rem;">
+    Not resolved during this Phone Interview — preserved here so nothing important silently disappears. Task 4A
+    does not implement the In-Person Interview itself; this only prepares the carry-forward data.
+  </p>
+  {% for q in carried_forward_questions %}{{ question_card(q, show_answer_form=False) }}{% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Post-Phone-Interview Decision</h2>
+  <p class="muted" style="font-size:.82rem;">
+    An explicit Selezionatore decision only — never produced automatically. Closing here carries every still
+    unresolved substantive question forward.
+  </p>
+  <form method="post" action="{{ url_for('phone_interview_decision', plan_id=plan.id) }}" class="req-form">
+    <label>Phone Interview Plan status</label>
+    <select name="plan_status">
+      {% for s in plan_statuses %}<option value="{{ s }}" {{ 'selected' if s == plan.status else '' }}>{{ s|replace('_',' ') }}</option>{% endfor %}
+    </select>
+    <label>Application decision</label>
+    <select name="application_decision">
+      {% for d in post_interview_decisions %}<option value="{{ d }}">{{ d|replace('_',' ') }}</option>{% endfor %}
+    </select>
+    <label>Reason</label>
+    <textarea name="reason" placeholder="Selezionatore's reason for this decision"></textarea>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Record decision</button>
+  </form>
+</div>
+
+{% endblock %}

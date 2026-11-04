@@ -1,0 +1,4 @@
+-r ./03 Software/RF-One Data Store/requirements.txt
+-r ./03 Software/Selection/requirements.txt
+-r ./03 Software/RF-One Web/requirements.txt
+gunicorn==23.0.0

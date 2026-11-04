@@ -1,0 +1,45 @@
+<div class="card">
+  <h2>Position configuration</h2>
+  <p class="muted small">These settings apply only to <b>{{ position.title }}</b>. Other positions have their own settings.</p>
+  <form method="post" action="{{ url_for('positions.position_configuration', position_id=position.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="position-profile">Position context</label>
+    <p class="small muted">Describe the service style, shifts, responsibilities, team, training and other verified facts specific to this opening. Used when drafting its requirements and job ad.</p>
+    <textarea id="position-profile" name="profile" maxlength="16000" style="min-height:9rem" {{ 'disabled' if not can_edit }} placeholder="E.g. evening table service, weekend shifts, wine knowledge and training provided.">{{ configuration.profile }}</textarea>
+    <h3>AI features for this position</h3>
+    {% for key, label, description in configuration_features %}
+      {% set available = platform_policy.cv_ai_authorized if key.startswith('cv_') else platform_policy.ai_enabled %}
+      <div style="margin:.8rem 0">
+        <label class="row" style="color:var(--ink)"><input type="checkbox" name="{{ key }}" value="1" {{ 'checked' if configuration[key] }} {{ 'disabled' if not can_edit }}> {{ label }}</label>
+        <div class="small muted">{{ description }} {% if not available %}Currently unavailable on this installation; your preference is saved for this position.{% endif %}</div>
+        <span class="badge {{ 'ok' if ai_policy.allows(key) else '' }}">{{ 'Enabled' if ai_policy.allows(key) else 'Disabled' }}</span>
+      </div>
+    {% endfor %}
+    <p class="small muted">Résumé-based features operate only when résumé processing is authorized for the installation.</p>
+    {% if can_edit %}<button class="btn">Save position configuration</button>{% else %}<p class="small muted">Read only.</p>{% endif %}
+  </form>
+</div>
+<div class="card">
+  <h3>Service information</h3>
+  <p class="small muted">AI provider: {{ platform_policy.provider_label }}. Provider credentials and email transport are managed by the installation.</p>
+  <p class="small muted">Selection queues approved messages on AWS; RomesFlavoursCareers@RMAED.it sends them.</p>
+  <p class="small muted">Company facts: {{ company.source }}.{% if company.missing %} Missing information: {{ company.missing|join(', ') }}. Missing facts are not invented.{% endif %}</p>
+</div>
+
+<div class="card">
+  <h3>Test selected AI features</h3>
+  <p class="small muted">These tests make real calls to the configured model using a synthetic résumé. They do not send emails or change approved requirements or candidate records. Save your feature selections before testing.</p>
+  {% for key, label, description in configuration_features %}
+    {% set check = ai_checks.get(key) %}
+    <div class="cand">
+      <b>{{ label }}</b>
+      {% if can_edit %}<form method="post" action="{{ url_for('positions.position_ai_check', position_id=position.id) }}" style="display:inline-block;margin-left:.5rem">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="feature" value="{{ key }}">
+        <button class="btn btn-secondary btn-small" {{ 'disabled' if not ai_policy.allows(key) }}>Test {{ label }}</button>
+      </form>{% endif %}
+      {% if check %}<p class="small"><span class="badge {{ 'ok' if check.ok else 'warn' }}">{{ 'Passed' if check.ok else 'Failed' }}</span> {{ check.summary }}</p>
+      <p class="small muted">{{ check.checked_at }} · {{ check.provider }}{% if check.seconds is defined %} · {{ check.seconds }} seconds{% endif %}</p>
+      {% if check.output %}<details><summary>View test output</summary><pre class="cv small">{{ check.output|tojson(indent=2) }}</pre></details>{% endif %}{% endif %}
+    </div>
+  {% endfor %}
+</div>

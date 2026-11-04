@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Client</div>
+      <div class="value">{{ client_name }}</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.82rem;">
+    A Review Priority Policy decides HOW MUCH a detected Signal affects Review Priority — kept structurally
+    separate from Signal Definitions (WHAT is detected, configured under Signals). Two restaurants can use the
+    same Signal Definition and weigh it completely differently, or not at all.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Policies</h2>
+  {% if policies %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Name</th><th>Status</th><th>Rules</th><th>Updated</th><th></th></tr></thead>
+    <tbody>
+      {% for p in policies %}
+      <tr class="clickable" onclick="window.location='{{ url_for('priority_policy_detail', policy_id=p.id) }}'">
+        <td><a href="{{ url_for('priority_policy_detail', policy_id=p.id) }}">{{ p.name }}</a></td>
+        <td><span class="badge status-{{ 'completed' if p.is_active else 'failed' }}">{{ 'ACTIVE' if p.is_active else 'INACTIVE' }}</span></td>
+        <td>{{ p.rules|length }}</td>
+        <td>{{ p.updated_at.strftime('%Y-%m-%d %H:%M') if p.updated_at else '-' }}</td>
+        <td><a href="{{ url_for('priority_policy_detail', policy_id=p.id) }}">Manage</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Review Priority Policies yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Create a Review Priority Policy</h2>
+  <p class="muted" style="font-size:.8rem;">
+    With no active policy, every Application's Review Priority is STANDARD — never a default judgment invented on
+    the restaurant's behalf. Only one policy needs to be active at a time; keep multiple for experimentation if useful.
+  </p>
+  <form method="post" action="{{ url_for('priority_policy_create') }}" class="req-form">
+    <label>Name</label>
+    <input type="text" name="name" placeholder="e.g. Default Review Priority Policy" required>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Create policy</button>
+  </form>
+</div>
+
+{% endblock %}

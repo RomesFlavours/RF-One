@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('requirements_home') }}">&larr; Back to Requirement Sets</a>
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Requirement Set</div>
+      <div class="value">{{ requirement_set.name }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Target Role</div>
+      <div class="value">{{ requirement_set.target_role or '-' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Version</div>
+      <div class="value">v{{ requirement_set.version }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Status</div>
+      <div class="value">
+        <span class="badge status-{{ 'completed' if requirement_set.is_active else 'failed' }}">
+          {{ 'ACTIVE' if requirement_set.is_active else 'INACTIVE' }}
+        </span>
+      </div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.78rem;">
+    Source template: {{ requirement_set.source_template.name if requirement_set.source_template else '(built from scratch)' }}
+    &middot; Restaurant-owned and independently editable — editing this Requirement Set never changes its source template.
+    &middot; Last updated {{ requirement_set.updated_at.strftime('%Y-%m-%d %H:%M') if requirement_set.updated_at else '-' }}
+  </p>
+  <form method="post" action="{{ url_for('requirement_set_toggle_active', requirement_set_id=requirement_set.id) }}" class="inline-form">
+    <button type="submit" class="btn secondary">{{ 'Deactivate this Requirement Set' if requirement_set.is_active else 'Reactivate this Requirement Set' }}</button>
+  </form>
+
+  <details class="edit-toggle">
+    <summary>Edit Requirement Set details</summary>
+    <form method="post" action="{{ url_for('requirement_set_update', requirement_set_id=requirement_set.id) }}" class="req-form">
+      <label>Name</label>
+      <input type="text" name="name" value="{{ requirement_set.name }}" required>
+      <label>Target role</label>
+      <input type="text" name="target_role" value="{{ requirement_set.target_role or '' }}">
+      <label>Location</label>
+      <input type="text" name="location_label" value="{{ requirement_set.location_label or '' }}">
+      <label>Description</label>
+      <textarea name="description">{{ requirement_set.description or '' }}</textarea>
+      <button type="submit" class="btn" style="margin-top:.6rem;">Save changes</button>
+    </form>
+  </details>
+</div>
+
+<div class="card">
+  <h2>Snapshots</h2>
+  <p class="muted" style="font-size:.8rem;">
+    An immutable, point-in-time copy of this Requirement Set (and every Requirement in it) — later edits here never
+    change a snapshot already taken. A future Fit Assessment binds to a snapshot, not to these live, still-editable
+    requirements.
+  </p>
+  <form method="post" action="{{ url_for('requirement_set_create_snapshot', requirement_set_id=requirement_set.id) }}" class="inline-form">
+    <button type="submit" class="btn secondary">Create snapshot of current state (v{{ requirement_set.version }})</button>
+  </form>
+  {% if snapshots %}
+  <div class="table-scroll" style="margin-top:.8rem;">
+  <table>
+    <thead>
+      <tr><th>Version</th><th>Requirements captured</th><th>Created</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for s in snapshots %}
+      <tr>
+        <td>v{{ s.version }}</td>
+        <td>{{ s.items|length }}</td>
+        <td>{{ s.created_at.strftime('%Y-%m-%d %H:%M') if s.created_at else '-' }}</td>
+        <td><a href="{{ url_for('requirement_set_snapshot_detail', requirement_set_id=requirement_set.id, snapshot_id=s.id) }}">View (read-only)</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No snapshots yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Requirements ({{ requirement_set.requirements|length }})</h2>
+  {% if requirement_set.requirements %}
+    {% for r in requirement_set.requirements %}
+    <div class="requirement-card {{ '' if r.is_active else 'inactive' }}">
+      <div class="req-title">
+        {{ r.name }}
+        <span class="badge crit-{{ r.criticality|lower|replace('_','-') }}">{{ r.criticality|replace('_',' ') }}</span>
+        <span class="badge">{{ r.trainability|replace('_',' ') }}</span>
+        {% if r.category %}<span class="badge">{{ r.category }}</span>{% endif %}
+        {% if not r.is_active %}<span class="badge status-failed">INACTIVE</span>{% endif %}
+      </div>
+      <p class="muted" style="font-size:.8rem; margin:.3rem 0;">
+        Assessed at: {{ r.assessment_stages|join(', ')|replace('_',' ') if r.assessment_stages else '(none set)' }}
+      </p>
+      {% if r.description %}<p style="font-size:.85rem; margin:.3rem 0;">{{ r.description }}</p>{% endif %}
+      {% if r.evidence_positive or r.evidence_contrary or r.evidence_insufficient or r.guidance_notes %}
+      <div class="indicator-list" style="font-size:.8rem;">
+        {% if r.evidence_positive %}<div class="indicator-row"><span>Positive evidence</span><span>{{ r.evidence_positive }}</span></div>{% endif %}
+        {% if r.evidence_contrary %}<div class="indicator-row"><span>Contrary evidence</span><span>{{ r.evidence_contrary }}</span></div>{% endif %}
+        {% if r.evidence_insufficient %}<div class="indicator-row"><span>Insufficient evidence</span><span>{{ r.evidence_insufficient }}</span></div>{% endif %}
+        {% if r.guidance_notes %}<div class="indicator-row"><span>Guidance</span><span>{{ r.guidance_notes }}</span></div>{% endif %}
+      </div>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('requirement_toggle_active', requirement_set_id=requirement_set.id, requirement_id=r.id) }}" class="inline-form">
+        <button type="submit" class="btn secondary" style="margin-top:.5rem; font-size:.78rem; padding:.35rem .8rem;">
+          {{ 'Deactivate' if r.is_active else 'Reactivate' }}
+        </button>
+      </form>
+
+      <details class="edit-toggle">
+        <summary>Edit this requirement</summary>
+        <form method="post" action="{{ url_for('requirement_update', requirement_set_id=requirement_set.id, requirement_id=r.id) }}" class="req-form">
+          <label>Name</label>
+          <input type="text" name="name" value="{{ r.name }}" required>
+          <label>Category</label>
+          <input type="text" name="category" value="{{ r.category or '' }}" list="category-options-{{ r.id }}">
+          <datalist id="category-options-{{ r.id }}">
+            {% for c in categories %}<option value="{{ c }}">{% endfor %}
+          </datalist>
+          <label>Description</label>
+          <textarea name="description">{{ r.description or '' }}</textarea>
+          <label>Criticality</label>
+          <select name="criticality">
+            {% for level in criticality_levels %}
+            <option value="{{ level }}" {{ 'selected' if r.criticality == level else '' }}>{{ level|replace('_',' ') }}</option>
+            {% endfor %}
+          </select>
+          <label>Trainability</label>
+          <select name="trainability">
+            {% for level in trainability_levels %}
+            <option value="{{ level }}" {{ 'selected' if r.trainability == level else '' }}>{{ level|replace('_',' ') }}</option>
+            {% endfor %}
+          </select>
+          <label>Assessment stage(s)</label>
+          <div class="checkbox-row">
+            {% for stage in assessment_stages %}
+            <label><input type="checkbox" name="assessment_stages" value="{{ stage }}" {{ 'checked' if stage in r.assessment_stages else '' }}> {{ stage|replace('_',' ') }}</label>
+            {% endfor %}
+          </div>
+          <label>Positive evidence example</label>
+          <textarea name="evidence_positive">{{ r.evidence_positive or '' }}</textarea>
+          <label>Contrary evidence example</label>
+          <textarea name="evidence_contrary">{{ r.evidence_contrary or '' }}</textarea>
+          <label>Insufficient evidence example</label>
+          <textarea name="evidence_insufficient">{{ r.evidence_insufficient or '' }}</textarea>
+          <label>Guidance notes</label>
+          <textarea name="guidance_notes">{{ r.guidance_notes or '' }}</textarea>
+          <button type="submit" class="btn" style="margin-top:.6rem;">Save requirement</button>
+        </form>
+      </details>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No requirements yet — add one below.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Add a requirement</h2>
+  <form method="post" action="{{ url_for('requirement_add', requirement_set_id=requirement_set.id) }}" class="req-form">
+    <label>Name</label>
+    <input type="text" name="name" placeholder="e.g. Works effectively as part of a team" required>
+    <label>Category</label>
+    <input type="text" name="category" list="category-options-new">
+    <datalist id="category-options-new">
+      {% for c in categories %}<option value="{{ c }}">{% endfor %}
+    </datalist>
+    <label>Description</label>
+    <textarea name="description" placeholder="What does this mean for this role?"></textarea>
+    <label>Criticality</label>
+    <select name="criticality" required>
+      {% for level in criticality_levels %}<option value="{{ level }}">{{ level|replace('_',' ') }}</option>{% endfor %}
+    </select>
+    <label>Trainability</label>
+    <select name="trainability" required>
+      {% for level in trainability_levels %}<option value="{{ level }}">{{ level|replace('_',' ') }}</option>{% endfor %}
+    </select>
+    <label>Assessment stage(s)</label>
+    <div class="checkbox-row">
+      {% for stage in assessment_stages %}
+      <label><input type="checkbox" name="assessment_stages" value="{{ stage }}"> {{ stage|replace('_',' ') }}</label>
+      {% endfor %}
+    </div>
+    <label>Positive evidence example</label>
+    <textarea name="evidence_positive" placeholder="What would count as evidence this is met?"></textarea>
+    <label>Contrary evidence example</label>
+    <textarea name="evidence_contrary" placeholder="What would count as evidence against it?"></textarea>
+    <label>Insufficient evidence example</label>
+    <textarea name="evidence_insufficient" placeholder="What would NOT be enough to conclude either way?"></textarea>
+    <label>Guidance notes</label>
+    <textarea name="guidance_notes"></textarea>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Add requirement</button>
+  </form>
+</div>
+
+{% endblock %}

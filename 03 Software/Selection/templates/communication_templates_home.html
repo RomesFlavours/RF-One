@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <p class="muted" style="font-size:.82rem;">
+    A Communication Template is what gets sent by SMS/Email when a Selection Stage or Outcome fires it — the
+    Selezionatore never rewrites the standard message per candidate. Editing a Template bumps its version; every
+    ALREADY-SENT communication keeps the exact text it was sent with, forever. Outcome-triggered Templates
+    ("Primary Screening Stop", "Phone Hold/Stop", "In-Person Hold/Stop/Hirable"...) must name BOTH the Outcome
+    they answer and the Stage the Application is at when that Outcome is applied; stage-advance Templates
+    ("Advance to Phone — Scheduling/Contact", "Advance to In-Person") and Reminders are matched by trigger + stage
+    alone.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Configured Templates</h2>
+  {% if templates %}
+    {% for t in templates %}
+    <div class="signal-card {{ '' if t.is_active else 'inactive' }}">
+      <div class="req-title">
+        {{ t.purpose or t.trigger_event }}
+        <span class="badge">{{ t.trigger_event }}</span>
+        {% if t.stage %}<span class="badge stage-{{ t.stage|lower }}">{{ t.stage|replace('_',' ') }}</span>{% endif %}
+        {% if t.outcome_definition %}<span class="badge">Outcome: {{ t.outcome_definition.name }}</span>{% endif %}
+        {% if t.role %}<span class="badge">Role: {{ t.role }}</span>{% endif %}
+        {% if not t.is_active %}<span class="badge status-failed">INACTIVE</span>{% endif %}
+        <span class="muted" style="font-size:.72rem;">v{{ t.version }} &middot; {{ t.language }}</span>
+      </div>
+      {% if t.sms_text %}<p style="font-size:.82rem; margin:.3rem 0;"><strong>SMS:</strong> {{ t.sms_text }}</p>{% endif %}
+      {% if t.email_subject %}<p style="font-size:.82rem; margin:.3rem 0;"><strong>Email subject:</strong> {{ t.email_subject }}</p>{% endif %}
+      {% if t.email_body %}<p style="font-size:.82rem; margin:.3rem 0;"><strong>Email body:</strong> {{ t.email_body }}</p>{% endif %}
+
+      <form method="post" action="{{ url_for('communication_template_toggle_active', template_id=t.id) }}" class="inline-form">
+        <button type="submit" class="btn secondary" style="margin-top:.4rem; font-size:.78rem; padding:.35rem .8rem;">
+          {{ 'Deactivate' if t.is_active else 'Reactivate' }}
+        </button>
+      </form>
+
+      <details class="edit-toggle">
+        <summary>Edit content (bumps version — sent history is unaffected)</summary>
+        <form method="post" action="{{ url_for('communication_template_update', template_id=t.id) }}" class="req-form">
+          <label>Purpose / label</label>
+          <input type="text" name="purpose" value="{{ t.purpose or '' }}">
+          <label>SMS text</label>
+          <textarea name="sms_text">{{ t.sms_text or '' }}</textarea>
+          <label>Email subject</label>
+          <input type="text" name="email_subject" value="{{ t.email_subject or '' }}">
+          <label>Email body</label>
+          <textarea name="email_body">{{ t.email_body or '' }}</textarea>
+          <button type="submit" class="btn" style="margin-top:.6rem;">Save new version</button>
+        </form>
+      </details>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No Communication Templates configured yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Create a new Template</h2>
+  <form method="post" action="{{ url_for('communication_template_create') }}" class="req-form">
+    <label>Trigger event</label>
+    <select name="trigger_event">
+      {% for e in trigger_events %}<option value="{{ e }}">{{ e|replace('_',' ')|title }}</option>{% endfor %}
+    </select>
+    <label>Stage this applies at (leave blank for any Stage)</label>
+    <select name="stage">
+      <option value="">(any)</option>
+      {% for s in stages %}<option value="{{ s }}">{{ s|replace('_',' ') }}</option>{% endfor %}
+    </select>
+    <label>Outcome this answers (only for Outcome-triggered events — Primary Screening Stop, Phone/In-Person Hold/Stop, Hirable)</label>
+    <select name="outcome_definition_id">
+      <option value="">(none — stage-advance/reminder/confirmation event)</option>
+      {% for d in outcome_definitions %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+    </select>
+    <label>Role (leave blank for any role)</label>
+    <input type="text" name="role" placeholder="e.g. SERVER">
+    <label>Branch/location (leave blank for any)</label>
+    <input type="text" name="location_label">
+    <label>Purpose / label</label>
+    <input type="text" name="purpose" placeholder="e.g. Rejection after CV Review">
+    <label>Language</label>
+    <input type="text" name="language" value="en">
+    <label>SMS text</label>
+    <textarea name="sms_text" placeholder="Hi $candidate_name, ..."></textarea>
+    <label>Email subject</label>
+    <input type="text" name="email_subject">
+    <label>Email body</label>
+    <textarea name="email_body" placeholder="Hi $candidate_name, ... $scheduling_link"></textarea>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Create Template</button>
+  </form>
+</div>
+
+{% endblock %}

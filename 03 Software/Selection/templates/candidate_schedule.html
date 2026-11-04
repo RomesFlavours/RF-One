@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Schedule your interview{% if restaurant_name %} — {{ restaurant_name }}{% endif %}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+  h1 { font-size: 1.3rem; }
+  .slot-list { display: flex; flex-direction: column; gap: .5rem; margin-top: 1rem; }
+  .slot-btn { display: block; width: 100%; text-align: left; padding: .7rem 1rem; border: 1px solid #ccc; border-radius: 6px; background: #fafafa; cursor: pointer; font-size: .95rem; }
+  .slot-btn:hover { background: #eef; }
+  .confirmed { background: #e6f7e6; border: 1px solid #4caf50; padding: 1rem; border-radius: 6px; }
+  .error { background: #fdecea; border: 1px solid #e53935; padding: .8rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
+  .muted { color: #666; font-size: .85rem; }
+</style>
+</head>
+<body>
+
+<h1>{{ interview_stage|replace('_',' ')|title }} scheduling{% if restaurant_name %} — {{ restaurant_name }}{% endif %}</h1>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+{% if current_appointment %}
+<div class="confirmed">
+  <strong>Your interview is confirmed:</strong><br>
+  {{ current_appointment.slot_start_at.strftime('%A, %B %d at %I:%M %p') }}
+</div>
+<p class="muted">Need a different time? Choose an available slot below to reschedule.</p>
+{% endif %}
+
+{% if slots %}
+<form method="post" action="{{ url_for('candidate_schedule_book', token=token) }}">
+  <p>Choose an available time:</p>
+  <div class="slot-list">
+    {% for s in slots %}
+    <label class="slot-btn">
+      <input type="radio" class="slot-pick" data-window-id="{{ s.window_id }}" data-slot-start="{{ s.start.isoformat() }}"
+             onclick="document.getElementById('window_id_hidden').value=this.dataset.windowId; document.getElementById('slot_start').value=this.dataset.slotStart;">
+      {{ s.start.strftime('%A, %B %d — %I:%M %p') }}
+    </label>
+    {% endfor %}
+  </div>
+  <input type="hidden" name="window_id" id="window_id_hidden" value="">
+  <input type="hidden" name="slot_start" id="slot_start" value="">
+  <p style="margin-top:1rem;"><button type="submit">Confirm this time</button></p>
+</form>
+{% else %}
+<p class="muted">No available times are open right now. Please check back soon, or contact the restaurant directly.</p>
+{% endif %}
+
+</body>
+</html>

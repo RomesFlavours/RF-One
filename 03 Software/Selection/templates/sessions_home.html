@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1>Selection Sessions</h1>
+<p class="subtitle">One operational container per ONE role — {{ client_name }}.</p>
+
+<div class="card">
+  <h2>Start a new Session</h2>
+  <form method="post" action="{{ url_for('session_create') }}" class="req-form">
+    <label>Session name</label>
+    <input type="text" name="name" placeholder="e.g. Server — Winter Park — September 2026" required>
+    <label>Role (single role only)</label>
+    <input type="text" name="target_role" placeholder="e.g. SERVER" required>
+    <label>Branch / location (optional)</label>
+    <input type="text" name="location_label" placeholder="e.g. Winter Park">
+    <label>Created by</label>
+    <input type="text" name="created_by" placeholder="Your name">
+    <button type="submit" class="btn" style="margin-top:.6rem;">Create Session</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>All Sessions</h2>
+  {% if summaries %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Session</th><th>Role</th><th>Location</th><th>Status</th><th>Applications</th>
+        <th>In review (owned)</th><th>Rule Set</th><th>Selezionatori</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in summaries %}
+      <tr class="clickable" onclick="window.location='{{ url_for('session_detail', session_id=row.session.id) }}'">
+        <td>{{ row.session.name }}</td>
+        <td>{{ row.session.target_role }}</td>
+        <td>{{ row.session.location_label or '-' }}</td>
+        <td><span class="badge sstatus-{{ row.session.status|lower }}">{{ row.session.status|replace('_',' ') }}</span></td>
+        <td>{{ row.application_count }}</td>
+        <td>{{ row.owned_count }}</td>
+        <td>{{ 'v' ~ row.current_version.version if row.current_version else '-' }}{% if row.current_version and row.current_version.confirmed_at %} &middot; confirmed{% endif %}</td>
+        <td>{{ row.assignments|map(attribute='selezionatore_name')|join(', ') }}</td>
+        <td><a href="{{ url_for('session_detail', session_id=row.session.id) }}">Open &rarr;</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Selection Sessions yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

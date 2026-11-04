@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('candidate_detail', candidate_id=fit_assessment.candidate_id) }}">&larr; Back to candidate</a>
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Candidate</div>
+      <div class="value">{{ fit_assessment.candidate.full_name or '(name not extracted)' }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Requirement Set Snapshot</div>
+      <div class="value">{{ fit_assessment.requirement_set_snapshot.name }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Version assessed</div>
+      <div class="value">v{{ fit_assessment.requirement_set_snapshot.version }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Current stage</div>
+      <div class="value">{{ fit_assessment.current_stage }}</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.8rem;">
+    This candidate was assessed against Requirement Set version {{ fit_assessment.requirement_set_snapshot.version }},
+    captured {{ fit_assessment.requirement_set_snapshot.created_at.strftime('%Y-%m-%d %H:%M') if fit_assessment.requirement_set_snapshot.created_at else '-' }}.
+    If the live Requirement Set has changed since, this assessment keeps showing and using that exact version — never
+    silently switched to a newer one.
+    {% if fit_assessment.requirement_set_id %}
+      <a href="{{ url_for('requirement_set_detail', requirement_set_id=fit_assessment.requirement_set_id) }}">View live Requirement Set</a>
+    {% endif %}
+  </p>
+  <form method="post" action="{{ url_for('fit_assessment_refresh', fit_assessment_id=fit_assessment.id) }}" class="inline-form">
+    <button type="submit" class="btn secondary">Refresh résumé-stage assessment</button>
+  </form>
+  <p class="muted" style="font-size:.76rem; margin-top:.4rem;">
+    Re-runs automatic résumé evidence against this SAME snapshot. Any evidence a human added, and any human
+    confirmation/override, is left untouched.
+  </p>
+
+  <details class="edit-toggle">
+    <summary>Add / edit assessment note</summary>
+    <form method="post" action="{{ url_for('fit_assessment_add_note', fit_assessment_id=fit_assessment.id) }}" class="req-form">
+      <label>Note (not evidence — for the evaluator's own reference only)</label>
+      <textarea name="note_text">{{ fit_assessment.notes or '' }}</textarea>
+      <button type="submit" class="btn" style="margin-top:.6rem;">Save note</button>
+    </form>
+  </details>
+</div>
+
+<div class="card">
+  <h2>Summary</h2>
+  <p class="muted" style="font-size:.8rem;">Counts only — never a score, percentage, or ranking.</p>
+  <div class="meta-row">
+    <div class="meta-item"><div class="label">Total Requirements</div><div class="value">{{ summary.total }}</div></div>
+    {% for status in assessment_statuses %}
+    <div class="meta-item">
+      <div class="label">{{ status|replace('_',' ')|title }}</div>
+      <div class="value">{{ summary.counts[status] }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Requirement Assessments ({{ requirement_assessments|length }})</h2>
+  {% for ra in requirement_assessments %}
+  {% set item = ra.requirement_snapshot_item %}
+  <div class="requirement-assessment-card">
+    <div class="req-title">
+      {{ item.name }}
+      <span class="badge crit-{{ item.criticality|lower|replace('_','-') }}">{{ item.criticality|replace('_',' ') }}</span>
+      <span class="badge">{{ item.trainability|replace('_',' ') }}</span>
+      {% if item.category %}<span class="badge">{{ item.category }}</span>{% endif %}
+      <span class="badge fit-{{ ra.effective_status|lower }}">{{ ra.effective_status|replace('_',' ') }}</span>
+      {% if ra.system_status != ra.effective_status %}
+        <span class="muted" style="font-size:.72rem;">(system said: {{ ra.system_status|replace('_',' ') }})</span>
+      {% endif %}
+      <span class="badge origin-{{ ra.origin|lower }}">{{ ra.origin|replace('_',' ') }}</span>
+    </div>
+    {% if item.description %}<p style="font-size:.85rem; margin:.3rem 0;">{{ item.description }}</p>{% endif %}
+    <p class="muted" style="font-size:.78rem; margin:.3rem 0;">
+      Permitted stages: {{ item.assessment_stages|join(', ')|replace('_',' ') if item.assessment_stages else '(none)' }}
+      &middot; Current stage: {{ ra.stage }}
+      &middot; Confidence: {{ ra.confidence or 'UNKNOWN' }}
+    </p>
+
+    {% if ra.effective_status == 'NOT_ASSESSED_AT_THIS_STAGE' %}
+    <p class="context-note" style="font-size:.8rem;">
+      Not legitimately assessable with evidence available at the current stage — this is NOT the same as
+      "no evidence found." No automatic inference was attempted for this Requirement.
+    </p>
+    {% endif %}
+
+    {% if item.evidence_positive or item.evidence_contrary or item.evidence_insufficient or item.guidance_notes %}
+    <details class="edit-toggle">
+      <summary>Why this matters / evaluation guidance (from the Requirement configuration)</summary>
+      <div class="indicator-list" style="font-size:.8rem;">
+        {% if item.evidence_positive %}<div class="indicator-row"><span>Positive evidence guidance</span><span>{{ item.evidence_positive }}</span></div>{% endif %}
+        {% if item.evidence_contrary %}<div class="indicator-row"><span>Contrary evidence guidance</span><span>{{ item.evidence_contrary }}</span></div>{% endif %}
+        {% if item.evidence_insufficient %}<div class="indicator-row"><span>Insufficient-evidence guidance</span><span>{{ item.evidence_insufficient }}</span></div>{% endif %}
+        {% if item.guidance_notes %}<div class="indicator-row"><span>General guidance</span><span>{{ item.guidance_notes }}</span></div>{% endif %}
+      </div>
+    </details>
+    {% endif %}
+
+    <h3 style="font-size:.85rem; margin:.6rem 0 .3rem;">Evidence ({{ ra.evidence_items|length }})</h3>
+    {% if ra.evidence_items %}
+      {% for e in ra.evidence_items %}
+      <div class="evidence-row {{ e.evidence_relationship|lower }}">
+        <strong>{{ e.evidence_relationship }}</strong> &middot; {{ e.source_type|replace('_',' ') }}
+        &middot; {{ e.evidence_classification }} &middot; confidence {{ e.confidence }}
+        {% if not e.is_system_generated %}<span class="badge">human-added</span>{% endif %}
+        {% if e.evidence_text %}<div>{{ e.evidence_text }}</div>{% endif %}
+        {% if e.explanation %}<div class="muted" style="font-size:.76rem;">{{ e.explanation }}</div>{% endif %}
+        {% if e.source_reference %}<div class="muted" style="font-size:.72rem;">Source: {{ e.source_reference }}{% if e.source_stage %} ({{ e.source_stage }}){% endif %}</div>{% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty" style="font-size:.82rem;">No evidence recorded.</p>
+    {% endif %}
+
+    {% if ra.notes %}
+    <p class="muted" style="font-size:.8rem; margin-top:.4rem;"><strong>Note:</strong> {{ ra.notes }} <span style="font-size:.7rem;">(not evidence)</span></p>
+    {% endif %}
+
+    <div style="margin-top:.6rem; display:flex; gap:.5rem; flex-wrap:wrap;">
+      <form method="post" action="{{ url_for('requirement_assessment_confirm', fit_assessment_id=fit_assessment.id, requirement_assessment_id=ra.id) }}" class="inline-form">
+        <button type="submit" class="btn secondary" style="font-size:.78rem; padding:.35rem .8rem;">Confirm current status</button>
+      </form>
+    </div>
+
+    <details class="edit-toggle">
+      <summary>Add evidence</summary>
+      <form method="post" action="{{ url_for('requirement_assessment_add_evidence', fit_assessment_id=fit_assessment.id, requirement_assessment_id=ra.id) }}" class="req-form">
+        <label>Source type</label>
+        <select name="source_type" required>
+          {% for s in evidence_source_types %}<option value="{{ s }}">{{ s|replace('_',' ') }}</option>{% endfor %}
+        </select>
+        <label>Source stage</label>
+        <select name="source_stage">
+          <option value="">(unspecified)</option>
+          {% for s in assessment_stages %}<option value="{{ s }}">{{ s|replace('_',' ') }}</option>{% endfor %}
+        </select>
+        <label>Evidence text</label>
+        <textarea name="evidence_text"></textarea>
+        <label>Classification</label>
+        <select name="evidence_classification" required>
+          {% for c in evidence_classifications %}<option value="{{ c }}">{{ c|replace('_',' ') }}</option>{% endfor %}
+        </select>
+        <label>Relationship to this Requirement</label>
+        <select name="evidence_relationship" required>
+          {% for r in evidence_relationships %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+        </select>
+        <label>Confidence</label>
+        <select name="confidence">
+          {% for c in confidence_levels %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+        <label>Source reference (optional)</label>
+        <input type="text" name="source_reference">
+        <label>Explanation (optional)</label>
+        <textarea name="explanation"></textarea>
+        <button type="submit" class="btn" style="margin-top:.6rem;">Add evidence</button>
+      </form>
+    </details>
+
+    <details class="edit-toggle">
+      <summary>Override status / add note</summary>
+      <form method="post" action="{{ url_for('requirement_assessment_override', fit_assessment_id=fit_assessment.id, requirement_assessment_id=ra.id) }}" class="req-form">
+        <label>New effective status</label>
+        <select name="new_status" required>
+          {% for s in assessment_statuses %}<option value="{{ s }}" {{ 'selected' if s == ra.effective_status else '' }}>{{ s|replace('_',' ') }}</option>{% endfor %}
+        </select>
+        <label>Reason</label>
+        <textarea name="reason" placeholder="Why is the human conclusion different from the system's?"></textarea>
+        <button type="submit" class="btn" style="margin-top:.6rem;">Override</button>
+      </form>
+      <form method="post" action="{{ url_for('requirement_assessment_add_note', fit_assessment_id=fit_assessment.id, requirement_assessment_id=ra.id) }}" class="req-form">
+        <label>Note (not evidence)</label>
+        <textarea name="note_text">{{ ra.notes or '' }}</textarea>
+        <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save note</button>
+      </form>
+      {% if ra.origin == 'HUMAN_OVERRIDDEN' %}
+      <p class="muted" style="font-size:.76rem; margin-top:.4rem;">
+        Overridden {{ ra.overridden_at.strftime('%Y-%m-%d %H:%M') if ra.overridden_at else '' }}.
+        {% if ra.override_reason %}Reason: {{ ra.override_reason }}{% endif %}
+      </p>
+      {% endif %}
+    </details>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}

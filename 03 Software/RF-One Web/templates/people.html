@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block page_title %}People · RF-One{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{{ url_for('home') }}">MyRFOne</a> / People</p>
+<h1>People</h1><p>Employees and external people in one directory. Accounts provide access; they are linked to the person.</p>
+<form method="get"><label for="people-query">Search people</label><input type="text" id="people-query" name="q" value="{{ query }}"><button type="submit">Search</button></form>
+<h2>Person records</h2>
+<div class="table-scroll"><table class="table-stack"><thead><tr><th>Person</th><th>Employee records</th><th>RF-One access</th><th></th></tr></thead><tbody>
+{% for person in people %}{% set login = accounts_by_person.get(person.id) %}<tr><td data-label="Person">{{ person.full_name or 'Name not available' }}</td><td data-label="Employee records">{{ employees_by_person.get(person.id, [])|length }}</td><td data-label="RF-One access">{{ login.username if login else 'No linked account' }}{% if login %} · {{ login.status }}{% endif %}</td><td data-label="Open"><a href="{{ url_for('person_detail', person_id=person.id) }}">Open person</a></td></tr>
+{% else %}<tr><td colspan="4">No matching person records.</td></tr>{% endfor %}</tbody></table></div>
+<details class="subsection"><summary>Add an employee or external person</summary>
+<p>First check whether this person already exists above. A person can be added without creating a login.</p>
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create">
+<label for="full_name">Full name</label><input id="full_name" type="text" name="full_name" maxlength="255" required>
+<label for="person-email">Email optional</label><input id="person-email" type="email" name="email" maxlength="255">
+<label for="person-phone">Phone optional</label><input id="person-phone" type="text" name="phone" maxlength="64">
+<button type="submit">Add person</button></form></details>
+<h2>Records to connect</h2><p>These existing employee and login records do not yet have a confirmed person link. Choose the existing person, or explicitly create their person record. Names are never matched automatically.</p>
+{% for kind, records in [('employee', unlinked_employees), ('account', unlinked_accounts)] %}
+{% for source in records %}<div class="card"><strong>{{ source.display_name or 'Name not available' }}</strong><p>{{ 'Employee record' if kind == 'employee' else 'RF-One login' }} #{{ source.id }}{% if kind == 'account' %} · {{ source.username }}{% endif %}</p>
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="source" value="{{ kind }}:{{ source.id }}">
+<label for="link-{{ kind }}-{{ source.id }}">Existing person</label><select id="link-{{ kind }}-{{ source.id }}" name="person_id"><option value="">Choose the matching person</option>{% for person in choices %}<option value="{{ person.id }}">{{ person.full_name or 'Name not available' }} · #{{ person.id }}</option>{% endfor %}</select>
+<div class="btn-row"><button type="submit" name="action" value="link">Link to existing person</button><button type="submit" name="action" value="create_from_source">Create person from this record</button></div></form></div>{% endfor %}{% endfor %}
+{% if not unlinked_employees and not unlinked_accounts %}<p>All employee and RF-One login records are linked.</p>{% endif %}
+{% if employee_setup_required %}<details class="subsection"><summary>Employee data tools</summary><p>Prepare imported employee data for review in the existing employee editor. This does not create person identities or match names.</p><form method="post" action="{{ url_for('employee_registry_initialize') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Prepare employee data for review</button></form></details>{% endif %}
+{% endblock %}

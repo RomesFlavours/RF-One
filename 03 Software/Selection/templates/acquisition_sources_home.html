@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <p class="muted" style="font-size:.82rem;">
+    Acquisition Source is WHERE a candidate found out about this role (Indeed, LinkedIn, Referral, Walk-In...) —
+    completely separate from Communication Channel (how RF-One later contacts them). RF-One seeds a few common
+    examples below; rename, deactivate, or add your own freely.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Configured Acquisition Sources</h2>
+  {% if sources %}
+    {% for s in sources %}
+    <div class="signal-card {{ '' if s.is_active else 'inactive' }}">
+      <div class="req-title">
+        {{ s.name }}
+        {% if not s.is_active %}<span class="badge status-failed">INACTIVE</span>{% endif %}
+      </div>
+      {% if s.description %}<p style="font-size:.85rem; margin:.3rem 0;">{{ s.description }}</p>{% endif %}
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No Acquisition Sources configured yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Add an Acquisition Source</h2>
+  <form method="post" action="{{ url_for('acquisition_source_create') }}" class="req-form">
+    <label>Name</label>
+    <input type="text" name="name" placeholder="e.g. Indeed, Referral, Walk-In" required>
+    <label>Description (optional)</label>
+    <textarea name="description"></textarea>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Add Source</button>
+  </form>
+</div>
+
+{% endblock %}
