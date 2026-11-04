@@ -113,3 +113,19 @@ Operational employee values/counts preserved. Corrected an archive CRLF integrit
 mismatch before worker activation. Final read-only canary and startup guard pass;
 two new correction cycles COMPLETE. 64 people, no pending identities/orphan shifts.
 See PERSON_FOUNDATION_003_AWS_REPORT.md and PERSON_FOUNDATION_003_RELEASE.json.
+
+## 2026-11-04 — Employee lifecycle and mandatory RF1 account (release candidate, not deployed)
+
+Branch integration/employee-directory-aws (from the live rfone-web commit 1336e16),
+migrations e3f120261103 -> e4a120261103 after the AWS revision e1b220261102.
+Complete Clover roster + clock scans end single-site positions; the last ended
+position dismisses the person at the latest clock-in and blocks RF1/Training access
+(owner excepted). No-clock identities stay technical observations. Every registered
+employee has exactly one RF1 account (INACTIVE shell or confirmed existing account).
+Shared services: require_active_employee; organizational applicability in
+employee_applicability (migration e4a120261103, EMPLOYEE_APPLICABILITY_001);
+Interviews contract interview_employee_options / require_active_employee. Not on AWS:
+release candidate and rehearsal evidence in
+07 Tasks/Reports/EMPLOYEE_DIRECTORY_AWS_CONSOLIDATION_002.md.
+PO decisions approved 2026-11-03: owner keeps RF1 access while the person stays
+dismissed; Workforce closes assignments; replaced shells stay INACTIVE, unlinked.
