@@ -68,6 +68,10 @@ class HostAllocationLine:
     host_allocated_amount_minor: int  # THIS Host's own allocated_amount_minor
     rule_version_id: int
     status: str
+    eligibility_detail: str = ""
+    group_base_minor: int | None = None
+    group_pool_minor: int | None = None
+    worked_seconds: object = None
 
 
 @dataclass
@@ -79,6 +83,7 @@ class HostShiftAuditGroup:
     shift_end: datetime | None
     rule_version_ids: list[int]
     lines: list[HostAllocationLine] = field(default_factory=list)
+    daily_pool: bool = False
 
     @property
     def total_host_tips_minor(self) -> int:
@@ -236,8 +241,18 @@ def build_host_audit_report(
         return groups_by_shift_key[key]
 
     for allocation in allocations:
-        shift = _find_covering_shift(shifts, allocation.settlement_time)
-        group = _group_for(shift)
+        if allocation.business_date is not None:
+            order = session.get(m.Order, allocation.order_id)
+            location = session.get(m.Location, order.location_id)
+            day, start, end = engine_svc._business_day_window(location, allocation.settlement_time)
+            key = ("day", location.id, day, allocation.rule_version_id)
+            if key not in groups_by_shift_key:
+                groups_by_shift_key[key] = HostShiftAuditGroup(shift_id=None, business_date=day,
+                    role_name="(unknown)", shift_start=start, shift_end=end, rule_version_ids=[], daily_pool=True)
+            group = groups_by_shift_key[key]
+        else:
+            shift = _find_covering_shift(shifts, allocation.settlement_time)
+            group = _group_for(shift)
         if allocation.rule_version_id not in group.rule_version_ids:
             group.rule_version_ids.append(allocation.rule_version_id)
         if group.role_name == "(unknown)":
@@ -279,7 +294,9 @@ def build_host_audit_report(
                 eligible_hosts=eligible_hosts,
                 host_allocated_amount_minor=allocation.allocated_amount_minor,
                 rule_version_id=allocation.rule_version_id,
-                status=STATUS_ALLOCATED,
+                status=STATUS_ALLOCATED, eligibility_detail=allocation.recipient_eligibility_basis,
+                group_base_minor=allocation.group_base_amount_minor, group_pool_minor=allocation.group_pool_amount_minor,
+                worked_seconds=allocation.recipient_worked_seconds,
             )
         )
 

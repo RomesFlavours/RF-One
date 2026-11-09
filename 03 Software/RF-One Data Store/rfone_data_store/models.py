@@ -1884,6 +1884,10 @@ ELIGIBILITY_MODE_ACTIVE_AT_SETTLEMENT = "ACTIVE_AT_SETTLEMENT"
 # `order.createdTime` (mapping.map_order) — the instant Clover opened the
 # order. Not `client_created_at` (a device clock) and not a payment time.
 ELIGIBILITY_MODE_ACTIVE_AT_ORDER_OPEN = "ACTIVE_AT_ORDER_OPEN"
+ELIGIBILITY_MODE_WORKED_DURING_BUSINESS_DAY = "WORKED_DURING_BUSINESS_DAY"
+AGGREGATION_SCOPE_ORDER = "ORDER"
+AGGREGATION_SCOPE_SOURCE_BUSINESS_DAY = "SOURCE_BUSINESS_DAY"
+DISTRIBUTION_METHOD_HOURS_PROPORTIONAL = "HOURS_PROPORTIONAL"
 DISTRIBUTION_METHOD_EQUAL = "EQUAL"
 NO_ELIGIBLE_RECIPIENT_SOURCE_RETAINS = "SOURCE_RETAINS"
 TRANSACTION_SCOPE_ALL = "ALL"
@@ -2047,6 +2051,9 @@ class TipDistributionRuleVersion(Base):
     # SOURCE_RETAINS (spec §14), transaction_scope=ALL (spec §11) — see the
     # `*_validate_*` functions in `distribution_rule_service.py` for what is
     # actually accepted today.
+    aggregation_scope: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=AGGREGATION_SCOPE_ORDER, server_default=AGGREGATION_SCOPE_ORDER,
+    )
     eligibility_mode: Mapped[str] = mapped_column(String(32), nullable=False)
     distribution_method: Mapped[str] = mapped_column(String(32), nullable=False)
     no_eligible_recipient_behavior: Mapped[str] = mapped_column(String(32), nullable=False)

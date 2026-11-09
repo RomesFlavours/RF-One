@@ -101,6 +101,7 @@ class RuleProposal:
     human_readable_summary: str
     warnings: list[str] = field(default_factory=list)
     confidence: str = "HIGH"
+    aggregation_scope: str = m.AGGREGATION_SCOPE_ORDER
 
 
 @dataclass
@@ -153,13 +154,22 @@ currently compute. Anything outside this list must be reported as UNSUPPORTED �
 WHAT MONEY IS DISTRIBUTED (pick exactly one, based on what the user described):
 {bases}
 
-RECIPIENT ELIGIBILITY (the only supported meaning — always this, never state anything else in the \
-proposal): a Recipient Role holder is eligible only if they are assigned to that Role at the exact moment \
-the Order's payment settles ("present at payment time" / "present at settlement"). There is no support for \
-eligibility based on total hours worked, scheduled-but-not-present, or any other timing.
+AGGREGATION (choose from the user's intent): ORDER applies and rounds the percentage per order.
+SOURCE_BUSINESS_DAY sums each source employee's base per location, business day and rule version,
+then applies and rounds the percentage once to that source's daily total.
 
-SPLIT AMONG MULTIPLE ELIGIBLE RECIPIENTS (the only supported meaning): split equally among every eligible \
-recipient. There is no support for a weighted, seniority-based, or hours-proportional split.
+RECIPIENT ELIGIBILITY: ACTIVE_AT_ORDER_OPEN (on shift when the order opened),
+ACTIVE_AT_SETTLEMENT (on shift at payment settlement), or WORKED_DURING_BUSINESS_DAY
+(positive actual recorded shift time intersecting the recipient role assignment and the location's
+business day). Daily source aggregation REQUIRES WORKED_DURING_BUSINESS_DAY.
+
+SPLIT: EQUAL among eligible recipients, or HOURS_PROPORTIONAL to their actual eligible worked
+seconds in the business day. HOURS_PROPORTIONAL REQUIRES WORKED_DURING_BUSINESS_DAY.
+Worked time is clipped at the local business-day boundaries, role coverage is respected,
+and overlapping shifts do not double hours. Incomplete relevant shifts require correction.
+For "10% of each server's daily tips distributed to that day's Hosts proportionally to hours",
+use SOURCE_BUSINESS_DAY + WORKED_DURING_BUSINESS_DAY + HOURS_PROPORTIONAL.
+Do not reject daily pooling or hours weighting: both are implemented by the same engine.
 
 WHEN NO RECIPIENT IS ELIGIBLE (the only supported meaning): the source (see below) retains the entire \
 amount. There is no support for a house pool, a different fallback role, or forfeiting the money some \
@@ -215,6 +225,9 @@ ONLY when source_semantics is ROLE. Omit entirely (or null) when source_semantic
 — never invent a Role name for it.>",
     "recipient_role_name": "<must be EXACTLY one of the restaurant's Role names listed above>",
     "calculation_base": "VOLUNTARY_TIP | GRATUITY | TIP_PLUS_GRATUITY",
+    "aggregation_scope": "ORDER | SOURCE_BUSINESS_DAY",
+    "eligibility_mode": "ACTIVE_AT_ORDER_OPEN | ACTIVE_AT_SETTLEMENT | WORKED_DURING_BUSINESS_DAY",
+    "distribution_method": "EQUAL | HOURS_PROPORTIONAL",
     "rate": "<the Recipient Role's percentage share, as a decimal string, e.g. \\"10.0000\\">",
     "effective_from": "<ISO date YYYY-MM-DD>",
     "effective_to": "<ISO date YYYY-MM-DD, or null if open-ended>",
@@ -266,6 +279,8 @@ substitute the closest supported behavior.
 4. Otherwise return a complete PROPOSED rule.
 
 {_OUTPUT_CONTRACT}
+
+Human-facing text language: {'Italian' if __import__('os').environ.get('RFONE_UI_LANGUAGE') == 'it' else 'English'}. JSON keys and enum codes remain English.
 """
 
 
@@ -440,10 +455,15 @@ def _validate_and_build(
         "no_eligible_recipient_behavior", m.NO_ELIGIBLE_RECIPIENT_SOURCE_RETAINS,
     )
     transaction_scope = proposal_raw.get("transaction_scope", m.TRANSACTION_SCOPE_ALL)
+    aggregation_scope = proposal_raw.get("aggregation_scope", m.AGGREGATION_SCOPE_ORDER)
     unsupported_axis = None
-    if eligibility_mode != m.ELIGIBILITY_MODE_ACTIVE_AT_SETTLEMENT:
+    try:
+        rule_svc.validate_calculation_shape(aggregation_scope, eligibility_mode, distribution_method)
+    except ValueError:
+        unsupported_axis = "combination of aggregation, eligibility and distribution"
+    if eligibility_mode not in rule_svc._IMPLEMENTED_ELIGIBILITY_MODES:
         unsupported_axis = "recipient eligibility timing"
-    elif distribution_method != m.DISTRIBUTION_METHOD_EQUAL:
+    elif distribution_method not in (m.DISTRIBUTION_METHOD_EQUAL, m.DISTRIBUTION_METHOD_HOURS_PROPORTIONAL):
         unsupported_axis = "how the amount is split among multiple eligible recipients"
     elif no_eligible_recipient_behavior != m.NO_ELIGIBLE_RECIPIENT_SOURCE_RETAINS:
         unsupported_axis = "what happens when no recipient is eligible"
@@ -498,7 +518,7 @@ def _validate_and_build(
             eligibility_mode=eligibility_mode, distribution_method=distribution_method,
             no_eligible_recipient_behavior=no_eligible_recipient_behavior, transaction_scope=transaction_scope,
             effective_from=effective_from, effective_to=effective_to,
-            human_readable_summary=summary.strip(), warnings=warnings,
+            human_readable_summary=summary.strip(), warnings=warnings, aggregation_scope=aggregation_scope,
         ),
     )
 
@@ -589,10 +609,7 @@ def confirm_rule_proposal(
 
     if proposal.calculation_base not in m.TIP_DISTRIBUTION_ENGINE_IMPLEMENTED_CALCULATION_BASES:
         raise ValueError(f"Calculation Base {proposal.calculation_base!r} is not implemented by the engine.")
-    if proposal.eligibility_mode != m.ELIGIBILITY_MODE_ACTIVE_AT_SETTLEMENT:
-        raise ValueError(f"Eligibility Mode {proposal.eligibility_mode!r} is not implemented by the engine.")
-    if proposal.distribution_method != m.DISTRIBUTION_METHOD_EQUAL:
-        raise ValueError(f"Distribution Method {proposal.distribution_method!r} is not implemented by the engine.")
+    rule_svc.validate_calculation_shape(proposal.aggregation_scope, proposal.eligibility_mode, proposal.distribution_method)
     if proposal.no_eligible_recipient_behavior != m.NO_ELIGIBLE_RECIPIENT_SOURCE_RETAINS:
         raise ValueError(
             f"No-Eligible-Recipient Behavior {proposal.no_eligible_recipient_behavior!r} is not implemented "
@@ -623,6 +640,10 @@ def confirm_rule_proposal(
             raise ValueError(f"Effective To {proposal.effective_to!r} is not a valid ISO date.")
         effective_to = datetime.strptime(effective_to_date, "%Y-%m-%d").replace(tzinfo=UTC)
 
+    if proposal.eligibility_mode == m.ELIGIBILITY_MODE_WORKED_DURING_BUSINESS_DAY:
+        effective_from = rule_svc.effective_business_date_boundary(session, proposal.restaurant_id, effective_from)
+        effective_to = rule_svc.effective_business_date_boundary(session, proposal.restaurant_id, effective_to)
+
     common_kwargs = dict(
         source_semantics=proposal.source_semantics, source_role_id=proposal.source_role_id,
         recipient_role_id=proposal.recipient_role_id,
@@ -630,7 +651,7 @@ def confirm_rule_proposal(
         effective_to=effective_to, created_by=created_by,
         eligibility_mode=proposal.eligibility_mode, distribution_method=proposal.distribution_method,
         no_eligible_recipient_behavior=proposal.no_eligible_recipient_behavior,
-        transaction_scope=proposal.transaction_scope,
+        transaction_scope=proposal.transaction_scope, aggregation_scope=proposal.aggregation_scope,
     )
 
     if proposal.rule_id is None:

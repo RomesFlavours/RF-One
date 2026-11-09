@@ -1,0 +1,19 @@
+<div class="form-row">
+  <div><label for="aggregation_scope">{{ ui("Aggregation") }}</label>
+    <select id="aggregation_scope" name="aggregation_scope">
+      <option value="ORDER" {{ 'selected' if not current or current.aggregation_scope == 'ORDER' else '' }}>{{ ui("Each order") }}</option>
+      <option value="SOURCE_BUSINESS_DAY" {{ 'selected' if current and current.aggregation_scope == 'SOURCE_BUSINESS_DAY' else '' }}>{{ ui("Each source / business day") }}</option>
+    </select></div>
+  <div><label for="eligibility_mode">{{ ui("Who is eligible") }}</label>
+    <select id="eligibility_mode" name="eligibility_mode">
+      <option value="ACTIVE_AT_SETTLEMENT" {{ 'selected' if not current or current.eligibility_mode == 'ACTIVE_AT_SETTLEMENT' else '' }}>{{ ui("On shift at payment settlement") }}</option>
+      <option value="ACTIVE_AT_ORDER_OPEN" {{ 'selected' if current and current.eligibility_mode == 'ACTIVE_AT_ORDER_OPEN' else '' }}>{{ ui("On shift when the order opened") }}</option>
+      <option value="WORKED_DURING_BUSINESS_DAY" {{ 'selected' if current and current.eligibility_mode == 'WORKED_DURING_BUSINESS_DAY' else '' }}>{{ ui("Worked during the business day") }}</option>
+    </select></div>
+  <div><label for="distribution_method">{{ ui("Split among recipients") }}</label>
+    <select id="distribution_method" name="distribution_method">
+      <option value="EQUAL" {{ 'selected' if not current or current.distribution_method == 'EQUAL' else '' }}>{{ ui("Equal shares") }}</option>
+      <option value="HOURS_PROPORTIONAL" {{ 'selected' if current and current.distribution_method == 'HOURS_PROPORTIONAL' else '' }}>{{ ui("Proportional to hours worked") }}</option>
+    </select></div>
+</div>
+<p class="muted">{{ ui("Daily aggregation and hours weighting require “Worked during the business day”. If nobody qualifies, the source keeps the full amount.") }}</p>

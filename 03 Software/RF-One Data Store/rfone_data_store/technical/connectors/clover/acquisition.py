@@ -362,11 +362,19 @@ def get_order_settlement_time(session: Session, order_id: int) -> datetime | Non
     already-acquired Payments any Domain may need (Sales reporting, Server
     Performance timing — not only Tips), not a Tips-specific calculation.
     Returns `None` only when the Order has no successful Payment at all."""
-    return session.scalar(
-        select(func.max(m.Payment.created_at)).where(
-            m.Payment.order_id == order_id, m.Payment.result == "SUCCESS",
-        )
-    )
+    settled = order_settlement_times_subquery()
+    return session.scalar(select(settled.c.settlement_time).where(settled.c.order_id == order_id))
+
+
+def order_settlement_times_subquery():
+    """Canonical settlement fact in bulk: last successful payment per order.
+
+    Consumers can join/filter this expression without an N+1 query per order.
+    The scalar helper above and period calculations share this definition.
+    """
+    return select(m.Payment.order_id.label("order_id"), func.max(m.Payment.created_at).label("settlement_time")).where(
+        m.Payment.result == "SUCCESS").group_by(m.Payment.order_id).subquery()
+
 
 
 def resolve_order_business_dates(session: Session, order_ids: Iterable[int]) -> int:
