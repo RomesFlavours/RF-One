@@ -1,17 +1,17 @@
-"""Minimal, provider-agnostic LLM chat abstraction (task Â§18: "Reuse the
+"""Minimal, provider-agnostic LLM chat abstraction (task §18: "Reuse the
 existing RF-One AI/provider abstraction if one exists. Do not couple
-Selection to one LLM provider."). Consumers (Selection's rÃ©sumÃ© parsing/
+Selection to one LLM provider."). Consumers (Selection's résumé parsing/
 Primary Screening AI evaluation, Organizational AI review, Tips AI Rule
-Authoring) depend on exactly one contract â€” `generate_json(prompt) -> dict`
-â€” and never know or care which provider actually answered it.
+Authoring) depend on exactly one contract — `generate_json(prompt) -> dict`
+— and never know or care which provider actually answered it.
 
 Two concrete providers are wired up: Anthropic (the original, default) and
-AWS Bedrock (RFONE_AI_PROVIDER_BEDROCK_001 â€” reuses the AWS account/
+AWS Bedrock (RFONE_AI_PROVIDER_BEDROCK_001 — reuses the AWS account/
 credential chain already configured for this environment, never a second
 AWS account, never Anthropic-issued credentials). `RFONE_AI_PROVIDER`
 selects which one is active; unset defaults to ANTHROPIC, preserving every
 existing deployment's current behavior unchanged. Adding a provider here
-only ever means adding one function + one registry entry â€” no consumer,
+only ever means adding one function + one registry entry — no consumer,
 and no other part of this contract, changes.
 """
 
@@ -32,7 +32,7 @@ class AIProviderUnavailable(Exception):
 
 def _read_env_or_dotenv(var_name: str) -> str | None:
     """Generic version of this module's original `.env` resolution
-    convention (previously inlined in `_anthropic_api_key` alone) â€” env var
+    convention (previously inlined in `_anthropic_api_key` alone) — env var
     first, then the same repo-root `.env` file `rfone_data_store/database.py`
     already uses, found by walking upward from this file. Reused for every
     RF-One AI-client configuration value (`ANTHROPIC_API_KEY`,
@@ -72,7 +72,7 @@ def _strip_markdown_json_fence(text: str) -> str:
     fences," but a model may still wrap its answer in a ```json ... ```
     block (observed from AWS Bedrock's Claude Haiku 4.5; the same latent
     risk exists for the direct Anthropic path). Strips ONLY a single
-    leading/trailing fence, never touches interior content â€” the JSON
+    leading/trailing fence, never touches interior content — the JSON
     payload itself is still fully parsed and validated exactly as before,
     nothing here weakens that."""
     stripped = text.strip()
@@ -113,16 +113,16 @@ def _generate_json_bedrock(prompt: str, *, model_id: str | None = None, profile_
     """AWS Bedrock Runtime, behind the exact same `generate_json` contract
     (RFONE_AI_PROVIDER_BEDROCK_001). Deliberately introduces NO new AWS
     credential mechanism: `boto3.client("bedrock-runtime")` with no explicit
-    profile/region arguments uses boto3's own standard resolution chain â€”
+    profile/region arguments uses boto3's own standard resolution chain —
     the same `AWS_REGION`/`AWS_PROFILE`/`~/.aws/credentials`/SSO
     configuration this environment's `aws` CLI already relies on. Uses the
     Bedrock Runtime `Converse` API (provider-neutral within Bedrock itself,
-    the current AWS-recommended entry point) at temperature 0 â€” the lowest
+    the current AWS-recommended entry point) at temperature 0 — the lowest
     available, for the deterministic/structured output RF-One's Rule
     interpretation and evidence-extraction prompts require.
 
     `RFONE_BEDROCK_MODEL_ID` must name a model this AWS account actually has
-    Bedrock access to â€” never guessed or hardcoded here; the caller
+    Bedrock access to — never guessed or hardcoded here; the caller
     determines it once (e.g. via `aws bedrock list-foundation-models`) and
     configures it."""
     model_id = model_id or _read_env_or_dotenv("RFONE_BEDROCK_MODEL_ID")
@@ -138,7 +138,7 @@ def _generate_json_bedrock(prompt: str, *, model_id: str | None = None, profile_
     try:
         # `AWS_REGION` follows this module's own env-var/.env convention
         # (RF-One's `.env` is never auto-loaded into the OS process
-        # environment, so boto3 cannot see it on its own) â€” passed through
+        # environment, so boto3 cannot see it on its own) — passed through
         # explicitly; `None` falls back to boto3's own standard region
         # resolution (`~/.aws/config`, etc.) unchanged.
         factory = boto3.Session(profile_name=profile_name) if profile_name else boto3
@@ -196,15 +196,15 @@ def active_provider_description() -> tuple[str, str | None]:
 
 def generate_json(prompt: str) -> dict:
     """Call the configured LLM provider and parse its response as JSON.
-    Raises `AIProviderUnavailable` if no provider is configured/reachable â€”
+    Raises `AIProviderUnavailable` if no provider is configured/reachable —
     callers must treat that as "fall back to demo," never as an application
     error surfaced to the user. Which provider actually runs is controlled
-    entirely by `RFONE_AI_PROVIDER` (default: Anthropic) â€” this function's
+    entirely by `RFONE_AI_PROVIDER` (default: Anthropic) — this function's
     signature and behavior are identical regardless."""
     provider = _active_provider()
     impl = _PROVIDERS.get(provider)
     if impl is None:
         raise AIProviderUnavailable(
-            f"Unknown RFONE_AI_PROVIDER {provider!r} â€” expected one of {sorted(_PROVIDERS)}."
+            f"Unknown RFONE_AI_PROVIDER {provider!r} — expected one of {sorted(_PROVIDERS)}."
         )
     return impl(prompt)
