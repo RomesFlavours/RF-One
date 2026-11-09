@@ -1,0 +1,34 @@
+{% extends 'base.html' %}{% set help_section='settings' %}
+{% block body_class %}settings-page{% endblock %}
+{% block extra_styles %}<link rel="stylesheet" href="{{ url_for('static',filename='css/rf-one.css') }}"><link rel="stylesheet" href="{{ url_for('static',filename='settings.css') }}">{% endblock %}
+{% block shell_header %}<div class="settings-shell">
+<header class="site-header"><a class="brand" href="{{ url_for('exit_board') }}"><span class="brand-wordmark">RF-One</span><span class="brand-suffix">Kitchen Board</span></a></header>
+<nav class="settings-breadcrumb" aria-label="{{ 'Percorso' if it else 'Breadcrumb' }}"><a href="{{ url_for('exit_board') }}">Kitchen Board</a> / {{ 'Impostazioni schermo' if it else 'Display settings' }}</nav>
+<div class="settings-heading"><h1>{{ 'Impostazioni schermo' if it else 'Display settings' }}</h1>
+{% if it %}{{ how_works_link(help_section)|replace('How this page works','Come funziona questa pagina') }}{% else %}{{ how_works_link(help_section) }}{% endif %}</div>
+<p class="settings-intro"><strong>{{ location.name }}</strong> · {{ 'Scegli come leggere gli ordini in cucina. Il salvataggio aggiorna gli schermi di questa sede.' if it else 'Choose how orders appear in the kitchen. Saving updates the displays at this Location.' }}</p></div>{% endblock %}
+{% block content %}<main class="settings-shell settings-grid">
+<form id="display-settings-form" method="post" class="settings-card" data-location="{{ location.id }}" data-locale="{{ locale }}">
+<input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="revision" value="{{ values.revision }}">
+{% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+{% if saved %}<div class="info" role="status">{{ 'Impostazioni salvate. Gli schermi si aggiornano automaticamente.' if it else 'Settings saved. Displays update automatically.' }}</div>{% endif %}
+<h2>{{ 'Testo' if it else 'Text' }}</h2>
+<label for="font-family">{{ 'Carattere' if it else 'Font' }}</label>
+<select id="font-family" name="font_family">{% for key,label in [('arial','Arial'),('segoe','Segoe UI'),('verdana','Verdana')] %}<option value="{{ key }}" {% if values.font_family==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+<label for="font-size">{{ 'Dimensione del carattere (pixel)' if it else 'Text size (pixels)' }}</label>
+<input id="font-size" name="font_size" type="number" min="12" max="36" step="1" required value="{{ values.font_size }}">
+<h2>{{ 'Impaginazione' if it else 'Layout' }}</h2>
+<div class="settings-pair"><div><label for="columns">{{ 'Colonne per riga' if it else 'Columns per row' }}</label><input id="columns" name="visible_count" type="number" min="1" max="16" step="1" required value="{{ values.visible_count }}"></div>
+<div><label for="rows">{{ 'Righe di ordini' if it else 'Rows of orders' }}</label><input id="rows" name="row_count" type="number" min="1" max="3" step="1" required value="{{ values.row_count }}"></div></div>
+<label for="layout">{{ 'Tipo di impaginazione' if it else 'Layout mode' }}</label>
+<select id="layout" name="layout"><option value="flow" {% if values.layout=='flow' %}selected{% endif %}>{{ 'Colonne continue' if it else 'Continuous columns' }}</option><option value="cards" {% if values.layout=='cards' %}selected{% endif %}>{{ 'Un ordine per riquadro' if it else 'One order per cell' }}</option></select>
+<p id="layout-explanation" class="settings-hint"></p>
+<div class="settings-actions"><button type="submit" class="btn">{{ 'Salva impostazioni' if it else 'Save settings' }}</button><a id="open-display" href="{{ url_for('board_page',location_id=location.id) }}">{{ 'Apri schermo cucina' if it else 'Open kitchen display' }}</a></div>
+<p id="local-save-status" role="status"></p>
+</form>
+<section class="settings-card settings-preview"><div class="preview-heading"><h2>{{ 'Anteprima' if it else 'Preview' }}</h2><span>16:9</span></div>
+<p class="settings-hint">{{ 'Le modifiche sono visibili qui prima del salvataggio.' if it else 'Changes appear here before you save.' }}</p>
+<div id="preview-viewport"><iframe id="display-preview" title="{{ 'Anteprima dello schermo cucina' if it else 'Kitchen display preview' }}" src="{{ url_for('board_page',location_id=location.id,preview=1) }}"></iframe></div>
+<p class="settings-hint">{{ 'Niente scroll e nessuna pagina da sfogliare sul monitor. Gli ordini successivi entrano quando si libera spazio.' if it else 'No scrolling or page controls on the monitor. Queued orders enter as space becomes available.' }}</p></section>
+</main>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static',filename='settings.js') }}" defer></script>{% endblock %}

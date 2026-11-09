@@ -1,0 +1,10 @@
+{% extends 'base.html' %}{% set help_section='board' %}
+{% block shell_header %}{% endblock %}
+{% block content %}<main id="board" data-location="{{ location.id }}" data-locale="{{ locale }}">
+<a class="board-exit" href="{{ url_for('exit_board') }}" aria-label="{{ 'Esci dalla vista cucina' if it else 'Exit kitchen display' }}" title="{{ 'Esci' if it else 'Exit' }}">×</a>
+<span id="queue-count" hidden></span>
+<p id="sync-status" role="status"></p>
+<div id="tickets" class="rail" aria-label="{{ 'Ordini da rilasciare, dal più vecchio' if it else 'Unreleased orders, oldest first' }}"></div>
+<p id="empty" hidden>{{ 'Nessun ordine da rilasciare.' if it else 'No orders waiting for release.' }}</p>
+<p id="overflow" hidden></p></main>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static',filename='rail.js') }}" defer></script><script src="{{ url_for('static',filename='board.js') }}" defer></script>{% endblock %}

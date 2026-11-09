@@ -1,0 +1,4 @@
+{% extends 'base.html' %}{% set help_section='home' %}
+{% block content %}<main><h1>RF-One Kitchen Board</h1>
+{% for id,name in locations %}<section class="location-entry"><h2>{{ name }}</h2><p><a href="{{ url_for('board_page',location_id=id) }}">{{ 'Apri schermo cucina' if it else 'Open kitchen display' }}</a> · <a href="{{ url_for('display_settings_page',location_id=id) }}">{{ 'Impostazioni schermo' if it else 'Display settings' }}</a></p></section>
+{% else %}<p>{{ 'Nessuna sede configurata.' if it else 'No Location configured.' }}</p>{% endfor %}</main>{% endblock %}

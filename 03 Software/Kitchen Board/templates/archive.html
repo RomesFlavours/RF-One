@@ -1,0 +1,13 @@
+{% extends 'base.html' %}{% set help_section='archive' %}
+{% block path %} / <a href="{{ url_for('board_page',location_id=location.id) }}">{{ location.name }}</a> / {{ 'Archivio' if it else 'Archive' }}{% endblock %}
+{% block content %}<main><h1>{{ 'Ordini rilasciati' if it else 'Released orders' }}</h1>
+<div class="archive">{% for ticket in tickets %}<article class="ticket"><h2>{{ ticket.title }}</h2>
+<p>{{ ticket.local_time }} · {{ 'Rilasciato' if it else 'Released' }}</p>
+{% if ticket.note %}<p class="note">{{ ticket.note }}</p>{% endif %}
+{% for line in ticket.lines %}<div class="line">{% if line.guest %}<small>{{ line.guest }}</small>{% endif %}
+<p>{% if line.quantity is not none %}{{ line.quantity }} × {% endif %}{{ line.name }}</p>
+{% if line.note %}<p class="note">{{ line.note }}</p>{% endif %}
+{% for modifier in line.modifiers %}<p class="modifier">+ {{ modifier }}</p>{% endfor %}</div>{% endfor %}
+<small>{{ ticket.order_id }}</small></article>{% else %}<p>{{ 'Nessun ordine archiviato.' if it else 'No archived orders.' }}</p>{% endfor %}</div>
+<nav>{% if page>1 %}<a href="{{ url_for('archive',location_id=location.id,page=page-1) }}">← {{ 'Precedenti' if it else 'Previous' }}</a>{% endif %}
+{% if more %}<a href="{{ url_for('archive',location_id=location.id,page=page+1) }}">{{ 'Successivi' if it else 'Next' }} →</a>{% endif %}</nav></main>{% endblock %}

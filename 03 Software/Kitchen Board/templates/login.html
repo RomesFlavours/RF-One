@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block content %}<main class="login"><h1>RF-One Kitchen Board</h1>
+<form method="post"><label>{{ 'Codice di accesso' if it else 'Access token' }}
+<input name="token" type="password" required autocomplete="current-password" maxlength="256"></label>
+<button>{{ 'Accedi' if it else 'Sign in' }}</button></form>
+{% if error %}<p role="alert">{{ 'Codice non valido.' if it else 'Invalid access token.' }}</p>{% endif %}</main>{% endblock %}

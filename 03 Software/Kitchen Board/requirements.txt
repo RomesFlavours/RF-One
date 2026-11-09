@@ -1,0 +1,2 @@
+-r "../RF-One Data Store/requirements.txt"
+Flask>=3.0,<4

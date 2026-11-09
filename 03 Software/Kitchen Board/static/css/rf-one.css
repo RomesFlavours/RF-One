@@ -1,0 +1,594 @@
+/* RF-One Web — the general RF-One shell's visual identity. Same palette
+   and conventions as Tips/Training's own `rf-one.css` (olive/green family,
+   white content areas, no gradients, no dark theme, no animation) — kept
+   as its own file per-application, not a shared stylesheet, consistent
+   with how Tips and Training each already keep their own copy. */
+
+:root {
+  --olive-900: #2f3a1f;
+  --olive-700: #55642f;
+  --olive-600: #64753a;
+  --olive-500: #7c8f52;
+  --olive-300: #c7d1a8;
+  --olive-150: #e8edd8;
+  --olive-050: #f6f8ef;
+
+  --paper: #ffffff;
+  --surface: #ffffff;
+  --ink: #24271c;
+  --muted: #6e735e;
+  --line: var(--olive-300);
+
+  --ok: #2e7d4f;
+  --bad: #a33b2e;
+
+  --radius: 10px;
+  --shadow-card: 0 1px 2px rgba(47, 58, 31, 0.06);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  margin: 0;
+  padding: 0 2rem 3rem;
+}
+
+.wrap { max-width: 780px; margin: 0 auto; }
+
+/* ---------------------------------------------------------------------
+   Header / branding
+   --------------------------------------------------------------------- */
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1.5rem 0 1.1rem;
+  border-bottom: 1px solid var(--olive-300);
+  margin-bottom: 1.5rem;
+}
+
+.brand { display: flex; align-items: center; gap: .7rem; text-decoration: none; }
+
+.brand-wordmark {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--olive-900);
+  letter-spacing: .01em;
+}
+
+.brand-name-group { display: flex; flex-direction: column; line-height: 1.15; }
+
+.brand-suffix {
+  font-size: .72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-top: .15rem;
+}
+
+.brand-logo { height: 68px; width: auto; max-width: 200px; flex-shrink: 0; }
+
+@media (max-width: 480px) {
+  .brand-logo { height: 52px; max-width: 140px; }
+}
+
+.subtitle { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; font-size: .9rem; }
+.subtitle:empty { display: none; }
+
+/* ---------------------------------------------------------------------
+   Headings / links
+   --------------------------------------------------------------------- */
+
+h1 { font-size: 1.4rem; margin-bottom: .25rem; color: var(--olive-900); }
+h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; color: var(--olive-900); }
+a { color: var(--olive-700); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---------------------------------------------------------------------
+   Content containers
+   --------------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--olive-300);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-card);
+}
+
+/* ---------------------------------------------------------------------
+   Domain cards (Home page)
+   --------------------------------------------------------------------- */
+
+.domain-card {
+  display: block;
+  min-width: 180px;
+  flex: 1 1 180px;
+  border: 1px solid var(--olive-300);
+  border-radius: var(--radius);
+  padding: 1rem 1.2rem;
+  background: var(--olive-050);
+  color: var(--olive-900);
+  text-decoration: none;
+}
+.domain-card:hover { background: var(--olive-150); text-decoration: none; }
+.domain-card .domain-name { font-weight: 700; font-size: 1rem; }
+.domain-card .domain-description { font-size: .8rem; color: var(--muted); margin-top: .3rem; }
+
+.domain-card-unavailable {
+  background: var(--surface);
+  color: var(--muted);
+  cursor: default;
+}
+.domain-card-unavailable:hover { background: var(--surface); }
+.domain-card-unavailable .domain-name { color: var(--muted); }
+/* Release state on Home: the same green/red pair as `.badge.ok` /
+   `.badge.bad` (ACTIVE / INACTIVE), applied to the whole card. */
+.domain-card-released, .domain-card-released:hover { background: #e7f3ea; border-color: #bcdcc6; }
+.domain-card-unreleased, .domain-card-unreleased:hover { background: #fbeaea; border-color: #e2a8a0; }
+.domain-unavailable-label {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  margin-top: .5rem;
+  color: var(--muted);
+}
+
+/* Home: one vertical column of full-width blocks (Domains, then
+   Administration, then Settings) instead of side-by-side cards. */
+.home-stack {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+  margin-bottom: .6rem;
+}
+.home-stack .domain-card { min-width: 0; flex: none; }
+.home-block, .home-block:hover { background: var(--olive-050); }
+.home-row {
+  display: block;
+  font-size: .85rem;
+  color: var(--muted);
+  margin-top: .35rem;
+}
+.home-row strong { color: var(--olive-700); }
+.home-subrow { margin: -.3rem 0 0 1.2rem; }
+.home-logout { display: flex; justify-content: flex-end; margin: -1rem 0 .5rem; }
+.link-button,
+.link-button:hover {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: .85rem;
+  color: var(--olive-700);
+  border-radius: 0;
+}
+.link-button:hover { text-decoration: underline; }
+
+/* ---------------------------------------------------------------------
+   Forms
+   --------------------------------------------------------------------- */
+
+label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: .25rem; }
+
+input[type=text], input[type=password], input[type=number], input[type=date],
+input[type=email], select, textarea {
+  width: 100%;
+  max-width: 360px;
+  padding: .45rem .6rem;
+  border: 1px solid var(--olive-300);
+  border-radius: 6px;
+  font-size: .85rem;
+  background: var(--surface);
+  color: var(--ink);
+  margin-bottom: 1rem;
+  font-family: inherit;
+}
+textarea { max-width: 100%; min-height: 3.5rem; resize: vertical; }
+input:focus, select:focus, textarea:focus, button:focus, .btn:focus {
+  outline: 2px solid var(--olive-500);
+  outline-offset: 1px;
+}
+
+.field-row { margin-bottom: 1rem; }
+
+/* ---------------------------------------------------------------------
+   Compact inline forms (table cells / grouped rows) — narrower inputs,
+   no bottom margin, used by Compensation's calculation/reconciliation rows.
+   --------------------------------------------------------------------- */
+
+.compact-form input, .compact-form select { max-width: 140px; margin-bottom: .4rem; }
+.compact-form label { margin-bottom: .15rem; }
+.line-slot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: .6rem; align-items: end; }
+.badge.warn { background: #fdf3e2; color: #8a5a10; border-color: #ecd6a5; }
+.subsection { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--olive-150); }
+
+/* ---------------------------------------------------------------------
+   Action buttons
+   --------------------------------------------------------------------- */
+
+button, .btn {
+  background: var(--olive-700);
+  color: white;
+  border: none;
+  padding: .6rem 1.2rem;
+  border-radius: 6px;
+  font-size: .9rem;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+button:hover, .btn:hover { background: var(--olive-600); color: white; text-decoration: none; }
+button:disabled, .btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-row { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: 1rem; }
+.btn-secondary { background: var(--olive-150); color: var(--olive-900); }
+.btn-secondary:hover { background: var(--olive-300); color: var(--olive-900); }
+
+/* ---------------------------------------------------------------------
+   Tables
+   --------------------------------------------------------------------- */
+
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left;
+  font-size: .72rem;
+  color: var(--olive-900);
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  padding: .55rem .5rem;
+  background: var(--olive-150);
+  border-bottom: 1px solid var(--olive-300);
+}
+th:first-child { border-top-left-radius: 6px; }
+th:last-child { border-top-right-radius: 6px; }
+td { padding: .55rem .5rem; border-bottom: 1px solid var(--olive-150); font-size: .85rem; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--olive-050); }
+
+/* ---------------------------------------------------------------------
+   Domain access checklist
+   --------------------------------------------------------------------- */
+
+.access-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: .8rem 0;
+  border-bottom: 1px solid var(--olive-150);
+}
+.access-row:last-child { border-bottom: none; }
+.access-row .access-name { font-weight: 600; min-width: 140px; }
+.access-row input[type=checkbox] { margin-right: .4rem; }
+.access-row input[type=text] { display: inline-block; width: auto; margin-bottom: 0; }
+
+/* ---------------------------------------------------------------------
+   Status / error / info messages
+   --------------------------------------------------------------------- */
+
+.muted { color: var(--muted); }
+.empty { color: var(--muted); font-size: .9rem; padding: 1rem 0; }
+
+.error {
+  background: #fbeaea; border: 1px solid #e2a8a0; color: #7a2b21;
+  padding: .6rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: .88rem;
+}
+.info {
+  background: var(--olive-050); border: 1px solid var(--olive-300); color: var(--olive-900);
+  padding: .6rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: .88rem;
+}
+
+.badge { display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .72rem; font-weight: 600; border: 1px solid var(--olive-300); }
+.badge.ok { background: #e7f3ea; color: var(--ok); border-color: #bcdcc6; }
+.badge.bad { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+
+/* --- Organizational Chart (TASK_ORG_CHART_ADMIN_PAGE) — plain CSS
+   box-and-line tree, no charting library. Derived from the DB via
+   /admin/organization/graph-data.json; this is presentation only. --- */
+.org-chart-wrap { max-width: none; overflow-x: auto; padding-bottom: 2rem; }
+.org-tree, .org-tree ul { list-style: none; margin: 0; padding: 0; display: flex; }
+.org-tree { padding-top: 0; }
+.org-tree ul { padding-top: 24px; position: relative; }
+.org-tree li { display: flex; flex-direction: column; align-items: center; padding: 24px 8px 0 8px; position: relative; }
+.org-tree li::before, .org-tree li::after {
+  content: ""; position: absolute; top: 0; right: 50%; border-top: 2px solid var(--olive-300); width: 50%; height: 24px;
+}
+.org-tree li::after { right: auto; left: 50%; border-left: 2px solid var(--olive-300); }
+.org-tree li:only-child::after, .org-tree li:only-child::before { display: none; }
+.org-tree li:only-child { padding-top: 0; }
+.org-tree li:first-child::before { border: 0 none; }
+.org-tree li:last-child::after { border: 0 none; }
+.org-tree li:last-child::before { border-right: 2px solid var(--olive-300); border-radius: 0 5px 0 0; }
+.org-tree li:first-child::after { border-radius: 5px 0 0 0; }
+.org-tree > li { padding-top: 0; }
+.org-tree > li::before, .org-tree > li::after { display: none; }
+.org-tree ul::before {
+  content: ""; position: absolute; top: 0; left: 50%; border-left: 2px solid var(--olive-300); width: 0; height: 24px;
+}
+
+.org-node {
+  position: relative; display: inline-flex; flex-direction: column; gap: .2rem;
+  background: var(--surface); border: 1px solid var(--olive-300); border-radius: var(--radius);
+  box-shadow: var(--shadow-card); padding: .6rem .8rem; min-width: 160px; max-width: 220px; cursor: pointer;
+  text-align: left;
+}
+.org-node:hover, .org-node:focus { border-color: var(--olive-500); outline: none; }
+.org-node.org-node-inactive { opacity: .55; }
+.org-node.org-node-warn { border-color: #d99a2b; }
+.org-node-name { font-weight: 700; font-size: .88rem; }
+.org-node-occupant { font-size: .8rem; }
+.org-node-occupant.org-node-vacant { color: var(--bad); font-weight: 600; }
+.org-node-scope { font-size: .72rem; color: var(--muted); }
+.org-node-badge { font-size: .68rem; color: var(--muted); }
+.org-node-badge-warn { color: #8a5a10; font-weight: 600; }
+.org-node-toggle {
+  position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%);
+  width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--olive-300); background: var(--surface);
+  font-size: .85rem; line-height: 1; cursor: pointer; padding: 0;
+}
+
+/* --- Modal (click-to-edit without leaving the graph view) --- */
+.org-modal-overlay {
+  position: fixed; inset: 0; background: rgba(36, 39, 28, 0.45); display: flex; align-items: flex-start;
+  justify-content: center; padding: 2rem 1rem; overflow-y: auto; z-index: 50;
+}
+.org-modal-panel {
+  background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-card);
+  max-width: 700px; width: 100%; padding: 1.2rem 1.5rem; position: relative;
+}
+.org-modal-panel .modal-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .8rem; }
+/* RF-One UI standard UI_MODAL_CLOSE_X_001 — every modal window has a close X
+   at its top right that stays visible while the window scrolls (sticky in the
+   scrolling panel), so it can be left without scrolling to its bottom. The X
+   calls the window's own Cancel/close, never a separate implementation. The
+   negative bottom margin keeps the float from pushing the content aside. */
+.org-modal-close, .rf-modal-x {
+  position: sticky; top: 0; float: right; z-index: 5; margin: -.4rem -.6rem -2rem .6rem;
+  width: 2rem; height: 2rem; padding: 0; border: none; border-radius: 50%;
+  background: var(--surface, #fff); color: var(--muted, #666); font-size: 1.4rem; line-height: 1; cursor: pointer;
+}
+.org-modal-close:hover, .rf-modal-x:hover { background: var(--olive-050, #f2f2ee); color: var(--ink, #222); }
+
+/* --- Coverage summary tiles (task §15) --- */
+.coverage-tiles { display: flex; gap: .8rem; flex-wrap: wrap; margin: 1rem 0; }
+.coverage-tile {
+  background: var(--olive-050); border: 1px solid var(--olive-300); border-radius: var(--radius);
+  padding: .6rem 1rem; min-width: 140px;
+}
+.coverage-tile .coverage-tile-value { font-size: 1.4rem; font-weight: 700; }
+.coverage-tile .coverage-tile-label { font-size: .75rem; color: var(--muted); }
+.coverage-tile.coverage-tile-warn { border-color: #d99a2b; }
+.coverage-tile.coverage-tile-warn .coverage-tile-value { color: #8a5a10; }
+
+/* ---------------------------------------------------------------------
+   Wide module layout + module navigation
+   (BANK_RECONCILIATION_INSTRUMENT_ASSIGNMENT_001)
+
+   `.wrap` stays 780px for every text-shaped page (Home, Login, Profile,
+   Admin forms), where a longer measure would hurt readability. A page
+   whose primary content is a wide operational table opts in explicitly
+   with `wrap-wide` via base.html's `wrap_class` block — so the Bank
+   tables stop forcing the WHOLE PAGE to scroll sideways, which was the
+   actual defect: a 9-column table inside a 780px column.
+   --------------------------------------------------------------------- */
+
+.wrap-wide { max-width: 1600px; }
+
+/* The body's own 2rem side padding is what makes a 1024px window scroll
+   horizontally once the content genuinely needs the width. Narrow it as
+   the viewport narrows instead of clipping or hiding content. */
+@media (max-width: 1100px) {
+  body { padding-left: 1rem; padding-right: 1rem; }
+}
+@media (max-width: 700px) {
+  body { padding-left: .6rem; padding-right: .6rem; }
+}
+
+/* --- Module header: title is a heading, leaving is a labelled link --- */
+
+.module-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: .6rem;
+}
+.module-identity { min-width: 0; }
+.module-title { font-size: 1.4rem; margin: 0 0 .2rem; color: var(--olive-900); }
+.module-tagline { color: var(--muted); font-size: .82rem; margin: 0; max-width: 70ch; }
+
+/* --- Section tabs --- */
+
+.module-tabs {
+  display: flex; flex-wrap: wrap; gap: .25rem;
+  border-bottom: 2px solid var(--olive-150); margin-bottom: 1.2rem;
+}
+.module-tab {
+  padding: .5rem .95rem; font-size: .85rem; font-weight: 600;
+  color: var(--muted); text-decoration: none;
+  border: 1px solid transparent; border-bottom: none;
+  border-radius: 8px 8px 0 0; margin-bottom: -2px;
+}
+.module-tab:hover { color: var(--olive-900); background: var(--olive-050); text-decoration: none; }
+.module-tab.is-active {
+  color: var(--olive-900); background: white;
+  border-color: var(--olive-150); border-bottom: 2px solid white;
+}
+
+/* --- Dense operational tables -------------------------------------- */
+
+.table-compact { table-layout: auto; }
+.table-compact th {
+  font-size: .66rem; padding: .4rem .45rem; white-space: nowrap;
+}
+.table-compact td {
+  font-size: .78rem; padding: .4rem .45rem; vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.table-compact .compact-form input,
+.table-compact .compact-form select { max-width: 100%; font-size: .75rem; padding: .25rem .35rem; }
+.table-compact .compact-form button,
+.table-compact .btn-inline {
+  font-size: .72rem; padding: .3rem .55rem; margin-top: .15rem;
+}
+.table-compact .badge { font-size: .66rem; }
+
+/* Descriptions are the one column that must wrap rather than stretch the
+   table — bank descriptions are long and are never truncated here. */
+.col-description { white-space: normal; min-width: 14rem; }
+.col-amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.col-date { white-space: nowrap; width: 6.5rem; }
+.col-narrow { width: 7rem; }
+.col-actions { width: 11rem; }
+
+.cell-note { display: block; color: var(--muted); font-size: .7rem; margin-top: .2rem; }
+.cell-stack { display: flex; flex-direction: column; gap: .3rem; }
+
+/* --- Stacked rows on narrow viewports ------------------------------
+   Below 900px a 9-column table cannot be read as a grid. Each row
+   becomes a labelled block: every value stays on screen and legible,
+   nothing is hidden and no font is shrunk to fit. --- */
+
+@media (max-width: 900px) {
+  .table-stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .table-stack, .table-stack tbody, .table-stack tr, .table-stack td { display: block; width: auto; }
+  .table-stack tr {
+    border: 1px solid var(--olive-150); border-radius: var(--radius);
+    padding: .5rem .65rem; margin-bottom: .7rem; background: white;
+  }
+  .table-stack td { border-bottom: none; padding: .25rem 0; font-size: .82rem; }
+  .table-stack td::before {
+    content: attr(data-label); display: block;
+    font-size: .66rem; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); font-weight: 700; margin-bottom: .1rem;
+  }
+  .table-stack td:empty { display: none; }
+  .col-amount { text-align: left; }
+  .col-description, .col-date, .col-narrow, .col-actions { width: auto; min-width: 0; }
+  .table-compact .compact-form input,
+  .table-compact .compact-form select { max-width: 100%; font-size: .85rem; padding: .4rem .5rem; }
+}
+
+/* --- Batch status + its concrete reason ----------------------------- */
+
+.status-reason { display: block; font-size: .7rem; color: var(--muted); margin-top: .25rem; }
+.status-count {
+  display: inline-block; margin-left: .3rem; font-size: .66rem; font-weight: 700;
+  background: var(--olive-150); color: var(--olive-900); border-radius: 999px; padding: .05rem .4rem;
+}
+
+/* Export blockers: each reason names a concrete transaction/batch, so the
+   text is long by design — it wraps rather than stretching the page. */
+.blocker-list { font-size: .82rem; padding-left: 1.2rem; margin: .4rem 0 0; }
+.blocker-list li { margin-bottom: .35rem; overflow-wrap: anywhere; }
+
+/* Inline disclosures inside dense tables (Change instrument / Reassign). */
+.table-compact details > summary {
+  cursor: pointer; font-size: .72rem; font-weight: 600; color: var(--olive-600);
+  margin-top: .2rem;
+}
+.table-compact details[open] > summary { margin-bottom: .25rem; }
+
+/* ---------------------------------------------------------------------
+   Select Who picker + classification chain
+   (BANK_RECONCILIATION_WHO_WHY_WHAT_001)
+
+   Reuses `.org-modal-overlay`/`.org-modal-panel` rather than introducing a
+   second modal look: a dialog is a dialog, and the Organization chart's
+   one already defines it. Only what is genuinely new lives here — the
+   searchable option list inside it.
+   --------------------------------------------------------------------- */
+
+.who-picker-list {
+  max-height: 46vh; overflow-y: auto; margin: .6rem 0;
+  border: 1px solid var(--olive-150); border-radius: var(--radius);
+}
+.who-option {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: var(--surface); border: none; border-bottom: 1px solid var(--olive-150);
+  padding: .5rem .7rem; font: inherit;
+}
+.who-option:last-child { border-bottom: none; }
+.who-option:hover, .who-option:focus { background: var(--olive-050); outline: none; }
+.who-option:focus { box-shadow: inset 3px 0 0 var(--olive-900); }
+.who-option.is-selected { background: var(--olive-050); box-shadow: inset 3px 0 0 var(--olive-900); }
+.who-option-name { display: block; font-weight: 600; font-size: .88rem; }
+.who-option-type { display: block; font-size: .72rem; color: var(--muted); }
+.who-option-chain { display: block; font-size: .74rem; color: var(--muted); margin-top: .15rem; }
+
+/* A Who whose chain is incomplete stays VISIBLE and says why, rather than
+   disappearing from the list and sending the operator hunting for it. */
+.who-option.is-blocked { cursor: not-allowed; background: #fdf3e2; }
+.who-option.is-blocked:hover, .who-option.is-blocked:focus { background: #fdf3e2; }
+.who-option.is-blocked .who-option-name { color: var(--muted); }
+.who-option-blocked { display: block; font-size: .74rem; color: #8a5a10; margin-top: .15rem; }
+
+.who-picker-learn { display: block; font-size: .78rem; color: var(--muted); margin: .6rem 0; }
+.who-picker-learn input { margin-right: .35rem; }
+.who-picker-actions { display: flex; gap: .5rem; margin-top: .8rem; }
+
+.chain { font-size: .78rem; }
+
+/* --- Accounting-duplicate rows (BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001)
+   A suppressed copy stays fully visible in the audit view — it is only
+   excluded from accounting — so it is de-emphasised, never hidden. */
+.row-suppressed > td { background: var(--olive-050); opacity: .78; }
+.row-suppressed .col-description { font-style: italic; }
+
+/* ---------------------------------------------------------------------
+   `hidden` must actually hide (BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001)
+
+   THE defect this fixes: `.org-modal-overlay` sets `display: flex`. An
+   author rule always beats the user-agent's `[hidden] { display: none }`,
+   so setting the `hidden` attribute on the overlay did nothing — a
+   full-screen, fixed, z-index:50 element stayed painted over the page.
+   The page looked frozen because every click landed on an invisible
+   backdrop, and the panel looked empty because it was showing a list
+   that legitimately had no rows yet.
+
+   This guard is deliberately generic and `!important`: any element with
+   `hidden` is hidden, whatever a class later says. It also repairs the
+   Organization chart's modal, which uses the same overlay class and the
+   same `hidden` toggle and therefore had the same latent defect.
+   --------------------------------------------------------------------- */
+
+[hidden] { display: none !important; }
+
+/* --- Modal behaviour shared by every RF-One dialog ------------------- */
+
+/* While a dialog is open the page behind it must not scroll: otherwise
+   closing the dialog returns the reader to a different place than they
+   left. */
+body.modal-open { overflow: hidden; }
+
+/* The panel must never exceed the viewport on a small screen, and its
+   own content — not the page — is what scrolls. */
+.org-modal-panel {
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 700px) {
+  .org-modal-overlay { padding: .75rem .5rem; }
+  .org-modal-panel { padding: 1rem .9rem; max-height: calc(100vh - 1.5rem); }
+}
+
+/* An empty list is a statement, not a blank area. */
+.modal-empty-state {
+  padding: 1rem; text-align: center; color: var(--muted); font-size: .85rem;
+  border: 1px dashed var(--olive-300); border-radius: var(--radius); margin: .6rem 0;
+}
+
+/* RF-One UI Rules §4 — breadcrumb path on every sub-page
+   (`templates/_nav_macros.html`). */
+.breadcrumb { margin: 0 0 .9rem; font-size: .85rem; }
+.breadcrumb ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .1rem .35rem; }
+.breadcrumb li { display: inline-flex; align-items: center; }
+.breadcrumb li + li::before { content: "\203A"; margin-right: .35rem; color: #8a8a8a; }
+.breadcrumb [aria-current="page"] { color: #555; font-weight: 600; }

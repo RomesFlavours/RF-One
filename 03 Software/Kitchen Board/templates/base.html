@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="{{ locale }}">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RF-One Kitchen Board</title><link rel="stylesheet" href="{{ url_for('static',filename='board.css') }}">{% block extra_styles %}{% endblock %}</head>
+<body class="{% block body_class %}{% endblock %}">
+{% from '_how_works.html' import how_works_link, how_works_dialog with context %}
+{% block shell_header %}<header><nav aria-label="{{ 'Percorso' if it else 'Breadcrumb' }}"><a href="{{ url_for('home') }}">RF-One Kitchen Board</a>
+{% block path %}{% endblock %}</nav>
+{% if help_section %}
+{% if it %}{{ how_works_link(help_section)|replace('How this page works','Come funziona questa pagina') }}
+{% else %}{{ how_works_link(help_section) }}{% endif %}{% endif %}</header>{% endblock %}
+{% block content %}{% endblock %}
+{% if help_section %}{% if it %}{{ how_works_dialog(help_section)|replace('How this page works','Come funziona questa pagina')|replace('Close help','Chiudi aiuto')|replace('>Close<','>Chiudi<')|replace('title="Close"','title="Chiudi"') }}
+{% else %}{{ how_works_dialog(help_section) }}{% endif %}{% endif %}
+{% block scripts %}{% endblock %}</body></html>

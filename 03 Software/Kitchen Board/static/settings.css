@@ -1,0 +1,28 @@
+/* RF-One's shared olive palette and form conventions, scoped to configuration. */
+:root:has(body.settings-page){font-size:16px}
+body.settings-page{font-size:16px;min-height:100dvh;background:var(--olive-050);padding:0 1.5rem 2rem;color:var(--ink)}
+.settings-shell{max-width:1200px;margin:0 auto;padding:0}
+.settings-page .site-header{background:none;border-top:0;padding:1.2rem 0 .8rem;margin:0 0 1rem}
+.settings-page .brand{display:flex;gap:.6rem;align-items:baseline;text-decoration:none;color:var(--olive-900)}
+.settings-page .brand-wordmark{font-size:1.4rem;font-weight:700}.settings-page .brand-suffix{font-size:1rem;color:var(--olive-700)}
+.settings-breadcrumb{font-size:.85rem;color:var(--muted);margin:0 0 .9rem}
+.settings-breadcrumb a,.settings-page a{color:var(--olive-700)}
+.settings-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.settings-heading h1{font-size:1.6rem;margin:0;color:var(--olive-900)}
+.settings-intro{color:var(--muted);margin:.5rem 0 1.3rem}
+.settings-grid{display:grid;grid-template-columns:minmax(300px,360px) minmax(0,1fr);gap:1.2rem;align-items:start}
+.settings-card{margin:0;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:1.25rem;box-shadow:var(--shadow-card)}
+.settings-card h2{font-size:1.05rem;color:var(--olive-900);margin:0 0 1rem}
+.settings-card h2:not(:first-child){margin-top:1.15rem}
+.settings-card label{display:block;font-size:.9rem;font-weight:600;margin:.65rem 0 .3rem}
+.settings-card input:not([type=hidden]),.settings-card select{display:block;width:100%;font:inherit;font-size:1rem;padding:.55rem .6rem;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);margin:0;min-height:40px}
+.settings-card input:focus,.settings-card select:focus{outline:2px solid var(--olive-500);outline-offset:1px}
+.settings-pair{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}
+.settings-hint{color:var(--muted);font-size:.85rem;line-height:1.45;margin:.7rem 0}
+.settings-actions{display:flex;flex-wrap:wrap;align-items:center;gap:1rem;margin-top:1.25rem}
+.settings-actions .btn{background:var(--olive-700);border:1px solid var(--olive-700);border-radius:6px;color:#fff;font-size:.95rem;font-weight:600;padding:.65rem .85rem;cursor:pointer}
+.settings-actions a{font-size:.85rem}.preview-heading{display:flex;align-items:center;justify-content:space-between}.preview-heading h2{margin:0}.preview-heading span{font-size:.8rem;color:var(--muted)}
+#preview-viewport{width:100%;aspect-ratio:16/9;overflow:hidden;background:#fff;border:1px solid var(--line);position:relative;border-radius:4px}
+#display-preview{position:absolute;left:0;top:0;border:0;width:1920px;height:1080px;transform-origin:top left}
+#local-save-status{font-size:.85rem;color:var(--olive-700);margin:.7rem 0 0}
+@media(max-width:850px){.settings-grid{grid-template-columns:1fr}.settings-preview{grid-row:1}.settings-heading{align-items:flex-start}.settings-page{padding:0 1rem 1.5rem}}
