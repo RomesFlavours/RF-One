@@ -439,3 +439,16 @@ It does not define:
 - broader RF-One employee/personnel architecture.
 
 Those remain separate implementation/integration concerns.
+
+
+## Approved configurable daily aggregation extension — 2026-11-09
+
+The Product Owner authorized one composable engine supporting the historical daily rule, rather than a separate engine for each rule. Existing per-order versions retain their behavior. The configuration/example sections above describe the original rule and are not a limit on the following approved capabilities.
+
+A version selects aggregation scope (`ORDER` or `SOURCE_BUSINESS_DAY`), recipient eligibility (`ACTIVE_AT_ORDER_OPEN`, `ACTIVE_AT_SETTLEMENT`, or `WORKED_DURING_BUSINESS_DAY`) and distribution (`EQUAL` or `HOURS_PROPORTIONAL`). Source-business-day aggregation requires daily eligibility; hours-proportional distribution requires daily eligibility. Both source semantics, all three tip/gratuity bases and `SOURCE_RETAINS` remain available.
+
+For source-business-day aggregation, sum the original base per source employee, location, local business day and effective rule version; apply the percentage and round the contribution once. Split that contribution by eligible headcount or actual worked seconds using deterministic largest remainder. Preserve both source contributions and recipient totals exactly in minor units, with order-level attribution for traceability. Compute complete-day context before selecting a requested subperiod.
+
+Eligible worked time is the intersection of persisted shifts, effective recipient-role coverage and the location's business day. Merge overlapping intervals before measuring elapsed time. Respect timezone, cutoff and daylight saving. An incomplete relevant shift blocks calculation instead of creating hours or treating incomplete evidence as absence. Zero eligible worked time generates no contribution: the source retains the full amount.
+
+This capability does not create or activate a historical rule, repair historical role assignments, or populate paid-tip records. Those remain explicit operator actions. The implementation and verified AWS-to-local starting point are recorded in `07 Tasks/Reports/TIPS_FLEXIBLE_ENGINE_20261109.md`.

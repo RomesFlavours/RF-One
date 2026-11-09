@@ -50,3 +50,42 @@ One engine composes aggregation, eligibility and weighting. The new schema colum
 How Works is updated on Configuration, Rule History, Calculate Tips and Host Audit. The shared modal component has a visible close button and native keyboard/focus support. The release defaults to English; the loopback local launcher selects Italian. Eight unrelated legacy pages remain listed as missing contextual Help; this release does not certify those pages.
 
 Final pre-release regression rerun: all 16 new scenarios, engine 40, audit 33, interpreter 45, existing Role/Rule HTTP suite, Configuration HTTP 27 and Calculate/Consolidate HTTP 31 passed. The generic settlement fact is exposed once by the Clover connector for scalar and bulk consumers. No browser visual pass is claimed.
+
+
+## 7. Completed AWS release
+
+| Evidence | Observed value |
+|---|---|
+| Runtime commit | `83d583caf1a2cf1d5c29f44d59367311317ececa` (pushed to `origin/codex/tips-flexible-rules`) |
+| Build | `rfone-tips-build:8c107bd3-4ee3-489c-ba27-54ab7e200ab1` — SUCCEEDED |
+| Image | `418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips:tips-flexible-20261109t160202z` |
+| Immutable image digest | `sha256:f23db11f364553de6236176691305d21b29d8ebcc1f8f98687c4f6fdd4976d8d` |
+| Source archive SHA256 | `a42ef170d6d19953733aa57cc818264a5fbd901222a380feb4c3749478781ed6` |
+| Source archive | `s3://rfone-tips-deploy-418674484214/releases/tips-flexible-20261109t160202z/source.zip` |
+| Migration task | `arn:aws:ecs:us-east-1:418674484214:task/rfone-jobs/d834ad9d50264ae3ae7b659d0ed8429d` — STOPPED, exit 0 |
+| Shared schema | `e2c320261109`; registry published in the deployment bucket |
+| App Runner operation | `19756129f1d24f79a55c0931df4deb7e` — SUCCEEDED |
+| Service | RUNNING; live image matches the release image |
+| Public authenticated checks | GET configuration 200; POST interpretation 200 |
+| Real AWS proposal | 10.0000%, TIP_PLUS_GRATUITY, SOURCE_BUSINESS_DAY, WORKED_DURING_BUSINESS_DAY, HOURS_PROPORTIONAL |
+| Confirmation / payment | No rule confirmation, no paid-tip records created |
+| AWS data alignment | None; the only schema change is the additive rule configuration column |
+| Network / AI provider | Unchanged; existing OpenAI GPT-OSS via Bedrock, no NAT |
+
+The AWS migration verified unchanged counts for orders, shifts, employee assignments, rule identities and rule versions. Every pre-existing rule version retained `ORDER`. The official shared page served English contextual Help. Local authenticated HTTP checks retained Italian. Browser visual verification remains the specific limitation described in section 5.
+
+## 8. Success criteria and restore
+
+| Criterion | Outcome |
+|---|---|
+| Complete AWS code and DB copied before engine edits | PASS — section 2; verified hashes and sequences |
+| One configurable engine, existing rules preserved | PASS — configuration axes and regression suites |
+| Requested daily/hour rule executable and explainable | PASS — financial scenarios, local real-data simulation and real local/AWS interpretation |
+| Local tests before AWS deployment | PASS — section 5 |
+| AWS deployed from pushed commit | PASS — section 7 |
+| No local-to-AWS database synchronization | PASS |
+| Edge visual check | NOT COMPLETED — browser policy could not verify current URL |
+
+Restore application code by updating App Runner back to `418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips:tips-openai-bedrock-20261109t140457z`, using the saved prior service configuration in `tmp/flexible_previous_service.json` (private working evidence). The additive column can remain: the previous image does not name it. Do not restore the full shared database merely to roll back application code. A full data restore, if separately needed and authorized, uses the custom-format dump and manifest in section 2; its SHA256 is `cf8e528b19378dad1e56d2b933cb7ea6459a3790814f52291cea2a11dbcee9fc`.
+
+No Product Owner decision remains for this engine release. Applying a historical rule and resolving differences in historical role coverage are separate operator decisions; they were not silently performed by this release.
