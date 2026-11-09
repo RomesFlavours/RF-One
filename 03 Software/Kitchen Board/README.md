@@ -123,3 +123,7 @@ Preferences: Arial/Segoe UI/Verdana; 12–36 pixel base text; 1–16 columns per
 Existing installations must run `python manage.py upgrade-display` once (with the existing `RFONE_DATABASE_URL`) before starting this version. It creates only the additive settings table, never another database or changes to existing releases. New `init` creates all three Kitchen Board tables. No DDL runs at application startup.
 
 The settings page uses a byte-identical copy of RF-One Web’s `rf-one.css` palette, form styling and page-specific modal help. English is the shared default and official local mode is Italian. The exported `preview-settings.html` is a local visual review: changes save only in that browser and are explicitly labelled as such. The actual web page saves to the shared database; no online service has been deployed by this work.
+
+## English handoff
+
+The shared application and exported review pages default to English, including settings, notifications, accessibility text and contextual help. To run English locally with loopback cookie settings use `KITCHEN_BOARD_LOCAL=1` and `python manage.py serve --language en`. `RFONE_UI_LANGUAGE=en` is an equivalent environment setting. The separate `--language it` option preserves the Italian development interface. The exporter accepts `--language it` when an Italian local review is needed; its default is `en`. Imported Clover item names, notes, IDs and service-timing values are never translated.

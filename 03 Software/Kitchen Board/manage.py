@@ -21,6 +21,7 @@ def main():
     serve = commands.add_parser('serve')
     serve.add_argument('--host', default='127.0.0.1')
     serve.add_argument('--port', type=int, default=5090)
+    serve.add_argument('--language',choices=('en','it'),default=os.environ.get('RFONE_UI_LANGUAGE'))
     args = parser.parse_args()
     url = os.environ.get('RFONE_DATABASE_URL')
     if not url:
@@ -52,7 +53,7 @@ def main():
         app = create_app(create_session_factory(create_configured_engine(url)),
             secret=os.environ.get('KITCHEN_BOARD_SECRET'),
             view_token=os.environ.get('KITCHEN_BOARD_VIEW_TOKEN'),
-            release_token=os.environ.get('KITCHEN_BOARD_RELEASE_TOKEN'), local=local)
+            release_token=os.environ.get('KITCHEN_BOARD_RELEASE_TOKEN'), local=local,language=args.language)
         app.run(host=args.host, port=args.port, debug=False)
 
 

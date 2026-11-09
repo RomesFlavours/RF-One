@@ -267,6 +267,20 @@ class BoardTest(unittest.TestCase):
         self.assertIn('How this page works',text)
         self.assertNotIn('Salva impostazioni',text)
 
+    def test_all_pages_can_use_english_in_local_mode(self):
+        import re
+        english=create_app(self.factory,secret=SECRET,view_token=VIEW,release_token=RELEASE,
+                           local=True,language='en').test_client()
+        for path,label in [('/','Open kitchen display'),('/board/1','Exit kitchen display'),
+                           ('/archive/1','Released orders'),('/settings/1','Save settings')]:
+            response=english.get(path,headers=self.api)
+            self.assertEqual(response.status_code,200,path)
+            text=re.sub(r'<(?:script|style)\b[^>]*>.*?</(?:script|style)>','',response.get_data(as_text=True),flags=re.S)
+            self.assertIn('lang="en"',text,path)
+            self.assertIn(label,text,path)
+            for italian in ('Come funziona questa pagina','Impostazioni schermo','Ordini rilasciati','Apri schermo cucina'):
+                self.assertNotIn(italian,text,path)
+
 
 if __name__ == '__main__':
     unittest.main()

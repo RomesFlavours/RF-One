@@ -3,17 +3,25 @@ import json
 import re
 import subprocess
 import tempfile
-import sys
+import argparse
 from html import escape
 from pathlib import Path
-from test_board import BoardTest
+from test_board import BoardTest, SECRET, VIEW, RELEASE
+from app import create_app
 from store import Board
 from rfone_data_store import models as m
 from kitchen_filter import kitchen_payload
 
+parser=argparse.ArgumentParser(description='Export Kitchen Board review pages')
+parser.add_argument('data',nargs='?')
+parser.add_argument('--language',choices=('en','it'),default='en')
+args=parser.parse_args()
+english=args.language=='en'
 fixture = BoardTest()
 fixture.setUp()
 fixture.sync()
+fixture.app=create_app(fixture.factory,secret=SECRET,view_token=VIEW,release_token=RELEASE,
+                       local=True,language=args.language)
 client = fixture.app.test_client()
 with client.session_transaction() as session:
     session['board_view'] = True
@@ -32,9 +40,9 @@ data['orders'] = [{**first, 'order_id':f'demo-{i}', 'title':f'#{i+3} - '+('OUTSI
 data['orders'] = [kitchen_payload(order,{}) for order in data['orders']]
 data['orders'][0]['lines'] *= 3
 data.update(total=10, visible_count=6, stale=False, sync_error=False)
-real = len(sys.argv)>1
+real = bool(args.data)
 if real:
-    data=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+    data=json.loads(Path(args.data).read_text(encoding='utf-8'))
 data['visible_count']=5
 with fixture.factory() as db:
     db.get(Board,1).visible_count=data['visible_count']
@@ -58,7 +66,7 @@ finally:
 cards = []
 for order in data['orders'][:data['visible_count']]:
     parts = ['<article class="ticket" data-order-id="'+escape(order['order_id'])+'">',
-             '<span class="kicker">ORDINE</span><h2>'+escape(order['title'])+'</h2>',
+             '<span class="kicker">'+('ORDER' if english else 'ORDINE')+'</span><h2>'+escape(order['title'])+'</h2>',
              '<time>'+escape(order['local_time'])+'</time>']
     guest = ''
     for line in order['lines']:
@@ -69,14 +77,12 @@ for order in data['orders'][:data['visible_count']]:
     parts.append('</article>')
     cards.append(''.join(parts))
 html = re.sub(r'(<div id="tickets"[^>]*>)(</div>)',lambda match:match[1]+''.join(cards)+match[2],html)
-html = html.replace('Caricamento ordini…','Anteprima · ordini di esempio')
-html = html.replace('<span id="queue-count"></span>','<span id="queue-count">10 da rilasciare</span>')
-html = html.replace('<p id="overflow"></p>','<p id="overflow">Gli ordini lunghi proseguono a destra.</p>')
+html = html.replace('Loading orders…','Preview · sample orders').replace('Caricamento ordini…','Anteprima · ordini di esempio')
 html = re.sub(r'<link rel="stylesheet"[^>]+>',lambda _: '<style>'+css+'</style>',html)
 html = re.sub(r'<script src="[^"]*board.js"[^>]*></script>', lambda _: '<script>'+js+'</script>',html)
 html = re.sub(r'<script src="[^"]*rail.js"[^>]*></script>', lambda _: '<script>'+rail_js+'</script>',html)
 html = html.replace('Collegato · aggiornamento automatico','Anteprima · ordini di esempio')
-html = html.replace('<div class="toolbar">','<p style="margin:0;color:#704600">ANTEPRIMA — ORDINI DI ESEMPIO</p><div class="toolbar">')
+html = html.replace('Connected · automatic updates','Preview · Clover snapshot' if real else 'Preview · sample orders')
 # Keep navigation within this one offline review file.
 html = re.sub(r'href="/(?:archive/1|)"', 'href="#"',html)
 output = root/'preview.html'
@@ -100,6 +106,8 @@ settings_html=settings_html.replace('src="/board/1?preview=1"','src="preview.htm
 settings_html=settings_html.replace('href="/board/1"','href="preview.html"').replace('href="/exit"','href="preview-exit.html"')
 settings_html=settings_html.replace('Il salvataggio aggiorna gli schermi di questa sede.',
     'Anteprima locale: le scelte vengono salvate per questa prova nel browser.')
+settings_html=settings_html.replace('Saving updates the displays at this Location.',
+    'Local preview: changes are saved in this browser for review.')
 (root/'preview-settings.html').write_text(settings_html,encoding='utf-8')
 assert 'await fetch(' not in html
 assert 'board.js"' not in html

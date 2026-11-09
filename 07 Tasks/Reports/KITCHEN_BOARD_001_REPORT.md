@@ -71,3 +71,7 @@ application saves shared preferences in the RF-One database.
 - Help check: `python "03 Software/Shared UI/check_how_works.py" --app "Kitchen Board"`.
 - The module introduces no production deployment and requires no production restore.
   Existing canonical orders/payments and other modules are not replaced.
+
+## 6. English publication update
+
+Following the Product Owner request, all exported review pages and the standalone preview now use English by default. Runtime language can be explicitly selected independently of loopback cookie configuration. HTTP tests cover all four operational pages in English local mode, alongside the shared English default and existing Italian regression checks. Source facts are not translated. Contextual help remains aligned in both supported interface languages.

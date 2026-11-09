@@ -18,7 +18,7 @@ from kitchen_filter import categories_by_line, kitchen_payload, timing_by_line
 from display_settings import read_settings, save_settings, validated, SettingsError, SettingsConflict
 
 
-def create_app(session_factory, *, secret, view_token, release_token, local=False):
+def create_app(session_factory, *, secret, view_token, release_token, local=False, language=None):
     if any(len(value or '') < 32 for value in (secret, view_token, release_token)):
         raise ValueError('Kitchen Board secrets must each contain at least 32 characters')
     if len({secret, view_token, release_token}) != 3:
@@ -27,7 +27,9 @@ def create_app(session_factory, *, secret, view_token, release_token, local=Fals
     app.secret_key = secret
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Strict',
                       SESSION_COOKIE_SECURE=not local, MAX_CONTENT_LENGTH=4096)
-    locale = 'it' if local else 'en'
+    locale = language or ('it' if local else 'en')
+    if locale not in ('en','it'):
+        raise ValueError('Supported interface languages: en, it')
     component = (Path(__file__).parent / 'templates' / '_how_works.html').read_text(encoding='utf-8')
     help_hashes = ' '.join("'sha256-" + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode() + "'"
                            for script in re.findall(r'<script>(.*?)</script>', component, re.S))
