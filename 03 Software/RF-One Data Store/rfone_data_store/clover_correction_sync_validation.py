@@ -64,6 +64,8 @@ class _CorrectionFakeCloverClient:
         self.orders: list[dict[str, Any]] = []
         self.payments: list[dict[str, Any]] = []
         self.refunds: list[dict[str, Any]] = []
+        self.employees: list[dict[str, Any]] = []
+        self.fail_employees = False
         self.fail_orders = False
         self.fail_payments = False
         self.fail_refunds = False
@@ -71,6 +73,10 @@ class _CorrectionFakeCloverClient:
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> _FakeResult:
         self.calls.append((path, params))
+        if path.endswith("/employees"):
+            if self.fail_employees:
+                return _FakeResult(ok=False, error="simulated Employees list failure", status_code=500)
+            return _FakeResult(ok=True, data={"elements": list(self.employees)})
         if path.endswith("/orders"):
             if self.fail_orders:
                 return _FakeResult(ok=False, error="simulated Orders list failure", status_code=500)

@@ -3,6 +3,7 @@
 {% block page_title %}RF-One · Training{% endblock %}
 {% block page_subtitle %}Staff training — your personal path.{% endblock %}
 {% block content %}
+{% if reference_person_name %}<p>Profilo RF1: {{ reference_person_name }}</p>{% endif %}
 {{ breadcrumb([('RF-One', rfone_home_url()), ('Training', None)]) }}
 
 {% with messages = get_flashed_messages(with_categories=True) %}

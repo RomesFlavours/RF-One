@@ -1136,10 +1136,12 @@ class Employee(Base):
     RF-One does not infer a precise restaurant role from it (task §10)."""
 
     __tablename__ = "employees"
-    __table_args__ = (UniqueConstraint("source_system_id", "source_employee_id"),)
+    # Compatibility provenance of the first source. Authoritative external
+    # identity is EmployeeCloverLink (merchant + employee), not this pair.
+    __table_args__ = (UniqueConstraint("location_id", "source_system_id", "source_employee_id", name="uq_employees_location_source_employee"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), nullable=True)
 
     source_system_id: Mapped[int | None] = mapped_column(
         ForeignKey("source_systems.id"), nullable=True
@@ -1147,6 +1149,12 @@ class Employee(Base):
     source_employee_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Compatibility observations from the already-deployed historical reader.
+    # Per-site directory links are now authoritative for availability/review.
+    source_available: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    source_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     custom_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     system_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # No active/inactive field is exposed by Clover (TASK_CLOVER_003 §B) —
@@ -1159,6 +1167,66 @@ class Employee(Base):
     source_modified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class EmployeeContextLink(Base):
+    """Explicit person association; no account authority or domain fact ownership."""
+    __tablename__ = "employee_context_links"
+    __table_args__ = (CheckConstraint(
+        "(CASE WHEN rfone_account_id IS NULL THEN 0 ELSE 1 END + "
+        "CASE WHEN acting_identity_id IS NULL THEN 0 ELSE 1 END + "
+        "CASE WHEN training_account_id IS NULL THEN 0 ELSE 1 END + "
+        "CASE WHEN candidate_person_id IS NULL THEN 0 ELSE 1 END + "
+        "CASE WHEN project_responsible_id IS NULL THEN 0 ELSE 1 END) = 1",
+        name="ck_employee_context_one_target"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+    rfone_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), unique=True)
+    acting_identity_id: Mapped[int | None] = mapped_column(ForeignKey("acting_identities.id"), unique=True)
+    training_account_id: Mapped[int | None] = mapped_column(ForeignKey("training_accounts.id"), unique=True)
+    candidate_person_id: Mapped[int | None] = mapped_column(ForeignKey("candidate_persons.id"), unique=True)
+    project_responsible_id: Mapped[int | None] = mapped_column(ForeignKey("project_responsible.id"), unique=True)
+    created_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class EmployeeCloverLink(Base):
+    """Provider identity, never a second employee registry. NULL employee is pending review."""
+
+    __tablename__ = "employee_clover_links"
+    __table_args__ = (UniqueConstraint("merchant_id", "external_employee_id", name="uq_employee_clover_identity"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
+    merchant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    external_employee_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_run_id: Mapped[int | None] = mapped_column(ForeignKey("ingestion_runs.id"), nullable=True)
+    state: Mapped[str] = mapped_column(String(24), nullable=False, default="PRESENT")
+
+
+class EmployeeIdentityAlias(Base):
+    """Retired employee IDs after an explicit, audited identity consolidation."""
+    __tablename__ = "employee_identity_aliases"
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), primary_key=True)
+    canonical_employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    merged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class EmployeeDirectoryEvent(Base):
+    """Append-only safe source changes and human identity/review decisions."""
+
+    __tablename__ = "employee_directory_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
+    link_id: Mapped[int | None] = mapped_column(ForeignKey("employee_clover_links.id"), nullable=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    details: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class SourceRole(Base):
@@ -3300,6 +3368,7 @@ class OrderItem(Base):
     # modeling principle F).
     source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
     source_line_item_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source_present: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
@@ -14743,9 +14812,11 @@ class ProjectTask(Base):
 
 
 class ProjectResponsible(Base):
-    """A name in one Project's list of people responsible for its Tasks.
-    Only a name: independent of access accounts and Employees. `name_key`
-    (trimmed, case-folded) keeps a name unique within its Project."""
+    """A project-local responsible, optionally linked to the RF-One person.
+    Local name/history is retained; confirmed identity lives in EmployeeContextLink.
+    Native selections use an identity key; free names use a normalized name key.
+    No access or organizational authority is implied.
+    """
 
     __tablename__ = "project_responsible"
     __table_args__ = (

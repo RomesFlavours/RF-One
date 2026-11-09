@@ -305,6 +305,12 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     # =========================================================================
     # First import.
     # =========================================================================
+    # Explicitly approved test identities: production imports never create people.
+    from .employee_directory import import_snapshot, attach_link
+    _, pending = import_snapshot(session, location_id=location.id, merchant_id=client.merchant_id, records=client.employees)
+    for link_id in pending:
+        attach_link(session, link_id=link_id, create_new=True)
+    session.flush()
     summary1 = import_clover_period(
         session, location_id=location.id, period_start=period_start, period_end=period_end, client=client,
     )

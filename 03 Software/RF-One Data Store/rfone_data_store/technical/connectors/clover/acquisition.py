@@ -139,6 +139,7 @@ explicitly via `clover_acquisition_status.py`.
 
 from __future__ import annotations
 
+import logging
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -171,6 +172,7 @@ if str(_CLOVER_EXPLORER_DIR) not in sys.path:
 from clover_explorer.pagination import paginate  # noqa: E402
 
 UTC = timezone.utc
+LOG = logging.getLogger("clover_acquisition")
 
 # How long a RUNNING acquisition may run before a future attempt treats it
 # as orphaned. Generous enough that a legitimately large Historical Backfill
@@ -226,6 +228,24 @@ def get_default_client() -> CloverReadClient:
     from .enrichment import get_client
 
     return get_client()
+
+
+def get_location_client(merchant_id: str) -> CloverReadClient:
+    """Keep WP's existing connection; MD uses explicit, separate credentials."""
+    import os
+    from clover_explorer.client import CloverClient
+    from clover_explorer.config import CloverConfig
+
+    md_merchant = os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
+    if md_merchant and merchant_id == md_merchant:
+        token = os.environ.get("CLOVER_MD_API_TOKEN", "").strip()
+        if not token:
+            raise ValueError("Mount Dora Clover connection is not configured.")
+        return CloverClient(CloverConfig(merchant_id=md_merchant, api_token=token))
+    client = get_default_client()
+    if client.merchant_id != merchant_id:
+        raise ValueError("Clover connection is not configured for this Location; no fallback to another merchant.")
+    return client
 
 
 @dataclass
@@ -287,6 +307,12 @@ class ImportSummary:
     # succeeded — see Task report "Live Cursor safety" for the verified gap
     # this closes.
     window_scan_failed: bool = False
+
+    # EMPLOYEE_DIRECTORY_RECORD_HOLD_001 — records acquired without an
+    # RF-One person because their Clover identity is still pending. Not
+    # errors: the run completes and the checkpoint advances; the records are
+    # attributed when the identity is confirmed (`identity_holds`).
+    identity_holds: list[str] = field(default_factory=list)
 
     @property
     def employee_mismatches_count(self) -> int:
@@ -455,9 +481,14 @@ def _get_or_create(session: Session, model: type, unique_filter: dict[str, Any],
     shared `upsert()` helper itself does not track."""
     existing = session.scalars(select(model).filter_by(**unique_filter)).first()
     if existing is not None:
+        if model is m.Employee:
+            values = {k: v for k, v in values.items() if k not in
+                      {"display_name", "custom_id", "active", "system_role", "location_id"}}
         for key, value in values.items():
             setattr(existing, key, value)
         return existing, False
+    if model is m.Employee:
+        raise ValueError("Confirm the external identity in the RF-One directory before attributing work.")
     obj = model(**unique_filter, **values)
     session.add(obj)
     return obj, True
@@ -479,6 +510,88 @@ def _existing_ids_by_source(session: Session, model: type, *, source_system_id: 
     return {row[0]: row[1] for row in rows if row[0]}
 
 
+def _read_monthly_collection(client, path, *, period_start, period_end, extra_params=None):
+    """Read inclusive windows no larger than a UTC calendar month, without gaps.
+
+    Clover may silently clamp a larger successful time-range response to 90
+    days. Require every page of every window and de-duplicate boundary IDs.
+    """
+    cursor = period_start.astimezone(UTC)
+    end = period_end.astimezone(UTC)
+    records = {}
+    while cursor <= end:
+        next_month = (cursor.replace(year=cursor.year + 1, month=1, day=1,
+                                     hour=0, minute=0, second=0, microsecond=0)
+                      if cursor.month == 12 else
+                      cursor.replace(month=cursor.month + 1, day=1,
+                                     hour=0, minute=0, second=0, microsecond=0))
+        through = min(end, next_month - timedelta(milliseconds=1))
+        params = dict(extra_params or {})
+        params["filter"] = [f"createdTime>={int(cursor.timestamp() * 1000)}",
+                            f"createdTime<={int(through.timestamp() * 1000)}"]
+        result = paginate(client, path, extra_params=params)
+        for raw in require_complete(result, path.rsplit("/", 1)[-1]):
+            if not raw.get("id"):
+                raise CloverAcquisitionError("A source collection record has no identifier.")
+            records[raw["id"]] = raw
+        cursor = next_month
+    return list(records.values())
+
+
+class EmployeeIdentityConfirmationRequired(CloverAcquisitionError):
+    def __init__(self, observation):
+        super().__init__("Historical employee requires confirmation in the RF-One directory. No work was changed.")
+        self.observation = observation
+
+
+def _resolve_historical_employee(client, session, reference, *, location_id,
+                                 source_system_id, employee_by_source_id, ingestion_run_id, retrieved_at):
+    """Preserve the deployed historical-reader behavior through shared identity."""
+    from ....employee_directory import observe_historical_employee, safe_snapshot
+    source_id = reference.get("id") if isinstance(reference, dict) else None
+    if not source_id or source_id in employee_by_source_id:
+        return
+    result = client.get(f"/v3/merchants/{client.merchant_id}/employees/{source_id}")
+    if result.ok:
+        raw = result.data
+        if not isinstance(raw, dict) or raw.get("id") != source_id:
+            raise CloverAcquisitionError("Historical employee identity did not match its reference.")
+    elif result.status_code == 404:
+        raw = dict(reference)
+    else:
+        raise CloverSourceUnavailableError("Historical employee", status_code=result.status_code, detail=result.error)
+    employee = observe_historical_employee(session, location_id=location_id, merchant_id=client.merchant_id,
+        raw=raw, available=result.ok, observed_at=retrieved_at, run_id=ingestion_run_id)
+    if employee is None:
+        # EMPLOYEE_DIRECTORY_RECORD_HOLD_001: the identity stays pending (its
+        # link is recorded above) and only this person's attribution waits.
+        return
+    employee_by_source_id[source_id] = employee.id
+    _mirror_source_record(session, ingestion_run_id=ingestion_run_id, source_system_id=source_system_id,
+        entity_type="employee" if result.ok else "employee_reference", source_id=source_id,
+        retrieved_at=retrieved_at, raw=safe_snapshot(raw))
+
+
+def _describe_identity_holds(session, *, merchant_id, order_ids, payment_ids, refunds_raw, held_shifts):
+    """EMPLOYEE_DIRECTORY_RECORD_HOLD_001 — what this run acquired without a person, and why."""
+    from . import identity_holds
+    pending = identity_holds.pending_external_ids(session, [merchant_id])
+    if not pending:
+        return []
+    order_ids, payment_ids = list(order_ids), list(payment_ids)
+    counts = {
+        "orders": session.scalar(select(func.count()).select_from(m.Order).where(
+            m.Order.id.in_(order_ids), m.Order.employee_id.is_(None),
+            m.Order.source_employee_id.in_(pending))) if order_ids else 0,
+        "payments": session.scalar(select(func.count()).select_from(m.Payment).where(
+            m.Payment.id.in_(payment_ids), m.Payment.employee_id.is_(None),
+            m.Payment.source_employee_id.in_(pending))) if payment_ids else 0,
+        "refunds": sum(1 for raw in refunds_raw if mapping.map_refund(raw).get("employee_source_id") in pending),
+        "shifts": held_shifts,
+    }
+    return identity_holds.describe(pending, counts)
+
+
 def _fetch_reference_catalogs(
     client: CloverReadClient, session: Session, *, location_id: int, source_system_id: int,
     ingestion_run_id: int, retrieved_at: datetime, mode: str,
@@ -495,21 +608,18 @@ def _fetch_reference_catalogs(
     employee_by_source_id: dict[str, int] = {}
     # CLOVER_ACQUISITION_SAFETY_001 — a failed read raises; it is never an
     # empty list that would clear existing Employee links.
-    result = paginate(client, f"/v3/merchants/{client.merchant_id}/employees")
-    for raw in require_complete(result, "Employees"):
-        values = mapping.map_employee(raw)
-        source_id = values.pop("source_employee_id")
-        if not source_id:
-            continue
-        obj, _ = _get_or_create(
-            session, m.Employee, {"source_system_id": source_system_id, "source_employee_id": source_id},
-            {**values, "location_id": location_id},
-        )
-        session.flush()
-        employee_by_source_id[source_id] = obj.id
+    result = paginate(client, f"/v3/merchants/{client.merchant_id}/employees", extra_params={"expand": "role"})
+    from ....employee_directory import import_snapshot, safe_snapshot
+    records = require_complete(result, "Employees")
+    employee_by_source_id, _pending = import_snapshot(
+        session, location_id=location_id, merchant_id=client.merchant_id, records=records,
+        observed_at=retrieved_at, run_id=ingestion_run_id,
+    )
+    for raw in records:
+        source_id = raw["id"]
         _mirror_source_record(
             session, ingestion_run_id=ingestion_run_id, source_system_id=source_system_id,
-            entity_type="employee", source_id=source_id, retrieved_at=retrieved_at, raw=raw,
+            entity_type="employee", source_id=source_id, retrieved_at=retrieved_at, raw=safe_snapshot(raw),
         )
 
     if mode in FULL_SCOPE_MODES:
@@ -562,7 +672,7 @@ def _fetch_reference_catalogs(
 def _fetch_and_ingest_shifts(
     client: CloverReadClient, session: Session, *, period_start: datetime, period_end: datetime,
     source_system_id: int, employee_by_source_id: dict[str, int],
-    ingestion_run_id: int, retrieved_at: datetime,
+    ingestion_run_id: int, retrieved_at: datetime, held: list[str] | None = None,
 ) -> int:
     """Clock-in/clock-out source facts, using Clover's `/shifts` endpoint
     and `mapping.map_shift()`. Confirmed empirically (read-only GET, no
@@ -595,14 +705,29 @@ def _fetch_and_ingest_shifts(
             entity_type="shift", source_id=source_id, retrieved_at=retrieved_at, raw=raw,
         )
 
+        location_id = session.scalar(select(m.Location.id).where(
+            m.Location.source_system_id == source_system_id, m.Location.source_location_id == client.merchant_id))
+        for key in ("employee", "overrideInEmployee", "overrideOutEmployee"):
+            _resolve_historical_employee(client, session, raw.get(key), location_id=location_id,
+                source_system_id=source_system_id, employee_by_source_id=employee_by_source_id,
+                ingestion_run_id=ingestion_run_id, retrieved_at=retrieved_at)
         employee_id = employee_by_source_id.get(employee_source_id) if employee_source_id else None
         if employee_id is None:
-            continue  # Shift.employee_id is NOT NULL — cannot ingest an orphaned shift
+            # EMPLOYEE_DIRECTORY_RECORD_HOLD_001: a Shift requires a person.
+            # It waits in the Provider Mirror (written above) and is created
+            # when the identity is confirmed; the other Shifts continue.
+            reason = (f"Shift {(source_id or '')[:8]}... held: " + (
+                f"Clover employee {employee_source_id} not yet confirmed in Employee Directory"
+                if employee_source_id else "no source employee reference"))
+            LOG.warning(reason)
+            if held is not None:
+                held.append(reason)
+            continue
 
         upsert(
             session, m.Shift, {"source_system_id": source_system_id, "source_shift_id": source_id},
             {
-                **values, "employee_id": employee_id,
+                **values, "employee_id": employee_id, "location_id": location_id,
                 "override_in_employee_id": (
                     employee_by_source_id.get(override_in_source_id) if override_in_source_id else None
                 ),
@@ -969,6 +1094,8 @@ def _finalize_import_run(ingestion_run: m.IngestionRun, summary: ImportSummary, 
         f"shifts={summary.shifts_imported}; "
         f"refunds={summary.refunds_found}"
         + ("; WINDOW SCAN FAILED — checkpoint not advanced, will retry" if summary.window_scan_failed else "")
+        + ("; IDENTITY HOLDS — " + "; ".join(getattr(summary, "identity_holds", []))[:600]
+           if getattr(summary, "identity_holds", None) else "")
     )
 
 
@@ -1075,7 +1202,7 @@ def import_clover_period(
     retrieved_at = utc_now()
 
     try:
-        resolved_client = client or get_default_client()
+        resolved_client = client or get_location_client(merchant_id)
 
         # CLOVER_ACQUISITION_SAFETY_001 — pre-flight, before any fetch or
         # write: right merchant for this Location, confirmed by Clover, and
@@ -1090,8 +1217,9 @@ def import_clover_period(
         start_ms = int(period_start.astimezone(UTC).timestamp() * 1000)
         end_ms = int(period_end.astimezone(UTC).timestamp() * 1000)
 
-        payments_result = paginate(
+        payments_raw = _read_monthly_collection(
             resolved_client, f"/v3/merchants/{merchant_id}/payments",
+            period_start=period_start, period_end=period_end,
             extra_params={
                 "expand": "order,tender,employee",
                 "filter": [f"createdTime>={start_ms}", f"createdTime<={end_ms}"],
@@ -1100,15 +1228,11 @@ def import_clover_period(
         )
         # CLOVER_ACQUISITION_SAFETY_001 — raises if the window's Payments
         # scan did not succeed completely; nothing has been written yet.
-        payments_raw = require_complete(payments_result, "Payments")
         # Refunds are read here too, before anything is written, so a failed
         # Refunds scan stops the job before its first write rather than after.
-        refunds_raw = require_complete(
-            paginate(
+        refunds_raw = _read_monthly_collection(
                 resolved_client, f"/v3/merchants/{merchant_id}/refunds",
-                extra_params={"filter": [f"createdTime>={start_ms}", f"createdTime<={end_ms}"]},
-            ),
-            "Refunds",
+                period_start=period_start, period_end=period_end,
         )
 
         employee_by_source_id, tender_by_source_id, device_by_source_id = _fetch_reference_catalogs(
@@ -1116,11 +1240,21 @@ def import_clover_period(
             ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at, mode=mode,
         )
         summary.employees_resolved = len(employee_by_source_id)
+        # EMPLOYEE_DIRECTORY_RECORD_HOLD_001 (Product Owner, 2026-11-02): a
+        # pending identity no longer stops the Location. Its records are
+        # acquired without a person and reported below; never attributed by
+        # guess, never a person created here.
+        held_shifts: list[str] = []
 
+        for payment_raw in payments_raw:
+            _resolve_historical_employee(resolved_client, session, payment_raw.get("employee"),
+                location_id=location_id, source_system_id=source_system_id,
+                employee_by_source_id=employee_by_source_id,
+                ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at)
         summary.shifts_imported = _fetch_and_ingest_shifts(
             resolved_client, session, period_start=period_start, period_end=period_end,
             source_system_id=source_system_id, employee_by_source_id=employee_by_source_id,
-            ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at,
+            ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at, held=held_shifts,
         )
 
         # CLOVER_HISTORICAL_BACKFILL_EXTRACTOR_V1 — full menu/catalog +
@@ -1176,6 +1310,10 @@ def import_clover_period(
                     detail=order_result.error,
                 )
             order_raw = order_result.data
+            _resolve_historical_employee(resolved_client, session, order_raw.get("employee"),
+                location_id=location_id, source_system_id=source_system_id,
+                employee_by_source_id=employee_by_source_id,
+                ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at)
             orders_raw_by_source_id[order_source_id] = order_raw
             order, is_new = _ingest_order(
                 session, order_raw, location_id=location_id, source_system_id=source_system_id,
@@ -1282,8 +1420,19 @@ def import_clover_period(
                 ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at,
             )
             summary.refunds_found += 1
+
+        summary.identity_holds = _describe_identity_holds(
+            session, merchant_id=merchant_id, order_ids=order_by_source_id.values(),
+            payment_ids=payment_by_source_id.values(),
+            refunds_raw=refunds_raw, held_shifts=len(held_shifts),
+        )
+        for line in summary.identity_holds:
+            LOG.warning("location_id=%s: %s", location_id, line)
     except Exception as exc:  # noqa: BLE001 — a failed run must release the guard, never stay RUNNING forever
         session.rollback()
+        if isinstance(exc, EmployeeIdentityConfirmationRequired):
+            from ....employee_directory import observe_historical_employee
+            observe_historical_employee(session, **exc.observation)
         ingestion_run.status = "FAILED"
         ingestion_run.finished_at = utc_now()
         ingestion_run.lock_key = None
