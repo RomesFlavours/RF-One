@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from rfone_data_store.database import get_database_url  # noqa: E402
 from rfone_data_store.models import Base  # noqa: E402
+from rfone_data_store.interviews import models as interview_models  # noqa: E402,F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -22,7 +23,9 @@ config = context.config
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Keep the caller's loggers: migrations also run in-process (bootstrap of a
+    # new private database) and must not silence its warnings (MIGRATIONS.md).
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # The canonical RF-One schema — see rfone_data_store/models.py.
 target_metadata = Base.metadata

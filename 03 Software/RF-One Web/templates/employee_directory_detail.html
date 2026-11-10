@@ -89,7 +89,7 @@
 <h2>Storico anagrafica</h2>
 {% set home_location = locations.get(employee.location_id) %}
 <p class="muted">Orari: {{ zone_label(home_location.timezone if home_location else none) }}.</p>
-{% set actions = {'IMPORT': 'Aggiornamento Clover', 'CREATE': 'Identità RF-One creata', 'LINK': 'Identità Clover collegata', 'MANAGEMENT': 'Dati interni modificati', 'REVIEW': 'Segnalazioni esaminate', 'MISSING_REVIEW': 'Assenza da Clover segnalata', 'CONSOLIDATE': 'Identità riconciliate manualmente', 'RF1_CREATE': 'Persona creata in RF1', 'CONTEXT_LINK': 'Collegamento a un dominio confermato', 'CONTEXT_UNLINK': 'Collegamento a un dominio rimosso', 'HISTORICAL_PENDING': 'Identità storica da confermare'} %}
+{% set actions = {'IMPORT': 'Aggiornamento Clover', 'CREATE': 'Identità RF-One creata', 'LINK': 'Identità Clover collegata', 'MANAGEMENT': 'Dati interni modificati', 'REVIEW': 'Segnalazioni esaminate', 'MISSING_REVIEW': 'Assenza da Clover segnalata', 'CONSOLIDATE': 'Identità riconciliate manualmente', 'RF1_CREATE': 'Persona creata in RF1', 'CONTEXT_LINK': 'Collegamento a un dominio confermato', 'CONTEXT_UNLINK': 'Collegamento a un dominio rimosso', 'HISTORICAL_PENDING': 'Identità storica da confermare', 'INTERVIEW_DELETE': 'Intervista eliminata'} %}
 <ul>{% for event in events %}<li>{{ event.created_at|local_dt(home_location.timezone if home_location else none) }} · {{ actions.get(event.action, event.action) }}{% if event.account_id %} · {{ actors.get(event.account_id, 'Account non disponibile')|short_name }}{% endif %}
 {% if event.details.snapshot is defined %}<span> · {{ event.details.snapshot.name or 'Nome non fornito' }} · {{ event.details.snapshot.email or 'Email non fornita' }}</span>{% endif %}</li>{% else %}<li>Nessuna modifica registrata.</li>{% endfor %}</ul>
 {% if can_manage and other_employees %}
@@ -103,5 +103,13 @@
   <button type="submit">Riconcilia le due identità</button>
 </form>
 </details>
+{% endif %}
+
+{% if interview_person %}
+<section class="subsection"><h2>Interviews · TEST</h2>
+{% if interview_can_request %}<p><a class="btn" href="{{ url_for('interview_admin', person_id=interview_person.id) }}">Request interview</a></p>{% else %}<p>Link one unambiguous active RF-One account in the existing context links to deliver an interview to MyRFOne.</p>{% endif %}
+<p>Everyone with Interviews access sees every interview for this person.</p>
+<table class="table-stack"><thead><tr><th>Purpose</th><th>Status</th><th></th></tr></thead><tbody>
+{% for interview in person_interviews %}<tr><td data-label="Purpose">{{ interview.purpose|truncate(140) }}</td><td data-label="Status">{{ interview_status_labels[interview.status] }}</td><td><a href="{{ url_for('interview_admin_results', session_id=interview.id) }}">{{ 'View results' if interview.status == 'COMPLETED' else 'View request' }}</a></td></tr>{% else %}<tr><td colspan="3">No interviews for this person yet.</td></tr>{% endfor %}</tbody></table></section>
 {% endif %}
 {% endblock %}

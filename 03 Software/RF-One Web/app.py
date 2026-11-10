@@ -39,10 +39,11 @@ from auth import (  # noqa: E402
     require_admin, require_csrf, require_login,
 )
 from db import SessionFactory  # noqa: E402
-from domain_registry import DOMAINS, DOMAINS_BY_CODE, TIPS_HOME_URL  # noqa: E402
+from domain_registry import DOMAINS, DOMAINS_BY_CODE, SELECTION_OLD_LINK, TIPS_HOME_URL  # noqa: E402
 from rfone_data_store import display_format  # noqa: E402
 from rfone_data_store import public_entry  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
+from interview_routes import home_state as interview_home_state, register_interview_routes  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 from rfone_data_store import legal_entity_service  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
@@ -137,6 +138,7 @@ app.jinja_env.filters["short_name"] = display_format.employee_short_name
 app.jinja_env.filters["first_name_initial"] = display_format.employee_first_name_initial
 app.jinja_env.globals["zone_label"] = display_format.zone_label
 app.jinja_env.globals["tips_home_url"] = TIPS_HOME_URL
+app.jinja_env.globals["selection_old_link"] = SELECTION_OLD_LINK
 # The first breadcrumb level, named the same in every app hosting shared
 # templates (Training's): RF-One Web's own Home here.
 app.jinja_env.globals["rfone_home_url"] = lambda: url_for("home")
@@ -371,6 +373,7 @@ def home():
             clover_acquisition_available="CLOVER_ACQUISITION" in enabled_codes,
             dev_journal_available="DEV_JOURNAL" in enabled_codes,
             employees_available="EMPLOYEES" in enabled_codes,
+            **interview_home_state(db, account),
         )
 
 
@@ -1218,3 +1221,8 @@ def forgot_password_code():
         return redirect(url_for("login"))
 
     return render_template("forgot_password_code.html")
+
+
+# Additive TEST feature; keep existing authentication and directory access.
+register_interview_routes(app, SessionFactory=SessionFactory, require_login=require_login,
+    require_admin=require_admin, require_csrf=require_csrf, require_domain_access=require_domain_access)

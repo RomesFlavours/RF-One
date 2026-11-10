@@ -11,6 +11,18 @@
 <h1>Welcome, {{ account.display_name }}</h1>
 
 <h2>MyRFOne</h2>
+{% if interview_tasks %}
+<div class="home-stack" aria-label="Requested interviews">
+  {% for interview in interview_tasks %}
+  <a class="domain-card domain-card-released" href="{{ url_for('interview_session', session_id=interview.id) }}">
+    <div class="domain-name">{{ 'Resume interview · TEST' if interview.status == 'In progress' else 'Interview requested · TEST' }}</div>
+    <div class="domain-description">{{ interview.purpose|truncate(160) }}</div>
+    <div>Requested by {{ interview.requester|short_name }}</div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% if domains_view %}
   <div class="home-stack">
     {% for domain in domains_view %}
@@ -22,6 +34,13 @@
           <div class="domain-name">{{ domain.display_name }}</div>
           <div class="domain-description">{{ domain.description }}</div>
         </a>
+        {% if domain.code == 'SELECTION' %}
+          {#- SELECTION_OLD_ENTRY_001 — same service and access as Selection. #}
+          <a class="domain-card {{ 'domain-card-released' if released else 'domain-card-unreleased' }}" href="{{ selection_old_link }}">
+            <div class="domain-name">Selection Old</div>
+            <div class="domain-description">The previous Selection interface: candidates, requirement sets, screening, interviews and settings.</div>
+          </a>
+        {% endif %}
       {% else %}
         <div class="domain-card domain-card-unavailable domain-card-unreleased" aria-disabled="true">
           <div class="domain-name">{{ domain.display_name }}</div>
@@ -40,7 +59,7 @@
     <div class="domain-card home-block">
       <div class="domain-name">Administration</div>
       {% if employees_available %}
-      <a class="home-row" href="{{ url_for('employee_directory_home') }}"><strong>Anagrafica dipendenti</strong> &mdash; Identità RF-One, sedi e collegamenti Clover.</a>
+      <a class="home-row" href="{{ url_for('employee_directory_home') }}"><strong>Anagrafica dipendenti <span role="img" aria-label="Funzionante" title="Funzionante">👍</span></strong> &mdash; Identità RF-One, sedi e collegamenti Clover.</a>
       {% endif %}
       {% if bank_available %}
       <a class="home-row" href="{{ domain_entry('BANK') }}"><strong>Bank</strong> &mdash; Import and reconcile bank transactions.</a>
