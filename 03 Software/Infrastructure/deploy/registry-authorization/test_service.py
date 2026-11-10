@@ -1,7 +1,7 @@
 from pathlib import Path
 import os,sys,tempfile,importlib.util,json
 root=Path.cwd();service=sys.argv[1];folder=Path(sys.argv[2]).resolve();base=folder/'03 Software' if (folder/'03 Software').exists() else folder
-temp=tempfile.TemporaryDirectory(dir=root/'tmp',prefix='release-policy-',ignore_cleanup_errors=True);os.environ.update(RFONE_DATABASE_URL='sqlite:///'+str(Path(temp.name)/'db.sqlite').replace('\\','/'),RFONE_FLASK_SECRET_KEY='disposable-release-test',RFONE_SELECTION_REQUIRE_RFONE_LOGIN='1',RFONE_WEB_BASE_URL='http://localhost:5000',RFONE_PUBLIC_BASE_URL='http://localhost:5000',AWS_EC2_METADATA_DISABLED='true');sys.path[:0]=[str(base/'RF-One Data Store'),str(base/('Tips' if service=='tips' else 'Selection' if service=='selection' else 'RF-One Web'))]
+temp=tempfile.TemporaryDirectory(dir=Path(tempfile.gettempdir()),prefix='release-policy-',ignore_cleanup_errors=True);os.environ.update(RFONE_DATABASE_URL='sqlite:///'+str(Path(temp.name)/'db.sqlite').replace('\\','/'),RFONE_FLASK_SECRET_KEY='disposable-release-test',RFONE_SELECTION_REQUIRE_RFONE_LOGIN='1',RFONE_WEB_BASE_URL='http://localhost:5000',RFONE_PUBLIC_BASE_URL='http://localhost:5000',AWS_EC2_METADATA_DISABLED='true');sys.path[:0]=[str(base/'RF-One Data Store'),str(base/('Tips' if service=='tips' else 'Selection' if service=='selection' else 'RF-One Web'))]
 from rfone_data_store import models as m,access_profiles as p,rfone_account_service as accounts
 from rfone_data_store.database import create_configured_engine,create_session_factory
 engine=create_configured_engine(os.environ['RFONE_DATABASE_URL'])
