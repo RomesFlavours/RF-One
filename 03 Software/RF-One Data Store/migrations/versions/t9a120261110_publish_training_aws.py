@@ -5,7 +5,7 @@ from rfone_data_store import models as m
 from rfone_data_store.training.workspace import TrainingStudentProfile,TrainingAssignmentSubmission
 
 revision='t9a120261110'
-down_revision='k9a020261110'
+down_revision='f3b120261110'
 branch_labels=None
 depends_on=None
 
