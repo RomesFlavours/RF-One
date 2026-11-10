@@ -89,18 +89,18 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
                     action=request.form.get('action','')
                     identity=int(request.form.get('id','0') or 0)
                     anchor=request.form.get('return_to','catalog')
-                    if action=='person_access':
+                    if action in ('person_access','person_password'):
                         linked=profiles.ensure_profile_account(db,person,account.id)
                         db.commit()
-                        return redirect(url_for('admin_account_access',account_id=linked.id,from_person=person))
+                        return redirect(url_for('admin_account_edit',account_id=linked.id,_anchor='reset-password')) if action=='person_password' else redirect(url_for('admin_account_access',account_id=linked.id,from_person=person))
                     elif action=='person_create':
-                        record=profiles.create_profile_person(db,name=request.form.get('name'),company_ids=request.form.getlist('company_ids'),assignments=json.loads(request.form.get('person_roles','[]')),actor=account.id)
+                        record=profiles.create_profile_person(db,name=request.form.get('name'),company_ids=request.form.getlist('company_ids'),assignments=json.loads(request.form.get('person_roles','[]')),actor=account.id,**{key:request.form[key] for key in ('email','phone') if key in request.form})
                         person=f'employee:{record.id}';anchor='people-table'
                     elif action=='person_dismiss':
                         profiles.dismiss_profile_person(db,person,dismissal_date=request.form.get('dismissal_date'),actor=account.id)
                         anchor='dismissed-people'
                     elif action=='person_save':
-                        profiles.save_person_profile(db,person,name=request.form.get('name'),company_ids=request.form.getlist('company_ids'),assignments=json.loads(request.form.get('person_roles','[]')),actor=account.id)
+                        profiles.save_person_profile(db,person,name=request.form.get('name'),company_ids=request.form.getlist('company_ids'),assignments=json.loads(request.form.get('person_roles','[]')),actor=account.id,**{key:request.form[key] for key in ('email','phone') if key in request.form})
                         anchor='people-table'
                     elif action=='area_save':
                         record=profiles.save_area(db,name=request.form.get('area_name',request.form.get('name')),area_id=identity or None,actor=account.id);anchor=f'area-{record.id}'
@@ -168,7 +168,7 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
             company_map={v.id:v.company_id for v in current}
             account_ids=([identity] if kind=='account' else [aid for aid in db.scalars(select(m.RFOneAccount.id)) if directory.context_person_id(db,'RFONE_ACCOUNT',aid)==identity])
             access_url=url_for('admin_account_access',account_id=account_ids[0],from_person=key) if len(account_ids)==1 else None
-            people_rows.append({'key':key,'access_url':access_url,'name':target.display_name or 'Name to complete','companies':sorted({v.company_id for v in current}),
+            people_rows.append({'key':key,'email':target.email if kind=='employee' else target.contact_email,'phone':target.phone if kind=='employee' else target.contact_phone,'access_url':access_url,'name':target.display_name or 'Name to complete','companies':sorted({v.company_id for v in current}),
                 'assignments':[{'company_id':company_map[a.membership_id],'role_id':a.role_id,'area_id':a.area_id} for a in current_roles]})
         dismissed_rows=[]
         dismissal_dates={}

@@ -1,0 +1,24 @@
+{
+  "tag": "registry-contacts-20261110t161756z",
+  "image_digest": "sha256:b2ef6a54294e53e09f4b7b743264207b597837320f50c17efb320e01a5bf07c4",
+  "source_sha256": "84efd5f7f09f87be28db93c8b2272f81d628657e2ea9c6fa8278bb2fd1d21847",
+  "source_s3_key": "releases/registry-contacts-20261110t161756z/source.zip",
+  "build_id": "rfone-web-build:0d5ef190-ed79-4442-9adf-f475f522d242",
+  "deploy_operation": "acf6645a8a7044ffb82a1143472fe1d1",
+  "migration_task": "arn:aws:ecs:us-east-1:418674484214:task/rfone-jobs/2ffb982b438d400a98e155f257a1530f",
+  "rds_snapshot": "rfone-before-registry-contacts-20261110t160928z",
+  "expected_previous_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:registry-people-20261110t153917z",
+  "deployment_status": "SUCCEEDED",
+  "schema_revision": "f3b120261110",
+  "schema_parent": "k9a020261110",
+  "tests": {
+    "registry_http": 87,
+    "myrf_home": 36,
+    "profile_service": 15,
+    "connector_guard": 16
+  },
+  "existing_account_records_preserved": 7,
+  "employees_preserved": 64,
+  "dismissed_preserved": 47,
+  "local_files_verified": 862
+}

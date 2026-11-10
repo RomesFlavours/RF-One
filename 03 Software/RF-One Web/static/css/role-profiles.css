@@ -46,3 +46,5 @@
 #person-editor .person-role-row{grid-template-columns:1fr 1fr auto}.person-company-group{margin-bottom:1.2rem}.person-company-group h4{margin:.3rem 0 .8rem;color:#55652f;font-size:1rem}
 
 .person-authorizations-button{display:inline-block;background:#55652f;color:#fff;text-decoration:none;padding:.75rem 1.1rem;border-radius:8px}.person-authorizations-button[hidden]{display:none}#person-authorizations-help{font-size:.85rem;margin:.65rem 0 0}
+
+.person-contact-fields{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem}.person-extra>button{margin-right:.6rem}#person-reset-password[hidden]{display:none}@media(max-width:700px){.person-contact-fields{grid-template-columns:1fr}}

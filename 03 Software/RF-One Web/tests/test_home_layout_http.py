@@ -6,7 +6,7 @@ column of blocks.
   * Domains: operational first, Work in progress last, alphabetical within
     each group; Bank is not a Domain on Home.
   * Administration: Registry for administrators, Bank for accounts with BANK access.
-  * Settings, alphabetical: Accounts, Legal Entities (admins), Profile,
+  * Settings, alphabetical: Legal Entities (admins), Profile,
     Workweek (admins). Organization is a Domain card since
     ACCOUNT_ITEM_ACCESS_001, shown to the accounts granted ORGANIZATION.
   * Profile is no longer a header button; Log out is a text link.
@@ -154,10 +154,10 @@ def main() -> int:
         check("Administration contains Registry and Bank",
               HREF_RE.findall(admin_part) == ["/admin/roles?tab=people", "/bank"] and "<strong>Registry" in admin_part and "<strong>Bank</strong>" in admin_part)
         rows = re.findall(r"<strong>([^<]+)</strong>", settings_part)
-        check("Settings rows are Accounts, Legal Entities, Profile, Workweek (alphabetical)",
-              rows == ["Accounts", "Legal Entities", "Profile", "Workweek"], f"{rows}")
+        check("Settings rows are Legal Entities, Profile, Workweek (alphabetical)",
+              rows == ["Legal Entities", "Profile", "Workweek"], f"{rows}")
         check("Settings links use the existing routes",
-              HREF_RE.findall(settings_part) == ["/admin/accounts", "/admin/legal-entities", "/profile", "/admin/workweek"])
+              HREF_RE.findall(settings_part) == ["/admin/legal-entities", "/profile", "/admin/workweek"])
         check("Organization is a Domain card, no longer a Settings row",
               'href="/admin/organization"' in domains_part and "/admin/organization" not in settings_part)
         check("Administration and Settings are two distinct blocks",

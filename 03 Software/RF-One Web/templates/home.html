@@ -77,7 +77,6 @@
   <div class="domain-card home-block">
     <div class="domain-name">Settings</div>
     {% if account.is_admin %}
-      <a class="home-row" href="{{ url_for('admin_accounts') }}"><strong>Accounts</strong> &mdash; Manage RF-One accounts and Domain access.</a>
       <a class="home-row" href="{{ url_for('admin_legal_entities') }}"><strong>Legal Entities</strong> &mdash; Manage legal entities.</a>
     {% endif %}
     {#- Organization is no longer here: it is a Domain card above, granted

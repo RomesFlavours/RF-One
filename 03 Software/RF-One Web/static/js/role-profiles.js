@@ -62,7 +62,7 @@
   function syncPersonRoles(){editor.elements.person_roles.value=JSON.stringify(Array.from(roleRows.querySelectorAll('.person-role-row')).map(function(row){return {company_id:row.dataset.companyId,role_id:row.querySelector('[data-role]').value,area_id:row.querySelector('[data-area]').value};}));}
   function systemAuthorizations(person){
     var link=document.getElementById('person-system-authorizations'),help=document.getElementById('person-authorizations-help');
-    link.hidden=!person;
+    link.hidden=!person;document.getElementById('person-reset-password').hidden=!person;field(document.getElementById('person-password-form'),'person',person?person.key:'');
     var accessForm=document.getElementById('person-access-form');field(accessForm,'person',person?person.key:'');
     help.textContent=person?'Opens Domain Access for this person in a separate window. Your unsaved changes here are retained.':'Save the person first to manage their system authorizations.';
   }
@@ -92,7 +92,7 @@
     var remove=document.createElement('button');remove.type='button';remove.className='link-button';remove.textContent='Remove';remove.addEventListener('click',function(){row.remove();});row.append(remove);var group=Array.from(roleRows.children).find(function(g){return g.dataset.companyId===String(value.company_id);});if(group)group.querySelector('.company-role-rows').append(row);
   }
   document.addEventListener('click',function(e){var b=e.target.closest('[data-edit-person]');if(!b)return;var p=people.get(b.dataset.editPerson);if(!p)return;
-    reset('person-dialog');field(editor,'person',p.key);field(editor,'name',p.name);field(editor,'tab','people');roleRows.replaceChildren();
+    reset('person-dialog');field(editor,'person',p.key);field(editor,'name',p.name);field(editor,'email',p.email||'');field(editor,'phone',p.phone||'');field(editor,'tab','people');roleRows.replaceChildren();
     editor.querySelectorAll('[name=company_ids]').forEach(function(cb){cb.checked=p.companies.indexOf(Number(cb.value))>=0;cb.disabled=cb.dataset.companyActive==='false'&&!cb.checked;});
     field(editor,'action','person_save');document.getElementById('person-dialog-title').textContent='Edit person';document.getElementById('person-dismissal').hidden=p.key.indexOf('employee:')!==0;document.getElementById('person-dismiss-button').disabled=true;
     systemAuthorizations(p);companyGroups();p.assignments.forEach(roleRow);dialogs['person-dialog'].open(b);

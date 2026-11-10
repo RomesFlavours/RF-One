@@ -66,3 +66,26 @@ The UI module is named Registry. MyRF exposes it once in Administration, subject
 to existing platform administrator/owner permissions. Settings has no duplicate.
 People & assignments is the first and default tab, followed by Roles, Areas and
 Companies. An unknown tab falls back to People. Explicit tab URLs remain supported.
+
+## Registry contact details and password administration (2026-11-10)
+
+MyRF no longer lists Accounts in Settings. Its existing routes and platform-admin
+permission checks remain available; Registry supplies a Reset password entry for
+the explicitly linked RF1 account. It opens the existing reset form in another
+tab, retaining unsaved person input. New people must be saved first. An account
+shell, if needed, remains inactive and receives no credentials or grants merely
+from opening this action. Password resets retain existing password policy and
+session revocation and do not reactivate an inactive account.
+
+Registry edits optional Email and Phone fields. Employees reuse the canonical
+Employee.email/phone fields and management audit. Unlinked external RF1 accounts
+store contacts in RFOneAccount.contact_email/contact_phone. Those fields are
+separate from account.email/email_verified_at, which remain the existing recovery
+channel. Saving Registry contacts sends no message, enrolls no recovery channel,
+does not verify addresses, and does not change credentials or permissions. Empty
+input clears contact data; omitted fields preserve existing values. Imports and
+contact use policies are not redefined by this change.
+
+The shared chain includes already-applied Kitchen revision k9a020261110 before
+Registry contacts revision f3b120261110. Existing identities, account data and
+dismissals are preserved.

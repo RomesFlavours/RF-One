@@ -310,10 +310,22 @@ def seed_companies(db):
     db.flush()
 
 
-def save_person_profile(db,target,*,name,company_ids,assignments,actor=None):
+_CONTACT_UNSET=object()
+
+def _contact(value,limit,label):
+    value=(value or '').strip()
+    if len(value)>limit or any(ord(char)<32 for char in value):raise ValueError(f'Invalid {label}.')
+    if value and label=='email':
+        import re
+        if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',value):raise ValueError('Enter a valid email address.')
+    return value or None
+
+def save_person_profile(db,target,*,name,company_ids,assignments,actor=None,email=_CONTACT_UNSET,phone=_CONTACT_UNSET):
     """Atomic editor; preserve ended history and central identity, no POS writes."""
     employee,account=person_target(db,target)
     name=_name(name)
+    if email is not _CONTACT_UNSET:email=_contact(email,255,'email')
+    if phone is not _CONTACT_UNSET:phone=_contact(phone,64,'phone')
     company_ids={int(v) for v in company_ids}
     if not isinstance(assignments,list):raise ValueError('Invalid role assignments.')
     desired=set()
@@ -340,15 +352,20 @@ def save_person_profile(db,target,*,name,company_ids,assignments,actor=None):
             if key[0]==company_id:assign_role(db,membership_id=member.id,role_id=key[1],area_id=key[2],actor=actor)
     record=db.get(m.Employee,employee) if employee is not None else db.get(m.RFOneAccount,account)
     if employee is not None:
-        directory.update_management(db,record,display_name=name,custom_id=record.custom_id,active=record.active,account_id=actor)
+        directory.update_management(db,record,display_name=name,custom_id=record.custom_id,active=record.active,account_id=actor,
+            email=record.email if email is _CONTACT_UNSET else email,phone=record.phone if phone is _CONTACT_UNSET else phone)
     else:
+        contact_before={'email':record.contact_email,'phone':record.contact_phone}
+        if email is not _CONTACT_UNSET:record.contact_email=email
+        if phone is not _CONTACT_UNSET:record.contact_phone=phone
+        if email is not _CONTACT_UNSET or phone is not _CONTACT_UNSET:event(db,'EXTERNAL_CONTACT_UPDATE',actor,account_id=account,before=contact_before,after={'email':record.contact_email,'phone':record.contact_phone})
         before=record.display_name;record.display_name=name
         event(db,'ACCOUNT_NAME_UPDATE',actor,account_id=account,before=before,name=name)
     event(db,'PERSON_PROFILE_SAVE',actor,target=target,company_ids=sorted(company_ids))
     db.flush()
 
 
-def create_profile_person(db,*,name,company_ids,assignments,actor=None):
+def create_profile_person(db,*,name,company_ids,assignments,actor=None,email=_CONTACT_UNSET,phone=_CONTACT_UNSET):
     person=directory.create_person(db,display_name=_name(name),account_id=actor)
     if hasattr(directory,'ensure_employee_account'):
         directory.ensure_employee_account(db,person)
@@ -357,7 +374,7 @@ def create_profile_person(db,*,name,company_ids,assignments,actor=None):
         account=m.RFOneAccount(username='employee-'+uuid4().hex,display_name=person.display_name,password_hash='!',status='INACTIVE',is_admin=False,is_owner=False,session_version=1)
         db.add(account);db.flush()
         db.add(m.EmployeeContextLink(employee_id=person.id,rfone_account_id=account.id));db.flush()
-    save_person_profile(db,f'employee:{person.id}',name=name,company_ids=company_ids,assignments=assignments,actor=actor)
+    save_person_profile(db,f'employee:{person.id}',name=name,company_ids=company_ids,assignments=assignments,actor=actor,email=email,phone=phone)
     return person
 
 
