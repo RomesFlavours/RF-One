@@ -47,7 +47,7 @@ def run(engine):
         assert marker not in trainer.get('/training/manage/students').get_data(as_text=True)
         assert marker in trainer.get('/training/manage/content').get_data(as_text=True)
         data.update(id=str(pill_id),edit_revision='1',action='publish')
-        response=save(data);assert response.status_code==400 and 'at least one lesson' in response.json['error']
+        response=save(data);assert response.status_code==400 and 'at least one complete lesson' in response.json['error']
         pdf=b'%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n'
         data.update(lesson_title=['Text introduttivo','Manuale PDF'],lesson_kind=['text','file'],
             lesson_url=['',''],lesson_text=['<script>alert(1)</script>',''],lesson_file_id=['',''],
@@ -111,7 +111,7 @@ def run(engine):
             visual=db.scalar(select(m.TrainingPill).where(m.TrainingPill.slug=='visual-menu'))
             assert json.loads(courses.active_revision(db,visual.id).content_json)['lessons'][0]['url']=='/training/visual-menu'
         print('PASS: draft creation, incomplete activation rejected, PDF upload, ordered lessons, activation, draft isolation, conflicting save rejected, immutable versions and assignment pinning.')
-        print('PASS: protected file delivery, cross-student denial, escaped text, malformed material/links rejected, CSRF, Italian course view/help and Visual Menu preservation.')
+        print('PASS: protected file delivery, cross-student denial, escaped text, malformed material/links rejected, CSRF, English course view/help and Visual Menu preservation.')
     finally:
         transaction.rollback();connection.close()
     with engine.connect() as c:

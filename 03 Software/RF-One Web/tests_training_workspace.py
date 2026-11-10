@@ -149,7 +149,7 @@ def run(engine):
             assert (shell.app.root_path and __import__('pathlib').Path(shell.app.root_path,'templates','help','training_'+page+'.html').is_file())
         from pathlib import Path
         assert Path(shell.app.root_path,'templates/_how_works.html').read_bytes()==Path(shell.app.root_path).parent.joinpath('Shared UI/help/_how_works.html').read_bytes()
-        print('PASS: 2 Italian tabs and help, legacy page redirects, per-student assignment modal, CSRF, student create/edit/archive/restore, first-access password replacement, permission checks, 1 fixed student x 2 contents, replay rejection and atomic rollback.')
+        print('PASS: 2 English tabs and help, legacy page redirects, per-student assignment modal, CSRF, student create/edit/archive/restore, first-access password replacement, permission checks, 1 fixed student x 2 contents, replay rejection and atomic rollback.')
     finally:
         transaction.rollback();connection.close()
     with engine.connect() as c:
