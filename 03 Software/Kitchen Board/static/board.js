@@ -21,10 +21,12 @@ if (board) {
     const changes = order.changes || {};
     const flags = [order.addition ? (it ? `AGGIUNTA ${order.addition}` : `ADDITION ${order.addition}`) : (it ? 'ORDINE' : 'ORDER')];
     if (changes.at) flags.push(it ? 'MODIFICATO' : 'CHANGED');
+    const out = (order.released_line_ids || []).length;
+    if (out) flags.push(it ? `${out} GIÀ USCITI` : `${out} ALREADY OUT`);
     if (order.allergy) flags.push(it ? '⚠ ALLERGIA' : '⚠ ALLERGY');
     const kicker = el('span', flags.join(' · '), 'kicker');
     kicker.classList.toggle('flag-addition', Boolean(order.addition));
-    kicker.classList.toggle('flag-changed', Boolean(changes.at));
+    kicker.classList.toggle('flag-changed', Boolean(changes.at || out));
     kicker.classList.toggle('flag-allergy', Boolean(order.allergy));
     const clock = el('time', null);
     clock.dataset.created = order.created_at;

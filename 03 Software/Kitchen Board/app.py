@@ -149,12 +149,19 @@ def create_app(session_factory, *, secret, view_token, release_token, local=Fals
         body = request.get_json(silent=True)
         if not isinstance(body, dict) or not isinstance(body.get('released_by'), str) or not 1 <= len(body['released_by'].strip()) <= 255:
             abort(400)
+        # Optional: release only these dishes (line ids from the orders feed).
+        line_ids = body.get('line_ids')
+        if line_ids is not None and (not isinstance(line_ids, list) or not 1 <= len(line_ids) <= 200
+                                     or not all(isinstance(i, str) and 0 < len(i) <= 128 for i in line_ids)):
+            abort(400)
         with session_factory() as db:
             configured(db, location_id)
             try:
-                return jsonify(release(db, location_id, order_id, body['released_by'].strip()))
+                return jsonify(release(db, location_id, order_id, body['released_by'].strip(), line_ids))
             except LookupError:
                 abort(404)
+            except ValueError:
+                return jsonify(error='Those dishes are not open on this ticket.'), 409
 
     @app.post('/api/locations/<int:location_id>/orders/<order_id>/undo-release')
     @allowed(write=True)

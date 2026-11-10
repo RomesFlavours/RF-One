@@ -2,7 +2,7 @@
 {% block path %} / <a href="{{ url_for('board_page',location_id=location.id) }}">{{ location.name }}</a> / {{ 'Archivio' if it else 'Archive' }}{% endblock %}
 {% block content %}<main><h1>{{ 'Ordini rilasciati' if it else 'Released orders' }}</h1>
 <div class="archive">{% for ticket in tickets %}<article class="ticket"><h2>{{ ticket.title }}</h2>
-<p>{{ ticket.local_time }} · {{ 'Rilasciato' if it else 'Released' }}</p>
+<p>{{ ticket.local_time }} · {% if ticket.part %}{{ 'Rilascio parziale' if it else 'Partial release' }} {{ ticket.part }}{% else %}{{ 'Rilasciato' if it else 'Released' }}{% endif %}</p>
 {% if ticket.note %}<p class="note">{{ ticket.note }}</p>{% endif %}
 {% for line in ticket.lines %}<div class="line">{% if line.guest %}<small>{{ line.guest }}</small>{% endif %}
 <p>{% if line.quantity is not none %}{{ line.quantity }} × {% endif %}{{ line.name }}</p>

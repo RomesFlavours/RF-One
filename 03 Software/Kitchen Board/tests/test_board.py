@@ -360,5 +360,80 @@ class BoardTest(unittest.TestCase):
         self.assertTrue(order['allergy'])
 
 
+    # Partial release: the kitchen releases any dishes; the rest stays on the board.
+    def three_dishes(self):
+        self.clover.lines = [{'id': 'p1', 'name': 'Carbonara', 'unitQty': 1000},
+                             {'id': 'p2', 'name': 'Lasagna', 'unitQty': 1000},
+                             {'id': 'p3', 'name': 'Ribeye', 'unitQty': 1000}]
+        self.sync()
+
+    def part(self, ids, order_id='order-1'):
+        return self.client.post(f'/api/locations/1/orders/{order_id}/release', headers=self.api,
+                                json={'released_by': 'pass', 'line_ids': ids})
+
+    def test_partial_release_keeps_the_rest_open(self):
+        self.three_dishes()
+        r = self.part(['p1', 'p2']).json
+        self.assertEqual((r['partial'], r['part_id'], r['remaining_line_ids']), (True, 'order-1-part1', ['p3']))
+        order = self.orders_now()[0]
+        self.assertEqual(([l['name'] for l in order['lines']], order['released_line_ids']), (['Ribeye'], ['p1', 'p2']))
+        self.sync()  # Clover still lists all three: released dishes never come back
+        self.assertEqual([l['name'] for l in self.orders_now()[0]['lines']], ['Ribeye'])
+        self.assertTrue(self.part(['p1', 'p2']).json['already_released'])  # a retried request
+        with self.factory() as db:
+            part = db.get(Ticket, (1, 'order-1-part1'))
+            self.assertEqual(([l['name'] for l in part.payload['lines']], part.released_by), (['Carbonara', 'Lasagna'], 'pass'))
+        archive = self.client.get('/archive/1', headers=self.api).get_data(as_text=True)
+        self.assertIn('Rilascio parziale 1', archive)  # local test app is Italian
+
+    def test_releasing_the_last_dishes_releases_the_order(self):
+        self.three_dishes()
+        self.part(['p1'])
+        r = self.part(['p2', 'p3']).json
+        self.assertEqual((r['partial'], r['already_released']), (False, False))
+        self.assertEqual(self.orders_now(), [])
+        self.clover.lines.append({'id': 'p4', 'name': 'Tiramisu', 'unitQty': 1000})
+        self.sync()  # an addition still comes back, and only the new dish
+        self.assertEqual([(o['order_id'], [l['name'] for l in o['lines']]) for o in self.orders_now()],
+                         [('order-1-add1', ['Tiramisu'])])
+
+    def test_partial_release_rejects_dishes_not_on_the_ticket(self):
+        self.three_dishes()
+        self.assertEqual(self.part(['nope']).status_code, 409)
+        self.assertEqual(self.part([]).status_code, 400)
+        self.assertEqual(self.part('p1').status_code, 400)
+        self.assertEqual(len(self.orders_now()[0]['lines']), 3)
+
+    def test_undo_a_partial_release(self):
+        self.three_dishes()
+        self.part(['p1'])
+        r = self.client.post('/api/locations/1/orders/order-1-part1/undo-release', headers=self.api,
+                             json={'undone_by': 'pass'}).json
+        self.assertEqual(r['returned_to'], 'order-1')
+        order = self.orders_now()[0]
+        self.assertEqual((sorted(l['name'] for l in order['lines']), order['released_line_ids']),
+                         (['Carbonara', 'Lasagna', 'Ribeye'], []))
+        self.sync()
+        self.assertEqual(len(self.orders_now()[0]['lines']), 3)
+        with self.factory() as db:
+            self.assertIsNone(db.get(Ticket, (1, 'order-1-part1')))
+        self.assertEqual(self.part(['p1']).json['part_id'], 'order-1-part2')  # numbering never reuses a part
+
+    def test_part_undo_refused_after_the_rest_was_released(self):
+        self.three_dishes()
+        self.part(['p1']); self.release_now()
+        r = self.client.post('/api/locations/1/orders/order-1-part1/undo-release', headers=self.api, json={'undone_by': 'p'})
+        self.assertEqual(r.status_code, 409)
+
+    def test_partial_release_of_an_addition(self):
+        self.sync(); self.release_now()
+        self.clover.lines += [{'id': 'd1', 'name': 'Tiramisu', 'unitQty': 1000}, {'id': 'd2', 'name': 'Cannoli', 'unitQty': 1000}]
+        self.sync()
+        self.part(['d1'], 'order-1-add1')
+        self.sync()
+        self.assertEqual([(o['order_id'], [l['name'] for l in o['lines']]) for o in self.orders_now()],
+                         [('order-1-add1', ['Cannoli'])])
+
+
 if __name__ == '__main__':
     unittest.main()
