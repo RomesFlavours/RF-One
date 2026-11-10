@@ -1,4 +1,5 @@
 """Kitchen visibility is based on Clover categories, never product-name guesses."""
+import re
 from sqlalchemy import select
 from rfone_data_store import models as m
 
@@ -39,8 +40,23 @@ def timing_by_line(db, location_id, order_ids):
     return result
 
 
+# Only words the server actually typed in a note or modifier. This highlights
+# the line for the cook; it never decides what is safe to serve.
+ALLERGY_WORDS = re.compile(r"\b(allerg\w*|anaphyla\w*|epipen|celiac|coeliac|gluten|peanuts?|tree ?nuts?|nuts?|"
+                           r"shellfish|crustaceans?|dairy|lactose|sesame|soy|eggs? allergy)\b", re.I)
+
+
+def mentions_allergy(*texts):
+    return any(ALLERGY_WORDS.search(text or '') for text in texts)
+
+
 def kitchen_payload(payload, category_lookup, timing_lookup=None):
-    return {**payload, 'lines': [{**line, 'service_timing':
+    lines = [{**line, 'service_timing':
         (timing_lookup or {}).get(line.get('id'),line.get('service_timing',[]))}
         for line in payload.get('lines', [])
-        if not is_beverage(category_lookup.get(line.get('id'), line.get('categories', [])))]}
+        if not is_beverage(category_lookup.get(line.get('id'), line.get('categories', [])))]
+    for line in lines:
+        line['allergy'] = mentions_allergy(line.get('note'), *(line.get('modifiers') or []))
+    note_allergy = mentions_allergy(payload.get('note'))
+    return {**payload, 'lines': lines, 'note_allergy': note_allergy,
+            'allergy': note_allergy or any(l['allergy'] for l in lines)}

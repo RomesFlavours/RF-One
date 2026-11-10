@@ -127,3 +127,21 @@ The settings page uses a byte-identical copy of RF-One Web’s `rf-one.css` pale
 ## English handoff
 
 The shared application and exported review pages default to English, including settings, notifications, accessibility text and contextual help. To run English locally with loopback cookie settings use `KITCHEN_BOARD_LOCAL=1` and `python manage.py serve --language en`. `RFONE_UI_LANGUAGE=en` is an equivalent environment setting. The separate `--language it` option preserves the Italian development interface. The exporter accepts `--language it` when an Italian local review is needed; its default is `en`. Imported Clover item names, notes, IDs and service-timing values are never translated.
+
+## Proposed improvements (branch `shelbi/kitchen-board-improvements`, not merged)
+
+Proposed on top of `codex/kitchen-board` at 702d2d5 for the Product Owner's review. The approved whole-order release and frozen archive are unchanged.
+
+| Change | What the kitchen sees | How |
+|---|---|---|
+| Additions after release | Items added in Clover after a ticket was released appear as a new ticket, `ADDITION 1`, `ADDITION 2`, with the same title. Before this they were silently dropped. | `store._save_addition`: lines not in any released snapshot of that order become ticket `<order_id>-add<n>`. Released snapshots stay frozen. |
+| Changes on an open ticket | `CHANGED` at the top; changed lines marked `CHANGED:`, new lines `NEW:`, removed lines kept under `REMOVED FROM ORDER` and struck out as `VOID:`. | `store._track_changes` compares each Clover read with the previous one; stored in `payload.changes`. |
+| Allergy flag | `⚠ ALLERGY` at the top and on the line, plus "check before cooking". | `kitchen_filter.ALLERGY_WORDS` matches only words typed in a note or modifier. It highlights; it never decides what is safe. |
+| Server and timer | Under the title: local time · minutes since the order · server. | Server from Clover's order `employee` (already expanded); minutes tick every 30 s without redrawing. |
+| Undo a release | n/a on the monitor; for the Pass. | `POST /api/locations/<id>/orders/<order_id>/undo-release` with `{"undone_by": "..."}`, release token only. Allowed within 15 minutes and only while no addition ticket exists; each undo is kept in `payload.release_history`. 409 otherwise. |
+
+Every flag is written in words; colour only supports it. No new tables or migrations: all new state lives in the existing ticket `payload`.
+
+Not in this branch (Product Owner decisions): release by course instead of whole order (the Kitchen Flow vision makes the course the unit; this changes the approved release model), a changed line after release (only new lines are caught), the "Surname I." display rule for server names (Clover supplies the name as entered), orders deleted in Clover, and printed/sent filtering.
+
+Tests: 21 pass (`python -m unittest discover -s tests`), including 5 new ones for the above. One existing assertion now expects the added `allergy` field.

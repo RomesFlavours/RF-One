@@ -34,6 +34,8 @@ def ticket_payload(order_raw, lines):
     return {
         'title': order_raw.get('title') or order_raw['id'],
         'note': order_raw.get('note'),
+        # The employee Clover already returns with the order (expand=employee).
+        'server': ((order_raw.get('employee') or {}).get('name') or None),
         'lines': [{
             'id': line.get('id'), 'name': line.get('name') or '',
             'quantity': (line['unitQty'] / 1000 if line.get('unitQty') is not None else None),

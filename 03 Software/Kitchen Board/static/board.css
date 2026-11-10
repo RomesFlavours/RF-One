@@ -38,3 +38,13 @@ body:has(#board){margin:0;background:#fff}
 .board-exit{position:fixed;top:0;right:0;z-index:20;width:25px;height:25px;background:#fff;color:#555;font:22px/25px Arial;text-align:center;text-decoration:none;border:1px solid #bbb;border-radius:0 0 0 4px}.rail>.ticket:last-child h2{padding-right:15px}
 .rail .timing,.rail-probe .timing{font-size:.82em;background:#edf1d9;border-bottom:2px solid #82954c;color:#36451b;margin:.3em 0 .12em;padding:.12em .15em;text-transform:uppercase}
 .rail{grid-template-rows:repeat(var(--rows,1),minmax(0,1fr))}.rail-probe,.rail>.ticket{font-family:var(--ticket-family,Arial,sans-serif)}
+/* Shelbi's improvements: every flag is written in words; colour only supports it. */
+.ticket .kicker.flag-changed,.ticket .kicker.flag-addition{background:#fff0ce;color:#5c3b00;font-weight:bold}
+.ticket .kicker.flag-allergy{background:#b3261e;color:#fff;font-weight:bold}
+/* Plain orders keep his hidden kicker; a flagged ticket shows it on the monitor. */
+.rail .kicker.flag-changed,.rail .kicker.flag-addition,.rail .kicker.flag-allergy,.rail-probe .kicker.flag-changed,.rail-probe .kicker.flag-addition,.rail-probe .kicker.flag-allergy{display:block;font-size:.8em;padding:.1em .2em;margin-bottom:.1em}
+.rail .line.new,.rail-probe .line.new,.rail .line.changed,.rail-probe .line.changed{background:#fff0ce;outline:2px solid #c98a00;font-weight:bold}
+.rail .line.allergy,.rail-probe .line.allergy{border-left:.35em solid #b3261e;padding-left:.3em}
+.allergy-warning,.note.allergy{color:#b3261e;font-weight:bold}
+.rail .line.void,.rail-probe .line.void{text-decoration:line-through;color:#7a2d24}
+.rail .removed-heading,.rail-probe .removed-heading{background:#f6dcd8;border-bottom-color:#b3261e;color:#7a2d24}

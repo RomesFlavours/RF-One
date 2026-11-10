@@ -120,7 +120,7 @@ class BoardTest(unittest.TestCase):
                  {'id':'c','name':'Beer'}, {'id':'d','name':'Still Water'}]
         payload = kitchen_payload({'lines':lines},{'a':['Meat & Fish'],
             'b':['Wine Red - Bottle'],'c':['Beer'],'d':['Beverages']})
-        self.assertEqual(payload['lines'],[{**lines[0],'service_timing':[]}])
+        self.assertEqual(payload['lines'],[{**lines[0],'service_timing':[],'allergy':False}])
         self.sync()
         with self.factory() as db:
             db.add(m.Item(id=1,location_id=1,name='Drink'))
@@ -280,6 +280,84 @@ class BoardTest(unittest.TestCase):
             self.assertIn(label,text,path)
             for italian in ('Come funziona questa pagina','Impostazioni schermo','Ordini rilasciati','Apri schermo cucina'):
                 self.assertNotIn(italian,text,path)
+
+    # Shelbi's improvements (branch shelbi/kitchen-board-improvements).
+    def orders_now(self):
+        return self.client.get('/api/locations/1/orders',headers=self.api).json['orders']
+
+    def release_now(self, order_id='order-1'):
+        return self.client.post(f'/api/locations/1/orders/{order_id}/release',headers=self.api,json={'released_by':'pass'})
+
+    def test_lines_added_after_release_become_an_addition_ticket(self):
+        self.sync(); self.release_now()
+        self.clover.lines.append({'id':'line-2','name':'Tiramisu','unitQty':1000,'modifications':{'elements':[]}})
+        self.sync()
+        orders=self.orders_now()
+        self.assertEqual([o['order_id'] for o in orders],['order-1-add1'])
+        self.assertEqual([l['name'] for l in orders[0]['lines']],['Tiramisu'])
+        self.assertEqual((orders[0]['addition'],orders[0]['addition_to'],orders[0]['title']),(1,'order-1','#3 - OUTSIDE'))
+        self.sync()  # a repeat read never duplicates the addition
+        self.assertEqual(len(self.orders_now()),1)
+        self.release_now('order-1-add1')
+        self.clover.lines.append({'id':'line-3','name':'Espresso cake','unitQty':1000})
+        self.sync()
+        orders=self.orders_now()
+        self.assertEqual([(o['order_id'],[l['name'] for l in o['lines']]) for o in orders],[('order-1-add2',['Espresso cake'])])
+        with self.factory() as db:  # the released snapshot stays frozen
+            self.assertEqual(len(db.get(Ticket,(1,'order-1')).payload['lines']),1)
+
+    def test_changes_on_an_open_ticket_are_flagged(self):
+        self.sync()
+        self.assertNotIn('changes',self.orders_now()[0])
+        self.clover.lines.append({'id':'line-2','name':'Gnocchi','unitQty':1000})
+        self.clover.lines[0]['note']='No salt, extra sauce'
+        self.sync()
+        changes=self.orders_now()[0]['changes']
+        self.assertEqual((changes['new'],changes['changed'],changes['removed']),(['line-2'],['line-1'],[]))
+        del self.clover.lines[1]
+        self.sync()
+        changes=self.orders_now()[0]['changes']
+        self.assertEqual((changes['new'],[r['name'] for r in changes['removed']]),([],['Gnocchi']))
+        self.assertEqual(changes['changed'],['line-1'])
+
+    def test_undo_release_within_the_window(self):
+        self.sync(); self.release_now()
+        path='/api/locations/1/orders/order-1/undo-release'
+        self.assertEqual(self.client.post(path,headers={'Authorization':'Bearer '+VIEW},json={'undone_by':'x'}).status_code,401)
+        self.assertEqual(self.client.post(path,headers=self.api,json={}).status_code,400)
+        result=self.client.post(path,headers=self.api,json={'undone_by':'pass'}).json
+        self.assertEqual(result,{'order_id':'order-1','released':False,'already_open':False})
+        self.assertEqual([o['order_id'] for o in self.orders_now()],['order-1'])
+        self.assertTrue(self.client.post(path,headers=self.api,json={'undone_by':'pass'}).json['already_open'])
+        self.clover.lines[0]['name']='Pasta changed'
+        self.sync()  # back on the board, it follows Clover again and keeps its history
+        with self.factory() as db:
+            ticket=db.get(Ticket,(1,'order-1'))
+            self.assertEqual(ticket.payload['lines'][0]['name'],'Pasta changed')
+            self.assertEqual(ticket.payload['release_history'][0]['released_by'],'pass')
+        self.release_now()
+        with self.factory() as db:
+            db.get(Ticket,(1,'order-1')).released_at=now()-timedelta(minutes=16); db.commit()
+        self.assertEqual(self.client.post(path,headers=self.api,json={'undone_by':'pass'}).status_code,409)
+        self.assertEqual(self.client.post('/api/locations/1/orders/nope/undo-release',headers=self.api,json={'undone_by':'p'}).status_code,404)
+
+    def test_undo_refused_once_an_addition_exists(self):
+        self.sync(); self.release_now()
+        self.clover.lines.append({'id':'line-2','name':'Tiramisu','unitQty':1000})
+        self.sync()
+        r=self.client.post('/api/locations/1/orders/order-1/undo-release',headers=self.api,json={'undone_by':'p'})
+        self.assertEqual(r.status_code,409)
+
+    def test_server_name_and_allergy_flags(self):
+        self.clover.orders[0]['employee']={'id':'e1','name':'Anthony'}
+        self.clover.lines[0]['note']='Guest has a nut allergy'
+        self.clover.lines.append({'id':'line-2','name':'Salad','unitQty':1000,'modifications':{'elements':[{'name':'Gluten free'}]}})
+        self.clover.lines.append({'id':'line-3','name':'Bread','unitQty':1000,'note':'Warm, nutmeg butter'})
+        self.sync()
+        order=self.orders_now()[0]
+        self.assertEqual(order['server'],'Anthony')
+        self.assertEqual([l['allergy'] for l in order['lines']],[True,True,False])
+        self.assertTrue(order['allergy'])
 
 
 if __name__ == '__main__':

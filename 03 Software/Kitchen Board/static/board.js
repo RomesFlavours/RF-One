@@ -16,8 +16,23 @@ if (board) {
   function ticket(order) {
     const card = el('article', null, 'ticket');
     card.dataset.orderId = order.order_id;
-    card.append(el('span', it ? 'ORDINE' : 'ORDER', 'kicker'), el('h2', order.title), el('time', order.local_time));
-    if (order.note) card.append(el('p', order.note, 'note'));
+    // The first three children are repeated on continuation columns by rail.js,
+    // so the flags, server and timer live inside them, in words, not only colour.
+    const changes = order.changes || {};
+    const flags = [order.addition ? (it ? `AGGIUNTA ${order.addition}` : `ADDITION ${order.addition}`) : (it ? 'ORDINE' : 'ORDER')];
+    if (changes.at) flags.push(it ? 'MODIFICATO' : 'CHANGED');
+    if (order.allergy) flags.push(it ? '⚠ ALLERGIA' : '⚠ ALLERGY');
+    const kicker = el('span', flags.join(' · '), 'kicker');
+    kicker.classList.toggle('flag-addition', Boolean(order.addition));
+    kicker.classList.toggle('flag-changed', Boolean(changes.at));
+    kicker.classList.toggle('flag-allergy', Boolean(order.allergy));
+    const clock = el('time', null);
+    clock.dataset.created = order.created_at;
+    clock.dataset.localTime = order.local_time;
+    clock.dataset.server = order.server || '';
+    clock.textContent = clockText(clock);
+    card.append(kicker, el('h2', order.title), clock);
+    if (order.note) card.append(el('p', order.note, order.note_allergy ? 'note allergy' : 'note'));
     // Preserve source order within each guest group; unassigned lines come first.
     const timed = order.lines.some(line => line.service_timing?.length);
     const timingGroups = new Map();
@@ -43,15 +58,37 @@ if (board) {
       if (guest && lines.length) card.append(el('h3', guest, 'guest'));
       for (const line of lines) {
         const row = el('div', null, 'line');
-        row.append(el('p', (line.quantity == null ? '' : `${line.quantity} × `) + line.name));
+        const isNew = (changes.new || []).includes(line.id), isChanged = (changes.changed || []).includes(line.id);
+        row.classList.toggle('new', isNew); row.classList.toggle('changed', isChanged);
+        row.classList.toggle('allergy', Boolean(line.allergy));
+        const mark = isNew ? (it ? 'NUOVO: ' : 'NEW: ') : isChanged ? (it ? 'MODIFICATO: ' : 'CHANGED: ') : '';
+        row.append(el('p', mark + (line.quantity == null ? '' : `${line.quantity} × `) + line.name));
         if (line.note) row.append(el('p', line.note, 'note'));
         for (const mod of line.modifiers) row.append(el('p', `+ ${mod}`, 'modifier'));
+        if (line.allergy) row.append(el('p', it ? '⚠ ALLERGIA: controlla prima di cucinare' : '⚠ ALLERGY: check before cooking', 'allergy-warning'));
         card.append(row);
       }
     }
     }
+    // Lines removed in Clover after the kitchen saw the ticket stay visible, struck out.
+    if ((changes.removed || []).length) {
+      card.append(el('h3', it ? 'TOLTO DALL’ORDINE' : 'REMOVED FROM ORDER', 'timing removed-heading'));
+      for (const gone of changes.removed) {
+        const row = el('div', null, 'line void');
+        row.append(el('p', (it ? 'ANNULLATO: ' : 'VOID: ') + (gone.quantity == null ? '' : `${gone.quantity} × `) + gone.name));
+        card.append(row);
+      }
+    }
     return card;
   }
+  function clockText(node) {
+    const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(node.dataset.created)) / 60000));
+    const parts = [node.dataset.localTime, `${minutes} min`];
+    if (node.dataset.server) parts.push(node.dataset.server);
+    return parts.join(' · ');
+  }
+  // Elapsed minutes tick without redrawing the whole rail.
+  setInterval(() => rail.querySelectorAll('time[data-created]').forEach(node => { node.textContent = clockText(node); }), 30000);
   const layout = new KitchenRail(rail, it, ticket);
   function preferences(data) {
     const raw={font_family:'arial',font_size:20,row_count:1,layout:'flow',visible_count:data.visible_count,...data.display_settings,...draft};

@@ -13,7 +13,7 @@ import bootstrap  # noqa: F401
 from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import select
 from rfone_data_store import models as m
-from store import Board, Ticket, now, pending, release
+from store import Board, Ticket, now, pending, release, undo_release, UNDO_MINUTES
 from kitchen_filter import categories_by_line, kitchen_payload, timing_by_line
 from display_settings import read_settings, save_settings, validated, SettingsError, SettingsConflict
 
@@ -80,6 +80,10 @@ def create_app(session_factory, *, secret, view_token, release_token, local=Fals
             abort(409, description='Location timezone is required')
         return board, location
 
+    def source_ids(tickets):
+        # Addition tickets read categories and timing from their original Clover order.
+        return [t.payload.get('addition_to') or t.order_id for t in tickets]
+
     def serialize(ticket, location, category_lookup=None, timing_lookup=None):
         created = ticket.created_at
         if created.tzinfo is None:
@@ -87,7 +91,8 @@ def create_app(session_factory, *, secret, view_token, release_token, local=Fals
         return {**kitchen_payload(ticket.payload, category_lookup or {}, timing_lookup), 'order_id': ticket.order_id, 'rfone_order_id': ticket.rfone_order_id,
                 'created_at': created.isoformat(), 'local_time': created.astimezone(ZoneInfo(location.timezone)).strftime('%H:%M'),
                 'released_at': ticket.released_at.isoformat() if ticket.released_at else None,
-                'released_by': ticket.released_by}
+                'released_by': ticket.released_by,
+                'source_order_id': ticket.payload.get('addition_to') or ticket.order_id}
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
@@ -128,8 +133,8 @@ def create_app(session_factory, *, secret, view_token, release_token, local=Fals
             if last and not last.tzinfo:
                 last = last.replace(tzinfo=timezone.utc)
             waiting = pending(db, location_id)
-            categories = categories_by_line(db, location_id, [t.order_id for t in waiting])
-            timings = timing_by_line(db, location_id, [t.order_id for t in waiting])
+            categories = categories_by_line(db, location_id, source_ids(waiting))
+            timings = timing_by_line(db, location_id, source_ids(waiting))
             tickets = [serialize(t, location, categories, timings) for t in waiting]
             tickets = [ticket for ticket in tickets if ticket['lines']]
             return jsonify(orders=tickets,
@@ -150,6 +155,22 @@ def create_app(session_factory, *, secret, view_token, release_token, local=Fals
                 return jsonify(release(db, location_id, order_id, body['released_by'].strip()))
             except LookupError:
                 abort(404)
+
+    @app.post('/api/locations/<int:location_id>/orders/<order_id>/undo-release')
+    @allowed(write=True)
+    def undo_release_order(location_id, order_id):
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict) or not isinstance(body.get('undone_by'), str) or not 1 <= len(body['undone_by'].strip()) <= 255:
+            abort(400)
+        with session_factory() as db:
+            configured(db, location_id)
+            try:
+                return jsonify(undo_release(db, location_id, order_id, body['undone_by'].strip()))
+            except LookupError:
+                abort(404)
+            except PermissionError:
+                return jsonify(error=f'Undo is only possible within {UNDO_MINUTES} minutes of the release, '
+                                     'and not once an addition ticket exists.'), 409
 
     @app.post('/api/locations/<int:location_id>/settings')
     @allowed(write=True)
@@ -207,7 +228,7 @@ def create_app(session_factory, *, secret, view_token, release_token, local=Fals
             tickets = list(db.scalars(select(Ticket).where(Ticket.location_id == location_id,
                 Ticket.released_at.is_not(None)).order_by(Ticket.released_at.desc(), Ticket.order_id)
                 .offset((page-1)*40).limit(41)))
-            categories = categories_by_line(db, location_id, [t.order_id for t in tickets[:40]])
+            categories = categories_by_line(db, location_id, source_ids(tickets[:40]))
             return render_template('archive.html', location=location, page=page,
                 tickets=[serialize(t, location, categories) for t in tickets[:40]], more=len(tickets)>40)
 
