@@ -13,6 +13,12 @@ from db import SessionFactory,_engine
 from sqlalchemy import select,func
 m.Base.metadata.create_all(_engine)
 web.app.config['TESTING']=True
+
+def record(name,expected,actual,detail=None):
+    check(name, expected == actual)
+for domain in web.DOMAINS:
+    web.app.add_url_rule('/_audit/gate/'+domain.code,endpoint='audit_'+domain.code,
+        view_func=web.require_domain_access(domain.code)(lambda:'allowed'))
 passed=[]
 def check(name,condition):
     assert condition,name
@@ -158,5 +164,85 @@ with SessionFactory() as db:
     account=db.get(m.RFOneAccount,aid)
     check('Reset changes hash and revokes sessions',check_password_hash(account.password_hash,'TestNewPass123!') and account.session_version==reset_version+1)
     check('Reset does not reactivate inactive account',account.status=='INACTIVE')
+with SessionFactory() as db:
+    employee=m.Employee(display_name='Authorization audit person',active=True)
+    au=m.RFOneAccount(username='audit-matrix',display_name='Audit matrix',password_hash='!',status='ACTIVE',is_admin=False,is_owner=False,session_version=1)
+    db.add_all([employee,au]);db.flush();au_id,person_id=au.id,employee.id
+    db.add(m.EmployeeContextLink(employee_id=person_id,rfone_account_id=au_id));db.flush()
+    member=p.membership(db,f'employee:{person_id}',company_id,admin_id)
+    role=p.save_role(db,name='Audit permission role',area_ids=[area_id],actor=admin_id)
+    p.assign_role(db,membership_id=member.id,role_id=role.id,area_id=area_id,actor=admin_id);audit_role=role.id
+    p.membership(db,f'employee:{person_id}',other_id,admin_id);db.commit()
+au_client=client(au_id)
+with au_client.session_transaction() as browser:browser['rfone_company_context']=company_id
+access_url=post(action='person_access',person=f'employee:{person_id}').location
+record('Registry resolves canonical account permissions',True,f'/admin/accounts/{au_id}/access' in access_url)
+for domain in web.DOMAINS:
+    probe='/_audit/gate/'+domain.code
+    record('No grant denies '+domain.code,403,au_client.get(probe).status_code)
+    values={'csrf_token':token,'access_'+domain.code:'all','role_'+domain.code:'student' if domain.code=='TRAINING' else ''}
+    response=owner.post(access_url,data=values)
+    record('Registry personal grant saved '+domain.code,302,response.status_code)
+    record('Personal grant opens '+domain.code,200,au_client.get(probe).status_code)
+    owner.post(access_url,data={'csrf_token':token})
+    record('Personal revoke closes '+domain.code,403,au_client.get(probe).status_code)
+    response=post(action='permissions',id=audit_role,**{'access_'+domain.code:'all','role_'+domain.code:'student' if domain.code=='TRAINING' else ''})
+    record('Role grant opens '+domain.code,200,au_client.get(probe).status_code)
+    with au_client.session_transaction() as browser:browser['rfone_company_context']=other_id
+    record('Other company denies role '+domain.code,403,au_client.get(probe).status_code)
+    with au_client.session_transaction() as browser:browser['rfone_company_context']=company_id
+    with SessionFactory() as db:
+        account=db.get(m.RFOneAccount,au_id)
+        outside=web.shared_session.account_may_enter_domain(db,account,domain.code)
+    record('No company context stays fail closed '+domain.code,False,outside)
+    post(action='permissions',id=audit_role)
+# Exercise actual mounted destination routes with no grants, not only gate probes.
+for domain in web.DOMAINS:
+    candidates=[rule for rule in web.app.url_map.iter_rules() if 'GET' in rule.methods and not rule.arguments and not rule.rule.startswith('/_audit/') and getattr(web.app.view_functions[rule.endpoint],'rfone_domain_gate',None)==domain.code]
+    if candidates:
+        path=min(candidates,key=lambda r:len(r.rule)).rule
+        record('Actual URL denied '+domain.code,403,au_client.get(path,follow_redirects=True).status_code,path)
+# Selected functions cannot be entered by direct URL after removal.
+owner.post(access_url,data={'csrf_token':token,'access_BANK':'selected','items_BANK':'review'})
+record('Selected function permits review',200,au_client.get('/_audit/gate/BANK').status_code)
+record('Unselected Bank configuration denied',403,au_client.get('/bank/configuration').status_code)
+owner.post(access_url,data={'csrf_token':token})
+# EMPLOYEES remains an authorization choice, but its Home entry was replaced by admin-only Registry.
+owner.post(access_url,data={'csrf_token':token,'access_EMPLOYEES':'all'})
+body=au_client.get('/').get_data(as_text=True)
+record('Granted employee directory visible in Home',True,'/administration/employees' in body or '/admin/roles' in body)
+owner.post(access_url,data={'csrf_token':token})
+# Training depends on a separate linked role that role-profile writes do not synchronize.
+post(action='permissions',id=audit_role,access_TRAINING='all',role_TRAINING='student')
+with SessionFactory() as db:
+    import training_integration as ti
+    ti.create_and_link_training_identity(db,rfone_account_id=au_id,role_code='student');db.commit()
+record('Training student role matches and opens',200,au_client.get('/training',follow_redirects=False).status_code)
+post(action='permissions',id=audit_role,access_TRAINING='all',role_TRAINING='trainer')
+record('Training role update opens without stale role mismatch',302,au_client.get('/training',follow_redirects=False).status_code)
+record('Training trainer destination actually opens',200,au_client.get('/training/trainer').status_code)
+
+# Downgrade and revocation must also block a previously authorized trainer URL.
+post(action='permissions',id=audit_role,access_TRAINING='all',role_TRAINING='student')
+check('Trainer downgrade closes trainer page immediately',au_client.get('/training/trainer').status_code==403)
+check('Student page still opens after downgrade',au_client.get('/training',follow_redirects=False).status_code==200)
+post(action='permissions',id=audit_role)
+check('Training revoke denies existing open session',au_client.get('/training').status_code==302)
+# Password administration must consider privileges in every company, not
+# just the current trainer's company.
+post(action='permissions',id=audit_role,access_TRAINING='all',role_TRAINING='student')
+with SessionFactory() as db:
+    second_role=p.save_role(db,name='Other company privilege',area_ids=[area_id],actor=admin_id)
+    member=p.membership(db,f'employee:{person_id}',other_id,admin_id)
+    p.assign_role(db,membership_id=member.id,role_id=second_role.id,area_id=area_id,actor=admin_id)
+    db.add(p.RolePermission(role_id=second_role.id,domain_code='BANK',scope='ALL',items=[]));db.commit()
+    context=p.company_context.set(company_id)
+    try:check('Trainer cannot reset a student privileged in another company',not ti.is_pure_training_student(db,db.get(m.RFOneAccount,au_id)))
+    finally:p.company_context.reset(context)
+with SessionFactory() as db:
+    db.get(m.Employee,person_id).active=False
+    db.get(m.RFOneAccount,au_id).is_admin=True
+    db.commit()
+check('Dismissed nonowner admin loses Registry management',au_client.get('/admin/roles').status_code in (302,403))
 print(json.dumps({'checks_passed':len(passed),'checks':passed},indent=2))
 _engine.dispose();testdir.cleanup()

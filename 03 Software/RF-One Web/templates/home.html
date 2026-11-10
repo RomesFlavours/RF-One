@@ -59,11 +59,13 @@
 {% endif %}
 
 <div class="home-stack">
-  {% if bank_available or clover_acquisition_available or can_manage_profiles %}
+  {% if bank_available or clover_acquisition_available or can_manage_profiles or employees_available %}
     <div class="domain-card home-block">
       <div class="domain-name">Administration</div>
       {% if can_manage_profiles %}
       <a class="home-row" href="{{ url_for('role_profiles_home',tab='people') }}"><strong>Registry <span role="img" aria-label="Funzionante" title="Funzionante">👍</span></strong> &mdash; People, roles, companies and system authorizations.</a>
+      {% elif employees_available %}
+      <a class="home-row" href="{{ url_for('employee_directory_home') }}"><strong>Registry</strong> &mdash; People directory.</a>
       {% endif %}
       {% if bank_available %}
       <a class="home-row" href="{{ domain_entry('BANK') }}"><strong>Bank</strong> &mdash; Import and reconcile bank transactions.</a>

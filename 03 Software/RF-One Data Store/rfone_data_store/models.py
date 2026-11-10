@@ -15083,3 +15083,45 @@ ALL_MODELS: tuple[type[Base], ...] = (
     ProjectTaskDependency,
     ProjectResponsible,
 )
+
+
+class TrainingCourseRevision(Base):
+    __tablename__ = "training_course_revisions"
+    __table_args__ = (UniqueConstraint("pill_id", "version"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class TrainingCourse(Base):
+    """Mutable preparation state extending the existing Training content identity."""
+    __tablename__ = "training_courses"
+    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), primary_key=True)
+    active_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    draft_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edit_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+
+class TrainingCourseFile(Base):
+    __tablename__ = "training_course_files"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+
+
+class TrainingCourseAssignmentRevision(Base):
+    __tablename__ = "training_course_assignment_revisions"
+    assignment_id: Mapped[int] = mapped_column(ForeignKey("training_assignments.id"), primary_key=True)
+    revision_id: Mapped[int] = mapped_column(ForeignKey("training_course_revisions.id"), nullable=False)
+
+
+class TrainingRetiredPill(Base):
+    """Withdrawn catalog entries retained for historical assignment integrity."""
+    __tablename__ = "training_retired_pills"
+    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), primary_key=True)
+    retired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

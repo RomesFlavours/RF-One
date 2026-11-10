@@ -34,12 +34,10 @@ How single sign-on works here (no second login):
      session key too, for free — logging out of RF-One always logs out of
      Training in the same request.
 
-`role_code` is authoritative for this integration: whenever it disagrees
-with the linked `TrainingAccount.role`, this module overwrites the latter
-to match, every time the gate runs — so there is exactly one place
-(`RFOneAccountDomainAccess.role_code`, via `/admin/accounts/<id>/access`)
-where a Training role is ever set for an RF-One-integrated account, never
-two independently-editable roles.
+Registry effective permissions are authoritative in the current company.
+The Training identity and its history remain domain-owned. A request-only
+role view applies the current effective role without rewriting stored
+Training identity data during navigation.
 """
 
 from __future__ import annotations
@@ -136,15 +134,11 @@ class TrainingAuthorizationResult:
 
 
 def check_training_authorization(session, rfone_account: "m.RFOneAccount") -> TrainingAuthorizationResult:
-    """Re-verifies (every call — never cached) that `rfone_account` may
-    enter Training right now. READ-ONLY: never writes to the database —
-    a navigation check (GET or otherwise) must never have a side effect on
-    `TrainingAccount.role`. If the linked `TrainingAccount.role` disagrees
-    with `RFOneAccountDomainAccess.role_code`, this is reported as
-    `role_mismatch=True` rather than silently corrected — only an explicit,
-    authorized POST (see `sync_training_role_if_linked`,
-    `link_existing_training_account`, `create_and_link_training_identity`)
-    may ever write that column."""
+    """Read-only, per-request Registry authorization with a linked domain identity.
+
+    The role can differ across companies; a stored Training role cannot
+    replace the effective Registry role or preserve a revoked privilege.
+    """
 
     access_rows = account_service.list_domain_access_for_account(session, rfone_account.id)
     access = next((r for r in access_rows if r.domain_code == TRAINING_DOMAIN_CODE), None)
@@ -171,14 +165,8 @@ def check_training_authorization(session, rfone_account: "m.RFOneAccount") -> Tr
             None, "L'identità Training collegata non è più valida. Contatta un amministratore.",
         )
 
-    if training_account.role != role_code:
-        return TrainingAuthorizationResult(
-            None,
-            "Il ruolo Training del tuo account non è coerente. Contatta un amministratore per correggerlo.",
-            role_mismatch=True,
-        )
-
-    return TrainingAuthorizationResult(training_account, None)
+    from rfone_data_store.web_access import AuthorizedTrainingAccount
+    return TrainingAuthorizationResult(AuthorizedTrainingAccount(training_account, role_code), None)
 
 
 def _role_mismatch_response(message: str):
@@ -215,6 +203,8 @@ def enforce_training_sso(app_auth_module, session_factory) -> "object | None":
             flash(result.error, "error")
             return redirect(url_for("home"))
 
+        from flask import g
+        g.rfone_training_account = result.training_account
         flask_session[TRAINING_SESSION_ACCOUNT_KEY] = result.training_account.id
 
     return None
@@ -375,24 +365,22 @@ def is_pure_training_student(session, rfone_account: "m.RFOneAccount") -> bool:
     amministratori o account con privilegi in altri Domain")."""
     if rfone_account.is_admin:
         return False
-    access_rows = account_service.list_domain_access_for_account(session, rfone_account.id)
-    enabled_rows = [r for r in access_rows if r.enabled]
-    if len(enabled_rows) != 1:
-        return False
-    row = enabled_rows[0]
-    return row.domain_code == TRAINING_DOMAIN_CODE and row.role_code == "student"
+    from rfone_data_store import access_profiles as profiles
+    companies = profiles.company_ids_for_account(session, rfone_account.id) | {None}
+    grants = [value for company in companies for value in
+              profiles.effective_permissions(session, rfone_account.id, company_id=company).items()]
+    return bool(grants) and all(code == TRAINING_DOMAIN_CODE and
+                               effective_training_role(value['role_code']) == 'student'
+                               for code, value in grants)
+
 
 
 def list_training_students(session) -> list["m.RFOneAccount"]:
     """All RF-One accounts a Training trainer may see/manage in this
     integration — pure Training students only (see
     `is_pure_training_student`)."""
-    candidates = session.query(m.RFOneAccount).join(
-        m.RFOneAccountDomainAccess, m.RFOneAccountDomainAccess.account_id == m.RFOneAccount.id,
-    ).filter(
-        m.RFOneAccountDomainAccess.domain_code == TRAINING_DOMAIN_CODE,
-        m.RFOneAccountDomainAccess.role_code == "student",
-        m.RFOneAccountDomainAccess.enabled.is_(True),
+    candidates = session.query(m.RFOneAccount).filter(
+        m.RFOneAccount.status == "ACTIVE"
     ).order_by(m.RFOneAccount.display_name).all()
     return [a for a in candidates if is_pure_training_student(session, a)]
 

@@ -96,6 +96,9 @@ _engine = create_configured_engine(_DB_URL)
 SessionFactory = create_session_factory(_engine)
 
 app = Flask(__name__)
+from rfone_data_store.web_access import install_access_context
+install_access_context(app, SessionFactory)
+app.extensions["rfone_managed_training"] = True
 # The SAME signing secret RF-One Web uses, so Tips can verify the RF-One
 # session cookie it reads (`_require_rfone_login` below). Tips never issues
 # a login of its own; it also signs its flash messages with it.
@@ -168,7 +171,10 @@ def _require_rfone_login():
     if request.endpoint is None or request.endpoint in _PUBLIC_ENDPOINTS or request.blueprint == "training":
         return None
     with SessionFactory() as db_session:
-        if rfone_identity.current_account(db_session) is not None:
+        account = rfone_identity.current_account(db_session)
+        if account is not None:
+            if not shared_session.account_may_enter_domain(db_session, account, "TIPS"):
+                abort(403)
             return None
     # Back to the page asked for; after a refused POST, to Tips's first page
     # (the form's own URL cannot be reopened with a GET).
@@ -180,6 +186,26 @@ def _require_rfone_login():
     if target is None:
         abort(401)
     return redirect(target)
+
+@app.before_request
+def _central_training_entry():
+    # The public dish guide is a separate endpoint, not this blueprint.
+    # Operational Training has one RF1 entry; legacy Training cookies and
+    # its old student-provisioning/login routes must not bypass Registry.
+    if request.blueprint != "training":
+        return None
+    with SessionFactory() as db:
+        from rfone_data_store.web_access import training_account_for_rf1
+        if training_account_for_rf1(db, rfone_identity.current_account(db)) is None:
+            abort(403)
+    base = rfone_web_link.base_url()
+    if base is None:
+        abort(503, description="RF-One Web navigation is not configured.")
+    target = request.path
+    if target in ("/training/login", "/training/logout"):
+        target = "/training"
+    return redirect(base + target, code=303 if request.method == "POST" else 302)
+
 
 # RF-One UI Rules (`03 Software/Shared UI/UI Rules.md`): local times,
 # "Surname I." — the same shared formatter RF-One Web registers.

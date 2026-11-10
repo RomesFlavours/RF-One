@@ -7,7 +7,7 @@ database only — never AWS, never any production database.
 
 Covers the task's own "VERIFICHE MIRATE" list:
   - GET Training con ruoli coerenti: accesso corretto, nessuna scrittura
-  - GET Training con ruoli incoerenti: 403, ruoli invariati, sessione pulita
+  - GET Training: ruolo effettivo Registry, dati di identita invariati
   - POST amministrativa di modifica ruolo: entrambi i ruoli aggiornati
   - POST che salva nuovamente lo stesso ruolo RF-One: incoerenza corretta
   - collegamento esplicito e creazione studente: ruoli coerenti
@@ -129,16 +129,11 @@ def main() -> int:
         incoherent_client = web_app.app.test_client()
         login(incoherent_client, "incoherent1", "Pass123!")
         resp = incoherent_client.get("/training")
-        check("incoherent GET /training -> 403", resp.status_code == 403)
-        check("403 response includes a human-readable message", "amministratore" in resp.data.decode().lower())
-        check("403 response is a direct response, not a redirect (no Location header)", "Location" not in resp.headers)
-
+        check("Registry student role opens despite legacy stored trainer role", resp.status_code == 200)
+        denied = incoherent_client.get("/training/trainer")
+        check("Legacy stored trainer role cannot elevate a Registry student", denied.status_code == 403)
         with incoherent_client.session_transaction() as sess:
-            check(
-                "stray Training session key removed after mismatch denial",
-                ti.TRAINING_SESSION_ACCOUNT_KEY not in sess,
-            )
-            check("RF-One session itself remains intact (not logged out of RF-One)", "rfone_account_id" in sess)
+            check("RF1 identity stays intact", sess.get("rfone_account_id") == incoherent_id)
 
         with SessionFactory() as s:
             access = next(

@@ -89,3 +89,57 @@ contact use policies are not redefined by this change.
 The shared chain includes already-applied Kitchen revision k9a020261110 before
 Registry contacts revision f3b120261110. Existing identities, account data and
 dismissals are preserved.
+
+
+## Registry authorization integration — local validation, 2026-11-10
+
+Registry is the administrative entry for company memberships, additive role
+permissions and direct personal permissions. All RF1 web components must read
+the shared effective policy on every request, including direct URL requests.
+`rfone_data_store.web_access.install_access_context` validates the selected
+company before any domain or Training gate, in the shell and standalone Tips,
+Selection and Kitchen. No valid company means direct grants only; it must never
+mean the union of roles across companies. Existing direct grants remain global
+and additive, so removing a role does not remove independent direct access.
+
+Tips now checks the TIPS entitlement, rather than login alone. Its operational
+Training entry redirects to the canonical RF1 Training routes after checking the
+current TRAINING entitlement and explicit identity link. A legacy Training cookie
+or password cannot bypass Registry. The intentionally public dish guide remains
+public. Training uses a request-only effective role; navigation never rewrites
+stored domain identity/history. Trainer-to-student downgrade takes effect on the
+next request. Trainer password administration checks the target's privileges in
+all companies, preventing a student in one company from masking privileges in
+another. Identity linkage remains explicit, available from Registry's personal
+Domain Access page; names are never used for automatic account matching.
+
+Kitchen tab access uses the shared effective item reader instead of raw direct-
+grant SQL. Development Journal responsibility candidates and Training student
+candidates also use effective permissions. Shared session validation refuses
+inactive accounts and dismissed linked nonowners, including an accidentally
+still-ACTIVE administrator. The approved owner access exception remains. A domain
+or role grant never creates RF1 platform-administrator powers.
+
+Authorized HTML responses are no-store. Selection schema migrations are explicit
+startup/release operations; importing a service must not migrate the shared DB.
+No new schema migration is needed for these authorization fixes.
+
+The loopback-only local launcher has a User selector and shared company session
+across the actual local components. Selecting an inactive account or revoking a
+session cannot fall back to owner. The explicit local selection is independently
+signed and never installed in production. External AWS/Clover calls stay blocked;
+there is no login/signature or environment banner in this local environment.
+
+This change is local only, pending Product Owner acceptance before AWS publishing.
+
+
+## Switch user administrator restriction — 2026-11-10
+
+At the Product Owner request, the local selector is visible and usable only by a
+currently valid RF1 platform administrator/owner. Both chooser GET and switch POST
+check the current account server-side. Domain administration alone is insufficient.
+After switching to an ordinary user the selector disappears and both endpoints
+return 403; inactive/revoked sessions are also denied. No retained administrator
+privilege is attached to the impersonated user's session. Verified against the
+7 accounts currently in the local database: 31 checks passed. No account grants,
+AWS configuration or production source were changed by this restriction.

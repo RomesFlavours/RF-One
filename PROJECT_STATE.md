@@ -1,5 +1,15 @@
 # PROJECT_STATE
 
+## Registry access integration — local only, 2026-11-10
+
+Shared effective company context now precedes shell, standalone Tips/Selection/
+Kitchen and Training authorization. Registry grant/revoke checks cover all 12
+access codes; Training roles are evaluated per request without identity writes.
+The local environment on port 5094 includes an explicit user selector, keeps
+inactive users denied, and retains the original 64 people / 47 dismissals. No AWS
+release or Git push for this pass; Product Owner local trial is next.
+See `07 Tasks/Reports/REGISTRY_AUTHORIZATION_LOCAL_FIX_20261110_REPORT.md`.
+
 ## Employee Directory — 2026-10-28
 
 Implemented, tested and deployed as a Shared Domain at Home → Administration →

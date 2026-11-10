@@ -9,19 +9,8 @@ from rfone_data_store import access_profiles as profiles
 
 
 def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current_account,require_csrf,domains):
-    @app.before_request
-    def profile_company_context():
-        with SessionFactory() as db:
-            account=load_current_account(db)
-            allowed=profiles.company_ids_for_account(db,account.id) if account else set()
-            chosen=browser_session.get('rfone_company_context')
-            if chosen not in allowed:chosen=min(allowed) if allowed else None
-            g.access_profile_company_token=profiles.company_context.set(chosen)
-
-    @app.teardown_request
-    def release_profile_company_context(error):
-        token=g.pop('access_profile_company_token',None)
-        if token is not None:profiles.company_context.reset(token)
+    from rfone_data_store.web_access import install_access_context
+    install_access_context(app, SessionFactory, load_current_account)
 
     @app.context_processor
     def role_profile_context():
@@ -168,7 +157,9 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
             company_map={v.id:v.company_id for v in current}
             account_ids=([identity] if kind=='account' else [aid for aid in db.scalars(select(m.RFOneAccount.id)) if directory.context_person_id(db,'RFONE_ACCOUNT',aid)==identity])
             access_url=url_for('admin_account_access',account_id=account_ids[0],from_person=key) if len(account_ids)==1 else None
-            people_rows.append({'key':key,'email':target.email if kind=='employee' else target.contact_email,'phone':target.phone if kind=='employee' else target.contact_phone,'access_url':access_url,'name':target.display_name or 'Name to complete','companies':sorted({v.company_id for v in current}),
+            linked_account=db.get(m.RFOneAccount,account_ids[0]) if len(account_ids)==1 else None
+            account_label=f'{linked_account.username} · {linked_account.status}' if linked_account else 'No unique RF1 account linked'
+            people_rows.append({'key':key,'account_label':account_label,'email':target.email if kind=='employee' else target.contact_email,'phone':target.phone if kind=='employee' else target.contact_phone,'access_url':access_url,'name':target.display_name or 'Name to complete','companies':sorted({v.company_id for v in current}),
                 'assignments':[{'company_id':company_map[a.membership_id],'role_id':a.role_id,'area_id':a.area_id} for a in current_roles]})
         dismissed_rows=[]
         dismissal_dates={}

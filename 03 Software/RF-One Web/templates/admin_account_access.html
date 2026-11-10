@@ -6,6 +6,7 @@
 <h1>Domain Access</h1>{% if profile_return %}<p><a href="{{ profile_return }}">Back to person</a></p>{% endif %}
 <p>These are direct account permissions. <a href="{{ url_for('role_profiles_home',tab='people',person='account:'~account.id) }}">Role permissions</a> add to them in each company.</p>
 <p class="muted">{{ account.display_name }} ({{ account.username }})</p>
+<p><a href="{{ url_for('admin_account_training_link',account_id=account.id) }}">Training identity and history</a> &mdash; link an existing identity explicitly, or create it when needed. Registry remains the source of access permissions.</p>
 {# ACCOUNT_ITEM_ACCESS_001 — for each Domain: no access, the whole Domain
    (items added later included), or only the items ticked below it. The
    items are the Domain's own sections, from `domain_registry.py`. #}

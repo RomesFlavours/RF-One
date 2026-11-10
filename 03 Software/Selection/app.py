@@ -142,11 +142,13 @@ ALLOWED_EXT = set(SUPPORTED_EXTENSIONS)
 DOCUMENTS = document_store.from_environment(UPLOAD_DIR)
 
 _DB_URL = get_database_url()
-run_migrations_to_head(_DB_URL)
+# Schema migrations are an explicit release operation, never an import side effect.
 _engine = create_configured_engine(_DB_URL)
 SessionFactory = create_session_factory(_engine)
 
 app = Flask(__name__)
+from rfone_data_store.web_access import install_access_context
+install_access_context(app, SessionFactory)
 
 # GLOBAL_INTEGRITY_FIX_002 / C-1 — needed only to sign the pre-Authentication
 # identity-selection cookie set by `/identity/switch` below (which ActingIdentity

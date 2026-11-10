@@ -1,0 +1,1604 @@
+--- a/RF-One Data Store/clover_connector_release.json
++++ b/RF-One Data Store/clover_connector_release.json
+@@ -2,18 +2,18 @@
+   "release": "rfone-shared-migrations-20261101",
+   "scope": "RF-One-owned included person directory, confirmed POS/domain links; GET-only POS, no authority changes",
+   "files": {
+-    "RF-One Data Store/rfone_data_store/models.py": "b828268fe0733b9ca23155b496255dcac2f5d743b5d09d7d0dc96fed9cb9be07",
+-    "RF-One Data Store/rfone_data_store/employee_directory.py": "3c6e2ebe4c8c5db9e0d6fcde3bf7d340aba9b01734186dc2ca9052dfade6d21e",
+-    "RF-One Data Store/rfone_data_store/technical/connectors/clover/acquisition.py": "64b4deb1b52c683f10c42c96f60d7f4f91d06e0e35fbdcef838a9b06ff0e1414",
+-    "RF-One Data Store/rfone_data_store/technical/connectors/clover/correction_sync.py": "4c1c7b85899db2586f30e8b864a170932cf6c3ccbaa0e60705719f0192c35cea",
+-    "RF-One Data Store/rfone_data_store/technical/connectors/clover/mapping.py": "cad7dd0aaddc59f0b1898058ad6553756cbf1eee65fe3249c64d600c31d291d7",
+-    "RF-One Data Store/rfone_data_store/technical/connectors/clover/ingest.py": "339eb6bc8aa7abf452ee6bc9b4c8adf072c2f14274cc56db25c0717ba3c01bd0",
+-    "RF-One Data Store/rfone_data_store/technical/connectors/clover/historical_backfill_detail.py": "36aabe9bbbb85e42e75d36e0d5f8a55e7efaebecaf02e013aa60da7a9d07dcb1",
+-    "RF-One Data Store/test_clover_employee_history.py": "e88e19aac8a85e371f40f49e52478b6a44481549853f36187aa56a6e3ee6cf40",
+-    "RF-One Data Store/test_clover_monthly_recovery.py": "9f40416226bb0636f6288fb2f8b85d2bac8239156d6965e4921b1d0d5a5f7eab",
+-    "RF-One Data Store/test_clover_line_presence.py": "d00655d5915f31cf88243071bb4e1e63811d5c79c22b7393265e2c00bc4f05c4",
+-    "RF-One Data Store/clover_connector_release_check.py": "88fbc0606d19bbb83b7e1953b96d780be150f4e5b6332d6a75df07e7cc8ebe08",
+-    "RF-One Data Store/migrations/versions/d9e220261029_rfone_person_foundation.py": "0ea9032797e5740383b6c54815e45f4077c0b889906f8b63e6913a3d53435785",
+-    "RF-One Data Store/rfone_data_store/schema_compatibility.py": "5eb9b2b93675e2e5f60cc4c992b8ee6f104a9fd8e4d96088621064b2565acef7"
++    "RF-One Data Store/rfone_data_store/models.py": "e046c8854829673f23e23674234b673d17816c5ac60be2456f3e49730ab35a88",
++    "RF-One Data Store/rfone_data_store/employee_directory.py": "bc5fd47485d1e24dccd2d61e2e98516336534490486734be4c33ebe92c4a200f",
++    "RF-One Data Store/rfone_data_store/technical/connectors/clover/acquisition.py": "d0b1cd42757ef39498d2f7985462f703b58f96509bb26d1d1593817550ddbb83",
++    "RF-One Data Store/rfone_data_store/technical/connectors/clover/correction_sync.py": "db2d1b0893472bf2a3d0db70fbc2cc1763790533f3e4664010dd103eca6a9aa6",
++    "RF-One Data Store/rfone_data_store/technical/connectors/clover/mapping.py": "02b9dd110fcb1e826a204cf98e76512047da6c07582aead92cbda3c9cde8c486",
++    "RF-One Data Store/rfone_data_store/technical/connectors/clover/ingest.py": "55902b04fdadb31b1ff1df577c4868a0d81f342e9d84efc2b830aeca8f228953",
++    "RF-One Data Store/rfone_data_store/technical/connectors/clover/historical_backfill_detail.py": "c6caae34062bf1ccb3b2e9e80a434b1f53665782cb42dff64205db92100792eb",
++    "RF-One Data Store/test_clover_employee_history.py": "1ae476478269d1c2ab844f7f9d2b7f0757e73888eb4226ff1eebe544c5771bc5",
++    "RF-One Data Store/test_clover_monthly_recovery.py": "e35d5a2b988a960fb54b3fbefddf56f6f98440e6bb492964f2fc9a388e766ade",
++    "RF-One Data Store/test_clover_line_presence.py": "32cfdb65ba04faa96e5fb6ff29932471dc8a589d94aef0df8178359b321969a3",
++    "RF-One Data Store/clover_connector_release_check.py": "1e63f68bc5a70c41ecc027a1bccd7f83d9550038a3df332fe8388711bcd87085",
++    "RF-One Data Store/migrations/versions/d9e220261029_rfone_person_foundation.py": "29aabc526f09bd2ff1f8fac977adecf3290c9003924e2ebab0156a5ec633884f",
++    "RF-One Data Store/rfone_data_store/schema_compatibility.py": "d532450a6af8efc97ca720b342e01ecccc0ed673fb908578bd9b4db24e498c00"
+   }
+ }
+--- a/RF-One Data Store/migrations/aws_applied_revision.json
++++ b/RF-One Data Store/migrations/aws_applied_revision.json
+@@ -1,13 +1,14 @@
+ {
+   "purpose": "Alembic revision currently applied to the shared AWS database. Every service build must contain it (check_migration_chain.py). Update it in the same commit that records a migration applied on AWS. See MIGRATIONS.md.",
+   "database": "rfone-dev / rfone (RDS, us-east-1, account 418674484214)",
+-  "revision": "e0a120261101",
+-  "applied_utc": "2026-11-01T20:00Z",
+-  "applied_by": "rfone-web release interviews-test-20261101t195949z, ECS task rfone-jobs/1b522433fe554dd2bcde4c3d7d0d434f (d9e220261029 -> e0a120261101)",
++  "revision": "t9a120261110",
++  "previous_revision": "f3b120261110",
++  "verified_utc": "2026-11-10T16:37:09.310005+00:00",
++  "applied_by": "Training release 88c4d0a8198f55fbeba3cda3d17003bdfb066b9a",
+   "evidence": {
+-    "deployed_source": "s3://rfone-tips-deploy-418674484214/releases/interviews-test-20261101t202720z/source.zip",
+-    "deployed_source_sha256": "f6a7861ee5129177ff3a2bba69b3798bc4931b8caa80129c83d0363df1527c6e",
+-    "migration_file_git_blob": "244f462778598bf9808f3c8a15364daca5e0b226",
+-    "pre_migration_snapshot": "rfone-dev-pre-interviews-test-20261101t195736z"
++    "source_s3_key": "training/releases/88c4d0a8198f55fbeba3cda3d17003bdfb066b9a/source.zip",
++    "source_sha256": "dfd0a7cf9b29b922206a5a0ebdc66ebda38479ef2577419a2e8193005d9bbe31",
++    "snapshot": "rfone-dev-pre-training-f3-24f64624fd38",
++    "protected_data_unchanged": true
+   }
+ }
+--- a/RF-One Data Store/migrations/versions/e1b220261102_add_interview_consent.py
++++ b/RF-One Data Store/migrations/versions/e1b220261102_add_interview_consent.py
+@@ -0,0 +1,22 @@
++"""Record the participant's consent when an interview starts."""
++from alembic import op
++import sqlalchemy as sa
++
++revision = 'e1b220261102'
++down_revision = 'e0a120261101'
++branch_labels = None
++depends_on = None
++
++
++def upgrade():
++    # Additive. Existing rows read as "no consent recorded"; the previous image
++    # keeps working because it never names these columns.
++    op.add_column('interview_sessions', sa.Column('consent_given', sa.Boolean(),
++        nullable=False, server_default=sa.false()))
++    op.add_column('interview_sessions', sa.Column('consent_at', sa.DateTime(timezone=True), nullable=True))
++
++
++def downgrade():
++    with op.batch_alter_table('interview_sessions') as batch:
++        batch.drop_column('consent_at')
++        batch.drop_column('consent_given')
+--- a/RF-One Data Store/migrations/versions/e2c320261109_tips_aggregation_scope.py
++++ b/RF-One Data Store/migrations/versions/e2c320261109_tips_aggregation_scope.py
+@@ -0,0 +1,16 @@
++"""Versioned tip aggregation scope; existing rules keep order semantics."""
++from alembic import op
++import sqlalchemy as sa
++revision = "e2c320261109"
++down_revision = "e1b220261102"
++branch_labels = None
++depends_on = None
++
++
++def upgrade():
++    op.add_column("tip_distribution_rule_versions", sa.Column(
++        "aggregation_scope", sa.String(32), nullable=False, server_default="ORDER"))
++
++
++def downgrade():
++    op.drop_column("tip_distribution_rule_versions", "aggregation_scope")
+--- a/RF-One Data Store/migrations/versions/f2a120261110_role_profiles_companies.py
++++ b/RF-One Data Store/migrations/versions/f2a120261110_role_profiles_companies.py
+@@ -0,0 +1,68 @@
++"""Shared additive role profiles and explicit company memberships."""
++from alembic import op
++import sqlalchemy as sa
++
++revision='f2a120261110'
++down_revision='e2c320261109'
++branch_labels=None
++depends_on=None
++
++
++def upgrade():
++    for table in ('restaurant_roles','operational_areas'):
++        with op.batch_alter_table(table) as batch:
++            batch.alter_column('restaurant_id',existing_type=sa.Integer(),nullable=True)
++    for table,label in [('restaurant_roles','role'),('operational_areas','area')]:
++        predicate=sa.text('restaurant_id IS NULL')
++        op.create_index('uq_shared_profile_'+label+'_name',table,[sa.text('lower(name)')],unique=True,
++                        postgresql_where=predicate,sqlite_where=predicate)
++    op.create_table('rfone_company_contexts',
++        sa.Column('id',sa.Integer(),primary_key=True),sa.Column('name',sa.String(255),nullable=False,unique=True),
++        sa.Column('kind',sa.String(16),nullable=False),sa.Column('legal_entity_id',sa.Integer(),sa.ForeignKey('legal_entities.id'),unique=True),
++        sa.Column('active',sa.Boolean(),nullable=False,server_default=sa.true()),
++        sa.CheckConstraint("kind IN ('COMPANY','GROUP')",name='ck_rfone_company_kind'))
++    op.create_table('rfone_person_company_memberships',
++        sa.Column('id',sa.Integer(),primary_key=True),sa.Column('employee_id',sa.Integer(),sa.ForeignKey('employees.id')),
++        sa.Column('account_id',sa.Integer(),sa.ForeignKey('rfone_accounts.id')),
++        sa.Column('company_id',sa.Integer(),sa.ForeignKey('rfone_company_contexts.id'),nullable=False),
++        sa.Column('valid_from',sa.DateTime(timezone=True),nullable=False),sa.Column('valid_to',sa.DateTime(timezone=True)),
++        sa.CheckConstraint('(employee_id IS NOT NULL AND account_id IS NULL) OR (employee_id IS NULL AND account_id IS NOT NULL)',name='ck_company_membership_target'))
++    for target in ('employee','account'):
++        predicate=sa.text(f'valid_to IS NULL AND {target}_id IS NOT NULL')
++        op.create_index('uq_company_'+target+'_open','rfone_person_company_memberships',[target+'_id','company_id'],unique=True,postgresql_where=predicate,sqlite_where=predicate)
++        op.create_index('ix_rfone_person_company_memberships_'+target+'_id','rfone_person_company_memberships',[target+'_id'])
++    op.create_index('ix_rfone_person_company_memberships_company_id','rfone_person_company_memberships',['company_id'])
++    op.create_table('rfone_role_profile_assignments',
++        sa.Column('id',sa.Integer(),primary_key=True),sa.Column('membership_id',sa.Integer(),sa.ForeignKey('rfone_person_company_memberships.id'),nullable=False),
++        sa.Column('role_id',sa.Integer(),sa.ForeignKey('restaurant_roles.id'),nullable=False),
++        sa.Column('area_id',sa.Integer(),sa.ForeignKey('operational_areas.id'),nullable=False),
++        sa.Column('valid_from',sa.DateTime(timezone=True),nullable=False),sa.Column('valid_to',sa.DateTime(timezone=True)))
++    predicate=sa.text('valid_to IS NULL')
++    op.create_index('uq_profile_assignment_open','rfone_role_profile_assignments',['membership_id','role_id','area_id'],unique=True,postgresql_where=predicate,sqlite_where=predicate)
++    for name in ('membership_id','role_id'):op.create_index('ix_rfone_role_profile_assignments_'+name,'rfone_role_profile_assignments',[name])
++    op.create_table('rfone_role_permissions',
++        sa.Column('id',sa.Integer(),primary_key=True),sa.Column('role_id',sa.Integer(),sa.ForeignKey('restaurant_roles.id'),nullable=False),
++        sa.Column('domain_code',sa.String(64),nullable=False),sa.Column('scope',sa.String(16),nullable=False),
++        sa.Column('role_code',sa.String(64)),sa.Column('items',sa.JSON(),nullable=False),
++        sa.UniqueConstraint('role_id','domain_code',name='uq_profile_role_domain'),
++        sa.CheckConstraint("scope IN ('ALL','SELECTED')",name='ck_profile_permission_scope'))
++    op.create_index('ix_rfone_role_permissions_role_id','rfone_role_permissions',['role_id'])
++    op.create_table('rfone_access_profile_events',sa.Column('id',sa.Integer(),primary_key=True),
++        sa.Column('account_id',sa.Integer(),sa.ForeignKey('rfone_accounts.id')),sa.Column('action',sa.String(64),nullable=False),
++        sa.Column('details',sa.JSON(),nullable=False),sa.Column('created_at',sa.DateTime(timezone=True),nullable=False,server_default=sa.func.now()))
++    db=op.get_bind()
++    companies=sa.table('rfone_company_contexts',sa.column('name'),sa.column('kind'),sa.column('legal_entity_id'),sa.column('active'))
++    labels={'RF-Winter Park':'WP','RF-Mount Dora':'MD'}
++    for identity,name,status in db.execute(sa.text('SELECT id,legal_name,status FROM legal_entities ORDER BY id')):
++        db.execute(companies.insert().values(name=labels.get(name,name),kind='COMPANY',legal_entity_id=identity,active=status=='ACTIVE'))
++    db.execute(companies.insert().values(name='RFGroup',kind='GROUP',legal_entity_id=None,active=True))
++    # Reuse factual role/area relationships already present in Workforce. No people,
++    # company memberships, access grants or employment assignments are guessed.
++    pairs=sa.table('operational_area_roles',sa.column('operational_area_id'),sa.column('restaurant_role_id'))
++    for area,role in db.execute(sa.text('SELECT DISTINCT operational_area_id,restaurant_role_id FROM employee_assignments')):
++        known=db.scalar(sa.select(sa.func.count()).select_from(pairs).where(pairs.c.operational_area_id==area,pairs.c.restaurant_role_id==role))
++        if not known:db.execute(pairs.insert().values(operational_area_id=area,restaurant_role_id=role))
++
++
++def downgrade():
++    raise RuntimeError('Role/profile/company history must be retained; restore the verified local dump instead.')
+--- a/RF-One Data Store/migrations/versions/f3b120261110_registry_contacts.py
++++ b/RF-One Data Store/migrations/versions/f3b120261110_registry_contacts.py
+@@ -0,0 +1,14 @@
++"""Registry contact details for external RF1 accounts, not recovery channels."""
++from alembic import op
++import sqlalchemy as sa
++revision='f3b120261110'
++down_revision='k9a020261110'
++branch_labels=None
++depends_on=None
++
++def upgrade():
++    op.add_column('rfone_accounts',sa.Column('contact_email',sa.String(255),nullable=True))
++    op.add_column('rfone_accounts',sa.Column('contact_phone',sa.String(64),nullable=True))
++
++def downgrade():
++    raise RuntimeError('Preserve Registry contacts; use the verified backup for recovery.')
+--- a/RF-One Data Store/migrations/versions/k9a020261110_publish_kitchen_aws.py
++++ b/RF-One Data Store/migrations/versions/k9a020261110_publish_kitchen_aws.py
+@@ -0,0 +1,21 @@
++"""Kitchen-only bootstrap on the verified AWS schema line; no directory/access changes."""
++from alembic import op
++import sqlalchemy as sa
++from rfone_data_store.kitchen_configuration import items
++from rfone_data_store.kitchen import menu_cards,KITCHEN_TABLES
++revision='k9a020261110'
++down_revision='f2a120261110'
++branch_labels=None
++depends_on=None
++
++
++def upgrade():
++    bind=op.get_bind()
++    for table in [items,menu_cards,*KITCHEN_TABLES]:
++        table.create(bind=bind,checkfirst=True)
++        actual={column['name'] for column in sa.inspect(bind).get_columns(table.name)}
++        if not {c.name for c in table.columns}<=actual:raise RuntimeError('Incompatible existing Kitchen table: '+table.name)
++
++
++def downgrade():
++    raise RuntimeError('Kitchen contains published domain data. Roll back the service image; do not drop data.')
+--- a/RF-One Data Store/migrations/versions/t9a120261110_publish_training_aws.py
++++ b/RF-One Data Store/migrations/versions/t9a120261110_publish_training_aws.py
+@@ -0,0 +1,24 @@
++"""Additive Training repository on the published AWS schema; no directory writes."""
++from alembic import op
++import sqlalchemy as sa
++from rfone_data_store import models as m
++from rfone_data_store.training.workspace import TrainingStudentProfile,TrainingAssignmentSubmission
++
++revision='t9a120261110'
++down_revision='f3b120261110'
++branch_labels=None
++depends_on=None
++
++
++def upgrade():
++    bind=op.get_bind()
++    models=[TrainingStudentProfile,TrainingAssignmentSubmission,m.TrainingRetiredPill,m.TrainingCourse,
++            m.TrainingCourseRevision,m.TrainingCourseFile,m.TrainingCourseAssignmentRevision]
++    for model in models:
++        table=model.__table__;table.create(bind,checkfirst=True)
++        existing={c['name'] for c in sa.inspect(bind).get_columns(table.name)}
++        if not set(table.c.keys())<=existing:raise RuntimeError('Incompatible Training table: '+table.name)
++
++
++def downgrade():
++    raise RuntimeError('Restore the prior service/routing. Do not destroy course versions, files or student history.')
+--- a/RF-One Data Store/rfone_data_store/access_profiles.py
++++ b/RF-One Data Store/rfone_data_store/access_profiles.py
+@@ -0,0 +1,418 @@
++"""Shared role profiles, company memberships and additive effective permissions.
++
++No network, commits or employment/payroll changes. Caller owns transactions.
++"""
++from contextvars import ContextVar
++from datetime import datetime, timezone
++from types import SimpleNamespace
++from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, select, func, text
++from . import models as m
++from . import employee_directory as directory
++
++company_context = ContextVar('rfone_access_company', default=None)
++Index('uq_shared_profile_role_name',func.lower(m.RestaurantRole.name),unique=True,
++      postgresql_where=text('restaurant_id IS NULL'),sqlite_where=text('restaurant_id IS NULL'))
++Index('uq_shared_profile_area_name',func.lower(m.OperationalArea.name),unique=True,
++      postgresql_where=text('restaurant_id IS NULL'),sqlite_where=text('restaurant_id IS NULL'))
++
++
++class CompanyContext(m.Base):
++    __tablename__='rfone_company_contexts'
++    __table_args__=(CheckConstraint("kind IN ('COMPANY','GROUP')",name='ck_rfone_company_kind'),)
++    id=Column(Integer,primary_key=True)
++    name=Column(String(255),nullable=False,unique=True)
++    kind=Column(String(16),nullable=False,default='COMPANY')
++    legal_entity_id=Column(ForeignKey('legal_entities.id'),unique=True)
++    active=Column(Boolean,nullable=False,default=True,server_default=text('true'))
++
++
++class CompanyMembership(m.Base):
++    __tablename__='rfone_person_company_memberships'
++    __table_args__=(
++        CheckConstraint('(employee_id IS NOT NULL AND account_id IS NULL) OR (employee_id IS NULL AND account_id IS NOT NULL)',name='ck_company_membership_target'),
++        Index('uq_company_employee_open','employee_id','company_id',unique=True,postgresql_where=text('valid_to IS NULL AND employee_id IS NOT NULL'),sqlite_where=text('valid_to IS NULL AND employee_id IS NOT NULL')),
++        Index('uq_company_account_open','account_id','company_id',unique=True,postgresql_where=text('valid_to IS NULL AND account_id IS NOT NULL'),sqlite_where=text('valid_to IS NULL AND account_id IS NOT NULL')),
++    )
++    id=Column(Integer,primary_key=True)
++    employee_id=Column(ForeignKey('employees.id'),index=True)
++    account_id=Column(ForeignKey('rfone_accounts.id'),index=True)
++    company_id=Column(ForeignKey('rfone_company_contexts.id'),nullable=False,index=True)
++    valid_from=Column(DateTime(timezone=True),nullable=False,default=lambda:datetime.now(timezone.utc))
++    valid_to=Column(DateTime(timezone=True))
++
++
++class RoleProfileAssignment(m.Base):
++    __tablename__='rfone_role_profile_assignments'
++    __table_args__=(Index('uq_profile_assignment_open','membership_id','role_id','area_id',unique=True,postgresql_where=text('valid_to IS NULL'),sqlite_where=text('valid_to IS NULL')),)
++    id=Column(Integer,primary_key=True)
++    membership_id=Column(ForeignKey('rfone_person_company_memberships.id'),nullable=False,index=True)
++    role_id=Column(ForeignKey('restaurant_roles.id'),nullable=False,index=True)
++    area_id=Column(ForeignKey('operational_areas.id'),nullable=False)
++    valid_from=Column(DateTime(timezone=True),nullable=False,default=lambda:datetime.now(timezone.utc))
++    valid_to=Column(DateTime(timezone=True))
++
++
++class RolePermission(m.Base):
++    __tablename__='rfone_role_permissions'
++    __table_args__=(UniqueConstraint('role_id','domain_code',name='uq_profile_role_domain'),CheckConstraint("scope IN ('ALL','SELECTED')",name='ck_profile_permission_scope'))
++    id=Column(Integer,primary_key=True)
++    role_id=Column(ForeignKey('restaurant_roles.id'),nullable=False,index=True)
++    domain_code=Column(String(64),nullable=False)
++    scope=Column(String(16),nullable=False,default='ALL')
++    role_code=Column(String(64))
++    items=Column(JSON,nullable=False,default=list)
++
++
++class ProfileEvent(m.Base):
++    __tablename__='rfone_access_profile_events'
++    id=Column(Integer,primary_key=True)
++    account_id=Column(ForeignKey('rfone_accounts.id'))
++    action=Column(String(64),nullable=False)
++    details=Column(JSON,nullable=False,default=dict)
++    created_at=Column(DateTime(timezone=True),nullable=False,server_default=func.now())
++
++
++def event(db,action,actor=None,**details):
++    db.add(ProfileEvent(account_id=actor,action=action,details=details))
++
++
++def active(value):
++    return value is not None and value.active is not False
++
++
++def _name(value):
++    value=' '.join((value or '').split())
++    if not value or len(value)>255:raise ValueError('Enter a name of 1–255 characters.')
++    return value
++
++
++def save_area(db,*,name,area_id=None,actor=None):
++    name=_name(name)
++    area=db.get(m.OperationalArea,area_id) if area_id else m.OperationalArea(restaurant_id=None,active=True)
++    if area is None:raise ValueError('Area not found.')
++    duplicate=db.scalar(select(m.OperationalArea.id).where(func.lower(m.OperationalArea.name)==name.lower(),
++        m.OperationalArea.id!=(area.id or -1)))
++    if duplicate:raise ValueError('This area already exists in the same catalog.')
++    before=area.name;area.name=name;db.add(area);db.flush()
++    event(db,'AREA_SAVE',actor,id=area.id,before=before,name=name)
++    return area
++
++
++def save_role(db,*,name,area_ids,role_id=None,actor=None):
++    name=_name(name);area_ids=set(int(i) for i in area_ids)
++    if not area_ids:raise ValueError('Choose at least one area.')
++    areas=list(db.scalars(select(m.OperationalArea).where(m.OperationalArea.id.in_(area_ids))))
++    if len(areas)!=len(area_ids) or not all(active(a) for a in areas):raise ValueError('Choose active areas only.')
++    role=db.get(m.RestaurantRole,role_id) if role_id else m.RestaurantRole(restaurant_id=None,active=True)
++    if role is None:raise ValueError('Role not found.')
++    duplicate=db.scalar(select(m.RestaurantRole.id).where(func.lower(m.RestaurantRole.name)==name.lower(),
++        m.RestaurantRole.id!=(role.id or -1)))
++    if duplicate:raise ValueError('This role already exists in the same catalog.')
++    before=role.name;role.name=name;db.add(role);db.flush()
++    previous=list(db.scalars(select(m.OperationalAreaRole).where(m.OperationalAreaRole.restaurant_role_id==role.id)))
++    for pair in previous:
++        if pair.operational_area_id not in area_ids:db.delete(pair)
++    old={p.operational_area_id for p in previous}
++    for identity in area_ids-old:db.add(m.OperationalAreaRole(restaurant_role_id=role.id,operational_area_id=identity))
++    event(db,'ROLE_SAVE',actor,id=role.id,before=before,name=name,area_ids=sorted(area_ids))
++    db.flush();return role
++
++
++def set_archived(db,kind,identity,archived,actor=None):
++    model={'role':m.RestaurantRole,'area':m.OperationalArea,'company':CompanyContext}.get(kind)
++    value=db.get(model,identity) if model else None
++    if value is None:raise ValueError('Record not found.')
++    value.active=not archived;event(db,'CATALOG_ARCHIVE' if archived else 'CATALOG_RESTORE',actor,kind=kind,id=identity)
++    db.flush()
++
++
++def save_permissions(db,role_id,values,domains,actor=None):
++    role=db.get(m.RestaurantRole,role_id)
++    if not active(role):raise ValueError('An active role is required.')
++    registry={d.code:d for d in domains}
++    if set(values)-set(registry):raise ValueError('Unknown domain.')
++    normalized={}
++    for code,entry in values.items():
++        mode=entry.get('mode','none');level=(entry.get('role') or '').strip().lower()
++        if mode not in ('none','all','selected'):raise ValueError('Invalid permission scope.')
++        permitted={'','admin','trainer','student'} if code=='TRAINING' else {'','admin'}
++        if level not in permitted:raise ValueError('Invalid domain role.')
++        items=sorted(set(entry.get('items',[])))
++        allowed={i.code for i in registry[code].items}
++        if set(items)-allowed:raise ValueError('Unknown domain function.')
++        if mode=='selected' and (not items or not allowed):raise ValueError('Choose at least one function or the whole domain.')
++        if mode!='none':normalized[code]={'scope':'ALL' if mode=='all' else 'SELECTED','role_code':level or None,'items':items if mode=='selected' else []}
++    previous=list(db.scalars(select(RolePermission).where(RolePermission.role_id==role_id)))
++    before={p.domain_code:{'scope':p.scope,'role_code':p.role_code,'items':p.items} for p in previous}
++    by_code={p.domain_code:p for p in previous}
++    for code,p in by_code.items():
++        if code not in normalized:db.delete(p)
++    for code,entry in normalized.items():
++        p=by_code.get(code) or RolePermission(role_id=role_id,domain_code=code)
++        p.scope,p.role_code,p.items=entry['scope'],entry['role_code'],entry['items'];db.add(p)
++    event(db,'ROLE_PERMISSIONS',actor,role_id=role_id,before=before,after=normalized)
++    db.flush()
++
++
++def person_target(db,target):
++    try:kind,identity=target.split(':');identity=int(identity)
++    except (ValueError,AttributeError):raise ValueError('Choose a person or external account.')
++    if kind=='account':
++        account=db.get(m.RFOneAccount,identity)
++        if account is None or account.status!='ACTIVE':raise ValueError('Choose an active account.')
++        person_id=directory.context_person_id(db,'RFONE_ACCOUNT',identity)
++        if person_id is None:return None,identity
++        identity=person_id
++    elif kind!='employee':raise ValueError('Invalid person reference.')
++    identity=directory.resolve_employee_id(db,identity)
++    person=db.get(m.Employee,identity)
++    if person is None or not directory.employee_is_active(person,[]):raise ValueError('Dismissed people cannot receive new assignments.')
++    return identity,None
++
++
++def membership(db,target,company_id,actor=None):
++    employee,account=person_target(db,target)
++    company=db.get(CompanyContext,company_id)
++    if not active(company):raise ValueError('Choose an active company.')
++    condition=membership_target_condition(db,employee,account)
++    row=db.scalar(select(CompanyMembership).where(condition,CompanyMembership.company_id==company_id,CompanyMembership.valid_to.is_(None)))
++    if row:
++        if employee is not None and row.employee_id is None:
++            previous_account=row.account_id;row.account_id=None;row.employee_id=employee
++            event(db,'MEMBERSHIP_IDENTITY_LINKED',actor,membership_id=row.id,employee_id=employee,previous_account_id=previous_account)
++            db.flush()
++        return row
++    row=CompanyMembership(employee_id=employee,account_id=account,company_id=company_id)
++    db.add(row);db.flush();event(db,'COMPANY_ASSIGN',actor,membership_id=row.id,employee_id=employee,account_id=account,company_id=company_id)
++    return row
++
++
++def membership_target_condition(db,employee_id=None,account_id=None):
++    if employee_id is None:return CompanyMembership.account_id==account_id
++    # Existing external-account memberships remain visible after explicit identity
++    # linkage; a subsequent membership POST normalizes the same row, not a copy.
++    related=[identity for identity in db.scalars(select(m.RFOneAccount.id))
++             if directory.context_person_id(db,'RFONE_ACCOUNT',identity)==employee_id]
++    return (CompanyMembership.employee_id==employee_id) | CompanyMembership.account_id.in_(related)
++
++
++def assign_role(db,*,membership_id,role_id,area_id,actor=None):
++    member=db.scalar(select(CompanyMembership).where(CompanyMembership.id==membership_id).with_for_update())
++    if member is None or member.valid_to is not None or not active(db.get(CompanyContext,member.company_id)):raise ValueError('Choose a current company membership.')
++    person_target(db,f'employee:{member.employee_id}' if member.employee_id is not None else f'account:{member.account_id}')
++    role,area=db.get(m.RestaurantRole,role_id),db.get(m.OperationalArea,area_id)
++    pair=db.get(m.OperationalAreaRole,(area_id,role_id))
++    if not active(role) or not active(area) or pair is None:raise ValueError('Choose an active role and one of its configured areas.')
++    row=db.scalar(select(RoleProfileAssignment).where(RoleProfileAssignment.membership_id==member.id,
++        RoleProfileAssignment.role_id==role_id,RoleProfileAssignment.area_id==area_id,RoleProfileAssignment.valid_to.is_(None)))
++    if row:return row
++    row=RoleProfileAssignment(membership_id=member.id,role_id=role_id,area_id=area_id)
++    db.add(row);db.flush();event(db,'ROLE_ASSIGN',actor,id=row.id,membership_id=member.id,role_id=role_id,area_id=area_id)
++    return row
++
++
++def withdraw(db,kind,identity,actor=None):
++    model=CompanyMembership if kind=='membership' else RoleProfileAssignment if kind=='assignment' else None
++    row=db.scalar(select(model).where(model.id==identity).with_for_update()) if model else None
++    if row is None:raise ValueError('Assignment not found.')
++    if row.valid_to is not None:return
++    now=datetime.now(timezone.utc);row.valid_to=now
++    if kind=='membership':
++        for assignment in db.scalars(select(RoleProfileAssignment).where(RoleProfileAssignment.membership_id==identity,RoleProfileAssignment.valid_to.is_(None))):assignment.valid_to=now
++    event(db,'PROFILE_WITHDRAW',actor,kind=kind,id=identity);db.flush()
++
++
++def _target_condition(db,account_id):
++    identity=directory.context_person_id(db,'RFONE_ACCOUNT',account_id)
++    condition=CompanyMembership.account_id==account_id
++    if identity is not None:condition=condition | (CompanyMembership.employee_id==identity)
++    return condition,identity
++
++
++def company_ids_for_account(db,account_id):
++    account=db.get(m.RFOneAccount,account_id)
++    if account is None or account.status!='ACTIVE':return set()
++    if account.is_admin or account.is_owner:return set(db.scalars(select(CompanyContext.id).where(CompanyContext.active.is_(True))))
++    condition,identity=_target_condition(db,account_id)
++    if identity is not None and not directory.employee_is_active(db.get(m.Employee,identity),[]):return set()
++    now=datetime.now(timezone.utc)
++    return set(db.scalars(select(CompanyMembership.company_id).join(CompanyContext).where(condition,
++        CompanyMembership.valid_from<=now,(CompanyMembership.valid_to.is_(None) | (CompanyMembership.valid_to>now)),CompanyContext.active.is_(True))))
++
++
++def effective_permissions(db,account_id,*,company_id):
++    """Fresh union; None retains only legacy direct grants, never all-company roles."""
++    account=db.get(m.RFOneAccount,account_id)
++    if account is None or account.status!='ACTIVE':return {}
++    condition,identity=_target_condition(db,account_id)
++    if identity is not None and not account.is_owner and not directory.employee_is_active(db.get(m.Employee,identity),[]):return {}
++    grants=[]
++    for row in db.scalars(select(m.RFOneAccountDomainAccess).where(m.RFOneAccountDomainAccess.account_id==account_id,m.RFOneAccountDomainAccess.enabled.is_(True))):
++        items=list(db.scalars(select(m.RFOneAccountDomainItemAccess.item_code).where(m.RFOneAccountDomainItemAccess.account_id==account_id,m.RFOneAccountDomainItemAccess.domain_code==row.domain_code)))
++        grants.append((row.domain_code,row.scope,row.role_code,items,'Direct'))
++    if company_id is not None:
++        now=datetime.now(timezone.utc)
++        query=select(RolePermission,m.RestaurantRole.name).join(m.RestaurantRole,m.RestaurantRole.id==RolePermission.role_id).join(
++            RoleProfileAssignment,RoleProfileAssignment.role_id==RolePermission.role_id).join(CompanyMembership,
++            CompanyMembership.id==RoleProfileAssignment.membership_id).join(CompanyContext,
++            CompanyContext.id==CompanyMembership.company_id).join(m.OperationalArea,
++            m.OperationalArea.id==RoleProfileAssignment.area_id).join(m.OperationalAreaRole,
++            (m.OperationalAreaRole.operational_area_id==RoleProfileAssignment.area_id)&(m.OperationalAreaRole.restaurant_role_id==RoleProfileAssignment.role_id)).where(
++                condition,CompanyMembership.company_id==company_id,CompanyContext.active.is_(True),
++                CompanyMembership.valid_from<=now,(CompanyMembership.valid_to.is_(None)|(CompanyMembership.valid_to>now)),
++                RoleProfileAssignment.valid_from<=now,(RoleProfileAssignment.valid_to.is_(None)|(RoleProfileAssignment.valid_to>now)),
++                m.RestaurantRole.active.is_not(False),m.OperationalArea.active.is_not(False))
++        for row,name in db.execute(query):grants.append((row.domain_code,row.scope,row.role_code,row.items,name))
++    result={};rank={'':0,'student':1,'trainer':2,'admin':3}
++    for code,scope,level,items,provenance in grants:
++        if scope=='SELECTED' and not items:continue
++        original_level=level
++        level=(level or '').strip().lower()
++        current=result.setdefault(code,{'scope':'SELECTED','role_code':None,'items':set(),'sources':set()})
++        if scope=='ALL':current['scope']='ALL'
++        current['items'].update(items);current['sources'].add(provenance)
++        if rank.get(level,0)>rank.get(current['role_code'] or '',0):current['role_code']=level or None
++        elif current['role_code'] is None and level:current['role_code']=level if level in rank else original_level
++    return result
++
++
++def effective_access_rows(db,account_id):
++    return [SimpleNamespace(id=None,account_id=account_id,domain_code=code,enabled=True,scope=value['scope'],role_code=value['role_code'])
++            for code,value in effective_permissions(db,account_id,company_id=company_context.get()).items()]
++
++
++def effective_item_rows(db,account_id):
++    return {code:set(value['items']) for code,value in effective_permissions(db,account_id,company_id=company_context.get()).items()}
++
++
++def employee_scope_ids(db,account):
++    """Legacy explicit Directory grants stay global; profile-only access is company-scoped."""
++    if account.is_admin or account.is_owner:return None
++    direct=db.scalar(select(m.RFOneAccountDomainAccess.id).where(m.RFOneAccountDomainAccess.account_id==account.id,
++        m.RFOneAccountDomainAccess.domain_code=='EMPLOYEES',m.RFOneAccountDomainAccess.enabled.is_(True)))
++    if direct:return None
++    company=company_context.get()
++    if company not in company_ids_for_account(db,account.id):return set()
++    now=datetime.now(timezone.utc)
++    return set(db.scalars(select(CompanyMembership.employee_id).where(CompanyMembership.company_id==company,
++        CompanyMembership.employee_id.is_not(None),CompanyMembership.valid_from<=now,
++        (CompanyMembership.valid_to.is_(None)|(CompanyMembership.valid_to>now)))))
++
++
++def seed_companies(db):
++    """Reference existing legal entities; RFGroup is explicitly an operating group."""
++    existing=set(db.scalars(select(CompanyContext.legal_entity_id)))
++    labels={'RF-Winter Park':'WP','RF-Mount Dora':'MD'}
++    for entity in db.scalars(select(m.LegalEntity)):
++        if entity.id not in existing:db.add(CompanyContext(name=labels.get(entity.legal_name,entity.legal_name),kind='COMPANY',legal_entity_id=entity.id,active=entity.status=='ACTIVE'))
++    if db.scalar(select(CompanyContext.id).where(func.lower(CompanyContext.name)=='rfgroup')) is None:
++        db.add(CompanyContext(name='RFGroup',kind='GROUP',active=True))
++    db.flush()
++
++
++_CONTACT_UNSET=object()
++
++def _contact(value,limit,label):
++    value=(value or '').strip()
++    if len(value)>limit or any(ord(char)<32 for char in value):raise ValueError(f'Invalid {label}.')
++    if value and label=='email':
++        import re
++        if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',value):raise ValueError('Enter a valid email address.')
++    return value or None
++
++def save_person_profile(db,target,*,name,company_ids,assignments,actor=None,email=_CONTACT_UNSET,phone=_CONTACT_UNSET):
++    """Atomic editor; preserve ended history and central identity, no POS writes."""
++    employee,account=person_target(db,target)
++    name=_name(name)
++    if email is not _CONTACT_UNSET:email=_contact(email,255,'email')
++    if phone is not _CONTACT_UNSET:phone=_contact(phone,64,'phone')
++    company_ids={int(v) for v in company_ids}
++    if not isinstance(assignments,list):raise ValueError('Invalid role assignments.')
++    desired=set()
++    for row in assignments:
++        if not isinstance(row,dict):raise ValueError('Invalid role assignment.')
++        key=(int(row['company_id']),int(row['role_id']),int(row['area_id']))
++        if key[0] not in company_ids:raise ValueError('Each role must belong to a selected company.')
++        desired.add(key)
++    condition=membership_target_condition(db,employee,account)
++    current=list(db.scalars(select(CompanyMembership).where(condition,CompanyMembership.valid_to.is_(None)).with_for_update()))
++    current_companies={v.company_id for v in current}
++    for company_id in company_ids-current_companies:
++        if not active(db.get(CompanyContext,company_id)):raise ValueError('Choose an active company.')
++    for member in current:
++        if member.company_id not in company_ids:withdraw(db,'membership',member.id,actor)
++    members={v.company_id:v for v in current if v.company_id in company_ids}
++    for company_id in company_ids-current_companies:members[company_id]=membership(db,target,company_id,actor)
++    for company_id,member in members.items():
++        existing=list(db.scalars(select(RoleProfileAssignment).where(RoleProfileAssignment.membership_id==member.id,RoleProfileAssignment.valid_to.is_(None))))
++        existing_keys={(company_id,v.role_id,v.area_id) for v in existing}
++        for row in existing:
++            if (company_id,row.role_id,row.area_id) not in desired:withdraw(db,'assignment',row.id,actor)
++        for key in desired-existing_keys:
++            if key[0]==company_id:assign_role(db,membership_id=member.id,role_id=key[1],area_id=key[2],actor=actor)
++    record=db.get(m.Employee,employee) if employee is not None else db.get(m.RFOneAccount,account)
++    if employee is not None:
++        directory.update_management(db,record,display_name=name,custom_id=record.custom_id,active=record.active,account_id=actor,
++            email=record.email if email is _CONTACT_UNSET else email,phone=record.phone if phone is _CONTACT_UNSET else phone)
++    else:
++        contact_before={'email':record.contact_email,'phone':record.contact_phone}
++        if email is not _CONTACT_UNSET:record.contact_email=email
++        if phone is not _CONTACT_UNSET:record.contact_phone=phone
++        if email is not _CONTACT_UNSET or phone is not _CONTACT_UNSET:event(db,'EXTERNAL_CONTACT_UPDATE',actor,account_id=account,before=contact_before,after={'email':record.contact_email,'phone':record.contact_phone})
++        before=record.display_name;record.display_name=name
++        event(db,'ACCOUNT_NAME_UPDATE',actor,account_id=account,before=before,name=name)
++    event(db,'PERSON_PROFILE_SAVE',actor,target=target,company_ids=sorted(company_ids))
++    db.flush()
++
++
++def create_profile_person(db,*,name,company_ids,assignments,actor=None,email=_CONTACT_UNSET,phone=_CONTACT_UNSET):
++    person=directory.create_person(db,display_name=_name(name),account_id=actor)
++    if hasattr(directory,'ensure_employee_account'):
++        directory.ensure_employee_account(db,person)
++    else:
++        from uuid import uuid4
++        account=m.RFOneAccount(username='employee-'+uuid4().hex,display_name=person.display_name,password_hash='!',status='INACTIVE',is_admin=False,is_owner=False,session_version=1)
++        db.add(account);db.flush()
++        db.add(m.EmployeeContextLink(employee_id=person.id,rfone_account_id=account.id));db.flush()
++    save_person_profile(db,f'employee:{person.id}',name=name,company_ids=company_ids,assignments=assignments,actor=actor,email=email,phone=phone)
++    return person
++
++
++def dismiss_profile_person(db,target,*,dismissal_date,actor=None):
++    from datetime import date
++    try:
++        day=date.fromisoformat(dismissal_date or '')
++    except (ValueError,TypeError):raise ValueError('Enter a valid dismissal date.')
++    if day>datetime.now(timezone.utc).date():raise ValueError('Dismissal date cannot be in the future.')
++    employee,account=person_target(db,target)
++    if employee is None:raise ValueError('Dismiss person applies to employees, not external accounts.')
++    person=db.scalar(select(m.Employee).where(m.Employee.id==employee).with_for_update())
++    person.active=False
++    if hasattr(person,'dismissed_at'):person.dismissed_at=datetime.combine(day,datetime.min.time(),tzinfo=timezone.utc)
++    if hasattr(person,'directory_eligible'):person.directory_eligible=True
++    directory._event(db,'DISMISSED',employee_id=employee,account_id=actor,details={'dismissal_date':day.isoformat(),'reason':'MANUAL_RF1'})
++    protected=[]
++    for linked in db.scalars(select(m.RFOneAccount)):
++        if directory.context_person_id(db,'RFONE_ACCOUNT',linked.id)!=employee:continue
++        if linked.is_owner:
++            protected.append(linked.id)
++            directory._event(db,'OWNER_ACCESS_PROTECTED',employee_id=employee,account_id=actor,details={'account_id':linked.id})
++        else:
++            linked.status='INACTIVE';linked.session_version=(linked.session_version or 0)+1
++    event(db,'PERSON_DISMISSED',actor,employee_id=employee,dismissal_date=day.isoformat(),owner_accounts_protected=protected)
++    db.flush()
++
++
++def ensure_profile_account(db,target,actor=None):
++    employee,account_id=person_target(db,target)
++    if account_id is not None:return db.get(m.RFOneAccount,account_id)
++    person=db.scalar(select(m.Employee).where(m.Employee.id==employee).with_for_update())
++    linked=[a for a in db.scalars(select(m.RFOneAccount)) if directory.context_person_id(db,'RFONE_ACCOUNT',a.id)==employee]
++    if len(linked)>1:raise ValueError('Resolve multiple linked accounts in Employee Directory first.')
++    if linked:return linked[0]
++    if hasattr(directory,'ensure_employee_account'):return directory.ensure_employee_account(db,person)
++    from uuid import uuid4
++    account=m.RFOneAccount(username='employee-'+uuid4().hex,display_name=person.display_name,password_hash='!',status='INACTIVE',is_admin=False,is_owner=False,session_version=1)
++    db.add(account);db.flush();db.add(m.EmployeeContextLink(employee_id=employee,rfone_account_id=account.id));db.flush()
++    event(db,'ACCOUNT_PROVISIONED',actor,employee_id=employee,account_id=account.id)
++    return account
+--- a/RF-One Data Store/rfone_data_store/employee_directory.py
++++ b/RF-One Data Store/rfone_data_store/employee_directory.py
+@@ -338,6 +338,14 @@
+     _event(db, "LINK", employee_id=employee.id, link=link, account_id=account_id,
+            details={"create_new": create_new})
+     db.flush()
++    # EMPLOYEE_DIRECTORY_RECORD_HOLD_001 — work acquired while this identity
++    # was pending is attributed now, through its Clover ID, in the same
++    # transaction as the confirmation.
++    from .technical.connectors.clover.identity_holds import reattribute_link
++    counts = reattribute_link(db, link)
++    _event(db, "REATTRIBUTE", employee_id=employee.id, link=link, account_id=account_id,
++           details={"external_employee_id": link.external_employee_id, "counts": counts})
++    db.flush()
+     return employee
+ 
+ 
+--- a/RF-One Data Store/rfone_data_store/kitchen.py
++++ b/RF-One Data Store/rfone_data_store/kitchen.py
+@@ -0,0 +1,130 @@
++"""Kitchen storage in the canonical RF-One database; no inferred recipe facts."""
++import sqlalchemy as sa
++from .models import Base
++from . import kitchen_configuration  # register shared configuration FK targets
++
++metadata = Base.metadata
++
++# Existing Visual Menu identity, created by revision e3c420261109.
++menu_cards = sa.Table(
++    'restaurant_menu_cards', metadata,
++    sa.Column('restaurant_id', sa.Integer, sa.ForeignKey('restaurants.id'), primary_key=True),
++    sa.Column('dish_key', sa.String(64), primary_key=True),
++    sa.Column('title', sa.String(255), nullable=False),
++    sa.Column('content_version', sa.Integer, nullable=False),
++    sa.Column('validation_status', sa.String(24), nullable=False),
++    sa.Column('content_json', sa.Text, nullable=False),
++    sa.CheckConstraint('content_version > 0'),
++    sa.CheckConstraint("validation_status IN ('pending','validated')"),
++    extend_existing=True,
++)
++
++recipes = sa.Table(
++    'kitchen_recipes', metadata,
++    sa.Column('id', sa.Integer, primary_key=True),
++    sa.Column('code', sa.String(64), nullable=False),
++    sa.Column('name', sa.Text, nullable=False),
++    sa.Column('kind', sa.String(24), nullable=False),
++    sa.Column('category_id', sa.Integer, sa.ForeignKey('kitchen_configuration_items.id')),
++    sa.Column('revision', sa.Integer, nullable=False, server_default='1'),
++    sa.Column('description', sa.Text),
++    sa.Column('dietary_class', sa.String(24)),
++    sa.Column('dietary_evidence', sa.Text),
++    sa.Column('appearance', sa.Text),
++    sa.Column('aroma', sa.Text),
++    sa.Column('taste', sa.Text),
++    sa.Column('texture', sa.Text),
++    sa.Column('serving_temperature', sa.Text),
++    sa.Column('organoleptic_notes', sa.Text),
++    sa.Column('plating_instructions', sa.Text),
++    sa.Column('portion_count', sa.Numeric(14, 4)),
++    sa.Column('portion_weight_g', sa.Numeric(14, 4)),
++    sa.Column('ingredient_weight_g', sa.Numeric(14, 4)),
++    sa.Column('cooked_yield_g', sa.Numeric(14, 4)),
++    sa.Column('actual_work_minutes', sa.Numeric(14, 4)),
++    sa.Column('total_cost', sa.Numeric(18, 6)),
++    sa.Column('cost_per_kg', sa.Numeric(18, 6)),
++    sa.Column('currency', sa.String(3)),
++    sa.Column('kcal', sa.Numeric(18, 6)),
++    sa.Column('protein_g', sa.Numeric(18, 6)),
++    sa.Column('carbohydrate_g', sa.Numeric(18, 6)),
++    sa.Column('fat_g', sa.Numeric(18, 6)),
++    sa.Column('cholesterol_mg', sa.Numeric(18, 6)),
++    sa.Column('nutrition_basis', sa.Text),
++    sa.Column('source_file', sa.Text),
++    sa.Column('source_sha256', sa.String(64)),
++    sa.Column('source_sheet', sa.Text),
++    sa.Column('source_row', sa.Integer),
++    sa.Column('source_payload', sa.JSON),
++    sa.Column('validation_status', sa.String(24), nullable=False, server_default='pending'),
++    sa.Column('validated_by_id', sa.Integer, sa.ForeignKey('acting_identities.id')),
++    sa.Column('validated_at', sa.DateTime(timezone=True)),
++    sa.UniqueConstraint('code', name='uq_kitchen_recipe_code'),
++    sa.CheckConstraint("kind IN ('dish','preparation')", name='ck_kitchen_kind'),
++    sa.CheckConstraint("dietary_class IN ('vegan','vegetarian','standard')", name='ck_kitchen_diet'),
++    sa.CheckConstraint("validation_status IN ('pending','validated')", name='ck_kitchen_validation'),
++)
++
++components = sa.Table(
++    'kitchen_recipe_components', metadata,
++    sa.Column('id', sa.Integer, primary_key=True),
++    sa.Column('recipe_id', sa.Integer, sa.ForeignKey('kitchen_recipes.id'), nullable=False),
++    sa.Column('position', sa.Integer, nullable=False),
++    sa.Column('source_line_key', sa.String(128)),
++    sa.Column('ingredient_reference', sa.Text),
++    sa.Column('preparation_reference', sa.Text),
++    sa.Column('preparation_id', sa.Integer, sa.ForeignKey('kitchen_recipes.id')),
++    sa.Column('component_item_id', sa.Integer, sa.ForeignKey('kitchen_configuration_items.id')),
++    sa.Column('quantity', sa.Numeric(18, 6)),
++    sa.Column('unit', sa.String(32)),
++    sa.Column('notes', sa.Text),
++    sa.Column('cost', sa.Numeric(18, 6)),
++    sa.Column('cost_per_kg', sa.Numeric(18, 6)),
++    sa.Column('kcal', sa.Numeric(18, 6)),
++    sa.Column('protein_g', sa.Numeric(18, 6)),
++    sa.Column('carbohydrate_g', sa.Numeric(18, 6)),
++    sa.Column('fat_g', sa.Numeric(18, 6)),
++    sa.Column('cholesterol_mg', sa.Numeric(18, 6)),
++    sa.Column('source_row', sa.Integer),
++    sa.Column('source_payload', sa.JSON),
++    sa.UniqueConstraint('recipe_id', 'position', name='uq_kitchen_component_position'),
++    sa.CheckConstraint('position > 0', name='ck_kitchen_component_position'),
++    sa.CheckConstraint('preparation_id IS NULL OR preparation_id <> recipe_id', name='ck_kitchen_no_self_component'),
++)
++
++steps = sa.Table(
++    'kitchen_recipe_steps', metadata,
++    sa.Column('id', sa.Integer, primary_key=True),
++    sa.Column('recipe_id', sa.Integer, sa.ForeignKey('kitchen_recipes.id'), nullable=False),
++    sa.Column('position', sa.Integer, nullable=False),
++    sa.Column('instruction', sa.Text, nullable=False),
++    sa.Column('source_row', sa.Integer),
++    sa.UniqueConstraint('recipe_id', 'position', name='uq_kitchen_step_position'),
++    sa.CheckConstraint('position > 0', name='ck_kitchen_step_position'),
++)
++
++photos = sa.Table(
++    'kitchen_recipe_photos', metadata,
++    sa.Column('id', sa.Integer, primary_key=True),
++    sa.Column('recipe_id', sa.Integer, sa.ForeignKey('kitchen_recipes.id'), nullable=False),
++    sa.Column('asset_uri', sa.Text, nullable=False),
++    sa.Column('sha256', sa.String(64)),
++    sa.Column('mime_type', sa.String(128)),
++    sa.Column('caption', sa.Text),
++    sa.Column('alt_text', sa.Text),
++    sa.Column('source', sa.Text),
++    sa.Column('captured_at', sa.DateTime(timezone=True)),
++    sa.UniqueConstraint('recipe_id', 'id', name='uq_kitchen_recipe_photo'),
++)
++
++menu_links = sa.Table(
++    'kitchen_visual_menu_links', metadata,
++    sa.Column('restaurant_id', sa.Integer, primary_key=True),
++    sa.Column('dish_key', sa.String(64), primary_key=True),
++    sa.Column('recipe_id', sa.Integer, sa.ForeignKey('kitchen_recipes.id'), nullable=False),
++    sa.Column('standard_photo_id', sa.Integer),
++    sa.ForeignKeyConstraint(['restaurant_id', 'dish_key'], ['restaurant_menu_cards.restaurant_id', 'restaurant_menu_cards.dish_key']),
++    sa.ForeignKeyConstraint(['recipe_id', 'standard_photo_id'], ['kitchen_recipe_photos.recipe_id', 'kitchen_recipe_photos.id']),
++)
++
++KITCHEN_TABLES = [recipes, components, steps, photos, menu_links]
+--- a/RF-One Data Store/rfone_data_store/kitchen_configuration.py
++++ b/RF-One Data Store/rfone_data_store/kitchen_configuration.py
+@@ -0,0 +1,106 @@
++"""Kitchen reference lists and the existing Purchasing Supplier registry."""
++import unicodedata
++
++import sqlalchemy as sa
++from .models import Base, Restaurant, Supplier, SupplierAlias
++from .purchasing.repository import get_or_create_supplier, rename_supplier_canonical
++
++SECTIONS = (('MENU_TYPE', 'Menu Type'), ('MENU_AREA', 'Menu Area'),
++            ('CATEGORY', 'Category'), ('COMPONENT', 'Components'), ('SUPPLIER', 'Supplier'),
++            ('RECIPE_TYPE', 'Recipe Type'))
++REFERENCE_SECTIONS = {key for key, _ in SECTIONS if key != 'SUPPLIER'}
++
++items = sa.Table('kitchen_configuration_items', Base.metadata,
++    sa.Column('id', sa.Integer, primary_key=True),
++    sa.Column('section', sa.String(24), nullable=False),
++    sa.Column('name', sa.String(255), nullable=False),
++    sa.Column('normalized_name', sa.String(255), nullable=False),
++    sa.Column('archived', sa.Boolean, nullable=False, server_default=sa.false()),
++    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
++    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
++    sa.UniqueConstraint('section','normalized_name', name='uq_kitchen_configuration_name'),
++    sa.CheckConstraint("section IN ('MENU_TYPE','MENU_AREA','CATEGORY','COMPONENT','RECIPE_TYPE')", name='ck_kitchen_configuration_section'),
++    sa.CheckConstraint("length(trim(name)) > 0", name='ck_kitchen_configuration_name'),
++)
++
++
++class ConfigurationError(ValueError):
++    pass
++
++
++def normalize(name):
++    return unicodedata.normalize('NFKC', name).casefold()
++
++
++def clean_name(name):
++    name = ' '.join((name or '').split())
++    if not name or len(name) > 255 or len(normalize(name)) > 255:
++        raise ConfigurationError('Enter a name between 1 and 255 characters.')
++    return name
++
++
++def lists(db):
++    result = {section: [] for section, _ in SECTIONS}
++    for row in db.execute(sa.select(items).order_by(items.c.archived, items.c.normalized_name)).mappings():
++        result[row['section']].append(dict(row))
++    suppliers = db.execute(sa.select(Supplier.id, Supplier.name, Supplier.status,
++        Supplier.restaurant_id, Restaurant.name.label('restaurant_name'))
++        .join(Restaurant, Restaurant.id == Supplier.restaurant_id).order_by(sa.func.lower(Supplier.name))).mappings()
++    for row in suppliers:
++        result['SUPPLIER'].append(dict(row, archived=row['status'] in ('INACTIVE','ARCHIVED')))
++    return result
++
++
++def save(db, section, *, name, item_id=None, restaurant_id=None):
++    name = clean_name(name)
++    if section == 'SUPPLIER':
++        current = db.get(Supplier, item_id) if item_id else None
++        if item_id and current is None:
++            raise ConfigurationError('This supplier no longer exists.')
++        restaurant_id = current.restaurant_id if current else restaurant_id
++        if not restaurant_id or db.get(Restaurant, restaurant_id) is None:
++            raise ConfigurationError('Choose a restaurant for this supplier.')
++        # Kitchen reuses canonical suppliers, their restaurant scope and rename provenance.
++        if db.get_bind().dialect.name == 'postgresql':
++            db.execute(sa.text('SELECT pg_advisory_xact_lock(1919247476, :restaurant)'), {'restaurant':restaurant_id})
++        candidates = db.scalars(sa.select(Supplier).where(Supplier.restaurant_id == restaurant_id)).all()
++        aliases = db.execute(sa.select(SupplierAlias.supplier_id, SupplierAlias.alias_name)
++            .join(Supplier).where(Supplier.restaurant_id == restaurant_id)).all()
++        matches = [s.id for s in candidates if normalize(s.name) == normalize(name)]
++        matches += [sid for sid, alias in aliases if normalize(alias) == normalize(name)]
++        if any(sid != item_id for sid in matches):
++            raise ConfigurationError('This supplier name already exists for this restaurant, including archived names or aliases.')
++        if current:
++            return rename_supplier_canonical(db, current.id, name, source='Kitchen Configuration').id
++        return get_or_create_supplier(db, restaurant_id, name).id
++    if section not in REFERENCE_SECTIONS:
++        raise ConfigurationError('Unknown configuration section.')
++    if item_id:
++        current = db.execute(sa.select(items).where(items.c.id == item_id, items.c.section == section)).first()
++        if current is None:
++            raise ConfigurationError('This item no longer exists in this section.')
++    duplicate = db.scalar(sa.select(items.c.id).where(items.c.section == section,
++                         items.c.normalized_name == normalize(name), items.c.id != (item_id or -1)))
++    if duplicate is not None:
++        raise ConfigurationError('This name already exists in this section, including archived items.')
++    values = dict(name=name, normalized_name=normalize(name), updated_at=sa.func.now())
++    if item_id:
++        db.execute(items.update().where(items.c.id == item_id,items.c.section == section).values(**values))
++        return item_id
++    return db.execute(items.insert().values(section=section,**values).returning(items.c.id)).scalar_one()
++
++
++def archive(db, section, item_id):
++    if section == 'SUPPLIER':
++        supplier = db.get(Supplier, item_id)
++        if supplier is None:
++            raise ConfigurationError('This supplier no longer exists.')
++        supplier.status = 'INACTIVE'
++        db.flush()
++        return
++    if section not in REFERENCE_SECTIONS:
++        raise ConfigurationError('Unknown configuration section.')
++    changed = db.execute(items.update().where(items.c.id==item_id,items.c.section==section)
++                         .values(archived=True,updated_at=sa.func.now()))
++    if changed.rowcount != 1:
++        raise ConfigurationError('This item no longer exists in this section.')
+--- a/RF-One Data Store/rfone_data_store/models.py
++++ b/RF-One Data Store/rfone_data_store/models.py
+@@ -1487,8 +1487,8 @@
+     )
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+     location_id: Mapped[int] = mapped_column(
+         ForeignKey("locations.id"), nullable=False, index=True
+@@ -1511,8 +1511,8 @@
+     __table_args__ = (UniqueConstraint("restaurant_id", "name"),)
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+ 
+     name: Mapped[str] = mapped_column(String(255), nullable=False)
+@@ -1533,8 +1533,8 @@
+     __table_args__ = (UniqueConstraint("restaurant_id", "name"),)
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+ 
+     name: Mapped[str] = mapped_column(String(255), nullable=False)
+@@ -1554,8 +1554,8 @@
+     __table_args__ = (UniqueConstraint("restaurant_id", "name"),)
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+ 
+     name: Mapped[str] = mapped_column(String(255), nullable=False)
+@@ -1648,8 +1648,8 @@
+     employee_id: Mapped[int] = mapped_column(
+         ForeignKey("employees.id"), nullable=False, index=True
+     )
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+     operational_area_id: Mapped[int] = mapped_column(
+         ForeignKey("operational_areas.id"), nullable=False, index=True
+@@ -1737,8 +1737,8 @@
+     __tablename__ = "tip_policies"
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+     # Optional narrower scope (task §17 "optional location scope if
+     # consistent with current RestaurantLocation design") — NULL means the
+@@ -2940,8 +2940,8 @@
+     )
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+     source_system_id: Mapped[int] = mapped_column(
+         ForeignKey("source_systems.id"), nullable=False, index=True
+@@ -2980,8 +2980,8 @@
+     )
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+     source_system_id: Mapped[int] = mapped_column(
+         ForeignKey("source_systems.id"), nullable=False
+@@ -3023,8 +3023,8 @@
+     __tablename__ = "profile_bootstrap_runs"
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+     source_system_id: Mapped[int] = mapped_column(
+         ForeignKey("source_systems.id"), nullable=False
+@@ -3060,8 +3060,8 @@
+     bootstrap_run_id: Mapped[int] = mapped_column(
+         ForeignKey("profile_bootstrap_runs.id"), nullable=False, index=True
+     )
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+ 
+     # Conceptual values (task §9): CURRENT_EMPLOYEE_WITHOUT_SOURCE_ROLE,
+@@ -3798,8 +3798,8 @@
+     __table_args__ = (UniqueConstraint("restaurant_id", "code"),)
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+ 
+     # Conceptual values: WEEKLY, BIWEEKLY, MONTHLY. Free string, not a DB
+@@ -3832,8 +3832,8 @@
+     __tablename__ = "workweek_definitions"
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+ 
+     # 0=Monday .. 6=Sunday (Python `date.weekday()` convention).
+@@ -3955,8 +3955,8 @@
+     )
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+     source_system_id: Mapped[int] = mapped_column(
+         ForeignKey("source_systems.id"), nullable=False, index=True
+@@ -4032,8 +4032,8 @@
+     )
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+ 
+     provider: Mapped[str] = mapped_column(String(32), nullable=False)
+@@ -4068,8 +4068,8 @@
+     source_system_id: Mapped[int] = mapped_column(
+         ForeignKey("source_systems.id"), nullable=False, index=True
+     )
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+ 
+     # Deterministic, structural normalization of the provider's own Employee
+@@ -4266,8 +4266,8 @@
+     )
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+     source_system_id: Mapped[int] = mapped_column(
+         ForeignKey("source_systems.id"), nullable=False, index=True
+@@ -5195,8 +5195,8 @@
+     __tablename__ = "suppliers"
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+-    restaurant_id: Mapped[int] = mapped_column(
+-        ForeignKey("restaurants.id"), nullable=False, index=True
++    restaurant_id: Mapped[int | None] = mapped_column(
++        ForeignKey("restaurants.id"), nullable=True, index=True
+     )
+ 
+     name: Mapped[str] = mapped_column(String(255), nullable=False)
+@@ -10485,6 +10485,9 @@
+     updated_at: Mapped[datetime] = mapped_column(
+         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+     )
++
++    contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
++    contact_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+ 
+ 
+ # How much of a Domain an enabled `RFOneAccountDomainAccess` row opens
+@@ -15080,3 +15083,45 @@
+     ProjectTaskDependency,
+     ProjectResponsible,
+ )
++
++
++class TrainingCourseRevision(Base):
++    __tablename__ = "training_course_revisions"
++    __table_args__ = (UniqueConstraint("pill_id", "version"),)
++    id: Mapped[int] = mapped_column(Integer, primary_key=True)
++    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), nullable=False)
++    version: Mapped[int] = mapped_column(Integer, nullable=False)
++    content_json: Mapped[str] = mapped_column(Text, nullable=False)
++    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
++
++
++class TrainingCourse(Base):
++    """Mutable preparation state extending the existing Training content identity."""
++    __tablename__ = "training_courses"
++    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), primary_key=True)
++    active_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
++    draft_json: Mapped[str | None] = mapped_column(Text, nullable=True)
++    edit_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
++
++
++class TrainingCourseFile(Base):
++    __tablename__ = "training_course_files"
++    id: Mapped[int] = mapped_column(Integer, primary_key=True)
++    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), nullable=False)
++    filename: Mapped[str] = mapped_column(String(255), nullable=False)
++    media_type: Mapped[str] = mapped_column(String(80), nullable=False)
++    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
++    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
++
++
++class TrainingCourseAssignmentRevision(Base):
++    __tablename__ = "training_course_assignment_revisions"
++    assignment_id: Mapped[int] = mapped_column(ForeignKey("training_assignments.id"), primary_key=True)
++    revision_id: Mapped[int] = mapped_column(ForeignKey("training_course_revisions.id"), nullable=False)
++
++
++class TrainingRetiredPill(Base):
++    """Withdrawn catalog entries retained for historical assignment integrity."""
++    __tablename__ = "training_retired_pills"
++    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), primary_key=True)
++    retired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+--- a/RF-One Data Store/rfone_data_store/rfone_account_service.py
++++ b/RF-One Data Store/rfone_data_store/rfone_account_service.py
+@@ -279,7 +279,7 @@
+     return list(session.scalars(select(m.RFOneAccount).order_by(m.RFOneAccount.display_name)).all())
+ 
+ 
+-def list_domain_access_for_account(session: Session, account_id: int) -> list[m.RFOneAccountDomainAccess]:
++def list_direct_domain_access_for_account(session: Session, account_id: int) -> list[m.RFOneAccountDomainAccess]:
+     return list(
+         session.scalars(
+             select(m.RFOneAccountDomainAccess).where(m.RFOneAccountDomainAccess.account_id == account_id)
+@@ -287,7 +287,7 @@
+     )
+ 
+ 
+-def list_domain_item_access_for_account(session: Session, account_id: int) -> dict[str, set[str]]:
++def list_direct_domain_item_access_for_account(session: Session, account_id: int) -> dict[str, set[str]]:
+     """The items granted to `account_id`, by Domain code — meaningful only
+     for a Domain whose access scope is SELECTED."""
+     items: dict[str, set[str]] = {}
+@@ -354,3 +354,13 @@
+             )
+     session.flush()
+     return existing
++
++
++def list_domain_access_for_account(session, account_id):
++    from .access_profiles import effective_access_rows
++    return effective_access_rows(session, account_id)
++
++
++def list_domain_item_access_for_account(session, account_id):
++    from .access_profiles import effective_item_rows
++    return effective_item_rows(session, account_id)
+--- a/RF-One Data Store/rfone_data_store/rfone_web_session.py
++++ b/RF-One Data Store/rfone_data_store/rfone_web_session.py
+@@ -90,10 +90,17 @@
+     if account_id is None:
+         return None
+     account = account_service.get_account(db_session, account_id)
+-    if account is None:
++    if account is None or account.status != ACTIVE_ACCOUNT_STATUS:
+         return None
+     if session_version != account.session_version:
+         return None
++    # A stale ACTIVE account must not keep access after its canonical person
++    # is dismissed. Owner access remains the explicitly approved exception.
++    if not account.is_owner:
++        from . import employee_directory as directory
++        person_id = directory.context_person_id(db_session, "RFONE_ACCOUNT", account.id)
++        if person_id is not None and not directory.employee_is_active(db_session.get(m.Employee, person_id), []):
++            return None
+     return account
+ 
+ 
+--- a/RF-One Data Store/rfone_data_store/training/courses.py
++++ b/RF-One Data Store/rfone_data_store/training/courses.py
+@@ -0,0 +1,145 @@
++"""Versiond course repository extending TrainingPill; caller owns transactions."""
++import hashlib
++import json
++import secrets
++from urllib.parse import urlsplit, unquote
++from sqlalchemy import select, func
++from werkzeug.utils import secure_filename
++from .. import models as m
++
++MAX_FILE_BYTES=25*1024*1024
++MAX_LESSONS=30
++
++
++def document(title='',description='',objective='',lessons=None):
++    return dict(title=title,description=description,objective=objective,lessons=lessons or [])
++
++
++def active_revision(db,pill_id):
++    course=db.get(m.TrainingCourse,pill_id)
++    if not course or course.active_version is None:return None
++    return db.scalar(select(m.TrainingCourseRevision).where(
++        m.TrainingCourseRevision.pill_id==pill_id,m.TrainingCourseRevision.version==course.active_version))
++
++
++def catalog(db):
++    rows=db.execute(select(m.TrainingPill,m.TrainingCourse).outerjoin(m.TrainingCourse,m.TrainingCourse.pill_id==m.TrainingPill.id)
++        .where(~select(m.TrainingRetiredPill.pill_id).where(m.TrainingRetiredPill.pill_id==m.TrainingPill.id).exists())
++        .order_by(m.TrainingPill.title)).all()
++    result=[]
++    for pill,course in rows:
++        revision=active_revision(db,pill.id)
++        data=json.loads(course.draft_json) if course and course.draft_json else json.loads(revision.content_json) if revision else document(pill.title,'',pill.learning_objectives)
++        result.append(dict(id=pill.id,slug=pill.slug,title=data['title'],objective=data['objective'],
++            active_version=course.active_version if course else pill.content_version,
++            has_draft=bool(course and course.draft_json),edit_revision=course.edit_revision if course else 0,
++            data=data,lessons=len(data['lessons'])))
++    return sorted(result,key=lambda row:row['title'].casefold())
++
++
++def validate_url(value,internal=False):
++    value=value.strip()
++    decoded=unquote(value)
++    if any(ord(c)<32 for c in decoded) or '\\' in decoded:
++        raise ValueError('The link is not valid.')
++    parts=urlsplit(value)
++    if internal:
++        if not decoded.startswith('/') or decoded.startswith('//') or parts.scheme or parts.netloc:
++            raise ValueError('For an RF-One page, use a path starting with a single slash /.')
++    elif parts.scheme!='https' or not parts.hostname or parts.username or parts.password:
++        raise ValueError('Enter a valid HTTPS address for an external link.')
++    return value
++
++
++def uploaded_file(db,pill_id,upload):
++    data=upload.read(MAX_FILE_BYTES+1)
++    if not data or len(data)>MAX_FILE_BYTES:raise ValueError('Each file must be between 1 byte and 25 MB.')
++    filename=secure_filename(upload.filename or '')[:255]
++    suffix=filename.rsplit('.',1)[-1].lower()
++    if suffix=='pdf' and data.startswith(b'%PDF-'):media='application/pdf'
++    elif suffix=='mp4' and len(data)>=12 and data[4:8]==b'ftyp':media='video/mp4'
++    elif suffix=='webm' and data.startswith(b'\x1aE\xdf\xa3'):media='video/webm'
++    else:raise ValueError('Upload a valid PDF, MP4 or WebM video.')
++    row=m.TrainingCourseFile(pill_id=pill_id,filename=filename,media_type=media,sha256=hashlib.sha256(data).hexdigest(),data=data)
++    db.add(row);db.flush()
++    return row
++
++
++def save(db, *, pill_id, edit_revision, title, description, objective, lessons, uploads, publish=False):
++    title,description,objective=title.strip(),description.strip(),objective.strip()
++    if not title or len(title)>255:raise ValueError('Enter the course title (up to 255 characters).')
++    if len(description)>10000 or len(objective)>10000:raise ValueError('Description and objective can each contain up to 10,000 characters.')
++    if len(lessons)>MAX_LESSONS:raise ValueError('A course can contain up to 30 lessons.')
++    if pill_id:
++        course=db.scalar(select(m.TrainingCourse).where(m.TrainingCourse.pill_id==pill_id).with_for_update())
++        if not course or db.get(m.TrainingRetiredPill,pill_id):raise ValueError('This course is not available for editing.')
++        if course.edit_revision!=edit_revision:raise ValueError('Another session changed this course. Keep your notes and reopen the updated form.')
++        pill=db.get(m.TrainingPill,pill_id)
++    else:
++        pill=m.TrainingPill(slug='course-'+secrets.token_hex(12),title=title,learning_objectives=objective,content_version=1)
++        db.add(pill);db.flush()
++        course=m.TrainingCourse(pill_id=pill.id,edit_revision=0)
++        db.add(course)
++    cleaned=[]
++    for index,item in enumerate(lessons):
++        kind=item.get('kind','text')
++        if kind not in ('text','internal','link','file'):raise ValueError('Invalid material type.')
++        lesson=dict(title=item.get('title','').strip(),kind=kind,url='',text='',file_id=None,filename='')
++        if len(lesson['title'])>255:raise ValueError('A lesson title can contain up to 255 characters.')
++        if kind=='file':
++            upload=uploads[index] if index<len(uploads) else None
++            if upload and upload.filename:
++                file=uploaded_file(db,pill.id,upload)
++            elif item.get('file_id'):
++                try:file_id=int(item['file_id'])
++                except (TypeError,ValueError):raise ValueError('Invalid file reference.')
++                file=db.get(m.TrainingCourseFile,file_id)
++                if not file or file.pill_id!=pill.id:raise ValueError('The selected file does not belong to this course.')
++            else:file=None
++            if file:lesson.update(file_id=file.id,filename=file.filename)
++        elif kind=='text':
++            lesson['text']=item.get('text','').strip()
++            if len(lesson['text'])>50000:raise ValueError('Each lesson can contain up to 50,000 characters of text.')
++        else:
++            raw=item.get('url','').strip()
++            if len(raw)>2048:raise ValueError('The link is too long.')
++            if raw:lesson['url']=validate_url(raw,kind=='internal')
++        if publish:
++            filled=lesson['text'] if kind=='text' else lesson['file_id'] if kind=='file' else lesson['url']
++            if not lesson['title'] or not filled:raise ValueError(f'Complete the title and material for lesson {index+1} before making the course available.')
++        cleaned.append(lesson)
++    data=document(title,description,objective,cleaned)
++    if publish:
++        if not description or not objective or not cleaned:raise ValueError('To make a course available, provide a description, objective and at least one complete lesson.')
++        version=(course.active_version or 0)+1
++        db.add(m.TrainingCourseRevision(pill_id=pill.id,version=version,content_json=json.dumps(data,ensure_ascii=False)))
++        course.active_version=version;course.draft_json=None
++        pill.title=title;pill.learning_objectives=objective;pill.content_version=version
++    else:
++        course.draft_json=json.dumps(data,ensure_ascii=False)
++        if course.active_version is None:pill.title=title;pill.learning_objectives=objective
++    course.edit_revision+=1
++    db.flush()
++    return pill
++
++
++def pin_assignment(db,assignment):
++    revision=active_revision(db,assignment.pill_id)
++    if revision:
++        db.add(m.TrainingCourseAssignmentRevision(assignment_id=assignment.id,revision_id=revision.id))
++        db.flush()
++
++
++def initialize_visual_menu(db):
++    pill=db.scalar(select(m.TrainingPill).where(m.TrainingPill.slug=='visual-menu'))
++    if not pill:raise ValueError('Visual Menu is not present in the catalog.')
++    if db.get(m.TrainingCourse,pill.id):return
++    data=document(pill.title,'The RF-One visual menu with dishes and their learning materials.',pill.learning_objectives,
++        [dict(title='Visual Menu',kind='internal',url='/training/visual-menu',text='',file_id=None,filename='')])
++    db.add(m.TrainingCourse(pill_id=pill.id,active_version=1,edit_revision=0))
++    revision=m.TrainingCourseRevision(pill_id=pill.id,version=1,content_json=json.dumps(data,ensure_ascii=False))
++    db.add(revision);db.flush()
++    for assignment in db.scalars(select(m.TrainingAssignment).where(m.TrainingAssignment.pill_id==pill.id)):
++        if not db.get(m.TrainingCourseAssignmentRevision,assignment.id):
++            db.add(m.TrainingCourseAssignmentRevision(assignment_id=assignment.id,revision_id=revision.id))
++    db.flush()
+--- a/RF-One Data Store/rfone_data_store/training/workspace.py
++++ b/RF-One Data Store/rfone_data_store/training/workspace.py
+@@ -0,0 +1,161 @@
++"""Student roster metadata and assignment orchestration; canonical Training data."""
++from datetime import datetime, timezone
++import secrets
++from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, select, func
++from .. import models as m, rfone_account_service as accounts
++from . import service
++
++
++class TrainingStudentProfile(m.Base):
++    __tablename__ = 'training_student_profiles'
++    training_account_id = Column(Integer, ForeignKey('training_accounts.id'), primary_key=True)
++    employee_id = Column(Integer, ForeignKey('employees.id'), unique=True, nullable=True)
++    phone = Column(String(80), nullable=False, default='', server_default='')
++    archived_at = Column(DateTime(timezone=True), nullable=True)
++    must_change_password = Column(Boolean, nullable=False, default=False, server_default='false')
++
++
++class TrainingAssignmentSubmission(m.Base):
++    __tablename__ = 'training_assignment_submissions'
++    token = Column(String(64), primary_key=True)
++    trainer_id = Column(Integer, ForeignKey('training_accounts.id'), nullable=False)
++
++
++def profile(db, training_id):
++    row = db.get(TrainingStudentProfile, training_id)
++    if row is None:
++        row = TrainingStudentProfile(training_account_id=training_id, phone='', must_change_password=False)
++        db.add(row)
++        db.flush()
++    return row
++
++
++def roster(db):
++    rows = db.execute(select(m.TrainingAccount, m.ActingIdentity, TrainingStudentProfile,
++                            m.RFOneAccount).join(m.ActingIdentity, m.TrainingAccount.acting_identity_id==m.ActingIdentity.id)
++        .outerjoin(TrainingStudentProfile, TrainingStudentProfile.training_account_id==m.TrainingAccount.id)
++        .outerjoin(m.RFOneTrainingIdentityLink, m.RFOneTrainingIdentityLink.training_account_id==m.TrainingAccount.id)
++        .outerjoin(m.RFOneAccount, m.RFOneAccount.id==m.RFOneTrainingIdentityLink.rfone_account_id)
++        .where(m.TrainingAccount.role=='student').order_by(m.ActingIdentity.display_name)).all()
++    return [dict(id=a.id, name=i.display_name, username=a.username, email=r.email if r else '',
++                 phone=p.phone if p else '', archived=bool(p and p.archived_at),
++                 employee_id=p.employee_id if p else None, pending=bool(p and p.must_change_password),
++                 account_id=r.id if r else None,active=(r is None or r.status=='ACTIVE')) for a,i,p,r in rows]
++
++
++def linked_account(db, training_id):
++    link = db.scalar(select(m.RFOneTrainingIdentityLink).where(m.RFOneTrainingIdentityLink.training_account_id==training_id))
++    return db.get(m.RFOneAccount, link.rfone_account_id) if link else None
++
++
++def editable_student(db, training_id):
++    a=db.get(m.TrainingAccount,training_id)
++    if a is None or a.role!='student':
++        raise ValueError('Student not found.')
++    p=profile(db,a.id)
++    if p.employee_id:
++        raise ValueError('This recipient belongs to the employee directory.')
++    r=linked_account(db,a.id)
++    if r:
++        from .. import access_profiles as profiles
++        companies = profiles.company_ids_for_account(db, r.id) | {None}
++        grants = [g for company in companies for g in profiles.effective_permissions(db, r.id, company_id=company).items()]
++        if r.is_admin or not grants or any(code != 'TRAINING' or value['role_code'] != 'student' for code,value in grants):
++            raise ValueError('An RF-One administrator must manage this account’s credentials.')
++    return a,p,r
++
++
++def save_student(db, training_id, *, name, username, email, phone, password=''):
++    a,p,r=editable_student(db,training_id)
++    name,username,email,phone=name.strip(),username.strip().lower(),email.strip().lower(),phone.strip()
++    if not name or not username or len(name)>255 or len(username)>64 or len(phone)>80:
++        raise ValueError('Enter the full name and a valid username (up to 64 characters).')
++    if not email or '@' not in email or email.startswith('@') or email.endswith('@'):
++        raise ValueError('Enter a valid email address.')
++    if db.scalar(select(m.TrainingAccount.id).where(m.TrainingAccount.username==username,m.TrainingAccount.id!=a.id)):
++        raise ValueError('This username is already in use.')
++    other=db.scalar(select(m.RFOneAccount).where(m.RFOneAccount.username==username))
++    if other and (r is None or other.id!=r.id):
++        raise ValueError('This username is already in use.')
++    accounts.check_email_available(db,email,exclude_account_id=r.id if r else None)
++    if r is None:
++        if not password:
++            raise ValueError('Set an initial password to enable RF-One access.')
++        r=accounts.create_account(db,username=username,display_name=name,password=password,email=email)
++        accounts.set_domain_access(db,account_id=r.id,domain_code='TRAINING',enabled=True,role_code='student')
++        db.add(m.RFOneTrainingIdentityLink(rfone_account_id=r.id,training_account_id=a.id))
++    if password:
++        if len(password)<8:
++            raise ValueError('The password must contain at least 8 characters.')
++        accounts.set_password(db,r,password)
++        p.must_change_password=True
++    if r.username!=username:
++        r.session_version+=1
++    if r.email!=email:
++        r.email_verified_at=None
++    a.username=r.username=username
++    r.display_name=name
++    r.email=email
++    db.get(m.ActingIdentity,a.acting_identity_id).display_name=name
++    p.phone=phone
++    db.flush()
++    return a
++
++
++def archive_student(db, training_id, archived):
++    a,p,r=editable_student(db,training_id)
++    p.archived_at=datetime.now(timezone.utc) if archived else None
++    if r:
++        r.status='INACTIVE' if archived else 'ACTIVE'
++        r.session_version+=1
++    db.flush()
++
++
++def assign(db, *, trainer_id, recipients, pill_ids, purpose, token):
++    if not purpose.strip() or not recipients or not pill_ids:
++        raise ValueError('Provide the objective, at least one recipient and at least one content item.')
++    trainer=db.get(m.TrainingAccount,trainer_id)
++    if not trainer or trainer.role!='trainer':
++        raise ValueError('The trainer role is required.')
++    if not token or len(token)>64:
++        raise ValueError('Reopen the page to confirm the assignment.')
++    if db.get(TrainingAssignmentSubmission,token):
++        raise ValueError('This assignment has already been saved.')
++    db.add(TrainingAssignmentSubmission(token=token,trainer_id=trainer_id))
++    db.flush()
++    pills=[p.id for p in service.list_all_pills(db) if p.id in pill_ids]
++    if set(pills)!=set(pill_ids):
++        raise ValueError('A selected content item is no longer available.')
++    # Serialize requests from this trainer, including employee identity creation.
++    db.execute(select(m.TrainingAccount.id).where(m.TrainingAccount.id==trainer_id).with_for_update())
++    students=[]
++    for value in sorted(set(recipients)):
++        try:
++            kind,raw=value.split(':'); key=int(raw)
++        except (ValueError,AttributeError):
++            raise ValueError('Invalid recipient.')
++        if kind=='student':
++            a=db.get(m.TrainingAccount,key)
++            p=db.get(TrainingStudentProfile,key)
++            r=linked_account(db,key)
++            if not a or a.role!='student' or (p and (p.archived_at or p.employee_id)) or (r and r.status!='ACTIVE'):
++                raise ValueError('A selected student is not active.')
++        elif kind=='employee':
++            employee=db.get(m.Employee,key)
++            if not employee or employee.active is False:
++                raise ValueError('A selected employee is not active.')
++            p=db.scalar(select(TrainingStudentProfile).where(TrainingStudentProfile.employee_id==key))
++            if p:
++                a=db.get(m.TrainingAccount,p.training_account_id)
++            else:
++                a=service.create_account(db,display_name=employee.display_name or f'Dipendente {key}',
++                    username='employee-'+str(key)+'-'+secrets.token_hex(4),password=secrets.token_urlsafe(32),role='student',created_by_account_id=trainer_id)
++                p=profile(db,a.id);p.employee_id=key
++        else:
++            raise ValueError('Invalid recipient type.')
++        students.append(a.id)
++    for student_id in set(students):
++        need=service.create_need(db,student_account_id=student_id,text=purpose,origin='other',created_by_account_id=trainer_id)
++        for pill_id in sorted(set(pill_ids)):
++            service.assign_pill(db,need_id=need.id,pill_id=pill_id,assigned_by_account_id=trainer_id)
++    return len(set(students))*len(set(pill_ids))
+--- a/RF-One Data Store/rfone_data_store/web_access.py
++++ b/RF-One Data Store/rfone_data_store/web_access.py
+@@ -0,0 +1,57 @@
++"""Flask adapters for the shared Registry policy; no cached grants in cookies."""
++from flask import g, session as browser_session
++from . import access_profiles as profiles, rfone_web_session as shared
++
++
++def install_access_context(app, session_factory, account_loader=None):
++    """Resolve the validated company before every domain/blueprint gate."""
++    if app.extensions.get("registry_access_context"):
++        return
++    app.extensions["registry_access_context"] = True
++    @app.after_request
++    def protect_authorized_response(response):
++        # A permission-dependent page must be rechecked after a Registry change.
++        if response.mimetype == "text/html":
++            response.headers["Cache-Control"] = "no-store"
++        return response
++
++    def resolve_company():
++        with session_factory() as db:
++            account = account_loader(db) if account_loader else shared.account_for_session(
++                db, account_id=browser_session.get(shared.SESSION_ACCOUNT_KEY),
++                session_version=browser_session.get(shared.SESSION_VERSION_KEY))
++            allowed = profiles.company_ids_for_account(db, account.id) if account else set()
++            chosen = browser_session.get("rfone_company_context")
++            if chosen not in allowed:
++                chosen = min(allowed) if allowed else None
++            g.registry_company_token = profiles.company_context.set(chosen)
++    app.before_request_funcs.setdefault(None, []).insert(0, resolve_company)
++    @app.teardown_request
++    def release_company(error):
++        token = g.pop("registry_company_token", None)
++        if token is not None:
++            profiles.company_context.reset(token)
++
++
++class AuthorizedTrainingAccount:
++    """Request-only role view. The domain identity/history is never rewritten."""
++    def __init__(self, account, role):
++        self._account, self.role = account, role
++    def __getattr__(self, name):
++        return getattr(self._account, name)
++
++
++def training_account_for_rf1(db, account):
++    from . import models as m, rfone_account_service as accounts
++    if account is None:
++        return None
++    grants = accounts.list_domain_access_for_account(db, account.id)
++    grant = next((r for r in grants if r.domain_code == "TRAINING" and r.enabled), None)
++    role = accounts.normalize_role_code(grant.role_code) if grant else None
++    if role == accounts.DOMAIN_ADMIN_ROLE:
++        role = "trainer"
++    if role not in ("trainer", "student"):
++        return None
++    link = db.query(m.RFOneTrainingIdentityLink).filter_by(rfone_account_id=account.id).first()
++    identity = db.get(m.TrainingAccount, link.training_account_id) if link else None
++    return AuthorizedTrainingAccount(identity, role) if identity else None
+--- a/Selection/app.py
++++ b/Selection/app.py
+@@ -163,6 +163,8 @@
+ SessionFactory = create_session_factory(_engine)
+ 
+ app = Flask(__name__)
++from rfone_data_store.web_access import install_access_context
++install_access_context(app, SessionFactory)
+ 
+ # GLOBAL_INTEGRITY_FIX_002 / C-1 — needed only to sign the pre-Authentication
+ # identity-selection cookie set by `/identity/switch` below (which ActingIdentity

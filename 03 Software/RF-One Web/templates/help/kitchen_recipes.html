@@ -1,0 +1,21 @@
+<section id="kitchen-recipes">
+  <p>Recipes and Preparations contains two expandable lists. Recipes are finished dishes; Preparations are intermediate recipes used in other compositions. Open a section to see its records. New recipe or New preparation creates a record; Edit changes its details; Components manages its composition.</p>
+  <section id="recipe-form-help"><h3>Recipe details</h3>
+    <p>Enter the Name and select a Category from Configuration, or leave it Unassigned. Save stores the record in the section from which you started. Category changes do not change the recipe type. Existing archived category assignments remain visible.</p>
+    <p>Cancel, × or Escape closes the form without saving. If saving fails, your entry remains in the dialog. The ? button opens this explanation without discarding the form.</p>
+  </section>
+  <section id="recipe-composition-help"><h3>Recipe composition</h3>
+    <p>Each row contains Components, Preparation used, Grams and Instructions. Select either a component from Configuration or an existing preparation, never both on the same row. Selecting one automatically clears the other selection; grams and instructions remain unchanged. Repeated components and preparations on separate rows are allowed. Unmatched imported references are shown as Imported and stay available until you change or remove their row.</p>
+    <p>An imported row that already contains both sources is highlighted. Clear one selection before saving; the system does not choose or discard imported information for you. The same exclusive-choice rule is checked again when saving.</p>
+    <p>Add row inserts a draft row at the end. Remove deletes a row from the draft and takes effect only when you select Save composition. Instructions without a selected component can be retained. Cancel, × or Escape discards all unsaved row changes.</p>
+    <p>Total grams sums component and preparation quantities. Missing quantities are shown as unknown weight. Actual work time is entered separately in minutes and is excluded from the weight.</p>
+    <p>Save composition applies all changes together. Invalid selections, negative quantities, circular use of preparations and changes saved by another operator are refused while your draft remains open. Changed ingredient quantities or references clear outdated cached costs and nutrition; the original source evidence is retained.</p>
+    <p>The ? button opens this explanation while preserving the draft. Closing an editor returns to the same page row and position.</p>
+  </section>
+  <p>Only tabs permitted for your account are available. Close this help with × or Escape.</p>
+  <section id="recipe-plating-help"><h3>Plating image and description</h3>
+    <p>Select Plating on a recipe or preparation to manage its image and free-text Plating description. Choose a JPEG, PNG or WebP file up to 10 MB and 40 megapixels. The selected file is previewed before saving.</p>
+    <p>Save plating stores the description and any chosen image. Saving without choosing a file keeps the current image. Uploading a new file replaces the current plating image while preserving previous photo records. Existing Visual Menu cards linked to this recipe use the new image.</p>
+    <p>Cancel, × or Escape discards the unsaved file and description. The ? button preserves the draft while showing this explanation. Invalid files or a recipe changed by another operator are refused without overwriting saved data.</p>
+  </section>
+</section>

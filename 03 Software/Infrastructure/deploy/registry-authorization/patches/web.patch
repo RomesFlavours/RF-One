@@ -1,0 +1,733 @@
+--- a/RF-One Data Store/migrations/aws_applied_revision.json
++++ b/RF-One Data Store/migrations/aws_applied_revision.json
+@@ -1,13 +1,14 @@
+ {
+   "purpose": "Alembic revision currently applied to the shared AWS database. Every service build must contain it (check_migration_chain.py). Update it in the same commit that records a migration applied on AWS. See MIGRATIONS.md.",
+   "database": "rfone-dev / rfone (RDS, us-east-1, account 418674484214)",
+-  "revision": "e0a120261101",
+-  "applied_utc": "2026-11-01T20:00Z",
+-  "applied_by": "rfone-web release interviews-test-20261101t195949z, ECS task rfone-jobs/1b522433fe554dd2bcde4c3d7d0d434f (d9e220261029 -> e0a120261101)",
++  "revision": "t9a120261110",
++  "previous_revision": "f3b120261110",
++  "verified_utc": "2026-11-10T16:37:09.310005+00:00",
++  "applied_by": "Training release 88c4d0a8198f55fbeba3cda3d17003bdfb066b9a",
+   "evidence": {
+-    "deployed_source": "s3://rfone-tips-deploy-418674484214/releases/interviews-test-20261101t202720z/source.zip",
+-    "deployed_source_sha256": "f6a7861ee5129177ff3a2bba69b3798bc4931b8caa80129c83d0363df1527c6e",
+-    "migration_file_git_blob": "244f462778598bf9808f3c8a15364daca5e0b226",
+-    "pre_migration_snapshot": "rfone-dev-pre-interviews-test-20261101t195736z"
++    "source_s3_key": "training/releases/88c4d0a8198f55fbeba3cda3d17003bdfb066b9a/source.zip",
++    "source_sha256": "dfd0a7cf9b29b922206a5a0ebdc66ebda38479ef2577419a2e8193005d9bbe31",
++    "snapshot": "rfone-dev-pre-training-f3-24f64624fd38",
++    "protected_data_unchanged": true
+   }
+ }
+--- a/RF-One Data Store/migrations/versions/t9a120261110_publish_training_aws.py
++++ b/RF-One Data Store/migrations/versions/t9a120261110_publish_training_aws.py
+@@ -0,0 +1,24 @@
++"""Additive Training repository on the published AWS schema; no directory writes."""
++from alembic import op
++import sqlalchemy as sa
++from rfone_data_store import models as m
++from rfone_data_store.training.workspace import TrainingStudentProfile,TrainingAssignmentSubmission
++
++revision='t9a120261110'
++down_revision='f3b120261110'
++branch_labels=None
++depends_on=None
++
++
++def upgrade():
++    bind=op.get_bind()
++    models=[TrainingStudentProfile,TrainingAssignmentSubmission,m.TrainingRetiredPill,m.TrainingCourse,
++            m.TrainingCourseRevision,m.TrainingCourseFile,m.TrainingCourseAssignmentRevision]
++    for model in models:
++        table=model.__table__;table.create(bind,checkfirst=True)
++        existing={c['name'] for c in sa.inspect(bind).get_columns(table.name)}
++        if not set(table.c.keys())<=existing:raise RuntimeError('Incompatible Training table: '+table.name)
++
++
++def downgrade():
++    raise RuntimeError('Restore the prior service/routing. Do not destroy course versions, files or student history.')
+--- a/RF-One Data Store/rfone_data_store/dev_journal/service.py
++++ b/RF-One Data Store/rfone_data_store/dev_journal/service.py
+@@ -117,16 +117,11 @@
+ def journal_accounts(db: Session) -> list[m.RFOneAccount]:
+     """ACTIVE accounts holding the enabled DEV_JOURNAL access — the people
+     who may be named responsible, and the future MyRF recipients."""
+-    return list(db.scalars(
+-        select(m.RFOneAccount)
+-        .join(m.RFOneAccountDomainAccess, m.RFOneAccountDomainAccess.account_id == m.RFOneAccount.id)
+-        .where(
+-            m.RFOneAccountDomainAccess.domain_code == ACCESS_CODE,
+-            m.RFOneAccountDomainAccess.enabled.is_(True),
+-            m.RFOneAccount.status == "ACTIVE",
+-        )
+-        .order_by(m.RFOneAccount.display_name)
+-    ))
++    from .. import rfone_web_session as shared
++    candidates = db.scalars(select(m.RFOneAccount).where(
++        m.RFOneAccount.status == "ACTIVE").order_by(m.RFOneAccount.display_name))
++    return [account for account in candidates if shared.account_may_enter_domain(db, account, ACCESS_CODE)]
++
+ 
+ 
+ def _check_responsible(db: Session, account_id: int | None, *, keep_current: int | None = None) -> int:
+--- a/RF-One Data Store/rfone_data_store/models.py
++++ b/RF-One Data Store/rfone_data_store/models.py
+@@ -15083,3 +15083,45 @@
+     ProjectTaskDependency,
+     ProjectResponsible,
+ )
++
++
++class TrainingCourseRevision(Base):
++    __tablename__ = "training_course_revisions"
++    __table_args__ = (UniqueConstraint("pill_id", "version"),)
++    id: Mapped[int] = mapped_column(Integer, primary_key=True)
++    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), nullable=False)
++    version: Mapped[int] = mapped_column(Integer, nullable=False)
++    content_json: Mapped[str] = mapped_column(Text, nullable=False)
++    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
++
++
++class TrainingCourse(Base):
++    """Mutable preparation state extending the existing Training content identity."""
++    __tablename__ = "training_courses"
++    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), primary_key=True)
++    active_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
++    draft_json: Mapped[str | None] = mapped_column(Text, nullable=True)
++    edit_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
++
++
++class TrainingCourseFile(Base):
++    __tablename__ = "training_course_files"
++    id: Mapped[int] = mapped_column(Integer, primary_key=True)
++    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), nullable=False)
++    filename: Mapped[str] = mapped_column(String(255), nullable=False)
++    media_type: Mapped[str] = mapped_column(String(80), nullable=False)
++    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
++    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
++
++
++class TrainingCourseAssignmentRevision(Base):
++    __tablename__ = "training_course_assignment_revisions"
++    assignment_id: Mapped[int] = mapped_column(ForeignKey("training_assignments.id"), primary_key=True)
++    revision_id: Mapped[int] = mapped_column(ForeignKey("training_course_revisions.id"), nullable=False)
++
++
++class TrainingRetiredPill(Base):
++    """Withdrawn catalog entries retained for historical assignment integrity."""
++    __tablename__ = "training_retired_pills"
++    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), primary_key=True)
++    retired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+--- a/RF-One Data Store/rfone_data_store/rfone_web_session.py
++++ b/RF-One Data Store/rfone_data_store/rfone_web_session.py
+@@ -90,10 +90,17 @@
+     if account_id is None:
+         return None
+     account = account_service.get_account(db_session, account_id)
+-    if account is None:
++    if account is None or account.status != ACTIVE_ACCOUNT_STATUS:
+         return None
+     if session_version != account.session_version:
+         return None
++    # A stale ACTIVE account must not keep access after its canonical person
++    # is dismissed. Owner access remains the explicitly approved exception.
++    if not account.is_owner:
++        from . import employee_directory as directory
++        person_id = directory.context_person_id(db_session, "RFONE_ACCOUNT", account.id)
++        if person_id is not None and not directory.employee_is_active(db_session.get(m.Employee, person_id), []):
++            return None
+     return account
+ 
+ 
+--- a/RF-One Data Store/rfone_data_store/training/courses.py
++++ b/RF-One Data Store/rfone_data_store/training/courses.py
+@@ -0,0 +1,145 @@
++"""Versiond course repository extending TrainingPill; caller owns transactions."""
++import hashlib
++import json
++import secrets
++from urllib.parse import urlsplit, unquote
++from sqlalchemy import select, func
++from werkzeug.utils import secure_filename
++from .. import models as m
++
++MAX_FILE_BYTES=25*1024*1024
++MAX_LESSONS=30
++
++
++def document(title='',description='',objective='',lessons=None):
++    return dict(title=title,description=description,objective=objective,lessons=lessons or [])
++
++
++def active_revision(db,pill_id):
++    course=db.get(m.TrainingCourse,pill_id)
++    if not course or course.active_version is None:return None
++    return db.scalar(select(m.TrainingCourseRevision).where(
++        m.TrainingCourseRevision.pill_id==pill_id,m.TrainingCourseRevision.version==course.active_version))
++
++
++def catalog(db):
++    rows=db.execute(select(m.TrainingPill,m.TrainingCourse).outerjoin(m.TrainingCourse,m.TrainingCourse.pill_id==m.TrainingPill.id)
++        .where(~select(m.TrainingRetiredPill.pill_id).where(m.TrainingRetiredPill.pill_id==m.TrainingPill.id).exists())
++        .order_by(m.TrainingPill.title)).all()
++    result=[]
++    for pill,course in rows:
++        revision=active_revision(db,pill.id)
++        data=json.loads(course.draft_json) if course and course.draft_json else json.loads(revision.content_json) if revision else document(pill.title,'',pill.learning_objectives)
++        result.append(dict(id=pill.id,slug=pill.slug,title=data['title'],objective=data['objective'],
++            active_version=course.active_version if course else pill.content_version,
++            has_draft=bool(course and course.draft_json),edit_revision=course.edit_revision if course else 0,
++            data=data,lessons=len(data['lessons'])))
++    return sorted(result,key=lambda row:row['title'].casefold())
++
++
++def validate_url(value,internal=False):
++    value=value.strip()
++    decoded=unquote(value)
++    if any(ord(c)<32 for c in decoded) or '\\' in decoded:
++        raise ValueError('The link is not valid.')
++    parts=urlsplit(value)
++    if internal:
++        if not decoded.startswith('/') or decoded.startswith('//') or parts.scheme or parts.netloc:
++            raise ValueError('For an RF-One page, use a path starting with a single slash /.')
++    elif parts.scheme!='https' or not parts.hostname or parts.username or parts.password:
++        raise ValueError('Enter a valid HTTPS address for an external link.')
++    return value
++
++
++def uploaded_file(db,pill_id,upload):
++    data=upload.read(MAX_FILE_BYTES+1)
++    if not data or len(data)>MAX_FILE_BYTES:raise ValueError('Each file must be between 1 byte and 25 MB.')
++    filename=secure_filename(upload.filename or '')[:255]
++    suffix=filename.rsplit('.',1)[-1].lower()
++    if suffix=='pdf' and data.startswith(b'%PDF-'):media='application/pdf'
++    elif suffix=='mp4' and len(data)>=12 and data[4:8]==b'ftyp':media='video/mp4'
++    elif suffix=='webm' and data.startswith(b'\x1aE\xdf\xa3'):media='video/webm'
++    else:raise ValueError('Upload a valid PDF, MP4 or WebM video.')
++    row=m.TrainingCourseFile(pill_id=pill_id,filename=filename,media_type=media,sha256=hashlib.sha256(data).hexdigest(),data=data)
++    db.add(row);db.flush()
++    return row
++
++
++def save(db, *, pill_id, edit_revision, title, description, objective, lessons, uploads, publish=False):
++    title,description,objective=title.strip(),description.strip(),objective.strip()
++    if not title or len(title)>255:raise ValueError('Enter the course title (up to 255 characters).')
++    if len(description)>10000 or len(objective)>10000:raise ValueError('Description and objective can each contain up to 10,000 characters.')
++    if len(lessons)>MAX_LESSONS:raise ValueError('A course can contain up to 30 lessons.')
++    if pill_id:
++        course=db.scalar(select(m.TrainingCourse).where(m.TrainingCourse.pill_id==pill_id).with_for_update())
++        if not course or db.get(m.TrainingRetiredPill,pill_id):raise ValueError('This course is not available for editing.')
++        if course.edit_revision!=edit_revision:raise ValueError('Another session changed this course. Keep your notes and reopen the updated form.')
++        pill=db.get(m.TrainingPill,pill_id)
++    else:
++        pill=m.TrainingPill(slug='course-'+secrets.token_hex(12),title=title,learning_objectives=objective,content_version=1)
++        db.add(pill);db.flush()
++        course=m.TrainingCourse(pill_id=pill.id,edit_revision=0)
++        db.add(course)
++    cleaned=[]
++    for index,item in enumerate(lessons):
++        kind=item.get('kind','text')
++        if kind not in ('text','internal','link','file'):raise ValueError('Invalid material type.')
++        lesson=dict(title=item.get('title','').strip(),kind=kind,url='',text='',file_id=None,filename='')
++        if len(lesson['title'])>255:raise ValueError('A lesson title can contain up to 255 characters.')
++        if kind=='file':
++            upload=uploads[index] if index<len(uploads) else None
++            if upload and upload.filename:
++                file=uploaded_file(db,pill.id,upload)
++            elif item.get('file_id'):
++                try:file_id=int(item['file_id'])
++                except (TypeError,ValueError):raise ValueError('Invalid file reference.')
++                file=db.get(m.TrainingCourseFile,file_id)
++                if not file or file.pill_id!=pill.id:raise ValueError('The selected file does not belong to this course.')
++            else:file=None
++            if file:lesson.update(file_id=file.id,filename=file.filename)
++        elif kind=='text':
++            lesson['text']=item.get('text','').strip()
++            if len(lesson['text'])>50000:raise ValueError('Each lesson can contain up to 50,000 characters of text.')
++        else:
++            raw=item.get('url','').strip()
++            if len(raw)>2048:raise ValueError('The link is too long.')
++            if raw:lesson['url']=validate_url(raw,kind=='internal')
++        if publish:
++            filled=lesson['text'] if kind=='text' else lesson['file_id'] if kind=='file' else lesson['url']
++            if not lesson['title'] or not filled:raise ValueError(f'Complete the title and material for lesson {index+1} before making the course available.')
++        cleaned.append(lesson)
++    data=document(title,description,objective,cleaned)
++    if publish:
++        if not description or not objective or not cleaned:raise ValueError('To make a course available, provide a description, objective and at least one complete lesson.')
++        version=(course.active_version or 0)+1
++        db.add(m.TrainingCourseRevision(pill_id=pill.id,version=version,content_json=json.dumps(data,ensure_ascii=False)))
++        course.active_version=version;course.draft_json=None
++        pill.title=title;pill.learning_objectives=objective;pill.content_version=version
++    else:
++        course.draft_json=json.dumps(data,ensure_ascii=False)
++        if course.active_version is None:pill.title=title;pill.learning_objectives=objective
++    course.edit_revision+=1
++    db.flush()
++    return pill
++
++
++def pin_assignment(db,assignment):
++    revision=active_revision(db,assignment.pill_id)
++    if revision:
++        db.add(m.TrainingCourseAssignmentRevision(assignment_id=assignment.id,revision_id=revision.id))
++        db.flush()
++
++
++def initialize_visual_menu(db):
++    pill=db.scalar(select(m.TrainingPill).where(m.TrainingPill.slug=='visual-menu'))
++    if not pill:raise ValueError('Visual Menu is not present in the catalog.')
++    if db.get(m.TrainingCourse,pill.id):return
++    data=document(pill.title,'The RF-One visual menu with dishes and their learning materials.',pill.learning_objectives,
++        [dict(title='Visual Menu',kind='internal',url='/training/visual-menu',text='',file_id=None,filename='')])
++    db.add(m.TrainingCourse(pill_id=pill.id,active_version=1,edit_revision=0))
++    revision=m.TrainingCourseRevision(pill_id=pill.id,version=1,content_json=json.dumps(data,ensure_ascii=False))
++    db.add(revision);db.flush()
++    for assignment in db.scalars(select(m.TrainingAssignment).where(m.TrainingAssignment.pill_id==pill.id)):
++        if not db.get(m.TrainingCourseAssignmentRevision,assignment.id):
++            db.add(m.TrainingCourseAssignmentRevision(assignment_id=assignment.id,revision_id=revision.id))
++    db.flush()
+--- a/RF-One Data Store/rfone_data_store/training/workspace.py
++++ b/RF-One Data Store/rfone_data_store/training/workspace.py
+@@ -0,0 +1,161 @@
++"""Student roster metadata and assignment orchestration; canonical Training data."""
++from datetime import datetime, timezone
++import secrets
++from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, select, func
++from .. import models as m, rfone_account_service as accounts
++from . import service
++
++
++class TrainingStudentProfile(m.Base):
++    __tablename__ = 'training_student_profiles'
++    training_account_id = Column(Integer, ForeignKey('training_accounts.id'), primary_key=True)
++    employee_id = Column(Integer, ForeignKey('employees.id'), unique=True, nullable=True)
++    phone = Column(String(80), nullable=False, default='', server_default='')
++    archived_at = Column(DateTime(timezone=True), nullable=True)
++    must_change_password = Column(Boolean, nullable=False, default=False, server_default='false')
++
++
++class TrainingAssignmentSubmission(m.Base):
++    __tablename__ = 'training_assignment_submissions'
++    token = Column(String(64), primary_key=True)
++    trainer_id = Column(Integer, ForeignKey('training_accounts.id'), nullable=False)
++
++
++def profile(db, training_id):
++    row = db.get(TrainingStudentProfile, training_id)
++    if row is None:
++        row = TrainingStudentProfile(training_account_id=training_id, phone='', must_change_password=False)
++        db.add(row)
++        db.flush()
++    return row
++
++
++def roster(db):
++    rows = db.execute(select(m.TrainingAccount, m.ActingIdentity, TrainingStudentProfile,
++                            m.RFOneAccount).join(m.ActingIdentity, m.TrainingAccount.acting_identity_id==m.ActingIdentity.id)
++        .outerjoin(TrainingStudentProfile, TrainingStudentProfile.training_account_id==m.TrainingAccount.id)
++        .outerjoin(m.RFOneTrainingIdentityLink, m.RFOneTrainingIdentityLink.training_account_id==m.TrainingAccount.id)
++        .outerjoin(m.RFOneAccount, m.RFOneAccount.id==m.RFOneTrainingIdentityLink.rfone_account_id)
++        .where(m.TrainingAccount.role=='student').order_by(m.ActingIdentity.display_name)).all()
++    return [dict(id=a.id, name=i.display_name, username=a.username, email=r.email if r else '',
++                 phone=p.phone if p else '', archived=bool(p and p.archived_at),
++                 employee_id=p.employee_id if p else None, pending=bool(p and p.must_change_password),
++                 account_id=r.id if r else None,active=(r is None or r.status=='ACTIVE')) for a,i,p,r in rows]
++
++
++def linked_account(db, training_id):
++    link = db.scalar(select(m.RFOneTrainingIdentityLink).where(m.RFOneTrainingIdentityLink.training_account_id==training_id))
++    return db.get(m.RFOneAccount, link.rfone_account_id) if link else None
++
++
++def editable_student(db, training_id):
++    a=db.get(m.TrainingAccount,training_id)
++    if a is None or a.role!='student':
++        raise ValueError('Student not found.')
++    p=profile(db,a.id)
++    if p.employee_id:
++        raise ValueError('This recipient belongs to the employee directory.')
++    r=linked_account(db,a.id)
++    if r:
++        from .. import access_profiles as profiles
++        companies = profiles.company_ids_for_account(db, r.id) | {None}
++        grants = [g for company in companies for g in profiles.effective_permissions(db, r.id, company_id=company).items()]
++        if r.is_admin or not grants or any(code != 'TRAINING' or value['role_code'] != 'student' for code,value in grants):
++            raise ValueError('An RF-One administrator must manage this account’s credentials.')
++    return a,p,r
++
++
++def save_student(db, training_id, *, name, username, email, phone, password=''):
++    a,p,r=editable_student(db,training_id)
++    name,username,email,phone=name.strip(),username.strip().lower(),email.strip().lower(),phone.strip()
++    if not name or not username or len(name)>255 or len(username)>64 or len(phone)>80:
++        raise ValueError('Enter the full name and a valid username (up to 64 characters).')
++    if not email or '@' not in email or email.startswith('@') or email.endswith('@'):
++        raise ValueError('Enter a valid email address.')
++    if db.scalar(select(m.TrainingAccount.id).where(m.TrainingAccount.username==username,m.TrainingAccount.id!=a.id)):
++        raise ValueError('This username is already in use.')
++    other=db.scalar(select(m.RFOneAccount).where(m.RFOneAccount.username==username))
++    if other and (r is None or other.id!=r.id):
++        raise ValueError('This username is already in use.')
++    accounts.check_email_available(db,email,exclude_account_id=r.id if r else None)
++    if r is None:
++        if not password:
++            raise ValueError('Set an initial password to enable RF-One access.')
++        r=accounts.create_account(db,username=username,display_name=name,password=password,email=email)
++        accounts.set_domain_access(db,account_id=r.id,domain_code='TRAINING',enabled=True,role_code='student')
++        db.add(m.RFOneTrainingIdentityLink(rfone_account_id=r.id,training_account_id=a.id))
++    if password:
++        if len(password)<8:
++            raise ValueError('The password must contain at least 8 characters.')
++        accounts.set_password(db,r,password)
++        p.must_change_password=True
++    if r.username!=username:
++        r.session_version+=1
++    if r.email!=email:
++        r.email_verified_at=None
++    a.username=r.username=username
++    r.display_name=name
++    r.email=email
++    db.get(m.ActingIdentity,a.acting_identity_id).display_name=name
++    p.phone=phone
++    db.flush()
++    return a
++
++
++def archive_student(db, training_id, archived):
++    a,p,r=editable_student(db,training_id)
++    p.archived_at=datetime.now(timezone.utc) if archived else None
++    if r:
++        r.status='INACTIVE' if archived else 'ACTIVE'
++        r.session_version+=1
++    db.flush()
++
++
++def assign(db, *, trainer_id, recipients, pill_ids, purpose, token):
++    if not purpose.strip() or not recipients or not pill_ids:
++        raise ValueError('Provide the objective, at least one recipient and at least one content item.')
++    trainer=db.get(m.TrainingAccount,trainer_id)
++    if not trainer or trainer.role!='trainer':
++        raise ValueError('The trainer role is required.')
++    if not token or len(token)>64:
++        raise ValueError('Reopen the page to confirm the assignment.')
++    if db.get(TrainingAssignmentSubmission,token):
++        raise ValueError('This assignment has already been saved.')
++    db.add(TrainingAssignmentSubmission(token=token,trainer_id=trainer_id))
++    db.flush()
++    pills=[p.id for p in service.list_all_pills(db) if p.id in pill_ids]
++    if set(pills)!=set(pill_ids):
++        raise ValueError('A selected content item is no longer available.')
++    # Serialize requests from this trainer, including employee identity creation.
++    db.execute(select(m.TrainingAccount.id).where(m.TrainingAccount.id==trainer_id).with_for_update())
++    students=[]
++    for value in sorted(set(recipients)):
++        try:
++            kind,raw=value.split(':'); key=int(raw)
++        except (ValueError,AttributeError):
++            raise ValueError('Invalid recipient.')
++        if kind=='student':
++            a=db.get(m.TrainingAccount,key)
++            p=db.get(TrainingStudentProfile,key)
++            r=linked_account(db,key)
++            if not a or a.role!='student' or (p and (p.archived_at or p.employee_id)) or (r and r.status!='ACTIVE'):
++                raise ValueError('A selected student is not active.')
++        elif kind=='employee':
++            employee=db.get(m.Employee,key)
++            if not employee or employee.active is False:
++                raise ValueError('A selected employee is not active.')
++            p=db.scalar(select(TrainingStudentProfile).where(TrainingStudentProfile.employee_id==key))
++            if p:
++                a=db.get(m.TrainingAccount,p.training_account_id)
++            else:
++                a=service.create_account(db,display_name=employee.display_name or f'Dipendente {key}',
++                    username='employee-'+str(key)+'-'+secrets.token_hex(4),password=secrets.token_urlsafe(32),role='student',created_by_account_id=trainer_id)
++                p=profile(db,a.id);p.employee_id=key
++        else:
++            raise ValueError('Invalid recipient type.')
++        students.append(a.id)
++    for student_id in set(students):
++        need=service.create_need(db,student_account_id=student_id,text=purpose,origin='other',created_by_account_id=trainer_id)
++        for pill_id in sorted(set(pill_ids)):
++            service.assign_pill(db,need_id=need.id,pill_id=pill_id,assigned_by_account_id=trainer_id)
++    return len(set(students))*len(set(pill_ids))
+--- a/RF-One Data Store/rfone_data_store/web_access.py
++++ b/RF-One Data Store/rfone_data_store/web_access.py
+@@ -0,0 +1,57 @@
++"""Flask adapters for the shared Registry policy; no cached grants in cookies."""
++from flask import g, session as browser_session
++from . import access_profiles as profiles, rfone_web_session as shared
++
++
++def install_access_context(app, session_factory, account_loader=None):
++    """Resolve the validated company before every domain/blueprint gate."""
++    if app.extensions.get("registry_access_context"):
++        return
++    app.extensions["registry_access_context"] = True
++    @app.after_request
++    def protect_authorized_response(response):
++        # A permission-dependent page must be rechecked after a Registry change.
++        if response.mimetype == "text/html":
++            response.headers["Cache-Control"] = "no-store"
++        return response
++
++    def resolve_company():
++        with session_factory() as db:
++            account = account_loader(db) if account_loader else shared.account_for_session(
++                db, account_id=browser_session.get(shared.SESSION_ACCOUNT_KEY),
++                session_version=browser_session.get(shared.SESSION_VERSION_KEY))
++            allowed = profiles.company_ids_for_account(db, account.id) if account else set()
++            chosen = browser_session.get("rfone_company_context")
++            if chosen not in allowed:
++                chosen = min(allowed) if allowed else None
++            g.registry_company_token = profiles.company_context.set(chosen)
++    app.before_request_funcs.setdefault(None, []).insert(0, resolve_company)
++    @app.teardown_request
++    def release_company(error):
++        token = g.pop("registry_company_token", None)
++        if token is not None:
++            profiles.company_context.reset(token)
++
++
++class AuthorizedTrainingAccount:
++    """Request-only role view. The domain identity/history is never rewritten."""
++    def __init__(self, account, role):
++        self._account, self.role = account, role
++    def __getattr__(self, name):
++        return getattr(self._account, name)
++
++
++def training_account_for_rf1(db, account):
++    from . import models as m, rfone_account_service as accounts
++    if account is None:
++        return None
++    grants = accounts.list_domain_access_for_account(db, account.id)
++    grant = next((r for r in grants if r.domain_code == "TRAINING" and r.enabled), None)
++    role = accounts.normalize_role_code(grant.role_code) if grant else None
++    if role == accounts.DOMAIN_ADMIN_ROLE:
++        role = "trainer"
++    if role not in ("trainer", "student"):
++        return None
++    link = db.query(m.RFOneTrainingIdentityLink).filter_by(rfone_account_id=account.id).first()
++    identity = db.get(m.TrainingAccount, link.training_account_id) if link else None
++    return AuthorizedTrainingAccount(identity, role) if identity else None
+--- a/RF-One Web/role_profile_routes.py
++++ b/RF-One Web/role_profile_routes.py
+@@ -9,19 +9,8 @@
+ 
+ 
+ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current_account,require_csrf,domains):
+-    @app.before_request
+-    def profile_company_context():
+-        with SessionFactory() as db:
+-            account=load_current_account(db)
+-            allowed=profiles.company_ids_for_account(db,account.id) if account else set()
+-            chosen=browser_session.get('rfone_company_context')
+-            if chosen not in allowed:chosen=min(allowed) if allowed else None
+-            g.access_profile_company_token=profiles.company_context.set(chosen)
+-
+-    @app.teardown_request
+-    def release_profile_company_context(error):
+-        token=g.pop('access_profile_company_token',None)
+-        if token is not None:profiles.company_context.reset(token)
++    from rfone_data_store.web_access import install_access_context
++    install_access_context(app, SessionFactory, load_current_account)
+ 
+     @app.context_processor
+     def role_profile_context():
+@@ -168,7 +157,9 @@
+             company_map={v.id:v.company_id for v in current}
+             account_ids=([identity] if kind=='account' else [aid for aid in db.scalars(select(m.RFOneAccount.id)) if directory.context_person_id(db,'RFONE_ACCOUNT',aid)==identity])
+             access_url=url_for('admin_account_access',account_id=account_ids[0],from_person=key) if len(account_ids)==1 else None
+-            people_rows.append({'key':key,'email':target.email if kind=='employee' else target.contact_email,'phone':target.phone if kind=='employee' else target.contact_phone,'access_url':access_url,'name':target.display_name or 'Name to complete','companies':sorted({v.company_id for v in current}),
++            linked_account=db.get(m.RFOneAccount,account_ids[0]) if len(account_ids)==1 else None
++            account_label=f'{linked_account.username} · {linked_account.status}' if linked_account else 'No unique RF1 account linked'
++            people_rows.append({'key':key,'account_label':account_label,'email':target.email if kind=='employee' else target.contact_email,'phone':target.phone if kind=='employee' else target.contact_phone,'access_url':access_url,'name':target.display_name or 'Name to complete','companies':sorted({v.company_id for v in current}),
+                 'assignments':[{'company_id':company_map[a.membership_id],'role_id':a.role_id,'area_id':a.area_id} for a in current_roles]})
+         dismissed_rows=[]
+         dismissal_dates={}
+--- a/RF-One Web/static/js/role-profiles.js
++++ b/RF-One Web/static/js/role-profiles.js
+@@ -64,7 +64,7 @@
+     var link=document.getElementById('person-system-authorizations'),help=document.getElementById('person-authorizations-help');
+     link.hidden=!person;document.getElementById('person-reset-password').hidden=!person;field(document.getElementById('person-password-form'),'person',person?person.key:'');
+     var accessForm=document.getElementById('person-access-form');field(accessForm,'person',person?person.key:'');
+-    help.textContent=person?'Opens Domain Access for this person in a separate window. Your unsaved changes here are retained.':'Save the person first to manage their system authorizations.';
++    help.textContent=person?'RF1 account: '+person.account_label+'. Opens Domain Access for this account in a separate window. Your unsaved changes here are retained.':'Save the person first to manage their system authorizations.';
+   }
+   function companyGroups(){
+     var selected=selectedCompanies();
+--- a/RF-One Web/templates/admin_account_access.html
++++ b/RF-One Web/templates/admin_account_access.html
+@@ -6,6 +6,7 @@
+ <h1>Domain Access</h1>{% if profile_return %}<p><a href="{{ profile_return }}">Back to person</a></p>{% endif %}
+ <p>These are direct account permissions. <a href="{{ url_for('role_profiles_home',tab='people',person='account:'~account.id) }}">Role permissions</a> add to them in each company.</p>
+ <p class="muted">{{ account.display_name }} ({{ account.username }})</p>
++<p><a href="{{ url_for('admin_account_training_link',account_id=account.id) }}">Training identity and history</a> &mdash; link an existing identity explicitly, or create it when needed. Registry remains the source of access permissions.</p>
+ {# ACCOUNT_ITEM_ACCESS_001 — for each Domain: no access, the whole Domain
+    (items added later included), or only the items ticked below it. The
+    items are the Domain's own sections, from `domain_registry.py`. #}
+--- a/RF-One Web/templates/home.html
++++ b/RF-One Web/templates/home.html
+@@ -59,11 +59,13 @@
+ {% endif %}
+ 
+ <div class="home-stack">
+-  {% if bank_available or clover_acquisition_available or can_manage_profiles %}
++  {% if bank_available or clover_acquisition_available or can_manage_profiles or employees_available %}
+     <div class="domain-card home-block">
+       <div class="domain-name">Administration</div>
+       {% if can_manage_profiles %}
+       <a class="home-row" href="{{ url_for('role_profiles_home',tab='people') }}"><strong>Registry <span role="img" aria-label="Funzionante" title="Funzionante">👍</span></strong> &mdash; People, roles, companies and system authorizations.</a>
++      {% elif employees_available %}
++      <a class="home-row" href="{{ url_for('employee_directory_home') }}"><strong>Registry</strong> &mdash; People directory.</a>
+       {% endif %}
+       {% if bank_available %}
+       <a class="home-row" href="{{ domain_entry('BANK') }}"><strong>Bank</strong> &mdash; Import and reconcile bank transactions.</a>
+--- a/RF-One Web/training_integration.py
++++ b/RF-One Web/training_integration.py
+@@ -34,12 +34,10 @@
+      session key too, for free — logging out of RF-One always logs out of
+      Training in the same request.
+ 
+-`role_code` is authoritative for this integration: whenever it disagrees
+-with the linked `TrainingAccount.role`, this module overwrites the latter
+-to match, every time the gate runs — so there is exactly one place
+-(`RFOneAccountDomainAccess.role_code`, via `/admin/accounts/<id>/access`)
+-where a Training role is ever set for an RF-One-integrated account, never
+-two independently-editable roles.
++Registry effective permissions are authoritative in the current company.
++The Training identity and its history remain domain-owned. A request-only
++role view applies the current effective role without rewriting stored
++Training identity data during navigation.
+ """
+ 
+ from __future__ import annotations
+@@ -136,15 +134,11 @@
+ 
+ 
+ def check_training_authorization(session, rfone_account: "m.RFOneAccount") -> TrainingAuthorizationResult:
+-    """Re-verifies (every call — never cached) that `rfone_account` may
+-    enter Training right now. READ-ONLY: never writes to the database —
+-    a navigation check (GET or otherwise) must never have a side effect on
+-    `TrainingAccount.role`. If the linked `TrainingAccount.role` disagrees
+-    with `RFOneAccountDomainAccess.role_code`, this is reported as
+-    `role_mismatch=True` rather than silently corrected — only an explicit,
+-    authorized POST (see `sync_training_role_if_linked`,
+-    `link_existing_training_account`, `create_and_link_training_identity`)
+-    may ever write that column."""
++    """Read-only, per-request Registry authorization with a linked domain identity.
++
++    The role can differ across companies; a stored Training role cannot
++    replace the effective Registry role or preserve a revoked privilege.
++    """
+ 
+     access_rows = account_service.list_domain_access_for_account(session, rfone_account.id)
+     access = next((r for r in access_rows if r.domain_code == TRAINING_DOMAIN_CODE), None)
+@@ -171,14 +165,8 @@
+             None, "L'identità Training collegata non è più valida. Contatta un amministratore.",
+         )
+ 
+-    if training_account.role != role_code:
+-        return TrainingAuthorizationResult(
+-            None,
+-            "Il ruolo Training del tuo account non è coerente. Contatta un amministratore per correggerlo.",
+-            role_mismatch=True,
+-        )
+-
+-    return TrainingAuthorizationResult(training_account, None)
++    from rfone_data_store.web_access import AuthorizedTrainingAccount
++    return TrainingAuthorizationResult(AuthorizedTrainingAccount(training_account, role_code), None)
+ 
+ 
+ def _role_mismatch_response(message: str):
+@@ -215,6 +203,8 @@
+             flash(result.error, "error")
+             return redirect(url_for("home"))
+ 
++        from flask import g
++        g.rfone_training_account = result.training_account
+         flask_session[TRAINING_SESSION_ACCOUNT_KEY] = result.training_account.id
+ 
+     return None
+@@ -375,24 +365,22 @@
+     amministratori o account con privilegi in altri Domain")."""
+     if rfone_account.is_admin:
+         return False
+-    access_rows = account_service.list_domain_access_for_account(session, rfone_account.id)
+-    enabled_rows = [r for r in access_rows if r.enabled]
+-    if len(enabled_rows) != 1:
+-        return False
+-    row = enabled_rows[0]
+-    return row.domain_code == TRAINING_DOMAIN_CODE and row.role_code == "student"
++    from rfone_data_store import access_profiles as profiles
++    companies = profiles.company_ids_for_account(session, rfone_account.id) | {None}
++    grants = [value for company in companies for value in
++              profiles.effective_permissions(session, rfone_account.id, company_id=company).items()]
++    return bool(grants) and all(code == TRAINING_DOMAIN_CODE and
++                               effective_training_role(value['role_code']) == 'student'
++                               for code, value in grants)
++
+ 
+ 
+ def list_training_students(session) -> list["m.RFOneAccount"]:
+     """All RF-One accounts a Training trainer may see/manage in this
+     integration — pure Training students only (see
+     `is_pure_training_student`)."""
+-    candidates = session.query(m.RFOneAccount).join(
+-        m.RFOneAccountDomainAccess, m.RFOneAccountDomainAccess.account_id == m.RFOneAccount.id,
+-    ).filter(
+-        m.RFOneAccountDomainAccess.domain_code == TRAINING_DOMAIN_CODE,
+-        m.RFOneAccountDomainAccess.role_code == "student",
+-        m.RFOneAccountDomainAccess.enabled.is_(True),
++    candidates = session.query(m.RFOneAccount).filter(
++        m.RFOneAccount.status == "ACTIVE"
+     ).order_by(m.RFOneAccount.display_name).all()
+     return [a for a in candidates if is_pure_training_student(session, a)]
+ 
+--- a/Training/auth.py
++++ b/Training/auth.py
+@@ -18,7 +18,7 @@
+ import secrets
+ from functools import wraps
+ 
+-from flask import abort, redirect, request, session as flask_session, url_for
++from flask import abort, redirect, request, session as flask_session, url_for, g, current_app
+ 
+ from db import SessionFactory
+ from rfone_data_store import models as m
+@@ -74,6 +74,18 @@
+ 
+ 
+ def load_current_account(db_session) -> "m.TrainingAccount | None":
++    if current_app.extensions.get("rfone_managed_training"):
++        from rfone_data_store import rfone_web_session as shared
++        from rfone_data_store.web_access import training_account_for_rf1
++        account = shared.account_for_session(db_session,
++            account_id=flask_session.get(shared.SESSION_ACCOUNT_KEY),
++            session_version=flask_session.get(shared.SESSION_VERSION_KEY))
++        return training_account_for_rf1(db_session, account)
++    effective = getattr(g, "rfone_training_account", None)
++    if effective is not None:
++        from rfone_data_store.web_access import AuthorizedTrainingAccount
++        identity = training_service.get_account(db_session, effective.id)
++        return AuthorizedTrainingAccount(identity, effective.role) if identity else None
+     account_id = current_account_id()
+     if account_id is None:
+         return None
+@@ -88,7 +100,11 @@
+ def require_login(view):
+     @wraps(view)
+     def wrapped(*args, **kwargs):
+-        if current_account_id() is None:
++        if current_app.extensions.get("rfone_managed_training"):
++            with SessionFactory() as db:
++                if load_current_account(db) is None:
++                    abort(403)
++        elif current_account_id() is None:
+             return redirect(url_for("training.login", next=request.path))
+         return view(*args, **kwargs)
+     return wrapped

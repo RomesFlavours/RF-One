@@ -64,7 +64,7 @@
     var link=document.getElementById('person-system-authorizations'),help=document.getElementById('person-authorizations-help');
     link.hidden=!person;document.getElementById('person-reset-password').hidden=!person;field(document.getElementById('person-password-form'),'person',person?person.key:'');
     var accessForm=document.getElementById('person-access-form');field(accessForm,'person',person?person.key:'');
-    help.textContent=person?'Opens Domain Access for this person in a separate window. Your unsaved changes here are retained.':'Save the person first to manage their system authorizations.';
+    help.textContent=person?'RF1 account: '+person.account_label+'. Opens Domain Access for this account in a separate window. Your unsaved changes here are retained.':'Save the person first to manage their system authorizations.';
   }
   function companyGroups(){
     var selected=selectedCompanies();

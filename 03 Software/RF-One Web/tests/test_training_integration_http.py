@@ -307,7 +307,7 @@ def main() -> int:
         fresh_admin_client = web_app.app.test_client()
         login(fresh_admin_client, "admin", "AdminPass123!")
         resp = fresh_admin_client.get("/")
-        check("10a: RF-One Home still works", resp.status_code == 200 and b'href="/admin/accounts"' in resp.data)
+        check("10a: RF-One Home still works", resp.status_code == 200 and b'href="/admin/roles?tab=people"' in resp.data and b'href="/admin/accounts"' not in resp.data)
 
         # Run Tips' own regression check in a SEPARATE PROCESS, not this
         # test's own — Tips and RF-One Web are always separate deployments
@@ -326,9 +326,7 @@ def main() -> int:
             "r1 = c.get('/')\n"
             "r2 = c.get('/training/menu')\n"
             "r3c = c.get('/training/login')\n"
-            "import re\n"
-            "csrf = re.search(r'name=\"csrf_token\" value=\"([^\"]+)\"', r3c.data.decode()).group(1)\n"
-            f"r3 = c.post('/training/login', data={{'username': {trainer_ta.username!r}, 'password': 'whatever', 'csrf_token': csrf}})\n"
+            "r3 = c.post('/training/login', data={'username': 'legacy', 'password': 'whatever'})\n"
             "print('TIPS_HOME_STATUS', r1.status_code)\n"
             "print('TIPS_TRAINING_MENU_STATUS', r2.status_code)\n"
             "print('TIPS_TRAINING_LOGIN_STATUS', r3.status_code)\n"
@@ -346,8 +344,8 @@ def main() -> int:
               re.search(r"TIPS_HOME_STATUS (302|401)\b", result.stdout) is not None, result.stderr[-1500:])
         check("10c: Tips' own /training/menu still works unmodified", "TIPS_TRAINING_MENU_STATUS 200" in result.stdout)
         check(
-            "10d: Training's OWN login under Tips is untouched (still rejects a wrong password)",
-            "TIPS_TRAINING_LOGIN_STATUS 401" in result.stdout,
+            "10d: Tips cannot use a legacy Training login to bypass Registry",
+            "TIPS_TRAINING_LOGIN_STATUS 403" in result.stdout,
         )
 
     finally:

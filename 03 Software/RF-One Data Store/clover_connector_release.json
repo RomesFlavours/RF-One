@@ -2,7 +2,7 @@
   "release": "rfone-registry-contacts-20261110",
   "scope": "Local additive role profiles and company membership; no cloud deployment",
   "files": {
-    "RF-One Data Store/rfone_data_store/models.py": "8c73837276564cfb90b28cce265d2224f73a74d02df7a5956ee82ef7516c8901",
+    "RF-One Data Store/rfone_data_store/models.py": "a98ef1276f8873b5f445351215d0ac14239e1fea0df32b34b6b850caf2f2b31c",
     "RF-One Data Store/rfone_data_store/employee_directory.py": "bc5fd47485d1e24dccd2d61e2e98516336534490486734be4c33ebe92c4a200f",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/acquisition.py": "3623bc1a3c905201250516a923795f9d8c31acb834d421995475a6aead7419c3",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/correction_sync.py": "05529ebc64d30e0e86367671e551881cd60006b84a13daf18548f4a1d1590059",

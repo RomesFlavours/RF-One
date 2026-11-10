@@ -18,7 +18,7 @@ from __future__ import annotations
 import secrets
 from functools import wraps
 
-from flask import abort, redirect, request, session as flask_session, url_for
+from flask import abort, redirect, request, session as flask_session, url_for, g, current_app
 
 from db import SessionFactory
 from rfone_data_store import models as m
@@ -74,6 +74,18 @@ def current_account_id() -> int | None:
 
 
 def load_current_account(db_session) -> "m.TrainingAccount | None":
+    if current_app.extensions.get("rfone_managed_training"):
+        from rfone_data_store import rfone_web_session as shared
+        from rfone_data_store.web_access import training_account_for_rf1
+        account = shared.account_for_session(db_session,
+            account_id=flask_session.get(shared.SESSION_ACCOUNT_KEY),
+            session_version=flask_session.get(shared.SESSION_VERSION_KEY))
+        return training_account_for_rf1(db_session, account)
+    effective = getattr(g, "rfone_training_account", None)
+    if effective is not None:
+        from rfone_data_store.web_access import AuthorizedTrainingAccount
+        identity = training_service.get_account(db_session, effective.id)
+        return AuthorizedTrainingAccount(identity, effective.role) if identity else None
     account_id = current_account_id()
     if account_id is None:
         return None
@@ -88,7 +100,11 @@ def load_current_account(db_session) -> "m.TrainingAccount | None":
 def require_login(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
-        if current_account_id() is None:
+        if current_app.extensions.get("rfone_managed_training"):
+            with SessionFactory() as db:
+                if load_current_account(db) is None:
+                    abort(403)
+        elif current_account_id() is None:
             return redirect(url_for("training.login", next=request.path))
         return view(*args, **kwargs)
     return wrapped
