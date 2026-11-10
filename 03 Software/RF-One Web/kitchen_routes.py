@@ -50,4 +50,3 @@ def register_kitchen_routes(app, *, require_domain_access, SessionFactory, load_
     @gate
     def kitchen_dashboard():
         return page('DASHBOARD')
-

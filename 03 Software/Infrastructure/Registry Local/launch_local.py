@@ -54,7 +54,7 @@ from html import escape
 from flask import g
 from itsdangerous import URLSafeSerializer, BadSignature
 local_signer=URLSafeSerializer(web.app.secret_key,salt='loopback-user-selection')
-LOCAL_CHOICE_COOKIE='rfone_local_user_choice' 
+LOCAL_CHOICE_COOKIE='rfone_local_user_choice'
 import importlib.util
 os.environ['RFONE_SELECTION_REQUIRE_RFONE_LOGIN']='1'
 os.environ['RFONE_WEB_BASE_URL']=os.environ['RFONE_PUBLIC_BASE_URL']
