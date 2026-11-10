@@ -5,6 +5,10 @@
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', url_for('employee_directory_home')), (employee.display_name or 'Dipendente', none)]) }}
 <h1>{{ employee.display_name or 'Nome da completare' }}</h1>
+{% set profile_summary=person_profile_summary('employee',employee.id) %}
+<p><strong>Companies:</strong> {{ profile_summary.companies|sort|join(', ') or 'Not assigned' }}</p>
+<p><strong>Roles:</strong> {{ profile_summary.roles|sort|join('; ') or 'Not assigned' }}</p>
+{% if can_manage_profiles %}<p><a href="{{ url_for('role_profiles_home',tab='people',person='employee:'~employee.id) }}">Anagrafica</a></p>{% endif %}
 <p>Identità interna RF1: {{ employee.id }}</p>
 <h2>Dati interni RF-One</h2>
 <p>Questi campi sono gestiti in RF-One e gli import Clover non li sovrascrivono.</p>

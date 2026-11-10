@@ -4,6 +4,7 @@
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Accounts', None)]) }}
 <h1>Accounts</h1>
+<p><a href="{{ url_for('role_profiles_home') }}">Anagrafica</a></p>
 
 <div class="btn-row">
   <a class="btn" href="{{ url_for('admin_account_new') }}">Create account</a>
@@ -38,7 +39,7 @@
                 &middot;
                 <a href="{{ url_for('admin_account_edit', account_id=account.id) }}#reset-password">Reset Password</a>
                 &middot;
-                <a href="{{ url_for('admin_account_training_link', account_id=account.id) }}">Training Identity</a>
+                <a href="{{ url_for('admin_account_training_link', account_id=account.id) }}">Training Identity</a> · <a href="{{ url_for('role_profiles_home',tab='people',person='account:'~account.id) }}">Anagrafica</a>
               </td>
             </tr>
           {% endfor %}

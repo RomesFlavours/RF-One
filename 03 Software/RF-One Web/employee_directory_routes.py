@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from rfone_data_store import employee_directory as directory
 from rfone_data_store import models as m
+from rfone_data_store import access_profiles as profiles
 from rfone_data_store import rfone_web_session as shared_session
 from rfone_data_store.technical.connectors.clover import acquisition_jobs as jobs
 from rfone_data_store.technical.connectors.clover.acquisition import ImportAlreadyRunningError
@@ -78,6 +79,8 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             try:
                 person = directory.create_person(db, display_name=request.form.get("display_name", ""),
                     email=request.form.get("email"), phone=request.form.get("phone"), account_id=account.id)
+                if profiles.employee_scope_ids(db,account) is not None:
+                    profiles.membership(db,f'employee:{person.id}',profiles.company_context.get(),account.id)
                 db.commit()
                 return redirect(url_for("employee_directory_detail", employee_id=person.id))
             except ValueError as exc:
@@ -112,7 +115,10 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
         with SessionFactory() as db:
             account = load_current_account(db)
             query = request.args.get("q", "").strip()
-            employees = list(db.scalars(directory.canonical_employees().order_by(m.Employee.display_name, m.Employee.id)))
+            scope_ids=profiles.employee_scope_ids(db,account)
+            query_people=directory.canonical_employees().order_by(m.Employee.display_name,m.Employee.id)
+            if scope_ids is not None:query_people=query_people.where(m.Employee.id.in_(scope_ids))
+            employees=list(db.scalars(query_people))
             all_links = list(db.scalars(select(m.EmployeeCloverLink).order_by(m.EmployeeCloverLink.id)))
             locations = {loc.id: loc for loc in db.scalars(select(m.Location))}
             active_options = {option.id: option for option in directory.employee_options(db)}
@@ -130,6 +136,7 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                              "absence_link_ids": directory.source_absence_link_ids(links)})
             pending = [{"link": l, "candidates": directory.candidates(db, l.snapshot or {})}
                        for l in all_links if directory.pending_requires_review(db, l)]
+            if scope_ids is not None:pending=[]
             sites = _sites(db)
             active_groups, dismissed = _employee_groups(rows, locations)
             return render_template(
@@ -155,6 +162,8 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             links = list(db.scalars(select(m.EmployeeCloverLink).where(
                 m.EmployeeCloverLink.employee_id == employee_id).order_by(m.EmployeeCloverLink.id)))
             account = load_current_account(db)
+            scope_ids=profiles.employee_scope_ids(db,account)
+            if scope_ids is not None and employee_id not in scope_ids:abort(403)
             if request.method == "POST":
                 if not shared_session.account_is_domain_admin(db, account, "EMPLOYEES"):
                     abort(403)

@@ -1,0 +1,11 @@
+
+# Runtime release artifacts and guard hashes require stable LF source files.
+"03 Software/**/*.py" text eol=lf
+"03 Software/**/*.html" text eol=lf
+"03 Software/**/*.js" text eol=lf
+"03 Software/**/*.css" text eol=lf
+"03 Software/**/*.json" text eol=lf
+"03 Software/**/*.md" text eol=lf
+"03 Software/**/*.txt" text eol=lf
+"03 Software/**/*.ini" text eol=lf
+"03 Software/**/*.yml" text eol=lf

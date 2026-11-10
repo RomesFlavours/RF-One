@@ -279,7 +279,7 @@ def list_accounts(session: Session) -> list[m.RFOneAccount]:
     return list(session.scalars(select(m.RFOneAccount).order_by(m.RFOneAccount.display_name)).all())
 
 
-def list_domain_access_for_account(session: Session, account_id: int) -> list[m.RFOneAccountDomainAccess]:
+def list_direct_domain_access_for_account(session: Session, account_id: int) -> list[m.RFOneAccountDomainAccess]:
     return list(
         session.scalars(
             select(m.RFOneAccountDomainAccess).where(m.RFOneAccountDomainAccess.account_id == account_id)
@@ -287,7 +287,7 @@ def list_domain_access_for_account(session: Session, account_id: int) -> list[m.
     )
 
 
-def list_domain_item_access_for_account(session: Session, account_id: int) -> dict[str, set[str]]:
+def list_direct_domain_item_access_for_account(session: Session, account_id: int) -> dict[str, set[str]]:
     """The items granted to `account_id`, by Domain code — meaningful only
     for a Domain whose access scope is SELECTED."""
     items: dict[str, set[str]] = {}
@@ -354,3 +354,13 @@ def set_domain_access(
             )
     session.flush()
     return existing
+
+
+def list_domain_access_for_account(session, account_id):
+    from .access_profiles import effective_access_rows
+    return effective_access_rows(session, account_id)
+
+
+def list_domain_item_access_for_account(session, account_id):
+    from .access_profiles import effective_item_rows
+    return effective_item_rows(session, account_id)

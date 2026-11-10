@@ -3,7 +3,8 @@
 {% block page_title %}Domain Access · RF-One{% endblock %}
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Accounts', url_for('admin_accounts')), ('Domain Access', None)]) }}
-<h1>Domain Access</h1>
+<h1>Domain Access</h1>{% if profile_return %}<p><a href="{{ profile_return }}">Back to person</a></p>{% endif %}
+<p>These are direct account permissions. <a href="{{ url_for('role_profiles_home',tab='people',person='account:'~account.id) }}">Role permissions</a> add to them in each company.</p>
 <p class="muted">{{ account.display_name }} ({{ account.username }})</p>
 {# ACCOUNT_ITEM_ACCESS_001 — for each Domain: no access, the whole Domain
    (items added later included), or only the items ticked below it. The
@@ -75,7 +76,7 @@
       </fieldset>
     {% endfor %}
     <div class="btn-row">
-      <button type="submit">Save</button>
+      <input type="hidden" name="from_person" value="{{ profile_person|default("", true) }}"><button type="submit">Save</button>
     </div>
   </form>
 </div>

@@ -41,7 +41,7 @@
 <div class="table-scroll"><table>
 <thead><tr><th>Dipendente</th><th>Ultimo aggiornamento</th><th>Da verificare</th></tr></thead>
 <tbody>{% for row in group.rows %}<tr data-rr-key="employee:{{ row.employee.id }}:{{ group.location.id }}">
-  <td><a href="{{ url_for('employee_directory_detail', employee_id=row.employee.id) }}">{{ row.employee.display_name or 'Nome da completare' }}</a></td>
+  <td><a href="{{ url_for('employee_directory_detail', employee_id=row.employee.id) }}">{{ row.employee.display_name or 'Nome da completare' }}</a>{% set summary=person_profile_summary('employee',row.employee.id) %}{% if summary.companies %}<div class="muted">{{ summary.companies|sort|join(', ') }}</div>{% endif %}</td>
   <td>{{ row.site_link.last_seen_at|local_dt(group.location.timezone) if row.site_link and row.site_link.last_seen_at else 'Mai aggiornato' }}</td>
   <td>{% if row.conflicts %}{{ 'Differenze esaminate' if row.reviewed else 'Differenze nei dati POS' }}{% endif %}
       {% if row.site_link and row.site_link.id in row.absence_link_ids %}{{ 'Assenza da Clover esaminata' if row.reviewed else 'Assente da Clover, posizione da verificare' }}{% elif row.site_link and row.site_link.state == 'UNVERIFIED' %}Dati precedenti da aggiornare{% endif %}</td>
@@ -54,7 +54,7 @@
 <div class="table-scroll"><table>
 <thead><tr><th>Dipendente</th><th>Sedi Clover</th><th>Ultimo aggiornamento</th><th>Da verificare</th></tr></thead>
 <tbody>{% for row in dismissed %}<tr data-rr-key="employee:{{ row.employee.id }}:dismissed">
-  <td><a href="{{ url_for('employee_directory_detail', employee_id=row.employee.id) }}">{{ row.employee.display_name or 'Nome da completare' }}</a></td>
+  <td><a href="{{ url_for('employee_directory_detail', employee_id=row.employee.id) }}">{{ row.employee.display_name or 'Nome da completare' }}</a>{% set summary=person_profile_summary('employee',row.employee.id) %}{% if summary.companies %}<div class="muted">{{ summary.companies|sort|join(', ') }}</div>{% endif %}</td>
   <td>{% for link in row.links %}{{ locations[link.location_id].name }}{% if not loop.last %}, {% endif %}{% else %}Nessun collegamento{% endfor %}</td>
   <td>{% for link in row.links %}<div>{{ locations[link.location_id].name }}: {{ link.last_seen_at|local_dt(locations[link.location_id].timezone) if link.last_seen_at else 'Mai aggiornato' }}</div>{% endfor %}</td>
   <td>{% if row.conflicts %}{{ 'Differenze esaminate' if row.reviewed else 'Differenze nei dati POS' }}{% endif %}

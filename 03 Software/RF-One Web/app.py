@@ -719,6 +719,14 @@ def admin_account_access(account_id: int):
         if account is None:
             abort(404)
 
+        profile_person=request.values.get('from_person','')
+        profile_return=None
+        if profile_person:
+            from rfone_data_store import employee_directory as profile_directory
+            expected=f'account:{account.id}'
+            person_id=profile_directory.context_person_id(db,'RFONE_ACCOUNT',account.id)
+            if profile_person not in (expected,f'employee:{person_id}' if person_id is not None else expected):abort(400)
+            profile_return=url_for('role_profiles_home',tab='people',person=profile_person)
         if request.method == "POST":
             require_csrf()
             try:
@@ -749,13 +757,13 @@ def admin_account_access(account_id: int):
             except ValueError as exc:
                 db.rollback()
                 flash(f"Nothing saved. {exc}", "error")
-                return redirect(url_for("admin_account_access", account_id=account_id))
+                return redirect(url_for("admin_account_access", account_id=account_id,from_person=profile_person))
             db.commit()
             flash("Domain access updated.", "info")
-            return redirect(url_for("admin_accounts"))
+            return redirect(url_for("admin_account_access",account_id=account_id,from_person=profile_person,saved="1")) if profile_return else redirect(url_for("admin_accounts"))
 
-        access_by_code = {row.domain_code: row for row in account_service.list_domain_access_for_account(db, account.id)}
-        items_by_code = account_service.list_domain_item_access_for_account(db, account.id)
+        access_by_code = {row.domain_code: row for row in account_service.list_direct_domain_access_for_account(db, account.id)}
+        items_by_code = account_service.list_direct_domain_item_access_for_account(db, account.id)
         domains_view = []
         for d in DOMAINS:
             access = access_by_code.get(d.code)
@@ -769,7 +777,7 @@ def admin_account_access(account_id: int):
                 "domain": d, "access": access, "mode": mode,
                 "selected_items": items_by_code.get(d.code, set()) if mode == _ACCESS_SELECTED else set(),
             })
-        return render_template("admin_account_access.html", account=account, domains_view=domains_view)
+        return render_template("admin_account_access.html", account=account, domains_view=domains_view,profile_return=profile_return,profile_person=profile_person)
 
 
 # The three access choices of the Access screen (ACCOUNT_ITEM_ACCESS_001).
@@ -1226,3 +1234,8 @@ def forgot_password_code():
 # Additive TEST feature; keep existing authentication and directory access.
 register_interview_routes(app, SessionFactory=SessionFactory, require_login=require_login,
     require_admin=require_admin, require_csrf=require_csrf, require_domain_access=require_domain_access)
+
+
+from role_profile_routes import register_role_profile_routes
+register_role_profile_routes(app, SessionFactory=SessionFactory, require_admin=require_admin,
+    load_current_account=load_current_account, require_csrf=require_csrf, domains=DOMAINS)
