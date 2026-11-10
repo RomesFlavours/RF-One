@@ -3,6 +3,8 @@
 {% block page_title %}RF-One · Training — {{ pill.title }} final quiz{% endblock %}
 {% block page_subtitle %}Final quiz · {{ pill.title }}{% endblock %}
 {% block content %}
+{% set help_section='training_legacy_final_quiz' %}
+{% include '_how_works.html' %}
 
 {{ breadcrumb([('RF-One', rfone_home_url()), ('Training', url_for('training.home')), (pill.title, url_for('training.assignment_detail', assignment_id=assignment.id)), ('Final quiz', None)]) }}
 

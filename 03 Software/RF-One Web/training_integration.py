@@ -149,12 +149,12 @@ def check_training_authorization(session, rfone_account: "m.RFOneAccount") -> Tr
     access_rows = account_service.list_domain_access_for_account(session, rfone_account.id)
     access = next((r for r in access_rows if r.domain_code == TRAINING_DOMAIN_CODE), None)
     if access is None or not access.enabled:
-        return TrainingAuthorizationResult(None, "Il tuo account RF-One non ha accesso al Domain Training.")
+        return TrainingAuthorizationResult(None, "Your RF-One account has no Training access.")
 
     role_code = effective_training_role(access.role_code)
     if role_code is None:
         return TrainingAuthorizationResult(
-            None, "Il tuo accesso a Training non ha un ruolo valido assegnato. Contatta un amministratore.",
+            None, "Your Training access has no valid role. Contact an administrator.",
         )
 
     link = session.query(m.RFOneTrainingIdentityLink).filter(
@@ -162,19 +162,19 @@ def check_training_authorization(session, rfone_account: "m.RFOneAccount") -> Tr
     ).first()
     if link is None:
         return TrainingAuthorizationResult(
-            None, "Il tuo account non ha ancora un'identità Training collegata. Contatta un amministratore.",
+            None, "Your account has no linked Training identity. Contact an administrator.",
         )
 
     training_account = session.get(m.TrainingAccount, link.training_account_id)
     if training_account is None:
         return TrainingAuthorizationResult(
-            None, "L'identità Training collegata non è più valida. Contatta un amministratore.",
+            None, "The linked Training identity is no longer valid. Contact an administrator.",
         )
 
     if training_account.role != role_code:
         return TrainingAuthorizationResult(
             None,
-            "Il ruolo Training del tuo account non è coerente. Contatta un amministratore per correggerlo.",
+            "Your Training roles do not match. Contact an administrator.",
             role_mismatch=True,
         )
 
@@ -201,7 +201,7 @@ def enforce_training_sso(app_auth_module, session_factory) -> "object | None":
         account = app_auth_module.load_current_account(db)
         if account is None or account.status != "ACTIVE":
             flask_session.pop(TRAINING_SESSION_ACCOUNT_KEY, None)
-            flash("Effettua l'accesso a RF-One per continuare.", "error")
+            flash("Sign in to RF-One to continue.", "error")
             return redirect(url_for("login", next=request.path))
 
         result = check_training_authorization(db, account)
@@ -308,12 +308,12 @@ def link_existing_training_account(session, *, rfone_account_id: int, training_a
     `TrainingAccount.role` to match, in the SAME flush/transaction (task
     §2, second bullet) — never touches any OTHER, unlinked account."""
     if get_link_for_rfone_account(session, rfone_account_id) is not None:
-        raise AlreadyLinkedError("Questo account RF-One è già collegato a un'identità Training.")
+        raise AlreadyLinkedError("This RF-One account already has a linked Training identity.")
     existing_for_training = session.query(m.RFOneTrainingIdentityLink).filter(
         m.RFOneTrainingIdentityLink.training_account_id == training_account_id
     ).first()
     if existing_for_training is not None:
-        raise AlreadyLinkedError("Questa identità Training è già collegata a un altro account RF-One.")
+        raise AlreadyLinkedError("This Training identity is already linked to another RF-One account.")
 
     link = m.RFOneTrainingIdentityLink(rfone_account_id=rfone_account_id, training_account_id=training_account_id)
     session.add(link)
@@ -342,7 +342,7 @@ def create_and_link_training_identity(
         raise ValueError(f"Invalid role_code {role_code!r} — must be one of {VALID_TRAINING_ROLE_CODES}")
     role_code = effective_training_role(role_code)
     if get_link_for_rfone_account(session, rfone_account_id) is not None:
-        raise AlreadyLinkedError("Questo account RF-One è già collegato a un'identità Training.")
+        raise AlreadyLinkedError("This RF-One account already has a linked Training identity.")
 
     rfone_account = session.get(m.RFOneAccount, rfone_account_id)
     if rfone_account is None:
@@ -407,7 +407,7 @@ def create_student_via_rf_one(
     a random, unused placeholder — the account only ever logs in via
     RF-One), and the identity link. `password` here becomes the account's
     real, sole (RF-One) password. `email` is required (task: "richiedi
-    l'email nei flussi di creazione, compreso quello degli studenti
+    l'email nei flussi di creazione, compreso quello degli students
     Training") and recorded unverified — the caller is responsible for
     sending the verification code (`app.py`'s
     `training_trainer_new_student` route), never this module, which knows

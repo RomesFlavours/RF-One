@@ -227,6 +227,11 @@ def assign_pill(
     below is purely a friendlier error message; the `uq_training_
     assignment_need_pill` UNIQUE constraint on the table itself is the
     actual, race-safe guarantee against an unintended duplicate (spec §2)."""
+    if session.get(m.TrainingRetiredPill, pill_id) is not None:
+        raise ValueError("This content has been withdrawn from the catalog and cannot be assigned.")
+    course = session.scalar(select(m.TrainingCourse).where(m.TrainingCourse.pill_id==pill_id).with_for_update())
+    if course is not None and course.active_version is None:
+        raise ValueError("This course is still a draft and cannot be assigned.")
     existing = session.scalars(
         select(m.TrainingAssignment).where(
             m.TrainingAssignment.need_id == need_id, m.TrainingAssignment.pill_id == pill_id,
@@ -242,6 +247,8 @@ def assign_pill(
     except IntegrityError as exc:
         session.rollback()
         raise DuplicateAssignmentError("This pill is already assigned to this need.") from exc
+    from .courses import pin_assignment
+    pin_assignment(session, assignment)
     return assignment
 
 
@@ -283,9 +290,8 @@ def assign_pills_bulk(
     if not unique_ids:
         raise ValueError("At least one pill must be selected.")
 
-    existing_pill_ids = set(
-        session.scalars(select(m.TrainingPill.id).where(m.TrainingPill.id.in_(unique_ids)))
-    )
+    session.execute(select(m.TrainingCourse.pill_id).where(m.TrainingCourse.pill_id.in_(unique_ids)).order_by(m.TrainingCourse.pill_id).with_for_update()).all()
+    existing_pill_ids = {p.id for p in list_all_pills(session) if p.id in unique_ids}
     missing = set(unique_ids) - existing_pill_ids
     if missing:
         raise ValueError(f"Unknown pill id(s): {sorted(missing)}")
@@ -306,10 +312,13 @@ def assign_pills_bulk(
             continue
         try:
             with session.begin_nested():
-                session.add(m.TrainingAssignment(
+                assignment=m.TrainingAssignment(
                     need_id=need_id, pill_id=pill_id, assigned_by_account_id=assigned_by_account_id,
-                ))
+                )
+                session.add(assignment)
                 session.flush()
+                from .courses import pin_assignment
+                pin_assignment(session,assignment)
             created_count += 1
         except IntegrityError:
             already_assigned_count += 1
@@ -396,7 +405,9 @@ def list_all_students(session: Session) -> list[m.TrainingAccount]:
 
 
 def list_all_pills(session: Session) -> list[m.TrainingPill]:
-    return list(session.scalars(select(m.TrainingPill).order_by(m.TrainingPill.title)).all())
+    retired = select(m.TrainingRetiredPill.pill_id).where(m.TrainingRetiredPill.pill_id == m.TrainingPill.id).exists()
+    draft = select(m.TrainingCourse.pill_id).where(m.TrainingCourse.pill_id==m.TrainingPill.id,m.TrainingCourse.active_version.is_(None)).exists()
+    return list(session.scalars(select(m.TrainingPill).where(~retired,~draft).order_by(m.TrainingPill.title)).all())
 
 
 # ---------------------------------------------------------------------------
@@ -521,7 +532,7 @@ def distinct_assigned_pills(session: Session, student_account_id: int) -> list[m
     for a in assignments:
         if a.pill_id not in seen:
             seen[a.pill_id] = a.pill
-    return list(seen.values())
+    return [p for p in seen.values() if p.slug != 'visual-menu' and session.get(m.TrainingCourse,p.id) is None]
 
 
 def student_assignments(session: Session, student_account_id: int) -> list[m.TrainingAssignment]:
@@ -535,7 +546,7 @@ def student_assignments(session: Session, student_account_id: int) -> list[m.Tra
 
 
 def overall_quiz_available(session: Session, student_account_id: int) -> bool:
-    assignments = student_assignments(session, student_account_id)
+    assignments = [a for a in student_assignments(session, student_account_id) if a.pill.slug != 'visual-menu' and session.get(m.TrainingCourse,a.pill_id) is None]
     if not assignments:
         return False
     return all(assignment_status(session, a) == ASSIGNMENT_COMPLETED for a in assignments)

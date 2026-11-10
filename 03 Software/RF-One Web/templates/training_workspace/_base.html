@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Training{% endblock %} · RF-One</title>
+<link rel="stylesheet" href="{{ url_for('static',filename='css/rf-one.css') }}">
+<link rel="stylesheet" href="{{ url_for('static',filename='css/training-workspace.css') }}">
+<script defer src="{{ url_for('static',filename='js/training-workspace.js') }}"></script>
+<script defer src="{{ url_for('static',filename='js/rf-one-row-return.js') }}"></script>
+</head><body><div class="wrap tw-shell">
+<header class="site-header"><a href="{{ url_for('home') }}" class="brand"><span class="brand-name-group"><span class="brand-wordmark">Rome's Flavours · WP</span><span class="brand-suffix">RF-ONE</span></span></a>
+{% if brand_logo_filename %}<img class="brand-logo" src="{{ url_for('shared_brand_logo',filename=brand_logo_filename) }}" alt="RF-One">{% endif %}</header>
+<nav class="breadcrumb" aria-label="Breadcrumb"><a href="{{ url_for('home') }}">RF-One</a><span>›</span><a href="{{ url_for('training.home') if active_tab=='course' else url_for('tw_students') }}">Training</a><span>›</span><span aria-current="page">{{ course_data.title if active_tab=='course' else {'content':'Content','students':'Students','login':'Student sign-in','password':'First sign-in'}[active_tab] }}</span></nav>
+<div class="tw-navigation">{% if active_tab not in ('login','password','course') %}<nav class="tw-tabs" aria-label="Training">{% for code,label,endpoint in [('content','Content','tw_content'),('students','Students','tw_students')] %}<a href="{{ url_for(endpoint) }}" class="{{ 'active' if active_tab==code }}" {% if active_tab==code %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>{% endif %}
+{% set help_title = 'How this page works' %}{% include '_how_works.html' %}</div>
+{% with messages=get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div role="status" class="{{ 'error' if category=='error' else 'info' }}">{{ message }}</div>{% endfor %}{% endwith %}
+{% if error and not draft %}<div role="alert" class="error">{{ error }}</div>{% endif %}
+<main>{% block main %}{% endblock %}</main>
+</div></body></html>

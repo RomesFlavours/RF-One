@@ -1,0 +1,9 @@
+<section id="visual-menu-card"><h2>Visual Menu</h2>
+<p>The photograph appears first: compact on desktop and full content width on tablets and phones. Check the restaurant and dish name beside or below it.</p>
+<p>Read the sections in order: Components, Allergens, Nutritional profile, Dish description, Characteristics and curiosities, then sales phrases. Components appear one per line without quantities. A preparation is shown as a component; its ingredients and any nested preparations are also checked for allergens.</p>
+<p>Allergens are listed individually, including those identified in linked preparations. An unlisted allergen is not confirmed absent, and cross-contact precautions still require kitchen confirmation.</p>
+<p>Nutritional figures are preliminary recipe totals, not validated per serving. Missing descriptions, characteristics and nutritional information are shown as unavailable, never invented.</p>
+<p>Recipes supplies components, photographs, nutrition and sensory details live. Reload to see recipe changes; Visual Menu keeps no copies. The other-restaurant link opens that restaurant’s own card.</p>
+{% if role=='trainer' %}<p>Expand Edit presentation and sales phrases, enter one phrase per line and select Save phrases. These phrases belong to this restaurant’s card. Conflicting updates preserve your draft for review.</p>{% else %}<p>This is a read-only card. Presentation and sales phrases are maintained by the trainer.</p>{% endif %}
+<p>Consultation does not certify competence or complete an assessment. Local preview access is automatic; shared access follows the normal role permissions.</p>
+</section>

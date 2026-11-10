@@ -3,6 +3,8 @@
 {% block page_title %}RF-One · Training — Add student{% endblock %}
 {% block page_subtitle %}Trainer area — add a new student{% endblock %}
 {% block content %}
+{% set help_section='training_legacy_trainer_new_student' %}
+{% include '_how_works.html' %}
 
 {{ breadcrumb([('RF-One', rfone_home_url()), ('Training', url_for('training.home')), ('Add student', None)]) }}
 

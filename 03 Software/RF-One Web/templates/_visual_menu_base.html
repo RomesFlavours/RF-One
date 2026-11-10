@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block page_title %}Visual Menu · RF-One{% endblock %}
+{% block content %}
+<nav class="breadcrumb" aria-label="Breadcrumb"><a href="{{ url_for('home') }}">RF-One</a><span>›</span><a href="{{ url_for('visual_menu_home',**{'from':entry}) }}">Visual Menu</a></nav>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:1rem"><h1>Visual Menu</h1>{% include '_how_works.html' %}</div>
+<main>{% block menu_content %}{% endblock %}</main>
+{% endblock %}

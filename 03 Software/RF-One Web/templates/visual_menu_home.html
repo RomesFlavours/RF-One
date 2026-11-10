@@ -1,0 +1,8 @@
+{% extends '_visual_menu_base.html' %}
+{% set help_section='visual_menu_home' %}
+{% set help_title='How Visual Menu works' %}
+{% block menu_content %}
+<p>Choose the restaurant and dish to view its photograph, ingredients and presentation phrases.</p>
+{% if role=='trainer' %}<p>As a trainer, you can add phrases to describe and sell each dish.</p>{% endif %}
+{% for c in cards %}<section class="card"><h2>{{ c.restaurant_name }}</h2><a href="{{ url_for('visual_menu_card',restaurant_id=c.restaurant_id,dish_key=c.dish_key,**{'from':entry}) }}">{{ c.title }}</a></section>{% else %}<p>No dishes available.</p>{% endfor %}
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends 'training_workspace/_base.html' %}
+{% block title %}Content · Training{% endblock %}
+{% block main %}
+<div class="tw-heading"><div><h1>Course catalog</h1><p>Prepare courses, arrange lessons and make them available for assignment.</p></div><button type="button" data-open="course-editor" id="new-course">+ New course</button></div>
+<form method="get" class="tw-search"><label>Search by title or objective<input name="q" value="{{ q }}"></label><button class="secondary">Search</button></form>
+<section class="tw-card"><div class="tw-table-scroll"><table><thead><tr><th>Course</th><th>Objective</th><th>Version</th><th>Status</th><th>Action</th></tr></thead><tbody>
+{% for row in course_rows %}<tr data-rr-key="course-{{ row.id }}" data-course-slug="{{ row.slug }}"><td><strong><a href="{{ url_for('training_visual_menu') if row.slug=='visual-menu' and not row.has_draft else url_for('tw_course_preview',pill_id=row.id,draft=1 if row.has_draft else 0) }}">{{ row.title }}</a></strong><small class="tw-course-count">{{ row.lessons }} lessons</small></td><td>{{ row.objective }}</td><td>{{ row.active_version or '—' }}</td><td><span class="tw-badge">{{ 'Available · draft changes' if row.active_version and row.has_draft else 'Available' if row.active_version else 'Draft' }}</span></td><td><button type="button" class="secondary" data-open="course-editor" data-edit-course='{{ row|tojson }}'>Manage</button></td></tr>
+{% else %}<tr><td colspan="5" class="tw-empty">No courses found. Choose New course to get started.</td></tr>{% endfor %}
+</tbody></table></div></section>
+<p class="muted">Only available courses can be assigned. Draft changes do not alter versions already assigned.</p>
+<dialog id="course-editor" aria-labelledby="course-editor-title" {% if course_draft %}data-reopen{% endif %}>
+<header class="tw-modal-header"><h2 id="course-editor-title">New course</h2><div><button type="button" class="tw-icon" data-modal-help="course-form" aria-label="Course editor help">?</button><button type="button" class="tw-icon" data-close aria-label="Close">×</button></div></header>
+<div class="error" role="alert" id="course-error" {% if not course_draft %}hidden{% endif %}>{{ error if course_draft else '' }}</div>
+<form id="course-editor-form" method="post" action="{{ url_for('tw_save_course') }}" enctype="multipart/form-data">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id"><input type="hidden" name="edit_revision" value="0">
+<label>Course title<input name="title" required maxlength="255"></label>
+<div class="tw-form-grid tw-course-general"><label>Description<textarea name="description" maxlength="10000" rows="3"></textarea></label><label>Learning objective<textarea name="objective" maxlength="10000" rows="3"></textarea></label></div>
+<h3>Materials and lessons</h3><p class="muted">Add text, RF-One page or HTTPS links, PDFs and MP4/WebM videos. Maximum 25 MB per file and 30 MB per save.</p>
+<div id="course-lessons"></div><button type="button" class="secondary" id="add-course-lesson">+ Add lesson</button>
+<p id="course-version-note" class="muted">Drafts are not shown in assignments. Complete the description, objective and at least one lesson before making the course available.</p>
+<div class="tw-modal-actions"><button type="button" class="secondary" data-close>Cancel</button><button type="submit" class="secondary" name="action" value="draft">Save draft</button><button type="submit" name="action" value="publish">Make available</button></div>
+</form></dialog>
+<template id="course-lesson-template"><section class="tw-lesson-editor"><div class="tw-lesson-toolbar"><h4>Lesson</h4><div><button type="button" class="tw-icon" data-lesson-up aria-label="Move lesson up">↑</button><button type="button" class="tw-icon" data-lesson-down aria-label="Move lesson down">↓</button><button type="button" class="tw-icon" data-lesson-remove aria-label="Remove lesson from draft">×</button></div></div>
+<div class="tw-form-grid"><label>Lesson title<input name="lesson_title" maxlength="255"></label><label>Material type<select name="lesson_kind"><option value="text">Text</option><option value="internal">RF-One page</option><option value="link">HTTPS link</option><option value="file">PDF or video</option></select></label></div>
+<label data-lesson-field="text">Lesson text<textarea name="lesson_text" rows="5" maxlength="50000"></textarea></label>
+<label data-lesson-field="url" hidden>Link<input name="lesson_url" maxlength="2048" placeholder="https://… or /page-path"></label>
+<div data-lesson-field="file" hidden><label>Upload PDF or video<input type="file" name="lesson_file" accept=".pdf,.mp4,.webm"></label><input type="hidden" name="lesson_file_id"><p class="muted" data-file-name></p></div>
+</section></template>
+{% if course_draft %}<script type="application/json" id="course-draft-data">{{ course_draft|tojson }}</script>{% endif %}
+<script defer src="{{ url_for('static',filename='js/training-courses.js') }}"></script>
+{% endblock %}
