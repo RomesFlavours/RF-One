@@ -1,16 +1,16 @@
 {% extends 'base.html' %}
 {% from '_nav_macros.html' import breadcrumb %}
-{% block page_title %}Anagrafica · RF-One{% endblock %}
+{% block page_title %}Registry · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One',url_for('home')),('Anagrafica',none)]) }}
-<h1>Anagrafica</h1>
+{{ breadcrumb([('RF-One',url_for('home')),('Registry',none)]) }}
+<h1>Registry</h1>
 <div class="profile-heading-description">
 <p>Assign people to one or more companies. Their role permissions add together within each company.</p>
 {% if profile_companies %}<form method="post" action="{{ url_for('switch_access_company') }}" class="profile-company-selector"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Company <select name="company_id">{% for company in profile_companies %}<option value="{{ company.id }}" {% if company.id==profile_company_id %}selected{% endif %}>{{ company.name }}</option>{% endfor %}</select></label><button>Switch</button></form>{% endif %}
 </div>
 <nav class="profile-tabs" aria-label="Role management">
-{% for code,label in [('roles','Roles'),('areas','Areas'),('companies','Companies'),('people','People & assignments')] %}
+{% for code,label in [('people','People & assignments'),('roles','Roles'),('areas','Areas'),('companies','Companies')] %}
 <a href="{{ url_for('role_profiles_home',tab=code,person=person) }}" {% if tab==code %}aria-current="page"{% endif %}>{{ label }}</a>
 {% endfor %}</nav>
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}

@@ -112,5 +112,18 @@ with SessionFactory() as db:
     aid=db.scalar(select(m.EmployeeContextLink.rfone_account_id).where(m.EmployeeContextLink.employee_id==unlinked_id))
     check('Provisioned account cannot log in',db.get(m.RFOneAccount,aid).status=='INACTIVE' and db.get(m.RFOneAccount,aid).password_hash=='!')
 check('Repeated opening reuses account',f'/admin/accounts/{aid}/access' in post(action='person_access',person=f'employee:{unlinked_id}',tab='people').location)
+home=owner.get('/').get_data(as_text=True)
+administration=home.split('<div class="domain-name">Administration</div>',1)[1].split('<div class="domain-name">Settings</div>',1)[0]
+settings=home.split('<div class="domain-name">Settings</div>',1)[1]
+check('Registry in Administration points to new page','href="/admin/roles?tab=people"' in administration and '<strong>Registry' in administration)
+check('No Registry duplicate in Settings','/admin/roles' not in settings and 'Anagrafica' not in settings)
+check('Legacy directory entry removed from home','href="/administration/employees"' not in home)
+check('Registry module title', '<h1>Registry</h1>' in owner.get('/admin/roles?tab=people').get_data(as_text=True))
+check('Registry respects administration permissions','href="/admin/roles?tab=people"' not in staff.get('/').get_data(as_text=True))
+default_page=owner.get('/admin/roles').get_data(as_text=True)
+nav=default_page.split('<nav class="profile-tabs"',1)[1].split('</nav>',1)[0]
+check('People tab is first',nav.index('People &amp; assignments')<nav.index('>Roles<') if 'People &amp; assignments' in nav else nav.index('People & assignments')<nav.index('>Roles<'))
+check('People opens by default','tab=people' in nav.split('aria-current="page"',1)[0] and 'id="people-table"' in default_page)
+check('Unknown tab falls back to People','id="people-table"' in owner.get('/admin/roles?tab=unknown').get_data(as_text=True))
 print(json.dumps({'checks_passed':len(passed),'checks':passed},indent=2))
 _engine.dispose();testdir.cleanup()

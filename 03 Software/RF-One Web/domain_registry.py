@@ -82,6 +82,12 @@ class DomainDefinition:
 
 DOMAINS: tuple[DomainDefinition, ...] = (
     DomainDefinition(
+        code="KITCHEN", display_name="Kitchen",
+        description="Recipes, preparations, components and standard plating.",
+        future_path="/kitchen", link="/kitchen",
+    ),
+
+    DomainDefinition(
         code="EMPLOYEES",
         display_name="Anagrafica dipendenti",
         description="Included RF-One person directory, reference details and explicit domain/POS reconciliation.",

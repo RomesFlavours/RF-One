@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+{% set help_section = 'myrf_home' %}
+{% set help_title = 'How RF-One works' %}
+{% macro ui(value) %}{{ value }}{% endmacro %}
 {% block page_title %}RF-One{% endblock %}
 {% block content %}
 <div class="home-logout">
@@ -11,6 +14,7 @@
 <h1>Welcome, {{ account.display_name }}</h1>
 
 <h2>MyRFOne</h2>
+{% include '_how_works.html' %}
 {% if interview_tasks %}
 <div class="home-stack" aria-label="Requested interviews">
   {% for interview in interview_tasks %}
@@ -55,11 +59,11 @@
 {% endif %}
 
 <div class="home-stack">
-  {% if bank_available or clover_acquisition_available or employees_available %}
+  {% if bank_available or clover_acquisition_available or can_manage_profiles %}
     <div class="domain-card home-block">
       <div class="domain-name">Administration</div>
-      {% if employees_available %}
-      <a class="home-row" href="{{ url_for('employee_directory_home') }}"><strong>Anagrafica dipendenti <span role="img" aria-label="Funzionante" title="Funzionante">👍</span></strong> &mdash; Identità RF-One, sedi e collegamenti Clover.</a>
+      {% if can_manage_profiles %}
+      <a class="home-row" href="{{ url_for('role_profiles_home',tab='people') }}"><strong>Registry <span role="img" aria-label="Funzionante" title="Funzionante">👍</span></strong> &mdash; People, roles, companies and system authorizations.</a>
       {% endif %}
       {% if bank_available %}
       <a class="home-row" href="{{ domain_entry('BANK') }}"><strong>Bank</strong> &mdash; Import and reconcile bank transactions.</a>
@@ -73,7 +77,6 @@
   <div class="domain-card home-block">
     <div class="domain-name">Settings</div>
     {% if account.is_admin %}
-      <a class="home-row" href="{{ url_for('role_profiles_home') }}"><strong>Anagrafica</strong> &mdash; Areas, permissions and company assignments.</a>
       <a class="home-row" href="{{ url_for('admin_accounts') }}"><strong>Accounts</strong> &mdash; Manage RF-One accounts and Domain access.</a>
       <a class="home-row" href="{{ url_for('admin_legal_entities') }}"><strong>Legal Entities</strong> &mdash; Manage legal entities.</a>
     {% endif %}

@@ -49,7 +49,8 @@ profiles. Existing domain administrators do not acquire policy-management powers
 
 Local UI remains direct-access without login or environment banners, loopback-only,
 with outbound integrations disabled. Keep the immutable AWS source/dump; development
-runs from a separate working copy against the isolated local database. No AWS writes.
+runs from a separate working copy against the isolated local database. Production
+releases retain normal RF1 authentication and use explicit deployment operations.
 
 ## Acceptance
 
@@ -58,3 +59,10 @@ preservation, external accounts, multiple areas, membership withdrawal, archive/
 restore, stale POST validation, CSRF, privilege escalation rejection, audit history,
 and unchanged legacy workforce assignments. Verify the UI in a browser and preserve
 the initial dump as the recovery point.
+
+## Registry navigation (2026-11-10)
+
+The UI module is named Registry. MyRF exposes it once in Administration, subject
+to existing platform administrator/owner permissions. Settings has no duplicate.
+People & assignments is the first and default tab, followed by Roles, Areas and
+Companies. An unknown tab falls back to People. Explicit tab URLs remain supported.

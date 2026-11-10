@@ -71,8 +71,8 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
             if not account.is_owner:
                 employee_id=directory.context_person_id(db,'RFONE_ACCOUNT',account.id)
                 if employee_id is not None and not directory.employee_is_active(db.get(m.Employee,employee_id),[]):abort(403)
-            tab=request.values.get('tab','roles')
-            if tab not in ('roles','areas','companies','people'):tab='roles'
+            tab=request.values.get('tab','people')
+            if tab not in ('roles','areas','companies','people'):tab='people'
             person=request.values.get('person','')
             if person:
                 try:

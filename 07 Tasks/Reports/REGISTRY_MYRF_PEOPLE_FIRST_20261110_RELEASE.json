@@ -1,0 +1,15 @@
+{
+  "tag": "registry-people-20261110t153917z",
+  "image_digest": "sha256:69088f4bd2bd32bc0cd796baebb583707cd97784eb5d0f010ce227ad74c92fec",
+  "source_sha256": "3e2b9e8476d0b17be3d93199c352ee5999362b3debcb5112ac100859a296a73f",
+  "build_id": "rfone-web-build:6a3bf5b5-c90c-4749-a738-0b11496c83a0",
+  "source_s3_key": "releases/registry-people-20261110t153917z/source.zip",
+  "deploy_operation": "1e285cff847640fe9a685de9a3c5a816",
+  "expected_previous_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:registry-home-20261110t152521z",
+  "deployment_status": "SUCCEEDED",
+  "schema_changed": false,
+  "registry_http_checks": 66,
+  "myrf_home_checks": 36,
+  "normal_production_authentication": true,
+  "local_login_required": false
+}
