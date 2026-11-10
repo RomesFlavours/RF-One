@@ -1,0 +1,127 @@
+{
+  "source_commit": "d903a2edc250b77ec39992eb0db4a59985b88c31",
+  "schema_revision": "t9a120261110",
+  "migrations_executed": false,
+  "services": {
+    "web": {
+      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:registry-access-web-20261110t173829z",
+      "image_digest": "sha256:16d84f068f448f7a18adb2ce496bd3b81d3fad5b13b5367b94b0d277d31bbbce",
+      "build_id": "rfone-web-build:4d9605b6-3653-4764-a867-e788cf2f2153",
+      "source_sha256": "a43a30bef7723c0a92586681bebad942a2d747d4afaf992af92baf3601b78ccd",
+      "deploy_operation": "f972dbb2870043d19711cdf2b0492416",
+      "deploy_status": "SUCCEEDED",
+      "service_status": "RUNNING",
+      "previous_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:registry-contacts-20261110t161756z"
+    },
+    "tips": {
+      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips:registry-access-tips-20261110t173829z",
+      "image_digest": "sha256:03aef92bfbeec096e978f84c8ddecc42221c505ac5937547a4d51738023e6fa8",
+      "build_id": "rfone-tips-build:000c7f30-a490-43f2-b152-696c584d3ddd",
+      "source_sha256": "747698d083232b3badde1d13a6c2647cf00c07ecc7587b065d5e19cac050bafd",
+      "deploy_operation": "623d0de3167e4444a08f14e8ec347747",
+      "deploy_status": "SUCCEEDED",
+      "service_status": "RUNNING",
+      "previous_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips:tips-flexible-20261109t160202z"
+    },
+    "selection": {
+      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-selection:sel-d903a2edc250",
+      "image_digest": "sha256:25f0b8a26a7c6e616004b6991657637be29d22f6340cde43fe6cace90d6a8d35",
+      "build_id": "rfone-selection-build:d2514aca-9484-444f-a7c1-e75b0d5552fb",
+      "source_sha256": "743c8880092ce98ab9681e3dacd58791033fdc467954ba536d133ef00f975d3c",
+      "deploy_operation": "d93fa6712a9240a0a2f315c7681ff5c0",
+      "deploy_status": "SUCCEEDED",
+      "service_status": "RUNNING",
+      "previous_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-selection:sel-ef8f32439f0b"
+    },
+    "training": {
+      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:registry-access-training-20261110t173829z",
+      "image_digest": "sha256:fd4fe776e5a019d138fdf2eda546433f1b9bbaa64e14a9ac8a003acc8bb042e0",
+      "build_id": "rfone-web-build:83dc9cad-1379-44b0-a76b-3d83b0d70eac",
+      "source_sha256": "007258b99fa56826181078987a125646968de80827b6db5914491ab261ddcad4",
+      "deploy_operation": "5a08fb53c8724a738f430fe570325aa6",
+      "deploy_status": "SUCCEEDED",
+      "service_status": "RUNNING",
+      "previous_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:training-88c4d0a8198f"
+    },
+    "kitchen": {
+      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:registry-access-kitchen-20261110t173829z",
+      "image_digest": "sha256:0378f03a52fd1464336a203f9016116cab23490a6aaeb2632b872babfc0d5dda",
+      "build_id": "rfone-web-build:8d3eb7a0-5975-4225-bd5d-e53cae56c8c6",
+      "source_sha256": "22aa64255ab75a409715d68d1471ee0f903b7477e516e6167f8f7de6803c413f",
+      "deploy_operation": "0b56c4ae85de46048b78d3b48bcf734d",
+      "deploy_status": "SUCCEEDED",
+      "service_status": "RUNNING",
+      "previous_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:kitchen-452568864b54"
+    }
+  },
+  "people": 64,
+  "dismissed": 47,
+  "anthony": {
+    "effective_permissions": [
+      "KITCHEN"
+    ],
+    "identities_merged": false
+  },
+  "public_http_checks": [
+    {
+      "check": "login",
+      "url": "https://rfone.romesflavours.com/login",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Registry requires login",
+      "url": "https://rfone.romesflavours.com/admin/roles?tab=people",
+      "status": 302,
+      "passed": true
+    },
+    {
+      "check": "Kitchen requires login",
+      "url": "https://rfone.romesflavours.com/kitchen",
+      "status": 302,
+      "passed": true
+    },
+    {
+      "check": "Training requires login",
+      "url": "https://rfone.romesflavours.com/training/manage/students",
+      "status": 302,
+      "passed": true
+    },
+    {
+      "check": "Tips requires login",
+      "url": "https://rfone.romesflavours.com/tips/",
+      "status": 302,
+      "passed": true
+    },
+    {
+      "check": "Selection requires login",
+      "url": "https://rfone.romesflavours.com/selection/",
+      "status": 302,
+      "passed": true
+    },
+    {
+      "check": "Selection bridge preserved",
+      "url": "https://rfone.romesflavours.com/selection/candidate/bridge/health",
+      "status": 200,
+      "passed": true,
+      "bridge_version": "rmaed-selection-bridge-3"
+    },
+    {
+      "check": "training health",
+      "url": "https://8nbpmjd3pp.us-east-1.awsapprunner.com/health",
+      "status": 200,
+      "passed": true,
+      "revision": "d903a2edc250b77ec39992eb0db4a59985b88c31"
+    },
+    {
+      "check": "kitchen health",
+      "url": "https://zmvdmhpdbi.us-east-1.awsapprunner.com/health",
+      "status": 200,
+      "passed": true,
+      "revision": "d903a2edc250b77ec39992eb0db4a59985b88c31"
+    }
+  ],
+  "cloudfront_invalidation": "IDN4XPPIIY46M61OQY9NTZ8RVF",
+  "cloudfront_invalidation_status": "Completed",
+  "local_switch_user_deployed": false
+}

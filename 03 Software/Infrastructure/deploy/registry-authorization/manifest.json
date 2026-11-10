@@ -960,9 +960,10 @@
     },
     "selection": {
       "baseline": {
-        "source": "rfone-tips-deploy-418674484214/rfone-selection-source.zip",
+        "source": "rfone-tips-deploy-418674484214/releases/registry-access-20261110t173829z/selection-source-before.zip",
         "sha256": "0247121fe847683a84205da14be91388f05fe3cf16dd599265e81e95cb9dd5aa",
-        "files": 736
+        "files": 736,
+        "original_source": "rfone-tips-deploy-418674484214/rfone-selection-source.zip"
       },
       "previous_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-selection:sel-ef8f32439f0b",
       "service_arn": "arn:aws:apprunner:us-east-1:418674484214:service/rfone-selection/f3c0d46758b44c38b3200947ca8c3a15",

@@ -130,7 +130,7 @@ session cannot fall back to owner. The explicit local selection is independently
 signed and never installed in production. External AWS/Clover calls stay blocked;
 there is no login/signature or environment banner in this local environment.
 
-This change is local only, pending Product Owner acceptance before AWS publishing.
+Published to the five AWS services after Product Owner local acceptance on 2026-11-10. See `07 Tasks/Reports/REGISTRY_AUTHORIZATION_AWS_20261110_REPORT.md`.
 
 
 ## Switch user administrator restriction — 2026-11-10

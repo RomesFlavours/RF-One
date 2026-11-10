@@ -1,5 +1,15 @@
 # PROJECT_STATE
 
+## Registry authorization — published 2026-11-10
+
+RF1 Web, Tips, Selection, Training and Kitchen now enforce the shared Registry
+policy per request and company, including role revocation and Training downgrade.
+All five AWS deployments and image guards succeeded. Shared schema remains
+`t9a120261110`; no migrations were executed. AWS retains 64 people and 47 dismissals.
+The active login anthony now has KITCHEN-only access, without merging identities.
+Switch user remains local-only and RF1-administrator-only. See
+`07 Tasks/Reports/REGISTRY_AUTHORIZATION_AWS_20261110_REPORT.md` and its release receipt.
+
 ## Registry access integration — local only, 2026-11-10
 
 Shared effective company context now precedes shell, standalone Tips/Selection/
