@@ -1,0 +1,72 @@
+{
+  "_standard": "UI_HOW_WORKS_001 - see 'How Works Standard.md' in this folder. Every page template of every app is in exactly one list. help_missing can only shrink: a new page is never added to it.",
+  "apps": {
+    "RF-One Web": {
+      "root": "03 Software/RF-One Web",
+      "templates": "03 Software/RF-One Web/templates",
+      "pages": {
+        "restaurant_wine_availability.html": "help/wines_availability.html#availability",
+        "restaurant_wine_types.html": "help/wines_types.html#types",
+        "restaurant_wine_list.html": "help/wines_list.html#list"
+      },
+      "not_operational": {
+        "base.html": "layout of RF-One Web",
+        "login.html": "sign-in",
+        "forgot_password.html": "password recovery",
+        "forgot_password_code.html": "password recovery",
+        "work_in_progress.html": "placeholder of a module not yet available",
+        "restaurant_wines_how_it_works.html": "the Restaurant Wines guide itself"
+      },
+      "help_missing": {
+        "profile.html": "Profile",
+        "admin_accounts.html": "Administration / Accounts",
+        "admin_account_form.html": "Administration / Accounts",
+        "admin_account_access.html": "Administration / Accounts",
+        "admin_account_training_link.html": "Administration / Accounts",
+        "admin_legal_entities.html": "Administration / Legal entities",
+        "admin_legal_entity_form.html": "Administration / Legal entities",
+        "admin_workweek.html": "Administration / Workweek",
+        "admin_organization.html": "Management / Organization",
+        "admin_org_ai_review.html": "Management / Organization",
+        "admin_org_attention.html": "Management / Organization",
+        "admin_org_attention_detail.html": "Management / Organization",
+        "admin_org_coverage_check.html": "Management / Organization",
+        "admin_org_fallback_policies.html": "Management / Organization",
+        "admin_org_position_detail.html": "Management / Organization",
+        "admin_org_position_form.html": "Management / Organization",
+        "admin_org_position_interview.html": "Management / Organization",
+        "admin_org_positions.html": "Management / Organization",
+        "admin_org_process_ownerships.html": "Management / Organization",
+        "bank_home.html": "Bank Reconciliation",
+        "bank_sources.html": "Bank Reconciliation",
+        "bank_import_session.html": "Bank Reconciliation",
+        "bank_review.html": "Bank Reconciliation",
+        "bank_reconciliation.html": "Bank Reconciliation",
+        "bank_ai_rules.html": "Bank Reconciliation",
+        "bank_configuration.html": "Bank Reconciliation",
+        "bank_export.html": "Bank Reconciliation",
+        "bank_instructions.html": "Bank Reconciliation (has its own instructions page, not linked as How Works per page)",
+        "clover_acquisition.html": "Clover Acquisition",
+        "compensation_home.html": "Administration / Compensation",
+        "compensation_period_summary.html": "Administration / Compensation",
+        "compensation_reconciliation_detail.html": "Administration / Compensation",
+        "compensation_run_detail.html": "Administration / Compensation",
+        "compensation_run_new.html": "Administration / Compensation",
+        "compensation_snapshot_detail.html": "Administration / Compensation",
+        "tips_validation_runs.html": "Tips validation",
+        "tips_validation_run.html": "Tips validation",
+        "dev_journal_list.html": "Dev Journal",
+        "dev_journal_entry_form.html": "Dev Journal",
+        "dev_journal_entry_versions.html": "Dev Journal",
+        "dev_journal_work.html": "Dev Journal",
+        "dev_journal_work_form.html": "Dev Journal",
+        "projects_list.html": "Management / Project Manager",
+        "projects_plan.html": "Management / Project Manager",
+        "projects_gantt.html": "Management / Project Manager",
+        "training_trainer_students.html": "Training (trainer)",
+        "training_trainer_new_student.html": "Training (trainer)",
+        "home.html": "Existing page in origin/main; contextual help from other work is not part of Wines."
+      }
+    }
+  }
+}

@@ -18,7 +18,10 @@
   <a class="module-tab {{ 'is-active' if active_tab == 'list' }}" href="{{ url_for('restaurant_wines_home') }}" data-rf-busy>Wine List</a>
   <a class="module-tab {{ 'is-active' if active_tab == 'availability' }}" href="{{ url_for('restaurant_wine_availability') }}" data-rf-busy>Availability</a>
   <a class="module-tab {{ 'is-active' if active_tab == 'types' }}" href="{{ url_for('restaurant_wine_types') }}" data-rf-busy>Wine Types</a>
+
 </nav>
+{% if ui is not defined %}{% macro ui(value) %}{{ value }}{% endmacro %}{% endif %}
+{% include "_how_works.html" %}
 {% endmacro %}
 
 {# The Wine type dialog (standard name + alternative names), driven by

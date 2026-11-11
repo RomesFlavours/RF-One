@@ -102,9 +102,12 @@ def main() -> int:
         c = web_app.app.test_client()
         login(c, "wines1", "WinesPass123!")
         check("Home shows the Wines card with access", b'href="/restaurant/wines"' in c.get("/").data)
-        for path in ("/restaurant/wines", "/restaurant/wines/availability", "/restaurant/wines/types"):
+        for path in ("/restaurant/wines", "/restaurant/wines/availability", "/restaurant/wines/types", "/restaurant/wines/how-it-works"):
             resp = c.get(path)
             check(f"{path} renders", resp.status_code == 200, str(resp.status_code))
+            if path != "/restaurant/wines/how-it-works":
+                body = resp.data.decode()
+                check(f"{path} has contextual modal help", '<dialog id="rf-help"' in body and "data-how-works" in body)
         page = c.get("/restaurant/wines/types").data.decode()
         check("breadcrumb RF-One > Wines > Wine Types", 'href="/restaurant/wines">Wines</a>' in page and "Wine Types</span>" in page)
         check("pages load the shared busy indicator", "js/rf-one-busy.js" in page)
