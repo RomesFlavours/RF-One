@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   if(files.some(file=>file.size>25*1024*1024)||files.reduce((sum,file)=>sum+file.size,0)>29*1024*1024){error.textContent='Maximum 25 MB per file and approximately 29 MB of files per save. Save materials in smaller batches.';error.hidden=false;return;}
   const buttons=[...form.querySelectorAll('button[type=submit]')];buttons.forEach(button=>button.disabled=true);
   try{
-   const response=await fetch(form.action,{method:'POST',body:data,headers:{Accept:'application/json'}});
+   const response=await fetch(form.getAttribute('action'),{method:'POST',body:data,headers:{Accept:'application/json'}});
    if(!response.headers.get('content-type')?.includes('application/json'))throw new Error('The session or connection is unavailable. Your entries remain in the form; try again.');
    const result=await response.json();
    if(!response.ok)throw new Error(result.error||'Save failed. Check your entries.');
