@@ -1,0 +1,15 @@
+{
+  "_scope": "Exact overlay artifact. Unchanged templates are inherited from the pinned production image.",
+  "apps": {
+    "RF-One Web": {
+      "root": "03 Software/RF-One Web",
+      "templates": "03 Software/RF-One Web/templates",
+      "pages": {
+        "role_profiles.html": "help/registry.html#registry",
+        "tips_validation_run.html": "help/tips_validation.html#tips-validation"
+      },
+      "not_operational": {},
+      "help_missing": {}
+    }
+  }
+}
