@@ -18,6 +18,22 @@
     document.getElementById('role-dialog-title').textContent = role ? 'Edit role · ' + role.name : 'Create role';
     dialogs['role-dialog'].open(button);
   }
+  // The Level only matters when the domain grants access (Whole domain or
+  // Selected functions); with No access it is disabled and shown empty, so
+  // the dialog never suggests a level that would not be saved.
+  function syncLevel(box) {
+    var checked = box.querySelector('[type=radio]:checked'), select = box.querySelector('select[name^="role_"]');
+    if (!select) return;
+    var placeholder = select.querySelector('option[data-no-level]');
+    if (!placeholder) {
+      placeholder = new Option('—', ''); placeholder.dataset.noLevel = '1'; placeholder.hidden = true;
+      select.insertBefore(placeholder, select.firstChild);
+    }
+    var none = !checked || checked.value === 'none';
+    if (none) { select.disabled = true; placeholder.selected = true; }
+    else { select.disabled = false; if (placeholder.selected) select.options[1].selected = true; }
+  }
+  function syncLevels(f) { f.querySelectorAll('[data-domain]').forEach(syncLevel); }
   function permissionDialog(id, button) {
     var f = reset('permission-dialog'), role = roles.get(String(id)); if (!role) return;
     field(f, 'id', role.id); field(f, 'return_to', 'role-' + role.id);
@@ -27,6 +43,7 @@
       field(f, 'access_' + code, grant.mode); field(f, 'role_' + code, grant.role);
       box.querySelectorAll('[type=checkbox]').forEach(function (cb) { cb.checked = grant.items.indexOf(cb.value) >= 0; });
     });
+    syncLevels(f);
     dialogs['permission-dialog'].open(button);
   }
   function assignmentAreas() {
@@ -53,7 +70,11 @@
   form('permission-dialog').querySelectorAll('[type=checkbox]').forEach(function (checkbox) {
     checkbox.addEventListener('change', function () { if (checkbox.checked) {
       var box = checkbox.closest('[data-domain]'); var radio = box.querySelector('[type=radio][value=selected]'); if (radio) radio.checked = true;
+      syncLevel(box);
     } });
+  });
+  form('permission-dialog').querySelectorAll('[data-domain] [type=radio]').forEach(function (radio) {
+    radio.addEventListener('change', function () { syncLevel(radio.closest('[data-domain]')); });
   });
 
   var people = new Map(data.people.map(function(p){return [p.key,p];}));
@@ -121,6 +142,7 @@
           else el.value = values[0];
         });
       });
+      if (id === 'permission-dialog') syncLevels(f);
       if (id === 'assignment-dialog') { assignmentAreas(); field(f, 'area_id', (data.reopen.area_id || [''])[0]); }
       if (id === 'person-dialog') { systemAuthorizations(people.get(editor.elements.person.value)); document.getElementById('person-dialog-title').textContent=action==='person_create'?'Add person':'Edit person'; document.getElementById('person-dismissal').hidden=action==='person_create'||editor.elements.person.value.indexOf('employee:')!==0;dismissButton.disabled=!dismissalDate.value||!dismissalDate.validity.valid; roleRows.replaceChildren();companyGroups(); try { JSON.parse((data.reopen.person_roles || ['[]'])[0]).forEach(roleRow); } catch (e) {} }
       if (data.error) { var error = document.createElement('p'); error.className = 'profile-form-error'; error.setAttribute('role', 'alert'); error.textContent = data.error; f.prepend(error); }

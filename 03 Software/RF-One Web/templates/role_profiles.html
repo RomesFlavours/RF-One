@@ -83,5 +83,5 @@
 <script id="profile-data" type="application/json">{{ {'people':people_rows,'companies':companies|map(attribute='id')|list,'roles':role_payload,'areas':area_payload,'reopen':dialog,'error':error}|tojson }}</script>
 <link rel="stylesheet" href="{{ url_for('static',filename='css/role-profiles.css') }}?v=contacts1">
 <script defer src="{{ url_for('static',filename='js/rf-one-row-return.js') }}"></script>
-<script defer src="{{ url_for('static',filename='js/role-profiles.js') }}?v=contacts1"></script>
+<script defer src="{{ url_for('static',filename='js/role-profiles.js') }}?v=level1"></script>
 {% endblock %}
