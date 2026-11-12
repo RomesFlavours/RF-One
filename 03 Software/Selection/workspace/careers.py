@@ -216,15 +216,42 @@ def _ad_excerpt(text: str, limit: int = 600) -> str:
     return plain[:limit].rsplit(" ", 1)[0].rstrip(",;:.") + "…"
 
 
-@bp.route("/careers")
-def openings():
+# The website's own addresses: only their pages may read the job feed from a browser.
+OPENINGS_FEED_ORIGINS = ("https://www.romesflavours.com", "https://romesflavours.com")
+
+
+def _open_jobs(*, absolute: bool) -> list[dict]:
+    """The OPEN Jobs as shown to the public: title, location, the job ad (whole, or shortened at a
+    sentence only when very long) and the link to the Job's own application page."""
     with _cfg.SessionFactory() as db:
         positions = db.scalars(select(ps.Position).where(ps.Position.status == ps.OPEN)
                                .order_by(ps.Position.location_label, ps.Position.title, ps.Position.id)).all()
-        jobs = [{"title": p.title, "location": p.location_label,
+        return [{"title": p.title, "location": p.location_label,
                  "role": ROLE_LABEL_EN.get(p.role_code, p.role_code),
                  "excerpt": _ad_excerpt(p.approved_job_ad_en or p.description),
-                 "url": url_for(".job_page", token=p.public_token)} for p in positions]
+                 "url": (external_url(".job_page", token=p.public_token) if absolute
+                         else url_for(".job_page", token=p.public_token))} for p in positions]
+
+
+@bp.route("/careers.json")
+def openings_feed():
+    """Job feed for the website's Careers page (SELECTION_CAREERS_FEED_001): the website builds its own
+    cards from it, so its list grows with the number of open Jobs. The same public information as the
+    /careers list, nothing internal; not cached, not indexed."""
+    response = jsonify({"jobs": [{k: j[k] for k in ("title", "location", "excerpt", "url")}
+                                 for j in _open_jobs(absolute=True)]})
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    origin = request.headers.get("Origin", "")
+    if origin in OPENINGS_FEED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+    return response
+
+
+@bp.route("/careers")
+def openings():
+    jobs = _open_jobs(absolute=False)
     response = current_app.make_response(render_template("careers/openings.html", jobs=jobs))
     response.headers["Content-Security-Policy"] = f"frame-ancestors {OPENINGS_FRAME_ANCESTORS}"
     response.headers["Cache-Control"] = "no-store"

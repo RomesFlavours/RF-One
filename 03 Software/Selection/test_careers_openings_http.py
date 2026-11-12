@@ -85,6 +85,9 @@ try:
         check("1. no open positions: friendly message, no RF-One login asked",
               empty.status_code == 200 and "no open roles right now" in empty.get_data(as_text=True))
 
+        check("1. no open positions: the job feed is an empty list",
+              visitor.get("/selection/careers.json").get_json() == {"jobs": []})
+
         long_ad = "Join our opening team in Mount Dora. " + "We teach the menu and the wine list. " * 20
         p1, tok1 = new_position("Server", "Mount Dora", long_ad)
         p2, tok2 = new_position("Food Runner", "Winter Park", "Run food with care.")
@@ -117,6 +120,20 @@ try:
         owner.post(f"/selection/posizioni/{p2}/stato", data={"csrf_token": t, "action": "reopen", "back": "/selection/"})
         check("4. reopening brings it back", tok2 in visitor.get("/selection/careers").get_data(as_text=True))
 
+        feed = visitor.get("/selection/careers.json", headers={"Origin": "https://www.romesflavours.com"})
+        data = feed.get_json()
+        titles = sorted(j["title"] for j in data["jobs"])
+        check("6. the job feed lists the open Jobs, no login, nothing internal",
+              feed.status_code == 200 and titles == ["Food Runner", "Server"]
+              and all(set(j) == {"title", "location", "excerpt", "url"} for j in data["jobs"])
+              and "Draft only." not in feed.get_data(as_text=True), str(data)[:200])
+        check("6. each feed link is the absolute address of the Job's own page",
+              all(j["url"].startswith("http") and "/selection/jobs/" in j["url"] for j in data["jobs"]))
+        check("6. only the website may read the feed from a browser; not cached, not indexed",
+              feed.headers.get("Access-Control-Allow-Origin") == "https://www.romesflavours.com"
+              and visitor.get("/selection/careers.json", headers={"Origin": "https://evil.example"})
+              .headers.get("Access-Control-Allow-Origin") is None
+              and feed.headers.get("Cache-Control") == "no-store" and "noindex" in feed.headers.get("X-Robots-Tag", ""))
         check("5. the job page itself is unchanged (no frame header added there)",
               "Content-Security-Policy" not in visitor.get(f"/selection/jobs/{tok1}").headers)
 finally:
