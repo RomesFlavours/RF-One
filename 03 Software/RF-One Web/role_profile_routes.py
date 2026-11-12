@@ -3,7 +3,7 @@ import json
 import os
 from collections import defaultdict
 from flask import request, render_template, redirect, url_for, flash, abort, session as browser_session, g
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 from rfone_data_store import models as m, employee_directory as directory
 from rfone_data_store import access_profiles as profiles
@@ -20,22 +20,29 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
             account=load_current_account(db)
             available=profiles.company_ids_for_account(db,account.id) if account else set()
             companies=list(db.scalars(select(profiles.CompanyContext).where(profiles.CompanyContext.id.in_(available)).order_by(profiles.CompanyContext.name)))
-            for member,company in db.execute(select(profiles.CompanyMembership,profiles.CompanyContext.name).join(
-                profiles.CompanyContext,profiles.CompanyContext.id==profiles.CompanyMembership.company_id).where(profiles.CompanyMembership.valid_to.is_(None))):
-                target=('employee' if member.employee_id is not None else 'account',member.employee_id or member.account_id)
-                summaries[target]['companies'].add(company)
-            for member,role,area,company in db.execute(select(profiles.CompanyMembership,m.RestaurantRole.name,m.OperationalArea.name,profiles.CompanyContext.name).join(
-                profiles.RoleProfileAssignment,profiles.RoleProfileAssignment.membership_id==profiles.CompanyMembership.id).join(m.RestaurantRole,
-                m.RestaurantRole.id==profiles.RoleProfileAssignment.role_id).join(m.OperationalArea,
-                m.OperationalArea.id==profiles.RoleProfileAssignment.area_id).join(profiles.CompanyContext,profiles.CompanyContext.id==profiles.CompanyMembership.company_id).where(
-                profiles.CompanyMembership.valid_to.is_(None),profiles.RoleProfileAssignment.valid_to.is_(None))):
-                target=('employee' if member.employee_id is not None else 'account',member.employee_id or member.account_id)
-                summaries[target]['roles'].add(f'{role} · {area} · {company}')
+        summaries_loaded = False
+        def person_summary(kind, identity):
+            nonlocal summaries_loaded
+            if not summaries_loaded:
+                with SessionFactory() as db:
+                    for member,company in db.execute(select(profiles.CompanyMembership,profiles.CompanyContext.name).join(
+                        profiles.CompanyContext,profiles.CompanyContext.id==profiles.CompanyMembership.company_id).where(profiles.CompanyMembership.valid_to.is_(None))):
+                        target=('employee' if member.employee_id is not None else 'account',member.employee_id or member.account_id)
+                        summaries[target]['companies'].add(company)
+                    for member,role,area,company in db.execute(select(profiles.CompanyMembership,m.RestaurantRole.name,m.OperationalArea.name,profiles.CompanyContext.name).join(
+                        profiles.RoleProfileAssignment,profiles.RoleProfileAssignment.membership_id==profiles.CompanyMembership.id).join(m.RestaurantRole,
+                        m.RestaurantRole.id==profiles.RoleProfileAssignment.role_id).join(m.OperationalArea,
+                        m.OperationalArea.id==profiles.RoleProfileAssignment.area_id).join(profiles.CompanyContext,profiles.CompanyContext.id==profiles.CompanyMembership.company_id).where(
+                        profiles.CompanyMembership.valid_to.is_(None),profiles.RoleProfileAssignment.valid_to.is_(None))):
+                        target=('employee' if member.employee_id is not None else 'account',member.employee_id or member.account_id)
+                        summaries[target]['roles'].add(f'{role} · {area} · {company}')
+                summaries_loaded = True
+            return summaries[(kind, identity)]
         return {'registry_it':os.environ.get('RFONE_UI_LANGUAGE') == 'it',
                 'registry_ui':lambda text:({'How Registry works':'Come funziona Registry','How this page works':'Come funziona questa pagina','Close':'Chiudi'}.get(text,text) if os.environ.get('RFONE_UI_LANGUAGE') == 'it' else text),
                 'profile_companies':companies,'profile_company_id':profiles.company_context.get(),
                 'can_manage_profiles':bool(account and (account.is_admin or account.is_owner)),
-                'person_profile_summary':lambda kind,identity:summaries[(kind,identity)]}
+                'person_profile_summary':person_summary}
 
     @app.route('/admin/access-company',methods=['POST'])
     def switch_access_company():
@@ -48,10 +55,10 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
         browser_session['rfone_company_context']=identity
         return redirect(url_for('home'))
 
-    def target_choices(db):
+    def target_choices(db, account_people, accounts):
         choices={f'employee:{p.id}':p.display_name or 'Name to complete' for p in directory.employee_options(db)}
-        for account in db.scalars(select(m.RFOneAccount).where(m.RFOneAccount.status=='ACTIVE').order_by(m.RFOneAccount.display_name)):
-            if directory.context_person_id(db,'RFONE_ACCOUNT',account.id) is None:
+        for account in sorted((a for a in accounts if a.status == 'ACTIVE'), key=lambda a:a.display_name):
+            if account_people[account.id] is None:
                 choices[f'account:{account.id}']=f'{account.display_name} · external account'
         return choices
 
@@ -133,7 +140,20 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
         roles.sort(key=lambda role:(not bool(pairs[role.id]),tuple(area_names.get(identity,'') for identity in pairs[role.id]),role.name.casefold(),role.id))
         grants=defaultdict(dict)
         for grant in db.scalars(select(profiles.RolePermission)):grants[grant.role_id][grant.domain_code]=grant
-        choices=target_choices(db)
+        # Presentation-only snapshot, scoped to this render. Authorization and
+        # all POST operations continue to use the authoritative shared services.
+        load_people = tab == 'people'
+        accounts = list(db.scalars(select(m.RFOneAccount))) if load_people or person else []
+        account_by_id = {a.id:a for a in accounts}
+        account_people = {a.id:directory.context_person_id(db,'RFONE_ACCOUNT',a.id) for a in accounts}
+        accounts_by_person = defaultdict(list)
+        for aid, employee_id in account_people.items():
+            if employee_id is not None:accounts_by_person[employee_id].append(aid)
+        choices=target_choices(db, account_people, accounts) if load_people else {}
+        def membership_condition(kind, identity):
+            if kind == 'account':return profiles.CompanyMembership.account_id == identity
+            return or_(profiles.CompanyMembership.employee_id == identity,
+                       profiles.CompanyMembership.account_id.in_(accounts_by_person[identity]))
         members=[];assignments=[];history=[];effective={};can_assign_target=False
         if person:
             # Reading dismissed historical profiles is allowed. New writes use person_target.
@@ -145,7 +165,7 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
             if target is None:abort(404)
             can_assign_target=directory.employee_is_active(target,[]) if kind=='employee' else target.status=='ACTIVE'
             choices.setdefault(person,(target.display_name or 'Name to complete')+' · history')
-            condition=profiles.membership_target_condition(db,employee_id=identity if kind=='employee' else None,account_id=identity if kind=='account' else None)
+            condition=membership_condition(kind, identity)
             memberships=list(db.scalars(select(profiles.CompanyMembership).where(condition).order_by(profiles.CompanyMembership.id)))
             members=[v for v in memberships if v.valid_to is None];history=[v for v in memberships if v.valid_to is not None]
             assignments=list(db.scalars(select(profiles.RoleProfileAssignment).where(profiles.RoleProfileAssignment.membership_id.in_([v.id for v in memberships])).order_by(profiles.RoleProfileAssignment.id)))
@@ -153,36 +173,50 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
             if kind=='employee':
                 linked=db.scalar(select(m.EmployeeContextLink.rfone_account_id).where(m.EmployeeContextLink.employee_id==identity,m.EmployeeContextLink.rfone_account_id.is_not(None)))
                 if linked is None:
-                    linked=next((aid for aid in db.scalars(select(m.RFOneAccount.id)) if directory.context_person_id(db,'RFONE_ACCOUNT',aid)==identity),None)
+                    linked=next(iter(accounts_by_person[identity]),None)
             if linked:
                 for member in members:effective[member.company_id]=profiles.effective_permissions(db,linked,company_id=member.company_id)
         people_rows=[]
-        for key,label in choices.items():
+        current_by_employee=defaultdict(list);current_by_account=defaultdict(list)
+        roles_by_membership=defaultdict(list)
+        if load_people:
+            for member in db.scalars(select(profiles.CompanyMembership).where(profiles.CompanyMembership.valid_to.is_(None))):
+                if member.employee_id is not None:current_by_employee[member.employee_id].append(member)
+                if member.account_id is not None:current_by_account[member.account_id].append(member)
+            for assignment in db.scalars(select(profiles.RoleProfileAssignment).where(profiles.RoleProfileAssignment.valid_to.is_(None))):
+                roles_by_membership[assignment.membership_id].append(assignment)
+            # Keep Employee objects alive in the identity map throughout rendering.
+            people_by_id={p.id:p for p in db.scalars(select(m.Employee))}
+        for key,label in choices.items() if load_people else []:
             kind,identity=key.split(':');identity=int(identity)
-            target=db.get(m.Employee if kind=='employee' else m.RFOneAccount,identity)
-            condition=profiles.membership_target_condition(db,identity if kind=='employee' else None,identity if kind=='account' else None)
-            current=list(db.scalars(select(profiles.CompanyMembership).where(condition,profiles.CompanyMembership.valid_to.is_(None))))
-            current_roles=list(db.scalars(select(profiles.RoleProfileAssignment).where(profiles.RoleProfileAssignment.membership_id.in_([v.id for v in current]),profiles.RoleProfileAssignment.valid_to.is_(None))))
+            target=people_by_id.get(identity) if kind=='employee' else account_by_id.get(identity)
+            related=accounts_by_person[identity] if kind=='employee' else [identity]
+            current=list(current_by_employee[identity]) if kind=='employee' else []
+            for aid in related:current.extend(current_by_account[aid])
+            current=list({v.id:v for v in current}.values())
+            current_roles=sorted((a for v in current for a in roles_by_membership[v.id]),key=lambda a:a.id)
             company_map={v.id:v.company_id for v in current}
-            account_ids=([identity] if kind=='account' else [aid for aid in db.scalars(select(m.RFOneAccount.id)) if directory.context_person_id(db,'RFONE_ACCOUNT',aid)==identity])
+            account_ids=related
             access_url=url_for('admin_account_access',account_id=account_ids[0],from_person=key) if len(account_ids)==1 else None
-            linked_account=db.get(m.RFOneAccount,account_ids[0]) if len(account_ids)==1 else None
+            linked_account=account_by_id[account_ids[0]] if len(account_ids)==1 else None
             account_label=f'{linked_account.username} · {linked_account.status}' if linked_account else 'No unique RF1 account linked'
             people_rows.append({'key':key,'account_label':account_label,'email':target.email if kind=='employee' else target.contact_email,'phone':target.phone if kind=='employee' else target.contact_phone,'access_url':access_url,'name':target.display_name or 'Name to complete','companies':sorted({v.company_id for v in current}),
                 'assignments':[{'company_id':company_map[a.membership_id],'role_id':a.role_id,'area_id':a.area_id} for a in current_roles]})
         dismissed_rows=[]
         dismissal_dates={}
-        for ev in db.scalars(select(profiles.ProfileEvent).where(profiles.ProfileEvent.action=='PERSON_DISMISSED').order_by(profiles.ProfileEvent.id)):
-            dismissal_dates[ev.details.get('employee_id')]=ev.details.get('dismissal_date')
-        for option in directory.employee_options(db,include_inactive=True):
-            target=db.get(m.Employee,option.id)
-            if not directory.employee_is_active(target,[]):
-                dismissed_rows.append({'name':target.display_name or 'Name to complete','date':dismissal_dates.get(target.id) or getattr(target,'dismissed_at',None)})
+        clover_people = directory.employee_options(db, include_inactive=True) if load_people else []
+        if load_people:
+            for ev in db.scalars(select(profiles.ProfileEvent).where(profiles.ProfileEvent.action=='PERSON_DISMISSED').order_by(profiles.ProfileEvent.id)):
+                dismissal_dates[ev.details.get('employee_id')]=ev.details.get('dismissal_date')
+            for option in clover_people:
+                target=db.get(m.Employee,option.id)
+                if not directory.employee_is_active(target,[]):
+                    dismissed_rows.append({'name':target.display_name or 'Name to complete','date':dismissal_dates.get(target.id) or getattr(target,'dismissed_at',None)})
         events=list(db.scalars(select(profiles.ProfileEvent).order_by(profiles.ProfileEvent.id.desc()).limit(25)))
         from registry_clover import pending_identities
         clover_pending = pending_identities(db) if tab == 'people' else []
         return render_template('role_profiles.html',clover_pending=clover_pending,
-            clover_people=directory.employee_options(db, include_inactive=True),
+            clover_people=clover_people,
             registry_it=os.environ.get('RFONE_UI_LANGUAGE') == 'it',people_rows=people_rows,dismissed_rows=dismissed_rows,tab=tab,person=person,roles=roles,areas=areas,companies=companies,
             pairs=dict(pairs),grants=dict(grants),domains=domains,choices=choices,members=members,assignments=assignments,
             history=history,effective=effective,events=events,dialog=dialog,error=error,can_assign_target=can_assign_target,
