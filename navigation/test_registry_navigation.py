@@ -52,6 +52,11 @@ class NavigationTest(unittest.TestCase):
   r=self.post(f'/admin/accounts/{self.external}/reset-password',password='one',password_confirm='two');self.assertEqual(r.status_code,302);self.assertIn('from_person=account:',r.location);self.assertTrue(r.location.endswith('#reset-password'))
   self.assertPerson(self.post(f'/admin/accounts/{self.external}/reset-password',password='Valid-fixture-pass-123',password_confirm='Valid-fixture-pass-123'),f'account:{self.external}')
   self.assertPerson(self.post(f'/admin/accounts/{self.external}/training-link',action='create_new',role_code='student'),f'account:{self.external}')
+ def test_z_own_password_reset_preserves_person_through_login(self):
+  r=self.post(f'/admin/accounts/{self.owner}/reset-password',password='Owner-fixture-pass-123',password_confirm='Owner-fixture-pass-123')
+  self.assertEqual(r.status_code,302);u=urlsplit(r.location);self.assertEqual(u.path,'/login')
+  destination=parse_qs(u.query)['next'][0];self.assertEqual(parse_qs(urlsplit(destination).query)['person'],[f'employee:{self.person}'])
+  self.assertEqual(urlsplit(destination).path,'/admin/roles')
  def test_nonadmin_cannot_use_navigation_to_gain_access(self):
   with SessionFactory() as db:version=db.get(m.RFOneAccount,self.external).session_version
   with self.client.session_transaction() as s:s['rfone_account_id']=self.external;s['rfone_session_version']=version

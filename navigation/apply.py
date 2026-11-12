@@ -105,3 +105,9 @@ for name in ('admin_account_access','admin_account_form','admin_account_training
     Environment().parse(text)
     if name.startswith('admin_account_'):assert "url_for('admin_accounts')" not in text
 print('Registry navigation transformations and templates verified')
+
+p=root/"app.py"
+s=p.read_text(encoding="utf-8")
+needle='    return redirect(profile_return) if saved else redirect(url_for("admin_account_edit", account_id=account_id, from_person=profile_person, _anchor="reset-password"))'
+s=s.replace(needle,'    if saved and account_id == current_account_id():\n        # Resetting one\'s own password invalidates the session. Preserve the\n        # canonical return through the existing login instead of losing it.\n        log_out()\n        flash("Password updated. Sign in again to continue.", "info")\n        return redirect(url_for("login", next=profile_return))\n    return redirect(profile_return) if saved else redirect(url_for("admin_account_edit", account_id=account_id, from_person=profile_person, _anchor="reset-password"))')
+p.write_text(s,encoding="utf-8",newline="\n")
