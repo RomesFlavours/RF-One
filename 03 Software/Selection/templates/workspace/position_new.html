@@ -15,7 +15,7 @@
       <div><label>People required</label><input type="text" name="headcount" value="{{ form.get('headcount', '1') }}" inputmode="numeric"></div>
       <div><label>Job title (optional)</label><input type="text" name="title" value="{{ form.get('title', '') }}" placeholder="The Role name is used if empty"></div>
     </div>
-    <label>Job description: who are you looking for, in your own words</label>
+    <label>Job description: filled in from the Role, edit it in your own words</label>
     <textarea name="description" style="min-height:7rem"
       placeholder="E.g. We need 2 servers in Mount Dora for evenings and weekends. Table-service experience is required; we can teach the rest.">{{ form.get('description', '') }}</textarea>
     {% if actor.is_owner %}
@@ -51,5 +51,12 @@
       "</ul><b>Evaluation rules</b><ul>" + std.rules.map(n => `<li>${n}</li>`).join("") + "</ul>";
   }
   role.addEventListener("change", show); show();
+  // Default description of the Role: filled in while the box is empty or still holds another Role's default.
+  const DESCRIPTIONS = {{ role_descriptions|tojson }}, desc = document.querySelector("textarea[name=description]");
+  function fill() {
+    const current = desc.value.trim();
+    if (!current || Object.values(DESCRIPTIONS).includes(current)) desc.value = DESCRIPTIONS[role.value] || "";
+  }
+  role.addEventListener("change", fill); fill();
 </script>
 {% endblock %}
