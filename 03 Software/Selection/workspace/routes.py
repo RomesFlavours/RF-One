@@ -745,6 +745,8 @@ def job_save(db, actor, position_id):
     finished = render_template("workspace/modal_done.html") if _modal() else redirect(url_for(".dashboard"))
     if role_changed:
         return edit_again
+    if form.get("action") == "publish_ad":
+        return _publish_job_ad(db, actor, position, edit_again, finished)
     if form.get("action") != "publish":
         flash("Draft saved. You can continue later from the Jobs list." if position.status == ps.DRAFT
               else "Changes saved. Confirm them to make them effective.")
@@ -979,6 +981,29 @@ def position_approve(db, actor, position_id):
     if not _approve_position(db, actor, position):
         return _position_redirect(position)
     return _position_redirect(position, "candidature")
+
+
+def _publish_job_ad(db, actor, position, edit_again, finished):
+    """Publish job ad (SELECTION_PUBLISH_JOB_AD_001): only the job ad text of an Active or Closed Job goes
+    live on its application page and on the website's Careers list. Nothing else is confirmed: no new
+    requirements version, no change to the confirmed questions and no candidate is evaluated again,
+    because the evaluation reads the requirements, never the ad. Confirm changes stays the way to
+    confirm everything else."""
+    if position.approved_snapshot_id is None:
+        flash("Publish the Job first with Confirm & Publish.")
+        return edit_again
+    if not position.job_ad_en:
+        flash("Write the job ad first.")
+        return edit_again
+    if position.job_ad_en == (position.approved_job_ad_en or ""):
+        flash("This job ad is already published.")
+        return finished
+    position.approved_job_ad_en = position.job_ad_en
+    ps.log_event(db, position_id=position.id, kind="AD_PUBLISHED", actor_id=actor.id, actor_name=actor.name,
+                 detail="Job ad published (text only: requirements, questions and candidate evaluations unchanged)")
+    db.commit()
+    flash("Job ad published on the application page and the website. No candidate was evaluated again.")
+    return finished
 
 
 def _approve_position(db, actor, position) -> bool:
