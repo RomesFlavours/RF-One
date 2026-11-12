@@ -184,6 +184,42 @@ def _start_interview(db, position, pc) -> ps.CandidateApplication:
 
 
 # ---------------------------------------------------------------------------
+# Open positions list: one permanent page, shown inside the website's Careers
+# page (romesflavours.com/careers). It lists every OPEN position, so opening
+# or closing a position in Selection updates it with no other step.
+# ---------------------------------------------------------------------------
+
+# Sites allowed to show this list inside their own page (the website and the
+# Wix editor/preview hosts). Nothing else may frame it.
+OPENINGS_FRAME_ANCESTORS = ("'self' https://www.romesflavours.com https://romesflavours.com "
+                            "https://*.filesusr.com https://*.wixsite.com https://editor.wix.com "
+                            "https://*.editorx.io")
+
+
+def _ad_excerpt(text: str, limit: int = 220) -> str:
+    plain = " ".join((text or "").split())
+    if len(plain) <= limit:
+        return plain
+    cut = plain[:limit].rsplit(" ", 1)[0].rstrip(",;:.")
+    return cut + "…"
+
+
+@bp.route("/careers")
+def openings():
+    with _cfg.SessionFactory() as db:
+        positions = db.scalars(select(ps.Position).where(ps.Position.status == ps.OPEN)
+                               .order_by(ps.Position.location_label, ps.Position.title, ps.Position.id)).all()
+        jobs = [{"title": p.title, "location": p.location_label,
+                 "role": ROLE_LABEL_EN.get(p.role_code, p.role_code),
+                 "excerpt": _ad_excerpt(p.approved_job_ad_en or p.description),
+                 "url": url_for(".job_page", token=p.public_token)} for p in positions]
+    response = current_app.make_response(render_template("careers/openings.html", jobs=jobs))
+    response.headers["Content-Security-Policy"] = f"frame-ancestors {OPENINGS_FRAME_ANCESTORS}"
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+# ---------------------------------------------------------------------------
 # Position page: registration / sign-in, then the application
 # ---------------------------------------------------------------------------
 
