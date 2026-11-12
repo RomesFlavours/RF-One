@@ -98,7 +98,8 @@ try:
         check("2. each Apply opens that position's own page in a new tab",
               f'href="/selection/jobs/{tok1}" target="_blank" rel="noopener"' in html
               and f'href="/selection/jobs/{tok2}" target="_blank" rel="noopener"' in html)
-        check("2. a long job ad is shortened on the list", "…" in html and html.count("We teach the menu") < 12)
+        check("2. a long job ad is shortened on the list, ending at a whole sentence",
+              html.count("We teach the menu") < 12 and "the wine list.…" not in html and "…" not in html)
         check("2. sorted by location, then title", html.index("Mount Dora") < html.index("Winter Park"))
         check("2. nothing internal: no internal links, ids or RF-One header",
               "/selection/posizioni" not in html and "site-header" not in html and "csrf" not in html)

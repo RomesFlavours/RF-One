@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import secrets
 
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, url_for
@@ -196,12 +197,22 @@ OPENINGS_FRAME_ANCESTORS = ("'self' https://www.romesflavours.com https://romesf
                             "https://*.editorx.io")
 
 
-def _ad_excerpt(text: str, limit: int = 220) -> str:
+def _ad_excerpt(text: str, limit: int = 300) -> str:
+    """The job ad shortened for the Careers list: whole sentences only, up to `limit` characters, so a
+    card never stops mid-sentence. The full ad is on the job page. Only a first sentence longer than the
+    limit is cut at a word, with an ellipsis."""
     plain = " ".join((text or "").split())
     if len(plain) <= limit:
         return plain
-    cut = plain[:limit].rsplit(" ", 1)[0].rstrip(",;:.")
-    return cut + "…"
+    excerpt = ""
+    for sentence in re.split(r"(?<=[.!?])\s+", plain):
+        candidate = f"{excerpt} {sentence}".strip()
+        if len(candidate) > limit:
+            break
+        excerpt = candidate
+    if excerpt:
+        return excerpt
+    return plain[:limit].rsplit(" ", 1)[0].rstrip(",;:.") + "…"
 
 
 @bp.route("/careers")
