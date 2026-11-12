@@ -445,11 +445,34 @@ def _employees_shift_active_at(session: Session, *, location_id: int, at: dateti
     return set(rows)
 
 
+class _PeriodEligibility:
+    """Request-local persisted facts; never retained across calculations."""
+    def __init__(self, assignments, shifts):
+        self.assignments = {}
+        self.shifts = {}
+        for row in assignments:
+            self.assignments.setdefault(row.restaurant_role_id, []).append(row)
+        for row in shifts:
+            self.shifts.setdefault(row.employee_id, []).append(row)
+
+    def holders(self, role_id, location_id, at):
+        return {a.employee_id for a in self.assignments.get(role_id, ())
+            if a.location_id in (None, location_id) and _aware_utc(a.valid_from) <= at
+            and (a.valid_to is None or at < _aware_utc(a.valid_to))}
+
+    def on_shift(self, candidates, location_id, at):
+        return {employee for employee in candidates if any(
+            row.location_id in (None, location_id) and _aware_utc(row.clock_in) <= at
+            and (row.clock_out is None or at < _aware_utc(row.clock_out))
+            for row in self.shifts.get(employee, ()))}
+
+
 def _apply_rule_to_order(
     session: Session, *, order: m.Order, restaurant_id: int,
     source_employee_id: int, settlement_time: datetime, order_open_time: datetime,
     rule_version: m.TipDistributionRuleVersion,
     voluntary_minor: int, gratuity_minor: int, summary: CalculationSummary,
+    eligibility=None, role_names=None,
 ) -> list[AllocationLine]:
     """Returns the `AllocationLine`s this Rule Version produces for this
     Order. Pure with respect to the database: it only READS facts and
@@ -487,8 +510,11 @@ def _apply_rule_to_order(
 
     summary.rules_applied += 1
 
-    recipient_role = session.get(m.RestaurantRole, rule_version.recipient_role_id)
-    role_name = recipient_role.name if recipient_role is not None else str(rule_version.recipient_role_id)
+    if role_names is None:
+        recipient_role = session.get(m.RestaurantRole, rule_version.recipient_role_id)
+        role_name = recipient_role.name if recipient_role is not None else str(rule_version.recipient_role_id)
+    else:
+        role_name = role_names.get(rule_version.recipient_role_id, str(rule_version.recipient_role_id))
 
     if rule_version.distribution_method != m.DISTRIBUTION_METHOD_EQUAL:
         return [
@@ -521,11 +547,14 @@ def _apply_rule_to_order(
         eligibility_label = "ACTIVE_AT_SETTLEMENT"
         eligibility_instant_label = "Settlement Time"
 
-    role_holders = _employees_with_role_at(
-        session, restaurant_id=restaurant_id, restaurant_role_id=rule_version.recipient_role_id,
-        location_id=order.location_id, at=eligibility_at,
-    )
-    shift_active = _employees_shift_active_at(session, location_id=order.location_id, at=eligibility_at)
+    if eligibility is None:
+        role_holders = _employees_with_role_at(
+            session, restaurant_id=restaurant_id, restaurant_role_id=rule_version.recipient_role_id,
+            location_id=order.location_id, at=eligibility_at)
+        shift_active = _employees_shift_active_at(session, location_id=order.location_id, at=eligibility_at)
+    else:
+        role_holders = eligibility.holders(rule_version.recipient_role_id, order.location_id, eligibility_at)
+        shift_active = eligibility.on_shift(role_holders, order.location_id, eligibility_at)
     eligible_ids = sorted(role_holders & shift_active)
 
     if eligible_ids:
@@ -624,15 +653,10 @@ def _orders_in_scope(
     location_ids = _restaurant_location_ids(session, restaurant_id)
     if not location_ids:
         return []
-    candidates = session.scalars(
-        select(m.Order).where(m.Order.location_id.in_(location_ids), m.Order.created_at <= period_end)
-    ).all()
-    in_scope = []
-    for order in candidates:
-        settlement_time = get_order_settlement_time(session, order.id)
-        if settlement_time is not None and period_start <= _aware_utc(settlement_time) < period_end:
-            in_scope.append(order)
-    return in_scope
+    settled = order_settlement_times_subquery()
+    return list(session.scalars(select(m.Order).join(settled, settled.c.order_id == m.Order.id).where(
+        m.Order.location_id.in_(location_ids), m.Order.created_at <= period_end,
+        settled.c.settlement_time >= period_start, settled.c.settlement_time < period_end).order_by(m.Order.id)))
 
 
 
@@ -662,7 +686,7 @@ def _merged_seconds(intervals: list[tuple[datetime, datetime]]) -> Decimal:
 
 
 def _worked_time_weights(session: Session, *, restaurant_id: int, location_id: int,
-    role_id: int, start: datetime, end: datetime, assignments=None) -> dict[int, Decimal]:
+    role_id: int, start: datetime, end: datetime, assignments=None, shifts=None) -> dict[int, Decimal]:
     """Intersect recorded shifts, effective role coverage and the local day.
 
     Union intersections so duplicate/overlapping records never double hours.
@@ -681,11 +705,14 @@ def _worked_time_weights(session: Session, *, restaurant_id: int, location_id: i
             coverage.setdefault(a.employee_id, []).append((lo, hi))
     if not coverage:
         return {}
-    shifts = session.scalars(select(m.Shift).where(m.Shift.employee_id.in_(coverage),
-        (m.Shift.location_id.is_(None)) | (m.Shift.location_id == location_id),
-        m.Shift.clock_in < end, (m.Shift.clock_out.is_(None)) | (m.Shift.clock_out > start))).all()
+    if shifts is None:
+        shifts = session.scalars(select(m.Shift).where(m.Shift.employee_id.in_(coverage),
+            (m.Shift.location_id.is_(None)) | (m.Shift.location_id == location_id),
+            m.Shift.clock_in < end, (m.Shift.clock_out.is_(None)) | (m.Shift.clock_out > start))).all()
     intervals = {}
     for shift in shifts:
+        if shift.employee_id not in coverage or shift.location_id not in (None, location_id):
+            continue
         lo = max(start, _aware_utc(shift.clock_in))
         hi = min(end, _aware_utc(shift.clock_out) if shift.clock_out else end)
         for a, b in coverage[shift.employee_id]:
@@ -816,6 +843,15 @@ def calculate_tips(
     tips, gratuities = _gross_tip_components_for_orders(session, [o.id for o, _ in rows])
     assignments = session.scalars(select(m.EmployeeAssignment).where(
         m.EmployeeAssignment.restaurant_id == restaurant_id)).all()
+    # Include opening instants of long-open orders as well as complete daily context.
+    first_instant = min([context_start] + [_aware_utc(o.created_at) for o, _ in rows])
+    shifts = session.scalars(select(m.Shift).where(
+        (m.Shift.location_id.is_(None)) | m.Shift.location_id.in_(location_ids),
+        m.Shift.clock_in.is_not(None), m.Shift.clock_in < context_end,
+        (m.Shift.clock_out.is_(None)) | (m.Shift.clock_out > first_instant))).all()
+    eligibility = _PeriodEligibility(assignments, shifts)
+    role_names = dict(session.execute(select(m.RestaurantRole.id, m.RestaurantRole.name).where(
+        m.RestaurantRole.id.in_({v.recipient_role_id for items in versions.values() for v in items}))).all())
     groups = {}
     result.order_facts = {}
     for order, settled_at in rows:
@@ -864,7 +900,8 @@ def calculate_tips(
                 result.lines.extend(_apply_rule_to_order(
                     session, order=order, restaurant_id=restaurant_id, source_employee_id=order.employee_id,
                     settlement_time=settlement_time, rule_version=version, voluntary_minor=voluntary_minor,
-                    order_open_time=_aware_utc(order.created_at), gratuity_minor=gratuity_minor, summary=summary))
+                    order_open_time=_aware_utc(order.created_at), gratuity_minor=gratuity_minor, summary=summary,
+                    eligibility=eligibility, role_names=role_names))
     weights_cache = {}
     for group in groups.values():
         if not any(e[4] for e in group["entries"]):
@@ -876,7 +913,7 @@ def calculate_tips(
             if cache_key not in weights_cache:
                 weights_cache[cache_key] = _worked_time_weights(session, restaurant_id=restaurant_id,
                     location_id=group["location"].id, role_id=version.recipient_role_id,
-                    start=group["start"], end=group["end"], assignments=assignments)
+                    start=group["start"], end=group["end"], assignments=assignments, shifts=shifts)
             weights = weights_cache[cache_key]
             lines = _allocate_group(group, weights)
             result.lines.extend(line for line in lines if period_start <= line.settlement_time < period_end)

@@ -82,6 +82,52 @@ class HistoricalPaymentsTests(unittest.TestCase):
         self.assertTrue(self.view(run)['people'][0]['unresolved'])
         self.assertIsNone(self.view(run)['people'][0]['employee_id'])
 
+    def test_explicit_delivered_acceptance_preserves_source_and_idempotency(self):
+        payload=copy.deepcopy(self.payload)
+        for row in payload['ledger']:
+            row['status']='Delivered'; row['category']='not_completed'
+        payload['totals']['in_scope_minor']=0
+        run=self.load(payload)['run_id']
+        self.assertEqual(self.view(run)['totals']['in_scope'],0)
+        with self.factory.begin() as session:
+            records=session.scalars(select(m.SourceRecord).where(m.SourceRecord.entity_type==service.PAYMENT)).all()
+            for record in records:
+                raw={**record.raw_json, 'paid_status_acceptance':{'accepted_status':'Delivered','authorized_by':'Product Owner'}}
+                record.raw_json=raw;record.payload_hash=service._hash(raw)
+        self.assertEqual(self.view(run)['totals']['in_scope'],37035)
+        self.assertFalse(self.load(payload)['created'])
+        with self.factory() as session:
+            records=session.scalars(select(m.SourceRecord).where(m.SourceRecord.entity_type==service.PAYMENT)).all()
+            self.assertTrue(all(r.raw_json['observation']['status']=='Delivered' and
+                r.raw_json['observation']['category']=='not_completed' for r in records))
+
+    def test_rejected_cannot_be_accepted_as_delivered(self):
+        raw={'observation':{**self.payload['ledger'][0],'status':'Rejected'},
+            'paid_status_acceptance':{'accepted_status':'Delivered'}}
+        with self.assertRaises(ValueError):
+            service._reported_payment(raw,{'scope':self.payload['scope']})
+
+    def test_cross_year_acceptance_keeps_original_period_and_amount(self):
+        observation={**self.payload['ledger'][0], 'period_start':'2025-12-30',
+            'period_end':'2026-01-04','category':'cross_boundary'}
+        raw={'observation':observation,'cross_year_period_acceptance':{
+            'period_start':'2025-12-30','period_end':'2026-01-04'}}
+        reported=service._reported_payment(raw,{'scope':self.payload['scope']})
+        self.assertEqual(reported['observation']['category'],'in_scope')
+        self.assertEqual(reported['observation']['period_start'],'2025-12-30')
+        self.assertEqual(reported['observation']['period_end'],'2026-01-04')
+        self.assertEqual(reported['observation']['amount_minor'],12345)
+        self.assertEqual(raw['observation']['category'],'cross_boundary')
+
+    def test_cross_year_acceptance_rejects_invalid_evidence(self):
+        for changes in [{'status':'Rejected'},{'explicit_tip':False},{'period_end':'2025-12-31'}]:
+            observation={**self.payload['ledger'][0],'category':'cross_boundary',
+                'period_start':'2025-12-30','period_end':'2026-01-04',**changes}
+            raw={'observation':observation,'cross_year_period_acceptance':{
+                'period_start':observation['period_start'],'period_end':observation['period_end']}}
+            with self.assertRaises(ValueError):
+                service._reported_payment(raw,{'scope':self.payload['scope']})
+
     def test_import_transaction_rollback(self):
         with self.assertRaises(RuntimeError):
             with self.factory.begin() as session:
@@ -99,7 +145,8 @@ class HistoricalPaymentsTests(unittest.TestCase):
             app=importlib.util.module_from_spec(spec);sys.modules[spec.name]=app;spec.loader.exec_module(app)
         app.SessionFactory=self.factory
         client=app.app.test_client()
-        with patch.object(app.rfone_identity,'current_account',return_value=object()):
+        with patch.object(app.rfone_identity,'current_account',return_value=object()), \
+                patch.object(app.shared_session,'account_may_enter_domain',return_value=True):
             response=client.get('/historical-tip-payments')
             self.assertEqual(response.status_code,200)
             self.assertIn(b'370.35',response.data)
@@ -107,6 +154,9 @@ class HistoricalPaymentsTests(unittest.TestCase):
             self.assertIn(b'Needs identity review',response.data)
             self.assertEqual(client.get('/historical-tip-payments?document=99999').status_code,404)
             self.assertEqual(client.post('/historical-tip-payments').status_code,405)
+        with patch.object(app.rfone_identity,'current_account',return_value=object()), \
+                patch.object(app.shared_session,'account_may_enter_domain',return_value=False):
+            self.assertEqual(client.get('/historical-tip-payments').status_code,403)
         with patch.object(app.rfone_identity,'current_account',return_value=None):
             self.assertIn(client.get('/historical-tip-payments').status_code,(302,401))
 

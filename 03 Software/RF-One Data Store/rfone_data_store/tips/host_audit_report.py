@@ -188,7 +188,6 @@ def build_host_audit_report(
     allocation storage."""
     period_start = _aware(period_start)
     period_end = _aware(period_end)
-    host_name = _employee_name(session, host_employee_id)
 
     location_ids = _restaurant_location_ids(session, restaurant_id)
 
@@ -201,6 +200,31 @@ def build_host_audit_report(
         (line for line in result.lines if line.recipient_employee_id == host_employee_id),
         key=lambda line: line.settlement_time,
     )
+
+    # Batch all evidence once; reuse exactly the calculation's order facts.
+    orders = {i: facts[0] for i, facts in result.order_facts.items()}
+    needed = sorted({line.order_id for line in allocations + result.unresolved_lines} - orders.keys())
+    payments_by_order = {}
+    for offset in range(0, len(needed), 500):
+        orders.update({o.id:o for o in session.scalars(select(m.Order).where(m.Order.id.in_(needed[offset:offset+500])))})
+    audited_ids = sorted({line.order_id for line in allocations})
+    for offset in range(0, len(audited_ids), 500):
+        for payment in session.scalars(select(m.Payment).where(m.Payment.order_id.in_(audited_ids[offset:offset+500]),
+                m.Payment.result == "SUCCESS").order_by(m.Payment.id)):
+            payments_by_order.setdefault(payment.order_id, []).append(payment)
+    employee_ids = {host_employee_id}
+    siblings_by_key = {}
+    for line in result.lines:
+        employee_ids.update(i for i in (line.source_employee_id, line.recipient_employee_id) if i is not None)
+        if line.recipient_employee_id is not None:
+            siblings_by_key.setdefault((line.order_id, line.rule_version_id), []).append(line)
+    names = dict(session.execute(select(m.Employee.id, m.Employee.display_name).where(m.Employee.id.in_(employee_ids))).all())
+    def employee_name(identity):
+        return "(unknown)" if identity is None else names.get(identity) or f"Employee #{identity}"
+    host_name = employee_name(host_employee_id)
+    version_roles = dict(session.execute(select(m.TipDistributionRuleVersion.id, m.RestaurantRole.name).join(
+        m.RestaurantRole, m.RestaurantRole.id == m.TipDistributionRuleVersion.recipient_role_id).where(
+        m.TipDistributionRuleVersion.id.in_({line.rule_version_id for line in allocations}))).all())
 
     # This Host's own Shifts overlapping the requested period — every real
     # allocation line above must fall inside exactly one of these, since
@@ -217,6 +241,9 @@ def build_host_audit_report(
         )
     )
 
+    audit_location_ids = location_ids | {shift.location_id for shift in shifts if shift.location_id is not None}
+    locations = {loc.id:loc for loc in session.scalars(select(m.Location).where(m.Location.id.in_(audit_location_ids)))}
+
     groups_by_shift_key: dict[int | None, HostShiftAuditGroup] = {}
 
     def _group_for(shift: m.Shift | None) -> HostShiftAuditGroup:
@@ -226,7 +253,7 @@ def build_host_audit_report(
             business_dt = None
             location = None
             if shift is not None and shift.location_id is not None:
-                location = session.get(m.Location, shift.location_id)
+                location = locations.get(shift.location_id)
             if shift is not None and location is not None and location.timezone and location.operating_day_cutoff_time:
                 business_dt = derive_business_date(
                     settlement_time=shift.clock_in, location_timezone=location.timezone,
@@ -242,8 +269,8 @@ def build_host_audit_report(
 
     for allocation in allocations:
         if allocation.business_date is not None:
-            order = session.get(m.Order, allocation.order_id)
-            location = session.get(m.Location, order.location_id)
+            order = orders.get(allocation.order_id)
+            location = locations.get(order.location_id)
             day, start, end = engine_svc._business_day_window(location, allocation.settlement_time)
             key = ("day", location.id, day, allocation.rule_version_id)
             if key not in groups_by_shift_key:
@@ -256,27 +283,12 @@ def build_host_audit_report(
         if allocation.rule_version_id not in group.rule_version_ids:
             group.rule_version_ids.append(allocation.rule_version_id)
         if group.role_name == "(unknown)":
-            rule_version = session.get(m.TipDistributionRuleVersion, allocation.rule_version_id)
-            if rule_version is not None:
-                role = session.get(m.RestaurantRole, rule_version.recipient_role_id)
-                if role is not None:
-                    group.role_name = role.name
+            group.role_name = version_roles.get(allocation.rule_version_id, "(unknown)")
 
-        order = session.get(m.Order, allocation.order_id)
-        payments = list(
-            session.scalars(
-                select(m.Payment).where(m.Payment.order_id == allocation.order_id, m.Payment.result == "SUCCESS")
-            )
-        )
-        siblings = [
-            line for line in result.lines
-            if line.order_id == allocation.order_id
-            and line.rule_version_id == allocation.rule_version_id
-            and line.recipient_employee_id is not None
-        ]
-        eligible_hosts = [
-            (_employee_name(session, s.recipient_employee_id), s.allocated_amount_minor) for s in siblings
-        ]
+        order = orders.get(allocation.order_id)
+        payments = payments_by_order.get(allocation.order_id, [])
+        siblings = siblings_by_key.get((allocation.order_id, allocation.rule_version_id), [])
+        eligible_hosts = [(employee_name(line.recipient_employee_id), line.allocated_amount_minor) for line in siblings]
 
         group.lines.append(
             HostAllocationLine(
@@ -287,7 +299,7 @@ def build_host_audit_report(
                 payment_timestamps=[p.created_at for p in payments],
                 clover_payment_ids=[p.source_payment_id for p in payments if p.source_payment_id],
                 server_employee_id=allocation.source_employee_id,
-                server_employee_name=_employee_name(session, allocation.source_employee_id),
+                server_employee_name=employee_name(allocation.source_employee_id),
                 original_tip_amount_minor=allocation.base_amount_minor,
                 host_pool_amount_minor=allocation.pool_amount_minor,
                 eligible_host_count=len(siblings),
@@ -310,7 +322,7 @@ def build_host_audit_report(
     unresolved_rows = result.unresolved_lines
     unresolved_items = []
     for row in unresolved_rows:
-        order = session.get(m.Order, row.order_id)
+        order = orders.get(row.order_id)
         unresolved_items.append(
             UnresolvedPeriodItem(
                 order_id=row.order_id, clover_order_id=order.source_order_id if order is not None else None,

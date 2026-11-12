@@ -75,6 +75,60 @@ class FlexibleTips(unittest.TestCase):
     def tearDown(self):
         self.s.close(); self.db.dispose()
 
+    def test_query_budget_does_not_grow_per_order_and_reloads_shift_facts(self):
+        from sqlalchemy import event
+        self.shift(self.a, T, T+timedelta(hours=12))
+        self.order(1000)
+        self.s.flush()
+        count = [0]
+        def before(*args):
+            count[0] += 1
+        event.listen(self.db, "before_cursor_execute", before)
+        try:
+            first = self.calculate()
+            small = count[0]
+            for _ in range(100):
+                self.order(1000)
+            self.s.flush()
+            count[0] = 0
+            large = self.calculate()
+            self.assertLessEqual(count[0], small + 1)
+            self.assertEqual(large.distributed_total_minor, 10100)
+            self.assertEqual(first.distributed_total_minor, 100)
+            # A new request must read updated evidence, never a stale global cache.
+            shift = self.s.scalar(select(m.Shift).where(m.Shift.employee_id == self.a.id))
+            shift.clock_out = T
+            self.s.flush()
+            self.assertEqual(self.calculate().distributed_total_minor, 0)
+        finally:
+            event.remove(self.db, "before_cursor_execute", before)
+
+    def test_order_query_budget_includes_long_open_orders(self):
+        from sqlalchemy import event
+        self.version.aggregation_scope = m.AGGREGATION_SCOPE_ORDER
+        self.version.eligibility_mode = m.ELIGIBILITY_MODE_ACTIVE_AT_ORDER_OPEN
+        self.version.distribution_method = m.DISTRIBUTION_METHOD_EQUAL
+        self.shift(self.a, T-timedelta(days=4), T-timedelta(days=3))
+        order = self.order(1000)
+        order.created_at = T-timedelta(days=4)+timedelta(hours=1)
+        self.s.flush()
+        count = [0]
+        def before(*args):
+            count[0] += 1
+        event.listen(self.db, "before_cursor_execute", before)
+        try:
+            self.assertEqual(self.calculate().distributed_total_minor, 100)
+            small = count[0]
+            for _ in range(100):
+                order = self.order(1000)
+                order.created_at = T-timedelta(days=4)+timedelta(hours=1)
+            self.s.flush()
+            count[0] = 0
+            self.assertEqual(self.calculate().distributed_total_minor, 10100)
+            self.assertLessEqual(count[0], small + 1)
+        finally:
+            event.remove(self.db, "before_cursor_execute", before)
+
     def test_hours_and_pool_round_once_per_server(self):
         self.shift(self.a,T,T+timedelta(hours=1)); self.shift(self.b,T,T+timedelta(hours=3))
         self.order(15); self.order(15)
