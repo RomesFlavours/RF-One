@@ -197,10 +197,11 @@ OPENINGS_FRAME_ANCESTORS = ("'self' https://www.romesflavours.com https://romesf
                             "https://*.editorx.io")
 
 
-def _ad_excerpt(text: str, limit: int = 300) -> str:
-    """The job ad shortened for the Careers list: whole sentences only, up to `limit` characters, so a
-    card never stops mid-sentence. The full ad is on the job page. Only a first sentence longer than the
-    limit is cut at a word, with an ellipsis."""
+def _ad_excerpt(text: str, limit: int = 600) -> str:
+    """The job ad for the Careers list. A normal ad (the Role defaults are 300 to 400 characters) shows in
+    full; only a much longer one is shortened, to whole sentences up to `limit` characters, so a card
+    never stops mid-sentence. The full ad is always on the job page. Only a first sentence longer than
+    the limit is cut at a word, with an ellipsis."""
     plain = " ".join((text or "").split())
     if len(plain) <= limit:
         return plain
