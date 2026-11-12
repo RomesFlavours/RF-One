@@ -11,7 +11,9 @@ result can be contradicted. Reproducibility comes from the inputs
 (Orders, Payments, Shifts, EmployeeAssignments, effective-dated
 RuleVersions), all of which are persisted facts.
 
-Implements ONLY what the task authorizes: Order-level Gross Earned Tips,
+Implements composable order or source/business-day aggregation, actual worked-time
+eligibility, equal or hours-proportional apportionment, and Order-level Gross Earned Tips.
+Existing semantics are preserved for
 Settlement-Time-based rule-version selection, ACTIVE_AT_SETTLEMENT
 eligibility from persisted Shift facts, EQUAL distribution, and atomic
 allocation results. Reuses
@@ -40,14 +42,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, ROUND_FLOOR, Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from .. import models as m
 from ..ingestion.common import utc_now
-from ..technical.connectors.clover.acquisition import get_order_settlement_time
+from ..technical.connectors.clover.acquisition import get_order_settlement_time, order_settlement_times_subquery
 from . import distribution_rule_service as rule_svc
 
 UTC_TZ = timezone.utc
@@ -129,6 +131,11 @@ class AllocationLine:
     # when a recipient was found.
     candidate_recipient_employee_ids: list[int] = field(default_factory=list)
     exclusion_reason: str | None = None
+    aggregation_scope: str = m.AGGREGATION_SCOPE_ORDER
+    business_date: date | None = None
+    group_base_amount_minor: int | None = None
+    group_pool_amount_minor: int | None = None
+    recipient_worked_seconds: Decimal | None = None
 
     @property
     def gross_tip_base_minor(self) -> int:
@@ -161,6 +168,7 @@ class TipCalculationResult:
     # above are the retrieval window derived from these, not the truth.
     first_business_date: date | None = None
     last_business_date: date | None = None
+    order_facts: dict[int, tuple] | None = None
 
     @property
     def recipient_lines(self) -> list[AllocationLine]:
@@ -346,18 +354,20 @@ def _order_gross_tip_components(session: Session, order: m.Order) -> tuple[int, 
     structural consequence of that ingestion behavior, not re-implemented
     here).
     """
-    payments = session.scalars(select(m.Payment).where(m.Payment.order_id == order.id)).all()
-    voluntary = 0
-    for payment in payments:
-        if payment.result != "SUCCESS":
-            continue
-        tip = session.get(m.PaymentTip, payment.id)
-        if tip is not None and tip.amount:
-            voluntary += tip.amount
+    tips, gratuities = _gross_tip_components_for_orders(session, [order.id])
+    return tips.get(order.id, 0), gratuities.get(order.id, 0)
 
-    fees = session.scalars(select(m.OrderFee).where(m.OrderFee.order_id == order.id)).all()
-    gratuity = sum((fee.amount or 0) for fee in fees)
-    return voluntary, gratuity
+
+def _gross_tip_components_for_orders(session: Session, ids: list[int]) -> tuple[dict, dict]:
+    tips, gratuities = {}, {}
+    for offset in range(0, len(ids), 500):
+        chunk = ids[offset:offset + 500]
+        tips.update(session.execute(select(m.Payment.order_id, func.sum(m.PaymentTip.amount)).join(
+            m.PaymentTip, m.PaymentTip.payment_id == m.Payment.id).where(
+            m.Payment.order_id.in_(chunk), m.Payment.result == "SUCCESS").group_by(m.Payment.order_id)).all())
+        gratuities.update(session.execute(select(m.OrderFee.order_id, func.sum(m.OrderFee.amount)).where(
+            m.OrderFee.order_id.in_(chunk)).group_by(m.OrderFee.order_id)).all())
+    return ({i: v or 0 for i,v in tips.items()}, {i: v or 0 for i,v in gratuities.items()})
 
 
 def _base_amount_for(calculation_base: str, voluntary_minor: int, gratuity_minor: int) -> int | None:
@@ -625,6 +635,134 @@ def _orders_in_scope(
     return in_scope
 
 
+
+def _business_day_window(location: m.Location, at: datetime) -> tuple[date, datetime, datetime]:
+    from ..business_date import derive_business_date
+    if not location.timezone or location.operating_day_cutoff_time is None:
+        raise ValueError(f"Location {location.id} needs its timezone and business-day cutoff before daily calculation.")
+    day = derive_business_date(settlement_time=at, location_timezone=location.timezone,
+        operating_day_cutoff_time=location.operating_day_cutoff_time)
+    zone = ZoneInfo(location.timezone)
+    start = datetime.combine(day, location.operating_day_cutoff_time, zone).astimezone(UTC)
+    end = datetime.combine(day + timedelta(days=1), location.operating_day_cutoff_time, zone).astimezone(UTC)
+    return day, start, end
+
+
+def _merged_seconds(intervals: list[tuple[datetime, datetime]]) -> Decimal:
+    merged = []
+    for start, end in sorted(intervals):
+        if end <= start:
+            continue
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(end, merged[-1][1]))
+        else:
+            merged.append((start, end))
+    return sum((Decimal((b-a).days * 86400 + (b-a).seconds)
+        + Decimal((b-a).microseconds) / Decimal(1000000) for a,b in merged), Decimal(0))
+
+
+def _worked_time_weights(session: Session, *, restaurant_id: int, location_id: int,
+    role_id: int, start: datetime, end: datetime, assignments=None) -> dict[int, Decimal]:
+    """Intersect recorded shifts, effective role coverage and the local day.
+
+    Union intersections so duplicate/overlapping records never double hours.
+    An unclosed relevant shift is incomplete evidence, never assumed zero or
+    fabricated to the end of the day.
+    """
+    if assignments is None:
+        assignments = session.scalars(select(m.EmployeeAssignment).where(
+            m.EmployeeAssignment.restaurant_id == restaurant_id)).all()
+    coverage = {}
+    for a in assignments:
+        if a.restaurant_role_id != role_id or a.location_id not in (None, location_id):
+            continue
+        lo, hi = max(start, _aware_utc(a.valid_from)), min(end, _aware_utc(a.valid_to) if a.valid_to else end)
+        if lo < hi:
+            coverage.setdefault(a.employee_id, []).append((lo, hi))
+    if not coverage:
+        return {}
+    shifts = session.scalars(select(m.Shift).where(m.Shift.employee_id.in_(coverage),
+        (m.Shift.location_id.is_(None)) | (m.Shift.location_id == location_id),
+        m.Shift.clock_in < end, (m.Shift.clock_out.is_(None)) | (m.Shift.clock_out > start))).all()
+    intervals = {}
+    for shift in shifts:
+        lo = max(start, _aware_utc(shift.clock_in))
+        hi = min(end, _aware_utc(shift.clock_out) if shift.clock_out else end)
+        for a, b in coverage[shift.employee_id]:
+            left, right = max(lo, a), min(hi, b)
+            if left < right:
+                if shift.clock_out is None:
+                    raise ValueError(f"Incomplete shift {shift.id}: record its clock-out before calculating worked-time tips.")
+                intervals.setdefault(shift.employee_id, []).append((left, right))
+    return {i: value for i in sorted(intervals) if (value := _merged_seconds(intervals[i])) > 0}
+
+
+def _apportion(total: int, weights: list[Decimal]) -> list[int]:
+    """Hamilton apportionment, including signed source corrections."""
+    weight_sum = sum(weights)
+    if not weights:
+        return []
+    if weight_sum == 0:
+        if total:
+            raise ValueError("Cannot allocate a nonzero pool against a zero net source base.")
+        return [0] * len(weights)
+    raw = [Decimal(total) * w / weight_sum for w in weights]
+    shares = [int(v.to_integral_value(rounding=ROUND_FLOOR)) for v in raw]
+    residual = total - sum(shares)
+    for i in sorted(range(len(weights)), key=lambda i: (-(raw[i]-shares[i]), i))[:residual]:
+        shares[i] += 1
+    return shares
+
+
+def _allocate_group(group: dict, worked: dict[int, Decimal]) -> list[AllocationLine]:
+    version, entries = group["version"], group["entries"]
+    rule_svc.validate_calculation_shape(version.aggregation_scope, version.eligibility_mode, version.distribution_method)
+    bases = [_base_amount_for(version.calculation_base, e[2], e[3]) for e in entries]
+    if any(b is None for b in bases):
+        raise ValueError(f"Rule version {version.id} uses an unsupported calculation base.")
+    base_total = sum(bases)
+    recipients = sorted(worked)
+    pool = _round_pool(base_total, version.rate) if recipients else 0
+    weights = [worked[i] if version.distribution_method == m.DISTRIBUTION_METHOD_HOURS_PROPORTIONAL
+        else Decimal(1) for i in recipients]
+    shares = _apportion(pool, weights)
+    # Keep the server/day's exact pool and recipient totals while retaining
+    # each order's trace. Order lines are attribution, not new percentage rounds.
+    by_recipient = [_apportion(share, [Decimal(b) for b in bases]) for share in shares]
+    if recipients and all(b >= 0 for b in bases):
+        # Preserve both margins: exact per-order attribution of the server's
+        # contribution AND exact recipient totals. Avoid charging a tiny order
+        # twice merely because two recipients each received a residual cent.
+        order_pools = _apportion(pool, [Decimal(b) for b in bases])
+        remaining = list(shares)
+        for index, amount in enumerate(order_pools):
+            row = _apportion(amount, [Decimal(v) for v in remaining])
+            for j, value in enumerate(row):
+                by_recipient[j][index] = value
+                remaining[j] -= value
+        assert not any(remaining)
+    lines = []
+    for index, (order, at, voluntary, gratuity, _) in enumerate(entries):
+        order_pool = sum(alloc[index] for alloc in by_recipient)
+        common = dict(order_id=order.id, clover_order_id=order.source_order_id, settlement_time=at,
+            source_employee_id=order.employee_id, rule_id=version.rule_id, rule_version_id=version.id,
+            calculation_base=version.calculation_base, rate=version.rate, base_amount_minor=bases[index],
+            pool_amount_minor=order_pool, voluntary_minor=voluntary, gratuity_minor=gratuity,
+            aggregation_scope=version.aggregation_scope, business_date=group["day"],
+            group_base_amount_minor=base_total, group_pool_amount_minor=pool,
+            eligible_recipient_count=len(recipients))
+        if not recipients:
+            lines.append(AllocationLine(**common, recipient_employee_id=None, allocated_amount_minor=0,
+                recipient_eligibility_basis="NO_ELIGIBLE_RECIPIENT: no eligible worked time in this business day; SOURCE_RETAINS.",
+                no_eligible_recipient=True, exclusion_reason="NO_ELIGIBLE_WORKED_TIME"))
+        for j, recipient in enumerate(recipients):
+            lines.append(AllocationLine(**common, recipient_employee_id=recipient,
+                allocated_amount_minor=by_recipient[j][index], no_eligible_recipient=False,
+                recipient_worked_seconds=worked[recipient], recipient_eligibility_basis=(
+                    f"WORKED_DURING_BUSINESS_DAY: {group['day']}; {version.distribution_method}; "
+                    f"eligible worked seconds {worked[recipient]}; {version.aggregation_scope}.")))
+    return lines
+
 def calculate_tips(
     session: Session, *, restaurant_id: int, period_start: datetime, period_end: datetime,
 ) -> TipCalculationResult:
@@ -661,63 +799,92 @@ def calculate_tips(
         return result
 
     active_rules = rule_svc.list_rules(session, restaurant_id, active_only=True)
+    versions = {r.id: rule_svc.list_versions(session, r.id) for r in active_rules}
     summary = result.summary
     rule_version_ids: set[int] = set()
-
-    candidates = session.scalars(
-        select(m.Order).where(m.Order.location_id.in_(location_ids), m.Order.created_at <= period_end)
-    ).all()
-
-    for order in candidates:
-        settlement_time = get_order_settlement_time(session, order.id)
-        if settlement_time is None:
-            summary.orders_with_no_settlement_time += 1
-            continue
-        settlement_time = _aware_utc(settlement_time)
-        if not (period_start <= settlement_time < period_end):
-            continue
-
-        summary.orders_considered += 1
-
-        # §6 — the authoritative Order Open Time is `Order.created_at`,
-        # which `clover.mapping.map_order` fills from `order.createdTime`.
-        # Never `client_created_at` (a device clock), never a payment time.
-        order_open_time = _aware_utc(order.created_at)
-
-        voluntary_minor, gratuity_minor = _order_gross_tip_components(session, order)
-        result.voluntary_total_minor += voluntary_minor
-        result.gratuity_total_minor += gratuity_minor
-
+    locations = {i: session.get(m.Location, i) for i in location_ids}
+    # Context always includes complete business days, independent of the
+    # requested reporting window. Read only; never persist aggregates.
+    context_start, context_end = period_start - timedelta(days=2), period_end + timedelta(days=2)
+    settled = order_settlement_times_subquery()
+    rows = session.execute(select(m.Order, settled.c.settlement_time).join(settled, settled.c.order_id == m.Order.id).where(
+        m.Order.location_id.in_(location_ids), settled.c.settlement_time >= context_start, settled.c.settlement_time < context_end
+    ).order_by(m.Order.id)).all()
+    summary.orders_with_no_settlement_time = session.scalar(select(func.count(m.Order.id)).outerjoin(
+        settled, settled.c.order_id == m.Order.id).where(m.Order.location_id.in_(location_ids),
+        m.Order.created_at <= period_end, settled.c.order_id.is_(None))) or 0
+    tips, gratuities = _gross_tip_components_for_orders(session, [o.id for o, _ in rows])
+    assignments = session.scalars(select(m.EmployeeAssignment).where(
+        m.EmployeeAssignment.restaurant_id == restaurant_id)).all()
+    groups = {}
+    result.order_facts = {}
+    for order, settled_at in rows:
+        settlement_time = _aware_utc(settled_at)
+        in_window = period_start <= settlement_time < period_end
+        voluntary_minor, gratuity_minor = tips.get(order.id, 0) or 0, gratuities.get(order.id, 0) or 0
+        if in_window:
+            result.order_facts[order.id] = (order, voluntary_minor, gratuity_minor)
+            summary.orders_considered += 1
+            result.voluntary_total_minor += voluntary_minor
+            result.gratuity_total_minor += gratuity_minor
         if order.employee_id is None:
-            summary.orders_skipped_no_employee += 1
+            if in_window:
+                summary.orders_skipped_no_employee += 1
             continue
-
-        owner_role_ids = _roles_held_by_employee_at(
-            session, restaurant_id=restaurant_id, employee_id=order.employee_id, location_id=order.location_id,
-            at=settlement_time,
-        )
-
+        owner_role_ids = {a.restaurant_role_id for a in assignments if a.employee_id == order.employee_id
+            and a.location_id in (None, order.location_id) and _aware_utc(a.valid_from) <= settlement_time
+            and (a.valid_to is None or settlement_time < _aware_utc(a.valid_to))}
         for rule in active_rules:
-            version = rule_svc.get_version_effective_at(session, rule.id, settlement_time)
-            if version is None:
+            effective = [v for v in versions[rule.id] if v.status != m.TIP_RULE_VERSION_STATUS_CANCELLED
+                and _aware_utc(v.effective_from) <= settlement_time
+                and (v.effective_to is None or settlement_time < _aware_utc(v.effective_to))]
+            if not effective:
                 continue
-            # ORDER_SERVICE_OWNER_SOURCE_SEMANTICS_001 — a ROLE-semantics
-            # Version still requires the Order-owning Employee to hold
-            # `source_role_id` (unchanged); an ORDER_SERVICE_OWNER Version
-            # is unconditionally sourced from `order.employee_id` — that
-            # Employee's RestaurantRole, if any, is irrelevant to source
-            # qualification.
+            if len(effective) != 1:
+                result.blocked_reason = f"Rule {rule.id} has overlapping effective versions; review its dates."
+                return result
+            version = effective[0]
             if version.source_semantics == m.TIP_SOURCE_SEMANTICS_ROLE and version.source_role_id not in owner_role_ids:
                 continue
-            rule_version_ids.add(version.id)
-            result.lines.extend(
-                _apply_rule_to_order(
+            if version.eligibility_mode == m.ELIGIBILITY_MODE_WORKED_DURING_BUSINESS_DAY:
+                location = locations[order.location_id]
+                try:
+                    day, start, end = _business_day_window(location, settlement_time)
+                except ValueError as exc:
+                    if in_window:
+                        result.blocked_reason = str(exc)
+                    continue
+                key = (version.id, order.location_id, day,
+                    order.employee_id if version.aggregation_scope == m.AGGREGATION_SCOPE_SOURCE_BUSINESS_DAY else order.id)
+                group = groups.setdefault(key, dict(version=version, location=location, day=day,
+                    start=start, end=end, entries=[]))
+                group["entries"].append((order, settlement_time, voluntary_minor, gratuity_minor, in_window))
+            elif in_window:
+                rule_version_ids.add(version.id)
+                result.lines.extend(_apply_rule_to_order(
                     session, order=order, restaurant_id=restaurant_id, source_employee_id=order.employee_id,
                     settlement_time=settlement_time, rule_version=version, voluntary_minor=voluntary_minor,
-                    order_open_time=order_open_time,
-                    gratuity_minor=gratuity_minor, summary=summary,
-                )
-            )
+                    order_open_time=_aware_utc(order.created_at), gratuity_minor=gratuity_minor, summary=summary))
+    weights_cache = {}
+    for group in groups.values():
+        if not any(e[4] for e in group["entries"]):
+            continue
+        version = group["version"]
+        rule_version_ids.add(version.id)
+        cache_key = (group["location"].id, group["day"], version.recipient_role_id)
+        try:
+            if cache_key not in weights_cache:
+                weights_cache[cache_key] = _worked_time_weights(session, restaurant_id=restaurant_id,
+                    location_id=group["location"].id, role_id=version.recipient_role_id,
+                    start=group["start"], end=group["end"], assignments=assignments)
+            weights = weights_cache[cache_key]
+            lines = _allocate_group(group, weights)
+            result.lines.extend(line for line in lines if period_start <= line.settlement_time < period_end)
+            summary.rules_applied += sum(e[4] for e in group["entries"])
+            summary.allocations_produced += sum(line.recipient_employee_id is not None for line in lines
+                if period_start <= line.settlement_time < period_end)
+        except ValueError as exc:
+            result.blocked_reason = str(exc)
 
     result.rule_version_ids = sorted(rule_version_ids)
     return result
@@ -889,10 +1056,9 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
     `TipCalculationResult` plus source facts — it reads no persisted
     allocation rows and no stored aggregate
     (TIPS_STATELESS_CALCULATION_001)."""
-    orders_in_scope = _orders_in_scope(
-        session, restaurant_id=result.restaurant_id,
-        period_start=result.period_start, period_end=result.period_end,
-    )
+    orders_in_scope = ([fact[0] for fact in result.order_facts.values()] if result.order_facts is not None else
+        _orders_in_scope(session, restaurant_id=result.restaurant_id,
+            period_start=result.period_start, period_end=result.period_end))
     orders_by_id = {order.id: order for order in orders_in_scope}
 
     # §1/§3 — accumulated SEPARATELY. `Order.employee_id` is the Order
@@ -904,7 +1070,8 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
     for order in orders_in_scope:
         if order.employee_id is None:
             continue
-        voluntary_minor, gratuity_minor = _order_gross_tip_components(session, order)
+        voluntary_minor, gratuity_minor = (result.order_facts[order.id][1:] if result.order_facts is not None
+            else _order_gross_tip_components(session, order))
         voluntary_by_employee[order.employee_id] = (
             voluntary_by_employee.get(order.employee_id, 0) + voluntary_minor
         )

@@ -99,6 +99,8 @@ app = Flask(__name__)
 from rfone_data_store.web_access import install_access_context
 install_access_context(app, SessionFactory)
 app.extensions["rfone_managed_training"] = True
+from ui_text import ui
+app.jinja_env.globals["ui"] = ui
 # The SAME signing secret RF-One Web uses, so Tips can verify the RF-One
 # session cookie it reads (`_require_rfone_login` below). Tips never issues
 # a login of its own; it also signs its flash messages with it.
@@ -1621,10 +1623,13 @@ def distribution_rule_create():
             return redirect(url_for("configuration_home", _anchor="distribution-rules"))
 
         try:
+            if request.form.get("eligibility_mode") == m.ELIGIBILITY_MODE_WORKED_DURING_BUSINESS_DAY:
+                effective_from = rule_svc.effective_business_date_boundary(session, restaurant.id, effective_from)
             rule_svc.create_rule(
                 session, restaurant_id=restaurant.id, source_role_id=source_role_id,
                 recipient_role_id=recipient_role_id, calculation_base=calculation_base, rate=rate,
                 effective_from=effective_from, created_by=created_by,
+                **_rule_axes_from_form(),
             )
             session.commit()
         except ValueError as exc:
@@ -1670,9 +1675,12 @@ def distribution_rule_new_version(rule_id: int):
             return redirect(url_for("distribution_rule_detail", rule_id=rule_id))
 
         try:
+            if request.form.get("eligibility_mode") == m.ELIGIBILITY_MODE_WORKED_DURING_BUSINESS_DAY:
+                effective_from = rule_svc.effective_business_date_boundary(session, rule.restaurant_id, effective_from)
             new_version = rule_svc.create_new_version(
                 session, rule_id, source_role_id=source_role_id, recipient_role_id=recipient_role_id,
                 calculation_base=calculation_base, rate=rate, effective_from=effective_from, created_by=created_by,
+                **_rule_axes_from_form(),
             )
             # TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §7 — say out
             # loud what entering this version did to the others. Silently
@@ -1873,6 +1881,15 @@ def restaurant_role_edit(role_id: int):
             return redirect(url_for("restaurant_roles_home"))
 
         return render_template("restaurant_role_form.html", mode="edit", role=role, restaurant=None)
+
+
+
+def _rule_axes_from_form():
+    return dict(
+        aggregation_scope=request.form.get("aggregation_scope", m.AGGREGATION_SCOPE_ORDER),
+        eligibility_mode=request.form.get("eligibility_mode", m.ELIGIBILITY_MODE_ACTIVE_AT_SETTLEMENT),
+        distribution_method=request.form.get("distribution_method", m.DISTRIBUTION_METHOD_EQUAL),
+    )
 
 
 if __name__ == "__main__":

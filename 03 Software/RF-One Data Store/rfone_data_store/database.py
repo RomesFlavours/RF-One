@@ -93,12 +93,7 @@ def create_configured_engine(url: str | None = None) -> Engine:
     what PostgreSQL enforces natively without any special configuration.
     """
     resolved_url = url or get_database_url()
-    # Server databases: test a pooled connection before use (RDS closes idle
-    # ones) and fail after 10 s instead of queueing a web thread for 30 s when
-    # the pool is exhausted. Pool sizes keep SQLAlchemy's defaults. SQLite keeps
-    # its own pool class, which takes neither option.
-    options = {} if str(resolved_url).startswith("sqlite") else dict(pool_pre_ping=True, pool_timeout=10)
-    engine = create_engine(resolved_url, future=True, **options)
+    engine = create_engine(resolved_url, future=True)
 
     if engine.dialect.name == "sqlite":
 

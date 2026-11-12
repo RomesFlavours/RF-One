@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set help_section = "tips_host_audit" %}
 {% set crumbs = [('Calculate Tips', url_for('calculate_tips_home', start_at=start_at or None, end_at=end_at or None)), ('Explain / Audit Host Tips', None)] %}
 {% block content %}
 
@@ -10,43 +11,42 @@
 {% endwith %}
 
 <div class="card">
-  <h2>Explain / Audit Host Tips</h2>
+  <h2>{{ ui("Explain / Audit Host Tips") }}</h2>
   {% if restaurant %}
-  <p class="muted" style="font-size:.85rem;">Restaurant: <strong>{{ restaurant.name }}</strong></p>
+  <p class="muted" style="font-size:.85rem;">{{ ui("Restaurant:") }} <strong>{{ restaurant.name }}</strong></p>
   {% else %}
-  <p class="error">No Restaurant exists in this database yet.</p>
+  <p class="error">{{ ui("No Restaurant exists in this database yet.") }}</p>
   {% endif %}
   <p class="muted" style="font-size:.78rem;">
-    Explains the existing Tip Distribution Engine's already-calculated output — it never runs a second
-    calculation. Compare any line below directly against your Clover export using the Order/Payment ids.
+    {{ ui("Explains the existing Tip Distribution Engine's already-calculated output — it never runs a second\n    calculation. Compare any line below directly against your Clover export using the Order/Payment ids.") }}
   </p>
   <form method="get" action="{{ url_for('host_audit_home') }}">
     <div class="form-row">
       <div>
-        <label for="employee_id">Host Employee</label>
+        <label for="employee_id">{{ ui("Host Employee") }}</label>
         <select id="employee_id" name="employee_id" required {{ 'disabled' if not employees else '' }}>
-          <option value="">Select...</option>
+          <option value="">{{ ui("Select...") }}</option>
           {% for e in employees %}
-          <option value="{{ e.id }}" {{ 'selected' if e.id == employee_id else '' }}>{{ e.display_name|short_name(empty='Employee #' ~ e.id) }}{% if e.location_names %} · {{ e.location_names|join(', ') }}{% endif %}{% if not e.is_active %} · Inactive{% endif %}</option>
+          <option value="{{ e.id }}" {{ 'selected' if e.id == employee_id else '' }}>{{ e.display_name|short_name(empty='Employee #' ~ e.id) }}{% if e.location_names %} · {{ e.location_names|join(', ') }}{% endif %}{% if not e.is_active %} {{ ui("· Inactive") }}{% endif %}</option>
           {% endfor %}
         </select>
       </div>
       <div>
-        <label for="start_at">Start date &amp; time</label>
+        <label for="start_at">{{ ui("Start date &amp; time") }}</label>
         <input type="datetime-local" id="start_at" name="start_at" value="{{ start_at }}" required>
       </div>
       <div>
-        <label for="end_at">End date &amp; time</label>
+        <label for="end_at">{{ ui("End date &amp; time") }}</label>
         <input type="datetime-local" id="end_at" name="end_at" value="{{ end_at }}" required>
       </div>
       <div>
-        <button type="submit" {{ 'disabled' if not restaurant else '' }}>Explain</button>
+        <button type="submit" {{ 'disabled' if not restaurant else '' }}>{{ ui("Explain") }}</button>
       </div>
     </div>
   </form>
   {% if report %}
   <p class="muted" style="font-size:.85rem; margin-top:.5rem;">
-    <a href="{{ url_for('host_audit_export_csv', employee_id=employee_id, start_at=start_at, end_at=end_at) }}">Export CSV</a>
+    <a href="{{ url_for('host_audit_export_csv', employee_id=employee_id, start_at=start_at, end_at=end_at) }}">{{ ui("Export CSV") }}</a>
   </p>
   {% endif %}
 </div>
@@ -54,18 +54,18 @@
 {% if report %}
 
 <div class="card">
-  <h2>{{ report.host_employee_name|short_name }} — Period Summary</h2>
-  <p>Total Host Tips this period: <strong>${{ "%.2f"|format(report.period_total_host_tips_minor / 100) }}</strong></p>
+  <h2>{{ report.host_employee_name|short_name }} {{ ui("— Period Summary") }}</h2>
+  <p>{{ ui("Total Host Tips this period:") }} <strong>${{ "%.2f"|format(report.period_total_host_tips_minor / 100) }}</strong></p>
   {% if report.period_reconciliation_ok %}
-    <p class="muted" style="font-size:.85rem;">Reconciliation OK — the sum of every line shown below matches the Tip Distribution Engine's own independently-computed total for this period.</p>
+    <p class="muted" style="font-size:.85rem;">{{ ui("Reconciliation OK — the sum of every line shown below matches the Tip Distribution Engine's own independently-computed total for this period.") }}</p>
   {% else %}
     <div class="error">
-      <strong>Reconciliation warning:</strong> the sum of the lines shown does not match the engine's own computed total for this period. See detail below — nothing has been hidden.
+      <strong>{{ ui("Reconciliation warning:") }}</strong> {{ ui("the sum of the lines shown does not match the engine's own computed total for this period. See detail below — nothing has been hidden.") }}
     </div>
   {% endif %}
   {% if report.reconciliations %}
   <table style="margin-top:.5rem;">
-    <thead><tr><th>Period</th><th>Sum of lines shown</th><th>Engine-reported total</th><th>Status</th></tr></thead>
+    <thead><tr><th>{{ ui("Period") }}</th><th>{{ ui("Sum of lines shown") }}</th><th>{{ ui("Engine-reported total") }}</th><th>{{ ui("Status") }}</th></tr></thead>
     <tbody>
       {% for rec in report.reconciliations %}
       <tr>
@@ -82,15 +82,15 @@
 
 {% for group in report.shift_groups %}
 <div class="card">
-  <h3>Shift: {{ group.shift_start|local_dt(tz, empty='(no matching Shift record)') }}
-    {% if group.shift_end %} – {{ group.shift_end|local_dt(tz, '%H:%M') }}{% elif group.shift_start %} – (still open){% endif %}
+  <h3>{{ 'Business-day allocation' if group.daily_pool else 'Shift' }}: {{ group.shift_start|local_dt(tz, empty='(no matching Shift record)') }}
+    {% if group.shift_end %} – {{ group.shift_end|local_dt(tz, '%H:%M') }}{% elif group.shift_start %} {{ ui("– (still open)") }}{% endif %}
   </h3>
   <table style="margin-bottom:.75rem;">
-    <tr><td class="muted">Host</td><td>{{ report.host_employee_name|short_name }}</td></tr>
-    <tr><td class="muted">Business Date</td><td>{{ group.business_date or '-' }}</td></tr>
-    <tr><td class="muted">Role</td><td>{{ group.role_name }}</td></tr>
-    <tr><td class="muted">RuleVersion(s) used</td><td>{{ group.rule_version_ids|join(', ') }}</td></tr>
-    <tr><td class="muted">Total Host Tips this shift</td><td><strong>${{ "%.2f"|format(group.total_host_tips_minor / 100) }}</strong></td></tr>
+    <tr><td class="muted">{{ ui("Host") }}</td><td>{{ report.host_employee_name|short_name }}</td></tr>
+    <tr><td class="muted">{{ ui("Business Date") }}</td><td>{{ group.business_date or '-' }}</td></tr>
+    <tr><td class="muted">{{ ui("Role") }}</td><td>{{ group.role_name }}</td></tr>
+    <tr><td class="muted">{{ ui("RuleVersion(s) used") }}</td><td>{{ group.rule_version_ids|join(', ') }}</td></tr>
+    <tr><td class="muted">{{ ui("Total Host Tips this shift") }}</td><td><strong>${{ "%.2f"|format(group.total_host_tips_minor / 100) }}</strong></td></tr>
   </table>
 
   {% if group.lines %}
@@ -98,8 +98,8 @@
   <table>
     <thead>
       <tr>
-        <th>Payment Time</th><th>Server</th><th>Order</th><th>Payment</th><th>Tip</th>
-        <th>Host Pool</th><th>Eligible Hosts</th><th>{{ report.host_employee_name|short_name }} Allocation</th>
+        <th>{{ ui("Payment Time") }}</th><th>{{ ui("Server") }}</th><th>{{ ui("Order") }}</th><th>{{ ui("Payment") }}</th><th>{{ ui("Tip") }}</th>
+        <th>{{ ui("Host Pool") }}</th><th>{{ ui("Eligible Hosts") }}</th><th>{{ report.host_employee_name|short_name }} {{ ui("Allocation") }}</th>
       </tr>
     </thead>
     <tbody>
@@ -113,6 +113,8 @@
         <td>${{ "%.2f"|format(line.host_pool_amount_minor / 100) }}</td>
         <td>
           {{ line.eligible_host_count }}
+          {% if line.eligibility_detail %}<details><summary>{{ ui("Allocation basis") }}</summary><p>{{ line.eligibility_detail }}</p>
+          {% if line.group_base_minor is not none %}<p>{{ ui("Source group base: $") }}{{ "%.2f"|format(line.group_base_minor / 100) }}{{ ui("; group pool: $") }}{{ "%.2f"|format(line.group_pool_minor / 100) }}{{ ui(". Order rows attribute this group; they are not separate percentage calculations.") }}</p>{% endif %}</details>{% endif %}
           {% if line.eligible_host_count > 1 %}
           <span class="muted" style="font-size:.78rem;">({% for name, amt in line.eligible_hosts %}{{ name }}: ${{ "%.2f"|format(amt / 100) }}{% if not loop.last %}, {% endif %}{% endfor %})</span>
           {% endif %}
@@ -124,24 +126,23 @@
   </table>
   </div>
   {% else %}
-  <p class="empty">No Host Tip lines in this Shift for the requested period.</p>
+  <p class="empty">{{ ui("No Host Tip lines in this Shift for the requested period.") }}</p>
   {% endif %}
 </div>
 {% endfor %}
 
 {% if not report.shift_groups %}
-<div class="card"><p class="empty">No Host Tip allocations found for this Employee in the requested period.</p></div>
+<div class="card"><p class="empty">{{ ui("No Host Tip allocations found for this Employee in the requested period.") }}</p></div>
 {% endif %}
 
 {% if report.unresolved_items %}
 <div class="card">
-  <h3>Unresolved Items (this period, not specific to this Host)</h3>
+  <h3>{{ ui("Unresolved Items (this period, not specific to this Host)") }}</h3>
   <p class="muted" style="font-size:.78rem;">
-    These Orders' tips could not be automatically allocated by the engine at all (no recipient was ever
-    determined) — shown for human verification, never counted as a Host allocation.
+    {{ ui("These Orders' tips could not be automatically allocated by the engine at all (no recipient was ever\n    determined) — shown for human verification, never counted as a Host allocation.") }}
   </p>
   <table>
-    <thead><tr><th>Business Date</th><th>Settlement Time</th><th>Order</th><th>Rule Version</th><th>Detail</th></tr></thead>
+    <thead><tr><th>{{ ui("Business Date") }}</th><th>{{ ui("Settlement Time") }}</th><th>{{ ui("Order") }}</th><th>{{ ui("Rule Version") }}</th><th>{{ ui("Detail") }}</th></tr></thead>
     <tbody>
       {% for item in report.unresolved_items %}
       <tr>

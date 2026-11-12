@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set help_section = "tips_calculate" %}
 {% block content %}
 
 {# CALCULATE_AND_CONSOLIDATE_001 — one linear page, two actions:
@@ -16,24 +17,23 @@
 {% endwith %}
 
 <div class="card" id="calculate">
-  <h2>Calculate Tips</h2>
-  {% if not restaurant %}<p class="error">No Restaurant exists in this database yet.</p>{% endif %}
+  <h2>{{ ui("Calculate Tips") }}</h2>
+  {% if not restaurant %}<p class="error">{{ ui("No Restaurant exists in this database yet.") }}</p>{% endif %}
   <form method="post" action="{{ url_for('calculate_tips_run') }}">
     <div class="form-row">
       <div>
-        <label for="start_at">From</label>
+        <label for="start_at">{{ ui("From") }}</label>
         <input type="datetime-local" id="start_at" name="start_at" value="{{ start_at }}" required>
       </div>
       <div>
-        <label for="end_at">Through</label>
+        <label for="end_at">{{ ui("Through") }}</label>
         <input type="datetime-local" id="end_at" name="end_at" value="{{ end_at }}" required>
       </div>
-      <div><button type="submit" {{ 'disabled' if not restaurant else '' }}>Calculate</button></div>
+      <div><button type="submit" {{ 'disabled' if not restaurant else '' }}>{{ ui("Calculate") }}</button></div>
     </div>
   </form>
   <p class="muted" style="font-size:.75rem; margin-top:.6rem;">
-    Local time ({{ tz_name or 'not configured' }}). Through is excluded. Opens on the latest Business Day, {{ cutoff or 'cutoff' }} to {{ cutoff or 'cutoff' }}.
-    Calculate saves nothing and can be repeated freely.
+    {{ ui("Local time (") }}{{ tz_name or 'not configured' }}{{ ui("). Through is excluded. Opens on the latest Business Day,") }} {{ cutoff or 'cutoff' }} {{ ui("to") }} {{ cutoff or 'cutoff' }}{{ ui(".\n    Calculate saves nothing and can be repeated freely.") }}
   </p>
 </div>
 
@@ -45,16 +45,16 @@
 <div class="card" id="result-status">
   <div class="status-line {{ 'ready' if consolidated_run else 'not-ready' }}">
     {% if consolidated_run %}
-      <span class="badge ok lg">CONSOLIDATED</span>
-      <strong>Period consolidated {{ period_label }}</strong>
+      <span class="badge ok lg">{{ ui("CONSOLIDATED") }}</span>
+      <strong>{{ ui("Period consolidated") }} {{ period_label }}</strong>
     {% else %}
-      <span class="badge lg">CALCULATED</span>
+      <span class="badge lg">{{ ui("CALCULATED") }}</span>
       <strong>{{ window_label }}</strong>
-      <span class="muted" style="font-size:.82rem;">not consolidated yet</span>
+      <span class="muted" style="font-size:.82rem;">{{ ui("not consolidated yet") }}</span>
     {% endif %}
     {% if audit_mode %}
       <span class="badge warn" title="Review mode is AUDIT: check each Host in Explain / Audit Host Tips before relying on this result. The numbers are the same in either mode.">
-        Audit mode &middot; <a href="{{ url_for('host_audit_home', start_at=start_at, end_at=end_at) }}">check Hosts</a>
+        {{ ui("Audit mode &middot;") }} <a href="{{ url_for('host_audit_home', start_at=start_at, end_at=end_at) }}">{{ ui("check Hosts") }}</a>
       </span>
     {% endif %}
   </div>
@@ -63,28 +63,26 @@
 {# B. Totals — TIPS_OPERATIONAL_RESULTS_AND_CALCULATION_FIX_001 §4. Voluntary
    and Gratuity side by side because Clover reports them separately. #}
 <div class="card" id="totals">
-  <h2>Totals</h2>
+  <h2>{{ ui("Totals") }}</h2>
   <div class="control-grid">
-    <div class="control-tile"><div class="label">Voluntary Tips</div><div class="value">{{ money(result.voluntary_total_minor) }}</div></div>
-    <div class="control-tile"><div class="label">Gratuity</div><div class="value">{{ money(result.gratuity_total_minor) }}</div></div>
-    <div class="control-tile sum"><div class="label">Total Tips + Gratuity</div><div class="value">{{ money(totals.gross_minor) }}</div></div>
-    <div class="control-tile"><div class="label">Service Owners</div><div class="value">{{ money(totals.service_owner_entitlements_minor) }}</div></div>
-    <div class="control-tile"><div class="label">Other Recipients</div><div class="value">{{ money(totals.other_recipient_entitlements_minor) }}</div></div>
+    <div class="control-tile"><div class="label">{{ ui("Voluntary Tips") }}</div><div class="value">{{ money(result.voluntary_total_minor) }}</div></div>
+    <div class="control-tile"><div class="label">{{ ui("Gratuity") }}</div><div class="value">{{ money(result.gratuity_total_minor) }}</div></div>
+    <div class="control-tile sum"><div class="label">{{ ui("Total Tips + Gratuity") }}</div><div class="value">{{ money(totals.gross_minor) }}</div></div>
+    <div class="control-tile"><div class="label">{{ ui("Service Owners") }}</div><div class="value">{{ money(totals.service_owner_entitlements_minor) }}</div></div>
+    <div class="control-tile"><div class="label">{{ ui("Other Recipients") }}</div><div class="value">{{ money(totals.other_recipient_entitlements_minor) }}</div></div>
   </div>
   {# §11 — the ONE authoritative control stays: Total Employee Entitlements
      must equal Total Tips + Gratuity. Shown only when it fails. #}
   {% if not totals.control_passes %}
   <div class="error" id="control-anomaly" style="margin-top:.8rem;">
-    <strong>Anomaly: the entitlements do not add up to Tips + Gratuity.</strong>
-    Employee entitlements {{ money(totals.total_employee_entitlements_minor) }} against
-    Tips + Gratuity {{ money(totals.gross_minor) }} (difference {{ money(totals.control_difference_minor|abs) }}).
-    This result cannot be consolidated.
+    <strong>{{ ui("Anomaly: the entitlements do not add up to Tips + Gratuity.") }}</strong>
+    {{ ui("Employee entitlements") }} {{ money(totals.total_employee_entitlements_minor) }} {{ ui("against\n    Tips + Gratuity") }} {{ money(totals.gross_minor) }} {{ ui("(difference") }} {{ money(totals.control_difference_minor|abs) }}{{ ui(").\n    This result cannot be consolidated.") }}
   </div>
   {% endif %}
   <p class="muted" style="font-size:.75rem; margin-top:.6rem;">
-    {{ result.summary.orders_considered }} order(s); rule version(s) {% if result.rule_version_ids %}{{ result.rule_version_ids|join(', ') }}{% else %}none{% endif %}.
+    {{ result.summary.orders_considered }} {{ ui("order(s); rule version(s)") }} {% if result.rule_version_ids %}{{ result.rule_version_ids|join(', ') }}{% else %}{{ ui("none") }}{% endif %}.
     {% if result.no_eligible_recipient_lines %}
-      {{ result.no_eligible_recipient_lines|length }} order(s) had no eligible Host, so their Service Owner keeps 100%.
+      {{ result.no_eligible_recipient_lines|length }} {{ ui("order(s) had no eligible Host, so their Service Owner keeps 100%.") }}
     {% endif %}
   </p>
 </div>
@@ -94,17 +92,17 @@
    order-level proof one click away in the drill-down. #}
 {% if result %}
 <div class="card" id="entitlements">
-  <h2>Employee Entitlements</h2>
+  <h2>{{ ui("Employee Entitlements") }}</h2>
   {% if not review_rows %}
-    <p class="empty">No Employee activity in this period.</p>
+    <p class="empty">{{ ui("No Employee activity in this period.") }}</p>
   {% else %}
   <div class="table-scroll">
   <table>
     <thead>
       <tr>
-        <th>Employee</th><th>Role</th>
-        <th class="num">Voluntary Tips</th><th class="num">Gratuity</th><th class="num">Gross Tips</th>
-        <th class="num">Distributed / Received</th><th class="num">Entitlement</th><th>Status</th>
+        <th>{{ ui("Employee") }}</th><th>{{ ui("Role") }}</th>
+        <th class="num">{{ ui("Voluntary Tips") }}</th><th class="num">{{ ui("Gratuity") }}</th><th class="num">{{ ui("Gross Tips") }}</th>
+        <th class="num">{{ ui("Distributed / Received") }}</th><th class="num">{{ ui("Entitlement") }}</th><th>{{ ui("Status") }}</th>
       </tr>
     </thead>
     <tbody>
@@ -112,9 +110,9 @@
       <tr>
         <td>{{ row.display_name|short_name(empty='Employee #' ~ row.employee_id) }}</td>
         <td>
-          {% if row.result_type == 'HOST' %}<span class="badge">Host</span>
-          {% elif row.result_type == 'BOTH' %}<span class="badge">Service Owner + Host</span>
-          {% else %}<span class="badge">Service Owner</span>{% endif %}
+          {% if row.result_type == 'HOST' %}<span class="badge">{{ ui("Host") }}</span>
+          {% elif row.result_type == 'BOTH' %}<span class="badge">{{ ui("Service Owner + Host") }}</span>
+          {% else %}<span class="badge">{{ ui("Service Owner") }}</span>{% endif %}
         </td>
         <td class="num">{{ money(row.voluntary_tips_minor) }}</td>
         <td class="num">{{ money(row.gratuity_minor) }}</td>
@@ -122,23 +120,23 @@
         <td class="num">
           {# §12 — shown only when distribution actually occurred. #}
           {% if row.result_type == 'HOST' %}+ {{ money(row.received_minor) }}
-          {% elif row.result_type == 'BOTH' %}&minus; {{ money(row.distributed_away_minor) }} / + {{ money(row.received_minor) }}
-          {% elif row.distributed_away_minor %}&minus; {{ money(row.distributed_away_minor) }}
-          {% else %}<span class="muted">&mdash;</span>{% endif %}
+          {% elif row.result_type == 'BOTH' %}{{ ui("&minus;") }} {{ money(row.distributed_away_minor) }} / + {{ money(row.received_minor) }}
+          {% elif row.distributed_away_minor %}{{ ui("&minus;") }} {{ money(row.distributed_away_minor) }}
+          {% else %}<span class="muted">{{ ui("&mdash;") }}</span>{% endif %}
         </td>
         <td class="num"><strong>{{ money(row.final_entitlement_minor) }}</strong></td>
         <td style="font-size:.78rem;">
           {% if row.has_warning %}
-            <span class="badge warn" title="{{ row.warning_notes|join(' | ') }}">check</span>
+            <span class="badge warn" title="{{ row.warning_notes|join(' | ') }}">{{ ui("check") }}</span>
           {% else %}
-            <span class="muted">ready</span>
+            <span class="muted">{{ ui("ready") }}</span>
           {% endif %}
           {% if row.inbound_tip_out_minor %}
-            <a href="{{ url_for('host_audit_home', employee_id=row.employee_id, start_at=start_at, end_at=end_at) }}">audit</a>
+            <a href="{{ url_for('host_audit_home', employee_id=row.employee_id, start_at=start_at, end_at=end_at) }}">{{ ui("audit") }}</a>
           {% endif %}
           {% if row.order_ids %}
             <details>
-              <summary class="muted">orders</summary>
+              <summary class="muted">{{ ui("orders") }}</summary>
               {% for order_id in row.order_ids %}<a href="{{ url_for('calculate_tips_order_drilldown', order_id=order_id, start_at=start_at, end_at=end_at) }}">#{{ order_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
             </details>
           {% endif %}
@@ -157,22 +155,22 @@
 {# D. Consolidate — the period and result shown above; no dates asked again. #}
 <div class="card" id="consolidate">
   {% if consolidated_run %}
-    <p><span class="badge ok lg">CONSOLIDATED</span> <strong>Period consolidated {{ period_label }}</strong></p>
-    <p class="muted" style="font-size:.8rem;">This result is saved. Open it in <a href="{{ url_for('tips_run_report', run_id=consolidated_run.id) }}">Saved Periods</a>.</p>
+    <p><span class="badge ok lg">{{ ui("CONSOLIDATED") }}</span> <strong>{{ ui("Period consolidated") }} {{ period_label }}</strong></p>
+    <p class="muted" style="font-size:.8rem;">{{ ui("This result is saved. Open it in") }} <a href="{{ url_for('tips_run_report', run_id=consolidated_run.id) }}">{{ ui("Saved Periods") }}</a>.</p>
   {% elif not totals.control_passes %}
-    <p><button type="button" disabled>Consolidate</button>
-      <span class="muted" style="font-size:.8rem;">Not available: the result has an anomaly (see Totals).</span></p>
+    <p><button type="button" disabled>{{ ui("Consolidate") }}</button>
+      <span class="muted" style="font-size:.8rem;">{{ ui("Not available: the result has an anomaly (see Totals).") }}</span></p>
   {% elif not first_business_date %}
-    <p><button type="button" disabled>Consolidate</button>
-      <span class="muted" style="font-size:.8rem;">Saved Periods are whole Business Days: choose From and Through at {{ cutoff }} to consolidate.</span></p>
+    <p><button type="button" disabled>{{ ui("Consolidate") }}</button>
+      <span class="muted" style="font-size:.8rem;">{{ ui("Saved Periods are whole Business Days: choose From and Through at") }} {{ cutoff }} {{ ui("to consolidate.") }}</span></p>
   {% else %}
     <form method="post" action="{{ url_for('calculate_tips_consolidate') }}">
       <input type="hidden" name="from_date" value="{{ from_date }}">
       <input type="hidden" name="through_date" value="{{ through_date }}">
       <input type="hidden" name="fingerprint" value="{{ fingerprint }}">
-      <button type="submit" id="consolidate-btn">Consolidate {{ period_label }}</button>
+      <button type="submit" id="consolidate-btn">{{ ui("Consolidate") }} {{ period_label }}</button>
     </form>
-    <p class="muted" style="font-size:.75rem; margin-top:.4rem;">Saves the result shown above as the reference for this period. It then appears in <a href="{{ url_for('tips_run_history') }}">Saved Periods</a>.</p>
+    <p class="muted" style="font-size:.75rem; margin-top:.4rem;">{{ ui("Saves the result shown above as the reference for this period. It then appears in") }} <a href="{{ url_for('tips_run_history') }}">{{ ui("Saved Periods") }}</a>.</p>
   {% endif %}
 </div>
 {% endif %}

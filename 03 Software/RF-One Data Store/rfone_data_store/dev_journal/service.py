@@ -117,11 +117,16 @@ def _choice(value: str | None, allowed, label: str) -> str:
 def journal_accounts(db: Session) -> list[m.RFOneAccount]:
     """ACTIVE accounts holding the enabled DEV_JOURNAL access — the people
     who may be named responsible, and the future MyRF recipients."""
-    from .. import rfone_web_session as shared
-    candidates = db.scalars(select(m.RFOneAccount).where(
-        m.RFOneAccount.status == "ACTIVE").order_by(m.RFOneAccount.display_name))
-    return [account for account in candidates if shared.account_may_enter_domain(db, account, ACCESS_CODE)]
-
+    return list(db.scalars(
+        select(m.RFOneAccount)
+        .join(m.RFOneAccountDomainAccess, m.RFOneAccountDomainAccess.account_id == m.RFOneAccount.id)
+        .where(
+            m.RFOneAccountDomainAccess.domain_code == ACCESS_CODE,
+            m.RFOneAccountDomainAccess.enabled.is_(True),
+            m.RFOneAccount.status == "ACTIVE",
+        )
+        .order_by(m.RFOneAccount.display_name)
+    ))
 
 
 def _check_responsible(db: Session, account_id: int | None, *, keep_current: int | None = None) -> int:

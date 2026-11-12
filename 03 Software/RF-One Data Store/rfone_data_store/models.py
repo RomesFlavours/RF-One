@@ -1487,8 +1487,8 @@ class RestaurantLocation(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
     location_id: Mapped[int] = mapped_column(
         ForeignKey("locations.id"), nullable=False, index=True
@@ -1533,8 +1533,8 @@ class PhysicalArea(Base):
     __table_args__ = (UniqueConstraint("restaurant_id", "name"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -1648,8 +1648,8 @@ class EmployeeAssignment(Base):
     employee_id: Mapped[int] = mapped_column(
         ForeignKey("employees.id"), nullable=False, index=True
     )
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
     operational_area_id: Mapped[int] = mapped_column(
         ForeignKey("operational_areas.id"), nullable=False, index=True
@@ -1737,8 +1737,8 @@ class TipPolicy(Base):
     __tablename__ = "tip_policies"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
     # Optional narrower scope (task §17 "optional location scope if
     # consistent with current RestaurantLocation design") — NULL means the
@@ -1884,6 +1884,10 @@ ELIGIBILITY_MODE_ACTIVE_AT_SETTLEMENT = "ACTIVE_AT_SETTLEMENT"
 # `order.createdTime` (mapping.map_order) — the instant Clover opened the
 # order. Not `client_created_at` (a device clock) and not a payment time.
 ELIGIBILITY_MODE_ACTIVE_AT_ORDER_OPEN = "ACTIVE_AT_ORDER_OPEN"
+ELIGIBILITY_MODE_WORKED_DURING_BUSINESS_DAY = "WORKED_DURING_BUSINESS_DAY"
+AGGREGATION_SCOPE_ORDER = "ORDER"
+AGGREGATION_SCOPE_SOURCE_BUSINESS_DAY = "SOURCE_BUSINESS_DAY"
+DISTRIBUTION_METHOD_HOURS_PROPORTIONAL = "HOURS_PROPORTIONAL"
 DISTRIBUTION_METHOD_EQUAL = "EQUAL"
 NO_ELIGIBLE_RECIPIENT_SOURCE_RETAINS = "SOURCE_RETAINS"
 TRANSACTION_SCOPE_ALL = "ALL"
@@ -2047,6 +2051,9 @@ class TipDistributionRuleVersion(Base):
     # SOURCE_RETAINS (spec §14), transaction_scope=ALL (spec §11) — see the
     # `*_validate_*` functions in `distribution_rule_service.py` for what is
     # actually accepted today.
+    aggregation_scope: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=AGGREGATION_SCOPE_ORDER, server_default=AGGREGATION_SCOPE_ORDER,
+    )
     eligibility_mode: Mapped[str] = mapped_column(String(32), nullable=False)
     distribution_method: Mapped[str] = mapped_column(String(32), nullable=False)
     no_eligible_recipient_behavior: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -2940,8 +2947,8 @@ class RestaurantProfileSourceControl(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
     source_system_id: Mapped[int] = mapped_column(
         ForeignKey("source_systems.id"), nullable=False, index=True
@@ -2980,8 +2987,8 @@ class SourceRoleMapping(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
     source_system_id: Mapped[int] = mapped_column(
         ForeignKey("source_systems.id"), nullable=False
@@ -3023,8 +3030,8 @@ class ProfileBootstrapRun(Base):
     __tablename__ = "profile_bootstrap_runs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
     source_system_id: Mapped[int] = mapped_column(
         ForeignKey("source_systems.id"), nullable=False
@@ -3060,8 +3067,8 @@ class RestaurantProfileReconciliationIssue(Base):
     bootstrap_run_id: Mapped[int] = mapped_column(
         ForeignKey("profile_bootstrap_runs.id"), nullable=False, index=True
     )
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
 
     # Conceptual values (task §9): CURRENT_EMPLOYEE_WITHOUT_SOURCE_ROLE,
@@ -3798,8 +3805,8 @@ class PayrollSchedule(Base):
     __table_args__ = (UniqueConstraint("restaurant_id", "code"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
 
     # Conceptual values: WEEKLY, BIWEEKLY, MONTHLY. Free string, not a DB
@@ -3832,8 +3839,8 @@ class WorkweekDefinition(Base):
     __tablename__ = "workweek_definitions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
 
     # 0=Monday .. 6=Sunday (Python `date.weekday()` convention).
@@ -3955,8 +3962,8 @@ class PayrollRun(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
     source_system_id: Mapped[int] = mapped_column(
         ForeignKey("source_systems.id"), nullable=False, index=True
@@ -4032,8 +4039,8 @@ class PayrollExecutionConfiguration(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
 
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -4068,8 +4075,8 @@ class PayrollProviderEmployeeIdentity(Base):
     source_system_id: Mapped[int] = mapped_column(
         ForeignKey("source_systems.id"), nullable=False, index=True
     )
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
 
     # Deterministic, structural normalization of the provider's own Employee
@@ -4266,8 +4273,8 @@ class PayrollImportRun(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
     source_system_id: Mapped[int] = mapped_column(
         ForeignKey("source_systems.id"), nullable=False, index=True
@@ -5195,8 +5202,8 @@ class Supplier(Base):
     __tablename__ = "suppliers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -10479,15 +10486,15 @@ class RFOneAccount(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     is_owner: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
-    # Registry contact data for external accounts; separate from login recovery.
-    contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    contact_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
     )
+
+    contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 # How much of a Domain an enabled `RFOneAccountDomainAccess` row opens
