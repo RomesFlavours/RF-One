@@ -19,7 +19,7 @@ import json
 
 from rfone_data_store import employee_directory as person_directory
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
 
 from auth import (
     current_account_id, get_csrf_token, load_current_account, log_in, log_out,
@@ -169,6 +169,10 @@ def assignment_detail(assignment_id: int):
         db.commit()
 
         pill = assignment.pill
+        if 'tw_assigned_course' in current_app.view_functions and db.get(m.TrainingCourseAssignmentRevision,assignment.id):
+            return redirect(url_for('tw_assigned_course',assignment_id=assignment.id))
+        if pill.slug == 'visual-menu':
+            return redirect('/training/visual-menu')
         dish = get_dish(pill.slug)
         self_check_questions = svc.get_self_check_questions(db, pill.id)
         self_check_view = [
@@ -194,6 +198,8 @@ def final_quiz(assignment_id: int):
         if account is None or account.role != "student":
             abort(404)
         assignment = _load_own_assignment(db, account.id, assignment_id)
+        if assignment.pill.slug == 'visual-menu' or db.get(m.TrainingCourse,assignment.pill_id):
+            abort(404)
 
         if request.method == "POST":
             require_csrf()

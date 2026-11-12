@@ -51,42 +51,47 @@ def linked_account(db, training_id):
 def editable_student(db, training_id):
     a=db.get(m.TrainingAccount,training_id)
     if a is None or a.role!='student':
-        raise ValueError('Student not found.')
+        raise ValueError('Studente non trovato.')
     p=profile(db,a.id)
     if p.employee_id:
-        raise ValueError('This recipient belongs to the employee directory.')
+        raise ValueError('Questo destinatario appartiene all’anagrafica dipendenti.')
     r=linked_account(db,a.id)
-    if r:
-        from .. import access_profiles as profiles
-        companies = profiles.company_ids_for_account(db, r.id) | {None}
-        grants = [g for company in companies for g in profiles.effective_permissions(db, r.id, company_id=company).items()]
-        if r.is_admin or not grants or any(code != 'TRAINING' or value['role_code'] != 'student' for code,value in grants):
-            raise ValueError('An RF-One administrator must manage this account’s credentials.')
+    if r and not only_training_student(db,r):
+        raise ValueError('Le credenziali di questo account devono essere gestite dall’amministratore RF-One.')
     return a,p,r
+
+
+def only_training_student(db, r):
+    """Registry-effective permissions (direct grants and company roles) are only TRAINING/student."""
+    from .. import access_profiles as profiles
+    companies = profiles.company_ids_for_account(db, r.id) | {None}
+    grants = [g for company in companies for g in profiles.effective_permissions(db, r.id, company_id=company).items()]
+    return (not r.is_admin and bool(grants)
+            and all(code == 'TRAINING' and value['role_code'] == 'student' for code, value in grants))
 
 
 def save_student(db, training_id, *, name, username, email, phone, password=''):
     a,p,r=editable_student(db,training_id)
     name,username,email,phone=name.strip(),username.strip().lower(),email.strip().lower(),phone.strip()
     if not name or not username or len(name)>255 or len(username)>64 or len(phone)>80:
-        raise ValueError('Enter the full name and a valid username (up to 64 characters).')
+        raise ValueError('Inserisci nome e cognome e un nome utente valido (massimo 64 caratteri).')
     if not email or '@' not in email or email.startswith('@') or email.endswith('@'):
-        raise ValueError('Enter a valid email address.')
+        raise ValueError('Inserisci un indirizzo email valido.')
     if db.scalar(select(m.TrainingAccount.id).where(m.TrainingAccount.username==username,m.TrainingAccount.id!=a.id)):
-        raise ValueError('This username is already in use.')
+        raise ValueError('Nome utente già utilizzato.')
     other=db.scalar(select(m.RFOneAccount).where(m.RFOneAccount.username==username))
     if other and (r is None or other.id!=r.id):
-        raise ValueError('This username is already in use.')
+        raise ValueError('Nome utente già utilizzato.')
     accounts.check_email_available(db,email,exclude_account_id=r.id if r else None)
     if r is None:
         if not password:
-            raise ValueError('Set an initial password to enable RF-One access.')
+            raise ValueError('Imposta una password iniziale per abilitare l’accesso RF-One.')
         r=accounts.create_account(db,username=username,display_name=name,password=password,email=email)
         accounts.set_domain_access(db,account_id=r.id,domain_code='TRAINING',enabled=True,role_code='student')
         db.add(m.RFOneTrainingIdentityLink(rfone_account_id=r.id,training_account_id=a.id))
     if password:
         if len(password)<8:
-            raise ValueError('The password must contain at least 8 characters.')
+            raise ValueError('La password deve contenere almeno 8 caratteri.')
         accounts.set_password(db,r,password)
         p.must_change_password=True
     if r.username!=username:
@@ -103,29 +108,41 @@ def save_student(db, training_id, *, name, username, email, phone, password=''):
 
 
 def archive_student(db, training_id, archived):
-    a,p,r=editable_student(db,training_id)
+    a=db.get(m.TrainingAccount,training_id)
+    if not a or a.role!='student':
+        raise ValueError('Studente non trovato.')
+    p=profile(db,training_id);r=linked_account(db,training_id)
     p.archived_at=datetime.now(timezone.utc) if archived else None
     if r:
-        r.status='INACTIVE' if archived else 'ACTIVE'
+        # Archive is Training metadata, not a permission repair operation:
+        # an account with other legitimate roles keeps its status and grants.
+        if r.status=='ACTIVE':
+            student_only=only_training_student(db,r)
+        else:  # effective permissions are empty while inactive: use the direct grants
+            direct=[g for g in accounts.list_domain_access_for_account(db,r.id) if g.enabled]
+            student_only=(not r.is_admin and bool(direct)
+                          and all(g.domain_code=='TRAINING' and g.role_code=='student' for g in direct))
+        if student_only:
+            r.status='INACTIVE' if archived else 'ACTIVE'
         r.session_version+=1
     db.flush()
 
 
 def assign(db, *, trainer_id, recipients, pill_ids, purpose, token):
     if not purpose.strip() or not recipients or not pill_ids:
-        raise ValueError('Provide the objective, at least one recipient and at least one content item.')
+        raise ValueError('Indica l’obiettivo, almeno un destinatario e almeno un contenuto.')
     trainer=db.get(m.TrainingAccount,trainer_id)
     if not trainer or trainer.role!='trainer':
-        raise ValueError('The trainer role is required.')
+        raise ValueError('È necessario il ruolo addestratore.')
     if not token or len(token)>64:
-        raise ValueError('Reopen the page to confirm the assignment.')
+        raise ValueError('Riapri la pagina per confermare l’assegnazione.')
     if db.get(TrainingAssignmentSubmission,token):
-        raise ValueError('This assignment has already been saved.')
+        raise ValueError('Questa assegnazione è già stata salvata.')
     db.add(TrainingAssignmentSubmission(token=token,trainer_id=trainer_id))
     db.flush()
     pills=[p.id for p in service.list_all_pills(db) if p.id in pill_ids]
     if set(pills)!=set(pill_ids):
-        raise ValueError('A selected content item is no longer available.')
+        raise ValueError('Un contenuto selezionato non è più disponibile.')
     # Serialize requests from this trainer, including employee identity creation.
     db.execute(select(m.TrainingAccount.id).where(m.TrainingAccount.id==trainer_id).with_for_update())
     students=[]
@@ -133,17 +150,17 @@ def assign(db, *, trainer_id, recipients, pill_ids, purpose, token):
         try:
             kind,raw=value.split(':'); key=int(raw)
         except (ValueError,AttributeError):
-            raise ValueError('Invalid recipient.')
+            raise ValueError('Destinatario non valido.')
         if kind=='student':
             a=db.get(m.TrainingAccount,key)
             p=db.get(TrainingStudentProfile,key)
             r=linked_account(db,key)
             if not a or a.role!='student' or (p and (p.archived_at or p.employee_id)) or (r and r.status!='ACTIVE'):
-                raise ValueError('A selected student is not active.')
+                raise ValueError('Uno studente selezionato non è attivo.')
         elif kind=='employee':
             employee=db.get(m.Employee,key)
             if not employee or employee.active is False:
-                raise ValueError('A selected employee is not active.')
+                raise ValueError('Un dipendente selezionato non è attivo.')
             p=db.scalar(select(TrainingStudentProfile).where(TrainingStudentProfile.employee_id==key))
             if p:
                 a=db.get(m.TrainingAccount,p.training_account_id)
@@ -152,7 +169,7 @@ def assign(db, *, trainer_id, recipients, pill_ids, purpose, token):
                     username='employee-'+str(key)+'-'+secrets.token_hex(4),password=secrets.token_urlsafe(32),role='student',created_by_account_id=trainer_id)
                 p=profile(db,a.id);p.employee_id=key
         else:
-            raise ValueError('Invalid recipient type.')
+            raise ValueError('Tipo destinatario non valido.')
         students.append(a.id)
     for student_id in set(students):
         need=service.create_need(db,student_account_id=student_id,text=purpose,origin='other',created_by_account_id=trainer_id)
