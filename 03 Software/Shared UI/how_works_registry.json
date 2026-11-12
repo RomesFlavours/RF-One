@@ -1,0 +1,41 @@
+{
+  "apps": {
+    "Training": {
+      "root": "03 Software/RF-One Web",
+      "templates": "03 Software/RF-One Web/templates",
+      "pages": {
+        "training_workspace/students.html": "help/training_students.html#training-students",
+        "training_workspace/content.html": "help/training_content.html#training-content",
+        "training_workspace/course.html": "help/training_course.html#training-course",
+        "visual_menu_home.html": "help/visual_menu_home.html#visual-menu-home",
+        "visual_menu_card.html": "help/visual_menu_card.html#visual-menu-card",
+        "visual_menu_manage.html": "help/visual_menu_manage.html#visual-menu-manage"
+      },
+      "not_operational": {
+        "base.html": "Shared layout",
+        "training_workspace/login.html": "Sign-in form",
+        "training_workspace/password.html": "Mandatory credential replacement"
+      },
+      "help_missing": {}
+    },
+    "Training Learner": {
+      "root": "03 Software/Training",
+      "templates": "03 Software/Training/templates",
+      "pages": {
+        "training/student_home.html": "help/training_legacy_home.html#home",
+        "training/assignment_detail.html": "help/training_legacy_assignment_detail.html#assignment_detail",
+        "training/final_quiz.html": "help/training_legacy_final_quiz.html#final_quiz",
+        "training/attempt_result.html": "help/training_legacy_attempt_result.html#attempt_result",
+        "training/overall_quiz.html": "help/training_legacy_overall_quiz.html#overall_quiz",
+        "training/overall_attempt_result.html": "help/training_legacy_overall_attempt_result.html#overall_attempt_result",
+        "training/trainer_home.html": "help/training_legacy_trainer_home.html#trainer_home",
+        "training/trainer_new_student.html": "help/training_legacy_trainer_new_student.html#trainer_new_student",
+        "training/trainer_student_detail.html": "help/training_legacy_trainer_student_detail.html#trainer_student_detail"
+      },
+      "not_operational": {
+        "training/login.html": "Legacy sign-in form behind shared SSO"
+      },
+      "help_missing": {}
+    }
+  }
+}
