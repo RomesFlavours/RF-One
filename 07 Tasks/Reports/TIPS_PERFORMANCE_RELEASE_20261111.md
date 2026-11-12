@@ -19,4 +19,8 @@ The previously running Tips artifact is `registry-access-tips-20261110t173829z`.
 Require a successful image build, successful App Runner operation, expected running image, healthy startup logs and unchanged authentication boundary. Roll back by restoring the previous image identifier from the saved service configuration; no database rollback is needed because this release changes no database data or schema.
 
 ## 7. Deployment result
-Pending the explicit AWS release operation. Result and push reference will be recorded after verification.
+AWS build and deployment succeeded. App Runner is RUNNING with image `tips-performance-20261112t002621z` and digest `sha256:94f00ddabcb29264205c77ec611f7210115f9a54b606f2b2943e2b2e67ec9004`. Source commit: `604570a82a9612a9e035e28ea58638c89864e0ca`; deployment operation: `59a3c35699a64cea9014fd22a6506dc0`. Source, instance and network configuration are identical to the prior release except for the image identifier. Two Gunicorn workers started with zero startup errors. Public Tips entry, calculation and historical-payment URLs retain the expected login redirect. The production calculation itself was not benchmarked through an authenticated browser session; financial/query measurements in section 4 are local.
+
+The recovered Registry policy suite passes 9 access checks, including immediate revocation and company isolation. The updated prefill HTTP fixture passes 9 checks with a real Tips domain grant. English remains the production default; local Italian was rechecked after packaging. No local database or evidence documents were uploaded.
+
+Push target: `codex/tips-performance-release-20261111` on RomesFlavours/RF-One. The production source commit is followed only by this deployment evidence update.
