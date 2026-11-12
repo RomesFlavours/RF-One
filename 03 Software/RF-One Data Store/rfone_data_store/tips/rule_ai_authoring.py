@@ -551,7 +551,7 @@ def interpret_rule_statement(
             ),
         )
 
-    generate_json = ai_generate_json_fn or ai_client.generate_json
+    generate_json = ai_generate_json_fn or ai_client.generate_json_for_tips
     today = today or datetime.now(UTC).strftime("%Y-%m-%d")
     prompt = build_prompt(
         restaurant_name=restaurant.name, roles=roles, today=today, history=history or [], statement=statement,

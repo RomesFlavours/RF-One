@@ -1,0 +1,24 @@
+{% extends 'training_workspace/_base.html' %}
+{% block title %}Attivazione account · Training{% endblock %}
+{% block main %}<div class="tw-access">
+{% if not has_token %}
+<h1>Attiva il tuo account</h1>
+<p>Apri il collegamento personale ricevuto via email. Se è scaduto o è già stato usato, chiedi all’istruttore di reinviare l’invito.</p>
+<p><a href="{{ url_for('tw_login') }}">Accedi a Training</a></p>
+{% elif pending_username %}
+<h1>Scegli la tua password</h1>
+<p>Credenziali iniziali verificate per <strong>{{ pending_username }}</strong>. Scegli una nuova password personale, diversa da quella iniziale, di almeno 8 caratteri. Fino alla conferma non puoi accedere a MyRF né ai moduli.</p>
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="step" value="password">
+<input type="text" name="username" value="{{ pending_username }}" autocomplete="username" hidden>
+<label>Nuova password<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+<label>Conferma nuova password<input name="password_confirm" type="password" required minlength="8" autocomplete="new-password"></label>
+<button>Attiva e continua</button></form>
+{% else %}
+<h1>Attiva il tuo account</h1>
+<p>Inserisci il nome utente e la password iniziale indicati nell’email. Il collegamento da solo non consente l’accesso.</p>
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="step" value="credentials">
+<label>Nome utente<input name="username" required autocomplete="username" value="{{ request.form.get('username','') }}"></label>
+<label>Password iniziale<input name="password" type="password" required autocomplete="current-password"></label>
+<button>Verifica</button></form>
+{% endif %}
+</div>{% endblock %}

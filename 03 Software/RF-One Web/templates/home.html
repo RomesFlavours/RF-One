@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+{% set help_section = 'myrf_home' %}
+{% set help_title = 'How RF-One works' %}
+{% macro ui(value) %}{{ value }}{% endmacro %}
 {% block page_title %}RF-One{% endblock %}
 {% block content %}
 <div class="home-logout">
@@ -11,6 +14,18 @@
 <h1>Welcome, {{ account.display_name }}</h1>
 
 <h2>MyRFOne</h2>
+{% include '_how_works.html' %}
+{% if interview_tasks %}
+<div class="home-stack" aria-label="Requested interviews">
+  {% for interview in interview_tasks %}
+  <a class="domain-card domain-card-released" href="{{ url_for('interview_session', session_id=interview.id) }}">
+    <div class="domain-name">{{ 'Resume interview' if interview.status == 'In progress' else 'Interview requested' }}</div>
+    <div class="domain-description">{{ interview.purpose|truncate(160) }}</div>
+    <div>Requested by {{ interview.requester|short_name }}</div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
 {% if domains_view %}
   <div class="home-stack">
     {% for domain in domains_view %}
@@ -49,7 +64,9 @@
   <div class="domain-card home-block">
     <div class="domain-name">Settings</div>
     {% if account.is_admin %}
-      <a class="home-row" href="{{ url_for('admin_accounts') }}"><strong>Accounts</strong> &mdash; Manage RF-One accounts and Domain access.</a>
+      <a class="home-row" href="{{ url_for('admin_accounts') }}"><strong>Access and logins</strong> &mdash; Manage RF-One login accounts and Domain access.</a>
+      <a class="home-row" href="{{ url_for('interview_admin') }}"><strong>Interviews</strong> &mdash; Request an interview and view its results.</a>
+      <a class="home-row" href="{{ url_for('people_home') }}"><strong>People</strong> &mdash; One directory for employees and external people.</a>
       <a class="home-row" href="{{ url_for('admin_legal_entities') }}"><strong>Legal Entities</strong> &mdash; Manage legal entities.</a>
       <a class="home-row" href="{{ url_for('admin_organization') }}"><strong>Organization</strong> &mdash; Configure organization settings.</a>
     {% endif %}

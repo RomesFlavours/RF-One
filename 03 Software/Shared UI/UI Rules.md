@@ -51,6 +51,35 @@ RF-One > Tips > Clover Acquisition        (when opened from the Tips tab)
 - Implementation: the `breadcrumb(items)` macro in `templates/_nav_macros.html`, identical in RF-One Web and Tips, plus the `.breadcrumb` style in each app's `rf-one.css` (identical rules, `›` separator). The Tips `base.html` builds RF-One > Tips > *tab* automatically. A detail page adds its levels by setting `crumbs`.
 - Tips follows the Compensation layout (TIPS_NAVIGATION_STANDARD_001): the header names RF-One only (never "RF-One · Tips") and links to RF-One Home; the breadcrumb comes first; the Tips menu follows, in this order — Clover Acquisition, Calculate Tips, Saved Periods, Payment Control, Configuration (always last). A contextual page is not a menu entry: Explain / Audit Host Tips is opened from Calculate Tips and reads RF-One > Tips > Calculate Tips > Explain / Audit Host Tips.
 
+## 5. After a row action, the person is back on that row
+
+Product Owner standard UI_ROW_RETURN_001 (2026-10-10). When an action is started from a button (or a select) on a list row — Edit, Rule, Disable, Confirm… — the person ends on **the same record, at the same place on the screen**, never at the top of the list.
+
+- **Before** the modal opens or the action runs, the page keeps: the record's stable identity (never its index), its position on screen and in its own scroll container, and the list's search, filters, sort and page.
+- **After** Save, Confirm, Cancel, Esc or closing the modal: the list context is kept, the view returns to that record with the same visual position, and focus goes back to the button that was used, if it is still shown. This holds when the save reloads the page too.
+- A record that **moves** in the sort is shown in its new place; the sort stays correct.
+- A record that **disappears** (deleted, merged, no longer matching the filters): the next remaining row takes its place, else the previous one; an empty list shows its empty state with filters and search unchanged. Filters are never changed to bring a record back.
+- A **refusal** inside a modal keeps the modal open, with the values and the reason. The return happens when the modal is closed.
+- **Multiple selections** follow their own existing rules; nothing new is selected and no hidden selection is kept against those rules.
+- The return belongs to **that action only**. A normal opening of a page (a link, a search, another tab or session) never restores an old position.
+- The busy cursor and spinner (`rf-one-busy.js`) are unchanged.
+
+Implementation: `static/js/rf-one-row-return.js` (RF-One Web), one implementation for every list.
+- A page opts in by marking each row with a stable `data-rr-key`, for example `<tr data-rr-key="who:39">`. A client-side search box whose value must survive a reload carries `data-rr-state` and an `id`. Server-side search, filters, sort and page stay in the URL, which the page's own redirect keeps.
+- The record travels in `sessionStorage` (this tab only). It is used once, by the next load of the same page within a minute of leaving it.
+- The Bank menu macro (`_bank_macros.html` → `module_nav`) loads the script on every Bank page.
+
+---
+
+## 6. Every modal window has a close X at its top right
+
+Product Owner standard UI_MODAL_CLOSE_X_001 (2026-10-22). Every modal window or dialog of every RF-One app has a close **X** at its top right. The person can leave the window without scrolling to its bottom.
+
+- The X stays visible while the window's content scrolls.
+- The X does exactly what the window's own Cancel / Close does. It calls that same action, never a second implementation. Nothing is saved.
+- Esc and a click outside the window keep working where they already work.
+- Implementation: the `.rf-modal-x` style (and the existing `.org-modal-close`, now with the same behaviour) in RF-One Web's `static/css/rf-one.css`: sticky at the top of the scrolling panel, floated right. Selection (`templates/base.html`) and Training (`trainer_student_detail.html`) carry the same style. A new modal adds `<button type="button" class="rf-modal-x" aria-label="Close">&times;</button>` as the first element of its panel and wires it to its own Cancel.
+
 ---
 
 ## Local days (companion rule, UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001)
@@ -84,3 +113,33 @@ Implementation: `rfone_data_store/local_calendar.py`.
 **Needs a Product Owner decision before it can be aligned:**
 
 - Validity starts (`valid_from`) of Organization positions and Bank cardholders are printed as stored, with a `+00:00` offset. Whether each is a calendar date or an instant decides how it should be shown. Converting midnight UTC to local time would show "20:00 the day before".
+
+## Domain guides: How [Domain] works
+
+Product Owner standard (2026-10-27): put the English “How [Domain] works” link at the right end of the domain navigation tabs, above their divider line. Keep it in the same position on domain pages. The guide uses the RF-One shell and breadcrumb, explains the actual workflow and available agent features, and distinguishes implemented capabilities from planned or unavailable ones.
+
+**Superseded on 2026-11-02 by UI_HOW_WORKS_001** (see the next paragraph and [How Works Standard.md](How%20Works%20Standard.md)): the placement is kept; the label becomes "How Works", the link opens the page's own section, and the guide no longer describes planned features.
+
+## How Works on every operational page (UI_HOW_WORKS_001)
+
+Product Owner standard (2026-11-02), mandatory. The normative text, the release rule and the automatic check are in [How Works Standard.md](How%20Works%20Standard.md); this paragraph is the UI summary.
+
+- Every operational page shows a visible **How Works** link at the right end of its Domain's navigation tabs, above their divider line, in the same position on every page of the Domain.
+- The link opens the Help section **of that page** in the Domain or Module guide (`<guide>#<section id>`), never the top of the guide. The section opened is visibly marked.
+- The link is rendered once, by the Domain's layout, from the page's section code, and carries `data-how-works="<section id>"`.
+- The guide uses the RF-One shell and breadcrumb, explains the released behaviour only, and is updated in the same release as the code.
+- Implementation, Selection: `templates/workspace/base.html` (link), `templates/workspace/how_it_works.html` (one section per tab), `static/css/selection.css` (`:target` marking).
+
+## Local development and publication language
+
+Apply `Development Language Policy.md` (UI_DEVELOPMENT_LANGUAGE_001): PO local UI in Italian; shared Git/AWS release in English, preserving the Italian local environment. This includes every secondary page and How Works.
+
+
+## Contextual help for pages and modals
+
+UI_HOW_WORKS_MODAL_001 (Product Owner, 2026-11-03): every page has How Works / Come funziona; every modal has a visible `?` linking to its exact guide section without losing state. Apply the normative `How Works Standard.md` §1.1 and the development/publication language policy.
+
+
+## Outcome-first and single-flow design
+
+UI_OUTCOME_SINGLE_FLOW_001 (Product Owner, 2026-11-04) is mandatory for every UI/function task. Apply [Outcome and Single-Flow Design Standard](Outcome%20and%20Single-Flow%20Design%20Standard.md): one primary workflow per goal, system-owned complexity, necessary contextual human decisions, preserved state, and final review against all applicable written rules. Do not expose competing technical routes to the same result.

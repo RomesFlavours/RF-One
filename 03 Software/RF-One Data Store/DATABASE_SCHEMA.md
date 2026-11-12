@@ -1,5 +1,27 @@
 # RF-One Data Store — Database Schema
 
+## Kitchen recipe editor — revision e8b920261110
+
+`kitchen_recipes.category_id` references the existing Kitchen Category list;
+`revision` prevents stale recipe/composition saves. Existing records initially
+have no assigned Category and revision 1. `kitchen_recipe_components.component_item_id`
+optionally references the Components list while original imported text/source
+evidence remains available. See `RF-One Web/KITCHEN_RECIPES.md` (sibling Software
+module) for the authorized two-section editor and atomic draft behavior.
+
+## Kitchen storage — revisions e4d520261110 / e5e620261110
+
+Five additive tables in the same canonical operational database:
+`kitchen_recipes`, `kitchen_recipe_components`, `kitchen_recipe_steps`,
+`kitchen_recipe_photos`, `kitchen_visual_menu_links`. Complete field mapping,
+unknown-value rules, source/formula preservation and future standard-plating
+photo ownership are documented in [KITCHEN.md](KITCHEN.md). SQLAlchemy metadata
+is registered by `rfone_data_store/kitchen.py`; existing Menu card identities
+are reused. Revision e5e620261110 implements the Product Owner's clarification:
+one shared recipe/preparation catalog, with restaurant-specific Menu cards
+linking to it. The local Excel importer and reconciliation are documented in
+KITCHEN.md. Visual Menu delivery is unchanged.
+
 TASK_DATABASE_001 — the first physical RF-One canonical Restaurant operational database, implemented in `rfone_data_store/models.py` (SQLAlchemy 2.x, `Mapped`/`mapped_column` declarative style). Verified against a synthetic (non-Clover) fixture — see `schema_validation.py` and the task report. 61 tables as of TASK_PAYROLL_001 (50 tables as of TASK_RESTAURANT_003 — 46 tables as of TASK_TIPS_001 — 41 tables as of TASK_RESTAURANT_001 — 34 tables as of TASK_CLOVER_004's `source_roles`/`employee_source_roles`, § 4, plus 7 Restaurant Organization tables, § 4a — plus 5 Tips tables, § 4b — plus 4 Restaurant Profile bootstrap tables: `restaurant_profile_source_controls`, `source_role_mappings`, `profile_bootstrap_runs`, `restaurant_profile_reconciliation_issues` — § 4c — plus 11 Payroll tables — § 4d).
 
 This document is about the **physical schema**, not restaurant business meaning — the canonical business model is `01 Domains/Business Domain/Restaurant/Sales/Restaurant Sales Model.md`; the Clover-specific source facts this schema is built from are `03 Software/Clover Data Explorer/CLOVER_DATA_CAPABILITY_MATRIX.md`, `CLOVER_SOURCE_RELATIONSHIP_MAP.md`, `CLOVER_ATOMIC_DERIVED_FACTS.md`, and `CLOVER_RESTAURANT_DATA_MAPPING.md`.
@@ -273,7 +295,7 @@ For every current-scope `SourceRole` (matching this Restaurant's `RestaurantLoca
 
 ## 4d. Payroll (TASK_PAYROLL_001)
 
-Administration Domain, transversal — independent from Restaurant, Personnel Management, ADP, and jurisdiction-specific labor law. See `01 Domains/Shared Domains/Administration/Payroll/` for the Domain-level definitions and `PAYROLL.md` for the runtime/import workflow. Money is minor units (cents), matching the rest of this schema; every total (Payroll Employer Cost, run totals) is computed from the atomic fact tables below at query time, never stored as a redundant column.
+Administration Domain, transversal — independent from Restaurant, Management, ADP, and jurisdiction-specific labor law. See `01 Domains/Shared Domains/Administration/Payroll/` and `01 Domains/Shared Domains/Administration/Compensation/` (which owns Compensation Terms) for the Domain-level definitions and `PAYROLL.md` for the runtime/import workflow. Money is minor units (cents), matching the rest of this schema; every total (Payroll Employer Cost, run totals) is computed from the atomic fact tables below at query time, never stored as a redundant column.
 
 ### `payroll_schedules`
 
