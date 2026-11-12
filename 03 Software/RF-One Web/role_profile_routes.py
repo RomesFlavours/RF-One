@@ -1,5 +1,6 @@
 """Administration of shared role profiles and explicit company participation."""
 import json
+import os
 from collections import defaultdict
 from flask import request, render_template, redirect, url_for, flash, abort, session as browser_session, g
 from sqlalchemy import select
@@ -30,7 +31,9 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
                 profiles.CompanyMembership.valid_to.is_(None),profiles.RoleProfileAssignment.valid_to.is_(None))):
                 target=('employee' if member.employee_id is not None else 'account',member.employee_id or member.account_id)
                 summaries[target]['roles'].add(f'{role} · {area} · {company}')
-        return {'profile_companies':companies,'profile_company_id':profiles.company_context.get(),
+        return {'registry_it':os.environ.get('RFONE_UI_LANGUAGE') == 'it',
+                'registry_ui':lambda text:({'How Registry works':'Come funziona Registry','How this page works':'Come funziona questa pagina','Close':'Chiudi'}.get(text,text) if os.environ.get('RFONE_UI_LANGUAGE') == 'it' else text),
+                'profile_companies':companies,'profile_company_id':profiles.company_context.get(),
                 'can_manage_profiles':bool(account and (account.is_admin or account.is_owner)),
                 'person_profile_summary':lambda kind,identity:summaries[(kind,identity)]}
 
@@ -78,7 +81,13 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
                     action=request.form.get('action','')
                     identity=int(request.form.get('id','0') or 0)
                     anchor=request.form.get('return_to','catalog')
-                    if action in ('person_access','person_password'):
+                    if action == 'clover_confirm':
+                        directory.attach_link(db, link_id=int(request.form.get('link_id', '')),
+                            employee_id=int(request.form['employee_id']) if request.form.get('employee_id') else None,
+                            create_new=request.form.get('create_new') == 'yes', account_id=account.id)
+                        anchor='clover-identities'
+                        flash('Identità confermata e dati di lavoro attribuiti. Ricalcola le mance prima di finalizzarle.' if os.environ.get('RFONE_UI_LANGUAGE') == 'it' else 'Identity confirmed and held work attributed. Recalculate tips before finalizing.', 'info')
+                    elif action in ('person_access','person_password'):
                         linked=profiles.ensure_profile_account(db,person,account.id)
                         db.commit()
                         return redirect(url_for('admin_account_edit',account_id=linked.id,_anchor='reset-password')) if action=='person_password' else redirect(url_for('admin_account_access',account_id=linked.id,from_person=person))
@@ -170,7 +179,11 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
             if not directory.employee_is_active(target,[]):
                 dismissed_rows.append({'name':target.display_name or 'Name to complete','date':dismissal_dates.get(target.id) or getattr(target,'dismissed_at',None)})
         events=list(db.scalars(select(profiles.ProfileEvent).order_by(profiles.ProfileEvent.id.desc()).limit(25)))
-        return render_template('role_profiles.html',people_rows=people_rows,dismissed_rows=dismissed_rows,tab=tab,person=person,roles=roles,areas=areas,companies=companies,
+        from registry_clover import pending_identities
+        clover_pending = pending_identities(db) if tab == 'people' else []
+        return render_template('role_profiles.html',clover_pending=clover_pending,
+            clover_people=directory.employee_options(db, include_inactive=True),
+            registry_it=os.environ.get('RFONE_UI_LANGUAGE') == 'it',people_rows=people_rows,dismissed_rows=dismissed_rows,tab=tab,person=person,roles=roles,areas=areas,companies=companies,
             pairs=dict(pairs),grants=dict(grants),domains=domains,choices=choices,members=members,assignments=assignments,
             history=history,effective=effective,events=events,dialog=dialog,error=error,can_assign_target=can_assign_target,
             area_by_id={a.id:a for a in areas},role_by_id={r.id:r for r in roles},company_by_id={c.id:c for c in companies},
