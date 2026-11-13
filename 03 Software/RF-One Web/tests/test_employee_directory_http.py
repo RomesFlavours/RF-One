@@ -11,7 +11,7 @@ import test_clover_acquisition_http as fixture
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import inspect, select, text
+from sqlalchemy import func, inspect, select, text
 from rfone_data_store import employee_directory as directory
 
 m = fixture.m
@@ -86,6 +86,13 @@ class EmployeeDirectoryHttpTest(unittest.TestCase):
             self.assertEqual(link.merchant_id, "DIR-WP")
             self.assertEqual(db.scalar(select(m.Shift)).employee_id, self.employee_id)
             self.assertEqual(db.get(m.Employee, self.employee_id).custom_id, "MANAGEMENT")
+            account_links = list(db.scalars(select(m.EmployeeContextLink).where(
+                m.EmployeeContextLink.employee_id == self.employee_id, m.EmployeeContextLink.rfone_account_id.is_not(None))))
+            self.assertEqual(len(account_links), 1)
+            shell = db.get(m.RFOneAccount, account_links[0].rfone_account_id)
+            self.assertEqual((shell.status, shell.password_hash), ("INACTIVE", "!"))
+            self.assertIsNone(shell.email)
+            self.assertEqual(fixture.account_service.list_domain_access_for_account(db, shell.id), [])
             keys = inspect(db.get_bind()).get_unique_constraints("employees")
             self.assertTrue(any(set(key["column_names"]) == {"location_id", "source_system_id", "source_employee_id"} for key in keys))
             owner = db.scalar(select(m.RFOneAccount).where(m.RFOneAccount.username == "directory-owner"))
@@ -133,6 +140,7 @@ class EmployeeDirectoryHttpTest(unittest.TestCase):
                 records=[{"id": "E1", "name": "Jane Smith", "email": "md@example.test", "role": "MANAGER"}])
             self.assertEqual(len(pending), 1)  # imported name still suggests renamed management identity
             link_id = pending[0]
+            db.get(m.EmployeeCloverLink, link_id).last_clock_in = datetime(2026, 10, 1, tzinfo=timezone.utc)
             db.commit()
         client = self.client("directory-manager")
         data = {"employee_id": self.employee_id, "csrf_token": self.csrf(client)}
@@ -201,7 +209,7 @@ class EmployeeDirectoryHttpTest(unittest.TestCase):
             inactive_id, retired_id = inactive.id, retired.id
             db.add(m.EmployeeIdentityAlias(employee_id=retired_id, canonical_employee_id=inactive_id))
             db.add(m.EmployeeCloverLink(location_id=self.location_id, merchant_id="DIR-WP",
-                external_employee_id="PENDING-SELECTOR", snapshot={"name": "Review person"}, state="PRESENT"))
+                external_employee_id="PENDING-SELECTOR", snapshot={"name": "Review person"}, state="PRESENT", last_clock_in=datetime(2026, 10, 1, tzinfo=timezone.utc)))
             db.commit()
         client = self.client("directory-manager")
         for path in (ROOT, f"{ROOT}/{self.employee_id}"):
@@ -256,20 +264,167 @@ class EmployeeDirectoryHttpTest(unittest.TestCase):
         self.assertEqual(owner.post(f"{ROOT}/{self.employee_id}", data={"csrf_token": self.csrf(owner),
             "action": "context_unlink", "context_link_id": link_id, "confirm_identity": "yes"}, base_url=fixture.HOST).status_code, 302)
         with SessionFactory() as db:
-            self.assertIsNone(directory.context_person_id(db, "RFONE_ACCOUNT", target_id))
+            self.assertEqual(directory.context_person_id(db, "RFONE_ACCOUNT", target_id), self.employee_id)
 
     def test_10_downgrade_refuses_to_discard_native_person_data(self):
         config = Config(str(Path(fixture._DATA_STORE_DIR) / "alembic.ini"))
         config.set_main_option("script_location", str(Path(fixture._DATA_STORE_DIR) / "migrations"))
         os.environ["ALEMBIC_DATABASE_URL_OVERRIDE"] = os.environ["RFONE_DATABASE_URL"]
         try:
-            with self.assertRaisesRegex(RuntimeError, "Refusing to discard"):
+            with self.assertRaisesRegex(RuntimeError, "retained|Refusing to discard"):
                 command.downgrade(config, "c8e1f4a7b2d6")
+            # The empty applicability step (e4a120261103) goes down first; the
+            # lifecycle step then refuses, leaving a consistent e3f120261103.
+            with SessionFactory() as db:
+                self.assertEqual(db.scalar(text("SELECT version_num FROM alembic_version")), "e3f120261103")
+            command.upgrade(config, "head")
         finally:
             os.environ.pop("ALEMBIC_DATABASE_URL_OVERRIDE", None)
         with SessionFactory() as db:
-            self.assertEqual(db.scalar(text("SELECT version_num FROM alembic_version")), "d9e220261029")
+            self.assertEqual(db.scalar(text("SELECT version_num FROM alembic_version")), "e4a120261103")
             self.assertIsNotNone(db.scalar(select(m.Employee).where(m.Employee.display_name == "Native RF1 person")))
+
+    def test_11_dismissed_employee_leaves_active_list_and_old_session_is_blocked(self):
+        clock = {"employee": {"id": "LIFECYCLE"}, "inTime": 1790812800000}
+        with SessionFactory() as db:
+            origin = db.get(m.Location, self.location_id)
+            site = m.Location(name="Lifecycle site", merchant_id=origin.merchant_id,
+                source_system_id=self.source_id, source_location_id="DIR-LIFECYCLE", timezone="America/New_York")
+            db.add(site); db.flush(); site_id = site.id
+            _, pending = directory.import_snapshot(db, location_id=site_id, merchant_id="DIR-LIFECYCLE",
+                records=[{"id": "LIFECYCLE", "name": "Lifecycle Person"}], clock_records=[clock])
+            person = directory.attach_link(db, link_id=pending[0], create_new=True)
+            account = fixture.account_service.create_account(db, username="lifecycle-staff", display_name="Lifecycle Person",
+                password=PASSWORD, status="ACTIVE", is_admin=False)
+            fixture.account_service.set_domain_access(db, account_id=account.id, domain_code="EMPLOYEES", enabled=True, role_code=None)
+            directory.link_context(db, employee_id=person.id, kind="RFONE_ACCOUNT", target_id=account.id)
+            person_id = person.id; db.commit()
+        staff = self.client("lifecycle-staff")
+        self.assertEqual(staff.get(ROOT, base_url=fixture.HOST).status_code, 200)
+        with SessionFactory() as db:
+            directory.import_snapshot(db, location_id=site_id, merchant_id="DIR-LIFECYCLE", records=[], clock_records=[clock])
+            db.commit()
+        self.assertEqual(staff.get(ROOT, base_url=fixture.HOST).status_code, 302)
+        manager = self.client("directory-manager")
+        html = manager.get(ROOT + "?q=Lifecycle+Person", base_url=fixture.HOST).get_data(as_text=True)
+        current, dismissed = html.split('<h2>Dipendenti attivi</h2>', 1)[1].split('<details class="employee-dismissed"', 1)
+        self.assertNotIn("Lifecycle Person", current)
+        self.assertIn("Lifecycle Person", dismissed)
+        self.assertIn('<details class="employee-dismissed" id="dismissis">', html)  # initially closed
+        self.assertIn("2026-09-30 20:00 (ultimo clock-in)", dismissed)  # Location local time, not UTC
+        detail = manager.get(f"{ROOT}/{person_id}", base_url=fixture.HOST).get_data(as_text=True)
+        self.assertIn("Stato complessivo: <strong>Dismissed</strong>", detail)
+        self.assertIn("Posizione cessata", detail)
+        self.assertIn("Accesso bloccato", detail)
+        with SessionFactory() as db:
+            self.assertEqual(db.scalar(select(m.RFOneAccount.status).where(m.RFOneAccount.username == "lifecycle-staff")), "INACTIVE")
+            self.assertEqual(db.scalar(select(func.count()).select_from(m.Employee).where(m.Employee.id == person_id)), 1)
+
+    def test_12_provisional_account_replaced_explicitly_never_twice(self):
+        owner = self.client("directory-owner")
+        response = owner.post(f"{ROOT}/new", data={"csrf_token": self.csrf(owner), "display_name": "Shell Person"},
+                              base_url=fixture.HOST)
+        person_id = int(response.headers["Location"].rstrip("/").rsplit("/", 1)[1])
+        with SessionFactory() as db:
+            shell = directory.employee_account(db, person_id)
+            self.assertTrue(directory.is_provisional_account(db, shell))
+            real = fixture.account_service.create_account(db, username="shell-real", display_name="Shell Real",
+                password=PASSWORD, status="ACTIVE", is_admin=False)
+            other = fixture.account_service.create_account(db, username="shell-other", display_name="Shell Other",
+                password=PASSWORD, status="ACTIVE", is_admin=False)
+            shell_id, real_id, other_id = shell.id, real.id, other.id
+            db.commit()
+        page = owner.get(f"{ROOT}/{person_id}", base_url=fixture.HOST).get_data(as_text=True)
+        self.assertIn("Predisposto, da attivare", page)
+        self.assertNotIn(f"RFONE_ACCOUNT:{shell_id}", page)  # provisional shells are never offered as real accounts
+        link = lambda target: owner.post(f"{ROOT}/{person_id}", data={"csrf_token": self.csrf(owner),
+            "action": "context_link", "context_target": f"RFONE_ACCOUNT:{target}", "confirm_identity": "yes"},
+            base_url=fixture.HOST)
+        self.assertEqual(link(real_id).status_code, 302)
+        link(other_id)
+        with SessionFactory() as db:
+            self.assertEqual(directory.employee_account(db, person_id).id, real_id)
+            self.assertIsNone(directory.context_person_id(db, "RFONE_ACCOUNT", other_id))
+            self.assertIsNone(directory.context_person_id(db, "RFONE_ACCOUNT", shell_id))
+            self.assertEqual(db.scalar(select(func.count()).select_from(m.EmployeeDirectoryEvent).where(
+                m.EmployeeDirectoryEvent.employee_id == person_id, m.EmployeeDirectoryEvent.action == "ACCOUNT_REPLACED")), 1)
+
+    def test_13_technical_observation_and_suspended_cessation_are_explained(self):
+        clock = lambda identity: {"employee": {"id": identity}, "inTime": 1790812800000}
+        with SessionFactory() as db:
+            origin = db.get(m.Location, self.location_id)
+            site = m.Location(name="Suspension site", merchant_id=origin.merchant_id, source_system_id=self.source_id,
+                              source_location_id="DIR-SUSPEND", timezone="America/New_York")
+            db.add(site); db.flush()
+            legacy = m.Employee(display_name="Technical Person", location_id=site.id, source_system_id=self.source_id,
+                                source_employee_id="TECH")
+            db.add(legacy); db.flush()
+            _, pending = directory.import_snapshot(db, location_id=site.id, merchant_id="DIR-SUSPEND",
+                records=[{"id": "TECH", "name": "Technical Person"}, {"id": "WORKER", "name": "Suspended Person"}],
+                clock_records=[clock("WORKER")])
+            worker = directory.attach_link(db, link_id=pending[0], create_new=True)
+            directory.import_snapshot(db, location_id=site.id, merchant_id="DIR-SUSPEND",
+                records=[{"id": "TECH", "name": "Technical Person"}], clock_records=[clock("WORKER"), clock("UNKNOWN")])
+            technical_id, worker_id = legacy.id, worker.id
+            db.commit()
+        manager = self.client("directory-manager")
+        html = manager.get(ROOT, base_url=fixture.HOST).get_data(as_text=True)
+        self.assertIn('<details class="employee-dismissed" id="technical-observations">', html)
+        self.assertIn("Technical Person", html.split('id="technical-observations"', 1)[1])
+        active = html.split('<h2>Dipendenti attivi</h2>', 1)[1].split('id="dismissis"', 1)[0]
+        self.assertIn("Suspended Person", active)
+        self.assertIn("cessazione sospesa", active)
+        self.assertIn("Ultimo clock-in: 2026-09-30 20:00", html)  # pending UNKNOWN identity card
+        detail = manager.get(f"{ROOT}/{worker_id}", base_url=fixture.HOST).get_data(as_text=True)
+        self.assertIn("Cessazione sospesa", detail)
+        technical = manager.get(f"{ROOT}/{technical_id}", base_url=fixture.HOST).get_data(as_text=True)
+        self.assertIn("Osservazione tecnica", technical)
+        with SessionFactory() as db:
+            self.assertIsNone(directory.employee_account(db, technical_id))
+            self.assertTrue(db.get(m.Employee, worker_id).active)
+
+
+    def test_14_applicability_is_managed_only_in_the_directory(self):
+        from rfone_data_store import employee_applicability as ap
+        with SessionFactory() as db:
+            restaurants = [m.Restaurant(name=name) for name in ("Directory WP", "Directory MD")]
+            db.add_all(restaurants); db.commit()
+            wp, md = (r.id for r in restaurants)
+        url = f"{ROOT}/{self.employee_id}"
+        manager = self.client("directory-manager")
+        page = manager.get(url, base_url=fixture.HOST).data.decode()
+        self.assertIn("Applicabilità organizzativa", page)
+        self.assertIn("Ambito non configurato", page)
+        self.assertIn("/administration/employees/how-it-works#applicability", page)
+        token = self.csrf(manager)
+
+        def save(client, **form):
+            return client.post(url, data={"action": "applicability", **form}, base_url=fixture.HOST)
+        # Incoherent: one restaurant with two ticked. Refused, nothing saved.
+        save(manager, csrf_token=token, scope_kind="RESTAURANT", restaurant_id=[str(wp), str(md)])
+        with SessionFactory() as db:
+            self.assertEqual(ap.get_applicability(db, self.employee_id), ap.UNCONFIGURED)
+        self.assertEqual(save(manager, csrf_token=token, scope_kind="RESTAURANTS",
+                              restaurant_id=[str(wp), str(md)]).status_code, 302)
+        with SessionFactory() as db:
+            self.assertEqual(ap.get_applicability(db, self.employee_id).restaurant_ids, frozenset({wp, md}))
+        self.assertEqual(save(manager, csrf_token=token, scope_kind="GROUP").status_code, 302)
+        page = manager.get(url, base_url=fixture.HOST).data.decode()
+        self.assertIn("Attuale: <strong>Intero gruppo</strong>", page)
+        self.assertIn("Applicabilità organizzativa modificata", page)
+        self.assertIn("Intero gruppo", manager.get(ROOT, base_url=fixture.HOST).data.decode())
+        # Unchanged permissions and CSRF: no token, or a non-administrator, change nothing.
+        self.assertEqual(save(manager, scope_kind="NOT_CONFIGURED").status_code, 400)
+        user = self.client("directory-user")
+        self.assertEqual(save(user, csrf_token=self.csrf(user), scope_kind="NOT_CONFIGURED").status_code, 403)
+        with SessionFactory() as db:
+            self.assertEqual(ap.get_applicability(db, self.employee_id).kind, ap.GROUP)
+            self.assertEqual(db.scalar(select(func.count()).select_from(m.EmployeeDirectoryEvent).where(
+                m.EmployeeDirectoryEvent.action == "APPLICABILITY_SET")), 2)
+        guide = user.get("/administration/employees/how-it-works", base_url=fixture.HOST).data.decode()
+        for section in ("list", "detail", "applicability"):
+            self.assertIn(f'id="{section}"', guide)
+        self.assertIn("/administration/employees/how-it-works#list", user.get(ROOT, base_url=fixture.HOST).data.decode())
 
 
 if __name__ == "__main__":

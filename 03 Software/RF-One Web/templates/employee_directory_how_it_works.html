@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% block page_title %}Come funziona l’Anagrafica · RF-One{% endblock %}
+{% block content %}
+{{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', url_for('employee_directory_home')), ('Come funziona', none)]) }}
+<h1>Come funziona l’Anagrafica dipendenti</h1>
+<p>L’Anagrafica è l’unico registro delle persone di RF-One: ogni persona ha una sola identità, usata da tutti i moduli.</p>
+<nav aria-label="Indice della guida"><a href="#list">Elenco</a> · <a href="#detail">Scheda dipendente</a> · <a href="#applicability">Applicabilità organizzativa</a></nav>
+
+<section id="list"><h2>Elenco</h2>
+<p><strong>Dipendenti attivi</strong> sono raggruppati per sede, secondo i dati delle sedi Clover. La colonna <em>Applicabilità</em> mostra dove la persona opera (vedi sotto).</p>
+<p><strong>Dismissis</strong> sono le persone senza posizioni attive: storico, pagamenti, turni e documenti restano invariati, ma non sono selezionabili per nuove operazioni in nessun modulo. <strong>Osservazioni tecniche</strong> sono nominativi Clover senza alcuna timbratura verificata.</p>
+<p><strong>Collegamenti da riconciliare</strong>: un’identità Clover nuova va collegata a una persona esistente oppure confermata come persona nuova. Finché non è collegata, restano in attesa solo i suoi record.</p>
+<p><em>Nuova persona RF1</em> crea una persona senza POS, con un account RF1 predisposto senza credenziali né permessi. <em>Sincronizza ora</em> richiede una lettura Clover della sede.</p></section>
+
+<section id="detail"><h2>Scheda dipendente</h2>
+<p>Mostra stato complessivo, account RF1, dati interni (nome, email, telefono, codice interno), collegamenti ai domini, sedi e dati Clover, differenze tra sedi, applicabilità organizzativa e storico. Le modifiche richiedono un amministratore dell’anagrafica.</p>
+<p>I dati interni sono gestiti in RF-One e gli import Clover non li sovrascrivono. Per chi ha sedi Clover lo stato è gestito dalla sincronizzazione; per chi è creato in RF1 si imposta qui.</p>
+<p>Lo <strong>storico</strong> registra, senza cancellarle, le modifiche: anche ogni cambio di applicabilità, con valore precedente e nuovo.</p></section>
+
+<section id="applicability"><h2>Applicabilità organizzativa</h2>
+<p>Indica dove opera la persona. Si sceglie solo nella scheda dipendente e tutti i moduli la leggono da qui:</p>
+<ul><li><strong>Un solo ristorante</strong>: seleziona esattamente un ristorante.</li>
+<li><strong>Più ristoranti</strong>: seleziona almeno due ristoranti.</li>
+<li><strong>Intero gruppo</strong>: tutta l’organizzazione, anche i ristoranti aggiunti in futuro; non si selezionano ristoranti.</li>
+<li><strong>Non configurato</strong>: l’ambito non è ancora stato deciso. Non equivale mai all’intero gruppo.</li></ul>
+<p>Combinazioni incoerenti (ad esempio «Un solo ristorante» con due ristoranti spuntati) vengono rifiutate e nulla viene salvato.</p>
+<p>L’applicabilità non concede permessi: l’accesso ai moduli resta quello assegnato in Accounts. Non cambia nemmeno lo stato attivo: una persona cessata resta esclusa dalle nuove selezioni qualunque sia il suo ambito.</p>
+<p><strong>Interviews</strong> la usa così: chi richiede un’intervista può scegliere i dipendenti attivi che rientrano nella propria applicabilità. Con l’intero gruppo, tutti i dipendenti attivi; con uno o più ristoranti, chi opera su almeno uno di quei ristoranti o sull’intero gruppo. Chi non ha l’applicabilità configurata non può selezionare nessuno, e chi ha l’ambito non configurato compare solo a chi opera sull’intero gruppo. Al momento dell’invio RF-One ricontrolla tutto.</p></section>
+{% endblock %}

@@ -1,11 +1,19 @@
 {% extends "base.html" %}
 {% from "_nav_macros.html" import breadcrumb %}
+{% from "_applicability_macros.html" import applicability_label %}
 {% block page_title %}{{ employee.display_name }} · Anagrafica dipendenti · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', url_for('employee_directory_home')), (employee.display_name or 'Dipendente', none)]) }}
 <h1>{{ employee.display_name or 'Nome da completare' }}</h1>
-<p>Identità interna RF1: {{ employee.id }}</p>
+<p class="how-works-link"><a href="{{ url_for('employee_directory_how_it_works') }}#detail">How Works</a> · <a href="{{ url_for('employee_directory_how_it_works') }}#applicability">Applicabilità</a></p>
+{% set reference = (links|selectattr('last_clock_in')|sort(attribute='last_clock_in')|list)[-1:] %}
+{% set cessation_zone = locations[reference[0].location_id].timezone if reference else (locations[links[0].location_id].timezone if links else none) %}
+<p>Identità interna RF1: {{ employee.id }} · Stato complessivo: <strong>{% if employee.directory_eligible is sameas false %}Osservazione tecnica (non in anagrafica){% elif is_active %}Attivo{% else %}Dismissed{% endif %}</strong></p>
+{% if employee.directory_eligible is sameas false %}<p>Nominativo Clover senza alcun clock-in o clock-out verificato: escluso dall’anagrafica operativa e senza account utilizzabile. Lo storico resta consultabile.</p>{% endif %}
+{% if not is_active and employee.directory_eligible is not sameas false %}<p>Cessazione: {% if employee.dismissed_at %}{{ employee.dismissed_at|local_dt(cessation_zone) }} (ultimo clock-in, considerando tutte le posizioni){% elif links %}non determinabile, nessun clock-in registrato (solo clock-out){% else %}registrata manualmente in RF1{% endif %}.</p>{% endif %}
+{% if suspended_merchants %}<p><strong>Cessazione sospesa:</strong> ci sono identità Clover con timbrature ancora da riconciliare nella stessa sede. Finché non sono collegate, l’assenza da Clover non chiude la posizione.</p>{% endif %}
+<p>Account RF1: {% if employee_account %}{{ employee_account.username }} · {{ account_state }}{% if employee_account.is_owner %} · Owner: l’accesso non viene mai bloccato dalla cessazione{% endif %}{% if account_provisional %}. Account predisposto senza credenziali né permessi: attivarlo da Accounts oppure sostituirlo qui sotto con l’account RF1 reale già esistente.{% endif %}{% if not is_active and not employee_account.is_owner %}. Accesso bloccato: una riattivazione non ripristina credenziali o permessi.{% endif %}{% else %}Da regolarizzare: nessun account collegato. Collegare l’account esistente qui sotto.{% endif %}</p>
 <h2>Dati interni RF-One</h2>
 <p>Questi campi sono gestiti in RF-One e gli import Clover non li sovrascrivono.</p>
 {% if can_manage %}
@@ -16,19 +24,38 @@
   <label>Email RF1 <input name="email" type="email" value="{{ employee.email or '' }}" maxlength="255"></label>
   <label>Telefono RF1 <input name="phone" value="{{ employee.phone or '' }}" maxlength="64"></label>
   <label>Codice interno <input type="text" name="custom_id" value="{{ employee.custom_id or '' }}" maxlength="64"></label>
-  <label>Stato anagrafica RF1 <select name="active">
+  <label>Stato anagrafica RF1 <select name="active" {% if links %}disabled{% endif %}>
     <option value="" {% if employee.active is none %}selected{% endif %}>Non definito</option>
     <option value="true" {% if employee.active is sameas true %}selected{% endif %}>Attivo</option>
     <option value="false" {% if employee.active is sameas false %}selected{% endif %}>Non attivo</option>
   </select></label>
+  {% if links %}<input type="hidden" name="active" value="{{ 'true' if employee.active is sameas true else 'false' if employee.active is sameas false else '' }}"><p>Stato gestito dalla sincronizzazione delle sedi.</p>{% endif %}
   <button type="submit">Salva dati interni</button>
 </form>
 {% else %}<dl><dt>Nome completo</dt><dd>{{ employee.display_name or 'Non definito' }}</dd><dt>Email RF1</dt><dd>{{ employee.email or 'Non definita' }}</dd><dt>Telefono RF1</dt><dd>{{ employee.phone or 'Non definito' }}</dd><dt>Codice interno</dt><dd>{{ employee.custom_id or 'Non definito' }}</dd><dt>Stato interno</dt><dd>{{ employee.active if employee.active is not none else 'Non definito' }}</dd></dl><p>La modifica richiede un amministratore dell’anagrafica.</p>{% endif %}
-<p>La presenza nel POS non determina cessazioni o disabilitazioni di accesso.</p>
+<p>{% if links %}Lo stato è gestito dalla sincronizzazione: la rimozione confermata da una sede chiude solo quella posizione; dopo l’ultima posizione la persona è cessata e l’accesso RF1 bloccato.{% else %}Persona creata in RF1 senza POS: lo stato si gestisce qui. «Non attivo» blocca l’accesso RF1; tornare «Attivo» non riattiva l’account.{% endif %}</p>
+<h2 id="applicability">Applicabilità organizzativa</h2>
+<p>Dove opera questa persona: un ristorante, più ristoranti oppure l’intero gruppo. È definita solo qui e tutti i moduli la leggono da qui. Non concede permessi e non cambia lo stato attivo. Attuale: <strong>{{ applicability_label(applicability, scope_names, 'it') }}</strong>.</p>
+{% if can_manage %}
+<form method="post" class="applicability-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="action" value="applicability">
+  <fieldset><legend>Ambito</legend>
+    {% for value, label in [('RESTAURANT', 'Un solo ristorante'), ('RESTAURANTS', 'Più ristoranti'), ('GROUP', 'Intero gruppo'), ('NOT_CONFIGURED', 'Non configurato')] %}
+    <label><input type="radio" name="scope_kind" value="{{ value }}" required {% if applicability.kind == value %}checked{% endif %}> {{ label }}</label>
+    {% endfor %}
+  </fieldset>
+  <fieldset><legend>Ristoranti (per «Un solo ristorante» o «Più ristoranti»)</legend>
+    {% for restaurant in restaurants %}<label><input type="checkbox" name="restaurant_id" value="{{ restaurant.id }}" {% if restaurant.id in applicability.restaurant_ids %}checked{% endif %}> {{ restaurant.name }}</label>
+    {% else %}<p>Nessun ristorante registrato.</p>{% endfor %}
+  </fieldset>
+  <button type="submit">Salva applicabilità</button>
+</form>
+{% else %}<p>La modifica richiede un amministratore dell’anagrafica.</p>{% endif %}
 <h2>Collegamenti ai domini</h2>
 {% for context in contexts %}<div data-rr-key="context:{{ context.id }}">
 {{ context.kind_label }} · {{ context.label }}
-{% if can_manage %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% if can_manage and context.kind != "RFONE_ACCOUNT" %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="action" value="context_unlink"><input type="hidden" name="context_link_id" value="{{ context.id }}">
 <label><input type="checkbox" name="confirm_identity" value="yes" required> Confermo la rimozione del collegamento</label>
 <button>Rimuovi collegamento</button></form>{% endif %}</div>
@@ -43,11 +70,15 @@
 <h2>Sedi e dati importati da Clover</h2>
 {% for link in links %}
 <section class="domain-card">
-  <h3>{{ locations[link.location_id].name }}</h3>
+  <h3>{{ locations[link.location_id].name }} · {% if link.state == 'DISMISSED' %}Posizione cessata{% elif link.state == 'PRESENT' %}Posizione attiva{% elif link.state == 'MISSING_REVIEW' %}Assente da Clover, cessazione non ancora decisa{% else %}Non ancora verificata{% endif %}</h3>
+  {% if link.state == 'DISMISSED' %}<p>Cessazione della posizione: {{ link.dismissed_at|local_dt(locations[link.location_id].timezone) ~ ' (ultimo clock-in)' if link.dismissed_at else 'non determinabile, nessun clock-in registrato' }}</p>
+  {% elif link.state == 'MISSING_REVIEW' %}<p>{{ 'Sospesa finché le identità Clover pendenti di questa sede non sono riconciliate.' if link.merchant_id in suspended_merchants else 'In attesa di una lettura completa delle timbrature.' }}</p>
+  {% elif link.state == 'UNVERIFIED' %}<p>Nessuna lettura completa di questa sede: la sede non può determinare una cessazione.</p>{% endif %}
+  <p>Ultimo clock-in: {{ link.last_clock_in|local_dt(locations[link.location_id].timezone) if link.last_clock_in else 'Nessuno' }} · Ultimo clock-out: {{ link.last_clock_out|local_dt(locations[link.location_id].timezone) if link.last_clock_out else 'Nessuno' }} · Timbrature verificate: {{ link.clocks_checked_at|local_dt(locations[link.location_id].timezone) if link.clocks_checked_at else 'Mai' }}</p>
   <p class="muted">Orari della sede: {{ zone_label(locations[link.location_id].timezone) }}.</p>
   <p>Merchant ID: {{ link.merchant_id }} · Employee ID: {{ link.external_employee_id }}</p>
   <p>Ultimo aggiornamento: {{ link.last_seen_at|local_dt(locations[link.location_id].timezone) if link.last_seen_at else 'Mai aggiornato' }}</p>
-  {% if link.id in absence_link_ids %}<p><strong>Assente dall’ultimo elenco completo di Clover: {{ 'assenza esaminata' if reviewed else 'posizione della sede da verificare' }}.</strong> Persona, assegnazioni e storico conservati.</p>{% elif link.state == "MISSING_REVIEW" %}<p class="muted">Account storico non più presente; la sede rimane collegata tramite un altro account.</p>{% endif %}
+  {% if link.id in absence_link_ids %}<p>Assente dall’ultimo elenco completo di Clover. Persona, assegnazioni e storico conservati.</p>{% elif link.state in ("MISSING_REVIEW", "DISMISSED") %}<p class="muted">Account Clover duplicato non più presente; la sede resta attiva tramite un altro account della stessa persona.</p>{% endif %}
   {% if link.snapshot %}<dl>
     <dt>Nome Clover</dt><dd>{{ link.snapshot.name or 'Non fornito' }}</dd>
     <dt>Email Clover</dt><dd>{{ link.snapshot.email or 'Non fornita' }}</dd>
@@ -89,7 +120,7 @@
 <h2>Storico anagrafica</h2>
 {% set home_location = locations.get(employee.location_id) %}
 <p class="muted">Orari: {{ zone_label(home_location.timezone if home_location else none) }}.</p>
-{% set actions = {'IMPORT': 'Aggiornamento Clover', 'CREATE': 'Identità RF-One creata', 'LINK': 'Identità Clover collegata', 'MANAGEMENT': 'Dati interni modificati', 'REVIEW': 'Segnalazioni esaminate', 'MISSING_REVIEW': 'Assenza da Clover segnalata', 'CONSOLIDATE': 'Identità riconciliate manualmente', 'RF1_CREATE': 'Persona creata in RF1', 'CONTEXT_LINK': 'Collegamento a un dominio confermato', 'CONTEXT_UNLINK': 'Collegamento a un dominio rimosso', 'HISTORICAL_PENDING': 'Identità storica da confermare', 'INTERVIEW_DELETE': 'Intervista eliminata'} %}
+{% set actions = {'IMPORT': 'Aggiornamento Clover', 'CREATE': 'Identità RF-One creata', 'LINK': 'Identità Clover collegata', 'MANAGEMENT': 'Dati interni modificati', 'REVIEW': 'Segnalazioni esaminate', 'MISSING_REVIEW': 'Assenza da Clover segnalata', 'CONSOLIDATE': 'Identità riconciliate manualmente', 'RF1_CREATE': 'Persona creata in RF1', 'CONTEXT_LINK': 'Collegamento a un dominio confermato', 'CONTEXT_UNLINK': 'Collegamento a un dominio rimosso', 'HISTORICAL_PENDING': 'Identità storica da confermare', 'DISMISSED': 'Dipendente cessato', 'REACTIVATED': 'Dipendente riattivato', 'ACCOUNT_PROVISIONED': 'Account RF1 predisposto', 'ACCOUNT_REPLACED': 'Account RF1 sostituito', 'ACCOUNT_ASSOCIATED': 'Account RF1 esistente associato', 'POSITION_ENDED': 'Posizione di una sede cessata', 'DIRECTORY_INELIGIBLE': 'Escluso: nessuna timbratura', 'DIRECTORY_ELIGIBLE': 'Timbrature verificate', 'OWNER_ACCESS_PROTECTED': 'Owner: accesso mantenuto nonostante la cessazione', 'INTERVIEW_DELETE': 'Intervista eliminata', 'APPLICABILITY_SET': 'Applicabilità organizzativa modificata'} %}
 <ul>{% for event in events %}<li>{{ event.created_at|local_dt(home_location.timezone if home_location else none) }} · {{ actions.get(event.action, event.action) }}{% if event.account_id %} · {{ actors.get(event.account_id, 'Account non disponibile')|short_name }}{% endif %}
 {% if event.details.snapshot is defined %}<span> · {{ event.details.snapshot.name or 'Nome non fornito' }} · {{ event.details.snapshot.email or 'Email non fornita' }}</span>{% endif %}</li>{% else %}<li>Nessuna modifica registrata.</li>{% endfor %}</ul>
 {% if can_manage and other_employees %}

@@ -253,6 +253,9 @@ def verify_login(session: Session, username: str, password: str) -> LoginResult:
         return LoginResult(None, "Invalid username or password.")
     if account.status != "ACTIVE":
         return LoginResult(None, "This account is not active.")
+    from .employee_directory import account_employee_allows_access
+    if not account_employee_allows_access(session, account.id):
+        return LoginResult(None, "This employee is dismissed.")
     return LoginResult(account, None)
 
 

@@ -32,9 +32,13 @@ class PersonFoundationTests(unittest.TestCase):
         return directory.create_person(self.db, display_name=name, email="reference@example.test", phone="123")
 
     def sync(self, records):
-        return directory.import_snapshot(self.db, location_id=self.site.id, merchant_id="WP", records=records)
+        result = directory.import_snapshot(self.db, location_id=self.site.id, merchant_id="WP", records=records)
+        for link in self.db.scalars(select(m.EmployeeCloverLink)):
+            link.last_clock_in = datetime(2026, 10, 1, tzinfo=timezone.utc)
+        self.db.flush()
+        return result
 
-    def test_native_person_needs_no_pos_location_account_or_employment(self):
+    def test_native_person_needs_no_pos_location_or_employment_and_has_account(self):
         person = self.person()
         self.assertIsNone(person.location_id)
         self.assertIsNone(person.source_system_id)
@@ -42,7 +46,8 @@ class PersonFoundationTests(unittest.TestCase):
         directory.update_management(self.db, person, display_name="Updated reference", custom_id="", active=None, account_id=None)
         self.assertEqual((person.email, person.phone), ("reference@example.test", "123"))
         self.assertEqual(directory.employee_options(self.db)[0].id, person.id)
-        for model in (m.RFOneAccount, m.EmployeeAssignment, m.EmployeeCompensationTerm):
+        self.assertEqual(self.db.scalar(select(func.count()).select_from(m.RFOneAccount)), 1)
+        for model in (m.EmployeeAssignment, m.EmployeeCompensationTerm):
             self.assertEqual(self.db.scalar(select(func.count()).select_from(model)), 0)
         self.assertTrue(all(event.employee_id == person.id for event in self.db.scalars(select(m.EmployeeDirectoryEvent))))
 
@@ -110,6 +115,7 @@ class PersonFoundationTests(unittest.TestCase):
         self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Employee)), 0)
         link = self.db.scalar(select(m.EmployeeCloverLink))
         person = self.person()
+        link.last_clock_in = datetime(2026, 10, 1, tzinfo=timezone.utc)
         directory.attach_link(self.db, link_id=link.id, employee_id=person.id)
         self.assertEqual(directory.observe_historical_employee(self.db, **arguments).id, person.id)
 
@@ -138,16 +144,18 @@ class PersonFoundationTests(unittest.TestCase):
                             "createdTime": int(now.timestamp() * 1000), "amount": 100, "result": "SUCCESS"}]
         location_id = self.site.id
         self.db.commit()
-        with self.assertRaises(acquisition.EmployeeIdentityConfirmationRequired):
-            acquisition.import_clover_period(self.db, location_id=location_id,
+        client.shifts = [{"id": "HISTORICAL-SHIFT", "employee": {"id": "HISTORICAL-UNKNOWN"}, "inTime": int(now.timestamp() * 1000)}]
+        summary = acquisition.import_clover_period(self.db, location_id=location_id,
                 period_start=now, period_end=now, mode="LIVE_SYNC", client=client)
+        self.assertTrue(summary.errors)
         self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Employee)), 0)
         self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Payment)), 0)
         link = self.db.scalar(select(m.EmployeeCloverLink))
         self.assertIsNotNone(link)
         self.assertIsNone(link.employee_id)
         self.assertTrue(directory.pending_requires_review(self.db, link))
-        self.assertEqual(self.db.scalar(select(m.IngestionRun.status)), "FAILED")
+        # EMPLOYEE_DIRECTORY_RECORD_HOLD_001 (2026-11-02): only that person's records wait.
+        self.assertEqual(self.db.scalar(select(m.IngestionRun.status)), "PARTIAL")
 
     def test_existing_authentication_bridge_resolves_person_without_grants(self):
         person, other = self.person(), self.person("Other")
@@ -242,7 +250,7 @@ class PersonFoundationTests(unittest.TestCase):
         self.assertIsNone(directory.context_person_id(self.db, "PROJECT_RESPONSIBLE", external.id))
         projects.delete_project(self.db, project.id)
         self.assertIsNotNone(self.db.get(m.Employee, person.id))
-        self.assertEqual(self.db.scalar(select(func.count()).select_from(m.EmployeeContextLink)), 0)
+        self.assertEqual(self.db.scalar(select(func.count()).select_from(m.EmployeeContextLink).where(m.EmployeeContextLink.rfone_account_id.is_(None))), 0)
 
     def test_project_homonyms_require_id_and_keep_native_identity(self):
         first, second = self.person("Equal Name"), self.person("Equal Name")
