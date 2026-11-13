@@ -28,3 +28,5 @@
 <section id="registry-membership-dialog"><h3>Add company</h3>{% if registry_it %}<p>Scegli un’azienda attiva e conferma per collegarla alla persona. Annulla e X chiudono senza salvare.</p>{% else %}<p>Choose an active company and confirm to link it to the person. Cancel and X close without saving.</p>{% endif %}</section>
 
 <section id="registry-assignment-dialog"><h3>Assign role</h3>{% if registry_it %}<p>Scegli l’appartenenza aziendale, il ruolo e una delle sue aree; conferma per registrare l’assegnazione. Annulla e X chiudono senza salvare.</p>{% else %}<p>Choose the company membership, role and one of its areas; confirm to record the assignment. Cancel and X close without saving.</p>{% endif %}</section>
+
+<p>{{ "Nell’aiuto, Esc chiude solo l’aiuto e conserva la finestra di modifica e la bozza." if registry_it else "In Help, Escape closes only Help and preserves the editing window and its draft." }}</p>

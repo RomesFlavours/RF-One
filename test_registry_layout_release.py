@@ -100,6 +100,10 @@ if os.environ.get('REGISTRY_LAYOUT_BROWSER') == '1':
                     panel.get_by_role('button', name='Dialog help', exact=True).click()
                     page.locator('#rf-help [aria-label=Close]').click()
                     assert field.input_value() == 'Unsaved layout draft'
+                    panel.get_by_role('button', name='Dialog help', exact=True).click()
+                    page.keyboard.press('Escape')
+                    assert not page.locator('#rf-help').evaluate('(e)=>e.open')
+                    assert panel.is_visible() and field.input_value() == 'Unsaved layout draft'
                     page.screenshot(path=str(screenshots / (tab+'-modal-'+str(width)+'.png')))
                     panel.locator('[data-modal-close]').first.click()
                     assert not panel.is_visible()

@@ -2,5 +2,6 @@ FROM 418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web@sha256:a870a38389007
 COPY ["03 Software/RF-One Web/templates/role_profiles.html", "/app/RF-One Web/templates/role_profiles.html"]
 COPY ["03 Software/RF-One Web/static/css/registry-layout.css", "/app/RF-One Web/static/css/registry-layout.css"]
 COPY ["03 Software/RF-One Web/templates/help/registry.html", "/app/RF-One Web/templates/help/registry.html"]
+COPY ["03 Software/RF-One Web/static/js/registry-layout.js", "/app/RF-One Web/static/js/registry-layout.js"]
 COPY test_registry_layout_release.py /app/test_registry_layout_release.py
 RUN python /app/test_registry_layout_release.py /app
