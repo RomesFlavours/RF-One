@@ -122,6 +122,9 @@ def install(app, *, SessionFactory, secret=None):
             source = {r['id']: r for r in enroll.confirmed_candidates(db, hirer)}.get(selection_id)
             if not source:
                 return jsonify(status='skipped', message='Not currently Hired, or not a position you manage.'), 409
+            # Sent to Training: a trainee in the Registry now, whether or not an invitation can go out.
+            enroll.mark_trainee(db, source['person_id'])
+            db.commit()
             if not source['email']:
                 return jsonify(status='skipped', message='No email on the application, so no invitation was sent. '
                                'Invite them from Training, Students, Invite student.'), 422

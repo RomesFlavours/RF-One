@@ -78,6 +78,14 @@ def confirmed_candidates(db, actor):
     return sorted(result, key=lambda r: r['name'].casefold())
 
 
+def mark_trainee(db, person_id):
+    """Selection sent this person to Training: they are a trainee in the one Registry from now,
+    before activation. The mark is the existing STUDENT qualification, never added to an employee."""
+    if person_id and 'EMPLOYEE' not in people.company_statuses(db, person_id)             and not db.get(registry.PersonQualification, (person_id, 'STUDENT')):
+        db.add(registry.PersonQualification(person_id=person_id, code='STUDENT'))
+        db.flush()
+
+
 def account_for(db, invitation):
     if invitation.account_id:
         return db.get(m.RFOneAccount, invitation.account_id)
@@ -98,6 +106,7 @@ def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmatio
         if not source:
             raise ValueError('Candidate not confirmed or position not authorized. Reload the list.')
         person_id = source['person_id']
+        mark_trainee(db, person_id)
         name = name or source['name']
         phone = phone or source['phone']
     else:

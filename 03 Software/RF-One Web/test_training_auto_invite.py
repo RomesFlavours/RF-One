@@ -25,7 +25,7 @@ import db as web_db
 import training_cloud
 import training_integration as integration
 import training_auto_invite as auto
-from rfone_data_store import models as m, people_registry as people
+from rfone_data_store import models as m, people_registry as people, student_registry as sreg
 from rfone_data_store import rfone_account_service as accounts
 from rfone_data_store.training import enrollment as en
 from rfone_data_store.selection import workspace_models as ps
@@ -155,6 +155,13 @@ with patch.object(account_email, 'send_email', side_effect=lambda **kw: sent.app
     # No email on the application, or not Hired: not sent.
     code, data = call(c, ids['trainer'])
     assert code == 422 and 'No email' in data['message']
+    def trainee(sel):
+        with F() as db:
+            pc = db.get(ps.WorkspacePositionCandidate, sel)
+            person = db.get(m.Application, pc.application_id).person_id
+            return db.get(sreg.PersonQualification, (person, 'STUDENT')) is not None
+    assert trainee(a) and trainee(b) and trainee(c) and not trainee(d)
+    checks.append('Sent to Training = Trainee in the Registry at once, even without an email; not for someone not sent')
     code, data = call(d, ids['trainer'])
     assert code == 409 and data['status'] == 'skipped'
     # Someone without Selection rights on that position cannot trigger it.
