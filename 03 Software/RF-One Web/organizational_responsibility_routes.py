@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from flask import abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import select
 
+from rfone_data_store.student_registry import operational_identity_ids
 from rfone_data_store import models as m
 from rfone_data_store import attention_service as att_svc
 from rfone_data_store import organizational_ai_review_service as ai_svc
@@ -141,7 +142,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
             )
             backups = org_svc.list_position_backups(db, position=position, include_inactive=True)
             subordinates = list(db.scalars(select(m.Position).where(m.Position.parent_position_id == position_id)))
-            identities = list(db.scalars(select(m.ActingIdentity).order_by(m.ActingIdentity.display_name)))
+            identities = list(db.scalars(select(m.ActingIdentity).where(m.ActingIdentity.id.in_(operational_identity_ids(db))).order_by(m.ActingIdentity.display_name)))
             positions = list(db.scalars(select(m.Position).where(m.Position.id != position_id).order_by(m.Position.name)))
             restaurants = list(db.scalars(select(m.Restaurant).order_by(m.Restaurant.name)))
             legal_entities = list(db.scalars(select(m.LegalEntity).order_by(m.LegalEntity.legal_name)))
@@ -357,7 +358,7 @@ def register_organizational_responsibility_routes(app, *, require_admin, Session
             backups = org_svc.list_position_backups(db, position=position, include_inactive=True)
             ownerships = list(db.scalars(select(m.ProcessOwnership).where(m.ProcessOwnership.position_id == position_id)))
             subordinates = list(db.scalars(select(m.Position).where(m.Position.parent_position_id == position_id)))
-            identities = list(db.scalars(select(m.ActingIdentity).order_by(m.ActingIdentity.display_name)))
+            identities = list(db.scalars(select(m.ActingIdentity).where(m.ActingIdentity.id.in_(operational_identity_ids(db))).order_by(m.ActingIdentity.display_name)))
             positions = list(db.scalars(select(m.Position).where(m.Position.id != position_id).order_by(m.Position.name)))
             restaurants = list(db.scalars(select(m.Restaurant).order_by(m.Restaurant.name)))
             legal_entities = list(db.scalars(select(m.LegalEntity).order_by(m.LegalEntity.legal_name)))

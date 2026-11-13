@@ -1,5 +1,27 @@
 # RF-One Data Store — Database Schema
 
+## Kitchen recipe editor — revision e8b920261110
+
+`kitchen_recipes.category_id` references the existing Kitchen Category list;
+`revision` prevents stale recipe/composition saves. Existing records initially
+have no assigned Category and revision 1. `kitchen_recipe_components.component_item_id`
+optionally references the Components list while original imported text/source
+evidence remains available. See `RF-One Web/KITCHEN_RECIPES.md` (sibling Software
+module) for the authorized two-section editor and atomic draft behavior.
+
+## Kitchen storage — revisions e4d520261110 / e5e620261110
+
+Five additive tables in the same canonical operational database:
+`kitchen_recipes`, `kitchen_recipe_components`, `kitchen_recipe_steps`,
+`kitchen_recipe_photos`, `kitchen_visual_menu_links`. Complete field mapping,
+unknown-value rules, source/formula preservation and future standard-plating
+photo ownership are documented in [KITCHEN.md](KITCHEN.md). SQLAlchemy metadata
+is registered by `rfone_data_store/kitchen.py`; existing Menu card identities
+are reused. Revision e5e620261110 implements the Product Owner's clarification:
+one shared recipe/preparation catalog, with restaurant-specific Menu cards
+linking to it. The local Excel importer and reconciliation are documented in
+KITCHEN.md. Visual Menu delivery is unchanged.
+
 TASK_DATABASE_001 — the first physical RF-One canonical Restaurant operational database, implemented in `rfone_data_store/models.py` (SQLAlchemy 2.x, `Mapped`/`mapped_column` declarative style). Verified against a synthetic (non-Clover) fixture — see `schema_validation.py` and the task report. 61 tables as of TASK_PAYROLL_001 (50 tables as of TASK_RESTAURANT_003 — 46 tables as of TASK_TIPS_001 — 41 tables as of TASK_RESTAURANT_001 — 34 tables as of TASK_CLOVER_004's `source_roles`/`employee_source_roles`, § 4, plus 7 Restaurant Organization tables, § 4a — plus 5 Tips tables, § 4b — plus 4 Restaurant Profile bootstrap tables: `restaurant_profile_source_controls`, `source_role_mappings`, `profile_bootstrap_runs`, `restaurant_profile_reconciliation_issues` — § 4c — plus 11 Payroll tables — § 4d).
 
 This document is about the **physical schema**, not restaurant business meaning — the canonical business model is `01 Domains/Business Domain/Restaurant/Sales/Restaurant Sales Model.md`; the Clover-specific source facts this schema is built from are `03 Software/Clover Data Explorer/CLOVER_DATA_CAPABILITY_MATRIX.md`, `CLOVER_SOURCE_RELATIONSHIP_MAP.md`, `CLOVER_ATOMIC_DERIVED_FACTS.md`, and `CLOVER_RESTAURANT_DATA_MAPPING.md`.
@@ -273,7 +295,7 @@ For every current-scope `SourceRole` (matching this Restaurant's `RestaurantLoca
 
 ## 4d. Payroll (TASK_PAYROLL_001)
 
-Administration Domain, transversal — independent from Restaurant, Personnel Management, ADP, and jurisdiction-specific labor law. See `01 Domains/Shared Domains/Administration/Payroll/` for the Domain-level definitions and `PAYROLL.md` for the runtime/import workflow. Money is minor units (cents), matching the rest of this schema; every total (Payroll Employer Cost, run totals) is computed from the atomic fact tables below at query time, never stored as a redundant column.
+Administration Domain, transversal — independent from Restaurant, Management, ADP, and jurisdiction-specific labor law. See `01 Domains/Shared Domains/Administration/Payroll/` and `01 Domains/Shared Domains/Administration/Compensation/` (which owns Compensation Terms) for the Domain-level definitions and `PAYROLL.md` for the runtime/import workflow. Money is minor units (cents), matching the rest of this schema; every total (Payroll Employer Cost, run totals) is computed from the atomic fact tables below at query time, never stored as a redundant column.
 
 ### `payroll_schedules`
 
@@ -697,3 +719,66 @@ Every field in this schema is a **direct source/canonical fact**, never a KPI or
 - `table_services.reconstruction_status`/`reconstruction_confidence` — outputs of **future** reconstruction logic not implemented here; present as placeholders only.
 
 Everything else — every Order, OrderItem, Payment, Refund, Tax, Fee, Discount, Shift, and catalog field — is a direct, atomic fact as observed (or, for `rate`/`percentage`, a canonical re-expression of a source-supplied number, never a computed aggregate).
+
+
+## Registry company relationships (2026-11-12)
+
+`candidate_persons` remains the single person identity. `person_company_statuses`
+adds concurrent `CANDIDATE`, `EXTERNAL`, `EMPLOYEE` relationships (composite primary
+key person_id/code, foreign key and code check, assigned_at). An empty set means
+unspecified; historical records are not guessed or rewritten. Explicit
+`person_employee_links` also establish EMPLOYEE status without changing source data.
+These relationships are independent of job roles, grants and login status.
+`rfone_accounts.status` already implements ACTIVE/INACTIVE; no duplicate account
+status column is introduced. A person without an account has no login status.
+
+Migration `t9c120261112` follows `t9b120261112`, adds only the new table and refuses
+destructive downgrade. Roll back application code while preserving the table.
+Manual creation accepts multiple company_status values; person detail saves them
+with administrator authorization and CSRF protection. Account status is managed
+through the existing linked account editor and account service, not a second API.
+Creating a person never creates a login or grants. Possible duplicate contact details
+are rejected for explicit identity review. Training and Selection use Registry's
+single identity persistence function while preserving their resolution policies.
+Every employee is eligible for Training without STUDENT. Eligibility does not
+provision accounts, grants, courses or future role-based assignments. Existing
+STUDENT qualifications, account states and course history are preserved.
+
+
+Local validation on 2026-11-12: the exact migration was tested on PostgreSQL in a
+transactionally isolated schema (rolled back), then its additive table was applied
+to the canonical loopback database 127.0.0.1:55436/rfone_aws_copy. Historical counts
+were unchanged: 144 persons, 9 RF-One accounts, 1 qualification, 5 Training accounts,
+59 assignments. The pre-existing Alembic graph cannot load because revision
+`e2c320261109` is missing; the registered local revision remains `k9f120261112`.
+No revision was falsely stamped and no unrelated migration was run. Once that
+existing graph is restored, the normal upgrade can adopt the verified existing
+table (upgrade checks its columns, primary key, foreign key and status constraint).
+Rollback keeps the additive table and all stored relationships; no data restore
+is required for rolling back this code.
+
+Selection exact-contact resolution also checks unscoped Registry identities, so
+an application for a restaurant can reuse a manually entered person without
+creating a duplicate. Restaurant-scoped identities still take precedence; other
+restaurants are not automatically searched or merged. Names alone are not proof
+of identity. Legacy `employees.active` remains a nullable active/inactive source
+fact and the employee editor protects reviewed values; `system_role` and temporal
+job assignments remain separate. None of those existing fields is repurposed as
+account state or as the multi-valued Registry relationship set.
+
+
+### Migration history repair completed — 2026-11-12
+
+The missing-history condition above is resolved. Seven original files were
+recovered byte-for-byte from local commit `779dc8a`: c8e1f4a7b2d6, d9e220261029,
+e0a120261101, e1b220261102, e2c320261109, f2a120261110 and f3b120261110. Alembic now
+resolves all 179 revisions and their parents. Existing development and release
+branches remain explicit; no overlapping release branch was merged or run.
+A verified plan from k9f120261112 scheduled only t9c120261112. Normal Alembic
+upgrade then applied that Registry revision to the canonical local PostgreSQL
+and recorded both local branch heads: k9f120261112 and t9c120261112. The historical
+counts documented above remained unchanged; no manual version stamp was used.
+The migration graph and the recovered Tips scope migration are covered by
+`test_migration_history.py`. Prototype interview migrations stay archived; their
+historical regression tests now read the archive rather than requiring obsolete
+revisions in the active migration graph.

@@ -88,7 +88,7 @@ If it is not causally attributable
 No artificial Employee allocation.
 ```
 
-Canonical definition: `01 Domains/Shared Domains/Administration/Personnel Cost.md` (`Total Employee Cost`, `Unallocated Personnel Cost`, `Total Personnel Cost = Σ Total Employee Cost + Unallocated Personnel Cost`). The earlier provisional `Direct Employee Labor Cost + Allocated Labor Overhead` framing, and the `Allocated Labor Overhead` concept itself, are rejected — RF-One never distributes a generic/shared personnel cost across Employees merely to make per-Employee totals add up, because doing so would create false comparative evidence for Personnel Management (`Personnel Cost.md` §11).
+Canonical definition: `01 Domains/Shared Domains/Administration/Personnel Cost.md` (`Total Employee Cost`, `Unallocated Personnel Cost`, `Total Personnel Cost = Σ Total Employee Cost + Unallocated Personnel Cost`). The earlier provisional `Direct Employee Labor Cost + Allocated Labor Overhead` framing, and the `Allocated Labor Overhead` concept itself, are rejected — RF-One never distributes a generic/shared personnel cost across Employees merely to make per-Employee totals add up, because doing so would create false comparative evidence for Management / Organization's comparison of alternatives (`Personnel Cost.md` §11; formerly attributed to Personnel Management).
 
 ---
 

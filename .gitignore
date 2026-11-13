@@ -177,3 +177,20 @@ deploy_build/
 07 Tasks/Invoices/Risultati AI visiva/Risposte modello/*.txt
 # Wine pricing research workbooks (possible real prices/suppliers).
 05 Research/Wine Pricing/*.xlsx
+# Private Bank WHY inference trials: transaction exports, backups and audit files.
+03 Software/RF-One Data Store/data/why_codex*/
+# Local UI preview snapshot and copied runtime assets.
+03 Software/RF-One Web/previews/bank-reconciliation/snapshot.json
+03 Software/RF-One Web/previews/bank-reconciliation/rf-one.css
+03 Software/RF-One Web/previews/bank-reconciliation/rf-one.png
+03 Software/RF-One Web/previews/bank-reconciliation/*.png
+03 Software/RF-One Web/previews/bank-reconciliation/integration_backup/
+03 Software/RF-One Web/previews/bank-reconciliation/integration_chat_backup/
+# Employee roster supplied privately in chat (personal data and pay figures).
+tmp/employee_roster_user_*.json
+# Private reconstruction of employee tip amounts and underlying shift evidence.
+output/tips_reconstruction_2026/
+
+# Local generated material (temporary work, QA runs, release/audit output) - never tracked
+tmp/
+output/

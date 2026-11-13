@@ -29,6 +29,21 @@ This document is a **foundation, not an immutable constraint** — see "Module I
 
 ---
 
+
+
+## Outcome-first and single-flow design (2026-11-04)
+
+**Standing development policy approved by the Product Owner: UI_OUTCOME_SINGLE_FLOW_001.**
+
+For each user goal, RF-One provides one coherent primary workflow organized around the intended result. The system handles complexity it can reliably manage and requests only necessary human information/decisions at the relevant step. Software/module boundaries do not determine the user's sequence of work. Contextual subtasks preserve state and return to the same goal; they do not create competing journeys.
+
+The normative operational requirements, Bank examples and mandatory final conformance review are in [Outcome and Single-Flow Design Standard](Shared%20UI/Outcome%20and%20Single-Flow%20Design%20Standard.md). Apply them with the existing architecture, authorization model, UI Rules, How Works and language policy.
+
+This extends Software interaction guidance only. The universal principle is a candidate for Core discussion with Shelbi, not an approved Core amendment. This documentation records requirements, not a declaration that every existing screen already complies.
+
+
+---
+
 ## 1. Fundamental Principle
 
 RF-One is not designed as a single interface identical on every device. The type of interaction depends on the device and the operational context.

@@ -4,6 +4,7 @@
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Accounts', None)]) }}
 <h1>Accounts</h1>
+<p>Manage logins and Domain access here. Employees and external people share the <a href="{{ url_for('people_home') }}">People directory</a>.</p>
 
 <div class="btn-row">
   <a class="btn" href="{{ url_for('admin_account_new') }}">Create account</a>

@@ -14,6 +14,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from rfone_data_store.database import get_database_url  # noqa: E402
 from rfone_data_store.models import Base  # noqa: E402
+from rfone_data_store.interviews import models as interview_models  # noqa: E402,F401
+from rfone_data_store import student_registry  # noqa: E402,F401
+from rfone_data_store import people_registry  # noqa: E402,F401
+from rfone_data_store import kitchen  # noqa: E402,F401
+from rfone_data_store import kitchen_configuration  # noqa: E402,F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

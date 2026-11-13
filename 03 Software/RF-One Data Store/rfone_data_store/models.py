@@ -1147,6 +1147,10 @@ class Employee(Base):
     source_employee_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # API reachability is independent of employment status. False records
+    # an observed 404, not a proven deletion date or termination of employment.
+    source_available: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    source_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     custom_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     system_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # No active/inactive field is exposed by Clover (TASK_CLOVER_003 §B) —
@@ -1180,6 +1184,35 @@ class SourceRole(Base):
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     source_system_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
+class EmployeeRegistryProfile(Base):
+    """Source comparison and RF-One field ownership; Employee stays canonical."""
+    __tablename__ = "employee_registry_profiles"
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), primary_key=True)
+    source_name: Mapped[str | None] = mapped_column(String(255))
+    source_custom_id: Mapped[str | None] = mapped_column(String(64))
+    protect_name: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    protect_code: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    protect_status: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    protect_roles: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    source_roles_signature: Mapped[str | None] = mapped_column(String(1000))
+    needs_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"))
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class EmployeeRegistryChange(Base):
+    """Append-only registry changes tied to the existing authenticated account."""
+    __tablename__ = "employee_registry_changes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"))
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    details: Mapped[dict] = mapped_column(JSON, nullable=False)
 
 
 class EmployeeSourceRole(Base):
@@ -3300,6 +3333,11 @@ class OrderItem(Base):
     # modeling principle F).
     source_system_id: Mapped[int | None] = mapped_column(ForeignKey("source_systems.id"), nullable=True)
     source_line_item_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    # Current membership of the provider's complete order-line collection.
+    # False retains a historical line without treating it as a current sale.
+    # None means membership has not yet been checked, never assumed absent.
+    source_present: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
@@ -10495,6 +10533,48 @@ class TrainingPill(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
     )
+
+
+class TrainingRetiredPill(Base):
+    """Withdrawn catalog entries retained for historical assignment integrity."""
+    __tablename__ = "training_retired_pills"
+    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), primary_key=True)
+    retired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class TrainingCourse(Base):
+    """Mutable preparation state extending the existing Training content identity."""
+    __tablename__ = "training_courses"
+    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), primary_key=True)
+    active_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    draft_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edit_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+
+class TrainingCourseRevision(Base):
+    __tablename__ = "training_course_revisions"
+    __table_args__ = (UniqueConstraint("pill_id", "version"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class TrainingCourseFile(Base):
+    __tablename__ = "training_course_files"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pill_id: Mapped[int] = mapped_column(ForeignKey("training_pills.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+
+
+class TrainingCourseAssignmentRevision(Base):
+    __tablename__ = "training_course_assignment_revisions"
+    assignment_id: Mapped[int] = mapped_column(ForeignKey("training_assignments.id"), primary_key=True)
+    revision_id: Mapped[int] = mapped_column(ForeignKey("training_course_revisions.id"), nullable=False)
 
 
 class TrainingQuestion(Base):

@@ -449,6 +449,9 @@ def bootstrap_restaurant_profile(
     desired_role_ids_by_employee: dict[int, set[int]] = {}
 
     for employee in current_employees:
+        registry_profile = session.get(m.EmployeeRegistryProfile, employee.id)
+        if registry_profile is not None and registry_profile.protect_roles:
+            continue
         source_roles_for_emp = session.scalars(
             select(m.EmployeeSourceRole).where(m.EmployeeSourceRole.employee_id == employee.id)
         ).all()
