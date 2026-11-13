@@ -29,13 +29,23 @@ def upsert(session: Session, model: type[T], unique_filter: dict[str, Any], valu
     match one of the schema's `UniqueConstraint`s — task §9). Existing rows
     are updated in place rather than duplicated."""
     stmt = select(model).filter_by(**unique_filter)
+    if model is m.Employee:
+        stmt = stmt.with_for_update()
     existing = session.scalars(stmt).first()
     if existing is not None:
+        if model is m.Employee:
+            values = mapping.preserve_employee_details(values)
+            from ....employee_registry import observe_employee
+            values = observe_employee(session, existing, values)
         for key, value in values.items():
             setattr(existing, key, value)
         return existing
     obj = model(**unique_filter, **values)
     session.add(obj)
+    if model is m.Employee:
+        session.flush()
+        from ....employee_registry import ensure_profile
+        ensure_profile(session, obj)
     return obj
 
 
@@ -590,12 +600,16 @@ def ingest_employee_source_roles(
         employee_id = employee_map.get(employee_source_id)
         if employee_id is None:
             continue
+        observed_names = []
+        roles_complete = True
         for role_ref in (emp_raw.get("roles") or {}).get("elements", []):
             role_source_id = role_ref.get("id")
             source_role_id = source_role_map.get(role_source_id)
             if source_role_id is None:
+                roles_complete = False
                 stats.bump("employee_source_roles_unresolved_role")
                 continue
+            observed_names.append(session.get(m.SourceRole, source_role_id).name)
             existing = session.scalars(
                 select(m.EmployeeSourceRole).filter_by(
                     employee_id=employee_id, source_role_id=source_role_id
@@ -613,6 +627,10 @@ def ingest_employee_source_roles(
                     )
                 )
             stats.bump("employee_source_roles")
+        session.flush()
+        from ....employee_registry import observe_roles
+        if "roles" in emp_raw and roles_complete:
+            observe_roles(session, employee_id, observed_names)
     session.flush()
 
 

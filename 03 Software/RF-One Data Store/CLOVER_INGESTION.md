@@ -1,5 +1,20 @@
 # Clover → RF-One Canonical Ingestion
 
+## Historical recovery safeguards (2026-10-18)
+
+Historical time-filtered collection reads must be split into calendar-month
+windows before pagination: Clover can successfully return only a 90-day
+slice of a larger request. HTTP success alone is not a completeness check.
+Employee maps must include previously imported identities. When a source
+Shift, Order or Payment references an employee absent from the current
+catalog, resolve the individual employee endpoint. An HTTP 404 permits
+preserving the actual source identity with unknown name/role; do not invent
+personal details or discard the referenced transaction. Other HTTP failures
+remain fatal. Keep reference evidence distinct from full employee payloads.
+Month recovery uses the existing acquisition lock, heartbeat and idempotent
+upserts, followed by source-ID/value comparisons. It never recalculates or
+changes consolidated tip distributions, and never targets the Bank database.
+
 TASK_DATABASE_002 — the first real ingestion of Clover source evidence into the RF-One canonical Restaurant operational database created by TASK_DATABASE_001. This document describes the ingestion **architecture and design decisions**; for the actual run's results, see `CLOVER_INGESTION_RECONCILIATION.md` and `07 Tasks/Reports/TASK_DATABASE_002_REPORT.md`. For the **continuous, always-running** live acquisition/correction architecture (Fast Live Extractor, Correction/Reconciliation Poller, eventual consistency for Cognito, consolidation for Tips) — as opposed to this document's one-off, manually-triggered bulk pipeline — see `CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md`.
 
 ```text
@@ -182,3 +197,27 @@ Deliberately **not** implemented by this task, per its own restrictions:
 - **`Order.subtotal`/`Order.discount_total`** — left `NULL`; see § 6 above.
 - **`OrderItemDiscount`** — the table exists and the ingestion path for it exists (`mapping.py` has no dedicated function only because no line-item-level discount was ever observed in the source — see `CLOVER_DATA_CAPABILITY_MATRIX.md` § L, "UNAVAILABLE, confirmed"); it is empty in this run because the source contains no such evidence, not because it was skipped.
 - **KPI/Performance/Training/payroll/tip-allocation logic, a web UI, a REST API** — none implemented, per task §54.
+# Historical employee profile retention
+
+Employee source availability is separate from employment status:
+`source_available=True` records a successful profile observation, False an
+individual GET404, NULL an unchecked profile; `source_checked_at` is observation
+time, never an inferred deletion or termination date.
+
+Both API acquisition and archive employee upserts preserve last known nonempty
+profile facts when an incoming reference is partial, blank or null. Replacement
+nonempty facts can update the same identity. A complete employee catalog retains
+existing ID mappings and individually probes missing profiles. A 404 retains
+details, roles and Shift/Order/Payment links and records employee_reference
+provenance; other failures raise. New historical references retain their real
+source ID with nullable unknown details. No name or role is inferred.
+
+Tests: `test_clover_employee_history.py`. Migration:
+`d120261019ee_employee_source_availability.py`. Additive columns alone do not
+update a deployed connector. On 2026-10-19 the protected connector was released
+to acquisition-job revision 2 and correction-sync revision 2, pinned to image
+`sha256:4bf22dc069c3f27fa8cf4d5c9393f20bfe16fe3d1df2129e1bd3da130f67e7bd`.
+Runtime manifest checks and ten isolated regression tests passed in AWS,
+including at startup of the actual running poller. See
+`07 Tasks/Reports/CLOVER_EMPLOYEE_CONNECTOR_AWS_RELEASE_20261019.md`.
+

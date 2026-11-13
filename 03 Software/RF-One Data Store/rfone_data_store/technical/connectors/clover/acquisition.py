@@ -454,13 +454,7 @@ def _get_or_create(session: Session, model: type, unique_filter: dict[str, Any],
     created — needed for the `*_imported` vs `*_updated` counts, which the
     shared `upsert()` helper itself does not track."""
     existing = session.scalars(select(model).filter_by(**unique_filter)).first()
-    if existing is not None:
-        for key, value in values.items():
-            setattr(existing, key, value)
-        return existing, False
-    obj = model(**unique_filter, **values)
-    session.add(obj)
-    return obj, True
+    return upsert(session, model, unique_filter, values), existing is None
 
 
 def _existing_ids_by_source(session: Session, model: type, *, source_system_id: int, source_id_column: str) -> dict[str, int]:
@@ -479,6 +473,68 @@ def _existing_ids_by_source(session: Session, model: type, *, source_system_id: 
     return {row[0]: row[1] for row in rows if row[0]}
 
 
+def _read_monthly_collection(client, path, *, period_start, period_end, extra_params=None):
+    """Read inclusive windows no larger than a UTC calendar month, without gaps.
+
+    Clover may silently clamp a larger successful time-range response to 90
+    days. Require every page of every window and de-duplicate boundary IDs.
+    """
+    cursor = period_start.astimezone(UTC)
+    end = period_end.astimezone(UTC)
+    records = {}
+    while cursor <= end:
+        next_month = (cursor.replace(year=cursor.year + 1, month=1, day=1,
+                                     hour=0, minute=0, second=0, microsecond=0)
+                      if cursor.month == 12 else
+                      cursor.replace(month=cursor.month + 1, day=1,
+                                     hour=0, minute=0, second=0, microsecond=0))
+        through = min(end, next_month - timedelta(milliseconds=1))
+        params = dict(extra_params or {})
+        params["filter"] = [f"createdTime>={int(cursor.timestamp() * 1000)}",
+                            f"createdTime<={int(through.timestamp() * 1000)}"]
+        result = paginate(client, path, extra_params=params)
+        for raw in require_complete(result, path.rsplit("/", 1)[-1]):
+            if not raw.get("id"):
+                raise CloverAcquisitionError("A source collection record has no identifier.")
+            records[raw["id"]] = raw
+        cursor = next_month
+    return list(records.values())
+
+
+def _resolve_historical_employee(client, session, reference, *, location_id,
+                                 source_system_id, employee_by_source_id,
+                                 ingestion_run_id, retrieved_at):
+    """Preserve real historical source identities without inventing names."""
+    source_id = reference.get("id") if isinstance(reference, dict) else None
+    if not source_id or source_id in employee_by_source_id:
+        return
+    result = client.get(f"/v3/merchants/{client.merchant_id}/employees/{source_id}")
+    if result.ok:
+        raw = result.data
+        if not isinstance(raw, dict) or raw.get("id") != source_id:
+            raise CloverAcquisitionError("Historical employee identity did not match its reference.")
+        entity_type = "employee"
+    elif result.status_code == 404:
+        # The reference itself is source evidence even if Clover no longer
+        # serves its employee resource. Preserve it with nullable details.
+        raw = dict(reference)
+        entity_type = "employee_reference"
+    else:
+        raise CloverSourceUnavailableError("Historical employee", status_code=result.status_code,
+                                           detail=result.error)
+    values = mapping.map_employee(raw)
+    values.pop("source_employee_id")
+    values.update(source_available=result.ok, source_checked_at=retrieved_at)
+    obj, _ = _get_or_create(session, m.Employee,
+        {"source_system_id": source_system_id, "source_employee_id": source_id},
+        {**values, "location_id": location_id})
+    session.flush()
+    employee_by_source_id[source_id] = obj.id
+    _mirror_source_record(session, ingestion_run_id=ingestion_run_id,
+        source_system_id=source_system_id, entity_type=entity_type,
+        source_id=source_id, retrieved_at=retrieved_at, raw=raw)
+
+
 def _fetch_reference_catalogs(
     client: CloverReadClient, session: Session, *, location_id: int, source_system_id: int,
     ingestion_run_id: int, retrieved_at: datetime, mode: str,
@@ -492,15 +548,22 @@ def _fetch_reference_catalogs(
     resolve for anything Historical Backfill has already discovered, without
     Live Sync ever calling `/tenders`/`/devices` itself. Returns
     `(employee_by_source_id, tender_by_source_id, device_by_source_id)`."""
-    employee_by_source_id: dict[str, int] = {}
+    employee_by_source_id = _existing_ids_by_source(
+        session, m.Employee, source_system_id=source_system_id,
+        source_id_column="source_employee_id",
+    )
     # CLOVER_ACQUISITION_SAFETY_001 — a failed read raises; it is never an
     # empty list that would clear existing Employee links.
     result = paginate(client, f"/v3/merchants/{client.merchant_id}/employees")
-    for raw in require_complete(result, "Employees"):
+    current_employees = require_complete(result, "Employees")
+    current_ids = set()
+    for raw in current_employees:
         values = mapping.map_employee(raw)
         source_id = values.pop("source_employee_id")
         if not source_id:
             continue
+        current_ids.add(source_id)
+        values.update(source_available=True, source_checked_at=retrieved_at)
         obj, _ = _get_or_create(
             session, m.Employee, {"source_system_id": source_system_id, "source_employee_id": source_id},
             {**values, "location_id": location_id},
@@ -511,6 +574,30 @@ def _fetch_reference_catalogs(
             session, ingestion_run_id=ingestion_run_id, source_system_id=source_system_id,
             entity_type="employee", source_id=source_id, retrieved_at=retrieved_at, raw=raw,
         )
+
+    # A missing collection member is not proof of deletion. Probe it directly;
+    # preserve its local identity, details, roles and all historical links.
+    for source_id in sorted(set(employee_by_source_id) - current_ids):
+        probe = client.get(f"/v3/merchants/{client.merchant_id}/employees/{source_id}")
+        if probe.ok:
+            if not isinstance(probe.data, dict) or probe.data.get('id') != source_id:
+                raise CloverAcquisitionError('Historical employee identity did not match its reference.')
+            values = mapping.map_employee(probe.data)
+            values.pop('source_employee_id')
+            values.update(source_available=True, source_checked_at=retrieved_at)
+            _get_or_create(session, m.Employee,
+                {'source_system_id': source_system_id, 'source_employee_id': source_id}, values)
+            entity_type, raw = 'employee', probe.data
+        elif probe.status_code == 404:
+            _get_or_create(session, m.Employee,
+                {'source_system_id': source_system_id, 'source_employee_id': source_id},
+                {'source_available': False, 'source_checked_at': retrieved_at})
+            entity_type, raw = 'employee_reference', {'id': source_id, 'http_status': 404}
+        else:
+            raise CloverSourceUnavailableError('Historical employee', status_code=probe.status_code, detail=probe.error)
+        _mirror_source_record(session, ingestion_run_id=ingestion_run_id,
+            source_system_id=source_system_id, entity_type=entity_type,
+            source_id=source_id, retrieved_at=retrieved_at, raw=raw)
 
     if mode in FULL_SCOPE_MODES:
         tender_by_source_id: dict[str, int] = {}
@@ -574,6 +661,9 @@ def _fetch_and_ingest_shifts(
     history of unrelated older Shifts."""
     result = paginate(client, f"/v3/merchants/{client.merchant_id}/shifts")
 
+    location_id = session.scalar(select(m.Location.id).where(
+        m.Location.source_system_id == source_system_id,
+        m.Location.source_location_id == client.merchant_id))
     touched = 0
     for raw in require_complete(result, "Shifts"):
         clock_in = raw.get("inTime")
@@ -595,9 +685,13 @@ def _fetch_and_ingest_shifts(
             entity_type="shift", source_id=source_id, retrieved_at=retrieved_at, raw=raw,
         )
 
+        for key in ("employee", "overrideInEmployee", "overrideOutEmployee"):
+            _resolve_historical_employee(client, session, raw.get(key), location_id=location_id,
+                source_system_id=source_system_id, employee_by_source_id=employee_by_source_id,
+                ingestion_run_id=ingestion_run_id, retrieved_at=retrieved_at)
         employee_id = employee_by_source_id.get(employee_source_id) if employee_source_id else None
         if employee_id is None:
-            continue  # Shift.employee_id is NOT NULL — cannot ingest an orphaned shift
+            raise CloverAcquisitionError("A Shift has no resolvable source employee reference.")
 
         upsert(
             session, m.Shift, {"source_system_id": source_system_id, "source_shift_id": source_id},
@@ -1090,8 +1184,9 @@ def import_clover_period(
         start_ms = int(period_start.astimezone(UTC).timestamp() * 1000)
         end_ms = int(period_end.astimezone(UTC).timestamp() * 1000)
 
-        payments_result = paginate(
+        payments_raw = _read_monthly_collection(
             resolved_client, f"/v3/merchants/{merchant_id}/payments",
+            period_start=period_start, period_end=period_end,
             extra_params={
                 "expand": "order,tender,employee",
                 "filter": [f"createdTime>={start_ms}", f"createdTime<={end_ms}"],
@@ -1100,15 +1195,11 @@ def import_clover_period(
         )
         # CLOVER_ACQUISITION_SAFETY_001 — raises if the window's Payments
         # scan did not succeed completely; nothing has been written yet.
-        payments_raw = require_complete(payments_result, "Payments")
         # Refunds are read here too, before anything is written, so a failed
         # Refunds scan stops the job before its first write rather than after.
-        refunds_raw = require_complete(
-            paginate(
+        refunds_raw = _read_monthly_collection(
                 resolved_client, f"/v3/merchants/{merchant_id}/refunds",
-                extra_params={"filter": [f"createdTime>={start_ms}", f"createdTime<={end_ms}"]},
-            ),
-            "Refunds",
+                period_start=period_start, period_end=period_end,
         )
 
         employee_by_source_id, tender_by_source_id, device_by_source_id = _fetch_reference_catalogs(
@@ -1116,6 +1207,12 @@ def import_clover_period(
             ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at, mode=mode,
         )
         summary.employees_resolved = len(employee_by_source_id)
+
+        for payment_raw in payments_raw:
+            _resolve_historical_employee(resolved_client, session, payment_raw.get("employee"),
+                location_id=location_id, source_system_id=source_system_id,
+                employee_by_source_id=employee_by_source_id,
+                ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at)
 
         summary.shifts_imported = _fetch_and_ingest_shifts(
             resolved_client, session, period_start=period_start, period_end=period_end,
@@ -1176,6 +1273,10 @@ def import_clover_period(
                     detail=order_result.error,
                 )
             order_raw = order_result.data
+            _resolve_historical_employee(resolved_client, session, order_raw.get("employee"),
+                location_id=location_id, source_system_id=source_system_id,
+                employee_by_source_id=employee_by_source_id,
+                ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at)
             orders_raw_by_source_id[order_source_id] = order_raw
             order, is_new = _ingest_order(
                 session, order_raw, location_id=location_id, source_system_id=source_system_id,

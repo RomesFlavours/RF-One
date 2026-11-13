@@ -9,13 +9,11 @@
   "containerDefinitions": [
     {
       "name": "clover-correction-sync",
-      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips:latest",
+      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips@sha256:4bf22dc069c3f27fa8cf4d5c9393f20bfe16fe3d1df2129e1bd3da130f67e7bd",
       "essential": true,
       "workingDirectory": "/app/RF-One Data Store",
-      "command": [
-        "python", "-m", "rfone_data_store.technical.connectors.clover.correction_sync",
-        "--location-id", "1", "--interval-seconds", "60", "--skip-migrations"
-      ],
+      "entryPoint": ["/bin/sh", "-c"],
+      "command": ["python clover_connector_release_check.py --database-readonly && exec python -m rfone_data_store.technical.connectors.clover.correction_sync --location-id 1 --interval-seconds 60 --skip-migrations"],
       "stopTimeout": 120,
       "environment": [
         {"name": "PYTHONUNBUFFERED", "value": "1"},
