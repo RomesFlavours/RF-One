@@ -15,7 +15,7 @@
    is, and every level they can go back to, is the breadcrumb path above
    the header (RF-One UI Rules §4, `_nav_macros.html`). #}
 {% from "_nav_macros.html" import breadcrumb %}
-{% macro module_nav(active, leaf=None) %}
+{% macro module_nav(active, leaf=None, help_section=None) %}
 {#- BANK_IMPORT_AND_REVIEW_001 — the approved order: the monthly work first,
     its explanation second, the permanent configuration third, then the
     specialist pages. One list drives both the tabs and the breadcrumb. #}
@@ -46,6 +46,7 @@
      href="{{ href }}"
      {% if active == key %}aria-current="page"{% endif %}>{{ label }}</a>
   {%- endfor %}
+  {% if help_section %}{% include '_how_works.html' %}{% endif %}
 </nav>
 {% endmacro %}
 

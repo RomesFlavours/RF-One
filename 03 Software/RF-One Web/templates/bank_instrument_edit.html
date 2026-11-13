@@ -3,7 +3,7 @@
 {% block page_title %}Bank Reconciliation · Edit instrument · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-{{ bank.module_nav('instruments', 'Edit instrument') }}
+{{ bank.module_nav('instruments', 'Edit instrument', help_section='bank_instrument_edit') }}
 
 <h2>Edit Payment Instrument</h2>
 
@@ -257,6 +257,7 @@
       <button class="org-modal-close" type="button" aria-label="Close" data-modal-close>&times;</button>
       <div class="modal-header">
         <h3 id="cardholder-modal-title">Assign cardholder</h3>
+        <button type="button" aria-label="{{ 'Aiuto assegnazione intestatario' if config.get('RFONE_LOCAL_OPERATOR') else 'Cardholder assignment help' }}" onclick="document.getElementById('rf-help').showModal();document.getElementById('bank-cardholder-assignment').scrollIntoView({block:'start'})">?</button>
       </div>
       <p class="muted">
         Who physically holds {{ instrument.display_name }}. Used for responsibility and analysis
@@ -317,7 +318,7 @@
   </div>
 
   <script>
-  (function () {
+  document.addEventListener('DOMContentLoaded', function () {
     var overlay = document.getElementById('cardholder-modal');
     if (!overlay || !window.RFOneModal) { return; }
 
@@ -385,7 +386,7 @@
     document.getElementById('cardholder-open').addEventListener('click', function () {
       modal.open(this);
     });
-  })();
+  });
   </script>
 
   {% if cardholder_history %}

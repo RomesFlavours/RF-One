@@ -11,7 +11,7 @@
 
 ## Related documents
 
-- [../README.md](../README.md) — Administration Domain purpose, module map, and its `Administration ≠ Restaurant/Personnel Management/Taxation/Accounting` boundaries
+- [../README.md](../README.md) — Administration Domain purpose, module map, and its `Administration ≠ Restaurant/Management/Taxation/Accounting` boundaries
 - [../../Purchased/README.md](../../Purchased/README.md), "Bank Reconciliation boundary" and "What Purchased does NOT own" — Purchased explicitly excludes Bank Reconciliation from its own scope; see "Open Points" below for a placement inconsistency this document surfaces but does not resolve
 - [../Invoice Intake/README.md](../Invoice%20Intake/README.md) — the sibling Administration module this Domain must remain separate from (see "Scope and boundaries")
 - `CLAUDE.md` — Core/Domain/Product/Runtime distinction; this document is Domain-level functional definition, not Product or Runtime design

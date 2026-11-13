@@ -1,5 +1,11 @@
 # Bank Reconciliation
 
+**Latest session handoff (2026-11-06):** [Decisions and verification status](BANK_SESSION_2026_11_06.md). Read when resuming the WHO pattern and AI work.
+
+**Cose da fare e inizializzazione futura assistita da AI:** [BANK_BACKLOG.md](BANK_BACKLOG.md). Prima completare e verificare il Bank corrente; attività future non avviate.
+
+**Final WHO/WHY functional direction (2026-11-05):** [BANK_WHO_WHY_FINAL_LOGIC_001](BANK_WHO_WHY_FINAL_LOGIC_001.md) governs the WHO page, WHY associations/rules and fixed WHY-to-WHAT mappings. Earlier descriptions must be interpreted consistently with this approved decision in that scope.
+
 **Version:** 1.0
 **Status:** Foundation — TASK_BANK_RECONCILIATION_PAYPAL_001
 **Module:** Domain / Administration / Bank Reconciliation
@@ -183,3 +189,7 @@ RF-One's reconciliation/classification learning mechanism (the Purchased Domain'
 ## Relationship to Core 2.0
 
 Bank Reconciliation is built on the RF-One Core Conceptual Architecture and reuses its concepts without redefining them — a Payment Instrument Transaction is a Reality fact recorded after the fact (not a Decision), and a confirmed cross-ledger match is Learning-eligible evidence, consistent with Temporal Coherence and the Decision/Action/Outcome/Learning chain (`00 Core/ConceptualArchitecture/`).
+
+## Regole per ambito, categoria WHO e guida contestuale
+
+Le decisioni approvate del 2026-11-03 su regole generali, categorie WHO, singoli WHO, accorpamento approvato e dichiarazioni contestuali dell’utente sono registrate in [BANK_RULE_SCOPE_AND_WHO_CATEGORY_001.md](BANK_RULE_SCOPE_AND_WHO_CATEGORY_001.md). Il documento distingue requisiti approvati da funzioni effettivamente implementate e ricorda la guida specifica per pagina e modale.
