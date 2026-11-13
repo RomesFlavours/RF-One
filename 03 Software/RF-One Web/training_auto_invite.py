@@ -62,9 +62,16 @@ def _issuer(db, hirer, selection_id):
     from rfone_data_store.selection import workspace_models as selection
     pc = db.get(selection.WorkspacePositionCandidate, selection_id)
     position = db.get(selection.WorkspacePosition, pc.position_id) if pc else None
-    candidates = [hirer]
+    first = [hirer]
     if position and position.manager_account_id:
-        candidates.append(db.get(m.RFOneAccount, position.manager_account_id))
+        first.append(db.get(m.RFOneAccount, position.manager_account_id))
+    return default_trainer(db, first)
+
+
+def default_trainer(db, first=()):
+    """The first current Training trainer among `first`, then the RF-One owner, an
+    administrator, then any active trainer."""
+    candidates = list(first)
     candidates += list(db.scalars(select(m.RFOneAccount).where(m.RFOneAccount.is_owner.is_(True))))
     candidates += list(db.scalars(select(m.RFOneAccount).where(m.RFOneAccount.is_admin.is_(True))
                                   .order_by(m.RFOneAccount.id)))
