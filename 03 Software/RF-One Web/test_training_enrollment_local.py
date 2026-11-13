@@ -78,7 +78,8 @@ def run(browser=False):
                 assert not ws.profile(db,link.training_account_id).must_change_password
                 assert [(g.domain_code,g.role_code) for g in accounts.list_domain_access_for_account(db,account.id) if g.enabled]==[('TRAINING','student')]
                 saved_password=account.password_hash;saved_username=account.username
-            assert learner.get('/training').status_code==200
+            home=learner.get('/training')
+            assert home.status_code==200 and saved_username in home.get_data(as_text=True)
             assert app.test_client().get('/training/activate/'+t,follow_redirects=True).status_code==400
             checks.append('Activation sets chosen password, immutable email, STUDENT only, one person/account, valid learner session, single use')
             # Duplicates: the operator must explicitly choose the person; existing credentials survive.
@@ -226,4 +227,7 @@ def run(browser=False):
 
 
 if __name__=='__main__':
-    run(browser='--browser' in sys.argv)
+    checks=run(browser='--browser' in sys.argv)
+    dest=Path(__file__).resolve().parents[2]/'output/training-enrollment-20261113'
+    dest.mkdir(parents=True,exist_ok=True)
+    (dest/'test-result.json').write_text(json.dumps(dict(passed=True,checks=checks,rollback_verified=True,external_mail_sent=False),indent=2)+'\n',encoding='utf-8')

@@ -95,11 +95,15 @@ def install(app, *, SessionFactory, auth, trainer):
                 try:
                     mode = request.form.get('mode')
                     if mode not in ('selection', 'direct'): abort(400)
-                    selection_id = int(request.form.get('selection_id', '')) if mode == 'selection' else None
+                    raw_id = request.form.get('selection_id', '')
+                    if mode == 'selection' and (not raw_id.isdecimal() or len(raw_id) > 10):
+                        raise ValueError('Scegli un candidato confermato dall’elenco di Selezione.')
+                    selection_id = int(raw_id) if mode == 'selection' else None
                     invitation, token = enroll.issue(db, actor=actor, email=request.form.get('email', ''),
                         name=request.form.get('name', ''), phone=request.form.get('phone', ''), selection_id=selection_id,
                         confirmation=request.form.get('confirmation'))
-                    link = public_base() + url_for('tw_enrollment_link', token=token)
+                    base = request.url_root.rstrip('/') if current_app.config.get('TRAINING_ENROLLMENT_LOCAL') else public_base()
+                    link = base + url_for('tw_enrollment_link', token=token)
                     email = invitation.email
                     db.commit()
                 except (ValueError, IntegrityError) as exc:
@@ -145,7 +149,7 @@ def install(app, *, SessionFactory, auth, trainer):
                             auth.log_in(account.id, account.session_version)
                             session.pop('tw_enrollment_token', None)
                             session['tw_student_session'] = True
-                            flash('Attivazione completata. Benvenuto in Training.', 'info')
+                            flash(f'Attivazione completata. Nome utente RF-One: {account.username}. Benvenuto in Training.', 'info')
                             return protected(redirect(url_for('training.home')))
                 data = dict(email=invitation.email, name=invitation.name, phone=invitation.phone)
             else:

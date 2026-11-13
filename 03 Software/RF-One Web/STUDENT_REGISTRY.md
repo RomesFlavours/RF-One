@@ -14,6 +14,12 @@ links exist. Existing assignments are preserved.
 
 ## Trainer workflow
 
+`Invita studente` now supports direct invitation and currently confirmed Selection
+candidates through the same activation page, without creating an account before
+the recipient completes it. See [Enrollment](../Training/ENROLLMENT.md). The
+generated-initial-password procedure below remains the full manual-entry path
+under `Nuovo studente`; existing activation links remain compatible.
+
 Open Training → Students as an authorized trainer. «Nuovo studente» asks only for
 first name, surname, email and optional phone. The system then:
 

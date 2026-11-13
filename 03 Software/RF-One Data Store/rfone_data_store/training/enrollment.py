@@ -57,6 +57,8 @@ def selection_position_allowed(db, actor, position):
 
 
 def confirmed_candidates(db, actor):
+    if not shared.account_may_enter_domain(db, actor, 'SELECTION'):
+        return []
     latest = select(selection.WorkspaceDecision.position_candidate_id, func.max(selection.WorkspaceDecision.id).label('id')).group_by(selection.WorkspaceDecision.position_candidate_id).subquery()
     rows = db.execute(select(selection.WorkspacePositionCandidate, selection.WorkspacePosition)
         .join(selection.WorkspacePosition, selection.WorkspacePosition.id == selection.WorkspacePositionCandidate.position_id)
@@ -141,8 +143,3 @@ def lookup(db, token, *, lock=False):
     return row
 
 
-def pending(db, actor):
-    rows = list(db.scalars(select(EnrollmentInvitation).where(EnrollmentInvitation.consumed_at.is_(None),
-        EnrollmentInvitation.revoked_at.is_(None), EnrollmentInvitation.expires_at > now()).order_by(EnrollmentInvitation.id.desc())))
-    allowed_selection = {r['id'] for r in confirmed_candidates(db, actor)}
-    return [r for r in rows if (r.created_by_id == actor.id or actor.is_admin) and (not r.selection_id or r.selection_id in allowed_selection)]
