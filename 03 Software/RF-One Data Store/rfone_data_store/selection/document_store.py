@@ -57,6 +57,12 @@ class LocalDocumentStore:
     def discard(self, storage_path: str) -> None:
         """Local files are kept, as before this store existed."""
 
+    def delete(self, storage_path: str) -> None:
+        """Removes the document of a CV deleted by the manager (only a file inside this store's folder)."""
+        path = self._inside(storage_path)
+        if path and os.path.isfile(path):
+            os.remove(path)
+
     def _inside(self, storage_path: str | None) -> str | None:
         if not storage_path:
             return None
@@ -121,6 +127,10 @@ class S3DocumentStore:
         for item in listing.get("Versions", []) + listing.get("DeleteMarkers", []):
             if item["Key"] == key:
                 self.client.delete_object(Bucket=self.bucket, Key=key, VersionId=item["VersionId"])
+
+    def delete(self, storage_path: str) -> None:
+        """Removes the document of a CV deleted by the manager, every version included."""
+        self.discard(storage_path)
 
     def exists(self, storage_path: str | None) -> bool:
         key = self._key(storage_path)

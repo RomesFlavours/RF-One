@@ -20,20 +20,24 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from flask import abort, flash, jsonify, redirect, render_template, request, url_for
+from flask import session as flask_session
 from sqlalchemy import select
 
 from rfone_data_store import models as m
 from rfone_data_store.selection import persistence
 from rfone_data_store.selection import workspace_models as ps
 
-from . import engine, position_settings, sp_queue
+from . import cv_delete, engine, position_settings, sp_queue
 from .routes import _cfg, _pc, _position, _restaurant_id, access_required, bp, external_url
 from .sp import profiles as spp
 from .sp import ranking as sp_ranking
 from .sp import rules as sp_rules
 
 SOURCE = sp_queue.RESULT
-AI_OFF = ("AI résumé evaluation is off for this Job: turn on “AI résumé and answer evaluation” in the Job "
+# The CV list's last change (CVs just uploaded or the CV just deleted), handed once to the page, which keeps
+# the CVs added during its browser-tab session marked NEW.
+CV_LIST_KEY = "sp_cv_list_change"
+AI_OFF =("AI résumé evaluation is off for this Job: turn on “AI résumé and answer evaluation” in the Job "
           "(Selection tab) to analyze.")
 
 
@@ -137,6 +141,7 @@ def candidates(db, position, sp) -> list[dict]:
     pcs = db.scalars(select(ps.PositionCandidate).where(ps.PositionCandidate.position_id == position.id)
                      .order_by(ps.PositionCandidate.added_at)).all()
     jobs = sp_queue.active_jobs(db, [pc.id for pc in pcs])
+    blocked = cv_delete.blockers(db, pcs)
     for pc in pcs:
         candidate = persistence.get_candidate(db, pc.candidate_id)
         raw = db.get(m.RawResume, candidate.raw_resume_id) if candidate and candidate.raw_resume_id else None
@@ -163,7 +168,8 @@ def candidates(db, position, sp) -> list[dict]:
                     "analyzed_at": payload.get("analyzed_at"), "model": payload.get("model"),
                     "error": payload.get("error"), "status": status, "new": pc.id in last,
                     "batch": batch_of.get(pc.id), "channel": pc.channel,
-                    "duplicate_note": " ".join(engine.duplicate_notes(db, pc)) or None})
+                    "duplicate_note": " ".join(engine.duplicate_notes(db, pc)) or None,
+                    "delete_blocked": "; ".join(blocked[pc.id]) or None})
     return out
 
 
@@ -231,6 +237,7 @@ def sp_upload(db, actor, position_id):
     sp["uploads"].append(batch)
     save_state(position, sp)
     db.commit()
+    flask_session[CV_LIST_KEY] = {"position": position.id, "added": batch["imported"]}  # NEW of this page session
     flash(f"Upload {batch['n']}: {summary}.")
     if sp["approved"] and not sp.get("editing") and batch["imported"]:
         if _ai_allowed(position):
@@ -239,6 +246,25 @@ def sp_upload(db, actor, position_id):
         else:
             flash(AI_OFF)
     return redirect(url_for(".sp_page", position_id=position.id))
+
+
+@bp.route("/posizioni/<int:position_id>/sp/cv/<int:pc_id>/delete", methods=["POST"])
+@access_required
+def sp_delete_cv(db, actor, position_id, pc_id):
+    """Delete one CV of the list, only before its evaluation starts (rules and concurrency: `cv_delete`)."""
+    position = _sp_position(db, actor, position_id, edit=True)
+    result = cv_delete.delete_cv(db, documents=_cfg.documents, position_id=position.id, pc_id=pc_id,
+                                 actor_id=actor.id, actor_name=actor.name, load_state=state, save_state=save_state)
+    if result["status"] == "DELETED":
+        flash(f"CV “{result['filename']}” deleted.")
+        flask_session[CV_LIST_KEY] = {"position": position.id, "removed": [pc_id]}
+    elif result["status"] == "BLOCKED":
+        flash(f"CV “{result['filename']}” not deleted: {'; '.join(result['reasons'])}.")
+        flask_session[CV_LIST_KEY] = {"position": position.id}
+    else:
+        flash("This CV is no longer in the list.")
+        flask_session[CV_LIST_KEY] = {"position": position.id, "removed": [pc_id]}
+    return redirect(url_for(".sp_page", position_id=position.id) + "#cvs")
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +308,11 @@ def sp_page(db, actor, position_id):
     rows = ranked([c for c in cands if not c["rejected"]], sp)
     view = "last" if request.args.get("view") == "last" else "all"
     shown = [r for r in rows if r["new"]] if view == "last" else rows
+    change = flask_session.pop(CV_LIST_KEY, None)
+    cv_change = change if isinstance(change, dict) and change.get("position") == position.id else {}
     return _render("sp/position.html", p=position, sp=sp, rows=shown, all_rows=rows, cands=cands, view=view,
+                   cv_added=cv_change.get("added", []), cv_removed=cv_change.get("removed", []),
+                   cv_return=bool(cv_change),
                    rejected=rejected, reasons=ps.NOT_SELECTED_REASONS,
                    public_url=external_url("careers.job_page", token=position.public_token),
                    running=sum(1 for c in cands if c["status"] == "ANALYZING"),

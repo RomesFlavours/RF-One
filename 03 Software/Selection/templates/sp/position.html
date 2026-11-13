@@ -28,7 +28,7 @@
 </div>
 
 <!-- 2. CVs (uploaded from the Selection positions page) -->
-<div class="card">
+<div class="card" id="cvs">
   <h2><span class="step">2</span>CVs <span class="small muted">({{ cands|length }} for this Job)</span></h2>
   {% if can_edit %}<form method="post" enctype="multipart/form-data" action="{{ url_for('positions.sp_upload', position_id=p.id) }}" style="margin-bottom:8px">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -48,20 +48,47 @@
   {% for d in last_upload.failed %}<div class="small flag">Not imported — {{ d.filename }}: {{ d.message }}</div>{% endfor %}
   {% endif %}
   {% if cands %}
-  <details {% if running or to_analyze %}open{% endif %}>
+  <details {% if running or to_analyze or cv_return %}open{% endif %}>
     <summary class="small">Uploads and analysis status</summary>
     {% if sp.uploads %}<table class="small">
       <tr><th>Upload</th><th>When</th><th>Received</th><th>New</th><th>Exact duplicates</th><th>Possible duplicates</th></tr>
       {% for u in sp.uploads|reverse %}<tr><td>#{{ u.n }}</td><td>{{ local_time(u.at, p.timezone) }} · {{ u.by }}</td><td>{{ u.received }}</td><td>{{ u.imported|length }}</td><td>{{ u.exact_duplicates|length }}</td><td>{{ u.possible_duplicates|length }}</td></tr>{% endfor %}
     </table>{% endif %}
-    <table class="small" style="margin-top:8px">
+    <table class="small" style="margin-top:8px" id="cv-list" data-position="{{ p.id }}"
+           data-added="{{ cv_added|tojson|forceescape }}" data-removed="{{ cv_removed|tojson|forceescape }}">
       {% for c in cands %}
-      <tr><td>{{ c.filename }}{% if c.new %} <span class="badge gB">NEW</span>{% endif %}</td>
+      <tr data-pc="{{ c.id }}"><td class="cv-new" style="width:44px">{% if c.id in cv_added %}<span class="badge gB">NEW</span>{% endif %}</td>
+        <td>{{ c.filename }}</td>
         <td class="muted">{% if c.batch %}upload #{{ c.batch }}{% else %}{{ c.channel|replace('_', ' ')|lower }}{% endif %}</td>
         <td>{% if c.status == 'DONE' %}<span class="s-SHOWN">Analyzed</span>{% elif c.status == 'ERROR' %}<span class="flag">Error: {{ c.error }}</span>{% elif c.status == 'ANALYZING' %}Analyzing…{% elif c.status == 'IN_PROGRESS' %}<span class="muted">Application in progress: analyzed when the candidate completes it</span>{% elif c.status == 'OUTDATED' %}<span class="verify">Analyzed with requirements v{{ c.analyzed_version }}: update recommended</span>{% else %}Waiting for Analyze{% endif %}</td>
-        <td class="muted">{% if c.duplicate_note %}<span class="verify">{{ c.duplicate_note }}</span>{% endif %}</td></tr>
+        <td class="muted">{% if c.duplicate_note %}<span class="verify">{{ c.duplicate_note }}</span>{% endif %}</td>
+        <td style="text-align:right">{% if can_edit %}{% if c.delete_blocked %}<button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: {{ c.delete_blocked }}"
+            data-msg="“{{ c.filename }}” cannot be deleted: {{ c.delete_blocked }}." onclick="alert(this.dataset.msg)">Delete</button>
+          {% else %}<form method="post" action="{{ url_for('positions.sp_delete_cv', position_id=p.id, pc_id=c.id) }}" style="margin:0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="tiny light" data-msg="Delete the CV “{{ c.filename }}”? It is removed from this Job and cannot be recovered."
+              onclick="return confirm(this.dataset.msg)">Delete</button></form>{% endif %}{% endif %}</td></tr>
       {% endfor %}
     </table>
+    <script>
+      /* NEW marks every CV added during this page's browser-tab session, across successive uploads. */
+      (function () {
+        var list = document.getElementById("cv-list");
+        if (!list) return;
+        var key = "selection-sp-new-cvs-" + list.dataset.position, ids = [];
+        try { ids = JSON.parse(sessionStorage.getItem(key) || "[]"); } catch (e) { ids = []; }
+        var added = JSON.parse(list.dataset.added), removed = JSON.parse(list.dataset.removed);
+        var present = [].map.call(list.querySelectorAll("tr[data-pc]"), function (row) { return +row.dataset.pc; });
+        ids = ids.concat(added).filter(function (id, i, all) {
+          return all.indexOf(id) === i && removed.indexOf(id) < 0 && present.indexOf(id) >= 0;
+        });
+        try { sessionStorage.setItem(key, JSON.stringify(ids)); } catch (e) { /* NEW then lasts one page only */ }
+        ids.forEach(function (id) {
+          var cell = list.querySelector('tr[data-pc="' + id + '"] td.cv-new');
+          if (cell && !cell.firstChild) cell.innerHTML = '<span class="badge gB">NEW</span>';
+        });
+      })();
+    </script>
   </details>
   {% endif %}
 </div>
