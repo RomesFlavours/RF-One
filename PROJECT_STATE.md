@@ -1,5 +1,16 @@
 # PROJECT_STATE
 
+## Employee Directory accounts and cessation — 2026-11-02 (EMPLOYEE_ACCOUNTS_001)
+
+Implemented and tested locally on branch `feature/employee-directory-accounts`;
+**not released to AWS**. Positions per Clover site, cessation only when no
+position remains (date = last clock-in), admission only with time punches, one
+RF-One account per employee (migration `f1a220261102`), external accounts,
+account disabled and sessions ended on overall cessation, ceased people out of
+current selectors. Spec: `01 Domains/Shared Domains/Employee Directory/README.md`;
+report: `07 Tasks/Reports/EMPLOYEE_ACCOUNTS_001_REPORT.md`. Real-data analysis:
+`employee_accounts_analysis.py` (read-only) — see the report for its status.
+
 ## Employee Directory — 2026-10-28
 
 Implemented, tested and deployed as a Shared Domain at Home → Administration →

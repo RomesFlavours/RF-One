@@ -112,3 +112,37 @@ ActingIdentity and Training records. It reuses existing authenticated account↔
 Training↔human identity associations to resolve the same person. This adds no
 permission, AuthorityGrant, authentication mechanism or changes to access tables.
 The structural freeze on Identity & Access itself remains in force.
+
+## Employee accounts and cessation — approved 2026-11-02 (EMPLOYEE_ACCOUNTS_001)
+
+Applies to RF-One Web's account perimeter only (`RFOneAccount`), not to the
+frozen foundation above; no `AuthorityGrant`, profile or authorization model is
+added or changed.
+
+- **Every employee has exactly one account; not every account is an employee.**
+  An employee of the Employee Directory has one `RFOneAccount`; an account
+  refers to at most one employee (`employee_context_links`: unique
+  `rfone_account_id`, and partial unique index `uq_employee_context_one_rfone_account`
+  on `employee_id`, migration `f1a220261102`). Accounts without an employee are
+  **external accounts** (e.g. a consultant), created manually in Accounts and
+  never affected by Clover cessations.
+- Linking or creating an account for an employee grants nothing: Domain access
+  is granted only in Accounts › Domain Access. RF-One never invents emails or
+  credentials; an administrator chooses username and password.
+- **Overall cessation disables access.** When an employee has no active position
+  left (Employee Directory README), the linked account becomes `INACTIVE` and
+  its `session_version` is incremented. The account, its Domain access rows and
+  the history are kept. The owner and the last active administrator are never
+  disabled automatically (recorded as `ACCESS_KEPT`). The end of one site's
+  position never changes access.
+- **Inactive means no session.** `rfone_web_session.account_for_session` (the one
+  session check used by RF-One Web, Tips, Selection and Training SSO) returns
+  no account for a non-`ACTIVE` account, so sessions opened before a deactivation
+  end at their next request — also on pages that check only the login or `is_admin`.
+- The account of a ceased employee cannot be made `ACTIVE` in Accounts until the
+  employee has an active position again; a returning employee's account is
+  never re-enabled by an import.
+- **Known limit.** Access is granted per Domain and per Domain item, not per
+  site/Location: the account perimeter has no Location scope. A person active at
+  one site and ended at another keeps the same Domain access everywhere.
+  Per-site restriction belongs to the future profile management.

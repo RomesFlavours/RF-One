@@ -86,13 +86,21 @@ def account_for_session(
     cookie is revoked — `rfone_account_service.set_password` bumps it).
 
     This is the one place that comparison is made, so every app gets
-    revocation for free rather than remembering to implement it."""
+    revocation for free rather than remembering to implement it.
+
+    EMPLOYEE_ACCOUNTS_001 — an account that is no longer ACTIVE (disabled by
+    an administrator, or for a ceased employee) has no session either: the
+    login already refuses it, and a session opened before the change ends
+    on its next request instead of keeping pages that check only the login
+    or `is_admin`."""
     if account_id is None:
         return None
     account = account_service.get_account(db_session, account_id)
     if account is None:
         return None
     if session_version != account.session_version:
+        return None
+    if account.status != ACTIVE_ACCOUNT_STATUS:
         return None
     return account
 

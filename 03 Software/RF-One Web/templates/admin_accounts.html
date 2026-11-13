@@ -3,7 +3,9 @@
 {% block page_title %}Accounts · RF-One{% endblock %}
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Accounts', None)]) }}
+<p class="employee-how-works"><a data-how-works="accounts" href="{{ url_for('admin_accounts_how_it_works') }}#accounts" title="How Accounts works">How Works</a></p>
 <h1>Accounts</h1>
+<p class="muted">Every employee in the Employee Directory has exactly one account. An account without an employee is an external account (for example a consultant): Clover cessations never affect it.</p>
 
 <div class="btn-row">
   <a class="btn" href="{{ url_for('admin_account_new') }}">Create account</a>
@@ -19,6 +21,7 @@
             <th>Username</th>
             <th>Status</th>
             <th>Admin</th>
+            <th>Employee</th>
             <th></th>
           </tr>
         </thead>
@@ -31,6 +34,7 @@
                 <span class="badge {{ 'ok' if account.status == 'ACTIVE' else 'bad' }}">{{ account.status }}</span>
               </td>
               <td>{{ "Owner" if account.is_owner else ("Yes" if account.is_admin else "") }}</td>
+              <td>{% set linked = account_people.get(account.id) %}{% if linked %}<a href="{{ url_for('employee_directory_detail', employee_id=linked[0].id) }}">{{ linked[0].display_name or 'Employee ' ~ linked[0].id }}</a>{% if linked[1] and linked[1].status == 'CEASED' %} · ceased{% endif %}{% else %}<span class="muted">External</span>{% endif %}</td>
               <td>
                 <a href="{{ url_for('admin_account_edit', account_id=account.id) }}">Edit</a>
                 &middot;

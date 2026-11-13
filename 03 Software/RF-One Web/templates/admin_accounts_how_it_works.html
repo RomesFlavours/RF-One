@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% block page_title %}How Accounts works · RF-One{% endblock %}
+{% block content %}
+<style>.accounts-guide section:target{outline:2px solid currentColor;outline-offset:6px;scroll-margin-top:80px}</style>
+{{ breadcrumb([('RF-One', url_for('home')), ('Accounts', url_for('admin_accounts')), ('How Accounts works', None)]) }}
+<div class="accounts-guide">
+<h1>How Accounts works</h1>
+<nav aria-label="Guide contents"><a href="#accounts">Accounts</a> · <a href="#account-form">Create or edit an account</a></nav>
+
+<section id="accounts"><h2>Accounts</h2>
+<p>An account is a person's RF-One login. Only RF-One administrators open this page.</p>
+<p><strong>Employees and external accounts.</strong> Every employee in the Employee Directory has exactly one account, and an account belongs to at most one employee. The Employee column shows that employee; <em>External</em> means the account has no employee record (for example a consultant). External accounts are created here and are never affected by Clover cessations.</p>
+<p><strong>Status.</strong> Only an Active account can sign in and enter Domains. When an account becomes Inactive, sessions already open end at their next request, in every RF-One application.</p>
+<p><strong>Ceased employees.</strong> When an employee has no active position left in any Clover site, the Employee Directory marks them ceased and makes their account Inactive; the column shows <em>ceased</em>. The account, its Domain access settings and the history are kept. The owner and the last active administrator are never made inactive automatically.</p>
+<p><strong>Actions.</strong> Edit changes display name, status and the administrator role. Domain Access chooses the Domains and items the account may use: linking an account to an employee never grants access. Reset Password sets a new password and ends the account's open sessions. Training Identity links the account to a Training identity.</p>
+</section>
+
+<section id="account-form"><h2>Create or edit an account</h2>
+<p><strong>Create account</strong> needs a username, a display name, an email and a password chosen by the administrator. A verification code is emailed to the address; the holder confirms it from their Profile.</p>
+<p><strong>For an employee.</strong> From an employee's page in the Employee Directory, «Crea account RF1 per questo dipendente» opens this form with the employee's name and email filled in from the Directory; you choose username and password. The account is linked to the employee in the same step. If the employee already has an account the creation is refused. If the employee has ceased, the account is created Inactive.</p>
+<p><strong>Edit account.</strong> The page shows the linked employee or says that the account is external. The account of a ceased employee cannot be made Active: it can be activated again once the employee has an active position. The owner always stays an active administrator, and nobody removes their own administrator role.</p>
+</section>
+<p><a class="btn" href="{{ url_for('admin_accounts') }}">Back to Accounts</a></p>
+</div>
+{% endblock %}

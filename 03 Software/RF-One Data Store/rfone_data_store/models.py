@@ -1178,7 +1178,12 @@ class EmployeeContextLink(Base):
         "CASE WHEN training_account_id IS NULL THEN 0 ELSE 1 END + "
         "CASE WHEN candidate_person_id IS NULL THEN 0 ELSE 1 END + "
         "CASE WHEN project_responsible_id IS NULL THEN 0 ELSE 1 END) = 1",
-        name="ck_employee_context_one_target"),)
+        name="ck_employee_context_one_target"),
+        # EMPLOYEE_ACCOUNTS_001: a person has at most one RF-One account; the
+        # unique rfone_account_id below gives each account at most one person.
+        Index("uq_employee_context_one_rfone_account", "employee_id", unique=True,
+              postgresql_where=text("rfone_account_id IS NOT NULL"),
+              sqlite_where=text("rfone_account_id IS NOT NULL")),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
     rfone_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), unique=True)

@@ -594,12 +594,42 @@ register_dev_journal_routes(
 # ---------------------------------------------------------------------------
 
 
+def _account_people(db, account_ids=None):
+    """EMPLOYEE_ACCOUNTS_001 — account id -> (person, employment state) for
+    accounts linked to an Employee Directory person. Unlisted = external."""
+    from rfone_data_store import employee_directory as person_directory
+    links = person_directory.account_person_ids(db, account_ids)
+    states = person_directory.employment_states(db, set(links.values()))
+    people = {p.id: p for p in db.scalars(select(m.Employee).where(m.Employee.id.in_(list(links.values()))))}
+    return {account_id: (people[person_id], states.get(person_id)) for account_id, person_id in links.items()
+            if person_id in people}
+
+
+def _employee_for_new_account(db, raw_id):
+    """The Employee Directory person a new account is created for, if any."""
+    if not (raw_id or "").isdigit():
+        return None, None
+    from rfone_data_store import employee_directory as person_directory
+    person_id = person_directory.resolve_employee_id(db, int(raw_id))
+    person = db.get(m.Employee, person_id)
+    if person is None:
+        abort(404)
+    return person, person_directory.employment_states(db, [person_id])[person_id]
+
+
+@app.route("/admin/accounts/how-it-works")
+@require_admin
+def admin_accounts_how_it_works():
+    # How Works Standard (UI_HOW_WORKS_001): one section per Accounts page.
+    return render_template("admin_accounts_how_it_works.html")
+
+
 @app.route("/admin/accounts")
 @require_admin
 def admin_accounts():
     with SessionFactory() as db:
         accounts = account_service.list_accounts(db)
-        return render_template("admin_accounts.html", accounts=accounts)
+        return render_template("admin_accounts.html", accounts=accounts, account_people=_account_people(db))
 
 
 @app.route("/admin/accounts/new", methods=["GET", "POST"])
@@ -614,24 +644,32 @@ def admin_account_new():
         password_confirm = request.form.get("password_confirm", "")
         status = "ACTIVE" if request.form.get("status") == "ACTIVE" else "INACTIVE"
 
-        if password != password_confirm:
-            flash("Passwords did not match.", "error")
-            return render_template("admin_account_form.html", mode="create", account=None), 400
-        if not email:
-            flash("Email is required for a new account.", "error")
-            return render_template("admin_account_form.html", mode="create", account=None), 400
-
         with SessionFactory() as db:
+            employee, employee_state = _employee_for_new_account(db, request.form.get("employee_id"))
+            form = {"mode": "create", "account": None, "employee": employee, "employee_state": employee_state}
+            if password != password_confirm:
+                flash("Passwords did not match.", "error")
+                return render_template("admin_account_form.html", **form), 400
+            if not email:
+                flash("Email is required for a new account.", "error")
+                return render_template("admin_account_form.html", **form), 400
             try:
                 account = account_service.create_account(
                     db, username=username, display_name=display_name, password=password, status=status,
                     email=email, is_admin=request.form.get("is_admin") == "on",
                 )
+                if employee is not None:
+                    # EMPLOYEE_ACCOUNTS_001 — the employee's one account, linked in
+                    # the same transaction. Grants nothing; a ceased employee's
+                    # account is disabled by the link itself.
+                    from rfone_data_store import employee_directory as person_directory
+                    person_directory.link_context(db, employee_id=employee.id, kind="RFONE_ACCOUNT",
+                                                  target_id=account.id, account_id=current_account_id())
                 db.commit()
             except (account_service.UsernameTakenError, account_service.EmailTakenError, ValueError) as exc:
                 db.rollback()
                 flash(str(exc), "error")
-                return render_template("admin_account_form.html", mode="create", account=None), 400
+                return render_template("admin_account_form.html", **form), 400
 
             try:
                 _issue_and_send_code(
@@ -642,10 +680,20 @@ def admin_account_new():
             except recovery_service.RateLimitedError:
                 pass  # cannot happen for a brand-new account's first code; defensive only
 
+            if employee is not None:
+                db.refresh(account)
+                flash(f"Account {display_name!r} created and linked to {employee.display_name!r}"
+                      + (" (disabled: the employee has ceased)." if account.status != "ACTIVE" else ".")
+                      + f" A verification code has been emailed to {email}.", "info")
+                return redirect(url_for("employee_directory_detail", employee_id=employee.id))
+
         flash(f"Account {display_name!r} created. A verification code has been emailed to {email}.", "info")
         return redirect(url_for("admin_accounts"))
 
-    return render_template("admin_account_form.html", mode="create", account=None)
+    with SessionFactory() as db:
+        employee, employee_state = _employee_for_new_account(db, request.args.get("employee_id"))
+        return render_template("admin_account_form.html", mode="create", account=None,
+                               employee=employee, employee_state=employee_state)
 
 
 @app.route("/admin/accounts/<int:account_id>/edit", methods=["GET", "POST"])
@@ -665,6 +713,11 @@ def admin_account_edit(account_id: int):
             # actor out, or leave no active administrator.
             is_admin = request.form.get("is_admin") == "on"
             try:
+                linked = _account_people(db, [account.id]).get(account.id)
+                if status == "ACTIVE" and account.status != "ACTIVE" and linked and linked[1].status == "CEASED":
+                    # EMPLOYEE_ACCOUNTS_001 — access returns with an active position.
+                    raise ValueError("This account belongs to a ceased employee (no active position). "
+                                     "It can be activated again when the employee has an active position.")
                 account_service.update_account(
                     db, account, display_name=display_name, status=status,
                     is_admin=is_admin, actor=load_current_account(db),
@@ -675,12 +728,14 @@ def admin_account_edit(account_id: int):
                 flash(str(exc), "error")
                 db.refresh(account)
                 return render_template("admin_account_form.html", mode="edit", account=account,
-                                       actor_id=current_account_id()), 400
+                                       actor_id=current_account_id(),
+                                       linked=_account_people(db, [account.id]).get(account.id)), 400
 
             flash("Account updated.", "info")
             return redirect(url_for("admin_accounts"))
 
-        return render_template("admin_account_form.html", mode="edit", account=account, actor_id=current_account_id())
+        return render_template("admin_account_form.html", mode="edit", account=account, actor_id=current_account_id(),
+                               linked=_account_people(db, [account.id]).get(account.id))
 
 
 @app.route("/admin/accounts/<int:account_id>/reset-password", methods=["POST"])
