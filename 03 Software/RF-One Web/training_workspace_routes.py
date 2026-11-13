@@ -43,6 +43,8 @@ def install(app, *, SessionFactory, auth):
     install_auto_invite(app,SessionFactory=SessionFactory)
     from training_server_course import install as install_server_course
     install_server_course(app,SessionFactory=SessionFactory,auth=auth)
+    from training_hire_confirm import install as install_hire_confirm, hire_rows
+    install_hire_confirm(app,SessionFactory=SessionFactory,auth=auth,trainer=trainer)
 
     def render(page,**context):
         return render_template('training_workspace/'+page+'.html',active_tab=page,
@@ -132,7 +134,9 @@ def install(app, *, SessionFactory, auth):
             q=request.args.get('q','').strip().lower();archived=request.args.get('archived')=='1'
             rows=[r for r in ws.roster(db) if r['archived']==archived
                   and (not q or q in (r['name']+' '+r['username']+' '+(r['email'] or '')).lower())]
+            current=auth.load_current_account(db)
             return render('students',students=rows,archived=archived,q=request.args.get('q',''),error=error,
+                          hires=hire_rows(db,app.secret_key,current,rows),is_owner=bool(current and current.is_owner),
                           draft=request.form if error and request.form.get('action')=='save' else None,
                           matches=matches,pills=service.list_all_pills(db),submission=session['tw_submission']),status
 
