@@ -54,7 +54,7 @@ from rfone_data_store.selection.industry.restaurant_templates import (
 )
 from rfone_data_store.selection.parsing.ai_client import AIProviderUnavailable
 
-from . import ai_adapter, engine, organization_adapter, mail_delivery, position_settings, ai_checks
+from . import ai_adapter, engine, organization_adapter, mail_delivery, position_settings, ai_checks, training_invite
 from .channels import CHANNEL_LABELS, CHANNELS
 from .role_descriptions import ROLE_DESCRIPTIONS, default_description, is_default_or_empty
 
@@ -1217,6 +1217,14 @@ def record_decision(db, actor, position_id):
         _record_decision(db, actor, position, _pc(db, position, pc_id), decision, reason, note)
     db.commit()
     flash(f"Decision recorded for {len(pc_ids)} candidate(s).")
+    if decision == ps.D_HIRED:
+        # The decision is saved first; the Training invitation never blocks or undoes it.
+        for pc_id in pc_ids:
+            status, message = training_invite.request_invite(
+                _cfg.rfone_web_base_url(), position_candidate_id=pc_id, actor_account_id=actor.id)
+            if message:
+                name = _first_name(db, _pc(db, position, pc_id)) or "Candidate"
+                flash(f"{name}: {message}")
     return redirect(back)
 
 
