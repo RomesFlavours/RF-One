@@ -1,0 +1,48 @@
+<section id="help-compensation-run-detail" class="rf-help-section">
+<h2>Compensation run</h2>
+<p>The working page of one preparation run: it shows the hours worked in the period by everyone with Clover Shifts at a Location of this Legal Entity, and lets you calculate each Employee's pay, then mark the run as calculated and approve it.</p>
+
+<h3>What you can do</h3>
+<ul>
+  <li>Check the hours of each Employee and what is missing before pay can be calculated.</li>
+  <li>Add or remove Incentive Contributions for an Employee.</li>
+  <li>Calculate or recalculate an Employee's pay.</li>
+  <li>Mark the run as Calculated and then Approve it.</li>
+</ul>
+<p>Calculations, contributions and the buttons that change the run are available only while the run is OPEN or CALCULATED. After approval the page is read-only and links to the Approved Compensation Snapshot.</p>
+
+<h3>Sections of the page</h3>
+<dl>
+  <dt>To complete before approving</dt>
+  <dd>How many Employees are not yet calculated and how many are SALARIED. Approving includes only the Employees already calculated; anyone left incomplete is excluded from the snapshot, never included with a zero.</dd>
+  <dt>Legal Entity / Restaurant problems</dt>
+  <dd>Shifts of the period that belong to no Legal Entity, so no run can count them. The Restaurant or Location must be linked to its Legal Entity; RF-One never guesses it.</dd>
+  <dt>Hours worked in the period</dt>
+  <dd>One row per person: <em>Regular Hours</em> (the first 40 in each Workweek), <em>Overtime Hours</em> (the rest; the overtime amount is determined by the Payroll Provider), <em>Total Hours</em>, <em>Hourly Wage</em> from the Compensation Term (MISSING when there is none), <em>Bonus</em>, <em>Tips</em>, the <em>Hours</em> and <em>Compensation data</em> status (COMPLETE or INCOMPLETE) and the reasons in <em>Missing / to check</em>. PROVISIONAL means the period has not ended yet and the hours will still grow. Click a name to jump to that Employee's card.</dd>
+  <dt>Employee card</dt>
+  <dd>The calculated figures (Hours, Regular Pay, Tips, Bonus, Recognized Incentive, Tip Credit Make-Up, Gross Pay), or "Not yet calculated". Gross Pay is Regular Pay plus Tips, Bonus and Recognized Incentive.</dd>
+  <dt>Incentive Contributions</dt>
+  <dd>Positive or negative amounts, each with a label and an optional note. The Recognized Incentive is the sum of the contributions, never below zero. A change applies only after you recalculate the Employee.</dd>
+  <dt>Calculate / Recalculate</dt>
+  <dd>Earning lines, each a Compensation Term with its hours and an optional work date, plus Tips, Bonus and Tip Credit Make-Up (leave it blank if unknown: it then shows "To complete (Payroll Provider)"). When the person has no HOURLY Compensation Term for this Legal Entity and period, pay cannot be calculated and the form is not shown.</dd>
+  <dt>Calculated, but no Shift hours in this period</dt>
+  <dd>Calculations saved earlier for people with no supporting Shift in the period. They would still be part of an approval, so they are shown.</dd>
+  <dt>SALARIED Employees — not supported in V1</dt>
+  <dd>Employees with a SALARIED Compensation Term. Their pay is prepared and communicated to the Payroll Provider outside RF-One; they are never calculated or approved here.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Add Contribution / Remove</dt>
+  <dd>Saves or deletes one Incentive Contribution for the Employee. Recalculate the Employee to apply it.</dd>
+  <dt>Calculate / Recalculate</dt>
+  <dd>Saves the Employee's calculation, replacing the previous one for this run. At least one earning line (Compensation Term and hours) is required.</dd>
+  <dt>Mark as Calculated</dt>
+  <dd>Shown while the run is OPEN. Moves it to CALCULATED, ready for review. At least one Employee must already be calculated. You can still recalculate afterwards.</dd>
+  <dt>Approve</dt>
+  <dd>Shown while the run is CALCULATED. After a confirmation, creates the immutable Approved Compensation Snapshot and opens it. This cannot be undone: the run and its calculations can no longer be changed.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>After approval, continue on the Approved Compensation Snapshot: download the export, record the communication to the Payroll Provider and, later, its result.</p>
+</section>

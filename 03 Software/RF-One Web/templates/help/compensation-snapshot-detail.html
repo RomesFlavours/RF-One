@@ -1,0 +1,28 @@
+<section id="help-compensation-snapshot-detail" class="rf-help-section">
+<h2>Approved Compensation Snapshot</h2>
+<p>The approved, unchangeable figures of a compensation run. From here you hand the figures to the Payroll Provider, record that you did so, and record the Provider's result so RF-One can compare it with what was approved.</p>
+
+<h3>Sections of the page</h3>
+<dl>
+  <dt>Manual export view</dt>
+  <dd>One row per approved Employee with the <em>Provider ID</em> (MISSING when the Employee is not yet mapped to the Payroll Provider), Regular Hours, Regular Pay, Tips, Recognized Incentive, Tip Credit Make-Up, Bonus and Gross Pay, ready to be transcribed into the Payroll Provider.</dd>
+  <dt>Communication to the Payroll Provider</dt>
+  <dd>Every communication recorded so far: who, when, reference and note.</dd>
+  <dt>Payroll Provider result &amp; reconciliation</dt>
+  <dd>Every Provider result already recorded, each with its reconciliation (<em>View</em>), and the form to record a new one.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Download CSV</dt>
+  <dd>Downloads the export rows as a CSV file. Nothing is changed or sent.</dd>
+  <dt>Confirm communication</dt>
+  <dd>Records that you handed the approved figures to the Payroll Provider, with the date (today if left empty), a reference such as the Provider's batch number, and a note. The first confirmation moves the run to EXPORTED. It does not mean payroll was processed or paid. A recorded confirmation cannot be removed from this page.</dd>
+  <dt>Record result and reconcile</dt>
+  <dd>Records what the Payroll Provider reported: the Restaurant, the source system, the run type (Regular or Special), the period, the <em>Pay date</em> (required), an optional <em>Provider reference</em>, and per Employee the Regular Pay, Tips, Bonus/Incentive and one other labelled amount. Leave blank what the Provider did not report; at least one value is required. RF-One then compares the matching components with the approved figures and opens the new reconciliation. It never compares the Provider's net pay with a compensation total. The same result (same source system, Restaurant, period, pay date and run type) cannot be recorded twice.</dd>
+</dl>
+<p>When no Restaurant is on file for this Legal Entity, or no source system exists, the result form is not shown.</p>
+
+<h3>Next steps</h3>
+<p>Open the reconciliation to explain or accept each difference.</p>
+</section>

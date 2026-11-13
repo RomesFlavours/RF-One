@@ -1,0 +1,32 @@
+<section id="help-compensation-period-summary" class="rf-help-section">
+<h2>Period Summary</h2>
+<p>Shows, for one Location and a range of Business Dates, the hours each Employee worked, the hours above the weekly overtime threshold and the finalized Tips + Gratuity owed to them, so you can compare them with figures prepared by hand. The page is read-only: nothing is calculated into pay, approved or sent.</p>
+
+<h3>How to use it</h3>
+<ol>
+  <li>Choose the <strong>Location</strong>, the <strong>First Business Date</strong> and the <strong>Last Business Date (included)</strong>.</li>
+  <li>Press <strong>Show summary</strong>.</li>
+  <li>Read the warnings first: if the hours are not definitive, the totals may still change.</li>
+</ol>
+
+<h3>What the summary shows</h3>
+<dl>
+  <dt>Settings used</dt>
+  <dd>The Location, the Business Dates, the timezone, the operating-day cutoff (each Business Date runs from the cutoff to the next day's cutoff), the Workweek, how overtime hours are counted, how Shifts without a Location of their own were attributed, and which FINAL Tips runs supplied the Tips figures (each one links to its saved Tips period).</dd>
+  <dt>Employee</dt>
+  <dd>Each person with Shifts or a finalized Tips entitlement in the period. <em>check shifts</em> marks a person whose Shifts have a problem; <em>home Location</em> marks Shifts counted here because this is the Employee's home Location.</dd>
+  <dt>Worked hours</dt>
+  <dd>All hours worked, overtime hours included.</dd>
+  <dt>Overtime hours</dt>
+  <dd>Hours past the weekly threshold in each Workweek, counted in chronological order. Weeks are never netted against each other. Shown as n/a when the Workweek is not configured.</dd>
+  <dt>Tips + Gratuity</dt>
+  <dd>The amount due to the person after distribution, taken only from FINAL Tips periods. "not available" when no FINAL period covers these dates.</dd>
+  <dt>Bonus</dt>
+  <dd>Not defined yet: "to be defined" is not a zero.</dd>
+  <dt>Shift problems</dt>
+  <dd>The list of Shifts that make the hours incomplete, with the local start time and the problem found.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>Fix Shift problems at the source, or make the Tips period FINAL in Tips, then show the summary again. To prepare actual pay, use a preparation run from the Compensation home.</p>
+</section>

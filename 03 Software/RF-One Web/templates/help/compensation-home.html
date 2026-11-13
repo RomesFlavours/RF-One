@@ -1,0 +1,39 @@
+<section id="help-compensation-home" class="rf-help-section">
+<h2>How Compensation works</h2>
+<p>Compensation prepares what each Employee of a Legal Entity is owed for a pay period, lets a person review and approve it, and then records the manual handoff to the Payroll Provider and the Provider's result. RF-One does not send anything to the Payroll Provider by itself: the export and the Provider's result are handled by a person, in both directions.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li>A <strong>preparation run</strong> covers one Legal Entity and one period. Everyone with Clover Shifts in that period at a Location of the Legal Entity appears in it, with Regular and Overtime hours per Workweek.</li>
+  <li>Pay is calculated per Employee from their HOURLY Compensation Term, plus Tips, Bonus and Incentive Contributions. SALARIED Employees are listed but not calculated: their pay is prepared outside RF-One.</li>
+  <li>Approving a run creates an <strong>Approved Compensation Snapshot</strong> that can no longer change. It holds only the Employees already calculated.</li>
+  <li>From the snapshot you download the figures for the Payroll Provider, record that you communicated them, and later record what the Provider reported, which RF-One compares with the approved figures.</li>
+</ul>
+
+<h3>Typical flow</h3>
+<ol>
+  <li>Press <strong>New preparation run</strong>, choose the Legal Entity and the period.</li>
+  <li>In the run, check the hours, add any Incentive Contributions and press <strong>Calculate</strong> for each Employee.</li>
+  <li>Press <strong>Mark as Calculated</strong>, review, then <strong>Approve</strong>.</li>
+  <li>On the Approved Snapshot, <strong>Download CSV</strong>, enter the figures in the Payroll Provider and press <strong>Confirm communication</strong>.</li>
+  <li>When the Provider has processed payroll, enter its values with <strong>Record result and reconcile</strong> and explain or accept each difference.</li>
+</ol>
+
+<h3>What this page shows</h3>
+<dl>
+  <dt>Legal Entity, Period, Status</dt>
+  <dd>Every preparation run, newest period first. Status is OPEN (being prepared), CALCULATED (ready for review), APPROVED (snapshot created), EXPORTED (communication to the Provider recorded) or CLOSED.</dd>
+  <dt>Open</dt>
+  <dd>Opens the run with its hours and calculations.</dd>
+  <dt>Approved snapshot</dt>
+  <dd>Shown once a run is approved: opens its immutable snapshot, export and reconciliation.</dd>
+</dl>
+
+<h3>Buttons</h3>
+<dl>
+  <dt>New preparation run</dt>
+  <dd>Opens the form to create a run. Nothing is created until you submit that form.</dd>
+  <dt>Period Summary</dt>
+  <dd>A read-only comparison of hours, overtime hours and finalized Tips + Gratuity per Employee for one Location. It calculates, approves and sends nothing.</dd>
+</dl>
+</section>
