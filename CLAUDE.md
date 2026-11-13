@@ -349,6 +349,16 @@ Never hide unresolved contradictions.
 
 ---
 
+# Outcome-first, single-flow development — mandatory
+
+**Standing instruction (UI_OUTCOME_SINGLE_FLOW_001, Product Owner, 2026-11-04).** Design first for the outcome the person wants and one clear primary workflow to reach it; then implement the software. The system performs work it can reliably do and asks only necessary information/decisions at the relevant step. Do not expose internal modules, irrelevant filters, shortcuts into unrelated stages or competing row actions as user workflows. Contextual subtasks stay inside the current journey and preserve drafts, group, selection, position and focus. Technical correctness alone does not establish usability.
+
+Read and apply `03 Software/Shared UI/Outcome and Single-Flow Design Standard.md` for every interface/function task. Before completion, compare the actual result with all applicable written project/Domain/UI/How Works/language/safety rules, correct deviations within the authorized scope, and rerun affected checks. Do not weaken rules or tests to claim compliance. Report only concrete remaining conflicts or limitations. Include contextual help and the local-Italian/shared-English policy.
+
+This is already an approved development instruction. Formal insertion of the universal principle into the Core remains a separate proposal for discussion with Shelbi; do not silently amend the approved Core. This rule does not authorize data changes, publishing, pushes or deployment.
+
+---
+
 # RF-One UI Rules
 
 **Standing instruction, applied automatically to every RF-One interface
@@ -441,3 +451,12 @@ When working on a **Product**, ask:
 And always remember:
 
 **Core ≠ Domain ≠ Product ≠ Runtime.**
+
+# Local development and publication language
+
+**Standing instruction (UI_DEVELOPMENT_LANGUAGE_001, Product Owner, 2026-11-03).**
+All UI shown during the Product Owner’s local development/testing is Italian, including secondary pages, dialogs, client-side messages and How Works. Before any explicitly requested Git push/publication or AWS deployment, prepare and verify the shared/release interface in English while preserving the Italian local working copy. Prefer locale selection (shared/production default English, official local launcher Italian), or use an isolated release checkout. Never leave the PO’s working copy in English after a release. Do not translate stored facts, names, identifiers, API/status values or export schemas. This instruction does not itself authorize publication. Full policy: `03 Software/Shared UI/Development Language Policy.md`.
+
+# Contextual How Works for pages and modals
+
+**Standing instruction (UI_HOW_WORKS_MODAL_001, Product Owner, 2026-11-03).** Every Bank page has page-specific How Works; every modal has a visible `?` opening the exact anchored explanation of that modal in the Domain guide, preserving its state and draft. Local Italian and shared/release English follow UI_DEVELOPMENT_LANGUAGE_001. Normative text: `03 Software/Shared UI/How Works Standard.md`, section 1.1. Bank rule-scope/category decisions: `01 Domains/Shared Domains/Administration/Bank Reconciliation/BANK_RULE_SCOPE_AND_WHO_CATEGORY_001.md`. These documented requirements do not certify implementation.
