@@ -1,0 +1,94 @@
+/* RF-One · Selection — layout pieces of the position workspace and of the
+   public candidate pages (SELECTION_AI_INTEGRATION_001) that `rf-one.css`
+   has no equivalent for. Only RF-One's own variables and colour family are
+   used; buttons, cards, tables, badges, messages, tabs and breadcrumb come
+   from `rf-one.css` unchanged. */
+
+.wrap { max-width: 1200px; }
+.small { font-size: .82rem; }
+.row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+.grid { display: grid; gap: 1rem; }
+.g2 { grid-template-columns: 1fr 1fr; }
+.g3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 900px) { .g2, .g3 { grid-template-columns: 1fr; } }
+.card h2:first-child, .card h3:first-child { margin-top: 0; }
+h3 { font-size: .95rem; margin: .4rem 0; color: var(--olive-900); }
+
+/* Forms: RF-One's input look also for the fields Tips's sheet does not list. */
+input[type=email], input[type=password], input[type=tel], input[type=datetime-local], textarea {
+  padding: .45rem .6rem; border: 1px solid var(--olive-300); border-radius: 6px; font: inherit;
+  font-size: .85rem; background: var(--surface); color: var(--ink);
+}
+.card input[type=text], .card input[type=email], .card input[type=password], .card input[type=tel],
+.card select, .card textarea, .auth input[type=text], .auth input[type=email], .auth input[type=password] {
+  width: 100%;
+}
+textarea { min-height: 5rem; resize: vertical; width: 100%; }
+label { margin-top: .55rem; }
+label.row { color: var(--ink); font-size: .85rem; margin: .3rem 0; }
+
+/* Buttons: RF-One's primary and secondary; small and danger are size/colour
+   variants of the same two. */
+.btn { display: inline-block; text-decoration: none; font-family: inherit; }
+.btn:hover { text-decoration: none; }
+.btn-secondary { background: var(--surface); color: var(--olive-700); border: 1px solid var(--olive-300); }
+.btn-secondary:hover { background: var(--olive-050); }
+.btn-danger { background: var(--surface); color: var(--bad); border: 1px solid #e2a8a0; }
+.btn-danger:hover { background: #fbeaea; }
+.btn-small { padding: .3rem .7rem; font-size: .8rem; min-height: 2rem; }
+.badge.info { background: var(--olive-150); color: var(--olive-900); }
+
+/* Header: the AI state and the signed-in person, right of the brand. */
+.header-meta { display: flex; gap: .8rem; align-items: center; font-size: .8rem; color: var(--muted); }
+
+/* Position page: the three proposal columns and the candidate cards. */
+.col { background: var(--olive-050); border: 1px solid var(--olive-300); border-radius: var(--radius); padding: .7rem; }
+.col h3 { display: flex; justify-content: space-between; align-items: center; }
+.cand { background: var(--surface); border: 1px solid var(--olive-300); border-radius: 8px; padding: .65rem .7rem;
+        margin: .55rem 0; }
+.cand .name { font-weight: 600; }
+.cand .why { font-size: .8rem; color: var(--muted); margin: .3rem 0; }
+.cand .acts { display: flex; gap: .3rem; flex-wrap: wrap; margin-top: .4rem; }
+
+/* Notices inside a page. */
+.banner { border-radius: 6px; padding: .6rem .9rem; margin: .6rem 0; font-size: .86rem; }
+.banner.warn { background: #fdf1de; border: 1px solid #eccf9c; color: #6b4a12; }
+.banner.info { background: var(--olive-050); border: 1px solid var(--olive-300); color: var(--olive-900); }
+.banner.off { background: var(--olive-050); border: 1px dashed var(--olive-300); color: var(--muted); }
+
+/* Evidence and quotes. */
+.ev { border-left: 3px solid var(--olive-300); padding: .15rem .5rem; margin: .25rem 0; font-size: .82rem; }
+.ev.SUPPORTS { border-color: var(--ok); }
+.ev.CONTRADICTS { border-color: var(--bad); }
+mark { background: #f3e3a6; }
+pre.cv { white-space: pre-wrap; font-family: inherit; font-size: .88rem; background: var(--surface);
+         border: 1px solid var(--olive-300); border-radius: 8px; padding: 1rem; }
+details summary { cursor: pointer; color: var(--olive-700); font-size: .85rem; margin: .3rem 0; }
+
+/* Position summary figures. */
+.stat { font-size: 1.35rem; font-weight: 700; color: var(--olive-900); }
+.statl { font-size: .74rem; color: var(--muted); }
+a.card-link { color: inherit; text-decoration: none; display: block; }
+a.card-link:hover .card { border-color: var(--olive-500); }
+
+/* Public candidate pages: one narrow column, readable on a phone. */
+.public .wrap { max-width: 680px; }
+.public .card { padding: 1.3rem; }
+.ad { white-space: pre-wrap; margin: 1rem 0; }
+.progress { height: 6px; background: var(--olive-150); border-radius: 6px; overflow: hidden; margin: .6rem 0 1rem; }
+.progress span { display: block; height: 100%; background: var(--olive-700); }
+.slot { display: flex; gap: .6rem; align-items: center; border: 1px solid var(--olive-300); border-radius: 6px;
+        padding: .6rem .8rem; margin: .4rem 0; color: var(--ink); font-size: .95rem; }
+.q { border-left: 3px solid var(--olive-300); padding: .2rem .7rem; margin: .5rem 0; font-size: .9rem; }
+.note { background: var(--olive-050); border-radius: 6px; padding: .6rem .8rem; font-size: .85rem; color: var(--muted);
+        margin: .6rem 0; }
+.auth-switch { display: flex; gap: 1.2rem; border-bottom: 1px solid var(--olive-300); margin: .8rem 0; }
+.auth-switch button { background: none; color: var(--muted); border: none; border-bottom: 2px solid transparent;
+                      border-radius: 0; padding: .5rem .1rem; font-size: .9rem; min-height: 0; }
+.auth-switch button.active { color: var(--olive-700); border-bottom-color: var(--olive-700); font-weight: 600; }
+.auth-status { min-height: 1.2rem; font-size: .86rem; margin: .5rem 0; }
+.auth-status.error { margin-bottom: .5rem; }
+.waiting::after { content: ""; display: inline-block; width: .8rem; height: .8rem; margin-left: .45rem;
+                  border: 2px solid var(--olive-300); border-top-color: var(--olive-700); border-radius: 50%;
+                  vertical-align: -1px; animation: sel-spin .8s linear infinite; }
+@keyframes sel-spin { to { transform: rotate(360deg); } }

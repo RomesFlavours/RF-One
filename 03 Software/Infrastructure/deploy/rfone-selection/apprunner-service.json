@@ -12,7 +12,10 @@
           "RFONE_WEB_BASE_URL": "https://rfone.romesflavours.com",
           "RFONE_SELECTION_REQUIRE_RFONE_LOGIN": "1",
           "RFONE_SELECTION_DOCUMENT_BUCKET": "rfone-selection-documents-418674484214",
-          "RFONE_AI_PROVIDER": "ANTHROPIC"
+          "RFONE_AI_PROVIDER": "BEDROCK",
+          "RFONE_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "RFONE_SELECTION_AI": "1",
+          "RFONE_SELECTION_AI_CV": "1"
         },
         "RuntimeEnvironmentSecrets": {
           "RFONE_DATABASE_URL": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/database-url-chNZo8",

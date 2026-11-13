@@ -3,6 +3,38 @@
 **Task:** TASK_SELECTION_001, extended by TASK_SELECTION_002 (multi-résumé batch import)
 **Canonical documentation:** `01 Domains/Shared Domains/Selection/ResumeScreening/` (Selection Core) and `01 Domains/Business Domain/Restaurant/Selection/` (Restaurant Industry Extension).
 
+## Current interface — position workspace (SELECTION_AI_INTEGRATION_001, 2026-10-21)
+
+Selection's entry page (`/`, i.e. `/selection/` on RF-One) is now the interface approved from the Selection AI
+prototype (`03 Software/Selection Prototype/`): one page per open position with the five functions **Position,
+Applications, Evaluation, Interviews, Decisions** (`workspace/routes.py`, templates in `templates/workspace/`).
+
+- **Access:** RF-One's account system only — the shared RF-One session, the SELECTION Domain, and the Domain role
+  set in RF-One's account administration: administrator or role `OWNER` manages every position, `SUPERVISOR` sees
+  every position read-only, any other enabled account manages only the positions assigned to it. Checked on every
+  request, not only in the navigation. There is no Selection login, account or invitation of its own.
+- **Candidates** (`workspace/careers.py`, templates in `templates/careers/`): the public position page
+  (`/jobs/<token>`) requires an external candidate identity — Full Name, Email, Password, **Receive Code**, then the
+  emailed code (Confirm/Cancel on the same page) — or a sign-in with email and password. Identities live in
+  `selection_candidate_accounts`, separate from RF-One accounts (`rfone_data_store/selection/candidate_identity_service.py`:
+  10-minute 6-digit code stored only as an HMAC, 5 attempts, 60-second cooldown, hourly caps, Werkzeug password
+  hash, lock after 5 wrong passwords). Codes are emailed through RF-One's SES helper with `RFONE_EMAIL_FROM_ADDRESS`;
+  without a working sender the page shows an explicit error and nobody can apply. The verified candidate uploads the
+  résumé and answers the English interview (`/my-application/<token>`, resumable after signing in again); the same
+  identity applies to any number of positions.
+- **Data:** the workspace tables (`selection_workspace_*`, `rfone_data_store/selection/workspace_models.py`, migration
+  `a7d520261021`, additive only) sit on top of the existing Selection entities (candidates, persons, applications,
+  requirement sets and snapshots, Fit Assessments), which they reference and never copy.
+- **AI:** Selection's existing AI client only, through `workspace/ai_adapter.py`. `RFONE_SELECTION_AI=1` lets AI draft
+  positions and messages; `RFONE_SELECTION_AI_CV=1` also lets it read résumés and answers. Both off by default.
+- **Historical pages:** every earlier route and service stays available (the candidate list moved from `/` to
+  `/candidates`) but none is in the navigation any more; their menu was replaced by a link back to the positions.
+- **Local run:** `Avvia Selection.cmd` (`local_server.py`) serves RF-One Web at `/` and Selection at `/selection` on
+  http://127.0.0.1:5096 in one process, with data in `%LOCALAPPDATA%\RF-One\Selection` (outside OneDrive and Git).
+- **Test:** `python test_selection_workspace_http.py` (synthetic data, throwaway database, no email or AI call).
+
+---
+
 A small local web app to screen résumés for Rome's Flavours' Server role: upload one or many PDFs at once, each résumé is parsed independently into a structured Candidate CV Profile, and the candidate detail page shows Facts, Derived Information, Flags/Questions and Indicators as four clearly separate areas — never one combined score.
 
 ## How it works
