@@ -49,7 +49,7 @@ from rfone_data_store import legal_entity_service  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store import rfone_recovery_service as recovery_service  # noqa: E402
 from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
-from rfone_data_store.technical import ses_email  # noqa: E402
+from rfone_data_store.technical import account_email as ses_email  # noqa: E402
 from compensation_routes import register_compensation_routes  # noqa: E402
 from workweek_settings_routes import register_workweek_settings_routes  # noqa: E402
 from organizational_responsibility_routes import register_organizational_responsibility_routes  # noqa: E402
@@ -930,6 +930,8 @@ def admin_account_training_link(account_id: int):
 @app.route("/training-trainer/students/new", methods=["GET", "POST"])
 @training_integration.require_training_trainer(auth, SessionFactory)
 def training_trainer_new_student():
+    return redirect("/training/manage/students")
+
     if request.method == "POST":
         require_csrf()
         username = request.form.get("username", "").strip()
@@ -1255,3 +1257,10 @@ register_interview_routes(app, SessionFactory=SessionFactory, require_login=requ
 from role_profile_routes import register_role_profile_routes
 register_role_profile_routes(app, SessionFactory=SessionFactory, require_admin=require_admin,
     load_current_account=load_current_account, require_csrf=require_csrf, domains=DOMAINS)
+
+
+# Shared login must never expose modules while a new student awaits activation.
+@app.before_request
+def pending_training_activation_gate():
+    from training_activation_guard import reject_pending_session
+    return reject_pending_session(app, SessionFactory, auth)

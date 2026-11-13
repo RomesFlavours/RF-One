@@ -1,0 +1,19 @@
+{
+  "baseline_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:registry-navigation-20261112t164512z",
+  "baseline_digest": "sha256:fb932cb91a6df290f456bf7e09488f299b5f45197be590f093e46ab1461836c8",
+  "overlay": {
+    "RF-One Web/app.py": "c384f1f582020a707ca54c39fc71bafaa51bdf313e4f57965373454b425abc70",
+    "RF-One Web/training_activation_guard.py": "40d3a762f7dd0a528b75fd5659074580c1f0d49a7c4f72f92da62b8a846e8587",
+    "RF-One Web/training_integration.py": "ce8220a61054eb07428e6e280be277b62c51141fedc2aa25aeafc917db0b6e76",
+    "Shared UI/check_how_works.py": "38afb7df07a1cbb6aea7ff53f73e4d8370fa694cd1091cde5391319afbf84ea0",
+    "Shared UI/how_works_registry.json": "89cb749accada160248af267d61ad689d82850b70d6c03c6b474cd3b9971ecd7",
+    "RF-One Data Store/rfone_data_store/people_registry.py": "38417be1249154e7c12aada2c4ad18ab98da4cd67de48993ad53d7706b999493",
+    "RF-One Data Store/rfone_data_store/rfone_recovery_service.py": "e7009df04058b2aae55bd84edcef4b358a50e7e1d5e53ccb89824379b6516f71",
+    "RF-One Data Store/rfone_data_store/student_registry.py": "8f407173311bd3dfa00a2cc2ed9b972ad3db83b1bf2f030e30c74f40d1a0ac22",
+    "RF-One Data Store/rfone_data_store/technical/account_email.py": "1cfece2449ed4c4742d31f1a83718be683818633633c6c6f84e1624a44b4b62d",
+    "RF-One Data Store/rfone_data_store/technical/smtp_email.py": "7d1549b337467dbfc7e750f8ca80696e1e69d4e9951b088b21615ef199905def",
+    "RF-One Data Store/rfone_data_store/training/workspace.py": "4bfa6a3cd9f477276e0690a6d143c039adf59ef2e1d6ca3950ade2fcf9d70c39",
+    "RF-One Web/templates/help/registry.html": "64888f94739b7c9ffaa3ab8490278d3a027132fbf42fd1f20c59e749e55c4471"
+  },
+  "local_italian_unchanged": true
+}
