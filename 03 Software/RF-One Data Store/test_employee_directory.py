@@ -37,8 +37,13 @@ class EmployeeDirectoryTest(unittest.TestCase):
 
     def sync(self, records, location=None, **kwargs):
         location = location or self.wp
-        return directory.import_snapshot(self.db, location_id=location.id,
+        result = directory.import_snapshot(self.db, location_id=location.id,
             merchant_id=location.source_location_id, records=records, **kwargs)
+        # Synthetic clock evidence for reconciliation tests; lifecycle has a dedicated suite.
+        for link in self.db.scalars(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.location_id == location.id)):
+            link.last_clock_in = datetime(2026, 10, 1, tzinfo=timezone.utc)
+        self.db.flush()
+        return result
 
     def count(self, model):
         return self.db.scalar(select(func.count()).select_from(model))

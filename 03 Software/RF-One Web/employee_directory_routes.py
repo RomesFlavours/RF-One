@@ -16,11 +16,14 @@ from rfone_data_store.technical.connectors.clover.acquisition import ImportAlrea
 
 
 def _employee_groups(rows, locations):
-    """Presentation only: an absent source roster never changes RF-One status."""
+    """Presentation of shared per-site and overall employment lifecycle."""
     by_location = {}
-    dismissed = []
+    dismissed, technical = [], []
     for row in rows:
         employee, links = row["employee"], row["links"]
+        if employee.directory_eligible is False:
+            technical.append(row)  # source-only identity: never an employee entry
+            continue
         if not directory.employee_is_active(employee, links):
             dismissed.append(row)
             continue
@@ -31,7 +34,16 @@ def _employee_groups(rows, locations):
             by_location.setdefault(location_id, []).append({**row, "site_link": site_link})
     groups = [{"location": locations.get(location_id, SimpleNamespace(id=None, name="Senza sede", timezone=None)), "rows": members} for location_id, members in by_location.items()]
     groups.sort(key=lambda group: (group["location"].name.casefold(), group["location"].id or 0))
-    return groups, dismissed
+    return groups, dismissed, technical
+
+
+def _account_state(db, account):
+    """One shared label for list and detail: link and activation state."""
+    if account is None:
+        return "Da regolarizzare"
+    if directory.is_provisional_account(db, account):
+        return "Predisposto, da attivare"
+    return "Attivo" if account.status == "ACTIVE" else "Non attivo"
 
 
 def register_employee_directory_routes(app, *, require_domain_access, SessionFactory,
@@ -55,6 +67,8 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             by_target = {getattr(link, field): link for link in links}
             for target in db.scalars(select(model).order_by(model.id)):
                 if kind == "ACTING_IDENTITY" and target.kind != "HUMAN_USER":
+                    continue
+                if kind == "RFONE_ACCOUNT" and directory.is_provisional_account(db, target):
                     continue
                 label = f"{getattr(target, label_field) or 'Nome da completare'} · #{target.id}"
                 if kind == "PROJECT_RESPONSIBLE":
@@ -103,6 +117,12 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 m.IngestionRun.resource_type.is_(None),
                 m.IngestionRun.status == "COMPLETE",
             ))
+            # The minute poller also refreshes the roster: show the latest
+            # complete employee observation when it is newer than a full run.
+            roster_seen = db.scalar(select(func.max(m.EmployeeCloverLink.last_seen_at)).where(
+                m.EmployeeCloverLink.location_id == location.id))
+            instants = [directory._utc(value) for value in (last_sync, roster_seen) if value is not None]
+            last_sync = max(instants) if instants else None
             sites.append({"location": location, "configured": configured, "last_sync": last_sync})
         return sites
 
@@ -116,6 +136,11 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             all_links = list(db.scalars(select(m.EmployeeCloverLink).order_by(m.EmployeeCloverLink.id)))
             locations = {loc.id: loc for loc in db.scalars(select(m.Location))}
             active_options = {option.id: option for option in directory.employee_options(db)}
+            accounts = dict(db.execute(select(m.EmployeeContextLink.employee_id, m.RFOneAccount).join(
+                m.RFOneAccount, m.RFOneAccount.id == m.EmployeeContextLink.rfone_account_id)).all())
+            suspended_merchants = {merchant for merchant in {l.merchant_id for l in all_links}
+                                   if directory.merchant_has_pending_identities(
+                                       [l for l in all_links if l.merchant_id == merchant])}
             rows = []
             for employee in employees:
                 links = [l for l in all_links if l.employee_id == employee.id]
@@ -125,15 +150,18 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                     continue
                 conflicts = directory.source_conflicts(links)
                 rows.append({"employee": employee, "links": links, "conflicts": conflicts,
+                             "account_state": _account_state(db, accounts.get(employee.id)),
+                             "suspended": any(l.state == "MISSING_REVIEW" and l.merchant_id in suspended_merchants
+                                              for l in links),
                              "site_ids": active_options[employee.id].location_ids if employee.id in active_options else (),
                              "reviewed": directory.is_reviewed(db, employee.id, links),
                              "absence_link_ids": directory.source_absence_link_ids(links)})
             pending = [{"link": l, "candidates": directory.candidates(db, l.snapshot or {})}
                        for l in all_links if directory.pending_requires_review(db, l)]
             sites = _sites(db)
-            active_groups, dismissed = _employee_groups(rows, locations)
+            active_groups, dismissed, technical = _employee_groups(rows, locations)
             return render_template(
-                "employee_directory.html", active_groups=active_groups, dismissed=dismissed,
+                "employee_directory.html", active_groups=active_groups, dismissed=dismissed, technical=technical,
                 pending=pending, locations=locations,
                 employees=directory.employee_options(db, include_inactive=True), sites=sites, query=query,
                 md_configured=any(s["location"].source_location_id == os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
@@ -229,8 +257,17 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             actors = {a.id: shared_session.account_display_name(a) for a in db.scalars(select(m.RFOneAccount).where(
                 m.RFOneAccount.id.in_({e.account_id for e in events if e.account_id is not None})))}
             contexts, context_options = _context_view(db, employee_id, _context_permissions(db, account))
+            employee_account = directory.employee_account(db, employee_id)
+            merchant_links = list(db.scalars(select(m.EmployeeCloverLink).where(
+                m.EmployeeCloverLink.merchant_id.in_({l.merchant_id for l in links}))))
+            suspended_merchants = {l.merchant_id for l in links if directory.merchant_has_pending_identities(
+                [other for other in merchant_links if other.merchant_id == l.merchant_id])}
             return render_template(
-                "employee_directory_detail.html", contexts=contexts, context_options=context_options, employee=employee, links=links, locations=locations,
+                "employee_directory_detail.html", employee_account=employee_account,
+                account_state=_account_state(db, employee_account),
+                account_provisional=directory.is_provisional_account(db, employee_account),
+                is_active=directory.employee_is_active(employee, links), suspended_merchants=suspended_merchants,
+                contexts=contexts, context_options=context_options, employee=employee, links=links, locations=locations,
                 conflicts=directory.source_conflicts(links), reviewed=directory.is_reviewed(db, employee_id, links),
                 fingerprint=directory.review_fingerprint(links), assignments=assignments, terms=terms, events=events,
                 actors=actors, absence_link_ids=directory.source_absence_link_ids(links),

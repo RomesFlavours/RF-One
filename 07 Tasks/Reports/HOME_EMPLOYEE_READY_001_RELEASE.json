@@ -1,0 +1,17 @@
+{
+  "arn": "arn:aws:apprunner:us-east-1:418674484214:service/rfone-web/07524815436944e3a05c600c5486f951",
+  "previous_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:web-2d854358aec2",
+  "tag": "home-thumb-20261030t194710z",
+  "backup": "backups/rfone-web-pre-home-thumb-20261030t194710z.zip",
+  "sha256": "631d9ba5df39b387c5920a8275324ed9fa0b471a12297fe3affef26938e807fb",
+  "changed_files": [
+    "RF-One Web/templates/home.html"
+  ],
+  "build": "rfone-web-build:c3ed974c-b74b-430b-b582-5e695fc2e121",
+  "operation": "e32d597b44374384b1832b0312ee97ae",
+  "verification": {
+    "service": "RUNNING",
+    "operation": "SUCCEEDED",
+    "home_http": 302
+  }
+}
