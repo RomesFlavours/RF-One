@@ -171,14 +171,14 @@ Completion and actual days are entered manually; nothing is rescheduled automati
       {# One Responsible, optional: pick a name of this Project or type a new one,
          which the server adds to the Project's list when the task is saved. #}
       <label>Existing responsible <select name="responsible_id" id="pm-task-responsible-id"><option value="">None / enter an external name below</option>
-      {% for r in plan.responsibles %}<option value="{{ r.id }}">{{ r.name }} · #{{ r.id }}</option>{% endfor %}</select></label>
+      {% for r in plan.responsibles if r.is_active %}<option value="{{ r.id }}">{{ r.name }} · #{{ r.id }}</option>{% endfor %}</select></label>
       <label for="pm-task-responsible">Responsible</label>
       <input type="text" id="pm-task-responsible" name="responsible_name" maxlength="200" list="pm-responsible-options"
              autocomplete="off" placeholder="Search or type a new name…" data-pm-responsible-input>
       <datalist id="pm-responsible-options">
-        {% for r in plan.responsibles %}<option value="{{ r.name }}"></option>{% endfor %}
+        {% for r in plan.responsibles if r.is_active %}<option value="{{ r.name }}"></option>{% endfor %}
       </datalist>
-      <script type="application/json" id="pm-responsible-names">{{ plan.responsibles|map(attribute='name')|list|tojson }}</script>
+      <script type="application/json" id="pm-responsible-names">{{ plan.responsibles|selectattr('is_active')|map(attribute='name')|list|tojson }}</script>
       <p class="pm-hint" data-pm-responsible-note hidden></p>
 
       <div class="pm-form-grid pm-form-grid-numbers">

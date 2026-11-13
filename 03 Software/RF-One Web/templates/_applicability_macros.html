@@ -1,0 +1,9 @@
+{# One rendering of a person's organizational applicability (employee_applicability.Applicability). #}
+{% macro applicability_label(scope, names, lang='en') -%}
+{%- if scope.kind == 'GROUP' -%}{{ 'Intero gruppo' if lang == 'it' else 'Whole group' }}
+{%- elif scope.kind in ('RESTAURANT', 'RESTAURANTS') -%}
+{%- set labels = [] -%}{%- for restaurant_id in scope.restaurant_ids -%}{%- set _ = labels.append(names.get(restaurant_id, '#' ~ restaurant_id)) -%}{%- endfor -%}
+{{ labels|sort|join(', ') }}
+{%- else -%}{{ 'Ambito non configurato' if lang == 'it' else 'Applicability not configured' }}
+{%- endif -%}
+{%- endmacro %}

@@ -47,7 +47,7 @@ the caller decides DRY_RUN (rollback) vs PERSIST (commit).
 
 from __future__ import annotations
 
-from ..employee_directory import employees_for_locations
+from ..employee_directory import employees_for_locations, employee_options
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -430,8 +430,10 @@ def bootstrap_restaurant_profile(
             )
 
     # --- Current Employees ---------------------------------------------------
+    active_employee_ids = [option.id for option in employee_options(session, location_ids=location_ids)]
     current_employees = session.scalars(
         employees_for_locations(location_ids).where(
+            m.Employee.id.in_(active_employee_ids),
             ((m.Employee.location_id.in_(location_ids)) & (m.Employee.source_system_id == source_system_id)) |
             m.Employee.id.in_(select(m.EmployeeCloverLink.employee_id).where(
                 m.EmployeeCloverLink.location_id.in_(location_ids), m.EmployeeCloverLink.employee_id.is_not(None))),
