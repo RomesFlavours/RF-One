@@ -17,7 +17,6 @@ SECRET = 'isolated-auto-invite-test'
 os.environ.update(RFONE_DATABASE_URL='sqlite:///' + str(Path(tmp.name) / 'test.db').replace('\\', '/'),
                   RFONE_FLASK_SECRET_KEY=SECRET, AWS_EC2_METADATA_DISABLED='true',
                   RFONE_PUBLIC_BASE_URL='https://rfone.example.invalid')
-os.environ.pop('RFONE_TRAINING_AUTO_INVITER_ID', None)
 sys.path[:0] = [str(HERE), str(HERE.parent / 'RF-One Data Store')]
 SELECTION_INVITE = Path(os.environ.get('SELECTION_DIR') or HERE.parent / 'Selection') / 'workspace' / 'training_invite.py'
 
@@ -136,17 +135,22 @@ with patch.object(account_email, 'send_email', side_effect=lambda **kw: sent.app
     # (SQLite returns naive datetimes, which enrollment.lookup does not accept).
     checks.append('Emailed link is the existing activation link (redirects to /training/activate)')
 
-    # Manager without Training role and no fallback: not sent, clear message.
+    # Hirer who is not a Training trainer: an active trainer issues it instead, no setting needed.
     code, data = call(b, ids['plain'])
-    assert code == 422 and data['status'] == 'skipped' and 'trainer' in data['message'] and len(sent) == 1
-    os.environ['RFONE_TRAINING_AUTO_INVITER_ID'] = str(ids['fallback'])
-    code, data = call(b, ids['plain'])
-    assert code == 200 and data['status'] == 'sent' and sent[-1]['to_address'] == 'erin@example.invalid'
+    assert code == 200 and data['status'] == 'sent' and sent[-1]['to_address'] == 'erin@example.invalid', (code, data)
     with F() as db:
         inv = db.scalar(select(en.EnrollmentInvitation).where(en.EnrollmentInvitation.selection_id == b))
+        assert inv.created_by_id == ids['trainer']
+    # The RF-One owner, when a trainer, comes before any other trainer.
+    with F() as db:
+        owner = db.get(m.RFOneAccount, ids['fallback']); owner.is_admin = True; owner.is_owner = True
+        h = hired(db, db.get(m.RFOneAccount, ids['plain']), 'Owner Path', 'ownerpath@example.invalid'); db.commit()
+    code, data = call(h, ids['plain'])
+    assert code == 200 and data['status'] == 'sent'
+    with F() as db:
+        inv = db.scalar(select(en.EnrollmentInvitation).where(en.EnrollmentInvitation.selection_id == h))
         assert inv.created_by_id == ids['fallback']
-    os.environ.pop('RFONE_TRAINING_AUTO_INVITER_ID')
-    checks.append('Hirer without Training role: skipped with message, or sent by the configured trainer')
+    checks.append('Hirer without Training role: the owner, else an active trainer, issues it automatically')
 
     # No email on the application, or not Hired: not sent.
     code, data = call(c, ids['trainer'])
@@ -156,7 +160,7 @@ with patch.object(account_email, 'send_email', side_effect=lambda **kw: sent.app
     # Someone without Selection rights on that position cannot trigger it.
     code, data = call(a + 1000, ids['fallback'])
     assert code == 409
-    assert len(sent) == 2
+    assert len(sent) == 3
     checks.append('No email, not Hired, or no Selection rights on the position: nothing sent')
 
     # Email failure: invitation kept, Selection told.
@@ -197,6 +201,6 @@ with patch.object(account_email, 'send_email', side_effect=lambda **kw: sent.app
     assert st == 'sent' and 'giulia@example.invalid' in msg and len(sent) == 1, (st, msg)
     st, msg = training_invite.request_invite('https://rfone.example.invalid', position_candidate_id=c, actor_account_id=ids['trainer'])
     assert st == 'skipped' and 'No email' in msg and len(sent) == 1, (st, msg)
-checks.append('End to end: Selection request reaches Training, email sent; a refusal comes back as a readable message')
+checks.append('End to end: Selection request reaches Training, email sent; a refusal comes back as a readable message; release order does not matter')
 
 print(json.dumps({'passed': len(checks), 'checks': checks}, indent=1))

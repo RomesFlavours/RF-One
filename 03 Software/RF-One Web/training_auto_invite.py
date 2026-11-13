@@ -14,9 +14,9 @@ Rules:
 - The person who recorded Hired must have Selection rights on that position
   (checked by enroll.issue through confirmed_candidates, unchanged).
 - The invitation must be issued by a Training trainer, because activation
-  checks the issuer. That is the person who recorded Hired when they are a
-  trainer, otherwise the account in RFONE_TRAINING_AUTO_INVITER_ID if set.
-  With neither, nothing is sent and Selection says so.
+  checks the issuer: the person who recorded Hired if they are one, otherwise
+  the position's manager, the RF-One owner, an administrator, or any active
+  trainer, in that order. No configuration is needed.
 - One invitation per hire: if an unexpired pending or a completed invitation
   already exists for that Selection candidate, nothing new is sent.
 """
@@ -55,14 +55,26 @@ def _is_trainer(db, account):
     return bool(result.training_account and result.training_account.role == 'trainer')
 
 
-def _issuer(db, hirer):
-    if _is_trainer(db, hirer):
-        return hirer
-    raw = (os.environ.get('RFONE_TRAINING_AUTO_INVITER_ID') or '').strip()
-    if raw.isdecimal():
-        fallback = db.get(m.RFOneAccount, int(raw))
-        if _is_trainer(db, fallback):
-            return fallback
+def _issuer(db, hirer, selection_id):
+    """The trainer the invitation is issued by, chosen in this order: the person who
+    recorded Hired, the position's manager, the RF-One owner, an RF-One administrator,
+    then any active trainer. Every candidate is re-checked as a current Training trainer."""
+    from rfone_data_store.selection import workspace_models as selection
+    pc = db.get(selection.WorkspacePositionCandidate, selection_id)
+    position = db.get(selection.WorkspacePosition, pc.position_id) if pc else None
+    candidates = [hirer]
+    if position and position.manager_account_id:
+        candidates.append(db.get(m.RFOneAccount, position.manager_account_id))
+    candidates += list(db.scalars(select(m.RFOneAccount).where(m.RFOneAccount.is_owner.is_(True))))
+    candidates += list(db.scalars(select(m.RFOneAccount).where(m.RFOneAccount.is_admin.is_(True))
+                                  .order_by(m.RFOneAccount.id)))
+    candidates += list(db.scalars(select(m.RFOneAccount)
+        .join(m.RFOneTrainingIdentityLink, m.RFOneTrainingIdentityLink.rfone_account_id == m.RFOneAccount.id)
+        .join(m.TrainingAccount, m.TrainingAccount.id == m.RFOneTrainingIdentityLink.training_account_id)
+        .where(m.TrainingAccount.role == 'trainer').order_by(m.RFOneAccount.id)))
+    for account in candidates:
+        if _is_trainer(db, account):
+            return account
     return None
 
 
@@ -106,7 +118,7 @@ def install(app, *, SessionFactory, secret=None):
             if not source['email']:
                 return jsonify(status='skipped', message='No email on the application, so no invitation was sent. '
                                'Invite them from Training, Students, Invite student.'), 422
-            issuer = _issuer(db, hirer)
+            issuer = _issuer(db, hirer, selection_id)
             if not issuer:
                 return jsonify(status='skipped', message='No Training trainer is set to send automatic invitations. '
                                'Invite them from Training, Students, Invite student.'), 422
