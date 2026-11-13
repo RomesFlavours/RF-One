@@ -39,6 +39,8 @@ def install(app, *, SessionFactory, auth):
     register(app,SessionFactory=SessionFactory,auth=auth,trainer=trainer)
     from training_enrollment_routes import install as install_enrollment
     install_enrollment(app,SessionFactory=SessionFactory,auth=auth,trainer=trainer)
+    from training_auto_invite import install as install_auto_invite
+    install_auto_invite(app,SessionFactory=SessionFactory)
 
     def render(page,**context):
         return render_template('training_workspace/'+page+'.html',active_tab=page,
