@@ -1,0 +1,16 @@
+{% extends 'training_workspace/_base.html' %}
+{% block title %}Attiva Training{% endblock %}
+{% block main %}
+{% if error and draft %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+<h1>Attiva Training</h1>
+{% if invitation %}<p>Controlla i dati e completa l’attivazione. Entrerai con una sola identità RF-One.</p>
+<section class="tw-card"><form method="post" autocomplete="off" class="tw-enrollment-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% set parts=invitation.name.split(' ',1) %}
+<div class="tw-form-grid"><label>Nome<input name="first_name" required maxlength="120" autocomplete="given-name" value="{{ draft.get('first_name',parts[0]) }}"></label><label>Cognome<input name="last_name" required maxlength="120" autocomplete="family-name" value="{{ draft.get('last_name',parts[1] if parts|length>1 else '') }}"></label><label>Email invitata<input type="email" readonly value="{{ invitation.email }}"></label><label>Telefono <span class="muted">(facoltativo)</span><input name="phone" type="tel" maxlength="64" autocomplete="tel" value="{{ draft.get('phone',invitation.phone) }}"></label>
+{% if existing_account %}<label>Password attuale RF-One<input type="password" name="current_password" required maxlength="1024" autocomplete="current-password"></label>
+{% else %}<label>Scegli la password<input type="password" name="password" required minlength="8" maxlength="1024" autocomplete="new-password"></label><label>Conferma password<input type="password" name="password_confirm" required minlength="8" maxlength="1024" autocomplete="new-password"></label>{% endif %}</div>
+<p>{% if existing_account %}Il tuo account esiste già: nome utente, password e accessi attuali vengono conservati.{% else %}Il nome utente sarà generato automaticamente. Usa almeno 8 caratteri per la password.{% endif %} Per cambiare l’email invitata chiedi un nuovo invito all’istruttore.</p>
+<button type="submit">Conferma e attiva Training</button>
+</form></section>{% else %}<p>Apri il collegamento personale ricevuto dall’istruttore. Nessun account viene attivato da questa pagina senza un invito valido.</p>{% endif %}
+{% endblock %}

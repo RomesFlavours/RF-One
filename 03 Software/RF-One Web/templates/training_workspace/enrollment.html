@@ -1,0 +1,17 @@
+{% extends 'training_workspace/_base.html' %}
+{% block title %}Invita studente · Training{% endblock %}
+{% block main %}
+{% if error and draft %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+<div class="tw-heading"><div><h1>Invita studente</h1><p>Dai confermati in Selezione oppure con un invito diretto. La persona completerà i dati e attiverà Training.</p></div></div>
+<p><a href="{{ url_for('tw_students') }}">← Torna agli studenti</a></p>
+{% if invitation_url %}<section class="tw-card"><h2>Invito pronto</h2><p>Il collegamento è personale, funziona una volta sola e scade dopo 48 ore. Un nuovo invito per la stessa email sostituisce il precedente.</p><label>Collegamento di attivazione<input id="created-invitation-link" readonly value="{{ invitation_url }}" onclick="this.select()"></label><p>Non sono state create nuove anagrafiche: l’attivazione completa i collegamenti necessari.</p></section>{% else %}
+<section class="tw-card"><form method="post" id="enrollment-form" class="tw-enrollment-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<fieldset><legend>Da dove arriva la persona?</legend><label><input type="radio" name="mode" value="direct" {% if draft.get('mode','direct')=='direct' %}checked{% endif %}> Invito diretto</label><label><input type="radio" name="mode" value="selection" {% if draft.get('mode')=='selection' %}checked{% endif %}> Confermati in Selezione</label></fieldset>
+<div id="selection-source"><label>Candidato confermato<select name="selection_id"><option value="">Scegli una persona</option>{% for row in confirmed %}<option value="{{ row.id }}" data-name="{{ row.name }}" data-email="{{ row.email }}" data-phone="{{ row.phone }}" {% if draft.get('selection_id')==row.id|string %}selected{% endif %}>{{ row.name }} · {{ row.position }}</option>{% endfor %}</select></label>{% if not confirmed %}<p>Nessun candidato attualmente confermato nelle posizioni di Selezione che puoi gestire.</p>{% endif %}<p>I dati disponibili nel CV vengono precompilati. Verifica il recapito prima di creare l’invito.</p></div>
+<div class="tw-form-grid"><label>Nome e cognome <span class="muted">(se disponibili)</span><input name="name" maxlength="255" value="{{ draft.get('name','') }}"></label><label>Email dell’invitato<input type="email" name="email" required maxlength="255" value="{{ draft.get('email','') }}"></label><label>Telefono <span class="muted">(facoltativo)</span><input type="tel" name="phone" maxlength="64" value="{{ draft.get('phone','') }}"></label></div>
+{% if matches %}<fieldset><legend>Conferma l’anagrafica già presente</legend>{% for candidate in matches %}<label><input type="radio" name="confirmation" value="{{ candidate.key }}" required> {{ candidate.name }}</label>{% endfor %}<p>Se non è la stessa persona, interrompi e chiedi la verifica del Registry. Nessuna fusione viene eseguita automaticamente.</p></fieldset>{% endif %}
+<p>La persona confermerà i dati e sceglierà la password. Se possiede già un account RF-One, lo riutilizzerà confermando la password attuale. Non viene creata una posizione di dipendente.</p>
+<div class="tw-modal-actions"><a href="{{ url_for('tw_students') }}">Annulla</a><button type="submit">Crea invito</button></div>
+</form></section><script defer src="{{ url_for('static',filename='js/training-enrollment.js') }}"></script>{% endif %}
+{% endblock %}

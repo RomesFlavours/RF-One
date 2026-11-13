@@ -1,0 +1,3 @@
+{% extends 'training_workspace/_base.html' %}
+{% block title %}Accesso studenti · Training{% endblock %}
+{% block main %}<div class="tw-access"><h1>Accedi a Training</h1><p>Usa il tuo account RF-One. Se hai ricevuto un invito, attivalo prima di accedere.</p><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Nome utente<input name="username" required autocomplete="username"></label><label>Password<input name="password" type="password" required autocomplete="current-password"></label><button>Accedi</button></form></div><p><a href="{{ url_for('tw_account',mode='activate') }}">Attiva account e verifica email</a> · <a href="{{ url_for('tw_account',mode='recover') }}">Password dimenticata</a></p>{% endblock %}

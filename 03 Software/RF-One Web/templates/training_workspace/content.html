@@ -1,0 +1,31 @@
+{% extends 'training_workspace/_base.html' %}
+{% block title %}Contenuti · Training{% endblock %}
+{% block main %}
+<div class="tw-heading"><div><h1>Catalogo corsi</h1><p>Prepara i corsi, organizza le lezioni e rendili disponibili per le assegnazioni.</p></div><button type="button" data-open="course-editor" id="new-course">+ Nuovo corso</button></div>
+<form method="get" class="tw-search"><label>Cerca per titolo o obiettivo<input name="q" value="{{ q }}"></label><button class="secondary">Cerca</button></form>
+<section class="tw-card"><div class="tw-table-scroll"><table><thead><tr><th>Corso</th><th>Obiettivo</th><th>Versione</th><th>Stato</th><th>Azione</th></tr></thead><tbody>
+{% for row in course_rows %}<tr data-rr-key="course-{{ row.id }}" data-course-slug="{{ row.slug }}"><td><strong><a href="{{ url_for('visual_menu_home',**{'from':'training'}) if row.slug=='visual-menu' else url_for('tw_course_preview',pill_id=row.id,draft=1 if row.has_draft else 0) }}">{{ row.title }}</a></strong><small class="tw-course-count">{{ row.lessons }} lezioni</small></td><td>{{ row.objective }}</td><td>{{ row.active_version or '—' }}</td><td><span class="tw-badge">{{ 'Disponibile · modifiche in bozza' if row.active_version and row.has_draft else 'Disponibile' if row.active_version else 'Bozza' }}</span></td><td><div class="tw-course-actions"><button type="button" class="secondary" data-open="course-editor" data-edit-course='{{ row|tojson }}'>Descrizione</button><a class="tw-course-content-link" href="{{ url_for('visual_menu_manage') if row.slug=='visual-menu' else url_for('tw_course_preview',pill_id=row.id,draft=1 if row.has_draft else 0) }}">Contenuti</a></div></td></tr>
+{% else %}<tr><td colspan="5" class="tw-empty">Nessun corso trovato. Scegli «Nuovo corso» per iniziare.</td></tr>{% endfor %}
+</tbody></table></div></section>
+<p class="muted">Solo i corsi disponibili possono essere assegnati. Le modifiche salvate in bozza non cambiano le versioni già assegnate.</p>
+<dialog id="course-editor" aria-labelledby="course-editor-title" {% if course_draft %}data-reopen{% endif %}>
+<header class="tw-modal-header"><h2 id="course-editor-title">Nuovo corso</h2><div><button type="button" class="tw-icon" data-modal-help="course-form" aria-label="Aiuto inserimento corso">?</button><button type="button" class="tw-icon" data-close aria-label="Chiudi">×</button></div></header>
+<div class="error" role="alert" id="course-error" {% if not course_draft %}hidden{% endif %}>{{ error if course_draft else '' }}</div>
+<form id="course-editor-form" method="post" action="{{ url_for('tw_save_course') }}" enctype="multipart/form-data">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id"><input type="hidden" name="edit_revision" value="0">
+<label>Titolo del corso<input name="title" required maxlength="255"></label>
+<div class="tw-form-grid tw-course-general"><label>Descrizione<textarea name="description" maxlength="10000" rows="3"></textarea></label><label>Obiettivo di apprendimento<textarea name="objective" maxlength="10000" rows="3"></textarea></label></div>
+<h3>Materiali e lezioni</h3><p class="muted">Aggiungi testi, collegamenti a pagine RF-One o siti HTTPS, PDF e video MP4/WebM. Massimo 25 MB per file e 30 MB per salvataggio.</p>
+<div id="course-lessons"></div><button type="button" class="secondary" id="add-course-lesson">+ Aggiungi lezione</button>
+<p id="course-version-note" class="muted">La bozza non è visibile nelle assegnazioni. Per rendere disponibile il corso completa descrizione, obiettivo e almeno una lezione.</p>
+<div class="tw-modal-actions"><button type="button" class="secondary" data-close>Annulla</button><button type="submit" class="secondary" name="action" value="draft">Salva bozza</button><button type="submit" name="action" value="publish">Rendi disponibile</button></div>
+</form></dialog>
+<template id="course-lesson-template"><section class="tw-lesson-editor"><div class="tw-lesson-toolbar"><h4>Lezione</h4><div><button type="button" class="tw-icon" data-lesson-up aria-label="Sposta lezione in alto">↑</button><button type="button" class="tw-icon" data-lesson-down aria-label="Sposta lezione in basso">↓</button><button type="button" class="tw-icon" data-lesson-remove aria-label="Rimuovi lezione dalla bozza">×</button></div></div>
+<div class="tw-form-grid"><label>Titolo della lezione<input name="lesson_title" maxlength="255"></label><label>Tipo di materiale<select name="lesson_kind"><option value="text">Testo</option><option value="internal">Pagina RF-One</option><option value="link">Collegamento HTTPS</option><option value="file">PDF o video</option></select></label></div>
+<label data-lesson-field="text">Testo della lezione<textarea name="lesson_text" rows="5" maxlength="50000"></textarea></label>
+<label data-lesson-field="url" hidden>Collegamento<input name="lesson_url" maxlength="2048" placeholder="https://… oppure /percorso-della-pagina"></label>
+<div data-lesson-field="file" hidden><label>Carica PDF o video<input type="file" name="lesson_file" accept=".pdf,.mp4,.webm"></label><input type="hidden" name="lesson_file_id"><p class="muted" data-file-name></p></div>
+</section></template>
+{% if course_draft %}<script type="application/json" id="course-draft-data">{{ course_draft|tojson }}</script>{% endif %}
+<script defer src="{{ url_for('static',filename='js/training-courses.js') }}"></script>
+{% endblock %}
