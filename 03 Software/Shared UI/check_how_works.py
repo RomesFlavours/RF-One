@@ -21,6 +21,9 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]                                   # repository root
 REGISTRY = "03 Software/Shared UI/how_works_registry.json"
 LINK_MARKER = "data-how-works"
+COMPONENT = "03 Software/Shared UI/help/_how_works.html"  # the one help component; each app keeps an identical copy
+SECTION_SET = re.compile(r"{%-?\s*set\s+help_section\s*=")
+MIN_HELP_TEXT = 300                                      # visible characters: a real explanation, not a stub
 TECHNICAL = re.compile(r"^How-Works:\s*technical\b", re.I | re.M)
 REFERENCE_TAG = re.compile(r"{%-?\s*(?:extends|include|import|from)\s+(.*?)-?%}", re.S)
 QUOTED = re.compile(r"""["']([^"']+\.html)["']""")
@@ -87,24 +90,57 @@ def targets(entry) -> list[str]:
     return [entry] if isinstance(entry, str) else list(entry)
 
 
-def has_link(src: Source, templates: str, name: str, seen: set[str] | None = None) -> bool:
-    """The page or a template it extends, includes or imports carries the How Works marker."""
+def chain_text(src: Source, folders: list[str], name: str, seen: set[str] | None = None) -> str:
+    """The page plus every template it extends, includes or imports (layouts, components), searched in
+    the app's own templates first and then in the layouts it borrows (`layout_templates`)."""
     seen = seen if seen is not None else set()
     if name in seen:
-        return False
+        return ""
     seen.add(name)
-    path = f"{templates}/{name}"
-    if not src.exists(path):
-        return False
+    path = next((f"{folder}/{name}" for folder in folders if src.exists(f"{folder}/{name}")), None)
+    if not path:
+        return ""
     text = src.read(path)
-    return LINK_MARKER in text or any(has_link(src, templates, ref, seen) for ref in references(text))
+    return text + "".join(chain_text(src, folders, ref, seen) for ref in references(text))
+
+
+def has_link(src: Source, templates, name: str) -> bool:
+    """The page or a template it extends, includes or imports carries the How Works marker."""
+    folders = [templates] if isinstance(templates, str) else list(templates)
+    return LINK_MARKER in chain_text(src, folders, name)
+
+
+def visible_text(html: str) -> str:
+    """What a reader actually sees of a help section: no template tags, comments, scripts or markup."""
+    text = re.sub(r"{#.*?#}|{%.*?%}|{{.*?}}", " ", html, flags=re.S)
+    text = re.sub(r"<(script|style)\b.*?</\1>", " ", text, flags=re.S | re.I)
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
+
+
+def check_help_section(src: Source, templates: str, app_name: str, name: str, guide: str) -> list[str]:
+    """A section shown in the page's own help modal (`help/<section>.html`): the page declares exactly
+    this section, and the section really explains something."""
+    errors = []
+    section = posixpath.splitext(guide[len("help/"):])[0]
+    page = f"{templates}/{name}"
+    text = src.read(page) if src.exists(page) else ""
+    if not SECTION_SET.search(text) or not re.search(rf"""["']{re.escape(section)}["']""", text):
+        errors.append(f'{app_name}: {name} does not declare {{% set help_section = "{section}" %}}')
+    if len(visible_text(src.read(f"{templates}/{guide}"))) < MIN_HELP_TEXT:
+        errors.append(f"{app_name}: {name} -> {guide}: the help section is too short to explain the page")
+    return errors
 
 
 def check_tree(src: Source, apps: dict, report: bool) -> tuple[list[str], list[str]]:
     errors, warnings = [], []
+    canonical = src.read(COMPONENT) if src.exists(COMPONENT) else None
     for app_name, app in apps.items():
         templates = app["templates"]
+        folders = [templates] + list(app.get("layout_templates", []))
         pages = page_templates(src, templates)
+        copy = f"{templates}/_how_works.html"
+        if canonical is not None and src.exists(copy) and src.read(copy) != canonical:
+            errors.append(f"{app_name}: {copy} differs from the one help component {COMPONENT}: copy it again")
         listed = {"pages": app.get("pages", {}), "not_operational": app.get("not_operational", {}),
                   "help_missing": app.get("help_missing", {})}
         for name in pages:
@@ -126,7 +162,9 @@ def check_tree(src: Source, apps: dict, report: bool) -> tuple[list[str], list[s
                     errors.append(f"{app_name}: {name} -> {target}: guide {guide} does not exist")
                 elif anchor and not re.search(rf"""\bid=["']{re.escape(anchor)}["']""", src.read(f"{templates}/{guide}")):
                     errors.append(f"{app_name}: {name} -> {target}: the guide has no section id \"{anchor}\"")
-            if src.exists(f"{templates}/{name}") and not has_link(src, templates, name):
+                elif guide.startswith("help/"):
+                    errors += check_help_section(src, templates, app_name, name, guide)
+            if src.exists(f"{templates}/{name}") and not has_link(src, folders, name):
                 errors.append(f"{app_name}: {name} shows no How Works link ({LINK_MARKER})")
         if report:
             for name, reason in listed["help_missing"].items():

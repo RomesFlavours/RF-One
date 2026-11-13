@@ -9,18 +9,30 @@
 
 ---
 
-## 1. Every operational page has a "How Works" link
+## 1. Every page has a contextual help link that opens a modal
 
-Every operational page shows a visible **How Works** link. It opens the Help section **for that page**, inside the Help of its Domain or Module. It never opens the top of the manual.
+**Product Owner rule (UI_CONTEXTUAL_HELP_001, 2026-11-05), modelled on the "How Selection works" link.** Every RF-One page has a contextual help, reached through one consistent link that opens a **modal** on the page itself (it does not navigate away, so nothing on the page is lost).
 
-Example: Selection → Applications → **How Works** opens *How Selection works*, section *Applications* (`/selection/how-it-works#applications`).
+| Page | Link label | What the modal explains |
+|---|---|---|
+| General RF-One Home | `How RF-One works` | RF-One and how to move around it |
+| Home (entry page) of a Domain or Module | `How <Module> works` | purpose of the module, how it works, its operating flow, and what its home page shows |
+| Every other page (lists, details, forms, settings, administration, services) | `How this page works` | that page only: what it is for, what the person can do, meaning of fields and buttons, consequences of the actions, next steps |
 
-- **Position.** At the right end of the Domain's navigation tabs, above their divider line, in the same position on every page of the Domain (the placement of the earlier Domain-guide rule, 2026-10-27, is kept).
-- **Label.** `How Works` in English; `Come funziona` in the Italian local UI. A tooltip may name the page ("How Applications works").
-- **Target.** `<guide address>#<section id>`. The guide has one section per page or tab, with that `id`. The section opened is visibly marked (`:target` style) and is not hidden under the top edge.
-- **Marker.** The link carries `data-how-works="<section id>"`. The automatic check (§5) relies on it.
-- **One link, one implementation.** The link is rendered once, in the Domain's layout template, from the page's own section code. Pages do not each write their own copy (UI Rules §3).
-- **The guide** uses the RF-One shell and breadcrumb, follows the interface language (Italian in PO local development, English for shared/release use, per UI_DEVELOPMENT_LANGUAGE_001), and explains the actual workflow in the order the person meets it.
+- **Page-specific, never generic.** The module explanation is never a substitute for a page's own explanation.
+- **Real behaviour, plain English.** The help describes what is actually available (§2), in clear English for the user, without unnecessary technical detail. *Open decision:* how this English-text instruction combines with UI_DEVELOPMENT_LANGUAGE_001 (Italian local UI) — until the Product Owner decides, the help is English in local and shared use, while the page labels it quotes stay as the page shows them.
+- **Permissions.** The help is rendered inside the page: whoever may open the page may read its help, and nobody else. A part of the help that describes a role-restricted button or section carries the same condition as that button or section.
+- **Position.** Top right of the page's working area: at the right end of the app's navigation tabs where the layout has them (Selection, Tips — the "How Selection works" placement), otherwise in a right-aligned row directly above the page content. Same place on every page of an app.
+- **Behaviour.** The link is a button (`aria-haspopup="dialog"`). The modal is a native `<dialog>`: it opens with focus on its close X, keeps keyboard focus inside, closes with Escape, the X at its top right (always visible while the help scrolls), the **Close** button or a click outside; focus returns to the link. It never submits, reloads or clears anything. Below 640 px it fills the screen.
+- **Marker.** The link carries `data-how-works="<section>"`. The automatic check (§5) relies on it.
+- **One component, one implementation.** `03 Software/Shared UI/help/_how_works.html` (link + modal, styles and script included). Each app keeps a byte-identical copy as `templates/_how_works.html`, like `rf-one.css`; the check (§5) fails when a copy differs. The layout of each app renders the link and the modal; a page only declares, at top level of its template:
+
+  ```jinja
+  {% set help_section = "<section>" %}   {# content: templates/help/<section>.html #}
+  {% set help_title = "<Module>" %}      {# only on a Home: "How <Module> works" #}
+  ```
+
+- **Content.** `templates/help/<section>.html`, one fragment per page (or per tab, when one template renders tabs that are different pages for the person), wrapped in `<section id="help-<section>">`. Existing full guides (`*how_it_works*` pages) stay available, agree with the sections, and preferably include them so there is one source.
 
 ## 2. The Help describes the released behaviour
 
@@ -60,7 +72,7 @@ Every page template of every app is classified in [`how_works_registry.json`](ho
 
 | List | Meaning |
 |---|---|
-| `pages` | Operational page with its How Works target: `"<template>": "<guide template>#<section id>"` |
+| `pages` | Operational page with its help target: `"<template>": "help/<section>.html#help-<section>"` (a list when one template renders several tabs). An older guide target `"<guide template>#<section id>"` is still read, but every page is moved to its own modal section. |
 | `not_operational` | Not an operational page, with the reason |
 | `help_missing` | Operational page that existed before this standard and still has no page-specific Help. **This list can only shrink.** A new page can never be added to it. |
 
@@ -79,6 +91,8 @@ A template that extends nothing and has no `<html>` is a fragment and is not cla
 | Coverage | a page template is in none of the registry lists (a new page without How Works), or a registry entry points to a template that no longer exists |
 | Link | a page in `pages` has no `data-how-works` link in its template or in the layouts it extends |
 | Target | the guide template does not exist, the target has no section id, or the guide has no element with that `id` |
+| Modal section | for a `help/<section>.html` target: the page does not declare `{% set help_section = "<section>" %}`, or the section has fewer than 300 visible characters |
+| Component | an app's `templates/_how_works.html` differs from `Shared UI/help/_how_works.html` |
 | Release correspondence (`--since <rev>`) | a commit in the range changes functional files of an app (templates, application code, static assets; not tests or documents) and is not declared `How-Works: technical`, but the Help of the changed pages (or, for code, any Help of that app) is not changed in the same range; or a page added in the range was put in `help_missing` |
 
 ```text
@@ -99,10 +113,12 @@ The registry and the guide are released in the same commit as the code, so the H
 
 ## 6. Applying the standard to an existing page
 
-1. Write the page's section in its Domain guide (one section per page or tab, `id` = the page's code).
-2. Make the Domain layout render the How Works link from the page's section code, with `data-how-works`.
-3. Move the page from `help_missing` to `pages` in the registry.
-4. Run the check; release code, guide and registry together.
+1. Read the page, its route and its permission conditions; write `templates/help/<section>.html` for that page.
+2. Declare `help_section` (and `help_title` on a Home) at the top of the page template; remove any older per-page help link the layout now replaces.
+3. Move the page from `help_missing` to `pages` in the registry, with target `help/<section>.html#help-<section>`.
+4. Verify: the page renders the link and its own section (the app's `test_how_works_*` HTTP test), the modal opens and closes, the text matches the page. Run the check; release code, help and registry together.
+
+**Every creation or change of a page includes checking, and where needed updating, its help. The work is not complete while the interface and its explanation do not match.**
 
 
 ## 1.1 Contextual help in every modal (Product Owner, 2026-11-03)

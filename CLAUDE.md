@@ -374,6 +374,47 @@ Every future UI refinement reuses these rules.
 
 ---
 
+# Contextual help on every page (UI_CONTEXTUAL_HELP_001)
+
+**Standing Product Owner instruction (2026-11-05), for every RF-One page,
+app and agent.** Normative text: `03 Software/Shared UI/How Works Standard.md`
+§1 and §6; this is a pointer to it. Verbatim:
+
+> Prima di ogni attività leggere le istruzioni principali del repository.
+> Ogni pagina RF-One deve avere un aiuto contestuale accessibile tramite un
+> link coerente che apre una modale. Le home spiegano il sistema o modulo;
+> le altre pagine spiegano la pagina specifica. Ogni creazione o modifica di
+> pagina deve includere la verifica e l'eventuale aggiornamento del relativo
+> aiuto. L'attività non è completa se interfaccia e spiegazione non
+> corrispondono.
+
+In short:
+
+1. Before any task, read the repository's main instructions (this file;
+   `AGENTS.md` points here).
+2. One consistent link per page, opening a **modal** (reference: the
+   "How Selection works" link). General Home: **How RF-One works** — RF-One
+   and its navigation. Home of a Domain/Module: **How <Module> works** —
+   purpose, how it works, operating flow. Every other page (lists, details,
+   forms, settings, administration, services): **How this page works** — what
+   the page is for, what the person can do, fields and buttons, consequences
+   of the actions, next steps. A module explanation never replaces a page's
+   own explanation.
+3. The help describes only what is really available, in clear English
+   without unnecessary technical detail, and is visible exactly to whoever
+   may see the page (role-restricted parts carry the page's own condition).
+4. One component for every app: `03 Software/Shared UI/help/_how_works.html`
+   (byte-identical copy `templates/_how_works.html` in each app). A page
+   declares `{% set help_section = "<section>" %}` (and `help_title` on a
+   Home); its content is `templates/help/<section>.html`; it is registered in
+   `how_works_registry.json` and checked by `check_how_works.py`. Keyboard
+   and mobile use are part of the component.
+5. Every creation or change of a page includes checking and, where needed,
+   updating its help. The task is not complete while interface and
+   explanation do not match.
+
+---
+
 # Bank Local Environment
 
 The local Bank working environment (both PCs) is run ONLY through

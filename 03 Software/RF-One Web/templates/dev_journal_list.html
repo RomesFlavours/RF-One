@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% set help_section = "dev-journal-home" %}
+{% set help_title = "Development Journal" %}
 {% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Development Journal · RF-One{% endblock %}
 {% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-dev-journal.css') }}?v=2">{% endblock %}

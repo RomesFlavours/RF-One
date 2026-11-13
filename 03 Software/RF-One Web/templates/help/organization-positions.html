@@ -1,0 +1,28 @@
+<section id="help-organization-positions" class="rf-help-section">
+<h2>Positions</h2>
+<p>A Position is a stable responsibility in the company (for example a manager role), independent of the person who occupies it. This page lists every Position with the Position it reports to and its current occupant. It is a configuration and inspection page, not the place where people receive their requests.</p>
+
+<h3>What you can do</h3>
+<ul>
+  <li>See all Positions, which are active, and which are vacant.</li>
+  <li>Open a Position to see{% if org_may_administer() %} and change{% endif %} its Scope, occupants, Temporary Coverage, Backup Positions and the Processes it owns.</li>
+  {% if org_may_administer() %}<li>Create a new Position.</li>{% endif %}
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Name</dt><dd>The Position's name.</dd>
+  <dt>Parent</dt><dd>The Position it reports to; "-" for a top-level Position.</dd>
+  <dt>Active</dt><dd>Whether the Position is active or inactive.</dd>
+  <dt>Current Occupant</dt><dd>Who occupies the Position now. <strong>VACANT</strong> means nobody does; it is a normal state, but requests owned by a vacant Position need a Temporary Coverage, a Backup Position or the Fallback Policy to reach someone.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  {% if org_may_administer() %}<dt>New Position</dt><dd>Opens the form to create a Position. Nothing is saved until you submit it.</dd>{% endif %}
+  {% if may_use_item('ORGANIZATION', 'process_ownerships') %}<dt>Process Ownerships</dt><dd>Opens the list of which Position owns which Process.</dd>{% endif %}
+  {% if may_use_item('ORGANIZATION', 'attention') %}<dt>Attention Items</dt><dd>Opens the inspection list of Attention Items and their routing.</dd>{% endif %}
+  <dt>Manage</dt><dd>Opens the Position's own page. Opening it changes nothing.</dd>
+</dl>
+<p>Positions cannot be renamed, deactivated or deleted from these pages.</p>
+</section>

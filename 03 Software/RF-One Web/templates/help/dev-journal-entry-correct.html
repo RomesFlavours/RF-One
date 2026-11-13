@@ -1,0 +1,26 @@
+<section id="help-dev-journal-entry-correct" class="rf-help-section">
+<h2>Correct entry</h2>
+<p>This page corrects an entry already written in a work's journal. A correction never erases the past: the text being replaced is kept as an earlier version, with its author and date, and stays available from the entry.</p>
+{% if author_name is defined and author_name %}
+<p>This entry was written by someone else. You are correcting it as an administrator: the new version is recorded under your name, and the original author's text stays in the earlier versions.</p>
+{% endif %}
+
+<h3>Fields</h3>
+<dl>
+  <dt>Reference phase</dt><dd>The phase of the work the entry belongs to. Changing it does not change the phase of the work.</dd>
+  <dt>Type</dt><dd>Analysis, Decision, Activity, Verification, Problem or Release.</dd>
+  <dt>Text</dt><dd>Required. The corrected text.</dd>
+  <dt>Release</dt><dd>Shown only for the Release type: Environment, AWS service, Version or commit and Outcome are required; Post-deploy verification is optional.</dd>
+  <dt>References (optional)</dt><dd>Link (starting with https:// or http://), branch, commit, command or prompt.</dd>
+</dl>
+<p>Documents are not changed here: documents already attached to the entry stay attached. To add one, use “Attach documents to this entry” on the card.</p>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Save correction</dt><dd>Saves the new text as the next version of the entry and returns to it on the card. If nothing was changed, no new version is created. If a required field is missing, nothing is saved and the page shows the reason.</dd>
+  <dt>Cancel</dt><dd>Returns to the entry on the card without saving.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>On the card the entry now shows “corrected” with its version number; click it to see every version.</p>
+</section>

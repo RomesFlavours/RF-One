@@ -1,0 +1,27 @@
+<section id="help-organization-position-detail" class="rf-help-section">
+{% set may_admin = org_may_administer() %}
+<h2>Position page</h2>
+<p>This page shows everything about one Position: who occupies it, where it applies, who covers it, which Positions back it up and which Processes it owns. The same content opens in a window when you click the Position in the Organization Chart.{% if not may_admin %} You can consult it; changes are reserved to the administrators of the Organization Domain.{% endif %}</p>
+
+<h3>Top of the page</h3>
+<dl>
+  <dt>Description and "reports to"</dt><dd>The Position's description and a link to the Position it reports to.</dd>
+  <dt>Status and Current occupant</dt><dd>Whether the Position is active, and who occupies it now (<strong>VACANT</strong> if nobody). When a Temporary Coverage is active, <em>covered by</em> shows the delegate and until when.</dd>
+  {% if may_admin %}<dt>DEFINE / REVIEW SCOPE WITH COGNITO (ADMIN / TEST ONLY)</dt><dd>Opens a short questionnaire that records Scope, a Process Ownership and a Backup Position for this Position in one step. No AI is involved.</dd>{% endif %}
+</dl>
+
+<h3>Sections</h3>
+<dl>
+  <dt>Scope</dt><dd>Where the Position applies: each row is a type (for example RESTAURANT, OPERATIONAL_UNIT for a Location, LEGAL_ENTITY, DOMAIN, PROCESS_PHASE or GLOBAL) and its value. No Scope means the Position applies everywhere.{% if may_admin %} To add one, choose the <em>Scope type</em>: the matching list or field appears (a Restaurant, a Location, a Legal Entity, a Process Phase, a numeric reference id or a text key; GLOBAL needs no value). Then press <strong>Add Scope</strong>. Scope rows cannot be removed from this page.{% endif %}</dd>
+  <dt>Occupant history</dt><dd>Every person who has occupied the Position, with <em>Valid from</em> and <em>Valid to</em> ("open-ended" when there is no end).{% if may_admin %} To assign someone, choose the person, optionally a start (empty means now) and an end, and press <strong>Assign Occupant</strong>. Assigning does not end the previous occupant's period: when periods overlap, the one that started most recently counts as current. Past rows are never overwritten.{% endif %}</dd>
+  <dt>Temporary Coverage / Delegation</dt><dd>Who covers this Position during an absence (holiday, sickness), with its period and whether it was revoked. While it is active it takes precedence over the occupant when a request is routed.{% if may_admin %} To create one, choose either a Position or a person as delegate (exactly one of the two lists), optionally the start and end, and press <strong>Create Coverage</strong>. A coverage cannot be revoked from this page; give it an end date when you create it.{% endif %}</dd>
+  <dt>Backup Position</dt><dd>The standing list of Positions, in order, that receive this Position's requests when neither a Temporary Coverage nor the occupant can. A Backup does not have to be the parent Position.{% if may_admin %} <strong>Add Backup Position</strong> adds the chosen Position at the end of the list (a Position cannot back up itself). <strong>Deactivate</strong> takes a Backup out of use; it stays in the list as not active. The checkbox <em>This Position requires at least one active Backup Position</em> is saved as soon as you tick or untick it; when it is ticked and no Backup is set, the Coverage Check flags the Position.{% endif %}</dd>
+  <dt>Process Ownership held by this Position</dt><dd>The Processes (Domain, Module, Process, Phase) this Position is responsible for, and the Scope each applies to. Ownership is added in Process Ownerships{% if may_admin %}, or through the questionnaire above{% endif %}.</dd>
+  <dt>Subordinate Positions</dt><dd>The Positions that report to this one. Click a name to open it.</dd>
+</dl>
+
+{% if may_admin %}
+<h3>What is saved</h3>
+<p>Each form is saved on its own when you press its button, and the page reloads with a confirmation or with the reason a change was refused. When you work from the Organization Chart window, it opens again on the same Position after saving. Dates and times you enter here are treated as UTC, not as the Location's local time, and are shown the same way.</p>
+{% endif %}
+</section>

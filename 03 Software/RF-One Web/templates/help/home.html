@@ -1,0 +1,34 @@
+<section id="help-home" class="rf-help-section">
+<h2>RF-One Home</h2>
+<p>RF-One is the working system of the business. This Home is the starting point after you sign in: it shows only the areas your account is allowed to use, so two people may see different Homes.</p>
+
+<h3>What you find here</h3>
+<dl>
+  {% if interview_tasks %}
+  <dt>Requested interviews</dt>
+  <dd>An interview someone asked you to complete. Open the card to start it, or to resume one you already began.</dd>
+  {% endif %}
+  <dt>MyRFOne</dt>
+  <dd>One card for each Domain (area of work) enabled for your account. Click a card to enter that Domain. A greyed card marked as not yet available is a Domain your account has, but that cannot be opened yet. Cards in a lighter colour are still work in progress.</dd>
+  {% if bank_available or clover_acquisition_available or employees_available %}
+  <dt>Administration</dt>
+  <dd>Administrative tools enabled for your account{% if employees_available %}: the employee directory{% endif %}{% if bank_available %}, Bank (import and reconcile bank transactions){% endif %}{% if clover_acquisition_available %}, Clover Acquisition (bring data from Clover into RF-One){% endif %}.</dd>
+  {% endif %}
+  <dt>Settings</dt>
+  <dd><strong>Profile</strong> lets you manage your own account information.{% if account and account.is_admin %} As an administrator you also see <strong>Accounts</strong> (who can sign in and which Domains each person may use), <strong>Legal Entities</strong> and <strong>Workweek</strong> (the day each restaurant's workweek starts).{% endif %}</dd>
+  {% if dev_journal_available %}
+  <dt>Services</dt>
+  <dd><strong>Development Journal</strong> records every phase of a piece of work, from study to release.</dd>
+  {% endif %}
+</dl>
+
+<h3>Moving around RF-One</h3>
+<ul>
+  <li>Every page shows its path at the top (for example <em>RF-One › Domain › Page</em>). Click any level of the path to go back to it; click <em>RF-One</em> or the Rome's Flavours header to return here.</li>
+  <li>Every page has a <strong>How … works</strong> link at the top right. On a Domain's first page it explains the whole Domain; on every other page it explains that page: what it is for, its fields and buttons, and what happens when you use them.</li>
+  <li>Some Domains open in their own application, in the same window. You stay signed in with the same RF-One account.</li>
+</ul>
+
+<h3>If something is missing</h3>
+<p>If you need a Domain or tool that does not appear here, ask an RF-One administrator to enable it for your account. <strong>Log out</strong>, at the top right, ends your session on this device.</p>
+</section>

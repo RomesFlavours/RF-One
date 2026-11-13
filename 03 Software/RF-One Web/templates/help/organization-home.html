@@ -1,0 +1,43 @@
+<section id="help-organization-home" class="rf-help-section">
+{% set may_admin = org_may_administer() %}
+<h2>How Organization works</h2>
+<p>Organization describes who is responsible for what in the company. It records the Positions (stable responsibilities such as a manager role), who occupies each one, who covers it when the occupant is away, and which Position owns each business Process. RF-One uses this to decide who should receive an Attention Item: a request for a person's attention raised by a Process. These pages are for configuration, inspection and testing; they are not the place where people receive or handle their everyday requests.</p>
+{% if may_admin %}
+<p>You can change the organization: you are an administrator of this Domain.</p>
+{% else %}
+<p>You can consult the organization. Changes are reserved to the administrators of this Domain, so the buttons and forms that change data are not shown to you.</p>
+{% endif %}
+
+<h3>How it works</h3>
+<ul>
+  <li>A <strong>Position</strong> is a responsibility, independent of the person in it. Positions report to a parent Position, forming the chart. A Position without an occupant is shown as <strong>VACANT</strong>, which is a normal state.</li>
+  <li>A Position's <strong>Scope</strong> says where it applies (for example a Restaurant, a Location, a Legal Entity or a Domain). A Position with no Scope applies everywhere.</li>
+  <li><strong>Process Ownership</strong> says which Position is responsible for a Process, or for one phase of it.</li>
+  <li>When a Process raises an Attention Item, RF-One finds the owning Position and looks for the recipient in this order: the delegate of an active <strong>Temporary Coverage</strong> of that Position (for example during holidays), otherwise its current occupant; then its <strong>Backup Positions</strong>, in their order; finally the Position named by the <strong>Organizational Fallback Policy</strong>. If nobody can be found the item stays unresolved; RF-One never guesses a recipient.</li>
+</ul>
+
+<h3>Typical flow</h3>
+<ol>
+  <li>Create the Positions and their reporting lines{% if may_use_item('ORGANIZATION', 'positions') %} in <strong>Positions</strong>{% endif %}.</li>
+  <li>For each Position, set its Scope, assign the occupant and add Backup Positions.</li>
+  <li>Record which Position owns each Process{% if may_use_item('ORGANIZATION', 'process_ownerships') %} in <strong>Process Ownerships</strong>{% endif %}.</li>
+  <li>Set a company-wide fallback Position{% if may_use_item('ORGANIZATION', 'fallback_policies') %} in <strong>Organizational Fallback Policy</strong>{% endif %}, used only when nothing else resolves.</li>
+  <li>Check the result with the coverage counts on this page{% if may_use_item('ORGANIZATION', 'coverage_check') %} and in <strong>Full Coverage Check</strong>{% endif %}, and fix the gaps.</li>
+  {% if may_use_item('ORGANIZATION', 'attention') %}<li>Inspect the Attention Items and how each was routed in <strong>Attention Items</strong>.</li>{% endif %}
+</ol>
+
+<h3>What this page shows</h3>
+<dl>
+  <dt>Section buttons</dt><dd>One button for each Organization section your account may use.{% if may_use_item('ORGANIZATION', 'positions') %} <strong>Positions</strong>: list and edit the Positions.{% endif %}{% if may_use_item('ORGANIZATION', 'process_ownerships') %} <strong>Process Ownerships</strong>: which Position owns which Process.{% endif %}{% if may_use_item('ORGANIZATION', 'fallback_policies') %} <strong>Organizational Fallback Policy</strong>: the last-resort recipient.{% endif %}{% if may_use_item('ORGANIZATION', 'coverage_check') %} <strong>Full Coverage Check</strong>: the per-Process detail of the counts below.{% endif %}{% if may_use_item('ORGANIZATION', 'attention') %} <strong>Attention Items</strong>: inspect requests and their routing.{% endif %}{% if may_use_item('ORGANIZATION', 'interviews') %} <strong>Interviews · TEST</strong>: the test area for interviews.{% endif %}{% if may_use_item('ORGANIZATION', 'ai_review') %} <strong>AI Consistency Review (boundary)</strong>: shows what a future automatic review would receive; no review runs yet.{% endif %}</dd>
+  <dt>Organizational Coverage</dt><dd>Live counts answering "if a Process raised an Attention Item now, would someone receive it?": <em>Processes known</em>; <em>Fully covered</em> (the owner's occupant or an active Temporary Coverage receives it); <em>Partial coverage (Backup/Fallback)</em>; <em>Configuration gap (undelivered)</em> (nobody would receive it); <em>Fallback used</em>; <em>Missing required Backup</em> (Positions marked as requiring a Backup Position that have none); <em>Unresolved Attention Items</em>.</dd>
+  <dt>Organizational Health</dt><dd>A separate question: is a primary owner correctly configured for each Process? <em>Primary ownership configured</em>, <em>No owner configured</em> and <em>Ambiguous ownership</em> (more than one equally valid owner). A Process can be delivered through a Backup or the Fallback and still have no primary owner; both are shown.</dd>
+  <dt>Organization Chart</dt><dd>The Positions drawn from the current data, each under the Position it reports to. Each box shows the Position's name, its occupant (or VACANT) and its Scope, and, when they apply, its Backup Positions, who is covering it, and warnings such as <em>Configuration gap</em>, <em>Covered via Backup</em>, <em>Covered via Organizational Fallback</em> or <em>Backup required, none set</em>. A greyed box is an inactive Position.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>A Position box</dt><dd>Click it, or press Enter, to open that Position in a window over the chart, with the same content as its own page{% if may_admin %}, including the forms to add Scope, assign an occupant, create Temporary Coverage and manage Backup Positions. Each change is saved when you press its button, and the window opens again on the same Position{% endif %}. <em>Open full page →</em> opens the Position's own page. Close the window with the × at its top right or by clicking outside it.</dd>
+  <dt>− / +</dt><dd>On a Position with subordinates: collapses or expands the Positions below it. It only changes the view.</dd>
+  {% if may_use_item('ORGANIZATION', 'coverage_check') %}<dt>click through for per-Process detail</dt><dd>Opens the Full Coverage Check.</dd>{% endif %}
+</dl>
+</section>

@@ -1,0 +1,19 @@
+<section id="help-settings-legal-entity-form" class="rf-help-section">
+{% set creating = mode is defined and mode == "create" %}
+<h2>{{ "New Legal Entity" if creating else "Edit Legal Entity" }}</h2>
+<p>{% if creating %}Use this form to add a company of the group to the list of Legal Entities.{% else %}Use this form to change the legal name or the status of this Legal Entity.{% endif %} Only RF-One administrators can open it.</p>
+
+<h3>Fields</h3>
+<dl>
+  <dt>Legal name</dt><dd>The company's legal name, as it should appear wherever RF-One shows the entity. Required.</dd>
+  <dt>Status</dt><dd><strong>Active</strong> entities can be chosen for new work in RF-One. <strong>Inactive</strong> entities stay on file, with everything already recorded for them, but are normally no longer offered for new work.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>{{ "Create Legal Entity" if creating else "Save changes" }}</dt><dd>{% if creating %}Creates the Legal Entity and returns to the list.{% else %}Saves the new name and status and returns to the list. A changed name is shown everywhere the entity is used.{% endif %} If the legal name is empty, nothing is saved and the reason is shown. You can edit the entity again at any time.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>Use <strong>Legal Entities</strong> in the path at the top to return to the list without saving.</p>
+</section>

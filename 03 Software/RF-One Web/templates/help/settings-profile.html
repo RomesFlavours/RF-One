@@ -1,0 +1,34 @@
+<section id="help-settings-profile" class="rf-help-section">
+<h2>Profile</h2>
+<p>This page shows your own RF-One account and lets you add or change your email address. A confirmed email is what lets you recover your password by yourself from the sign-in page.</p>
+
+<h3>What the page shows</h3>
+<dl>
+  {% if reference_person is defined and reference_person %}
+  <dt>Persona RF1</dt><dd>The person in the RF-One directory your account belongs to.</dd>
+  {% endif %}
+  <dt>Username</dt><dd>The name you type to sign in.</dd>
+  <dt>Display name</dt><dd>Your name as shown inside RF-One. An administrator can change it.</dd>
+  <dt>Email</dt><dd><em>Verified email</em> is a confirmed address. <em>Email on file (not yet verified)</em> means the address is recorded but not confirmed yet. <em>none on file yet</em> means you have not added one.</dd>
+</dl>
+
+{% if pending_email is defined and pending_email %}
+<h3>Confirm your email</h3>
+<p>A six-digit code was sent to the address shown in the <em>Confirm your email</em> box. It expires 10 minutes after it was sent.</p>
+<dl>
+  <dt>Verification code</dt><dd>The six digits from the email.</dd>
+  <dt>Confirm code</dt><dd>Confirms the address: from then on it is your verified email{% if account is defined and account.email and account.email_verified_at %}, replacing the previous one{% endif %}. A wrong or expired code is refused; ask for a new one.</dd>
+  <dt>Resend code</dt><dd>Sends a new code to the same address. You can ask for a new code at most once a minute.</dd>
+</dl>
+{% endif %}
+
+<h3>{{ "Change email" if account is defined and account.email else "Add email" }}</h3>
+<dl>
+  <dt>New email</dt><dd>The address you want to use. It must not belong to another account.</dd>
+  <dt>Current password</dt><dd>Your sign-in password, to confirm it is really you.</dd>
+  <dt>{{ "Request change" if account is defined and account.email else "Add email" }}</dt><dd>Sends a verification code to the new address. {% if account is defined and account.email %}Your current email stays in use until you confirm the new one with the code; if you never confirm it, nothing changes.{% else %}The address is recorded at once as not yet verified, and becomes verified when you enter the code.{% endif %}</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>Open the email, copy the code and enter it in <strong>Confirm your email</strong> on this page. Your username and password are not changed here; if you need a new password and cannot use password recovery, ask an RF-One administrator.</p>
+</section>

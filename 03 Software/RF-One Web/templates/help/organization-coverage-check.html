@@ -1,0 +1,20 @@
+<section id="help-organization-coverage-check" class="rf-help-section">
+<h2>Organizational Coverage Check</h2>
+<p>This page answers, for every Process RF-One knows about: "if this Process raised an Attention Item right now, would someone actually receive it?". It is computed live each time you open the page, from the Process Ownerships, the Attention Items already raised, and the occupants, Temporary Coverage, Backup Positions and Fallback Policy. It only reads: nothing is changed here.</p>
+
+<h3>The counts</h3>
+<dl>
+  <dt>Delivery</dt><dd><em>Processes known</em> (every Process with an ownership or with an Attention Item already raised); <em>Fully covered</em> (the owner's occupant, or the delegate of its active Temporary Coverage, would receive it); <em>Covered via Backup</em>; <em>Covered via Organizational Fallback</em>; <em>Gap (undelivered)</em>: nobody would receive it.</dd>
+  <dt>Organizational Health</dt><dd>A separate question: is a primary owner correctly configured? <em>Primary ownership configured</em>, <em>No owner</em>, <em>Ambiguous owner</em> (more than one equally valid owner). A Process can be delivered through the Fallback and still have no owner; both facts are always shown.</dd>
+</dl>
+
+<h3>Tables</h3>
+<dl>
+  <dt>Per-Process detail</dt><dd>One row per Process and phase: <em>Delivery</em> (FULLY_COVERED, COVERED_VIA_BACKUP, COVERED_VIA_FALLBACK or GAP), <em>Ownership health</em> (CONFIGURED, NO_OWNER or AMBIGUOUS_OWNER), the <em>Owner</em> Position (click to open it) and a <em>Detail</em> saying who would receive the request and how, or why nobody would.</dd>
+  <dt>Positions requiring a Backup but missing one</dt><dd>Positions marked as requiring at least one active Backup Position that have none.</dd>
+  <dt>Unresolved Attention Items</dt><dd>Items already raised for which routing found no recipient, with their priority, source and the reason. Click the reason to open the item.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>For a GAP or NO_OWNER, add a Process Ownership; for a vacant owner, assign an occupant, a Temporary Coverage or a Backup Position; as a last resort set the Organizational Fallback Policy. These changes are made by the administrators of the Organization Domain. Then reopen this page to see the new result.</p>
+</section>

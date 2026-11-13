@@ -1,0 +1,31 @@
+<section id="help-organization-process-ownerships" class="rf-help-section">
+<h2>Process Ownerships</h2>
+<p>A Process Ownership says: "this Position is responsible for this Process (or one phase of it) in this Scope". RF-One uses it to find who should receive the Attention Items that Process raises. This page lists every ownership{% if org_may_administer() %} and lets you add new ones{% endif %}.</p>
+
+<h3>Columns</h3>
+<dl>
+  <dt>Domain / Module / Process</dt><dd>The Process, named by the Domain and optionally the Module it belongs to.</dd>
+  <dt>Phase</dt><dd>One phase of the Process (PLANNING, SCHEDULING_PROGRAMMING, MANAGEMENT or OPERATIONS), or <em>(whole process)</em>.</dd>
+  <dt>Position</dt><dd>The owning Position{% if may_use_item('ORGANIZATION', 'positions') %}; click it to open the Position{% endif %}.</dd>
+  <dt>Scope override</dt><dd>A Scope that applies to this ownership only; <em>(uses Position's own scope)</em> when none is set.</dd>
+</dl>
+
+{% if org_may_administer() %}
+<h3>New Process Ownership</h3>
+<dl>
+  <dt>Domain</dt><dd>Required. The name of the Domain the Process belongs to, typed as text.</dd>
+  <dt>Module</dt><dd>Optional module name.</dd>
+  <dt>Process name</dt><dd>Required. It must match the name the Process uses when it raises Attention Items, otherwise those items will not find this owner.</dd>
+  <dt>Phase</dt><dd>Optional: choose a phase, or leave <em>(whole process)</em>.</dd>
+  <dt>Owning Position</dt><dd>The Position responsible.</dd>
+  <dt>Scope override (optional), scope_id, scope_key</dt><dd>Leave the override empty to use the Position's own Scope. If you choose a type, give its value: a number in <em>scope_id</em> for types identified by a number (for example a Restaurant or Legal Entity), or text in <em>scope_key</em> for types identified by a name (Domain, Module, Process, Process Phase). GLOBAL needs no value.</dd>
+</dl>
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Create Process Ownership</dt><dd>Adds the ownership and reloads the page. If a required field is missing or the scope value does not fit its type, nothing is saved and the reason is shown. Ownerships cannot be edited or removed from this page. If two ownerships end up equally valid for the same Process, the Coverage Check reports the ownership as ambiguous.</dd>
+</dl>
+{% endif %}
+
+<h3>Next steps</h3>
+<p>Open the Coverage Check to confirm the Process now has a configured owner and that its requests would reach someone.</p>
+</section>

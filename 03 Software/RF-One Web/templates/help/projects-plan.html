@@ -1,0 +1,50 @@
+<section id="help-projects-plan" class="rf-help-section">
+<h2>Project plan</h2>
+<p>This page is the plan of one project: its chapters, tasks and subtasks, with dates, responsible people, completion and prerequisites. Here you build and update the plan.</p>
+
+<h3>What you can do</h3>
+<ul>
+  <li>Create, change and delete chapters.</li>
+  <li>Create tasks inside a chapter and subtasks under a task, change them and delete them.</li>
+  <li>Record completion % and actual days as the work progresses.</li>
+  <li>Open the Gantt and rename the project.</li>
+</ul>
+
+<h3>Columns</h3>
+<dl>
+  <dt>Activity</dt><dd>Code and title of the chapter or task, with its description. A ⚠ line under a task means it starts on or before the planned end date of one of its prerequisites.</dd>
+  <dt>Responsible</dt><dd>The person responsible for the task, from the project's list.</dd>
+  <dt>Planned start, Planned end</dt><dd>For a task: its planned start, and start + planned days − 1. For a chapter: the earliest start and latest end of its tasks.</dd>
+  <dt>Planned days, Actual days</dt><dd>Planned calendar days, and the actual days entered by hand (— when not entered).</dd>
+  <dt>Completion</dt><dd>The completion percentage entered by hand.</dd>
+  <dt>Prerequisites</dt><dd>The codes of the tasks that must finish before this one starts; a highlighted code is one that causes a warning. Point at a code to see its title and planned end.</dd>
+</dl>
+<p>The warning at the top counts the tasks with a prerequisite warning. No date is ever moved automatically.</p>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>New chapter</dt><dd>Opens a window with <strong>Title</strong> (required) and <strong>Description</strong>. <strong>Save</strong> adds the chapter at the end of the plan.</dd>
+  <dt>New task / + Task</dt><dd>Opens the task window (below); <strong>+ Task</strong> on a chapter row already selects that chapter.</dd>
+  <dt>+ Subtask</dt><dd>Opens the task window with the parent task already chosen.</dd>
+  <dt>Edit</dt><dd>On a chapter, changes its title and description; on a task, opens the task window with its current values.</dd>
+  <dt>Delete</dt><dd>Asks for confirmation, then deletes permanently. It is shown on a chapter only when it has no tasks, and on a task only when it has no subtasks. Deleting a task also removes its prerequisite links.</dd>
+  <dt>Gantt</dt><dd>Opens the read-only Gantt chart of this project.</dd>
+  <dt>Rename project</dt><dd>Opens a window to change the project name.</dd>
+</dl>
+
+<h3>The task window</h3>
+<dl>
+  <dt>Title, Description</dt><dd>The title is required.</dd>
+  <dt>Parent task</dt><dd>Empty for a chapter task; choose a task to make this a subtask. Only one level of subtasks is supported, so a task that has subtasks cannot become a subtask.</dd>
+  <dt>Chapter</dt><dd>The chapter of a chapter task. A subtask always belongs to its parent task's chapter.</dd>
+  <dt>Existing responsible / Responsible</dt><dd>Choose a name from the project's list, or type a name: a new name is added to the project's list when the task is saved. Leave both empty for no responsible. A dismissed employee cannot receive new tasks.</dd>
+  <dt>Planned start date, Planned days</dt><dd>Required; planned days must be at least 1. The window shows the resulting planned end date.</dd>
+  <dt>Actual days</dt><dd>Optional: empty, zero or more.</dd>
+  <dt>Completion %</dt><dd>Required, from 0 to 100.</dd>
+  <dt>Prerequisites</dt><dd>Tick the tasks of this project that must finish before this one starts; use the filter to find them by code or title. A task cannot be its own prerequisite and circular dependencies are refused.</dd>
+</dl>
+<p><strong>Save</strong> stores the task and returns you to its row; <strong>Cancel</strong> or the × closes the window without saving. If something is refused, the window stays open with what you typed and the reason.</p>
+
+<h3>Next steps</h3>
+<p>Open the <strong>Gantt</strong> to check the timeline and the warnings, and correct dates or prerequisites here.</p>
+</section>

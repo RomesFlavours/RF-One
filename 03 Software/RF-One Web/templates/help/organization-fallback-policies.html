@@ -1,0 +1,24 @@
+<section id="help-organization-fallback-policies" class="rf-help-section">
+<h2>Organizational Fallback Policy</h2>
+<p>The Fallback Policy names the Position that receives an Attention Item as a last resort, when no owner, Temporary Coverage or Backup Position can be found for it. It is a choice of your company, not a fixed rule of RF-One: without a policy, such items simply stay unresolved. A typical choice is the CEO Position with scope GLOBAL.</p>
+
+<h3>Columns</h3>
+<dl>
+  <dt>Scope</dt><dd>Where the policy applies. GLOBAL applies everywhere; a more specific policy that matches a request wins over the GLOBAL one, and among equally specific ones the most recently created wins.</dd>
+  <dt>Fallback Position</dt><dd>The Position that receives the requests{% if may_use_item('ORGANIZATION', 'positions') %}; click it to open the Position{% endif %}. The request reaches its occupant, or the delegate of its active Temporary Coverage; if that Position is vacant too, the request stays unresolved.</dd>
+  <dt>Active</dt><dd>Only active policies are used.</dd>
+</dl>
+
+{% if org_may_administer() %}
+<h3>New Fallback Policy</h3>
+<dl>
+  <dt>Fallback Position</dt><dd>The Position to use as last resort.</dd>
+  <dt>Scope type</dt><dd>Where the policy applies. Choose GLOBAL for the company-wide fallback; types identified by a number or a name show a field for the reference id or key. On this page the lists of Restaurants, Locations, Legal Entities and Process Phases are empty, so those scope types cannot be completed here.</dd>
+</dl>
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Set Fallback Policy</dt><dd>Adds the policy and reloads the page. It does not replace an existing one: an older policy with the same scope stays active, and the newer one wins. If the scope value is missing or wrong, nothing is saved and the reason is shown.</dd>
+  <dt>Deactivate</dt><dd>Takes that policy out of use. It stays listed as not active and cannot be reactivated from this page; set a new policy instead.</dd>
+</dl>
+{% endif %}
+</section>

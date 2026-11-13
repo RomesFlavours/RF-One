@@ -1,0 +1,24 @@
+<section id="help-organization-attention-detail" class="rf-help-section">
+{% set may_admin = org_may_administer() %}
+<h2>Attention Item</h2>
+<p>This page shows one Attention Item: what raised it, why, who RF-One found as its recipient, and every routing evaluation made so far.{% if not may_admin %} You can consult it; actions are reserved to the administrators of the Organization Domain.{% endif %}</p>
+
+<h3>Fields</h3>
+<dl>
+  <dt>Priority and Status</dt><dd>Priority is CRITICAL, HIGH, MEDIUM or LOW. Status is OPEN, ACKNOWLEDGED, RESOLVED or CANCELLED.</dd>
+  <dt>Source</dt><dd>The Domain, module, Process and phase that raised the item, and its reference when given.</dd>
+  <dt>Reason, Proposed action, Detail</dt><dd>What the Process reported, and what it suggests doing.</dd>
+  <dt>Routing</dt><dd>The latest result: the <em>Resolved recipient</em> with the owning Position, or <em>UNRESOLVED</em> with the reason nobody could be found, or <em>Not yet routed</em>.</dd>
+  <dt>Routing history (audit trail)</dt><dd>Every evaluation, with its time (in the Location's local time), the owner Position, the recipient, the <em>Resolution path</em> (DIRECT_OCCUPANT, TEMPORARY_COVERAGE, BACKUP_POSITION or ORGANIZATIONAL_FALLBACK) and, when unresolved, the reason. Earlier evaluations are never changed.</dd>
+</dl>
+
+{% if may_admin %}
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Re-evaluate routing now</dt><dd>Looks for the recipient again with the organization as it is now, and adds a new row to the routing history. It does not change the item's status and never rewrites earlier results. Changes to Positions or occupants are not applied to existing items by themselves: use this button after fixing the organization.</dd>
+  <dt>Acknowledge</dt><dd>Shown while the item is OPEN or ACKNOWLEDGED, and usable only while it is OPEN. Choose, in the list beside it, the person on whose behalf you record it; the item becomes ACKNOWLEDGED.</dd>
+  <dt>Resolve</dt><dd>Choose the person on whose behalf you record it; the item becomes RESOLVED. A resolved item cannot be reopened from this page.</dd>
+</dl>
+<p>The person and time of each action are recorded with the item.</p>
+{% endif %}
+</section>

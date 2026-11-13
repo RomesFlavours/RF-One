@@ -1,0 +1,22 @@
+<section id="help-organization-attention" class="rf-help-section">
+<h2>Attention Items</h2>
+<p>An Attention Item is a request for a person's attention raised by a business Process. This page lists the Attention Items on file, newest first, with the recipient RF-One found for each. It is for inspection only: nothing is delivered to anyone from this page, and it is not the inbox where people handle their requests.</p>
+
+<h3>Filters</h3>
+<dl>
+  <dt>All, OPEN, ACKNOWLEDGED, RESOLVED, CANCELLED</dt><dd>Show all items, or only the items in that status. OPEN: not yet handled. ACKNOWLEDGED: someone has taken note. RESOLVED: someone acted on it. CANCELLED: the Process that raised it withdrew it.</dd>
+</dl>
+
+<h3>Columns</h3>
+<dl>
+  <dt>Priority</dt><dd>CRITICAL, HIGH, MEDIUM or LOW.</dd>
+  <dt>Status</dt><dd>One of the statuses above.</dd>
+  <dt>Source</dt><dd>The Domain and Process that raised the item, with the phase when given.</dd>
+  <dt>Reason</dt><dd>Why the item was raised (first characters). Click it to open the item.</dd>
+  <dt>Resolved recipient</dt><dd>The person RF-One found as recipient at the latest routing, or "-".</dd>
+  <dt>Routing</dt><dd><strong>resolved</strong>: a recipient was found. <strong>UNRESOLVED</strong>: routing could not find anyone. <em>not routed</em>: routing has not been evaluated yet.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>Open an item to see its full routing history{% if org_may_administer() %}, to evaluate its routing again, and to acknowledge or resolve it{% endif %}.</p>
+</section>

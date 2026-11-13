@@ -1,0 +1,46 @@
+<section id="help-settings-account-form" class="rf-help-section">
+{% set creating = mode is defined and mode == "create" %}
+<h2>{{ "Create account" if creating else "Edit account" }}</h2>
+{% if creating %}
+<p>Use this form to create a new RF-One account, so a person can sign in to RF-One. Only RF-One administrators can open it.</p>
+{% else %}
+<p>Use this page to change an existing account's display name, status and administrator role, and to give it a new password. Only RF-One administrators can open it.</p>
+{% endif %}
+
+<h3>Fields</h3>
+<dl>
+  {% if creating %}
+  <dt>Username</dt><dd>The name the person will type to sign in. It is saved in lower case, must not already be used by another account, and cannot be changed later.</dd>
+  {% else %}
+  <dt>Username</dt><dd>Shown for reference only: a username cannot be changed.</dd>
+  {% endif %}
+  <dt>Display name</dt><dd>The name shown for the person inside RF-One. Required.</dd>
+  {% if creating %}
+  <dt>Email</dt><dd>Required. It must not belong to another account. A verification code is emailed to this address; the person confirms it from their own Profile page. The account can sign in even before the email is confirmed, but self-service password recovery works only with a confirmed email.</dd>
+  <dt>Password / Confirm password</dt><dd>The first password of the account. The two must match. Give the password to the person through a safe channel.</dd>
+  {% endif %}
+  <dt>Status</dt><dd><strong>Active</strong> lets the account sign in; <strong>Inactive</strong> refuses its sign-in without deleting anything. The owner of RF-One is always Active, so the choice is locked for that account.</dd>
+  <dt>RF-One administrator</dt><dd>An administrator manages accounts and settings, and administers every Domain the account is given access to. Being an administrator does not by itself open any Domain: Domains are still granted in Domain Access. To let someone administer only some Domains, leave this unticked and give the role "Domain administrator" in Domain Access instead.</dd>
+</dl>
+
+<h3>Rules that protect the administrators</h3>
+<ul>
+  <li>The owner of RF-One always stays an active administrator.</li>
+  <li>You cannot remove your own administrator role or deactivate yourself; another administrator can.</li>
+  <li>A change that would leave RF-One without any active administrator is refused.</li>
+</ul>
+<p>When a rule blocks a change, the page shows the reason and nothing is saved.</p>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  {% if creating %}
+  <dt>Create account</dt><dd>Creates the account and emails the verification code to the address entered, then returns to the Accounts list. If something is wrong (for example the username or email is already used, or the passwords do not match) the account is not created and the reason is shown.</dd>
+  {% else %}
+  <dt>Save changes</dt><dd>Saves the display name, status and administrator role, then returns to the Accounts list. You can change them again at any time.</dd>
+  <dt>Reset password</dt><dd>In the <em>Reset password</em> box: type the new password twice and press the button. The old password stops working immediately and cannot be recovered, and every session where the person is signed in is ended, so they must sign in again with the new password. This does not save the other fields of the form.</dd>
+  {% endif %}
+</dl>
+
+<h3>Next steps</h3>
+<p>{% if creating %}Open <strong>Domain Access</strong> for the new account from the Accounts list, so it can use the Domains it needs.{% else %}Use <strong>Accounts</strong> in the path at the top to go back to the list, where Domain Access and Training Identity are available.{% endif %}</p>
+</section>

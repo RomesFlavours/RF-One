@@ -1,0 +1,37 @@
+<section id="help-dev-journal-home" class="rf-help-section">
+<h2>How Development Journal works</h2>
+<p>The Development Journal keeps a written record of each piece of development work, from the first study to the release. Each piece of work has one card; on the card the people involved add dated entries, attach documents and keep the next step up to date, so anyone can see where the work stands and why.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li>A <strong>work</strong> is one change with a verifiable result. It has a title, the RF-One Domain it concerns, a responsible person, an objective, a <strong>Phase</strong> (Study, Specification, Development, Local test, Ready for release, Released) and a <strong>Status</strong> (In progress, Waiting, Blocked, Completed, Cancelled).</li>
+  <li><strong>Entries</strong> are the journal of the work: analyses, decisions, activities, verifications, problems and releases. Date and author are recorded automatically.</li>
+  <li>Nothing is lost: every phase or status change is kept in the card's history, and a corrected entry keeps its earlier versions. Works and entries cannot be deleted.</li>
+  <li>Everything is written by hand. The journal does not read Git, Claude, Codex or AWS by itself, and it does not send notifications.</li>
+</ul>
+
+<h3>Typical flow</h3>
+<ol>
+  <li>Click <strong>New work</strong>, describe the objective, choose the Domain and the responsible person, and create the card.</li>
+  <li>Open the card and add entries as the work progresses (analysis, decisions, activities, verifications, problems).</li>
+  <li>Attach the useful documents (specifications, screenshots, reports) to the card or to a single entry.</li>
+  <li>With <strong>Edit</strong> on the card, move the work to the next phase, change its status and keep the <strong>Next step</strong> current.</li>
+  <li>When the work is released, add a <strong>Release</strong> entry with environment, service, version and outcome, then set the status to Completed.</li>
+</ol>
+
+<h3>What this page shows</h3>
+<p>The list of all works, with filters.</p>
+<dl>
+  <dt>Domain, Phase, Status, Responsible</dt>
+  <dd>Filters. Choose one or more values and click <strong>Filter</strong>; <strong>Clear</strong> shows every work again.</dd>
+  <dt>Title</dt><dd>Click it to open the work's card.</dd>
+  <dt>Last update</dt><dd>When the card or one of its entries last changed, in the local time shown under the table.</dd>
+  <dt>Next step</dt><dd>What has to be done now. “to be defined” means an open work has no next step yet: set it from the card with <strong>Edit</strong>.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>New work</dt><dd>Opens the form to create a new card. Nothing is saved until you click <strong>Create work</strong> there.</dd>
+  <dt>Filter / Clear</dt><dd>Only change what the list shows; they never change any data.</dd>
+</dl>
+</section>

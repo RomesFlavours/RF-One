@@ -1,0 +1,34 @@
+<section id="help-dev-journal-work-form" class="rf-help-section">
+{% if mode is defined and mode == "create" %}
+<h2>New work</h2>
+<p>This page creates a new card in the Development Journal: one change with a verifiable result. After saving, the card opens and you can start adding entries and documents.</p>
+{% else %}
+<h2>Edit work</h2>
+<p>This page changes the card of an existing work: its description, responsible person, phase, status and next step.</p>
+{% endif %}
+
+<h3>Fields</h3>
+<dl>
+  <dt>Title</dt><dd>Required, up to 200 characters. A short name that says what the work changes.</dd>
+  <dt>RF-One Domain concerned</dt><dd>Required. The area of RF-One the work is about.</dd>
+  <dt>Responsible</dt><dd>Required. The person who leads the work. Only people with access to the Development Journal can be chosen; a person who no longer has access stays on the works already assigned to them, marked “(no longer enabled)”.</dd>
+  <dt>Phase</dt><dd>Where the work is: Study, Specification, Development, Local test, Ready for release, Released.</dd>
+  <dt>Status</dt><dd>In progress, Waiting, Blocked, Completed or Cancelled. Completed and Cancelled close the work; it can be reopened from the card.</dd>
+  <dt>Objective</dt><dd>Required. The problem to solve and the expected result.</dd>
+  <dt>Next step</dt><dd>Optional. What has to be done now, and by whom. It is shown on the list and at the top of the card.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  {% if mode is defined and mode == "create" %}
+  <dt>Create work</dt><dd>Saves the new card with you as its author and opens it. If a required field is missing, nothing is saved and the page shows the reason with what you typed.</dd>
+  <dt>Cancel</dt><dd>Returns to the list without saving.</dd>
+  {% else %}
+  <dt>Save</dt><dd>Saves the changes and returns to the card. A change of phase or status is recorded in the card's history, with your name and the time. If a required field is missing, nothing is saved and the page shows the reason with what you typed.</dd>
+  <dt>Cancel</dt><dd>Returns to the card without saving.</dd>
+  {% endif %}
+</dl>
+
+<h3>Next steps</h3>
+<p>On the card, add entries to document the work and attach documents. Author, creation time and last update are recorded automatically.</p>
+</section>

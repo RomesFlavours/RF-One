@@ -1,0 +1,23 @@
+<section id="help-settings-workweek" class="rf-help-section">
+<h2>Workweek</h2>
+<p>This page sets the day each Restaurant's workweek starts. A week is seven Business Dates and begins at the Location's operating-day cutoff, in the Location's own time. Every RF-One function that works per week reads this setting. Only RF-One administrators can open it.</p>
+
+<h3>What you can do</h3>
+<ul>
+  <li>See, for each Restaurant, the start day in force today and the history of earlier start days.</li>
+  <li>Record a new start day from a chosen Business Date onwards. Earlier weeks keep the start day they had: history is never rewritten.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Current start day</dt><dd>The start day in force now, with the span of the week (for example Monday → Sunday). <em>not configured</em> means no start day has been recorded for that Restaurant yet.</dd>
+  <dt>New start day</dt><dd>The weekday the workweek should start on from then on.</dd>
+  <dt>From Business Date (must be that weekday)</dt><dd>The first Business Date of the first week with the new start day. It must fall on the chosen weekday, so that no week is cut in two, and it must come after the start of the most recent change already recorded.</dd>
+  <dt>History table</dt><dd>Each start day with the dates it is <em>Valid from</em> and <em>Valid to</em> (— means still in force), and a <em>Note</em> recording who made the change on this page.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Change start day</dt><dd>Records the new start day for that Restaurant only. The start day in force until then ends where the new one begins, and both stay in the history. The change is refused, with the reason shown and nothing saved, when the date is missing or not on the chosen weekday, when it is not after the latest change, when the week already starts on that day, or when the Restaurant's Location has no time zone or cutoff configured. A recorded change cannot be removed from this page; to correct it, record a later change.</dd>
+</dl>
+</section>

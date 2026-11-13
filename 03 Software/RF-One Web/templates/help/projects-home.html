@@ -1,0 +1,39 @@
+<section id="help-projects-home" class="rf-help-section">
+<h2>How Project Management works</h2>
+<p>Project Management plans projects as a tree of chapters, tasks and subtasks, with dates, durations, responsible people, completion and prerequisites, and shows each project as a Gantt chart that can be printed.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li>A <strong>project</strong> contains <strong>chapters</strong>; a chapter contains <strong>tasks</strong>; a task can have <strong>subtasks</strong> (one level only). Codes such as 1, 1.2 and 1.2.1 are given automatically from the order.</li>
+  <li>Each task has a planned start date and a number of planned calendar days: the planned end date is start + planned days − 1.</li>
+  <li>Completion % and actual days are entered by hand. Nothing is rescheduled automatically: when a task starts on or before the planned end of one of its prerequisites, RF-One only shows a warning (⚠).</li>
+  <li>Each project keeps its own list of responsible people: RF-One people or external names.</li>
+</ul>
+
+<h3>Typical flow</h3>
+<ol>
+  <li>Click <strong>New project</strong> and give it a name.</li>
+  <li>Open the project and create its chapters with <strong>New chapter</strong>.</li>
+  <li>Add tasks and subtasks with dates, planned days, responsible and prerequisites.</li>
+  <li>As the work goes on, update completion % and actual days of each task.</li>
+  <li>Open the <strong>Gantt</strong> to see the timeline and warnings, and print it when needed.</li>
+</ol>
+
+<h3>What this page shows</h3>
+<dl>
+  <dt>Project</dt><dd>The project name; click it to open its plan.</dd>
+  <dt>Chapters, Tasks</dt><dd>How many chapters and tasks the project has.</dd>
+  <dt>Planned start, Planned end</dt><dd>The earliest planned start and the latest planned end of its tasks (empty when there are no tasks).</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>New project</dt><dd>Opens a small window asking for the project name. <strong>Save</strong> creates the project; <strong>Cancel</strong> or the × closes it without saving.</dd>
+  <dt>Open</dt><dd>Opens the project's plan (chapters and tasks).</dd>
+  <dt>Gantt</dt><dd>Opens the project's Gantt chart (read only).</dd>
+  <dt>Rename</dt><dd>Opens the same window with the current name; <strong>Save</strong> changes it everywhere.</dd>
+  <dt>Responsible (person icon)</dt><dd>Opens the project's list of responsible people. Choose an <strong>RF-One person</strong> or type an external name under <strong>Add a name</strong>, then <strong>Add</strong>. Each name shows how many tasks it has; <strong>Rename</strong> changes an external name everywhere it is used (a person linked to the RF-One directory is renamed in the directory, not here); <strong>Delete</strong> asks for confirmation and is refused while the person is still responsible of a task.</dd>
+  <dt>Delete</dt><dd>Shown only for a project with no chapters. It asks for confirmation and then deletes the project permanently.</dd>
+</dl>
+<p>After an action you return to the same row of the list.</p>
+</section>

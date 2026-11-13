@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set help_section = "projects-plan" %}
 {% from "_nav_macros.html" import breadcrumb %}
 {% from "_projects_macros.html" import fmt, actual_days, responsible, percent_meter, task_payload, project_dialog with context %}
 {% block page_title %}{{ plan.project_name }} · Project Management · RF-One{% endblock %}

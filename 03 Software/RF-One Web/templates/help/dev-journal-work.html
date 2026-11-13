@@ -1,0 +1,49 @@
+<section id="help-dev-journal-work" class="rf-help-section">
+<h2>The work card</h2>
+<p>This page is the complete record of one work: its objective and current state, its documents, its journal of entries and the history of its phase and status changes. Here you add entries and documents as the work progresses.</p>
+
+<h3>What you can do</h3>
+<ul>
+  <li>Read the <strong>Next step</strong> and the current phase and status at the top.</li>
+  <li>Add a new entry to the journal, with optional documents.</li>
+  <li>Attach documents to the card or to a single entry.</li>
+  <li>Change the card (title, Domain, responsible, phase, status, objective, next step) with <strong>Edit</strong>{% if work is defined and closed_statuses is defined and work.status in closed_statuses %}, or reopen it with <strong>Reopen</strong>{% endif %}.</li>
+  <li>Correct an entry, when you are allowed to, and look at the earlier versions of a corrected entry.</li>
+</ul>
+
+<h3>Sections of the page</h3>
+<dl>
+  <dt>Next step</dt><dd>What has to be done now, and by whom. A completed or cancelled work has none.</dd>
+  <dt>Card</dt><dd>Objective, Domain, Responsible, Phase, Status, who created the card and who last updated it, with the time.</dd>
+  <dt>Card documents</dt><dd>Documents attached to the work as a whole. Click a name to open it in a new tab, or <em>download</em> to save it. Accepted: PDF, images, Office files, TXT and Markdown{% if max_document_mb is defined %}, up to {{ max_document_mb }} MB per file{% endif %}. Documents are never public: only people with access to the Development Journal can open them.</dd>
+  <dt>Journal</dt><dd>The entries in the order they were written, oldest first. Each shows its type, date, author and reference phase. A corrected entry shows “corrected … version N · earlier versions”; click it to see every version.</dd>
+  <dt>Add entry</dt><dd>The form for a new entry (see below).</dd>
+  <dt>Phase and status history</dt><dd>Every phase or status change since the card was created: when, who, from what to what.</dd>
+  <dt>Events recorded for MyRF</dt><dd>A log of what happened on the card (new work, entries, corrections, uploads, changes). It is recorded for future signals; no notification is sent yet.</dd>
+</dl>
+
+<h3>The Add entry form</h3>
+<dl>
+  <dt>Reference phase</dt><dd>The phase of the work the entry belongs to. It starts at the current phase. Choosing another phase here does not change the phase of the work.</dd>
+  <dt>Type</dt><dd>Analysis, Decision, Activity, Verification, Problem or Release.</dd>
+  <dt>Text</dt><dd>Required. Free text; you can also paste a Claude or Codex report.</dd>
+  <dt>Release</dt><dd>Shown only for the Release type. Environment (Test or Production), AWS service, Version or commit and Outcome (Succeeded or Failed) are required; Post-deploy verification is optional. A failed release stays documented and changes neither the phase nor the status of the work.</dd>
+  <dt>References (optional)</dt><dd>A link (starting with https:// or http://), a branch, a commit and the command or prompt used.</dd>
+  <dt>Documents (optional)</dt><dd>Files attached to this entry when it is saved.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Add entry</dt><dd>Moves you to the Add entry form at the bottom of the page.</dd>
+  <dt>Save entry</dt><dd>Saves the entry with the current date and your name, and attaches the chosen documents. Entries cannot be deleted; they can only be corrected. If something is missing, the entry is not saved and the page shows the reason with your text still in the form.</dd>
+  <dt>Edit</dt><dd>Opens the form to change the card. Phase and status changes are kept in the history.</dd>
+  {% if work is defined and closed_statuses is defined and work.status in closed_statuses %}
+  <dt>Reopen</dt><dd>Shown only on a completed or cancelled work. It sets the status back to In progress immediately and records the change in the history.</dd>
+  {% endif %}
+  <dt>Upload</dt><dd>Uploads the chosen files to the card (or, under “Attach documents to this entry”, to that entry). Uploaded documents cannot be removed from this page.</dd>
+  <dt>Correct</dt><dd>Shown next to the entries you are allowed to correct (normally the ones you wrote). Opens the correction page; the current text is kept as an earlier version.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>Keep the Next step current with <strong>Edit</strong> each time the work moves on. When the work is released, add a Release entry, then set the status to Completed.</p>
+</section>
