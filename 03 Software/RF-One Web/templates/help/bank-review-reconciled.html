@@ -1,0 +1,39 @@
+<section id="help-bank-review-reconciled" class="rf-help-section">
+<h2>Review transactions &mdash; Reconciled</h2>
+<p>This tab lists the transactions whose WHO is answered, including transfers between the business's own accounts, which need no WHO. Here you finish each one: WHY, For Whom and the final <strong>Confirm</strong>. Only Confirmed transactions can go into the Monthly Export.</p>
+
+<h3>What you can do</h3>
+<ul>
+  <li>Narrow the list with <strong>Year</strong>, <strong>Month</strong> and <strong>Instrument</strong> and <strong>Filter</strong>, or use <strong>Search transactions</strong> (description, WHO, WHY or Source name; Enter or <strong>Search</strong>, &times; clears only the search).</li>
+  <li>Sort by clicking the <strong>Account / Card</strong>, <strong>Date</strong>, <strong>Description</strong> or <strong>Amount</strong> header; click again to reverse.</li>
+  <li>Switch to <strong>To Reconcile</strong> with the tabs; filters, search and sorting are kept.</li>
+  <li>After every action you come back to the same row, highlighted.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Account / Card &middot; For Whom</dt>
+  <dd>The Source of the transaction and, under it, <strong>For Whom</strong>: the company or person that benefited. Choosing it saves it at once. Entities the WHO usually serves are marked &#10003;. If the transaction was Confirmed, a new For Whom sends it back to Needs review until it is confirmed again.</dd>
+  <dt>WHO</dt>
+  <dd>The counterparty. &#10003; means chosen by a person; &ldquo;suggested&rdquo; means recognised automatically and not yet approved. An own-account movement shows its own-account label instead.</dd>
+  <dt>WHY and WHAT</dt>
+  <dd>The business purpose and the accounting category. &ldquo;WHY needed&rdquo; means the WHY is still missing.</dd>
+  <dt>Status</dt>
+  <dd>&#10007; <em>Needs review</em>: a person still has to accept it, and it blocks the export. &#10004; <em>Confirmed</em>: accepted by a person, ready for the export.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>&#9998; next to WHO, &#9998; WHY</dt>
+  <dd>Open the <strong>Select WHO / WHY</strong> window with the row's current WHO and WHY: choose any active WHO and any active WHY (a dot marks the WHY already used with that WHO), or create them with <strong>+ New WHO</strong> and <strong>+ New WHY</strong>. <strong>Confirm</strong> records them as a person's decision for this transaction only; no rule is created. <strong>Cancel</strong> closes without saving.</dd>
+  <dt>Confirm</dt>
+  <dd>Accepts the transaction with its current WHO, WHY and WHAT and the chosen For Whom; the status becomes Confirmed. It is available only when the row has a WHO, a WHY and a For Whom.</dd>
+  <dt>Reopen</dt>
+  <dd>On a Confirmed row: withdraws the acceptance. The decision and the For Whom are kept; the row goes back to Needs review and needs a new Confirm.</dd>
+  <dt>&#9656; (expand)</dt>
+  <dd>Opens the editor under the row: the transaction's facts (account, date, amount, description, memo, where its WHO and accounting came from) and the fields <strong>WHO</strong>, <strong>WHY</strong>, <strong>WHAT</strong> and <strong>For whom</strong>. Choosing a WHY proposes its WHAT; you can choose another. <strong>Save</strong> needs all four values and accepts the transaction as Confirmed with exactly those values. <strong>Collapse</strong> closes the editor without saving. While a Confirmed row is edited and not saved it shows &ldquo;Changed &mdash; not saved&rdquo;.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>When every transaction of the month is Confirmed, open <strong>Monthly Export</strong> for the month and the owner to download the accountant's report.</p>
+</section>

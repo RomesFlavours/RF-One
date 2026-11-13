@@ -1,0 +1,46 @@
+<section id="help-bank-ai-rules" class="rf-help-section">
+<h2>AI Rules</h2>
+<p>Here you write classification rules in your own words, starting from a real movement as the example. The AI interprets the rule and proposes WHO, WHY and For Whom for the movements it covers. You always see a preview first; manual and confirmed classifications are protected unless a rule is explicitly allowed to replace them.</p>
+
+<h3>What you can do</h3>
+<ul>
+  <li><strong>Operative AI Rules</strong>: the saved rules with their title, number, version, status, whether they run on <em>New imports</em>, whether they are <em>Executed by</em> code or by the AI, and when they were last applied. <em>Saved, not applied to existing transactions</em> means the current version was saved but never applied: use Save and Apply. <strong>Search rules</strong> looks in titles and rule text.</li>
+  <li>Choose the period with <strong>From</strong> and <strong>To</strong> (it opens on the latest month with movements) and the <strong>Classification</strong> filter (All, Without WHO, With WHO but without WHY), then <strong>Show</strong>.</li>
+  <li><strong>Search transactions</strong> narrows the movements shown (description, WHO, WHY, Source). Press Enter or <strong>Search</strong>.</li>
+  <li>Tick movements, or use the &ldquo;Select all&rdquo; box, to build a selection for a rule. The selection is kept when you change period; the counter says how many are inside and outside the period shown. <strong>Clear selection</strong> empties it.</li>
+  <li><strong>Draft AI Rules</strong> lists the rules saved as drafts; <strong>Open</strong> continues one.</li>
+  <li><strong>General AI instructions</strong>: optional context sent with every Preview. <strong>Save Instructions</strong> stores a new version.</li>
+</ul>
+
+<h3>Buttons on the rules list</h3>
+<dl>
+  <dt>Open</dt><dd>Opens the rule in the AI Rule window with its current text and options.</dd>
+  <dt>Disable / Activate</dt><dd>Stops or restarts the rule. Classifications already made are not changed.</dd>
+  <dt>Delete</dt><dd>Asks for confirmation naming the rule; the rule is then never executed again. The classifications it already applied, and their history, stay unchanged.</dd>
+</dl>
+
+<h3>The AI Rule window</h3>
+<p>Opened by <strong>AI Rules</strong> on a movement, or by Open on a rule or draft. It shows the starting transaction with its current WHO and WHY.</p>
+<dl>
+  <dt>Title</dt><dd>Optional; shown first in the list. For an operative rule, <strong>Save title</strong> changes only the title: the rule is not interpreted or applied again.</dd>
+  <dt>Rule, in your own words</dt><dd>The rule text. Clicking a name in the WHO or WHY lists inserts it at the cursor. <strong>Rewrite with AI</strong> rewrites and checks the text only (it never saves or applies); <strong>Undo rewrite</strong> brings back your text. Conflicts with other active rules are shown and never resolved automatically.</dd>
+  <dt>Which existing transactions should the rule apply to?</dt><dd><em>No existing transactions</em> (the Preview uses the period on screen and nothing is applied), <em>All existing transactions, in the whole database</em>, or <em>Only the selected transactions</em>.</dd>
+  <dt>Apply the rule to new transactions too?</dt><dd>When ticked, the rule runs automatically on transactions imported from now on.</dd>
+  <dt>Which AI classifications may be updated?</dt><dd>Only transactions not yet classified by AI rules (default), or also those already classified by AI rules.</dd>
+  <dt>Allow replacing manual or confirmed classifications?</dt><dd>Only for this rule: it may replace a person's WHO and WHY. For Whom is kept, the transaction must be confirmed again and the replacement is recorded.</dd>
+  <dt>Which parts of the rule should be applied?</dt><dd>Every part, or only WHO (the WHY, default WHY and For Whom stay in the rule but are not applied now).</dd>
+  <dt>Create missing WHO?</dt><dd>When ticked, WHO named by the rule that are not yet in the list are created.</dd>
+</dl>
+
+<h3>Buttons in the window and what happens</h3>
+<dl>
+  <dt>Preview</dt><dd>Sends the rule to the AI and shows the <em>Matches</em> and the <em>Doubtful cases</em>, with a summary. Nothing is changed. If the rule, its options or the selection change afterwards, the preview is marked superseded and must be run again. <strong>Add the new WHO to the list</strong> creates the new WHO the preview found.</dd>
+  <dt>Save Draft</dt><dd>Keeps the rule as a draft only. Nothing is applied.</dd>
+  <dt>Save</dt><dd>Makes the rule operative (a new version for an existing rule) without touching existing transactions.</dd>
+  <dt>Save and Apply</dt><dd>Available once a scope is chosen. For existing transactions it needs a current Preview of the same rule, options and selection: it saves the rule and applies it exactly as previewed, and the changed transactions show their new WHO / WHY in Review. With only &ldquo;new transactions&rdquo; ticked it saves the rule for future imports and changes nothing existing. A completed save removes the rule's draft.</dd>
+  <dt>Close</dt><dd>Closes the window. A rule text that was not saved (as a draft or a rule) is not kept.</dd>
+</dl>
+
+<h3>What is sent to the AI</h3>
+<p>The note under the page names the AI provider and model. Per movement only the date, the description (long numbers masked to their last four digits), the amount, the Source and the current WHO / WHY are sent, with the WHO / WHY lists, the general instructions and the rule; never credentials or full account or card numbers.</p>
+</section>

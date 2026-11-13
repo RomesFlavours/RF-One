@@ -1,0 +1,39 @@
+<section id="help-bank-sources" class="rf-help-section">
+<h2>Source</h2>
+<p>The list of every Source RF-One expects financial data from: bank accounts, credit cards, PayPal and purchase platforms. Active Sources are the ones Import and Review expects in every imported period; inactive ones are kept for history. This is the only place where Sources are created and edited.</p>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Source, Type, Institution / Provider</dt>
+  <dd>The name used everywhere in Bank, the kind of Source and the bank or provider.</dd>
+  <dt>Account</dt>
+  <dd>Only the last four digits; the full number is never shown.</dd>
+  <dt>Owning entity</dt>
+  <dd>The company or person that owns the Source; the Monthly Export makes one report per owner. A card's owner is not chosen: it comes from its settlement account. A purchase platform is a documentary source (orders and receipts) and its owner is optional.</dd>
+  <dt>Settlement / Funding</dt>
+  <dd>For a card, the bank account that pays it and the cardholder; for PayPal, the bank account that funds it.</dd>
+  <dt>State</dt>
+  <dd>Active or Inactive.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>+ New Source / Edit</dt>
+  <dd>Open the Source window. Fields: <em>Source name</em>, <em>Type</em>, <em>Institution / Provider</em>, <em>Last 4 digits</em> (used to recognise card files), <em>Account identifier as written in the file</em> (never the full number; on Edit it starts empty and the stored value is kept unless you type a new one), <em>Owning entity</em> (not for cards), <em>Currency</em>, <em>Funded by</em> (PayPal only). For a card: <em>Settlement / Funding account</em> and <em>Cardholder</em>, each with a &ldquo;from&rdquo; date; a change starts on that date and the previous period is kept. On Edit you also see <em>State</em> and the <em>Card history</em>, where <strong>Correct</strong> fixes a period recorded wrongly. <strong>Save</strong> saves the Source and reloads the list; an error stays in the window with your values. <strong>Cancel</strong> or &times; close without saving.</dd>
+  <dt>+ New Entity</dt>
+  <dd>Inside the Source window: creates a company / LLC or a personal entity by name (or reuses an equal active one) and selects it as owner. The Source itself is saved only by its own Save.</dd>
+</dl>
+
+<h3>Below the list</h3>
+<dl>
+  <dt>File recognition rules</dt>
+  <dd>A person's choice of Source for a file that cannot identify its own account, reused on the next import. Choose another Source and <strong>Save</strong>, or <strong>Disable</strong> / <strong>Enable</strong> the rule; disabling never deletes it.</dd>
+  <dt>Source assignment history</dt>
+  <dd>The last changes of Source made on imported files: when, from which Source to which, how many rows, by whom and why. Read only.</dd>
+  <dt>Accounting deduplication</dt>
+  <dd>Counters of raw rows, canonical transactions, duplicate groups, copies excluded from accounting and card transactions with no settlement account. <strong>Recompute accounting deduplication</strong> recalculates them for all transactions, for example after setting a card's settlement account; no row is deleted.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>Once every active Source is complete, import the month's files on Import and Review.</p>
+</section>

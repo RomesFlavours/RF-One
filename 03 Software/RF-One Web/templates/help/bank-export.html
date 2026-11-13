@@ -1,0 +1,37 @@
+<section id="help-bank-export" class="rf-help-section">
+<h2>Monthly Accountant Export</h2>
+<p>Produces the accountant's Excel report for one month and one <strong>Owning Entity</strong> (a company or a person). The report holds only the movements of that owner's Sources (a card counts for the owner of the account it settles to) and can be downloaded only when nothing blocks it. For Whom is kept as it is.</p>
+
+<h3>What you can do</h3>
+<ol>
+  <li>Enter <strong>Year</strong> and <strong>Month</strong>, choose the <strong>Owning Entity</strong> and press <strong>Check</strong>. Nothing is changed by a check.</li>
+  <li>Read the status: ready, not ready, or no transactions for this owner and month.</li>
+  <li>If it is not ready, fix what is listed under <em>What blocks the export</em>, then press Check again.</li>
+  <li>When it is ready, press <strong>Download</strong> to receive the file.</li>
+</ol>
+
+<h3>Figures</h3>
+<dl>
+  <dt>Sources unresolved</dt><dd>Files or Sources whose transactions have no accounting identity yet.</dd>
+  <dt>Transactions to reconcile</dt><dd>Transactions still on the To Reconcile tab (WHO not answered, or a possible duplicate to decide).</dd>
+  <dt>Reconciled, Needs review</dt><dd>WHO answered, but WHY, For Whom or the Confirm is still missing.</dd>
+  <dt>Confirmed</dt><dd>Transactions accepted by a person.</dd>
+  <dt>Transactions in month, Rows in the file, Total</dt><dd>What the report would contain, with the total per currency.</dd>
+</dl>
+
+<h3>What blocks the export</h3>
+<dl>
+  <dt>A. Source issues</dt><dd>A file with no Source, a file with parsing errors, a card with no settlement account or an account with no owner. <strong>Fix Sources</strong> and <strong>Fix this file</strong> open the file on Import and Review; <strong>Open Source</strong> opens the Source to complete it.</dd>
+  <dt>B. Transactions to reconcile</dt><dd><strong>Review Transactions</strong> opens the To Reconcile tab for the month.</dd>
+  <dt>C. Reconciled but not ready</dt><dd><strong>Review Reconciled</strong> opens the Reconciled tab for the month.</dd>
+  <dt>D. Other export blockers</dt><dd>Accepted transactions whose WHO / WHY / WHAT record is incomplete.</dd>
+  <dt>Show N transactions</dt><dd>Lists the transactions of a group with the reason each one blocks; <strong>Open</strong> goes to that transaction in Review, <strong>Hide</strong> closes the list.</dd>
+  <dt>Not attributed to any owner</dt><dd>Movements of Sources with no owner: they are in no report until their Source has an owner, and they do not block this report.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Check</dt><dd>Recalculates the status for the chosen month and owner. Read only.</dd>
+  <dt>Download</dt><dd>Checks the blockers again and, if none remains, downloads the file named with year, month and owner. Downloading changes nothing in the Bank data and can be repeated.</dd>
+</dl>
+</section>

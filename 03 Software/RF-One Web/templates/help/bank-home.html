@@ -1,0 +1,39 @@
+<section id="help-bank-home" class="rf-help-section">
+<h2>How Bank works</h2>
+<p>Bank Reconciliation is where the business imports the original monthly downloads of its bank accounts and cards and explains every movement: <strong>WHO</strong> was paid or paid us, <strong>WHY</strong> (the business purpose) and, when known, <strong>WHAT</strong> (the accounting category), plus <strong>For Whom</strong> (the company or person that benefited). When a month is fully explained, a report per owner can be downloaded for the accountant.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li>The work is done one month at a time. A file belongs to the months of the dates inside it, never to its name or upload day.</li>
+  <li>Every file is linked to a <strong>Source</strong> (a bank account, card, PayPal account or purchase platform), maintained on the <em>Source</em> tab.</li>
+  <li>Nothing becomes a bank movement until you confirm the import. A file already imported byte for byte adds nothing new.</li>
+  <li>A WHO is given by a person on <em>Review Transactions</em>, or automatically by an AI rule (<em>AI Rules</em> tab). A WHO never decides the WHY by itself.</li>
+  <li>The WHO, WHY and WHAT lists and the entities are kept on the <em>Configuration</em> tab; the <em>Instructions</em> tab explains the rules in more depth.</li>
+</ul>
+
+<h3>Typical flow</h3>
+<ol>
+  <li>On this page choose the month (it opens on the previous calendar month).</li>
+  <li><strong>1 Import</strong>: select the month's CSV downloads and press <strong>Upload and review</strong>. An import session opens where you set the Source of each file, read and check the rows, decide possible duplicates and press <strong>Confirm Import</strong>.</li>
+  <li><strong>2 Check Sources</strong>: open the month for source control, explain every expected account or card that has no file, then complete the month.</li>
+  <li><strong>3 Automatic WHO</strong> and <strong>4 Review Missing</strong>: open Review Transactions for the month, give each transaction its WHO and WHY, then on the Reconciled tab set For Whom and Confirm.</li>
+  <li>On <em>Monthly Export</em> choose the month and the owner, check that nothing blocks the report and download it.</li>
+</ol>
+
+<h3>This page: Import and Review</h3>
+<dl>
+  <dt>Month bar</dt>
+  <dd>&lsaquo; and &rsaquo; move to the previous or next month; the month list, the year and <strong>Go</strong> jump to any month. Next to the month name you see its control state (Controlled, Historical, Provisional or Not under completeness control) and whether it is opened, incomplete or complete.</dd>
+  <dt>1 Import</dt>
+  <dd>How many source files cover the month and how many need attention. <strong>Upload and review</strong> sends the selected files with the Source left on <em>automatic</em> (choose a Source only if RF-One cannot recognise the file); it saves nothing yet and opens the import session. <strong>View source files</strong> opens the list of the month's files, with files of other months that still wait for an action. Each file shows its format, Source, rows, period and status; its action button (for example <em>Resolve instrument</em>, <em>Normalize</em>, <em>Review issues</em>, <em>Reprocess</em> or <em>View transactions</em>) does the next step for that file. <strong>Change Source</strong> moves an imported file and its transactions to another Source; a reason is required, the change is recorded in the Source assignment history and can be changed again later. <em>Reuse for this source</em> saves the choice as a file recognition rule for the next import.</dd>
+  <dt>2 Check Sources</dt>
+  <dd>Expected, Received, Missing / unresolved and Needs confirmation for the month. <strong>Open month</strong> starts the source control for a month not opened yet. <strong>Resolve issues</strong> or <strong>Source details</strong> opens the account-by-account table: for an account or card with no file, <em>Resolve missing source</em> records a decision (No activity, Closed, Lost, Replaced, Other, Source file missing, Not expected; Still active for an inactive Source) and <strong>Clear resolution</strong> withdraws it. Closed, Lost, Replaced and Other end the Source's life and are dated from its last posting. <strong>Complete Month</strong> is possible only when every expected account or card is covered by a file or resolved; <strong>Reopen Month</strong> needs a reason. <em>Completeness control settings</em> holds <strong>Set control start</strong> (the first controlled month, always the first day of a month) and <strong>Set validated through</strong> (months after it stay provisional: shown, not enforced).</dd>
+  <dt>3 Automatic WHO</dt>
+  <dd>How many of the month's transactions have a WHO chosen by a person, a WHO from another automatic decision (an AI rule), or no WHO yet. Bulk authorization of automatic WHO is not available. <strong>Review WHO</strong> opens Review Transactions on this month.</dd>
+  <dt>4 Review Missing</dt>
+  <dd>How many of the month's transactions still need a person, by the same definition the Monthly Export uses to block a report. <strong>Review transactions</strong> opens Review Transactions on this month.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>After Confirm Import you come back here on the same month. Continue with Check Sources, then Review Transactions, then Monthly Export.</p>
+</section>

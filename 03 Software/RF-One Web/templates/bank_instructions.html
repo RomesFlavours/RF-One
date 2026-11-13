@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set help_section = "bank-instructions" %}
 {% import "_bank_macros.html" as bank %}
 {% block page_title %}Bank Reconciliation · Instructions · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
@@ -17,10 +18,11 @@
   </p>
   <ol>
     <li><strong>Import</strong> &mdash; select the month's original bank and card downloads. RF-One
-      first shows the <strong>Import Set Review</strong>: which active Sources the files cover, which
-      are missing, unrecognized or duplicate files, and the period each file covers. Nothing is
-      imported until you choose <strong>Confirm Import</strong>; <strong>Cancel</strong> leaves the
-      Bank data exactly as it was.</li>
+      first opens an <strong>Import session</strong>: Pass 1 sets the Source of each file, Pass 2
+      reads and checks the rows (the period each file covers, copies, files already imported,
+      possible duplicates and missing expected Sources). Nothing is imported until you choose
+      <strong>Confirm Import</strong>; <strong>Cancel import</strong> leaves the Bank data exactly
+      as it was.</li>
     <li><strong>Check Sources</strong> &mdash; confirm that every account and card that should have
       produced a download for the month did, and explain the ones that did not.</li>
     <li><strong>Automatic WHO</strong> &mdash; see how many of the month's transactions already have
@@ -122,7 +124,7 @@
   <h2>Manual review</h2>
   <p>
     Transactions RF-One could not resolve automatically are completed in
-    <a href="{{ url_for('bank_review') }}">Review Transactions</a>, one by one. Import and Review
+    <a href="{{ url_for('bank_review') }}">Review Transactions</a>, one by one or several at once. Import and Review
     counts them for the month and opens Review on that month. A transaction counts as still needing
     review until it has a resolved decision, or is a confirmed internal transfer &mdash; the same
     definition the Monthly Export uses to block an export.

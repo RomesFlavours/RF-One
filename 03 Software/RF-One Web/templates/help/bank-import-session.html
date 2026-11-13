@@ -1,0 +1,33 @@
+<section id="help-bank-import-session" class="rf-help-section">
+<h2>Import session</h2>
+<p>The files you uploaded on Import and Review, prepared in two passes before anything is imported. Nothing becomes a bank movement until <strong>Confirm Import</strong>; Pass 1 only creates or reuses Sources. The session belongs to the person who uploaded the files.</p>
+
+<h3>Pass 1 &mdash; Sources</h3>
+<p>Each file gets its Source. The account comes from the file name (a suffix such as &ldquo;(1)&rdquo; is ignored) and the layout from its content; a name matching exactly one Source gets it.</p>
+<dl>
+  <dt>Columns</dt>
+  <dd><em>File</em>, <em>Layout</em>, <em>Account (name)</em> (digits read from the name), <em>Source</em> (existing, or created in this session), <em>Source status</em> (complete, incomplete with what is missing, to choose when several Sources match, or not set) and <em>Importer</em> (whether this import can read the file).</dd>
+  <dt>Complete Source</dt>
+  <dd>Opens the Source window for that file: in <em>Source of this file</em> keep the current Source, choose an existing one or create one from what the file states, and complete its fields (name, type, institution, last 4 digits, owner, currency; for a card its settlement account and cardholder). <strong>Save</strong> saves the Source and links it to the file, and you come back to the same row. <strong>Cancel</strong> changes nothing.</dd>
+</dl>
+
+<h3>Pass 2 &mdash; Read and check</h3>
+<dl>
+  <dt>Read and check rows</dt>
+  <dd>Available when every Source of the files being imported is complete. It reads every row without saving it: rows per file, period, identifiers found inside the file (kept as original data only), copies of the same content and files already imported. Press it again after a change.</dd>
+  <dt>Files that cannot be imported now</dt>
+  <dd>A file with no importer yet, or with an unknown layout, is never left out automatically: choose <em>Confirm: leave out of this upload</em> for each one. A file with no importer yet is kept for a later import.</dd>
+  <dt>Warnings &mdash; expected Sources missing</dt>
+  <dd>Active Sources with no file for a month covered: shown, not blocking.</dd>
+  <dt>Possible duplicates and unreadable rows</dt>
+  <dd>A possible duplicate is a row with the same date, description and amount as a stored transaction or another row of this upload. For each row choose <em>Confirm exclusion</em>, <em>Import, marked Da verificare</em> (the default: it is imported and flagged in Review) or <em>Import anyway: distinct operation</em>. The buttons above a file's rows set the same decision for all its possible duplicates. An unreadable row can only be excluded. Each decision is saved as soon as you choose it and can be changed until Confirm Import.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Confirm Import</dt>
+  <dd>Available when both passes are complete and every row and file has its decision; otherwise the reason is shown above it. It imports every readable file with its Source and your decisions, all together or nothing. Then you return to Import and Review, with a message per file. Files left out for a later importer are kept aside, not imported.</dd>
+  <dt>Cancel import</dt>
+  <dd>Discards the uploaded set. Nothing had been imported, so there is nothing to undo; Sources already saved in Pass 1 stay. To start again, upload the files again.</dd>
+</dl>
+</section>

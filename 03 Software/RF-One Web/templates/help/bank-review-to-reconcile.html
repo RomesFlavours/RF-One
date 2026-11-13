@@ -1,0 +1,52 @@
+<section id="help-bank-review-to-reconcile" class="rf-help-section">
+<h2>Review transactions &mdash; To Reconcile</h2>
+<p>This tab lists the transactions whose WHO is not answered yet, and those with a possible duplicate still to decide. Here you give them their WHO and WHY. As soon as a transaction has its WHO it leaves this tab and appears under <strong>Reconciled</strong>, where its For Whom and Confirm are completed.</p>
+
+<h3>What you can do</h3>
+<ul>
+  <li>Narrow the list with <strong>Year</strong>, <strong>Month</strong> and <strong>Instrument</strong>, then <strong>Filter</strong>. With no month, every month is shown (at most {{ row_limit if row_limit is defined else 500 }} rows; narrow the list when it says so).</li>
+  <li><strong>Search transactions</strong> finds a text in the description, the WHO, the WHY or the Source name. Press Enter or <strong>Search</strong>; &times; clears only the search. The result line shows how many transactions match and their total.</li>
+  <li>Click the <strong>Instrument</strong>, <strong>Date</strong>, <strong>Description</strong> or <strong>Amount</strong> header to sort; click again to reverse. Filters and search are kept.</li>
+  <li>Move between <strong>To Reconcile</strong> and <strong>Reconciled</strong> with the tabs: month, instrument, search and sorting are kept. The number on each tab is how many transactions it holds.</li>
+  <li>When you arrive from a file's <em>Review issues</em> on Import and Review, only that file's rows are shown; <strong>Show every batch</strong> removes that limit.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Tick box</dt>
+  <dd>Selects the row for a shared WHO / WHY. Ticking saves nothing. <strong>Clear selection</strong> removes every tick; changing search, filters or tab clears it too.</dd>
+  <dt>Instrument and For Whom</dt>
+  <dd>The Source the transaction was imported from (it is set by the import and cannot be changed here). <strong>For Whom</strong> is the company or person that benefited: choosing it saves it at once and changes nothing else. A split transaction shows &ldquo;For Whom: split&rdquo;.</dd>
+  <dt>Date, Description, Amount, Source</dt>
+  <dd>The facts as they came from the bank file.</dd>
+  <dt>Duplicate</dt>
+  <dd>&ldquo;Da verificare&rdquo; marks a possible duplicate: same date, description and amount as another transaction (linked by its number). It is never removed automatically.</dd>
+  <dt>Classification (Who &rarr; Why &rarr; What)</dt>
+  <dd>The status of the current decision and, once resolved, its Who, Why and What. &ldquo;EXCLUDED FROM ACCOUNTING&rdquo; marks a copy of the same accounting fact as another transaction: classify that one, not the copy (its <em>Duplicate group</em> shows both). &ldquo;NO SETTLEMENT ACCOUNT&rdquo; means the card has no settlement account for that date: fix it on Source.</dd>
+  <dt>Internal Transfer</dt>
+  <dd>A movement between two of the business's own accounts. When RF-One finds possible counterparts you can choose one in <em>Match with&hellip;</em>.</dd>
+  <dt>Review</dt>
+  <dd>The review state of the imported row.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Select WHO</dt>
+  <dd>Opens the <strong>Select WHO / WHY</strong> window for that transaction. On a ticked row the button reads <em>Select WHO / WHY</em> and the window works for every ticked transaction at once.</dd>
+  <dt>Select WHO / WHY window</dt>
+  <dd>Three columns: <strong>WHO</strong> (every active WHO, searchable), <strong>WHY GROUP</strong> (groups that organise the WHY list, with no accounting effect) and <strong>WHY</strong> (any active WHY; a dot marks the WHY already used with the chosen WHO, and its search covers all groups). <strong>Confirm</strong> becomes available when a WHO and a WHY are chosen: it records them as a person's decision for this transaction, which then moves to Reconciled. For several ticked transactions it reads <em>Confirm for N transactions</em> and saves all of them or none. <strong>Cancel</strong>, &times; or Escape close it without saving and keep the ticks. No recognition rule is created.</dd>
+  <dt>+ New WHO</dt>
+  <dd>Opens <strong>Create New WHO</strong> on top: type the <em>WHO Name</em>; similar existing WHO are offered so you can pick one instead. <strong>Save</strong> creates the WHO (or reuses the active WHO with that name) and selects it; the transaction is classified only when you press Confirm.</dd>
+  <dt>+ New WHY</dt>
+  <dd>Opens <strong>Create New WHY</strong>: <em>WHY Name</em>, <em>WHY Group</em> (<strong>+ New WHY Group</strong> creates a group by name) and an optional <em>WHAT / Accounting destination</em>. <strong>Save</strong> creates the WHY, links it to the chosen WHO and selects it; Confirm then records it.</dd>
+  <dt>Reclassify</dt>
+  <dd>On a resolved row: derives the What again from the current mapping of the same Why, as a new recorded decision. The previous decision is kept in the history.</dd>
+  <dt>Distinct / Duplicate</dt>
+  <dd>Your verdict on a possible duplicate. <em>Distinct</em> keeps it as a separate operation; <em>Duplicate</em> confirms it as a copy, which then leaves the Review and the Monthly Export (the row itself is kept). The accounting deduplication is recomputed at once.</dd>
+  <dt>Confirm transfer</dt>
+  <dd>Records the chosen counterpart as an internal transfer. Such a movement needs no WHO and moves to Reconciled.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>When this tab is empty for the month, open <strong>Reconciled</strong> to set For Whom and Confirm each transaction; then check the month on Monthly Export.</p>
+</section>

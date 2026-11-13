@@ -1,0 +1,29 @@
+<section id="help-bank-configuration" class="rf-help-section">
+<h2>Bank Configuration</h2>
+<p>The lists used to explain every transaction: <strong>WHAT</strong> (accounting categories), <strong>WHY</strong> (business reasons), <strong>WHO</strong> (counterparties) and the entities that can benefit from a transaction. The links at the top jump to each section; <strong>Review Transactions</strong> goes back to the review.</p>
+
+<h3>Sections</h3>
+<dl>
+  <dt>1 WHAT</dt>
+  <dd>Code, Name, Group and whether it is active. <strong>+ Add WHAT</strong> needs a code, a name and a group; the code of an existing WHAT never changes.</dd>
+  <dt>2 WHY</dt>
+  <dd>Each WHY with its description and associated WHAT. <strong>+ Add WHY</strong> asks for a name, an optional description and exactly one WHAT. A WHY created from Review without a WHAT can be edited and saved without choosing one; once given, a WHAT cannot be removed. A WHY that settles on a Balance Sheet destination keeps it unless you choose a P&amp;L WHAT.</dd>
+  <dt>3 WHO</dt>
+  <dd>Each counterparty with its default WHY, how many possible WHY and served entities it has, and whether it is active. <em>Search WHO by name</em> filters the list as you type. In the WHO window you choose the <em>Possible WHY</em>, the <em>Default WHY</em> (only among the possible ones; with a single possible WHY it is the default) and the <em>Entities / LLCs served</em>.</dd>
+  <dt>4 Sources</dt>
+  <dd><strong>Manage Sources</strong> opens the Source tab, where accounts and cards are maintained.</dd>
+  <dt>Support</dt>
+  <dd><em>Entities / LLCs</em>: the entities used by &ldquo;entities served&rdquo; and For Whom; leave the legal name empty for a virtual (non-LLC) entity. <em>Balance Sheet destinations</em>: read only, with how many WHY use each. <em>Maintained elsewhere</em> says where file recognition, deduplication and completeness control are kept.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>+ Add &hellip; / Edit</dt>
+  <dd>Open the window of that item. <strong>Save</strong> stores it and the page reloads on the same section; if something is refused the reason is shown and nothing is saved (for a WHO or a WHY your values stay in the window). <strong>Cancel</strong> or Escape close without saving. Unticking <em>Active</em> hides the item from new choices; nothing is deleted.</dd>
+  <dt>Merge (WHO)</dt>
+  <dd>Opens <strong>Merge WHO</strong>: choose the WHO to absorb and the WHO to keep (<strong>Swap</strong> exchanges them). A preview shows how many transactions, decisions, aliases, possible WHY, entities and supplier links move, and asks you to choose where two settings cannot both survive. <strong>Merge</strong> moves everything to the kept WHO; the absorbed WHO becomes inactive and its name becomes an alias.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>Changes are used at once by Review Transactions and AI Rules. A transaction already classified keeps its recorded Who, Why and What until it is reclassified or changed.</p>
+</section>
