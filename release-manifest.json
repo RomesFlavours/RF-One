@@ -10,6 +10,7 @@
     "RF-One Data Store/rfone_data_store/people_registry.py": "38417be1249154e7c12aada2c4ad18ab98da4cd67de48993ad53d7706b999493",
     "RF-One Data Store/rfone_data_store/rfone_recovery_service.py": "e7009df04058b2aae55bd84edcef4b358a50e7e1d5e53ccb89824379b6516f71",
     "RF-One Data Store/rfone_data_store/student_registry.py": "8f407173311bd3dfa00a2cc2ed9b972ad3db83b1bf2f030e30c74f40d1a0ac22",
+    "RF-One Data Store/migrations/versions/r9a120261113_registry_training_aws_release.py": "498e4ef64ea4dee0a65599ccfe2b778c354fc7f99d63eb7d4d1b77ef76e1da15",
     "RF-One Data Store/rfone_data_store/technical/account_email.py": "1cfece2449ed4c4742d31f1a83718be683818633633c6c6f84e1624a44b4b62d",
     "RF-One Data Store/rfone_data_store/technical/smtp_email.py": "7d1549b337467dbfc7e750f8ca80696e1e69d4e9951b088b21615ef199905def",
     "RF-One Data Store/rfone_data_store/training/workspace.py": "4bfa6a3cd9f477276e0690a6d143c039adf59ef2e1d6ca3950ade2fcf9d70c39",
