@@ -1,0 +1,17 @@
+{% extends 'training_workspace/_base.html' %}
+{% block title %}Account RF-One{% endblock %}
+{% block main %}
+<h1>{{ 'Recover RF-One password' if mode == 'recover' else 'New RF-One password' if mode == 'reset' else 'Activate RF-One account and verify email' }}</h1>
+<p>{{ 'Enter your username and verified email.' if mode == 'recover' else 'Enter the code from your email and choose your RF-One password. The code expires after 10 minutes and works once.' }}</p>
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<form method="post" class="tw-card">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>Username<input name="username" required value="{{ request.form.get('username','') }}" autocomplete="username"></label>
+{% if mode == 'recover' %}<label>Verified email<input type="email" name="email" required></label>
+{% else %}<label>Email code<input name="code" required inputmode="numeric" autocomplete="one-time-code"></label>
+<label>New RF-One password<input type="password" name="password" required minlength="8" autocomplete="new-password"></label>
+<label>Confirm password<input type="password" name="password_confirm" required minlength="8" autocomplete="new-password"></label>{% endif %}
+<button>{{ 'Send code' if mode == 'recover' else 'Confirm' }}</button>
+<a href="{{ url_for('tw_login') }}">Sign in to Training</a>
+</form>
+{% endblock %}

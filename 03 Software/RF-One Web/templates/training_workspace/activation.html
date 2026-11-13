@@ -1,0 +1,24 @@
+{% extends 'training_workspace/_base.html' %}
+{% block title %}Account activation · Training{% endblock %}
+{% block main %}<div class="tw-access">
+{% if not has_token %}
+<h1>Activate your account</h1>
+<p>Open the personal link sent by email. If it expired or was already used, ask your trainer to resend the invitation.</p>
+<p><a href="{{ url_for('tw_login') }}">Sign in to Training</a></p>
+{% elif pending_username %}
+<h1>Choose your password</h1>
+<p>Initial credentials verified for <strong>{{ pending_username }}</strong>. Choose a new personal password of at least 8 characters, different from the initial one. MyRF and modules remain unavailable until you confirm.</p>
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="step" value="password">
+<input type="text" name="username" value="{{ pending_username }}" autocomplete="username" hidden>
+<label>New password<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+<label>Confirm new password<input name="password_confirm" type="password" required minlength="8" autocomplete="new-password"></label>
+<button>Activate and continue</button></form>
+{% else %}
+<h1>Activate your account</h1>
+<p>Enter the username and initial password from your email. The link alone does not grant access.</p>
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="step" value="credentials">
+<label>Username<input name="username" required autocomplete="username" value="{{ request.form.get('username','') }}"></label>
+<label>Initial password<input name="password" type="password" required autocomplete="current-password"></label>
+<button>Verify</button></form>
+{% endif %}
+</div>{% endblock %}

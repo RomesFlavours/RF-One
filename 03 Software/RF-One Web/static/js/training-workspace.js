@@ -9,12 +9,14 @@ document.addEventListener('DOMContentLoaded',()=>{
    form.reset();form.elements.id.value='';
    document.querySelector('#student-archive').hidden=true;
    const student=button.dataset.editStudent?JSON.parse(button.dataset.editStudent):null;
+   // New student: name and surname only (username/password generated). Edit: existing fields.
+   editor.querySelectorAll('[data-mode]').forEach(part=>{const on=part.dataset.mode===(student?'edit':'create');part.hidden=!on;if(part.tagName==='FIELDSET')part.disabled=!on;});
    if(student){for(const key of ['name','email','phone','username','id'])form.elements[key].value=student[key]||'';
     document.querySelector('#student-archive').hidden=false;
     document.querySelector('#student-archive').elements.id.value=student.id;
    }
-   form.elements.password.required=!student;
-   form.elements.password_confirm.required=!student;
+   form.elements.password.required=false;
+   form.elements.password_confirm.required=false;
    document.querySelector('#student-editor-title').textContent=student?'Manage student':'New student';
   }
   if(button.dataset.open==='student-assignment-editor'){
@@ -43,7 +45,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   const confirm=document.getElementById('student-assignment-confirm');
   const update=()=>{const count=assignment.querySelectorAll('[name=pills]:checked').length;
    confirm.disabled=saving||count===0;
-   document.getElementById('student-assignment-summary').textContent=count?`${count} items selected for this student. They are saved only when you confirm.`:'Select at least one content item to assign.';
+   document.getElementById('student-assignment-summary').textContent=count?`${count} content items selected for this student. They are saved when you confirm.`:'Select at least one content item to assign.';
   };
   assignment.addEventListener('change',update);update();
   assignment.addEventListener('submit',async event=>{
@@ -52,7 +54,7 @@ document.addEventListener('DOMContentLoaded',()=>{
    saving=true;update();
    try{
     const response=await fetch(assignment.action,{method:'POST',body:new FormData(assignment),headers:{Accept:'application/json'}});
-    if(!response.headers.get('content-type')?.includes('application/json'))throw new Error('The session is unavailable. Your selections remain in the form; try again.');
+    if(!response.headers.get('content-type')?.includes('application/json'))throw new Error('Your session is unavailable. Your selections remain in the form; try again.');
     const result=await response.json();
     if(!response.ok)throw new Error(result.error||'Assignment failed. Check your selections.');
     window.location.reload();

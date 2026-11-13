@@ -103,10 +103,17 @@ def save_student(db, training_id, *, name, username, email, phone, password=''):
 
 
 def archive_student(db, training_id, archived):
-    a,p,r=editable_student(db,training_id)
+    a=db.get(m.TrainingAccount,training_id)
+    if not a or a.role!='student':
+        raise ValueError('Student not found.')
+    p=profile(db,training_id);r=linked_account(db,training_id)
     p.archived_at=datetime.now(timezone.utc) if archived else None
     if r:
-        r.status='INACTIVE' if archived else 'ACTIVE'
+        import training_integration as integration
+        pure_student = integration.is_pure_training_student(db, r)
+        # Archive is Training metadata, not a permission repair operation.
+        if pure_student:
+            r.status='INACTIVE' if archived else 'ACTIVE'
         r.session_version+=1
     db.flush()
 

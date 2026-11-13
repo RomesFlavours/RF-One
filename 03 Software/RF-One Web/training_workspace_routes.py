@@ -9,9 +9,14 @@ from rfone_data_store import models as m, rfone_account_service as accounts
 from rfone_data_store.training import service, workspace as ws
 from rfone_data_store.training import courses
 import training_integration as integration
+from rfone_data_store import student_registry as registry
+from training_account_routes import invite, pending_link_activation
 
 
 def install(app, *, SessionFactory, auth):
+    from training_account_routes import install as install_account_routes
+    install_account_routes(app, SessionFactory=SessionFactory, auth=auth)
+
     def trainer(view):
         @wraps(view)
         def wrapped(*args,**kwargs):
@@ -39,15 +44,20 @@ def install(app, *, SessionFactory, auth):
 
     @app.before_request
     def first_access_gate():
-        if request.endpoint in ('tw_login','tw_password','tw_logout','static','shared_brand_logo'):
+        if request.endpoint in ('tw_login','tw_password','tw_logout','tw_account','tw_activation_link','tw_activation','static','shared_brand_logo'):
             return None
         with SessionFactory() as db:
             account=auth.load_current_account(db)
             if account:
                 link=integration.get_link_for_rfone_account(db,account.id)
                 p=db.get(ws.TrainingStudentProfile,link.training_account_id) if link else None
-                if p and p.archived_at:
+                if p and p.archived_at and request.path.startswith(('/training','/visual-menu')):
                     auth.log_out()
+                    return redirect(url_for('tw_login'))
+                if p and p.must_change_password and pending_link_activation(db,account):
+                    # Initial credentials alone never open MyRF or a module.
+                    auth.log_out()
+                    flash(ACTIVATE_FIRST,'error')
                     return redirect(url_for('tw_login'))
                 if p and p.must_change_password:
                     return redirect(url_for('tw_password'))
@@ -55,14 +65,20 @@ def install(app, *, SessionFactory, auth):
     @app.route('/training/manage/students',methods=['GET','POST'])
     @trainer
     def tw_students():
-        error=None; status=200
+        error=None; status=200; matches=[]
         session.setdefault('tw_submission',secrets.token_urlsafe(32))
         if request.method=='POST':
             auth.require_csrf()
             with SessionFactory() as db:
                 try:
                     action=request.form.get('action')
-                    if action in ('archive','restore'):
+                    if action=='invite':
+                        account=ws.linked_account(db,int(request.form['id']))
+                        training=db.get(m.TrainingAccount,int(request.form['id']))
+                        if not account or not training or training.role!='student':raise ValueError('Student unavailable.')
+                        sent=invite(db,account)
+                        flash('Invitation sent.' if sent else 'Invitation not delivered. The account is saved; try Resend invitation.','info' if sent else 'error')
+                    elif action in ('archive','restore'):
                         ws.archive_student(db,int(request.form['id']),action=='archive')
                     elif action=='save':
                         password=request.form.get('password','')
@@ -70,29 +86,49 @@ def install(app, *, SessionFactory, auth):
                             raise ValueError('The passwords do not match.')
                         key=request.form.get('id','')
                         if not key:
-                            if len(password)<8: raise ValueError('The initial password must contain at least 8 characters.')
-                            _,account=integration.create_student_via_rf_one(db,
-                                username=request.form.get('username',''),display_name=request.form.get('name',''),
-                                password=password,email=request.form.get('email',''))
+                            if len(request.form.get('phone','').strip())>80:raise ValueError('Phone troppo lungo (massimo 80 caratteri).')
+                            first,last=request.form.get('first_name','').strip(),request.form.get('last_name','').strip()
+                            if not first or not last:raise ValueError('Enter first name and surname.')
+                            username=integration.generate_username(db,first,last)
+                            initial=integration.generate_initial_password()
+                            rf_account,account=integration.create_student_via_rf_one(db,
+                                username=username,display_name=f'{first} {last}',
+                                password=initial,email=request.form.get('email',''),confirmation=request.form.get('confirmation'))
+                            # The generated username was free, so equality means a new login.
+                            # A confirmed existing login keeps its username and credentials.
+                            created=rf_account.username==username.lower()
                             key=account.id
-                        ws.save_student(db,int(key),name=request.form.get('name',''),username=request.form.get('username',''),
+                            p=ws.profile(db,key)
+                            p.phone=request.form.get('phone','').strip()
+                            db.commit()
+                            sent=invite(db,rf_account,initial_password=initial if created else None,
+                                display_username=username if created else None)
+                            reissued=not created and pending_link_activation(db,rf_account)
+                            assigned=(f'Assigned username: {username}. ' if created else
+                                      f'Previously registered student awaiting activation ({rf_account.username}): new initial password and link issued. ' if reissued else
+                                      f'Existing account linked: username {rf_account.username}, credentials unchanged. ')
+                            flash(assigned+('Invitation sent.' if sent else 'Invitation not delivered. The account is saved; try Resend invitation.'),'info' if sent else 'error')
+                            action='created'  # the creation message above is the only one
+                        else:
+                            ws.save_student(db,int(key),name=request.form.get('name',''),username=request.form.get('username',''),
                             email=request.form.get('email',''),phone=request.form.get('phone',''),password=password)
                     else:
                         abort(400)
                     db.commit()
                 except (ValueError,IntegrityError) as exc:
                     db.rollback();error=localized_error(exc);status=400
+                    if isinstance(exc,registry.ConfirmationRequired):matches=exc.candidates
                 else:
-                    flash('Student archived. History has been retained.' if action=='archive' else
+                    if action not in ('created','invite'):flash('Student archived. History is preserved.' if action=='archive' else
                           'Student restored.' if action=='restore' else 'Student details saved.','info')
                     return redirect(url_for('tw_students',archived=request.args.get('archived'),q=request.args.get('q','')))
         with SessionFactory() as db:
             q=request.args.get('q','').strip().lower();archived=request.args.get('archived')=='1'
-            rows=[r for r in ws.roster(db) if not r['employee_id'] and r['archived']==archived
+            rows=[r for r in ws.roster(db) if r['archived']==archived
                   and (not q or q in (r['name']+' '+r['username']+' '+(r['email'] or '')).lower())]
             return render('students',students=rows,archived=archived,q=request.args.get('q',''),error=error,
                           draft=request.form if error and request.form.get('action')=='save' else None,
-                          pills=service.list_all_pills(db),submission=session['tw_submission']),status
+                          matches=matches,pills=service.list_all_pills(db),submission=session['tw_submission']),status
 
     @app.route('/training/manage/content')
     @trainer
@@ -114,7 +150,7 @@ def install(app, *, SessionFactory, auth):
         expected=session.get('tw_submission','')
         submitted=request.form.get('submission','')
         if not expected or not submitted or not secrets.compare_digest(expected,submitted):
-            return jsonify(error='This assignment has already been confirmed. Reopen the student list.'),400
+            return jsonify(error='This assignment was already confirmed. Reopen the student list.'),400
         with SessionFactory() as db:
             try:
                 count=ws.assign(db,trainer_id=trainer_id(db),recipients=[f'student:{student_id}'],
@@ -127,7 +163,7 @@ def install(app, *, SessionFactory, auth):
                 if str(exc).startswith('invalid literal'):message='Invalid selected content.'
                 return jsonify(error=message),400
         session.pop('tw_submission',None)
-        flash(f'Assignment completed: {count} items assigned to the student.','info')
+        flash(f'Assignment completed: {count} content items assigned to the student.','info')
         if request.accept_mimetypes.best=='application/json':return jsonify(saved=True)
         return redirect(url_for('tw_students',q=request.form.get('return_q') or None))
 
@@ -140,6 +176,8 @@ def install(app, *, SessionFactory, auth):
                 result=accounts.verify_login(db,username=request.form.get('username',''),password=request.form.get('password',''))
                 db.commit()
                 account=result.account
+                if account and pending_link_activation(db,account):
+                    return render('login',error=ACTIVATE_FIRST),400
                 if account:
                     authorization=integration.check_training_authorization(db,account)
                     if authorization.training_account:
@@ -163,7 +201,7 @@ def install(app, *, SessionFactory, auth):
                 password=request.form.get('password','')
                 if len(password)<8:error='The new password must contain at least 8 characters.'
                 elif password!=request.form.get('password_confirm',''):error='The passwords do not match.'
-                elif check_password_hash(account.password_hash,password):error='Choose a password different from the initial password.'
+                elif check_password_hash(account.password_hash,password):error='Choose a password different from the initial one.'
                 if not error:
                     try:
                         ws.save_student(db,p.training_account_id,name=account.display_name,
@@ -186,11 +224,14 @@ def install(app, *, SessionFactory, auth):
         return redirect(url_for('tw_login'))
 
 
+ACTIVATE_FIRST=('Account not activated: open the personal link sent by email and enter your username and initial password. If the link expired, ask your trainer to resend the invitation.')
+
+
 def localized_error(exc):
     message=str(exc)
-    if isinstance(exc,IntegrityError):return 'This record already exists or has been updated. Reload and try again.'
+    if isinstance(exc,IntegrityError):return 'This record already exists or was updated. Reload and try again.'
     if 'email address is already' in message:return 'This email address is already in use.'
     if 'already' in message and ('sername' in message or 'sername' in message.lower()):return 'This username is already in use.'
     if message.startswith(('A valid email','email is required')):return 'Enter a valid email address.'
-    if message.startswith(('username','display_name','password')):return 'Enter the name, username and password.'
+    if message.startswith(('username','display_name','password')):return 'Enter a name, username and password.'
     return message

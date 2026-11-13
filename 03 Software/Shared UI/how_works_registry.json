@@ -9,12 +9,15 @@
         "training_workspace/course.html": "help/training_course.html#training-course",
         "visual_menu_home.html": "help/visual_menu_home.html#visual-menu-home",
         "visual_menu_card.html": "help/visual_menu_card.html#visual-menu-card",
-        "visual_menu_manage.html": "help/visual_menu_manage.html#visual-menu-manage"
+        "visual_menu_manage.html": "help/visual_menu_manage.html#visual-menu-manage",
+        "training_workspace/account.html": "help/training_account.html#training-account",
+        "training_workspace/activation.html": "help/training_activation.html#training-activation",
+        "training_workspace/login.html": "help/training_login.html#training-login",
+        "training_workspace/password.html": "help/training_password.html#training-password",
+        "training/student_home.html": "help/training_student_home.html#training-student-home"
       },
       "not_operational": {
-        "base.html": "Shared layout",
-        "training_workspace/login.html": "Sign-in form",
-        "training_workspace/password.html": "Mandatory credential replacement"
+        "base.html": "Shared layout"
       },
       "help_missing": {}
     },

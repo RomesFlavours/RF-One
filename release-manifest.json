@@ -1,0 +1,31 @@
+{
+  "baseline_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:visual-menu-76747f071ac3",
+  "baseline_digest": "sha256:801870e54a3940bd840cebcc2567a685301b6f6b9ea1781edc71f066af9fa389",
+  "overlay": {
+    "RF-One Web/training_account_routes.py": "f600ddec0fbbd5c49bcbfacd6dacb9f9d3792bf67cc8508f0bdde46b799e377b",
+    "RF-One Web/training_integration.py": "b43c8f08297a34b347775c38846179ee27b5c32c92316166a1cc1ee71fafb199",
+    "RF-One Web/training_workspace_routes.py": "bcf5d12de338349852e99bec196d843b4bcd4ef4442d85adf8489c6bdb146ede",
+    "Shared UI/check_how_works.py": "38afb7df07a1cbb6aea7ff53f73e4d8370fa694cd1091cde5391319afbf84ea0",
+    "Shared UI/how_works_registry.json": "52850357c03462f1dec8901ce08eebd122367877cb1903b141cc68528b6c1e81",
+    "RF-One Data Store/rfone_data_store/people_registry.py": "38417be1249154e7c12aada2c4ad18ab98da4cd67de48993ad53d7706b999493",
+    "RF-One Data Store/rfone_data_store/rfone_recovery_service.py": "e7009df04058b2aae55bd84edcef4b358a50e7e1d5e53ccb89824379b6516f71",
+    "RF-One Data Store/rfone_data_store/student_registry.py": "8f407173311bd3dfa00a2cc2ed9b972ad3db83b1bf2f030e30c74f40d1a0ac22",
+    "RF-One Data Store/rfone_data_store/technical/account_email.py": "1cfece2449ed4c4742d31f1a83718be683818633633c6c6f84e1624a44b4b62d",
+    "RF-One Data Store/rfone_data_store/technical/smtp_email.py": "7d1549b337467dbfc7e750f8ca80696e1e69d4e9951b088b21615ef199905def",
+    "RF-One Data Store/rfone_data_store/training/workspace.py": "4bfa6a3cd9f477276e0690a6d143c039adf59ef2e1d6ca3950ade2fcf9d70c39",
+    "RF-One Web/static/js/training-workspace.js": "2ad8ab9ac9a13373c29f501e89feab92dc21a4b184cc5ec4e62c6bb20d704fb1",
+    "RF-One Web/templates/help/training_account.html": "b3c4bae4995b331295effba5e0662f328bfe229d94658b9582ddcaad6b960f21",
+    "RF-One Web/templates/help/training_activation.html": "ca8cc39e1aaabd9bb425022cd458423fc2df16104992513b3db5b75a7e63b5f9",
+    "RF-One Web/templates/help/training_login.html": "6c9004b24c31411b3de0f1e13d8beff96fcb39872b4d845713167f7f7c25cee6",
+    "RF-One Web/templates/help/training_password.html": "17a12e1a57ffb4cf48462df5985e3ae9ee2935889f621fcc586ac54acd83ce7d",
+    "RF-One Web/templates/help/training_students.html": "d2a7eb569f40ca1229cff8b6d64daa69cfdf0d49aa4df39476ebdfe6d8307700",
+    "RF-One Web/templates/help/training_student_home.html": "a7152f9868a53cae9fecb792b98cccc9c6a81c9bdf9cbb30aef62bf6224e1ce0",
+    "RF-One Web/templates/training/student_home.html": "07c4ace91fbf046410b46bcec5b742259a2afad92be8e3b80e5a978f3f5ad245",
+    "RF-One Web/templates/training_workspace/account.html": "6b95e6703107a088de3aae00dfcf08547ae1bb7e345da1a914923ad6c70929fe",
+    "RF-One Web/templates/training_workspace/activation.html": "a45407e495d9f54f967cd1a35064e0f57bf0fd85c1e7548e3cbc622d3a7d0e80",
+    "RF-One Web/templates/training_workspace/login.html": "2f032b0ad6870bcad6309dadea91933c52d5431ea259fe5de5621d32a207cad8",
+    "RF-One Web/templates/training_workspace/students.html": "4da138043a6915e44100e2206f127f8505d8c7f1b775445c8cea71720f6eee04",
+    "RF-One Web/templates/training_workspace/_base.html": "c011e33de21cc804e7b7ed385fe9abf8ae38fc87c9ce57aff70686ffbfed9c1f"
+  },
+  "local_italian_unchanged": true
+}

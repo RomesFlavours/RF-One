@@ -171,6 +171,11 @@ def check_training_authorization(session, rfone_account: "m.RFOneAccount") -> Tr
             None, "The linked Training identity is no longer valid. Contact an administrator.",
         )
 
+    from rfone_data_store.training.workspace import TrainingStudentProfile
+    profile = session.get(TrainingStudentProfile, training_account.id)
+    if profile and profile.archived_at:
+        return TrainingAuthorizationResult(None, 'Student archived. Training access is unavailable.')
+
     from rfone_data_store.web_access import AuthorizedTrainingAccount
     return TrainingAuthorizationResult(AuthorizedTrainingAccount(training_account, role_code), None)
 
@@ -392,42 +397,99 @@ def list_training_students(session) -> list["m.RFOneAccount"]:
 
 def create_student_via_rf_one(
     session, *, username: str, display_name: str, password: str, email: str,
+    confirmation: str | None = None,
 ) -> tuple["m.RFOneAccount", "m.TrainingAccount"]:
-    """Atomically provisions an RF-One-loginable student: an `RFOneAccount`
-    (never admin, never any Domain but TRAINING), its `TRAINING`
-    `RFOneAccountDomainAccess` (role_code='student'), a linked
-    `TrainingAccount` (Training's own required password column filled with
-    a random, unused placeholder — the account only ever logs in via
-    RF-One), and the identity link. `password` here becomes the account's
-    real, sole (RF-One) password. `email` is required (task: "richiedi
-    l'email nei flussi di creazione, compreso quello degli students
-    Training") and recorded unverified — the caller is responsible for
-    sending the verification code (`app.py`'s
-    `training_trainer_new_student` route), never this module, which knows
-    nothing about email delivery."""
-    try:
-        rfone_account = account_service.create_account(
-            session, username=username, display_name=display_name, password=password,
-            status="ACTIVE", is_admin=False, email=email,
-        )
-    except account_service.UsernameTakenError as exc:
-        raise StudentCreationError(str(exc)) from exc
+    """One transaction over Registry, qualification, login and existing Training data.
 
-    account_service.set_domain_access(
-        session, account_id=rfone_account.id, domain_code=TRAINING_DOMAIN_CODE, enabled=True, role_code="student",
-    )
-
-    try:
-        training_account = training_service.create_account(
-            session, display_name=display_name, username=username,
-            password=secrets.token_urlsafe(32), role="student",
-        )
-    except training_service.UsernameTakenError as exc:
-        raise StudentCreationError(
-            f"Username {username!r} is already taken in Training's own roster."
-        ) from exc
-
-    link = m.RFOneTrainingIdentityLink(rfone_account_id=rfone_account.id, training_account_id=training_account.id)
-    session.add(link)
+    Caller commits and then sends the invitation. Existing credentials and grants
+    are never overwritten; uncertain matches require explicit human confirmation.
+    """
+    from sqlalchemy import select
+    from rfone_data_store import student_registry as registry
+    from rfone_data_store.training import workspace as ws
+    if not display_name.strip() or len(display_name.strip()) > 255 or not username.strip() or len(username.strip()) > 64:
+        raise StudentCreationError('Enter a valid name and username.')
+    email = account_service._validate_email_format(email)
+    person, rfone_account = registry.resolve(session, name=display_name, email=email,
+        username=username, confirmation=confirmation)
+    new_account = rfone_account is None
+    if new_account:
+        rfone_account = account_service.create_account(session, username=username,
+            display_name=display_name, password=password or secrets.token_urlsafe(32),
+            status='ACTIVE', is_admin=False, email=email)
+    else:
+        if rfone_account.status != 'ACTIVE':
+            raise StudentCreationError('Inactive account: an RF-One administrator must review it.')
+        if rfone_account.email != email:
+            raise StudentCreationError('Use the email already registered for this account. Changes require RF-One verification.')
+    link = get_link_for_rfone_account(session, rfone_account.id)
+    access = next((g for g in account_service.list_domain_access_for_account(session, rfone_account.id)
+        if g.domain_code == TRAINING_DOMAIN_CODE), None)
+    if access is not None and (not access.enabled or access.role_code != 'student'):
+        raise StudentCreationError('Existing Training access requires administrator review. No permissions were changed.')
+    if link:
+        training_account = session.get(m.TrainingAccount, link.training_account_id)
+        if training_account.role != 'student':
+            raise StudentCreationError('The Training identity has a role other than student.')
+    else:
+        # A legacy Training name is not enough evidence to link a person.
+        if session.scalar(select(m.TrainingAccount.id).where(m.TrainingAccount.username == rfone_account.username)):
+            raise StudentCreationError('An existing Training identity requires explicit linking by an RF-One administrator.')
+        training_account = training_service.create_account(session,
+            display_name=rfone_account.display_name, username=rfone_account.username,
+            password=secrets.token_urlsafe(32), role='student')
+        session.add(m.RFOneTrainingIdentityLink(rfone_account_id=rfone_account.id,
+            training_account_id=training_account.id))
+    if access is None:
+        account_service.set_domain_access(session, account_id=rfone_account.id,
+            domain_code=TRAINING_DOMAIN_CODE, enabled=True, role_code='student')
+    registry.attach(session, person, rfone_account, training_account)
+    if new_account:
+        ws.profile(session, training_account.id).must_change_password = True
     session.flush()
     return rfone_account, training_account
+
+
+def _ascii_letters(value: str) -> str:
+    import unicodedata
+    decomposed = unicodedata.normalize('NFKD', value or '')
+    return ''.join(c for c in decomposed if c.isascii() and c.isalpha())
+
+
+def proposed_username(first_name: str, last_name: str) -> str:
+    """First name + first three letters of the surname, each starting uppercase
+    (Mario Rossi -> MarioRos; a shorter surname uses the letters available).
+    Accents are folded and spaces/apostrophes dropped. Login normalization
+    stores and compares usernames in lowercase, so 'MarioRos' signs in as
+    'marioros' with any capitalization."""
+    first, last = _ascii_letters(first_name), _ascii_letters(last_name)
+    if not first or not last:
+        raise StudentCreationError('Enter a first name and surname containing letters.')
+    return first[:56].capitalize() + last[:3].capitalize()
+
+
+def generate_username(session, first_name: str, last_name: str) -> str:
+    """The proposed username, or the first free numbered variant (MarioRos2, …).
+    Never reuses an existing RF-One or legacy Training username."""
+    from sqlalchemy import select, func
+    base = proposed_username(first_name, last_name)
+    taken = {name.lower() for name in session.scalars(select(m.RFOneAccount.username)
+        .where(func.lower(m.RFOneAccount.username).like(base.lower() + '%')))}
+    taken |= {name.lower() for name in session.scalars(select(m.TrainingAccount.username)
+        .where(func.lower(m.TrainingAccount.username).like(base.lower() + '%')))}
+    candidate, index = base, 1
+    while candidate.lower() in taken:
+        index += 1
+        candidate = f'{base}{index}'
+    return candidate
+
+
+def generate_initial_password(length: int = 14) -> str:
+    """Random initial password with upper, lower case letters and digits;
+    visually ambiguous characters are excluded because it is typed from email."""
+    upper, lower, digits = 'ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnopqrstuvwxyz', '23456789'
+    alphabet = upper + lower + digits
+    while True:
+        value = ''.join(secrets.choice(alphabet) for _ in range(length))
+        if any(c in upper for c in value) and any(c in lower for c in value) and any(c in digits for c in value):
+            return value
