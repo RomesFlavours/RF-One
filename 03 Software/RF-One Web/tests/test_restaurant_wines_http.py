@@ -102,7 +102,7 @@ def main() -> int:
         c = web_app.app.test_client()
         login(c, "wines1", "WinesPass123!")
         check("Home shows the Wines card with access", b'href="/restaurant/wines"' in c.get("/").data)
-        for path in ("/restaurant/wines", "/restaurant/wines/availability", "/restaurant/wines/types"):
+        for path in ("/restaurant/wines", "/restaurant/wines/availability", "/restaurant/wines/types", "/restaurant/wines/how-it-works"):
             resp = c.get(path)
             check(f"{path} renders", resp.status_code == 200, str(resp.status_code))
         page = c.get("/restaurant/wines/types").data.decode()
