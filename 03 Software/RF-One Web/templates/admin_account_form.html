@@ -4,6 +4,9 @@
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Accounts', url_for('admin_accounts')), ('Create account' if mode == 'create' else 'Edit account', None)]) }}
 <h1>{{ "Create account" if mode == "create" else "Edit account" }}</h1>
+{% if mode == 'edit' %}
+<p>This page manages login and access. {% if linked_person %}<a href="{{ url_for('person_detail', person_id=linked_person.id) }}">Open {{ linked_person.full_name }} in People</a>.{% else %}<a href="{{ url_for('people_home') }}">Link this account to its person record in People</a>.{% endif %}</p>
+{% endif %}
 
 <div class="card">
   <form method="post">

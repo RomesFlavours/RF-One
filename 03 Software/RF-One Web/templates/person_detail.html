@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block page_title %}{{ person.full_name }} · People · RF-One{% endblock %}
+{% block content %}
+{% set local = config.get('RFONE_LOCAL_OPERATOR') %}
+{% macro label(code) %}{{ {'CANDIDATE':'Candidato','EXTERNAL':'Esterno','EMPLOYEE':'Dipendente'}.get(code, code) if local else code }}{% endmacro %}
+{% set help_section = 'person_registry' %}{% include '_how_works.html' %}
+<p class="breadcrumb"><a href="{{ url_for('home') }}">MyRFOne</a> / <a href="{{ url_for('people_home') }}">{{ "Persone" if local else "People" }}</a> / {{ person.full_name }}</p>
+<h1>{{ person.full_name or ('Nome non disponibile' if local else 'Name not available') }}</h1><p>{{ "Persona" if local else "Person" }} #{{ person.id }}</p>
+{% if person.primary_email %}<p>{{ person.primary_email }}</p>{% endif %}{% if person.primary_phone %}<p>{{ person.primary_phone }}</p>{% endif %}
+<h2>{{ 'Status Aziendale' if local else 'Company status' }}</h2>
+{% if company_status_ready %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% for code in company_codes %}<label><input type="checkbox" name="company_status" value="{{ code }}" {% if code in company_statuses %}checked{% endif %}>{{ label(code) }}</label>{% endfor %}
+<p>{{ 'Sono consentite più qualifiche. Un collegamento dipendente esistente mantiene la qualifica Dipendente. Ogni dipendente è eleggibile ai corsi, senza qualifica STUDENT separata; accesso e permessi restano gestiti separatamente.' if local else 'Multiple relationships are allowed. Existing employee links retain Employee status. Every employee is eligible for Training without a separate STUDENT qualification; login and permissions are managed separately.' }}</p>
+<button type="submit">{{ 'Salva status aziendale' if local else 'Save company status' }}</button></form>{% endif %}
+<h2>{{ "Status dell’account" if local else 'Account status' }}</h2>
+{% if linked_account %}<p>{{ linked_account.username }} · {{ linked_account.status }} · <a href="{{ url_for('admin_account_edit', account_id=linked_account.id) }}">{{ "Impostazioni accesso" if local else "Login settings" }}</a></p>
+{% else %}<p>{{ "Nessun account RF-One collegato. " if local else "No linked RF-One account. " }}<a href="{{ url_for('people_home') }}">{{ "Collega un account esistente" if local else "Connect an existing account" }}</a>{{ " per consegnare interviste alla pagina MyRFOne della persona." if local else " to deliver interviews to this person's MyRFOne home page." }}</p>{% endif %}
+<h2>{{ "Record dipendente" if local else "Employee records" }}</h2>
+{% for employee in employee_records %}<p><a href="{{ url_for('employee_registry_detail', employee_id=employee.id) }}">{{ employee.display_name or ('Dati dipendente' if local else 'Employee data') }}</a> · Record #{{ employee.id }}</p>{% else %}<p>{{ "Nessun record dipendente collegato. La persona può partecipare come esterna." if local else "No employee record linked. This person can still participate as an external person." }}</p>{% endfor %}
+<h2>{{ "Interviste" if local else "Interviews" }}</h2>
+{% if interviews_ready %}
+{% if linked_account and linked_account.status == 'ACTIVE' %}<p><a class="btn" href="{{ url_for('interview_admin', person_id=person.id) }}">{{ "Richiedi intervista" if local else "Request interview" }}</a></p>{% endif %}
+<p>{{ "Sono mostrate solo le interviste richieste da te." if local else "Only interviews requested by you are shown here." }}</p>
+<table class="table-stack"><thead><tr><th>{{ "Scopo" if local else "Purpose" }}</th><th>{{ "Stato" if local else "Status" }}</th><th>{{ "Data richiesta" if local else "Requested on" }}</th><th></th></tr></thead><tbody>
+{% for interview in interviews %}<tr><td data-label="{{ 'Scopo' if local else 'Purpose' }}">{{ interview.purpose|truncate(120) }}</td><td data-label="{{ 'Stato' if local else 'Status' }}">{{ interview_status_labels[interview.status] }}</td><td data-label="{{ 'Data richiesta' if local else 'Requested on' }}">{{ interview.created_at|local_dt(tz) }}</td><td data-label="{{ 'Apri' if local else 'Open' }}"><a href="{{ url_for('interview_admin_results', session_id=interview.id) }}">{{ ('Vedi risultati' if local else 'View results') if interview.status == 'COMPLETED' else ('Vedi richiesta' if local else 'View request') }}</a></td></tr>
+{% else %}<tr><td colspan="4">{{ "Non hai richiesto interviste per questa persona." if local else "You have not requested interviews for this person." }}</td></tr>{% endfor %}</tbody></table>
+{% else %}<p>{{ "Le interviste non sono ancora disponibili." if local else "Interviews are not available yet." }}</p>{% endif %}
+{% endblock %}

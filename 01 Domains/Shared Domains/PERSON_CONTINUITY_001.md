@@ -2,7 +2,7 @@
 
 **Version:** 0.1
 **Status:** Draft (initial canonical foundation)
-**Scope:** Cross-cutting concept — not owned by any single Domain. Applies wherever [Selection](Selection/README.md), Personnel Management ([Workforce](Personnel%20Management/Workforce/README.md)/Organization), Training (see [TRAINING_SERVICE_001.md](TRAINING_SERVICE_001.md) — an internal RF-One service, not a Shared Domain folder), [Performance](Performance/README.md), and any Business Domain's real-time operational-guidance capability (e.g. Restaurant's [Service Copilot](../Business%20Domain/Restaurant/Service%20Copilot/README.md)) each hold evidence about the same real person.
+**Scope:** Cross-cutting concept — not owned by any single Domain. Applies wherever [Selection](Selection/README.md), [Management](Management/README.md) ([People](Management/People/README.md) and [Organization](Management/Organization/README.md), which absorbed the former Personnel Management Workforce responsibility), the Restaurant Organization module, Training (see [TRAINING_SERVICE_001.md](TRAINING_SERVICE_001.md) — an internal RF-One service, not a Shared Domain folder), [Performance](Performance/README.md), and any Business Domain's real-time operational-guidance capability (e.g. Restaurant's [Service Copilot](../Business%20Domain/Restaurant/Service%20Copilot/README.md)) each hold evidence about the same real person.
 **Origin:** Follow-up to the Selection/Training/Guided-Operations documentation audit (2026-09-07) — see §11.
 **Recovery:** Reconstructed 2026-09-12 after uncommitted working-tree edits to this document were accidentally lost. All references to the former `Training/README.md` placeholder have been corrected to [TRAINING_SERVICE_001.md](TRAINING_SERVICE_001.md) (Approved, 2026-09-11), which closed that naming question; §11's existing-state note has been updated accordingly, and Related documents now cross-reference the surviving Selection/Pills documents that already extend this one. No lost version number is asserted; the Version above is unchanged from the last committed state.
 
@@ -75,8 +75,11 @@ This does not merge Domains, and does not change any Domain's existing ownership
 
 ```text
 Selection             owns Candidate Evidence, Fit Assessment, Trainable Gap, Selection Decision
-Organization /         owns employment / assignment (Employee, Employee Assignment,
-  Workforce             Restaurant Role — see 07 Tasks/Reports/TASK_ORGANIZATION_002_REPORT.md)
+Restaurant              owns employment / assignment (Employee, Employee Assignment,
+  Organization          Restaurant Role — see 07 Tasks/Reports/TASK_ORGANIZATION_002_REPORT.md);
+                        Management / Organization (formerly Workforce) reads and links
+                        these records without a register of its own
+Management / People     owns professional knowledge of the person (2026-10-25)
 Training               owns training state / history (once modeled — Training is an internal
                         RF-One service, not a Shared Domain folder; see TRAINING_SERVICE_001.md)
 Performance            owns operational Evidence / the Individual Performance Profile
@@ -209,9 +212,24 @@ The following are genuine, unresolved decisions this document deliberately leave
 - [Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md](Selection/SELECTION_GUIDABILITY_AND_TRAINING_HANDOFF_001.md), [Selection/SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md](Selection/SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md) — both extend this document's continuity requirement with the Selection Output Baseline and its handoff to Training
 - [TRAINING_SERVICE_001.md](TRAINING_SERVICE_001.md) — Training's canonical boundary (internal RF-One service, not a Shared Domain folder)
 - [Performance/README.md](Performance/README.md)
-- [Personnel Management/README.md](Personnel%20Management/README.md)
+- [Management/README.md](Management/README.md), [Management/People/README.md](Management/People/README.md), [Management/Organization/README.md](Management/Organization/README.md) — replaced the former Personnel Management Domain (2026-10-25)
 - [../Domain Architecture.md](../Domain%20Architecture.md), §5 (Domain distinctions) and §7 (Cross-domain evidence principle)
 - [../Business Domain/Restaurant/Service Copilot/README.md](../Business%20Domain/Restaurant/Service%20Copilot/README.md), [../Business Domain/Restaurant/Server Performance/Individual Performance Profile.md](../Business%20Domain/Restaurant/Server%20Performance/Individual%20Performance%20Profile.md)
 - [../../00 Core/ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md](../../00%20Core/ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md)
 - `07 Tasks/Reports/TASK_ORGANIZATION_002_REPORT.md` — canonical Employee identity, multi-Location, referenced by Server Performance
 - [Selection/reports/SELECTION_FEEDBACK_INTELLIGENCE_FOUNDATION_REPORT.md](Selection/reports/SELECTION_FEEDBACK_INTELLIGENCE_FOUNDATION_REPORT.md) — existing downstream-feedback foundation this document's §12 decisions would activate
+
+
+## Registry relationship and access distinction — approved 2026-11-12
+
+A person's relationship with the company is independent of their job role,
+permissions and login state. Candidate, external person and employee may coexist
+as explicit qualifications; recording one must not erase the others or create a
+second person. An unspecified relationship is not evidence of employment.
+Every employee is automatically eligible for Training: a separate STUDENT
+qualification is not required. Eligibility does not grant access, create an
+account or assign courses. Future assignment by role remains future work.
+Registry owns person creation; Selection and Training reuse its identity
+persistence service and their explicit identity-resolution safeguards. Existing
+course history and confirmed source links stay attached to the same identities.
+This decision does not authorize automatic historical identity reconciliation.
