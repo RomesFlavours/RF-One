@@ -1,0 +1,27 @@
+<section id="registry">
+{% if registry_it %}
+<p>Registry gestisce persone, aziende, aree, ruoli e autorizzazioni. Nella scheda Persone trovi anche le identità Clover da confermare.</p>
+<p>Controlla nome, sede e turni in attesa. Le ore sono quelle locali della sede. Scegli la persona RF-One corretta e premi Collega alla persona. Crea una persona nuova solo se non esiste già. I suggerimenti non confermano alcun abbinamento.</p>
+<p>La conferma attribuisce nella stessa operazione i dati di lavoro in attesa e registra la decisione. Non modifica ruoli o permessi e non approva le mance. Dopo la conferma torna al periodo Tips, ricalcola e finalizza: il totale bilanciato da solo non basta. I collegamenti già confermati non possono essere riassegnati qui.</p>
+{% else %}
+<p>Registry manages people, companies, areas, roles and permissions. People &amp; assignments also lists Clover identities requiring confirmation.</p>
+<p>Review the name, location and held shifts in location time. Choose the correct RF-One person and select Link to person. Confirm a new person only if they do not already exist. Suggestions never confirm a match.</p>
+<p>Confirmation attributes held work and records the decision in one transaction. It does not grant permissions or approve tips. Return to the Tips period, recalculate and finalize. Balanced totals alone do not approve a period. Confirmed identities cannot be reassigned here.</p>
+{% endif %}
+</section>
+
+<section id="registry-person-editor"><h3>{{ 'Gestione della persona' if registry_it else 'Person editor' }}</h3>
+{% if registry_it %}
+<p>Inserisci nome e contatti. Status Aziendale ammette più qualifiche: Candidato, Esterno, Dipendente; nessuna selezione significa non specificato. Le qualifiche non assegnano ruoli o autorizzazioni. Ogni dipendente è eleggibile ai corsi senza una qualifica STUDENT separata.</p>
+<p>Status dell’account abilita o disabilita l’accesso RF-One. Restano necessarie credenziali valide e autorizzazioni; un nuovo account parte inattivo. Una modifica dello stato invalida le sessioni precedenti. L’account proprietario o in uso resta protetto dalla disattivazione.</p>
+<p>Apri Aziende e ruoli per modificare le assegnazioni, oppure Credenziali e autorizzazioni per le relative operazioni. Salva registra insieme dati e status e torna alla riga della persona. Un errore mantiene aperta la bozza senza salvare modifiche parziali. Annulla, X ed Esc chiudono senza salvare; l’aiuto conserva il modulo e i valori inseriti.</p>
+<p>La cessazione del rapporto resta un’operazione separata, con decorrenza e storico. Non usare lo stato account come sostituto dello status aziendale.</p>
+{% else %}
+<p>Enter name and contacts. Company status accepts multiple qualifications: Candidate, External and Employee; no selection means unspecified. Qualifications do not assign roles or permissions. Every employee is eligible for Training without a separate STUDENT qualification.</p>
+<p>Account status enables or disables RF-One login. Valid credentials and permissions are still required; a new account starts inactive. Changing status revokes previous sessions. Owner and current-operator accounts remain protected from disabling.</p>
+<p>Expand Companies and roles for assignments, or Credentials and permissions for those operations. Save records profile and statuses together and returns to the person's row. An error retains the draft without partial writes. Cancel, X and Escape close without saving; opening Help preserves the form and its values.</p>
+<p>Ending employment remains a separate effective-dated operation with history. Account state does not substitute for company relationship.</p>
+{% endif %}</section>
+
+<section id="registry-domain-identities"><h3>{{ 'Training e Selezione' if registry_it else 'Training and Selection' }}</h3>
+{% if registry_it %}<p>Training e Selezione usano la stessa persona Registry tramite collegamenti espliciti. Una candidatura o un’identità didattica conserva il proprio storico e non crea una seconda persona. Un contatto esatto e univoco può identificare un record esistente; nomi uguali e contatti in conflitto richiedono verifica. Le identità storiche incerte si gestiscono dalla riconciliazione senza unioni automatiche.</p>{% else %}<p>Training and Selection share the Registry person through explicit links. Application and learning records retain their own history without creating another central person. Unique exact contacts may identify an existing record; matching names or conflicting contacts require review. Uncertain historical identities remain available through reconciliation, without automatic merges.</p>{% endif %}</section>

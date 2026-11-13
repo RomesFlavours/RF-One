@@ -457,6 +457,12 @@ def context_person_id(db, kind, target_id):
         raise ValueError("Unknown person context.")
     if target_id is None:
         return None
+    from sqlalchemy import inspect
+    from . import people_registry as registry_links, student_registry as training_links
+    tables=db.info.get('registry_identity_link_tables')
+    if tables is None:
+        tables=set(inspect(db.connection()).get_table_names())
+        db.info['registry_identity_link_tables']=tables
     queue, visited, people = [(kind, target_id)], set(), set()
     while queue:
         current_kind, identity = queue.pop()
@@ -467,6 +473,17 @@ def context_person_id(db, kind, target_id):
         direct = db.scalar(select(m.EmployeeContextLink.employee_id).where(column == identity))
         if direct is not None:
             people.add(resolve_employee_id(db, direct))
+        if current_kind == 'CANDIDATE':
+            if 'person_employee_links' in tables:
+                people.update(resolve_employee_id(db,value) for value in db.scalars(select(registry_links.PersonEmployeeLink.employee_id).where(registry_links.PersonEmployeeLink.person_id==identity)))
+            if 'person_account_links' in tables:
+                queue.extend(('RFONE_ACCOUNT',value) for value in db.scalars(select(registry_links.PersonAccountLink.account_id).where(registry_links.PersonAccountLink.person_id==identity)))
+            if 'training_person_links' in tables:
+                queue.extend(('TRAINING',value) for value in db.scalars(select(training_links.TrainingPersonLink.training_account_id).where(training_links.TrainingPersonLink.person_id==identity)))
+        elif current_kind == 'RFONE_ACCOUNT' and 'person_account_links' in tables:
+            queue.extend(('CANDIDATE',value) for value in db.scalars(select(registry_links.PersonAccountLink.person_id).where(registry_links.PersonAccountLink.account_id==identity)))
+        elif current_kind == 'TRAINING' and 'training_person_links' in tables:
+            queue.extend(('CANDIDATE',value) for value in db.scalars(select(training_links.TrainingPersonLink.person_id).where(training_links.TrainingPersonLink.training_account_id==identity)))
         if current_kind == "RFONE_ACCOUNT":
             queue.extend(("TRAINING", value) for value in db.scalars(select(m.RFOneTrainingIdentityLink.training_account_id).where(
                 m.RFOneTrainingIdentityLink.rfone_account_id == identity)))

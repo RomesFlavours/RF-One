@@ -1,0 +1,133 @@
+"""Local Italian labels for the Registry; stored values remain unchanged."""
+import os
+
+LABELS = {'. Opens Domain Access for this account in a separate window. Your unsaved changes here are retained.': '. Le '
+                                                                                                         'autorizzazioni '
+                                                                                                         'si aprono in '
+                                                                                                         'un’altra '
+                                                                                                         'finestra; la '
+                                                                                                         'bozza resta '
+                                                                                                         'conservata.',
+ 'A matching active record already exists. Nothing saved.': 'Esiste già un record attivo corrispondente. Nessuna '
+                                                            'modifica salvata.',
+ 'Access also requires credentials and permissions.': 'L’accesso richiede anche credenziali e autorizzazioni.',
+ 'Account status': 'Status dell’account',
+ 'Actions': 'Azioni',
+ 'Active': 'Attivo',
+ 'Active areas': 'Aree attive',
+ 'Active roles': 'Ruoli attivi',
+ 'Add person': 'Aggiungi persona',
+ 'Add role': 'Aggiungi ruolo',
+ 'All companies': 'Tutte le aziende',
+ 'All names': 'Tutti i nomi',
+ 'All roles': 'Tutti i ruoli',
+ 'Archive': 'Archivia',
+ 'Archived': 'Archiviato',
+ 'Archived areas': 'Aree archiviate',
+ 'Area': 'Area',
+ 'Areas': 'Aree',
+ 'Assign people to one or more companies. Their role permissions add together within each company.': 'Gestisci '
+                                                                                                     'persone, '
+                                                                                                     'rapporti '
+                                                                                                     'aziendali e '
+                                                                                                     'accessi. Le '
+                                                                                                     'autorizzazioni '
+                                                                                                     'dei ruoli si '
+                                                                                                     'sommano nella '
+                                                                                                     'stessa azienda.',
+ 'Cancel': 'Annulla',
+ 'Candidate': 'Candidato',
+ 'Choose a person or external account.': 'Scegli una persona o un account esterno.',
+ 'Choose a role': 'Scegli un ruolo',
+ 'Choose an active account.': 'Scegli un account attivo.',
+ 'Choose an active company.': 'Scegli un’azienda attiva.',
+ 'Choose an area': 'Scegli un’area',
+ 'Close': 'Chiudi',
+ 'Companies': 'Aziende',
+ 'Companies & group': 'Aziende e gruppo',
+ 'Companies and roles': 'Aziende e ruoli',
+ 'Company': 'Azienda',
+ 'Company status': 'Status Aziendale',
+ 'Company · select one or more': 'Aziende · selezione multipla',
+ 'Create area': 'Crea area',
+ 'Create role': 'Crea ruolo',
+ 'Credentials and permissions': 'Credenziali e autorizzazioni',
+ 'Dismiss person': 'Registra cessazione',
+ 'Dismissal date': 'Data cessazione',
+ 'Dismissed people cannot receive new assignments.': 'Le persone cessate non possono ricevere nuovi incarichi.',
+ 'Dismissis': 'Persone cessate',
+ 'Domain administrator': 'Amministratore del dominio',
+ 'Each role must belong to a selected company.': 'Ogni ruolo deve appartenere a un’azienda selezionata.',
+ 'Edit': 'Modifica',
+ 'Edit area': 'Modifica area',
+ 'Edit person': 'Modifica persona',
+ 'Employee': 'Dipendente',
+ 'End employment': 'Cessazione del rapporto',
+ 'Enter a valid email address.': 'Inserisci un indirizzo email valido.',
+ 'External': 'Esterno',
+ 'Filter Company': 'Filtra azienda',
+ 'Filter Name': 'Filtra nome',
+ 'Filter Role': 'Filtra ruolo',
+ 'Full name': 'Nome e cognome',
+ 'Group': 'Gruppo',
+ 'How Registry works': 'Come funziona Registry',
+ 'How this page works': 'Come funziona questa pagina',
+ 'Identity reconciliation': 'Riconciliazione identità',
+ 'Inactive': 'Inattivo',
+ 'Invalid email.': 'Email non valida.',
+ 'Invalid person reference.': 'Riferimento persona non valido.',
+ 'Invalid phone.': 'Telefono non valido.',
+ 'Invalid role assignment.': 'Incarico non valido.',
+ 'Invalid role assignments.': 'Incarichi non validi.',
+ 'Keep their history and remove them from active selections.': 'Conserva lo storico ed escludi la persona dalle '
+                                                               'selezioni attive.',
+ 'Level': 'Livello',
+ 'Manage permissions': 'Gestisci autorizzazioni',
+ 'Multiple relationships allowed; independent of roles and permissions.': 'Sono consentite più qualifiche, '
+                                                                          'indipendenti da ruoli e permessi.',
+ 'Name': 'Nome',
+ 'No Training role': 'Nessun ruolo Training',
+ 'No access': 'Nessun accesso',
+ 'No active areas.': 'Nessuna area attiva.',
+ 'No archived areas.': 'Nessuna area archiviata.',
+ 'No changes yet.': 'Nessuna modifica.',
+ 'No dismissed people.': 'Nessuna persona cessata.',
+ 'No linked account': 'Nessun account collegato',
+ 'No matching people.': 'Nessuna persona corrispondente.',
+ 'No roles.': 'Nessun ruolo.',
+ 'Not assigned': 'Non assegnato',
+ 'Not recorded': 'Non registrata',
+ 'Other system authorizations': 'Altre autorizzazioni',
+ 'People': 'Persone',
+ 'People & assignments': 'Persone e incarichi',
+ 'Permissions': 'Autorizzazioni',
+ 'Person editor help': 'Aiuto gestione persona',
+ 'Phone': 'Telefono',
+ 'RF1 account: ': 'Account RF1: ',
+ 'Recent changes': 'Modifiche recenti',
+ 'Remove': 'Rimuovi',
+ 'Reset password': 'Reimposta password',
+ 'Restore': 'Ripristina',
+ 'Role': 'Ruolo',
+ 'Role management': 'Gestione ruoli',
+ 'Role permissions': 'Autorizzazioni del ruolo',
+ 'Roles': 'Ruoli',
+ 'Roles by company and area': 'Ruoli per azienda e area',
+ 'Save area': 'Salva area',
+ 'Save changes': 'Salva',
+ 'Save permissions': 'Salva autorizzazioni',
+ 'Save role': 'Salva ruolo',
+ 'Save the person first to manage their system authorizations.': 'Salva prima la persona per gestirne credenziali e '
+                                                                 'autorizzazioni.',
+ 'Select companies above, then add their roles here.': 'Seleziona le aziende, poi aggiungi i relativi ruoli.',
+ 'Selected functions': 'Funzioni selezionate',
+ 'Status': 'Stato',
+ 'Student': 'Studente',
+ 'Switch': 'Cambia',
+ 'Trainer': 'Formatore',
+ 'Type': 'Tipo',
+ 'User': 'Utente',
+ 'Whole domain': 'Intero dominio'}
+
+def ui(value):
+    return LABELS.get(value, value) if os.environ.get("RFONE_UI_LANGUAGE") == "it" else value

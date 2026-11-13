@@ -2,11 +2,11 @@
 {% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Domain Access · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Accounts', url_for('admin_accounts')), ('Domain Access', None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Registry', profile_return|default(url_for('role_profiles_home', tab='people'), true)), ('Domain Access', None)]) }}
 <h1>Domain Access</h1>{% if profile_return %}<p><a href="{{ profile_return }}">Back to person</a></p>{% endif %}
 <p>These are direct account permissions. <a href="{{ url_for('role_profiles_home',tab='people',person='account:'~account.id) }}">Role permissions</a> add to them in each company.</p>
 <p class="muted">{{ account.display_name }} ({{ account.username }})</p>
-<p><a href="{{ url_for('admin_account_training_link',account_id=account.id) }}">Training identity and history</a> &mdash; link an existing identity explicitly, or create it when needed. Registry remains the source of access permissions.</p>
+<p><a href="{{ url_for('admin_account_training_link',account_id=account.id,from_person=profile_person) }}">Training identity and history</a> &mdash; link an existing identity explicitly, or create it when needed. Registry remains the source of access permissions.</p>
 {# ACCOUNT_ITEM_ACCESS_001 — for each Domain: no access, the whole Domain
    (items added later included), or only the items ticked below it. The
    items are the Domain's own sections, from `domain_registry.py`. #}
@@ -52,6 +52,8 @@
           {% set current_role = row.access.role_code if row.access and row.access.role_code else '' %}
           {% set role_options = [('', 'User'), ('admin', 'Domain administrator')] %}
           {% if code == 'TRAINING' %}{% set role_options = [('', 'No Training role'), ('student', 'Student'), ('trainer', 'Trainer'), ('admin', 'Domain administrator (Trainer rights)')] %}{% endif %}
+          {#- A Domain with a read-only Level (`view_level`, Wines) also offers View. #}
+          {% if row.domain.view_level %}{% set role_options = [('view', 'View')] + role_options %}{% endif %}
           {% set known = role_options | map('first') | list %}
           {% set selected_role = 'admin' if current_role|lower == 'admin' and 'admin' in known else current_role %}
           <label class="access-choice">
@@ -77,7 +79,7 @@
       </fieldset>
     {% endfor %}
     <div class="btn-row">
-      <input type="hidden" name="from_person" value="{{ profile_person|default("", true) }}"><button type="submit">Save</button>
+      <input type="hidden" name="from_person" value="{{ profile_person|default("", true) }}"><button type="submit">Save</button><a class="link-button" href="{{ profile_return }}">Cancel</a>
     </div>
   </form>
 </div>

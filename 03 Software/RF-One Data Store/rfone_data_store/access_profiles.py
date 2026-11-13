@@ -5,7 +5,7 @@ No network, commits or employment/payroll changes. Caller owns transactions.
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, select, func, text
+from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, select, func, text, inspect
 from . import models as m
 from . import employee_directory as directory
 
@@ -136,6 +136,7 @@ def save_permissions(db,role_id,values,domains,actor=None):
         mode=entry.get('mode','none');level=(entry.get('role') or '').strip().lower()
         if mode not in ('none','all','selected'):raise ValueError('Invalid permission scope.')
         permitted={'','admin','trainer','student'} if code=='TRAINING' else {'','admin'}
+        if getattr(registry[code],'view_level',False):permitted=permitted|{'view'}
         if level not in permitted:raise ValueError('Invalid domain role.')
         items=sorted(set(entry.get('items',[])))
         allowed={i.code for i in registry[code].items}
@@ -154,12 +155,12 @@ def save_permissions(db,role_id,values,domains,actor=None):
     db.flush()
 
 
-def person_target(db,target):
+def person_target(db,target,*,allow_inactive_account=False):
     try:kind,identity=target.split(':');identity=int(identity)
     except (ValueError,AttributeError):raise ValueError('Choose a person or external account.')
     if kind=='account':
         account=db.get(m.RFOneAccount,identity)
-        if account is None or account.status!='ACTIVE':raise ValueError('Choose an active account.')
+        if account is None or (account.status!='ACTIVE' and not allow_inactive_account):raise ValueError('Choose an active account.')
         person_id=directory.context_person_id(db,'RFONE_ACCOUNT',identity)
         if person_id is None:return None,identity
         identity=person_id
@@ -263,7 +264,9 @@ def effective_permissions(db,account_id,*,company_id):
                 RoleProfileAssignment.valid_from<=now,(RoleProfileAssignment.valid_to.is_(None)|(RoleProfileAssignment.valid_to>now)),
                 m.RestaurantRole.active.is_not(False),m.OperationalArea.active.is_not(False))
         for row,name in db.execute(query):grants.append((row.domain_code,row.scope,row.role_code,row.items,name))
-    result={};rank={'':0,'student':1,'trainer':2,'admin':3}
+    # The highest level wins. View (read only, below User) applies only when
+    # no grant gives User or more; '' / None is User.
+    result={};best={};rank={'view':-1,'':0,'student':1,'trainer':2,'admin':3}
     for code,scope,level,items,provenance in grants:
         if scope=='SELECTED' and not items:continue
         original_level=level
@@ -271,8 +274,9 @@ def effective_permissions(db,account_id,*,company_id):
         current=result.setdefault(code,{'scope':'SELECTED','role_code':None,'items':set(),'sources':set()})
         if scope=='ALL':current['scope']='ALL'
         current['items'].update(items);current['sources'].add(provenance)
-        if rank.get(level,0)>rank.get(current['role_code'] or '',0):current['role_code']=level or None
-        elif current['role_code'] is None and level:current['role_code']=level if level in rank else original_level
+        level_rank=rank.get(level,0);value=(level if level in rank else original_level) or None
+        if code not in best or level_rank>best[code] or (level_rank==best[code] and current['role_code'] is None and value):
+            current['role_code']=value;best[code]=level_rank
     return result
 
 
@@ -320,9 +324,13 @@ def _contact(value,limit,label):
         if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',value):raise ValueError('Enter a valid email address.')
     return value or None
 
-def save_person_profile(db,target,*,name,company_ids,assignments,actor=None,email=_CONTACT_UNSET,phone=_CONTACT_UNSET):
+def save_person_profile(db,target,*,name,company_ids,assignments,actor=None,email=_CONTACT_UNSET,phone=_CONTACT_UNSET,company_statuses=_CONTACT_UNSET,account_status=_CONTACT_UNSET):
     """Atomic editor; preserve ended history and central identity, no POS writes."""
-    employee,account=person_target(db,target)
+    employee,account=person_target(db,target,allow_inactive_account=True)
+    if company_statuses is not _CONTACT_UNSET:
+        validate_company_statuses(company_statuses)
+    if account_status is not _CONTACT_UNSET:
+        save_account_status(db,target,account_status,actor)
     name=_name(name)
     if email is not _CONTACT_UNSET:email=_contact(email,255,'email')
     if phone is not _CONTACT_UNSET:phone=_contact(phone,64,'phone')
@@ -362,11 +370,14 @@ def save_person_profile(db,target,*,name,company_ids,assignments,actor=None,emai
         before=record.display_name;record.display_name=name
         event(db,'ACCOUNT_NAME_UPDATE',actor,account_id=account,before=before,name=name)
     event(db,'PERSON_PROFILE_SAVE',actor,target=target,company_ids=sorted(company_ids))
+    if company_statuses is not _CONTACT_UNSET:
+        save_company_statuses(db,target,company_statuses,actor)
     db.flush()
 
 
-def create_profile_person(db,*,name,company_ids,assignments,actor=None,email=_CONTACT_UNSET,phone=_CONTACT_UNSET):
-    person=directory.create_person(db,display_name=_name(name),account_id=actor)
+def create_profile_person(db,*,name,company_ids,assignments,actor=None,email=_CONTACT_UNSET,phone=_CONTACT_UNSET,company_statuses=_CONTACT_UNSET,account_status=_CONTACT_UNSET):
+    from . import registry_identity as registry
+    person=registry.resolve_person(db,name=_name(name),email=None if email is _CONTACT_UNSET else email,phone=None if phone is _CONTACT_UNSET else phone,actor=actor,require_new=True)
     if hasattr(directory,'ensure_employee_account'):
         directory.ensure_employee_account(db,person)
     else:
@@ -374,7 +385,7 @@ def create_profile_person(db,*,name,company_ids,assignments,actor=None,email=_CO
         account=m.RFOneAccount(username='employee-'+uuid4().hex,display_name=person.display_name,password_hash='!',status='INACTIVE',is_admin=False,is_owner=False,session_version=1)
         db.add(account);db.flush()
         db.add(m.EmployeeContextLink(employee_id=person.id,rfone_account_id=account.id));db.flush()
-    save_person_profile(db,f'employee:{person.id}',name=name,company_ids=company_ids,assignments=assignments,actor=actor,email=email,phone=phone)
+    save_person_profile(db,f'employee:{person.id}',name=name,company_ids=company_ids,assignments=assignments,actor=actor,email=email,phone=phone,company_statuses=company_statuses,account_status=account_status)
     return person
 
 
@@ -416,3 +427,85 @@ def ensure_profile_account(db,target,actor=None):
     db.add(account);db.flush();db.add(m.EmployeeContextLink(employee_id=employee,rfone_account_id=account.id));db.flush()
     event(db,'ACCOUNT_PROVISIONED',actor,employee_id=employee,account_id=account.id)
     return account
+
+
+COMPANY_STATUSES = ('CANDIDATE', 'EXTERNAL', 'EMPLOYEE')
+
+
+class PersonCompanyStatus(m.Base):
+    __tablename__ = 'rfone_person_company_statuses'
+    __table_args__ = (
+        CheckConstraint("code IN ('CANDIDATE','EXTERNAL','EMPLOYEE')", name='ck_profile_company_status'),
+        CheckConstraint('(employee_id IS NOT NULL AND account_id IS NULL) OR (employee_id IS NULL AND account_id IS NOT NULL)', name='ck_profile_status_target'),
+        UniqueConstraint('employee_id', 'code', name='uq_profile_employee_status'),
+        UniqueConstraint('account_id', 'code', name='uq_profile_account_status'),
+    )
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(ForeignKey('employees.id'), index=True)
+    account_id = Column(ForeignKey('rfone_accounts.id'), index=True)
+    code = Column(String(32), nullable=False)
+    assigned_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+def validate_company_statuses(codes):
+    if not isinstance(codes, (list, tuple, set)) or not set(codes) <= set(COMPANY_STATUSES):
+        raise ValueError('Status aziendale non valido.')
+
+
+def profile_account(db, target):
+    employee, account = person_target(db, target, allow_inactive_account=True)
+    if account is not None:
+        return db.get(m.RFOneAccount, account)
+    accounts = [a for a in db.scalars(select(m.RFOneAccount))
+                if directory.context_person_id(db, 'RFONE_ACCOUNT', a.id) == employee]
+    if len(accounts) > 1:
+        raise ValueError('Più account collegati: verifica i collegamenti prima di modificare lo status.')
+    return accounts[0] if accounts else None
+
+
+def profile_status_snapshot(db, target, actor=None):
+    employee, account = person_target(db, target, allow_inactive_account=True)
+    condition = PersonCompanyStatus.employee_id == employee if employee is not None else PersonCompanyStatus.account_id == account
+    codes = list(db.scalars(select(PersonCompanyStatus.code).where(condition).order_by(PersonCompanyStatus.code))) if inspect(db.connection()).has_table(PersonCompanyStatus.__tablename__) else []
+    login = profile_account(db, target)
+    return dict(company_statuses=codes, account_status=login.status if login else 'NONE',
+                account_status_locked=bool(login and (login.is_owner or login.id == actor)))
+
+
+def save_account_status(db, target, status, actor):
+    if status not in ('ACTIVE', 'INACTIVE', 'NONE'):
+        raise ValueError('Status dell’account non valido.')
+    login = profile_account(db, target)
+    if login is None:
+        if status == 'NONE':
+            return
+        login = ensure_profile_account(db, target, actor)
+    if status == 'NONE':
+        raise ValueError('Un account esistente può essere attivo o inattivo, non eliminato da questo modulo.')
+    if status == login.status:
+        return
+    if status == 'INACTIVE' and (login.is_owner or login.id == actor):
+        raise ValueError('L’account proprietario o attualmente in uso deve restare attivo.')
+    from . import rfone_account_service as accounts
+    before = login.status
+    accounts.update_account(db, login, display_name=login.display_name, status=status)
+    login.session_version = (login.session_version or 0) + 1
+    event(db, 'ACCOUNT_STATUS_UPDATE', actor, account_id=login.id, before=before, after=status)
+
+
+def save_company_statuses(db, target, codes, actor):
+    validate_company_statuses(codes)
+    employee, account = person_target(db, target, allow_inactive_account=True)
+    record = db.get(m.Employee, employee) if employee is not None else db.get(m.RFOneAccount, account)
+    db.flush()
+    db.refresh(record, with_for_update=True)
+    condition = PersonCompanyStatus.employee_id == employee if employee is not None else PersonCompanyStatus.account_id == account
+    existing = {row.code: row for row in db.scalars(select(PersonCompanyStatus).where(condition))}
+    desired = set(codes)
+    for code, row in existing.items():
+        if code not in desired:
+            db.delete(row)
+    for code in desired - existing.keys():
+        db.add(PersonCompanyStatus(employee_id=employee, account_id=account, code=code))
+    event(db, 'COMPANY_STATUS_UPDATE', actor, target=target, before=sorted(existing), after=sorted(desired))
+    db.flush()

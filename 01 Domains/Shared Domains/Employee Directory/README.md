@@ -142,3 +142,18 @@ model development. No authentication/authorization table or grant is changed.
 Open manual RF-One assignments are never closed or replaced by POS role bootstrap.
 Workforce site evidence is read, not copied: current choices use current assignments,
 while historical choices retain former assignment sites.
+
+
+## Registry identity confirmation (2026-11-11)
+
+The approved Registry entry (`/admin/roles`, People & assignments) includes the
+Clover identities awaiting explicit human confirmation. Each entry shows the
+source name, location and held shifts in that location's time. An administrator
+selects an existing canonical employee or explicitly confirms a new person.
+The existing `employee_directory.attach_link` service records the identity and
+reattributes held work in one transaction; Registry does not copy ingestion
+logic or grant permissions. Confirmed links cannot be reassigned here.
+
+Tips finalization blockers link administrators to this Registry section. After
+confirming the identities, the operator recalculates the affected Tips period
+before finalizing it. Identity confirmation never finalizes a period itself.

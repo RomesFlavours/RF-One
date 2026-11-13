@@ -15,7 +15,7 @@ os.environ.update(
     RFONE_FLASK_SECRET_KEY=(ROOT/'local-session.key').read_text(encoding='utf-8').strip(),
     AWS_EC2_METADATA_DISABLED='true', AWS_CONFIG_FILE=str(ROOT/'disabled-aws-config'),
     AWS_SHARED_CREDENTIALS_FILE=str(ROOT/'disabled-aws-credentials'),
-    RFONE_AI_PROVIDER='DISABLED', RFONE_CLOVER_JOB_LAUNCHER='disabled',
+    RFONE_UI_LANGUAGE='it', RFONE_AI_PROVIDER='DISABLED', RFONE_CLOVER_JOB_LAUNCHER='disabled',
     RFONE_PUBLIC_BASE_URL=f"http://127.0.0.1:{state['web_port']}",
     HTTP_PROXY='http://127.0.0.1:9', HTTPS_PROXY='http://127.0.0.1:9',
     NO_PROXY='localhost,127.0.0.1,::1',
@@ -45,6 +45,7 @@ sys.path.insert(0,str(source/'RF-One Data Store'))
 os.chdir(source/'RF-One Web')
 import app as web
 web.clover_job_launcher=no_aws
+web.app.config['RFONE_LOCAL_OFFLINE']=True
 
 from flask import request, abort, session as browser_session, redirect, render_template_string
 from sqlalchemy import select

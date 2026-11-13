@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% from '_nav_macros.html' import breadcrumb %}
+{% block page_title %}Identity reconciliation · Registry{% endblock %}
+{% block content %}
+{{ breadcrumb([('RF-One',url_for('home')),('Registry',url_for('role_profiles_home',tab='people')),('Identity reconciliation',none)]) }}
+<h1>Identity reconciliation</h1>
+<p>One person across Registry, RF1 accounts and Training. Names and email are suggestions only: links require explicit confirmation.</p>
+<p><a href="{{ url_for('role_profiles_home',tab='people') }}">Back to Registry</a></p>
+{% if not report.ready %}<p role="alert">Identity linking requires the explicit local schema setup. This page does not create tables or change records.</p>{% endif %}
+<div class="card"><strong>{{ report.counts['person-only'] }} central people without operational links</strong> · {{ report.counts.confirmed }} linked groups · {{ report.counts.unlinked }} without a central person · {{ report.counts.conflict }} conflicts</div>
+{% if report.broken_links %}<p role="alert">{{ report.broken_links|length }} broken explicit links require review. Nothing is repaired automatically.</p>{% endif %}
+<datalist id="central-person-choices">{% for person in persons %}<option value="{{ person.id }}" label="{{ person.full_name or 'Unnamed person' }} · #{{ person.id }}"></option>{% endfor %}</datalist>
+<details class="card"><summary>Existing central people ({{ persons|length }})</summary><table><thead><tr><th>Person ID</th><th>Name</th></tr></thead><tbody>{% for person in persons %}<tr><td>#{{ person.id }}</td><td>{{ person.full_name or 'Unnamed person' }}</td></tr>{% endfor %}</tbody></table></details>
+{% for group in report.groups if group.state!='person-only' %}
+<details class="card" {% if group.state=='conflict' or selected_person_id in group.person_ids %}open{% endif %} data-identity-group="{{ group.key }}">
+<summary><strong>{{ group.name }}</strong> · {{ group.state }}{% if group.person_ids %} · Person #{{ group.person_ids|join(', ') }}{% endif %}</summary>
+<table><thead><tr><th>Record</th><th>Name</th><th>Status</th></tr></thead><tbody>
+{% for record in group.records if record.kind!='acting' %}<tr><td>{{ record.kind }} #{{ record.id }}</td><td>{{ record.name }}</td><td>{{ record.status or ('Dismissed' if record.active is sameas false else '—') }}</td></tr>{% endfor %}
+</tbody></table>
+{% for conflict in group.conflicts %}<p role="alert">{{ conflict }}</p>{% endfor %}
+{% if group.suggestions %}<p>Possible matches (not linked): {% for suggestion in group.suggestions %}{{ suggestion.name }} (#{{ suggestion.id }}, {{ suggestion.reason }}){% if not loop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+{% if report.ready and not group.conflicts %}
+<form method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="key" value="{{ group.key }}"><input type="hidden" name="fingerprint" value="{{ group.fingerprint }}">
+<label>Confirmed person ID <input name="person_id" list="central-person-choices" inputmode="numeric" autocomplete="off" placeholder="Choose an existing person" value="{{ group.person_ids[0] if group.person_ids else '' }}"></label>
+<button name="action" value="link">Confirm links to this person</button>
+{% if not group.person_ids %}<label>Or explicitly create a central person <input name="new_name" value="{{ group.name }}" maxlength="255" autocomplete="off"></label><button name="action" value="create">Create person and confirm links</button>{% endif %}
+</form>
+{% else %}<p>Conflicts are retained for review. No automatic merge, deletion or reassignment is available.</p>{% endif %}
+</details>
+{% endfor %}
+{% endblock %}

@@ -72,6 +72,11 @@ class DomainDefinition:
     # When set, the account's access page offers this one checkbox instead
     # of the "No access / Whole Domain" choice (a Domain without items).
     access_label: str | None = None
+    # When True, the access Level offers "View" (role code `view`): the
+    # account may consult the Domain but change nothing in it
+    # (`rfone_web_session.account_is_domain_view_only`). Product Owner
+    # 2026-11-11, Wines only.
+    view_level: bool = False
 
     def item(self, code: str) -> DomainItem | None:
         return next((i for i in self.items if i.code == code), None)
@@ -197,6 +202,20 @@ DOMAINS: tuple[DomainDefinition, ...] = (
         # this application (`restaurant_wines_routes.py`), gated by
         # `require_domain_access("WINES")`.
         link="/restaurant/wines",
+        # Product Owner 2026-11-11: two functions granted separately —
+        # "Wines" (Wine List, Availability, Wine Types, Pricing parameters,
+        # Export) and "View Calculator" (bottle/glass price from a cost and
+        # a Value, nothing saved) — and a read-only "View" Level.
+        items=(
+            DomainItem("wines", "Wines", "restaurant_wines_home",
+                       exact_paths=("/restaurant/wines",),
+                       paths=("/restaurant/wines/types", "/restaurant/wines/availability",
+                              "/restaurant/wines/lists", "/restaurant/wines/items",
+                              "/restaurant/wines/price-preview", "/restaurant/wines/settings")),
+            DomainItem("calculator", "View Calculator", "restaurant_wine_calculator",
+                       paths=("/restaurant/wines/calculator",)),
+        ),
+        view_level=True,
     ),
     DomainDefinition(
         code="PROJECTS",
