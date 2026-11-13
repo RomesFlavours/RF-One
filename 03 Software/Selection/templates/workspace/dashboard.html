@@ -1,0 +1,49 @@
+{% extends "workspace/base.html" %}
+{% set help_section = 'workspace_dashboard' %}
+{% block title %}{{ page_heading }}{% endblock %}
+{% block content %}
+<div class="selection-page-heading">
+  <div><h1>{{ page_heading }}</h1><p class="muted" style="margin:0">Manage positions, applications and interviews{% if not actor.supervises_all %} for positions assigned to you{% endif %}.</p></div>
+  <div class="selection-page-actions">
+    {% if actor.role != 'SUPERVISOR' %}<a class="btn" href="{{ url_for('positions.position_new') }}">+ New position</a>{% endif %}
+  </div>
+</div>
+<form method="get" action="{{ url_for('positions.dashboard') }}" class="selection-search">
+  <input type="hidden" name="stato" value="{{ status_filter }}">
+  <label>Search by position, role, location or manager<input type="text" name="q" value="{{ search }}" maxlength="120"></label>
+  <button class="btn btn-secondary">Search</button>
+  {% if search %}<a href="{{ url_for('positions.dashboard', stato=status_filter) }}">Clear search</a>{% endif %}
+</form>
+{% if rows %}<div class="card"><div class="table-scroll"><table class="selection-table">
+  <thead><tr><th>Position</th><th>Location</th><th>Manager</th><th>Applications</th><th>Hired / openings</th><th>Actions</th></tr></thead>
+  <tbody>{% for r in rows %}{% set p = r.position %}<tr>
+    <td><a href="{{ url_for('positions.position_detail', position_id=p.id) }}"><b>{{ p.title }}</b></a><div class="small muted">{{ ROLE_LABEL[p.role_code] }}</div>
+      <span class="badge {{ 'ok' if p.status == 'OPEN' else ('warn' if p.status == 'DRAFT' else '') }}">{{ POSITION_STATUS_LABELS[p.status] }}</span></td>
+    <td>{{ p.location_label }}</td><td>{{ r.manager }}</td>
+    <td><a href="{{ url_for('positions.position_detail', position_id=p.id, tab='candidature') }}">{{ r.total }}</a>{% if r.to_interview %}<div class="small muted">{{ r.to_interview }} to interview</div>{% endif %}</td>
+    <td>{{ r.hired }} / {{ p.headcount }}</td>
+    <td><div class="selection-table-actions">
+      <a class="btn btn-secondary btn-small" href="{{ url_for('positions.position_detail', position_id=p.id, tab='posizione' if p.status == 'DRAFT' else 'candidature') }}">{{ 'Complete and open' if p.status == 'DRAFT' else 'Manage' }}</a>
+      {% if p.status == 'OPEN' %}<a class="small" href="{{ candidate_url(p) }}" target="_blank" rel="noopener">Application page</a>{% endif %}
+      {% if actor.can_edit(p) and p.status in ['OPEN', 'CLOSED'] %}<form method="post" action="{{ url_for('positions.position_status', position_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ url_for('positions.dashboard', stato=status_filter, q=search) }}">
+        <button class="btn btn-secondary btn-small" name="action" value="{{ 'close' if p.status == 'OPEN' else 'reopen' }}">{{ 'Close' if p.status == 'OPEN' else 'Reopen' }}</button>
+      </form>{% endif %}
+    </div></td>
+  </tr>{% endfor %}</tbody>
+</table></div></div>
+{% else %}<div class="card selection-empty">
+  <h2>{% if search %}No results{% elif status_filter == 'OPEN' %}No open positions{% elif status_filter == 'DRAFT' %}No drafts{% else %}No closed positions{% endif %}</h2>
+  <p class="muted">{% if search %}Change your search or choose another section.
+    {% elif status_filter == 'OPEN' and position_counts.DRAFT %}You have {{ position_counts.DRAFT }} drafts: complete the requirements and job ad, then choose “Approve and open position”.
+    {% elif status_filter == 'OPEN' %}Create your first position, complete its requirements and job ad, then open it to receive résumés and initial interviews.
+    {% elif status_filter == 'DRAFT' %}New positions appear here until they are approved.
+    {% else %}Closed positions remain here with their applications and can be reopened.{% endif %}</p>
+  {% if status_filter == 'OPEN' and position_counts.DRAFT %}<a class="btn btn-secondary" href="{{ url_for('positions.dashboard', stato='DRAFT') }}">View drafts</a>{% endif %}
+</div>{% endif %}
+{% if upcoming %}<div class="card"><h2>Upcoming interviews</h2>
+  {% for a, p, c in upcoming %}<div class="small" style="margin:.5rem 0"><b>{{ a.starts_at|local(p.timezone, '%a %d/%m %H:%M') }}</b> · {{ KIND_LABELS[a.kind] }} ·
+    <a href="{{ url_for('positions.candidate_detail', position_id=p.id, pc_id=c.pc.id) }}">{{ c.name }}</a>
+    <span class="muted">— {{ p.title }}{% if a.place %} · {{ a.place }}{% endif %} ({{ p.timezone }})</span></div>{% endfor %}
+</div>{% endif %}
+{% endblock %}

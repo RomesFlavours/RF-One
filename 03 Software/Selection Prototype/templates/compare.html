@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Confronto · {{ position.title }}{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="{{ url_for('dashboard') }}">Posizioni</a> ›
+  <a href="{{ url_for('position_detail', position_id=position.id, tab='valutazione') }}">{{ position.title }}</a> › <b>Confronto</b></div>{% endblock %}
+{% block content %}
+<h1>Confronto candidati</h1>
+<p class="small muted">Gli stessi dati delle schede, affiancati: stato di ogni requisito approvato secondo la proposta corrente, esperienze e risposte.
+  Nessun punteggio, nessuna classifica.</p>
+<div class="card" style="overflow-x:auto">
+<table>
+  <tr><th></th>{% for c in data.columns %}<th style="min-width:220px"><a href="{{ url_for('candidate_detail', position_id=position.id, pc_id=c.pc.id) }}">{{ c.name }}</a></th>{% endfor %}</tr>
+  <tr><td class="small"><b>Proposta</b></td>{% for c in data.columns %}<td class="small">{% if c.proposal %}{{ GROUP_LABELS[c.proposal.group_code] }}
+    <span class="muted">({{ 'AI' if c.proposal.source == 'AI' else 'regole' }})</span>{% else %}—{% endif %}
+    {% if c.decision %}<br><span class="pill ok">{{ DECISION_LABELS[c.decision.decision] }}</span>{% endif %}</td>{% endfor %}</tr>
+  {% for rid, (rname, crit) in data.requirements.items() %}
+  <tr><td class="small"><b>{{ rname }}</b><div class="muted">{{ CRITICALITY_LABELS[crit] }}</div></td>
+    {% for c in data.columns %}{% set s = c.statuses.get(rid) %}
+    <td class="small"><span class="pill {{ 'ok' if s == 'EVIDENCED' else ('warn' if s in ['PARTIALLY_EVIDENCED','CONFLICTING_EVIDENCE'] else '') }}">{{ STATUS_LABELS[s].split(' (')[0].split(':')[0] if s else '—' }}</span></td>{% endfor %}</tr>
+  {% endfor %}
+  <tr><td class="small"><b>Esperienze recenti</b></td>{% for c in data.columns %}<td class="small">{% for r in c.roles %}{{ r }}<br>{% else %}—{% endfor %}
+    {% if c.direct_months is not none %}<span class="muted">esperienza diretta {{ c.direct_months }} mesi</span>{% endif %}</td>{% endfor %}</tr>
+  {% for q in data.questions %}
+  <tr><td class="small"><b>{{ q }}</b></td>{% for c in data.columns %}<td class="small" style="white-space:pre-wrap">{{ c.answers.get(q, '—') }}</td>{% endfor %}</tr>
+  {% endfor %}
+</table>
+</div>
+<p><a href="{{ url_for('position_detail', position_id=position.id, tab='valutazione') }}">← Torna alla valutazione</a></p>
+{% endblock %}

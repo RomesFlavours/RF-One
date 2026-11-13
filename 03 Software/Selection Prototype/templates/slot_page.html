@@ -1,0 +1,25 @@
+{% extends "public_base.html" %}
+{% block title %}Choose your interview time{% endblock %}
+{% block content %}
+<h1>{{ position.title }}</h1>
+<div class="muted">{{ position.location_label }} · {{ 'Phone interview' if offer.kind == 'PHONE' else 'In-person interview' }} · {{ offer.duration_min }} minutes
+  {% if offer.place %}· {{ offer.place }}{% endif %}</div>
+{% if chosen %}
+  <h2 style="font-size:1.15rem">Your interview is booked</h2>
+  <p><b>{{ chosen.starts_at|local(position.timezone, '%A, %B %d at %I:%M %p') }}</b> ({{ position.timezone }})</p>
+  <p class="muted">If you need to change it, please reply to the message you received.</p>
+{% elif offer.status != 'OPEN' %}
+  <p>This link is no longer active.</p>
+{% elif not available %}
+  <p>None of the proposed times is still available. Please reply to the message you received and we will propose new ones.</p>
+{% else %}
+  <h2 style="font-size:1.1rem">Choose the time that works for you</h2>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for s in available %}<label class="slot"><input type="radio" name="slot" value="{{ s.isoformat(timespec='minutes') }}" required {{ 'checked' if loop.first }}>
+      {{ s|local(position.timezone, '%A, %B %d · %I:%M %p') }}</label>{% endfor %}
+    <p class="muted">Times are in local time ({{ position.timezone }}).</p>
+    <p><button class="btn">Confirm this time</button></p>
+  </form>
+{% endif %}
+{% endblock %}

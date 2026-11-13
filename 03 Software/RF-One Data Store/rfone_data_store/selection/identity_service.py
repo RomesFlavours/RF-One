@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from .. import models as m
@@ -37,16 +37,17 @@ def _find_by_contact(
 ) -> tuple[m.CandidatePerson | None, str | None, str | None]:
     if normalized_email:
         stmt = select(m.CandidatePerson).where(
-            m.CandidatePerson.restaurant_id == restaurant_id, m.CandidatePerson.primary_email == normalized_email,
-        )
+            or_(m.CandidatePerson.restaurant_id == restaurant_id, m.CandidatePerson.restaurant_id.is_(None)),
+            m.CandidatePerson.primary_email == normalized_email,
+        ).order_by(m.CandidatePerson.restaurant_id.is_(None), m.CandidatePerson.id)
         found = session.scalars(stmt).first()
         if found is not None:
             return found, idm.VERY_STRONG, f"Same email ({normalized_email})."
     if normalized_phone:
         stmt = select(m.CandidatePerson).where(
-            m.CandidatePerson.restaurant_id == restaurant_id,
+            or_(m.CandidatePerson.restaurant_id == restaurant_id, m.CandidatePerson.restaurant_id.is_(None)),
             m.CandidatePerson.primary_phone_normalized == normalized_phone,
-        )
+        ).order_by(m.CandidatePerson.restaurant_id.is_(None), m.CandidatePerson.id)
         found = session.scalars(stmt).first()
         if found is not None:
             return found, idm.VERY_STRONG, "Same phone number."
@@ -87,6 +88,8 @@ def resolve_or_create_person(
     normalized_email = idm.normalize_email(email)
     normalized_phone = idm.normalize_phone(phone)
     normalized_name = idm.normalize_name(full_name)
+    from ..people_registry import lock_identity_evidence
+    lock_identity_evidence(session, full_name, normalized_email, normalized_phone)
 
     existing, _confidence, _basis = _find_by_contact(
         session, restaurant_id=restaurant_id, normalized_email=normalized_email, normalized_phone=normalized_phone,
@@ -102,12 +105,11 @@ def resolve_or_create_person(
             existing.primary_phone_normalized = normalized_phone
         return existing, False
 
-    person = m.CandidatePerson(
-        restaurant_id=restaurant_id, full_name=full_name, primary_email=normalized_email,
-        primary_phone=phone, primary_phone_normalized=normalized_phone, normalized_name=normalized_name,
+    from ..people_registry import create_identity
+    person = create_identity(session,
+        restaurant_id=restaurant_id, full_name=full_name, email=normalized_email,
+        phone=phone, normalized_phone=normalized_phone, normalized_name=normalized_name,
     )
-    session.add(person)
-    session.flush()
     return person, True
 
 

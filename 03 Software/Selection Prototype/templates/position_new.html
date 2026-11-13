@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Nuova posizione{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="{{ url_for('dashboard') }}">Posizioni</a> › <b>Nuova posizione</b></div>{% endblock %}
+{% block content %}
+<h1>Nuova posizione</h1>
+<div class="grid g2">
+<div class="card">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Chi stai cercando? Descrivilo con parole tue</label>
+    <textarea name="description" style="min-height:8rem" autofocus
+      placeholder="Es. Cerchiamo 2 server per Mount Dora, sere e weekend. Indispensabile esperienza ai tavoli; il resto lo insegniamo.">{{ form.get('description', '') }}</textarea>
+    <div class="grid g2">
+      <div><label>Titolo</label><input type="text" name="title" value="{{ form.get('title', '') }}" placeholder="Server" required></div>
+      <div><label>Ruolo</label>
+        <select name="role_code" required><option value="">Scegli…</option>
+        {% for code, label in roles %}<option value="{{ code }}" {{ 'selected' if form.get('role_code') == code }}>{{ label }}</option>{% endfor %}</select></div>
+      <div><label>Sede</label><input type="text" name="location" value="{{ form.get('location', '') }}" placeholder="Mount Dora" required></div>
+      <div><label>Persone da assumere</label><input type="text" name="headcount" value="{{ form.get('headcount', '1') }}" inputmode="numeric"></div>
+    </div>
+    {% if actor.is_owner %}
+    <label>Responsabile della posizione</label>
+    <select name="manager_account_id" required>
+      {% for a in managers %}<option value="{{ a.id }}" {{ 'selected' if a.id == actor.id }}>{{ a.display_name }}</option>{% endfor %}
+    </select>{% endif %}
+    <details style="margin-top:.6rem"><summary>Fuso orario della sede</summary>
+      <input type="text" name="timezone" value="{{ form.get('timezone') or company.timezone or default_tz }}"></details>
+    <p><button class="btn">{{ 'Crea e fai proporre all\'AI' if ai_policy.ai_enabled else 'Crea posizione' }}</button></p>
+  </form>
+</div>
+<div class="card">
+  <h3>Cosa succede</h3>
+  <ol class="small">
+    <li>{% if ai_policy.ai_enabled %}L'AI propone requisiti, numero di persone e annuncio in inglese, usando solo il profilo aziendale disponibile.
+      {% else %}Scrivi requisiti e annuncio (puoi partire da un modello esistente). <span class="muted">Proposta AI non attiva.</span>{% endif %}</li>
+    <li>Correggi e <b>approva</b>: si apre la pagina di candidatura.</li>
+    <li>I candidati caricano il CV e rispondono a una breve intervista in inglese (circa 5 minuti).</li>
+    <li>Le candidature arrivano divise in tre gruppi motivati. Nessuna esclusione automatica.</li>
+    <li>Organizzi i colloqui e registri l'esito.</li>
+  </ol>
+  <div class="small muted">Analisi completa dell'esperienza per Server e FOH Team Leader; per gli altri ruoli conta il confronto con i requisiti.</div>
+</div>
+</div>
+{% endblock %}

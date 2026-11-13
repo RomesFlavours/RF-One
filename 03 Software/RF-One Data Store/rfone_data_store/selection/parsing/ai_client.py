@@ -108,7 +108,7 @@ def _generate_json_anthropic(prompt: str) -> dict:
         raise AIProviderUnavailable(f"AI provider call failed: {exc}") from exc
 
 
-def _generate_json_bedrock(prompt: str) -> dict:
+def _generate_json_bedrock(prompt: str, *, model_id: str | None = None, profile_name: str | None = None) -> dict:
     """AWS Bedrock Runtime, behind the exact same `generate_json` contract
     (RFONE_AI_PROVIDER_BEDROCK_001). Deliberately introduces NO new AWS
     credential mechanism: `boto3.client("bedrock-runtime")` with no explicit
@@ -124,7 +124,7 @@ def _generate_json_bedrock(prompt: str) -> dict:
     Bedrock access to — never guessed or hardcoded here; the caller
     determines it once (e.g. via `aws bedrock list-foundation-models`) and
     configures it."""
-    model_id = _read_env_or_dotenv("RFONE_BEDROCK_MODEL_ID")
+    model_id = model_id or _read_env_or_dotenv("RFONE_BEDROCK_MODEL_ID")
     if not model_id:
         raise AIProviderUnavailable("No RFONE_BEDROCK_MODEL_ID configured.")
 
@@ -140,7 +140,8 @@ def _generate_json_bedrock(prompt: str) -> dict:
         # environment, so boto3 cannot see it on its own) — passed through
         # explicitly; `None` falls back to boto3's own standard region
         # resolution (`~/.aws/config`, etc.) unchanged.
-        client = boto3.client("bedrock-runtime", region_name=_read_env_or_dotenv("AWS_REGION"))
+        factory = boto3.Session(profile_name=profile_name) if profile_name else boto3
+        client = factory.client("bedrock-runtime", region_name=_read_env_or_dotenv("AWS_REGION"))
         response = client.converse(
             modelId=model_id,
             messages=[{"role": "user", "content": [{"text": prompt}]}],
@@ -150,11 +151,28 @@ def _generate_json_bedrock(prompt: str) -> dict:
         raise AIProviderUnavailable(f"AWS Bedrock call failed: {exc}") from exc
 
     try:
+        if response.get("stopReason") not in (None, "end_turn", "stop_sequence"):
+            raise AIProviderUnavailable("AWS Bedrock did not return a complete usable interpretation.")
         content_blocks = response["output"]["message"]["content"]
         text = "".join(block["text"] for block in content_blocks if "text" in block)
         return json.loads(_strip_markdown_json_fence(text))
     except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
         raise AIProviderUnavailable(f"AWS Bedrock returned an unparsable response: {exc}") from exc
+
+
+def generate_json_for_tips(prompt: str) -> dict:
+    """Tips uses OpenAI on private Bedrock; other consumers keep their provider."""
+    provider = (_read_env_or_dotenv("RFONE_TIPS_AI_PROVIDER") or PROVIDER_BEDROCK).strip().upper()
+    if provider != PROVIDER_BEDROCK:
+        raise AIProviderUnavailable("Tips requires its configured BEDROCK provider; no provider fallback is enabled.")
+    model_id = _read_env_or_dotenv("RFONE_TIPS_BEDROCK_MODEL_ID") or "openai.gpt-oss-120b-1:0"
+    if not model_id.startswith("openai."):
+        raise AIProviderUnavailable("Tips requires an OpenAI Bedrock model.")
+    result = _generate_json_bedrock(prompt, model_id=model_id,
+        profile_name=_read_env_or_dotenv("RFONE_TIPS_AWS_PROFILE"))
+    if not isinstance(result, dict):
+        raise AIProviderUnavailable("Bedrock returned JSON that is not an object.")
+    return result
 
 
 _PROVIDERS = {

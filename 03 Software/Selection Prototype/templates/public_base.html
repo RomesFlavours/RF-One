@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ position.title }}{% endblock %} · {{ client or "Careers" }}</title>
+{% block head %}{% endblock %}
+<style>
+  body { margin:0; font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; background:#f6f7f9; color:#1d2433; line-height:1.5; }
+  .box { max-width:640px; margin:1.5rem auto; background:#fff; border:1px solid #e4e7ec; border-radius:14px; padding:1.5rem; }
+  @media (max-width:680px) { .box { margin:0; border-radius:0; border-left:0; border-right:0; } }
+  h1 { font-size:1.45rem; margin:.1rem 0 .2rem; } .muted { color:#667085; font-size:.9rem; }
+  label { display:block; font-size:.85rem; color:#667085; margin:.8rem 0 .25rem; }
+  input[type=text],input[type=email],input[type=tel],textarea { width:100%; box-sizing:border-box; padding:.6rem; border:1px solid #d0d5dd;
+    border-radius:8px; font:inherit; font-size:1rem; }
+  textarea { min-height:7rem; }
+  .btn { background:#2557d6; color:#fff; border:1px solid #2557d6; border-radius:8px; padding:.65rem 1.2rem; font-size:1rem; cursor:pointer;
+         text-decoration:none; display:inline-block; font-family:inherit; }
+  .btn.ghost { background:#fff; color:#2557d6; } .btn.small { padding:.35rem .7rem; font-size:.88rem; }
+  .flash { background:#fdecea; padding:.6rem .8rem; border-radius:8px; font-size:.9rem; margin:.6rem 0; }
+  .note { background:#f2f4f7; border-radius:8px; padding:.6rem .8rem; font-size:.85rem; color:#475467; margin:.6rem 0; }
+  .ad { white-space:pre-wrap; margin:1rem 0; }
+  .bar { height:6px; background:#e4e7ec; border-radius:6px; overflow:hidden; margin:.6rem 0 1rem; }
+  .bar span { display:block; height:100%; background:#2557d6; }
+  .row { display:flex; gap:.6rem; flex-wrap:wrap; align-items:center; }
+  .slot { display:flex; gap:.6rem; align-items:center; border:1px solid #e4e7ec; border-radius:8px; padding:.6rem .8rem; margin:.4rem 0;
+          color:#1d2433; font-size:1rem; }
+  .q { border-left:3px solid #e4e7ec; padding:.2rem .7rem; margin:.5rem 0; font-size:.9rem; }
+</style></head>
+<body><div class="box">
+  <div class="muted">{{ client or "" }}</div>
+  {% for msg in get_flashed_messages() %}<div class="flash">{{ msg }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</div></body></html>

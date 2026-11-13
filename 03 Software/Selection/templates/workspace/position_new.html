@@ -1,0 +1,44 @@
+{% extends "workspace/base.html" %}
+{% set help_section = 'workspace_position_new' %}
+{% block title %}New position{% endblock %}
+{% set crumbs = [('New position', None)] %}
+{% block content %}
+<h1>New position</h1>
+<div class="grid g2">
+<div class="card">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Who are you looking for? Describe the role in your own words</label>
+    <textarea name="description" style="min-height:8rem" autofocus
+      placeholder="E.g. We need 2 servers in Mount Dora for evenings and weekends. Table-service experience is required; we can teach the rest.">{{ form.get('description', '') }}</textarea>
+    <div class="grid g2">
+      <div><label>Title</label><input type="text" name="title" value="{{ form.get('title', '') }}" placeholder="Server" required></div>
+      <div><label>Role</label>
+        <select name="role_code" required><option value="">Choose…</option>
+        {% for code, label in roles %}<option value="{{ code }}" {{ 'selected' if form.get('role_code') == code }}>{{ label }}</option>{% endfor %}</select></div>
+      <div><label>Location</label><input type="text" name="location" value="{{ form.get('location', '') }}" placeholder="Mount Dora" required></div>
+      <div><label>Number of openings</label><input type="text" name="headcount" value="{{ form.get('headcount', '1') }}" inputmode="numeric"></div>
+    </div>
+    {% if actor.is_owner %}
+    <label>Position manager</label>
+    <select name="manager_account_id" required>
+      {% for a in managers %}<option value="{{ a.id }}" {{ 'selected' if a.id == actor.id }}>{{ a.display_name }}</option>{% endfor %}
+    </select>{% endif %}
+    <details style="margin-top:.6rem"><summary>Location time zone</summary>
+      <input type="text" name="timezone" value="{{ form.get('timezone') or company.timezone or default_tz }}"></details>
+    <p><button class="btn">Create position</button></p>
+  </form>
+</div>
+<div class="card">
+  <h3>What happens next</h3>
+  <ol class="small">
+    <li>Create the position, then select its AI features in <b>Configuration</b>. Draft requirements and the job ad with AI, or start from an existing template.</li>
+    <li>Review and <b>approve</b>: this opens the application page.</li>
+    <li>Candidates upload their résumé and complete a short English interview (about 5 minutes).</li>
+    <li>Applications are grouped into three categories with explanations. No automatic exclusion.</li>
+    <li>Schedule interviews and record the outcome.</li>
+  </ol>
+  <div class="small muted">Full experience analysis is available for Server and FOH Team Leader. Other roles are assessed against the requirements.</div>
+</div>
+</div>
+{% endblock %}

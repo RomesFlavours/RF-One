@@ -1,0 +1,52 @@
+{
+  "ServiceName": "rfone-selection-ai-test",
+  "SourceConfiguration": {
+    "ImageRepository": {
+      "ImageIdentifier": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-selection-ai-test:latest",
+      "ImageRepositoryType": "ECR",
+      "ImageConfiguration": {
+        "Port": "8080",
+        "RuntimeEnvironmentVariables": {
+          "AWS_REGION": "us-east-1",
+          "RFONE_SELECTION_PROTOTYPE_PUBLIC": "1",
+          "RFONE_SELECTION_PROTOTYPE_AI": "1",
+          "RFONE_SELECTION_PROTOTYPE_AI_CV": "1",
+          "RFONE_SELECTION_PROTOTYPE_DOCUMENT_BUCKET": "rfone-selection-ai-test-documents-418674484214",
+          "RFONE_SELECTION_PROTOTYPE_DATA": "/tmp/selection-ai-test",
+          "RFONE_AI_PROVIDER": "BEDROCK",
+          "RFONE_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+        },
+        "RuntimeEnvironmentSecrets": {
+          "RFONE_SELECTION_PROTOTYPE_DATABASE_URL": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-selection-ai-test/database-url-OuHgzf",
+          "RFONE_SELECTION_PROTOTYPE_SECRET_KEY": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-selection-ai-test/flask-secret-key-1SKcW4",
+          "RFONE_SELECTION_PROTOTYPE_SETUP_TOKEN": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-selection-ai-test/setup-token-NRFLIL"
+        }
+      }
+    },
+    "AutoDeploymentsEnabled": false,
+    "AuthenticationConfiguration": {
+      "AccessRoleArn": "arn:aws:iam::418674484214:role/rfone-selection-ai-test-apprunner-ecr-access-role"
+    }
+  },
+  "InstanceConfiguration": {
+    "Cpu": "1024",
+    "Memory": "2048",
+    "InstanceRoleArn": "arn:aws:iam::418674484214:role/rfone-selection-ai-test-apprunner-instance-role"
+  },
+  "NetworkConfiguration": {
+    "EgressConfiguration": {
+      "EgressType": "VPC",
+      "VpcConnectorArn": "arn:aws:apprunner:us-east-1:418674484214:vpcconnector/rfone-tips-vpc-connector/1/d85b21340d0c4fbda82017b934ba18f4"
+    },
+    "IngressConfiguration": {
+      "IsPubliclyAccessible": true
+    }
+  },
+  "HealthCheckConfiguration": {
+    "Protocol": "TCP",
+    "Interval": 10,
+    "Timeout": 5,
+    "HealthyThreshold": 1,
+    "UnhealthyThreshold": 10
+  }
+}
