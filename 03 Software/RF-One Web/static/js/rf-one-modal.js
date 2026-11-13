@@ -117,6 +117,7 @@
   // on the topmost open dialog only.
   document.addEventListener("keydown", function (event) {
     if (!openStack.length) { return; }
+    if (document.querySelector("dialog[open]")) { return; }
     var top = openStack[openStack.length - 1];
     if (event.key === "Escape") {
       event.preventDefault();

@@ -153,7 +153,7 @@ with SessionFactory() as db:check('Invalid contact update atomic',db.get(m.Emplo
 check('Explicit clear contact fields',post(action='person_save',person=f'employee:{contact_id}',name='Contact Person',person_roles='[]',email='',phone='').status_code==302)
 with SessionFactory() as db:check('Cleared contact values persist',db.get(m.Employee,contact_id).email is None and db.get(m.Employee,contact_id).phone is None)
 reset_open=post(action='person_password',person=f'employee:{unlinked_id}')
-check('Registry reset opens canonical existing account',reset_open.status_code==302 and f'/admin/accounts/{aid}/edit#reset-password' in reset_open.location)
+check('Registry reset opens canonical existing account',reset_open.status_code==302 and f'/admin/accounts/{aid}/edit?from_person=' in reset_open.location and reset_open.location.endswith('#reset-password'))
 with SessionFactory() as db:reset_version=db.get(m.RFOneAccount,aid).session_version
 check('Existing reset page survives',owner.get(f'/admin/accounts/{aid}/edit').status_code==200)
 check('Reset password CSRF required',owner.post(f'/admin/accounts/{aid}/reset-password',data={'password':'TestNewPass123!','password_confirm':'TestNewPass123!'}).status_code==400)

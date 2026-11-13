@@ -148,6 +148,25 @@ def account_is_domain_admin(
     return account_service.normalize_role_code(row.role_code) == account_service.DOMAIN_ADMIN_ROLE
 
 
+# The read-only level a Domain may offer (`DomainDefinition.view_level` in
+# `RF-One Web/domain_registry.py`, Product Owner 2026-11-11 — Wines).
+VIEW_ROLE = "view"
+
+
+def account_is_domain_view_only(
+    db_session: Session, account: "m.RFOneAccount | None", domain_code: str,
+) -> bool:
+    """Whether `account` may only consult `domain_code`: its effective level
+    there is View. Several grants are merged first (the highest level wins,
+    `access_profiles.effective_permissions`), so View applies only when no
+    grant gives more. An RF-One administrator is never view-only (it
+    administers every Domain it is let into, as `account_is_domain_admin`)."""
+    row = _enabled_domain_access(db_session, account, domain_code)
+    if row is None or account.is_admin:
+        return False
+    return (row.role_code or "").strip().casefold() == VIEW_ROLE
+
+
 def account_may_use_domain_item(
     db_session: Session, account: "m.RFOneAccount | None", domain_code: str, item_code: str,
 ) -> bool:

@@ -599,9 +599,7 @@ register_dev_journal_routes(
 @app.route("/admin/accounts")
 @require_admin
 def admin_accounts():
-    with SessionFactory() as db:
-        accounts = account_service.list_accounts(db)
-        return render_template("admin_accounts.html", accounts=accounts)
+    return redirect(url_for('role_profiles_home', tab='people'))
 
 
 @app.route("/admin/accounts/new", methods=["GET", "POST"])
@@ -657,6 +655,8 @@ def admin_account_edit(account_id: int):
         account = account_service.get_account(db, account_id)
         if account is None:
             abort(404)
+        from registry_navigation import account_return
+        profile_person, profile_return = account_return(db, account)
 
         if request.method == "POST":
             require_csrf()
@@ -677,12 +677,12 @@ def admin_account_edit(account_id: int):
                 flash(str(exc), "error")
                 db.refresh(account)
                 return render_template("admin_account_form.html", mode="edit", account=account,
-                                       actor_id=current_account_id()), 400
+                                       actor_id=current_account_id(), profile_person=profile_person, profile_return=profile_return), 400
 
             flash("Account updated.", "info")
-            return redirect(url_for("admin_accounts"))
+            return redirect(profile_return)
 
-        return render_template("admin_account_form.html", mode="edit", account=account, actor_id=current_account_id())
+        return render_template("admin_account_form.html", mode="edit", account=account, actor_id=current_account_id(), profile_person=profile_person, profile_return=profile_return)
 
 
 @app.route("/admin/accounts/<int:account_id>/reset-password", methods=["POST"])
@@ -697,18 +697,28 @@ def admin_account_reset_password(account_id: int):
         if account is None:
             abort(404)
 
+        from registry_navigation import account_return
+        profile_person, profile_return = account_return(db, account)
+        saved = False
         if password != password_confirm:
             flash("Passwords did not match.", "error")
         else:
             try:
                 account_service.set_password(db, account, password)
                 db.commit()
+                saved = True
                 flash("Password updated.", "info")
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
 
-    return redirect(url_for("admin_account_edit", account_id=account_id))
+    if saved and account_id == current_account_id():
+        # Resetting one's own password invalidates the session. Preserve the
+        # canonical return through the existing login instead of losing it.
+        log_out()
+        flash("Password updated. Sign in again to continue.", "info")
+        return redirect(url_for("login", next=profile_return))
+    return redirect(profile_return) if saved else redirect(url_for("admin_account_edit", account_id=account_id, from_person=profile_person, _anchor="reset-password"))
 
 
 @app.route("/admin/accounts/<int:account_id>/access", methods=["GET", "POST"])
@@ -719,14 +729,10 @@ def admin_account_access(account_id: int):
         if account is None:
             abort(404)
 
-        profile_person=request.values.get('from_person','')
-        profile_return=None
-        if profile_person:
-            from rfone_data_store import employee_directory as profile_directory
-            expected=f'account:{account.id}'
-            person_id=profile_directory.context_person_id(db,'RFONE_ACCOUNT',account.id)
-            if profile_person not in (expected,f'employee:{person_id}' if person_id is not None else expected):abort(400)
-            profile_return=url_for('role_profiles_home',tab='people',person=profile_person)
+        from registry_navigation import account_return
+        profile_person, profile_return = account_return(db, account)
+        status = 200
+        submitted = None
         if request.method == "POST":
             require_csrf()
             try:
@@ -757,10 +763,12 @@ def admin_account_access(account_id: int):
             except ValueError as exc:
                 db.rollback()
                 flash(f"Nothing saved. {exc}", "error")
-                return redirect(url_for("admin_account_access", account_id=account_id,from_person=profile_person))
-            db.commit()
-            flash("Domain access updated.", "info")
-            return redirect(url_for("admin_account_access",account_id=account_id,from_person=profile_person,saved="1")) if profile_return else redirect(url_for("admin_accounts"))
+                status = 400
+                submitted = request.form
+            else:
+                db.commit()
+                flash("Domain access updated.", "info")
+                return redirect(profile_return)
 
         access_by_code = {row.domain_code: row for row in account_service.list_direct_domain_access_for_account(db, account.id)}
         items_by_code = account_service.list_direct_domain_item_access_for_account(db, account.id)
@@ -773,11 +781,16 @@ def admin_account_access(account_id: int):
                 mode = _ACCESS_SELECTED
             else:
                 mode = _ACCESS_ALL
+            if submitted is not None:
+                legacy = _ACCESS_ALL if submitted.get(f'enabled_{d.code}') == 'on' else _ACCESS_NONE
+                mode = submitted.get(f'access_{d.code}', legacy)
+                access = {'role_code': submitted.get(f'role_{d.code}', '')}
+                items_by_code[d.code] = set(submitted.getlist(f'items_{d.code}'))
             domains_view.append({
                 "domain": d, "access": access, "mode": mode,
                 "selected_items": items_by_code.get(d.code, set()) if mode == _ACCESS_SELECTED else set(),
             })
-        return render_template("admin_account_access.html", account=account, domains_view=domains_view,profile_return=profile_return,profile_person=profile_person)
+        return render_template("admin_account_access.html", account=account, domains_view=domains_view,profile_return=profile_return,profile_person=profile_person), status
 
 
 # The three access choices of the Access screen (ACCOUNT_ITEM_ACCESS_001).
@@ -865,6 +878,8 @@ def admin_account_training_link(account_id: int):
         account = account_service.get_account(db, account_id)
         if account is None:
             abort(404)
+        from registry_navigation import account_return
+        profile_person, profile_return = account_return(db, account)
         existing_link = training_integration.get_link_for_rfone_account(db, account_id)
 
         if request.method == "POST":
@@ -889,10 +904,10 @@ def admin_account_training_link(account_id: int):
             except (ValueError, training_integration.AlreadyLinkedError) as exc:
                 db.rollback()
                 flash(str(exc), "error")
-                return redirect(url_for("admin_account_training_link", account_id=account_id))
+                return render_template("admin_account_training_link.html", account=account, existing_link=existing_link, linked_training_account=None, unlinked_accounts=training_integration.list_unlinked_training_accounts(db), profile_person=profile_person, profile_return=profile_return), 400
 
             flash("Training identity linked.", "info")
-            return redirect(url_for("admin_accounts"))
+            return redirect(profile_return)
 
         unlinked_accounts = training_integration.list_unlinked_training_accounts(db) if existing_link is None else []
         linked_training_account = (
@@ -901,6 +916,7 @@ def admin_account_training_link(account_id: int):
         return render_template(
             "admin_account_training_link.html", account=account, existing_link=existing_link,
             linked_training_account=linked_training_account, unlinked_accounts=unlinked_accounts,
+            profile_person=profile_person, profile_return=profile_return,
         )
 
 
@@ -914,45 +930,39 @@ def admin_account_training_link(account_id: int):
 @app.route("/training-trainer/students/new", methods=["GET", "POST"])
 @training_integration.require_training_trainer(auth, SessionFactory)
 def training_trainer_new_student():
-    if request.method == "POST":
+    from rfone_data_store import employee_directory as directory, access_profiles as profiles
+    def form_page(status=200):
+        with SessionFactory() as db:
+            choices=[]
+            for person in directory.employee_options(db):
+                login=profiles.profile_account(db,f'employee:{person.id}')
+                choices.append(dict(id=person.id,name=person.display_name,email=(login.email if login else None) or db.get(m.Employee,person.id).email or '',username=login.username if login else '',has_account=bool(login)))
+            return render_template('training_trainer_new_student.html',registry_people=choices),status
+    if request.method == 'POST':
         require_csrf()
-        username = request.form.get("username", "").strip()
-        display_name = request.form.get("display_name", "").strip()
-        email = request.form.get("email", "").strip()
-        password = request.form.get("password", "")
-        password_confirm = request.form.get("password_confirm", "")
-
-        if password != password_confirm:
-            flash("Passwords did not match.", "error")
-            return render_template("training_trainer_new_student.html"), 400
-        if not email:
-            flash("Email is required for a new student.", "error")
-            return render_template("training_trainer_new_student.html"), 400
-
+        password=request.form.get('password','')
+        if password!=request.form.get('password_confirm',''):
+            flash('Le password non coincidono.','error');return form_page(400)
         with SessionFactory() as db:
             try:
-                rfone_account, _training_account = training_integration.create_student_via_rf_one(
-                    db, username=username, display_name=display_name, password=password, email=email,
-                )
+                existing_ids=set(db.scalars(select(m.RFOneAccount.id)))
+                rf,training=training_integration.create_student_via_rf_one(db,
+                    username=request.form.get('username',''),display_name=request.form.get('display_name',''),
+                    password=password,email=request.form.get('email',''),
+                    registry_person_id=int(request.form['registry_person_id']) if request.form.get('registry_person_id') else None,
+                    actor_id=auth.current_account_id())
+                new_account=rf.id not in existing_ids
                 db.commit()
-            except (training_integration.StudentCreationError, account_service.EmailTakenError, ValueError) as exc:
-                db.rollback()
-                flash(str(exc), "error")
-                return render_template("training_trainer_new_student.html"), 400
-
-            try:
-                _issue_and_send_code(
-                    db, account=rfone_account, purpose=recovery_service.PURPOSE_EMAIL_VERIFICATION,
-                    target_email=rfone_account.email, subject=_VERIFICATION_EMAIL_SUBJECT,
-                    body_template=_VERIFICATION_EMAIL_BODY,
-                )
-            except recovery_service.RateLimitedError:
-                pass  # cannot happen for a brand-new account's first code; defensive only
-
-        flash(f"Student {display_name!r} created — they can now log in to RF-One directly.", "info")
-        return redirect(url_for("home"))
-
-    return render_template("training_trainer_new_student.html")
+            except (ValueError,account_service.EmailTakenError) as exc:
+                db.rollback();flash(str(exc),'error');return form_page(400)
+            if new_account and not app.config.get('RFONE_LOCAL_OFFLINE'):
+                try:
+                    _issue_and_send_code(db,account=rf,purpose=recovery_service.PURPOSE_EMAIL_VERIFICATION,
+                        target_email=rf.email,subject=_VERIFICATION_EMAIL_SUBJECT,body_template=_VERIFICATION_EMAIL_BODY)
+                except recovery_service.RateLimitedError:pass
+        flash('Persona Registry collegata a Training. Le credenziali esistenti sono conservate.' if not new_account else 'Persona registrata nel Registry e collegata a Training.','info')
+        return redirect(url_for('training_trainer_students'))
+    return form_page()
 
 
 @app.route("/training-trainer/students")
