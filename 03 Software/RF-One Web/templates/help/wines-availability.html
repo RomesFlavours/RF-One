@@ -1,0 +1,44 @@
+<section id="help-wines-availability" class="rf-help-section">
+<h2>Availability</h2>
+<p>This page is the catalog of the wines that can be bought: for each wine, its supplier, cost and availability. It is the source from which wines are added to a Wine list. It is not a count of the stock on hand.</p>
+
+<h3>What you can do</h3>
+<ul>
+  <li>Search the catalog by type, producer, label or supplier, before adding a wine, to avoid duplicates.</li>
+  <li>Add a new wine, or change an existing one.</li>
+</ul>
+
+<h3>Columns</h3>
+<dl>
+  <dt>Type · Label</dt><dd>Wine type and label name, with denomination and region when recorded.</dd>
+  <dt>Producer, Vintage, Category, Format</dt><dd>Producer, vintage year (or non-vintage), category and style, and bottle size in ml.</dd>
+  <dt>Supplier</dt><dd>Who the wine is bought from.</dd>
+  <dt>Cost</dt><dd>Cost per bottle in USD, with the date of the cost. “Cost unknown” means it has not been entered; it is never treated as zero.</dd>
+  <dt>Availability</dt><dd>Available, Incoming or Not available.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Search / Clear</dt><dd>Show only the matching wines, or all of them again. They change no data.</dd>
+  <dt>Upload file</dt><dd>Not available yet: loading the catalog from a file is waiting for a sample file.</dd>
+  <dt>New wine / Edit</dt><dd>Open the wine window (below). <strong>Save wine</strong> stores it and reloads the list; <strong>Cancel</strong> or the × closes the window without saving. If something is refused, the window stays open with what you typed and the reason.</dd>
+</dl>
+
+<h3>The wine window</h3>
+<dl>
+  <dt>Wine type</dt><dd>Required. Type to search the existing types (alternative names are recognized). The <strong>+</strong> button opens the New wine type window on top, without losing what you typed; the new type is then selected.</dd>
+  <dt>Producer</dt><dd>Required.</dd>
+  <dt>Label name</dt><dd>Optional.</dd>
+  <dt>Vintage / Non-vintage</dt><dd>A year is required, unless you tick Non-vintage.</dd>
+  <dt>Category, Style</dt><dd>Required: Red, White or Rosé; Still, Frizzante or Sparkling.</dd>
+  <dt>Denomination, Region</dt><dd>Optional.</dd>
+  <dt>Bottle format (ml)</dt><dd>750 unless you change it.</dd>
+  <dt>Supplier</dt><dd>Optional; suppliers already used are suggested.</dd>
+  <dt>Cost per bottle (USD)</dt><dd>Leave it empty if it is not known yet. When you enter a cost, the cost date is set to today if empty.</dd>
+  <dt>Cost date, Availability, Notes</dt><dd>When the cost was valid, whether the wine can be bought, and free notes.</dd>
+</dl>
+<p>The same wine cannot be entered twice: if type, producer, label, vintage and format match a wine already in the catalog, the save is refused and you are asked to edit that one instead. Changing a cost here does not change prices already on a Wine list: the Wine List shows the new cost and lets you adopt it row by row. Wines cannot be deleted from the catalog on this page.</p>
+
+<h3>Next steps</h3>
+<p>Go to <strong>Wine List</strong> to add the catalog wines to an Entity's list.</p>
+</section>

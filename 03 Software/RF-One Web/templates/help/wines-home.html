@@ -1,0 +1,46 @@
+<section id="help-wines-home" class="rf-help-section">
+<h2>How Wines works</h2>
+<p>Wines builds a reliable catalog of the wines the restaurant can buy, prepares a dated Wine list for each Entity, and calculates and controls its selling prices.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li><strong>Wine Types</strong> keeps one standard name per type, with alternative names, so the same type is always recognized in the same way.</li>
+  <li><strong>Availability</strong> is the purchasing catalog: each wine with its supplier, cost and availability. It is not a stock count.</li>
+  <li><strong>Wine List</strong> keeps, for each Entity, dated versions of the list. The effective date decides whether a version is <em>In effect</em>, <em>Prepared (future)</em> or <em>Previous</em>. A prepared version leaves today's list in effect until its date; previous versions can be consulted and exported but not changed. Dates follow the restaurant Location's time zone.</li>
+  <li>Prices are calculated from the cost and a commercial <strong>Value</strong> that you assign, and you can set them by hand. A later change of catalog cost or of the pricing parameters is flagged on the list; prices already on a list never change by themselves.</li>
+  <li>You supply and approve suppliers, availability, costs, Values, prices and dates. Wines does not use a generative AI model, research suppliers, place orders, track stock or publish recommendations by itself.</li>
+</ul>
+
+<h3>Typical flow</h3>
+<ol>
+  <li>Define the <strong>Wine Types</strong> you need.</li>
+  <li>Record the wines you can buy in <strong>Availability</strong>, with supplier and cost.</li>
+  <li>On this page, choose the <strong>Entity</strong>.</li>
+  <li>Click <strong>New Wine list</strong>: choose the effective date and start empty or from a copy of the list in effect.</li>
+  <li>Add wines with <strong>Add new wine to current Wine list</strong>, set their Value and whether they are sold by the glass, and review the prices.</li>
+  <li>Check the prices marked “To complete” and the change warnings, then <strong>Export Wine list</strong>.</li>
+</ol>
+
+<h3>What this page shows</h3>
+<dl>
+  <dt>Entity</dt><dd>The business whose Wine list you see. Entities come from the Legal Entities registry. Changing it reloads the page.</dd>
+  <dt>Versions</dt><dd>Every Wine list version of the Entity, with its effective date and state. Click one to show it; the page opens on the version in effect (or, if none is in effect yet, the nearest prepared one).</dd>
+  <dt>Cost used</dt><dd>The cost per bottle the prices are based on. “Catalog now $…” means the catalog cost changed after the wine was added.</dd>
+  <dt>Value</dt><dd>Your commercial assessment of the wine (not an AI rating). A higher Value gives a higher price.</dd>
+  <dt>Bottle price, Glass price</dt><dd>The prices applied on the list. “To complete” means there is no price yet (for example, the cost is unknown or not above $1). “Set by hand · calculated …” shows a price entered by hand next to the calculated one. “Calculated with earlier parameters” means the pricing parameters changed since the price was calculated. The glass price applies only to wines sold by the glass.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>New Wine list</dt><dd>Opens a window: <strong>Effective from</strong> (required), then <strong>Empty list</strong> or <strong>Copy of the current list</strong> (available only when a list is in effect today; it copies wines, costs used, Values, parameters and prices). <strong>Create Wine list</strong> creates the version; an Entity cannot have two versions with the same date. Earlier versions are kept.</dd>
+  <dt>Add new wine to current Wine list</dt><dd>Available only on a version in effect or prepared. Opens a window to pick a wine from the catalog (wines already on the list cannot be picked), then <strong>Cost used</strong>, <strong>Value</strong> and <strong>Sold by the glass</strong>. The calculated prices appear as you type; the applied price follows the calculated one until you change it, and then it counts as set by hand. <strong>Add to Wine list</strong> saves the row.</dd>
+  <dt>Edit</dt><dd>Opens the same window for that row; <strong>Save</strong> stores the changes.</dd>
+  <dt>Restore calculated</dt><dd>Replaces the prices set by hand with the calculated ones, immediately.</dd>
+  <dt>Adopt and recalculate</dt><dd>Takes the new catalog cost for that row and recalculates its prices.</dd>
+  <dt>Adopt parameters</dt><dd>Recalculates that row with the current pricing parameters.</dd>
+  <dt>Delete</dt><dd>Asks for confirmation, then removes the wine from this Wine list. It stays in the catalog.</dd>
+  <dt>Export Wine list</dt><dd>Downloads the shown version as a CSV file (Entity, date, category, type, label, producer, vintage, format, bottle and glass price). Nothing is changed.</dd>
+  <dt>Pricing parameters</dt><dd>With cost C and Value V, the bottle price is C × A ÷ log<sub>B</sub>(C) × V², and the glass price is that unrounded amount ÷ G; each price is rounded separately to the whole dollar, halves up. A cost of $1 or less, or an unknown cost, gives no calculated price. <strong>Save parameters</strong> applies to prices calculated from now on, for every Entity; rows already on a Wine list keep their prices until you use <strong>Adopt parameters</strong> on them.</dd>
+</dl>
+<p>Edit, Restore calculated, the Adopt buttons and Delete appear only on a version in effect or prepared; a previous version can only be consulted and exported.</p>
+</section>

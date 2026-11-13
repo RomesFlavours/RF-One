@@ -5,29 +5,11 @@
 {% block content %}
 {{ wines_styles() }}
 {{ wines_header('help', 'How Wines works') }}
-<h1>How Wines works</h1>
-<p>Build a reliable catalog, prepare a Wine list for each Entity, and control its selling prices and effective dates.</p>
-<nav aria-label="Guide contents"><a href="#workflow">Workflow</a> · <a href="#catalog">Catalog and types</a> · <a href="#pricing">Pricing</a> · <a href="#versions">Versions</a> · <a href="#agent">Wines agent features</a></nav>
-<section id="workflow"><h2>The workflow</h2>
-<ol><li><strong>Define Wine Types.</strong> Create a standard name and alternative names so the same type is recognized consistently.</li>
-<li><strong>Maintain Availability.</strong> Record the wines you can buy, their suppliers, costs and availability.</li>
-<li><strong>Select the Entity.</strong> Each Entity has its own dated Wine list versions.</li>
-<li><strong>Create a New Wine list.</strong> Choose an effective date and start empty or copy the list currently in effect.</li>
-<li><strong>Add wines and set prices.</strong> Choose catalog wines, enter their commercial Value, and decide whether they are sold by the glass. Review calculated prices or set them manually.</li>
-<li><strong>Review and export.</strong> Check incomplete prices and change warnings, then export the selected version as CSV. A future version becomes effective on its date.</li></ol></section>
-<section id="catalog"><h2>Wine Types and Availability</h2>
-<p>Wine Types stores a standard name and alternative names. Names already assigned to another type are refused.</p>
-<p>Availability is the purchasing catalog, not an inventory count. A wine records its type, producer, label, vintage or non-vintage status, category, style, denomination, region, bottle size, supplier, cost, cost date and notes. Availability can be Available, Incoming or Not available.</p>
-<p>Search the catalog to find an existing wine before adding one. Duplicate wine identities are rejected. An unknown cost can stay blank; it is never silently treated as zero.</p></section>
-<section id="pricing"><h2>Pricing and manual decisions</h2>
-<p>The calculator follows the Wine workbook. With cost C, commercial Value V and parameters A, B and G, the multiplier is A / log<sub>B</sub>(C). The bottle price is C × multiplier × V²; the glass price is that unrounded amount divided by G. Each price is rounded independently to whole dollars, with halves rounded up.</p>
-<p>Value is your commercial assessment, not an AI rating. G is a commercial divisor. The initial parameters are A = 1.3, B = 900 and G = 3.5; Pricing parameters lets you change them. A missing cost or cost of $1 or less cannot produce a calculated price.</p>
-<p>You can override bottle and glass prices manually and restore calculated prices later. The list shows which prices were set by hand. Catalog cost changes and parameter changes are flagged; existing list prices do not change silently. Use the explicit adoption and recalculation actions after reviewing the change.</p></section>
-<section id="versions"><h2>Wine list versions and effective dates</h2>
-<p>Versions are maintained separately for each Entity. The effective date determines whether a version is In effect, Prepared (future) or Previous. Preparing a future version leaves today's list in effect until the new date.</p>
-<p>Copying the current list preserves its selected wines, costs used, commercial Values, calculation parameters and prices. Previous versions remain available for consultation and export, and cannot be edited. Dates follow the restaurant Location's timezone.</p></section>
-<section id="agent"><h2>Wines agent features</h2>
-<p>The current Wines implementation provides structured operational assistance: consistent wine identities, duplicate checks, cost and price validation, deterministic price calculations, per-Entity list versions, change warnings and CSV export.</p>
-<p>You supply and approve supplier information, availability, costs, commercial Value, selling prices and effective dates. The current module does not connect to a generative AI model, research suppliers, place orders, track physical stock or autonomously publish recommendations. These are not active features of this installation.</p></section>
+{# The full Wines guide is the same text as the pages' contextual help
+   ("How … works" link of each Wines page): one source, help/wines-*.html. #}
+<nav aria-label="Guide contents"><a href="#help-wines-home">Wines and Wine List</a> · <a href="#help-wines-availability">Availability</a> · <a href="#help-wines-types">Wine Types</a></nav>
+{% include "help/wines-home.html" %}
+{% include "help/wines-availability.html" %}
+{% include "help/wines-types.html" %}
 <p><a class="btn" href="{{ url_for('restaurant_wines_home') }}">Back to Wine List</a></p>
 {% endblock %}

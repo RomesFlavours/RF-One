@@ -18,7 +18,6 @@
   <a class="module-tab {{ 'is-active' if active_tab == 'list' }}" href="{{ url_for('restaurant_wines_home') }}" data-rf-busy>Wine List</a>
   <a class="module-tab {{ 'is-active' if active_tab == 'availability' }}" href="{{ url_for('restaurant_wine_availability') }}" data-rf-busy>Availability</a>
   <a class="module-tab {{ 'is-active' if active_tab == 'types' }}" href="{{ url_for('restaurant_wine_types') }}" data-rf-busy>Wine Types</a>
-  <a class="module-tab wines-help-link {{ 'is-active' if active_tab == 'help' }}" style="margin-left:auto" href="{{ url_for('restaurant_wines_how_it_works') }}">How Wines works</a>
 </nav>
 {% endmacro %}
 
