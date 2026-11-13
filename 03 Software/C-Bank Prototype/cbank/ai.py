@@ -49,38 +49,13 @@ def _known_whos(engine, descriptions: list[str], limit=40) -> list[str]:
     return [n for _, n in sorted(scored, reverse=True)[:limit]]
 
 
-def _evidence(engine, results: list[dict]) -> list[dict]:
-    """Memory and Bank knowledge as evidence (never as an automatic rule)."""
-    out, seen = [], set()
+def _evidence(engine, results):
+    out = []
     for r in results:
-        for p in engine.memory.get(r["history_key"], [])[:5]:
-            if p["txn_id"] in seen:
-                continue
-            seen.add(p["txn_id"])
-            out.append(dict(kind="precedent", txn_id=p["txn_id"], who=p["who"],
-                            why=engine._why_name(p["why_id"]), beneficiary=engine.c.entity_name(p["beneficiary_id"]),
-                            origin=p["origin"]))
-        if r.get("who_id"):
-            o = engine.db.get(m.BankOccurrence, r["who_id"])
-            for kind, table in ((("approved WHO→WHY association", engine.who_whys_approved),
-                                 ("historical WHO→WHY association (not approved: evidence only)", engine.who_whys_history))
-                                if config.WHO_WHY_KNOWLEDGE else ()):
-                whys = [engine._why_name(w) for w in table.get(r["who_id"], [])]
-                if whys:
-                    out.append(dict(kind=kind, who=o.canonical_name if o else None, why=", ".join(whys)))
-            if o and o.default_transaction_reason_id:
-                out.append(dict(kind="Bank Configuration default WHY of this WHO (hint only)",
-                                who=o.canonical_name, why=engine._why_name(o.default_transaction_reason_id)))
-            labels = engine.who_labels.get(r["who_id"], [])
-            if labels:
-                # Context, not a rule: profiles and approved WHO→WHY associations always prevail.
-                out.append(dict(kind="WHO Labels (activity context, not a rule)", who=o.canonical_name if o else None,
-                                labels=[dict(name=n, definition=engine.label_definitions.get(n)) for n in labels],
-                                label_hints=[f"{h['whos']} of {h['of']} other WHOs labelled {h['label']} are approved as "
-                                             f"{h['why']}" for h in engine.label_hints(r["who_id"]) or []]))
-            k = engine.db.query(m.BankWhoKnowledge).filter_by(occurrence_id=r["who_id"]).first()
-            if k and not k.deleted_at and k.summary:
-                out.append(dict(kind="Bank WHO knowledge", who=o.canonical_name if o else None, summary=k.summary[:600]))
+        txn = engine.by_id.get(r["txn_id"])
+        why = engine.source_classifications.get((r.get("who_id"), txn.payment_instrument_id)) if txn else None
+        out.append(dict(kind="WHO + Source classification", who=r.get("who_name"), source=r.get("source"),
+                        why=engine._why_name(why), whom=r.get("payer")))
     return out[:25]
 
 
@@ -99,7 +74,7 @@ INSTRUCTIONS = (
     "WHY (economic nature, from the WHY catalog) and the Category (from the categories catalog). Rules: "
     "never invent a WHO — it must be readable in the description or be a known WHO; one beneficiary only; "
     "not every payment is a P&L cost (assets, financing, transfers, equity are balance sheet); documents are not "
-    "required; precedents, hints and WHO Labels are evidence, not proof (a Label describes the activity of the "
+    "required; context is evidence, not proof (the "
     "WHO; it never overrides a Recognition Profile or an approved WHO→WHY association). A WHY marked provisional "
     "only says the nature is not known yet: never return it as the answer; find the definitive WHY or ask. Judge EACH field on its own evidence in `fields` "
     "(who, why, category, beneficiary): sufficient=true and a confidence only for what the evidence really "

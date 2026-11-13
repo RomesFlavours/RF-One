@@ -20,3 +20,10 @@ if not os.environ.get("CBANK_BANK_DB"):
     _src.close()
     os.environ["CBANK_BANK_DB"] = str(_copy)
     atexit.register(shutil.rmtree, _folder, ignore_errors=True)
+
+# Test copies must use the current schema; the operational database is never migrated here.
+import sys
+_bank_code = Path(os.environ.get("CBANK_BANK_CODE_ROOT", str(Path(__file__).resolve().parents[4] / "rf-one-bank-simple-who-rules")))
+sys.path.insert(0, str(_bank_code / "03 Software" / "RF-One Data Store"))
+from rfone_data_store.database import run_migrations_to_head
+run_migrations_to_head("sqlite:///" + Path(os.environ["CBANK_BANK_DB"]).as_posix())

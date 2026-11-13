@@ -1,36 +1,18 @@
-"""C-Bank engine — ONE orchestrator, separate stages (spec §3, §7; decision 53).
-
-Stages, in order, each recorded in the decision trace (decision 30):
-  1. Source        account/card → owner Entity (the payer)
-  2. Matching      transfer / card-payment legs (decisions 22, 37)
-  3. WHO           matched counterpart (36) → approved text rules (43) →
-                   human memory → AI investigation (11, 45, 50) → exception;
-                   the WHO's Labels are read as CONTEXT only (Phase 2): shown,
-                   given to the AI, summarised as a hint — never a decision
-  4. Profile       one Recognition Profile per WHO with conditional branches
-                   (4, 42); conflicts are never resolved arbitrarily (48)
-  5. Beneficiary   independent of the account (01-03): human → profile branch
-                   → memory → AI → account owner
-  6. Mapping       WHY → Category RF-One (Bank WHAT) → QB account (not mapped yet)
-  7. Operation     operating / capital / financing / transfer / card settlement /
-                   inter-entity / patrimonial (spec §2, §7)
-  8. Status        Reconciled when every pertinent field is set (25)
-
-Human decisions — operational Bank HUMAN decisions and C-Bank experimental
-human decisions — are protected (38): the engine still computes its own
-proposal, shown next to them, but never replaces them.
-
-Dry run (54): reads Bank through `legacy` (read-only); results go to `store`.
+"""One Bank engine: Source owner, matched transfers/card payments, approved WHO rules then name/alias.
+Purpose is the exact WHO + Source classification, with no WHO-global or cross-Source fallback.
+WHOM is the Source owner at the movement date. WHAT derives from WHY. Human WHO/WHY decisions remain
+protected; missing pair classifications stay open. No activity labels, history memory or automatic AI.
 """
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, replace
 
 from sqlalchemy import select
 
 from . import config, matching, store
-from .legacy import Catalog, ai_rules, clean, flow, history_key, m, who_identification, why_what
+from .legacy import Catalog, ai_rules, clean, flow, history_key, m, who_search_text, who_why_rules, why_patterns, why_what
 
 # Operation types (spec §2).
 OPERATING_EXPENSE = "OPERATING_EXPENSE"
@@ -49,6 +31,10 @@ EXCEPTION = "EXCEPTION"
 # Methods (decision 30: author/means of each value).
 HUMAN_CBANK, HUMAN_BANK, CONTEXT, RULE, PROFILE, MEMORY, AI, ACCOUNT = (
     "HUMAN (C-Bank)", "HUMAN (Bank)", "CONTEXT", "RULE", "PROFILE", "MEMORY", "AI", "ACCOUNT")
+NAME_ALIAS = "NAME/ALIAS"   # BANK_WHO_RULES_001: WHO found by its name or an alias in the description
+WHO_SOURCE_CLASSIFICATION = "WHO + SOURCE"
+WHO_CLASSIFICATION = WHO_SOURCE_CLASSIFICATION
+WHY_RULE = "WHY RULE"   # an approved WHY pattern rule (BANK_WHY_PATTERNS_001), executed as code
 
 
 @dataclass
@@ -111,8 +97,10 @@ class Result:
     subject_id: int | None = None
     subject: str | None = None
     management: dict | None = None   # a management destination other than the subject (signalled, never posted)
-    who_labels: list = field(default_factory=list)   # Labels of the WHO: context, never a rule
-    label_hints: list | None = None  # what approved WHO→WHY of other WHOs with the same Label say
+    why_mode: str | None = None      # BANK_WHO_WHY_MODE_001: UNIQUE / MULTIPLE of the recognised WHO
+    # BANK_SPLIT_ALLOCATION_001: the movement's split lines — proposed from a document (complete or not) or the
+    # split already confirmed in Bank (allocations). A complete split takes the place of the single WHY.
+    split: dict | None = None
 
 
 class Engine:
@@ -123,7 +111,7 @@ class Engine:
         # Phase 3A: no separate C-Bank decisions — Bank's human decisions are read and protected through
         # `bank_decision` (HUMAN (Bank)); this stays empty.
         self.human = {}
-        self.ai_answers = store.investigation_answers(con)
+        self.ai_answers = {}  # manual investigations remain advisory; never loaded by reconciliation
         self.txns = list(db.scalars(select(m.FinancialTransaction).where(
             m.FinancialTransaction.accounting_status == "CANONICAL").order_by(m.FinancialTransaction.id)))
         self.txns = [t for t in self.txns if t.duplicate_status != "CONFIRMED_DUPLICATE"]
@@ -132,10 +120,9 @@ class Engine:
         self.matches = matching.match_all(self.txns, self.c.instruments, self.c.settlement, self.ambiguous)
         self.card_payment_out = matching.card_payment_pattern(self.c.instruments)
         self._owner_cache: dict = {}
-        self._load_who_whys()
-        self._load_labels()
         self._load_bank_decisions()
-        self._build_memory()
+        self.memory = defaultdict(list)
+        self.who_memory = defaultdict(list)  # advisory consumers only; never populated from history
         self.why_by_name = {clean(r.name): r.id for r in self.c.whys.values()}
         # Provisional WHYs (decisions 74-76, 79): a movement holding one is always an Exception.
         self.provisional = {w for w, r in self.c.whys.items() if why_what.is_provisional(self.db, r)}
@@ -147,65 +134,50 @@ class Engine:
         self.extractors = [e for e in self.c.rules if e[2].get("engine") == flow.ENGINE and e[2].get("kind") == "EXTRACTOR"]
         self.photos = [e for e in self.c.rules if e[2].get("engine") == flow.ENGINE and e[2].get("kind") == "PHOTO"]
         self.legacy = [e for e in self.c.rules if e[2].get("engine") != flow.ENGINE]
+        # BANK_WHO_RULES_001: the same WHO recognition as the WHO Rules page, on the same rules.
+        self.recogniser = who_search_text.WhoRecogniser(db, rules=self.c.rules)
+        self.who_registration_holds = {}
+        self.source_classifications = {(x.occurrence_id, x.payment_instrument_id): x.transaction_reason_id
+            for x in db.scalars(select(m.BankWhoSourceClassification))}
+        # BANK_WHO_WHY_MODE_001: once WHO is recognised, its WHY comes from the WHO + Source pair (UNIQUE WHO)
+        # or from the WHO WHY rules (MULTIPLE WHO, or a UNIQUE WHO whose pair has no WHY). Rules read the
+        # BANK_WHY_PATTERNS_001 information; missing information leaves the movement open, never fails.
+        self.why_resolver = who_why_rules.Resolver(db, txns=self.txns, rows=self.c.row_builder)
+
+    def split_view(self, proposal) -> dict:
+        """A `split_allocation.Proposal` with each line's WHY name, WHAT and Category."""
+        whys = {w: dict(why=self._why_name(w), what=self.c.class_label(self._why_category(w)),
+                        category_id=self._why_category(w)) for w in {ln.why_id for ln in proposal.lines if ln.why_id}}
+        return dict(proposal.to_dict(whys), origin="DOCUMENT")
+
+    def bank_split(self, txn) -> dict | None:
+        """The split already written in Bank (2+ allocations): protected, as a human decision is."""
+        allocs = sorted(self.allocations.get(txn.id, []), key=lambda a: a.allocation_index)
+        if len(allocs) < 2:
+            return None
+        allocated = sum(a.amount_minor for a in allocs)
+        complete = allocated == txn.amount_minor and all(a.status == m.ALLOCATION_COMPLETE for a in allocs)
+        lines = [dict(amount_minor=a.amount_minor, why_id=a.transaction_reason_id, why=a.transaction_reason_name_snapshot,
+                      category_id=a.accounting_classification_id,
+                      what=" ".join(x for x in (a.accounting_classification_code_snapshot, a.accounting_classification_name_snapshot) if x),
+                      description=getattr(a, "description", None),
+                      items=json.loads(a.evidence_detail) if getattr(a, "evidence_detail", None) else [],
+                      status=a.status, decision_source=a.decision_source) for a in allocs]
+        reasons = [] if complete else [dict(code="BANK_SPLIT_INCOMPLETE", label="Ripartizione incompleta",
+                                            detail=f"allocated {allocated / 100:.2f} of {txn.amount_minor / 100:.2f}; "
+                                                   + ", ".join(sorted({a.status for a in allocs})))]
+        return dict(origin="BANK", total_minor=txn.amount_minor, allocated_minor=allocated,
+                    difference_minor=txn.amount_minor - allocated, complete=complete,
+                    status="COMPLETE" if complete else "INCOMPLETE", reasons=reasons, lines=lines,
+                    human=any(a.decision_source == "HUMAN" for a in allocs), link=None, documents=[])
+
+    def determine_why(self, txn, who_id, who=None, row=None):
+        """The WHY of a recognised WHO on this movement (`who_why_rules.Determination`)."""
+        pair = self.source_classifications.get((who_id, txn.payment_instrument_id))
+        return self.why_resolver.determine(txn, who_id=who_id, who=who, row=row,
+                                           pair_why=pair if pair in self.c.whys else None)
 
     # -- preload ------------------------------------------------------------
-
-    def _load_who_whys(self):
-        """WHO -> possible WHY from Bank Configuration. Source HUMAN = explicitly approved by a
-        person (approval lists, Configuration edits); anything else (HISTORY…) = historical
-        association, AI evidence only. Only WHYs with a Category count."""
-        self.who_whys_approved, self.who_whys_history = defaultdict(list), defaultdict(list)
-        for a in self.db.scalars(select(m.BankOccurrenceReasonAssociation).where(
-                m.BankOccurrenceReasonAssociation.active.is_(True))):
-            w = self.c.whys.get(a.transaction_reason_id)
-            if w is None or not w.accounting_classification_id:
-                continue
-            (self.who_whys_approved if a.source == "HUMAN" else self.who_whys_history)[a.occurrence_id].append(w.id)
-
-    def _load_labels(self):
-        """WHO Labels as Bank Configuration keeps them (Edit WHO), read with Bank's own reader — no copy.
-        Context only: shown on the movement, given to the AI and summarised as a hint; never a
-        classification, never above a Recognition Profile or an approved WHO→WHY association."""
-        self.who_labels = who_identification.labels_of(self.db, self.c.whos.keys())
-        self.label_definitions = {lb.name: lb.definition for lb in self.db.scalars(
-            select(m.BankWhoLabel).where(m.BankWhoLabel.active.is_(True)))}
-        self.label_members = defaultdict(set)
-        for who_id, names in self.who_labels.items():
-            for name in names:
-                self.label_members[name].add(who_id)
-
-    def label_hints(self, who_id) -> list | None:
-        """For each Label of this WHO: the WHY most often APPROVED for the OTHER WHOs with that Label
-        (this WHO itself excluded), when enough of them agree. A hint for the AI and the person only."""
-        out = []
-        for name in self.who_labels.get(who_id, []):
-            counts, whos = Counter(), 0
-            for other in self.label_members[name] - {who_id}:
-                approved = set(self.who_whys_approved.get(other, []))
-                if approved:
-                    whos += 1
-                    counts.update(approved)
-            if whos >= config.LABEL_HINT_MIN_WHOS:
-                why_id, n = counts.most_common(1)[0]
-                if n / whos >= config.LABEL_HINT_MIN_SHARE:
-                    out.append(dict(label=name, why_id=why_id, why=self._why_name(why_id), whos=n, of=whos))
-        return out or None
-
-    def _approved_why(self, who_id, payer_id):
-        """(WHY id, evidence) from the WHO's APPROVED associations, or (None, reason). One approved
-        WHY decides; several are narrowed only by the approved personal/company Source rule
-        (OWNER_PERSONAL_* on a personal Source, never on a company one); still several = ambiguous."""
-        approved = sorted(set(self.who_whys_approved.get(who_id, [])))
-        if not approved:
-            return None, None
-        personal = payer_id is not None and payer_id == self._personal_entity()
-        if len(approved) > 1:
-            narrowed = [w for w in approved if (self.c.whys[w].code or "").startswith("OWNER_PERSONAL") == personal]
-            if len(narrowed) == 1:
-                return narrowed[0], (f"approved WHO→WHY association ({len(approved)} approved WHYs; "
-                                     f"{'personal' if personal else 'company'} Source rule leaves one)")
-            return None, "AMBIGUOUS"
-        return approved[0], "approved WHO→WHY association (Bank Configuration, confirmed by a person)"
 
     def _load_bank_decisions(self):
         ids = [t.explanation_id for t in self.txns if t.explanation_id]
@@ -265,47 +237,6 @@ class Engine:
             status=e.decision_status if e else None,
         )
 
-    def _build_memory(self):
-        """History of HUMAN decisions by Bank precedent key (memory, spec §3.2)."""
-        self.memory = defaultdict(list)
-        # WHO memory also reuses WHO identities Bank already assigned by rule
-        # (decision 53: reuse compatible data). Only the counterparty name is
-        # reused this way; WHY/beneficiary memory stays human-only.
-        self.who_memory = defaultdict(list)
-        for t in self.txns:
-            key = history_key(t.description_original)
-            b = self.bank_decision(t)
-            if b["who"]:
-                # WHO memory is unchanged; only its provenance is stated honestly. Codex sessions decided the
-                # WHY (never reused as a precedent below); the WHO they carried came from Bank's earlier reading.
-                origin = HUMAN_BANK if b["source"] == "HUMAN" else (
-                    "Bank (Codex WHY session, unreviewed)" if self._is_codex(t) else "Bank rule")
-                self.who_memory[key].append(dict(txn_id=t.id, who=b["who"], origin=origin))
-            h = self.human.get(t.id)
-            if h and h["who_name"]:
-                self.who_memory[key].append(dict(txn_id=t.id, who=h["who_name"], origin=HUMAN_CBANK))
-            if h and (h["note"] or "").startswith("Decision 59"):
-                # Decision 59 approvals confirm ONE movement's previous Bank classification:
-                # they identify WHO for the pattern (above) but never become WHY/beneficiary
-                # precedents, so one approval never spreads to the rest of a WHO.
-                continue
-            if h:
-                self.memory[key].append(dict(txn_id=t.id, who=h["who_name"], why_id=h["why_id"],
-                                             category_id=h["category_id"], beneficiary_id=h["beneficiary_id"],
-                                             origin=HUMAN_CBANK))
-                continue
-            if b["source"] == "HUMAN" and b["who_id"]:
-                self.memory[key].append(dict(txn_id=t.id, who=b["who"], why_id=b["why_id"],
-                                             category_id=b["category_id"],
-                                             beneficiary_id=b["beneficiary_id"] if b["beneficiary_human"] else None,
-                                             origin=HUMAN_BANK))
-            elif b["source"] == "RULE" and b["why_id"] and t.id in self.approved_rule_decisions:
-                # WHY precedent from an approved rule / Recognition Profile (provenance kept). It never
-                # carries a beneficiary: beneficiary precedents stay human-only.
-                self.memory[key].append(dict(txn_id=t.id, who=b["who"], why_id=b["why_id"],
-                                             category_id=b["category_id"], beneficiary_id=None,
-                                             origin=self.approved_rule_decisions[t.id], rule=True))
-
     def owner(self, txn):
         key = (txn.payment_instrument_id, txn.posting_date)
         if key not in self._owner_cache:
@@ -349,14 +280,13 @@ class Engine:
                            counterpart_source=self.c.instruments[mt.counterpart_instrument_id].display_name,
                            counterpart_owner=cp_owner.name if cp_owner else None, state="MATCHED")
             trace.append(Step("Matching", CONTEXT, f"{mt.kind} with #{mt.counterpart_id}", mt.basis, "matched"))
-        if mt and mt.kind == "CARD_SETTLEMENT":
-            # CARD_SETTLEMENT_001: a certain card payment follows ONLY the transfer path — no WHO text rule,
-            # Recognition Profile, memory or AI can reclassify it (bank charge, purchase, CHASE payment…).
+        if mt:
+            # A certain transfer/payment follows only the matching path, ahead of text rules and profiles.
             outcome = self._transfer_outcome(txn, mt, r.payer_id, cp_owner)
             who = f"{cp_owner.name} · {self.c.instruments[mt.counterpart_instrument_id].display_name}" if cp_owner else None
-            trace.append(Step("WHO", CONTEXT, who, f"counterparty of a matched card settlement ({mt.basis})", ""))
+            trace.append(Step("WHO", CONTEXT, who, f"counterparty of a matched {mt.kind.lower()} ({mt.basis})", ""))
             trace.append(Step("Profile", CONTEXT, self._why_name(outcome.why_id) if outcome else None,
-                              "card settlement: the transfer path takes precedence over rules and profiles", ""))
+                              "matched transfer/payment: the transfer path takes precedence over rules and profiles", ""))
             trace.append(Step("Beneficiary", ACCOUNT, self.c.entity_name(r.payer_id), "owner of this leg's instrument", ""))
             return dict(who=who, who_id=None, who_method=CONTEXT, why_id=outcome.why_id if outcome else None,
                         why_method=CONTEXT if outcome else None,
@@ -379,160 +309,56 @@ class Engine:
                            candidates=self.ambiguous.get(txn.id, []), kind="CARD_SETTLEMENT")
             trace.append(Step("Matching", CONTEXT, r.match["state"], exc["message"], ""))
             return dict(who=None, who_id=None, who_method=None, why_id=None, why_method=None, category_id=None,
-                        beneficiary_id=None, beneficiary_method=None, exceptions=[exc],
+                        beneficiary_id=r.payer_id, beneficiary_method=ACCOUNT if r.payer_id else None, exceptions=[exc],
                         trace=[asdict(s) for s in trace], counterpart_owner=None)
 
         # WHO --------------------------------------------------------------
         row = self.c.rule_row(txn)
-        names, legacy_hits = [], []
-        for rule, version, spec in self.extractors:
-            name = flow.extract(spec, txn.description_original)
-            if name:
-                names.append((name, f"extraction rule #{rule.id} {rule.user_title or rule.title}"))
-        for rule, version, spec in self.legacy:
-            try:
-                ex = ai_rules.execute(spec, row)
-            except Exception:  # a malformed legacy spec never stops the run
-                continue
-            if ex.outcome != "MATCH":
-                continue
-            legacy_hits.append((rule, version, ex))
-            if ex.who and not ex.who_verify:
-                names.append((ex.who, f"text rule #{rule.id} {rule.user_title or rule.title}"))
-        distinct = {}
-        for name, ref in names:
-            distinct.setdefault(clean(name), (name, []))[1].append(ref)
-
+        # BANK_WHO_RULES_001 — one shared path: guided AI rules, then WHO name/alias search.
+        recognition = self.recogniser.recognise(txn, row=row)
+        legacy_hits = recognition.legacy_hits
+        from rfone_data_store.bank_reconciliation.who_recognition import who_key
+        held = self.who_registration_holds.get(who_key(recognition.who)) if recognition.who else None
+        if held:
+            recognition = who_search_text.Recognition(who_search_text.TEXT_AMBIGUOUS,
+                candidates=[recognition.who], evidence=held, legacy_hits=recognition.legacy_hits)
         who, who_method, who_evidence = None, None, ""
-        ai = self.ai_answers.get(txn.id)
-        if mt and cp_owner is not None:
-            who = f"{cp_owner.name} · {self.c.instruments[mt.counterpart_instrument_id].display_name}"
-            who_method, who_evidence = CONTEXT, f"counterparty of a matched {mt.kind.lower()} ({mt.basis})"
-            if distinct:
-                who_evidence += "; text rules also matched: " + ", ".join(v[0] for v in distinct.values())
-        elif len(distinct) == 1:
-            name, refs = next(iter(distinct.values()))
-            who, who_method, who_evidence = name.strip().upper(), RULE, "; ".join(refs)
-        elif len(distinct) > 1:
-            if ai and ai.get("who") and clean(ai["who"]) in distinct and self._ai_field_ok(ai, "who"):
-                who, who_method = distinct[clean(ai["who"])][0].upper(), AI
-                who_evidence = f"rules disagree ({', '.join(v[0] for v in distinct.values())}); AI resolved: {ai.get('justification', '')}"
-            else:
-                exceptions.append(dict(code="WHO_AMBIGUOUS", message="Text rules disagree on WHO: "
-                                       + " / ".join(f"{v[0]} ({'; '.join(v[1])})" for v in distinct.values()),
-                                       question=ai.get("question") if ai else None))
-        if who is None and not exceptions:
-            precedents = [p for p in self.who_memory.get(r.history_key, []) if p["txn_id"] != txn.id]
-            wh = {clean(p["who"]) for p in precedents}
-            if len(wh) == 1:
-                who = precedents[0]["who"]
-                who_method = MEMORY
-                origins = defaultdict(int)
-                for p in precedents:
-                    origins[p["origin"]] += 1
-                who_evidence = (f"{len(precedents)} earlier movement(s) with the same description pattern ("
-                                + ", ".join(f"{n} {o}" for o, n in origins.items()) + f"), e.g. #{precedents[0]['txn_id']}")
-            elif ai and ai.get("who") and self._ai_field_ok(ai, "who") and self._who_supported(ai["who"], txn):
-                who, who_method = ai["who"].strip().upper(), AI
-                who_evidence = ai.get("justification", "")
-            else:
-                exceptions.append(dict(code="WHO_UNKNOWN" if not wh else "WHO_AMBIGUOUS",
-                                       message="No approved rule or memory identifies WHO." if not wh else
-                                       "Human precedents disagree on WHO.",
-                                       question=ai.get("question") if ai else None))
+        if recognition.outcome == who_search_text.FOUND:
+            who = recognition.who
+            who_method = RULE if recognition.method == who_search_text.RULE else NAME_ALIAS
+            who_evidence = recognition.evidence
+        elif recognition.outcome in (who_search_text.RULES_DISAGREE, who_search_text.TEXT_AMBIGUOUS):
+            exceptions.append(dict(code="WHO_AMBIGUOUS", message=recognition.evidence[:1].upper() + recognition.evidence[1:] + ".",
+                                   question=None))
+        else:
+            exceptions.append(dict(code="WHO_UNKNOWN", message="No WHO rule and no WHO name or alias identifies WHO.",
+                                   question=None))
         who_id = self.c.who_by_name.get(clean(who)) if who else None
         trace.append(Step("WHO", who_method or "—", who, who_evidence or "not identified",
                           "known WHO" if who_id else ("new WHO" if who else "")))
 
-        # PROFILE ------------------------------------------------------------
-        outcomes, undecided, profiles = [], [], set()
-        if who and who_method != CONTEXT:
-            for entry in self.photos:
-                rule, version, spec = entry
-                if clean(who) not in [clean(spec.get("who"))] + [clean(a) for a in spec.get("aliases", [])]:
-                    continue
-                profiles.add(rule.id)
-                choice = flow.choose(self.db, txn, entry, who, generate=None, allow_missing_whom=True)
-                if not choice:
-                    undecided.append(f"profile #{rule.id} has no branch that decides this movement")
-                    continue
-                branch = spec["branches"][choice["branch_index"]]
-                beneficiary = None if spec.get("whom_mode") == "SOURCE" else branch.get("whom_id")
-                outcomes.append(Outcome(choice["why_id"], choice.get("destination_id"), beneficiary, PROFILE,
-                                        f"profile #{rule.id} {rule.user_title or rule.title}, branch {choice['branch_index'] + 1}"))
-        for rule, version, ex in legacy_hits:
-            # A matched leg's WHO is contextual; its approved text rule still
-            # classifies it (decision 43). Otherwise the rule must be this WHO's.
-            if ex.who and who and who_method != CONTEXT and clean(ex.who) != clean(who):
-                continue
-            if not ex.why and not ex.why_verify:
-                continue
-            profiles.add(rule.id)
-            if ex.why_verify or ex.why not in [None] and clean(ex.why) not in self.why_by_name:
-                undecided.append(f"rule #{rule.id}: WHY to verify ({ex.why_verify or ex.why})")
-                continue
-            beneficiary = self.entity_by_name.get(clean(ex.for_whom)) if ex.for_whom else None
-            outcomes.append(Outcome(self.why_by_name[clean(ex.why)], ex.destination_id, beneficiary, PROFILE,
-                                    f"text rule #{rule.id} {rule.user_title or rule.title}"
-                                    + (f", branch {ex.branch}" if ex.branch else "")))
-        if len(profiles) > 1:
-            r.anomalies.append(dict(code="MULTIPLE_PROFILES_FOR_WHO",
-                                    message=f"{len(profiles)} rules/profiles classify WHO {who} (decision 42 expects one)."))
-
-        outcome = None
-        if any(o.why_id not in self.provisional for o in outcomes):
-            # A provisional WHY only says "nature unknown": a definitive WHY from another rule prevails over it.
-            outcomes = [o for o in outcomes if o.why_id not in self.provisional]
-        keys = {(o.why_id, o.category_id or self._why_category(o.why_id), o.beneficiary_id) for o in outcomes}
-        if len(keys) == 1:
-            outcome = outcomes[0]
-            outcome.reference = "; ".join(o.reference for o in outcomes)
-        elif len(keys) > 1:
-            exceptions.append(dict(code="PROFILE_CONFLICT", message="Profiles/rules give different results: "
-                                   + " / ".join(f"{self._why_name(o.why_id)} ({o.reference})" for o in outcomes),
-                                   question=ai.get("question") if ai else None))
-        elif undecided:
-            exceptions.append(dict(code="PROFILE_UNDECIDED", message="; ".join(undecided),
-                                   question=ai.get("question") if ai else None))
-
-        if outcome is None and not any(e["code"] in ("PROFILE_CONFLICT", "PROFILE_UNDECIDED") for e in exceptions):
-            if mt:
-                outcome = self._transfer_outcome(txn, mt, r.payer_id, cp_owner)
-            if outcome is None and who:
-                outcome = self._memory_outcome(txn, r.history_key)
-            if outcome is None and who_id and config.WHO_WHY_KNOWLEDGE:
-                # After the Recognition Profile: an EXPLICITLY APPROVED WHO -> WHY association.
-                why_id, note = self._approved_why(who_id, r.payer_id)
-                if why_id:
-                    outcome = Outcome(why_id, None, None, RULE, note)
-                elif note == "AMBIGUOUS":
-                    exceptions.append(dict(code="WHO_WHY_AMBIGUOUS", message=(
-                        f"WHO {who} has several approved WHYs ("
-                        + ", ".join(self._why_name(w) for w in self.who_whys_approved[who_id])
-                        + ") and nothing in this movement chooses one."), question=ai.get("question") if ai else None))
-        if outcome and outcome.method == PROFILE and who_id and config.WHO_WHY_KNOWLEDGE \
-                and self.who_whys_approved.get(who_id) and outcome.why_id not in self.who_whys_approved[who_id]:
-            r.anomalies.append(dict(code="PROFILE_VS_APPROVED_WHY", message=(
-                f"Profile gives {self._why_name(outcome.why_id)}, the approved WHO→WHY association "
-                + ", ".join(self._why_name(w) for w in self.who_whys_approved[who_id]) + ": the profile wins.")))
-        if outcome and outcome.why_id in self.provisional and ai and self._ai_field_ok(ai, "why")                 and ai.get("why_id") in self.c.whys and ai["why_id"] not in self.provisional:
-            outcome = None   # the investigation established the nature: its definitive WHY replaces the provisional one
-        if outcome is None and ai and self._ai_field_ok(ai, "why") and ai.get("why_id") in self.c.whys:
-            # Each AI field is accepted on its own evidence: a certain WHY does not carry an uncertain
-            # category or beneficiary with it (they stay open and the movement stays an Exception).
-            outcome = Outcome(ai["why_id"],
-                              ai.get("category_id") if self._ai_field_ok(ai, "category") and ai.get("category_id") in self.c.classes else None,
-                              ai.get("beneficiary_id") if self._ai_field_ok(ai, "beneficiary") and ai.get("beneficiary_id") in self.c.entities else None,
-                              AI, f"AI investigation #{ai['investigation_id']}: {ai.get('justification', '')}")
-            exceptions = [e for e in exceptions if e["code"] not in ("PROFILE_UNDECIDED", "PROFILE_CONFLICT")]
-        if outcome is None and who and not exceptions:
-            exceptions.append(dict(code="NO_PROFILE", message=f"WHO {who} has no Recognition Profile and no "
-                                   "concordant precedents: investigate before classifying.",
-                                   question=ai.get("question") if ai else None))
-        if ai and not self._ai_sufficient(ai) and ai.get("question"):
-            for e in exceptions:
-                e.setdefault("question", ai["question"])
-                e["alternatives"] = ai.get("alternatives") or []
+        # BANK_WHO_WHY_MODE_001: UNIQUE WHO → exact WHO + Source classification; MULTIPLE WHO (or a UNIQUE
+        # WHO whose pair has no WHY) → WHO WHY rules. No WHO-only default or another Source decides WHY.
+        outcome, split = None, None
+        if who_id:
+            det = self.determine_why(txn, who_id, who=who, row=row)
+            r.why_mode = det.mode
+            if det.split is not None:
+                split = self.split_view(det.split)
+            if det.why_id:
+                outcome = Outcome(det.why_id, self._why_category(det.why_id), r.payer_id, det.method, det.reference)
+            elif det.method == who_why_rules.METHOD_SPLIT and split and split["complete"]:
+                trace.append(Step("Split", det.method, f"{len(split['lines'])} lines", det.reference, "complete"))
+            else:
+                exceptions.append(dict(code=det.code, message=det.message, label=det.label, missing=det.missing,
+                                       question=None))
+            if det.unused_pair_why:
+                r.anomalies.append(dict(code="PAIR_WHY_NOT_USED_FOR_MULTIPLE_WHO", message=(
+                    f"“{self._why_name(det.unused_pair_why)}” is registered on this WHO + Source, but the WHO is "
+                    "MULTIPLE: its WHY comes from a WHO WHY rule only.")))
+        elif who:
+            exceptions.append(dict(code=who_why_rules.NEEDS_PAIR, label=who_why_rules.LABELS[who_why_rules.NEEDS_PAIR],
+                                   message="Set WHY for this exact WHO + Source pair in Configuration."))
         if outcome and not mt and txn.amount_minor < 0 and self._is_income(
                 self.c.classes.get(outcome.category_id or self._why_category(outcome.why_id))):
             # E1: a text rule can match the words ("INTEREST PAYMENT") of an operation whose direction
@@ -540,37 +366,15 @@ class Engine:
             exceptions.append(dict(code="DIRECTION_CONFLICT", message=(
                 f"“{self._why_name(outcome.why_id)}” is an income, but this movement is money OUT "
                 f"({outcome.reference}): verify the nature of the operation."),
-                question=ai.get("question") if ai else None))
+                question=None))
         if outcome:
-            trace.append(Step("Profile", outcome.method, self._why_name(outcome.why_id), outcome.reference, ""))
+            trace.append(Step("Classification", outcome.method, self._why_name(outcome.why_id), outcome.reference, ""))
         else:
-            trace.append(Step("Profile", "—", None, "no classification", ""))
+            trace.append(Step("Classification", "—", None, "no classification", ""))
 
         # MANAGEMENT DESTINATION (decision 86: never the accounting subject) ----------------
-        beneficiary, b_method, b_evidence = None, None, ""
-        why_row = self.c.whys.get(outcome.why_id) if outcome else None
-        personal = self._personal_entity()
-        if outcome and outcome.beneficiary_id:
-            beneficiary, b_method, b_evidence = outcome.beneficiary_id, outcome.method, outcome.reference
-        elif why_row is not None and (why_row.code or "").startswith("OWNER_PERSONAL") and personal:
-            # Decision 01: a personal expense belongs to the person, whoever pays it.
-            beneficiary, b_method = personal, PROFILE
-            b_evidence = f"WHY “{why_row.name}” is a personal expense of the owner"
-        else:
-            precedents = [p for p in self.memory.get(r.history_key, []) if p["txn_id"] != txn.id and p["beneficiary_id"]]
-            values = {p["beneficiary_id"] for p in precedents}
-            if len(values) == 1 and len(precedents) >= config.MEMORY_MIN_PRECEDENTS and next(iter(values)) != r.payer_id:
-                beneficiary, b_method = next(iter(values)), MEMORY
-                b_evidence = f"{len(precedents)} human precedent(s) attributed this pattern to another entity"
-            elif len(values) > 1:
-                r.anomalies.append(dict(code="DESTINATION_UNCERTAIN", message=(
-                    "Human precedents give this pattern different management destinations; the accounting "
-                    "subject is the Source owner (decision 86).")))
-            elif ai and self._ai_field_ok(ai, "beneficiary") and ai.get("beneficiary_id") in self.c.entities:
-                beneficiary, b_method, b_evidence = ai["beneficiary_id"], AI, ai.get("justification", "")
-            elif r.payer_id:
-                beneficiary, b_method = r.payer_id, ACCOUNT
-                b_evidence = "Source owner; no rule, profile, precedent or evidence points to another destination"
+        beneficiary, b_method = r.payer_id, ACCOUNT if r.payer_id else None
+        b_evidence = "WHOM is the Source owner at the movement date"
         trace.append(Step("Destination", b_method or "—", self.c.entity_name(beneficiary),
                           (b_evidence or "") + " — management only; the accounting subject is the Source owner",
                           "default" if b_method == ACCOUNT else ""))
@@ -584,10 +388,9 @@ class Engine:
             r.anomalies.append(dict(code="WHAT_NOT_FROM_WHY", message=(
                 f"{outcome.reference} proposed WHAT {self.c.class_label(outcome.category_id)}; the WHAT of "
                 f"“{self._why_name(why_id)}” ({self.c.class_label(self._why_category(why_id))}) is used.")))
-        if ai:
-            r.ai_partial = self._ai_fields(ai)
         return dict(who=who, who_id=who_id, who_method=who_method, why_id=why_id,
-                    why_method=outcome.method if outcome else None, category_id=category_id,
+                    why_method=outcome.method if outcome else (who_why_rules.METHOD_SPLIT if split and split["complete"] else None),
+                    category_id=category_id, split=split,
                     beneficiary_id=beneficiary, beneficiary_method=b_method,
                     exceptions=exceptions, trace=[asdict(s) for s in trace], counterpart_owner=cp_owner)
 
@@ -606,104 +409,87 @@ class Engine:
             return None
         return Outcome(why_id, None, payer_id, CONTEXT, f"matched {mt.kind.lower()}: {mt.basis}")
 
-    def _memory_outcome(self, txn, key) -> Outcome | None:
-        precedents = [p for p in self.memory.get(key, []) if p["txn_id"] != txn.id and p["why_id"]]
-        if len(precedents) < config.MEMORY_MIN_PRECEDENTS:
-            return None
-        values = {(p["why_id"], p["category_id"] or self._why_category(p["why_id"])) for p in precedents}
-        if len(values) != 1:
-            return None
-        why_id, category_id = next(iter(values))
-        human = [p for p in precedents if not p.get("rule")]
-        bens = {p["beneficiary_id"] for p in human}
-        rules = sorted({p["origin"] for p in precedents if p.get("rule")})
-        basis = f"{len(human)} human" + (f", {len(precedents) - len(human)} from approved rules ({'; '.join(rules)})"
-                                         if rules else "")
-        return Outcome(why_id, category_id, next(iter(bens)) if len(bens) == 1 else None, MEMORY,
-                       f"{len(precedents)} concordant precedents ({basis}; e.g. #{precedents[0]['txn_id']})")
-
     # -- protection ----------------------------------------------------------
 
     def _apply_protection(self, txn, r: Result, auto: dict):
-        h = self.human.get(txn.id)
-        b = r.bank
-        if h:
-            r.protected = HUMAN_CBANK
-            values = dict(who=h["who_name"], why_id=h["why_id"], category_id=h["category_id"],
-                          beneficiary_id=h["beneficiary_id"] or auto["beneficiary_id"])
-            method = HUMAN_CBANK
-        elif b["source"] == "HUMAN" and b["who_id"]:
-            r.protected = HUMAN_BANK
-            values = dict(who=b["who"], why_id=b["why_id"], category_id=b["category_id"],
-                          beneficiary_id=b["beneficiary_id"] if b["beneficiary_human"] else auto["beneficiary_id"])
-            method = HUMAN_BANK
-        else:
-            values = None
+        bank = r.bank
         r.trace.extend(auto["trace"])
-        if values is None:
+        if bank["source"] != "HUMAN" or not bank["who_id"]:
             r.who_name, r.who_id, r.who_method = auto["who"], auto["who_id"], auto["who_method"]
             r.why_id, r.why_method, r.category_id = auto["why_id"], auto["why_method"], auto["category_id"]
-            r.beneficiary_id, r.beneficiary_method = auto["beneficiary_id"], auto["beneficiary_method"]
+            r.split = auto.get("split")
+            r.beneficiary_id, r.beneficiary_method = r.payer_id, ACCOUNT if r.payer_id else None
             r.exceptions.extend(auto["exceptions"])
             return
-        r.who_name, r.who_id, r.who_method = values["who"], self.c.who_by_name.get(clean(values["who"])), method
-        r.why_id, r.why_method = values["why_id"], method
-        if not values["why_id"] and values["who"] and config.WHO_WHY_KNOWLEDGE:
-            # Completion of an incomplete human decision: the person's fields stay as they are; only
-            # the missing WHY is filled, from an approved source, and its provenance is kept.
-            human_who_id = b["who_id"] if not h else self.c.who_by_name.get(clean(values["who"]))
-            fill, fill_method, fill_note = None, None, ""
-            if auto["why_id"] and auto["why_method"] in (PROFILE, RULE) and auto["who"] \
-                    and clean(auto["who"]) == clean(values["who"]):
-                fill, fill_method, fill_note = auto["why_id"], auto["why_method"], "engine decision for the same WHO"
-            elif human_who_id:
-                why_id, note = self._approved_why(human_who_id, r.payer_id)
-                if why_id:
-                    fill, fill_method, fill_note = why_id, RULE, note
-            human_category = values["category_id"]
-            if fill in self.provisional:
-                fill = None   # a provisional WHY never completes a human decision
-            if fill and human_category and self._why_category(fill) != human_category:
-                fill = None   # the person's Category disagrees: never overridden, the movement stays open
-            if fill:
-                values["why_id"] = r.why_id = fill
-                r.why_method = f"{fill_method} (completing a human decision)"
-                r.trace.append(asdict(Step("Completion", fill_method, self._why_name(fill),
-                                           f"missing WHY of the {method} decision filled: {fill_note}; "
-                                           "WHO and the other confirmed fields stay human")))
-        r.category_id = values["category_id"] or self._why_category(values["why_id"])
-        r.beneficiary_id = values["beneficiary_id"]
-        r.beneficiary_method = method if (h and h["beneficiary_id"]) or (not h and b["beneficiary_human"]) else auto["beneficiary_method"]
-        r.trace.append(asdict(Step("Protection", method, "human decision kept",
-                                   "decision 38: the engine never replaces a human decision")))
-        differs = {k for k, a, v in (("WHO", auto["who"], values["who"]), ("WHY", auto["why_id"], values["why_id"]),
-                                     ("Category", auto["category_id"], r.category_id),
-                                     ("Beneficiary", auto["beneficiary_id"], r.beneficiary_id))
-                   if a is not None and (clean(a) if isinstance(a, str) else a) != (clean(v) if isinstance(v, str) else v)}
+        r.protected = HUMAN_BANK
+        r.who_name, r.who_id, r.who_method = bank["who"], bank["who_id"], HUMAN_BANK
+        r.why_id, r.why_method = bank["why_id"], HUMAN_BANK if bank["why_id"] else None
+        if not r.why_id:
+            # Completed as for an automatic WHO: pair (UNIQUE) or WHO WHY rule (MULTIPLE).
+            det = self.determine_why(txn, bank["who_id"], who=bank["who"], row=self.c.rule_row(txn))
+            r.why_mode = det.mode
+            if det.why_id and det.why_id not in self.provisional:
+                r.why_id, r.why_method = det.why_id, det.method + " (completing a human decision)"
+            elif det.split is not None:
+                r.split = self.split_view(det.split)
+                if r.split["complete"]:
+                    r.why_method = det.method + " (completing a human decision)"
+        r.category_id = self._why_category(r.why_id)
+        r.beneficiary_id, r.beneficiary_method = r.payer_id, ACCOUNT if r.payer_id else None
+        r.trace.append(asdict(Step("Protection", HUMAN_BANK, "human WHO/WHY preserved",
+                                   "Only a missing WHY is completed from the same WHO + Source; WHAT derives from WHY; WHOM defaults to the Source owner unless manually chosen.")))
+        differs = [field for field, proposed, actual in (("WHO",auto["who"],r.who_name),
+                    ("WHY",auto["why_id"],r.why_id)) if proposed is not None and proposed != actual]
         if differs:
-            r.proposal = dict(fields=sorted(differs), who=auto["who"], why=self._why_name(auto["why_id"]),
-                              category=self.c.class_label(auto["category_id"]),
-                              beneficiary=self.c.entity_name(auto["beneficiary_id"]),
-                              note="Proposal only — requires human approval (decision 38).")
-        if not (r.who_name and r.why_id):
-            r.exceptions.append(dict(code="HUMAN_INCOMPLETE", message="The human decision lacks WHO or WHY."))
+            r.proposal = dict(fields=differs, who=auto["who"], why=self._why_name(auto["why_id"]),
+                              category=self.c.class_label(auto["category_id"]), beneficiary=r.payer,
+                              note="Proposal only; the confirmed human decision stays protected.")
+        if not r.why_id and not (r.split and r.split["complete"]):
+            r.exceptions.append(dict(code="HUMAN_INCOMPLETE", message="Set WHY for this human WHO and the exact Source."))
 
     # -- finish ----------------------------------------------------------------
 
     def _finish(self, txn, r: Result):
-        if r.who_id and self.who_labels.get(r.who_id):
-            r.who_labels = self.who_labels[r.who_id]
-            r.label_hints = self.label_hints(r.who_id)
-            hint = "; ".join(f"{h['label']}: {h['whos']} of {h['of']} labelled WHOs approved as {h['why']}"
-                             for h in r.label_hints or [])
-            r.trace.append(asdict(Step("Labels", CONTEXT, ", ".join(r.who_labels),
-                                       (hint or "no WHY pattern among WHOs with these Labels")
-                                       + " — context only, never a classification")))
+        # BANK_SPLIT_ALLOCATION_001: a split already written in Bank decides the WHYs of the movement; it is
+        # protected like a human decision, and an open WHY reason no longer applies to it.
+        confirmed = self.bank_split(txn)
+        if confirmed:
+            r.split = confirmed
+            if confirmed["human"]:
+                r.protected = r.protected or HUMAN_BANK
+            if confirmed["complete"]:
+                r.why_id, r.why_method = None, (HUMAN_BANK if confirmed["human"] else "RULE") + " split"
+                r.exceptions = [x for x in r.exceptions if x["code"] not in who_why_rules.OPEN_REASONS
+                                and x["code"] not in ("HUMAN_INCOMPLETE", "DIRECTION_CONFLICT")]
+            r.trace.append(asdict(Step("Split", r.why_method or "—", f"{len(confirmed['lines'])} lines in Bank",
+                                       "allocations of this movement; WHAT from each line's WHY", confirmed["status"])))
+        if r.split and not r.split["complete"] and r.split["origin"] == "BANK":
+            r.exceptions.append(dict(code=who_why_rules.SPLIT_INCOMPLETE, label=who_why_rules.LABELS[who_why_rules.SPLIT_INCOMPLETE],
+                                     message="; ".join(x["label"] + (f" ({x['detail']})" if x["detail"] else "")
+                                                       for x in r.split["reasons"]), missing=[]))
+        # A manual movement-level WHOM overrides the Source-owner default independently of WHO/WHY.
+        if r.bank.get("beneficiary_human") and r.bank.get("beneficiary_id"):
+            r.beneficiary_id = r.bank["beneficiary_id"]
+            r.beneficiary_method = HUMAN_BANK
+            r.trace.append(asdict(Step("Protection", HUMAN_BANK, "manual WHOM preserved",
+                                       "Movement-level destination; Source owner and accounting subject unchanged.")))
         r.why = self._why_name(r.why_id)
         r.category = self.c.class_label(r.category_id)
+        split_done = bool(r.split and r.split["complete"] and not r.why_id)
+        if split_done:
+            r.why = f"Ripartizione: {len(r.split['lines'])} righe"
+            r.category = "; ".join(dict.fromkeys(ln.get("what") or "—" for ln in r.split["lines"]))
         r.qb_account = None  # QuickBooks COA not imported yet (MVP decision): shown as "not mapped".
         r.beneficiary = self.c.entity_name(r.beneficiary_id)
         r.operation_type = self._operation_type(txn, r)
+        if split_done:
+            ops = {self._operation_type(txn, replace(r, category_id=ln.get("category_id"))) for ln in r.split["lines"]}
+            r.operation_type = next(iter(ops)) if len(ops) == 1 else None
+            if r.operation_type is None:
+                # Lines of different operation types (e.g. an expense and an asset): shown, never merged.
+                r.anomalies.append(dict(code="SPLIT_MIXED_OPERATION", message=(
+                    "The split lines belong to different operation types: " + ", ".join(sorted(str(o) for o in ops)))))
+                r.operation_type = "SPLIT"
         r.group_key = r.who_name or r.history_key
         if r.match and r.match.get("state") == "WAITING":
             r.group_key = "Card payments waiting for their card statement"
@@ -780,7 +566,7 @@ class Engine:
             r.exceptions.append(dict(code="CATEGORY_MISSING", message=f"WHY “{r.why}” has no Category RF-One in the "
                                      "Bank catalog: choose it for this movement; a catalog change needs approval (decision 39)."))
         blocking = [e for e in r.exceptions]
-        complete = all([r.who_name, r.why_id, r.category_id, r.subject_id, r.operation_type])
+        complete = all([r.who_name, r.why_id or split_done, r.category_id or split_done, r.subject_id, r.operation_type])
         r.status = RECONCILED if complete and not blocking else EXCEPTION
         if r.status == EXCEPTION and complete is False and not blocking:
             missing = [n for n, v in (("WHO", r.who_name), ("WHY", r.why_id), ("Category", r.category_id),
@@ -860,46 +646,6 @@ class Engine:
     def _why_name(self, why_id):
         r = self.c.whys.get(why_id)
         return r.name if r else None
-
-    FIELDS = ("who", "why", "category", "beneficiary")
-
-    @staticmethod
-    def _ai_field_declared(ai: dict | None, name: str) -> bool:
-        return bool(ai) and isinstance(ai.get("fields"), dict) and isinstance(ai["fields"].get(name), dict)
-
-    def _ai_field_ok(self, ai: dict | None, name: str) -> bool:
-        """Field-level acceptance (sufficient + confidence ≥ threshold). Answers recorded before field-level
-        evidence existed declared one `sufficient` for every field: for them the global flag still applies."""
-        if not ai:
-            return False
-        if self._ai_field_declared(ai, name):
-            f = ai["fields"][name]
-            conf = f.get("confidence")
-            return f.get("sufficient") is True and isinstance(conf, (int, float)) and conf >= config.AI_MIN_CONFIDENCE
-        return self._ai_sufficient(ai)
-
-    def _ai_fields(self, ai: dict) -> dict:
-        values = dict(who=ai.get("who"), why=self._why_name(ai.get("why_id")),
-                      category=self.c.class_label(ai.get("category_id")), beneficiary=self.c.entity_name(ai.get("beneficiary_id")))
-        out = {}
-        for name in self.FIELDS:
-            f = ai["fields"][name] if self._ai_field_declared(ai, name) else {}
-            out[name] = dict(value=values[name], confidence=f.get("confidence", ai.get("confidence")),
-                             accepted=self._ai_field_ok(ai, name) and values[name] is not None,
-                             investigation_id=ai.get("investigation_id"))
-        return out
-
-    @staticmethod
-    def _ai_sufficient(ai: dict) -> bool:
-        conf = ai.get("confidence")
-        return ai.get("sufficient") is True and isinstance(conf, (int, float)) and conf >= config.AI_MIN_CONFIDENCE
-
-    @staticmethod
-    def _who_supported(name: str, txn) -> bool:
-        """Decision 36: never invent a WHO — an AI WHO must appear in the text."""
-        words = [w for w in clean(name).split() if len(w) > 2]
-        text = clean(txn.description_original)
-        return bool(words) and all(w in text for w in words[:2])
 
 
 def summarize(results: list[dict]) -> dict:

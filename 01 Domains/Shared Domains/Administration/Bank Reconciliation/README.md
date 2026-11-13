@@ -187,3 +187,7 @@ RF-One's reconciliation/classification learning mechanism (the Purchased Domain'
 ## Relationship to Core 2.0
 
 Bank Reconciliation is built on the RF-One Core Conceptual Architecture and reuses its concepts without redefining them — a Payment Instrument Transaction is a Reality fact recorded after the fact (not a Decision), and a confirmed cross-ledger match is Learning-eligible evidence, consistent with Temporal Coherence and the Decision/Action/Outcome/Learning chain (`00 Core/ConceptualArchitecture/`).
+
+## Regole per ambito, categoria WHO e guida contestuale
+
+Le decisioni approvate del 2026-11-03 su regole generali, categorie WHO, singoli WHO, accorpamento approvato e dichiarazioni contestuali dell’utente sono registrate in [BANK_RULE_SCOPE_AND_WHO_CATEGORY_001.md](BANK_RULE_SCOPE_AND_WHO_CATEGORY_001.md). Il documento distingue requisiti approvati da funzioni effettivamente implementate e ricorda la guida specifica per pagina e modale.

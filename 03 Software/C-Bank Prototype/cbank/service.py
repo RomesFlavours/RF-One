@@ -34,12 +34,40 @@ def _execute(con, kind: str, month: str | None = None) -> int:
         label, scope = "Whole history", dict(kind="all", bank_signature=bank_signature(eng))
     else:
         raise ValueError("Choose the sample, a month (YYYY-MM) or the whole history.")
+    # Persist only unambiguous new catalog identities read by approved rules, never movement decisions.
+    candidate_names = []
+    for txn in txns:
+        if txn.id in eng.matches or (eng.bank_decision(txn)["source"] == "HUMAN" and eng.bank_decision(txn)["who_id"]):
+            continue
+        if txn.id in eng.ambiguous or engine_mod.matching.is_card_payment_out(txn, eng.c.instruments, eng.card_payment_out):
+            continue
+        recognition = eng.recogniser.recognise(txn, row=eng.c.rule_row(txn))
+        if recognition.outcome == "FOUND" and recognition.method == "RULE" and not recognition.known:
+            candidate_names.append(recognition.who)
+    registration = dict(created=[], reused=[], held={})
+    if candidate_names:
+        ids = [t.id for t in txns]
+        eng.db.close()
+        registration = legacy.register_rule_whos(candidate_names)
+        eng = new_engine(con)
+        txns = [eng.by_id[i] for i in ids]
+    eng.who_registration_holds = registration["held"]
+    if kind == "all":
+        scope["bank_signature"] = bank_signature(eng)
     results = []
     for t in txns:
         r = eng.evaluate(t)
         r["cases"] = cases.get(t.id, [])
         results.append(r)
+    pairs = [(r["who_id"], eng.by_id[r["txn_id"]].payment_instrument_id) for r in results if r.get("who_id")]
+    eng.db.close()
+    added_pairs = legacy.ensure_source_classification_pairs(pairs)
+    if kind == "all":
+        scope["bank_signature"] = current_bank_signature()
     summary = engine_mod.summarize(results)
+    summary["new_who_source_pairs"] = added_pairs
+    summary["new_catalog_whos"] = len(registration["created"])
+    summary["held_new_who_names"] = len(registration["held"])
     previous = store.previous_full_run(con) if kind == "all" else None
     if previous:
         # Daily operations: what is new since the previous full run, and which card payments that
@@ -57,13 +85,32 @@ def _execute(con, kind: str, month: str | None = None) -> int:
     return run_id
 
 
+def manual_signature(db):
+    """Current manual decisions also wake the watcher after movement-level edits."""
+    import hashlib
+    from sqlalchemy import select
+    m = legacy.m
+    decisions = db.execute(select(m.FinancialTransaction.id, m.FinancialTransaction.explanation_id,
+        m.BankTransactionExplanation.occurrence_id, m.BankTransactionExplanation.transaction_reason_id)
+        .join(m.BankTransactionExplanation, m.BankTransactionExplanation.id == m.FinancialTransaction.explanation_id)
+        .where(m.BankTransactionExplanation.decision_source == "HUMAN").order_by(m.FinancialTransaction.id)).all()
+    allocations = db.execute(select(m.BankTransactionAllocation.id, m.BankTransactionAllocation.financial_transaction_id,
+        m.BankTransactionAllocation.reporting_entity_id, m.BankTransactionAllocation.amount_minor)
+        .where(m.BankTransactionAllocation.decision_source == "HUMAN").order_by(m.BankTransactionAllocation.id)).all()
+    return hashlib.sha256(repr((decisions, allocations)).encode()).hexdigest()[:16]
+
+
 def bank_signature(eng) -> str:
-    """What identifies the imported data a run saw: movement count, last id and total amount."""
-    return f"{len(eng.txns)}:{max((t.id for t in eng.txns), default=0)}:{sum(t.amount_minor or 0 for t in eng.txns)}"
+    """What identifies the data a run saw: movement count, last id, total amount, approved WHY rules, and what
+    recognises a WHO (WHO rules, aliases, WHO catalog)."""
+    return (f"{len(eng.txns)}:{max((t.id for t in eng.txns), default=0)}:{sum(t.amount_minor or 0 for t in eng.txns)}"
+            f":{RECONCILIATION_POLICY}:{manual_signature(eng.db)}:{legacy.why_patterns.knowledge_signature(eng.db)}:{legacy.who_search_text.knowledge_signature(eng.db)}"
+            f":{legacy.who_why_rules.knowledge_signature(eng.db)}")
 
 
 def current_bank_signature() -> str:
-    """Same signature read straight from Bank (read-only), without building an engine."""
+    """Same signature read straight from Bank (read-only), without building an engine — movements plus the
+    approved WHY rules."""
     from sqlalchemy import func, select
     db = legacy.session()
     try:
@@ -71,7 +118,10 @@ def current_bank_signature() -> str:
             legacy.m.FinancialTransaction.accounting_status == "CANONICAL",
             legacy.m.FinancialTransaction.duplicate_status.is_distinct_from("CONFIRMED_DUPLICATE"))
         n, last, total = db.execute(q).one()
-        return f"{n}:{last or 0}:{total or 0}"
+        # An approved, revised or (de)activated WHY rule is new knowledge: it also starts a new run.
+        # BANK_WHO_RULES_001: a WHO rule, alias or WHO changed is new knowledge too.
+        return (f"{n}:{last or 0}:{total or 0}:{RECONCILIATION_POLICY}:{manual_signature(db)}:{legacy.why_patterns.knowledge_signature(db)}"
+                f":{legacy.who_search_text.knowledge_signature(db)}:{legacy.who_why_rules.knowledge_signature(db)}")
     finally:
         db.close()
 
@@ -85,6 +135,8 @@ def run_if_bank_changed(con) -> int | None:
             return None
         return execute(con, "all")
 
+
+RECONCILIATION_POLICY = "who-why-mode-v5"   # BANK_WHO_WHY_MODE_001: UNIQUE pair / MULTIPLE rules
 
 _RUN_LOCK = threading.RLock()
 

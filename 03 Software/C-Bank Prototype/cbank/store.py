@@ -151,13 +151,13 @@ def human_decisions(con) -> dict[int, dict]:
 
 
 def save_human_decision(con, txn_id: int, *, who_name, beneficiary_id, why_id, category_id, note,
-                        associate: bool = True) -> int:
+                        associate: bool = False) -> int:
     """A person's decision, recorded through Bank's manual decision service (the same as Review). The WHAT
     derives from the WHY; the accounting subject is the Source owner (decision 86), so a management
     destination is not stored."""
     from . import legacy
     return legacy.record_human_decision(txn_id, who_name=who_name, why_id=why_id, category_id=category_id,
-                                        note=note, associate=associate)
+                                        note=note, associate=associate, beneficiary_id=beneficiary_id)
 
 
 def decision_history(con, txn_id: int) -> list[dict]:

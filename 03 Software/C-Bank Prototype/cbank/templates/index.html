@@ -49,6 +49,7 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
 .msg{padding:6px 8px;border-radius:8px;margin:4px 0;white-space:pre-wrap}.user{background:#eef3e0}.assistant{background:#f1efe6}
 .warnbox{background:#fff6e0;border:1px solid #f0d89a;border-radius:8px;padding:8px;margin:6px 0}
 #status{color:var(--muted)}
+.gpanel{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:10px 0;background:#fcfbf7}.st{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;font-weight:600;margin-right:4px}.st-new{background:#eceae2}.st-run{background:#e6eefc;color:#1d4ea8}.st-ok{background:#e3f1e4;color:var(--ok)}.st-none{background:#f4ecd6;color:var(--warn)}.st-lim{background:#fff1ef;color:var(--bad)}.st-err{background:#ffe3e0;color:var(--bad)}#list.grp .tech{display:none}.gpanel .sub{border-top:1px dashed var(--line);padding-top:6px;margin-top:6px}.gpanel .ed{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px}.hq{padding:0 8px!important;margin-left:4px}.help .hl{background:#fff3c4;transition:background .4s}#rdlg{width:min(1240px,97vw)}#rdlg iframe{width:100%;height:80vh;border:0;display:block}
 </style>
 </head>
 <body>
@@ -92,15 +93,11 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
   <h3 style="margin:0 0 6px">Exceptions by type and WHO</h3>
   <table><thead><tr><th>Type</th><th>WHO / pattern</th><th>Movements</th><th></th></tr></thead><tbody>
   {% for code, key, ids in dashboard %}
-    <tr class="r" data-group-exc="{{ code }}" data-group-key="{{ key }}"><td>{{ code }}</td><td>{{ key }}</td><td>{{ ids|length }}</td>
-      <td><button type="button" data-review>Review</button>
-          <button class="sec" data-investigate="{{ ids[:6]|join(',') }}">Investigate with AI{% if ids|length>6 %} (first 6){% endif %}</button>
-          <button class="sec" type="button" data-show>Advanced details</button>
-          {%- if shell and code == 'NO_PROFILE' and profile_who_ids.get(key) %}
-          {#- Phase 2: the Bank's own profile conversation, opened for this WHO with an AI proposal;
-              nothing is active until a person previews and saves it there. #}
-          <a href="/bank/ai-rules?who_id={{ profile_who_ids[key] }}&amp;propose=1"><button class="sec" type="button">Propose profile with AI</button></a>
-          {%- endif %}</td></tr>
+    {#- One action per row (single Review): the row and its button open the same guided path; AI investigation,
+        Advanced details and the Bank profile proposal are offered inside it. #}
+    <tr class="r" data-group-exc="{{ code }}" data-group-key="{{ key }}"
+        {%- if group_who_ids.get((code, key)) %} data-who-id="{{ group_who_ids[(code, key)] }}"{% endif %}><td>{{ code }}</td><td>{{ key }}</td><td>{{ ids|length }}</td>
+      <td><button type="button" data-review>Review</button></td></tr>
   {% else %}<tr><td colspan="4">No exceptions.</td></tr>{% endfor %}
   </tbody></table>
   <div class="row" style="margin-top:8px"><button class="sec" type="button" id="all-movements">All movements ({{ total }})</button><span class="m" id="saved-filters"></span></div>
@@ -112,18 +109,18 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
 
 {% if run %}
 <dialog id="list" aria-label="Transactions">
-  <div class="hd"><div><b id="l-title">Transactions</b> <button class="sec" type="button" id="help-open" aria-haspopup="dialog" style="padding:2px 10px;margin-left:6px">? Help</button><div class="m">Run #{{ run.id }} · {{ run.label }} — click a row to open it; Previous/Next move inside this list.</div></div>
+  <div class="hd"><div><b id="l-title">Transactions</b> <button class="sec" type="button" id="help-open" data-help="h-advanced" aria-label="How Advanced details work" aria-haspopup="dialog" style="padding:2px 10px;margin-left:6px">? Help</button><div class="m">Run #{{ run.id }} · {{ run.label }} — click a row to open it; Previous/Next move inside this list.</div></div>
     <button class="sec" type="button" id="l-close">Close</button></div>
   <div class="bd" style="max-height:84vh">
     <form class="row" id="l-filters">
-      <select name="status"><option value="">All statuses</option>{% for v in ['RECONCILED','EXCEPTION'] %}<option>{{ v }}</option>{% endfor %}</select>
-      <select name="case"><option value="">All cases</option>{% for k,v in cases.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
-      <select name="exc"><option value="">All exceptions</option>{% for k,v in codes.items() %}<option value="{{ k }}">{{ k }} ({{ v }})</option>{% endfor %}</select>
-      <select name="cmp"><option value="">Any comparison</option>{% for v in ['SAME','DIFFERENT','BANK_EMPTY','CBANK_OPEN','BOTH_OPEN'] %}<option>{{ v }}</option>{% endfor %}</select>
+      <select class="tech" name="status"><option value="">All statuses</option>{% for v in ['RECONCILED','EXCEPTION'] %}<option>{{ v }}</option>{% endfor %}</select>
+      <select class="tech" name="case"><option value="">All cases</option>{% for k,v in cases.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+      <select class="tech" name="exc"><option value="">All exceptions</option>{% for k,v in codes.items() %}<option value="{{ k }}">{{ k }} ({{ v }})</option>{% endfor %}</select>
+      <select class="tech" name="cmp"><option value="">Any comparison</option>{% for v in ['SAME','DIFFERENT','BANK_EMPTY','CBANK_OPEN','BOTH_OPEN'] %}<option>{{ v }}</option>{% endfor %}</select>
       <input name="q" placeholder="Search description or WHO">
       <input type="hidden" name="group">
       <span class="m" id="l-group"></span>
-      <button class="sec">Filter</button> <button class="sec" type="button" id="l-reset">Clear filters</button>
+      <button class="sec tech">Filter</button> <button class="sec tech" type="button" id="l-reset">Clear filters</button>
       <span class="m" id="l-count"></span>
     </form>
     <div class="row" style="margin:6px 0">
@@ -148,7 +145,8 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
 {% if run %}
 <dialog id="wiz" aria-labelledby="w-title">
   <div class="hd"><div><b id="w-title">Guided reconciliation</b><div class="m" id="w-sub"></div></div>
-    <div class="row"><button class="sec" type="button" id="w-advanced">Advanced details</button>
+    <div class="row"><button class="sec hq" type="button" data-help="h-review" aria-label="How this window works">?</button><button class="sec" type="button" id="w-define" hidden>Define rule</button>
+      <button class="sec" type="button" id="w-advanced">Advanced details</button>
       <button class="sec" type="button" id="w-x" aria-label="Cancel">✕</button></div></div>
   <ol class="steps" id="w-steps"><li data-s="1">1 · Proposal</li><li data-s="2">2 · Review</li><li data-s="3">3 · Confirm</li></ol>
   <div class="bd wiz" id="w-body"></div>
@@ -160,14 +158,26 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
 </dialog>
 {% endif %}
 
+{% if run and shell %}
+<dialog id="rdlg" aria-labelledby="r-title">
+  <div class="hd"><div><b id="r-title">Define rule</b><div class="m" id="r-sub"></div></div>
+    <div class="row"><button class="sec hq" type="button" data-help="h-define" aria-label="How Define rule works">?</button><button class="sec" type="button" id="r-x" aria-label="Close">✕</button></div></div>
+  <iframe id="r-frame" title="Define rule" src="about:blank"></iframe>
+</dialog>
+{% endif %}
+
 <dialog id="help" aria-labelledby="help-title">
   <div class="hd"><b id="help-title">How to use the Transactions window</b>
     <button class="sec" type="button" data-help-close aria-label="Close help">✕</button></div>
   <div class="bd help">
-    <h3>1. What am I looking at?</h3>
+    <h3 id="h-review">1. What am I looking at?</h3>
     <p>C-Bank lists the bank movements of this run that are <b>not fully reconciled yet</b>. On the dashboard they are grouped by
       <b>problem</b> (for example <code>NO_PROFILE</code> = the WHO is known but has no Recognition Profile) and by <b>WHO</b>
-      (for example <i>MERCHANT BANKCD</i>). Clicking a group opens only its movements here.</p>
+      (for example <i>MERCHANT BANKCD</i>). Each group row has one button, <b>Review</b>: the button and a click on the row open the same
+      group window. Its title gives the WHO and the number of movements to classify; below it, the concrete reason the movements are open
+      (e.g. “WHO recognised, WHY to determine”). The window lists the group's movements (date, description, amount, account/card) and, when they
+      exist, earlier classifications to approve. Top right: <b>Define rule</b> and <b>Advanced details</b> (this technical list, with AI
+      investigation of selected movements and the decision trace).</p>
     <p><b>Previous Bank classifications</b> are <b>proposals</b> recovered read-only from the old Bank (often AI batches that were never
       reviewed, shown as their <i>origin</i>). They are <b>not</b> approved decisions until you approve them here.</p>
 
@@ -200,37 +210,36 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label selec
       Movements with a different beneficiary are always in a separate proposal.
       A proposal marked <i>incomplete</i> (e.g. no category) must be completed first, otherwise the rows stay in EXCEPTION.</p>
 
-    <h3>4. Investigate with AI</h3>
-    <p>Use <b>Investigate selected with AI</b> when the information is really uncertain: no previous classification, conflicting rules,
-      or a beneficiary you cannot tell. Tick up to <b>6 open movements</b> that look alike; ChatGPT (OpenAI) studies them together and judges each one.</p>
-    <p>The AI only <b>proposes</b>. A movement is classified automatically only if the AI says the evidence is sufficient with confidence ≥ 0.85;
-      otherwise you see its <b>question</b> and <b>alternatives</b> on the movement (for example: “Does this payment settle payroll already accrued, or cover unrecorded wages?”).
-      You can also discuss a single movement in its own window (“Conversation with AI”).</p>
+    <h3 id="h-analysis">4. Analyse the group and define the rule</h3>
+    <p><b>Analyse the group and propose a rule</b> examines every movement of the group, not a few, with the WHO's history: description formats,
+      common nature, accounts/cards and personal or company ownership, subgroups and exceptions. The AI reads the formats in batches under the
+      sharing already approved (at most three masked descriptions per format, never amounts or account numbers). Its state is always shown: not
+      analysed yet, in progress, proposal available, no sufficiently supported rule, limited by missing data, technical error (retry). A proposal
+      gives verifiable conditions, WHY and WHAT, how many and which movements it would resolve (before → after) and which stay excluded or
+      uncertain, with the reason. A rule resting on the WHO name alone is never proposed. Nothing is saved, activated or applied. Missing files of
+      other accounts/cards do not block it: only missing data of this group's accounts/cards are reported.</p>
+    <p id="h-define"><b>Define rule</b> opens the WHY rule editor in this window (section 6); “Define rule with this proposal” opens it filled with the proposal’s conditions, WHY and exceptions. From a proposal or the rules panel you can also open the Bank’s <b>recognition-profile editor</b>, with the group context as editable text: WHAT follows the chosen WHY and an incoherent pair is refused; <b>Preview</b> writes nothing and must run again after a conversation change; profiles have no draft. A profile applies only to movements whose WHO is read by an extraction rule and that are still to reconcile: for a group whose WHO is already recognised the preview finds nothing to apply and the profile can only be saved for the future. Closing the editor returns to the same group; after a save the open movements are re-evaluated.</p>
+    <p>In <b>Advanced details</b>, <b>Investigate selected with AI</b> still studies up to 6 open movements; like a full run, it needs complete data.</p>
 
     <h3>5. What happens after approval?</h3>
     <ul>
-      <li>The decision is saved <b>only in C-Bank Prototype</b> (its experimental store).</li>
-      <li>The operational <b>Bank is not changed</b>.</li>
+      <li>The decision is recorded in the <b>Bank database</b> as a protected human decision.</li>
       <li>An approved row becomes <b>RECONCILED</b> if WHO, WHY, Category and Operation are all set (the accounting subject is always the Source owner, decision 86); otherwise it stays in EXCEPTION with the missing field shown. “Just approved” shows the result at once, and the dashboard counts update when you close this window.</li>
       <li><b>No permanent rule</b> is created, and an approval applies only to the rows you approved, never to other movements of the same WHO.</li>
       <li>Approved decisions are <b>protected</b> 🔒: automatic processing never changes them, and approving the same row again is refused.</li>
     </ul>
-    <div class="row" style="justify-content:flex-end;margin-top:10px"><button type="button" data-help-close>Close</button></div>
+        <h3 id="h-rules">6. Rules of every scope: single WHO, category, general</h3><p>In the <b>Review</b> window, the panel <b>WHO rules, category and declarations</b> lists the WHY rules that concern the WHO: those of the WHO only, those of its category and the general ones, active or draft. <b>New rule</b>, <b>Revise</b> or <b>Use this proposal in the rule editor</b> open the same editor: choose the scope (this WHO only, every WHO of the confirmed or declared category, general), the WHY from the list (the WHAT derives from the WHY and is shown), verifiable conditions (e.g. personal or company ownership of the account/card, description text) and exceptions. A general rule needs at least one condition beyond ownership, direction or account type; a heterogeneous category (marketplace) cannot determine a WHY.</p><p><b>Simulate</b> saves nothing. It compares the rule with every rule of the other scopes on the same movements, with no fixed precedence: <i>equivalent</i> (same WHY where they overlap; it can be replaced, and it is shown whether the equivalence also holds on the conditions, hence on future movements, or only on the current data), <i>complementary</i> (also covers other cases: kept), <i>conflicting</i> (a different WHY: you decide, e.g. keeping the other rule as an explicit exception). It shows conditions, rules and movements before → after, the group's movements resolved and the protected human decisions. Every change of scope, WHY, conditions, exceptions or choices cancels the simulation: run it again.</p><p><b>Save draft</b> saves the rule inactive: no movement changes. <b>Save and apply now</b> is possible only without open conflicts: it asks for confirmation with the exact number of movements that change, repeats the simulation on the server (if data, rules or choices changed, saving is refused), activates the rule for future imports too, deactivates only the rules you chose to replace (with history and <b>Restore</b>, never deleted) and re-evaluates the open movements. The same save cannot be applied twice. Confirmed human decisions stay protected. After applying you return to the same group with updated counts.</p>
+    <h3 id="h-category">7. WHO category and contextual declarations</h3><p>The category describes the activity of the counterparty or service (food service, passenger transport, airline…); it is not the WHAT and not the UNIQUE/MULTIPLE mode. <b>Propose with the AI</b> runs an internet search with the WHO name only (no description, amount or account) and records the proposal with evidence, sources and certainty; it needs the sharing approval the Bank already requires. A proposal authorises nothing until you <b>confirm</b> it; you can also reject it or choose a category directly. Every proposal and decision stays in the history.</p><p>A <b>contextual declaration</b> is your statement about how you use a WHO, e.g. “I use UBER only for transport”. It is recorded with its text, the category it states and the Sources it covers: it gives the WHO that category only on those Sources, is not a universal property and classifies nothing by itself. <b>Define a rule from this declaration</b> prepares a category rule (with the Sources' ownership) to complete with the WHY, simulate and confirm. When a description or document shows a different service, exclude it as an exception: that Uber Eats always has a distinct description is not verified. When the description, the evidence and a declaration are enough, no report is needed.</p>
+    <h3 id="h-advanced">8. Advanced details</h3><p><b>Advanced details</b> opens the technical list of the group's movements: search, selection, opening a movement, AI investigation of selected movements (up to 6; like a full run it needs complete data) and the decision trace. Closing the list returns to the Review window.</p>
+    <h3 id="h-movement">9. Movement window</h3><ol><li><b>Read the AI question</b> in the yellow box.</li><li><b>Select an answer</b>, or choose <i>Other</i> and explain in your own words, then <i>Submit answer</i>.</li><li><b>Review the proposed classification</b>: the AI fills WHO, Destination, WHY and Category; nothing is saved yet.</li><li><b>Confirm the decision</b> with <i>Confirm human decision</i> (recorded in Bank as a protected human decision).</li></ol><p>Previous and Next move inside the current list; technical information is under Advanced details.</p>
+<div class="row" style="justify-content:flex-end;margin-top:10px"><button type="button" data-help-close>Close</button></div>
   </div>
 </dialog>
 
 <dialog id="dlg" aria-label="Movement">
-  <div class="hd"><div><b id="d-title"></b> <button class="sec" type="button" id="d-help-btn" popovertarget="d-help-pop" aria-label="How to use this window" style="padding:1px 9px">?</button><div class="m" id="d-sub"></div></div>
+  <div class="hd"><div><b id="d-title"></b> <button class="sec" type="button" id="d-help-btn" data-help="h-movement" aria-label="How to use this window" style="padding:1px 9px">?</button><div class="m" id="d-sub"></div></div>
     <div class="row"><button class="sec" type="button" id="d-prev">← Previous</button><span class="m" id="d-pos"></span><button class="sec" type="button" id="d-next">Next →</button>
     <button class="sec" type="button" onclick="dlg.close()">Close</button></div></div>
-  <div id="d-help-pop" popover class="pop">
-    <b>How to use this window</b>
-    <ol><li><b>Read the AI question</b> in the yellow box.</li>
-      <li><b>Select an answer</b>, or choose <i>Other</i> and explain in your own words, then <i>Submit answer</i>.</li>
-      <li><b>Review the proposed classification</b>: the AI fills WHO, Destination, WHY and Category; nothing is saved yet.</li>
-      <li><b>Confirm the decision</b> with <i>Confirm human decision</i> (saved only in C-Bank).</li></ol>
-    <span class="m">Technical information is under <i>Advanced details</i>.</span>
-  </div>
   <div class="bd">
     <div class="m" data-status role="status"></div>
     <div id="d-alerts"></div>
@@ -268,7 +277,6 @@ const $=s=>document.querySelector(s),esc=x=>String(x??'').replace(/[&<>"']/g,c=>
 async function post(url,data){const r=await fetch(url,{method:'POST',headers:{'X-CBank-Token':token},body:new URLSearchParams(data)});const v=await r.json();if(!r.ok||v.ok===false)throw Error(v.error||r.statusText);return v;}
 function busy(b,t){document.querySelectorAll('button').forEach(x=>x.disabled=b);document.querySelectorAll('#status,[data-status]').forEach(x=>x.textContent=t||'');if(!b&&current)position();}
 document.querySelectorAll('[data-run]').forEach(b=>b.onclick=async()=>{busy(true,'Running the engine (dry run)…');try{const v=await post(B+'/api/runs',{kind:b.dataset.run,month:$('#month').value});location.search='?run='+v.run_id;}catch(e){busy(false,e.message);}});
-document.querySelectorAll('[data-investigate]').forEach(b=>b.onclick=async()=>{busy(true,'AI investigation of the group (OpenAI). This can take a minute…');try{const v=await post(B+`/api/runs/${runId}/investigate`,{txn_ids:b.dataset.investigate});busy(false,`Investigation done: ${v.reevaluated_changed} unresolved movements changed. Reloading…`);setTimeout(()=>location.reload(),800);}catch(e){busy(false,e.message);}});
 // --- Transactions modal: filters, selection and position persist per run (sessionStorage) ---
 const KEY='cbank-list-'+runId,FIELDS=['status','case','exc','cmp','q','group'];
 let current=null,rows=[],changed=false;
@@ -282,7 +290,7 @@ let priors={},pdata={groups:[]};
 async function loadRows(){const qs=new URLSearchParams(Object.entries(state.filters).filter(([,v])=>v));const v=await (await fetch(B+`/api/runs/${runId}/results?${qs}`)).json();rows=v.rows;
  pdata=await (await fetch(B+`/api/runs/${runId}/prior?${qs}`)).json();priors=pdata.priors||{};renderRows();renderPriors();}
 // --- Decision 59: previous Bank classifications, approved by group or by selected rows ---
-function renderPriors(){const g=pdata.groups||[],cat=pdata;$('#p-count').textContent=`${g.length} proposal group(s), ${Object.keys(priors).length} movement(s)`;
+function renderPriors(){const g=pdata.groups||[],cat=pdata;$('#p-box').hidden=!g.length;$('#p-count').textContent=`${g.length} proposal group(s), ${Object.keys(priors).length} movement(s)`;
  $('#p-groups').innerHTML=g.map((x,i)=>`<div class="warnbox" data-pg="${i}">
   <div><b>${esc(x.who)}</b> → <b>${esc(x.beneficiary||'—')}</b> · WHY <b>${esc(x.why)}</b> · ${esc(x.category||'no category')} <span class="m">· ${x.txn_ids.length} movement(s) · origin: ${esc(Object.entries(x.origins).map(([k,n])=>`${k} (${n})`).join('; '))}${x.complete?'':' · incomplete: correct before approving'}</span></div>
   <div class="row" style="margin-top:4px">
@@ -311,20 +319,19 @@ function renderRows(){const sel=new Set(state.selected);
   <td><input type="checkbox" data-pick="${r.txn_id}" ${sel.has(r.txn_id)?'checked':''} aria-label="Select ${r.txn_id}"></td>
   <td>${esc(r.date)}</td><td>${esc(r.description)}${(r.cases||[]).length?`<div class="m">${esc(r.cases.join(', '))}</div>`:''}</td>
   <td class="num ${r.amount_minor<0?'neg':''}">${(r.amount_minor/100).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
-  <td>${esc(r.payer||'—')}<div class="m">${esc(r.source)}</div></td><td>${esc(r.who_name||'—')}<div class="m">${esc(r.who_method||'')}${r.who_labels&&r.who_labels.length?' · '+esc(r.who_labels.join(', ')):''}</div></td>
+  <td>${esc(r.payer||'—')}<div class="m">${esc(r.source)}</div></td><td>${esc(r.who_name||'—')}<div class="m">${esc(r.who_method||'')}</div></td>
   <td>${esc(r.beneficiary||'—')}<div class="m">${esc(r.beneficiary_method||'')}</div></td><td>${esc(r.why||'—')}<div class="m">${esc(r.why_method||'')}</div></td>
   <td>${esc(r.category||'—')}</td><td class="m">${esc(r.qb_account||'not mapped')}</td><td class="m">${esc(r.operation_type||'—')}</td>
   <td><span class="b ${r.status}">${r.status}</span>${r.protected?`<div class="m">🔒 ${esc(r.protected)}</div>`:''}${r.exceptions.map(e=>`<div class="m">${esc(e.code)}</div>`).join('')}</td>
   <td class="m">${esc(r.comparison)}</td>
   <td class="m">${(p=>p?`${esc(p.why)} · ${esc(p.category||'no category')} · ${esc(p.beneficiary||'—')}<br><i>${esc(p.origin)}</i>`:'')(priors[r.txn_id])}</td></tr>`).join('');
- $('#l-count').textContent=`${rows.length} of {{ total }}`;$('#l-selected').textContent=`${state.selected.length} selected`;
+ $('#l-count').textContent=state.filters.group?GT.occ(rows.length):`${rows.length} of {{ total }}`;$('#l-selected').textContent=`${state.selected.length} selected`;
  document.querySelectorAll('#l-rows tr[data-txn]').forEach(tr=>tr.onclick=e=>{if(e.target.matches('[data-pick]'))return;open(+tr.dataset.txn);});
  document.querySelectorAll('[data-pick]').forEach(c=>c.onchange=()=>{const id=+c.dataset.pick,s=new Set(state.selected);c.checked?s.add(id):s.delete(id);state.selected=[...s];save();$('#l-selected').textContent=`${state.selected.length} selected`;});}
-async function openList(preset){if(preset){state.filters=Object.assign({},preset);save();}fillForm();await loadRows();$('#l-title').textContent=state.filters.group?`Transactions — ${state.filters.exc||''} ${state.filters.group}`:'Transactions';if(!list.open)list.showModal();}
+async function openList(preset){if(preset){state.filters=Object.assign({},preset);save();}fillForm();await loadRows();list.classList.toggle('grp',!!state.filters.group);$('#l-title').textContent=state.filters.group?`${state.filters.group} — ${GT.groupMoves}`:'Transactions';if(!list.open)list.showModal();}
 if(window.list){
  document.querySelectorAll('tr[data-group-exc]').forEach(tr=>{const g={exc:tr.dataset.groupExc,group:tr.dataset.groupKey};
-  tr.querySelector('[data-show]').onclick=e=>{e.stopPropagation();openList(g);};
-  tr.onclick=e=>{if(e.target.closest('[data-investigate]'))return;openWizard(g);};});
+  tr.onclick=()=>openWizard(g);});
  $('#all-movements').onclick=()=>openList(null);
  $('#l-filters').onsubmit=e=>{e.preventDefault();readForm();loadRows();};
  $('#l-reset').onclick=()=>{state.filters={};save();fillForm();loadRows();};
@@ -337,7 +344,6 @@ if(window.list){
  $('#l-close').onclick=()=>list.close();
  // Help: a separate modal on top; closing it (X, Close or Escape) leaves the list, filters and selection as they were.
  let helpClosedAt=0;
- $('#help-open').onclick=()=>help.showModal();
  document.querySelectorAll('[data-help-close]').forEach(b=>b.onclick=()=>help.close());
  help.addEventListener('close',()=>{helpClosedAt=Date.now();});
  // Escape closes only the help: the same key press must not also close the Transactions window.
@@ -359,6 +365,8 @@ const dirWord=d=>d==='in'?'money in':'money out';
 async function openWizard(g){
  const qs=new URLSearchParams({exc:g.exc,group:g.group});
  const [res,pr]=await Promise.all([fetch(B+`/api/runs/${runId}/results?${qs}`).then(r=>r.json()),fetch(B+`/api/runs/${runId}/prior?${qs}`).then(r=>r.json())]);
+ const gr=[...document.querySelectorAll('tr[data-group-exc]')].find(t=>t.dataset.groupExc===g.exc&&t.dataset.groupKey===g.group);
+ W.who=gr&&gr.dataset.whoId||null;W.shell=!!window.rdlg;W.an=AN[g.exc+'|'+g.group]||null;W.rk=RK[W.who]||null;W.ed=null;W.rmsg='';
  Object.assign(W,{g,rows:res.rows,byId:Object.fromEntries(res.rows.map(r=>[r.txn_id,r])),cat:pr,results:[]});
  // CARD_SETTLEMENT_001: card-payment exceptions never get "earlier classification" proposals (approving one
  // would replace the transfer with an ordinary payment to the issuer): the wizard only explains the case.
@@ -385,13 +393,14 @@ function keptApart(){let h='';const anomalies=others().filter(x=>x.anomaly);
  for(const a of anomalies)h+=`<div class="anom"><b>${a.txn_ids.length} movement(s) of ${a.txn_ids.map(i=>usd(W.byId[i].amount_minor)).join(', ')}</b> are ${dirWord(a.dir)} while most movements of ${esc(W.g.group)} are ${dirWord(W.main)}.
   They may be a fee, a refund or an adjustment, so they are <b>excluded from this proposal</b> and reviewed separately.${a.notes.length?`<br><span class="m">AI note: ${esc(a.notes[0])}</span>`:''}</div>`;
  const same=others().filter(x=>!x.anomaly);if(same.length)h+=`<p class="m">Also in this group, reviewed as separate proposals: ${same.map(x=>`${x.txn_ids.length} for ${esc(entName(x.beneficiary_id))} (${esc(x.why)})`).join('; ')}.</p>`;
- if(W.noPrior.length)h+=`<div class="anom"><b>${W.noPrior.length} movement(s) have no earlier classification.</b> C-Bank has no evidence to propose anything for them: use <i>Investigate with AI</i> or <i>Advanced details</i>.</div>`;
+ if(W.noPrior.length&&W.props.length)h+=`<div class="anom"><b>${W.noPrior.length} movement(s) have no earlier classification.</b> Use <i>Analyse the group and propose a rule</i> or <i>Define rule</i>.</div>`;
  if(W.protectedRows.length)h+=`<p class="m">🔒 ${W.protectedRows.length} movement(s) already decided by a person are protected and not included.</p>`;
  return h;}
 function renderWizard(){const p=cur(),s=W.step;
  document.querySelectorAll('#w-steps li').forEach(li=>{const n=+li.dataset.s;li.className=n===s?'on':n<s?'done':'';});
- $('#w-title').textContent=`Guided reconciliation — ${W.g.group}`;
- $('#w-sub').textContent=W.props.length?`Proposal ${Math.min(W.i+1,W.props.length)} of ${W.props.length} · ${W.rows.length} open movement(s) in this group`:`${W.rows.length} open movement(s) in this group`;
+ $('#w-title').textContent=`${W.g.group} — ${W.rows.length} ${W.card?GT.toCheck:GT.toClassify}`;
+ $('#w-sub').textContent=reasonText(W.g.exc)+(W.props.length?` · ${GT.propOf(Math.min(W.i+1,W.props.length),W.props.length)}`:'');
+ $('#w-define').hidden=!W.who;
  const back=$('#w-back'),next=$('#w-next');back.hidden=s===1||!p;next.hidden=false;next.disabled=false;$('#w-skip').hidden=!p;
  let h='';
  if(W.card){
@@ -409,16 +418,15 @@ function renderWizard(){const p=cur(),s=W.step;
  if(!p){ // no (more) proposals
   const done=W.results.length;
   h=done?`<div class="okbox"><b>Done with this group.</b> ${W.results.map(r=>esc(r)).join('<br>')}</div>`:'';
-  h+=done?'':`<p class="prop">There is <b>no earlier classification</b> to propose for this group, so C-Bank will not guess one.</p>`;
   const gs=[...document.querySelectorAll('tr[data-group-exc]')],k=gs.findIndex(t=>t.dataset.groupExc===W.g.exc&&t.dataset.groupKey===W.g.group);
-  h+=keptApart();next.textContent=done||!W.noPrior.length?(gs[k+1]?'Next group':'Back to Dashboard'):'Investigate with AI';next.dataset.act=done||!W.noPrior.length?'nextgroup':'ai';back.hidden=true;
+  h+=keptApart()+groupPanel();next.textContent=gs[k+1]?'Next group':'Back to Dashboard';next.dataset.act='nextgroup';back.hidden=true;
  }else if(s===1){const f=fixed(),total=p.txn_ids.reduce((a,i)=>a+W.byId[i].amount_minor,0);
   h=`<div class="prop">${p.anomaly?'<div class="anom"><b>Needs care:</b> this proposal is kept apart from the other movements of the group. Check each movement before approving.</div>':''}
    I found <b>${p.txn_ids.length}</b> movement(s) (${dirWord(p.dir)}, total <b>${usd(total)}</b>) with <b>${esc(p.who)}</b>.<br>
    They belong to <b>${esc(entName(f.beneficiary_id))}</b>.<br>
    They look like: <b>${esc(f.why)}</b>.<br>
    ${f.category?`Proposed category: <b>${esc(plainCat(f.category))}</b>.`:'<span class="anom" style="display:inline-block">No category is known for this classification: choose one in Review, otherwise these movements stay incomplete.</span>'}</div>
-   <p class="m">Source: the old Bank's earlier classification (${esc(Object.keys(p.origins).join('; '))}). Nothing is approved yet.</p>${p.notes.length&&!p.anomaly?`<p class="m">AI note: ${esc(p.notes[0])}</p>`:''}${p.anomaly&&p.notes.length?`<p class="m">AI note: ${esc(p.notes[0])}</p>`:''}`+keptApart();
+   <p class="m">Source: the old Bank's earlier classification (${esc(Object.keys(p.origins).join('; '))}). Nothing is approved yet.</p>${p.notes.length&&!p.anomaly?`<p class="m">AI note: ${esc(p.notes[0])}</p>`:''}${p.anomaly&&p.notes.length?`<p class="m">AI note: ${esc(p.notes[0])}</p>`:''}`+keptApart()+groupPanel();
   next.textContent='Next';next.dataset.act='review';
  }else if(s===2){const f=fixed();
   h=`<p>Tick the movements to approve. ${p.anomaly?'<b>These movements are unusual: none is ticked by default.</b>':'Untick anything you are not sure about.'}</p>
@@ -441,18 +449,127 @@ function renderWizard(){const p=cur(),s=W.step;
    ${others().length?`<p class="m">${others().length} other proposal(s) of this group are not affected.</p>`:''}
    <p class="m">Saved only in C-Bank Prototype as a human decision. The operational Bank is not changed and no rule is created.</p>`;
   next.textContent='Approve and continue';next.dataset.act='approve';next.disabled=!n;}
- $('#w-body').innerHTML=h;
+ $('#w-body').innerHTML=h;bindGroupPanel();
  const all=$('#w-all');if(all)all.onchange=()=>{W.sel=new Set(all.checked?p.txn_ids:[]);renderWizard();};
  document.querySelectorAll('[data-w]').forEach(c=>c.onchange=()=>{const i=+c.dataset.w;c.checked?W.sel.add(i):W.sel.delete(i);});
  document.querySelectorAll('[data-wdetail]').forEach(b=>b.onclick=()=>{rows=p.txn_ids.map(i=>W.byId[i]);open(+b.dataset.wdetail);});
  document.querySelectorAll('[data-wf]').forEach(sel=>sel.onchange=()=>{const k=sel.dataset.wf,v=+sel.value||null;
   if(k==='why_id'){W.fix.why_id=v!==p.why_id?v:undefined;delete W.fix.category_id;}else{W.fix[k]=v&&v!==p[k]?v:undefined;}
   for(const key of Object.keys(W.fix))if(W.fix[key]==null)delete W.fix[key];renderWizard();});}
+const GT={toVerify:'to verify',toClassify:'movements to classify',toCheck:'movements to check',
+ reasons:{WHO_SOURCE_CLASSIFICATION_MISSING:'WHO recognised, WHY to determine for this account/card',WHY_RULE_MISSING:'WHO recognised, WHY changes movement by movement: a rule is needed',
+  WHY_DOCUMENT_MISSING:'WHO recognised, a document or clarification is needed for WHY',WHY_RULES_CONFLICT:'WHO recognised, WHY rules in conflict',PROVISIONAL_WHY:'Provisional WHY: the nature of the movement is still to determine',
+  NO_PROFILE:'WHO recognised without a recognition profile',WHO_UNKNOWN:'WHO not recognised',WHO_AMBIGUOUS:'Several possible WHOs',CATEGORY_MISSING:'WHY set, accounting category missing',
+  PERSONAL_SOURCE_BUSINESS_WHAT:'Personal account with a business category',RELATIONSHIP_TO_DECIDE:'Economic relationship between owners to decide',CARD_PAYMENT_UNMATCHED:'Card payment without its counterpart',CARD_PAYMENT_AMBIGUOUS:'Card payment with several counterparts'},
+ propOf:(i,n)=>`proposal ${i} of ${n}`,occ:n=>`${n} movements in the group`,date:'Date',desc:'Description',amount:'Amount',source:'Account / card',sources:'Sources',
+ analysisTitle:'Group analysis',analyze:'Analyse the group and propose a rule',define:'Define rule',defineWith:'Define rule with this proposal',retry:'Retry the analysis',again:'Run the analysis again',
+ stNew:'Not analysed yet',stNewText:n=>`The analysis examines all ${n} movements of the group and the WHO's history: common nature, differences between descriptions, accounts/cards and ownership, subgroups and exceptions. Nothing is saved or applied.`,
+ stRun:'Analysis in progress',stRunText:n=>`Reading the ${n} movements, in batches of description formats. This can take a few minutes.`,
+ stErr:'Technical error, retry',stProp:'Proposal available',stNone:'Analysis complete: no sufficiently supported rule',stLim:'Analysis limited by missing data',
+ stDone:a=>a.state==='LIMITED'&&!a.examined?'The analysis could not start: see below what is missing.':`${a.movements} movements of the group examined${a.examined?` with the WHO's history (${a.examined} movements)`:''}${a.ai_calls?` · ${a.ai_calls} AI request(s)`:''}.`,
+ limits:'Limits of this analysis',limit:l=>l.text,
+ proposal:'Proposed rule',subgroup:k=>`Subgroup ${k} — proposed rule`,except:'except when',aiReason:'AI reasoning',
+ cond:(c,t)=>t||`${c.field} ${c.op} ${Array.isArray(c.value)?c.value.join(', '):c.value}`,
+ ruleSentence:(p,who)=>`when WHO is ${who} and ${p.conditions.join(' and ')}: WHY “${p.why}”`,
+ whyWhat:p=>`WHY <b>${esc(p.why)}</b> → WHAT <b>${esc(p.what||'(balance-sheet account of the WHY)')}</b>`,
+ resolves:p=>`Would resolve <b>${p.resolves}</b> movement(s) of the group${p.uncertain.length?` (<b>${p.uncertain.length}</b> covered by the conditions without a confirmed nature: to verify)`:''}${p.open_in_group.length?`; ${p.open_in_group.length} would stay open`:''}${p.outside_group?`; ${p.outside_group} other movement(s) of this WHO outside the group`:''}${p.summary.protected?`; ${p.summary.protected} protected human decision(s) stay unchanged`:''}.`,
+ resolvedList:n=>`Movements it would resolve (${n}): before → after`,formats:n=>`Descriptions in the group (${n} formats) and the AI reading`,example:'Example',count:'Movements',reading:'AI reading',notRead:'not read (error: retry)',unclear:'nature not determinable from the description',
+ excludedTitle:n=>`Movements excluded or still uncertain (${n})`,excl:{CONFLICT:'conflicting proposals',PROTECTED:'protected human decision',NOT_READ:'AI reading failed',UNCLEAR:'nature not determinable from the description',NOT_SUPPORTED:'no rule with enough examples'},
+ nameOnly:'Discarded because they rested on the WHO name alone',nothingApplied:'No rule saved or activated, no classification applied. To confirm, use “Define rule”.',
+ error:e=>`Analysis not completed because of a technical error. Nothing was changed: retry. (${e})`,groupMoves:'movements in the group',refreshing:'Refreshing the group results…',
+ startText:(w,n,reason,p,who)=>`Define the recognition profile of WHO ${who}. In Guided Reconciliation the group has ${n} movements to classify (${reason}).`+(p?` Proposal from the group analysis, to verify: WHY “${p.why}”${p.what?` (WHAT “${p.what}”)`:''} ${GT.ruleSentence(p,who).replace(/: WHY .*$/,'')}${p.exceptions.length?`, except when ${p.exceptions.join('; ')}`:''}. It would resolve ${p.resolves} movement(s) of the group.`:'')+' Tell me what is missing before proposing the profile.'};
+// --- Review: the group window (one entry per group) ---------------------------------------------------------
+// "Analyse the group" (/analyze, read-only) reads ALL the group's movements and proposes simulated WHY rules;
+// "Define rule" opens the Bank's own rule editor (recognition profile: WHY and WHAT lists, Preview on real
+// movements, Save draft, Save and apply), embedded, for the group's WHO. Nothing here saves or applies anything.
+const AN={};
+const RT={
+ profileEditor:'Recognition-profile editor',profileNote:'Bank recognition profiles apply only to movements whose WHO is read by an extraction rule and that are still to reconcile: for groups whose WHO is already recognised use the WHY rules above.',
+title:'WHO rules, category and declarations',helpRules:'How rules of every scope work',helpCategory:'How category and declarations work',loading:'Loading the WHO’s rules and category…',retry:'Retry',working:'Working…',
+ category:'WHO category',noCategory:'No category defined.',catStatus:{PROPOSED:'Proposed',CONFIRMED:'Confirmed',REJECTED:'Rejected'},certainty:'certainty',cert:{high:'high',medium:'medium',low:'low'},origin:{AI:'proposed by the AI',HUMAN:'chosen by a person'},
+ confirm:'Confirm the category',reject:'Reject',propose:'Propose with the AI (internet research on the WHO name only)',chooseCat:'Choose a category…',confirmChosen:'Confirm this category',
+ catNote:'The category describes the activity of the counterparty or service: it is not the WHAT and not the UNIQUE/MULTIPLE mode. Only a confirmed category is used by category rules.',
+ cats:{FOOD_SERVICE:'Food service (restaurant, bar, café)',PASSENGER_TRANSPORT:'Passenger transport (ride, taxi, transit)',AIRLINE:'Airline',LODGING:'Lodging',FUEL:'Fuel station',GROCERY:'Grocery store, supermarket',SOFTWARE:'Software and online services',UTILITIES:'Utilities and telecommunications',PROFESSIONAL_SERVICES:'Professional services',MARKETPLACE:'Marketplace or general retailer (heterogeneous purchases)'},
+ proposed:'Proposal recorded: confirm or reject it.',noneSupported:'No category is sufficiently supported by the evidence: nothing was recorded.',
+ declarations:'Contextual declarations',noDecl:'No declaration for this WHO.',onSources:'on the Sources',withdraw:'Withdraw',ruleFromDecl:'Define a rule from this declaration',
+ addDecl:'Record a declaration (e.g. “I use UBER only for transport”)',declText:'Declaration, in your words',declCat:'Category it states',declSources:'Valid only on these Sources',declSave:'Record declaration',
+ declNote:'A declaration holds only in your context and on the Sources named: it does not become a universal property of the WHO and classifies nothing by itself. It can support a category rule to simulate and confirm; contrary descriptions or documents must be excluded as exceptions.',declared:'Declaration recorded.',
+ fromDecl:s=>`Category rule prepared from the declaration${s.length===1?` (${RT.subject[s[0]]||s[0]} Source)`:''}: choose the WHY, add exceptions and simulate.`,
+ rules:'WHY rules that concern this WHO',noRules:'No WHY rule concerns this WHO yet.',scope:{WHO:'Single WHO',CATEGORY:'Category',GENERAL:'General'},status:{ACTIVE:'active',INACTIVE:'draft / inactive'},revise:'Revise',newRule:'New rule',
+ replacements:'Rule replacements (history and restore)',replacedBy:x=>`Rule #${x.new_rule_id} replaced ${x.replaced.map(r=>'#'+r.rule_id).join(', ')}`,restore:'Restore',restored:'restored',restoredMsg:'Replaced rules active again, replacing rule deactivated. Open movements re-evaluated.',
+ revising:r=>`Revising rule #${r.id}: after the simulation the new version can replace it (only when equivalent and with your approval).`,
+ editor:'Define or revise the rule',scopeChoice:{WHO:w=>`Only WHO ${w}`,CATEGORY:(w,c)=>c.length?'Every WHO of the category':'Category (no confirmed or declared category)',GENERAL:()=>'General (every recognised WHO)'},
+ chooseWhy:'Choose the WHY…',balance:'balance-sheet account of the WHY',whatFromWhy:'the WHAT derives from the WHY',conditions:'Verifiable conditions',noConditions:'no condition',remove:'Remove',
+ addSubject:'Account/card ownership…',subject:{Personal:'personal',Company:'company'},descContains:'the description contains…',add:'Add',exceptions:'Exceptions',noExceptions:'no exception',excContains:'exclude when the description contains…',
+ ruleTitle:'Title (optional)',simulate:'Simulate',closeEditor:'Close the editor',simulating:'Simulating',simTitle:'Simulation',ruleText:s=>s.text,
+ simSummary:s=>{const m=s.summary;return `${s.movements} movements concerned: <b>${m.new_why}</b> get a WHY, <b>${m.changed_why}</b> change WHY, <b>${m.lost_why}</b> lose their WHY, <b>${m.conflict}</b> in conflict, ${m.still_open} stay open, ${m.unchanged} unchanged, ${m.protected} protected human decisions. Group: <b>${s.group_resolved}</b> of ${s.group_movements} resolved.`;},
+ verifiedOn:'Verified on the current movements of the run: this alone does not prove the result on future movements.',
+ otherRule:'Other rule involved',relation:'Comparison',decision:'Your decision',kind:{EQUIVALENT:'Equivalent: same WHY where they overlap',COMPLEMENTARY:'Complementary: also covers cases this rule does not (kept)',CONFLICT:'Conflicting: a different WHY on the same movements',KEPT:'Legitimate exception kept'},
+ futureYes:'equivalent on the conditions too (holds for future movements)',futureNo:'equivalent on the current data only',kindCounts:r=>`${r.matched} movements · ${r.same} same WHY · ${r.different} different · ${r.only_other} only the other`,
+ replaceIt:'Replace (deactivate, with history and restore)',keepIt:'Keep as an explicit exception',movesTitle:s=>`Movements concerned (${s.movements}): before → after`,
+ effect:{new_why:'gets a WHY',changed_why:'changes WHY',lost_why:'loses its WHY',conflict:'conflict',still_open:'stays open',unchanged:'unchanged',protected:'protected human decision'},inGroup:'in the group',
+ conflictsOpen:n=>`${n} conflicts to decide: keep the other rule as an exception, change the rule, or save a draft only.`,saveDraft:'Save draft (inactive)',saveApply:n=>`Save and apply now (${n} movements change)`,
+ saveNote:'Draft: saved inactive, no movement changes. Save and apply now: the rule becomes active for future imports too, the chosen rules are replaced (with history and restore) and the open movements are re-evaluated; human decisions stay protected. If data or rules changed meanwhile, saving is refused and the simulation must run again.',
+ confirmApply:(s,n)=>`Activate the rule and apply it now?\n${n} movements change (${s.summary.new_why} get a WHY, ${s.summary.changed_why} change it, ${s.summary.lost_why} lose it); ${s.summary.protected} human decisions stay protected.${s.replace.length?`\nReplaced rules: ${s.replace.map(i=>'#'+i).join(', ')}.`:''}`,
+ saving:'Saving…',applied:v=>{const e=v.expected,n=e.new_why+e.changed_why+e.lost_why;return `Rule #${v.rule_id} active and applied: ${n} movements changed as simulated; ${v.open} movements of this group are still open.${v.replaced?` Replaced rules: ${v.replaced.replaced.map(r=>'#'+r.rule_id).join(', ')}.`:''}`;},drafted:v=>`Draft #${v.rule_id} saved, inactive: no movement changed.`,
+ except:'except when',and:' and ',
+ cond:c=>{const F={source:'the account/card',source_type:'the account/card type',subject:'the account/card ownership',direction:'the direction',amount:'the amount',weekday:'the weekday',description:'the description',format:'the description format',who:'the WHO'};
+  const O={is:'is',is_not:'is not',in:'is one of',contains:'contains',not_contains:'does not contain',starts_with:'starts with',between:'is between',has:'has',has_not:'does not have'};
+  const V={Personal:'personal',Company:'company'};const val=v=>Array.isArray(v)?v.map(val).join(', '):(V[v]??String(v));
+  const f=c.field.startsWith('extra:')?`the account/card information “${c.field.slice(6)}”`:c.field.startsWith('evidence:')?`the RF-One evidence “${c.field.slice(9)}”`:(F[c.field]||c.field);return `${f} ${O[c.op]||c.op} “${val(c.value)}”`;}};
+{% include "_rules_panel.js" %}
+const reasonText=code=>GT.reasons[code]||uiLabel(code);
+function sourcesOf(rs){const c={};rs.forEach(r=>{const s=r.source||'—';c[s]=(c[s]||0)+1;});return Object.entries(c).sort((a,b)=>b[1]-a[1]);}
+function occurrences(){return `<details ${W.props.length?'':'open'} style="margin-top:8px"><summary><b>${GT.occ(W.rows.length)}</b> · ${esc(sourcesOf(W.rows).map(([s,n])=>`${s} (${n})`).join(', '))}</summary>
+ <div style="overflow:auto;max-height:40vh"><table><thead><tr><th>${GT.date}</th><th>${GT.desc}</th><th class="num">${GT.amount}</th><th>${GT.source}</th></tr></thead><tbody>
+ ${W.rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.description)}</td><td class="num ${r.amount_minor<0?'neg':''}">${usd(r.amount_minor)}</td><td>${esc(r.source)}</td></tr>`).join('')}</tbody></table></div></details>`;}
+function analysisPanel(){const a=W.an,def=W.who?` <button class="sec" type="button" data-gact="new">${GT.define}</button>`:'';
+ let h=`<section class="gpanel" aria-live="polite"><h4 style="margin:2px 0 6px">${GT.analysisTitle}</h4>`;
+ if(!a)h+=`<p><span class="st st-new">${GT.stNew}</span> ${GT.stNewText(W.rows.length)}</p><div class="row"><button type="button" data-gact="analyze">${GT.analyze}</button>${def}</div>`;
+ else if(a.state==='RUNNING')h+=`<p><span class="st st-run">${GT.stRun}</span> ${GT.stRunText(W.rows.length)}</p>`;
+ else if(a.state==='ERROR')h+=`<p><span class="st st-err">${GT.stErr}</span> ${esc(GT.error(a.error||''))}</p><div class="row"><button type="button" data-gact="analyze">${GT.retry}</button>${def}</div>`;
+ else{const lab={PROPOSAL:[GT.stProp,'st-ok'],NO_RULE:[GT.stNone,'st-none'],LIMITED:[GT.stLim,'st-lim']}[a.state]||[a.state,''],who=(a.who||[]).join(', ')||W.g.group;
+  h+=`<p><span class="st ${lab[1]}">${lab[0]}</span> ${esc(GT.stDone(a))}</p>`;
+  if((a.limits||[]).length)h+=`<div class="anom"><b>${GT.limits}</b><ul style="margin:4px 0">${a.limits.map(l=>`<li>${esc(GT.limit(l))}</li>`).join('')}</ul></div>`;
+  (a.proposals||[]).forEach((p,k)=>{h+=`<div class="okbox"><b>${a.proposals.length>1?GT.subgroup(k+1):GT.proposal}</b> — ${esc(GT.ruleSentence(p,who))}
+   <ul style="margin:4px 0">${p.spec.conditions.map((c,i)=>`<li>${esc(GT.cond(c,p.conditions[i]))}</li>`).join('')}${p.exceptions.map(e=>`<li>${GT.except} ${esc(e)}</li>`).join('')}</ul>
+   ${GT.whyWhat(p)}<br>${GT.resolves(p)}${p.reason?`<br><span class="m">${GT.aiReason}: ${esc(p.reason)}</span>`:''}
+   <details><summary>${GT.resolvedList(p.resolves)}</summary><table><tbody>${p.resolved.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.description)}</td><td class="num">${usd(x.amount_minor)}</td><td>${esc(x.source||'')}</td><td class="m">${esc(x.before||'—')} → ${esc(x.after||'—')}${p.uncertain.includes(x.id)?' · '+GT.toVerify:''}</td></tr>`).join('')}</tbody></table></details>
+   ${W.who?`<div class="row" style="margin-top:6px"><button type="button" data-gact="edit" data-prop="${k}">${GT.defineWith}</button>${W.shell?` <button class="sec" type="button" data-gact="define" data-prop="${k}">Recognition-profile editor</button>`:''}</div>`:''}</div>`;});
+  if((a.formats||[]).length)h+=`<details><summary>${GT.formats(a.formats.length)}</summary><table><thead><tr><th>${GT.example}</th><th class="num">${GT.count}</th><th>${GT.reading}</th></tr></thead><tbody>${a.formats.map(f=>`<tr><td>${esc(f.example)}</td><td class="num">${f.movements}</td><td class="m">${!f.read?GT.notRead:f.reading.length?f.reading.map(r=>esc(r.why+(r.raw.length?' — '+r.raw.map((c,i)=>GT.cond(c,r.conditions[i])).join('; '):''))).join('<br>'):GT.unclear}</td></tr>`).join('')}</tbody></table></details>`;
+  if((a.excluded||[]).length)h+=`<details><summary>${GT.excludedTitle(a.excluded.length)}</summary><table><tbody>${a.excluded.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.description)}</td><td class="num">${usd(x.amount_minor)}</td><td>${esc(x.source||'')}</td><td class="m">${esc(GT.excl[x.reason]||x.reason)}</td></tr>`).join('')}</tbody></table></details>`;
+  if((a.name_only||[]).length)h+=`<p class="m">${GT.nameOnly}: ${esc(a.name_only.join('; '))}</p>`;
+  h+=`<p class="m">${GT.nothingApplied}</p><div class="row"><button class="sec" type="button" data-gact="analyze">${GT.again}</button>${def}</div>`;}
+ return h+'</section>';}
+function groupPanel(){return analysisPanel()+rulesPanel()+occurrences();}
+function bindGroupPanel(){document.querySelectorAll('[data-gact]').forEach(b=>b.onclick=()=>b.dataset.gact==='analyze'?analyzeGroup():b.dataset.gact==='edit'?editProposal(W.an.proposals[+b.dataset.prop]):b.dataset.gact==='new'?openRuleEditor():defineRule(b.dataset.prop!=null?W.an.proposals[+b.dataset.prop]:null));bindRulesPanel();}
+// Define rule: the rule editor of this window (WHY rules of every scope, read by the engine). The Bank's
+// recognition-profile editor stays reachable from each proposal and from the rules panel.
+function openRuleEditor(){if(!W.ed)newEditor();renderWizard();const e=$('#rule-editor');if(e)e.scrollIntoView({block:'start'});}
+function editProposal(p){newEditor({scope:'WHO',why_id:p.spec.why_id||null,conditions:p.spec.conditions||[],exceptions:(p.spec.exceptions||[]).map(x=>x.conditions)});renderWizard();const e=$('#rule-editor');if(e)e.scrollIntoView({block:'start'});}
+async function analyzeGroup(){const g=W.g,key=g.exc+'|'+g.group;W.an=AN[key]={state:'RUNNING'};renderWizard();let v;
+ try{const r=await fetch(B+`/api/runs/${runId}/analyze`,{method:'POST',headers:{'X-CBank-Token':token},body:new URLSearchParams({exc:g.exc,group:g.group})});
+  try{v=await r.json();}catch{v={ok:false,error:`${r.status} ${r.statusText}`};}
+  if(!v.ok)v={state:'ERROR',error:v.error||`${r.status} ${r.statusText}`};}
+ catch(e){v={state:'ERROR',error:e.message};}
+ AN[key]=v;if(W.g===g&&wiz.open){W.an=v;renderWizard();}}
+function defineRule(p){if(!window.rdlg||!W.who)return;const n=W.rows.length,who=((W.an||{}).who||[]).join(', ')||W.g.group;
+ $('#r-sub').textContent=`WHO ${who} · ${GT.occ(n)} · ${GT.sources}: ${sourcesOf(W.rows).map(([s,c])=>`${s} (${c})`).join(', ')}`;
+ W.ruleSaved=false;$('#r-frame').src=`/bank/ai-rules?embed=1&who_id=${encodeURIComponent(W.who)}&start=${encodeURIComponent(GT.startText(W,n,reasonText(W.g.exc),p,who))}`;rdlg.showModal();}
+if(window.rdlg){
+ window.addEventListener('message',e=>{if(e.origin!==location.origin||e.source!==$('#r-frame').contentWindow)return;
+  if(e.data&&e.data.type==='bank-profile-saved'&&e.data.action!=='DRAFT')W.ruleSaved=true;
+  if(e.data&&e.data.type==='bank-profile-closed')rdlg.close();});
+ $('#r-x').onclick=()=>rdlg.close();
+ // Back to the same group, at the same place: after a save the open movements are evaluated again and the
+ // page reloads on the same group (counts of the window and of the summary are then current).
+ rdlg.addEventListener('close',async()=>{$('#r-frame').src='about:blank';if(!W.ruleSaved)return;busy(true,GT.refreshing);
+  try{await post(B+`/api/runs/${runId}/refresh`,{});}catch(e){}
+  try{sessionStorage.setItem('cbank-wiz-next',JSON.stringify({exc:W.g.exc,group:W.g.group,y:window.scrollY}));}catch{}location.reload();});
+}
 async function wizardNext(){const act=$('#w-next').dataset.act,p=cur();
  if(act==='review'){W.step=2;return renderWizard();}
  if(act==='confirm'){W.step=3;return renderWizard();}
- if(act==='ai'){const ids=W.noPrior.slice(0,6).map(r=>r.txn_id);busy(true,'AI investigation (OpenAI)… this can take a minute');
-  try{const v=await post(B+`/api/runs/${runId}/investigate`,{txn_ids:ids.join(',')});changed=true;busy(false,`Investigation done: ${v.reevaluated_changed} movement(s) updated.`);await openWizard(W.g);}catch(e){busy(false,e.message);}return;}
  if(act==='nextgroup'){const gs=[...document.querySelectorAll('tr[data-group-exc]')].map(t=>({exc:t.dataset.groupExc,group:t.dataset.groupKey}));
   const k=gs.findIndex(x=>x.exc===W.g.exc&&x.group===W.g.group),nx=gs[k+1]||null;
   try{sessionStorage.setItem('cbank-wiz-next',JSON.stringify(nx));}catch{}location.reload();return;}
@@ -469,10 +586,11 @@ if(window.wiz){
  $('#w-next').onclick=wizardNext;$('#w-back').onclick=()=>{W.step=Math.max(1,W.step-1);renderWizard();};
  const wclose=()=>wiz.close();$('#w-cancel').onclick=wclose;$('#w-x').onclick=wclose;
  wiz.addEventListener('close',()=>{if(W.toAdvanced){W.toAdvanced=false;return;}if(changed)location.reload();});
+ $('#w-define').onclick=()=>openRuleEditor();
  $('#w-advanced').onclick=()=>{W.toAdvanced=true;wiz.close();openList(W.g);};
  $('#w-skip').onclick=()=>{W.results.push(`${cur().who} · ${entName(cur().beneficiary_id)}: skipped, nothing approved.`);W.i++;startProposal();};
  try{const nx=JSON.parse(sessionStorage.getItem('cbank-wiz-next')||'null');sessionStorage.removeItem('cbank-wiz-next');
-  if(nx){const ok=[...document.querySelectorAll('tr[data-group-exc]')].some(t=>t.dataset.groupExc===nx.exc&&t.dataset.groupKey===nx.group);if(ok)openWizard(nx);}}catch{}
+  if(nx){if(nx.y!=null)window.scrollTo(0,nx.y);const ok=[...document.querySelectorAll('tr[data-group-exc]')].some(t=>t.dataset.groupExc===nx.exc&&t.dataset.groupKey===nx.group);if(ok)openWizard(nx).then(()=>{if(nx.msg){W.rmsg=nx.msg;renderWizard();}});}}catch{}
 }
 async function open(id){const v=await (await fetch(B+`/api/runs/${runId}/txn/${id}`)).json();current=v;render(v);position();if(!dlg.open)dlg.showModal();if(window.list&&list.open)renderRows();}
 function position(){const i=rows.findIndex(r=>r.txn_id===current.result.txn_id);$('#d-pos').textContent=i>=0?`${i+1} / ${rows.length}`:'';$('#d-prev').disabled=i<=0;$('#d-next').disabled=i<0||i>=rows.length-1;}
@@ -481,7 +599,6 @@ $('#d-next').onclick=()=>{const i=rows.findIndex(r=>r.txn_id===current.result.tx
 function opt(list,sel,label,none){return (none?`<option value="">${none}</option>`:'')+list.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(label(x))}</option>`).join('');}
 function render(v){const r=v.result;$('#d-title').textContent=`#${r.txn_id} · ${r.date} · ${(r.amount_minor/100).toFixed(2)} ${r.currency||''}`;$('#d-sub').textContent=`${r.description} — ${r.source} (${r.source_type}), paid by ${r.payer||'—'}`;
  let a=`<div class="m"><b>Accounting subject:</b> ${esc(r.subject||r.payer||'—')} (owner of the Source, decision 86)${r.management?` · <b>Management destination:</b> ${esc(r.management.destination)} — ${esc(r.management.note||'')}`:''}</div>`;if(r.protected)a+=`<div class="warnbox">🔒 Protected human decision (${esc(r.protected)}). The engine never replaces it.</div>`;
- if(r.who_labels&&r.who_labels.length)a+=`<div class="m"><b>Labels of ${esc(r.who_name)}</b> (context only, edited in Configuration › Edit WHO): ${esc(r.who_labels.join(', '))}${(r.label_hints||[]).map(h=>` · ${h.whos} of ${h.of} WHOs labelled ${esc(h.label)} are approved as <b>${esc(h.why)}</b>`).join('')}</div>`;
  if(r.proposal)a+=`<div class="warnbox"><b>Engine proposal (not applied):</b> ${esc(r.proposal.fields.join(', '))} — WHO ${esc(r.proposal.who)}, WHY ${esc(r.proposal.why)}, Category ${esc(r.proposal.category)}, Destination ${esc(r.proposal.beneficiary)}. ${esc(r.proposal.note)}</div>`;
  const q=r.exceptions.find(e=>e.question);
  for(const e of r.exceptions)a+=`<div class="warnbox"><b>${esc(e.code)}</b>: ${esc(e.message)}${e.question&&e!==q?`<br><b>Question:</b> ${esc(e.question)}`:''}</div>`;

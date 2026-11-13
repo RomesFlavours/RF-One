@@ -59,7 +59,6 @@ class CBankTests(unittest.TestCase):
                 self.assertEqual(r["why_id"], r["bank"]["why_id"], "a confirmed human WHY is never replaced")
             elif r["why_id"] is not None:
                 # Only a MISSING WHY may be completed, from an approved source, with its provenance kept.
-                self.assertTrue(config.WHO_WHY_KNOWLEDGE)
                 self.assertIn("completing a human decision", r["why_method"])
                 self.assertNotEqual(r["why_method"], eng_mod.HUMAN_BANK)
 
@@ -77,23 +76,11 @@ class CBankTests(unittest.TestCase):
         self.assertTrue(any(s["stage"] == "Protection" for s in r["trace"]))
         self.assertIn(t.id, store.human_decisions(con))
 
-    def test_beneficiary_comes_from_profile_branch_not_account(self):
-        """TABLE TOP LINEN profile: the RF MOUNT DORA branch → RFMD, whatever account pays."""
+    def test_whom_always_comes_from_source(self):
         e, _ = env()
-        rfmd = next(i for i, x in e.c.entities.items() if x.code == "RE_RFMD_LLC")
-        rows = [t for t in e.txns if "TABLE TOP LINEN" in (t.description_original or "").upper()
-                and "IND NAME:RF MOUNT DORA" in (t.description_original or "").upper()]
-        checked = 0
-        for t in rows:
+        for t in e.txns:
             r = e.evaluate(t)
-            if r["protected"]:
-                continue
-            self.assertEqual(r["beneficiary_id"], rfmd, "the profile branch gives the management destination")
-            self.assertEqual(r["beneficiary_method"], eng_mod.PROFILE)
-            self.assertEqual(r["subject_id"], r["payer_id"], "decision 86: the accounting subject is the Source owner")
-            checked += 1
-        if not checked:
-            self.skipTest("no unprotected TABLE TOP LINEN RF MOUNT DORA movement")
+            self.assertEqual(r["beneficiary_id"], r["payer_id"])
 
     def test_every_result_has_a_trace_and_valid_status(self):
         e, _ = env()
@@ -150,32 +137,17 @@ class DirectionAndKnowledgeTests(unittest.TestCase):
                 else:
                     self.assertIn(p["origin"], (eng_mod.HUMAN_BANK, eng_mod.HUMAN_CBANK))
 
-    def test_ai_fields_are_accepted_independently(self):
+    def test_saved_ai_cannot_complete_an_automatic_decision(self):
         e, _ = env()
-        t, r0 = next(self._automatic(e, lambda t, r: any(x["code"] == "NO_PROFILE" for x in r["exceptions"])
-                                     and r["payer_id"] and not r["match"]))
-        why = next(w for w, row in e.c.whys.items() if row.accounting_classification_id
-                   and not e._is_income(e.c.classes.get(row.accounting_classification_id)))
+        t, before = next(self._automatic(e, lambda t, r: any(x["code"] == "WHO_SOURCE_CLASSIFICATION_MISSING" for x in r["exceptions"])
+                                       and r["payer_id"] and not r["match"]))
+        why = next(w for w, row in e.c.whys.items() if row.accounting_classification_id)
         saved = e.ai_answers.get(t.id)
-        field = lambda ok: dict(sufficient=ok, confidence=0.95 if ok else 0.4)
         try:
-            e.ai_answers[t.id] = dict(id=t.id, who=r0["who_name"], why_id=why, category_id=None,
-                                      beneficiary_id=r0["payer_id"], sufficient=False, confidence=0.6,
-                                      investigation_id=0, justification="test",
-                                      fields=dict(who=field(True), why=field(True), category=field(True),
-                                                  beneficiary=field(False)))
-            r = e.evaluate(t)
-            # Decision 86: an uncertain management destination no longer blocks — the accounting subject is
-            # the Source owner, and the destination stays the Source owner by default.
-            self.assertNotIn("AI_PARTIAL", [x["code"] for x in r["exceptions"]])
-            self.assertEqual((r["subject_id"], r["beneficiary_id"]), (r0["payer_id"], r0["payer_id"]))
-            self.assertTrue(r["ai_partial"]["why"]["accepted"])
-            self.assertFalse(r["ai_partial"]["beneficiary"]["accepted"])
-            e.ai_answers[t.id]["fields"] = dict(who=field(True), why=field(False), category=field(False),
-                                                beneficiary=field(False))
-            r = e.evaluate(t)
-            self.assertEqual(r["status"], eng_mod.EXCEPTION)
-            self.assertIsNone(r["why_id"], "a certain WHO never brings an uncertain WHY with it")
+            e.ai_answers[t.id] = dict(why_id=why, beneficiary_id=before["payer_id"], sufficient=True,
+                                     confidence=1, investigation_id=0)
+            self.assertEqual(before, e.evaluate(t))
+            self.assertIsNone(before["why_id"])
         finally:
             if saved is None:
                 e.ai_answers.pop(t.id, None)

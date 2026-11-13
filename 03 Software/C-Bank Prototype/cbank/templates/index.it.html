@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="cbank-token" content="{{ token }}">
+{%- set shell = request.environ.get('rfone.bank_shell') %}
+<title>{{ 'Riconciliazione bancaria · Riconciliazione guidata · RF-One' if shell else 'Bank — riconciliazione assistita' }}</title>
+{#- Inside the Bank application: the Bank stylesheet first, so this page's own rules below still win. #}
+{% if shell %}<link rel="stylesheet" href="{{ shell.css }}">{% endif %}
+<style>
+:root{--bg:#f7f6f1;--card:#fff;--ink:#23231f;--muted:#6b6a60;--line:#dedbd0;--olive:#5d6b2f;--ok:#2e7d32;--bad:#b3261e;--warn:#9a6700}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+body>header{background:#fff;border-bottom:1px solid var(--line);padding:10px 18px}
+.crumb{font-size:13px;color:var(--muted)}.crumb a{color:var(--olive)}
+body>header h1,.guided-title h2{margin:4px 0 0;font-size:20px}.exp{display:inline-block;background:#ffe3e0;color:var(--bad);font-weight:600;padding:2px 8px;border-radius:6px;font-size:12px;margin-left:8px}
+main{padding:14px 18px;max-width:1700px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+button,select,input,textarea{font:inherit}button{background:var(--olive);color:#fff;border:0;border-radius:7px;padding:6px 12px;cursor:pointer}
+button.sec{background:#fff;color:var(--olive);border:1px solid var(--olive)}button:disabled{opacity:.5;cursor:wait}
+table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:5px 6px;text-align:left;vertical-align:top}
+th{font-size:12px;color:var(--muted);position:sticky;top:0;background:#fff}tr.r:hover{background:#f1efe6;cursor:pointer}
+.b{display:inline-block;padding:1px 7px;border-radius:10px;font-size:12px;font-weight:600}
+.RECONCILED{background:#e3f1e4;color:var(--ok)}.EXCEPTION{background:#fde7e5;color:var(--bad)}
+.m{font-size:11px;color:var(--muted)}.num{text-align:right;white-space:nowrap}.neg{color:var(--bad)}
+.kpi{display:flex;gap:14px;flex-wrap:wrap}.kpi div{background:#f1efe6;border-radius:8px;padding:6px 10px}.kpi b{font-size:18px;display:block}
+dialog{width:min(1100px,96vw);max-height:94vh;border:1px solid var(--line);border-radius:12px;padding:0}
+#list{width:min(1750px,98vw)}tr.cur{background:#e8eed6}
+#wiz{width:min(1180px,96vw)}#wiz .bd{max-height:62vh}.wiz{font-size:15px}
+.steps{display:flex;gap:6px;list-style:none;margin:0;padding:10px 16px;border-bottom:1px solid var(--line)}
+.steps li{padding:4px 12px;border-radius:14px;background:#f1efe6;color:var(--muted);font-weight:600}.steps li.on{background:var(--olive);color:#fff}.steps li.done{background:#e3f1e4;color:var(--ok)}
+.ft{display:flex;gap:8px;align-items:center;padding:10px 16px;border-top:1px solid var(--line)}
+.prop{font-size:17px;line-height:1.6;margin:6px 0 12px}.prop b{color:var(--olive)}
+.anom{background:#fff1ef;border:1px solid #f3b9b2;border-radius:8px;padding:8px 10px;margin:8px 0}
+.okbox{background:#e3f1e4;border:1px solid #b6d9b8;border-radius:8px;padding:8px 10px;margin:8px 0}
+.wiz table td,.wiz table th{font-size:14px}.wiz details summary{cursor:pointer;color:var(--olive)}
+.pop{position:fixed;inset:auto;margin:0;max-width:360px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.15);background:#fff;font-size:13px;line-height:1.45}
+.pop ol{margin:6px 0 6px 18px;padding:0}
+.aiq{background:#fff6e0;border:1px solid #f0d89a;border-radius:10px;padding:10px 12px;margin:8px 0}
+.aiq label{display:flex;gap:8px;align-items:flex-start;color:var(--ink);font-size:14px;margin:4px 0}.aiq label input[type=radio]{display:inline-block;width:auto;margin-top:3px}
+.aiq .res{margin-top:8px;padding:8px;border-radius:8px;background:#fff}
+#help{width:min(860px,94vw)}.help{font-size:15px;line-height:1.55}.help h3{margin:14px 0 4px;font-size:16px;color:var(--olive)}
+.help p,.help li{max-width:78ch}.help th{width:150px;color:var(--ink);font-size:14px;position:static}
+dialog .hd{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
+dialog .bd{padding:12px 16px;overflow:auto;max-height:80vh}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+label{display:block;font-size:12px;color:var(--muted);margin-top:6px}label select,label input,label textarea{display:block;width:100%;margin-top:2px;padding:5px}
+.msg{padding:6px 8px;border-radius:8px;margin:4px 0;white-space:pre-wrap}.user{background:#eef3e0}.assistant{background:#f1efe6}
+.warnbox{background:#fff6e0;border:1px solid #f0d89a;border-radius:8px;padding:8px;margin:6px 0}
+#status{color:var(--muted)}
+.gpanel{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:10px 0;background:#fcfbf7}.st{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;font-weight:600;margin-right:4px}.st-new{background:#eceae2}.st-run{background:#e6eefc;color:#1d4ea8}.st-ok{background:#e3f1e4;color:var(--ok)}.st-none{background:#f4ecd6;color:var(--warn)}.st-lim{background:#fff1ef;color:var(--bad)}.st-err{background:#ffe3e0;color:var(--bad)}#list.grp .tech{display:none}.gpanel .sub{border-top:1px dashed var(--line);padding-top:6px;margin-top:6px}.gpanel .ed{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px}.hq{padding:0 8px!important;margin-left:4px}.help .hl{background:#fff3c4;transition:background .4s}#rdlg{width:min(1240px,97vw)}#rdlg iframe{width:100%;height:80vh;border:0;display:block}
+</style>
+</head>
+<body>
+{% if shell %}
+{{ shell.header|safe }}
+<div class="guided-title" style="padding:0 18px"><h2>Riconciliazione guidata <span class="exp">Riconciliazione assistita · verifica le proposte prima di confermare</span></h2></div>
+{% else %}
+<header>
+  <nav class="crumb" aria-label="Percorso di navigazione"><a href="{{ bank_url }}" target="_blank" rel="noopener">RF-One Bank ↗</a> › Bank — riconciliazione assistita</nav>
+  <h1>Bank — riconciliazione assistita <span class="exp">Ambiente di prova · verifica le proposte prima di confermare</span></h1>
+</header>
+{% endif %}
+<main>
+<section class="card">
+  <div class="row">
+    <button data-run="sample">Elabora il campione di prova</button>
+    <select id="month">{% for mo in months %}<option {% if mo=='2026-09' %}selected{% endif %}>{{ mo }}</option>{% endfor %}</select>
+    <button class="sec" data-run="month">Elabora il mese</button>
+    <button class="sec" data-run="all" title="Elabora tutti i movimenti importati; l’avvio automatico richiede il controllo di completezza">Elabora tutti i movimenti</button>
+    <span id="status" role="status"></span>
+    <span style="flex:1"></span>
+    <label style="margin:0">Elaborazione <select onchange="location.search='?run='+this.value">{% for r in runs %}<option value="{{ r.id }}" {% if run and r.id==run.id %}selected{% endif %}>#{{ r.id }} · {{ r.label }} · {{ local_time(r.created_at) }}</option>{% endfor %}</select></label>
+    {% if run %}<a href="{{ request.script_root }}/export/{{ run.id }}.zip"><button class="sec" type="button">Esporta per azienda (Excel)</button></a>{% endif %}
+  </div>
+</section>
+{% if run %}
+<section class="card">
+  {% set s = run.summary %}
+  <div class="kpi">
+    <div><b>{{ s.get('total',0) }}</b>movimenti</div>
+    <div><b style="color:var(--ok)">{{ s.get('RECONCILED',0) }}</b>Riconciliati</div>
+    <div><b style="color:var(--bad)">{{ s.get('EXCEPTION',0) }}</b>Casi aperti</div>
+    <div><b>{{ s.get('protected',0) }}</b>decisioni umane protette</div>
+    <div><b>{{ s.get('protected_with_proposal',0) }}</b>proposte su movimenti già decisi</div>
+    <div><b>{{ s.get('cmp:SAME',0) }}</b>uguali a Bank</div>
+    <div><b>{{ s.get('cmp:DIFFERENT',0) }}</b>diversi da Bank</div>
+    <div><b>{{ s.get('cmp:BANK_EMPTY',0) }}</b>riconciliati, senza decisione precedente</div>
+  </div>
+</section>
+<section class="card">
+  <h3 style="margin:0 0 6px">Casi aperti per motivo e WHO</h3>
+  <table><thead><tr><th>Tipo</th><th>WHO / schema riconosciuto</th><th>Movimenti</th><th></th></tr></thead><tbody>
+  {% for code, key, ids in dashboard %}
+    {#- One action per row (single Review): the row and its button open the same guided path; AI investigation,
+        Advanced details and the Bank profile proposal are offered inside it. #}
+    <tr class="r" data-group-exc="{{ code }}" data-group-key="{{ key }}"
+        {%- if group_who_ids.get((code, key)) %} data-who-id="{{ group_who_ids[(code, key)] }}"{% endif %}><td>{{ code|ui_label }}</td><td>{{ key }}</td><td>{{ ids|length }}</td>
+      <td><button type="button" data-review>Controlla</button></td></tr>
+  {% else %}<tr><td colspan="4">Nessun caso aperto.</td></tr>{% endfor %}
+  </tbody></table>
+  <div class="row" style="margin-top:8px"><button class="sec" type="button" id="all-movements">Tutti i movimenti ({{ total }})</button><span class="m" id="saved-filters"></span></div>
+</section>
+{% else %}
+<section class="card">Nessuna elaborazione disponibile. Inizia con <b>Elabora il campione di prova</b>.</section>
+{% endif %}
+</main>
+
+{% if run %}
+<dialog id="list" aria-label="Movimenti">
+  <div class="hd"><div><b id="l-title">Movimenti</b> <button class="sec" type="button" id="help-open" data-help="h-advanced" aria-label="Come funzionano i Dettagli avanzati" aria-haspopup="dialog" style="padding:2px 10px;margin-left:6px">? Guida</button><div class="m">Elaborazione n.{{ run.id }} · {{ run.label }} — fai clic su una riga per aprirla; Precedente e Successivo scorrono questo elenco.</div></div>
+    <button class="sec" type="button" id="l-close">Chiudi</button></div>
+  <div class="bd" style="max-height:84vh">
+    <form class="row" id="l-filters">
+      <select class="tech" name="status"><option value="">Tutti gli stati</option>{% for v in ['RECONCILED','EXCEPTION'] %}<option value="{{ v }}">{{ v|ui_label }}</option>{% endfor %}</select>
+      <select class="tech" name="case"><option value="">Tutti i casi</option>{% for k,v in cases.items() %}<option value="{{ k }}">{{ v|ui_label }}</option>{% endfor %}</select>
+      <select class="tech" name="exc"><option value="">Tutti i motivi</option>{% for k,v in codes.items() %}<option value="{{ k }}">{{ k|ui_label }} ({{ v }})</option>{% endfor %}</select>
+      <select class="tech" name="cmp"><option value="">Qualsiasi confronto</option>{% for v in ['SAME','DIFFERENT','BANK_EMPTY','CBANK_OPEN','BOTH_OPEN'] %}<option value="{{ v }}">{{ v|ui_label }}</option>{% endfor %}</select>
+      <input name="q" placeholder="Cerca descrizione o WHO">
+      <input type="hidden" name="group">
+      <span class="m" id="l-group"></span>
+      <button class="sec tech">Filtra</button> <button class="sec tech" type="button" id="l-reset">Azzera i filtri</button>
+      <span class="m" id="l-count"></span>
+    </form>
+    <div class="row" style="margin:6px 0">
+      <button class="sec" type="button" id="l-select-all">Seleziona tutti i visibili</button>
+      <button class="sec" type="button" id="l-select-none">Azzera la selezione</button>
+      <span class="m" id="l-selected"></span>
+      <button type="button" id="l-investigate">Indaga sui selezionati con l’AI</button>
+      <span class="m">(solo movimenti aperti, fino a 6 per indagine)</span>
+      <span class="m" data-status role="status"></span>
+    </div>
+    <details id="p-box" open style="margin:6px 0"><summary><b>Classificazioni precedenti in Bank</b> <span class="m" id="p-count"></span>
+      <span class="m">— Proposte recuperate dallo storico di Bank. La conferma registra una decisione umana; non crea una regola permanente.</span></summary>
+      <div id="p-done" class="m" role="status"></div>
+      <div id="p-groups"></div></details>
+    <div style="overflow:auto;max-height:66vh">
+    <table><thead><tr><th></th><th>Data</th><th>Descrizione</th><th class="num">Importo</th><th>Pagato da</th><th>WHO</th><th>Destinazione</th><th>WHY</th><th>Categoria RF-One</th><th>QB</th><th>Operazione</th><th>Stato</th><th>vs Bank</th><th>Classificazione precedente in Bank</th></tr></thead>
+    <tbody id="l-rows"></tbody></table></div>
+  </div>
+</dialog>
+{% endif %}
+
+{% if run %}
+<dialog id="wiz" aria-labelledby="w-title">
+  <div class="hd"><div><b id="w-title">Riconciliazione guidata</b><div class="m" id="w-sub"></div></div>
+    <div class="row"><button class="sec hq" type="button" data-help="h-review" aria-label="Come funziona questa finestra">?</button><button class="sec" type="button" id="w-define" hidden>Definisci regola</button>
+      <button class="sec" type="button" id="w-advanced">Dettagli avanzati</button>
+      <button class="sec" type="button" id="w-x" aria-label="Annulla">✕</button></div></div>
+  <ol class="steps" id="w-steps"><li data-s="1">1 · Proposta</li><li data-s="2">2 · Controllo</li><li data-s="3">3 · Conferma</li></ol>
+  <div class="bd wiz" id="w-body"></div>
+  <div class="ft"><span class="m" data-status role="status"></span><span style="flex:1"></span>
+    <button class="sec" type="button" id="w-cancel">Annulla</button>
+    <button class="sec" type="button" id="w-skip">Salta questa proposta</button>
+    <button class="sec" type="button" id="w-back">Indietro</button>
+    <button type="button" id="w-next">Avanti</button></div>
+</dialog>
+{% endif %}
+
+{% if run and shell %}
+<dialog id="rdlg" aria-labelledby="r-title">
+  <div class="hd"><div><b id="r-title">Definisci regola</b><div class="m" id="r-sub"></div></div>
+    <div class="row"><button class="sec hq" type="button" data-help="h-define" aria-label="Come funziona Definisci regola">?</button><button class="sec" type="button" id="r-x" aria-label="Chiudi">✕</button></div></div>
+  <iframe id="r-frame" title="Definisci regola" src="about:blank"></iframe>
+</dialog>
+{% endif %}
+
+<dialog id="help" aria-labelledby="help-title">
+<div class="hd"><b id="help-title">Come usare la riconciliazione guidata</b><button class="sec" type="button" data-help-close aria-label="Chiudi guida">✕</button></div>
+<div class="bd help">
+<h3 id="h-review">1. I casi da completare</h3><p>Il riepilogo raggruppa i movimenti per motivo di apertura e WHO. Ogni riga ha un solo pulsante, <b>Controlla</b>: il pulsante e il clic sulla riga aprono la stessa finestra del gruppo. Il titolo indica WHO e numero di movimenti da classificare, sotto c’è il motivo concreto dell’apertura (per esempio «WHO riconosciuto, WHY da determinare»). La finestra mostra le occorrenze del gruppo (data, descrizione, importo, conto/carta) e, se esistono, le classificazioni precedenti da approvare. In alto a destra: <b>Definisci regola</b> e <b>Dettagli avanzati</b> (l’elenco tecnico dei movimenti, con indagine AI sui movimenti selezionati e percorso della decisione).</p>
+<h3>2. Cosa significano i campi</h3><p><strong>Pagato da</strong> è il titolare del conto o carta. <strong>WHO</strong> è la controparte. <strong>WHY</strong> è la natura del movimento; il <strong>WHAT</strong> è la categoria collegata. La destinazione gestionale è distinta dal soggetto contabile, che segue la titolarità della Source.</p>
+<h3>3. Controlla la proposta</h3><p>Verifica natura, categoria e movimenti selezionati. Puoi correggere i campi, deselezionare casi incerti e approvare solo quelli controllati. «Approva tutto il gruppo» riguarda la proposta indicata, non ogni movimento visibile.</p>
+<h3 id="h-analysis">4. Analizza il gruppo e definisci la regola</h3><p><b>Analizza il gruppo e proponi una regola</b> esamina tutte le occorrenze del gruppo, non solo alcune, insieme allo storico del WHO: formati di descrizione, natura comune, conti/carte e titolarità personale o aziendale, sottogruppi ed eccezioni. L’AI legge i formati a lotti, con la stessa autorizzazione già concessa (al massimo tre descrizioni mascherate per formato, mai importi o numeri di conto). Lo stato è sempre visibile: non ancora analizzato, analisi in corso, proposta disponibile, nessuna regola sufficientemente supportata, analisi limitata da dati mancanti, errore tecnico (riprovabile). Una proposta indica condizioni verificabili, WHY e WHAT, quanti e quali movimenti risolverebbe (prima → dopo) e quali restano esclusi o incerti con il motivo. Una regola basata sul solo nome del WHO non viene proposta. L’analisi non salva, non attiva e non applica nulla. File mancanti di altri conti/carte non la bloccano: sono segnalati soltanto i dati mancanti dei conti/carte di questo gruppo.</p><p id="h-define"><b>Definisci regola</b> apre nella stessa finestra l’editor delle regole WHY (sezione 6); «Definisci regola con questa proposta» lo apre già compilato con condizioni, WHY ed eccezioni della proposta. Dalla proposta o dal riquadro delle regole puoi aprire anche l’<b>editor dei profili di riconoscimento</b> del Bank, con il contesto del gruppo come testo modificabile: il WHAT segue il WHY scelto e una coppia incoerente è rifiutata; <b>Simula</b> non scrive nulla e va ripetuta se cambi la conversazione; per i profili non esiste una bozza. Un profilo si applica soltanto ai movimenti il cui WHO è letto da una regola di estrazione e che sono ancora da riconciliare: per un gruppo con WHO già riconosciuto la simulazione non trova movimenti da applicare e il profilo può solo essere salvato per il futuro. Alla chiusura dell’editor torni allo stesso gruppo; se hai salvato, i movimenti aperti vengono rivalutati.</p>
+<h3>5. Conferma e salvataggio</h3><p>Le approvazioni sono decisioni umane registrate nel database Bank e protette dai ricalcoli automatici. Non creano automaticamente una regola permanente. WHO senza WHY e ripartizioni incomplete restano aperti.</p>
+<h3 id="h-rules">6. Regole per ambito: singolo WHO, categoria, generale</h3><p>Nella finestra <b>Controlla</b>, il riquadro <b>Regole del WHO, categoria e dichiarazioni</b> elenca le regole WHY che riguardano il WHO: quelle del solo WHO, quelle della sua categoria e quelle generali, attive o in bozza. <b>Nuova regola</b>, <b>Rivedi</b> o <b>Usa questa proposta nell’editor delle regole</b> aprono lo stesso editor: scegli l’ambito (solo questo WHO, tutti i WHO della categoria confermata o dichiarata, generale), il WHY dall’elenco (il WHAT deriva dal WHY e viene mostrato), le condizioni verificabili (per esempio titolarità personale o aziendale del conto/carta, testo della descrizione) e le eccezioni. Una regola generale richiede almeno una condizione oltre a titolarità, direzione o tipo di conto; una categoria eterogenea (marketplace) non può determinare un WHY.</p><p><b>Simula</b> non salva nulla. Confronta la regola con tutte le regole degli altri ambiti sugli stessi movimenti, senza precedenze fisse: <i>equivalente</i> (stesso WHY dove si sovrappongono; può essere sostituita, e viene indicato se l’equivalenza vale anche sulle condizioni, quindi sui movimenti futuri, o solo sui dati attuali), <i>complementare</i> (copre anche altri casi: resta), <i>in contrasto</i> (WHY diverso: decidi tu, per esempio mantenendo l’altra regola come eccezione esplicita). Mostra condizioni, regole e movimenti prima → dopo, i movimenti del gruppo risolti e le decisioni umane protette. Ogni modifica di ambito, WHY, condizioni, eccezioni o scelte annulla la simulazione: va ripetuta.</p><p><b>Salva bozza</b> salva la regola non attiva: nessun movimento cambia. <b>Salva e applica ora</b> è possibile solo senza conflitti aperti: chiede conferma con il numero esatto di movimenti che cambiano, ripete la simulazione sul server (se dati, regole o scelte sono cambiati il salvataggio è rifiutato), attiva la regola anche per i caricamenti futuri, disattiva soltanto le regole che hai scelto di sostituire (con storico e <b>Ripristina</b>, mai cancellate) e rivaluta i movimenti aperti. Lo stesso salvataggio non può essere applicato due volte. Le decisioni umane confermate restano protette. Dopo l’applicazione torni allo stesso gruppo con conteggi aggiornati.</p>
+<h3 id="h-category">7. Categoria del WHO e dichiarazioni contestuali</h3><p>La categoria descrive l’attività della controparte o del servizio (ristorazione, trasporto persone, compagnia aerea…); non è il WHAT e non è la modalità UNIVOCO/MULTIPLO. <b>Proponi con l’AI</b> esegue una ricerca internet con il solo nome del WHO (nessuna descrizione, importo o conto) e registra la proposta con evidenze, fonti e certezza; serve l’autorizzazione alla condivisione già prevista dal Bank. La proposta non autorizza nulla finché non la <b>confermi</b>; puoi anche rifiutarla o scegliere direttamente una categoria. Ogni proposta e decisione resta nello storico.</p><p>Una <b>dichiarazione contestuale</b> è una tua affermazione sull’uso di un WHO, per esempio «Io uso UBER soltanto per trasporto». Si registra con il testo, la categoria che dichiara e le Source su cui vale: dà al WHO quella categoria solo su quelle Source, non è una proprietà universale e non classifica nulla da sola. <b>Definisci una regola da questa dichiarazione</b> prepara una regola per categoria (con la titolarità delle Source) da completare con il WHY, simulare e confermare. Se una descrizione o un documento indica un servizio diverso, escludilo come eccezione: che Uber Eats abbia sempre una descrizione distinta non è verificato. Quando descrizione, evidenze e una dichiarazione bastano, non serve un report.</p>
+<h3 id="h-advanced">8. Dettagli avanzati</h3><p><b>Dettagli avanzati</b> apre l’elenco tecnico dei movimenti del gruppo: ricerca, selezione, apertura di un movimento, indagine AI sui movimenti selezionati (fino a 6, richiede dati completi come una riconciliazione complessiva) e percorso della decisione. Chiudendo l’elenco torni alla finestra Controlla.</p>
+<h3 id="h-movement">9. Finestra del movimento</h3><ol><li><b>Leggi la domanda dell’AI</b> nel riquadro giallo.</li><li><b>Seleziona una risposta</b>, oppure scegli <i>Altro</i> e spiega con parole tue, poi premi <i>Invia risposta</i>.</li><li><b>Controlla la classificazione proposta</b>: l’AI propone WHO, destinazione, WHY e categoria; nessuna decisione è ancora salvata.</li><li><b>Conferma la decisione</b> con <i>Conferma decisione umana</i> (decisione registrata in Bank e protetta).</li></ol><p>Precedente e Successivo scorrono l’elenco corrente; le informazioni tecniche sono nei Dettagli avanzati.</p>
+<p>Chiudere la guida mantiene il gruppo, i filtri e la selezione. Nei dettagli di un movimento, Precedente e Successivo scorrono l’elenco corrente.</p>
+<div class="row" style="justify-content:flex-end"><button type="button" data-help-close>Chiudi</button></div>
+</div></dialog>
+
+<dialog id="dlg" aria-label="Movimento">
+  <div class="hd"><div><b id="d-title"></b> <button class="sec" type="button" id="d-help-btn" data-help="h-movement" aria-label="Come usare questa finestra" style="padding:1px 9px">?</button><div class="m" id="d-sub"></div></div>
+    <div class="row"><button class="sec" type="button" id="d-prev">← Precedente</button><span class="m" id="d-pos"></span><button class="sec" type="button" id="d-next">Successivo →</button>
+    <button class="sec" type="button" onclick="dlg.close()">Chiudi</button></div></div>
+  <div class="bd">
+    <div class="m" data-status role="status"></div>
+    <div id="d-alerts"></div>
+    <div id="d-question"></div>
+    <div class="grid">
+      <div>
+        <h4 style="margin:4px 0">Classificazione — la tua decisione protetta</h4>
+        <form id="d-form">
+          <label>WHO<input name="who" list="whos" required></label><datalist id="whos"></datalist>
+          <label>Destinazione<select name="beneficiary_id"></select></label>
+          <label>WHY<select name="why_id" required></select></label>
+          <label>Categoria RF-One<select name="category_id"></select></label>
+          <label>Nota / spiegazione<textarea name="note" rows="2"></textarea></label>
+          <div class="row" style="margin-top:8px"><button type="submit">Conferma decisione umana</button><span class="m">Registra la decisione in Bank. Rivaluta soltanto i movimenti ancora aperti.</span></div>
+        </form>
+      </div>
+      <div>
+        <h4 style="margin:4px 0">Conversazione con l’AI (OpenAI)</h4>
+        <div id="d-chat"></div>
+        <form id="d-chatform" class="row"><input name="text" style="flex:1" placeholder="Chiedi o spiega…"><button class="sec">Invia</button></form>
+      </div>
+    </div>
+    <details id="d-advanced" style="margin-top:12px"><summary><b>Dettagli avanzati</b> <span class="m">— percorso della decisione, dati Bank e storico</span></summary>
+      <h4 style="margin:6px 0 4px">Percorso della decisione</h4>
+      <table id="d-trace"><thead><tr><th>Fase</th><th>Metodo</th><th>Valore</th><th>Evidenze</th></tr></thead><tbody></tbody></table>
+      <h4 style="margin:10px 0 4px">Situazione attuale in Bank (sola lettura)</h4><div id="d-bank" class="m"></div>
+      <div id="d-history" class="m"></div>
+    </details>
+  </div>
+</dialog>
+<script>
+// B: the base path — empty on the standalone 5090 server, /bank/reconcile inside the Bank application.
+const UI_LABELS={{ ui_labels|tojson }}, uiLabel=v=>UI_LABELS[v]||v;
+const UI_MESSAGES={
+ 'set the WHY of this WHO on this Source in Configuration.':'imposta il WHY per questo WHO e conto/carta in Configurazione.',
+ 'The engine never replaces it.':'Il motore non la sostituisce.',
+ 'No WHO rule and no WHO name or alias identifies WHO.':'Nessuna regola, nome o alias identifica il WHO.',
+ 'Card payment without its card-side credit: import the missing card statement; it is matched automatically on the next run.':'Pagamento carta senza accredito corrispondente: carica l’estratto carta mancante. L’abbinamento sarà ritentato alla prossima elaborazione.',
+ 'the card payment itself is matched and complete.':'il pagamento carta è già abbinato e completo.',
+ 'Personal Source, business WHAT ':'Conto o carta personale con WHAT aziendale ',
+ 'in personal accounting this needs a personal WHY, or a recorded decision (decision 86 — never moved to an LLC automatically).':'su un conto personale serve un WHY personale o una decisione esplicita; il movimento non viene trasferito automaticamente a un’azienda.',
+ 'is a provisional WHY: the nature of this movement is still to be established (investigate with AI or decide). It is never Reconciled with a provisional WHY.':'è un WHY provvisorio: la natura del movimento è ancora da determinare; il caso resta aperto.',
+ 'No permanent rule':'Nessuna regola permanente',
+ 'No movements selected.':'Nessun movimento selezionato.',
+ 'Choose a WHY.':'Scegli un WHY.'
+};
+function uiMessage(value){let text=String(value??'');for(const [en,it] of Object.entries(UI_MESSAGES))text=text.split(en).join(it);return text;}
+
+const B={{ request.script_root|tojson }},token=document.querySelector('meta[name=cbank-token]').content,runId={{ run.id if run else 'null' }};
+const $=s=>document.querySelector(s),esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function post(url,data){const r=await fetch(url,{method:'POST',headers:{'X-CBank-Token':token},body:new URLSearchParams(data)});const v=await r.json();if(!r.ok||v.ok===false)throw Error(v.error||r.statusText);return v;}
+function busy(b,t){document.querySelectorAll('button').forEach(x=>x.disabled=b);document.querySelectorAll('#status,[data-status]').forEach(x=>x.textContent=uiMessage(t||''));if(!b&&current)position();}
+document.querySelectorAll('[data-run]').forEach(b=>b.onclick=async()=>{busy(true,'Elaborazione del motore in corso…');try{const v=await post(B+'/api/runs',{kind:b.dataset.run,month:$('#month').value});location.search='?run='+v.run_id;}catch(e){busy(false,e.message);}});
+// --- Transactions modal: filters, selection and position persist per run (sessionStorage) ---
+const KEY='cbank-list-'+runId,FIELDS=['status','case','exc','cmp','q','group'];
+let current=null,rows=[],changed=false;
+const state=(()=>{try{return JSON.parse(sessionStorage.getItem(KEY))||{}}catch{return {}}})();
+state.filters=state.filters||{};state.selected=state.selected||[];
+function save(){try{sessionStorage.setItem(KEY,JSON.stringify(state));}catch{}showSaved();}
+function showSaved(){const f=state.filters,parts=FIELDS.filter(k=>f[k]).map(k=>`${k}: ${f[k]}`);const el=$('#saved-filters');if(el)el.textContent=(parts.length?'Ultimi filtri — '+parts.join(' · '):'')+(state.selected.length?` · ${state.selected.length} selezionati`:'');}
+function fillForm(){const form=$('#l-filters');for(const k of FIELDS)form.elements[k].value=state.filters[k]||'';$('#l-group').textContent=state.filters.group?'Gruppo: '+state.filters.group:'';}
+function readForm(){const form=$('#l-filters');for(const k of FIELDS)state.filters[k]=form.elements[k].value.trim();save();}
+let priors={},pdata={groups:[]};
+async function loadRows(){const qs=new URLSearchParams(Object.entries(state.filters).filter(([,v])=>v));const v=await (await fetch(B+`/api/runs/${runId}/results?${qs}`)).json();rows=v.rows;
+ pdata=await (await fetch(B+`/api/runs/${runId}/prior?${qs}`)).json();priors=pdata.priors||{};renderRows();renderPriors();}
+// --- Decision 59: previous Bank classifications, approved by group or by selected rows ---
+function renderPriors(){const g=pdata.groups||[],cat=pdata;$('#p-box').hidden=!g.length;$('#p-count').textContent=`${g.length} gruppi di proposte, ${Object.keys(priors).length} movimenti`;
+ $('#p-groups').innerHTML=g.map((x,i)=>`<div class="warnbox" data-pg="${i}">
+  <div><b>${esc(x.who)}</b> → <b>${esc(x.beneficiary||'—')}</b> · WHY <b>${esc(x.why)}</b> · ${esc(x.category||'categoria mancante')} <span class="m">· ${x.txn_ids.length} movimenti · origine: ${esc(Object.entries(x.origins).map(([k,n])=>`${k} (${n})`).join('; '))}${x.complete?'':'  · incompleto: correggi prima di confermare'}</span></div>
+  <div class="row" style="margin-top:4px">
+   <label style="margin:0">Destinazione <select data-c="beneficiary_id">${opt(cat.entities||[],x.beneficiary_id,y=>y.name)}</select></label>
+   <label style="margin:0">WHY <select data-c="why_id">${opt(cat.whys||[],x.why_id,y=>y.name)}</select></label>
+   <label style="margin:0">Categoria <select data-c="category_id">${opt(cat.categories||[],x.category_id,y=>y.label,'(categoria derivata dal WHY)')}</select></label>
+   <button class="sec" type="button" data-pselect>Seleziona queste righe</button>
+   <button type="button" data-papprove="selected">Approva le righe selezionate</button>
+   <button type="button" data-papprove="group">Approva tutto il gruppo (${x.txn_ids.length})</button></div></div>`).join('')||'<p class="m">Nessuna classificazione precedente per i movimenti aperti visualizzati.</p>';
+ document.querySelectorAll('[data-pg]').forEach(box=>{const x=g[+box.dataset.pg];
+  box.querySelector('[data-c=why_id]').onchange=e=>{const w=(cat.whys||[]).find(y=>y.id===+e.target.value);box.querySelector('[data-c=category_id]').value=w&&w.category_id?w.category_id:'';};
+  box.querySelector('[data-pselect]').onclick=()=>{state.selected=[...new Set([...state.selected,...x.txn_ids])];save();renderRows();};
+  box.querySelectorAll('[data-papprove]').forEach(b=>b.onclick=()=>approvePrior(x,box,b.dataset.papprove));});}
+async function approvePrior(x,box,mode){const ids=mode==='group'?x.txn_ids:x.txn_ids.filter(i=>state.selected.includes(i));
+ if(!ids.length){$('#l-selected').textContent='Seleziona almeno un movimento di questa proposta.';return;}
+ const data={txn_ids:ids.join(',')};for(const k of ['beneficiary_id','why_id','category_id']){const v=box.querySelector(`[data-c=${k}]`).value;if(v&&+v!==x[k])data[k]=v;}
+ const fixes=Object.keys(data).filter(k=>k!=='txn_ids');
+ if(!confirm(`Approvi ${ids.length} movimenti di ${x.who}${fixes.length?' con correzioni: '+fixes.join(', '):''}? La decisione sarà registrata in Bank.`))return;
+ busy(true,'Salvataggio delle conferme…');
+ try{const v=await post(B+`/api/runs/${runId}/prior/approve`,data);changed=true;state.selected=state.selected.filter(i=>!ids.includes(i));save();
+  busy(false,`Approvati ${v.saved.length}, saltati ${v.skipped.length}${v.skipped.length?' ('+v.skipped.map(s=>s.id+': '+s.reason).join('; ')+')':''}. Rivalutati: ${v.reevaluated_changed} aggiornati. Ora riconciliati ${v.summary.RECONCILED||0} / ${v.summary.total}.`);
+  await loadRows();
+  $('#p-done').innerHTML='<b>Appena approvati</b> (Bank): '+v.updated.map(u=>`#${u.txn_id} <span class="b ${u.status}">${uiLabel(u.status)}</span> ${esc(u.who_name)} · ${esc(u.why)} · ${esc(u.category||'—')} · ${esc(u.beneficiary||'—')}`).join(' — ');}catch(e){busy(false,e.message);}}
+function renderRows(){const sel=new Set(state.selected);
+ $('#l-rows').innerHTML=rows.map(r=>`<tr class="r ${current&&current.result.txn_id===r.txn_id?'cur':''}" data-txn="${r.txn_id}">
+  <td><input type="checkbox" data-pick="${r.txn_id}" ${sel.has(r.txn_id)?'checked':''} aria-label="Seleziona ${r.txn_id}"></td>
+  <td>${esc(r.date)}</td><td>${esc(r.description)}${(r.cases||[]).length?`<div class="m">${esc(r.cases.join(', '))}</div>`:''}</td>
+  <td class="num ${r.amount_minor<0?'neg':''}">${(r.amount_minor/100).toLocaleString('it-IT',{minimumFractionDigits:2})}</td>
+  <td>${esc(r.payer||'—')}<div class="m">${esc(r.source)}</div></td><td>${esc(r.who_name||'—')}<div class="m">${esc(r.who_method||'')}</div></td>
+  <td>${esc(r.beneficiary||'—')}<div class="m">${esc(r.beneficiary_method||'')}</div></td><td>${esc(r.why||'—')}<div class="m">${esc(r.why_method||'')}</div></td>
+  <td>${esc(r.category||'—')}</td><td class="m">${esc(r.qb_account||'non associato')}</td><td class="m">${esc(r.operation_type||'—')}</td>
+  <td><span class="b ${r.status}">${uiLabel(r.status)}</span>${r.protected?`<div class="m">🔒 ${esc(uiMessage(r.protected))}</div>`:''}${r.exceptions.map(e=>`<div class="m">${esc(uiLabel(e.code))}</div>`).join('')}</td>
+  <td class="m">${esc(uiLabel(r.comparison))}</td>
+  <td class="m">${(p=>p?`${esc(p.why)} · ${esc(p.category||'categoria mancante')} · ${esc(p.beneficiary||'—')}<br><i>${esc(p.origin)}</i>`:'')(priors[r.txn_id])}</td></tr>`).join('');
+ $('#l-count').textContent=state.filters.group?GT.occ(rows.length):`${rows.length} di {{ total }}`;$('#l-selected').textContent=`${state.selected.length} selezionati`;
+ document.querySelectorAll('#l-rows tr[data-txn]').forEach(tr=>tr.onclick=e=>{if(e.target.matches('[data-pick]'))return;open(+tr.dataset.txn);});
+ document.querySelectorAll('[data-pick]').forEach(c=>c.onchange=()=>{const id=+c.dataset.pick,s=new Set(state.selected);c.checked?s.add(id):s.delete(id);state.selected=[...s];save();$('#l-selected').textContent=`${state.selected.length} selezionati`;});}
+async function openList(preset){if(preset){state.filters=Object.assign({},preset);save();}fillForm();await loadRows();list.classList.toggle('grp',!!state.filters.group);$('#l-title').textContent=state.filters.group?`${state.filters.group} — ${GT.groupMoves}`:'Movimenti';if(!list.open)list.showModal();}
+if(window.list){
+ document.querySelectorAll('tr[data-group-exc]').forEach(tr=>{const g={exc:tr.dataset.groupExc,group:tr.dataset.groupKey};
+  tr.onclick=()=>openWizard(g);});
+ $('#all-movements').onclick=()=>openList(null);
+ $('#l-filters').onsubmit=e=>{e.preventDefault();readForm();loadRows();};
+ $('#l-reset').onclick=()=>{state.filters={};save();fillForm();loadRows();};
+ $('#l-select-all').onclick=()=>{state.selected=[...new Set([...state.selected,...rows.map(r=>r.txn_id)])];save();renderRows();};
+ $('#l-select-none').onclick=()=>{state.selected=[];save();renderRows();};
+ $('#l-investigate').onclick=async()=>{const open_=rows.filter(r=>state.selected.includes(r.txn_id)&&r.status!=='RECONCILED').map(r=>r.txn_id).slice(0,6);
+  if(!open_.length){$('#l-selected').textContent='Seleziona almeno un movimento aperto nell’elenco.';return;}
+  busy(true,`AI investigation of ${open_.length} movimenti (OpenAI). Potrebbe richiedere qualche minuto…`);
+  try{const v=await post(B+`/api/runs/${runId}/investigate`,{txn_ids:open_.join(',')});changed=true;busy(false,`Indagine terminata: ${v.reevaluated_changed} movimenti aperti aggiornati.`);await loadRows();}catch(e){busy(false,e.message);}};
+ $('#l-close').onclick=()=>list.close();
+ // Help: a separate modal on top; closing it (X, Close or Escape) leaves the list, filters and selection as they were.
+ let helpClosedAt=0;
+ document.querySelectorAll('[data-help-close]').forEach(b=>b.onclick=()=>help.close());
+ help.addEventListener('close',()=>{helpClosedAt=Date.now();});
+ // Escape closes only the help: the same key press must not also close the Transactions window.
+ list.addEventListener('cancel',e=>{if(help.open||Date.now()-helpClosedAt<500)e.preventDefault();});
+ list.addEventListener('close',()=>{if(changed)location.reload();});
+ showSaved();
+}
+// --- Decision 60: Riconciliazione guidata Wizard -------------------------------------------------
+// Presentation only: proposals are the Decision 59 previous Bank classifications (/prior), approvals
+// go through /prior/approve. No new AI call, no new reconciliation logic. Movements are never mixed
+// across direction (entrata / uscita): the minority direction of a group is shown apart as an anomaly.
+const W={};
+const usd=v=>(v<0?'−':'')+'$'+Math.abs(v/100).toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});
+const plainCat=l=>l?String(l).replace(/^\d+\s+/,''):null;
+const entName=id=>{const e=((W.cat||{}).entities||[]).find(x=>x.id===id);return e?(e.legal_name?`${e.name} (${e.legal_name})`:e.name):'—';};
+const shortDesc=d=>{let s=String(d||'').replace(/\s+/g,' ').trim();const m=s.match(/ORIG CO NAME:(.*?) ORIG ID/);
+ if(m){const p=(s.match(/CO ENTRY DESCR:(.*?) SEC:/)||[])[1];s=m[1].trim()+(p?' · '+p.trim():'');}return s.length>50?s.slice(0,48)+'…':s;};
+const dirWord=d=>d==='in'?'entrata':'uscita';
+async function openWizard(g){
+ const qs=new URLSearchParams({exc:g.exc,group:g.group});
+ const [res,pr]=await Promise.all([fetch(B+`/api/runs/${runId}/results?${qs}`).then(r=>r.json()),fetch(B+`/api/runs/${runId}/prior?${qs}`).then(r=>r.json())]);
+ const gr=[...document.querySelectorAll('tr[data-group-exc]')].find(t=>t.dataset.groupExc===g.exc&&t.dataset.groupKey===g.group);
+ W.who=gr&&gr.dataset.whoId||null;W.shell=!!window.rdlg;W.an=AN[g.exc+'|'+g.group]||null;W.rk=RK[W.who]||null;W.ed=null;W.rmsg='';
+ Object.assign(W,{g,rows:res.rows,byId:Object.fromEntries(res.rows.map(r=>[r.txn_id,r])),cat:pr,results:[]});
+ // CARD_SETTLEMENT_001: card-payment exceptions never get "earlier classification" proposals (approving one
+ // would replace the transfer with an ordinary payment to the issuer): the wizard only explains the case.
+ W.card=['RELATIONSHIP_TO_DECIDE','CARD_PAYMENT_AMBIGUOUS','CARD_PAYMENT_UNMATCHED'].includes(g.exc);
+ if(W.card){W.props=[];W.noPrior=[];W.protectedRows=[];W.i=0;W.step=1;renderWizard();if(!wiz.open)wiz.showModal();return;}
+ const ins=res.rows.filter(r=>r.amount_minor>=0).length,outs=res.rows.length-ins;W.main=ins>=outs?'in':'out';
+ const props=[];
+ for(const x of pr.groups)for(const d of ['in','out']){
+  const ids=x.txn_ids.filter(i=>W.byId[i]&&((W.byId[i].amount_minor>=0)===(d==='in')));if(!ids.length)continue;
+  const notes=[...new Set(ids.flatMap(i=>W.byId[i].exceptions.map(e=>e.question).filter(Boolean)))];
+  props.push({...x,txn_ids:ids,dir:d,anomaly:d!==W.main,notes});}
+ props.sort((a,b)=>(a.anomaly-b.anomaly)||(b.txn_ids.length-a.txn_ids.length));
+ const inProp=new Set(props.flatMap(p=>p.txn_ids));
+ W.noPrior=res.rows.filter(r=>!inProp.has(r.txn_id)&&!r.protected);W.protectedRows=res.rows.filter(r=>r.protected);
+ W.props=props;W.i=0;startProposal();if(!wiz.open)wiz.showModal();}
+function cur(){return W.props[W.i];}
+function startProposal(){const p=cur();W.step=1;W.sel=new Set(p&&!p.anomaly?p.txn_ids:[]);W.fix={};renderWizard();}
+function fixed(){const p=cur(),f=W.fix;const why=f.why_id||p.why_id;const w=(W.cat.whys||[]).find(x=>x.id===why);
+ const category=f.category_id||(f.why_id?(w&&w.category_id):p.category_id);
+ const catLabel=((W.cat.categories||[]).find(x=>x.id===category)||{}).label||(category===p.category_id?p.category:null);
+ return {beneficiary_id:f.beneficiary_id||p.beneficiary_id,why_id:why,why:(w||{}).name||p.why,category_id:category,category:catLabel};}
+function others(){return W.props.filter((x,k)=>k!==W.i);}
+function keptApart(){let h='';const anomalies=others().filter(x=>x.anomaly);
+ for(const a of anomalies)h+=`<div class="anom"><b>${a.txn_ids.length} movimenti da ${a.txn_ids.map(i=>usd(W.byId[i].amount_minor)).join(', ')}</b> sono in ${dirWord(a.dir)}, mentre la maggioranza dei movimenti di ${esc(W.g.group)} è in ${dirWord(W.main)}.
+  Potrebbero essere commissioni, rimborsi o rettifiche: sono <b>esclusi da questa proposta</b> e vengono controllati separatamente.${a.notes.length?`<br><span class="m">Nota dell’AI: ${esc(a.notes[0])}</span>`:''}</div>`;
+ const same=others().filter(x=>!x.anomaly);if(same.length)h+=`<p class="m">Nello stesso gruppo, da controllare come proposte separate: ${same.map(x=>`${x.txn_ids.length} per ${esc(entName(x.beneficiary_id))} (${esc(x.why)})`).join('; ')}.</p>`;
+ if(W.noPrior.length&&W.props.length)h+=`<div class="anom"><b>${W.noPrior.length} movimenti non hanno una classificazione precedente.</b> Usa <i>Analizza il gruppo e proponi una regola</i> oppure <i>Definisci regola</i>.</div>`;
+ if(W.protectedRows.length)h+=`<p class="m">🔒 ${W.protectedRows.length} movimenti già decisi da una persona sono protetti ed esclusi.</p>`;
+ return h;}
+function renderWizard(){const p=cur(),s=W.step;
+ document.querySelectorAll('#w-steps li').forEach(li=>{const n=+li.dataset.s;li.className=n===s?'on':n<s?'done':'';});
+ $('#w-title').textContent=`${W.g.group} — ${W.rows.length} ${W.card?GT.toCheck:GT.toClassify}`;
+ $('#w-sub').textContent=reasonText(W.g.exc)+(W.props.length?` · ${GT.propOf(Math.min(W.i+1,W.props.length),W.props.length)}`:'');
+ $('#w-define').hidden=!W.who;
+ const back=$('#w-back'),next=$('#w-next');back.hidden=s===1||!p;next.hidden=false;next.disabled=false;$('#w-skip').hidden=!p;
+ let h='';
+ if(W.card){
+  const intro={RELATIONSHIP_TO_DECIDE:'Questi movimenti hanno un abbinamento o una classificazione, ma chi ha pagato e il soggetto a cui sono attribuiti hanno <b>titolari diversi</b>. Resta da definire il rapporto economico: anticipo, rimborso, prelievo o apporto. Non sono stati creati automaticamente crediti o debiti.',
+   CARD_PAYMENT_AMBIGUOUS:'Questi pagamenti carta hanno <b>più di una contropartita possibile</b> con lo stesso importo e date vicine. Bank non ne sceglie una arbitrariamente.',
+   CARD_PAYMENT_UNMATCHED:'Questi pagamenti carta hanno <b>nessun accredito corrispondente sulla carta</b>. Carica l’estratto carta mancante: l’abbinamento sarà ritentato alla prossima elaborazione.'}[W.g.exc];
+  h=`<div class="prop">${intro}</div><table><thead><tr><th>Data</th><th>Pagato da</th><th>Titolare</th><th class="num">Importo</th><th>Contropartita</th><th>Dettagli</th></tr></thead><tbody>
+   ${W.rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.source)}</td><td>${esc(r.payer||'—')}</td><td class="num ${r.amount_minor<0?'neg':''}">${usd(r.amount_minor)}</td>
+    <td>${esc(r.who_name||'—')}</td><td class="m">#${r.txn_id} · ${esc((r.exceptions.find(e=>e.code===W.g.exc)||{}).message||'')}</td></tr>`).join('')}</tbody></table>
+   <p class="m">Il rapporto economico richiede una decisione e una regola contabile approvata. Fino ad allora questi casi restano aperti.</p>`;
+  const gs=[...document.querySelectorAll('tr[data-group-exc]')],k=gs.findIndex(t=>t.dataset.groupExc===W.g.exc&&t.dataset.groupKey===W.g.group);
+  next.textContent=gs[k+1]?'Gruppo successivo':'Torna al riepilogo';next.dataset.act='nextgroup';back.hidden=true;$('#w-skip').hidden=true;
+  $('#w-body').innerHTML=h;return;
+ }
+ if(!p){ // no (more) proposals
+  const done=W.results.length;
+  h=done?`<div class="okbox"><b>Gruppo completato.</b> ${W.results.map(r=>esc(r)).join('<br>')}</div>`:'';
+  const gs=[...document.querySelectorAll('tr[data-group-exc]')],k=gs.findIndex(t=>t.dataset.groupExc===W.g.exc&&t.dataset.groupKey===W.g.group);
+  h+=keptApart()+groupPanel();next.textContent=gs[k+1]?'Gruppo successivo':'Torna al riepilogo';next.dataset.act='nextgroup';back.hidden=true;
+ }else if(s===1){const f=fixed(),total=p.txn_ids.reduce((a,i)=>a+W.byId[i].amount_minor,0);
+  h=`<div class="prop">${p.anomaly?'<div class="anom"><b>Da controllare:</b> questa proposta è separata dagli altri movimenti del gruppo. Controlla ogni movimento prima di approvare.</div>':''}
+   Ho trovato <b>${p.txn_ids.length}</b> movimenti (${dirWord(p.dir)}, totale <b>${usd(total)}</b>) con <b>${esc(p.who)}</b>.<br>
+   Sono attribuiti a <b>${esc(entName(f.beneficiary_id))}</b>.<br>
+   Natura proposta: <b>${esc(f.why)}</b>.<br>
+   ${f.category?`Categoria proposta: <b>${esc(plainCat(f.category))}</b>.`:'<span class="anom" style="display:inline-block">Questa classificazione non ha una categoria: sceglila nel passaggio Controllo, altrimenti i movimenti restano incompleti.</span>'}</div>
+   <p class="m">Origine: classificazione precedente in Bank (${esc(Object.keys(p.origins).join('; '))}). Nessuna proposta è ancora approvata.</p>${p.notes.length&&!p.anomaly?`<p class="m">Nota dell’AI: ${esc(p.notes[0])}</p>`:''}${p.anomaly&&p.notes.length?`<p class="m">Nota dell’AI: ${esc(p.notes[0])}</p>`:''}`+keptApart()+groupPanel();
+  next.textContent='Avanti';next.dataset.act='review';
+ }else if(s===2){const f=fixed();
+  h=`<p>Seleziona i movimenti da approvare. ${p.anomaly?'<b>Questi movimenti sono anomali: nessuno è selezionato in partenza.</b>':'Deseleziona i movimenti di cui non sei sicuro.'}</p>
+   <table><thead><tr><th><input type="checkbox" id="w-all" ${W.sel.size===p.txn_ids.length?'checked':''} aria-label="Seleziona tutti"></th><th>Data</th><th>Descrizione</th><th class="num">Importo</th><th>Conto / carta</th><th>Destinazione</th><th>Classificazione proposta</th><th></th></tr></thead><tbody>
+   ${p.txn_ids.map(i=>{const r=W.byId[i];return `<tr><td><input type="checkbox" data-w="${i}" ${W.sel.has(i)?'checked':''} aria-label="Seleziona ${i}"></td><td>${esc(r.date)}</td>
+    <td><details><summary>${esc(shortDesc(r.description))}</summary><span class="m">${esc(r.description)}</span></details></td>
+    <td class="num ${r.amount_minor<0?'neg':''}">${usd(r.amount_minor)}</td><td>${esc(r.source)}</td><td>${esc(entName(f.beneficiary_id))}</td>
+    <td>${esc(f.why)}${f.category?' · '+esc(plainCat(f.category)):' · <i>categoria mancante</i>'}</td><td><button class="sec" type="button" data-wdetail="${i}">Dettagli / chiedi all’AI</button></td></tr>`;}).join('')}</tbody></table>
+   <details style="margin-top:8px" ${Object.keys(W.fix).length?'open':''}><summary>Modifica la classificazione proposta</summary><div class="row" style="margin-top:6px">
+    <label style="margin:0">Destinazione <select data-wf="beneficiary_id">${opt(W.cat.entities||[],f.beneficiary_id,x=>x.legal_name?`${x.name} (${x.legal_name})`:x.name)}</select></label>
+    <label style="margin:0">WHY <select data-wf="why_id">${opt(W.cat.whys||[],f.why_id,x=>x.name)}</select></label>
+    <label style="margin:0">Categoria <select data-wf="category_id">${opt(W.cat.categories||[],f.category_id,x=>plainCat(x.label),'Scegli una categoria')}</select></label></div>
+    <p class="m">La modifica riguarda soltanto i movimenti selezionati di questa proposta.</p></details>`+(others().length||W.noPrior.length?`<h4 style="margin:12px 0 4px">Tenuti separati</h4>${keptApart()}`:'');
+  next.textContent='Avanti';next.dataset.act='confirm';
+ }else{const f=fixed(),n=W.sel.size,excl=p.txn_ids.filter(i=>!W.sel.has(i));
+  h=`<div class="prop">Stai approvando <b>${n}</b> movimenti con <b>${esc(p.who)}</b>.<br>Destinazione: <b>${esc(entName(f.beneficiary_id))}</b><br>
+   Classificazione: <b>${esc(f.why)}</b>${f.category?` · <b>${esc(plainCat(f.category))}</b>`:' · <span class="neg">categoria mancante</span>'}</div>
+   <p>${f.category?`Risultato atteso: <b>${n}</b> diventeranno <span class="b RECONCILED">RICONCILIATO</span>, <b>0</b> resteranno incompleti.`:`Risultato atteso: <b>0</b> diventeranno riconciliati, <b>${n}</b> resteranno <span class="b EXCEPTION">incompleti</span> (categoria mancante).`}</p>
+   ${excl.length?`<p>Non approvati ora (deselezionati): ${excl.map(i=>`${esc(W.byId[i].date)} ${usd(W.byId[i].amount_minor)}`).join(', ')}.</p>`:''}
+   ${others().length?`<p class="m">${others().length} altre proposte di questo gruppo non vengono modificate.</p>`:''}
+   <p class="m">Registrazione in Bank come decisione umana protetta. Non viene creata alcuna regola permanente.</p>`;
+  next.textContent='Approva e continua';next.dataset.act='approve';next.disabled=!n;}
+ $('#w-body').innerHTML=h;bindGroupPanel();
+ const all=$('#w-all');if(all)all.onchange=()=>{W.sel=new Set(all.checked?p.txn_ids:[]);renderWizard();};
+ document.querySelectorAll('[data-w]').forEach(c=>c.onchange=()=>{const i=+c.dataset.w;c.checked?W.sel.add(i):W.sel.delete(i);});
+ document.querySelectorAll('[data-wdetail]').forEach(b=>b.onclick=()=>{rows=p.txn_ids.map(i=>W.byId[i]);open(+b.dataset.wdetail);});
+ document.querySelectorAll('[data-wf]').forEach(sel=>sel.onchange=()=>{const k=sel.dataset.wf,v=+sel.value||null;
+  if(k==='why_id'){W.fix.why_id=v!==p.why_id?v:undefined;delete W.fix.category_id;}else{W.fix[k]=v&&v!==p[k]?v:undefined;}
+  for(const key of Object.keys(W.fix))if(W.fix[key]==null)delete W.fix[key];renderWizard();});}
+const GT={toVerify:'da verificare',toClassify:'movimenti da classificare',toCheck:'movimenti da verificare',
+ reasons:{WHO_SOURCE_CLASSIFICATION_MISSING:'WHO riconosciuto, WHY da determinare per questo conto/carta',WHY_RULE_MISSING:'WHO riconosciuto, il WHY cambia da movimento a movimento: serve una regola',
+  WHY_DOCUMENT_MISSING:'WHO riconosciuto, serve un documento o un chiarimento per il WHY',WHY_RULES_CONFLICT:'WHO riconosciuto, regole WHY in conflitto',PROVISIONAL_WHY:'WHY provvisorio: la natura del movimento è da determinare',
+  NO_PROFILE:'WHO riconosciuto senza profilo di riconoscimento',WHO_UNKNOWN:'WHO non riconosciuto',WHO_AMBIGUOUS:'Più WHO possibili',CATEGORY_MISSING:'WHY presente, categoria contabile mancante',
+  PERSONAL_SOURCE_BUSINESS_WHAT:'Conto personale con categoria aziendale',RELATIONSHIP_TO_DECIDE:'Rapporto economico tra titolari da decidere',CARD_PAYMENT_UNMATCHED:'Pagamento carta senza contropartita',CARD_PAYMENT_AMBIGUOUS:'Pagamento carta con più contropartite'},
+ propOf:(i,n)=>`proposta ${i} di ${n}`,occ:n=>`${n} movimenti del gruppo`,date:'Data',desc:'Descrizione',amount:'Importo',source:'Conto / carta',sources:'Source',
+ analysisTitle:'Analisi del gruppo',analyze:'Analizza il gruppo e proponi una regola',define:'Definisci regola',defineWith:'Definisci regola con questa proposta',retry:'Riprova l’analisi',again:'Ripeti l’analisi',
+ stNew:'Non ancora analizzato',stNewText:n=>`L’analisi esamina tutte le ${n} occorrenze del gruppo e lo storico del WHO: natura comune, differenze tra le descrizioni, conti/carte e titolarità, sottogruppi ed eccezioni. Non salva e non applica nulla.`,
+ stRun:'Analisi in corso',stRunText:n=>`Lettura delle ${n} occorrenze, a lotti di formati di descrizione. Può richiedere qualche minuto.`,
+ stErr:'Errore tecnico, riprovabile',stProp:'Proposta disponibile',stNone:'Analisi completata: nessuna regola sufficientemente supportata',stLim:'Analisi limitata da dati mancanti',
+ stDone:a=>a.state==='LIMITED'&&!a.examined?'L’analisi non è potuta partire: vedi sotto cosa manca.':`${a.movements} movimenti del gruppo esaminati${a.examined?` insieme allo storico del WHO (${a.examined} movimenti)`:''}${a.ai_calls?` · ${a.ai_calls} richieste all’AI`:''}.`,
+ limits:'Limiti di questa analisi',
+ limit:l=>({WHO_MISSING:`${l.movements} movimenti senza WHO riconosciuto: una regola WHY richiede prima il WHO.`,DOCUMENT_MISSING:`${l.movements} movimenti richiedono un documento o un chiarimento per il WHY.`,
+  COVERAGE:`${l.source}: mancano dati dal ${l.start} al ${l.end}. Le occorrenze di queste date potrebbero mancare; l’analisi usa i movimenti disponibili.`,COVERAGE_UNKNOWN:'Non è stato possibile verificare la copertura dei conti/carte del gruppo.',
+  AI_PARTIAL:'Alcuni lotti della lettura AI non sono riusciti: ripeti l’analisi.',CONSENT:'La condivisione del contesto Bank con ChatGPT non è autorizzata: l’analisi non è partita e nessun dato è stato inviato.'}[l.kind]||l.text),
+ proposal:'Regola proposta',subgroup:k=>`Sottogruppo ${k} — regola proposta`,except:'tranne quando',aiReason:'Motivazione dell’AI',
+ cond:c=>{const F={source:'il conto/carta',source_type:'il tipo di conto/carta',subject:'la titolarità del conto/carta',direction:'la direzione',amount:'l’importo',weekday:'il giorno',description:'la descrizione',format:'il formato della descrizione',who:'il WHO'};
+  const O={is:'è',is_not:'non è',in:'è tra',contains:'contiene',not_contains:'non contiene',starts_with:'inizia con',between:'è tra',has:'ha',has_not:'non ha'};
+  const V={Personal:'personale',Company:'aziendale','money out':'uscita','money in':'entrata',true:'presente',false:'assente'};const val=v=>Array.isArray(v)?v.map(val).join(', '):(V[v]??String(v));
+  const f=c.field.startsWith('extra:')?`l’informazione «${c.field.slice(6)}» del conto/carta`:c.field.startsWith('evidence:')?`l’evidenza RF-One «${c.field.slice(9)}»`:(F[c.field]||c.field);return `${f} ${O[c.op]||c.op} «${val(c.value)}»`;},
+ ruleSentence:(p,who)=>`quando il WHO è ${who} e ${p.spec.conditions.map(c=>GT.cond(c)).join(' e ')}: WHY «${p.why}»`,
+ whyWhat:p=>`WHY <b>${esc(p.why)}</b> → WHAT <b>${esc(p.what||'(conto patrimoniale del WHY)')}</b>`,
+ resolves:p=>`Risolverebbe <b>${p.resolves}</b> movimenti del gruppo${p.uncertain.length?` (di cui <b>${p.uncertain.length}</b> coperti dalle condizioni ma senza conferma della natura: da verificare)`:''}${p.open_in_group.length?`; ${p.open_in_group.length} resterebbero aperti`:''}${p.outside_group?`; altri ${p.outside_group} movimenti di questo WHO fuori dal gruppo`:''}${p.summary.protected?`; ${p.summary.protected} decisioni umane protette restano invariate`:''}.`,
+ resolvedList:n=>`Movimenti che risolverebbe (${n}): prima → dopo`,formats:n=>`Descrizioni nel gruppo (${n} formati) e lettura dell’AI`,example:'Esempio',count:'Movimenti',reading:'Lettura dell’AI',notRead:'non letto (errore: ripeti)',unclear:'natura non determinabile dalla descrizione',
+ excludedTitle:n=>`Movimenti esclusi o ancora incerti (${n})`,excl:{CONFLICT:'proposte in conflitto',PROTECTED:'decisione umana protetta',NOT_READ:'lettura AI non riuscita',UNCLEAR:'natura non determinabile dalla descrizione',NOT_SUPPORTED:'nessuna regola con abbastanza esempi'},
+ nameOnly:'Scartate perché si basavano sul solo nome del WHO',nothingApplied:'Nessuna regola salvata o attivata, nessuna classificazione applicata. Per confermare usa «Definisci regola».',
+ error:e=>`Analisi non completata per un errore tecnico. Nessuna modifica: riprova. (${e})`,groupMoves:'movimenti del gruppo',refreshing:'Aggiornamento dei risultati del gruppo…',
+ startText:(w,n,reason,p,who)=>`Definisci il profilo di riconoscimento del WHO ${who}. In Riconciliazione guidata il gruppo ha ${n} movimenti da classificare (${reason}).`+(p?` Proposta dell’analisi del gruppo, da verificare: WHY «${p.why}»${p.what?` (WHAT «${p.what}»)`:''} ${GT.ruleSentence(p,who).replace(/: WHY .*$/,'')}${p.exceptions.length?`, tranne quando ${p.exceptions.join('; ')}`:''}. Risolverebbe ${p.resolves} movimenti del gruppo.`:'')+' Indica cosa manca prima di proporre il profilo.'};
+// --- Review: the group window (one entry per group) ---------------------------------------------------------
+// "Analyse the group" (/analyze, read-only) reads ALL the group's movements and proposes simulated WHY rules;
+// "Define rule" opens the Bank's own rule editor (recognition profile: WHY and WHAT lists, Preview on real
+// movements, Save draft, Save and apply), embedded, for the group's WHO. Nothing here saves or applies anything.
+const AN={};
+const RT={
+ profileEditor:'Editor dei profili di riconoscimento',profileNote:'I profili di riconoscimento del Bank si applicano soltanto ai movimenti il cui WHO è letto da una regola di estrazione e che sono ancora da riconciliare: per i gruppi con WHO già riconosciuto usa le regole WHY qui sopra.',
+title:'Regole del WHO, categoria e dichiarazioni',helpRules:'Come funzionano le regole per ambito',helpCategory:'Come funzionano categoria e dichiarazioni',loading:'Caricamento di regole e categoria del WHO…',retry:'Riprova',working:'Operazione in corso…',
+ category:'Categoria del WHO',noCategory:'Categoria non definita.',catStatus:{PROPOSED:'Proposta',CONFIRMED:'Confermata',REJECTED:'Rifiutata'},certainty:'certezza',cert:{high:'alta',medium:'media',low:'bassa'},origin:{AI:'proposta dall’AI',HUMAN:'scelta da una persona'},
+ confirm:'Conferma la categoria',reject:'Rifiuta',propose:'Proponi con l’AI (ricerca internet sul solo nome del WHO)',chooseCat:'Scegli una categoria…',confirmChosen:'Conferma questa categoria',
+ catNote:'La categoria descrive l’attività della controparte o del servizio: non è il WHAT e non è la modalità UNIVOCO/MULTIPLO. Solo una categoria confermata è usata dalle regole per categoria.',
+ cats:{FOOD_SERVICE:'Ristorazione (ristorante, bar, caffetteria)',PASSENGER_TRANSPORT:'Trasporto persone (corse, taxi, trasporto pubblico)',AIRLINE:'Compagnia aerea',LODGING:'Alloggio',FUEL:'Carburante',GROCERY:'Supermercato, alimentari',SOFTWARE:'Software e servizi online',UTILITIES:'Utenze e telecomunicazioni',PROFESSIONAL_SERVICES:'Servizi professionali',MARKETPLACE:'Marketplace o rivenditore generico (acquisti eterogenei)'},
+ proposed:'Proposta registrata: confermala o rifiutala.',noneSupported:'Nessuna categoria sufficientemente supportata dalle evidenze: nulla è stato registrato.',
+ declarations:'Dichiarazioni contestuali',noDecl:'Nessuna dichiarazione per questo WHO.',onSources:'sulle Source',withdraw:'Ritira',ruleFromDecl:'Definisci una regola da questa dichiarazione',
+ addDecl:'Registra una dichiarazione (es. «Io uso UBER soltanto per trasporto»)',declText:'Dichiarazione, con parole tue',declCat:'Categoria che dichiara',declSources:'Vale soltanto su queste Source',declSave:'Registra dichiarazione',
+ declNote:'Una dichiarazione vale solo nel tuo contesto e sulle Source indicate: non diventa una proprietà universale del WHO e non classifica nulla da sola. Può sostenere una regola per categoria da simulare e confermare; descrizioni o documenti contrari vanno esclusi come eccezioni.',declared:'Dichiarazione registrata.',
+ fromDecl:s=>`Regola per categoria preparata dalla dichiarazione${s.length===1?` (Source ${RT.subject[s[0]]||s[0]})`:''}: scegli il WHY, aggiungi le eccezioni e simula.`,
+ rules:'Regole WHY che riguardano questo WHO',noRules:'Nessuna regola WHY riguarda ancora questo WHO.',scope:{WHO:'Singolo WHO',CATEGORY:'Categoria',GENERAL:'Generale'},status:{ACTIVE:'attiva',INACTIVE:'bozza / non attiva'},revise:'Rivedi',newRule:'Nuova regola',
+ replacements:'Sostituzioni di regole (storico e ripristino)',replacedBy:x=>`La regola #${x.new_rule_id} ha sostituito ${x.replaced.map(r=>'#'+r.rule_id).join(', ')}`,restore:'Ripristina',restored:'ripristinata',restoredMsg:'Regole sostituite riattivate, regola sostitutiva disattivata. Movimenti aperti rivalutati.',
+ revising:r=>`Revisione della regola #${r.id}: simulando, la nuova versione può sostituirla (solo se equivalente e con la tua approvazione).`,
+ editor:'Definisci o rivedi la regola',scopeChoice:{WHO:w=>`Solo il WHO ${w}`,CATEGORY:(w,c)=>c.length?'Tutti i WHO della categoria':'Categoria (nessuna categoria confermata o dichiarata)',GENERAL:()=>'Generale (ogni WHO riconosciuto)'},
+ chooseWhy:'Scegli il WHY…',balance:'conto patrimoniale del WHY',whatFromWhy:'il WHAT deriva dal WHY',conditions:'Condizioni verificabili',noConditions:'nessuna condizione',remove:'Rimuovi',
+ addSubject:'Titolarità del conto/carta…',subject:{Personal:'personale',Company:'aziendale'},descContains:'la descrizione contiene…',add:'Aggiungi',exceptions:'Eccezioni',noExceptions:'nessuna eccezione',excContains:'escludi se la descrizione contiene…',
+ ruleTitle:'Titolo (facoltativo)',simulate:'Simula',closeEditor:'Chiudi l’editor',simulating:'Simulazione in corso',simTitle:'Simulazione',ruleText:s=>s.text,
+ simSummary:s=>{const m=s.summary;return `${s.movements} movimenti interessati: <b>${m.new_why}</b> ottengono il WHY, <b>${m.changed_why}</b> cambiano WHY, <b>${m.lost_why}</b> perdono il WHY, <b>${m.conflict}</b> in conflitto, ${m.still_open} restano aperti, ${m.unchanged} invariati, ${m.protected} decisioni umane protette. Gruppo: <b>${s.group_resolved}</b> di ${s.group_movements} risolti.`;},
+ verifiedOn:'Verificato sui movimenti attuali dell’elaborazione: non dimostra da solo il risultato sui movimenti futuri.',
+ otherRule:'Altra regola coinvolta',relation:'Confronto',decision:'Tua decisione',kind:{EQUIVALENT:'Equivalente: stesso WHY dove si sovrappongono',COMPLEMENTARY:'Complementare: copre anche casi che questa regola non copre (resta)',CONFLICT:'In contrasto: WHY diverso sugli stessi movimenti',KEPT:'Eccezione legittima mantenuta'},
+ futureYes:'equivalente anche sulle condizioni (vale per i movimenti futuri)',futureNo:'equivalente solo sui dati attuali',kindCounts:r=>`${r.matched} movimenti · ${r.same} stesso WHY · ${r.different} diverso · ${r.only_other} solo l’altra`,
+ replaceIt:'Sostituisci (disattiva, con storico e ripristino)',keepIt:'Mantieni come eccezione esplicita',movesTitle:s=>`Movimenti interessati (${s.movements}): prima → dopo`,
+ effect:{new_why:'ottiene il WHY',changed_why:'cambia WHY',lost_why:'perde il WHY',conflict:'conflitto',still_open:'resta aperto',unchanged:'invariato',protected:'decisione umana protetta'},inGroup:'nel gruppo',
+ conflictsOpen:n=>`${n} conflitti da decidere: mantieni l’altra regola come eccezione, modifica la regola oppure salva solo una bozza.`,saveDraft:'Salva bozza (non attiva)',saveApply:n=>`Salva e applica ora (${n} movimenti cambiano)`,
+ saveNote:'Bozza: salvata non attiva, nessun movimento cambia. Salva e applica ora: la regola diventa attiva anche per i caricamenti futuri, le regole scelte vengono sostituite (con storico e ripristino) e i movimenti aperti sono rivalutati; le decisioni umane restano protette. Se nel frattempo cambiano dati o regole, il salvataggio viene rifiutato e la simulazione va ripetuta.',
+ confirmApply:(s,n)=>`Attivare la regola e applicarla ora?\n${n} movimenti cambiano (${s.summary.new_why} ottengono il WHY, ${s.summary.changed_why} lo cambiano, ${s.summary.lost_why} lo perdono); ${s.summary.protected} decisioni umane restano protette.${s.replace.length?`\nRegole sostituite: ${s.replace.map(i=>'#'+i).join(', ')}.`:''}`,
+ saving:'Salvataggio…',applied:v=>{const e=v.expected,n=e.new_why+e.changed_why+e.lost_why;return `Regola #${v.rule_id} attiva e applicata: ${n} movimenti cambiati come da simulazione; in questo gruppo restano ${v.open} movimenti aperti.${v.replaced?` Regole sostituite: ${v.replaced.replaced.map(r=>'#'+r.rule_id).join(', ')}.`:''}`;},drafted:v=>`Bozza #${v.rule_id} salvata, non attiva: nessun movimento è cambiato.`,
+ except:'tranne quando',and:' e ',cond:c=>GT.cond(c)};
+{% include "_rules_panel.js" %}
+const reasonText=code=>GT.reasons[code]||uiLabel(code);
+function sourcesOf(rs){const c={};rs.forEach(r=>{const s=r.source||'—';c[s]=(c[s]||0)+1;});return Object.entries(c).sort((a,b)=>b[1]-a[1]);}
+function occurrences(){return `<details ${W.props.length?'':'open'} style="margin-top:8px"><summary><b>${GT.occ(W.rows.length)}</b> · ${esc(sourcesOf(W.rows).map(([s,n])=>`${s} (${n})`).join(', '))}</summary>
+ <div style="overflow:auto;max-height:40vh"><table><thead><tr><th>${GT.date}</th><th>${GT.desc}</th><th class="num">${GT.amount}</th><th>${GT.source}</th></tr></thead><tbody>
+ ${W.rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.description)}</td><td class="num ${r.amount_minor<0?'neg':''}">${usd(r.amount_minor)}</td><td>${esc(r.source)}</td></tr>`).join('')}</tbody></table></div></details>`;}
+function analysisPanel(){const a=W.an,def=W.who?` <button class="sec" type="button" data-gact="new">${GT.define}</button>`:'';
+ let h=`<section class="gpanel" aria-live="polite"><h4 style="margin:2px 0 6px">${GT.analysisTitle}</h4>`;
+ if(!a)h+=`<p><span class="st st-new">${GT.stNew}</span> ${GT.stNewText(W.rows.length)}</p><div class="row"><button type="button" data-gact="analyze">${GT.analyze}</button>${def}</div>`;
+ else if(a.state==='RUNNING')h+=`<p><span class="st st-run">${GT.stRun}</span> ${GT.stRunText(W.rows.length)}</p>`;
+ else if(a.state==='ERROR')h+=`<p><span class="st st-err">${GT.stErr}</span> ${esc(GT.error(a.error||''))}</p><div class="row"><button type="button" data-gact="analyze">${GT.retry}</button>${def}</div>`;
+ else{const lab={PROPOSAL:[GT.stProp,'st-ok'],NO_RULE:[GT.stNone,'st-none'],LIMITED:[GT.stLim,'st-lim']}[a.state]||[a.state,''],who=(a.who||[]).join(', ')||W.g.group;
+  h+=`<p><span class="st ${lab[1]}">${lab[0]}</span> ${esc(GT.stDone(a))}</p>`;
+  if((a.limits||[]).length)h+=`<div class="anom"><b>${GT.limits}</b><ul style="margin:4px 0">${a.limits.map(l=>`<li>${esc(GT.limit(l))}</li>`).join('')}</ul></div>`;
+  (a.proposals||[]).forEach((p,k)=>{h+=`<div class="okbox"><b>${a.proposals.length>1?GT.subgroup(k+1):GT.proposal}</b> — ${esc(GT.ruleSentence(p,who))}
+   <ul style="margin:4px 0">${p.spec.conditions.map((c,i)=>`<li>${esc(GT.cond(c,p.conditions[i]))}</li>`).join('')}${p.exceptions.map(e=>`<li>${GT.except} ${esc(e)}</li>`).join('')}</ul>
+   ${GT.whyWhat(p)}<br>${GT.resolves(p)}${p.reason?`<br><span class="m">${GT.aiReason}: ${esc(p.reason)}</span>`:''}
+   <details><summary>${GT.resolvedList(p.resolves)}</summary><table><tbody>${p.resolved.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.description)}</td><td class="num">${usd(x.amount_minor)}</td><td>${esc(x.source||'')}</td><td class="m">${esc(x.before||'—')} → ${esc(x.after||'—')}${p.uncertain.includes(x.id)?' · '+GT.toVerify:''}</td></tr>`).join('')}</tbody></table></details>
+   ${W.who?`<div class="row" style="margin-top:6px"><button type="button" data-gact="edit" data-prop="${k}">${GT.defineWith}</button>${W.shell?` <button class="sec" type="button" data-gact="define" data-prop="${k}">Editor dei profili di riconoscimento</button>`:''}</div>`:''}</div>`;});
+  if((a.formats||[]).length)h+=`<details><summary>${GT.formats(a.formats.length)}</summary><table><thead><tr><th>${GT.example}</th><th class="num">${GT.count}</th><th>${GT.reading}</th></tr></thead><tbody>${a.formats.map(f=>`<tr><td>${esc(f.example)}</td><td class="num">${f.movements}</td><td class="m">${!f.read?GT.notRead:f.reading.length?f.reading.map(r=>esc(r.why+(r.raw.length?' — '+r.raw.map((c,i)=>GT.cond(c,r.conditions[i])).join('; '):''))).join('<br>'):GT.unclear}</td></tr>`).join('')}</tbody></table></details>`;
+  if((a.excluded||[]).length)h+=`<details><summary>${GT.excludedTitle(a.excluded.length)}</summary><table><tbody>${a.excluded.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.description)}</td><td class="num">${usd(x.amount_minor)}</td><td>${esc(x.source||'')}</td><td class="m">${esc(GT.excl[x.reason]||x.reason)}</td></tr>`).join('')}</tbody></table></details>`;
+  if((a.name_only||[]).length)h+=`<p class="m">${GT.nameOnly}: ${esc(a.name_only.join('; '))}</p>`;
+  h+=`<p class="m">${GT.nothingApplied}</p><div class="row"><button class="sec" type="button" data-gact="analyze">${GT.again}</button>${def}</div>`;}
+ return h+'</section>';}
+function groupPanel(){return analysisPanel()+rulesPanel()+occurrences();}
+function bindGroupPanel(){document.querySelectorAll('[data-gact]').forEach(b=>b.onclick=()=>b.dataset.gact==='analyze'?analyzeGroup():b.dataset.gact==='edit'?editProposal(W.an.proposals[+b.dataset.prop]):b.dataset.gact==='new'?openRuleEditor():defineRule(b.dataset.prop!=null?W.an.proposals[+b.dataset.prop]:null));bindRulesPanel();}
+// Define rule: the rule editor of this window (WHY rules of every scope, read by the engine). The Bank's
+// recognition-profile editor stays reachable from each proposal and from the rules panel.
+function openRuleEditor(){if(!W.ed)newEditor();renderWizard();const e=$('#rule-editor');if(e)e.scrollIntoView({block:'start'});}
+function editProposal(p){newEditor({scope:'WHO',why_id:p.spec.why_id||null,conditions:p.spec.conditions||[],exceptions:(p.spec.exceptions||[]).map(x=>x.conditions)});renderWizard();const e=$('#rule-editor');if(e)e.scrollIntoView({block:'start'});}
+async function analyzeGroup(){const g=W.g,key=g.exc+'|'+g.group;W.an=AN[key]={state:'RUNNING'};renderWizard();let v;
+ try{const r=await fetch(B+`/api/runs/${runId}/analyze`,{method:'POST',headers:{'X-CBank-Token':token},body:new URLSearchParams({exc:g.exc,group:g.group})});
+  try{v=await r.json();}catch{v={ok:false,error:`${r.status} ${r.statusText}`};}
+  if(!v.ok)v={state:'ERROR',error:v.error||`${r.status} ${r.statusText}`};}
+ catch(e){v={state:'ERROR',error:e.message};}
+ AN[key]=v;if(W.g===g&&wiz.open){W.an=v;renderWizard();}}
+function defineRule(p){if(!window.rdlg||!W.who)return;const n=W.rows.length,who=((W.an||{}).who||[]).join(', ')||W.g.group;
+ $('#r-sub').textContent=`WHO ${who} · ${GT.occ(n)} · ${GT.sources}: ${sourcesOf(W.rows).map(([s,c])=>`${s} (${c})`).join(', ')}`;
+ W.ruleSaved=false;$('#r-frame').src=`/bank/ai-rules?embed=1&who_id=${encodeURIComponent(W.who)}&start=${encodeURIComponent(GT.startText(W,n,reasonText(W.g.exc),p,who))}`;rdlg.showModal();}
+if(window.rdlg){
+ window.addEventListener('message',e=>{if(e.origin!==location.origin||e.source!==$('#r-frame').contentWindow)return;
+  if(e.data&&e.data.type==='bank-profile-saved'&&e.data.action!=='DRAFT')W.ruleSaved=true;
+  if(e.data&&e.data.type==='bank-profile-closed')rdlg.close();});
+ $('#r-x').onclick=()=>rdlg.close();
+ // Back to the same group, at the same place: after a save the open movements are evaluated again and the
+ // page reloads on the same group (counts of the window and of the summary are then current).
+ rdlg.addEventListener('close',async()=>{$('#r-frame').src='about:blank';if(!W.ruleSaved)return;busy(true,GT.refreshing);
+  try{await post(B+`/api/runs/${runId}/refresh`,{});}catch(e){}
+  try{sessionStorage.setItem('cbank-wiz-next',JSON.stringify({exc:W.g.exc,group:W.g.group,y:window.scrollY}));}catch{}location.reload();});
+}
+async function wizardNext(){const act=$('#w-next').dataset.act,p=cur();
+ if(act==='review'){W.step=2;return renderWizard();}
+ if(act==='confirm'){W.step=3;return renderWizard();}
+ if(act==='nextgroup'){const gs=[...document.querySelectorAll('tr[data-group-exc]')].map(t=>({exc:t.dataset.groupExc,group:t.dataset.groupKey}));
+  const k=gs.findIndex(x=>x.exc===W.g.exc&&x.group===W.g.group),nx=gs[k+1]||null;
+  try{sessionStorage.setItem('cbank-wiz-next',JSON.stringify(nx));}catch{}location.reload();return;}
+ if(act==='approve'){const ids=p.txn_ids.filter(i=>W.sel.has(i)),data={txn_ids:ids.join(',')};
+  for(const k of ['beneficiary_id','why_id','category_id'])if(W.fix[k])data[k]=W.fix[k];
+  if(W.fix.why_id&&!W.fix.category_id){const f=fixed();if(f.category_id)data.category_id=f.category_id;}
+  busy(true,'Salvataggio…');
+  try{const v=await post(B+`/api/runs/${runId}/prior/approve`,data);changed=true;
+   const rec=v.updated.filter(u=>u.status==='RECONCILED').length,inc=v.updated.length-rec;
+   W.results.push(`${p.who} · ${entName(fixed().beneficiary_id)}: ${v.saved.length} approvati → ${rec} riconciliati, ${inc} ancora incompleti${v.skipped.length?`; ${v.skipped.length} saltati (${v.skipped.map(s=>s.reason).join('; ')})`:''}.`);
+   busy(false,`Approvati ${v.saved.length}. Ora riconciliati ${v.summary.RECONCILED||0} of ${v.summary.total}.`);
+   W.i++;startProposal();}catch(e){busy(false,e.message);}}}
+if(window.wiz){
+ $('#w-next').onclick=wizardNext;$('#w-back').onclick=()=>{W.step=Math.max(1,W.step-1);renderWizard();};
+ const wclose=()=>wiz.close();$('#w-cancel').onclick=wclose;$('#w-x').onclick=wclose;
+ wiz.addEventListener('close',()=>{if(W.toAdvanced){W.toAdvanced=false;return;}if(changed)location.reload();});
+ $('#w-define').onclick=()=>openRuleEditor();
+ $('#w-advanced').onclick=()=>{W.toAdvanced=true;wiz.close();openList(W.g);};
+ $('#w-skip').onclick=()=>{W.results.push(`${cur().who} · ${entName(cur().beneficiary_id)}: saltato, nessun movimento approvato.`);W.i++;startProposal();};
+ try{const nx=JSON.parse(sessionStorage.getItem('cbank-wiz-next')||'null');sessionStorage.removeItem('cbank-wiz-next');
+  if(nx){if(nx.y!=null)window.scrollTo(0,nx.y);const ok=[...document.querySelectorAll('tr[data-group-exc]')].some(t=>t.dataset.groupExc===nx.exc&&t.dataset.groupKey===nx.group);if(ok)openWizard(nx).then(()=>{if(nx.msg){W.rmsg=nx.msg;renderWizard();}});}}catch{}
+}
+async function open(id){const v=await (await fetch(B+`/api/runs/${runId}/txn/${id}`)).json();current=v;render(v);position();if(!dlg.open)dlg.showModal();if(window.list&&list.open)renderRows();}
+function position(){const i=rows.findIndex(r=>r.txn_id===current.result.txn_id);$('#d-pos').textContent=i>=0?`${i+1} / ${rows.length}`:'';$('#d-prev').disabled=i<=0;$('#d-next').disabled=i<0||i>=rows.length-1;}
+$('#d-prev').onclick=()=>{const i=rows.findIndex(r=>r.txn_id===current.result.txn_id);if(i>0)open(rows[i-1].txn_id);};
+$('#d-next').onclick=()=>{const i=rows.findIndex(r=>r.txn_id===current.result.txn_id);if(i>=0&&i<rows.length-1)open(rows[i+1].txn_id);};
+function opt(list,sel,label,none){return (none?`<option value="">${none}</option>`:'')+list.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(label(x))}</option>`).join('');}
+function render(v){const r=v.result;$('#d-title').textContent=`#${r.txn_id} · ${r.date} · ${(r.amount_minor/100).toFixed(2)} ${r.currency||''}`;$('#d-sub').textContent=`${r.description} — ${r.source} (${r.source_type}), pagato da ${r.payer||'—'}`;
+ let a=`<div class="m"><b>Soggetto contabile:</b> ${esc(r.subject||r.payer||'—')} (titolare del conto o carta)${r.management?` · <b>Destinazione gestionale:</b> ${esc(r.management.destination)} — ${esc(r.management.note||'')}`:''}</div>`;if(r.protected)a+=`<div class="warnbox">🔒 Decisione umana protetta (${esc(uiMessage(r.protected))}). Il motore non la sostituisce.</div>`;
+ if(r.proposal)a+=`<div class="warnbox"><b>Proposta del motore (non applicata):</b> ${esc(r.proposal.fields.join(', '))} — WHO ${esc(r.proposal.who)}, WHY ${esc(r.proposal.why)}, Categoria ${esc(r.proposal.category)}, Destinazione ${esc(r.proposal.beneficiary)}. ${esc(uiMessage(r.proposal.note))}</div>`;
+ const q=r.exceptions.find(e=>e.question);
+ for(const e of r.exceptions)a+=`<div class="warnbox"><b>${esc(uiLabel(e.code))}</b>: ${esc(uiMessage(e.message))}${e.question&&e!==q?`<br><b>Domanda:</b> ${esc(uiMessage(e.question))}`:''}</div>`;
+ for(const e of r.anomalies)a+=`<div class="warnbox">${esc(uiLabel(e.code))}: ${esc(uiMessage(e.message))}</div>`;
+ if(r.ledger)a+=`<div class="warnbox"><b>Tra soggetti:</b> ${esc(r.ledger.proposal)} ${(r.ledger.amount_minor/100).toFixed(2)} — ${esc(uiMessage(r.ledger.note))}</div>`;
+ $('#d-alerts').innerHTML=a;
+ $('#d-trace tbody').innerHTML=r.trace.map(s=>`<tr><td>${esc(uiLabel(s.stage))}</td><td>${esc(uiLabel(s.method))}</td><td>${esc(s.value)}</td><td class="m">${esc(uiMessage(s.evidence))}${s.confidence?' · '+esc(s.confidence):''}</td></tr>`).join('');
+ const b=r.bank||{};$('#d-bank').innerHTML=`WHO ${esc(b.who||'—')} · WHY #${esc(b.why_id||'—')} · Categoria #${esc(b.category_id||'—')} · Destination #${esc(b.beneficiary_id||'(impostazione del conto)')} · origine ${esc(b.source||'—')} → <b>${esc(uiLabel(r.comparison))}</b>`;
+ $('#d-history').innerHTML=v.history.length?'Decisioni umane in Bank: '+v.history.map(h=>`${esc(h.created_at)} ${esc(h.who_name)} / WHY #${h.why_id}${h.active?' (attiva)':''}`).join('; '):'';
+ $('#whos').innerHTML=v.whos.map(w=>`<option value="${esc(w)}">`).join('');
+ const f=$('#d-form');f.who.value=r.who_name||'';f.beneficiary_id.innerHTML=opt(v.entities,r.beneficiary_id,x=>x.name,'(titolare del conto)');
+ f.why_id.innerHTML=opt(v.whys,r.why_id,x=>x.name,'Scegli il WHY');f.category_id.innerHTML=opt(v.categories,r.category_id,x=>x.label,'(categoria derivata dal WHY)');f.note.value='';
+ f.why_id.onchange=()=>{const w=v.whys.find(x=>x.id===+f.why_id.value);if(w&&w.category_id)f.category_id.value=w.category_id;};
+ $('#d-chat').innerHTML=v.messages.map(x=>`<div class="msg ${x.role}">${esc(x.text)}</div>`).join('');
+ renderQuestion(q,v);}
+// --- Interactive AI question: the person answers; the existing AI conversation interprets the answer ---
+function renderQuestion(q,v){const box=$('#d-question');if(!q){box.innerHTML='';return;}
+ const alts=(q.alternatives||[]).filter(x=>x&&x.label);
+ box.innerHTML=`<div class="aiq"><b>L’AI chiede:</b> ${esc(q.question)}
+  <form id="d-answer" style="margin-top:6px">${alts.map((x,i)=>`<label><input type="radio" name="ans" value="${i}"> ${esc(x.label)}</label>`).join('')}
+   <label><input type="radio" name="ans" value="other"> Altro — spiega con parole tue</label>
+   <input name="other" placeholder="Spiega con parole tue" style="width:100%;padding:5px;margin:2px 0 6px" aria-label="Altra risposta">
+   <button type="submit">Invia risposta</button> <span class="m">Nessuna decisione viene salvata: l’AI compila i campi qui sotto per la tua verifica.</span></form>
+  <div class="res" id="d-answer-res" hidden></div></div>`;
+ const form=$('#d-answer');form.other.oninput=()=>{if(form.other.value.trim())form.querySelector('[value=other]').checked=true;};
+ form.onsubmit=async e=>{e.preventDefault();const sel=form.querySelector('[name=ans]:checked');
+  if(!sel){return showAnswer('Seleziona una risposta oppure scegli Altro e spiega.');}
+  let answer,hint='';
+  if(sel.value==='other'){answer=form.other.value.trim();if(!answer)return showAnswer('Scrivi la spiegazione nel campo Altro.');}
+  else{const x=alts[+sel.value];answer=x.label;const w=v.whys.find(y=>y.id===x.why_id),b=v.entities.find(y=>y.id===x.beneficiary_id);
+   hint=(w||b)?` (opzione proposta con${w?` WHY “${w.name}”`:''}${b?` e destinatario ${b.name}`:''})`:'';}
+  const text=`Risposta alla tua domanda.\nDomanda: ${q.question}\nLa mia risposta: ${answer}${hint}\nProponi WHO, destinatario, WHY e categoria RF-One usando soltanto i cataloghi. Se manca ancora qualcosa, chiedi soltanto quel dato. Rispondi in italiano.`;
+  busy(true,'OpenAI sta interpretando la tua risposta…');
+  try{const res=await post(B+`/api/runs/${runId}/txn/${current.result.txn_id}/chat`,{text});current.messages=res.messages;
+   $('#d-chat').innerHTML=res.messages.map(x=>`<div class="msg ${x.role}">${esc(x.text)}</div>`).join('');
+   const out=applyProposal(res.answer,v);busy(false,out.ready?'Proposta pronta: controlla i campi e conferma.':'Servono altre informazioni.');showAnswer(out.html);}
+  catch(err){busy(false,err.message);showAnswer(esc(err.message));}};}
+function showAnswer(html){const el=$('#d-answer-res');if(!el)return;el.hidden=false;el.innerHTML=html;}
+// Only values that exist in the catalogs are copied into the fields; nothing is invented or saved.
+function applyProposal(ans,v){const p=(ans&&ans.proposal)||{},f=$('#d-form'),set=[],rejected=[];
+ if(p.who){f.who.value=String(p.who).toUpperCase();set.push(`WHO ${esc(f.who.value)}${v.whos.includes(f.who.value)?'':' (nuovo WHO)'}`);}
+ const ent=v.entities.find(x=>x.id===p.beneficiary_id);if(ent){f.beneficiary_id.value=ent.id;set.push(`Destinazione ${esc(ent.name)}`);}else if(p.beneficiary_id)rejected.push('beneficiary');
+ const why=v.whys.find(x=>x.id===p.why_id);if(why){f.why_id.value=why.id;set.push(`WHY ${esc(why.name)}`);}else if(p.why_id)rejected.push('WHY');
+ let cat=v.categories.find(x=>x.id===p.category_id);if(!cat&&p.category_id)rejected.push('category');
+ if(!cat&&why&&why.category_id)cat=v.categories.find(x=>x.id===why.category_id);
+ if(cat){f.category_id.value=cat.id;set.push(`Categoria ${esc(cat.label)}`);}
+ const missing=[!why&&'WHY',!cat&&'Categoria'].filter(Boolean),reply=esc((ans&&ans.reply)||'');
+ const ready=!missing.length;
+ return {ready,html:(set.length?`<b>Compilato per la tua verifica:</b> ${set.join(' · ')}.`:'')
+  +(rejected.length?`<br><span class="neg">Ignorati perché assenti dai cataloghi: ${rejected.join(', ')}.</span>`:'')
+  +(ready?'<br>Controlla i campi qui sotto, poi premi <b>Conferma decisione umana</b>.':`<br><b>Mancano ancora: ${missing.join(', ')}.</b> ${reply}`)};}
+$('#d-form').onsubmit=async e=>{e.preventDefault();const f=e.target;try{busy(true,'Salvataggio…');const v=await post(B+`/api/runs/${runId}/txn/${current.result.txn_id}/decision`,Object.fromEntries(new FormData(f)));changed=true;busy(false,`Salvato. ${v.reevaluated_changed} movimenti aperti aggiornati.`);current.result=v.result;await open(current.result.txn_id);}catch(err){busy(false,err.message);}};
+$('#d-chatform').onsubmit=async e=>{e.preventDefault();const t=e.target.text.value.trim();if(!t)return;busy(true,'Richiesta a OpenAI…');try{const v=await post(B+`/api/runs/${runId}/txn/${current.result.txn_id}/chat`,{text:t});e.target.text.value='';current.messages=v.messages;$('#d-chat').innerHTML=v.messages.map(x=>`<div class="msg ${x.role}">${esc(x.text)}</div>`).join('');const out=applyProposal(v.answer,current);busy(false,out.ready?'Proposta AI riportata nei campi: controlla e conferma.':'L’AI richiede altre informazioni: consulta la conversazione.');}catch(err){busy(false,err.message);}};
+// Help popover: placed next to its button, light-dismiss (click outside or on ? again), never blocks the fields.
+{const pop=$('#d-help-pop'),btn=$('#d-help-btn');if(pop&&pop.showPopover)pop.addEventListener('toggle',e=>{if(e.newState==='open'){const r=btn.getBoundingClientRect();pop.style.top=(r.bottom+6)+'px';pop.style.left=Math.max(8,Math.min(r.left,innerWidth-380))+'px';}});}
+// Closing a movement returns to the list (refreshed); the dashboard reloads only when the list closes after a change.
+dlg.addEventListener('close',async()=>{if(window.list&&list.open){await loadRows();}else if(window.wiz&&wiz.open){/* back to the wizard */}else if(changed){location.reload();}});
+</script>
+</body>
+</html>

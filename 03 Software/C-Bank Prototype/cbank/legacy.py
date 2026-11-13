@@ -27,7 +27,7 @@ for _p in (str(_DS), str(_WEB)):
 
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.bank_reconciliation import (  # noqa: E402
-    ai_rules, card_configuration, flow, reconciliation_runner, who_identification, why_what)
+    ai_rules, card_configuration, flow, reconciliation_runner, who_search_text, who_why_rules, why_patterns, why_what)
 
 
 def engine():
@@ -71,7 +71,7 @@ def _writer_session():
 
 
 def record_human_decision(txn_id: int, *, who_name: str, why_id: int, category_id: int | None = None,
-                          note: str | None = None, account_id: int | None = None, associate: bool = True) -> int:
+                          note: str | None = None, account_id: int | None = None, associate: bool = False, beneficiary_id: int | None = None) -> int:
     """A person's WHO + WHY for one movement, through `recognition.record_human_decision` (the path Review
     uses): protected as HUMAN, WHO -> WHY association recorded, WHAT derived from the WHY. A WHO not yet in
     the catalog is created as Review's "+ New WHO" creates it. Returns the explanation id."""
@@ -89,6 +89,10 @@ def record_human_decision(txn_id: int, *, who_name: str, why_id: int, category_i
         explanation = recognition.record_human_decision(db, recognition.HumanDecisionRequest(
             transaction_id=txn_id, occurrence_id=who.id, confirmed_by_account_id=account_id,
             transaction_reason_id=why_id, notes=note, record_association=associate))
+        if beneficiary_id is not None:
+            from rfone_data_store.bank_reconciliation import row_reconciliation
+            row_reconciliation.set_for_whom(db, transaction_id=txn_id,
+                reporting_entity_id=beneficiary_id, account_id=account_id)
         db.commit()
         return explanation.id
     except Exception:
@@ -226,3 +230,25 @@ def generate_json(prompt: str, *, web_research: bool = False) -> dict:
 
 
 AI_PROVIDER = "OPENAI_CHATGPT_CODEX"
+
+
+def register_rule_whos(names):
+    """Catalog-only write for names extracted by approved rules. No movement decision is written."""
+    from sqlalchemy import text
+    from rfone_data_store.bank_reconciliation import who_registration
+    with _writer_session() as db:
+        # Serialize the identity check and insert across processes too.
+        db.execute(text("BEGIN IMMEDIATE"))
+        result = who_registration.register_candidates(db, names)
+        db.commit()
+        return result
+
+
+def ensure_source_classification_pairs(pairs):
+    from sqlalchemy import text
+    from rfone_data_store.bank_reconciliation import source_classification
+    with _writer_session() as db:
+        db.execute(text("BEGIN IMMEDIATE"))
+        count = source_classification.ensure_pairs(db, pairs)
+        db.commit()
+        return count
