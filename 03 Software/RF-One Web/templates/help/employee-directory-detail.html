@@ -1,0 +1,60 @@
+<section id="help-employee-directory-detail" class="rf-help-section">
+<h2>Employee record</h2>
+<p>The record of one person in the Anagrafica dipendenti: their overall state, RF-One account, internal data, organizational applicability, links to the other areas of RF-One, the Clover data of each site and the history of every change.{% if not can_manage %} You can read it; changes require a directory administrator.{% endif %}</p>
+
+<h3>Sections of the page</h3>
+<dl>
+  <dt>Stato complessivo</dt>
+  <dd><em>Attivo</em> (at least one active position, or set active by hand), <em>Dismissed</em> (no active position left; the end date is the last clock-in across all positions, or "non determinabile" when only clock-outs exist) or <em>Osservazione tecnica</em> (a Clover name with no verified clock-in or clock-out, not part of the directory). <em>Cessazione sospesa</em> means another Clover identity of the same site is still waiting to be reconciled, so an absence from Clover does not close the position yet.</dd>
+  <dt>Account RF1</dt>
+  <dd>The person's one RF-One account and its state. A prepared account has no credentials and no permissions: activate it from Accounts or replace it with the person's real existing account. When a person is dismissed their access is blocked; reactivation does not restore credentials or permissions. The owner's access is never blocked by a dismissal.</dd>
+  <dt>Dati interni RF-One</dt>
+  <dd><em>Nome completo</em>, <em>Email RF1</em>, <em>Telefono RF1</em>, <em>Codice interno</em> and <em>Stato anagrafica RF1</em>. These values are managed in RF-One and Clover imports never overwrite them. For people with Clover sites the state is managed by the synchronization; for people created in RF-One without a POS it is set here: «Non attivo» blocks their RF-One access, and setting «Attivo» again does not reactivate the account.</dd>
+  <dt>Applicabilità organizzativa</dt>
+  <dd>Where the person works, defined only here and read by every module: <em>Un solo ristorante</em> (tick exactly one restaurant), <em>Più ristoranti</em> (tick at least two), <em>Intero gruppo</em> (the whole organization, including restaurants added later; tick none) or <em>Non configurato</em> (not decided yet, which never means the whole group). Inconsistent choices are refused and nothing is saved. Applicability grants no permission and does not change the active state.</dd>
+  <dt>Collegamenti ai domini</dt>
+  <dd>Records of other areas confirmed as belonging to this person (for example the RF-One account, Training, a Selection candidate, a Projects manager or a Bank identity). Links grant no permission and do not change the data of those areas.</dd>
+  <dt>Sedi e dati importati da Clover</dt>
+  <dd>For each site: the position state, last clock-in and clock-out, when clock-ins were last verified, the Clover Merchant ID and Employee ID, the last update and the name, e-mail, code and role Clover reports. Times are the site's local time.</dd>
+  <dt>Differenze tra sedi</dt>
+  <dd>Shown when Clover reports different values for this person at different sites. No site prevails; choose the name and code for RF-One in the internal data.</dd>
+  {% if can_org %}
+  <dt>Ruoli organizzativi RF-One</dt>
+  <dd>The person's organizational role assignments, which are distinct from Clover roles, with a link to the RF-One organization.</dd>
+  {% endif %}
+  {% if can_compensation %}
+  <dt>Termini di Compensation</dt>
+  <dd>The person's Compensation Terms (function, basis, current or historical), with a link to Compensation.</dd>
+  {% endif %}
+  <dt>Storico anagrafica</dt>
+  <dd>Every decision on this person, never deleted: imports, links and reconciliations, dismissals and reactivations per site, prepared and replaced accounts, blocked access, applicability changes and more, with who made them.</dd>
+  {% if interview_person is defined and interview_person %}
+  <dt>Interviews · TEST</dt>
+  <dd>The interviews of this person and their status. {% if interview_can_request %}<em>Request interview</em> opens Interviews with this person already chosen.{% else %}To request one, the person needs exactly one active RF-One account among the links above.{% endif %}</dd>
+  {% endif %}
+</dl>
+
+{% if can_manage %}
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Salva dati interni</dt>
+  <dd>Saves the internal data. The change is recorded in the history.</dd>
+  <dt>Salva applicabilità</dt>
+  <dd>Saves the chosen scope and restaurants, recording the previous and new value in the history.</dd>
+  {% if context_options %}
+  <dt>Collega alla persona RF1</dt>
+  <dd>Links the record chosen in <em>Record da collegare</em> to this person. You must tick the confirmation that it belongs to this person.</dd>
+  {% endif %}
+  <dt>Rimuovi collegamento</dt>
+  <dd>Removes one link to another area, after you tick the confirmation. The record in that area is not deleted. The RF-One account link cannot be removed here.</dd>
+  <dt>Conferma di aver esaminato differenze e segnalazioni delle sedi</dt>
+  <dd>Records that you reviewed the differences and warnings of the sites. A new difference reopens the check.</dd>
+  {% if other_employees %}
+  <dt>Questa persona esiste già con un’altra identità RF-One? → Riconcilia le due identità</dt>
+  <dd>Use it only when two identities are the same person. After you choose the identity to keep and tick the confirmation, Clover links and history references move to the person kept, whose internal data is retained; previous values stay in the history. Incompatible assignments or pay results block it. It cannot be undone from this page.</dd>
+  {% endif %}
+</dl>
+{% endif %}
+
+<p>Full reference, in Italian: <a href="{{ url_for('employee_directory_how_it_works') }}#detail">Scheda dipendente</a> · <a href="{{ url_for('employee_directory_how_it_works') }}#applicability">Applicabilità</a>.</p>
+</section>

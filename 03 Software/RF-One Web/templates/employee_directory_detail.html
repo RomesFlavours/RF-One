@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set help_section = "employee-directory-detail" %}
 {% from "_nav_macros.html" import breadcrumb %}
 {% from "_applicability_macros.html" import applicability_label %}
 {% block page_title %}{{ employee.display_name }} · Anagrafica dipendenti · RF-One{% endblock %}
@@ -6,7 +7,6 @@
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', url_for('employee_directory_home')), (employee.display_name or 'Dipendente', none)]) }}
 <h1>{{ employee.display_name or 'Nome da completare' }}</h1>
-<p class="how-works-link"><a data-how-works href="{{ url_for('employee_directory_how_it_works') }}#detail">How Works</a> · <a href="{{ url_for('employee_directory_how_it_works') }}#applicability">Applicabilità</a></p>
 {% set reference = (links|selectattr('last_clock_in')|sort(attribute='last_clock_in')|list)[-1:] %}
 {% set cessation_zone = locations[reference[0].location_id].timezone if reference else (locations[links[0].location_id].timezone if links else none) %}
 <p>Identità interna RF1: {{ employee.id }} · Stato complessivo: <strong>{% if employee.directory_eligible is sameas false %}Osservazione tecnica (non in anagrafica){% elif is_active %}Attivo{% else %}Dismissed{% endif %}</strong></p>

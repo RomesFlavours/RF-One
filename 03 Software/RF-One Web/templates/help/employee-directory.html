@@ -1,0 +1,59 @@
+<section id="help-employee-directory" class="rf-help-section">
+<h2>How Anagrafica dipendenti works</h2>
+<p>The Anagrafica dipendenti (employee directory) is RF-One's one register of people: every person has a single RF-One identity, used by all modules, and every employee has one RF-One account. Clover is a source of observations: RF-One reads the Clover employee lists and clock-ins of each site and never writes to Clover. Accounts of external people (for example consultants) are managed in Accounts, not here.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li>A person can hold a <strong>position</strong> at several sites, even with more than one Clover account at the same site.</li>
+  <li>Only a complete and successful reading of a site's Clover employee list and clock-ins can close a position. When a person disappears from that list, only that site's position ends. When no active position is left, the person moves to <strong>Dismissis</strong>, with the last clock-in as the end date, and their RF-One access is blocked.</li>
+  <li>Failed or incomplete readings, sites that are not configured and Clover identities still waiting to be reconciled never end anyone's employment. A person who reappears in Clover becomes active again, but their access is not reactivated automatically.</li>
+  <li>Every new Clover identity with at least one clock-in waits in <strong>Collegamenti da riconciliare</strong> until a directory administrator confirms who it is. RF-One never merges people by similar name or e-mail; its suggestions are only suggestions. Until confirmed, that identity's orders, payments and Shifts stay on hold.</li>
+</ul>
+
+<h3>Typical flow</h3>
+<ol>
+  <li>Check the last synchronization of each site{% if can_sync %} and press <strong>Sincronizza ora</strong> if you need fresh data{% endif %}.</li>
+  <li>Review <strong>Collegamenti da riconciliare</strong>{% if can_manage %}: link each new Clover identity to an existing person or confirm it is a new person{% endif %}.</li>
+  <li>Look at <strong>Da verificare</strong> in the list of active employees and open the person to resolve it.</li>
+  <li>Open a person to see and{% if not can_manage %}, with directory administration rights,{% endif %} edit their record, organizational applicability and links.</li>
+</ol>
+
+<h3>What this page shows</h3>
+<dl>
+  <dt>Ultima sincronizzazione</dt>
+  <dd>For each site, when its Clover data was last read, in the site's local time. A Clover service also reads the employee list about every minute.</dd>
+  <dt>Dipendenti attivi</dt>
+  <dd>Active employees grouped by site, with <em>Applicabilità</em> (where the person works: one restaurant, several, the whole group, or not configured), <em>Ultimo aggiornamento</em> (last time Clover reported them), <em>Account RF1</em> (state of their account) and <em>Da verificare</em> (differences between POS data, absence from Clover with the end still undecided, a site not yet verified, or a position ended at another site).</dd>
+  <dt>Dismissis</dt>
+  <dd>Closed by default. People with no active position, with their end date and positions. Their history, payments, Shifts and documents stay unchanged, but they cannot be selected for new operations.</dd>
+  {% if technical %}
+  <dt>Osservazioni tecniche</dt>
+  <dd>Clover names without any verified clock-in or clock-out. They are not employees, get no RF-One account and stay here only so that historical data can be attributed.</dd>
+  {% endif %}
+  <dt>Collegamenti da riconciliare</dt>
+  <dd>New or no-longer-present Clover identities waiting for confirmation, with their e-mail, last clock-in and possible matches.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Cerca</dt>
+  <dd>Filters the people by name, e-mail or code. It changes nothing.</dd>
+  {% if can_sync %}
+  <dt>Sincronizza ora</dt>
+  <dd>Starts a Clover reading of that site straight away. Refresh the page to see the outcome.</dd>
+  {% endif %}
+  {% if can_manage %}
+  <dt>Nuova persona RF1 → Crea persona in RF1</dt>
+  <dd>Creates a person without a POS and without a site (<em>Nome completo</em> required, <em>Email</em> and <em>Telefono</em> optional) and opens their record. An RF-One account is prepared for them, INACTIVE, with no credentials and no permissions: link an existing account in the record or activate it from Accounts.</dd>
+  <dt>Collega alla persona</dt>
+  <dd>Links the Clover identity to the person chosen in <em>Persona RF-One</em>. Its held work records are then attributed to that person, and the decision is recorded in the person's history. Run a synchronization to recover any pending work records.</dd>
+  <dt>Conferma che è una persona nuova</dt>
+  <dd>Confirms that the Clover identity is a new person and creates them in the directory.</dd>
+  {% else %}
+  <dt>Linking Clover identities</dt>
+  <dd>Creating people and reconciling Clover identities require a directory administrator.</dd>
+  {% endif %}
+</dl>
+
+<p>Full reference, in Italian: <a href="{{ url_for('employee_directory_how_it_works') }}#list">Come funziona l’Anagrafica dipendenti</a>.</p>
+</section>

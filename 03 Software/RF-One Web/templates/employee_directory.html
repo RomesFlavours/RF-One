@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% set help_section = "employee-directory" %}
+{% set help_title = "Anagrafica dipendenti" %}
 {% from "_nav_macros.html" import breadcrumb %}
 {% from "_applicability_macros.html" import applicability_label %}
 {% block page_title %}Anagrafica dipendenti · RF-One{% endblock %}
@@ -8,7 +10,6 @@
 <script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}"></script>
 {{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', none)]) }}
 <h1>Anagrafica dipendenti</h1>
-<p class="how-works-link"><a data-how-works href="{{ url_for('employee_directory_how_it_works') }}#list">How Works</a></p>
 <p>Anagrafica dipendenti RF1 condivisa. Ogni dipendente ha un account RF1; gli account esterni si gestiscono in Accounts.</p>
 {% for site in sites %}
 <div class="employee-sync">
