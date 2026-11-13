@@ -1,4 +1,5 @@
 FROM 418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web@sha256:fb932cb91a6df290f456bf7e09488f299b5f45197be590f093e46ab1461836c8
+COPY ["03 Software/RF-One Data Store/migrations/versions/r9a120261113_registry_training_aws_release.py", "/app/RF-One Data Store/migrations/versions/r9a120261113_registry_training_aws_release.py"]
 COPY ["03 Software/RF-One Data Store/rfone_data_store/people_registry.py", "/app/RF-One Data Store/rfone_data_store/people_registry.py"]
 COPY ["03 Software/RF-One Data Store/rfone_data_store/rfone_recovery_service.py", "/app/RF-One Data Store/rfone_data_store/rfone_recovery_service.py"]
 COPY ["03 Software/RF-One Data Store/rfone_data_store/student_registry.py", "/app/RF-One Data Store/rfone_data_store/student_registry.py"]
