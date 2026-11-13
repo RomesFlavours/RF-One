@@ -307,7 +307,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     # =========================================================================
     # Explicitly approved test identities: production imports never create people.
     from .employee_directory import import_snapshot, attach_link
-    _, pending = import_snapshot(session, location_id=location.id, merchant_id=client.merchant_id, records=client.employees)
+    _, pending = import_snapshot(session, location_id=location.id, merchant_id=client.merchant_id, records=client.employees, clock_records=[{"employee": {"id": row["id"]}, "inTime": 946684800000} for row in client.employees])
     for link_id in pending:
         attach_link(session, link_id=link_id, create_new=True)
     session.flush()

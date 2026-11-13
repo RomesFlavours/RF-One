@@ -73,6 +73,10 @@ class _CorrectionFakeCloverClient:
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> _FakeResult:
         self.calls.append((path, params))
+        if path.endswith("/shifts"):
+            return _FakeResult(ok=True, data={"elements": getattr(self, "shifts", [
+                {"id": "clock-" + row["id"], "employee": {"id": row["id"]}, "inTime": 1790812800000}
+                for row in self.employees])}, status_code=200)
         if path.endswith("/employees"):
             if self.fail_employees:
                 return _FakeResult(ok=False, error="simulated Employees list failure", status_code=500)

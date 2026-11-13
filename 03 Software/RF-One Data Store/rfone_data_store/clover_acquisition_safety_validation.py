@@ -132,7 +132,7 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
     _seed_clover(healthy)
     with s_(session_factory) as s:
         from .employee_directory import import_snapshot, attach_link
-        _, pending = import_snapshot(s, location_id=location_id, merchant_id=MERCHANT, records=healthy.employees)
+        _, pending = import_snapshot(s, location_id=location_id, merchant_id=MERCHANT, records=healthy.employees, clock_records=[{"employee": {"id": row["id"]}, "inTime": 946684800000} for row in healthy.employees])
         for link_id in pending:
             attach_link(s, link_id=link_id, create_new=True)
         s.commit()

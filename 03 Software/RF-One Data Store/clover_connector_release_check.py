@@ -18,10 +18,11 @@ if '--database-readonly' in sys.argv:
     from sqlalchemy import create_engine,text
     engine=create_engine(os.environ['RFONE_DATABASE_URL'],connect_args={'sslmode':'require','options':'-c default_transaction_read_only=on'})
     with engine.connect() as c:
-        assert c.scalar(text('select version_num from alembic_version'))=='d9e220261029','Employee Directory schema is not ready'
+        assert c.scalar(text('select version_num from alembic_version'))=='e3f120261103','Employee Directory schema is not ready'
         out['directory_links']=c.scalar(text('select count(*) from employee_clover_links'))
         out['employees']=dict(c.execute(text('''select count(*) as total,count(*) filter(where source_available) as available,count(*) filter(where source_available=false) as unavailable,count(*) filter(where source_available=false and display_name is not null) as historical_named from employees where source_system_id=1''')).mappings().one())
         out['orphan_shifts']=c.scalar(text('select count(*) from shifts s left join employees e on e.id=s.employee_id where e.id is null'))
+        out['lifecycle']=dict(c.execute(text('''select count(*) filter(where dismissed_at is not null or active=false) as dismissed,count(*) filter(where directory_eligible=false) as technical,count(*) filter(where not exists(select 1 from employee_context_links l where l.employee_id=employees.id and l.rfone_account_id is not null)) as without_rf1_account from employees''')).mappings().one())
         assert out['orphan_shifts']==0
     engine.dispose()
 print('CLOVER_RELEASE_VERIFIED '+json.dumps(out),flush=True)
