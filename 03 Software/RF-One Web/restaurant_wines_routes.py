@@ -1,10 +1,16 @@
 """RF-One Web — Restaurant > Wines (RESTAURANT_WINES_FIRST_RELEASE_001).
 
-Three pages, gated by `require_domain_access("WINES")`:
+Four pages, gated by `require_domain_access("WINES")`:
 
   * Wine List   (`/restaurant/wines`)              — per Entity, versioned;
   * Availability (`/restaurant/wines/availability`) — the purchasable catalog;
-  * Wine Types  (`/restaurant/wines/types`)         — the type registry.
+  * Wine Types  (`/restaurant/wines/types`)         — the type registry;
+  * Price Calculator (`/restaurant/wines/calculator`) — prices from a cost
+    and a Value, nothing saved.
+
+The first three form the "Wines" item, the calculator the "View Calculator"
+item (`domain_registry`). An account whose Wines Level is View may consult
+but every mutating route answers 403 (`editor`).
 
 All business rules live in `rfone_data_store.restaurant_wines`; this module
 only reads requests and renders. Dialog saves are sent with `fetch` and
@@ -21,10 +27,12 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
+from functools import wraps
+
 from flask import Response, abort, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import select
 
-from rfone_data_store import models as m
+from rfone_data_store import models as m, rfone_web_session as shared
 from rfone_data_store.restaurant_wines import catalog, wine_lists, wine_types
 from rfone_data_store.restaurant_wines.pricing import PricingParameters, calculate_prices, cost_is_priceable
 
@@ -116,6 +124,21 @@ def _json_error(message: str, status: int = 400):
 def register_restaurant_wines_routes(app, *, require_domain_access, SessionFactory, load_current_account, require_csrf):
     gate = require_domain_access(DOMAIN_CODE)
 
+    def _read_only() -> bool:
+        """The account's Wines Level is View: it may consult, never change."""
+        with SessionFactory() as db:
+            return shared.account_is_domain_view_only(db, load_current_account(db), DOMAIN_CODE)
+
+    def editor(view):
+        """Closes a mutating route to a View-level account, also by direct
+        URL — hiding the buttons is not the access control."""
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            if _read_only():
+                abort(403)
+            return view(*args, **kwargs)
+        return wrapped
+
     @app.route("/restaurant/wines/how-it-works")
     @gate
     def restaurant_wines_how_it_works():
@@ -135,7 +158,7 @@ def register_restaurant_wines_routes(app, *, require_domain_access, SessionFacto
                 counts[wine_type_id] = counts.get(wine_type_id, 0) + 1
             for t in types:
                 t["wine_count"] = counts.get(t["id"], 0)
-            return render_template("restaurant_wine_types.html", types=types, active_tab="types")
+            return render_template("restaurant_wine_types.html", types=types, active_tab="types", read_only=_read_only())
 
     def _save_type(type_id: int | None):
         require_csrf()
@@ -158,11 +181,13 @@ def register_restaurant_wines_routes(app, *, require_domain_access, SessionFacto
 
     @app.route("/restaurant/wines/types/new", methods=["POST"])
     @gate
+    @editor
     def restaurant_wine_type_create():
         return _save_type(None)
 
     @app.route("/restaurant/wines/types/<int:type_id>", methods=["POST"])
     @gate
+    @editor
     def restaurant_wine_type_update(type_id: int):
         return _save_type(type_id)
 
@@ -181,7 +206,7 @@ def register_restaurant_wines_routes(app, *, require_domain_access, SessionFacto
                 types=[_type_view(t) for t in wine_types.list_wine_types(db)],
                 suppliers=catalog.known_supplier_names(db), today=_local_today(db).isoformat(),
                 categories=catalog.CATEGORY_LABELS, styles=catalog.STYLE_LABELS,
-                availabilities=catalog.AVAILABILITY_LABELS,
+                availabilities=catalog.AVAILABILITY_LABELS, read_only=_read_only(),
             )
 
     def _wine_input(form) -> catalog.WineInput:
@@ -224,11 +249,13 @@ def register_restaurant_wines_routes(app, *, require_domain_access, SessionFacto
 
     @app.route("/restaurant/wines/availability/new", methods=["POST"])
     @gate
+    @editor
     def restaurant_wine_create():
         return _save_wine(None)
 
     @app.route("/restaurant/wines/availability/<int:wine_id>", methods=["POST"])
     @gate
+    @editor
     def restaurant_wine_update(wine_id: int):
         return _save_wine(wine_id)
 
@@ -289,11 +316,15 @@ def register_restaurant_wines_routes(app, *, require_domain_access, SessionFacto
                 for v in versions
             ]
             selected_status = wine_lists.version_status(selected, active, today) if selected else None
+            read_only = _read_only()
             return render_template(
                 "restaurant_wine_list.html", active_tab="list", entities=entities, entity=entity,
                 versions=version_views, active=active, selected=selected, selected_status=selected_status,
-                editable=selected is not None and selected_status != wine_lists.STATUS_PAST,
+                # A View-level account consults every version, never edits one.
+                editable=(selected is not None and selected_status != wine_lists.STATUS_PAST
+                          and not read_only),
                 items=items, catalog_wines=catalog_wines, today=today, settings=settings,
+                read_only=read_only,
             )
 
     def _back_to_list(entity_id: int | None, list_id: int | None):
@@ -301,6 +332,7 @@ def register_restaurant_wines_routes(app, *, require_domain_access, SessionFacto
 
     @app.route("/restaurant/wines/lists/new", methods=["POST"])
     @gate
+    @editor
     def restaurant_wine_list_create():
         require_csrf()
         entity_id = request.form.get("entity_id", type=int)
@@ -331,6 +363,7 @@ def register_restaurant_wines_routes(app, *, require_domain_access, SessionFacto
 
     @app.route("/restaurant/wines/lists/<int:list_id>/items/new", methods=["POST"])
     @gate
+    @editor
     def restaurant_wine_list_item_create(list_id: int):
         require_csrf()
         with SessionFactory() as db:
@@ -358,6 +391,7 @@ def register_restaurant_wines_routes(app, *, require_domain_access, SessionFacto
 
     @app.route("/restaurant/wines/items/<int:item_id>", methods=["POST"])
     @gate
+    @editor
     def restaurant_wine_list_item_update(item_id: int):
         require_csrf()
         with SessionFactory() as db:
@@ -391,24 +425,28 @@ def register_restaurant_wines_routes(app, *, require_domain_access, SessionFacto
 
     @app.route("/restaurant/wines/items/<int:item_id>/delete", methods=["POST"])
     @gate
+    @editor
     def restaurant_wine_list_item_delete(item_id: int):
         return _item_action(item_id, wine_lists.remove_item,
                             "{name} removed from this Wine list. It is still in the catalog.")
 
     @app.route("/restaurant/wines/items/<int:item_id>/adopt-catalog-cost", methods=["POST"])
     @gate
+    @editor
     def restaurant_wine_list_item_adopt_cost(item_id: int):
         return _item_action(item_id, wine_lists.adopt_catalog_cost,
                             "{name}: catalog cost adopted and prices recalculated (hand-set prices kept).")
 
     @app.route("/restaurant/wines/items/<int:item_id>/adopt-parameters", methods=["POST"])
     @gate
+    @editor
     def restaurant_wine_list_item_adopt_parameters(item_id: int):
         return _item_action(item_id, wine_lists.adopt_current_parameters,
                             "{name}: current pricing parameters adopted and prices recalculated (hand-set prices kept).")
 
     @app.route("/restaurant/wines/items/<int:item_id>/restore-calculated", methods=["POST"])
     @gate
+    @editor
     def restaurant_wine_list_item_restore(item_id: int):
         return _item_action(item_id, wine_lists.restore_calculated,
                             "{name}: applied prices restored to the calculated ones.")
@@ -435,8 +473,38 @@ def register_restaurant_wines_routes(app, *, require_domain_access, SessionFacto
             return jsonify({"ok": True, "bottle": prices.bottle, "glass": prices.glass,
                             "priceable": cost_is_priceable(cost)})
 
+    # -----------------------------------------------------------------
+    # Price Calculator (item "calculator") — nothing is saved
+    # -----------------------------------------------------------------
+
+    @app.route("/restaurant/wines/calculator")
+    @gate
+    def restaurant_wine_calculator():
+        with SessionFactory() as db:
+            return render_template("restaurant_wine_calculator.html", active_tab="calculator",
+                                   settings=wine_lists.get_settings(db))
+
+    @app.route("/restaurant/wines/calculator/prices")
+    @gate
+    def restaurant_wine_calculator_prices():
+        """Bottle and glass price for a cost and a Value with the pricing
+        parameters in effect — the SAME formula a Wine list uses. Read only:
+        nothing is stored."""
+        with SessionFactory() as db:
+            try:
+                cost = _decimal(request.args.get("cost"), "Cost")
+                value = _decimal(request.args.get("value"), "Value")
+                if value is None or value <= 0:
+                    return _json_error("Value must be a positive number.")
+                prices = calculate_prices(cost, value, wine_lists.current_parameters(db))
+            except (_BadInput, ValueError, wine_lists.WineListError) as exc:
+                return _json_error(str(exc))
+            return jsonify({"ok": True, "bottle": prices.bottle, "glass": prices.glass,
+                            "priceable": cost_is_priceable(cost)})
+
     @app.route("/restaurant/wines/settings", methods=["POST"])
     @gate
+    @editor
     def restaurant_wine_settings_update():
         require_csrf()
         entity_id = request.form.get("entity_id", type=int)

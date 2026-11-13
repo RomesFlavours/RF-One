@@ -23,11 +23,15 @@
     </select>
     <noscript><button type="submit" class="btn-secondary">Show</button></noscript>
   </form>
+  {% if not read_only %}
   <div class="wines-toolbar-right">
     <button type="button" id="item-new" {{ 'disabled' if not editable }}
       title="{{ 'Add a catalog wine to the Wine list shown below' if editable else ('This version is no longer in effect and can only be consulted' if selected else 'Create a Wine list first') }}">Add new wine to current Wine list</button>
     <button type="button" id="list-new">New Wine list</button>
   </div>
+  {% else %}
+  <p class="muted">View only: you can consult and export the Wine lists, not change them.</p>
+  {% endif %}
 </div>
 
 {% if versions %}
@@ -136,7 +140,7 @@
   <p class="empty">This Wine list has no wines yet.{% if editable %} Use “Add new wine to current Wine list”.{% endif %}</p>
   {% endif %}
 {% else %}
-  <p class="empty">{{ entity.legal_name }} has no Wine list yet. Create one with “New Wine list”.</p>
+  <p class="empty">{{ entity.legal_name }} has no Wine list yet.{% if not read_only %} Create one with “New Wine list”.{% endif %}</p>
 {% endif %}
 
 <details class="wines-settings">
@@ -146,10 +150,10 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="entity_id" value="{{ entity.id if entity }}">
     <input type="hidden" name="list_id" value="{{ selected.id if selected }}">
-    <div><label for="ps-a">Coefficient A</label><input id="ps-a" type="number" step="any" name="coefficient_a" value="{{ settings.coefficient_a.normalize() }}"></div>
-    <div><label for="ps-b">Log base B</label><input id="ps-b" type="number" step="any" name="log_base_b" value="{{ settings.log_base_b.normalize() }}"></div>
-    <div><label for="ps-g">Glass divisor G</label><input id="ps-g" type="number" step="any" name="glass_divisor_g" value="{{ settings.glass_divisor_g.normalize() }}"></div>
-    <div><button type="submit" class="btn-secondary">Save parameters</button></div>
+    <div><label for="ps-a">Coefficient A</label><input id="ps-a" type="number" step="any" name="coefficient_a" value="{{ settings.coefficient_a.normalize() }}" {{ 'disabled' if read_only }}></div>
+    <div><label for="ps-b">Log base B</label><input id="ps-b" type="number" step="any" name="log_base_b" value="{{ settings.log_base_b.normalize() }}" {{ 'disabled' if read_only }}></div>
+    <div><label for="ps-g">Glass divisor G</label><input id="ps-g" type="number" step="any" name="glass_divisor_g" value="{{ settings.glass_divisor_g.normalize() }}" {{ 'disabled' if read_only }}></div>
+    {% if not read_only %}<div><button type="submit" class="btn-secondary">Save parameters</button></div>{% endif %}
   </form>
 </details>
 
@@ -233,7 +237,8 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   var listModal = RFOneModal.create({ overlay: document.getElementById("list-modal") });
-  document.getElementById("list-new").addEventListener("click", function () { listModal.open(this); });
+  var newList = document.getElementById("list-new");  // absent with the View Level
+  if (newList) { newList.addEventListener("click", function () { listModal.open(this); }); }
 
   // ---- Add / edit a row -------------------------------------------------
   var form = document.getElementById("item-form");

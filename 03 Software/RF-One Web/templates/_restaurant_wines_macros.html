@@ -1,12 +1,16 @@
 {# Restaurant > Wines (RESTAURANT_WINES_FIRST_RELEASE_001): the header,
-   breadcrumb and section tabs shared by the three Wines pages. #}
+   breadcrumb and section tabs shared by the Wines pages. #}
 {% from "_nav_macros.html" import breadcrumb %}
 
 {% macro wines_header(active_tab, current_label) %}
+{#- Tabs follow the account's Wines functions (`domain_registry`): "Wines"
+    opens the first three, "View Calculator" the calculator. #}
+{% set may_manage = may_use_item('WINES', 'wines') %}
+{% set may_calculate = may_use_item('WINES', 'calculator') %}
 {% if active_tab == 'list' %}
   {{ breadcrumb([('RF-One', url_for('home')), ('Wines', None)]) }}
 {% else %}
-  {{ breadcrumb([('RF-One', url_for('home')), ('Wines', url_for('restaurant_wines_home')), (current_label, None)]) }}
+  {{ breadcrumb([('RF-One', url_for('home')), ('Wines', domain_entry('WINES')), (current_label, None)]) }}
 {% endif %}
 <div class="module-header">
   <div class="module-identity">
@@ -15,9 +19,14 @@
   </div>
 </div>
 <nav class="module-tabs" aria-label="Wines sections">
+  {% if may_manage %}
   <a class="module-tab {{ 'is-active' if active_tab == 'list' }}" href="{{ url_for('restaurant_wines_home') }}" data-rf-busy>Wine List</a>
   <a class="module-tab {{ 'is-active' if active_tab == 'availability' }}" href="{{ url_for('restaurant_wine_availability') }}" data-rf-busy>Availability</a>
   <a class="module-tab {{ 'is-active' if active_tab == 'types' }}" href="{{ url_for('restaurant_wine_types') }}" data-rf-busy>Wine Types</a>
+  {% endif %}
+  {% if may_calculate %}
+  <a class="module-tab {{ 'is-active' if active_tab == 'calculator' }}" href="{{ url_for('restaurant_wine_calculator') }}" data-rf-busy>Price Calculator</a>
+  {% endif %}
   <a class="module-tab wines-help-link {{ 'is-active' if active_tab == 'help' }}" style="margin-left:auto" href="{{ url_for('restaurant_wines_how_it_works') }}">How Wines works</a>
 </nav>
 {% endmacro %}

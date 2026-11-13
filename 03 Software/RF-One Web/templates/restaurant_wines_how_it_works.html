@@ -7,7 +7,7 @@
 {{ wines_header('help', 'How Wines works') }}
 <h1>How Wines works</h1>
 <p>Build a reliable catalog, prepare a Wine list for each Entity, and control its selling prices and effective dates.</p>
-<nav aria-label="Guide contents"><a href="#workflow">Workflow</a> · <a href="#catalog">Catalog and types</a> · <a href="#pricing">Pricing</a> · <a href="#versions">Versions</a> · <a href="#agent">Wines agent features</a></nav>
+<nav aria-label="Guide contents"><a href="#workflow">Workflow</a> · <a href="#catalog">Catalog and types</a> · <a href="#pricing">Pricing</a> · <a href="#calculator">Price Calculator</a> · <a href="#versions">Versions</a> · <a href="#access">Access</a> · <a href="#agent">Wines agent features</a></nav>
 <section id="workflow"><h2>The workflow</h2>
 <ol><li><strong>Define Wine Types.</strong> Create a standard name and alternative names so the same type is recognized consistently.</li>
 <li><strong>Maintain Availability.</strong> Record the wines you can buy, their suppliers, costs and availability.</li>
@@ -23,11 +23,17 @@
 <p>The calculator follows the Wine workbook. With cost C, commercial Value V and parameters A, B and G, the multiplier is A / log<sub>B</sub>(C). The bottle price is C × multiplier × V²; the glass price is that unrounded amount divided by G. Each price is rounded independently to whole dollars, with halves rounded up.</p>
 <p>Value is your commercial assessment, not an AI rating. G is a commercial divisor. The initial parameters are A = 1.3, B = 900 and G = 3.5; Pricing parameters lets you change them. A missing cost or cost of $1 or less cannot produce a calculated price.</p>
 <p>You can override bottle and glass prices manually and restore calculated prices later. The list shows which prices were set by hand. Catalog cost changes and parameter changes are flagged; existing list prices do not change silently. Use the explicit adoption and recalculation actions after reviewing the change.</p></section>
+<section id="calculator"><h2>Price Calculator</h2>
+<p>The Price Calculator tab answers a quick question: what would this wine sell for? Enter the bottle cost and its commercial Value (it starts at 1.0 and is shown with one decimal; the arrows, or the mouse wheel while the field is selected, change it by 0.1); the bottle and glass prices appear as you type.</p>
+<p>It uses the same formula and the pricing parameters in effect shown under Pricing parameters, so its prices match what a Wine list would calculate for the same cost and Value. Nothing is saved: closing or leaving the page keeps no trace. A cost of $1 or less has no calculated price.</p></section>
 <section id="versions"><h2>Wine list versions and effective dates</h2>
 <p>Versions are maintained separately for each Entity. The effective date determines whether a version is In effect, Prepared (future) or Previous. Preparing a future version leaves today's list in effect until the new date.</p>
 <p>Copying the current list preserves its selected wines, costs used, commercial Values, calculation parameters and prices. Previous versions remain available for consultation and export, and cannot be edited. Dates follow the restaurant Location's timezone.</p></section>
+<section id="access"><h2>Who can do what</h2>
+<p>Wines has two functions that can be granted separately, to a role or directly to a person: <strong>Wines</strong> (Wine List, Availability, Wine Types, Pricing parameters and Export) and <strong>View Calculator</strong> (the Price Calculator). You only see the tabs of the functions you were given; Whole domain gives both.</p>
+<p>The Level <strong>View</strong> lets you consult everything your functions open — lists, catalog, types, parameters and exports — without changing anything: the buttons to add, edit, delete, create lists or save parameters are not shown, and changes are refused. User and Domain administrator can change everything. When several roles give you Wines, the highest Level applies.</p></section>
 <section id="agent"><h2>Wines agent features</h2>
 <p>The current Wines implementation provides structured operational assistance: consistent wine identities, duplicate checks, cost and price validation, deterministic price calculations, per-Entity list versions, change warnings and CSV export.</p>
 <p>You supply and approve supplier information, availability, costs, commercial Value, selling prices and effective dates. The current module does not connect to a generative AI model, research suppliers, place orders, track physical stock or autonomously publish recommendations. These are not active features of this installation.</p></section>
-<p><a class="btn" href="{{ url_for('restaurant_wines_home') }}">Back to Wine List</a></p>
+<p><a class="btn" href="{{ domain_entry('WINES') }}">Back to Wines</a></p>
 {% endblock %}

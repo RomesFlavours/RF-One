@@ -19,7 +19,7 @@
   <div class="wines-toolbar-right">
     <button type="button" disabled aria-describedby="upload-note">Upload file</button>
     <span id="upload-note" class="wines-disabled-note">Not available yet: waiting for a sample file.</span>
-    <button type="button" id="wine-new">New wine</button>
+    {% if not read_only %}<button type="button" id="wine-new">New wine</button>{% endif %}
   </div>
 </div>
 
@@ -44,7 +44,7 @@
         <td>{{ w.supplier_name or '—' }}</td>
         <td class="col-amount">{% if w.cost_known %}${{ w.cost_usd }}{% if w.cost_date %}<span class="cell-note">{{ w.cost_date }}</span>{% endif %}{% else %}<span class="badge warn">Cost unknown</span>{% endif %}</td>
         <td>{{ w.availability_label }}</td>
-        <td><button type="button" class="btn-secondary btn-inline" data-edit-wine="{{ w.id }}">Edit</button></td>
+        <td>{% if not read_only %}<button type="button" class="btn-secondary btn-inline" data-edit-wine="{{ w.id }}">Edit</button>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -198,7 +198,8 @@ document.addEventListener("DOMContentLoaded", function () {
     error.hidden = true;
   }
 
-  document.getElementById("wine-new").addEventListener("click", function () { fill(null); modal.open(this); });
+  var newWine = document.getElementById("wine-new");  // absent with the View Level
+  if (newWine) { newWine.addEventListener("click", function () { fill(null); modal.open(this); }); }
   document.querySelectorAll("[data-edit-wine]").forEach(function (button) {
     button.addEventListener("click", function () {
       var id = Number(button.getAttribute("data-edit-wine"));
