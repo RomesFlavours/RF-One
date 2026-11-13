@@ -1,0 +1,567 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="4cQocuH_FM3vy6KL2FlcWAqEzTdv6w87X6vor-tCkxU">
+<title>How Selection works · RF-One</title>
+<link rel="icon" type="image/png" href="/selection/static/brand/rf-one.png?v=1">
+<style>/* RF-One · Selection — RF-One's shared visual identity (Rome's Flavours
+   branding), copied unchanged from Tips's `rf-one.css` per the per-application
+   convention every RF-One app follows (SELECTION_AI_INTEGRATION_001): the
+   Selection service is deployed on its own, so it carries its own copy.
+   Selection-only layout pieces live in `selection.css`, never here.
+   Palette: the logo's olive/green family only, white content areas, quiet
+   restaurant/business feel. No gradients, no dark theme, no animation. */
+
+:root {
+  /* Olive/green family — the one accent palette, lighter/darker only. */
+  --olive-900: #2f3a1f;   /* headings, strongest accent text */
+  --olive-700: #55642f;   /* primary accent — buttons, links, active nav */
+  --olive-600: #64753a;   /* button hover */
+  --olive-500: #7c8f52;   /* secondary accents */
+  --olive-300: #c7d1a8;   /* frames / card / table borders */
+  --olive-150: #e8edd8;   /* table header fill, selected states */
+  --olive-050: #f6f8ef;   /* very light olive tint — subtle backgrounds */
+
+  --paper: #ffffff;       /* page background */
+  --surface: #ffffff;     /* card/content background */
+  --ink: #24271c;         /* neutral dark text */
+  --muted: #6e735e;       /* secondary/muted text (olive-gray) */
+  --line: var(--olive-300);
+
+  --ok: #2e7d4f;
+  --warn: #a9761f;
+  --bad: #a33b2e;
+
+  --radius: 10px;
+  --shadow-card: 0 1px 2px rgba(47, 58, 31, 0.06);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  margin: 0;
+  padding: 0 2rem 3rem;
+}
+
+.wrap { max-width: 1080px; margin: 0 auto; }
+
+/* ---------------------------------------------------------------------
+   Header / branding
+   --------------------------------------------------------------------- */
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1.5rem 0 1.1rem;
+  border-bottom: 1px solid var(--olive-300);
+  margin-bottom: 1.5rem;
+}
+
+.brand { display: flex; align-items: center; gap: .7rem; text-decoration: none; }
+
+.brand-wordmark {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--olive-900);
+  letter-spacing: .01em;
+}
+
+.brand-name-group { display: flex; flex-direction: column; line-height: 1.15; }
+
+.brand-suffix {
+  font-size: .72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-top: .15rem;
+}
+
+/* RF-One product logo — top right of .site-header (flex + space-between
+   already pushes it there since it's the second flex child). Height-capped,
+   width auto so aspect ratio is always preserved regardless of the actual
+   asset's proportions. */
+.brand-logo {
+  height: 72px;
+  width: auto;
+  max-width: 320px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .brand-logo { height: 52px; max-width: 220px; }
+}
+
+.subtitle { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; font-size: .9rem; }
+.subtitle:empty { display: none; }
+
+/* ---------------------------------------------------------------------
+   Navigation
+   --------------------------------------------------------------------- */
+
+.nav-tabs { display: flex; gap: 1.4rem; flex-wrap: wrap; margin-bottom: 1.5rem; border-bottom: 1px solid var(--olive-300); }
+.nav-tabs a { padding: .55rem .1rem; font-size: .9rem; color: var(--muted); border-bottom: 2px solid transparent; text-decoration: none; }
+.nav-tabs a:hover { color: var(--olive-900); text-decoration: none; }
+.nav-tabs a.active { color: var(--olive-700); border-bottom-color: var(--olive-700); font-weight: 600; }
+
+/* ---------------------------------------------------------------------
+   Headings / links
+   --------------------------------------------------------------------- */
+
+h1 { font-size: 1.4rem; margin-bottom: .25rem; color: var(--olive-900); }
+h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; color: var(--olive-900); }
+a { color: var(--olive-700); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---------------------------------------------------------------------
+   Content containers — cards / panels / frames
+   --------------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--olive-300);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-card);
+}
+
+/* Result summary blocks (e.g. Import Summary, Calculate Tips totals). */
+.meta-row { display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.meta-item .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.meta-item .value { font-size: 1.15rem; font-weight: 600; color: var(--olive-900); }
+
+/* ---------------------------------------------------------------------
+   Forms
+   --------------------------------------------------------------------- */
+
+.form-row { display: flex; gap: 1.2rem; align-items: end; flex-wrap: wrap; }
+label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: .25rem; }
+
+input[type=date], input[type=text], input[type=number], select {
+  padding: .45rem .6rem;
+  border: 1px solid var(--olive-300);
+  border-radius: 6px;
+  font-size: .85rem;
+  background: var(--surface);
+  color: var(--ink);
+}
+input:focus, select:focus, button:focus, .btn:focus {
+  outline: 2px solid var(--olive-500);
+  outline-offset: 1px;
+}
+
+/* ---------------------------------------------------------------------
+   Action buttons
+   --------------------------------------------------------------------- */
+
+button, .btn {
+  background: var(--olive-700);
+  color: white;
+  border: none;
+  padding: .6rem 1.2rem;
+  border-radius: 6px;
+  font-size: .9rem;
+  cursor: pointer;
+}
+button:hover, .btn:hover { background: var(--olive-600); }
+button:disabled, .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------------
+   Tables
+   --------------------------------------------------------------------- */
+
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left;
+  font-size: .72rem;
+  color: var(--olive-900);
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  padding: .55rem .5rem;
+  background: var(--olive-150);
+  border-bottom: 1px solid var(--olive-300);
+}
+th:first-child { border-top-left-radius: 6px; }
+th:last-child { border-top-right-radius: 6px; }
+td { padding: .55rem .5rem; border-bottom: 1px solid var(--olive-150); font-size: .85rem; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--olive-050); }
+
+/* ---------------------------------------------------------------------
+   Status / error / info messages
+   --------------------------------------------------------------------- */
+
+.muted { color: var(--muted); }
+.empty { color: var(--muted); font-size: .9rem; padding: 1rem 0; }
+
+.error {
+  background: #fbeaea; border: 1px solid #e2a8a0; color: #7a2b21;
+  padding: .6rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: .88rem;
+}
+.info {
+  background: var(--olive-050); border: 1px solid var(--olive-300); color: var(--olive-900);
+  padding: .6rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: .88rem;
+}
+
+.badge { display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .72rem; font-weight: 600; border: 1px solid var(--olive-300); }
+.badge.ok { background: #e7f3ea; color: var(--ok); border-color: #bcdcc6; }
+.badge.warn { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+.badge.bad { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+
+/* ---------------------------------------------------------------------
+   Responsive foundation (TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001
+   §5/§6) — ONE surface for PC/smartphone/tablet, no separate mobile app/
+   stylesheet. Mobile-first: base rules already work at phone width; the
+   `min-width` query below only RELAXES spacing for larger screens.
+   --------------------------------------------------------------------- */
+
+body { padding: 0 1rem 2rem; }
+
+@media (min-width: 640px) {
+  body { padding: 0 2rem 3rem; }
+}
+
+/* A readable minimum touch target on every interactive control, at every
+   width — not only inside .stat-grid/.status-line below. */
+button, .btn, select, input[type=text], input[type=number], input[type=date], input[type=time] {
+  min-height: 2.4rem;
+}
+
+/* ---------------------------------------------------------------------
+   Stat grid — the mobile-first Payment Control summary (task §6): a wrap-
+   first row of tiles, always in one visual scan from the top of the page,
+   at any width.
+   --------------------------------------------------------------------- */
+
+.stat-grid { display: flex; flex-wrap: wrap; gap: .9rem 1.6rem; margin-bottom: 1.1rem; }
+.stat-tile { min-width: 9.5rem; flex: 1 1 9.5rem; }
+.stat-tile .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: .15rem; }
+.stat-tile .value { font-size: 1.2rem; font-weight: 600; color: var(--olive-900); line-height: 1.25; }
+.stat-tile .value.small { font-size: .95rem; font-weight: 500; }
+
+/* Readiness status line — the single, unmissable READY/NOT READY signal
+   (task §6), full-width on its own so it is never lost among the tiles. */
+.status-line {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .6rem;
+  padding: .8rem 1rem; border-radius: var(--radius); margin: .3rem 0 1.1rem;
+  border: 1px solid var(--olive-300);
+}
+.status-line.ready { background: #e7f3ea; border-color: #bcdcc6; }
+.status-line.not-ready { background: var(--olive-050); }
+.status-line .status-reason { font-size: .82rem; color: var(--muted); flex: 1 1 100%; }
+
+.badge.lg { font-size: .82rem; padding: .3rem .8rem; }
+
+/* Approve & Pay action area — full-width, stacked controls on a phone;
+   inline on a wider screen. Never a floating/fixed overlay (keeps normal
+   page flow and screen-reader order identical at every width). */
+.approve-pay-form { display: flex; flex-wrap: wrap; gap: .6rem; align-items: stretch; }
+.approve-pay-form select { flex: 1 1 12rem; }
+.approve-pay-form button { flex: 1 1 10rem; font-weight: 600; }
+
+@media (min-width: 640px) {
+  .approve-pay-form { align-items: center; }
+  .approve-pay-form select { flex: 0 1 16rem; }
+  .approve-pay-form button { flex: 0 0 auto; }
+}
+
+/* ---------------------------------------------------------------------
+   Responsive data table -> stacked cards below ~640px (task §6/§7: the
+   Payment Instructions / detail-per-payee table must stay easily readable
+   on a phone, not merely horizontally scrollable). Applies only to tables
+   explicitly opted in via `.responsive-table` — the CSS-only technique
+   (no duplicated markup): each `<td>` re-labels itself from its own
+   `data-label` attribute, and the row becomes a bordered card. */
+@media (max-width: 640px) {
+  .responsive-table thead { display: none; }
+  .responsive-table, .responsive-table tbody, .responsive-table tr, .responsive-table td { display: block; width: 100%; }
+  .responsive-table tr {
+    border: 1px solid var(--olive-300); border-radius: var(--radius);
+    margin-bottom: .8rem; padding: .3rem .7rem; box-shadow: var(--shadow-card);
+  }
+  .responsive-table td {
+    border-bottom: 1px solid var(--olive-150);
+    padding: .5rem 0; display: flex; justify-content: space-between; align-items: center;
+    gap: .8rem; text-align: right;
+  }
+  .responsive-table td:last-child { border-bottom: none; }
+  .responsive-table td::before {
+    content: attr(data-label); font-size: .72rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .02em; text-align: left; flex: 0 0 auto;
+  }
+  .responsive-table td[data-label=""]::before { content: none; }
+  .responsive-table .table-scroll { overflow-x: visible; }
+}
+
+
+/* RF-One UI Rules §4 — breadcrumb path on every sub-page
+   (`templates/_nav_macros.html`; same rules as RF-One Web). */
+.breadcrumb { margin: 0 0 .9rem; font-size: .85rem; }
+.breadcrumb ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .1rem .35rem; }
+.breadcrumb li { display: inline-flex; align-items: center; }
+.breadcrumb li + li::before { content: "\203A"; margin-right: .35rem; color: #8a8a8a; }
+.breadcrumb [aria-current="page"] { color: #555; font-weight: 600; }
+
+/* IMPORTED_CLOVER_DATA_CONTROL_001 — summaries meant to be held next to
+   Clover's Orders and Transactions reports: large, aligned figures, few
+   words. */
+.control-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: .8rem; }
+.control-tile { border: 1px solid var(--olive-300); border-radius: 8px; padding: .7rem .9rem; background: var(--olive-050); }
+.control-tile .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.control-tile .value { font-size: 1.9rem; font-weight: 700; color: var(--olive-900); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.control-tile.sum { background: var(--olive-150); border-color: var(--olive-500); }
+.control-tile .note { font-size: .72rem; color: var(--muted); margin-top: .15rem; }
+tr.row-muted td { color: var(--muted); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* CONFIGURATION_TAB_001 — the two sections of the Tips Configuration page. */
+.section-title { margin: 1.6rem 0 .7rem; padding-bottom: .3rem; border-bottom: 2px solid var(--olive-300); color: var(--olive-900); font-size: 1.15rem; }
+.section-title:first-of-type { margin-top: .4rem; }
+</style>
+<style>/* RF-One · Selection — layout pieces of the position workspace and of the
+   public candidate pages (SELECTION_AI_INTEGRATION_001) that `rf-one.css`
+   has no equivalent for. Only RF-One's own variables and colour family are
+   used; buttons, cards, tables, badges, messages, tabs and breadcrumb come
+   from `rf-one.css` unchanged. */
+
+.selection-navigation .configuration-link { margin-left: auto; }
+.selection-page-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin: 1.5rem 0 1rem; }
+.selection-page-heading h1 { margin: 0 0 .35rem; }
+.selection-search { display: flex; align-items: flex-end; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.selection-search label { margin: 0; flex: 1; min-width: 200px; }
+.selection-search input { display: block; width: 100%; margin-top: .4rem; }
+.selection-table-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.selection-table-actions form { margin: 0; }
+.selection-table td { vertical-align: middle; }
+.selection-empty { padding: 2rem 1.5rem; }
+.small { font-size: .82rem; }
+.row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+.grid { display: grid; gap: 1rem; }
+.g2 { grid-template-columns: 1fr 1fr; }
+.g3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 900px) { .g2, .g3 { grid-template-columns: 1fr; } }
+.card h2:first-child, .card h3:first-child { margin-top: 0; }
+h3 { font-size: .95rem; margin: .4rem 0; color: var(--olive-900); }
+
+/* Forms: RF-One's input look also for the fields Tips's sheet does not list. */
+input[type=email], input[type=password], input[type=tel], input[type=datetime-local], textarea {
+  padding: .45rem .6rem; border: 1px solid var(--olive-300); border-radius: 6px; font: inherit;
+  font-size: .85rem; background: var(--surface); color: var(--ink);
+}
+.card input[type=text], .card input[type=email], .card input[type=password], .card input[type=tel],
+.card select, .card textarea, .auth input[type=text], .auth input[type=email], .auth input[type=password] {
+  width: 100%;
+}
+textarea { min-height: 5rem; resize: vertical; width: 100%; }
+label { margin-top: .55rem; }
+label.row { color: var(--ink); font-size: .85rem; margin: .3rem 0; }
+
+/* Buttons: RF-One's primary and secondary; small and danger are size/colour
+   variants of the same two. */
+.btn { display: inline-block; text-decoration: none; font-family: inherit; }
+.btn:hover { text-decoration: none; }
+.btn-secondary { background: var(--surface); color: var(--olive-700); border: 1px solid var(--olive-300); }
+.btn-secondary:hover { background: var(--olive-050); }
+.btn-danger { background: var(--surface); color: var(--bad); border: 1px solid #e2a8a0; }
+.btn-danger:hover { background: #fbeaea; }
+.btn-small { padding: .3rem .7rem; font-size: .8rem; min-height: 2rem; }
+.badge.info { background: var(--olive-150); color: var(--olive-900); }
+
+/* Header: the AI state and the signed-in person, right of the brand. */
+.header-meta { display: flex; gap: .8rem; align-items: center; font-size: .8rem; color: var(--muted); }
+
+/* Position page: the three proposal columns and the candidate cards. */
+.col { background: var(--olive-050); border: 1px solid var(--olive-300); border-radius: var(--radius); padding: .7rem; }
+.col h3 { display: flex; justify-content: space-between; align-items: center; }
+.cand { background: var(--surface); border: 1px solid var(--olive-300); border-radius: 8px; padding: .65rem .7rem;
+        margin: .55rem 0; }
+.cand .name { font-weight: 600; }
+.cand .why { font-size: .8rem; color: var(--muted); margin: .3rem 0; }
+.cand .acts { display: flex; gap: .3rem; flex-wrap: wrap; margin-top: .4rem; }
+
+/* Notices inside a page. */
+.banner { border-radius: 6px; padding: .6rem .9rem; margin: .6rem 0; font-size: .86rem; }
+.banner.warn { background: #fdf1de; border: 1px solid #eccf9c; color: #6b4a12; }
+.banner.info { background: var(--olive-050); border: 1px solid var(--olive-300); color: var(--olive-900); }
+.banner.off { background: var(--olive-050); border: 1px dashed var(--olive-300); color: var(--muted); }
+
+/* Evidence and quotes. */
+.ev { border-left: 3px solid var(--olive-300); padding: .15rem .5rem; margin: .25rem 0; font-size: .82rem; }
+.ev.SUPPORTS { border-color: var(--ok); }
+.ev.CONTRADICTS { border-color: var(--bad); }
+mark { background: #f3e3a6; }
+pre.cv { white-space: pre-wrap; font-family: inherit; font-size: .88rem; background: var(--surface);
+         border: 1px solid var(--olive-300); border-radius: 8px; padding: 1rem; }
+details summary { cursor: pointer; color: var(--olive-700); font-size: .85rem; margin: .3rem 0; }
+
+/* Position summary figures. */
+.stat { font-size: 1.35rem; font-weight: 700; color: var(--olive-900); }
+.statl { font-size: .74rem; color: var(--muted); }
+a.card-link { color: inherit; text-decoration: none; display: block; }
+a.card-link:hover .card { border-color: var(--olive-500); }
+
+/* Public candidate pages: one narrow column, readable on a phone. */
+.public .wrap { max-width: 680px; }
+.public .card { padding: 1.3rem; }
+.ad { white-space: pre-wrap; margin: 1rem 0; }
+.progress { height: 6px; background: var(--olive-150); border-radius: 6px; overflow: hidden; margin: .6rem 0 1rem; }
+.progress span { display: block; height: 100%; background: var(--olive-700); }
+.slot { display: flex; gap: .6rem; align-items: center; border: 1px solid var(--olive-300); border-radius: 6px;
+        padding: .6rem .8rem; margin: .4rem 0; color: var(--ink); font-size: .95rem; }
+.q { border-left: 3px solid var(--olive-300); padding: .2rem .7rem; margin: .5rem 0; font-size: .9rem; }
+.note { background: var(--olive-050); border-radius: 6px; padding: .6rem .8rem; font-size: .85rem; color: var(--muted);
+        margin: .6rem 0; }
+.auth-switch { display: flex; gap: 1.2rem; border-bottom: 1px solid var(--olive-300); margin: .8rem 0; }
+.auth-switch button { background: none; color: var(--muted); border: none; border-bottom: 2px solid transparent;
+                      border-radius: 0; padding: .5rem .1rem; font-size: .9rem; min-height: 0; }
+.auth-switch button.active { color: var(--olive-700); border-bottom-color: var(--olive-700); font-weight: 600; }
+.auth-status { min-height: 1.2rem; font-size: .86rem; margin: .5rem 0; }
+.auth-status.error { margin-bottom: .5rem; }
+.waiting::after { content: ""; display: inline-block; width: .8rem; height: .8rem; margin-left: .45rem;
+                  border: 2px solid var(--olive-300); border-top-color: var(--olive-700); border-radius: 50%;
+                  vertical-align: -1px; animation: sel-spin .8s linear infinite; }
+@keyframes sel-spin { to { transform: rotate(360deg); } }
+
+/* Guide link sits on the navigation row, above its divider. */
+.selection-page-actions { display: flex; flex-direction: column; align-items: flex-end; gap: .55rem; }
+.selection-navigation .selection-help-link { margin-left: auto; font-size: .9rem; }
+.selection-guide { max-width: 880px; }
+.selection-guide p, .selection-guide li { line-height: 1.65; }
+.selection-guide h2 { margin-top: 0; }
+.selection-guide li + li { margin-top: .45rem; }
+.selection-guide-nav { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin: 1rem 0 1.5rem; }
+</style>
+
+<style>
+  .selection-navigation .tab-off { color: var(--muted); opacity: .5; cursor: not-allowed; padding: .55rem .1rem; font-size: .9rem; }
+  .job-bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .2rem 0 .8rem;
+             padding: .45rem .8rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, #fff); }
+  .job-bar a { margin-left: auto; }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  
+  <header class="site-header">
+    <a href="https://rfone.example.test/" class="brand">
+      <span class="brand-name-group">
+        <span class="brand-wordmark">Rome's Flavours · WP</span>
+        <span class="brand-suffix">RF-ONE</span>
+      </span>
+    </a>
+    <img class="brand-logo" src="https://rfone.example.test/shared-brand/logos/rf-one.png" alt="RF-One">
+  </header>
+  
+  
+  
+<nav class="breadcrumb" aria-label="You are here">
+  <ol>
+    <li><a href="https://rfone.example.test/">RF-One</a></li>
+    <li><a href="/selection/">Selection</a></li>
+    <li><span aria-current="page">How Selection works</span></li>
+  </ol>
+</nav>
+
+  
+  
+  
+  <nav class="nav-tabs selection-navigation" aria-label="Selection">
+    
+      <a href="/selection/" class="active">Selection</a>
+      
+    
+      <span class="tab-off" title="Choose a Job in Selection first (Process)">Applications</span>
+    
+      <span class="tab-off" title="Choose a Job in Selection first (Process)">Evaluation</span>
+    
+      <span class="tab-off" title="Choose a Job in Selection first (Process)">Interviews</span>
+    
+      <span class="tab-off" title="Choose a Job in Selection first (Process)">Decisions</span>
+    
+    <a class="selection-help-link" href="/selection/how-it-works">How Selection works</a>
+  </nav>
+  
+  
+  
+<div class="selection-guide">
+  <h1>How Selection works</h1>
+  <p class="muted">One Job, five steps, one process. Candidates apply through RMAED.it; your team manages the process here in RF-One. The five tabs are the steps: <b>Selection</b>, <b>Applications</b>, <b>Evaluation</b>, <b>Interviews</b> and <b>Decisions</b>. The last four always refer to the current Job, shown under the tabs.</p>
+  <nav class="selection-guide-nav" aria-label="Guide sections">
+    <a href="#setup">Selection</a><a href="#applications">Applications</a>
+    <a href="#evaluation">Evaluation</a><a href="#interviews">Interviews</a>
+    <a href="#decisions">Decisions</a><a href="#ai">AI features</a>
+  </nav>
+
+  <section class="card" id="setup">
+    <h2>1. Selection: create, configure and choose a Job</h2>
+    <ol>
+      <li>The <b>Selection</b> tab lists every Job, newest first, with its Role, location, people required, creation date, status (Draft, Active or Closed) and number of candidates.</li>
+      <li>Choose <b>New Job</b>, pick the Role and location, and continue. The Role's standard requirements and evaluation rules load into the Job automatically.</li>
+      <li>In the Job form, switch requirements or rules off, change criticality and weights, or add new ones: only this Job changes, never the Role standard. Complete the English job ad and up to six standard questions, and choose the AI features for this Job.</li>
+      <li><b>Save Draft</b> keeps everything and returns to the list; <b>Complete &amp; Publish</b> reopens it later. <b>Confirm &amp; Publish</b> approves the requirements, opens the application page and makes the Job Active.</li>
+      <li>Choose <b>Process</b> on an Active Job: it becomes the current Job of the other tabs. A Closed Job shows <b>View history</b>.</li>
+    </ol>
+  </section>
+
+  <section class="card" id="applications">
+    <h2>2. Applications: CVs, analysis and ranking</h2>
+    <p>Candidates start at <a href="https://www.rmaed.it/" target="_blank" rel="noopener">RMAED.it</a>, verify their email with a code, choose an open Job and continue to Selection on AWS. They upload a résumé and answer a short interview in English; a completed application is analyzed automatically.</p>
+    <p>Use <b>Upload CVs</b> to add several PDF, DOCX or TXT files at once, as many times as needed. Exact duplicates are ignored, possible duplicates are flagged, and each upload is summarized. In the ranking, <b>NEW</b> and the <b>Last Upload</b> filter show what the last upload added; in the CV list, <b>NEW</b> marks every CV you added while the page stayed open in that browser tab, across successive uploads.</p>
+    <p><b>Delete</b>, at the right end of each row of the CV list, removes a CV uploaded by mistake, after you confirm it. It is possible only while nothing has been built on that CV: not yet queued for or read by the AI analysis, and without decisions, interviews, messages or later history. A CV sent by the candidate from the application page cannot be deleted. When Delete is not possible the button is dimmed and tells you why; use <b>Reject</b> instead. Deleting removes the CV from the Job together with its file and the records its upload created; a document, application or person also used elsewhere is kept. The Job's history records who deleted which file and when.</p>
+    <p>For Server and Line Cook, CV Selection SP uses OpenAI GPT-6.1 Terra to read each CV once and ranks candidates with reasons, evidence, red flags and missing information. Change the order with ▲▼. <b>Reject</b> removes a candidate from the ranking with a reason; the CV and the analysis are kept and <b>Restore</b> brings the candidate back.</p>
+    <p>SP reuses the same reading for the candidate’s name and evaluation; phone numbers and email addresses are extracted locally. Existing analyses are reused until the requirements or verification rules change. A scanned PDF needs a separate transcription step, limited to the first four pages; temporary failures have at most one retry. Exact repeated scans reuse the stored text. Check the original CV if pages are missing or the reading is partial.</p>
+    <p>AI processing follows the Job’s permissions and the installation’s reviewed data settings. Haiku on AWS Bedrock remains an installation fallback when configured. You can request a new reading explicitly; it does not repeat the SP evaluation.</p>
+    <p class="small muted">Nobody is excluded automatically. The ranking is a preselection priority, not a probability of success.</p>
+  </section>
+
+  <section class="card" id="evaluation">
+    <h2>3. Evaluation: one candidate, the whole dossier</h2>
+    <p>Click a name in Applications, or open <b>Evaluation</b> and search the current Job's candidates. The dossier shows identity, original CV, the analysis with requirements and evidence, work history, demonstrated and declared competences, red flags, missing information, status, decisions and the complete history of the candidate.</p>
+    <p class="small muted">Missing information is not proof that a requirement is unmet. Quotations are checked against the CV.</p>
+  </section>
+
+  <section class="card" id="interviews">
+    <h2>4. Interviews and communications</h2>
+    <p>From the dossier, book a phone or in-person interview, or propose times with a link for the candidate to choose. <b>Interviews</b> shows scheduled interviews and proposed times, in the location's time zone.</p>
+    <p><b>Communications</b> drafts interview invitations, updates, cancellations and outcome messages. Review, then choose <b>Approve and send</b>: <b>RomesFlavoursCareers@RMAED.it</b> sends the email.</p>
+  </section>
+
+  <section class="card" id="decisions">
+    <h2>5. Decisions and closing the Job</h2>
+    <p>Record a decision in the dossier: <b>To interview</b>, <b>Needs clarification</b>, <b>Hired</b>, <b>On hold</b> or <b>Not selected</b> (a rejection from the ranking is recorded as Not selected, with its reason). <b>Decisions</b> summarizes outcomes and keeps the Job's history.</p>
+    <p>Close the Job when the search ends: its application page stops accepting applications; existing ones remain. A Closed Job can be reopened.</p>
+    <p class="small muted">Recording an outcome does not create an employee or transfer the person into Management, Training or Organization.</p>
+  </section>
+
+  <section class="card" id="ai">
+    <h2>AI features, chosen per Job</h2>
+    <ul>
+      <li><b>AI position drafts:</b> proposes requirements, people required and an English job ad from the Job context. You choose what to use.</li>
+      <li><b>AI message drafts:</b> prepares English communications for review. Drafting does not send an email.</li>
+      <li><b>Résumé-based questions:</b> adds up to three questions about the candidate's résumé to the online interview.</li>
+      <li><b>AI résumé and answer evaluation:</b> needed for the CV analysis; quotations are verified against the source.</li>
+    </ul>
+    <p>Choose them in the Job form (“AI for this Job”). Other Jobs do not inherit your choices.</p>
+  </section>
+
+  <section class="card">
+    <h2>Who can manage a Job?</h2>
+    <p>Owners and administrators manage all Jobs. Managers manage the Jobs assigned to them. Supervisors can review Jobs in read-only mode.</p>
+  </section>
+  <p><a href="/selection/">← Back to the Jobs</a></p>
+</div>
+
+</div>
+</body>
+</html>
