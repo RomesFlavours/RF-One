@@ -44,7 +44,7 @@ Observed:  "Customer ordered Chianti in 6 previous visits."
 Inferred:  "Customer appears to prefer structured red wines."
 ```
 
-**Inference must never silently become fact.** The Profile must preserve both: the atomic, Observed visit-level history (what was actually ordered, when) and any Derived/Inferred generalization drawn from it (a preference, a tendency), kept visibly distinct — the same discipline `Personnel Management/Performance/PerformanceEvidence.md` already requires generically ("Direct observation vs. derived interpretation"), applied here to guest evidence.
+**Inference must never silently become fact.** The Profile must preserve both: the atomic, Observed visit-level history (what was actually ordered, when) and any Derived/Inferred generalization drawn from it (a preference, a tendency), kept visibly distinct — the same discipline `Shared Domains/Performance/PerformanceEvidence.md` already requires generically ("Direct observation vs. derived interpretation"), applied here to guest evidence.
 
 A recommendation drawn from an Inferred preference (e.g. Service Copilot suggesting a similar red wine) must remain traceable back to the Observed visit history it was drawn from, and must be revisable the moment new Observed evidence contradicts it — RF-One does not treat six prior Chianti orders as a permanent guest classification.
 
@@ -73,6 +73,6 @@ This document does not decide how a guest is legitimately identified (loyalty pr
 ## Related documents
 
 - [README.md](README.md), [Dining Session Profile.md](Dining%20Session%20Profile.md)
-- [../../Personnel Management/Performance/PerformanceEvidence.md](../../../Shared%20Domains/Performance/PerformanceEvidence.md), "Direct observation vs. derived interpretation"
+- [../../../Shared Domains/Performance/PerformanceEvidence.md](../../../Shared%20Domains/Performance/PerformanceEvidence.md), "Direct observation vs. derived interpretation"
 - [../../Administration/Payroll/Payroll Provider Result.md](../../../Shared%20Domains/Administration/Payroll/Payroll%20Provider%20Result.md), "Provider boundary"
 - [../Server Performance/Exclusions.md](../Server%20Performance/Exclusions.md)
