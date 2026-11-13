@@ -152,6 +152,34 @@ Nessuno script di deploy era presente nel repository; la procedura è stata rico
 - *Database:* le due migrazioni hanno un `downgrade`; in alternativa ripristino da uno degli snapshot sopra.
 - *Documenti:* il versioning del bucket conserva per 90 giorni le versioni sostituite o cancellate per errore.
 
+## Identificazione candidati su Aruba (SELECTION_ARUBA_IDENTITY_001, 2026-10-25) — non ancora pubblicata
+
+Il candidato si identifica su una pagina PHP dell'**Hosting Windows Basic** Aruba (Windows Server 2022, IIS,
+PHP 8.2.35; `Selection/aruba-careers/`, cartella FTP `/careers`, indirizzo previsto
+`https://careers.romesflavours.com/index.php`; `romesflavours.com` e `www` restano su Wix): nome, cognome, email, codice di 5 cifre inviato da `rfone@romesflavours.com`
+via SMTP autenticato Aruba. Dopo la conferma la pagina invia a Selection, nel corpo di un POST HTTPS, un token
+firmato HMAC-SHA256 e monouso (`/selection/careers/verified-identity`). Dettagli: `Selection/aruba-careers/README.md`.
+
+**Rete:** l'email parte da Aruba, AWS riceve soltanto una richiesta in ingresso. Questo flusso **non richiede**
+uscita Internet da App Runner (né NAT gateway, né SES, né SMTP da AWS).
+
+**Stato osservato il 2026-10-25** (copia locale di AWS del 2026-10-25T13:00Z): il database di produzione è alla
+revisione `d5a120261021`; le migrazioni del workspace Selection (`a7d520261021`, `b8e620261021`) e questa
+(`c2b720261025`) **non sono applicate**. La catena completa è stata provata su quella copia PostgreSQL in una
+transazione annullata (upgrade, inserimento senza password, downgrade): riuscita, copia invariata.
+
+**Passi di deploy (non eseguiti: servono l'autorizzazione del Product Owner e l'hosting Aruba pubblicato):**
+1. Segreto condiviso: `python Selection/aruba-careers/make_upload.py aws-secret` → `rfone-selection/candidate-identity-handoff`.
+2. `instance-policy.json`: statement `ReadCandidateIdentityHandoffSecret` (già nel file versionato) → `put-role-policy`.
+3. `apprunner-service.json`: `RFONE_SELECTION_CANDIDATE_IDENTITY_URL=https://careers.romesflavours.com/index.php` e segreto
+   `RFONE_SELECTION_IDENTITY_HANDOFF_SECRET` = ARN del passo 1. Il flusso si attiva solo con entrambi.
+4. Snapshot RDS, poi migrazioni fino a `c2b720261025` (additive), rebuild e deploy di `rfone-selection` come in
+   "Selection su AWS".
+5. Prova reale su una posizione aperta.
+
+**Rollback:** togliere le due variabili da `rfone-selection` e ridistribuire → torna la registrazione con password;
+i dati restano. La pagina Aruba senza Selection configurato non apre alcuna candidatura.
+
 ## Retention delle immagini ECR (dal 2026-09-29)
 
 I repository ECR `rfone-web` e `rfone-tips` hanno la stessa lifecycle
