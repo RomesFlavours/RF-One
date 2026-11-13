@@ -77,7 +77,7 @@ D_UNDECIDED = "UNDECIDED"
 DECISION_LABELS = {
     D_INTERVIEW: "To interview",
     D_DEEPEN: "Needs clarification",
-    D_HIRED: "Hired",
+    D_HIRED: "Send to Training",
     D_NOT_SELECTED: "Not selected",
     D_ON_HOLD: "On hold",
     D_UNDECIDED: "Clear decision (return to proposal)",

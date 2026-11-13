@@ -364,7 +364,7 @@ try:
         r = mgr.post(f"/selection/posizioni/{pid}/decisioni", data={"csrf_token": mt, "pc_id": str(pc_id), "decision": "HIRED"},
                      follow_redirects=True)
         page = text(mgr.get(f"/selection/posizioni/{pid}?tab=decisioni"))
-        check("8. decision recorded with history", "1 / 1" in page and "Jordan Example: Hired" in page)
+        check("8. decision recorded with history", "1 / 1" in page and "Jordan Example: Send to Training" in page)
 
         config_url = f'/selection/posizioni/{pid}/configuration'
         check('configuration: legacy global page redirects to position list',
