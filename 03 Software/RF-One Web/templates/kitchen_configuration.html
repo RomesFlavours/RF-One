@@ -1,0 +1,69 @@
+{% extends "_kitchen_base.html" %}
+{% set help_section = 'kitchen_configuration' %}
+{% set help_title = 'How this page works' %}
+{% block kitchen_content %}
+<h1>Configuration</h1>
+<p class="kitchen-config-intro">Open a section to add, edit or archive its items.</p>
+<div class="kitchen-config-sections">
+{% for section, label in sections %}
+<details id="config-{{ section }}" class="kitchen-config-section" data-config-section="{{ section }}" {% if expanded_section == section %}open{% endif %}>
+  <summary>
+    <span class="config-arrow" aria-hidden="true"></span>
+    <span class="config-heading"><span class="config-number">{{ loop.index }}</span> {{ label }}</span>
+    <span class="config-count">{{ configuration[section]|length }} {{ 'item' if configuration[section]|length == 1 else 'items' }}</span>
+    <span class="config-chevron" aria-hidden="true">⌄</span>
+  </summary>
+  <div class="config-body">
+    {% if error and expanded_section == section %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    {% if section == 'SUPPLIER' %}<p class="config-note">Suppliers are shared with Purchasing and belong to a restaurant. Changes here update the same supplier record.</p>{% endif %}
+    <form class="config-add" method="post" action="{{ url_for('kitchen_configuration_action',section=section,action='save') }}" data-rr-key="config-{{ section }}-new">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="config-name-field"><label for="new-{{ section }}">Name</label>
+        <input id="new-{{ section }}" type="text" name="name" maxlength="255" required value="{{ submitted.get('name','') if expanded_section == section and not edit_id else '' }}"></div>
+      {% if section == 'SUPPLIER' %}
+      <div><label for="restaurant-{{ section }}">Restaurant</label>
+        <select name="restaurant_id" id="restaurant-{{ section }}" required><option value="">Choose a restaurant</option>
+          {% for restaurant in restaurants %}<option value="{{ restaurant.id }}" {% if submitted.get('restaurant_id') == restaurant.id|string %}selected{% endif %}>{{ restaurant.name }}</option>{% endfor %}
+        </select></div>
+      {% endif %}
+      <button type="submit" {% if section == 'SUPPLIER' and not restaurants %}disabled{% endif %}>Add</button>
+    </form>
+    {% if configuration[section] %}
+    <div class="config-table-scroll">
+    <table class="config-table">
+      <thead><tr><th scope="col">Name</th>{% if section == 'SUPPLIER' %}<th scope="col">Restaurant</th>{% endif %}<th scope="col">Status</th><th scope="col" class="config-action-heading">Actions</th></tr></thead>
+      <tbody>
+      {% for item in configuration[section] %}
+      {% set editing = error and expanded_section == section and edit_id == item.id %}
+      {% set form_id = 'edit-' ~ section ~ '-' ~ item.id %}
+      <tr data-rr-key="config-{{ section }}-{{ item.id }}" class="{{ 'is-archived' if item.archived }}" {% if editing %}data-editing="true"{% endif %}>
+        <td><label class="config-sr-only" for="name-{{ section }}-{{ item.id }}">Name: {{ item.name }}</label>
+          <input id="name-{{ section }}-{{ item.id }}" class="config-row-name" name="name" form="{{ form_id }}" type="text" maxlength="255" required value="{{ submitted.get('name',item.name) if editing else item.name }}" data-original="{{ item.name }}" {% if not editing %}readonly{% endif %}></td>
+        {% if section == 'SUPPLIER' %}<td>{{ item.restaurant_name }}</td>{% endif %}
+        <td><span class="config-status {{ 'archived' if item.archived }}">{{ 'Archived' if item.archived else 'Active' }}</span></td>
+        <td class="config-row-actions">
+          <form id="{{ form_id }}" method="post" action="{{ url_for('kitchen_configuration_action',section=section,action='save') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="item_id" value="{{ item.id }}">
+            <button type="button" class="btn-secondary config-edit" {% if editing %}hidden{% endif %}>Edit</button>
+            <button type="submit" class="config-save" {% if not editing %}hidden{% endif %}>Save</button>
+            <button type="button" class="btn-secondary config-cancel" {% if not editing %}hidden{% endif %}>Cancel</button>
+          </form>
+          {% if not item.archived %}
+          <form class="config-archive-form" method="post" action="{{ url_for('kitchen_configuration_action',section=section,action='archive') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="item_id" value="{{ item.id }}">
+            <button type="submit" class="btn-secondary config-archive">Archive</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="config-empty">No items yet.</p>{% endif %}
+  </div>
+</details>
+{% endfor %}
+</div>
+<script defer src="{{ url_for('static',filename='js/kitchen-configuration.js') }}"></script>
+<script defer src="{{ url_for('static',filename='js/rf-one-row-return.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends '_visual_menu_base.html' %}
+{% set help_section='visual_menu_home' %}
+{% set help_title='How Visual Menu works' %}
+{% block menu_content %}
+<p>Choose a dish from the active menu of its restaurant location.</p>
+{% for location in locations if location.menu_name %}
+<section class="vm-section vm-location" data-location-id="{{ location.location_id }}">
+  <h2>{{ location.name }}</h2>
+  {% if location.menu_name %}
+    <p>{{ location.menu_name }}</p>
+    {% for area in location.areas %}
+    <section class="vm-menu-area" aria-labelledby="area-{{ location.location_id }}-{{ area.id }}">
+      <h3 id="area-{{ location.location_id }}-{{ area.id }}">{{ area.name }}</h3>
+      <ul class="vm-menu-entries">
+      {% for dish in area.entries %}
+        {% if dish.recipe_id %}<li class="vm-menu-dish"><a href="{{ dish.url }}">{% if dish.photo_url %}<img src="{{ dish.photo_url }}" alt="" loading="lazy">{% else %}<span class="vm-menu-no-photo">Photograph not yet available.</span>{% endif %}<span>{{ dish.label }}</span></a></li>
+        {% else %}<li class="vm-menu-label">{{ dish.label }}</li>{% endif %}
+      {% endfor %}
+      </ul>
+    </section>
+    {% else %}<p>No entries in the active menu.</p>{% endfor %}
+  {% else %}<p>No active menu for this location.</p>{% endif %}
+</section>
+{% else %}<p>No active menus available.</p>{% endfor %}
+{% endblock %}
