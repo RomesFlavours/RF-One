@@ -1,0 +1,16 @@
+{% set trainer_view = request.endpoint is defined and request.endpoint == "training.trainer_view_attempt" %}
+<section id="help-training-attempt-result" class="rf-help-section">
+<h2>Quiz result</h2>
+<p>{% if trainer_view %}This page shows one final-quiz attempt made by your student on one pill, exactly as it was submitted.{% else %}This page shows the result of one of your final-quiz attempts on a pill, exactly as it was submitted.{% endif %} It is read-only.</p>
+
+<h3>What you find here</h3>
+<dl>
+  <dt>Score</dt>
+  <dd>Points earned out of the points possible, as a percentage, and when the quiz was submitted (local time). Completing a quiz records the activity; it is not a certificate of competence.</dd>
+  <dt>Questions</dt>
+  <dd>Each question with all its options: <em>Correct answer</em> marks the right option, <em>Your answer</em> marks the option chosen when it was wrong, and an unanswered question is noted. The explanation follows each question.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>{% if trainer_view %}Use the path at the top to go back to the student's page.{% else %}Use the path at the top to go back to the pill, review it and, if you wish, take the final quiz again.{% endif %}</p>
+</section>

@@ -1,0 +1,18 @@
+{% set trainer_view = request.endpoint is defined and request.endpoint == "training.trainer_view_overall_attempt" %}
+<section id="help-training-overall-result" class="rf-help-section">
+<h2>Whole-path quiz result</h2>
+<p>{% if trainer_view %}This page shows one whole-path quiz attempt made by your student, exactly as it was submitted.{% else %}This page shows the result of one of your whole-path quiz attempts, exactly as it was submitted.{% endif %} It is read-only.</p>
+
+<h3>What you find here</h3>
+<dl>
+  <dt>Score</dt>
+  <dd>Points earned out of the points possible, as a percentage, when it was submitted (local time) and the pills the quiz covered.</dd>
+  <dt>Pills to review</dt>
+  <dd>Shown when some answers were wrong or missing: the pills those questions came from.{% if not trainer_view %} Click one to open the pill and study it again.{% endif %}</dd>
+  <dt>Questions</dt>
+  <dd>Each question with the pill it belongs to and all its options: <em>Correct answer</em> marks the right option, <em>Your answer</em> marks the option chosen when it was wrong, and an unanswered question is noted. The explanation follows each question.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>{% if trainer_view %}Use the path at the top to go back to the student's page.{% else %}Review the pills listed, then take the whole-path quiz again from the Training page if you wish.{% endif %}</p>
+</section>

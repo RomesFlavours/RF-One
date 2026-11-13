@@ -1,0 +1,37 @@
+<section id="help-training-trainer-student" class="rf-help-section">
+<h2>Student{% if student is defined %}: {{ student.acting_identity.display_name }}{% endif %}</h2>
+<p>This page is one student's training file: their training needs, the pills assigned to each need with their progress, and every quiz attempt. Here you add needs, assign pills and reset the student's password.</p>
+
+<h3>What you can do</h3>
+<ul>
+  <li>Set a new password for the student.</li>
+  <li>Add a training need.</li>
+  <li>Assign one or more pills to a need.</li>
+  <li>Open any final-quiz or whole-path quiz attempt to see the student's answers.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Username</dt>
+  <dd>The name the student signs in with. When the student is linked to a person in RF-One, that person's name is shown at the top.</dd>
+  <dt>Add a training need: Need, Origin</dt>
+  <dd>A short description of what the student needs to learn and, optionally, where the need came from (Selection, Observation, Sales, Other).</dd>
+  <dt>Training needs</dt>
+  <dd>One box per need, listing its pills. <strong>Status</strong>: <em>Not started</em> (the student never opened it), <em>In progress</em> (opened, final quiz not yet taken), <em>Completed</em> (final quiz taken at least once, whatever the score; it is not a certificate of competence). <strong>Attempts</strong> lists each final-quiz attempt with date and score; click one to see the answers.</dd>
+  <dt>Whole-path quiz history</dt>
+  <dd>The student's whole-path quiz attempts with date and score; click a date to see that attempt.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Set a new password · Set new password</dt>
+  <dd>Replaces the student's password immediately and lifts any sign-in lockout. The previous password cannot be recovered. Give the new one to the student directly.</dd>
+  <dt>Add need</dt>
+  <dd>Saves the need; it appears at once on the student's own Training page. It is refused for a dismissed employee.</dd>
+  <dt>Assign pills</dt>
+  <dd>Opens a window for that need. Narrow the list with <strong>Area</strong> (the menu section) and <strong>Search title</strong>; tick the pills to assign. <strong>Select all filtered</strong> ticks every pill currently listed, <strong>Clear selection</strong> unticks them all; ticks made under another filter are kept, and the counter shows how many are selected. Pills already assigned to this need are shown ticked and greyed out. <strong>Assign selected</strong> assigns all selected pills in one step; the message says how many were assigned and how many were already there. <strong>Cancel</strong>, or the Escape key, closes the window without assigning anything. Assigned pills cannot be removed from this page.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>The student sees the new needs and pills on their Training page. Come back here to follow their progress.</p>
+</section>

@@ -1,0 +1,25 @@
+<section id="help-settings-account-training-link" class="rf-help-section">
+<h2>Training Identity</h2>
+<p>Training keeps its own identities (students and trainers). This page links the RF-One account named under the title to exactly one Training identity, so the person enters Training with their RF-One sign-in. Only RF-One administrators can open it.</p>
+
+{% if existing_link is defined and existing_link %}
+<h3>What the page shows now</h3>
+<p>This account is already linked: the page shows the Training identity's username and its role. A link cannot be removed or changed from this page.</p>
+{% else %}
+<h3>What you can do</h3>
+<ul>
+  <li><strong>Link an existing Training identity</strong>: choose, in <em>Existing Training account</em>, a Training identity that is not yet linked to any RF-One account. The list shows each identity's username and role. When every Training identity is already linked, the page says so and only the second option is available.</li>
+  <li><strong>Or create a new Training identity</strong>: choose the <em>Training role</em> (Student or Trainer) and RF-One creates a new Training identity with the account's own username and display name. No second password is created: the person always enters Training through RF-One.</li>
+</ul>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Link selected identity</dt><dd>Links the chosen identity to this account and returns to the Accounts list. If the account already has a Training role in Domain Access, the linked identity takes that role.</dd>
+  <dt>Create Training identity</dt><dd>Creates the new identity with the chosen role, links it and returns to the Accounts list.</dd>
+</dl>
+<p>Both actions are permanent from this page: once linked, the link cannot be undone or moved to another identity here. If the identity or the account is already linked elsewhere, nothing is saved and the reason is shown.</p>
+{% endif %}
+
+<h3>Next steps</h3>
+<p>To let the person actually open Training, give the account access to the Training Domain, with its Training role, in <strong>Domain Access</strong>.</p>
+</section>

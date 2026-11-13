@@ -1,0 +1,25 @@
+<section id="help-invoice-intake-supplier-training" class="rf-help-section">
+<h2>Supplier + Format training</h2>
+<p>How reliable the reading of each supplier's documents has proved, separately for each format (how the document was read and whether it came directly from the supplier or through Instacart). Every completed review adds one observation automatically; nothing has to be entered by hand.</p>
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Supplier</dt><dd>The supplier.</dd>
+  <dt>Format</dt><dd>How the document was read, followed by its channel, for example “PDF-Text/Direct” or “Textract-AnalyzeExpense/Instacart”.</dd>
+  <dt>Reviewed</dt><dd>Number of completed reviews for this pair.</dd>
+  <dt>Normalized / Human</dt><dd>How many of them ended NORMALIZED or stayed HUMAN.</dd>
+  <dt>Streak corretto</dt><dd>Consecutive reviews that ended NORMALIZED. A review that stays HUMAN resets it to zero.</dd>
+  <dt>Soglia</dt><dd>The streak needed before the format can be validated (5 unless configured otherwise).</dd>
+  <dt>Trust state</dt><dd><strong>UNTRAINED</strong>: new pair. <strong>TRAINING</strong>: a person has started training it. <strong>VALIDATED</strong>: confirmed reliable by a person. <strong>DEGRADED</strong>: was validated, but a review stayed HUMAN or the document layout changed, so it is no longer trusted. Moving a pair to TRAINING, or back from DEGRADED, is not possible from this page.</dd>
+  <dt>Eleggibile</dt><dd>“ELIGIBLE FOR VALIDATION” when the pair is in TRAINING and its streak has reached the threshold; underneath, the reason.</dd>
+</dl>
+{% if can_validate is defined and can_validate %}
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>VALIDATE FORMAT</dt><dd>Available only on eligible rows (greyed out otherwise). Marks the pair VALIDATED; the condition is checked again when you press it, and an error is shown if it is no longer met. Validation is never automatic. There is no button to undo it here; the pair becomes DEGRADED on its own if later documents stop being read correctly.</dd>
+</dl>
+{% else %}
+<p>Validating a format requires the VALIDATOR role.</p>
+{% endif %}
+<h3>Next steps</h3>
+<p>Go back to the review queue with <strong>&larr; coda review</strong>.</p>
+</section>
