@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Positions</h1>
+<p class="muted">Position → Upload CVs → Analyze → Ranking. The ranking is a motivated preselection priority based on the
+approved requirements; it is not a validated prediction and it excludes nobody.</p>
+<div class="card">
+  <h2>New position</h2>
+  <form method="post" action="{{ url_for('position_new') }}">
+    <select name="role" required>
+      <option value="">Role…</option>
+      {% for code, label in roles.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+    </select>
+    <input name="title" placeholder="Title (e.g. Server — Mount Dora)" size="34">
+    <input name="location" value="Mount Dora" size="14">
+    <button>Create</button>
+  </form>
+</div>
+<div class="card">
+  <table>
+    <tr><th>Position</th><th>Role</th><th>Requirements</th><th>CVs</th><th>Created</th></tr>
+    {% for p in positions %}
+    <tr>
+      <td><a href="{{ url_for('position_page', pid=p.id) }}">{{ p.title }}</a></td>
+      <td>{{ roles[p.role] }}</td>
+      <td>{% if p.approved %}Approved v{{ p.approved.version }}{% else %}<span class="verify">Draft</span>{% endif %}</td>
+      <td>{{ p.candidates|length }}</td>
+      <td class="small muted">{{ local_time(p.created_at, p.timezone) }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">No position yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

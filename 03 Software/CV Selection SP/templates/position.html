@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}{{ p.title }} · CV Selection SP{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="{{ url_for('home') }}">CV Selection SP</a> › {{ p.title }}</div>{% endblock %}
+{% block content %}
+{% set approved = p.approved %}
+{% set editable = (not approved) or p.editing %}
+<h1>{{ p.title }}</h1>
+<div class="muted">{{ p.location }} · profile {{ p.requirements_draft[0].source if p.requirements_draft else '' }}
+  {% if approved %} · requirements v{{ approved.version }} approved {{ local_time(approved.approved_at, p.timezone) }}{% endif %}</div>
+
+<!-- 1. Requirements -->
+<div class="card" id="requirements">
+  <h2><span class="step">1</span>Requirements {% if editable %}<span class="badge gC">Draft: review and approve</span>{% else %}<span class="badge gA">Approved v{{ approved.version }}</span>{% endif %}</h2>
+  <form method="post" action="{{ url_for('requirements_save', pid=p.id) }}">
+  <table>
+    <tr><th>Requirement</th><th class="hide-sm">What the CV should show</th><th>Criticality</th><th>Weight</th><th></th></tr>
+    {% for r in (p.requirements_draft if editable else approved.requirements) %}
+    <tr>
+      <td><b>{{ r.name }}</b>{% if r.computed %}<div class="small muted">Computed from the verified CV dates</div>{% endif %}</td>
+      <td class="hide-sm small">{{ r.look_for }}</td>
+      <td>{% if editable %}<select name="crit_{{ r.id }}">{% for k, v in CRIT.items() %}<option value="{{ k }}" {% if r.criticality == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select>{% else %}{{ CRIT[r.criticality] }}{% endif %}</td>
+      <td>{% if editable %}<input name="weight_{{ r.id }}" value="{{ r.weight }}" size="3">{% else %}{{ r.weight }}{% endif %}</td>
+      <td>{% if editable and r.id.startswith('custom') %}<button class="tiny light" name="remove" value="{{ r.id }}">Remove</button>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    {% if editable %}
+    <tr>
+      <td><input name="new_name" placeholder="Add a requirement" size="26"></td>
+      <td class="hide-sm"><input name="new_look_for" placeholder="What the CV should show" size="40"></td>
+      <td><select name="new_crit">{% for k, v in CRIT.items() %}<option value="{{ k }}" {% if k == 'PREFERRED' %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></td>
+      <td><input name="new_weight" value="5" size="3"></td><td></td>
+    </tr>
+    {% endif %}
+  </table>
+  <p class="small muted">Profile standard from Shelbi's Server / Line Cook model (weights proposed, to be calibrated).
+    Must-haves define the ranking groups; weights order candidates inside a group. Residence and commute are not used.</p>
+  {% if editable %}
+    <button class="light" name="action" value="save">Save draft</button>
+    <button name="action" value="approve">Approve requirements</button>
+  {% else %}
+    <button class="light" name="action" value="edit">Edit requirements (creates a new version)</button>
+  {% endif %}
+  </form>
+</div>
+
+<!-- 2. Upload -->
+<div class="card">
+  <h2><span class="step">2</span>Upload CVs</h2>
+  <form method="post" action="{{ url_for('upload', pid=p.id) }}" enctype="multipart/form-data">
+    <input type="file" name="cv" multiple accept=".pdf,.docx,.txt">
+    <button>Upload</button>
+    <span class="small muted">PDF (also scanned), DOCX or TXT, many at once. Exact duplicates are skipped.</span>
+  </form>
+  {% if cands %}
+  <details {% if running or to_analyze %}open{% endif %} style="margin-top:10px">
+    <summary class="small">{{ cands|length }} CV(s) uploaded</summary>
+    <table class="small">
+      {% for c in cands %}
+      <tr><td>{{ c.filename }}</td>
+        <td>{% if current(c) %}<span class="s-SHOWN">Analyzed</span>{% elif c.status == 'ERROR' %}<span class="flag">Error: {{ c.error }}</span>{% elif c.status in ('QUEUED','ANALYZING') %}{{ c.status|title }}…{% elif c.status == 'DONE' %}<span class="verify">Analyzed with older requirements</span>{% else %}Waiting for Analyze{% endif %}</td>
+        <td class="muted">{{ c.text_source or '' }}{% if c.duplicate_note %} · <span class="verify">{{ c.duplicate_note }}</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+  </details>
+  {% endif %}
+</div>
+
+<!-- 3. Analyze -->
+<div class="card">
+  <h2><span class="step">3</span>Analyze</h2>
+  {% if not approved or p.editing %}
+    <p class="muted">Approve the requirements first.</p>
+  {% else %}
+  <form method="post" action="{{ url_for('analyze', pid=p.id) }}" style="display:inline">
+    <button {% if running %}disabled{% endif %}>Analyze{% if to_analyze %} {{ to_analyze }} CV(s){% endif %}</button>
+  </form>
+  <form method="post" action="{{ url_for('analyze', pid=p.id) }}" style="display:inline">
+    <input type="hidden" name="all" value="1"><button class="light" {% if running %}disabled{% endif %}>Re-analyze all</button>
+  </form>
+  <span id="progress" class="small muted">{% if running %}Analyzing {{ running }} CV(s)…{% endif %}</span>
+  <p class="small muted">One AI reading per CV (AWS Bedrock), checked by code: quotes and dates must be in the CV;
+    durations, gaps and stability are computed; skills only listed count as claims.</p>
+  {% endif %}
+</div>
+
+<!-- 4. Ranking -->
+<div class="card" id="ranking">
+  <h2><span class="step">4</span>Ranking {% if rows %}<span class="small muted">({{ rows|length }} candidates)</span>{% endif %}
+    {% if p.manual_order %}<form method="post" action="{{ url_for('move', pid=p.id) }}" style="display:inline"><input type="hidden" name="reset" value="1"><button class="tiny light">Back to the proposed order</button></form>{% endif %}</h2>
+  {% if not rows %}<p class="muted">No analyzed CV yet.</p>{% else %}
+  <p class="small muted">Preselection priority from the approved requirements: group first (A every must-have shown · B partly shown ·
+    C must-have not documented, to verify · D documented concern), then the documented evidence weighted by the requirements.
+    Not a probability of success. Nobody is excluded. Use ▲▼ to change the order.</p>
+  <table>
+    <tr><th>#</th><th>Candidate</th><th>Relevant experience</th><th>Demonstrated competences</th><th>Red flags</th><th>To verify</th><th>Why here</th><th></th></tr>
+    {% for r in rows %}{% set a = r.analysis %}
+    <tr>
+      <td><div class="rank">{{ r.rank }}</div>
+        <form method="post" action="{{ url_for('move', pid=p.id) }}"><input type="hidden" name="cid" value="{{ r.id }}">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="{{ url_for('candidate', pid=p.id, cid=r.id) }}">{{ a.full_name or r.filename }}</a></b><br>
+        <span class="badge g{{ r.assessment.group }}">{{ r.assessment.group }} · {{ r.assessment.group_label.split(':')[0] }}</span>
+        {% if r.rank_moved %}<div class="small verify">Moved by the manager (proposed #{{ r.proposed_rank }})</div>{% endif %}
+        {% if r.duplicate_note %}<div class="small verify">{{ r.duplicate_note }}</div>{% endif %}</td>
+      <td class="small"><ul class="tight">{% for j in a.jobs if j.relevant %}{% if loop.index <= 3 %}<li>{{ j.title }} · {{ j.employer }}<span class="muted"> · {{ j.duration_label or 'dates to verify' }}</span></li>{% endif %}{% else %}<li class="muted">None documented</li>{% endfor %}</ul></td>
+      <td class="small">{% set demo = a.competences|rejectattr('level', 'equalto', 'claimed')|list %}{% set claimed = a.competences|selectattr('level', 'equalto', 'claimed')|list %}
+        {% for x in demo[:5] %}{{ x.name }} <span class="muted">({{ x.level }})</span>{% if not loop.last %}, {% endif %}{% endfor %}
+        {% if claimed %}<div class="muted">Claimed only: {{ claimed|map(attribute='name')|join(', ') }}</div>{% endif %}</td>
+      <td class="small flag"><ul class="tight">{% for f in a.flags[:3] %}<li>{{ f.flag }}</li>{% endfor %}</ul>{% if a.flags|length > 3 %}<span class="muted">+{{ a.flags|length - 3 }} more</span>{% endif %}</td>
+      <td class="small verify"><ul class="tight">{% for u in a.unknowns[:3] %}<li>{{ u }}</li>{% endfor %}</ul>{% if a.unknowns|length > 3 %}<span class="muted">+{{ a.unknowns|length - 3 }} more</span>{% endif %}</td>
+      <td class="small">{{ summary(r) }}{% if r.why_ahead %}<div class="why">{{ r.why_ahead }}</div>{% endif %}</td>
+      <td class="small"><a href="{{ url_for('candidate', pid=p.id, cid=r.id) }}">Details</a><br><a href="{{ url_for('original_cv', pid=p.id, cid=r.id) }}" target="_blank">CV</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+{% if running %}
+<script>
+  (function poll() {
+    fetch("{{ url_for('status', pid=p.id) }}").then(r => r.json()).then(s => {
+      const busy = (s.QUEUED || 0) + (s.ANALYZING || 0);
+      document.getElementById("progress").textContent = busy ? `Analyzing… ${s.DONE || 0} done, ${busy} to go` : "Done";
+      if (busy) setTimeout(poll, 2000); else location.reload();
+    }).catch(() => setTimeout(poll, 4000));
+  })();
+</script>
+{% endif %}
+{% endblock %}

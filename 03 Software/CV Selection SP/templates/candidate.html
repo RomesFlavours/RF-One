@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% set a = c.analysis %}
+{% block title %}{{ (a.full_name if a else None) or c.filename }} · {{ p.title }}{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="{{ url_for('home') }}">CV Selection SP</a> › <a href="{{ url_for('position_page', pid=p.id) }}#ranking">{{ p.title }}</a> › {{ (a.full_name if a else None) or c.filename }}</div>{% endblock %}
+{% block content %}
+<h1>{{ (a.full_name if a else None) or c.filename }}</h1>
+<div class="muted">
+  {% if row %}<b>#{{ row.rank }} of {{ total }}</b> · <span class="badge g{{ row.assessment.group }}">{{ row.assessment.group }} · {{ row.assessment.group_label }}</span>{% if row.rank_moved %} · moved by the manager (proposed #{{ row.proposed_rank }}){% endif %} · {% endif %}
+  <a href="{{ url_for('original_cv', pid=p.id, cid=c.id) }}" target="_blank">Original CV</a> ·
+  <a href="{{ url_for('cv_text', pid=p.id, cid=c.id) }}" target="_blank">Text read</a>
+</div>
+{% if not a %}<div class="card">Not analyzed yet{% if c.error %}: <span class="flag">{{ c.error }}</span>{% endif %}.</div>{% else %}
+{% if row %}
+<div class="card"><h2>Why this place</h2><p>{{ summary(row) }}</p>{% if row.why_ahead %}<p class="small muted">{{ row.why_ahead }}</p>{% endif %}</div>
+<div class="card"><h2>Approved requirements (v{{ c.analyzed_version }})</h2>
+  <table>
+    <tr><th>Requirement</th><th>Criticality</th><th>Status</th><th>Level</th><th>Evidence from the CV</th></tr>
+    {% for i in row.assessment["items"] %}
+    <tr><td><b>{{ i.name }}</b></td><td class="small">{{ CRIT[i.criticality] }} · weight {{ i.weight }}</td>
+      <td class="small s-{{ i.status }}">{{ i.status_label }}</td>
+      <td>{% if i.level is not none %}<span class="lvl"><i style="width:{{ (i.level or 0) * 25 }}%"></i></span> <span class="small muted">{{ level_label(i.level) }}</span>{% else %}<span class="small muted">unknown</span>{% endif %}</td>
+      <td class="small">{% for q in i.quotes %}<div class="quote">“{{ q }}”</div>{% endfor %}{% if i.against %}<div class="flag">Against: “{{ i.against }}”</div>{% endif %}<div>{{ i.explanation }}</div></td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+<div class="grid2">
+  <div class="card"><h2>Work history (dates verified in the CV)</h2>
+    <table class="small">
+      <tr><th>Job</th><th>Dates in the CV</th><th>Duration (computed)</th></tr>
+      {% for j in a.jobs %}
+      <tr><td><b>{{ j.title }}</b> · {{ j.employer }}{% if j.employer_unverified or j.title_unverified %} <span class="verify">(not found word for word)</span>{% endif %}
+          <div class="muted">{{ j.environment }}{% if j.relevant %} · relevant{% endif %}{% if j.promotion %} · promotion{% endif %}</div></td>
+        <td>{{ j.date_text or '—' }}{% if j.is_current %} <span class="muted">(current)</span>{% endif %}</td>
+        <td>{% if j.duration_label %}{{ j.duration_label }}{% else %}<span class="verify">{{ j.date_note }}</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+    <p class="small"><b>Stability:</b> {% if a.stability.known %}level {{ a.stability.level }} — {% endif %}{{ a.stability.reasons|join(' ') }}
+      {% for x in a.stability.positives %}<br><span class="s-SHOWN">{{ x.text }}</span>{% endfor %}</p>
+    {% if a.gaps %}<p class="small"><b>Gaps (computed):</b> {% for g in a.gaps %}<br><span class="verify">{{ g.text }}</span>{% endfor %}</p>{% endif %}
+  </div>
+  <div class="card"><h2>Competences</h2>
+    <table class="small">
+      {% for x in a.competences %}<tr><td><b>{{ x.name }}</b></td><td class="{{ 'verify' if x.level == 'claimed' else 's-SHOWN' }}">{{ x.level }}</td><td class="quote">“{{ x.quote }}”</td></tr>
+      {% else %}<tr><td class="muted">None documented</td></tr>{% endfor %}
+    </table>
+    {% if a.strengths %}<h2 style="margin-top:12px">Strengths</h2><ul class="tight small">{% for s in a.strengths %}<li>{{ s.text }} <span class="quote">“{{ s.quote }}”</span></li>{% endfor %}</ul>{% endif %}
+    {% if a.stated_availability or a.stated_hours %}<p class="small"><b>Stated in the CV:</b>
+      {% if a.stated_availability %}{{ a.stated_availability.text }}{% endif %}{% if a.stated_hours %} · {{ a.stated_hours.hours }} h/week{% endif %}</p>{% endif %}
+  </div>
+</div>
+<div class="grid2">
+  <div class="card"><h2>Red flags (supported by the CV)</h2>
+    <ul class="tight small">{% for f in a.flags %}<li class="flag"><b>{{ f.flag }}</b> <span class="muted">{{ f.fact }}</span>{% if f.quote %} <span class="quote">“{{ f.quote }}”</span>{% endif %}{% if f.question %}<div class="muted">Ask: {{ f.question }}</div>{% endif %}</li>{% else %}<li class="muted">None</li>{% endfor %}</ul>
+  </div>
+  <div class="card"><h2>To verify (missing information, not a judgement)</h2>
+    <ul class="tight small">{% for u in a.unknowns %}<li class="verify">{{ u }}</li>{% else %}<li class="muted">Nothing</li>{% endfor %}</ul>
+    {% if a.questions %}<h2 style="margin-top:12px">Suggested questions</h2><ul class="tight small">{% for q in a.questions %}<li>{{ q }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+</div>
+<div class="card small"><h2>Traceability</h2>
+  Analyzed {{ local_time(c.analyzed_at, p.timezone) }} · {{ c.model }} · prompt {{ a.prompt_version }} · profile {{ a.profile_version }} · requirements v{{ c.analyzed_version }} · text: {{ c.text_source }}
+  <details style="margin-top:6px"><summary>Verification log ({{ a.verification_log|length }} item(s) corrected or discarded by code)</summary>
+    <ul class="tight">{% for l in a.verification_log %}<li>{{ l }}</li>{% else %}<li class="muted">Nothing discarded.</li>{% endfor %}</ul></details>
+</div>
+{% endif %}
+{% endblock %}

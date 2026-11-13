@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}CV Selection SP{% endblock %}</title>
+<style>
+  :root { --ink:#22261c; --muted:#6b705f; --line:#dfe1d6; --bg:#f6f6f1; --card:#fff; --olive:#5d6b2f;
+          --olive-soft:#eef1e2; --red:#9b2c22; --red-soft:#f8e9e6; --amber:#8a5a00; --amber-soft:#fbf1dc;
+          --blue:#2f5470; --blue-soft:#e6eef4; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); background:var(--bg); }
+  header { background:var(--olive); color:#fff; padding:10px 20px; display:flex; gap:16px; align-items:baseline; }
+  header b { font-size:16px; } header span { opacity:.8; font-size:12px; }
+  main { max-width:1280px; margin:0 auto; padding:16px 20px 60px; }
+  .crumbs { font-size:13px; color:var(--muted); margin-bottom:12px; }
+  .crumbs a { color:var(--olive); text-decoration:none; } .crumbs a:hover { text-decoration:underline; }
+  h1 { font-size:22px; margin:4px 0 4px; } h2 { font-size:16px; margin:0 0 10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px; margin:14px 0; }
+  .step { display:inline-block; width:22px; height:22px; border-radius:50%; background:var(--olive); color:#fff;
+          text-align:center; line-height:22px; font-size:12px; margin-right:6px; }
+  .muted { color:var(--muted); } .small { font-size:12px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; vertical-align:top; padding:8px 8px; border-bottom:1px solid var(--line); }
+  th { font-size:12px; color:var(--muted); font-weight:600; }
+  button, .btn { font:inherit; border:1px solid var(--olive); background:var(--olive); color:#fff; border-radius:6px;
+                 padding:6px 12px; cursor:pointer; text-decoration:none; display:inline-block; }
+  button.light, .btn.light { background:#fff; color:var(--olive); }
+  button.tiny { padding:1px 7px; font-size:12px; }
+  input, select, textarea { font:inherit; padding:5px 7px; border:1px solid var(--line); border-radius:5px; }
+  .flash { background:var(--olive-soft); border:1px solid #cfd6b4; padding:8px 12px; border-radius:6px; margin:6px 0; }
+  .badge { display:inline-block; border-radius:10px; padding:1px 8px; font-size:12px; font-weight:600; white-space:nowrap; }
+  .gA { background:var(--olive-soft); color:var(--olive); } .gB { background:var(--blue-soft); color:var(--blue); }
+  .gC { background:var(--amber-soft); color:var(--amber); } .gD { background:var(--red-soft); color:var(--red); }
+  .rank { font-size:22px; font-weight:700; color:var(--olive); }
+  ul.tight { margin:0; padding-left:16px; } ul.tight li { margin:1px 0; }
+  .flag { color:var(--red); } .verify { color:var(--amber); }
+  .quote { color:var(--muted); font-style:italic; }
+  .lvl { display:inline-block; width:60px; height:8px; background:var(--line); border-radius:4px; vertical-align:middle; }
+  .lvl i { display:block; height:8px; border-radius:4px; background:var(--olive); }
+  .s-SHOWN { color:var(--olive); } .s-PARTIAL { color:var(--blue); } .s-CLAIMED, .s-MISSING { color:var(--amber); }
+  .s-AGAINST { color:var(--red); } .s-NOT_ASSESSABLE { color:var(--muted); }
+  .why { font-size:12px; color:var(--muted); margin-top:4px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns:1fr; } .hide-sm { display:none; } }
+</style>
+</head>
+<body>
+<header><b>CV Selection SP</b><span>Shelbi + Pino CV engines · local prototype · preselection priority, not a prediction</span></header>
+<main>
+  {% block crumbs %}{% endblock %}
+  {% with messages = get_flashed_messages() %}{% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>
