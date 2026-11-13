@@ -1,0 +1,3 @@
+from pathlib import Path
+import json,boto3,shutil
+out=Path('tmp/registry-navigation-release');d=json.loads((out/'state.json').read_text());(out/'first-deployment-state.json').write_text(json.dumps(d,indent=2));s=boto3.Session(profile_name='rfone-dev-login',region_name='us-east-1');v=s.client('apprunner').describe_service(ServiceArn=d['service_arn'])['Service'];assert v['SourceConfiguration']['ImageRepository']['ImageIdentifier']==d['image'];(out/'baseline-service.json').write_text(json.dumps(v,default=str,indent=2));(out/'baseline.json').write_text(json.dumps({'service_arn':d['service_arn'],'previous_image':d['image'],'previous_digest':d['image_digest']},indent=2));print('Navigation follow-up prepared; previous release preserved for rollback')

@@ -1,0 +1,2 @@
+from pathlib import Path
+p=Path('tmp/git-anagrafica-release/03 Software/RF-One Web/role_profile_routes.py');s=p.read_text(encoding='utf-8').replace("        def person_summary(kind, identity):\n            if not getattr(g, '_registry_summaries_loaded', False):","        summaries_loaded = False\n        def person_summary(kind, identity):\n            nonlocal summaries_loaded\n            if not summaries_loaded:").replace('                g._registry_summaries_loaded = True','                summaries_loaded = True');p.write_text(s,encoding='utf-8',newline='\n')

@@ -1,0 +1,4 @@
+from pathlib import Path
+import boto3,json,copy
+p=Path('tmp/registry-performance-release/state.json');d=json.loads(p.read_text());s=boto3.Session(profile_name='rfone-dev-login',region_name='us-east-1');a=s.client('apprunner');v=a.describe_service(ServiceArn=d['service_arn'])['Service'];assert v['SourceConfiguration']['ImageRepository']['ImageIdentifier']==d['previous_image'];assert v['Status']=='RUNNING';d['image_digest']=s.client('ecr').describe_images(repositoryName='rfone-web',imageIds=[{'imageTag':d['tag']}])['imageDetails'][0]['imageDigest'];source=copy.deepcopy(v['SourceConfiguration']);source['ImageRepository']['ImageIdentifier']=d['image'];r=a.update_service(ServiceArn=d['service_arn'],SourceConfiguration=source);d['operation_id']=r['OperationId'];p.write_text(json.dumps(d,indent=2));print(r['OperationId'],r['Service']['Status'])
+

@@ -1,0 +1,5 @@
+from pathlib import Path
+import boto3,json
+s=boto3.Session(profile_name='rfone-dev-login',region_name='us-east-1');root=Path('tmp/anagrafica-release');p=root/'state.json';d=json.loads(p.read_text());assert 'RF1_MIGRATION_VERIFIED' in (root/'migration_task.log').read_text(encoding='utf-8');a=s.client('apprunner');current=a.describe_service(ServiceArn=d['service_arn'])['Service'];baseline=json.loads((root/'baseline-service.json').read_text());assert current['SourceConfiguration']['ImageRepository']['ImageIdentifier']==baseline['SourceConfiguration']['ImageRepository']['ImageIdentifier']
+source=current['SourceConfiguration'];source['ImageRepository']['ImageIdentifier']='418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:'+d['tag']
+r=a.update_service(ServiceArn=d['service_arn'],SourceConfiguration=source);d['deploy_operation']=r['OperationId'];p.write_text(json.dumps(d,indent=2));print(json.dumps({'operation':d['deploy_operation'],'image':source['ImageRepository']['ImageIdentifier']}))

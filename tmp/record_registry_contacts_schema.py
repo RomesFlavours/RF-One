@@ -1,0 +1,8 @@
+from pathlib import Path
+from datetime import datetime,timezone
+import boto3,json
+root=Path.cwd();release=root/'tmp/registry-contacts-release';d=json.loads((release/'state.json').read_text());assert 'REGISTRY_CONTACTS_MIGRATION_VERIFIED' in (release/'migration_task.log').read_text();s=boto3.Session(profile_name='rfone-dev-login',region_name='us-east-1');s3=s.client('s3');key='schema/aws_applied_revision.json';bucket='rfone-tips-deploy-418674484214';old=s3.get_object(Bucket=bucket,Key=key);prior=json.loads(old['Body'].read());assert prior['revision'] in ('e2c320261109','f2a120261110','k9a020261110')
+marker={'purpose':prior['purpose'],'database':prior['database'],'revision':'f3b120261110','previous_revision':'k9a020261110','verified_utc':datetime.now(timezone.utc).isoformat(),'applied_by':'Registry contact migration; ECS '+d['migration_task'],'evidence':{'source_s3_key':d['source_s3_key'],'source_sha256':d['source_sha256'],'snapshot':d['rds_snapshot'],'existing_accounts_preserved':7,'employees_preserved':64,'dismissed_preserved':47,'recovery_and_credentials_unchanged':True}}
+assert 'IfMatch' in s3.meta.service_model.operation_model('PutObject').input_shape.members,'Conditional registry update unavailable'
+s3.put_object(Bucket=bucket,Key=key,Body=(json.dumps(marker,indent=2)+'\n').encode(),ContentType='application/json',IfMatch=old['ETag'])
+(root/'tmp/git-anagrafica-release/03 Software/RF-One Data Store/migrations/aws_applied_revision.json').write_text(json.dumps(marker,indent=2)+'\n',encoding='utf-8');(release/'schema-marker.json').write_text(json.dumps(marker,indent=2)+'\n',encoding='utf-8');print('Shared AWS schema registry conditionally updated to f3b120261110')

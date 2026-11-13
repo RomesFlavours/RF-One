@@ -1,0 +1,10 @@
+from pathlib import Path
+from datetime import datetime,timezone
+import boto3,json,zipfile,subprocess,hashlib
+out=Path('tmp/registry-performance-release');a=out/'artifact';d=json.loads((out/'baseline.json').read_text());commit=subprocess.check_output(['git','-C',str(a),'rev-parse','HEAD'],text=True).strip();tag='registry-performance-'+datetime.now(timezone.utc).strftime('%Y%m%dt%H%M%Sz');image=d['previous_image'].rsplit(':',1)[0]+':'+tag
+archive=out/'source.zip';subprocess.run(['git','-C',str(a),'archive','--format=zip','--output='+str(archive.resolve()),'HEAD'],check=True)
+s=boto3.Session(profile_name='rfone-dev-login',region_name='us-east-1');key='releases/'+tag+'/source.zip';s.client('s3').upload_file(str(archive),'rfone-tips-deploy-418674484214',key)
+commands=['docker build --build-arg RFONE_RELEASE_REVISION='+commit+' -t '+image+' .', 'docker run --rm --entrypoint python '+image+' "/app/RF-One Web/tests/test_registry_clover_confirmation.py"', 'docker run --rm -v "$CODEBUILD_SRC_DIR/03 Software/RF-One Web/tests/test_registry_performance.py:/app/RF-One Web/tests/test_registry_performance.py:ro" --entrypoint python '+image+' "/app/RF-One Web/tests/test_registry_performance.py"', 'docker run --rm --entrypoint python '+image+' /app/release_policy_test.py web /app']
+# JSON is accepted as CodeBuild buildspec; command arguments remain strings.
+spec={'version':0.2,'phases':{'pre_build':{'on-failure':'ABORT','commands':['aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 418674484214.dkr.ecr.us-east-1.amazonaws.com']},'build':{'on-failure':'ABORT','commands':commands},'post_build':{'on-failure':'ABORT','commands':['docker push '+image]}}}
+r=s.client('codebuild').start_build(projectName='rfone-web-build',sourceLocationOverride='rfone-tips-deploy-418674484214/'+key,buildspecOverride=json.dumps(spec));d.update(commit=commit,image=image,tag=tag,build_id=r['build']['id'],source_s3_key=key,database_changes=False,other_services_changed=False,cloudfront_distribution='E3MIBLH55LEYD8');(out/'state.json').write_text(json.dumps(d,indent=2));print(json.dumps(d,indent=2))

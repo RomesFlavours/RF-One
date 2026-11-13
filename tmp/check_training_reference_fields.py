@@ -1,0 +1,2 @@
+from pathlib import Path
+p=Path('tmp/git-anagrafica-release/03 Software/RF-One Data Store/test_person_reconciliation.py');s=p.read_text(encoding='utf-8').replace("self.assertEqual(workspace.roster(db)[0]['central_person_id'],pid)","self.assertEqual(workspace.roster(db)[0]['central_person_id'],pid)\n   self.assertEqual(workspace.roster(db)[0]['central_person_name'],'Alice Martini')\n   self.assertEqual(workspace.roster(db)[0]['name'],'Alice Martini')");p.write_text(s,encoding='utf-8',newline='\n')

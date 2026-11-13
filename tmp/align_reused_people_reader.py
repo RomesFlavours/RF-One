@@ -1,0 +1,2 @@
+from pathlib import Path
+p=Path('tmp/git-anagrafica-release/03 Software/RF-One Data Store/rfone_data_store/people_registry.py');s=p.read_text(encoding='utf-8').replace("employee_registry_ready = inspect(db.connection()).has_table('employee_registry_profiles')","employee_registry_ready = (hasattr(m, 'EmployeeRegistryProfile') and\n                               inspect(db.connection()).has_table('employee_registry_profiles'))");p.write_text(s,encoding='utf-8',newline='\n')

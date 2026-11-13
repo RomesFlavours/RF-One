@@ -1,0 +1,9 @@
+from pathlib import Path
+p=Path('tmp/prepare_role_company_development.py');t=p.read_text(encoding='utf-8');a=t.index('        chunk=chunk.replace(');b=t.index('    return t',a);block=t[a:b];t=t[:a]+'        t=t[:start]+chunk+t[end:]\n'+t[b:];block='\n'.join(line[4:] if line.startswith('        chunk=chunk.replace') else line for line in block.split('\n'));i=t.index('    t=t[:start]+chunk+t[end:]',t.index('def web(t):'));t=t[:i]+block+t[i+len('    t=t[:start]+chunk+t[end:]\n'):];t=t.replace('{{ profile_person or \'\' }}','{{ profile_person|default("", true) }}');p.write_text(t,encoding='utf-8')
+p=Path('tmp/test_role_company_http.py');t=p.read_text(encoding='utf-8').replace("check('Other authorizations disabled','disabled title=\"Available in a future update\">Other system authorizations' in page)","check('Other authorizations available','person-system-authorizations' in page)");i=t.index("print(json.dumps(");t=t[:i]+'''access_page=owner.get(f'/admin/accounts/{user_id}/access?from_person=account:{user_id}')
+check('Person authorization page opens',access_page.status_code==200 and 'Back to person' in access_page.get_data(as_text=True))
+check('Mismatched person rejected',owner.get(f'/admin/accounts/{user_id}/access?from_person=employee:999999').status_code==400)
+check('Personal permissions save',owner.post(f'/admin/accounts/{user_id}/access',data={'csrf_token':token,'from_person':target,'access_BANK':'all','role_BANK':''}).status_code==302)
+with SessionFactory() as db:check('Personal authorization persisted on linked account',db.scalar(select(m.RFOneAccountDomainAccess).where(m.RFOneAccountDomainAccess.account_id==user_id,m.RFOneAccountDomainAccess.domain_code=='BANK')).enabled)
+check('Nonadministrator cannot edit personal grants',staff.get(f'/admin/accounts/{user_id}/access').status_code==403)
+''' +t[i:];p.write_text(t,encoding='utf-8')

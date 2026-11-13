@@ -1,0 +1,2 @@
+from pathlib import Path
+p=Path('tmp/git-anagrafica-release/03 Software/RF-One Data Store/rfone_data_store/training/workspace.py');s=p.read_text(encoding='utf-8');s=s.replace("id=a.id, name=(graph.rows['person'][references[a.id][0]].full_name if references[a.id][0] else i.display_name), username=a.username,","central_person_name=(graph.rows['person'][references[a.id][0]].full_name if references[a.id][0] else None),id=a.id, name=i.display_name, username=a.username,");p.write_text(s,encoding='utf-8',newline='\n')

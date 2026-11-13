@@ -1,0 +1,2 @@
+from pathlib import Path
+p=Path('tmp/verify_registry_people_git.py');t=p.read_text(encoding='utf-8').replace('tmp/registry-people-release/source.zip','tmp/registry-contacts-release/source.zip').replace("if path.startswith('03 Software/') and '/tests/' not in path and path[12:] in z.namelist():", "if path.startswith('03 Software/') and '/tests/' not in path and not path.endswith('migrations/aws_applied_revision.json') and path[12:] in z.namelist():");Path('tmp/verify_registry_contacts_git.py').write_text(t,encoding='utf-8')
