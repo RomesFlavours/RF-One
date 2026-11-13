@@ -290,7 +290,7 @@ try:
         decisions = text(owner.get(f"/selection/posizioni/{pid}?tab=decisioni"))
         check("16. Interviews and Decisions work as before (calendar, booking, outcomes, history, close)",
               "Calendar" in interviews and "Restaurant" in interviews and "In person" in interviews
-              and "Hired" in decisions and "Close Job" in decisions and "History" in decisions)
+              and "Send to Training" in decisions and "Close Job" in decisions and "History" in decisions)
 
         # Interviews tab: candidate sheet, configuration, observation, clarify, scenarios, save and resume
         from workspace import interviews as iv
