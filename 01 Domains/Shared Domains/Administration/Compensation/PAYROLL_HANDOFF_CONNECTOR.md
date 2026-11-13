@@ -2,7 +2,8 @@
 
 **Version:** 0.1
 **Status:** Draft — canonical boundary concept (Product Owner decision)
-**Module:** Domain / Personnel Management (Shared Domain) / Compensation
+**Module:** Domain / Administration (Shared Domain) / Compensation
+**Relocated:** 2026-10-25 from `Shared Domains/Personnel Management/Compensation/` (Product Owner decision; content unchanged — see `README.md`).
 
 ---
 
@@ -165,4 +166,4 @@ No API integration, scheduled job, or generic connector framework was built — 
 
 - [README.md](README.md) — Compensation module purpose and boundary
 - [COMPENSATION_AND_INCOME_COMPOSITION_001.md](COMPENSATION_AND_INCOME_COMPOSITION_001.md) §22 — Payroll Provider boundary within the functional specification
-- [../../Administration/Payroll/README.md](../../Administration/Payroll/README.md) — the administrative execution/recording boundary downstream of the Connector
+- [../Payroll/README.md](../Payroll/README.md) — the administrative execution/recording boundary downstream of the Connector

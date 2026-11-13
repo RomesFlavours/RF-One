@@ -1,8 +1,9 @@
-# Compensation (Personnel Management)
+# Compensation (Administration)
 
 **Version:** 0.2
 **Status:** Draft — first functional specification
-**Module:** Domain / Personnel Management (Shared Domain) / Compensation
+**Module:** Domain / Administration (Shared Domain) / Compensation
+**Relocated:** 2026-10-25, from `Shared Domains/Personnel Management/Compensation/` to `Shared Domains/Administration/Compensation/`, by Product Owner decision: Compensation belongs to Administration, and Personnel Management is no longer a Domain. Content, economic rules, approved decisions and software behavior are unchanged; only ownership labels and links were updated.
 **Formerly named:** Payroll — renamed by explicit Product Owner decision (see "Why this module is not called Payroll" below). All content below is otherwise unchanged in substance.
 
 ---
@@ -51,6 +52,8 @@ RF-One is the source of the **economic composition and its approval**, never of 
 
 ## Relationship to `Administration/Payroll`
 
+Compensation and Payroll are sibling modules of Administration and must not be duplicated or merged: **Compensation determines and approves what is owed; Payroll and the external Payroll Provider handle their own processing and the acquisition of results.**
+
 `01 Domains/Shared Domains/Administration/Payroll/` already exists and remains unchanged: it is the **administrative execution/recording** boundary — what the external Payroll Provider actually processed, imported after the fact from a provider result. This module is the opposite direction of the same overall flow: it **determines, validates and approves**, before external processing, what RF-One expects the compensation to be.
 
 ```text
@@ -75,6 +78,7 @@ Neither module redefines or duplicates the other. `Administration/Payroll` never
 ## Current authoritative functional specification
 
 - [COMPENSATION_AND_INCOME_COMPOSITION_001.md](COMPENSATION_AND_INCOME_COMPOSITION_001.md) — the authoritative V1 functional specification (formerly `EMPLOYEE_INCOME_COMPOSITION_AND_PAYROLL_001.md`): Employee identity and Legal Entity separation, Pay Period, Compensation Engine (Hourly/Salary, multi-rate), effective dating, Worked Time boundary, Overtime/Rule Matrix boundary, Tips Engine boundary, Incentive Engine (Metric/Event, Incentive Rule types, Event Log, uniqueness, attribution confidence, Incentive Contributions and the Recognized Incentive, zero floor, Pool creation and participation, §16.2 Pool Participation governance — Effective Dating/Set By/Reason/Status, §12.1 V1 implementation scope — FIXED/PER_UNIT/PERCENT_OF_VALUE/THRESHOLD implemented first; TIERED/POOL canonical but deferred), Authorized Adjustments, the Income Composition Engine, explainability, Compensation states, approval, the Approved Compensation Snapshot, post-approval corrections, and the Rule Matrix/Payroll Provider boundaries.
+- [Compensation Terms.md](Compensation%20Terms.md) — the Employee-specific, temporal compensation configuration (HOURLY/SALARIED, multiple concurrent functions/rates), Approved under TASK_PAYROLL_001; owned by this module and consumed by Payroll (relocated here from `Administration/Payroll/` on 2026-10-25, consistent with the earlier Product Owner decision recorded in `03 Software/RF-One Data Store/PAYROLL.md` §3).
 - [OVERTIME_RULE_MATRIX_001.md](OVERTIME_RULE_MATRIX_001.md) — the Overtime Rule Matrix foundation: the canonical `OvertimeRule` model (jurisdiction, scope, thresholds, multiplier, regular-rate method, overlap method, effective dating) that gives §8's "Rule Matrix" reference a concrete target. Schema/metadata only — no Overtime Evaluator is built yet.
 - [PAYROLL_HANDOFF_CONNECTOR.md](PAYROLL_HANDOFF_CONNECTOR.md) — the canonical boundary between Approved Compensation Data and the external Payroll Provider, valid whether automated or a manual human handoff.
 
@@ -128,9 +132,10 @@ The **RF-One → Payroll Provider Data Contract** — the exact field-level data
 
 ## Related documents
 
-- [../README.md](../README.md) — Personnel Management Domain
+- [../README.md](../README.md) — Administration Domain
+- [Compensation Terms.md](Compensation%20Terms.md) — Employee-specific compensation configuration (the hourly wage source)
 - [PAYROLL_HANDOFF_CONNECTOR.md](PAYROLL_HANDOFF_CONNECTOR.md) — the canonical Compensation → Payroll Provider handoff boundary
-- [../../Administration/Payroll/README.md](../../Administration/Payroll/README.md) — the administrative execution/recording boundary this module hands its approved result to
-- [../../Administration/Personnel Cost.md](../../Administration/Personnel%20Cost.md) — `Total Employee Cost`, the Administration-level canonical cost concept this module's Approved Compensation eventually feeds
+- [../Payroll/README.md](../Payroll/README.md) — the sibling administrative execution/recording module this module hands its approved result to
+- [../Personnel Cost.md](../Personnel%20Cost.md) — `Total Employee Cost`, the Administration-level canonical cost concept this module's Approved Compensation eventually feeds
 - [../../../Business Domain/Restaurant/Tips/README.md](../../../Business%20Domain/Restaurant/Tips/README.md) — the Tips Engine this module consumes without duplicating
 - [../../Taxation/README.md](../../Taxation/README.md) — jurisdiction/tax boundary this module's Rule Matrix dependency relates to

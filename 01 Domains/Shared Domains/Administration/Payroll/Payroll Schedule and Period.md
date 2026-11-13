@@ -55,7 +55,7 @@ The date an Employee is actually paid for a processed Payroll Period. Distinct f
 
 ## Workweek
 
-**Ownership note (Product Owner decision):** `WorkweekDefinition` does not belong to Administration/Payroll merely because Payroll eventually consumes or reports results. It exists to bound the evaluation window RF-One Compensation / Rule Matrix requires for rules such as Overtime, so its conceptual ownership belongs to Compensation / Compensation Rules / Rule Matrix — see `01 Domains/Shared Domains/Personnel Management/Compensation/OVERTIME_RULE_MATRIX_001.md`, "WorkweekDefinition ownership." It is described here only because this document already distinguishes it from `PayrollSchedule`/`PayrollPeriod`; the table, fields and behavior are unchanged.
+**Ownership note (Product Owner decision):** `WorkweekDefinition` does not belong to Administration/Payroll merely because Payroll eventually consumes or reports results. It exists to bound the evaluation window RF-One Compensation / Rule Matrix requires for rules such as Overtime, so its conceptual ownership belongs to Compensation / Compensation Rules / Rule Matrix — see `01 Domains/Shared Domains/Administration/Compensation/OVERTIME_RULE_MATRIX_001.md`, "WorkweekDefinition ownership." It is described here only because this document already distinguishes it from `PayrollSchedule`/`PayrollPeriod`; the table, fields and behavior are unchanged.
 
 A recurring legal/compensation evaluation interval — **not** determined by payroll frequency.
 

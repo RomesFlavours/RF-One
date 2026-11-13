@@ -8,7 +8,8 @@ TASK_PAYROLL_001 — the first runtime/database implementation of the Administra
 
 ```text
 Payroll ≠ Restaurant
-Payroll ≠ Personnel Management
+Payroll ≠ Compensation
+Payroll ≠ Management
 Payroll ≠ Taxation
 Payroll ≠ ADP
 Payroll ≠ jurisdiction/labor-rule law
@@ -26,7 +27,7 @@ Concretely: no table in this schema has an `ADP`-specific column; `SourceSystem(
 
 ## 3. Compensation Terms
 
-`rfone_data_store/payroll_calculation/compensation.py` (relocated from `rfone_data_store/payroll/compensation.py` by explicit Product Owner decision — this helper module and the `employee_compensation_terms` table are Compensation-owned/shared, consumed by this Administration/Payroll package without being owned by it) + the `employee_compensation_terms` table. `terms_valid_during` resolves which terms apply to an interval; `detect_mid_period_conflict`/`review_status_for_period` implement the `MANUAL_REVIEW_REQUIRED` rule for an incompatible same-`function_label` rate change inside one Payroll Period (`01 Domains/Shared Domains/Administration/Payroll/Compensation Terms.md`). A `CheckConstraint` on the table enforces that `HOURLY` rows carry `hourly_rate_minor` (and no `salaried_period_amount_minor`) and vice versa for `SALARIED`.
+`rfone_data_store/payroll_calculation/compensation.py` (relocated from `rfone_data_store/payroll/compensation.py` by explicit Product Owner decision — this helper module and the `employee_compensation_terms` table are Compensation-owned/shared, consumed by this Administration/Payroll package without being owned by it) + the `employee_compensation_terms` table. `terms_valid_during` resolves which terms apply to an interval; `detect_mid_period_conflict`/`review_status_for_period` implement the `MANUAL_REVIEW_REQUIRED` rule for an incompatible same-`function_label` rate change inside one Payroll Period (`01 Domains/Shared Domains/Administration/Compensation/Compensation Terms.md`, moved there from `Administration/Payroll/` on 2026-10-25). A `CheckConstraint` on the table enforces that `HOURLY` rows carry `hourly_rate_minor` (and no `salaried_period_amount_minor`) and vice versa for `SALARIED`.
 
 ---
 

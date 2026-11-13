@@ -2,7 +2,8 @@
 
 **Version:** 1.0
 **Status:** Draft — authoritative V1 functional specification, incorporating Product Owner decisions verbatim; pending formal architectural sign-off.
-**Module:** Domain / Personnel Management (Shared Domain) / Compensation
+**Module:** Domain / Administration (Shared Domain) / Compensation
+**Relocated:** 2026-10-25 from `Shared Domains/Personnel Management/Compensation/` (Product Owner decision; content unchanged — see `README.md`).
 **Origin:** Employee Income Composition & Payroll functional specification task (Product Owner decisions, 2026-09-08); document and module renamed from Payroll to Compensation by later Product Owner decision — see `README.md`, "Why this module is not called Payroll."
 **Formerly titled:** Employee Income Composition & Payroll — V1 Functional Specification (`EMPLOYEE_INCOME_COMPOSITION_AND_PAYROLL_001.md`)
 
@@ -253,7 +254,7 @@ Dining Intelligence / Reviews
 Training
 Operational Knowledge
 Performance
-Workforce
+Management / Organization (formerly Workforce)
 Customer Experience
 Cost Control
 future RF-One Domains
@@ -775,8 +776,9 @@ Legal Entity separation applies throughout — every branch below is evaluated *
 
 ```text
 RF-One Domains (Sales, Dining Intelligence/Reviews, Training,
-Operational Knowledge, Performance, Workforce, Customer
-Experience, Cost Control, future Domains)
+Operational Knowledge, Performance, Management/Organization
+(formerly Workforce), Customer Experience, Cost Control,
+future Domains)
     |
     v
 Event / Metric Log  (per Legal Entity/Location where applicable — §13)
@@ -840,9 +842,9 @@ Restating the scope boundaries stated throughout this document, in one place:
 
 - [README.md](README.md) — this module's purpose and its relationship to `Administration/Payroll`
 - [PAYROLL_HANDOFF_CONNECTOR.md](PAYROLL_HANDOFF_CONNECTOR.md) — the canonical Connector boundary referenced in §22
-- [../README.md](../README.md) — Personnel Management Domain
-- [../../Administration/Payroll/README.md](../../Administration/Payroll/README.md) — the administrative execution/recording boundary (the external Payroll Provider) this specification's Approved Pay Data is handed to
-- [../../Administration/Personnel Cost.md](../../Administration/Personnel%20Cost.md) — `Total Employee Cost`, the Administration-level canonical cost concept this specification's approved Gross Income eventually feeds
+- [../README.md](../README.md) — Administration Domain
+- [../Payroll/README.md](../Payroll/README.md) — the administrative execution/recording boundary (the external Payroll Provider) this specification's Approved Pay Data is handed to
+- [../Personnel Cost.md](../Personnel%20Cost.md) — `Total Employee Cost`, the Administration-level canonical cost concept this specification's approved Gross Income eventually feeds
 - [../../../Business Domain/Restaurant/Tips/README.md](../../../Business%20Domain/Restaurant/Tips/README.md) — the Tips Engine (§9)
 - [../../Taxation/README.md](../../Taxation/README.md) — jurisdiction/tax boundary the Rule Matrix (§8, §21) relates to
 - [../../Performance/README.md](../../Performance/README.md) — one possible Incentive Event source Domain (§10)

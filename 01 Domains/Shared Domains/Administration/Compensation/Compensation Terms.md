@@ -2,8 +2,9 @@
 
 **Version:** 1.0
 **Status:** Approved
-**Module:** Administration Domain / Payroll
+**Module:** Administration Domain / Compensation
 **Origin:** TASK_PAYROLL_001
+**Relocated:** 2026-10-25, from `Administration/Payroll/` to `Administration/Compensation/`. Ownership follows the earlier Product Owner decision recorded in `03 Software/RF-One Data Store/PAYROLL.md` §3 (the `employee_compensation_terms` table and its helper are Compensation-owned, consumed by Administration/Payroll without being owned by it). The approved content below is unchanged; where it says "Payroll", read it as the consumer that processes these terms, not as their owner.
 
 ---
 

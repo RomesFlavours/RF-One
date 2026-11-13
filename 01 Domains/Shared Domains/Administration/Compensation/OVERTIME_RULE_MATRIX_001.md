@@ -2,7 +2,8 @@
 
 **Version:** 0.1
 **Status:** Draft — schema/metadata foundation only, no evaluator yet
-**Module:** Domain / Personnel Management (Shared Domain) / Compensation
+**Module:** Domain / Administration (Shared Domain) / Compensation
+**Relocated:** 2026-10-25 from `Shared Domains/Personnel Management/Compensation/` (Product Owner decision; content unchanged — see `README.md`).
 **Origin:** Overtime Rule Matrix foundation task (Product Owner decision, 2026-09-08)
 
 ---
@@ -172,7 +173,7 @@ None of the calculations listed above is deferred RF-One work-in-progress — un
 
 - [COMPENSATION_AND_INCOME_COMPOSITION_001.md](COMPENSATION_AND_INCOME_COMPOSITION_001.md) §8, §21 — the functional specification sections this document gives a concrete target
 - [PAYROLL_HANDOFF_CONNECTOR.md](PAYROLL_HANDOFF_CONNECTOR.md) — the canonical boundary through which RF-One's source facts and rule context reach the Payroll Provider that performs the statutory calculation described in this document
-- [README.md](README.md) — Compensation (Personnel Management) module
+- [README.md](README.md) — Compensation (Administration) module
 - `03 Software/RF-One Data Store/rfone_data_store/models.py` — `OvertimeRule` (canonical schema)
 - `03 Software/RF-One Data Store/rfone_data_store/overtime_rule_matrix_validation.py` — representative-shape test fixtures (not a production legal database)
 - `03 Software/RF-One Data Store/rfone_data_store/payroll_calculation/workweek.py` — the `WorkweekDefinition` evaluation-window helper (`workweeks_within_period`), relocated here from the Administration/Payroll package per the ownership decision above
