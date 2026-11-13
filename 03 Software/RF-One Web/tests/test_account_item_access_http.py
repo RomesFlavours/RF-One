@@ -56,9 +56,12 @@ from rfone_data_store import rfone_account_service as account_service  # noqa: E
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 TAB_RE = re.compile(r'class="module-tab[^"]*"\s+href="([^"]+)"')
 PASSWORD = "ItemAccess123!"
-BANK_PAGES = {item.code: path for item, path in zip(DOMAINS_BY_CODE["BANK"].items, (
-    "/bank", "/bank/review", "/bank/export", "/bank/sources", "/bank/ai-rules", "/bank/configuration",
-    "/bank/instructions"))}
+_BANK_PATHS = {  # by item code, so an item added to the registry cannot shift the others
+    "work": "/bank/work", "import": "/bank", "guided": "/bank/reconcile/", "review": "/bank/review",
+    "export": "/bank/export", "source": "/bank/sources", "ai_rules": "/bank/ai-rules",
+    "who_rules": "/bank/who-search-text", "why_signals": "/bank/why-signals", "split": "/bank/split",
+    "configuration": "/bank/configuration", "instructions": "/bank/instructions"}
+BANK_PAGES = {item.code: _BANK_PATHS[item.code] for item in DOMAINS_BY_CODE["BANK"].items}
 ORG_PAGES = {
     "chart": "/admin/organization", "positions": "/admin/org/positions",
     "process_ownerships": "/admin/org/process-ownerships", "fallback_policies": "/admin/org/fallback-policies",
@@ -155,7 +158,9 @@ def main() -> int:
         r = full.get(path)
         check(f"A: whole BANK opens {path}", r.status_code == 200, str(r.status_code))
     tabs = TAB_RE.findall(full.get("/bank/review").get_data(as_text=True))
-    check("A: whole BANK shows every tab, in registry order", tabs == list(BANK_PAGES.values()), f"{tabs}")
+    # BANK_WHO_RULES_001 / BANK_UPLOAD_AND_RECONCILE_001: out of the menu, reachable by address.
+    menu = [p for c, p in BANK_PAGES.items() if c not in ("guided", "ai_rules", "import")]
+    check("A: whole BANK shows every menu tab, in registry order", tabs == menu, f"{tabs}")
 
     # ---- B: selected items only ---------------------------------------------------------
     partial = login("partial")

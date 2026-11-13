@@ -53,6 +53,8 @@ class DomainItem:
     endpoint: str  # the item's own page, for navigation (`url_for`)
     paths: tuple[str, ...] = ()
     exact_paths: tuple[str, ...] = ()
+    # False: the page keeps its access rules and stays reachable by its address, but is not a menu tab.
+    in_menu: bool = True
 
     def owns(self, path: str) -> bool:
         return path in self.exact_paths or any(path == p or path.startswith(p + "/") for p in self.paths)
@@ -138,22 +140,34 @@ DOMAINS: tuple[DomainDefinition, ...] = (
         # the WHO/WHY pickers and creation dialogs (/bank/whos, /bank/whys,
         # /bank/who-rules, /bank/manual-reconciliation), used from several tabs.
         items=(
-            DomainItem("import", "Import and Review", "bank_home", exact_paths=("/bank",),
-                       paths=("/bank/upload", "/bank/import", "/bank/batches", "/bank/monthly")),
+            # BANK_UPLOAD_AND_RECONCILE_001 (Product Owner, 2026-11-02): the daily path — upload, check
+            # completeness, reconcile, complete by hand, QBO — with no month to choose. First, so it is
+            # where the Bank is entered. The month-by-month Import and Review stays reachable from it.
+            DomainItem("work", "Carica e riconcilia", "bank_work", paths=("/bank/work",)),
+            DomainItem("import", "Import and Review (by month)", "bank_home", exact_paths=("/bank",),
+                       paths=("/bank/upload", "/bank/import", "/bank/batches", "/bank/monthly"), in_menu=False),
             # Bank unification Phase 1 (2026-10-24): the C-Bank Dashboard and
             # Guided Reconciliation Wizard, served inside this application
             # (`bank_guided_reconciliation.py`) — only where it is mounted.
-            *((DomainItem("guided", "Guided Reconciliation", "bank_guided", paths=("/bank/reconcile",)),)
+            # BANK_WHO_RULES_001 (2026-10-25): WHO Rules is the only rules engine in the menu; the engine
+            # dashboard and Rules and profiles stay reachable by address, out of the menu.
+            *((DomainItem("guided", "Riconciliazione guidata", "bank_guided", paths=("/bank/reconcile",), in_menu=False),)
               if bank_guided_reconciliation.available() else ()),
-            DomainItem("review", "Review Transactions", "bank_review",
+            DomainItem("review", "Controlla movimenti", "bank_review",
                        paths=("/bank/review", "/bank/reconciliation", "/bank/transactions")),
-            DomainItem("export", "Monthly Export", "bank_export", paths=("/bank/export",)),
-            DomainItem("source", "Source", "bank_sources",
+            DomainItem("export", "Esportazione mensile", "bank_export", paths=("/bank/export",)),
+            DomainItem("source", "Conti e carte", "bank_sources",
                        paths=("/bank/sources", "/bank/source-profiles", "/bank/instruments", "/bank/entities",
                               "/bank/accounting-dedup")),
-            DomainItem("ai_rules", "Rules and profiles", "bank_ai_rules", paths=("/bank/ai-rules",)),
-            DomainItem("configuration", "Configuration", "bank_configuration", paths=("/bank/configuration",)),
-            DomainItem("instructions", "Instructions", "bank_instructions", paths=("/bank/instructions",)),
+            DomainItem("ai_rules", "Rules and profiles", "bank_ai_rules", paths=("/bank/ai-rules",), in_menu=False),
+            # BANK_WHO_RULES_001 (2026-10-25): the page where WHO recognition is defined and refined.
+            DomainItem("who_rules", "Regole WHO", "bank_who_search_text_page", paths=("/bank/who-search-text",)),
+            # BANK_WHO_WHY_MODE_001 (2026-11-01): recognised WHO whose WHY is not determinable; WHO WHY rules.
+            DomainItem("why_signals", "Regole WHY", "bank_why_signals_page", paths=("/bank/why-signals",)),
+            # BANK_SPLIT_ALLOCATION_001 (2026-11-01): one movement, several classification lines.
+            DomainItem("split", "Ripartizioni", "bank_split_page", paths=("/bank/split",)),
+            DomainItem("configuration", "Configurazione", "bank_configuration", paths=("/bank/configuration",)),
+            DomainItem("instructions", "Istruzioni", "bank_instructions", paths=("/bank/instructions",)),
         ),
     ),
     DomainDefinition(
