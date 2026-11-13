@@ -1,0 +1,18 @@
+<section id="clover-identities">
+<h2>{{ 'Identità Clover da confermare' if registry_it else 'Clover identities to confirm' }} ({{ clover_pending|length }})</h2>
+<p>{{ 'Conferma a chi appartiene ogni nominativo Clover. I turni in attesa saranno attribuiti automaticamente; poi ricalcola le mance e finalizza il periodo.' if registry_it else 'Confirm who each Clover identity belongs to. Held shifts are attributed automatically; then recalculate tips and finalize the period.' }}</p>
+{% for item in clover_pending %}
+<article class="domain-card" data-rr-key="clover:{{ item.link.id }}">
+<h3>{{ item.link.snapshot.name or item.link.external_employee_id }} · {{ item.location.name }}</h3>
+<p>{{ item.link.snapshot.email or '' }} · {{ 'Turni in attesa' if registry_it else 'Held shifts' }}: <strong>{{ item.shifts|length }}</strong></p>
+{% if item.shifts %}<details><summary>{{ 'Vedi i turni (ora della sede)' if registry_it else 'View shifts (location time)' }}</summary><ul>{% for shift in item.shifts %}<li>{{ shift.start }} · {{ shift.id }}</li>{% endfor %}</ul></details>{% endif %}
+{% if item.candidates %}<p>{{ 'Possibili corrispondenze, da verificare' if registry_it else 'Possible matches, requiring review' }}: {% for candidate in item.candidates %}{{ candidate.employee.display_name }}{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+<form method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" name="action" value="clover_confirm"><input type="hidden" name="tab" value="people"><input type="hidden" name="link_id" value="{{ item.link.id }}">
+<label>{{ 'Persona RF-One' if registry_it else 'RF-One person' }} <select name="employee_id"><option value="">{{ 'Scegli una persona' if registry_it else 'Choose a person' }}</option>{% for employee in clover_people %}<option value="{{ employee.id }}">{{ employee.display_name }}{% if employee.location_names %} · {{ employee.location_names|join(', ') }}{% endif %}</option>{% endfor %}</select></label>
+<button type="submit">{{ 'Collega alla persona' if registry_it else 'Link to person' }}</button>
+<button type="submit" name="create_new" value="yes">{{ 'Conferma che è una persona nuova' if registry_it else 'Confirm this is a new person' }}</button>
+</form></article>
+{% else %}<p>{{ 'Nessuna identità Clover in attesa.' if registry_it else 'No Clover identities awaiting confirmation.' }}</p>{% endfor %}
+</section>
