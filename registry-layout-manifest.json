@@ -1,0 +1,11 @@
+{
+  "baseline_commit": "bf9ee0c805318a42b81875f9aae3a85e3e5133ca",
+  "baseline_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web@sha256:a870a383890078f0e2009839ef69f131b00c11d6b157cac8ab9b3c98666cbe6a",
+  "scope": "Training visual standard for Registry; existing production functionality retained; no schema or data changes",
+  "overlay": {
+    "03 Software/RF-One Web/templates/role_profiles.html": "90038b63ec7760f861221e3a01d9426fa8de80d143958ad2d79117b605e21ebe",
+    "03 Software/RF-One Web/static/css/registry-layout.css": "5c973aa97fd03ee1a4e1e85d0e76b4615aeb6b1fd7a2dec8a38d78834dab9a6a",
+    "03 Software/RF-One Web/templates/help/registry.html": "facb7864588a4473c66bcfad20e70d3513eb3860fd38b19a0478e0ca55ae7d1e"
+  },
+  "local_italian_preserved": true
+}

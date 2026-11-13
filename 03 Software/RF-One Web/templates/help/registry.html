@@ -1,4 +1,10 @@
 <section id="registry">
+{% if registry_it %}<p>Usa le schede sottolineate in alto per passare fra Persone e assegnazioni, Ruoli, Aree e Aziende. La scheda attiva è evidenziata. Come funziona, a destra delle schede, apre questo aiuto senza lasciare il lavoro.</p>{% else %}<p>Use the underlined tabs above to switch between People &amp; assignments, Roles, Areas and Companies. The active tab is highlighted. How Works at the right opens this help without leaving your work.</p>{% endif %}
+{% if tab=='roles' %}<p>{{ 'Crea o modifica un ruolo e seleziona le aree. Gestisci permessi apre le autorizzazioni del ruolo; i permessi dei ruoli si sommano per azienda. Archivia conserva lo storico; Ripristina riattiva il ruolo.' if registry_it else 'Create or edit a role and select its areas. Manage permissions opens its domain permissions; role grants add together per company. Archive retains history; Restore reactivates the role.' }}</p>
+{% elif tab=='areas' %}<p>{{ 'Crea o modifica un’area. Archivia conserva lo storico e la rimuove dalle nuove scelte; Ripristina la rende nuovamente disponibile.' if registry_it else 'Create or edit an area. Archive preserves history and removes it from new selections; Restore makes it available again.' }}</p>
+{% elif tab=='companies' %}<p>{{ 'Consulta aziende e gruppo, verifica lo stato e usa Archivia o Ripristina. L’appartenenza al gruppo non assegna automaticamente accesso alle altre aziende.' if registry_it else 'Review companies and the group, check their status and use Archive or Restore. Group membership does not automatically grant access to other companies.' }}</p>
+{% else %}<p>{{ 'Apri la tabella Persone: filtra per nome, azienda o ruolo e scegli Modifica, oppure Aggiungi persona. I filtri riguardano soltanto la visualizzazione.' if registry_it else 'Open the People table: filter by name, company or role and choose Edit, or Add person. Filters only change the display.' }}</p>{% endif %}
+
 {% if registry_it %}
 <p>Registry gestisce persone, aziende, aree, ruoli e autorizzazioni. Nella scheda Persone trovi anche le identità Clover da confermare.</p>
 <p>Controlla nome, sede e turni in attesa. Le ore sono quelle locali della sede. Scegli la persona RF-One corretta e premi Collega alla persona. Crea una persona nuova solo se non esiste già. I suggerimenti non confermano alcun abbinamento.</p>
@@ -11,3 +17,14 @@
 </section>
 
 <p>New Training students appear as external RF-One accounts in Registry. Their central person identity and Training account are explicitly linked, without creating an employee or granting other modules. Students activate using their personal email link and replace the initial password before accessing RF-One.</p>
+
+<section id="registry-person-editor"><h3>Person editor</h3><p>Enter the person's name and contact details, select companies, and add roles within each company and area. Save changes records the profile. Other system authorizations and Reset password open the linked account in a separate window while retaining this draft. Dismiss person requires a dismissal date and preserves history. Cancel, X and Escape close without saving. Opening and closing Help preserves the draft.</p></section>
+<section id="registry-role-dialog"><h3>Role</h3>{% if registry_it %}<p>Crea o modifica il nome del ruolo e seleziona le aree. Salva ruolo registra le modifiche; Annulla e X chiudono senza salvare.</p>{% else %}<p>Create or edit the role name and select its areas. Save role records changes; Cancel and X close without saving.</p>{% endif %}</section>
+
+<section id="registry-area-dialog"><h3>Area</h3>{% if registry_it %}<p>Inserisci il nome dell’area e premi Salva area. Annulla e X chiudono senza salvare.</p>{% else %}<p>Enter the area name and select Save area. Cancel and X close without saving.</p>{% endif %}</section>
+
+<section id="registry-permission-dialog"><h3>Role permissions</h3>{% if registry_it %}<p>Per ogni dominio scegli nessun accesso, intero dominio o funzioni selezionate e il livello disponibile. Salva permessi registra le autorizzazioni del ruolo; altri ruoli aggiungono i propri permessi.</p>{% else %}<p>For each domain choose no access, whole domain or selected functions and the available level. Save permissions records the role grants; other roles add their permissions.</p>{% endif %}</section>
+
+<section id="registry-membership-dialog"><h3>Add company</h3>{% if registry_it %}<p>Scegli un’azienda attiva e conferma per collegarla alla persona. Annulla e X chiudono senza salvare.</p>{% else %}<p>Choose an active company and confirm to link it to the person. Cancel and X close without saving.</p>{% endif %}</section>
+
+<section id="registry-assignment-dialog"><h3>Assign role</h3>{% if registry_it %}<p>Scegli l’appartenenza aziendale, il ruolo e una delle sue aree; conferma per registrare l’assegnazione. Annulla e X chiudono senza salvare.</p>{% else %}<p>Choose the company membership, role and one of its areas; confirm to record the assignment. Cancel and X close without saving.</p>{% endif %}</section>
