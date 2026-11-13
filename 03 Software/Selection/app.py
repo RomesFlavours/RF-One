@@ -244,7 +244,9 @@ def _require_rfone_login_and_selection_access():
 
 @app.context_processor
 def _rfone_navigation():
-    return {"rfone_login_mode": RFONE_LOGIN_MODE,
+    return {"registry_it":os.environ.get('RFONE_UI_LANGUAGE')=='it',
+            "ui":lambda value:({'How this page works':'Come funziona questa pagina','Close':'Chiudi'}.get(value,value) if os.environ.get('RFONE_UI_LANGUAGE')=='it' else value),
+            "rfone_login_mode": RFONE_LOGIN_MODE,
             "rfone_home_url": (_rfone_web_base_url() + "/") if RFONE_LOGIN_MODE and _rfone_web_base_url() else None}
 
 
@@ -456,10 +458,15 @@ def _process_one_upload(file_storage, target_role: str) -> dict:
             # SELECTION_FOH_TEAM_LEADER_001 — the same résumé for another
             # target role is a new application reusing the document; for the
             # same target role it stays a duplicate (nothing created).
-            application, created = app_svc.application_for_known_resume(
-                session, raw_resume_id=result.duplicate_of_raw_resume_id, restaurant_id=restaurant.id,
-                target_role=target_role,
-            )
+            try:
+                application, created = app_svc.application_for_known_resume(
+                    session, raw_resume_id=result.duplicate_of_raw_resume_id, restaurant_id=restaurant.id,
+                    target_role=target_role,
+                )
+            except ValueError as exc:
+                session.rollback()
+                application,created=None,False
+                status,error=PARTIAL,str(exc)
             if created:
                 seed_default_review_priority_policy(session, restaurant_id=restaurant.id)  # idempotent
                 sig_svc.generate_resume_stage_signals(session, application.id)
@@ -474,13 +481,18 @@ def _process_one_upload(file_storage, target_role: str) -> dict:
             # Task 3C: every successfully imported résumé becomes one
             # Application, resolved/linked to its CandidatePerson (best-
             # effort, by email) — never blocks or fails the upload itself.
-            application = app_svc.create_application(
-                session, candidate_id=result.candidate_id, restaurant_id=restaurant.id, target_role=target_role,
-            )
-            seed_default_review_priority_policy(session, restaurant_id=restaurant.id)  # idempotent
-            sig_svc.generate_resume_stage_signals(session, application.id)
-            session.commit()
-            application_id = application.id
+            try:
+                application = app_svc.create_application(
+                    session, candidate_id=result.candidate_id, restaurant_id=restaurant.id, target_role=target_role,
+                )
+                seed_default_review_priority_policy(session, restaurant_id=restaurant.id)  # idempotent
+                sig_svc.generate_resume_stage_signals(session, application.id)
+                session.commit()
+                application_id = application.id
+            except ValueError as exc:
+                session.rollback()
+                status,error=PARTIAL,str(exc)
+
 
     if result.status == "FAILED":
         app.logger.warning("Resume import failed for %r: %s", filename, result.error)

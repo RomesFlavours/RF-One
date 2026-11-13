@@ -84,6 +84,8 @@ def resolve_or_create_person(
     Application itself has an id, so any STRONG/POSSIBLE name-based
     suggestions can be recorded against it."""
 
+    from .. import registry_identity as registry
+    registry.lock_evidence(session,full_name,email,phone)
     normalized_email = idm.normalize_email(email)
     normalized_phone = idm.normalize_phone(phone)
     normalized_name = idm.normalize_name(full_name)
@@ -100,14 +102,19 @@ def resolve_or_create_person(
         if not existing.primary_phone and phone:
             existing.primary_phone = phone
             existing.primary_phone_normalized = normalized_phone
+        registry.resolve_person(session,name=existing.full_name or full_name,email=normalized_email,phone=phone,candidate=existing)
         return existing, False
 
+    canonical=registry.resolve_person(session,name=full_name,email=normalized_email,phone=phone)
+    linked_candidate=registry.candidate_for_person(session,canonical.id)
+    if linked_candidate is not None:return linked_candidate,False
     person = m.CandidatePerson(
         restaurant_id=restaurant_id, full_name=full_name, primary_email=normalized_email,
         primary_phone=phone, primary_phone_normalized=normalized_phone, normalized_name=normalized_name,
     )
     session.add(person)
     session.flush()
+    registry.bind_context(session,canonical,'CANDIDATE',person)
     return person, True
 
 

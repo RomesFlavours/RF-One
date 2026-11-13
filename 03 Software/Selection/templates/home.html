@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+{% with help_section='selection_registry' %}{% include '_how_works.html' %}{% endwith %}
 
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
