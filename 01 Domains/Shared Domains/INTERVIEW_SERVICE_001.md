@@ -12,6 +12,16 @@ Il motore è comune a RF1. Know-How è la prima applicazione concreta; Selection
 
 ## Responsabilità
 
+The approved 2026-11-03
+[Person Organizational Applicability contract](PERSON_ORGANIZATIONAL_APPLICABILITY_001.md)
+governs employee recipients across Interviews and all other modules. Interviews
+reads applicability and active status through shared Anagrafica services and
+revalidates them before a new request. It must not independently restrict
+applicability to the requester's workplace or maintain a separate scope
+configuration. Group-wide applicability is explicit; it is not an absent site.
+Account access and historical interview visibility remain separately authorized.
+This rule does not assert that all existing prototype implementations comply.
+
 | Livello | Responsabilità funzionale |
 |---|---|
 | Interazione comune | Comprensione ed espressione attraverso voce e testo, gestione del dialogo e delle interruzioni |
@@ -80,3 +90,21 @@ Fonte primaria delle decisioni: messaggi utente della conversazione corrente suc
 Restano da concordare: contratto di specializzazione dei domini, responsabilità tecniche, criteri di completamento, approvazioni, accessi, programmazione e contatto, architettura vocale e conservazione dei dati. Per Know-How restano validi gli [open decisions del dominio](Know-How/OPEN_DECISIONS.md), inclusa la ricostruzione storica incompleta di S2.
 
 Il [documento per S.](Know-How/ARCHITECTURE_UPDATE_FOR_S.md) chiede un parere su questa direzione; non attesta un suo assenso e non viene inviato automaticamente.
+
+## S5 — Primo flusso richiesto e implementazione locale
+
+**Decisione utente successiva, 2026-11-01:** una pagina generica permette all'admin di selezionare la persona e spiegare la finalità all'AI; la persona trova l'intervista richiesta nella home MyRF; a conclusione l'admin apre una pagina separata con le risultanze dall'elenco delle interviste. Non viene assegnato un nome commerciale al motore.
+
+Il codice locale realizza questo primo flusso nel pacchetto proposto `rfone_data_store/interviews/` e nelle pagine RF-One Web. La specializzazione iniziale è Know-How; il motore separa la sua direzione dall'orchestrazione. Voce e testo sono disponibili attraverso i controlli browser nei browser compatibili, con riconoscimento e sintesi, senza persistenza dell'audio. La sessione viene indirizzata a un account RF1 attivo esistente. Per questa versione l'admin che la richiede ne vede le risultanze, il destinatario ne svolge il dialogo; non viene concessa condivisione ad altri utenti.
+
+Il completamento è esplicito e le risultanze restano candidate. Nuovi stati tecnici e schema della sessione sono dettagli della prima implementazione, non una definizione definitiva del ciclo di vita universale della conoscenza. Scheduling temporale, richieste autonome AI, validazione e condivisione interaziendale non sono implementati da questo flusso.
+
+Il supporto vocale dipende dalle capacità e dai servizi del browser: non certifica compatibilità universale o trattamento locale dell'audio. L'adozione di un provider vocale server resta aperta. La migrazione è additiva e non viene eseguita all'avvio o sul database operativo durante lo sviluppo. Vedere [runtime e verifica](../../03%20Software/RF-One%20Web/INTERVIEWS.md) per limiti e attivazione.
+
+## S6 — Risultanze e anagrafica unica
+
+**Decisione utente successiva, 2026-11-01:** completare la pagina dei risultati e collegare le tre pagine del prototipo all'anagrafica. L'utente chiarisce: «L'anagrafica incorpora tutti i dipendenti e gli esterni, inutile avere 2 diverse anagrafiche».
+
+L'implementazione locale riusa i record persona già presenti nel database, senza creare una seconda tabella di nomi. I record dipendente e gli account RF1 sono collegamenti espliciti alla persona; l'account fornisce l'accesso a MyRF. La richiesta seleziona la persona, il dialogo identifica la stessa persona e le risultanze rimandano alla sua scheda, dalla quale si consulta lo storico delle interviste del richiedente. Un esterno può essere registrato senza account; per consegnargli un'attività MyRF occorre un account attivo collegato.
+
+I record preesistenti non collegati restano visibili nell'unica anagrafica e richiedono riconciliazione esplicita. Nessuna omonimia fonde automaticamente storici o concede accessi. La scelta tecnica di riusare l'identità fisica storicamente chiamata `CandidatePerson` è documentata nel [runtime](../../03%20Software/RF-One%20Web/PEOPLE_DIRECTORY.md); non modifica le valutazioni specialistiche di Selection e non afferma che tutte le identità storiche siano già state riconciliate. Il database operativo non viene migrato nello sviluppo del prototipo.

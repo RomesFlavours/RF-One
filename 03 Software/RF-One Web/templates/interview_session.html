@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block page_title %}Interview · RF-One{% endblock %}
+{% block content %}
+{% set help_section = 'interview_session' %}{% include '_how_works.html' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/interviews.css') }}?v=1">
+<div class="interview-page">
+<p class="breadcrumb"><a href="{{ url_for('home') }}">MyRFOne</a> / Interview</p>
+<div class="interview-heading"><div><h1>Interview</h1><p class="interview-meta">Requested by {{ requester.display_name|short_name }}</p></div>
+<span id="interview-state" class="interview-state">{{ interview_status_labels[row.status] }}</span></div>
+{% if person %}<p class="interview-meta">Interview for {{ person.full_name }}</p>{% endif %}
+<section class="interview-purpose" aria-labelledby="interview-purpose-title">
+<h2 id="interview-purpose-title">What we would like to learn</h2>
+<p>{{ row.purpose }}</p>
+</section>
+{% if row.status == 'COMPLETED' %}
+<section class="interview-panel">
+<h2>Interview completed</h2>
+<p>Thank you. The results are available to the administrator who requested this interview.</p>
+<a href="{{ url_for('home') }}">Back to MyRFOne</a>
+</section>
+{% else %}
+<div id="interview" data-status="{{ row.status }}">
+<p class="interview-context">You will be speaking with an AI. Your answers and the summary will be available to the administrator who requested this interview.</p>
+<p id="interview-error" role="alert" {% if not error %}hidden{% endif %}>{{ error or '' }}</p>
+<section id="interview-intro" class="interview-panel" {% if row.status != 'REQUESTED' %}hidden{% endif %}>
+<h2>Ready when you are</h2>
+<p>The AI will ask one question at a time and follow up on your answers. Share concrete examples and say when you are unsure.</p>
+<div class="interview-methods"><div><strong>Speak or type</strong><p>Review your answer before sending it.</p></div><div><strong>Take a break</strong><p>Submitted answers are saved. You can return later.</p></div></div>
+<form method="post" id="interview-start" class="interview-action" {% if row.status != 'REQUESTED' %}hidden{% endif %}>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="revision" value="{{ row.revision }}">
+  <input type="hidden" name="action" value="start">
+  <button type="submit">Start interview</button>
+</form>
+</section>
+<div class="interview-preferences">
+  <label for="interview-auto-speak"><input id="interview-auto-speak" type="checkbox" checked> Read questions aloud</label>
+  <span>English · Voice and text</span>
+</div>
+<p id="interview-progress" class="interview-progress" role="status">{% if row.status == 'REQUESTED' %}Start when you are ready.{% else %}{{ messages|selectattr('role', 'equalto', 'user')|list|length }} answers saved. Continue below.{% endif %}</p>
+<div id="interview-conversation" {% if row.status == 'REQUESTED' %}hidden{% endif %}>
+  <section class="interview-panel interview-current" aria-labelledby="interview-current-title">
+  <h2 id="interview-current-title">Current question</h2>
+  <p id="interview-question" class="interview-question" aria-live="polite">{% if messages %}{{ messages[-1].text }}{% endif %}</p>
+  <div class="interview-actions">
+    <button type="button" id="interview-listen">Listen to the question</button>
+    <button type="button" id="interview-stop-speech" class="interview-secondary">Stop speaking</button>
+  </div>
+  </section>
+  <section class="interview-panel interview-answer-panel" aria-labelledby="interview-answer-title">
+  <h2 id="interview-answer-title">Your answer</h2>
+  <div class="interview-actions">
+    <button type="button" id="interview-microphone">Speak</button>
+    <button type="button" id="interview-stop-microphone" class="interview-secondary" disabled>Stop dictation</button>
+  </div>
+  <p id="interview-voice-status" role="status"></p>
+  <form method="post" id="interview-answer" class="interview-action">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="revision" value="{{ row.revision }}">
+    <input type="hidden" name="action" value="answer">
+    <input type="hidden" name="channel" id="interview-channel" value="text">
+    <label for="interview-message">Your answer <span class="interview-hint">— speak, type or edit here</span></label>
+    <textarea id="interview-message" name="message" rows="6" maxlength="8000" required placeholder="Tell us what happened, what you did and why…">{{ unsent }}</textarea>
+    <div class="interview-send-row"><button type="submit">Send answer</button><span id="interview-save-status" role="status">Review your answer before sending.</span></div>
+  </form>
+  <details class="interview-voice-details"><summary>About voice input</summary><p>When you use the microphone, your browser may send audio to its speech recognition service. RF1 saves the text you confirm and submit, not the audio. You can edit the text before sending it.</p></details>
+  </section>
+  <details class="interview-history"><summary>Conversation history <span id="interview-answer-count">({{ messages|selectattr('role', 'equalto', 'user')|list|length }} answers saved)</span></summary>
+  <div id="interview-transcript">{% for message in messages %}<section class="interview-message interview-message-{{ message.role }}"><h2>{{ 'You' if message.role == 'user' else 'AI' }}</h2><p>{{ message.text }}</p></section>{% endfor %}</div>
+  </details>
+  <div class="interview-finish-row">
+  <div><a href="{{ url_for('home') }}">Pause and return to MyRFOne</a><p class="interview-hint">Submitted answers are saved.</p></div>
+  <form method="post" id="interview-complete" class="interview-action">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="revision" value="{{ row.revision }}">
+    <input type="hidden" name="action" value="complete">
+    <button type="submit" class="interview-secondary">Complete interview</button>
+  </form>
+  </div>
+</div>
+</div>
+<script defer src="{{ url_for('static', filename='js/interviews.js') }}?v=2"></script>
+{% endif %}
+</div>
+{% endblock %}
