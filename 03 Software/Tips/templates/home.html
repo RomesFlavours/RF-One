@@ -1,5 +1,13 @@
 {% extends "base.html" %}
+{% set help_section = "tips_imported" %}
+{% set help_title = "How Tips works" %}
 {% block content %}
+{% macro pager(key) %}
+{% set p = pagination[key] %}
+<p>{{ ui("Rows") }} {{ p.first }}–{{ p.last }} / {{ p.total }}. {{ ui("Summary totals cover the whole selected period.") }}
+{% if p.page > 1 %}<a href="{{ p.previous }}">{{ ui("Previous") }}</a>{% endif %}
+{% if p.page < p.pages %}<a href="{{ p.next }}">{{ ui("Next") }}</a>{% endif %}</p>
+{% endmacro %}
 
 {# Includes the outcome of a Sync Now started from this tab: RF-One Web
    records it in the shared RF-One session and sends the person back here. #}
@@ -141,8 +149,9 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="card" id="orders-detail">
   <h2>Orders detail</h2>
+  {{ pager("orders") }}
   {% if period_chosen %}
     {% if orders_rows %}
     <div class="table-scroll">
@@ -172,8 +181,9 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="card" id="payments-detail">
   <h2>Transactions detail</h2>
+  {{ pager("payments") }}
   {% if period_chosen %}
     {% if payments_rows %}
     <div class="table-scroll">
@@ -205,9 +215,10 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="card" id="shifts-detail">
   <h2>Imported Shifts (clock-in / clock-out source facts)</h2>
-  <p class="muted" style="font-size:.78rem;">Not yet used for any eligibility or distribution decision — made available for the future Tip Distribution Engine only.</p>
+  {{ pager("shifts") }}
+  <p class="muted" style="font-size:.78rem;">{{ ui("Recorded shifts provide eligibility and worked-time evidence for the configured rule.") }}</p>
   {% if from_date and through_date %}
     {% if shifts_rows %}
     <div class="table-scroll">

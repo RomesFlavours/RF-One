@@ -476,6 +476,23 @@ def home():
                         }
                     )
 
+        pagination = {}
+        for key, values in (("orders", imported["orders_rows"]), ("payments", imported["payments_rows"]), ("shifts", shifts_rows)):
+            pages = max(1, (len(values) + 99) // 100)
+            page = max(1, min(request.args.get(key + "_page", 1, type=int), pages))
+            offset = (page - 1) * 100
+            links = {}
+            for direction, number in (("previous", page - 1), ("next", page + 1)):
+                args = request.args.to_dict()
+                args.update(from_date=from_date, through_date=through_date)
+                args[key + "_page"] = number
+                links[direction] = url_for("home", **args) + "#" + key + "-detail"
+            pagination[key] = dict(page=page, pages=pages, total=len(values), first=offset+1 if values else 0,
+                last=min(offset+100, len(values)), **links)
+            if key == "shifts":
+                shifts_rows = values[offset:offset+100]
+            else:
+                imported[key + "_rows"] = values[offset:offset+100]
         employee_names = _employee_names(
             session, [r["employee_id"] for r in imported["payments_rows"] + imported["orders_rows"] + shifts_rows],
         )
@@ -484,7 +501,7 @@ def home():
             "home.html", restaurant=restaurant, from_date=from_date, through_date=through_date,
             no_business_date_data=no_business_date_data, clover=clover, tz=clover["tz_name"],
             employee_names=employee_names,
-            **imported, shifts_rows=shifts_rows,
+            **imported, shifts_rows=shifts_rows, pagination=pagination,
             active_nav="historical-backfill",
         )
 

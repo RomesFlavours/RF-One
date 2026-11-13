@@ -107,6 +107,38 @@ def list_documents(session, *, restaurant_id):
             if r.raw_json.get('restaurant_id') == restaurant_id]
 
 
+def _reported_payment(raw, document):
+    """Apply an explicit paid-status decision without rewriting bank evidence.
+
+    The stored observation stays immutable, so same-document re-import still
+    verifies against the original PDF. Only the report's effective category changes.
+    """
+    if raw.get('cross_year_period_acceptance'):
+        original = raw['observation']
+        decision = raw['cross_year_period_acceptance']
+        if (original['category'] != 'cross_boundary' or original['status'] != 'Completed'
+                or not original['explicit_tip'] or not original.get('period_start') or not original.get('period_end')
+                or decision.get('period_start') != original['period_start']
+                or decision.get('period_end') != original['period_end']
+                or not original['period_start'] < document['scope'][0] <= original['period_end'] <= document['scope'][1]):
+            raise ValueError('Accepted cross-year tip must preserve its original completed period overlapping the scope start')
+        return {**raw, 'observation': {**original, 'category': 'in_scope',
+            'original_category': original['category'],
+            'paid_inclusion_basis': 'Original cross-year period accepted in full by owner; no proration',
+            'included_without_proration': True}}
+    if not raw.get('paid_status_acceptance'):
+        return raw
+    original = raw['observation']
+    decision = raw['paid_status_acceptance']
+    if decision.get('accepted_status') != 'Delivered' or original['status'] != 'Delivered':
+        raise ValueError('Paid-status acceptance does not match the observed bank status')
+    if (not original['explicit_tip'] or not original.get('period_start') or not original.get('period_end')
+            or not document['scope'][0] <= original['period_start'] <= original['period_end'] <= document['scope'][1]):
+        raise ValueError('Accepted Delivered tip needs a complete in-scope earnings period')
+    return {**raw, 'observation': {**original, 'category': 'in_scope',
+        'original_category': original['category'], 'paid_inclusion_basis': 'Delivered accepted by explicit owner instruction'}}
+
+
 def report(session, *, restaurant_id, run_id):
     document = next((d for d in list_documents(session, restaurant_id=restaurant_id) if d['run_id']==run_id),None)
     if document is None:
@@ -117,6 +149,7 @@ def report(session, *, restaurant_id, run_id):
     rows = [r.raw_json for r in observations]
     if len(rows)!=document['row_count'] or any(r.payload_hash != _hash(r.raw_json) for r in observations):
         raise ValueError('Stored historical evidence integrity failure')
+    rows = [_reported_payment(raw, document) for raw in rows]
     categories = ['in_scope','cross_boundary','outside_scope','tip_period_unclear']
     names = set(document['display_recipients'])
     names.update(r['observation']['recipient'] for r in rows if r['observation']['explicit_tip'])
@@ -135,5 +168,5 @@ def report(session, *, restaurant_id, run_id):
             from ..employee_directory import resolve_employee_id
             p['employee_id'] = resolve_employee_id(session, p['employee_id'])
         people.append(p)
-    return {'document':document,'people':people,'totals':{c:sum(p[c] for p in people) for c in categories},
+    return {'document':document,'people':people,'accepted_delivered_count':sum(bool(r.get('paid_status_acceptance')) for r in rows),'totals':{c:sum(p[c] for p in people) for c in categories},
         'repeat_extra':sum(p['exact_repeat_extra'] for p in people),'rows':len(rows)}
