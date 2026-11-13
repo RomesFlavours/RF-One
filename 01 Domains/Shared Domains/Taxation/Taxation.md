@@ -93,7 +93,7 @@ See [../../00 Core/ConceptualArchitecture/03_Decision_Action_Outcome_Learning.md
 
 ```text
 Employee compensation
-  → Personnel Management / Workforce fact
+  → Administration / Compensation fact
       (a compensation structure exists for operational and personnel reasons)
   → Taxation evaluates tax consequences
       (Tax Obligation on payroll, Tax Treatment of benefit components, Tax Position on classification)
